@@ -16,6 +16,17 @@
 - ⌨️ Optional **Vim mode** (persistent ON/OFF)  
 - ⚡ Ultra-fast CLI flags: `-q -n -e -l -f`
 
+## 🛠️ Future Plans
+- [ ] Vim colon commands/better vim support
+- [ ] Easy backup/restore
+- [ ] Text file import
+- [ ] Windows release as executable
+- [ ] App store releases (for Linux)
+- [ ] Icon rendering and icon assigning to notes
+- [ ] Improved mouse support with right click context menu
+- [ ] More keyboard shortcuts for easier accessibility
+- [ ] More customization options
+
 # Mouse support!
 ![mouse](https://github.com/user-attachments/assets/8df42fc2-04f5-4f42-9e23-36bf6f5414d1)
 
@@ -88,15 +99,4 @@ clin -f                → Show storage folder
 `Tab` cycle • `Es` save & back • `Ctrl+Q` save & quit
 _Vim mode_ toggleable + persistent
 
-- - -
 
-## 🛠️ Future Plans
-- Vim colon commands
-- Easy backup/restore
-- Text file import
-- Windows release as executable
-- App store releases (for Linux)
-- Icon rendering and icon assigning to notes
-- Improved mouse support with right click context menu
-- More keyboard shortcuts for easier accessibility
-- More customization options
