@@ -16,6 +16,18 @@
 - ⌨️ Optional **Vim mode** (persistent ON/OFF)  
 - ⚡ Ultra-fast CLI flags: `-q -n -e -l -f`
 
+# Mouse support!
+![mouse](https://github.com/user-attachments/assets/8df42fc2-04f5-4f42-9e23-36bf6f5414d1)
+
+
+# Vim mode!
+![vim](https://github.com/user-attachments/assets/4e5e3915-6926-4e88-a1e5-6888641fc34d)
+
+
+# Quick actions!
+![arguments](https://github.com/user-attachments/assets/b6fb344a-79ef-47ae-aefb-8ae637f939d8)
+
+
 ---
 
 ## 🔐 Storage & Security
@@ -73,3 +85,6 @@ _Vim mode_ toggleable + persistent
 - Windows release as executable
 - App store releases (for Linux)
 - Icon rendering and icon assigning to notes
+- Improved mouse support with right click context menu
+- More keyboard shortcuts for easier accessibility
+- More customization options
