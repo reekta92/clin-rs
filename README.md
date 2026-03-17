@@ -32,8 +32,7 @@
 
 ## 🔐 Storage & Security
 Notes are encrypted before hitting disk.  
-Key stored locally (`key.bin`).  
-No cloud. No network.  
+Key is stored locally (`key.bin`).  
 **Backup & Restore** -> copy both `.clin` files + `key.bin` from `~/.local/share/clin`
 
 ---
