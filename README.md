@@ -62,9 +62,9 @@ _Vim mode_ toggleable + persistent
 - - -
 
 ## 🛠️ Future Plans
-- Full Vim commands
+- Vim colon commands
 - Easy backup/restore
 - Text file import
-- Windows support
-- App store releases
-- Icons & context menu
+- Windows release as executable
+- App store releases (for Linux)
+- Icon rendering and icon assigning to notes
