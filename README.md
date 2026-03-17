@@ -20,7 +20,7 @@
 ![mouse](https://github.com/user-attachments/assets/8df42fc2-04f5-4f42-9e23-36bf6f5414d1)
 
 
-# Vim mode!
+# Vim mode! (experimental)
 ![vim](https://github.com/user-attachments/assets/4e5e3915-6926-4e88-a1e5-6888641fc34d)
 
 
