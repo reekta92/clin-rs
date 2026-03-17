@@ -2,8 +2,7 @@
 <img width="512" height="512" alt="clin logo" src="https://github.com/user-attachments/assets/80248532-f055-4b8e-beda-1a3eaafbd0ba" />
 </div>
 
-# **clin**  
-**clin — Your notes. Encrypted. Instant. Private. Simple.**  
+# **clin - Your notes. Encrypted. Instant. Private. Simple.**  
 
 > `clin` is originally a app i made when i got into C it was really rough and basic, i decided to remake it in Rust with more features and improved user experience to better fit your workflow!
 
