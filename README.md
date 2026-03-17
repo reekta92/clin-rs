@@ -2,11 +2,13 @@
 <img width="512" height="512" alt="clin logo" src="https://github.com/user-attachments/assets/80248532-f055-4b8e-beda-1a3eaafbd0ba" />
 </div>
 
-# **clin - Your notes. Encrypted. Instant. Private. Simple.**  
+# **clin - Your notes. Encrypted. Instant. Private. Simple.**
 
 > `clin` is originally a app i made when i got into C it was really rough and basic, i decided to remake it in Rust with more features and improved user experience to better fit your workflow!
 
 ---
+
+# _clin is NOT A TEXT EDITOR (though it has text editing features)_
 
 ## ✨ Highlights
 - 🔒 **ChaCha20-Poly1305** encryption at rest  
@@ -17,7 +19,8 @@
 - ⚡ Ultra-fast CLI flags: `-q -n -e -l -f`
 
 ## 🛠️ Future Plans
-- [ ] Vim colon commands/better vim support
+- [ ] Vim colon commands
+- [ ] Better vim support for commands like `ci`, `di`, `ct(` etc.
 - [ ] Easy backup/restore
 - [ ] Text file import
 - [ ] Windows release as executable
