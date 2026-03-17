@@ -29,6 +29,7 @@
 - [ ] Improved mouse support with right click context menu
 - [ ] More keyboard shortcuts for easier accessibility
 - [ ] More customization options
+- [ ] More argument options
 
 # Mouse support!
 ![mouse](https://github.com/user-attachments/assets/8df42fc2-04f5-4f42-9e23-36bf6f5414d1)
