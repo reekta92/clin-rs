@@ -22,6 +22,19 @@
 
 # Vim mode! (experimental)
 ![vim](https://github.com/user-attachments/assets/4e5e3915-6926-4e88-a1e5-6888641fc34d)
+> Vim Mode
+- Vim mode can be toggled with a selectable Vim button in both notes and editor views.
+- Vim mode toggle state persists across app restarts.
+- Vim-like modal editing states:
+  - Normal
+  - Insert
+  - Visual
+  - Visual Line
+  - Operator-pending
+- Vim-style motions and operators (implemented subset), including:
+  - Navigation (`h`, `j`, `k`, `l`, word/head/end/top/bottom motions)
+  - Operators/motions (`d`, `y`, `c`, including linewise `dd`, `yy`, `cc`)
+  - Visual actions (`v`, `V`, `y`, `d`, `c`, `x`, `p`)
 
 
 # Quick actions!
