@@ -1,15 +1,14 @@
 # clin
 
-Encrypted terminal note-taking app written in Rust.
+Encrypted CLI note-taking app written in Rust.
 
-`clin` gives you a fast in-terminal notes workflow with local encrypted storage, in-app editing, optional Vim-style editing, mouse support, and CLI shortcuts for quick operations.
+`clin` gives you a quick note taking with local encrypted storage, in-app editing, optional Vim-style editing, mouse support, and CLI shortcuts for quick operations.
 
 ## Highlights
 
 - Encrypted notes at rest (ChaCha20-Poly1305)
-- Notes stored as unreadable binary `.clin` files
+- - Notes stored as unreadable binary `.clin` files
 - Full-screen TUI with list, editor, and help views
-- In-terminal title/body editing (no external editor)
 - Mouse selection and bracketed paste support
 - Optional Vim mode with persistent ON/OFF setting
 - Quick CLI actions (`-q`, `-n`, `-e`, `-l`, `-f`, `-h`)
@@ -17,7 +16,7 @@ Encrypted terminal note-taking app written in Rust.
 ## Requirements
 
 - Rust toolchain (stable)
-- Linux/macOS terminal (Linux used in this workspace)
+- Linux/macOS terminal (Ubuntu 25.10 used in this workspace)
 
 Install Rust if needed:
 
