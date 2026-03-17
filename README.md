@@ -24,7 +24,6 @@
 - [ ] Easy backup/restore
 - [ ] Text file import
 - [ ] Windows release as executable
-- [ ] App store releases (for Linux)
 - [ ] Icon rendering and icon assigning to notes
 - [ ] Improved mouse support with right click context menu
 - [ ] More keyboard shortcuts for easier accessibility
