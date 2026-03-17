@@ -1,99 +1,70 @@
-# clin
+<div align="center">
+<img width="512" height="512" alt="clin logo" src="https://github.com/user-attachments/assets/80248532-f055-4b8e-beda-1a3eaafbd0ba" />
+</div>
 
-Encrypted CLI note-taking app written in Rust.
+# **clin**  
+**clin — Your notes. Encrypted. Instant. Private. Simple.**  
+*Built in Rust • From C prototype to production-ready TUI*
 
-`clin` gives you a quick note taking with local encrypted storage, in-app editing, optional Vim-style editing, mouse support, and CLI shortcuts for quick operations.
+---
 
-## Highlights
+## ✨ Highlights
+- 🔒 **ChaCha20-Poly1305** encryption at rest  
+- 📦 Binary `.clin` files (completely unreadable)  
+- 🖥️ Full-screen TUI with list + editor + help views  
+- 🖱️ Mouse support + bracketed paste  
+- ⌨️ Optional **Vim mode** (persistent ON/OFF)  
+- ⚡ Ultra-fast CLI flags: `-q -n -e -l -f`
 
-- Encrypted notes at rest (ChaCha20-Poly1305)
-- - Notes stored as unreadable binary `.clin` files
-- Full-screen TUI with list, editor, and help views
-- Mouse selection and bracketed paste support
-- Optional Vim mode with persistent ON/OFF setting
-- Quick CLI actions (`-q`, `-n`, `-e`, `-l`, `-f`, `-h`)
+---
 
-## Requirements
+## 🔐 Storage & Security
+Notes are encrypted before hitting disk.  
+Key stored locally (`key.bin`).  
+No cloud. No network.  
+**Backup & Restore** -> copy both `.clin` files + `key.bin` from `~/.local/share/clin`
 
-- Rust toolchain (stable)
-- Linux/macOS terminal (Ubuntu 25.10 used in this workspace)
+---
 
-Install Rust if needed:
-
+## 🚀 Quick Start
 ```bash
+# Install Rust
 curl https://sh.rustup.rs -sSf | sh
-```
 
-## Build And Run
-
-```bash
+# Build & run
 cargo run
-```
 
-Release build:
-
-```bash
-cargo build --release
-```
-
-Install locally:
-
-```bash
+# Install globally
 cargo install --path .
-```
 
-Then run:
-
-```bash
+# Run
 clin
 ```
 
-## CLI Usage
-
-```text
-clin                Launch interactive app
-clin -q <CONTENT> [TITLE]
-                    Create a quick note and exit
-clin -n [TITLE]     Create a new note and open it in editor
-clin -f             Print notes directory location
-clin -l             List note titles
-clin -e <TITLE>     Open a specific note title directly in editor
-clin -h             Show this help
+## 📋 CLI Commands
+```
+clin                   → Launch TUI
+clin -q <text> [title] → Quick note & exit
+clin -n [title]        → New note
+clin -l                → List notes
+clin -e <title>        → Edit note
+clin -f                → Show storage folder
 ```
 
-## Interactive Controls
+## 🎮 Controls
+**Notes list** ->
+`UP/DOWN` select • `Enter` open • `d` delete • `f` folder • `Tab` focus • `?` help • `q` quit
 
-Notes view:
+**Editor** ->
+`Tab` cycle • `Es` save & back • `Ctrl+Q` save & quit
+_Vim mode_ toggleable + persistent
 
-- `Up/Down` move selection
-- `Enter` open selected note (or create when selecting New Note)
-- `d` / `Delete` request note delete
-- `f` open selected note file location in file manager
-- `Tab` switch focus (notes list / Vim toggle button)
-- `?` or `F1` open help page
-- `q` quit
+- - -
 
-Editor view:
-
-- `Tab` cycle focus (Title -> Body -> Vim toggle)
-- `Esc` autosave and return to notes view
-- `Ctrl+Q` save and quit app
-- Standard editing shortcuts with Vim OFF:
-  - `Ctrl+C`, `Ctrl+X`, `Ctrl+V`
-  - `Ctrl+Insert`, `Shift+Insert`, `Shift+Delete`
-  - `Ctrl+A`, `Ctrl+Z`, `Ctrl+Y`, `Ctrl+Shift+Z`
-  - `Ctrl+Backspace`, `Ctrl+Delete`
-
-Vim mode (optional):
-
-- Toggle using the Vim button in list/editor views
-- Persistent setting across launches
-- Modes: Normal, Insert, Visual, Visual Line, Operator-pending
-- Subset motions/operators (`h/j/k/l`, `w/e/b`, `gg/G`, `d/y/c`, `dd/yy/cc`, etc.)
-
-## Storage And Security
-
-- Notes are encrypted before writing to disk.
-- Files are stored under the app data directory (use `clin -f` to print notes folder).
-- Encryption key is generated locally and stored in app data (`key.bin`).
-- No cloud sync or network service is used by default.
+## 🛠️ Future Plans
+- Full Vim commands
+- Easy backup/restore
+- Text file import
+- Windows support
+- App store releases
+- Icons & context menu
