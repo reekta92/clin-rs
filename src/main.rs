@@ -29,6 +29,7 @@ use serde::{Deserialize, Serialize};
 use tui_textarea::{Input, TextArea};
 use tui_textarea::CursorMove;
 use uuid::Uuid;
+use vim_line::{Key as VimKey, KeyCode as VimKeyCode, LineEditor, VimLineEditor};
 
 const FILE_MAGIC: &[u8; 5] = b"CLIN1";
 const NONCE_LEN: usize = 12;
@@ -67,49 +68,15 @@ Editor shortcuts (Vim OFF)\n\
 - Word edit: Ctrl+Backspace, Ctrl+Delete\n\
 \n\
 Editor shortcuts (Vim ON)\n\
-- Modes: NORMAL, INSERT, VISUAL, VISUAL LINE, OPERATOR\n\
-- Basic movement: h j k l, w e b, 0/^, $, gg, G\n\
-- Enter insert: i, I, a, A, o, O\n\
-- Visual: v (charwise), V (linewise), Esc/v to leave visual\n\
-- Operators: d, y, c and linewise dd, yy, cc\n\
-- Visual actions: y, d, c, x, p\n\
+- Powered by vim-line (library-backed Vim key handling)\n\
+- Modes: NORMAL, INSERT, VISUAL, OPERATOR-PENDING, REPLACE\n\
+- Movement: h j k l, w e b, 0/^, $, %\n\
+- Insert: i, I, a, A, o, O\n\
+- Operators: d, y, c (including dd, yy, cc and dw/cw/yw)\n\
+- Edits: x, D, C, r<char>, p, P\n\
 \n\
 Help page\n\
 - Esc/q/?/F1: close help and return to notes\n";
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum VimMode {
-    Normal,
-    Insert,
-    Visual,
-    VisualLine,
-    Operator(char),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct VimState {
-    mode: VimMode,
-    pending_g: bool,
-    visual_line_anchor_row: Option<u16>,
-}
-
-impl VimState {
-    fn normal() -> Self {
-        Self {
-            mode: VimMode::Normal,
-            pending_g: false,
-            visual_line_anchor_row: None,
-        }
-    }
-
-    fn insert() -> Self {
-        Self {
-            mode: VimMode::Insert,
-            pending_g: false,
-            visual_line_anchor_row: None,
-        }
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct AppSettings {
@@ -342,8 +309,8 @@ struct App {
     title_editor: TextArea<'static>,
     editor: TextArea<'static>,
     vim_enabled: bool,
-    vim_title: VimState,
-    vim_body: VimState,
+    vim_title: VimLineEditor,
+    vim_body: VimLineEditor,
     status: String,
     status_until: Option<Instant>,
     pending_delete_note_id: Option<String>,
@@ -362,11 +329,6 @@ enum CliCommand {
 impl App {
     fn new(storage: Storage) -> Result<Self> {
         let settings = storage.load_settings();
-        let vim_state = if settings.vim_enabled {
-            VimState::normal()
-        } else {
-            VimState::insert()
-        };
 
         let mut app = Self {
             storage,
@@ -378,8 +340,8 @@ impl App {
             title_editor: make_title_editor(""),
             editor: TextArea::default(),
             vim_enabled: settings.vim_enabled,
-            vim_title: vim_state,
-            vim_body: vim_state,
+            vim_title: VimLineEditor::new(),
+            vim_body: VimLineEditor::new(),
             status: String::from(LIST_HELP_HINTS),
             status_until: None,
             pending_delete_note_id: None,
@@ -577,34 +539,28 @@ impl App {
     }
 
     fn reset_vim_states_for_edit(&mut self) {
-        let state = if self.vim_enabled {
-            VimState::normal()
+        self.vim_title = VimLineEditor::new();
+        self.vim_body = VimLineEditor::new();
+
+        if self.vim_enabled {
+            apply_vim_cursor_style(&mut self.title_editor, self.vim_title.status());
+            apply_vim_cursor_style(&mut self.editor, self.vim_body.status());
         } else {
-            VimState::insert()
-        };
-        self.vim_title = state;
-        self.vim_body = state;
-        apply_vim_cursor_style(&mut self.title_editor, self.vim_title.mode);
-        apply_vim_cursor_style(&mut self.editor, self.vim_body.mode);
+            apply_vim_cursor_style(&mut self.title_editor, "INSERT");
+            apply_vim_cursor_style(&mut self.editor, "INSERT");
+        }
     }
 
     fn toggle_vim_mode(&mut self) {
         self.vim_enabled = !self.vim_enabled;
+        self.reset_vim_states_for_edit();
 
-        if self.vim_enabled {
-            self.vim_title = VimState::normal();
-            self.vim_body = VimState::normal();
-        } else {
-            self.vim_title = VimState::insert();
-            self.vim_body = VimState::insert();
+        if !self.vim_enabled {
             self.title_editor.cancel_selection();
             self.editor.cancel_selection();
         }
 
         self.set_default_status();
-
-        apply_vim_cursor_style(&mut self.title_editor, self.vim_title.mode);
-        apply_vim_cursor_style(&mut self.editor, self.vim_body.mode);
         self.storage.save_settings(&AppSettings {
             vim_enabled: self.vim_enabled,
         });
@@ -973,22 +929,29 @@ fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> bool
         if app.vim_enabled
             && *focus != EditFocus::VimToggle
         {
-            let vim_state = match *focus {
-                EditFocus::Title => &mut app.vim_title,
-                EditFocus::Body => &mut app.vim_body,
-                EditFocus::VimToggle => unreachable!(),
+            let in_insert = match *focus {
+                EditFocus::Title => app.vim_title.status() == "INSERT",
+                EditFocus::Body => app.vim_body.status() == "INSERT",
+                EditFocus::VimToggle => false,
             };
-            if vim_state.mode != VimMode::Normal {
-                vim_state.mode = VimMode::Normal;
-                vim_state.pending_g = false;
+
+            if in_insert {
                 match *focus {
                     EditFocus::Title => {
-                        app.title_editor.cancel_selection();
-                        apply_vim_cursor_style(&mut app.title_editor, vim_state.mode);
+                        let _ = handle_vim_line_key(
+                            &mut app.title_editor,
+                            &mut app.vim_title,
+                            key,
+                            true,
+                        );
                     }
                     EditFocus::Body => {
-                        app.editor.cancel_selection();
-                        apply_vim_cursor_style(&mut app.editor, vim_state.mode);
+                        let _ = handle_vim_line_key(
+                            &mut app.editor,
+                            &mut app.vim_body,
+                            key,
+                            false,
+                        );
                     }
                     EditFocus::VimToggle => {}
                 }
@@ -1019,9 +982,8 @@ fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> bool
             }
 
             if app.vim_enabled
-                && handle_vim_key(&mut app.title_editor, &mut app.vim_title, key, true)
+                && handle_vim_line_key(&mut app.title_editor, &mut app.vim_title, key, true)
             {
-                apply_vim_cursor_style(&mut app.title_editor, app.vim_title.mode);
                 return false;
             }
 
@@ -1039,9 +1001,8 @@ fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> bool
         }
         EditFocus::Body => {
             if app.vim_enabled
-                && handle_vim_key(&mut app.editor, &mut app.vim_body, key, false)
+                && handle_vim_line_key(&mut app.editor, &mut app.vim_body, key, false)
             {
-                apply_vim_cursor_style(&mut app.editor, app.vim_body.mode);
                 return false;
             }
 
@@ -1226,338 +1187,150 @@ fn handle_os_shortcuts(textarea: &mut TextArea<'static>, key: KeyEvent) -> bool 
     false
 }
 
-fn handle_vim_key(
+fn handle_vim_line_key(
     textarea: &mut TextArea<'static>,
-    state: &mut VimState,
+    editor: &mut VimLineEditor,
     key: KeyEvent,
     single_line: bool,
 ) -> bool {
-    if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('r') {
-        let _ = textarea.redo();
+    let Some(vim_key) = to_vim_key(key) else {
         return true;
+    };
+
+    let mut text = textarea.lines().join("\n");
+    let cursor = cursor_to_offset(&text, textarea.cursor().0, textarea.cursor().1);
+    editor.set_cursor(cursor, &text);
+
+    let result = editor.handle_key(vim_key, &text);
+    for edit in result.edits.into_iter().rev() {
+        edit.apply(&mut text);
     }
 
-    match state.mode {
-        VimMode::Insert => {
-            if key.code == KeyCode::Esc {
-                state.mode = VimMode::Normal;
-                state.pending_g = false;
-                state.visual_line_anchor_row = None;
-                textarea.cancel_selection();
-                return true;
-            }
-            if single_line && key.code == KeyCode::Enter {
-                return true;
-            }
-            textarea.input(Input::from(key));
-            true
-        }
-        VimMode::Visual | VimMode::VisualLine | VimMode::Normal | VimMode::Operator(_) => {
-            let mut moved = false;
-
-            match key.code {
-                KeyCode::Char('h') => {
-                    textarea.move_cursor(CursorMove::Back);
-                    moved = true;
-                }
-                KeyCode::Char('j') if !single_line => {
-                    textarea.move_cursor(CursorMove::Down);
-                    moved = true;
-                }
-                KeyCode::Char('k') if !single_line => {
-                    textarea.move_cursor(CursorMove::Up);
-                    moved = true;
-                }
-                KeyCode::Char('l') => {
-                    textarea.move_cursor(CursorMove::Forward);
-                    moved = true;
-                }
-                KeyCode::Char('w') => {
-                    textarea.move_cursor(CursorMove::WordForward);
-                    moved = true;
-                }
-                KeyCode::Char('e') => {
-                    textarea.move_cursor(CursorMove::WordEnd);
-                    moved = true;
-                }
-                KeyCode::Char('b') => {
-                    textarea.move_cursor(CursorMove::WordBack);
-                    moved = true;
-                }
-                KeyCode::Char('0') | KeyCode::Char('^') => {
-                    textarea.move_cursor(CursorMove::Head);
-                    moved = true;
-                }
-                KeyCode::Char('$') => {
-                    textarea.move_cursor(CursorMove::End);
-                    moved = true;
-                }
-                KeyCode::Char('g') => {
-                    if state.pending_g {
-                        textarea.move_cursor(CursorMove::Top);
-                        state.pending_g = false;
-                    } else {
-                        state.pending_g = true;
-                    }
-                    moved = true;
-                }
-                KeyCode::Char('G') => {
-                    textarea.move_cursor(CursorMove::Bottom);
-                    moved = true;
-                }
-                KeyCode::Char('i') if matches!(state.mode, VimMode::Normal) => {
-                    textarea.cancel_selection();
-                    state.mode = VimMode::Insert;
-                    state.pending_g = false;
-                    state.visual_line_anchor_row = None;
-                    return true;
-                }
-                KeyCode::Char('I') if matches!(state.mode, VimMode::Normal) => {
-                    textarea.cancel_selection();
-                    textarea.move_cursor(CursorMove::Head);
-                    state.mode = VimMode::Insert;
-                    state.pending_g = false;
-                    state.visual_line_anchor_row = None;
-                    return true;
-                }
-                KeyCode::Char('a') if matches!(state.mode, VimMode::Normal) => {
-                    textarea.cancel_selection();
-                    textarea.move_cursor(CursorMove::Forward);
-                    state.mode = VimMode::Insert;
-                    state.pending_g = false;
-                    state.visual_line_anchor_row = None;
-                    return true;
-                }
-                KeyCode::Char('A') if matches!(state.mode, VimMode::Normal) => {
-                    textarea.cancel_selection();
-                    textarea.move_cursor(CursorMove::End);
-                    state.mode = VimMode::Insert;
-                    state.pending_g = false;
-                    state.visual_line_anchor_row = None;
-                    return true;
-                }
-                KeyCode::Char('o') if matches!(state.mode, VimMode::Normal) && !single_line => {
-                    textarea.move_cursor(CursorMove::End);
-                    textarea.insert_newline();
-                    state.mode = VimMode::Insert;
-                    state.pending_g = false;
-                    state.visual_line_anchor_row = None;
-                    return true;
-                }
-                KeyCode::Char('O') if matches!(state.mode, VimMode::Normal) && !single_line => {
-                    textarea.move_cursor(CursorMove::Head);
-                    textarea.insert_newline();
-                    textarea.move_cursor(CursorMove::Up);
-                    state.mode = VimMode::Insert;
-                    state.pending_g = false;
-                    state.visual_line_anchor_row = None;
-                    return true;
-                }
-                KeyCode::Char('x') if matches!(state.mode, VimMode::Normal) => {
-                    let _ = textarea.delete_next_char();
-                    state.pending_g = false;
-                    return true;
-                }
-                KeyCode::Char('p') if matches!(state.mode, VimMode::Normal) => {
-                    let _ = textarea.paste();
-                    state.pending_g = false;
-                    return true;
-                }
-                KeyCode::Char('u') => {
-                    let _ = textarea.undo();
-                    state.pending_g = false;
-                    return true;
-                }
-                KeyCode::Char('v') if matches!(state.mode, VimMode::Normal) => {
-                    textarea.start_selection();
-                    state.mode = VimMode::Visual;
-                    state.pending_g = false;
-                    state.visual_line_anchor_row = None;
-                    return true;
-                }
-                KeyCode::Char('V') if matches!(state.mode, VimMode::Normal) => {
-                    state.mode = VimMode::VisualLine;
-                    state.pending_g = false;
-                    state.visual_line_anchor_row = Some(textarea.cursor().0 as u16);
-                    sync_visual_line_selection(textarea, state);
-                    return true;
-                }
-                KeyCode::Char('v') if matches!(state.mode, VimMode::Visual | VimMode::VisualLine) => {
-                    textarea.cancel_selection();
-                    state.mode = VimMode::Normal;
-                    state.pending_g = false;
-                    state.visual_line_anchor_row = None;
-                    return true;
-                }
-                KeyCode::Esc
-                    if matches!(state.mode, VimMode::Visual | VimMode::VisualLine | VimMode::Operator(_)) =>
-                {
-                    textarea.cancel_selection();
-                    state.mode = VimMode::Normal;
-                    state.pending_g = false;
-                    state.visual_line_anchor_row = None;
-                    return true;
-                }
-                KeyCode::Char(op @ ('y' | 'd' | 'c')) if matches!(state.mode, VimMode::Normal) => {
-                    textarea.start_selection();
-                    state.mode = VimMode::Operator(op);
-                    state.pending_g = false;
-                    state.visual_line_anchor_row = None;
-                    return true;
-                }
-                KeyCode::Char('y') if matches!(state.mode, VimMode::Visual) => {
-                    textarea.move_cursor(CursorMove::Forward);
-                    textarea.copy();
-                    state.mode = VimMode::Normal;
-                    state.pending_g = false;
-                    state.visual_line_anchor_row = None;
-                    return true;
-                }
-                KeyCode::Char('d') if matches!(state.mode, VimMode::Visual) => {
-                    textarea.move_cursor(CursorMove::Forward);
-                    let _ = textarea.cut();
-                    state.mode = VimMode::Normal;
-                    state.pending_g = false;
-                    state.visual_line_anchor_row = None;
-                    return true;
-                }
-                KeyCode::Char('c') if matches!(state.mode, VimMode::Visual) => {
-                    textarea.move_cursor(CursorMove::Forward);
-                    let _ = textarea.cut();
-                    state.mode = VimMode::Insert;
-                    state.pending_g = false;
-                    state.visual_line_anchor_row = None;
-                    return true;
-                }
-                KeyCode::Char('y') if matches!(state.mode, VimMode::VisualLine) => {
-                    textarea.copy();
-                    state.mode = VimMode::Normal;
-                    state.pending_g = false;
-                    state.visual_line_anchor_row = None;
-                    return true;
-                }
-                KeyCode::Char('d') if matches!(state.mode, VimMode::VisualLine) => {
-                    let _ = textarea.cut();
-                    state.mode = VimMode::Normal;
-                    state.pending_g = false;
-                    state.visual_line_anchor_row = None;
-                    return true;
-                }
-                KeyCode::Char('c') if matches!(state.mode, VimMode::VisualLine) => {
-                    let _ = textarea.cut();
-                    state.mode = VimMode::Insert;
-                    state.pending_g = false;
-                    state.visual_line_anchor_row = None;
-                    return true;
-                }
-                KeyCode::Char('x') if matches!(state.mode, VimMode::Visual | VimMode::VisualLine) => {
-                    let _ = textarea.cut();
-                    state.mode = VimMode::Normal;
-                    state.pending_g = false;
-                    state.visual_line_anchor_row = None;
-                    return true;
-                }
-                KeyCode::Char('p') if matches!(state.mode, VimMode::Visual | VimMode::VisualLine) => {
-                    let _ = textarea.cut();
-                    let _ = textarea.paste();
-                    state.mode = VimMode::Normal;
-                    state.pending_g = false;
-                    state.visual_line_anchor_row = None;
-                    return true;
-                }
-                _ => {}
-            }
-
-            if matches!(state.mode, VimMode::VisualLine) && moved {
-                sync_visual_line_selection(textarea, state);
-            }
-
-            if let VimMode::Operator(op) = state.mode {
-                if let KeyCode::Char(c) = key.code
-                    && c == op
-                {
-                    // dd/yy/cc are linewise operators in Vim: convert current line into selection.
-                    textarea.move_cursor(CursorMove::Head);
-                    textarea.start_selection();
-                    let before = textarea.cursor();
-                    textarea.move_cursor(CursorMove::Down);
-                    if before == textarea.cursor() {
-                        textarea.move_cursor(CursorMove::End);
-                    }
-                    moved = true;
-                }
-
-                if moved {
-                    match op {
-                        'y' => textarea.copy(),
-                        'd' => {
-                            let _ = textarea.cut();
-                        }
-                        'c' => {
-                            let _ = textarea.cut();
-                        }
-                        _ => {}
-                    }
-                    state.mode = if op == 'c' {
-                        VimMode::Insert
-                    } else {
-                        VimMode::Normal
-                    };
-                    state.pending_g = false;
-                    return true;
-                }
-            }
-
-            // In non-insert modes, consume input by default so text is not inserted accidentally.
-            true
-        }
+    if single_line {
+        text = text.replace(['\r', '\n'], " ");
     }
+
+    let target_offset = editor.cursor().min(text.len());
+    replace_textarea_from_string(textarea, &text, single_line);
+
+    let (row, col) = offset_to_cursor(textarea.lines(), target_offset);
+    textarea.move_cursor(CursorMove::Jump(row as u16, col as u16));
+
+    if let Some(selection) = editor.selection() {
+        let start = selection.start.min(text.len());
+        let end = selection.end.min(text.len());
+        let (start_row, start_col) = offset_to_cursor(textarea.lines(), start);
+        let (end_row, end_col) = offset_to_cursor(textarea.lines(), end);
+
+        textarea.cancel_selection();
+        textarea.move_cursor(CursorMove::Jump(start_row as u16, start_col as u16));
+        textarea.start_selection();
+        textarea.move_cursor(CursorMove::Jump(end_row as u16, end_col as u16));
+    } else {
+        textarea.cancel_selection();
+        textarea.move_cursor(CursorMove::Jump(row as u16, col as u16));
+    }
+
+    apply_vim_cursor_style(textarea, editor.status());
+    true
 }
 
-fn apply_vim_cursor_style(textarea: &mut TextArea<'static>, mode: VimMode) {
-    let style = match mode {
-        VimMode::Insert => Style::default().fg(Color::Black).bg(Color::Cyan),
-        VimMode::Normal => Style::default().fg(Color::Black).bg(Color::Yellow),
-        VimMode::Visual => Style::default().fg(Color::Black).bg(Color::Green),
-        VimMode::VisualLine => Style::default().fg(Color::Black).bg(Color::LightGreen),
-        VimMode::Operator(_) => Style::default().fg(Color::Black).bg(Color::Magenta),
+fn to_vim_key(key: KeyEvent) -> Option<VimKey> {
+    let mut out = match key.code {
+        KeyCode::Char(c) => VimKey::char(c),
+        KeyCode::Esc => VimKey::code(VimKeyCode::Escape),
+        KeyCode::Backspace => VimKey::code(VimKeyCode::Backspace),
+        KeyCode::Delete => VimKey::code(VimKeyCode::Delete),
+        KeyCode::Left => VimKey::code(VimKeyCode::Left),
+        KeyCode::Right => VimKey::code(VimKeyCode::Right),
+        KeyCode::Up => VimKey::code(VimKeyCode::Up),
+        KeyCode::Down => VimKey::code(VimKeyCode::Down),
+        KeyCode::Home => VimKey::code(VimKeyCode::Home),
+        KeyCode::End => VimKey::code(VimKeyCode::End),
+        KeyCode::Tab => VimKey::code(VimKeyCode::Tab),
+        KeyCode::Enter => VimKey::code(VimKeyCode::Enter),
+        _ => return None,
+    };
+
+    if key.modifiers.contains(KeyModifiers::CONTROL) {
+        out = out.ctrl();
+    }
+    if key.modifiers.contains(KeyModifiers::ALT) {
+        out = out.alt();
+    }
+    if key.modifiers.contains(KeyModifiers::SHIFT) {
+        out = out.shift();
+    }
+
+    Some(out)
+}
+
+fn apply_vim_cursor_style(textarea: &mut TextArea<'static>, status: &str) {
+    let style = match status {
+        "INSERT" => Style::default().fg(Color::Black).bg(Color::Cyan),
+        "NORMAL" => Style::default().fg(Color::Black).bg(Color::Yellow),
+        "VISUAL" => Style::default().fg(Color::Black).bg(Color::Green),
+        _ => Style::default().fg(Color::Black).bg(Color::Magenta),
     };
     textarea.set_cursor_style(style);
 }
 
-fn sync_visual_line_selection(textarea: &mut TextArea<'static>, state: &mut VimState) {
-    let Some(anchor_row) = state.visual_line_anchor_row else {
-        return;
-    };
+fn cursor_to_offset(text: &str, row: usize, col: usize) -> usize {
+    let mut offset = 0usize;
+    let mut lines = text.split('\n').peekable();
 
-    let current_row = textarea.cursor().0 as u16;
-
-    textarea.cancel_selection();
-
-    if current_row > anchor_row {
-        // Cursor moved downward: select from anchor line start to current line end.
-        textarea.move_cursor(CursorMove::Jump(anchor_row, 0));
-        textarea.start_selection();
-        textarea.move_cursor(CursorMove::Jump(current_row, 0));
-        textarea.move_cursor(CursorMove::End);
-    } else {
-        // Cursor on or above anchor: select from anchor line end back to current line start.
-        // This keeps bottom-to-top linewise selection complete without forcing cursor to end.
-        textarea.move_cursor(CursorMove::Jump(anchor_row, 0));
-        textarea.move_cursor(CursorMove::End);
-        textarea.start_selection();
-        textarea.move_cursor(CursorMove::Jump(current_row, 0));
+    for current_row in 0..row {
+        let Some(line) = lines.next() else {
+            return text.len();
+        };
+        offset += line.len();
+        if lines.peek().is_some() || current_row < row {
+            offset = (offset + 1).min(text.len());
+        }
     }
+
+    let line = text.split('\n').nth(row).unwrap_or("");
+    let char_count = line.chars().count();
+    let target_chars = col.min(char_count);
+    let byte_in_line = line
+        .char_indices()
+        .nth(target_chars)
+        .map(|(i, _)| i)
+        .unwrap_or(line.len());
+    (offset + byte_in_line).min(text.len())
 }
 
-fn vim_mode_label(mode: VimMode) -> &'static str {
-    match mode {
-        VimMode::Normal => "NORMAL",
-        VimMode::Insert => "INSERT",
-        VimMode::Visual => "VISUAL",
-        VimMode::VisualLine => "VISUAL LINE",
-        VimMode::Operator(_) => "OPERATOR",
+fn offset_to_cursor(lines: &[String], offset: usize) -> (usize, usize) {
+    let mut remaining = offset;
+    for (row, line) in lines.iter().enumerate() {
+        let line_len = line.len();
+        if remaining <= line_len {
+            let col = line[..remaining].chars().count();
+            return (row, col);
+        }
+        remaining = remaining.saturating_sub(line_len + 1);
     }
+
+    let row = lines.len().saturating_sub(1);
+    let col = lines
+        .get(row)
+        .map(|line| line.chars().count())
+        .unwrap_or(0);
+    (row, col)
+}
+
+fn replace_textarea_from_string(textarea: &mut TextArea<'static>, content: &str, single_line: bool) {
+    let mut rebuilt = if single_line {
+        make_title_editor(content)
+    } else {
+        text_area_from_content(content)
+    };
+
+    if !single_line {
+        rebuilt.set_cursor_line_style(Style::default().bg(Color::Rgb(32, 36, 44)));
+    }
+
+    *textarea = rebuilt;
 }
 
 fn make_title_editor(initial: &str) -> TextArea<'static> {
@@ -1640,12 +1413,12 @@ fn help_page_text() -> Text<'static> {
         help_item("Delete prev/next word", Some("Ctrl+Backspace / Ctrl+Delete")),
         Line::from(""),
         help_heading("Editor (Vim ON)"),
-        help_item("Modes", Some("NORMAL, INSERT, VISUAL, VISUAL LINE, OPERATOR")),
-        help_item("Movement", Some("h j k l, w e b, 0/^, $, gg, G")),
+        help_item("Modes", Some("NORMAL, INSERT, VISUAL, OPERATOR, REPLACE")),
+        help_item("Movement", Some("h j k l, w e b, 0/^, $, %")),
         help_item("Enter insert mode", Some("i I a A o O")),
-        help_item("Visual select", Some("v (char), V (line), Esc/v to leave")),
-        help_item("Operators", Some("d y c, plus dd yy cc")),
-        help_item("Visual actions", Some("y d c x p")),
+        help_item("Visual select", Some("v (char), Esc to leave")),
+        help_item("Operators", Some("d y c, plus dd yy cc and dw/cw/yw")),
+        help_item("Actions", Some("x D C r<char> p P")),
         Line::from(""),
         help_heading("Help Page"),
         help_item("Close help", Some("Esc / q / ? / F1")),
@@ -1760,14 +1533,14 @@ fn draw_edit_view(frame: &mut Frame, app: &App, focus: EditFocus) {
 
     let top_text = if app.vim_enabled {
         let active_mode = match focus {
-            EditFocus::Title => app.vim_title.mode,
-            EditFocus::Body => app.vim_body.mode,
-            EditFocus::VimToggle => app.vim_body.mode,
+            EditFocus::Title => app.vim_title.status(),
+            EditFocus::Body => app.vim_body.status(),
+            EditFocus::VimToggle => app.vim_body.status(),
         };
         format!(
             "Editing {}   [VIM: {}]",
             app.editing_id.as_deref().unwrap_or("<unsaved>"),
-            vim_mode_label(active_mode)
+            active_mode
         )
     } else {
         format!(
