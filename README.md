@@ -27,6 +27,11 @@ No cloud. No network.
 ---
 
 ## 🚀 Quick Start
+
+## For Debian and Fedora based distros refer to the releases page for `.deb` and `.rpm`
+
+- - -
+
 ```bash
 # Install Rust
 curl https://sh.rustup.rs -sSf | sh
