@@ -4,7 +4,8 @@
 
 # **clin**  
 **clin — Your notes. Encrypted. Instant. Private. Simple.**  
-*Built in Rust • From C prototype to production-ready TUI*
+
+> `clin` is originally a app i made when i got into C it was really rough and basic, i decided to remake it in Rust with more features and improved user experience to better fit your workflow!
 
 ---
 
