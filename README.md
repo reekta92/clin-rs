@@ -33,6 +33,8 @@
 ![mouse](https://github.com/user-attachments/assets/8df42fc2-04f5-4f42-9e23-36bf6f5414d1)
 
 ## Vim mode (optional)
+![vim](https://github.com/user-attachments/assets/dfa802bc-b2dd-4351-8a4b-0cea1f03ca0a)
+
 - Vim mode can be toggled with a selectable Vim button in both notes and editor views.
 - Vim mode toggle state persists across app restarts.
 - Vim mode indicator (`[ Vim: ON ]` / `[ Vim: OFF ]`) shown in notes and editor help areas.
