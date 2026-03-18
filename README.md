@@ -18,7 +18,7 @@
 
 ## 🛠️ Future Plans
 - [ ] Vim colon commands
-- [X] Better vim support for commands like `ci`, `di`, `ct(` etc.
+- [X] Better vim support for commands like `ci`, `di`, `ci(` etc.
 - [ ] Easy backup/restore
 - [ ] Text file import
 - [ ] Windows release as executable
