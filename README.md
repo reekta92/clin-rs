@@ -18,7 +18,7 @@
 
 ## 🛠️ Future Plans
 - [ ] Vim colon commands
-- [X] Proper vim motions
+- [X] Better vim support for commands like `ci`, `di`, `ct(` etc.
 - [ ] Easy backup/restore
 - [ ] Text file import
 - [ ] Windows release as executable
@@ -26,11 +26,11 @@
 - [ ] Improved mouse support with right click context menu
 - [ ] More keyboard shortcuts for easier accessibility
 - [ ] More customization options
+- [ ] More argument options
+- [ ] Creating folders in notes view
 
 # Mouse support!
 ![mouse](https://github.com/user-attachments/assets/8df42fc2-04f5-4f42-9e23-36bf6f5414d1)
-
-
 
 ## Vim mode (optional)
 - Vim mode can be toggled with a selectable Vim button in both notes and editor views.
