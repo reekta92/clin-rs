@@ -1,89 +1,36 @@
-# clin
+<div align="center">
+<img width="512" height="512" alt="clin logo" src="https://github.com/user-attachments/assets/80248532-f055-4b8e-beda-1a3eaafbd0ba" />
+</div>
 
-Encrypted terminal note-taking app written in Rust.
+# **clin - Your notes. Encrypted. Instant. Private. Simple.**  
 
-`clin` gives you a fast in-terminal notes workflow with local encrypted storage, in-app editing, optional Vim-style editing, mouse support, and CLI shortcuts for quick operations.
+> `clin` is originally a app i made when i got into C it was really rough and basic, i decided to remake it in Rust with more features and improved user experience to better fit your workflow!
 
-## Highlights
+---
 
-- Encrypted notes at rest (ChaCha20-Poly1305)
-- Notes stored as unreadable binary `.clin` files
-- Full-screen TUI with list, editor, and help views
-- In-terminal title/body editing (no external editor)
-- Mouse selection and bracketed paste support
-- Optional Vim mode with persistent ON/OFF setting
-- Quick CLI actions (`-q`, `-n`, `-e`, `-l`, `-f`, `-h`)
+## ✨ Highlights
+- 🔒 **ChaCha20-Poly1305** encryption at rest  
+- 📦 Binary `.clin` files (completely unreadable)  
+- 🖥️ Full-screen TUI with list + editor + help views  
+- 🖱️ Mouse support + bracketed paste  
+- ⌨️ Optional **Vim mode** (persistent ON/OFF)  
+- ⚡ Ultra-fast CLI flags: `-q -n -e -l -f`
 
-## Requirements
+## 🛠️ Future Plans
+- [ ] Vim colon commands/better vim support
+- [ ] Easy backup/restore
+- [ ] Text file import
+- [ ] Windows release as executable
+- [ ] App store releases (for Linux)
+- [ ] Icon rendering and icon assigning to notes
+- [ ] Improved mouse support with right click context menu
+- [ ] More keyboard shortcuts for easier accessibility
+- [ ] More customization options
 
-- Rust toolchain (stable)
-- Linux/macOS terminal (Linux used in this workspace)
+# Mouse support!
+![mouse](https://github.com/user-attachments/assets/8df42fc2-04f5-4f42-9e23-36bf6f5414d1)
 
-Install Rust if needed:
 
-```bash
-curl https://sh.rustup.rs -sSf | sh
-```
-
-## Build And Run
-
-```bash
-cargo run
-```
-
-Release build:
-
-```bash
-cargo build --release
-```
-
-Install locally:
-
-```bash
-cargo install --path .
-```
-
-Then run:
-
-```bash
-clin
-```
-
-## CLI Usage
-
-```text
-clin                Launch interactive app
-clin -q <CONTENT> [TITLE]
-                    Create a quick note and exit
-clin -n [TITLE]     Create a new note and open it in editor
-clin -f             Print notes directory location
-clin -l             List note titles
-clin -e <TITLE>     Open a specific note title directly in editor
-clin -h             Show this help
-```
-
-## Interactive Controls
-
-Notes view:
-
-- `Up/Down` move selection
-- `Enter` open selected note (or create when selecting New Note)
-- `d` / `Delete` request note delete
-- `f` open selected note file location in file manager
-- `Tab` switch focus (notes list / Vim toggle button)
-- `?` or `F1` open help page
-- `q` quit
-
-Editor view:
-
-- `Tab` cycle focus (Title -> Body -> Vim toggle)
-- `Esc` autosave and return to notes view
-- `Ctrl+Q` save and quit app
-- Standard editing shortcuts with Vim OFF:
-  - `Ctrl+C`, `Ctrl+X`, `Ctrl+V`
-  - `Ctrl+Insert`, `Shift+Insert`, `Shift+Delete`
-  - `Ctrl+A`, `Ctrl+Z`, `Ctrl+Y`, `Ctrl+Shift+Z`
-  - `Ctrl+Backspace`, `Ctrl+Delete`
 
 ## Vim mode (optional)
 - Vim mode can be toggled with a selectable Vim button in both notes and editor views.
@@ -100,43 +47,54 @@ Editor view:
   - Yank inner: `yiw`, `yi(`, `yi[`, `yi{`, `yi<`, `yi"`, `yi'`, `yi``
 - Additional Vim edit actions: `x`, `D`, `C`, `r<char>`, `p`, `P`.
 
-## Storage And Security
+# Quick actions!
+![arguments](https://github.com/user-attachments/assets/b6fb344a-79ef-47ae-aefb-8ae637f939d8)
 
-- Notes are encrypted before writing to disk.
-- Files are stored under the app data directory (use `clin -f` to print notes folder).
-- Encryption key is generated locally and stored in app data (`key.bin`).
-- No cloud sync or network service is used by default.
+---
 
-## Packaging
+## 🔐 Storage & Security
+Notes are encrypted before hitting disk.  
+Key is stored locally (`key.bin`).  
+**Backup & Restore** -> copy both `.clin` files + `key.bin` from `~/.local/share/clin`
 
-Debian package metadata is configured in `Cargo.toml`.
+---
 
-Build `.deb` package:
+## 🚀 Quick Start
 
-```bash
-./scripts/package-deb.sh
-```
+## For Debian and Fedora based distros refer to the releases page for `.deb` and `.rpm`
 
-Expected output:
-
-- `target/debian/clin_0.1.0-1_amd64.deb`
-
-RPM package metadata is configured in `Cargo.toml` for `cargo-generate-rpm`.
-
-Build `.rpm` package:
+- - -
 
 ```bash
-./scripts/package-rpm.sh
+# Install Rust
+curl https://sh.rustup.rs -sSf | sh
+
+# Build & run
+cargo run
+
+# Install globally
+cargo install --path .
+
+# Run
+clin
+
+```
+## 📋 CLI Commands
+
+```
+clin                   → Launch TUI
+clin -q <text> [title] → Quick note & exit
+clin -n [title]        → New note
+clin -l                → List notes
+clin -e <title>        → Edit note
+clin -f                → Show storage folder
+
 ```
 
-This produces:
+## 🎮 Controls
+**Notes list** ->
+`UP/DOWN` select • `Enter` open • `d` delete • `f` folder • `Tab` focus • `?` help • `q` quit
 
-- `target/generate-rpm/clin-0.1.0-1.x86_64.rpm`
-
-## Project Files
-
-- `src/main.rs`: application implementation
-- `features.md`: feature list
-- `scripts/package-deb.sh`: Debian packaging helper
-- `scripts/package-rpm.sh`: RPM packaging helper
-- `progress.md`: implementation progress and validation summary
+**Editor** ->
+`Tab` cycle • `Es` save & back • `Ctrl+Q` save & quit
+_Vim mode_ toggleable + persistent
