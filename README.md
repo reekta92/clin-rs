@@ -29,10 +29,10 @@
 - [ ] More argument options
 - [ ] Creating folders in notes view
 
-# Mouse support!
+# Mouse support
 ![mouse](https://github.com/user-attachments/assets/8df42fc2-04f5-4f42-9e23-36bf6f5414d1)
 
-## Vim mode (optional)
+# Vim mode (optional)
 ![vim](https://github.com/user-attachments/assets/dfa802bc-b2dd-4351-8a4b-0cea1f03ca0a)
 
 - Vim mode can be toggled with a selectable Vim button in both notes and editor views.
@@ -49,7 +49,7 @@
   - Yank inner: `yiw`, `yi(`, `yi[`, `yi{`, `yi<`, `yi"`, `yi'`, `yi``
 - Additional Vim edit actions: `x`, `D`, `C`, `r<char>`, `p`, `P`.
 
-# Quick actions!
+# Quick actions
 ![arguments](https://github.com/user-attachments/assets/b6fb344a-79ef-47ae-aefb-8ae637f939d8)
 
 ---
