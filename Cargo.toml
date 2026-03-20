@@ -1,33 +1,9 @@
 [package]
 name = "clin"
-<<<<<<< HEAD
-version = "0.1.1"
-=======
 version = "0.1.0"
->>>>>>> 41ee4543292daab38c988cb9aa124ea81a8c9273
 edition = "2024"
 description = "Encrypted terminal note-taking app"
 license = "MIT"
-
-[package.metadata.deb]
-name = "clin"
-maintainer = "reekta <reekta@localhost>"
-copyright = "2026, reekta"
-depends = "$auto"
-section = "utils"
-priority = "optional"
-assets = [
-	["target/release/clin", "usr/bin/", "755"],
-	["clin.ico", "usr/share/pixmaps/clin.ico", "644"],
-]
-extended-description = "clin is a terminal-first encrypted note app with in-app editing and mouse support."
-
-[package.metadata.generate-rpm]
-name = "clin"
-assets = [
-	{ source = "target/release/clin", dest = "/usr/bin/clin", mode = "0755" },
-	{ source = "clin.ico", dest = "/usr/share/pixmaps/clin.ico", mode = "0644" },
-]
 
 [dependencies]
 anyhow = "1.0"

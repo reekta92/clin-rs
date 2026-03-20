@@ -152,11 +152,7 @@ dependencies = [
 
 [[package]]
 name = "clin"
-<<<<<<< HEAD
-version = "0.1.1"
-=======
 version = "0.1.0"
->>>>>>> 41ee4543292daab38c988cb9aa124ea81a8c9273
 dependencies = [
  "anyhow",
  "bincode",
@@ -170,10 +166,7 @@ dependencies = [
  "serde_json",
  "tui-textarea",
  "uuid",
-<<<<<<< HEAD
  "vim-line",
-=======
->>>>>>> 41ee4543292daab38c988cb9aa124ea81a8c9273
 ]
 
 [[package]]
@@ -1027,15 +1020,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
-<<<<<<< HEAD
 name = "vim-line"
 version = "4.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "70e68425b8554d1f0705c9ec5fc5cebf0ccfe2cd4b833ee719fb40084b9dde73"
 
 [[package]]
-=======
->>>>>>> 41ee4543292daab38c988cb9aa124ea81a8c9273
 name = "virtue"
 version = "0.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
