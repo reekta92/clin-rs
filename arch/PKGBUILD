@@ -1,0 +1,22 @@
+pkgname=clin
+pkgver=0.1.1
+pkgrel=1
+pkgdesc="Encrypted terminal note-taking app"
+arch=('x86_64')
+url="https://github.com/reekta/clin"
+license=('MIT')
+depends=('glibc')
+makedepends=('rust')
+source=("${pkgname}-${pkgver}.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  cargo build --release --locked
+}
+
+package() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  install -Dm755 "target/release/clin" "${pkgdir}/usr/bin/clin"
+  install -Dm644 "clin.ico" "${pkgdir}/usr/share/pixmaps/clin.ico"
+}

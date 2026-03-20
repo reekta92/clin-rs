@@ -1848,6 +1848,27 @@ fn draw_list_view(frame: &mut Frame, app: &App) {
     } else {
         Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
     };
+<<<<<<< HEAD
+    let footer_block = Block::default().borders(Borders::ALL).title("Help");
+    frame.render_widget(footer_block, chunks[2]);
+    let footer_inner = chunks[2].inner(Margin {
+        vertical: 1,
+        horizontal: 1,
+    });
+    let footer_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Length(12), Constraint::Min(0)])
+        .split(footer_inner);
+
+    let vim_button = Paragraph::new(Line::from(Span::styled(
+        vim_button_label,
+        vim_button_style,
+    )));
+    frame.render_widget(vim_button, footer_chunks[0]);
+
+    let status = Paragraph::new(app.status.as_str());
+    frame.render_widget(status, footer_chunks[1]);
+=======
     let footer_line = Line::from(vec![
         Span::raw(app.status.as_str()),
         Span::raw("   "),
@@ -1857,6 +1878,7 @@ fn draw_list_view(frame: &mut Frame, app: &App) {
     let footer = Paragraph::new(footer_line)
         .block(Block::default().borders(Borders::ALL).title("Help"));
     frame.render_widget(footer, chunks[2]);
+>>>>>>> 41ee4543292daab38c988cb9aa124ea81a8c9273
 }
 
 fn draw_edit_view(frame: &mut Frame, app: &App, focus: EditFocus) {
@@ -1951,6 +1973,27 @@ fn draw_edit_view(frame: &mut Frame, app: &App, focus: EditFocus) {
     } else {
         Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
     };
+<<<<<<< HEAD
+    let status_block = Block::default().borders(Borders::ALL).title("Help");
+    frame.render_widget(status_block, chunks[3]);
+    let status_inner = chunks[3].inner(Margin {
+        vertical: 1,
+        horizontal: 1,
+    });
+    let status_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Length(12), Constraint::Min(0)])
+        .split(status_inner);
+
+    let vim_button = Paragraph::new(Line::from(Span::styled(
+        vim_button_label,
+        vim_button_style,
+    )));
+    frame.render_widget(vim_button, status_chunks[0]);
+
+    let status = Paragraph::new(app.status.as_str());
+    frame.render_widget(status, status_chunks[1]);
+=======
     let status_line = Line::from(vec![
         Span::raw(app.status.as_str()),
         Span::raw("   "),
@@ -1963,6 +2006,7 @@ fn draw_edit_view(frame: &mut Frame, app: &App, focus: EditFocus) {
             .title("Help"),
     );
     frame.render_widget(status, chunks[3]);
+>>>>>>> 41ee4543292daab38c988cb9aa124ea81a8c9273
 
     if app.status.starts_with("Save failed") || app.status.starts_with("Could not open") {
         let popup = centered_rect(75, 20, area);

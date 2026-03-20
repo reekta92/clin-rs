@@ -1,6 +1,10 @@
 [package]
 name = "clin"
+<<<<<<< HEAD
+version = "0.1.1"
+=======
 version = "0.1.0"
+>>>>>>> 41ee4543292daab38c988cb9aa124ea81a8c9273
 edition = "2024"
 description = "Encrypted terminal note-taking app"
 license = "MIT"
