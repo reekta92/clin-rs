@@ -1626,21 +1626,21 @@ fn draw_list_view(frame: &mut Frame, app: &App) {
     for summary in &app.notes {
         let when = format_relative_time(summary.updated_at);
         let mut text_style = Style::default().add_modifier(Modifier::BOLD);
-        let mut title = summary.title.clone();
         
+        let mut spans = Vec::new();
         let is_clin = summary.id.ends_with(".clin");
-        if !app.encryption_enabled && is_clin {
+        
+        if !is_clin {
+            spans.push(Span::styled("[NENC] ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
+        } else if !app.encryption_enabled {
             text_style = text_style.fg(Color::Red);
-            title = format!("[ENC] {title}");
+            spans.push(Span::styled("[ENC] ", text_style));
         }
         
-        items.push(ListItem::new(Line::from(vec![
-            Span::styled(
-                title,
-                text_style,
-            ),
-            Span::raw(format!("  ({when})")),
-        ])));
+        spans.push(Span::styled(summary.title.clone(), text_style));
+        spans.push(Span::raw(format!("  ({when})")));
+        
+        items.push(ListItem::new(Line::from(spans)));
     }
     items.push(ListItem::new(Line::from(vec![Span::styled(
         "+ Create a new note",
