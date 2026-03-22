@@ -23,13 +23,16 @@
 - [ ] Easy backup/restore
 - [ ] Text file import
 - [ ] Icon rendering and icon assigning to notes
-- [ ] Improved mouse support with right click context menu
+- [X] Improved mouse support with right click context menu
 - [ ] More customization options
 - [ ] More argument options
 - [ ] Folders, tags
 
 # Mouse support
 ![mouse](https://github.com/user-attachments/assets/8df42fc2-04f5-4f42-9e23-36bf6f5414d1)
+
+- Integrated right-click context menu offering inline quick actions (`Copy`, `Cut`, `Paste`, `Select All`) natively overlayed globally inside the editor view.
+- Accurate mouse-to-cursor registration with proper offset synchronization mapped across the internal viewport row indexes, ensuring clicks match expected text selections accurately down to deep scrolls.
 
 # Vim mode (optional)
 ![vim](https://github.com/user-attachments/assets/dfa802bc-b2dd-4351-8a4b-0cea1f03ca0a)
