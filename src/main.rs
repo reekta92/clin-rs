@@ -305,6 +305,12 @@ enum ListFocus {
     VimToggle,
 }
 
+struct ContextMenu {
+    x: u16,
+    y: u16,
+    selected: usize,
+}
+
 struct App {
     storage: Storage,
     notes: Vec<NoteSummary>,
@@ -321,6 +327,7 @@ struct App {
     status_until: Option<Instant>,
     pending_delete_note_id: Option<String>,
     help_scroll: u16,
+    context_menu: Option<ContextMenu>,
 }
 
 enum CliCommand {
@@ -359,7 +366,9 @@ impl App {
             status_until: None,
             pending_delete_note_id: None,
             help_scroll: 0,
+            context_menu: None,
         };
+        app.context_menu = None;
         app.refresh_notes()?;
         Ok(app)
     }
@@ -473,6 +482,40 @@ impl App {
         self.pending_delete_note_id = None;
         let _ = self.refresh_notes();
         self.set_default_status();
+    }
+
+    fn handle_menu_action(&mut self, action: usize, focus: &mut EditFocus) {
+        match action {
+            0 => {
+                match focus {
+                    EditFocus::Title => { self.title_editor.copy(); }
+                    EditFocus::Body => { self.editor.copy(); }
+                    _ => {}
+                }
+            }
+            1 => {
+                match focus {
+                    EditFocus::Title => { self.title_editor.cut(); }
+                    EditFocus::Body => { self.editor.cut(); }
+                    _ => {}
+                }
+            }
+            2 => {
+                match focus {
+                    EditFocus::Title => { self.title_editor.paste(); }
+                    EditFocus::Body => { self.editor.paste(); }
+                    _ => {}
+                }
+            }
+            3 => {
+                match focus {
+                    EditFocus::Title => { self.title_editor.select_all(); }
+                    EditFocus::Body => { self.editor.select_all(); }
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
     }
 
     fn begin_delete_selected(&mut self) {
@@ -947,6 +990,31 @@ fn handle_help_keys(app: &mut App, key: KeyEvent) {
 }
 
 fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> bool {
+    if let Some(mut menu) = app.context_menu.take() {
+        match key.code {
+            KeyCode::Up => {
+                menu.selected = menu.selected.saturating_sub(1);
+                app.context_menu = Some(menu);
+            }
+            KeyCode::Down => {
+                if menu.selected < 3 {
+                    menu.selected += 1;
+                }
+                app.context_menu = Some(menu);
+            }
+            KeyCode::Enter => {
+                app.handle_menu_action(menu.selected, focus);
+            }
+            KeyCode::Esc => {
+                app.context_menu = None;
+            }
+            _ => {
+                app.context_menu = Some(menu);
+            }
+        }
+        return false;
+    }
+
     if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('q') {
         app.autosave();
         return true;
@@ -1042,6 +1110,58 @@ fn handle_edit_mouse(
     focus: &mut EditFocus,
     mouse_selecting: &mut bool,
 ) {
+    if let Some(menu) = &app.context_menu {
+        let menu_rect = Rect::new(menu.x, menu.y, 14, 6);
+        if contains_cell(menu_rect, mouse_event.column, mouse_event.row) {
+            if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
+                let clicked_idx = mouse_event.row.saturating_sub(menu.y).saturating_sub(1) as usize;
+                if clicked_idx < 4 {
+                    app.handle_menu_action(clicked_idx, focus);
+                }
+                app.context_menu = None;
+            } else if mouse_event.kind == MouseEventKind::ScrollUp {
+                let mut menu_copy = app.context_menu.take().unwrap();
+                menu_copy.selected = menu_copy.selected.saturating_sub(1);
+                app.context_menu = Some(menu_copy);
+            } else if mouse_event.kind == MouseEventKind::ScrollDown {
+                let mut menu_copy = app.context_menu.take().unwrap();
+                if menu_copy.selected < 3 {
+                    menu_copy.selected += 1;
+                }
+                app.context_menu = Some(menu_copy);
+            }
+            return;
+        } else if matches!(mouse_event.kind, MouseEventKind::Down(_)) {
+            app.context_menu = None;
+            if mouse_event.kind != MouseEventKind::Down(MouseButton::Right) {
+                return;
+            }
+        } else {
+            return;
+        }
+    }
+
+    if mouse_event.kind == MouseEventKind::Down(MouseButton::Right) {
+        let (title_inner, body_inner) = edit_view_input_areas(terminal_area);
+        
+        if contains_cell(title_inner, mouse_event.column, mouse_event.row) {
+            *focus = EditFocus::Title;
+            move_textarea_cursor_to_mouse(&mut app.title_editor, title_inner, mouse_event.column, mouse_event.row);
+        } else if contains_cell(body_inner, mouse_event.column, mouse_event.row) {
+            *focus = EditFocus::Body;
+            move_textarea_cursor_to_mouse(&mut app.editor, body_inner, mouse_event.column, mouse_event.row);
+        }
+
+        let max_x = terminal_area.width.saturating_sub(14);
+        let max_y = terminal_area.height.saturating_sub(6);
+        app.context_menu = Some(ContextMenu {
+            x: mouse_event.column.min(max_x),
+            y: mouse_event.row.min(max_y),
+            selected: 0,
+        });
+        return;
+    }
+
     let (title_inner, body_inner) = edit_view_input_areas(terminal_area);
 
     if contains_cell(title_inner, mouse_event.column, mouse_event.row) {
@@ -1060,14 +1180,23 @@ fn handle_edit_mouse(
             *mouse_selecting = false;
             if contains_cell(body_inner, mouse_event.column, mouse_event.row) {
                 *focus = EditFocus::Body;
-                move_editor_cursor_to_mouse(app, body_inner, mouse_event.column, mouse_event.row);
+                move_textarea_cursor_to_mouse(&mut app.editor, body_inner, mouse_event.column, mouse_event.row);
                 app.editor.start_selection();
+                *mouse_selecting = true;
+            } else if contains_cell(title_inner, mouse_event.column, mouse_event.row) {
+                *focus = EditFocus::Title;
+                move_textarea_cursor_to_mouse(&mut app.title_editor, title_inner, mouse_event.column, mouse_event.row);
+                app.title_editor.start_selection();
                 *mouse_selecting = true;
             }
         }
         MouseEventKind::Drag(MouseButton::Left) => {
             if *mouse_selecting {
-                move_editor_cursor_to_mouse(app, body_inner, mouse_event.column, mouse_event.row);
+                if *focus == EditFocus::Body {
+                    move_textarea_cursor_to_mouse(&mut app.editor, body_inner, mouse_event.column, mouse_event.row);
+                } else {
+                    move_textarea_cursor_to_mouse(&mut app.title_editor, title_inner, mouse_event.column, mouse_event.row);
+                }
             }
         }
         MouseEventKind::Up(MouseButton::Left) => {
@@ -1077,21 +1206,34 @@ fn handle_edit_mouse(
     }
 }
 
-fn move_editor_cursor_to_mouse(app: &mut App, body_inner: Rect, mouse_col: u16, mouse_row: u16) {
-    if app.editor.lines().is_empty() || body_inner.width == 0 || body_inner.height == 0 {
+fn move_textarea_cursor_to_mouse(textarea: &mut TextArea, body_inner: Rect, mouse_col: u16, mouse_row: u16) {
+    if textarea.lines().is_empty() || body_inner.width == 0 || body_inner.height == 0 {
         return;
     }
 
-    let row = mouse_row.saturating_sub(body_inner.y) as usize;
-    let col = mouse_col.saturating_sub(body_inner.x) as usize;
+    let mut scroll_row = 0;
+    let mut scroll_col = 0;
+    let debug_str = format!("{:?}", textarea);
+    if let Some(start) = debug_str.find("viewport: Viewport(") {
+        let after_start = &debug_str[start + "viewport: Viewport(".len()..];
+        if let Some(end) = after_start.find(')') {
+            let number_str = &after_start[..end];
+            if let Ok(number) = number_str.parse::<u64>() {
+                scroll_row = (number >> 16) as usize;
+                scroll_col = (number & 0xFFFF) as usize;
+            }
+        }
+    }
 
-    let max_row = app.editor.lines().len().saturating_sub(1);
+    let row = mouse_row.saturating_sub(body_inner.y) as usize + scroll_row;
+    let col = mouse_col.saturating_sub(body_inner.x) as usize + scroll_col;
+
+    let max_row = textarea.lines().len().saturating_sub(1);
     let target_row = row.min(max_row);
-    let max_col = app.editor.lines()[target_row].chars().count();
+    let max_col = textarea.lines()[target_row].chars().count();
     let target_col = col.min(max_col);
 
-    app.editor
-        .move_cursor(CursorMove::Jump(target_row as u16, target_col as u16));
+    textarea.move_cursor(CursorMove::Jump(target_row as u16, target_col as u16));
 }
 
 fn edit_view_input_areas(area: Rect) -> (Rect, Rect) {
@@ -1511,6 +1653,25 @@ fn draw_edit_view(frame: &mut Frame, app: &App, focus: EditFocus) {
             .block(Block::default().borders(Borders::ALL).title("Error"))
             .wrap(Wrap { trim: true });
         frame.render_widget(text, popup);
+    }
+
+    if let Some(menu) = &app.context_menu {
+        let items = vec![
+            ListItem::new(" Copy       "),
+            ListItem::new(" Cut        "),
+            ListItem::new(" Paste      "),
+            ListItem::new(" Select All "),
+        ];
+        let list = List::new(items)
+            .block(Block::default().borders(Borders::ALL))
+            .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
+        
+        let menu_area = Rect::new(menu.x, menu.y, 14, 6);
+        let mut state = ListState::default();
+        state.select(Some(menu.selected));
+        
+        frame.render_widget(Clear, menu_area);
+        frame.render_stateful_widget(list, menu_area, &mut state);
     }
 }
 
