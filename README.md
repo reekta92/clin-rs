@@ -41,7 +41,7 @@
 - Modes: `NORMAL`, `INSERT`, `VISUAL`, `VISUAL LINE`, operator-pending (`d...`/`c...`/`y...`), and command (`:...`).
 - Visual line mode compatibility: `V` enters linewise selection, `j`/`k` extends, `y`/`d`/`c`/`x`/`p` applies.
 - Motions/navigation: `h`, `j`, `k`, `l`, `w`, `e`, `b`, `0`, `^`, `$`.
-- Vertical jumps & scrolling: `gg`, `G`, `<NUMBER>gg`, `<NUMBER>G`, `PageDown`, `PageUp`, `Ctrl+d` (half page down), `Ctrl+u` (half page up).
+- Vertical jumps & scrolling: `gg`, `G`, `<NUMBER>g`, `<NUMBER>G`, `PageDown`, `PageUp`, `Ctrl+d` (20 lines down), `Ctrl+u` (20 lines up).
 - Operator motions: `d`, `y`, `c` with combinations like `dw`, `cw`, `yw`, plus `dd`, `yy`, `cc`.
 - Inner object compatibility operators:
   - Change inner: `ciw`, `ci(`, `ci[`, `ci{`, `ci<`, `ci"`, `ci'`, `ci``
