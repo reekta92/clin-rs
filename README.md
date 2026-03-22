@@ -19,11 +19,11 @@
 
 ## 🛠️ Future Plans
 - [X] Better vim support for commands like `ci`, `di`, `ci(` etc.
+- [ ] External editor support
 - [ ] Easy backup/restore
 - [ ] Text file import
 - [ ] Icon rendering and icon assigning to notes
 - [ ] Improved mouse support with right click context menu
-- [ ] More keyboard shortcuts for easier accessibility
 - [ ] More customization options
 - [ ] More argument options
 - [ ] Folders, tags
