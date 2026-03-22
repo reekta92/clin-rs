@@ -18,16 +18,15 @@
 - ⚡ Ultra-fast CLI flags: `-q -n -e -l -f`
 
 ## 🛠️ Future Plans
-- [ ] Vim colon commands
 - [X] Better vim support for commands like `ci`, `di`, `ci(` etc.
 - [ ] Easy backup/restore
 - [ ] Text file import
+- [ ] Folders, tags
 - [ ] Icon rendering and icon assigning to notes
 - [ ] Improved mouse support with right click context menu
 - [ ] More keyboard shortcuts for easier accessibility
 - [ ] More customization options
 - [ ] More argument options
-- [ ] Creating folders in notes view
 
 # Mouse support
 ![mouse](https://github.com/user-attachments/assets/8df42fc2-04f5-4f42-9e23-36bf6f5414d1)
