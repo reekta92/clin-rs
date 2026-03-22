@@ -1,0 +1,40 @@
+[package]
+name = "clin"
+version = "0.1.1-1"
+edition = "2024"
+description = "Encrypted terminal note-taking app"
+license = "MIT"
+
+[package.metadata.deb]
+name = "clin"
+maintainer = "reekta <reekta@localhost>"
+copyright = "2026, reekta"
+depends = "$auto"
+section = "utils"
+priority = "optional"
+assets = [
+	["target/release/clin", "usr/bin/", "755"],
+	["clin.ico", "usr/share/pixmaps/clin.ico", "644"],
+]
+extended-description = "clin is a terminal-first encrypted note app with in-app editing and mouse support."
+
+[package.metadata.generate-rpm]
+name = "clin"
+assets = [
+	{ source = "target/release/clin", dest = "/usr/bin/clin", mode = "0755" },
+	{ source = "clin.ico", dest = "/usr/share/pixmaps/clin.ico", mode = "0644" },
+]
+
+[dependencies]
+anyhow = "1.0"
+bincode = { version = "2.0", features = ["serde"] }
+chacha20poly1305 = "0.10"
+chrono = "0.4"
+crossterm = "0.28"
+directories = "5.0"
+rand = "0.8"
+ratatui = "0.29"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tui-textarea = { version = "0.7", features = ["crossterm"] }
+uuid = { version = "1.8", features = ["v4"] }
