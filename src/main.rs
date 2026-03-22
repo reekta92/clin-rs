@@ -201,7 +201,7 @@ impl Storage {
     fn load_note(&self, id: &str) -> Result<Note> {
         let path = self.note_path(id);
         let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-
+        
         if ext == "clin" {
             let encrypted = fs::read(&path).context("failed to read note")?;
             let plain = self.decrypt(&encrypted)?;
@@ -211,17 +211,8 @@ impl Storage {
             Ok(note)
         } else {
             let content = fs::read_to_string(&path).context("failed to read plain note")?;
-            let title = path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("Untitled note")
-                .to_string();
-            let updated_at = fs::metadata(&path)
-                .and_then(|m| m.modified())
-                .ok()
-                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                .map(|d| d.as_secs())
-                .unwrap_or(0);
+            let title = path.file_stem().and_then(|s| s.to_str()).unwrap_or("Untitled note").to_string();
+            let updated_at = fs::metadata(&path).and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0);
             Ok(Note {
                 title,
                 content,
@@ -232,10 +223,10 @@ impl Storage {
 
     fn save_note(&self, id: &str, note: &Note, encryption_enabled: bool) -> Result<String> {
         let preferred_stem = self.note_file_stem_from_title(&note.title);
-
+        
         let old_path = self.note_path(id);
         let old_ext = old_path.extension().and_then(|e| e.to_str()).unwrap_or("");
-
+        
         // If we are currently saving an unencrypted file and encryption is OFF, keep its extension.
         // Otherwise default to .md if no extension matched.
         let target_ext = if encryption_enabled {
@@ -254,8 +245,7 @@ impl Storage {
             let encrypted = self.encrypt(&bytes)?;
             fs::write(self.note_path(&target_id), encrypted).context("failed to write note")?;
         } else {
-            fs::write(self.note_path(&target_id), &note.content)
-                .context("failed to write plain note")?;
+            fs::write(self.note_path(&target_id), &note.content).context("failed to write plain note")?;
         }
 
         // We only remove the old file if the target_id differs AND we are not creating an encrypted copy of a plain text file.
@@ -367,12 +357,6 @@ enum ViewMode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NoteColumn {
-    Encrypted,
-    Unencrypted,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ListFocus {
     Notes,
     VimToggle,
@@ -387,11 +371,8 @@ struct ContextMenu {
 
 struct App {
     storage: Storage,
-    enc_notes: Vec<NoteSummary>,
-    nenc_notes: Vec<NoteSummary>,
-    active_column: NoteColumn,
-    selected_enc: usize,
-    selected_nenc: usize,
+    notes: Vec<NoteSummary>,
+    selected: usize,
     list_focus: ListFocus,
     mode: ViewMode,
     editing_id: Option<String>,
@@ -430,11 +411,8 @@ impl App {
 
         let mut app = Self {
             storage,
-            enc_notes: Vec::new(),
-            nenc_notes: Vec::new(),
-            active_column: NoteColumn::Encrypted,
-            selected_enc: 0,
-            selected_nenc: 0,
+            notes: Vec::new(),
+            selected: 0,
             list_focus: ListFocus::Notes,
             mode: ViewMode::List,
             editing_id: None,
@@ -456,53 +434,39 @@ impl App {
     }
 
     fn refresh_notes(&mut self) -> Result<()> {
-        let mut enc = Vec::new();
-        let mut nenc = Vec::new();
+        let mut summaries = Vec::new();
         for id in self.storage.list_note_ids()? {
             if let Ok(note) = self.storage.load_note(&id) {
-                let summary = NoteSummary {
-                    id: id.clone(),
+                summaries.push(NoteSummary {
+                    id,
                     title: note.title,
                     updated_at: note.updated_at,
-                };
-                if id.ends_with(".clin") {
-                    enc.push(summary);
-                } else {
-                    nenc.push(summary);
-                }
+                });
             }
         }
-        enc.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
-        nenc.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+        summaries.sort_by(|a, b| {
+            let a_clin = a.id.ends_with(".clin");
+            let b_clin = b.id.ends_with(".clin");
+            b_clin.cmp(&a_clin).then(b.updated_at.cmp(&a.updated_at))
+        });
+        self.notes = summaries;
 
-        self.enc_notes = enc;
-        self.nenc_notes = nenc;
-
-        if self.selected_enc > self.enc_notes.len() {
-            self.selected_enc = self.enc_notes.len();
-        }
-        if self.selected_nenc > self.nenc_notes.len() {
-            self.selected_nenc = self.nenc_notes.len();
+        if self.selected > self.notes.len() {
+            self.selected = self.notes.len();
         }
         Ok(())
     }
 
     fn open_selected(&mut self) {
-        let (list, selected) = match self.active_column {
-            NoteColumn::Encrypted => (&self.enc_notes, self.selected_enc),
-            NoteColumn::Unencrypted => (&self.nenc_notes, self.selected_nenc),
-        };
-
-        if selected == list.len() {
-            self.start_new_note(self.active_column);
+        if self.selected == self.notes.len() {
+            self.start_new_note();
             return;
         }
 
-        if let Some(summary) = list.get(selected) {
+        if let Some(summary) = self.notes.get(self.selected) {
             let is_clin = summary.id.ends_with(".clin");
             if !self.encryption_enabled && is_clin {
-                self.status =
-                    "Cannot open encrypted notes while encryption is disabled.".to_string();
+                self.status = "Cannot open encrypted notes while encryption is disabled.".to_string();
                 return;
             }
 
@@ -516,7 +480,7 @@ impl App {
                     } else {
                         self.editing_id = Some(summary.id.clone());
                     }
-
+                    
                     self.title_editor = make_title_editor(&note.title);
                     self.editor = text_area_from_content(&note.content);
                     self.editor
@@ -540,23 +504,11 @@ impl App {
         }
 
         if let Some(index) = self
-            .enc_notes
+            .notes
             .iter()
             .position(|note| note.title.eq_ignore_ascii_case(query))
         {
-            self.active_column = NoteColumn::Encrypted;
-            self.selected_enc = index;
-            self.open_selected();
-            return true;
-        }
-
-        if let Some(index) = self
-            .nenc_notes
-            .iter()
-            .position(|note| note.title.eq_ignore_ascii_case(query))
-        {
-            self.active_column = NoteColumn::Unencrypted;
-            self.selected_nenc = index;
+            self.selected = index;
             self.open_selected();
             return true;
         }
@@ -564,14 +516,9 @@ impl App {
         false
     }
 
-    fn start_new_note(&mut self, column: NoteColumn) {
+    fn start_new_note(&mut self) {
         self.mode = ViewMode::Edit;
-        let id_base = self.storage.new_note_id();
-        self.editing_id = Some(match column {
-            NoteColumn::Encrypted => format!("{}.clin", id_base),
-            NoteColumn::Unencrypted => format!("{}.md", id_base),
-        });
-        self.encryption_enabled = column == NoteColumn::Encrypted;
+        self.editing_id = Some(self.storage.new_note_id());
         self.title_editor = make_title_editor("");
         self.editor = TextArea::default();
         self.editor
@@ -616,58 +563,45 @@ impl App {
 
     fn handle_menu_action(&mut self, action: usize, focus: &mut EditFocus) {
         match action {
-            0 => match focus {
-                EditFocus::Title => {
-                    self.title_editor.copy();
+            0 => {
+                match focus {
+                    EditFocus::Title => { self.title_editor.copy(); }
+                    EditFocus::Body => { self.editor.copy(); }
+                    _ => {}
                 }
-                EditFocus::Body => {
-                    self.editor.copy();
+            }
+            1 => {
+                match focus {
+                    EditFocus::Title => { self.title_editor.cut(); }
+                    EditFocus::Body => { self.editor.cut(); }
+                    _ => {}
                 }
-                _ => {}
-            },
-            1 => match focus {
-                EditFocus::Title => {
-                    self.title_editor.cut();
+            }
+            2 => {
+                match focus {
+                    EditFocus::Title => { self.title_editor.paste(); }
+                    EditFocus::Body => { self.editor.paste(); }
+                    _ => {}
                 }
-                EditFocus::Body => {
-                    self.editor.cut();
+            }
+            3 => {
+                match focus {
+                    EditFocus::Title => { self.title_editor.select_all(); }
+                    EditFocus::Body => { self.editor.select_all(); }
+                    _ => {}
                 }
-                _ => {}
-            },
-            2 => match focus {
-                EditFocus::Title => {
-                    self.title_editor.paste();
-                }
-                EditFocus::Body => {
-                    self.editor.paste();
-                }
-                _ => {}
-            },
-            3 => match focus {
-                EditFocus::Title => {
-                    self.title_editor.select_all();
-                }
-                EditFocus::Body => {
-                    self.editor.select_all();
-                }
-                _ => {}
-            },
+            }
             _ => {}
         }
     }
 
     fn begin_delete_selected(&mut self) {
-        let (list, selected) = match self.active_column {
-            NoteColumn::Encrypted => (&self.enc_notes, self.selected_enc),
-            NoteColumn::Unencrypted => (&self.nenc_notes, self.selected_nenc),
-        };
-
-        if selected >= list.len() {
+        if self.selected >= self.notes.len() {
             self.set_temporary_status("No note selected to delete");
             return;
         }
 
-        let Some(note) = list.get(selected) else {
+        let Some(note) = self.notes.get(self.selected) else {
             self.set_temporary_status("No note selected to delete");
             return;
         };
@@ -691,6 +625,9 @@ impl App {
             Ok(()) => {
                 self.pending_delete_note_id = None;
                 let _ = self.refresh_notes();
+                if self.selected > self.notes.len() {
+                    self.selected = self.notes.len();
+                }
                 self.set_temporary_status("Note deleted");
             }
             Err(err) => {
@@ -701,17 +638,12 @@ impl App {
     }
 
     fn open_selected_note_location(&mut self) {
-        let (list, selected) = match self.active_column {
-            NoteColumn::Encrypted => (&self.enc_notes, self.selected_enc),
-            NoteColumn::Unencrypted => (&self.nenc_notes, self.selected_nenc),
-        };
-
-        if selected >= list.len() {
+        if self.selected >= self.notes.len() {
             self.set_temporary_status("No note selected for location");
             return;
         }
 
-        let Some(note) = list.get(selected) else {
+        let Some(note) = self.notes.get(self.selected) else {
             self.set_temporary_status("No note selected for location");
             return;
         };
@@ -841,12 +773,7 @@ fn main() -> Result<()> {
             let storage = Storage::init()?;
             let mut app = App::new(storage)?;
             app.refresh_notes()?;
-            for (index, note) in app
-                .enc_notes
-                .iter()
-                .chain(app.nenc_notes.iter())
-                .enumerate()
-            {
+            for (index, note) in app.notes.iter().enumerate() {
                 println!("{}. {}", index + 1, note.title);
             }
             Ok(())
@@ -882,24 +809,15 @@ fn main() -> Result<()> {
                 content: String::new(),
                 updated_at: now_unix_secs(),
             };
-
-            let ext = if settings.encryption_enabled {
-                "clin"
-            } else {
-                "md"
-            };
+            
+            let ext = if settings.encryption_enabled { "clin" } else { "md" };
             let base_id = storage.new_note_id();
             let id = format!("{}.{}", base_id, ext);
             let saved_id = storage.save_note(&id, &note, settings.encryption_enabled)?;
 
             let mut app = App::new(storage)?;
-            if let Some(index) = app.enc_notes.iter().position(|n| n.id == saved_id) {
-                app.active_column = NoteColumn::Encrypted;
-                app.selected_enc = index;
-                app.open_selected();
-            } else if let Some(index) = app.nenc_notes.iter().position(|n| n.id == saved_id) {
-                app.active_column = NoteColumn::Unencrypted;
-                app.selected_nenc = index;
+            if let Some(index) = app.notes.iter().position(|n| n.id == saved_id) {
+                app.selected = index;
                 app.open_selected();
             } else {
                 app.open_note_by_title(&final_title);
@@ -1088,20 +1006,11 @@ fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     }
 
     if key.code == KeyCode::Tab {
-        if app.list_focus == ListFocus::Notes {
-            app.active_column = match app.active_column {
-                NoteColumn::Encrypted => NoteColumn::Unencrypted,
-                NoteColumn::Unencrypted => {
-                    app.list_focus = ListFocus::VimToggle;
-                    NoteColumn::Encrypted
-                }
-            };
-        } else if app.list_focus == ListFocus::VimToggle {
-            app.list_focus = ListFocus::EncryptionToggle;
-        } else if app.list_focus == ListFocus::EncryptionToggle {
-            app.list_focus = ListFocus::Notes;
-            app.active_column = NoteColumn::Encrypted;
-        }
+        app.list_focus = match app.list_focus {
+            ListFocus::Notes => ListFocus::VimToggle,
+            ListFocus::VimToggle => ListFocus::EncryptionToggle,
+            ListFocus::EncryptionToggle => ListFocus::Notes,
+        };
         return false;
     }
 
@@ -1115,7 +1024,16 @@ fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         }
         return false;
     }
-
+    if app.list_focus == ListFocus::EncryptionToggle {
+        match key.code {
+            KeyCode::Enter | KeyCode::Char(' ') => {
+                app.toggle_encryption_mode();
+            }
+            KeyCode::Char('q') => return true,
+            _ => {}
+        }
+        return false;
+    }
     if app.list_focus == ListFocus::EncryptionToggle {
         match key.code {
             KeyCode::Enter | KeyCode::Char(' ') => {
@@ -1127,22 +1045,17 @@ fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
-    let (list_len, selected) = match app.active_column {
-        NoteColumn::Encrypted => (app.enc_notes.len(), &mut app.selected_enc),
-        NoteColumn::Unencrypted => (app.nenc_notes.len(), &mut app.selected_nenc),
-    };
-
     if app.vim_enabled {
         match key.code {
-            KeyCode::Char('k') => {
-                if *selected > 0 {
-                    *selected -= 1;
+            KeyCode::Char('k') | KeyCode::Char('h') => {
+                if app.selected > 0 {
+                    app.selected -= 1;
                 }
                 return false;
             }
-            KeyCode::Char('j') => {
-                if *selected < list_len {
-                    *selected += 1;
+            KeyCode::Char('j') | KeyCode::Char('l') => {
+                if app.selected < app.notes.len() {
+                    app.selected += 1;
                 }
                 return false;
             }
@@ -1160,13 +1073,13 @@ fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         KeyCode::Char('f') => app.open_selected_note_location(),
         KeyCode::Char('d') | KeyCode::Delete => app.begin_delete_selected(),
         KeyCode::Down => {
-            if *selected < list_len {
-                *selected += 1;
+            if app.selected < app.notes.len() {
+                app.selected += 1;
             }
         }
         KeyCode::Up => {
-            if *selected > 0 {
-                *selected -= 1;
+            if app.selected > 0 {
+                app.selected -= 1;
             }
         }
         KeyCode::Enter => app.open_selected(),
@@ -1350,23 +1263,13 @@ fn handle_edit_mouse(
 
     if mouse_event.kind == MouseEventKind::Down(MouseButton::Right) {
         let (title_inner, body_inner) = edit_view_input_areas(terminal_area);
-
+        
         if contains_cell(title_inner, mouse_event.column, mouse_event.row) {
             *focus = EditFocus::Title;
-            move_textarea_cursor_to_mouse(
-                &mut app.title_editor,
-                title_inner,
-                mouse_event.column,
-                mouse_event.row,
-            );
+            move_textarea_cursor_to_mouse(&mut app.title_editor, title_inner, mouse_event.column, mouse_event.row);
         } else if contains_cell(body_inner, mouse_event.column, mouse_event.row) {
             *focus = EditFocus::Body;
-            move_textarea_cursor_to_mouse(
-                &mut app.editor,
-                body_inner,
-                mouse_event.column,
-                mouse_event.row,
-            );
+            move_textarea_cursor_to_mouse(&mut app.editor, body_inner, mouse_event.column, mouse_event.row);
         }
 
         let max_x = terminal_area.width.saturating_sub(14);
@@ -1397,22 +1300,12 @@ fn handle_edit_mouse(
             *mouse_selecting = false;
             if contains_cell(body_inner, mouse_event.column, mouse_event.row) {
                 *focus = EditFocus::Body;
-                move_textarea_cursor_to_mouse(
-                    &mut app.editor,
-                    body_inner,
-                    mouse_event.column,
-                    mouse_event.row,
-                );
+                move_textarea_cursor_to_mouse(&mut app.editor, body_inner, mouse_event.column, mouse_event.row);
                 app.editor.start_selection();
                 *mouse_selecting = true;
             } else if contains_cell(title_inner, mouse_event.column, mouse_event.row) {
                 *focus = EditFocus::Title;
-                move_textarea_cursor_to_mouse(
-                    &mut app.title_editor,
-                    title_inner,
-                    mouse_event.column,
-                    mouse_event.row,
-                );
+                move_textarea_cursor_to_mouse(&mut app.title_editor, title_inner, mouse_event.column, mouse_event.row);
                 app.title_editor.start_selection();
                 *mouse_selecting = true;
             }
@@ -1420,19 +1313,9 @@ fn handle_edit_mouse(
         MouseEventKind::Drag(MouseButton::Left) => {
             if *mouse_selecting {
                 if *focus == EditFocus::Body {
-                    move_textarea_cursor_to_mouse(
-                        &mut app.editor,
-                        body_inner,
-                        mouse_event.column,
-                        mouse_event.row,
-                    );
+                    move_textarea_cursor_to_mouse(&mut app.editor, body_inner, mouse_event.column, mouse_event.row);
                 } else {
-                    move_textarea_cursor_to_mouse(
-                        &mut app.title_editor,
-                        title_inner,
-                        mouse_event.column,
-                        mouse_event.row,
-                    );
+                    move_textarea_cursor_to_mouse(&mut app.title_editor, title_inner, mouse_event.column, mouse_event.row);
                 }
             }
         }
@@ -1443,12 +1326,7 @@ fn handle_edit_mouse(
     }
 }
 
-fn move_textarea_cursor_to_mouse(
-    textarea: &mut TextArea,
-    body_inner: Rect,
-    mouse_col: u16,
-    mouse_row: u16,
-) {
+fn move_textarea_cursor_to_mouse(textarea: &mut TextArea, body_inner: Rect, mouse_col: u16, mouse_row: u16) {
     if textarea.lines().is_empty() || body_inner.width == 0 || body_inner.height == 0 {
         return;
     }
@@ -1748,114 +1626,80 @@ fn draw_list_view(frame: &mut Frame, app: &App) {
     .block(Block::default().borders(Borders::ALL).title("Notes"));
     frame.render_widget(header, chunks[0]);
 
-    let list_chunks = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(chunks[1]);
+    let mut items = Vec::new();
+    let mut last_was_clin = None;
+    let mut note_index_to_visual_index = Vec::new();
 
-    // Left chunk - Encrypted
-    let mut enc_items = Vec::new();
-    for summary in &app.enc_notes {
+    for (i, summary) in app.notes.iter().enumerate() {
+        let is_clin = summary.id.ends_with(".clin");
+        
+        if last_was_clin != Some(is_clin) {
+            if is_clin {
+                items.push(ListItem::new(Line::from(vec![Span::styled(
+                    "📁 Encrypted (ENC)",
+                    Style::default().add_modifier(Modifier::BOLD).fg(Color::Cyan),
+                )])));
+            } else {
+                if last_was_clin.is_some() {
+                    items.push(ListItem::new(Line::from(vec![Span::raw("")])));
+                }
+                items.push(ListItem::new(Line::from(vec![Span::styled(
+                    "📁 Unencrypted (NENC)",
+                    Style::default().add_modifier(Modifier::BOLD).fg(Color::Yellow),
+                )])));
+            }
+            last_was_clin = Some(is_clin);
+        }
+        
+        note_index_to_visual_index.push(items.len());
+        
         let when = format_relative_time(summary.updated_at);
         let mut text_style = Style::default().add_modifier(Modifier::BOLD);
-        if !app.encryption_enabled {
+        
+        let mut spans = Vec::new();
+        
+        let is_last_in_group = match app.notes.get(i + 1) {
+            Some(next) => next.id.ends_with(".clin") != is_clin,
+            None => true,
+        };
+        let prefix = if is_last_in_group { " └── " } else { " ├── " };
+        spans.push(Span::raw(prefix));
+        
+        if !is_clin {
+            spans.push(Span::styled("[NENC] ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
+        } else if !app.encryption_enabled {
             text_style = text_style.fg(Color::Red);
+            spans.push(Span::styled("[ENC] ", text_style));
         }
-        let line = Line::from(vec![
-            Span::styled("[ENC] ", text_style),
-            Span::styled(summary.title.clone(), text_style),
-            Span::raw(format!("  ({when})")),
-        ]);
-        enc_items.push(ListItem::new(line));
+        
+        spans.push(Span::styled(summary.title.clone(), text_style));
+        spans.push(Span::raw(format!("  ({when})")));
+        
+        items.push(ListItem::new(Line::from(spans)));
     }
-    enc_items.push(ListItem::new(Line::from(vec![Span::styled(
-        "+ Create a new encrypted note",
+    
+    note_index_to_visual_index.push(items.len());
+    items.push(ListItem::new(Line::from(vec![Span::styled(
+        " + Create a new note",
         Style::default().fg(Color::Green),
     )])));
 
-    let enc_title = if app.active_column == NoteColumn::Encrypted {
-        "Encrypted Notes (Active)"
+    let list = List::new(items)
+        .block(Block::default().borders(Borders::ALL).title("Select"))
+        .highlight_style(
+            Style::default()
+                .fg(Color::Black)
+                .bg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )
+        .highlight_symbol("  > ");
+    let mut list_state = ListState::default();
+    if let Some(&visual_i) = note_index_to_visual_index.get(app.selected) {
+        list_state.select(Some(visual_i));
     } else {
-        "Encrypted Notes"
-    };
-
-    let mut enc_block = Block::default().borders(Borders::ALL).title(enc_title);
-    if app.active_column == NoteColumn::Encrypted {
-        enc_block = enc_block.border_style(Style::default().fg(Color::Cyan));
+        list_state.select(Some(note_index_to_visual_index.last().copied().unwrap_or(0)));
     }
-
-    let mut enc_list = List::new(enc_items).block(enc_block);
-    if app.active_column == NoteColumn::Encrypted {
-        enc_list = enc_list
-            .highlight_style(
-                Style::default()
-                    .fg(Color::Black)
-                    .bg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
-            )
-            .highlight_symbol("  > ");
-    } else {
-        enc_list = enc_list
-            .highlight_style(Style::default().fg(Color::DarkGray))
-            .highlight_symbol("    ");
-    }
-
-    let mut enc_state = ListState::default();
-    enc_state.select(Some(app.selected_enc));
-    frame.render_stateful_widget(enc_list, list_chunks[0], &mut enc_state);
-
-    // Right chunk - Unencrypted
-    let mut nenc_items = Vec::new();
-    for summary in &app.nenc_notes {
-        let when = format_relative_time(summary.updated_at);
-        let text_style = Style::default().add_modifier(Modifier::BOLD);
-        let line = Line::from(vec![
-            Span::styled(
-                "[NENC] ",
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(summary.title.clone(), text_style),
-            Span::raw(format!("  ({when})")),
-        ]);
-        nenc_items.push(ListItem::new(line));
-    }
-    nenc_items.push(ListItem::new(Line::from(vec![Span::styled(
-        "+ Create a new unencrypted note",
-        Style::default().fg(Color::Green),
-    )])));
-
-    let nenc_title = if app.active_column == NoteColumn::Unencrypted {
-        "Unencrypted Notes (Active)"
-    } else {
-        "Unencrypted Notes"
-    };
-
-    let mut nenc_block = Block::default().borders(Borders::ALL).title(nenc_title);
-    if app.active_column == NoteColumn::Unencrypted {
-        nenc_block = nenc_block.border_style(Style::default().fg(Color::Cyan));
-    }
-
-    let mut nenc_list = List::new(nenc_items).block(nenc_block);
-    if app.active_column == NoteColumn::Unencrypted {
-        nenc_list = nenc_list
-            .highlight_style(
-                Style::default()
-                    .fg(Color::Black)
-                    .bg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
-            )
-            .highlight_symbol("  > ");
-    } else {
-        nenc_list = nenc_list
-            .highlight_style(Style::default().fg(Color::DarkGray))
-            .highlight_symbol("    ");
-    }
-
-    let mut nenc_state = ListState::default();
-    nenc_state.select(Some(app.selected_nenc));
-    frame.render_stateful_widget(nenc_list, list_chunks[1], &mut nenc_state);
+    frame.render_stateful_widget(list, chunks[1], &mut list_state);
 
     let vim_button_label = if app.vim_enabled {
         "[ Vim: ON ]"
@@ -1863,32 +1707,22 @@ fn draw_list_view(frame: &mut Frame, app: &App) {
         "[ Vim: OFF ]"
     };
     let vim_button_style = if app.list_focus == ListFocus::VimToggle {
-        Style::default()
-            .fg(Color::Black)
-            .bg(Color::Yellow)
-            .add_modifier(Modifier::BOLD)
+        Style::default().fg(Color::Black).bg(Color::Yellow).add_modifier(Modifier::BOLD)
     } else if app.vim_enabled {
-        Style::default()
-            .fg(Color::Green)
-            .add_modifier(Modifier::BOLD)
+        Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
     } else {
         Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
     };
-
+    
     let enc_button_label = if app.encryption_enabled {
         "[ Enc: ON ]"
     } else {
         "[ Enc: OFF ]"
     };
     let enc_button_style = if app.list_focus == ListFocus::EncryptionToggle {
-        Style::default()
-            .fg(Color::Black)
-            .bg(Color::Yellow)
-            .add_modifier(Modifier::BOLD)
+        Style::default().fg(Color::Black).bg(Color::Yellow).add_modifier(Modifier::BOLD)
     } else if app.encryption_enabled {
-        Style::default()
-            .fg(Color::Green)
-            .add_modifier(Modifier::BOLD)
+        Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
     } else {
         Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
     };
@@ -2009,11 +1843,11 @@ fn draw_edit_view(frame: &mut Frame, app: &App, focus: EditFocus) {
         let list = List::new(items)
             .block(Block::default().borders(Borders::ALL))
             .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
-
+        
         let menu_area = Rect::new(menu.x, menu.y, 14, 6);
         let mut state = ListState::default();
         state.select(Some(menu.selected));
-
+        
         frame.render_widget(Clear, menu_area);
         frame.render_stateful_widget(list, menu_area, &mut state);
     }
