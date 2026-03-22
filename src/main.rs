@@ -84,9 +84,24 @@ Editor shortcuts (Vim ON)\n\
 Help page\n\
 - Esc/q/?/F1: close help and return to notes\n";
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct AppSettings {
     vim_enabled: bool,
+    #[serde(default = "default_encryption_enabled")]
+    encryption_enabled: bool,
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        Self {
+            vim_enabled: false,
+            encryption_enabled: true,
+        }
+    }
+}
+
+fn default_encryption_enabled() -> bool {
+    true
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Note {
@@ -164,7 +179,7 @@ impl Storage {
     }
 
     fn note_path(&self, id: &str) -> PathBuf {
-        self.notes_dir.join(format!("{id}.clin"))
+        self.notes_dir.join(id)
     }
 
     fn list_note_ids(&self) -> Result<Vec<String>> {
@@ -172,37 +187,77 @@ impl Storage {
         for entry in fs::read_dir(&self.notes_dir).context("failed reading notes directory")? {
             let entry = entry.context("failed to read note entry")?;
             let path = entry.path();
-            if path.extension().and_then(|e| e.to_str()) == Some("clin")
-                && let Some(stem) = path.file_stem().and_then(|s| s.to_str())
-            {
-                ids.push(stem.to_string());
+            if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                if ext == "clin" || ext == "md" || ext == "txt" {
+                    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                        ids.push(name.to_string());
+                    }
+                }
             }
         }
         Ok(ids)
     }
 
     fn load_note(&self, id: &str) -> Result<Note> {
-        let encrypted = fs::read(self.note_path(id)).context("failed to read note")?;
-        let plain = self.decrypt(&encrypted)?;
-        let (note, _) =
-            bincode::serde::decode_from_slice::<Note, _>(&plain, bincode::config::standard())
-                .context("failed to decode note")?;
-        Ok(note)
+        let path = self.note_path(id);
+        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        
+        if ext == "clin" {
+            let encrypted = fs::read(&path).context("failed to read note")?;
+            let plain = self.decrypt(&encrypted)?;
+            let (note, _) =
+                bincode::serde::decode_from_slice::<Note, _>(&plain, bincode::config::standard())
+                    .context("failed to decode note")?;
+            Ok(note)
+        } else {
+            let content = fs::read_to_string(&path).context("failed to read plain note")?;
+            let title = path.file_stem().and_then(|s| s.to_str()).unwrap_or("Untitled note").to_string();
+            let updated_at = fs::metadata(&path).and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0);
+            Ok(Note {
+                title,
+                content,
+                updated_at,
+            })
+        }
     }
 
-    fn save_note(&self, id: &str, note: &Note) -> Result<String> {
-        let preferred_id = self.note_file_stem_from_title(&note.title);
-        let target_id = self.unique_note_id(&preferred_id, id);
+    fn save_note(&self, id: &str, note: &Note, encryption_enabled: bool) -> Result<String> {
+        let preferred_stem = self.note_file_stem_from_title(&note.title);
+        
+        let old_path = self.note_path(id);
+        let old_ext = old_path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        
+        // If we are currently saving an unencrypted file and encryption is OFF, keep its extension.
+        // Otherwise default to .md if no extension matched.
+        let target_ext = if encryption_enabled {
+            "clin"
+        } else if old_ext == "txt" || old_ext == "md" {
+            old_ext
+        } else {
+            "md"
+        };
 
-        let bytes = bincode::serde::encode_to_vec(note, bincode::config::standard())
-            .context("failed to encode note")?;
-        let encrypted = self.encrypt(&bytes)?;
-        fs::write(self.note_path(&target_id), encrypted).context("failed to write note")?;
+        let target_id = self.unique_note_id(&preferred_stem, target_ext, id);
 
+        if target_ext == "clin" {
+            let bytes = bincode::serde::encode_to_vec(note, bincode::config::standard())
+                .context("failed to encode note")?;
+            let encrypted = self.encrypt(&bytes)?;
+            fs::write(self.note_path(&target_id), encrypted).context("failed to write note")?;
+        } else {
+            fs::write(self.note_path(&target_id), &note.content).context("failed to write plain note")?;
+        }
+
+        // We only remove the old file if the target_id differs AND we are not creating an encrypted copy of a plain text file.
+        // Wait, the prompt says: "when encryption on if user tries to open a unencrypted file the program should create a encrypted copy... and edit that copy not the original unencrypted file".
+        // App handles setting `editing_id` to a newly generated ID when opening to avoid overwriting. But here, just in case, if `id` != `target_id` we delete the old one, UNLESS we specifically want to avoid it.
+        // If App changes `editing_id` to `uuid.clin` before saving, then `id` (the current editing state) is already `uuid.clin`, it won't equal `old_path` in name so... Wait.
+        // If App changes `app.editing_id = Some(new_id)`, then the first time it autosaves, it calls `save_note(new_id, note, true)`. So `id` == `target_id` (likely), and the old file is untouched because `id` doesn't point to the original file anymore!
+        // So `save_note` can safely delete `old_path` if `id != target_id` because `id` represents the file WE ARE CURRENTLY EDITING which is getting renamed.
         if id != target_id {
-            let old_path = self.note_path(id);
-            if old_path.exists() {
-                fs::remove_file(&old_path).context("failed to rename note file")?;
+            let old_path_to_remove = self.note_path(id);
+            if old_path_to_remove.exists() {
+                fs::remove_file(&old_path_to_remove).context("failed to rename note file")?;
             }
         }
 
@@ -245,12 +300,14 @@ impl Storage {
         }
     }
 
-    fn unique_note_id(&self, preferred: &str, current_id: &str) -> String {
-        let mut candidate = preferred.to_string();
+    fn unique_note_id(&self, preferred_stem: &str, ext: &str, current_id: &str) -> String {
+        let mut candidate_stem = preferred_stem.to_string();
+        let mut candidate = format!("{candidate_stem}.{ext}");
         let mut counter = 2_u32;
 
         while candidate != current_id && self.note_path(&candidate).exists() {
-            candidate = format!("{preferred} ({counter})");
+            candidate_stem = format!("{preferred_stem} ({counter})");
+            candidate = format!("{candidate_stem}.{ext}");
             counter += 1;
         }
 
@@ -303,6 +360,7 @@ enum ViewMode {
 enum ListFocus {
     Notes,
     VimToggle,
+    EncryptionToggle,
 }
 
 struct ContextMenu {
@@ -321,6 +379,7 @@ struct App {
     title_editor: TextArea<'static>,
     editor: TextArea<'static>,
     vim_enabled: bool,
+    encryption_enabled: bool,
     vim_title: crate::vim::Vim,
     vim_body: crate::vim::Vim,
     status: String,
@@ -360,6 +419,7 @@ impl App {
             title_editor: make_title_editor(""),
             editor: TextArea::default(),
             vim_enabled: settings.vim_enabled,
+            encryption_enabled: settings.encryption_enabled,
             vim_title: crate::vim::Vim::new(),
             vim_body: crate::vim::Vim::new(),
             status: String::from(LIST_HELP_HINTS),
@@ -400,10 +460,23 @@ impl App {
         }
 
         if let Some(summary) = self.notes.get(self.selected) {
+            let is_clin = summary.id.ends_with(".clin");
+            if !self.encryption_enabled && is_clin {
+                self.status = "Cannot open encrypted notes while encryption is disabled.".to_string();
+                return;
+            }
+
             match self.storage.load_note(&summary.id) {
                 Ok(note) => {
                     self.mode = ViewMode::Edit;
-                    self.editing_id = Some(summary.id.clone());
+                    if self.encryption_enabled && !is_clin {
+                        let title_stem = self.storage.note_file_stem_from_title(&note.title);
+                        let target_id = self.storage.unique_note_id(&title_stem, "clin", "");
+                        self.editing_id = Some(target_id);
+                    } else {
+                        self.editing_id = Some(summary.id.clone());
+                    }
+                    
                     self.title_editor = make_title_editor(&note.title);
                     self.editor = text_area_from_content(&note.content);
                     self.editor
@@ -468,7 +541,7 @@ impl App {
             ),
             updated_at: now_unix_secs(),
         };
-        if let Ok(saved_id) = self.storage.save_note(&id, &note) {
+        if let Ok(saved_id) = self.storage.save_note(&id, &note, self.encryption_enabled) {
             self.editing_id = Some(saved_id);
         }
     }
@@ -612,6 +685,16 @@ impl App {
         self.set_default_status();
         self.storage.save_settings(&AppSettings {
             vim_enabled: self.vim_enabled,
+            encryption_enabled: self.encryption_enabled,
+        });
+    }
+
+    fn toggle_encryption_mode(&mut self) {
+        self.encryption_enabled = !self.encryption_enabled;
+        self.set_default_status();
+        self.storage.save_settings(&AppSettings {
+            vim_enabled: self.vim_enabled,
+            encryption_enabled: self.encryption_enabled,
         });
     }
 
@@ -666,6 +749,7 @@ enum EditFocus {
     Title,
     Body,
     VimToggle,
+    EncryptionToggle,
 }
 
 fn main() -> Result<()> {
@@ -704,12 +788,13 @@ fn main() -> Result<()> {
             };
 
             let id = storage.new_note_id();
-            let saved_id = storage.save_note(&id, &note)?;
+            let saved_id = storage.save_note(&id, &note, true)?;
             println!("Saved quick note \"{}\" as {}.clin", final_title, saved_id);
             Ok(())
         }
         CliCommand::NewAndOpen { title } => {
             let storage = Storage::init()?;
+            let settings = storage.load_settings();
             let final_title = title
                 .map(|t| t.trim().to_string())
                 .filter(|t| !t.is_empty())
@@ -720,8 +805,11 @@ fn main() -> Result<()> {
                 content: String::new(),
                 updated_at: now_unix_secs(),
             };
-            let id = storage.new_note_id();
-            let saved_id = storage.save_note(&id, &note)?;
+            
+            let ext = if settings.encryption_enabled { "clin" } else { "md" };
+            let base_id = storage.new_note_id();
+            let id = format!("{}.{}", base_id, ext);
+            let saved_id = storage.save_note(&id, &note, settings.encryption_enabled)?;
 
             let mut app = App::new(storage)?;
             if let Some(index) = app.notes.iter().position(|n| n.id == saved_id) {
@@ -893,6 +981,7 @@ fn run_app(
                         app.status = String::from("Pasted content");
                     }
                     EditFocus::VimToggle => {}
+                    EditFocus::EncryptionToggle => {}
                 },
                 _ => {}
             }
@@ -915,7 +1004,8 @@ fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     if key.code == KeyCode::Tab {
         app.list_focus = match app.list_focus {
             ListFocus::Notes => ListFocus::VimToggle,
-            ListFocus::VimToggle => ListFocus::Notes,
+            ListFocus::VimToggle => ListFocus::EncryptionToggle,
+            ListFocus::EncryptionToggle => ListFocus::Notes,
         };
         return false;
     }
@@ -924,6 +1014,26 @@ fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         match key.code {
             KeyCode::Enter | KeyCode::Char(' ') => {
                 app.toggle_vim_mode();
+            }
+            KeyCode::Char('q') => return true,
+            _ => {}
+        }
+        return false;
+    }
+    if app.list_focus == ListFocus::EncryptionToggle {
+        match key.code {
+            KeyCode::Enter | KeyCode::Char(' ') => {
+                app.toggle_encryption_mode();
+            }
+            KeyCode::Char('q') => return true,
+            _ => {}
+        }
+        return false;
+    }
+    if app.list_focus == ListFocus::EncryptionToggle {
+        match key.code {
+            KeyCode::Enter | KeyCode::Char(' ') => {
+                app.toggle_encryption_mode();
             }
             KeyCode::Char('q') => return true,
             _ => {}
@@ -1024,12 +1134,13 @@ fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> bool
         *focus = match *focus {
             EditFocus::Title => EditFocus::Body,
             EditFocus::Body => EditFocus::VimToggle,
-            EditFocus::VimToggle => EditFocus::Title,
+            EditFocus::VimToggle => EditFocus::EncryptionToggle,
+            EditFocus::EncryptionToggle => EditFocus::Title,
         };
         return false;
     }
 
-    if app.vim_enabled && *focus != EditFocus::VimToggle {
+    if app.vim_enabled && *focus != EditFocus::VimToggle && *focus != EditFocus::EncryptionToggle {
         let (output, did_transition) = match *focus {
             EditFocus::Title => {
                 let out = app.vim_title.transition(key, &mut app.title_editor);
@@ -1096,6 +1207,11 @@ fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> bool
         EditFocus::VimToggle => {
             if key.code == KeyCode::Enter || key.code == KeyCode::Char(' ') {
                 app.toggle_vim_mode();
+            }
+        }
+        EditFocus::EncryptionToggle => {
+            if key.code == KeyCode::Enter || key.code == KeyCode::Char(' ') {
+                app.toggle_encryption_mode();
             }
         }
     }
@@ -1509,10 +1625,19 @@ fn draw_list_view(frame: &mut Frame, app: &App) {
     let mut items = Vec::new();
     for summary in &app.notes {
         let when = format_relative_time(summary.updated_at);
+        let mut text_style = Style::default().add_modifier(Modifier::BOLD);
+        let mut title = summary.title.clone();
+        
+        let is_clin = summary.id.ends_with(".clin");
+        if !app.encryption_enabled && is_clin {
+            text_style = text_style.fg(Color::Red);
+            title = format!("[ENC] {title}");
+        }
+        
         items.push(ListItem::new(Line::from(vec![
             Span::styled(
-                &summary.title,
-                Style::default().add_modifier(Modifier::BOLD),
+                title,
+                text_style,
             ),
             Span::raw(format!("  ({when})")),
         ])));
@@ -1541,19 +1666,30 @@ fn draw_list_view(frame: &mut Frame, app: &App) {
         "[ Vim: OFF ]"
     };
     let vim_button_style = if app.list_focus == ListFocus::VimToggle {
-        Style::default()
-            .fg(Color::Black)
-            .bg(Color::Yellow)
-            .add_modifier(Modifier::BOLD)
+        Style::default().fg(Color::Black).bg(Color::Yellow).add_modifier(Modifier::BOLD)
     } else if app.vim_enabled {
-        Style::default()
-            .fg(Color::Green)
-            .add_modifier(Modifier::BOLD)
+        Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
     } else {
         Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
     };
+    
+    let enc_button_label = if app.encryption_enabled {
+        "[ Enc: ON ]"
+    } else {
+        "[ Enc: OFF ]"
+    };
+    let enc_button_style = if app.list_focus == ListFocus::EncryptionToggle {
+        Style::default().fg(Color::Black).bg(Color::Yellow).add_modifier(Modifier::BOLD)
+    } else if app.encryption_enabled {
+        Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
+    };
+
     let footer_line = Line::from(vec![
         Span::styled(vim_button_label, vim_button_style),
+        Span::raw("   "),
+        Span::styled(enc_button_label, enc_button_style),
         Span::raw("   "),
         Span::raw(app.status.as_str()),
     ]);
@@ -1619,6 +1755,7 @@ fn draw_edit_view(frame: &mut Frame, app: &App, focus: EditFocus) {
             EditFocus::Title => app.vim_title.mode.name(),
             EditFocus::Body => app.vim_body.mode.name(),
             EditFocus::VimToggle => app.vim_body.mode.name(),
+            EditFocus::EncryptionToggle => app.vim_body.mode.name(),
         };
         format!("[ Vim: {} ]", active_mode)
     } else {
