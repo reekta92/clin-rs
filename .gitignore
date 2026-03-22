@@ -1,0 +1,18 @@
+# Cargo / Rust
+/target/
+**/*.rs.bk
+
+# OS / Temporary files
+.DS_Store
+*.swp
+*~
+*.tmp
+
+# IDE / Editor
+.vscode/
+*.code-workspace
+/agent.md
+
+# Project specific exclusions
+/dev_scripts/
+.gitignore
