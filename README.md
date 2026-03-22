@@ -44,9 +44,9 @@
 - Vertical jumps & scrolling: `gg`, `G`, `<NUMBER>g`, `<NUMBER>G`, `PageDown`, `PageUp`, `Ctrl+d` (20 lines down), `Ctrl+u` (20 lines up).
 - Operator motions: `d`, `y`, `c` with combinations like `dw`, `cw`, `yw`, plus `dd`, `yy`, `cc`.
 - Inner object compatibility operators:
-  - Change inner: `ciw`, `ci(`, `ci[`, `ci{`, `ci<`, `ci"`, `ci'`, `ci`\`
-  - Delete inner: `diw`, `di(`, `di[`, `di{`, `di<`, `di"`, `di'`, `di`\`
-  - Yank inner: `yiw`, `yi(`, `yi[`, `yi{`, `yi<`, `yi"`, `yi'`, `yi`\`
+  - Change inner: ``` ciw, ci(, ci[, ci{, ci<, ci", ci', ci` ```
+  - Delete inner: ``` diw, di(, di[, di{, di<, di", di`, di` ```
+  - Yank inner: ``` yiw, yi(, yi[, yi{, yi<, yi", yi`, yi` ```
 - Additional Vim edit actions: `x`, `p`, `u` (undo), `Ctrl+r` (redo).
 - Command mode integration: `:q` (quit) notes continually autosave.
 
