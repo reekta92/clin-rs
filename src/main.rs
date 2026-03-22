@@ -444,7 +444,11 @@ impl App {
                 });
             }
         }
-        summaries.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+        summaries.sort_by(|a, b| {
+            let a_clin = a.id.ends_with(".clin");
+            let b_clin = b.id.ends_with(".clin");
+            b_clin.cmp(&a_clin).then(b.updated_at.cmp(&a.updated_at))
+        });
         self.notes = summaries;
 
         if self.selected > self.notes.len() {
@@ -1623,12 +1627,43 @@ fn draw_list_view(frame: &mut Frame, app: &App) {
     frame.render_widget(header, chunks[0]);
 
     let mut items = Vec::new();
-    for summary in &app.notes {
+    let mut last_was_clin = None;
+    let mut note_index_to_visual_index = Vec::new();
+
+    for (i, summary) in app.notes.iter().enumerate() {
+        let is_clin = summary.id.ends_with(".clin");
+        
+        if last_was_clin != Some(is_clin) {
+            if is_clin {
+                items.push(ListItem::new(Line::from(vec![Span::styled(
+                    "📁 Encrypted (ENC)",
+                    Style::default().add_modifier(Modifier::BOLD).fg(Color::Cyan),
+                )])));
+            } else {
+                if last_was_clin.is_some() {
+                    items.push(ListItem::new(Line::from(vec![Span::raw("")])));
+                }
+                items.push(ListItem::new(Line::from(vec![Span::styled(
+                    "📁 Unencrypted (NENC)",
+                    Style::default().add_modifier(Modifier::BOLD).fg(Color::Yellow),
+                )])));
+            }
+            last_was_clin = Some(is_clin);
+        }
+        
+        note_index_to_visual_index.push(items.len());
+        
         let when = format_relative_time(summary.updated_at);
         let mut text_style = Style::default().add_modifier(Modifier::BOLD);
         
         let mut spans = Vec::new();
-        let is_clin = summary.id.ends_with(".clin");
+        
+        let is_last_in_group = match app.notes.get(i + 1) {
+            Some(next) => next.id.ends_with(".clin") != is_clin,
+            None => true,
+        };
+        let prefix = if is_last_in_group { " └── " } else { " ├── " };
+        spans.push(Span::raw(prefix));
         
         if !is_clin {
             spans.push(Span::styled("[NENC] ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
@@ -1642,8 +1677,10 @@ fn draw_list_view(frame: &mut Frame, app: &App) {
         
         items.push(ListItem::new(Line::from(spans)));
     }
+    
+    note_index_to_visual_index.push(items.len());
     items.push(ListItem::new(Line::from(vec![Span::styled(
-        "+ Create a new note",
+        " + Create a new note",
         Style::default().fg(Color::Green),
     )])));
 
@@ -1657,7 +1694,11 @@ fn draw_list_view(frame: &mut Frame, app: &App) {
         )
         .highlight_symbol("  > ");
     let mut list_state = ListState::default();
-    list_state.select(Some(app.selected));
+    if let Some(&visual_i) = note_index_to_visual_index.get(app.selected) {
+        list_state.select(Some(visual_i));
+    } else {
+        list_state.select(Some(note_index_to_visual_index.last().copied().unwrap_or(0)));
+    }
     frame.render_stateful_widget(list, chunks[1], &mut list_state);
 
     let vim_button_label = if app.vim_enabled {
