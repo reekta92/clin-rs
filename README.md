@@ -17,15 +17,54 @@
 -  **Continuous Auto-save** (with panic crash safety logic)
 
 ## Future Plans
-- [X] Better vim support for commands like `ci`, `di`, `ci(` etc.
-- [ ] External editor support
-- [ ] Easy backup/restore
-- [ ] Text file import
-- [ ] Icon rendering and icon assigning to notes
-- [ ] Improved mouse support with right click context menu
-- [ ] More customization options
-- [ ] More argument options
-- [ ] Folders, tags
+### Configuration & Customization (#config)
+
+* **Smart folders:** Automatic movement of specific tagged notes to specific folders.
+* **Custom storage path:** Change where the encrypted vault lives.
+* **User-defined templates:** Boilerplate for new notes.
+* **Custom keybinds:** Remap controls to fit the user's workflow.
+* **Git integration:** Automate backups and versioning via Git.
+
+---
+
+### Editor Enhancements (#editor)
+
+* **Advanced Vim support:** Implementation of text objects like `ci`, `di`, `ci(`, etc.
+* **Contextual Cursor:** Changing cursor shape/color based on `NORMAL`, `INSERT`, or `VISUAL` modes.
+* **OCR Paste:** Pasting from screenshots using `ocrs` or `tesseract`.
+* **Word & Character metrics:** Real-time word counts and progress goals.
+* **Status line customization:** Flexible `status_format` strings.
+* **External editor support:** Opening notes in `nvim`, `helix`, etc.
+* **Improved mouse support:** Right-click context menus within the editor.
+
+---
+
+### Note Management & Navigation (#notes)
+
+* **Folders & Tags:** Hierarchical and metadata-based organization.
+* **Mouse support:** Navigation and selection within the notes list.
+* **Enhanced UI:** Sorting options, line numbers, and a preview pane.
+* **Fast Search:** Immediate note discovery using the `fd` utility.
+* **Asset management:** Icon rendering and assigning icons to specific notes.
+* **Data portability:** Easy backup/restore and text file importing.
+* **Markdown rendering:** Visualizing notes using `glow`.
+
+---
+
+### Integration & CLI Power (#piping)
+
+* **Pre-piping:** Routing notes through external tools for custom rendering.
+* **Markdown integration:** Specifically using `glow` for high-quality viewing.
+* **Expanded CLI:** More argument options for command-line interactions.
+* **OCR Integration:** Bridging system screenshots to the editor via CLI tools.
+
+---
+
+### Experimental & Advanced (#experimental)
+
+* **Lua Scripting:** Allowing users to write scripts to extend app functionality.
+* **Steganography:** Hiding encrypted vaults inside other file types (e.g., images).
+* **System-level OCR:** Experimental integration of text recognition.
 
 # Mouse support
 ![mouse](https://github.com/user-attachments/assets/8df42fc2-04f5-4f42-9e23-36bf6f5414d1)
