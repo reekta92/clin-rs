@@ -17,7 +17,7 @@
 -  **Continuous Auto-save** (with panic crash safety logic)
 
 ## Future Plans
-### Configuration & Customization (#config)
+### Configuration & Customization
 
 * **Smart folders:** Automatic movement of specific tagged notes to specific folders.
 * **Custom storage path:** Change where the encrypted vault lives.
@@ -27,7 +27,7 @@
 
 ---
 
-### Editor Enhancements (#editor)
+### Editor Enhancements
 
 * **Advanced Vim support:** Implementation of text objects like `ci`, `di`, `ci(`, etc.
 * **Contextual Cursor:** Changing cursor shape/color based on `NORMAL`, `INSERT`, or `VISUAL` modes.
@@ -39,7 +39,7 @@
 
 ---
 
-### Note Management & Navigation (#notes)
+### Note Management & Navigation
 
 * **Folders & Tags:** Hierarchical and metadata-based organization.
 * **Mouse support:** Navigation and selection within the notes list.
@@ -51,7 +51,7 @@
 
 ---
 
-### Integration & CLI Power (#piping)
+### Integration & CLI Power
 
 * **Pre-piping:** Routing notes through external tools for custom rendering.
 * **Markdown integration:** Specifically using `glow` for high-quality viewing.
@@ -60,7 +60,7 @@
 
 ---
 
-### Experimental & Advanced (#experimental)
+### Experimental & Advanced
 
 * **Lua Scripting:** Allowing users to write scripts to extend app functionality.
 * **Steganography:** Hiding encrypted vaults inside other file types (e.g., images).
