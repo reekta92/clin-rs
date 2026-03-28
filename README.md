@@ -17,52 +17,52 @@
 -  **Continuous Auto-save** (with panic crash safety logic)
 
 ## Future Plans
+## Future Plans
 ### Configuration & Customization
 
-* **Smart folders:** Automatic movement of specific tagged notes to specific folders.
-* **Custom storage path:** Change where the encrypted vault lives.
-* **User-defined templates:** Boilerplate for new notes.
-* **Custom keybinds:** Remap controls to fit the user's workflow.
-* **Git integration:** Automate backups and versioning via Git.
+* [ ] **Smart folders:** Automatic movement of specific tagged notes to specific folders.
+* [ ] **Custom storage path:** Change where the encrypted vault lives.
+* [ ] **User-defined templates:** Boilerplate for new notes.
+* [ ] **Custom keybinds:** Remap controls to fit the user's workflow.
+* [ ] **Git integration:** Automate backups and versioning via Git.
 
 ---
 
 ### Editor Enhancements
 
-* **Advanced Vim support:** Implementation of text objects like `ci`, `di`, `ci(`, etc.
-* **Contextual Cursor:** Changing cursor shape/color based on `NORMAL`, `INSERT`, or `VISUAL` modes.
-* **OCR Paste:** Pasting from screenshots using `ocrs` or `tesseract`.
-* **Word & Character metrics:** Real-time word counts and progress goals.
-* **Status line customization:** Flexible `status_fornat = "{title} | {word_count} words | {encryption_status}" )`
-* **External editor support:** Opening notes in `nvim`, `helix`, etc.
-* **Improved mouse support:** Right-click context menus within the editor.
+* [X] **Advanced Vim support:** Implementation of text objects like `ci`, `di`, `ci(`, etc.
+* [ ] **Contextual Cursor:** Changing cursor shape/color based on `NORMAL`, `INSERT`, or `VISUAL` modes.
+* [ ] **OCR Paste:** Pasting from screenshots using `ocrs` or `tesseract`.
+* [ ] **Word & Character metrics:** Real-time word counts and progress goals.
+* [ ] **Status line customization:** Flexible `status_fornat = "{title} | {word_count} words | {encryption_status}" )`
+* [ ] **External editor support:** Opening notes in `nvim`, `helix`, etc.
+* [ ] **Improved mouse support:** Right-click context menus within the editor.
 
 ---
 
 ### Note Management & Navigation
 
-* **Folders & Tags:** Hierarchical and metadata-based organization.
-* **Mouse support:** Navigation and selection within the notes list.
-* **Enhanced UI:** Sorting options, line numbers, and a preview pane.
-* **Fast Search:** Immediate note discovery using the `fd` utility.
-* **Asset management:** Icon rendering and assigning icons to specific notes.
-* **Data portability:** Easy backup/restore and text file importing.
+* [ ] **Folders & Tags:** Hierarchical and metadata-based organization.
+* [ ] **Mouse support:** Navigation and selection within the notes list.
+* [ ] **Enhanced UI:** Sorting options, line numbers, and a preview pane.
+* [ ] **Fast Search:** Immediate note discovery using the `fd` utility.
+* [ ] **Asset management:** Icon rendering and assigning icons to specific notes.
+* [ ] **Data portability:** Easy backup/restore and text file importing.
 
 ---
 
 ### Integration & CLI Usage
 
-* **Pre-piping:** Routing notes through external tools for custom rendering.
-* **Markdown integration:** Using `glow`.
-* **Expanded CLI:** More argument options for command-line interactions.
+* [ ] **Pre-piping:** Routing notes through external tools for custom rendering.
+* [ ] **Markdown integration:** Using `glow`.
+* [ ] **Expanded CLI:** More argument options for command-line interactions.
 
 ---
 
 ### Experimental & Advanced
 
-* **Lua Scripting:** Allowing users to write scripts to extend app functionality.
-* **Steganography:** Hiding encrypted vaults inside other file types (e.g., images) (completely unnecessary!).
-
+* [ ] **Lua Scripting:** Allowing users to write scripts to extend app functionality.
+* [ ] **Steganography:** Hiding encrypted vaults inside other file types (e.g., images) (completely unnecessary!).
 ---
 
 # Mouse support
