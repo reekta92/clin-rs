@@ -1636,7 +1636,7 @@ fn draw_list_view(frame: &mut Frame, app: &App) {
         if last_was_clin != Some(is_clin) {
             if is_clin {
                 items.push(ListItem::new(Line::from(vec![Span::styled(
-                    "📁 Encrypted (ENC)",
+                    "Encrypted (ENC)",
                     Style::default().add_modifier(Modifier::BOLD).fg(Color::Cyan),
                 )])));
             } else {
@@ -1644,7 +1644,7 @@ fn draw_list_view(frame: &mut Frame, app: &App) {
                     items.push(ListItem::new(Line::from(vec![Span::raw("")])));
                 }
                 items.push(ListItem::new(Line::from(vec![Span::styled(
-                    "📁 Unencrypted (NENC)",
+                    "Unencrypted (UENC)",
                     Style::default().add_modifier(Modifier::BOLD).fg(Color::Yellow),
                 )])));
             }
@@ -1666,7 +1666,7 @@ fn draw_list_view(frame: &mut Frame, app: &App) {
         spans.push(Span::raw(prefix));
         
         if !is_clin {
-            spans.push(Span::styled("[NENC] ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
+            spans.push(Span::styled("[UENC] ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
         } else if !app.encryption_enabled {
             text_style = text_style.fg(Color::Red);
             spans.push(Span::styled("[ENC] ", text_style));
