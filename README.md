@@ -63,6 +63,8 @@
 * **Lua Scripting:** Allowing users to write scripts to extend app functionality.
 * **Steganography:** Hiding encrypted vaults inside other file types (e.g., images) (completely unnecessary!).
 
+---
+
 # Mouse support
 ![mouse](https://github.com/user-attachments/assets/8df42fc2-04f5-4f42-9e23-36bf6f5414d1)
 
