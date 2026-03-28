@@ -8,31 +8,27 @@
 
 ---
 
-## ✨ Highlights
-- 🔒 **ChaCha20-Poly1305** encryption at rest  
-- 📦 Binary `.clin` files (completely unreadable)  
-- 🖥️ Full-screen TUI with list + editor + help views  
-- 🖱️ Mouse support + bracketed paste  
-- ⌨️ Optional **Vim mode** (persistent ON/OFF)  
-- 💾 **Continuous Auto-save** (with panic crash safety logic)
-- ⚡ Ultra-fast CLI flags: `-q -n -e -l -f`
+## Highlights
+-  **ChaCha20-Poly1305** encryption
+-  Binary `.clin` files
+-  Full-screen TUI with list + editor + help views  
+-  Mouse support + bracketed paste  
+-  Optional **Vim mode** (persistent ON/OFF)  
+-  **Continuous Auto-save** (with panic crash safety logic)
 
-## 🛠️ Future Plans
+## Future Plans
 - [X] Better vim support for commands like `ci`, `di`, `ci(` etc.
 - [ ] External editor support
 - [ ] Easy backup/restore
 - [ ] Text file import
 - [ ] Icon rendering and icon assigning to notes
-- [X] Improved mouse support with right click context menu
+- [ ] Improved mouse support with right click context menu
 - [ ] More customization options
 - [ ] More argument options
 - [ ] Folders, tags
 
 # Mouse support
 ![mouse](https://github.com/user-attachments/assets/8df42fc2-04f5-4f42-9e23-36bf6f5414d1)
-
-- Integrated right-click context menu offering inline quick actions (`Copy`, `Cut`, `Paste`, `Select All`) natively overlayed globally inside the editor view.
-- Accurate mouse-to-cursor registration with proper offset synchronization mapped across the internal viewport row indexes, ensuring clicks match expected text selections accurately down to deep scrolls.
 
 # Vim mode (optional)
 ![vim](https://github.com/user-attachments/assets/dfa802bc-b2dd-4351-8a4b-0cea1f03ca0a)
@@ -53,19 +49,19 @@
 - Additional Vim edit actions: `x`, `p`, `u` (undo), `Ctrl+r` (redo).
 - Command mode integration: `:q` (quit) notes continually autosave.
 
-# Quick actions
+# CLI flags
 ![arguments](https://github.com/user-attachments/assets/b6fb344a-79ef-47ae-aefb-8ae637f939d8)
 
 ---
 
-## 🔐 Storage & Security
+## Storage
 Notes are encrypted before hitting disk.  
 Key is stored locally (`key.bin`).  
 **Backup & Restore** -> copy both `.clin` files + `key.bin` from `~/.local/share/clin`
 
 ---
 
-## 🚀 Installation
+## Installation
 
 ### Debian/Ubuntu (.deb)
 Download the latest `.deb` from the [Releases](https://github.com/reekta/clin/releases) page.
@@ -98,7 +94,7 @@ cargo run
 # Install globally
 cargo install --path .
 ```
-## 📋 CLI Commands
+## CLI Commands
 
 ```
 clin                   → Launch TUI
@@ -110,7 +106,7 @@ clin -f                → Show storage folder
 
 ```
 
-## 🎮 Controls
+## Controls
 **Notes list** ->
 `UP/DOWN` select • `Enter` open • `d` delete • `f` folder • `Tab` focus • `?` help • `q` quit
 
