@@ -17,7 +17,7 @@
 -  **Continuous Auto-save** (with panic crash safety logic)
 
 ## Future Plans
-### Configuration & Customization (#config)
+### Configuration & Customization
 
 * **Smart folders:** Automatic movement of specific tagged notes to specific folders.
 * **Custom storage path:** Change where the encrypted vault lives.
@@ -27,19 +27,19 @@
 
 ---
 
-### Editor Enhancements (#editor)
+### Editor Enhancements
 
 * **Advanced Vim support:** Implementation of text objects like `ci`, `di`, `ci(`, etc.
 * **Contextual Cursor:** Changing cursor shape/color based on `NORMAL`, `INSERT`, or `VISUAL` modes.
 * **OCR Paste:** Pasting from screenshots using `ocrs` or `tesseract`.
 * **Word & Character metrics:** Real-time word counts and progress goals.
-* **Status line customization:** Flexible `status_format` strings.
+* **Status line customization:** Flexible `status_fornat = "{title} | {word_count} words | {encryption_status}" )`
 * **External editor support:** Opening notes in `nvim`, `helix`, etc.
 * **Improved mouse support:** Right-click context menus within the editor.
 
 ---
 
-### Note Management & Navigation (#notes)
+### Note Management & Navigation
 
 * **Folders & Tags:** Hierarchical and metadata-based organization.
 * **Mouse support:** Navigation and selection within the notes list.
@@ -47,24 +47,21 @@
 * **Fast Search:** Immediate note discovery using the `fd` utility.
 * **Asset management:** Icon rendering and assigning icons to specific notes.
 * **Data portability:** Easy backup/restore and text file importing.
-* **Markdown rendering:** Visualizing notes using `glow`.
 
 ---
 
-### Integration & CLI Power (#piping)
+### Integration & CLI Usage
 
 * **Pre-piping:** Routing notes through external tools for custom rendering.
-* **Markdown integration:** Specifically using `glow` for high-quality viewing.
+* **Markdown integration:** Using `glow`.
 * **Expanded CLI:** More argument options for command-line interactions.
-* **OCR Integration:** Bridging system screenshots to the editor via CLI tools.
 
 ---
 
-### Experimental & Advanced (#experimental)
+### Experimental & Advanced
 
 * **Lua Scripting:** Allowing users to write scripts to extend app functionality.
-* **Steganography:** Hiding encrypted vaults inside other file types (e.g., images).
-* **System-level OCR:** Experimental integration of text recognition.
+* **Steganography:** Hiding encrypted vaults inside other file types (e.g., images) (completely unnecessary!).
 
 # Mouse support
 ![mouse](https://github.com/user-attachments/assets/8df42fc2-04f5-4f42-9e23-36bf6f5414d1)
