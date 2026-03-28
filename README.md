@@ -4,7 +4,7 @@
 
 # **clin - Your notes. Encrypted. Instant. Private. Simple.**  
 
-# **clin is not an editor!**
+# **clin is not a text editor!**
 
 > `clin` is originally a app i made when i got into C it was really rough and basic, i decided to remake it in Rust with more features and improved user experience to better fit your workflow!
 
