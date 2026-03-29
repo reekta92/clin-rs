@@ -1,6 +1,6 @@
 //! Template management module
 //!
-//! This module handles user-defined note templates stored in <storage_path>/templates/
+//! This module handles user-defined note templates stored in <`storage_path>/templates`/
 //! Templates are TOML files that define boilerplate content for new notes.
 
 use std::fs;
@@ -32,30 +32,14 @@ pub struct TitleConfig {
     pub template: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ContentConfig {
     /// Template string for the content (supports variables)
+    #[serde(default)]
     pub template: String,
 }
 
-impl Default for ContentConfig {
-    fn default() -> Self {
-        Self {
-            template: String::new(),
-        }
-    }
-}
-
 impl Template {
-    /// Create a new empty template
-    pub fn new(name: &str) -> Self {
-        Self {
-            name: name.to_string(),
-            title: TitleConfig::default(),
-            content: ContentConfig::default(),
-        }
-    }
-
     /// Load a template from a TOML file
     pub fn load(path: &Path) -> Result<Self> {
         let content = fs::read_to_string(path).context("failed to read template file")?;
@@ -158,7 +142,7 @@ impl TemplateManager {
     /// Get the path for a template by name
     pub fn template_path(&self, name: &str) -> PathBuf {
         let filename = sanitize_filename(name);
-        self.templates_dir.join(format!("{}.toml", filename))
+        self.templates_dir.join(format!("{filename}.toml"))
     }
 
     /// List all available templates
@@ -190,7 +174,6 @@ impl TemplateManager {
                     templates.push(TemplateSummary {
                         filename,
                         name: template.name,
-                        path,
                     });
                 }
                 Err(_) => {
@@ -219,20 +202,6 @@ impl TemplateManager {
         template.save(&path)
     }
 
-    /// Delete a template
-    pub fn delete(&self, filename: &str) -> Result<()> {
-        let path = self.template_path(filename);
-        if path.exists() {
-            fs::remove_file(&path).context("failed to delete template")?;
-        }
-        Ok(())
-    }
-
-    /// Check if the default template exists
-    pub fn has_default(&self) -> bool {
-        self.template_path("default").exists()
-    }
-
     /// Load the default template if it exists
     pub fn load_default(&self) -> Option<Template> {
         self.load("default").ok()
@@ -258,7 +227,7 @@ impl TemplateManager {
                 template: Some("Meeting - {date}".to_string()),
             },
             content: ContentConfig {
-                template: r#"# Meeting Notes
+                template: r"# Meeting Notes
 
 **Date:** {date}
 **Time:** {time}
@@ -279,7 +248,7 @@ impl TemplateManager {
 
 ## Next Meeting
 
-"#
+"
                 .to_string(),
             },
         };
@@ -292,7 +261,7 @@ impl TemplateManager {
                 template: Some("Tasks - {date}".to_string()),
             },
             content: ContentConfig {
-                template: r#"# Tasks for {weekday}, {date}
+                template: r"# Tasks for {weekday}, {date}
 
 ## High Priority
 
@@ -308,7 +277,7 @@ impl TemplateManager {
 
 ## Notes
 
-"#
+"
                 .to_string(),
             },
         };
@@ -321,7 +290,7 @@ impl TemplateManager {
                 template: Some("Journal - {date}".to_string()),
             },
             content: ContentConfig {
-                template: r#"# {weekday}, {date}
+                template: r"# {weekday}, {date}
 
 ## How I'm feeling
 
@@ -339,7 +308,7 @@ impl TemplateManager {
 
 ## Tomorrow's focus
 
-"#
+"
                 .to_string(),
             },
         };
@@ -356,8 +325,6 @@ pub struct TemplateSummary {
     pub filename: String,
     /// Display name from the template
     pub name: String,
-    /// Full path to the template file
-    pub path: PathBuf,
 }
 
 /// Sanitize a string for use as a filename

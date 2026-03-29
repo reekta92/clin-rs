@@ -1,7 +1,7 @@
 //! Keybind configuration module
 //!
 //! This module handles customizable keyboard shortcuts for the application.
-//! Keybinds are stored in <storage_path>/keybinds.toml and can be customized
+//! Keybinds are stored in <`storage_path>/keybinds.toml` and can be customized
 //! by the user. Vim mode keybindings are NOT affected by this system.
 
 use std::collections::HashMap;
@@ -21,10 +21,6 @@ pub struct KeyCombo {
 }
 
 impl KeyCombo {
-    pub fn new(code: KeyCode, modifiers: KeyModifiers) -> Self {
-        Self { code, modifiers }
-    }
-
     pub fn simple(code: KeyCode) -> Self {
         Self {
             code,
@@ -506,19 +502,19 @@ impl Keybinds {
 
         for (action, combos) in &self.list {
             let key = list_action_to_string(*action);
-            let values: Vec<String> = combos.iter().map(|c| c.to_display_string()).collect();
+            let values: Vec<String> = combos.iter().map(KeyCombo::to_display_string).collect();
             toml.list.insert(key.to_string(), values);
         }
 
         for (action, combos) in &self.edit {
             let key = edit_action_to_string(*action);
-            let values: Vec<String> = combos.iter().map(|c| c.to_display_string()).collect();
+            let values: Vec<String> = combos.iter().map(KeyCombo::to_display_string).collect();
             toml.edit.insert(key.to_string(), values);
         }
 
         for (action, combos) in &self.help {
             let key = help_action_to_string(*action);
-            let values: Vec<String> = combos.iter().map(|c| c.to_display_string()).collect();
+            let values: Vec<String> = combos.iter().map(KeyCombo::to_display_string).collect();
             toml.help.insert(key.to_string(), values);
         }
 
@@ -529,24 +525,21 @@ impl Keybinds {
     pub fn matches_list(&self, action: ListAction, event: &KeyEvent) -> bool {
         self.list
             .get(&action)
-            .map(|combos| combos.iter().any(|c| c.matches(event)))
-            .unwrap_or(false)
+            .is_some_and(|combos| combos.iter().any(|c| c.matches(event)))
     }
 
     /// Check if a key event matches an edit action
     pub fn matches_edit(&self, action: EditAction, event: &KeyEvent) -> bool {
         self.edit
             .get(&action)
-            .map(|combos| combos.iter().any(|c| c.matches(event)))
-            .unwrap_or(false)
+            .is_some_and(|combos| combos.iter().any(|c| c.matches(event)))
     }
 
     /// Check if a key event matches a help action
     pub fn matches_help(&self, action: HelpAction, event: &KeyEvent) -> bool {
         self.help
             .get(&action)
-            .map(|combos| combos.iter().any(|c| c.matches(event)))
-            .unwrap_or(false)
+            .is_some_and(|combos| combos.iter().any(|c| c.matches(event)))
     }
 
     /// Get display string for a list action's keybinds
@@ -556,7 +549,7 @@ impl Keybinds {
             .map(|combos| {
                 combos
                     .iter()
-                    .map(|c| c.to_display_string())
+                    .map(KeyCombo::to_display_string)
                     .collect::<Vec<_>>()
                     .join("/")
             })
@@ -570,7 +563,7 @@ impl Keybinds {
             .map(|combos| {
                 combos
                     .iter()
-                    .map(|c| c.to_display_string())
+                    .map(KeyCombo::to_display_string)
                     .collect::<Vec<_>>()
                     .join("/")
             })
@@ -584,7 +577,7 @@ impl Keybinds {
             .map(|combos| {
                 combos
                     .iter()
-                    .map(|c| c.to_display_string())
+                    .map(KeyCombo::to_display_string)
                     .collect::<Vec<_>>()
                     .join("/")
             })
