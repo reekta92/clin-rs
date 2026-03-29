@@ -78,21 +78,21 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     // Handle template popup if open
     if let Some(mut popup) = app.template_popup.take() {
         match key.code {
-            KeyCode::Up => {
+            KeyCode::Up | KeyCode::Char('k') => {
                 popup.selected = popup.selected.saturating_sub(1);
                 app.template_popup = Some(popup);
             }
-            KeyCode::Down => {
+            KeyCode::Down | KeyCode::Char('j') => {
                 if popup.selected + 1 < popup.templates.len() {
                     popup.selected += 1;
                 }
                 app.template_popup = Some(popup);
             }
-            KeyCode::Enter => {
+            KeyCode::Enter | KeyCode::Char('l') => {
                 app.template_popup = Some(popup);
                 app.select_template();
             }
-            KeyCode::Esc => {
+            KeyCode::Esc | KeyCode::Char('h') => {
                 app.close_template_popup();
             }
             // Allow creating blank note with 'b'
