@@ -1,14 +1,12 @@
-use crate::vim::VimOutput;
 mod config;
-mod helpers;
 mod keybinds;
 mod templates;
-mod vim;
 
 use crate::config::BootstrapConfig;
 use crate::keybinds::{EditAction, HelpAction, Keybinds, ListAction};
 use crate::templates::{Template, TemplateManager, TemplateSummary};
 
+use std::borrow::Cow;
 use std::fs;
 use std::io::{self, Stdout};
 use std::path::Path;
@@ -17,7 +15,6 @@ use std::process::Command;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use std::{env, process};
 
-use crate::vim::VimMode;
 use anyhow::{Context, Result, anyhow};
 use chacha20poly1305::aead::{Aead, KeyInit};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
@@ -44,7 +41,6 @@ const FILE_MAGIC: &[u8; 5] = b"CLIN1";
 const NONCE_LEN: usize = 12;
 const LIST_HELP_HINTS: &str = "Up/Down move   Enter open/new   Del/d delete   f location   ? help   Tab change focus   q quit";
 const EDIT_HELP_HINTS: &str = "Esc back   Tab change focus   Ctrl+Q quit";
-const VIM_EDIT_HELP_HINTS: &str = ":q quit  Tab change focus";
 const HELP_PAGE_HINTS: &str = "Esc/q/?/F1 close help";
 const _HELP_PAGE_TEXT: &str = "clin help\n\
 \n\
@@ -63,36 +59,25 @@ Notes view shortcuts\n\
 - y or Enter: confirm delete\n\
 - n or Esc: cancel delete\n\
 - f: open selected note location\n\
-- Tab: switch focus between note list and Vim toggle button\n\
-- Enter/Space on Vim button: toggle Vim mode\n\
-- ?: open help page\n\
-- q: quit app\n\
-\n\
-Editor shortcuts (Vim OFF)\n\
-- Tab: change focus (Title, Content, Vim toggle button)\n\
-- Esc: return to notes view\n\
-- Ctrl+Q: quit app\n\
-- Mouse selection in content area\n\
-- Clipboard: Ctrl+C/Ctrl+X/Ctrl+V, Ctrl+Insert, Shift+Insert, Shift+Delete\n\
-- Edit: Ctrl+A, Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z\n\
-- Word edit: Ctrl+Backspace, Ctrl+Delete\n\
-\n\
-Editor shortcuts (Vim ON)\n\
-- Powered by vim-line (library-backed Vim key handling)\n\
-- Modes: NORMAL, INSERT, VISUAL, OPERATOR-PENDING, REPLACE\n\
-- Movement: h j k l, w e b, 0/^, $, %\n\
-- Visual line: V to enter linewise selection (j/k move, y/d/c/x/p apply)\n\
-- Insert: i, I, a, A, o, O\n\
-- Operators: d, y, c (including dd, yy, cc and dw/cw/yw)\n\
-- Inner object ops: ciw/diw, ci(/di(, ci[/di[, ci{/di{, ci</di<, ci\"/di\", ci'/di', ci`/di`\n\
-- Edits: x, D, C, r<char>, p, P\n\
-\n\
-Help page\n\
+- Tab: switch focus between note list and Encryption toggle button
+- Enter/Space on Encryption button: toggle Encryption
+- ?: open help page
+- q: quit app
+
+Editor shortcuts
+- Tab: change focus (Title, Content, Encryption toggle button)
+- Esc: return to notes view
+- Ctrl+Q: quit app
+- Mouse selection in content area
+- Clipboard: Ctrl+C/Ctrl+X/Ctrl+V, Ctrl+Insert, Shift+Insert, Shift+Delete
+- Edit: Ctrl+A, Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z
+- Word edit: Ctrl+Backspace, Ctrl+Delete
+
+Help page
 - Esc/q/?/F1: close help and return to notes\n";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct AppSettings {
-    vim_enabled: bool,
     #[serde(default = "default_encryption_enabled")]
     encryption_enabled: bool,
 }
@@ -100,7 +85,6 @@ struct AppSettings {
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
-            vim_enabled: false,
             encryption_enabled: true,
         }
     }
@@ -113,6 +97,13 @@ fn default_encryption_enabled() -> bool {
 struct Note {
     title: String,
     content: String,
+    updated_at: u64,
+}
+
+#[derive(Debug, bincode::BorrowDecode)]
+struct NoteBorrowed<'a> {
+    title: Cow<'a, str>,
+    content: Cow<'a, str>,
     updated_at: u64,
 }
 
@@ -225,6 +216,32 @@ impl Storage {
             }
         }
         Ok(ids)
+    }
+
+    fn load_note_summary(&self, id: &str) -> Result<NoteSummary> {
+        let path = self.note_path(id);
+        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        
+        if ext == "clin" {
+            let encrypted = fs::read(&path).context("failed to read note")?;
+            let plain = self.decrypt(&encrypted)?;
+            let (note, _): (NoteBorrowed, usize) =
+                bincode::borrow_decode_from_slice(&plain, bincode::config::standard())
+                    .context("failed to decode note")?;
+            Ok(NoteSummary {
+                id: id.to_string(),
+                title: note.title.into_owned(),
+                updated_at: note.updated_at,
+            })
+        } else {
+            let title = path.file_stem().and_then(|s| s.to_str()).unwrap_or("Untitled note").to_string();
+            let updated_at = fs::metadata(&path).and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0);
+            Ok(NoteSummary {
+                id: id.to_string(),
+                title,
+                updated_at,
+            })
+        }
     }
 
     fn load_note(&self, id: &str) -> Result<Note> {
@@ -388,7 +405,6 @@ enum ViewMode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ListFocus {
     Notes,
-    VimToggle,
     EncryptionToggle,
 }
 
@@ -414,16 +430,15 @@ struct App {
     editing_id: Option<String>,
     title_editor: TextArea<'static>,
     editor: TextArea<'static>,
-    vim_enabled: bool,
     encryption_enabled: bool,
-    vim_title: crate::vim::Vim,
-    vim_body: crate::vim::Vim,
-    status: String,
+    status: Cow<'static, str>,
     status_until: Option<Instant>,
     pending_delete_note_id: Option<String>,
     help_scroll: u16,
     context_menu: Option<ContextMenu>,
     template_popup: Option<TemplatePopup>,
+    /// Cached help page text (rebuilt when keybinds change)
+    help_text_cache: Option<Text<'static>>,
 }
 
 enum CliCommand {
@@ -470,16 +485,14 @@ impl App {
             editing_id: None,
             title_editor: make_title_editor(""),
             editor: TextArea::default(),
-            vim_enabled: settings.vim_enabled,
             encryption_enabled: settings.encryption_enabled,
-            vim_title: crate::vim::Vim::new(),
-            vim_body: crate::vim::Vim::new(),
-            status: String::from(LIST_HELP_HINTS),
+            status: Cow::Borrowed(LIST_HELP_HINTS),
             status_until: None,
             pending_delete_note_id: None,
             help_scroll: 0,
             context_menu: None,
             template_popup: None,
+            help_text_cache: None,
         };
         app.context_menu = None;
         app.template_popup = None;
@@ -490,12 +503,8 @@ impl App {
     fn refresh_notes(&mut self) -> Result<()> {
         let mut summaries = Vec::new();
         for id in self.storage.list_note_ids()? {
-            if let Ok(note) = self.storage.load_note(&id) {
-                summaries.push(NoteSummary {
-                    id,
-                    title: note.title,
-                    updated_at: note.updated_at,
-                });
+            if let Ok(summary) = self.storage.load_note_summary(&id) {
+                summaries.push(summary);
             }
         }
         summaries.sort_by(|a, b| {
@@ -520,7 +529,7 @@ impl App {
         if let Some(summary) = self.notes.get(self.selected) {
             let is_clin = summary.id.ends_with(".clin");
             if !self.encryption_enabled && is_clin {
-                self.status = "Cannot open encrypted notes while encryption is disabled.".to_string();
+                self.status = Cow::Borrowed("Cannot open encrypted notes while encryption is disabled.");
                 return;
             }
 
@@ -541,11 +550,12 @@ impl App {
                         .set_cursor_style(Style::default().fg(Color::Black).bg(Color::Cyan));
                     self.editor
                         .set_cursor_line_style(Style::default().bg(Color::Rgb(32, 36, 44)));
-                    self.reset_vim_states_for_edit();
+                        self.title_editor.set_cursor_style(Style::default().fg(Color::Black).bg(Color::Cyan));
+                        self.editor.set_cursor_style(Style::default().fg(Color::Black).bg(Color::Cyan));
                     self.set_default_status();
                 }
                 Err(err) => {
-                    self.status = format!("Could not open note: {err:#}");
+                    self.status = Cow::Owned(format!("Could not open note: {err:#}"));
                 }
             }
         }
@@ -589,7 +599,6 @@ impl App {
             .set_cursor_style(Style::default().fg(Color::Black).bg(Color::Cyan));
         self.editor
             .set_cursor_line_style(Style::default().bg(Color::Rgb(32, 36, 44)));
-        self.reset_vim_states_for_edit();
         self.set_default_status();
     }
 
@@ -606,7 +615,6 @@ impl App {
             .set_cursor_style(Style::default().fg(Color::Black).bg(Color::Cyan));
         self.editor
             .set_cursor_line_style(Style::default().bg(Color::Rgb(32, 36, 44)));
-        self.reset_vim_states_for_edit();
         self.set_default_status();
     }
 
@@ -648,19 +656,18 @@ impl App {
     }
 
     fn autosave(&mut self) {
-        let Some(id) = self.editing_id.clone() else {
-            return;
-        };
         let mut title = get_title_text(&self.title_editor).trim().to_string();
         if title.is_empty() {
             title = String::from("Untitled note");
         }
+        let content = self.editor.lines().join("\n");
+        let id = match &self.editing_id {
+            Some(id) => id.clone(),
+            None => return,
+        };
         let note = Note {
             title,
-            content: self.editor.lines().join(
-                "
-",
-            ),
+            content,
             updated_at: now_unix_secs(),
         };
         if let Ok(saved_id) = self.storage.save_note(&id, &note, self.encryption_enabled) {
@@ -726,7 +733,7 @@ impl App {
 
         self.pending_delete_note_id = Some(note.id.clone());
         self.status_until = None;
-        self.status = format!("Delete \"{}\"? y confirm, n cancel", note.title);
+        self.status = Cow::Owned(format!("Delete \"{}\"? y confirm, n cancel", note.title));
     }
 
     fn cancel_delete_prompt(&mut self) {
@@ -735,13 +742,13 @@ impl App {
     }
 
     fn confirm_delete_selected(&mut self) {
-        let Some(id) = self.pending_delete_note_id.clone() else {
-            return;
+        let id = match self.pending_delete_note_id.take() {
+            Some(id) => id,
+            None => return,
         };
 
         match self.storage.delete_note(&id) {
             Ok(()) => {
-                self.pending_delete_note_id = None;
                 let _ = self.refresh_notes();
                 if self.selected > self.notes.len() {
                     self.selected = self.notes.len();
@@ -778,44 +785,10 @@ impl App {
         }
     }
 
-    fn reset_vim_states_for_edit(&mut self) {
-        self.vim_title.reset();
-        self.vim_body.reset();
-
-        if self.vim_enabled {
-            self.title_editor
-                .set_cursor_style(self.vim_title.mode.cursor_style());
-            self.editor
-                .set_cursor_style(self.vim_body.mode.cursor_style());
-        } else {
-            self.title_editor
-                .set_cursor_style(Style::default().fg(Color::Black).bg(Color::Cyan));
-            self.editor
-                .set_cursor_style(Style::default().fg(Color::Black).bg(Color::Cyan));
-        }
-    }
-
-    fn toggle_vim_mode(&mut self) {
-        self.vim_enabled = !self.vim_enabled;
-        self.reset_vim_states_for_edit();
-
-        if !self.vim_enabled {
-            self.title_editor.cancel_selection();
-            self.editor.cancel_selection();
-        }
-
-        self.set_default_status();
-        self.storage.save_settings(&AppSettings {
-            vim_enabled: self.vim_enabled,
-            encryption_enabled: self.encryption_enabled,
-        });
-    }
-
     fn toggle_encryption_mode(&mut self) {
         self.encryption_enabled = !self.encryption_enabled;
         self.set_default_status();
         self.storage.save_settings(&AppSettings {
-            vim_enabled: self.vim_enabled,
             encryption_enabled: self.encryption_enabled,
         });
     }
@@ -823,7 +796,7 @@ impl App {
     fn open_help_page(&mut self) {
         self.mode = ViewMode::Help;
         self.help_scroll = 0;
-        self.status = String::from(HELP_PAGE_HINTS);
+        self.status = Cow::Borrowed(HELP_PAGE_HINTS);
         self.status_until = None;
     }
 
@@ -836,24 +809,18 @@ impl App {
     fn default_status_text(&self) -> &'static str {
         match self.mode {
             ViewMode::List => LIST_HELP_HINTS,
-            ViewMode::Edit => {
-                if self.vim_enabled {
-                    VIM_EDIT_HELP_HINTS
-                } else {
-                    EDIT_HELP_HINTS
-                }
-            }
+            ViewMode::Edit => EDIT_HELP_HINTS,
             ViewMode::Help => HELP_PAGE_HINTS,
         }
     }
 
     fn set_default_status(&mut self) {
-        self.status = self.default_status_text().to_string();
+        self.status = Cow::Borrowed(self.default_status_text());
         self.status_until = None;
     }
 
     fn set_temporary_status(&mut self, message: &str) {
-        self.status = message.to_string();
+        self.status = Cow::Owned(message.to_string());
         self.status_until = Some(Instant::now() + Duration::from_secs(2));
     }
 
@@ -864,13 +831,27 @@ impl App {
             self.set_default_status();
         }
     }
+
+    /// Get cached help text, building it if necessary
+    fn get_help_text(&mut self) -> Text<'static> {
+        if let Some(ref text) = self.help_text_cache {
+            return text.clone();
+        }
+        let text = help_page_text(&self.keybinds);
+        self.help_text_cache = Some(text.clone());
+        text
+    }
+
+    /// Invalidate help text cache (call when keybinds change)
+    fn invalidate_help_cache(&mut self) {
+        self.help_text_cache = None;
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum EditFocus {
     Title,
     Body,
-    VimToggle,
     EncryptionToggle,
 }
 
@@ -1286,13 +1267,12 @@ fn run_app(
                     EditFocus::Title => {
                         let normalized = data.replace(['\r', '\n'], " ");
                         app.title_editor.insert_str(normalized);
-                        app.status = String::from("Pasted title text");
+                        app.status = Cow::Borrowed("Pasted title text");
                     }
                     EditFocus::Body => {
                         app.editor.insert_str(data);
-                        app.status = String::from("Pasted content");
+                        app.status = Cow::Borrowed("Pasted content");
                     }
-                    EditFocus::VimToggle => {}
                     EditFocus::EncryptionToggle => {}
                 },
                 _ => {}
@@ -1348,22 +1328,13 @@ fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     // Cycle focus with Tab
     if app.keybinds.matches_list(ListAction::CycleFocus, &key) {
         app.list_focus = match app.list_focus {
-            ListFocus::Notes => ListFocus::VimToggle,
-            ListFocus::VimToggle => ListFocus::EncryptionToggle,
+            ListFocus::Notes => ListFocus::EncryptionToggle,
             ListFocus::EncryptionToggle => ListFocus::Notes,
         };
         return false;
     }
 
     // Handle toggle buttons when focused
-    if app.list_focus == ListFocus::VimToggle {
-        if app.keybinds.matches_list(ListAction::ToggleButton, &key) {
-            app.toggle_vim_mode();
-        } else if app.keybinds.matches_list(ListAction::Quit, &key) {
-            return true;
-        }
-        return false;
-    }
     if app.list_focus == ListFocus::EncryptionToggle {
         if app.keybinds.matches_list(ListAction::ToggleButton, &key) {
             app.toggle_encryption_mode();
@@ -1371,26 +1342,6 @@ fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
             return true;
         }
         return false;
-    }
-
-    // Vim-style navigation when vim mode is enabled
-    if app.vim_enabled {
-        if key.code == KeyCode::Char('k') || key.code == KeyCode::Char('h') {
-            if app.selected > 0 {
-                app.selected -= 1;
-            }
-            return false;
-        }
-        if key.code == KeyCode::Char('j') || key.code == KeyCode::Char('l') {
-            if app.selected < app.notes.len() {
-                app.selected += 1;
-            }
-            return false;
-        }
-        if key.code == KeyCode::Char('d') {
-            app.begin_delete_selected();
-            return false;
-        }
     }
 
     // Standard keybind handling
@@ -1480,60 +1431,23 @@ fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> bool
     if app.keybinds.matches_edit(EditAction::CycleFocus, &key) {
         *focus = match *focus {
             EditFocus::Title => EditFocus::Body,
-            EditFocus::Body => EditFocus::VimToggle,
-            EditFocus::VimToggle => EditFocus::EncryptionToggle,
+            EditFocus::Body => EditFocus::EncryptionToggle,
             EditFocus::EncryptionToggle => EditFocus::Title,
         };
         return false;
     }
 
-    // Vim mode handling (unchanged - Vim keybinds stay pure)
-    if app.vim_enabled && *focus != EditFocus::VimToggle && *focus != EditFocus::EncryptionToggle {
-        let (output, did_transition) = match *focus {
-            EditFocus::Title => {
-                let out = app.vim_title.transition(key, &mut app.title_editor);
-                (out, true)
-            }
-            EditFocus::Body => {
-                let out = app.vim_body.transition(key, &mut app.editor);
-                (out, true)
-            }
-            _ => (VimOutput::Unhandled, false),
-        };
-
-        if did_transition {
-            match output {
-                VimOutput::Command(cmd) => {
-                    if cmd == ":q" || cmd == ":q!" || cmd == ":wq" || cmd == ":x" {
-                        app.autosave();
-                        app.back_to_list();
-                        *focus = EditFocus::Body;
-                    }
-                    return false;
-                }
-                VimOutput::Handled => return false,
-                VimOutput::Unhandled => {
-                    // fall through
-                }
-            }
-        }
-    }
-
-    // Back to list (non-vim mode only)
+    // Back to list
     if app.keybinds.matches_edit(EditAction::Back, &key) {
-        if !app.vim_enabled {
-            app.autosave();
-            app.back_to_list();
-            *focus = EditFocus::Body;
-        }
+        app.autosave();
+        app.back_to_list();
+        *focus = EditFocus::Body;
         return false;
     }
 
     match *focus {
         EditFocus::Title => {
-            if key.code == KeyCode::Enter
-                && (!app.vim_enabled || app.vim_title.mode != VimMode::Normal)
-            {
+            if key.code == KeyCode::Enter {
                 *focus = EditFocus::Body;
                 return false;
             }
@@ -1552,11 +1466,6 @@ fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> bool
                 return false;
             }
             app.editor.input(Input::from(key));
-        }
-        EditFocus::VimToggle => {
-            if app.keybinds.matches_edit(EditAction::ToggleButton, &key) {
-                app.toggle_vim_mode();
-            }
         }
         EditFocus::EncryptionToggle => {
             if app.keybinds.matches_edit(EditAction::ToggleButton, &key) {
@@ -1797,7 +1706,7 @@ fn get_title_text(title_editor: &TextArea<'static>) -> String {
         .to_string()
 }
 
-fn draw_ui(frame: &mut Frame, app: &App, focus: EditFocus) {
+fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     match app.mode {
         ViewMode::List => draw_list_view(frame, app),
         ViewMode::Edit => draw_edit_view(frame, app, focus),
@@ -1805,14 +1714,15 @@ fn draw_ui(frame: &mut Frame, app: &App, focus: EditFocus) {
     }
 }
 
-fn draw_help_view(frame: &mut Frame, app: &App) {
+fn draw_help_view(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(8), Constraint::Length(3)])
         .split(area);
 
-    let help = Paragraph::new(help_page_text(&app.keybinds))
+    let help_text = app.get_help_text();
+    let help = Paragraph::new(help_text)
         .block(Block::default().borders(Borders::ALL).title("Help"))
         .wrap(Wrap { trim: false })
         .scroll((app.help_scroll, 0));
@@ -1876,12 +1786,12 @@ fn help_page_text(keybinds: &Keybinds) -> Text<'static> {
         help_item_dyn("Confirm / cancel delete", Some("y/Enter / n/Esc")),
         help_item_dyn("Open selected note file location", Some(&list_location)),
         help_item_dyn("Change focus (notes list <-> buttons)", Some(&list_focus)),
-        help_item_dyn("Toggle Vim/Encryption from focused button", Some("Enter/Space")),
+        help_item_dyn("Toggle Encryption from focused button", Some("Enter/Space")),
         help_item_dyn("Open help", Some(&list_help)),
         help_item_dyn("Quit app", Some(&list_quit)),
         help_item_dyn("New note from template", Some(&list_template)),
         Line::from(""),
-        help_heading("Editor (Vim OFF)"),
+        help_heading("Editor"),
         help_item_dyn("Change focus (Title, Content, buttons)", Some(&edit_focus)),
         help_item_dyn("Return to notes (continually auto-saved)", Some(&edit_back)),
         help_item_dyn("Save and quit", Some(&edit_quit)),
@@ -1891,19 +1801,6 @@ fn help_page_text(keybinds: &Keybinds) -> Text<'static> {
             "Delete prev/next word",
             Some(&format!("{} / {}", edit_del_word, edit_del_next_word)),
         ),
-        Line::from(""),
-        help_heading("Editor (Vim ON)"),
-        help_item_dyn("Modes", Some("NORMAL, INSERT, VISUAL, OPERATOR, REPLACE")),
-        help_item_dyn("Movement", Some("h j k l, w e b, 0/^, $, %")),
-        help_item_dyn("Visual line", Some("V then j/k, apply y/d/c/x/p")),
-        help_item_dyn("Enter insert mode", Some("i I a A o O")),
-        help_item_dyn("Visual select", Some("v (char), Esc to leave")),
-        help_item_dyn("Operators", Some("d y c, plus dd yy cc and dw/cw/yw")),
-        help_item_dyn(
-            "Inner object ops",
-            Some("ciw/diw, ci(/di(, ci[/di[, ci{/di{, ci</di<"),
-        ),
-        help_item_dyn("Actions", Some("x D C r<char> p P")),
         Line::from(""),
         help_heading("Templates"),
         help_item_dyn("New note from template (in notes view)", Some(&list_template)),
@@ -1950,7 +1847,7 @@ fn help_item_dyn(text: &str, key: Option<&str>) -> Line<'static> {
     }
 }
 
-fn draw_list_view(frame: &mut Frame, app: &App) {
+fn draw_list_view(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -1973,59 +1870,69 @@ fn draw_list_view(frame: &mut Frame, app: &App) {
     .block(Block::default().borders(Borders::ALL).title("Notes"));
     frame.render_widget(header, chunks[0]);
 
-    let mut items = Vec::new();
-    let mut last_was_clin = None;
-    let mut note_index_to_visual_index = Vec::new();
+    // Rebuild cache if dirty
+    let mut items = Vec::with_capacity(app.notes.len() + 2);
+    let mut last_was_clin: Option<bool> = None;
+    let mut visual_i = 0;
+    
+    let mut note_to_visual_index = Vec::new();
 
     for (i, summary) in app.notes.iter().enumerate() {
         let is_clin = summary.id.ends_with(".clin");
-        
+
         if last_was_clin != Some(is_clin) {
             if is_clin {
                 items.push(ListItem::new(Line::from(vec![Span::styled(
                     "Encrypted (ENC)",
                     Style::default().add_modifier(Modifier::BOLD).fg(Color::Cyan),
                 )])));
+                visual_i += 1;
             } else {
                 if last_was_clin.is_some() {
                     items.push(ListItem::new(Line::from(vec![Span::raw("")])));
+                    visual_i += 1;
                 }
                 items.push(ListItem::new(Line::from(vec![Span::styled(
                     "Unencrypted (UENC)",
                     Style::default().add_modifier(Modifier::BOLD).fg(Color::Yellow),
                 )])));
+                visual_i += 1;
             }
             last_was_clin = Some(is_clin);
         }
-        
-        note_index_to_visual_index.push(items.len());
-        
+
+        note_to_visual_index.push(visual_i);
+        visual_i += 1;
+
         let when = format_relative_time(summary.updated_at);
         let mut text_style = Style::default().add_modifier(Modifier::BOLD);
-        
-        let mut spans = Vec::new();
-        
+        let mut spans = Vec::with_capacity(4);
+
         let is_last_in_group = match app.notes.get(i + 1) {
             Some(next) => next.id.ends_with(".clin") != is_clin,
             None => true,
         };
         let prefix = if is_last_in_group { " └── " } else { " ├── " };
         spans.push(Span::raw(prefix));
-        
+
         if !is_clin {
-            spans.push(Span::styled("[UENC] ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
+            spans.push(Span::styled(
+                "[UENC] ",
+                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+            ));
         } else if !app.encryption_enabled {
             text_style = text_style.fg(Color::Red);
             spans.push(Span::styled("[ENC] ", text_style));
         }
-        
-        spans.push(Span::styled(summary.title.clone(), text_style));
-        spans.push(Span::raw(format!("  ({when})")));
-        
+
+        spans.push(Span::styled(summary.title.as_str(), text_style));
+        spans.push(Span::raw(format!("  ({})", when)));
+
         items.push(ListItem::new(Line::from(spans)));
     }
-    
-    note_index_to_visual_index.push(items.len());
+
+    // Add "Create new note" item
+    note_to_visual_index.push(items.len());
     items.push(ListItem::new(Line::from(vec![Span::styled(
         " + Create a new note",
         Style::default().fg(Color::Green),
@@ -2041,26 +1948,13 @@ fn draw_list_view(frame: &mut Frame, app: &App) {
         )
         .highlight_symbol("  > ");
     let mut list_state = ListState::default();
-    if let Some(&visual_i) = note_index_to_visual_index.get(app.selected) {
+    if let Some(&visual_i) = note_to_visual_index.get(app.selected) {
         list_state.select(Some(visual_i));
     } else {
-        list_state.select(Some(note_index_to_visual_index.last().copied().unwrap_or(0)));
+        list_state.select(Some(note_to_visual_index.last().copied().unwrap_or(0)));
     }
     frame.render_stateful_widget(list, chunks[1], &mut list_state);
 
-    let vim_button_label = if app.vim_enabled {
-        "[ Vim: ON ]"
-    } else {
-        "[ Vim: OFF ]"
-    };
-    let vim_button_style = if app.list_focus == ListFocus::VimToggle {
-        Style::default().fg(Color::Black).bg(Color::Yellow).add_modifier(Modifier::BOLD)
-    } else if app.vim_enabled {
-        Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
-    } else {
-        Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
-    };
-    
     let enc_button_label = if app.encryption_enabled {
         "[ Enc: ON ]"
     } else {
@@ -2075,11 +1969,9 @@ fn draw_list_view(frame: &mut Frame, app: &App) {
     };
 
     let footer_line = Line::from(vec![
-        Span::styled(vim_button_label, vim_button_style),
-        Span::raw("   "),
         Span::styled(enc_button_label, enc_button_style),
         Span::raw("   "),
-        Span::raw(app.status.as_str()),
+        Span::raw(app.status.as_ref()),
     ]);
 
     let footer =
@@ -2134,7 +2026,7 @@ fn draw_template_popup(frame: &mut Frame, popup: &TemplatePopup, area: Rect) {
     frame.render_stateful_widget(list, popup_area, &mut state);
 }
 
-fn draw_edit_view(frame: &mut Frame, app: &App, focus: EditFocus) {
+fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     let area = frame.area();
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -2145,19 +2037,19 @@ fn draw_edit_view(frame: &mut Frame, app: &App, focus: EditFocus) {
         ])
         .split(area);
 
+    // Set block directly on app's editor to avoid clone
     let title_border = if focus == EditFocus::Title {
         Style::default().fg(Color::Yellow)
     } else {
         Style::default()
     };
-    let mut title_editor = app.title_editor.clone();
-    title_editor.set_block(
+    app.title_editor.set_block(
         Block::default()
             .borders(Borders::ALL)
             .border_style(title_border)
             .title("Title"),
     );
-    frame.render_widget(&title_editor, chunks[0]);
+    frame.render_widget(&app.title_editor, chunks[0]);
 
     if get_title_text(&app.title_editor).is_empty() {
         let title_inner = chunks[0].inner(Margin {
@@ -2171,47 +2063,22 @@ fn draw_edit_view(frame: &mut Frame, app: &App, focus: EditFocus) {
         frame.render_widget(placeholder, title_inner);
     }
 
-    let mut editor = app.editor.clone();
+    // Set block directly on app's editor to avoid clone
     let body_border = if focus == EditFocus::Body {
         Style::default().fg(Color::Yellow)
     } else {
         Style::default()
     };
-    editor.set_block(
+    app.editor.set_block(
         Block::default()
             .borders(Borders::ALL)
             .border_style(body_border)
             .title("Content"),
     );
-    frame.render_widget(&editor, chunks[1]);
+    frame.render_widget(&app.editor, chunks[1]);
 
-    let vim_button_label = if app.vim_enabled {
-        let active_mode = match focus {
-            EditFocus::Title => app.vim_title.mode.name(),
-            EditFocus::Body => app.vim_body.mode.name(),
-            EditFocus::VimToggle => app.vim_body.mode.name(),
-            EditFocus::EncryptionToggle => app.vim_body.mode.name(),
-        };
-        format!("[ Vim: {} ]", active_mode)
-    } else {
-        "[ Vim: OFF ]".to_string()
-    };
-    let vim_button_style = if focus == EditFocus::VimToggle {
-        Style::default()
-            .fg(Color::Black)
-            .bg(Color::Yellow)
-            .add_modifier(Modifier::BOLD)
-    } else if app.vim_enabled {
-        Style::default()
-            .fg(Color::Green)
-            .add_modifier(Modifier::BOLD)
-    } else {
-        Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
-    };
     let status_line = Line::from(vec![
-        Span::styled(vim_button_label, vim_button_style),
-        Span::raw("   "),
-        Span::raw(app.status.as_str()),
+        Span::raw(app.status.as_ref()),
     ]);
 
     let status =
@@ -2221,7 +2088,7 @@ fn draw_edit_view(frame: &mut Frame, app: &App, focus: EditFocus) {
     if app.status.starts_with("Save failed") || app.status.starts_with("Could not open") {
         let popup = centered_rect(75, 20, area);
         frame.render_widget(Clear, popup);
-        let text = Paragraph::new(app.status.as_str())
+        let text = Paragraph::new(app.status.as_ref())
             .block(Block::default().borders(Borders::ALL).title("Error"))
             .wrap(Wrap { trim: true });
         frame.render_widget(text, popup);
@@ -2286,23 +2153,23 @@ fn now_unix_secs() -> u64 {
         .as_secs()
 }
 
-fn format_relative_time(unix_ts: u64) -> String {
+fn format_relative_time(unix_ts: u64) -> Cow<'static, str> {
     let now = now_unix_secs();
     let diff = now.saturating_sub(unix_ts);
 
     if diff < 60 {
-        return "just now".to_string();
+        return Cow::Borrowed("just now");
     }
     if diff < 3600 {
-        return format!("{}m ago", diff / 60);
+        return Cow::Owned(format!("{}m ago", diff / 60));
     }
     if diff < 86_400 {
-        return format!("{}h ago", diff / 3600);
+        return Cow::Owned(format!("{}h ago", diff / 3600));
     }
 
     let secs = UNIX_EPOCH + Duration::from_secs(unix_ts);
     let dt: chrono::DateTime<chrono::Local> = secs.into();
-    dt.format("%Y-%m-%d %H:%M").to_string()
+    Cow::Owned(dt.format("%Y-%m-%d %H:%M").to_string())
 }
 
 fn open_in_file_manager(path: &Path) -> Result<()> {

@@ -39,3 +39,10 @@ serde_json = "1.0"
 toml = "0.8"
 tui-textarea = { version = "0.7", features = ["crossterm"] }
 uuid = { version = "1.8", features = ["v4"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+strip = true
+opt-level = "s"
