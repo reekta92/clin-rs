@@ -1,13 +1,6 @@
 use crate::vim::VimOutput;
-mod config;
 mod helpers;
-mod keybinds;
-mod templates;
 mod vim;
-
-use crate::config::BootstrapConfig;
-use crate::keybinds::{EditAction, HelpAction, Keybinds, ListAction};
-use crate::templates::{Template, TemplateManager, TemplateSummary};
 
 use std::fs;
 use std::io::{self, Stdout};
@@ -23,12 +16,13 @@ use chacha20poly1305::aead::{Aead, KeyInit};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
 use crossterm::event::{
     self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
-    Event, KeyCode, KeyEvent, KeyEventKind, MouseButton, MouseEvent, MouseEventKind,
+    Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
 use crossterm::execute;
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
+use directories::ProjectDirs;
 use rand::RngCore;
 use ratatui::layout::{Constraint, Direction, Layout, Margin, Rect};
 use ratatui::style::{Color, Modifier, Style};
@@ -127,22 +121,16 @@ struct NoteSummary {
 struct Storage {
     data_dir: PathBuf,
     notes_dir: PathBuf,
-    templates_dir: PathBuf,
     key: [u8; 32],
 }
 
 impl Storage {
     fn init() -> Result<Self> {
-        // Load bootstrap config to get storage path
-        let bootstrap = BootstrapConfig::load()
-            .context("failed to load bootstrap config")?;
-        let data_dir = bootstrap.effective_storage_path()
-            .context("failed to determine storage path")?;
-        
+        let proj_dirs = ProjectDirs::from("com", "clin", "clin")
+            .context("could not determine local data directory")?;
+        let data_dir = proj_dirs.data_local_dir().to_path_buf();
         let notes_dir = data_dir.join("notes");
-        let templates_dir = data_dir.join("templates");
         fs::create_dir_all(&notes_dir).context("failed to create notes directory")?;
-        fs::create_dir_all(&templates_dir).context("failed to create templates directory")?;
 
         let key_path = data_dir.join("key.bin");
         let key = if key_path.exists() {
@@ -164,29 +152,12 @@ impl Storage {
         Ok(Self {
             data_dir,
             notes_dir,
-            templates_dir,
             key,
         })
     }
 
     fn settings_path(&self) -> PathBuf {
         self.data_dir.join("settings.json")
-    }
-
-    fn keybinds_path(&self) -> PathBuf {
-        self.data_dir.join("keybinds.toml")
-    }
-
-    fn load_keybinds(&self) -> Keybinds {
-        Keybinds::load(&self.keybinds_path()).unwrap_or_default()
-    }
-
-    fn save_keybinds(&self, keybinds: &Keybinds) -> Result<()> {
-        keybinds.save(&self.keybinds_path())
-    }
-
-    fn template_manager(&self) -> TemplateManager {
-        TemplateManager::new(self.templates_dir.clone())
     }
 
     fn load_settings(&self) -> AppSettings {
@@ -398,15 +369,8 @@ struct ContextMenu {
     selected: usize,
 }
 
-/// Template selection popup state
-struct TemplatePopup {
-    templates: Vec<TemplateSummary>,
-    selected: usize,
-}
-
 struct App {
     storage: Storage,
-    keybinds: Keybinds,
     notes: Vec<NoteSummary>,
     selected: usize,
     list_focus: ListFocus,
@@ -423,7 +387,6 @@ struct App {
     pending_delete_note_id: Option<String>,
     help_scroll: u16,
     context_menu: Option<ContextMenu>,
-    template_popup: Option<TemplatePopup>,
 }
 
 enum CliCommand {
@@ -432,37 +395,22 @@ enum CliCommand {
     },
     NewAndOpen {
         title: Option<String>,
-        template: Option<String>,
     },
     QuickNote {
         content: String,
         title: Option<String>,
     },
+    ShowNotesLocation,
     ListNoteTitles,
     Help,
-    // Storage path commands
-    ShowStoragePath,
-    SetStoragePath {
-        path: PathBuf,
-    },
-    ResetStoragePath,
-    // Keybind commands
-    ShowKeybinds,
-    ExportKeybinds,
-    ResetKeybinds,
-    // Template commands
-    ListTemplates,
-    CreateExampleTemplates,
 }
 
 impl App {
     fn new(storage: Storage) -> Result<Self> {
         let settings = storage.load_settings();
-        let keybinds = storage.load_keybinds();
 
         let mut app = Self {
             storage,
-            keybinds,
             notes: Vec::new(),
             selected: 0,
             list_focus: ListFocus::Notes,
@@ -479,10 +427,8 @@ impl App {
             pending_delete_note_id: None,
             help_scroll: 0,
             context_menu: None,
-            template_popup: None,
         };
         app.context_menu = None;
-        app.template_popup = None;
         app.refresh_notes()?;
         Ok(app)
     }
@@ -571,16 +517,6 @@ impl App {
     }
 
     fn start_new_note(&mut self) {
-        // Check if default template exists and use it
-        let template_manager = self.storage.template_manager();
-        if let Some(default_template) = template_manager.load_default() {
-            self.start_note_from_template(&default_template);
-        } else {
-            self.start_blank_note();
-        }
-    }
-
-    fn start_blank_note(&mut self) {
         self.mode = ViewMode::Edit;
         self.editing_id = Some(self.storage.new_note_id());
         self.title_editor = make_title_editor("");
@@ -591,60 +527,6 @@ impl App {
             .set_cursor_line_style(Style::default().bg(Color::Rgb(32, 36, 44)));
         self.reset_vim_states_for_edit();
         self.set_default_status();
-    }
-
-    fn start_note_from_template(&mut self, template: &Template) {
-        let rendered = template.render();
-        
-        self.mode = ViewMode::Edit;
-        self.editing_id = Some(self.storage.new_note_id());
-        
-        let title = rendered.title.as_deref().unwrap_or("");
-        self.title_editor = make_title_editor(title);
-        self.editor = text_area_from_content(&rendered.content);
-        self.editor
-            .set_cursor_style(Style::default().fg(Color::Black).bg(Color::Cyan));
-        self.editor
-            .set_cursor_line_style(Style::default().bg(Color::Rgb(32, 36, 44)));
-        self.reset_vim_states_for_edit();
-        self.set_default_status();
-    }
-
-    fn open_template_popup(&mut self) {
-        let template_manager = self.storage.template_manager();
-        match template_manager.list() {
-            Ok(templates) => {
-                if templates.is_empty() {
-                    self.set_temporary_status("No templates found. Create templates in the templates directory.");
-                } else {
-                    self.template_popup = Some(TemplatePopup {
-                        templates,
-                        selected: 0,
-                    });
-                }
-            }
-            Err(_) => {
-                self.set_temporary_status("Failed to load templates");
-            }
-        }
-    }
-
-    fn close_template_popup(&mut self) {
-        self.template_popup = None;
-    }
-
-    fn select_template(&mut self) {
-        if let Some(popup) = self.template_popup.take() {
-            if let Some(summary) = popup.templates.get(popup.selected) {
-                let template_manager = self.storage.template_manager();
-                if let Ok(template) = template_manager.load(&summary.filename) {
-                    self.start_note_from_template(&template);
-                    return;
-                }
-            }
-        }
-        // Fallback to blank note if something went wrong
-        self.start_blank_note();
     }
 
     fn autosave(&mut self) {
@@ -882,6 +764,11 @@ fn main() -> Result<()> {
             print_cli_help();
             Ok(())
         }
+        CliCommand::ShowNotesLocation => {
+            let storage = Storage::init()?;
+            println!("{}", storage.notes_dir.display());
+            Ok(())
+        }
         CliCommand::ListNoteTitles => {
             let storage = Storage::init()?;
             let mut app = App::new(storage)?;
@@ -909,39 +796,17 @@ fn main() -> Result<()> {
             println!("Saved quick note \"{}\" as {}.clin", final_title, saved_id);
             Ok(())
         }
-        CliCommand::NewAndOpen { title, template } => {
+        CliCommand::NewAndOpen { title } => {
             let storage = Storage::init()?;
             let settings = storage.load_settings();
-            
-            // Get content from template if specified
-            let (final_title, content) = if let Some(template_name) = template {
-                let template_manager = storage.template_manager();
-                match template_manager.load(&template_name) {
-                    Ok(tmpl) => {
-                        let rendered = tmpl.render();
-                        let t = title
-                            .or(rendered.title)
-                            .map(|t| t.trim().to_string())
-                            .filter(|t| !t.is_empty())
-                            .unwrap_or_else(|| String::from("Untitled note"));
-                        (t, rendered.content)
-                    }
-                    Err(_) => {
-                        eprintln!("Template '{}' not found", template_name);
-                        process::exit(1);
-                    }
-                }
-            } else {
-                let t = title
-                    .map(|t| t.trim().to_string())
-                    .filter(|t| !t.is_empty())
-                    .unwrap_or_else(|| String::from("Untitled note"));
-                (t, String::new())
-            };
+            let final_title = title
+                .map(|t| t.trim().to_string())
+                .filter(|t| !t.is_empty())
+                .unwrap_or_else(|| String::from("Untitled note"));
 
             let note = Note {
                 title: final_title.clone(),
-                content,
+                content: String::new(),
                 updated_at: now_unix_secs(),
             };
             
@@ -973,131 +838,6 @@ fn main() -> Result<()> {
 
             run_tui_session(&mut app)
         }
-        // Storage path commands
-        CliCommand::ShowStoragePath => {
-            let bootstrap = BootstrapConfig::load()?;
-            let effective = bootstrap.effective_storage_path()?;
-            println!("Storage path: {}", effective.display());
-            if bootstrap.has_custom_storage_path() {
-                println!("(custom path)");
-            } else {
-                println!("(default path)");
-            }
-            Ok(())
-        }
-        CliCommand::SetStoragePath { path } => {
-            let mut bootstrap = BootstrapConfig::load()?;
-            let old_path = bootstrap.effective_storage_path()?;
-            
-            // Validate path
-            if !path.is_absolute() {
-                anyhow::bail!("Storage path must be absolute: {}", path.display());
-            }
-            
-            // Create directory if it doesn't exist
-            fs::create_dir_all(&path)
-                .with_context(|| format!("failed to create directory: {}", path.display()))?;
-            
-            bootstrap.set_storage_path(path.clone());
-            bootstrap.save()?;
-            
-            println!("Storage path set to: {}", path.display());
-            
-            // Offer to migrate
-            if old_path.exists() && old_path != path {
-                println!("\nMigrate existing data from {}?", old_path.display());
-                println!("Run: clin --migrate-storage");
-            }
-            
-            Ok(())
-        }
-        CliCommand::ResetStoragePath => {
-            let mut bootstrap = BootstrapConfig::load()?;
-            bootstrap.reset_storage_path();
-            bootstrap.save()?;
-            let default = BootstrapConfig::default_storage_path()?;
-            println!("Storage path reset to default: {}", default.display());
-            Ok(())
-        }
-        // Keybind commands
-        CliCommand::ShowKeybinds => {
-            let storage = Storage::init()?;
-            let keybinds = storage.load_keybinds();
-            println!("Current keybinds:\n");
-            println!("[List View]");
-            println!("  Move up:        {}", keybinds.list_keys_display(ListAction::MoveUp));
-            println!("  Move down:      {}", keybinds.list_keys_display(ListAction::MoveDown));
-            println!("  Open:           {}", keybinds.list_keys_display(ListAction::Open));
-            println!("  Delete:         {}", keybinds.list_keys_display(ListAction::Delete));
-            println!("  Quit:           {}", keybinds.list_keys_display(ListAction::Quit));
-            println!("  Help:           {}", keybinds.list_keys_display(ListAction::Help));
-            println!("  Open location:  {}", keybinds.list_keys_display(ListAction::OpenLocation));
-            println!("  Cycle focus:    {}", keybinds.list_keys_display(ListAction::CycleFocus));
-            println!("  New from template: {}", keybinds.list_keys_display(ListAction::NewFromTemplate));
-            println!("\n[Edit View]");
-            println!("  Quit:           {}", keybinds.edit_keys_display(EditAction::Quit));
-            println!("  Back:           {}", keybinds.edit_keys_display(EditAction::Back));
-            println!("  Cycle focus:    {}", keybinds.edit_keys_display(EditAction::CycleFocus));
-            println!("  Select all:     {}", keybinds.edit_keys_display(EditAction::SelectAll));
-            println!("  Copy:           {}", keybinds.edit_keys_display(EditAction::Copy));
-            println!("  Cut:            {}", keybinds.edit_keys_display(EditAction::Cut));
-            println!("  Paste:          {}", keybinds.edit_keys_display(EditAction::Paste));
-            println!("  Undo:           {}", keybinds.edit_keys_display(EditAction::Undo));
-            println!("  Redo:           {}", keybinds.edit_keys_display(EditAction::Redo));
-            println!("\n[Help View]");
-            println!("  Close:          {}", keybinds.help_keys_display(HelpAction::Close));
-            println!("  Scroll up:      {}", keybinds.help_keys_display(HelpAction::ScrollUp));
-            println!("  Scroll down:    {}", keybinds.help_keys_display(HelpAction::ScrollDown));
-            println!("\nKeybinds file: {}", storage.keybinds_path().display());
-            Ok(())
-        }
-        CliCommand::ExportKeybinds => {
-            let storage = Storage::init()?;
-            let keybinds = storage.load_keybinds();
-            let toml = keybinds.to_toml();
-            let content = toml::to_string_pretty(&toml)?;
-            println!("{}", content);
-            Ok(())
-        }
-        CliCommand::ResetKeybinds => {
-            let storage = Storage::init()?;
-            let keybinds = Keybinds::default();
-            storage.save_keybinds(&keybinds)?;
-            println!("Keybinds reset to defaults");
-            println!("Keybinds file: {}", storage.keybinds_path().display());
-            Ok(())
-        }
-        // Template commands
-        CliCommand::ListTemplates => {
-            let storage = Storage::init()?;
-            let template_manager = storage.template_manager();
-            let templates = template_manager.list()?;
-            
-            if templates.is_empty() {
-                println!("No templates found.");
-                println!("Templates directory: {}", storage.templates_dir.display());
-                println!("\nRun 'clin --create-example-templates' to create example templates.");
-            } else {
-                println!("Available templates:\n");
-                for (i, t) in templates.iter().enumerate() {
-                    println!("  {}. {} ({})", i + 1, t.name, t.filename);
-                }
-                println!("\nTemplates directory: {}", storage.templates_dir.display());
-            }
-            Ok(())
-        }
-        CliCommand::CreateExampleTemplates => {
-            let storage = Storage::init()?;
-            let template_manager = storage.template_manager();
-            template_manager.create_examples()?;
-            println!("Example templates created in: {}", storage.templates_dir.display());
-            
-            let templates = template_manager.list()?;
-            for t in templates {
-                println!("  - {} ({})", t.name, t.filename);
-            }
-            Ok(())
-        }
     }
 }
 
@@ -1110,28 +850,15 @@ fn parse_cli_command() -> Result<CliCommand> {
 
     match args[0].as_str() {
         "-h" | "--help" => Ok(CliCommand::Help),
+        "-f" => Ok(CliCommand::ShowNotesLocation),
         "-l" => Ok(CliCommand::ListNoteTitles),
         "-n" => {
-            // Check for --template flag
-            let mut title = None;
-            let mut template = None;
-            let mut i = 1;
-            while i < args.len() {
-                if args[i] == "--template" || args[i] == "-t" {
-                    if i + 1 < args.len() {
-                        template = Some(args[i + 1].clone());
-                        i += 2;
-                    } else {
-                        anyhow::bail!("--template requires a template name");
-                    }
-                } else if title.is_none() {
-                    title = Some(args[i..].join(" "));
-                    break;
-                } else {
-                    i += 1;
-                }
-            }
-            Ok(CliCommand::NewAndOpen { title, template })
+            let title = if args.len() > 1 {
+                Some(args[1..].join(" "))
+            } else {
+                None
+            };
+            Ok(CliCommand::NewAndOpen { title })
         }
         "-q" => {
             if args.len() < 2 {
@@ -1153,56 +880,21 @@ fn parse_cli_command() -> Result<CliCommand> {
                 edit_title: Some(args[1..].join(" ")),
             })
         }
-        // Storage path commands
-        "--storage-path" => Ok(CliCommand::ShowStoragePath),
-        "--set-storage-path" => {
-            if args.len() < 2 {
-                anyhow::bail!("--set-storage-path requires a path");
-            }
-            Ok(CliCommand::SetStoragePath {
-                path: PathBuf::from(&args[1]),
-            })
-        }
-        "--reset-storage-path" => Ok(CliCommand::ResetStoragePath),
-        // Keybind commands
-        "--keybinds" => Ok(CliCommand::ShowKeybinds),
-        "--export-keybinds" => Ok(CliCommand::ExportKeybinds),
-        "--reset-keybinds" => Ok(CliCommand::ResetKeybinds),
-        // Template commands
-        "--list-templates" => Ok(CliCommand::ListTemplates),
-        "--create-example-templates" => Ok(CliCommand::CreateExampleTemplates),
         unknown => anyhow::bail!("unknown argument: {unknown}. Use clin -h for help."),
     }
 }
 
 fn print_cli_help() {
     println!(
-        "clin - Encrypted terminal note-taking app
-
-USAGE:
-  clin                        Launch interactive app
-  clin -n [TITLE]             Create a new note and open it
-  clin -n --template <NAME> [TITLE]
-                              Create a note from template
-  clin -q <CONTENT> [TITLE]   Create a quick note and exit
-  clin -e <TITLE>             Open a specific note by title
-  clin -l                     List note titles
-  clin -h                     Show this help
-
-CONFIGURATION:
-  --storage-path              Show current storage path
-  --set-storage-path <PATH>   Set custom storage path
-  --reset-storage-path        Reset to default storage path
-
-KEYBINDS:
-  --keybinds                  Show current keybindings
-  --export-keybinds           Export keybinds as TOML
-  --reset-keybinds            Reset keybinds to defaults
-
-TEMPLATES:
-  --list-templates            List available templates
-  --create-example-templates  Create example templates
-"
+        "clin arguments:\n\
+  clin                Launch interactive app\n\
+  clin -q <CONTENT> [TITLE]\n\
+                     Create a quick note and exit\n\
+    clin -n [TITLE]    Create a new note and open it in editor\n\
+  clin -f            Print notes directory location\n\
+    clin -l            List note titles\n\
+  clin -e <TITLE>    Open a specific note title directly in editor\n\
+  clin -h            Show this help\n"
     );
 }
 
@@ -1304,49 +996,16 @@ fn run_app(
 }
 
 fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
-    // Handle template popup if open
-    if let Some(mut popup) = app.template_popup.take() {
-        match key.code {
-            KeyCode::Up => {
-                popup.selected = popup.selected.saturating_sub(1);
-                app.template_popup = Some(popup);
-            }
-            KeyCode::Down => {
-                if popup.selected + 1 < popup.templates.len() {
-                    popup.selected += 1;
-                }
-                app.template_popup = Some(popup);
-            }
-            KeyCode::Enter => {
-                app.template_popup = Some(popup);
-                app.select_template();
-            }
-            KeyCode::Esc => {
-                app.close_template_popup();
-            }
-            // Allow creating blank note with 'b'
-            KeyCode::Char('b') => {
-                app.start_blank_note();
-            }
-            _ => {
-                app.template_popup = Some(popup);
-            }
-        }
-        return false;
-    }
-
-    // Handle delete confirmation
     if app.pending_delete_note_id.is_some() {
-        if app.keybinds.matches_list(ListAction::ConfirmDelete, &key) {
-            app.confirm_delete_selected();
-        } else if app.keybinds.matches_list(ListAction::CancelDelete, &key) {
-            app.cancel_delete_prompt();
+        match key.code {
+            KeyCode::Char('y') | KeyCode::Enter => app.confirm_delete_selected(),
+            KeyCode::Char('n') | KeyCode::Esc => app.cancel_delete_prompt(),
+            _ => {}
         }
         return false;
     }
 
-    // Cycle focus with Tab
-    if app.keybinds.matches_list(ListAction::CycleFocus, &key) {
+    if key.code == KeyCode::Tab {
         app.list_focus = match app.list_focus {
             ListFocus::Notes => ListFocus::VimToggle,
             ListFocus::VimToggle => ListFocus::EncryptionToggle,
@@ -1355,96 +1014,96 @@ fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
-    // Handle toggle buttons when focused
     if app.list_focus == ListFocus::VimToggle {
-        if app.keybinds.matches_list(ListAction::ToggleButton, &key) {
-            app.toggle_vim_mode();
-        } else if app.keybinds.matches_list(ListAction::Quit, &key) {
-            return true;
+        match key.code {
+            KeyCode::Enter | KeyCode::Char(' ') => {
+                app.toggle_vim_mode();
+            }
+            KeyCode::Char('q') => return true,
+            _ => {}
         }
         return false;
     }
     if app.list_focus == ListFocus::EncryptionToggle {
-        if app.keybinds.matches_list(ListAction::ToggleButton, &key) {
-            app.toggle_encryption_mode();
-        } else if app.keybinds.matches_list(ListAction::Quit, &key) {
-            return true;
+        match key.code {
+            KeyCode::Enter | KeyCode::Char(' ') => {
+                app.toggle_encryption_mode();
+            }
+            KeyCode::Char('q') => return true,
+            _ => {}
+        }
+        return false;
+    }
+    if app.list_focus == ListFocus::EncryptionToggle {
+        match key.code {
+            KeyCode::Enter | KeyCode::Char(' ') => {
+                app.toggle_encryption_mode();
+            }
+            KeyCode::Char('q') => return true,
+            _ => {}
         }
         return false;
     }
 
-    // Vim-style navigation when vim mode is enabled
     if app.vim_enabled {
-        if key.code == KeyCode::Char('k') || key.code == KeyCode::Char('h') {
-            if app.selected > 0 {
-                app.selected -= 1;
+        match key.code {
+            KeyCode::Char('k') | KeyCode::Char('h') => {
+                if app.selected > 0 {
+                    app.selected -= 1;
+                }
+                return false;
             }
-            return false;
+            KeyCode::Char('j') | KeyCode::Char('l') => {
+                if app.selected < app.notes.len() {
+                    app.selected += 1;
+                }
+                return false;
+            }
+            KeyCode::Char('d') => {
+                app.begin_delete_selected();
+                return false;
+            }
+            _ => {}
         }
-        if key.code == KeyCode::Char('j') || key.code == KeyCode::Char('l') {
+    }
+
+    match key.code {
+        KeyCode::Char('q') => return true,
+        KeyCode::Char('?') | KeyCode::F(1) => app.open_help_page(),
+        KeyCode::Char('f') => app.open_selected_note_location(),
+        KeyCode::Char('d') | KeyCode::Delete => app.begin_delete_selected(),
+        KeyCode::Down => {
             if app.selected < app.notes.len() {
                 app.selected += 1;
             }
-            return false;
         }
-        if key.code == KeyCode::Char('d') {
-            app.begin_delete_selected();
-            return false;
+        KeyCode::Up => {
+            if app.selected > 0 {
+                app.selected -= 1;
+            }
         }
+        KeyCode::Enter => app.open_selected(),
+        _ => {}
     }
-
-    // Standard keybind handling
-    if app.keybinds.matches_list(ListAction::Quit, &key) {
-        return true;
-    }
-    if app.keybinds.matches_list(ListAction::Help, &key) {
-        app.open_help_page();
-        return false;
-    }
-    if app.keybinds.matches_list(ListAction::OpenLocation, &key) {
-        app.open_selected_note_location();
-        return false;
-    }
-    if app.keybinds.matches_list(ListAction::Delete, &key) {
-        app.begin_delete_selected();
-        return false;
-    }
-    if app.keybinds.matches_list(ListAction::MoveDown, &key) {
-        if app.selected < app.notes.len() {
-            app.selected += 1;
-        }
-        return false;
-    }
-    if app.keybinds.matches_list(ListAction::MoveUp, &key) {
-        if app.selected > 0 {
-            app.selected -= 1;
-        }
-        return false;
-    }
-    if app.keybinds.matches_list(ListAction::Open, &key) {
-        app.open_selected();
-        return false;
-    }
-    if app.keybinds.matches_list(ListAction::NewFromTemplate, &key) {
-        app.open_template_popup();
-        return false;
-    }
-
     false
 }
 
 fn handle_help_keys(app: &mut App, key: KeyEvent) {
-    if app.keybinds.matches_help(HelpAction::Close, &key) {
-        app.close_help_page();
-    } else if app.keybinds.matches_help(HelpAction::ScrollDown, &key) {
-        app.help_scroll = app.help_scroll.saturating_add(1);
-    } else if app.keybinds.matches_help(HelpAction::ScrollUp, &key) {
-        app.help_scroll = app.help_scroll.saturating_sub(1);
+    match key.code {
+        KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('?') | KeyCode::F(1) => {
+            app.close_help_page();
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+            app.help_scroll = app.help_scroll.saturating_add(1);
+        }
+        KeyCode::Up | KeyCode::Char('k') => {
+            app.help_scroll = app.help_scroll.saturating_sub(1);
+        }
+        _ => {}
     }
 }
 
 fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> bool {
-    // Handle context menu if open
     if let Some(mut menu) = app.context_menu.take() {
         match key.code {
             KeyCode::Up => {
@@ -1470,14 +1129,12 @@ fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> bool
         return false;
     }
 
-    // Quit with save
-    if app.keybinds.matches_edit(EditAction::Quit, &key) {
+    if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('q') {
         app.autosave();
         return true;
     }
 
-    // Cycle focus
-    if app.keybinds.matches_edit(EditAction::CycleFocus, &key) {
+    if key.code == KeyCode::Tab {
         *focus = match *focus {
             EditFocus::Title => EditFocus::Body,
             EditFocus::Body => EditFocus::VimToggle,
@@ -1487,7 +1144,6 @@ fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> bool
         return false;
     }
 
-    // Vim mode handling (unchanged - Vim keybinds stay pure)
     if app.vim_enabled && *focus != EditFocus::VimToggle && *focus != EditFocus::EncryptionToggle {
         let (output, did_transition) = match *focus {
             EditFocus::Title => {
@@ -1519,8 +1175,7 @@ fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> bool
         }
     }
 
-    // Back to list (non-vim mode only)
-    if app.keybinds.matches_edit(EditAction::Back, &key) {
+    if key.code == KeyCode::Esc {
         if !app.vim_enabled {
             app.autosave();
             app.back_to_list();
@@ -1538,7 +1193,7 @@ fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> bool
                 return false;
             }
 
-            if handle_os_shortcuts(&app.keybinds, &mut app.title_editor, key) {
+            if handle_os_shortcuts(&mut app.title_editor, key) {
                 return false;
             }
 
@@ -1548,18 +1203,18 @@ fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> bool
             }
         }
         EditFocus::Body => {
-            if handle_os_shortcuts(&app.keybinds, &mut app.editor, key) {
+            if handle_os_shortcuts(&mut app.editor, key) {
                 return false;
             }
             app.editor.input(Input::from(key));
         }
         EditFocus::VimToggle => {
-            if app.keybinds.matches_edit(EditAction::ToggleButton, &key) {
+            if key.code == KeyCode::Enter || key.code == KeyCode::Char(' ') {
                 app.toggle_vim_mode();
             }
         }
         EditFocus::EncryptionToggle => {
-            if app.keybinds.matches_edit(EditAction::ToggleButton, &key) {
+            if key.code == KeyCode::Enter || key.code == KeyCode::Char(' ') {
                 app.toggle_encryption_mode();
             }
         }
@@ -1732,47 +1387,76 @@ fn contains_cell(rect: Rect, col: u16, row: u16) -> bool {
         && row < rect.y + rect.height
 }
 
-fn handle_os_shortcuts(keybinds: &Keybinds, textarea: &mut TextArea<'static>, key: KeyEvent) -> bool {
-    // Use keybinds for customizable shortcuts
-    if keybinds.matches_edit(EditAction::SelectAll, &key) {
-        textarea.select_all();
-        return true;
+fn handle_os_shortcuts(textarea: &mut TextArea<'static>, key: KeyEvent) -> bool {
+    let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+    let shift = key.modifiers.contains(KeyModifiers::SHIFT);
+
+    if ctrl {
+        match key.code {
+            KeyCode::Char('a') => {
+                textarea.select_all();
+                return true;
+            }
+            KeyCode::Char('c') => {
+                textarea.copy();
+                return true;
+            }
+            KeyCode::Char('x') => {
+                let _ = textarea.cut();
+                return true;
+            }
+            KeyCode::Char('v') => {
+                let _ = textarea.paste();
+                return true;
+            }
+            KeyCode::Char('z') if shift => {
+                let _ = textarea.redo();
+                return true;
+            }
+            KeyCode::Char('z') => {
+                let _ = textarea.undo();
+                return true;
+            }
+            KeyCode::Char('y') => {
+                let _ = textarea.redo();
+                return true;
+            }
+            KeyCode::Backspace => {
+                let _ = textarea.delete_word();
+                return true;
+            }
+            KeyCode::Delete => {
+                let _ = textarea.delete_next_word();
+                return true;
+            }
+            KeyCode::Home => {
+                textarea.move_cursor(CursorMove::Top);
+                return true;
+            }
+            KeyCode::End => {
+                textarea.move_cursor(CursorMove::Bottom);
+                return true;
+            }
+            KeyCode::Insert => {
+                textarea.copy();
+                return true;
+            }
+            _ => {}
+        }
     }
-    if keybinds.matches_edit(EditAction::Copy, &key) {
-        textarea.copy();
-        return true;
-    }
-    if keybinds.matches_edit(EditAction::Cut, &key) {
-        let _ = textarea.cut();
-        return true;
-    }
-    if keybinds.matches_edit(EditAction::Paste, &key) {
-        let _ = textarea.paste();
-        return true;
-    }
-    if keybinds.matches_edit(EditAction::Undo, &key) {
-        let _ = textarea.undo();
-        return true;
-    }
-    if keybinds.matches_edit(EditAction::Redo, &key) {
-        let _ = textarea.redo();
-        return true;
-    }
-    if keybinds.matches_edit(EditAction::DeleteWord, &key) {
-        let _ = textarea.delete_word();
-        return true;
-    }
-    if keybinds.matches_edit(EditAction::DeleteNextWord, &key) {
-        let _ = textarea.delete_next_word();
-        return true;
-    }
-    if keybinds.matches_edit(EditAction::MoveToTop, &key) {
-        textarea.move_cursor(CursorMove::Top);
-        return true;
-    }
-    if keybinds.matches_edit(EditAction::MoveToBottom, &key) {
-        textarea.move_cursor(CursorMove::Bottom);
-        return true;
+
+    if shift {
+        match key.code {
+            KeyCode::Insert => {
+                let _ = textarea.paste();
+                return true;
+            }
+            KeyCode::Delete => {
+                let _ = textarea.cut();
+                return true;
+            }
+            _ => {}
+        }
     }
 
     false
@@ -1812,7 +1496,7 @@ fn draw_help_view(frame: &mut Frame, app: &App) {
         .constraints([Constraint::Min(8), Constraint::Length(3)])
         .split(area);
 
-    let help = Paragraph::new(help_page_text(&app.keybinds))
+    let help = Paragraph::new(help_page_text())
         .block(Block::default().borders(Borders::ALL).title("Help"))
         .wrap(Wrap { trim: false })
         .scroll((app.help_scroll, 0));
@@ -1823,32 +1507,7 @@ fn draw_help_view(frame: &mut Frame, app: &App) {
     frame.render_widget(footer, chunks[1]);
 }
 
-fn help_page_text(keybinds: &Keybinds) -> Text<'static> {
-    // Get keybind display strings
-    let list_move = format!("{}/{}", keybinds.list_keys_display(ListAction::MoveUp), keybinds.list_keys_display(ListAction::MoveDown));
-    let list_open = keybinds.list_keys_display(ListAction::Open);
-    let list_delete = keybinds.list_keys_display(ListAction::Delete);
-    let list_location = keybinds.list_keys_display(ListAction::OpenLocation);
-    let list_focus = keybinds.list_keys_display(ListAction::CycleFocus);
-    let list_help = keybinds.list_keys_display(ListAction::Help);
-    let list_quit = keybinds.list_keys_display(ListAction::Quit);
-    let list_template = keybinds.list_keys_display(ListAction::NewFromTemplate);
-    
-    let edit_quit = keybinds.edit_keys_display(EditAction::Quit);
-    let edit_back = keybinds.edit_keys_display(EditAction::Back);
-    let edit_focus = keybinds.edit_keys_display(EditAction::CycleFocus);
-    let edit_copy = keybinds.edit_keys_display(EditAction::Copy);
-    let edit_cut = keybinds.edit_keys_display(EditAction::Cut);
-    let edit_paste = keybinds.edit_keys_display(EditAction::Paste);
-    let edit_select_all = keybinds.edit_keys_display(EditAction::SelectAll);
-    let edit_undo = keybinds.edit_keys_display(EditAction::Undo);
-    let edit_redo = keybinds.edit_keys_display(EditAction::Redo);
-    let edit_del_word = keybinds.edit_keys_display(EditAction::DeleteWord);
-    let edit_del_next_word = keybinds.edit_keys_display(EditAction::DeleteNextWord);
-    
-    let help_close = keybinds.help_keys_display(HelpAction::Close);
-    let help_scroll = format!("{}/{}", keybinds.help_keys_display(HelpAction::ScrollUp), keybinds.help_keys_display(HelpAction::ScrollDown));
-    
+fn help_page_text() -> Text<'static> {
     Text::from(vec![
         Line::from(vec![
             Span::styled(
@@ -1861,63 +1520,57 @@ fn help_page_text(keybinds: &Keybinds) -> Text<'static> {
         ]),
         Line::from(""),
         help_heading("Core Features"),
-        help_item_dyn("Encrypted local note files (.clin)", None),
-        help_item_dyn(
+        help_item("Encrypted local note files (.clin)", None),
+        help_item(
             "In-terminal note list, full text editor, and continual auto-save",
             None,
         ),
-        help_item_dyn("Open note file location from notes view", Some(&list_location)),
-        help_item_dyn("Delete notes with confirmation prompt", Some(&list_delete)),
+        help_item("Open note file location from notes view", Some("f")),
+        help_item("Delete notes with confirmation prompt", Some("d/Delete")),
         Line::from(""),
         help_heading("Notes View"),
-        help_item_dyn("Move selection", Some(&list_move)),
-        help_item_dyn("Open selected note or create new", Some(&list_open)),
-        help_item_dyn("Request delete", Some(&list_delete)),
-        help_item_dyn("Confirm / cancel delete", Some("y/Enter / n/Esc")),
-        help_item_dyn("Open selected note file location", Some(&list_location)),
-        help_item_dyn("Change focus (notes list <-> buttons)", Some(&list_focus)),
-        help_item_dyn("Toggle Vim/Encryption from focused button", Some("Enter/Space")),
-        help_item_dyn("Open help", Some(&list_help)),
-        help_item_dyn("Quit app", Some(&list_quit)),
-        help_item_dyn("New note from template", Some(&list_template)),
+        help_item("Move selection", Some("Up/Down")),
+        help_item("Open selected note or create new", Some("Enter")),
+        help_item("Request delete", Some("d/Delete")),
+        help_item("Confirm / cancel delete", Some("y or Enter / n or Esc")),
+        help_item("Open selected note file location", Some("f")),
+        help_item("Change focus (notes list <-> Vim button)", Some("Tab")),
+        help_item("Toggle Vim from focused button", Some("Enter/Space")),
+        help_item("Open help", Some("? or F1")),
+        help_item("Quit app", Some("q")),
         Line::from(""),
         help_heading("Editor (Vim OFF)"),
-        help_item_dyn("Change focus (Title, Content, buttons)", Some(&edit_focus)),
-        help_item_dyn("Return to notes (continually auto-saved)", Some(&edit_back)),
-        help_item_dyn("Save and quit", Some(&edit_quit)),
-        help_item_dyn("Copy / Cut / Paste", Some(&format!("{} / {} / {}", edit_copy, edit_cut, edit_paste))),
-        help_item_dyn("Select all / Undo / Redo", Some(&format!("{} / {} / {}", edit_select_all, edit_undo, edit_redo))),
-        help_item_dyn(
+        help_item("Change focus (Title, Content, Vim button)", Some("Tab")),
+        help_item("Return to notes (continually auto-saved)", Some("Esc")),
+        help_item("Save and quit", Some("Ctrl+Q")),
+        help_item("Copy / Cut / Paste", Some("Ctrl+C / Ctrl+X / Ctrl+V")),
+        help_item(
+            "Alt clipboard keys",
+            Some("Ctrl+Insert / Shift+Insert / Shift+Delete"),
+        ),
+        help_item("Select all / Undo / Redo", Some("Ctrl+A / Ctrl+Z / Ctrl+Y")),
+        help_item("Redo alternate", Some("Ctrl+Shift+Z")),
+        help_item(
             "Delete prev/next word",
-            Some(&format!("{} / {}", edit_del_word, edit_del_next_word)),
+            Some("Ctrl+Backspace / Ctrl+Delete"),
         ),
         Line::from(""),
         help_heading("Editor (Vim ON)"),
-        help_item_dyn("Modes", Some("NORMAL, INSERT, VISUAL, OPERATOR, REPLACE")),
-        help_item_dyn("Movement", Some("h j k l, w e b, 0/^, $, %")),
-        help_item_dyn("Visual line", Some("V then j/k, apply y/d/c/x/p")),
-        help_item_dyn("Enter insert mode", Some("i I a A o O")),
-        help_item_dyn("Visual select", Some("v (char), Esc to leave")),
-        help_item_dyn("Operators", Some("d y c, plus dd yy cc and dw/cw/yw")),
-        help_item_dyn(
+        help_item("Modes", Some("NORMAL, INSERT, VISUAL, OPERATOR, REPLACE")),
+        help_item("Movement", Some("h j k l, w e b, 0/^, $, %")),
+        help_item("Visual line", Some("V then j/k, apply y/d/c/x/p")),
+        help_item("Enter insert mode", Some("i I a A o O")),
+        help_item("Visual select", Some("v (char), Esc to leave")),
+        help_item("Operators", Some("d y c, plus dd yy cc and dw/cw/yw")),
+        help_item(
             "Inner object ops",
             Some("ciw/diw, ci(/di(, ci[/di[, ci{/di{, ci</di<"),
         ),
-        help_item_dyn("Actions", Some("x D C r<char> p P")),
-        Line::from(""),
-        help_heading("Templates"),
-        help_item_dyn("New note from template (in notes view)", Some(&list_template)),
-        help_item_dyn("Create blank note in popup", Some("b")),
-        help_item_dyn("Cancel template selection", Some("Esc")),
+        help_item("Actions", Some("x D C r<char> p P")),
         Line::from(""),
         help_heading("Help Page"),
-        help_item_dyn("Close help", Some(&help_close)),
-        help_item_dyn("Scroll", Some(&help_scroll)),
-        Line::from(""),
-        help_heading("Configuration"),
-        help_item_dyn("Keybinds file: <storage>/keybinds.toml", None),
-        help_item_dyn("Templates dir: <storage>/templates/", None),
-        help_item_dyn("Run 'clin --help' for CLI commands", None),
+        help_item("Close help", Some("Esc / q / ? / F1")),
+        help_item("Scroll", Some("Up/Down or j/k")),
     ])
 }
 
@@ -1930,22 +1583,22 @@ fn help_heading(title: &'static str) -> Line<'static> {
     )])
 }
 
-fn help_item_dyn(text: &str, key: Option<&str>) -> Line<'static> {
+fn help_item(text: &'static str, key: Option<&'static str>) -> Line<'static> {
     match key {
         Some(key) => Line::from(vec![
             Span::styled("  - ", Style::default().fg(Color::DarkGray)),
             Span::styled(
-                key.to_string(),
+                key,
                 Style::default()
                     .fg(Color::Green)
                     .add_modifier(Modifier::BOLD),
             ),
             Span::raw("  "),
-            Span::raw(text.to_string()),
+            Span::raw(text),
         ]),
         None => Line::from(vec![
             Span::styled("  - ", Style::default().fg(Color::DarkGray)),
-            Span::raw(text.to_string()),
+            Span::raw(text),
         ]),
     }
 }
@@ -2085,53 +1738,6 @@ fn draw_list_view(frame: &mut Frame, app: &App) {
     let footer =
         Paragraph::new(footer_line).block(Block::default().borders(Borders::ALL).title("Help"));
     frame.render_widget(footer, chunks[2]);
-
-    // Draw template popup if open
-    if let Some(popup) = &app.template_popup {
-        draw_template_popup(frame, popup, area);
-    }
-}
-
-fn draw_template_popup(frame: &mut Frame, popup: &TemplatePopup, area: Rect) {
-    // Create popup area
-    let popup_area = centered_rect(60, 60, area);
-    
-    // Clear the area
-    frame.render_widget(Clear, popup_area);
-    
-    // Build list items
-    let mut items: Vec<ListItem> = popup.templates.iter().map(|t| {
-        ListItem::new(Line::from(vec![
-            Span::styled(&t.name, Style::default().add_modifier(Modifier::BOLD)),
-            Span::styled(format!("  ({})", t.filename), Style::default().fg(Color::DarkGray)),
-        ]))
-    }).collect();
-    
-    // Add blank note option at the end
-    items.push(ListItem::new(Line::from(vec![
-        Span::styled("Blank note", Style::default().fg(Color::Green)),
-        Span::styled("  (no template)", Style::default().fg(Color::DarkGray)),
-    ])));
-    
-    let list = List::new(items)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title("Select Template (Enter to select, b for blank, Esc to cancel)")
-                .border_style(Style::default().fg(Color::Yellow))
-        )
-        .highlight_style(
-            Style::default()
-                .fg(Color::Black)
-                .bg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        )
-        .highlight_symbol("> ");
-    
-    let mut state = ListState::default();
-    state.select(Some(popup.selected));
-    
-    frame.render_stateful_widget(list, popup_area, &mut state);
 }
 
 fn draw_edit_view(frame: &mut Frame, app: &App, focus: EditFocus) {
