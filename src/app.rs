@@ -16,8 +16,8 @@ use crate::keybinds::Keybinds;
 use crate::storage::{Note, NoteSummary, Storage};
 use crate::templates::{Template, TemplateSummary};
 use anyhow::Result;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::collections::{HashSet, HashMap};
 use tui_textarea::TextArea;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -68,9 +68,23 @@ pub struct FolderPicker {
 
 #[derive(Debug, Clone)]
 pub enum VisualItem {
-    Folder { path: String, name: String, depth: usize, is_expanded: bool, note_count: usize },
-    Note { id: String, summary_idx: usize, depth: usize, is_clin: bool },
-    CreateNew { path: String, depth: usize },
+    Folder {
+        path: String,
+        name: String,
+        depth: usize,
+        is_expanded: bool,
+        note_count: usize,
+    },
+    Note {
+        id: String,
+        summary_idx: usize,
+        depth: usize,
+        is_clin: bool,
+    },
+    CreateNew {
+        path: String,
+        depth: usize,
+    },
 }
 
 pub struct App {
@@ -88,6 +102,7 @@ pub struct App {
     pub status: Cow<'static, str>,
     pub status_until: Option<Instant>,
     pub pending_delete_note_id: Option<String>,
+    pub pending_encrypt_note_id: Option<String>,
     pub help_scroll: u16,
     pub context_menu: Option<ContextMenu>,
     pub template_popup: Option<TemplatePopup>,
@@ -151,6 +166,7 @@ impl App {
             status: Cow::Borrowed(LIST_HELP_HINTS),
             status_until: None,
             pending_delete_note_id: None,
+            pending_encrypt_note_id: None,
             help_scroll: 0,
             context_menu: None,
             template_popup: None,
@@ -207,7 +223,10 @@ impl App {
         // We'll construct a simple tree.
         let mut by_folder: HashMap<String, Vec<(usize, &NoteSummary)>> = HashMap::new();
         for (i, note) in self.notes.iter().enumerate() {
-            by_folder.entry(note.folder.clone()).or_default().push((i, note));
+            by_folder
+                .entry(note.folder.clone())
+                .or_default()
+                .push((i, note));
         }
 
         // Always show root folder "Vault"
@@ -216,7 +235,9 @@ impl App {
             name: "Vault".to_string(),
             depth: 0,
             is_expanded: self.folder_expanded.contains(""),
-            note_count: by_folder.get("").map_or(0, |v: &Vec<(usize, &NoteSummary)>| v.len()),
+            note_count: by_folder
+                .get("")
+                .map_or(0, |v: &Vec<(usize, &NoteSummary)>| v.len()),
         });
 
         if self.folder_expanded.contains("") {
@@ -230,11 +251,15 @@ impl App {
                     });
                 }
             }
-            visual.push(VisualItem::CreateNew { path: "".to_string(), depth: 1 });
+            visual.push(VisualItem::CreateNew {
+                path: "".to_string(),
+                depth: 1,
+            });
         }
 
         // Get all other folders sorted
-        let mut subfolders: Vec<String> = by_folder.keys()
+        let mut subfolders: Vec<String> = by_folder
+            .keys()
             .filter(|k: &&String| !k.is_empty())
             .cloned()
             .collect();
@@ -247,10 +272,10 @@ impl App {
                 let parts: Vec<&str> = folder.split('/').collect();
                 let depth = parts.len();
                 let name = parts.last().unwrap_or(&"").to_string();
-                
+
                 // Only show if parent is expanded
                 let parent_path = if parts.len() > 1 {
-                    parts[..parts.len()-1].join("/")
+                    parts[..parts.len() - 1].join("/")
                 } else {
                     "".to_string()
                 };
@@ -269,7 +294,7 @@ impl App {
                         current_parent = "".to_string();
                     }
                 }
-                
+
                 // Finally check root
                 if !self.folder_expanded.contains("") {
                     is_visible = false;
@@ -282,7 +307,9 @@ impl App {
                         name,
                         depth,
                         is_expanded,
-                        note_count: by_folder.get(&folder).map_or(0, |v: &Vec<(usize, &NoteSummary)>| v.len()),
+                        note_count: by_folder
+                            .get(&folder)
+                            .map_or(0, |v: &Vec<(usize, &NoteSummary)>| v.len()),
                     });
 
                     if is_expanded {
@@ -296,7 +323,10 @@ impl App {
                                 });
                             }
                         }
-                        visual.push(VisualItem::CreateNew { path: folder.clone(), depth: depth + 1 });
+                        visual.push(VisualItem::CreateNew {
+                            path: folder.clone(),
+                            depth: depth + 1,
+                        });
                     }
                 }
             }
@@ -309,12 +339,12 @@ impl App {
         if self.visual_list.is_empty() {
             return;
         }
-        
+
         // Clamp index
         if self.visual_index >= self.visual_list.len() {
             self.visual_index = self.visual_list.len().saturating_sub(1);
         }
-        
+
         match &self.visual_list[self.visual_index] {
             VisualItem::CreateNew { path, .. } => {
                 self.start_new_note(path.clone());
@@ -330,26 +360,56 @@ impl App {
                 self.refresh_visual_list();
             }
             VisualItem::Note { summary_idx, .. } => {
-                if let Some(summary) = self.notes.get(*summary_idx) {
+                let note_id = if let Some(summary) = self.notes.get(*summary_idx) {
                     let is_clin = summary.id.ends_with(".clin");
                     if !self.encryption_enabled && is_clin {
-                        self.status =
-                            Cow::Borrowed("Cannot open encrypted notes while encryption is disabled.");
+                        self.status = Cow::Borrowed(
+                            "Cannot open encrypted notes while encryption is disabled.",
+                        );
                         return;
                     }
 
-                    if let Ok(note) = self.storage.load_note(&summary.id) {
-                        self.editing_id = Some(summary.id.clone());
-                        self.title_editor = make_title_editor(&note.title);
-                        self.editor = text_area_from_content(&note.content);
-                        self.mode = ViewMode::Edit;
-                        self.status = Cow::Borrowed(EDIT_HELP_HINTS);
-                    } else {
-                        self.status = Cow::Borrowed("Failed to load note!");
+                    if self.encryption_enabled && !is_clin {
+                        self.pending_encrypt_note_id = Some(summary.id.clone());
+                        self.status_until = None;
+                        self.status = Cow::Borrowed(
+                            "WARNING: This action will encrypt the file! y confirm, n cancel",
+                        );
+                        return;
                     }
+                    Some(summary.id.clone())
+                } else {
+                    None
+                };
+
+                if let Some(id) = note_id {
+                    self.load_and_open_note(&id);
                 }
             }
         }
+    }
+
+    pub fn load_and_open_note(&mut self, note_id: &str) {
+        if let Ok(note) = self.storage.load_note(note_id) {
+            self.editing_id = Some(note_id.to_string());
+            self.title_editor = make_title_editor(&note.title);
+            self.editor = text_area_from_content(&note.content);
+            self.mode = ViewMode::Edit;
+            self.status = Cow::Borrowed(EDIT_HELP_HINTS);
+        } else {
+            self.status = Cow::Borrowed("Failed to load note!");
+        }
+    }
+
+    pub fn confirm_encrypt_warning(&mut self) {
+        if let Some(id) = self.pending_encrypt_note_id.take() {
+            self.load_and_open_note(&id);
+        }
+    }
+
+    pub fn cancel_encrypt_warning(&mut self) {
+        self.pending_encrypt_note_id = None;
+        self.set_default_status();
     }
 
     pub fn collapse_selected_folder(&mut self) {
@@ -362,7 +422,9 @@ impl App {
         }
 
         match &self.visual_list[self.visual_index] {
-            VisualItem::Folder { path, is_expanded, .. } => {
+            VisualItem::Folder {
+                path, is_expanded, ..
+            } => {
                 if *is_expanded {
                     self.folder_expanded.remove(path);
                     self.refresh_visual_list();
@@ -374,7 +436,7 @@ impl App {
                         } else {
                             "" // root
                         };
-                        
+
                         if let Some(idx) = self.visual_list.iter().position(|v| {
                             if let VisualItem::Folder { path: p, .. } = v {
                                 p == parent_path
@@ -394,7 +456,7 @@ impl App {
                     VisualItem::CreateNew { path, .. } => path,
                     _ => unreachable!(),
                 };
-                
+
                 if let Some(idx) = self.visual_list.iter().position(|v| {
                     if let VisualItem::Folder { path: p, .. } = v {
                         p == item_path
@@ -418,7 +480,9 @@ impl App {
         }
 
         match &self.visual_list[self.visual_index] {
-            VisualItem::Folder { path, is_expanded, .. } => {
+            VisualItem::Folder {
+                path, is_expanded, ..
+            } => {
                 if !is_expanded {
                     self.folder_expanded.insert(path.clone());
                     self.refresh_visual_list();
@@ -434,7 +498,6 @@ impl App {
             }
         }
     }
-
 
     pub fn open_note_by_title(&mut self, title: &str) -> bool {
         let query = title.trim();
@@ -496,15 +559,15 @@ impl App {
             new_id = format!("{}/{}", folder, new_id);
         }
         self.editing_id = Some(new_id);
-        
+
         self.title_editor = make_title_editor(rendered.title.as_deref().unwrap_or(""));
         self.editor = text_area_from_content(&rendered.content);
-        
+
         self.editor
             .set_cursor_style(Style::default().fg(Color::Black).bg(Color::Cyan));
         self.editor
             .set_cursor_line_style(Style::default().bg(Color::Rgb(32, 36, 44)));
-            
+
         self.set_default_status();
     }
 
@@ -583,6 +646,7 @@ impl App {
         self.title_editor = make_title_editor("");
         self.editor = TextArea::default();
         self.pending_delete_note_id = None;
+        self.pending_encrypt_note_id = None;
         let _ = self.refresh_notes();
         self.set_default_status();
     }
@@ -640,7 +704,8 @@ impl App {
                 if let Some(note) = self.notes.get(*summary_idx) {
                     self.pending_delete_note_id = Some(note.id.clone());
                     self.status_until = None;
-                    self.status = Cow::Owned(format!("Delete \"{}\"? y confirm, n cancel", note.title));
+                    self.status =
+                        Cow::Owned(format!("Delete \"{}\"? y confirm, n cancel", note.title));
                 }
             }
             VisualItem::Folder { path, .. } => {
@@ -714,14 +779,15 @@ impl App {
                     .title("Rename Folder - Esc to cancel, Enter to save"),
             );
             self.folder_popup = Some(FolderPopup {
-                mode: FolderPopupMode::Rename { old_path: path.clone() },
+                mode: FolderPopupMode::Rename {
+                    old_path: path.clone(),
+                },
                 input,
             });
         } else {
             self.set_temporary_status("Select a folder to rename");
         }
     }
-
 
     pub fn confirm_folder_popup(&mut self) {
         if let Some(popup) = self.folder_popup.take() {
@@ -754,7 +820,8 @@ impl App {
     }
 
     pub fn begin_move_note(&mut self) {
-        if let Some(VisualItem::Note { summary_idx, .. }) = self.visual_list.get(self.visual_index) {
+        if let Some(VisualItem::Note { summary_idx, .. }) = self.visual_list.get(self.visual_index)
+        {
             let note = &self.notes[*summary_idx];
             if let Ok(folders) = self.storage.list_folders() {
                 let mut all_folders = vec!["".to_string()]; // Root folder
@@ -774,21 +841,23 @@ impl App {
 
     pub fn confirm_move_note(&mut self) {
         if let Some(picker) = self.folder_picker.take()
-            && let Some(target_folder) = picker.folders.get(picker.selected) {
-                if let Err(e) = self.storage.move_note(&picker.note_id, target_folder) {
-                    self.set_temporary_status(&format!("Failed to move note: {e}"));
-                } else {
-                    let _ = self.refresh_notes();
-                    self.set_temporary_status("Note moved");
-                }
+            && let Some(target_folder) = picker.folders.get(picker.selected)
+        {
+            if let Err(e) = self.storage.move_note(&picker.note_id, target_folder) {
+                self.set_temporary_status(&format!("Failed to move note: {e}"));
+            } else {
+                let _ = self.refresh_notes();
+                self.set_temporary_status("Note moved");
             }
+        }
     }
 
     pub fn begin_manage_tags(&mut self) {
-        if let Some(VisualItem::Note { summary_idx, .. }) = self.visual_list.get(self.visual_index) {
+        if let Some(VisualItem::Note { summary_idx, .. }) = self.visual_list.get(self.visual_index)
+        {
             let note = &self.notes[*summary_idx];
             let current_tags = note.tags.clone();
-            
+
             let mut input = TextArea::default();
             input.insert_str(current_tags.join(", "));
             input.set_block(
@@ -796,7 +865,7 @@ impl App {
                     .borders(ratatui::widgets::Borders::ALL)
                     .title("Manage Tags (comma separated) - Esc to cancel, Enter to save"),
             );
-            
+
             self.tag_popup = Some(TagPopup {
                 note_id: note.id.clone(),
                 input,
@@ -814,7 +883,7 @@ impl App {
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty())
                 .collect();
-            
+
             if let Ok(mut note) = self.storage.load_note(&popup.note_id) {
                 note.tags = tags.clone();
                 let is_clin = popup.note_id.ends_with(".clin");
@@ -861,13 +930,13 @@ impl App {
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty())
                 .collect();
-            
+
             self.filter_tags = tags;
             let _ = self.refresh_notes();
             self.visual_index = 0;
         }
     }
-    
+
     pub fn cancel_filter_tags(&mut self) {
         self.filter_popup = None;
     }

@@ -184,6 +184,8 @@ pub enum ListAction {
     CycleFocus,
     ConfirmDelete,
     CancelDelete,
+    ConfirmEncrypt,
+    CancelEncrypt,
     ToggleButton,
     NewFromTemplate,
     CreateFolder,
@@ -291,6 +293,20 @@ impl Default for Keybinds {
         );
         list.insert(
             ListAction::CancelDelete,
+            vec![
+                KeyCombo::simple(KeyCode::Char('n')),
+                KeyCombo::simple(KeyCode::Esc),
+            ],
+        );
+        list.insert(
+            ListAction::ConfirmEncrypt,
+            vec![
+                KeyCombo::simple(KeyCode::Char('y')),
+                KeyCombo::simple(KeyCode::Enter),
+            ],
+        );
+        list.insert(
+            ListAction::CancelEncrypt,
             vec![
                 KeyCombo::simple(KeyCode::Char('n')),
                 KeyCombo::simple(KeyCode::Esc),
@@ -591,6 +607,8 @@ fn parse_list_action(s: &str) -> Option<ListAction> {
         "cycle_focus" => Some(ListAction::CycleFocus),
         "confirm_delete" => Some(ListAction::ConfirmDelete),
         "cancel_delete" => Some(ListAction::CancelDelete),
+        "confirm_encrypt" => Some(ListAction::ConfirmEncrypt),
+        "cancel_encrypt" => Some(ListAction::CancelEncrypt),
         "toggle_button" => Some(ListAction::ToggleButton),
         "new_from_template" => Some(ListAction::NewFromTemplate),
         "create_folder" => Some(ListAction::CreateFolder),
@@ -645,6 +663,8 @@ fn list_action_to_string(action: ListAction) -> &'static str {
         ListAction::CycleFocus => "cycle_focus",
         ListAction::ConfirmDelete => "confirm_delete",
         ListAction::CancelDelete => "cancel_delete",
+        ListAction::ConfirmEncrypt => "confirm_encrypt",
+        ListAction::CancelEncrypt => "cancel_encrypt",
         ListAction::ToggleButton => "toggle_button",
         ListAction::NewFromTemplate => "new_from_template",
         ListAction::CreateFolder => "create_folder",

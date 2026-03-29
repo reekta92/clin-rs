@@ -51,21 +51,21 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     // Handle folder picker if open
     if let Some(mut picker) = app.folder_picker.take() {
         match key.code {
-            KeyCode::Up => {
+            KeyCode::Up | KeyCode::Char('k') => {
                 picker.selected = picker.selected.saturating_sub(1);
                 app.folder_picker = Some(picker);
             }
-            KeyCode::Down => {
+            KeyCode::Down | KeyCode::Char('j') => {
                 if picker.selected + 1 < picker.folders.len() {
                     picker.selected += 1;
                 }
                 app.folder_picker = Some(picker);
             }
-            KeyCode::Enter => {
+            KeyCode::Enter | KeyCode::Char('l') => {
                 app.folder_picker = Some(picker);
                 app.confirm_move_note();
             }
-            KeyCode::Esc => {
+            KeyCode::Esc | KeyCode::Char('h') => {
                 app.folder_picker = None;
             }
             _ => {
@@ -112,6 +112,16 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
             app.confirm_delete_selected();
         } else if app.keybinds.matches_list(ListAction::CancelDelete, &key) {
             app.cancel_delete_prompt();
+        }
+        return false;
+    }
+
+    // Handle encrypt warning confirmation
+    if app.pending_encrypt_note_id.is_some() {
+        if app.keybinds.matches_list(ListAction::ConfirmEncrypt, &key) {
+            app.confirm_encrypt_warning();
+        } else if app.keybinds.matches_list(ListAction::CancelEncrypt, &key) {
+            app.cancel_encrypt_warning();
         }
         return false;
     }
@@ -297,6 +307,10 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
 }
 
 pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: Rect) {
+    if app.pending_delete_note_id.is_some() || app.pending_encrypt_note_id.is_some() {
+        return;
+    }
+
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([

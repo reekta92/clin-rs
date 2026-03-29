@@ -82,112 +82,115 @@ pub fn help_page_text(keybinds: &Keybinds) -> Text<'static> {
         keybinds.help_keys_display(HelpAction::ScrollDown)
     );
 
-    Text::from(vec![
-        Line::from(vec![
-            Span::styled(
-                "clin",
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(" Help", Style::default().add_modifier(Modifier::BOLD)),
-        ]),
-        Line::from(""),
-        help_heading("Core Features"),
-        help_item_dyn("Encrypted local note files (.clin)", None),
-        help_item_dyn(
-            "In-terminal note list, full text editor, and continual auto-save",
-            None,
+    let mut lines = Vec::new();
+    lines.push(Line::from(vec![
+        Span::styled("󰠮 clin", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+        Span::styled(" Help", Style::default().add_modifier(Modifier::BOLD)),
+    ]));
+    lines.push(Line::from(""));
+
+    lines.push(help_heading("󰋗", "Core Features"));
+    lines.extend(help_item_dyn("Encrypted local note files (.clin)", None));
+    lines.extend(help_item_dyn("In-terminal note list, full text editor, and continual auto-save", None));
+    lines.extend(help_item_dyn("Open note file location from notes view", Some(&list_location)));
+    lines.extend(help_item_dyn("Delete selected note or folder", Some(&list_delete)));
+    lines.push(Line::from(""));
+
+    lines.push(help_heading("󰮋", "Notes View"));
+    lines.extend(help_item_dyn("Move selection", Some(&list_move)));
+    lines.extend(help_item_dyn("Expand/Collapse folder", Some(&list_expand_collapse)));
+    lines.extend(help_item_dyn("Open selected folder, note, or create new", Some(&list_open)));
+    lines.extend(help_item_dyn("Create new folder", Some(&list_create_folder)));
+    lines.extend(help_item_dyn("Rename folder", Some(&list_rename_folder)));
+    lines.extend(help_item_dyn("Move note to folder", Some(&list_move_note)));
+    lines.extend(help_item_dyn("Manage note tags", Some(&list_manage_tags)));
+    lines.extend(help_item_dyn("Filter tags", Some(&list_filter_tags)));
+    lines.extend(help_item_dyn("Delete note or folder", Some(&list_delete)));
+    lines.extend(help_item_dyn("Confirm / cancel delete", Some("y/Enter / n/Esc")));
+    lines.extend(help_item_dyn("Open selected note file location", Some(&list_location)));
+    lines.extend(help_item_dyn("Change focus (notes list <-> buttons)", Some(&list_focus)));
+    lines.extend(help_item_dyn("Toggle Encryption from focused button", Some("Enter/Space")));
+    lines.extend(help_item_dyn("Open help", Some(&list_help)));
+    lines.extend(help_item_dyn("Quit app", Some(&list_quit)));
+    lines.extend(help_item_dyn("New note from template", Some(&list_template)));
+    lines.push(Line::from(""));
+
+    lines.push(help_heading("󰷈", "Editor"));
+    lines.extend(help_item_dyn("Change focus (Title, Content, buttons)", Some(&edit_focus)));
+    lines.extend(help_item_dyn("Return to notes (continually auto-saved)", Some(&edit_back)));
+    lines.extend(help_item_dyn("Save and quit", Some(&edit_quit)));
+    lines.extend(help_item_dyn("Copy / Cut / Paste", Some(&format!("{edit_copy} / {edit_cut} / {edit_paste}"))));
+    lines.extend(help_item_dyn("Select all / Undo / Redo", Some(&format!("{edit_select_all} / {edit_undo} / {edit_redo}"))));
+    lines.extend(help_item_dyn("Delete prev/next word", Some(&format!("{edit_del_word} / {edit_del_next_word}"))));
+    lines.push(Line::from(""));
+
+    lines.push(help_heading("󰑃", "Templates"));
+    lines.extend(help_item_dyn("New note from template (in notes view)", Some(&list_template)));
+    lines.extend(help_item_dyn("Create blank note in popup", Some("b")));
+    lines.extend(help_item_dyn("Cancel template selection", Some("Esc")));
+    lines.push(Line::from(""));
+
+    lines.push(help_heading("󰞋", "Help Page"));
+    lines.extend(help_item_dyn("Close help", Some(&help_close)));
+    lines.extend(help_item_dyn("Scroll", Some(&help_scroll)));
+    lines.push(Line::from(""));
+
+    lines.push(help_heading("󰒓", "Configuration"));
+    lines.extend(help_item_dyn("Keybinds file: <storage>/keybinds.toml", None));
+    lines.extend(help_item_dyn("Templates dir: <storage>/templates/", None));
+    lines.extend(help_item_dyn("Run 'clin --help' for CLI commands", None));
+
+    Text::from(lines)
+}
+
+pub fn help_heading(icon: &'static str, title: &'static str) -> Line<'static> {
+    Line::from(vec![
+        Span::styled(
+            format!("{} ", icon),
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
         ),
-        help_item_dyn(
-            "Open note file location from notes view",
-            Some(&list_location),
+        Span::styled(
+            title,
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
         ),
-        help_item_dyn("Delete selected note or folder", Some(&list_delete)),
-        Line::from(""),
-        help_heading("Notes View"),
-        help_item_dyn("Move selection", Some(&list_move)),
-        help_item_dyn("Expand/Collapse folder", Some(&list_expand_collapse)),
-        help_item_dyn(
-            "Open selected folder, note, or create new",
-            Some(&list_open),
-        ),
-        help_item_dyn("Create new folder", Some(&list_create_folder)),
-        help_item_dyn("Rename folder", Some(&list_rename_folder)),
-        help_item_dyn("Move note to folder", Some(&list_move_note)),
-        help_item_dyn("Manage note tags", Some(&list_manage_tags)),
-        help_item_dyn("Filter tags", Some(&list_filter_tags)),
-        help_item_dyn("Delete note or folder", Some(&list_delete)),
-        help_item_dyn("Confirm / cancel delete", Some("y/Enter / n/Esc")),
-        help_item_dyn("Open selected note file location", Some(&list_location)),
-        help_item_dyn("Change focus (notes list <-> buttons)", Some(&list_focus)),
-        help_item_dyn("Toggle Encryption from focused button", Some("Enter/Space")),
-        help_item_dyn("Open help", Some(&list_help)),
-        help_item_dyn("Quit app", Some(&list_quit)),
-        help_item_dyn("New note from template", Some(&list_template)),
-        Line::from(""),
-        help_heading("Editor"),
-        help_item_dyn("Change focus (Title, Content, buttons)", Some(&edit_focus)),
-        help_item_dyn("Return to notes (continually auto-saved)", Some(&edit_back)),
-        help_item_dyn("Save and quit", Some(&edit_quit)),
-        help_item_dyn(
-            "Copy / Cut / Paste",
-            Some(&format!("{edit_copy} / {edit_cut} / {edit_paste}")),
-        ),
-        help_item_dyn(
-            "Select all / Undo / Redo",
-            Some(&format!("{edit_select_all} / {edit_undo} / {edit_redo}")),
-        ),
-        help_item_dyn(
-            "Delete prev/next word",
-            Some(&format!("{edit_del_word} / {edit_del_next_word}")),
-        ),
-        Line::from(""),
-        help_heading("Templates"),
-        help_item_dyn(
-            "New note from template (in notes view)",
-            Some(&list_template),
-        ),
-        help_item_dyn("Create blank note in popup", Some("b")),
-        help_item_dyn("Cancel template selection", Some("Esc")),
-        Line::from(""),
-        help_heading("Help Page"),
-        help_item_dyn("Close help", Some(&help_close)),
-        help_item_dyn("Scroll", Some(&help_scroll)),
-        Line::from(""),
-        help_heading("Configuration"),
-        help_item_dyn("Keybinds file: <storage>/keybinds.toml", None),
-        help_item_dyn("Templates dir: <storage>/templates/", None),
-        help_item_dyn("Run 'clin --help' for CLI commands", None),
     ])
 }
 
-pub fn help_heading(title: &'static str) -> Line<'static> {
-    Line::from(vec![Span::styled(
-        title,
-        Style::default()
-            .fg(Color::Yellow)
-            .add_modifier(Modifier::BOLD),
-    )])
+fn format_keybind(key: &str) -> String {
+    let parts: Vec<_> = key.split(" / ").map(|group| {
+        group.split('/').map(|k| format!("<{}>", k)).collect::<Vec<_>>().join("/")
+    }).collect();
+    parts.join(" / ")
 }
 
-pub fn help_item_dyn(text: &str, key: Option<&str>) -> Line<'static> {
+pub fn help_item_dyn(text: &str, key: Option<&str>) -> Vec<Line<'static>> {
     match key {
-        Some(key) => Line::from(vec![
-            Span::styled("  - ", Style::default().fg(Color::DarkGray)),
-            Span::styled(
-                key.to_string(),
-                Style::default()
-                    .fg(Color::Green)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::raw("  "),
+        Some(key) => {
+            let formatted_key = format_keybind(key);
+            vec![
+                Line::from(vec![
+                    Span::raw("  "),
+                    Span::styled(
+                        formatted_key,
+                        Style::default()
+                            .fg(Color::Green)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                ]),
+                Line::from(vec![
+                    Span::styled("    • ", Style::default().fg(Color::DarkGray)),
+                    Span::raw(text.to_string()),
+                ]),
+            ]
+        },
+        None => vec![Line::from(vec![
+            Span::styled("  • ", Style::default().fg(Color::DarkGray)),
             Span::raw(text.to_string()),
-        ]),
-        None => Line::from(vec![
-            Span::styled("  - ", Style::default().fg(Color::DarkGray)),
-            Span::raw(text.to_string()),
-        ]),
+        ])],
     }
 }
 

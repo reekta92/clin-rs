@@ -3,7 +3,7 @@ use crate::constants::*;
 use crate::frontmatter;
 use crate::keybinds::Keybinds;
 use crate::templates::TemplateManager;
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use chacha20poly1305::aead::{Aead, KeyInit};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
 use rand::RngCore;
@@ -76,9 +76,10 @@ fn extract_frontmatter_from_bytes(bytes: &[u8]) -> Option<frontmatter::Frontmatt
             .windows(end_marker.len())
             .position(|w| w == end_marker)
             && let Ok(fm_str) = std::str::from_utf8(&bytes[3..3 + end_idx])
-                && let Ok(fm) = serde_yml::from_str::<frontmatter::Frontmatter>(fm_str) {
-                    return Some(fm);
-                }
+            && let Ok(fm) = serde_yml::from_str::<frontmatter::Frontmatter>(fm_str)
+        {
+            return Some(fm);
+        }
     }
     None
 }
@@ -176,10 +177,11 @@ impl Storage {
                     dirs_to_visit.push(path);
                 } else if let Some(ext) = path.extension().and_then(|e| e.to_str())
                     && (ext == "clin" || ext == "md" || ext == "txt")
-                        && let Ok(rel_path) = path.strip_prefix(&self.notes_dir)
-                            && let Some(rel_str) = rel_path.to_str() {
-                                ids.push(rel_str.to_string());
-                            }
+                    && let Ok(rel_path) = path.strip_prefix(&self.notes_dir)
+                    && let Some(rel_str) = rel_path.to_str()
+                {
+                    ids.push(rel_str.to_string());
+                }
             }
         }
         Ok(ids)
@@ -408,9 +410,10 @@ impl Storage {
                     if path.is_dir() {
                         dirs_to_visit.push(path.clone());
                         if let Ok(rel_path) = path.strip_prefix(&self.notes_dir)
-                            && let Some(rel_str) = rel_path.to_str() {
-                                folders.push(rel_str.to_string());
-                            }
+                            && let Some(rel_str) = rel_path.to_str()
+                        {
+                            folders.push(rel_str.to_string());
+                        }
                     }
                 }
             }
@@ -422,9 +425,10 @@ impl Storage {
     pub fn load_tag_cache(&self) -> Vec<String> {
         let path = self.data_dir.join("tags.json");
         if let Ok(data) = fs::read_to_string(path)
-            && let Ok(tags) = serde_json::from_str::<Vec<String>>(&data) {
-                return tags;
-            }
+            && let Ok(tags) = serde_json::from_str::<Vec<String>>(&data)
+        {
+            return tags;
+        }
         Vec::new()
     }
 

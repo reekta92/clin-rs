@@ -412,31 +412,34 @@ fn parse_cli_command() -> Result<CliCommand> {
 
 fn print_cli_help() {
     println!(
-        "clin - Encrypted terminal note-taking app
+        "\x1b[1;32mclin\x1b[0m - Encrypted terminal note-taking app
 
-USAGE:
+\x1b[1;33mUSAGE:\x1b[0m
+  clin [OPTIONS]
+
+\x1b[1;33mNOTE OPERATIONS:\x1b[0m
   clin                        Launch interactive app
-  clin -n [TITLE]             Create a new note and open it
-  clin -n --template <NAME> [TITLE]
-                              Create a note from template
-  clin -q <CONTENT> [TITLE]   Create a quick note and exit
-  clin -e <TITLE>             Open a specific note by title
-  clin -l                     List note titles
-  clin -h                     Show this help
+  \x1b[32m-n\x1b[0m \x1b[36m[TITLE]\x1b[0m                Create a new note and open it
+  \x1b[32m-n\x1b[0m \x1b[32m-t, --template\x1b[0m \x1b[36m<NAME>\x1b[0m \x1b[36m[TITLE]\x1b[0m
+                              Create a new note from a template
+  \x1b[32m-q\x1b[0m \x1b[36m<CONTENT>\x1b[0m \x1b[36m[TITLE]\x1b[0m      Create a quick note and exit
+  \x1b[32m-e\x1b[0m \x1b[36m<TITLE>\x1b[0m                Open a specific note by title
+  \x1b[32m-l\x1b[0m                        List note titles
+  \x1b[32m-h, --help\x1b[0m                Show this help message
 
-CONFIGURATION:
-  --storage-path              Show current storage path
-  --set-storage-path <PATH>   Set custom storage path
-  --reset-storage-path        Reset to default storage path
+\x1b[1;33mCONFIGURATION:\x1b[0m
+  \x1b[32m--storage-path\x1b[0m            Show current storage path
+  \x1b[32m--set-storage-path\x1b[0m \x1b[36m<PATH>\x1b[0m Set custom storage path
+  \x1b[32m--reset-storage-path\x1b[0m      Reset to default storage path
 
-KEYBINDS:
-  --keybinds                  Show current keybindings
-  --export-keybinds           Export keybinds as TOML
-  --reset-keybinds            Reset keybinds to defaults
+\x1b[1;33mKEYBINDS:\x1b[0m
+  \x1b[32m--keybinds\x1b[0m                Show current keybindings
+  \x1b[32m--export-keybinds\x1b[0m         Export keybinds as TOML
+  \x1b[32m--reset-keybinds\x1b[0m          Reset keybinds to defaults
 
-TEMPLATES:
-  --list-templates            List available templates
-  --create-example-templates  Create example templates
+\x1b[1;33mTEMPLATES:\x1b[0m
+  \x1b[32m--list-templates\x1b[0m          List available templates
+  \x1b[32m--create-example-templates\x1b[0m Create example templates
 "
     );
 }
