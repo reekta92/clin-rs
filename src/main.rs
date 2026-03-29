@@ -1,5 +1,6 @@
 mod config;
 pub mod constants;
+pub mod frontmatter;
 mod keybinds;
 mod templates;
 
@@ -61,6 +62,7 @@ fn main() -> Result<()> {
                 title: final_title.clone(),
                 content,
                 updated_at: now_unix_secs(),
+                tags: Vec::new(),
             };
 
             let id = storage.new_note_id();
@@ -99,6 +101,7 @@ fn main() -> Result<()> {
                 title: final_title.clone(),
                 content,
                 updated_at: now_unix_secs(),
+                tags: Vec::new(),
             };
 
             let ext = if settings.encryption_enabled {
@@ -111,8 +114,14 @@ fn main() -> Result<()> {
             let saved_id = storage.save_note(&id, &note, settings.encryption_enabled)?;
 
             let mut app = App::new(storage)?;
-            if let Some(index) = app.notes.iter().position(|n| n.id == saved_id) {
-                app.selected = index;
+            if let Some(v_idx) = app.visual_list.iter().position(|v| {
+                if let crate::app::VisualItem::Note { id: v_id, .. } = v {
+                    v_id == &saved_id
+                } else {
+                    false
+                }
+            }) {
+                app.visual_index = v_idx;
                 app.open_selected();
             } else {
                 app.open_note_by_title(&final_title);

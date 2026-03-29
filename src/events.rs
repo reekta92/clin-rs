@@ -6,6 +6,75 @@ use ratatui::prelude::*;
 use tui_textarea::*;
 
 pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
+    // Handle folder popup if open
+    if let Some(mut popup) = app.folder_popup.take() {
+        if key.code == KeyCode::Esc {
+            app.folder_popup = None;
+        } else if key.code == KeyCode::Enter {
+            app.folder_popup = Some(popup);
+            app.confirm_folder_popup();
+        } else {
+            popup.input.input(Input::from(key));
+            app.folder_popup = Some(popup);
+        }
+        return false;
+    }
+
+    // Handle tag popup if open
+    if let Some(mut popup) = app.tag_popup.take() {
+        if key.code == KeyCode::Esc {
+            app.tag_popup = None;
+        } else if key.code == KeyCode::Enter {
+            app.tag_popup = Some(popup);
+            app.confirm_manage_tags();
+        } else {
+            popup.input.input(Input::from(key));
+            app.tag_popup = Some(popup);
+        }
+        return false;
+    }
+
+    // Handle filter popup if open
+    if let Some(mut popup) = app.filter_popup.take() {
+        if key.code == KeyCode::Esc {
+            app.cancel_filter_tags();
+        } else if key.code == KeyCode::Enter {
+            app.filter_popup = Some(popup);
+            app.confirm_filter_tags();
+        } else {
+            popup.input(Input::from(key));
+            app.filter_popup = Some(popup);
+        }
+        return false;
+    }
+
+    // Handle folder picker if open
+    if let Some(mut picker) = app.folder_picker.take() {
+        match key.code {
+            KeyCode::Up => {
+                picker.selected = picker.selected.saturating_sub(1);
+                app.folder_picker = Some(picker);
+            }
+            KeyCode::Down => {
+                if picker.selected + 1 < picker.folders.len() {
+                    picker.selected += 1;
+                }
+                app.folder_picker = Some(picker);
+            }
+            KeyCode::Enter => {
+                app.folder_picker = Some(picker);
+                app.confirm_move_note();
+            }
+            KeyCode::Esc => {
+                app.folder_picker = None;
+            }
+            _ => {
+                app.folder_picker = Some(picker);
+            }
+        }
+        return false;
+    }
+
     // Handle template popup if open
     if let Some(mut popup) = app.template_popup.take() {
         match key.code {
@@ -28,7 +97,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
             }
             // Allow creating blank note with 'b'
             KeyCode::Char('b') => {
-                app.start_blank_note();
+                app.start_blank_note(String::new());
             }
             _ => {
                 app.template_popup = Some(popup);
@@ -83,15 +152,23 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
     if app.keybinds.matches_list(ListAction::MoveDown, &key) {
-        if app.selected < app.notes.len() {
-            app.selected += 1;
+        if app.visual_index < app.visual_list.len().saturating_sub(1) {
+            app.visual_index += 1;
         }
         return false;
     }
     if app.keybinds.matches_list(ListAction::MoveUp, &key) {
-        if app.selected > 0 {
-            app.selected -= 1;
+        if app.visual_index > 0 {
+            app.visual_index -= 1;
         }
+        return false;
+    }
+    if app.keybinds.matches_list(ListAction::CollapseFolder, &key) {
+        app.collapse_selected_folder();
+        return false;
+    }
+    if app.keybinds.matches_list(ListAction::ExpandFolder, &key) {
+        app.expand_selected_folder();
         return false;
     }
     if app.keybinds.matches_list(ListAction::Open, &key) {
@@ -100,6 +177,26 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     }
     if app.keybinds.matches_list(ListAction::NewFromTemplate, &key) {
         app.open_template_popup();
+        return false;
+    }
+    if app.keybinds.matches_list(ListAction::CreateFolder, &key) {
+        app.begin_create_folder();
+        return false;
+    }
+    if app.keybinds.matches_list(ListAction::RenameFolder, &key) {
+        app.begin_rename_folder();
+        return false;
+    }
+    if app.keybinds.matches_list(ListAction::MoveNote, &key) {
+        app.begin_move_note();
+        return false;
+    }
+    if app.keybinds.matches_list(ListAction::ManageTags, &key) {
+        app.begin_manage_tags();
+        return false;
+    }
+    if app.keybinds.matches_list(ListAction::FilterTags, &key) {
+        app.begin_filter_tags();
         return false;
     }
 
@@ -241,49 +338,12 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         let visual_row = mouse_event.row.saturating_sub(inner_list_area.y) as usize;
         let clicked_visual_index = app.list_state.offset().saturating_add(visual_row);
 
-        // Determine what note corresponds to clicked_visual_index
-        let mut last_was_clin: Option<bool> = None;
-        let mut visual_i = 0;
-        let mut target_note_idx = None;
-        let mut is_create_new = false;
-
-        for (i, summary) in app.notes.iter().enumerate() {
-            let is_clin = summary.id.ends_with(".clin");
-            if last_was_clin != Some(is_clin) {
-                if is_clin {
-                    visual_i += 1;
-                } else {
-                    if last_was_clin.is_some() {
-                        visual_i += 1;
-                    }
-                    visual_i += 1;
-                }
-                last_was_clin = Some(is_clin);
-            }
-
-            if visual_i == clicked_visual_index {
-                target_note_idx = Some(i);
-                break;
-            }
-            visual_i += 1;
-        }
-
-        if target_note_idx.is_none() && visual_i == clicked_visual_index {
-            is_create_new = true;
-        }
-
-        if let Some(idx) = target_note_idx {
-            if app.selected == idx {
-                // Phase 2.2: Click on already-selected note to open it
-                handle_list_keys(app, KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        if clicked_visual_index < app.visual_list.len() {
+            if app.visual_index == clicked_visual_index {
+                // Click on already-selected item to open it
+                app.open_selected();
             } else {
-                app.selected = idx;
-            }
-        } else if is_create_new {
-            if app.selected == app.notes.len() {
-                handle_list_keys(app, KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
-            } else {
-                app.selected = app.notes.len();
+                app.visual_index = clicked_visual_index;
             }
         }
     }

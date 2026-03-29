@@ -45,6 +45,11 @@ pub fn help_page_text(keybinds: &Keybinds) -> Text<'static> {
         keybinds.list_keys_display(ListAction::MoveUp),
         keybinds.list_keys_display(ListAction::MoveDown)
     );
+    let list_expand_collapse = format!(
+        "{}/{}",
+        keybinds.list_keys_display(ListAction::ExpandFolder),
+        keybinds.list_keys_display(ListAction::CollapseFolder)
+    );
     let list_open = keybinds.list_keys_display(ListAction::Open);
     let list_delete = keybinds.list_keys_display(ListAction::Delete);
     let list_location = keybinds.list_keys_display(ListAction::OpenLocation);
@@ -52,6 +57,11 @@ pub fn help_page_text(keybinds: &Keybinds) -> Text<'static> {
     let list_help = keybinds.list_keys_display(ListAction::Help);
     let list_quit = keybinds.list_keys_display(ListAction::Quit);
     let list_template = keybinds.list_keys_display(ListAction::NewFromTemplate);
+    let list_create_folder = keybinds.list_keys_display(ListAction::CreateFolder);
+    let list_rename_folder = keybinds.list_keys_display(ListAction::RenameFolder);
+    let list_move_note = keybinds.list_keys_display(ListAction::MoveNote);
+    let list_manage_tags = keybinds.list_keys_display(ListAction::ManageTags);
+    let list_filter_tags = keybinds.list_keys_display(ListAction::FilterTags);
 
     let edit_quit = keybinds.edit_keys_display(EditAction::Quit);
     let edit_back = keybinds.edit_keys_display(EditAction::Back);
@@ -93,12 +103,21 @@ pub fn help_page_text(keybinds: &Keybinds) -> Text<'static> {
             "Open note file location from notes view",
             Some(&list_location),
         ),
-        help_item_dyn("Delete notes with confirmation prompt", Some(&list_delete)),
+        help_item_dyn("Delete selected note or folder", Some(&list_delete)),
         Line::from(""),
         help_heading("Notes View"),
         help_item_dyn("Move selection", Some(&list_move)),
-        help_item_dyn("Open selected note or create new", Some(&list_open)),
-        help_item_dyn("Request delete", Some(&list_delete)),
+        help_item_dyn("Expand/Collapse folder", Some(&list_expand_collapse)),
+        help_item_dyn(
+            "Open selected folder, note, or create new",
+            Some(&list_open),
+        ),
+        help_item_dyn("Create new folder", Some(&list_create_folder)),
+        help_item_dyn("Rename folder", Some(&list_rename_folder)),
+        help_item_dyn("Move note to folder", Some(&list_move_note)),
+        help_item_dyn("Manage note tags", Some(&list_manage_tags)),
+        help_item_dyn("Filter tags", Some(&list_filter_tags)),
+        help_item_dyn("Delete note or folder", Some(&list_delete)),
         help_item_dyn("Confirm / cancel delete", Some("y/Enter / n/Esc")),
         help_item_dyn("Open selected note file location", Some(&list_location)),
         help_item_dyn("Change focus (notes list <-> buttons)", Some(&list_focus)),
@@ -195,83 +214,79 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     .block(Block::default().borders(Borders::ALL).title("Notes"));
     frame.render_widget(header, chunks[0]);
 
-    // Rebuild cache if dirty
-    let mut items = Vec::with_capacity(app.notes.len() + 2);
-    let mut last_was_clin: Option<bool> = None;
-    let mut visual_i = 0;
+    let mut items: Vec<ListItem> = Vec::new();
 
-    let mut note_to_visual_index = Vec::new();
-
-    for (i, summary) in app.notes.iter().enumerate() {
-        let is_clin = summary.id.ends_with(".clin");
-
-        if last_was_clin != Some(is_clin) {
-            if is_clin {
+    for item in &app.visual_list {
+        match item {
+            crate::app::VisualItem::Folder {
+                path: _,
+                name,
+                depth,
+                is_expanded,
+                note_count,
+            } => {
+                let indent = "  ".repeat(*depth);
+                let icon = if *is_expanded { " " } else { " " };
+                let text = format!("{indent}{icon} {name} ({note_count})");
                 items.push(ListItem::new(Line::from(vec![Span::styled(
-                    "Encrypted (ENC)",
+                    text,
                     Style::default()
                         .add_modifier(Modifier::BOLD)
-                        .fg(Color::Cyan),
+                        .fg(Color::Blue),
                 )])));
-                visual_i += 1;
-            } else {
-                if last_was_clin.is_some() {
-                    items.push(ListItem::new(Line::from(vec![Span::raw("")])));
-                    visual_i += 1;
-                }
-                items.push(ListItem::new(Line::from(vec![Span::styled(
-                    "Unencrypted (UENC)",
-                    Style::default()
-                        .add_modifier(Modifier::BOLD)
-                        .fg(Color::Yellow),
-                )])));
-                visual_i += 1;
             }
-            last_was_clin = Some(is_clin);
+            crate::app::VisualItem::Note {
+                summary_idx,
+                depth,
+                is_clin,
+                ..
+            } => {
+                let summary = &app.notes[*summary_idx];
+                let indent = "  ".repeat(*depth);
+
+                let when = format_relative_time(summary.updated_at);
+                let mut text_style = Style::default();
+
+                let mut spans = Vec::new();
+                spans.push(Span::raw(indent));
+                spans.push(Span::raw("  "));
+
+                if !is_clin {
+                    spans.push(Span::styled(
+                        "[UENC] ",
+                        Style::default()
+                            .fg(Color::Yellow)
+                            .add_modifier(Modifier::BOLD),
+                    ));
+                } else if !app.encryption_enabled {
+                    text_style = text_style.fg(Color::Red);
+                    spans.push(Span::styled("[ENC] ", text_style));
+                }
+
+                spans.push(Span::styled(summary.title.as_str(), text_style));
+
+                // Tag badges
+                for tag in &summary.tags {
+                    spans.push(Span::raw(" "));
+                    spans.push(Span::styled(
+                        format!("[{}]", tag),
+                        Style::default().fg(Color::LightMagenta),
+                    ));
+                }
+
+                spans.push(Span::raw(format!("  ({when})")));
+                items.push(ListItem::new(Line::from(spans)));
+            }
+            crate::app::VisualItem::CreateNew { depth, .. } => {
+                let indent = "  ".repeat(*depth);
+                let text = format!("{indent}  Create new note");
+                items.push(ListItem::new(Line::from(vec![Span::styled(
+                    text,
+                    Style::default().fg(Color::Green),
+                )])));
+            }
         }
-
-        note_to_visual_index.push(visual_i);
-        visual_i += 1;
-
-        let when = format_relative_time(summary.updated_at);
-        let mut text_style = Style::default().add_modifier(Modifier::BOLD);
-        let mut spans = Vec::with_capacity(4);
-
-        let is_last_in_group = match app.notes.get(i + 1) {
-            Some(next) => next.id.ends_with(".clin") != is_clin,
-            None => true,
-        };
-        let prefix = if is_last_in_group {
-            " └── "
-        } else {
-            " ├── "
-        };
-        spans.push(Span::raw(prefix));
-
-        if !is_clin {
-            spans.push(Span::styled(
-                "[UENC] ",
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            ));
-        } else if !app.encryption_enabled {
-            text_style = text_style.fg(Color::Red);
-            spans.push(Span::styled("[ENC] ", text_style));
-        }
-
-        spans.push(Span::styled(summary.title.as_str(), text_style));
-        spans.push(Span::raw(format!("  ({when})")));
-
-        items.push(ListItem::new(Line::from(spans)));
     }
-
-    // Add "Create new note" item
-    note_to_visual_index.push(items.len());
-    items.push(ListItem::new(Line::from(vec![Span::styled(
-        " + Create a new note",
-        Style::default().fg(Color::Green),
-    )])));
 
     let list = List::new(items)
         .block(Block::default().borders(Borders::ALL).title("Select"))
@@ -282,12 +297,8 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 .add_modifier(Modifier::BOLD),
         )
         .highlight_symbol("  > ");
-    if let Some(&visual_i) = note_to_visual_index.get(app.selected) {
-        app.list_state.select(Some(visual_i));
-    } else {
-        app.list_state
-            .select(Some(note_to_visual_index.last().copied().unwrap_or(0)));
-    }
+
+    app.list_state.select(Some(app.visual_index));
     frame.render_stateful_widget(list, chunks[1], &mut app.list_state);
 
     let enc_button_label = if app.encryption_enabled {
@@ -321,6 +332,57 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     // Draw template popup if open
     if let Some(popup) = &app.template_popup {
         draw_template_popup(frame, popup, area);
+    }
+
+    if let Some(popup) = &mut app.folder_popup {
+        let popup_area = centered_rect(50, 20, area);
+        frame.render_widget(Clear, popup_area);
+        frame.render_widget(&popup.input, popup_area);
+    }
+
+    if let Some(popup) = &mut app.tag_popup {
+        let popup_area = centered_rect(50, 20, area);
+        frame.render_widget(Clear, popup_area);
+        frame.render_widget(&popup.input, popup_area);
+    }
+
+    if let Some(popup) = &mut app.filter_popup {
+        let popup_area = centered_rect(50, 20, area);
+        frame.render_widget(Clear, popup_area);
+        frame.render_widget(&*popup, popup_area);
+    }
+
+    if let Some(picker) = &app.folder_picker {
+        let popup_area = centered_rect(40, 60, area);
+        frame.render_widget(Clear, popup_area);
+
+        let items: Vec<ListItem> = picker
+            .folders
+            .iter()
+            .map(|f| {
+                let label = if f.is_empty() { "Vault (Root)" } else { f };
+                ListItem::new(label)
+            })
+            .collect();
+
+        let list = List::new(items)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Select Folder to Move to"),
+            )
+            .highlight_style(
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )
+            .highlight_symbol("> ");
+
+        let mut state = ListState::default();
+        state.select(Some(picker.selected));
+
+        frame.render_stateful_widget(list, popup_area, &mut state);
     }
 }
 

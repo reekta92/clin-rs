@@ -81,16 +81,16 @@ impl KeyCombo {
         let mut parts = Vec::new();
 
         if self.modifiers.contains(KeyModifiers::CONTROL) {
-            parts.push("Ctrl");
+            parts.push("Ctrl".to_string());
         }
         if self.modifiers.contains(KeyModifiers::SHIFT) {
-            parts.push("Shift");
+            parts.push("Shift".to_string());
         }
         if self.modifiers.contains(KeyModifiers::ALT) {
-            parts.push("Alt");
+            parts.push("Alt".to_string());
         }
         if self.modifiers.contains(KeyModifiers::SUPER) {
-            parts.push("Super");
+            parts.push("Super".to_string());
         }
 
         parts.push(key_code_to_string(&self.code));
@@ -147,79 +147,26 @@ fn parse_key_code(s: &str) -> Option<KeyCode> {
     }
 }
 
-fn key_code_to_string(code: &KeyCode) -> &'static str {
+fn key_code_to_string(code: &KeyCode) -> String {
     match code {
-        KeyCode::Enter => "Enter",
-        KeyCode::Esc => "Esc",
-        KeyCode::Backspace => "Backspace",
-        KeyCode::Tab => "Tab",
-        KeyCode::Delete => "Delete",
-        KeyCode::Insert => "Insert",
-        KeyCode::Home => "Home",
-        KeyCode::End => "End",
-        KeyCode::PageUp => "PageUp",
-        KeyCode::PageDown => "PageDown",
-        KeyCode::Up => "Up",
-        KeyCode::Down => "Down",
-        KeyCode::Left => "Left",
-        KeyCode::Right => "Right",
-        KeyCode::F(1) => "F1",
-        KeyCode::F(2) => "F2",
-        KeyCode::F(3) => "F3",
-        KeyCode::F(4) => "F4",
-        KeyCode::F(5) => "F5",
-        KeyCode::F(6) => "F6",
-        KeyCode::F(7) => "F7",
-        KeyCode::F(8) => "F8",
-        KeyCode::F(9) => "F9",
-        KeyCode::F(10) => "F10",
-        KeyCode::F(11) => "F11",
-        KeyCode::F(12) => "F12",
-        KeyCode::Char(' ') => "Space",
-        KeyCode::Char('?') => "?",
-        KeyCode::Char(c) => {
-            // This is a bit of a hack for static strings
-            match c {
-                'a' => "a",
-                'b' => "b",
-                'c' => "c",
-                'd' => "d",
-                'e' => "e",
-                'f' => "f",
-                'g' => "g",
-                'h' => "h",
-                'i' => "i",
-                'j' => "j",
-                'k' => "k",
-                'l' => "l",
-                'm' => "m",
-                'n' => "n",
-                'o' => "o",
-                'p' => "p",
-                'q' => "q",
-                'r' => "r",
-                's' => "s",
-                't' => "t",
-                'u' => "u",
-                'v' => "v",
-                'w' => "w",
-                'x' => "x",
-                'y' => "y",
-                'z' => "z",
-                '0' => "0",
-                '1' => "1",
-                '2' => "2",
-                '3' => "3",
-                '4' => "4",
-                '5' => "5",
-                '6' => "6",
-                '7' => "7",
-                '8' => "8",
-                '9' => "9",
-                _ => "?",
-            }
-        }
-        _ => "?",
+        KeyCode::Enter => "Enter".to_string(),
+        KeyCode::Esc => "Esc".to_string(),
+        KeyCode::Backspace => "Backspace".to_string(),
+        KeyCode::Tab => "Tab".to_string(),
+        KeyCode::Delete => "Delete".to_string(),
+        KeyCode::Insert => "Insert".to_string(),
+        KeyCode::Home => "Home".to_string(),
+        KeyCode::End => "End".to_string(),
+        KeyCode::PageUp => "PageUp".to_string(),
+        KeyCode::PageDown => "PageDown".to_string(),
+        KeyCode::Up => "Up".to_string(),
+        KeyCode::Down => "Down".to_string(),
+        KeyCode::Left => "Left".to_string(),
+        KeyCode::Right => "Right".to_string(),
+        KeyCode::F(n) => format!("F{}", n),
+        KeyCode::Char(' ') => "Space".to_string(),
+        KeyCode::Char(c) => c.to_string(),
+        _ => "?".to_string(),
     }
 }
 
@@ -239,6 +186,13 @@ pub enum ListAction {
     CancelDelete,
     ToggleButton,
     NewFromTemplate,
+    CreateFolder,
+    RenameFolder,
+    MoveNote,
+    ManageTags,
+    FilterTags,
+    CollapseFolder,
+    ExpandFolder,
 }
 
 /// Actions that can be bound to keys in edit view
@@ -293,8 +247,20 @@ pub struct Keybinds {
 impl Default for Keybinds {
     fn default() -> Self {
         let mut list = HashMap::new();
-        list.insert(ListAction::MoveUp, vec![KeyCombo::simple(KeyCode::Up)]);
-        list.insert(ListAction::MoveDown, vec![KeyCombo::simple(KeyCode::Down)]);
+        list.insert(
+            ListAction::MoveUp,
+            vec![
+                KeyCombo::simple(KeyCode::Up),
+                KeyCombo::simple(KeyCode::Char('k')),
+            ],
+        );
+        list.insert(
+            ListAction::MoveDown,
+            vec![
+                KeyCombo::simple(KeyCode::Down),
+                KeyCombo::simple(KeyCode::Char('j')),
+            ],
+        );
         list.insert(ListAction::Open, vec![KeyCombo::simple(KeyCode::Enter)]);
         list.insert(
             ListAction::Delete,
@@ -340,6 +306,34 @@ impl Default for Keybinds {
         list.insert(
             ListAction::NewFromTemplate,
             vec![KeyCombo::simple(KeyCode::Char('t'))],
+        );
+        list.insert(
+            ListAction::CreateFolder,
+            vec![KeyCombo::simple(KeyCode::Char('n'))],
+        );
+        list.insert(
+            ListAction::RenameFolder,
+            vec![KeyCombo::simple(KeyCode::Char('r'))],
+        );
+        list.insert(
+            ListAction::MoveNote,
+            vec![KeyCombo::simple(KeyCode::Char('m'))],
+        );
+        list.insert(
+            ListAction::ManageTags,
+            vec![KeyCombo::simple(KeyCode::Char('.'))],
+        );
+        list.insert(
+            ListAction::FilterTags,
+            vec![KeyCombo::simple(KeyCode::Char('/'))],
+        );
+        list.insert(
+            ListAction::CollapseFolder,
+            vec![KeyCombo::simple(KeyCode::Char('h'))],
+        );
+        list.insert(
+            ListAction::ExpandFolder,
+            vec![KeyCombo::simple(KeyCode::Char('l'))],
         );
 
         let mut edit = HashMap::new();
@@ -599,6 +593,13 @@ fn parse_list_action(s: &str) -> Option<ListAction> {
         "cancel_delete" => Some(ListAction::CancelDelete),
         "toggle_button" => Some(ListAction::ToggleButton),
         "new_from_template" => Some(ListAction::NewFromTemplate),
+        "create_folder" => Some(ListAction::CreateFolder),
+        "rename_folder" => Some(ListAction::RenameFolder),
+        "move_note" => Some(ListAction::MoveNote),
+        "manage_tags" => Some(ListAction::ManageTags),
+        "filter_tags" => Some(ListAction::FilterTags),
+        "collapse_folder" => Some(ListAction::CollapseFolder),
+        "expand_folder" => Some(ListAction::ExpandFolder),
         _ => None,
     }
 }
@@ -646,6 +647,13 @@ fn list_action_to_string(action: ListAction) -> &'static str {
         ListAction::CancelDelete => "cancel_delete",
         ListAction::ToggleButton => "toggle_button",
         ListAction::NewFromTemplate => "new_from_template",
+        ListAction::CreateFolder => "create_folder",
+        ListAction::RenameFolder => "rename_folder",
+        ListAction::MoveNote => "move_note",
+        ListAction::ManageTags => "manage_tags",
+        ListAction::FilterTags => "filter_tags",
+        ListAction::CollapseFolder => "collapse_folder",
+        ListAction::ExpandFolder => "expand_folder",
     }
 }
 
