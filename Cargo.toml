@@ -1,6 +1,6 @@
 [package]
 name = "clin"
-version = "0.1.1-1"
+version = "0.2.1-2"
 edition = "2024"
 description = "Encrypted terminal note-taking app"
 license = "MIT"
@@ -9,7 +9,7 @@ license = "MIT"
 name = "clin"
 maintainer = "reekta <reekta@localhost>"
 copyright = "2026, reekta"
-depends = "$auto"
+depends = "libc6 (>= 2.31)"
 section = "utils"
 priority = "optional"
 assets = [
