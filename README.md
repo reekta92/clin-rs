@@ -15,7 +15,7 @@
 -  Binary `.clin` files
 -  Full-screen TUI with list + editor + help views  
 -  Mouse support + bracketed paste  
--  **Folders & Tags** with custom keybinds
+-  **Folders & Tags**  
 -  **Continuous Auto-save** (with panic crash safety logic)
 
 ## Future Plans
