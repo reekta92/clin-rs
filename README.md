@@ -31,7 +31,6 @@
 
 ### Editor Enhancements
 
-* [ ] **Contextual Cursor:** Changing cursor shape/color based on modes.
 * [ ] **OCR Paste:** Pasting from screenshots using `ocrs` or `tesseract`.
 * [ ] **Word & Character metrics:** Real-time word counts and progress goals.
 * [ ] **Status line customization:** Flexible `status_fornat = "{title} | {word_count} words | {encryption_status}" )`
