@@ -24,7 +24,7 @@
 * [ ] **Smart folders:** Automatic movement of specific tagged notes to specific folders.
 * [x] **Custom storage path:** Change where the encrypted vault lives.
 * [x] **User-defined templates:** Boilerplate for new notes.
-* [x] **Custom keybinds:** Remap controls to fit the user's workflow.
+* [ ] **Custom keybinds:** Remap controls to fit the user's workflow.
 * [ ] **Git integration:** Automate backups and versioning via Git.
 
 ---
