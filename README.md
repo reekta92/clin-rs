@@ -11,7 +11,7 @@
 ---
 
 ## Highlights
--  **ChaCha20-Poly1305** encryption
+-  **ChaCha20-Poly1305** encryption (optional)
 -  Binary `.clin` files
 -  Full-screen TUI with list + editor + help views  
 -  Mouse support + bracketed paste  
@@ -64,19 +64,50 @@
 * [ ] **Steganography:** Hiding encrypted vaults inside other file types.
 
 ---
+# User Defined Templates
+<img width="553" height="565" alt="image" src="https://github.com/user-attachments/assets/aa39bf58-c40d-48a8-86f1-c277d1cf67ab" />
 
-# Mouse support
-![mouse](https://github.com/user-attachments/assets/8df42fc2-04f5-4f42-9e23-36bf6f5414d1)
+https://github.com/user-attachments/assets/ba827fee-eff2-40e1-97ba-0429410b915e
 
-# CLI flags
-![arguments](https://github.com/user-attachments/assets/b6fb344a-79ef-47ae-aefb-8ae637f939d8)
+Template popup can be accessed with the default `t` key.
 
----
+You can create your own templates in `~/.local/share/clin/templates` folder with `.toml` format to quickly use in your editor!
+Template format should simply be:
+```toml
+name = "<TEMPLATE_NAME>"
+[title]
+template = "<TEMPLATE_TITLE>"
+[content]
+template = """
+<TEMPLATE_CONTENT>
+```
 
-## Storage
-Notes are encrypted before hitting disk.  
-Key is stored locally (`key.bin`).  
-**Backup & Restore** -> copy both `.clin` files + `key.bin` from `~/.local/share/clin`
+# Folders
+https://github.com/user-attachments/assets/820cc746-adce-4f9f-b0c6-793193720333
+
+You can move files in folders using the default `m` key via it's popup!
+
+# Tags
+https://github.com/user-attachments/assets/96af8aa9-f37f-4075-af31-4d67d83ccf3b
+
+You can add tags to the files using the default `.` key via it's popup!
+
+# Right-Click Context Menu
+https://github.com/user-attachments/assets/eba945d4-d3fd-4c0c-a194-13bdca0cc6c4
+
+In editor mode, right-click context menu has basic features such as `Copy`, `Paste`, `Cut`, `Select All`. For now system clipboard **doesn't** integrate with this system. This will be changed in the future as a config option!
+
+# Optional Encryption Using ChaCha20-Poly1305
+https://github.com/user-attachments/assets/5f67e240-87b7-4ac6-996c-ca58a542792b
+
+Encryption can be toggled with selecting it with `Tab` and pressing `Enter` to turn it on/off. 
+### Encryption ON
+- Created notes will be `.clin` files, encrypted and assigned to `[ENC]` tag(invisible when encryption is on).
+- When trying to open a unencrypted note(`[UENC]`) app will require a confirmation since it will **overwrite** the original file and encrypt it! This behaviour will be changed to create a encrypted copy of the original file instead and it will be a config option to customize it's behaviour.
+
+### Encryption OFF
+- Created notes will be `.md` files and assigned to `[UENC]` tag.
+- Encrypted notes will be shown with their [ENC] tag and they will be **unaccessible**.
 
 ---
 
@@ -97,9 +128,27 @@ sudo rpm -i clin-0.1.1-1.x86_64.rpm
 ### Arch Linux (PKGBUILD)
 A `PKGBUILD` is included in the root of the repository.
 ```bash
+# Clone the repo
 git clone https://github.com/reekta/clin.git
 cd clin
+
+# Install
 makepkg -si
+```
+### Other
+Download the latest `.tar.gz` from [Releases](https://github.com/reekta/clin/releases) page for manual installation.
+```bash
+# Extract the archive
+tar -xzf clin-0.2.1-2-x86_64.tar.gz
+cd clin-0.2.1-2-x86_64.tar.gz
+
+# Give executable permission
+chmod +x clin
+./clin
+
+# Install
+mkdir -p ~/.local/bin # If not exists
+mv clin ~/.local/bin/
 ```
 
 ### From Source (Cargo)
@@ -116,16 +165,29 @@ cargo install --path .
 ## CLI Commands
 
 ```
-clin                        -> Launch TUI
-clin -q <text> [title]      -> Quick note & exit
-clin -n [title]             -> New note
-clin -n --template <name>   -> New note from template
-clin -l                     -> List notes
-clin -e <title>             -> Edit note
-clin --storage-path         -> Show storage folder
-clin --set-storage-path <p> -> Set storage folder
-clin --keybinds             -> Show current keybinds
-clin --list-templates       -> List all templates
+NOTE OPERATIONS:
+  clin                        Launch interactive app
+  -n [TITLE]                Create a new note and open it
+  -n -t, --template <NAME> [TITLE]
+                              Create a new note from a template
+  -q <CONTENT> [TITLE]      Create a quick note and exit
+  -e <TITLE>                Open a specific note by title
+  -l                        List note titles
+  -h, --help                Show this help message
+
+CONFIGURATION:
+  --storage-path            Show current storage path
+  --set-storage-path <PATH> Set custom storage path (--migrate-storage DOES NOT WORK YET)
+  --reset-storage-path      Reset to default storage path
+
+KEYBINDS:
+  --keybinds                Show current keybindings
+  --export-keybinds         Export keybinds as TOML
+  --reset-keybinds          Reset keybinds to defaults
+
+TEMPLATES:
+  --list-templates          List available templates
+  --create-example-templates Create example templates
 
 ```
 
