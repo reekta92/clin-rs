@@ -116,13 +116,13 @@ Encryption can be toggled with selecting it with `Tab` and pressing `Enter` to t
 ### Debian/Ubuntu (.deb)
 Download the latest `.deb` from the [Releases](https://github.com/reekta/clin/releases) page.
 ```bash
-sudo dpkg -i clin_0.1.1-1_amd64.deb
+sudo dpkg -i clin_0.2.1-2-1_amd64.deb
 ```
 
 ### Fedora/RHEL (.rpm)
 Download the latest `.rpm` from the [Releases](https://github.com/reekta/clin/releases) page.
 ```bash
-sudo rpm -i clin-0.1.1-1.x86_64.rpm
+sudo rpm -i clin-0.2.1-2-1.x86_64.rpm
 ```
 
 ### Arch Linux (PKGBUILD)
@@ -190,10 +190,3 @@ TEMPLATES:
   --create-example-templates Create example templates
 
 ```
-
-## Controls
-**Notes list** ->
-`UP/DOWN` select | `Enter` open | `d` delete item | `n` create folder | `m` move item | `.` tags | `Tab` focus | `?` help | `q` quit
-
-**Editor** ->
-`Tab` cycle | `Esc` back | `Ctrl+Q` quit (autosaving always active)
