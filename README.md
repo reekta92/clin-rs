@@ -11,6 +11,7 @@
 ---
 
 ## Highlights
+-  Unicode gylphs, **requires a nerd font**
 -  **ChaCha20-Poly1305** encryption (optional)
 -  Binary `.clin` files
 -  Full-screen TUI with list + editor + help views  
