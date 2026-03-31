@@ -65,7 +65,6 @@
 
 ---
 # User Defined Templates
-<img width="553" height="565" alt="image" src="https://github.com/user-attachments/assets/aa39bf58-c40d-48a8-86f1-c277d1cf67ab" />
 
 https://github.com/user-attachments/assets/ba827fee-eff2-40e1-97ba-0429410b915e
 
