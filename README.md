@@ -177,7 +177,7 @@ NOTE OPERATIONS:
 
 CONFIGURATION:
   --storage-path            Show current storage path
-  --set-storage-path <PATH> Set custom storage path (--migrate-storage DOES NOT WORK YET)
+  --set-storage-path <PATH> Set custom storage path
   --reset-storage-path      Reset to default storage path
 
 KEYBINDS:
