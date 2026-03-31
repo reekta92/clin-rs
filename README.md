@@ -128,7 +128,7 @@ sudo rpm -i clin-0.2.1-2-1.x86_64.rpm
 A `PKGBUILD` is included in the root of the repository.
 ```bash
 # Clone the repo
-git clone https://github.com/reekta/clin.git
+git clone https://github.com/reekta/clin-rs.git
 cd clin
 
 # Install
