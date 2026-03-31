@@ -15,24 +15,23 @@
 -  Binary `.clin` files
 -  Full-screen TUI with list + editor + help views  
 -  Mouse support + bracketed paste  
--  Optional **Vim mode** (persistent ON/OFF)  
+-  **Folders & Tags**  
 -  **Continuous Auto-save** (with panic crash safety logic)
 
 ## Future Plans
 ### Configuration & Customization
 
 * [ ] **Smart folders:** Automatic movement of specific tagged notes to specific folders.
-* [ ] **Custom storage path:** Change where the encrypted vault lives.
-* [ ] **User-defined templates:** Boilerplate for new notes.
-* [ ] **Custom keybinds:** Remap controls to fit the user's workflow.
+* [x] **Custom storage path:** Change where the encrypted vault lives.
+* [x] **User-defined templates:** Boilerplate for new notes.
+* [x] **Custom keybinds:** Remap controls to fit the user's workflow.
 * [ ] **Git integration:** Automate backups and versioning via Git.
 
 ---
 
 ### Editor Enhancements
 
-* [X] **Advanced Vim support:** Implementation of text objects like `ci`, `di`, `ci(`, etc.
-* [ ] **Contextual Cursor:** Changing cursor shape/color based on `NORMAL`, `INSERT`, or `VISUAL` modes.
+* [ ] **Contextual Cursor:** Changing cursor shape/color based on modes.
 * [ ] **OCR Paste:** Pasting from screenshots using `ocrs` or `tesseract`.
 * [ ] **Word & Character metrics:** Real-time word counts and progress goals.
 * [ ] **Status line customization:** Flexible `status_fornat = "{title} | {word_count} words | {encryption_status}" )`
@@ -43,8 +42,8 @@
 
 ### Note Management & Navigation
 
-* [ ] **Folders & Tags:** Hierarchical and metadata-based organization.
-* [ ] **Mouse support:** Navigation and selection within the notes list.
+* [x] **Folders & Tags:** Hierarchical and metadata-based organization.
+* [x] **Mouse support:** Navigation and selection within the notes list.
 * [ ] **Enhanced UI:** Sorting options, line numbers, and a preview pane.
 * [ ] **Fast Search:** Immediate note discovery using the `fd` utility.
 * [ ] **Asset management:** Icon rendering and assigning icons to specific notes.
@@ -56,37 +55,19 @@
 
 * [ ] **Pre-piping:** Routing notes through external tools for custom rendering.
 * [ ] **Markdown integration:** Using `glow`.
-* [ ] **Expanded CLI:** More argument options for command-line interactions.
+* [x] **Expanded CLI:** More argument options for command-line interactions.
 
 ---
 
 ### Experimental & Advanced
 
 * [ ] **Lua Scripting:** Allowing users to write scripts to extend app functionality.
-* [ ] **Steganography:** Hiding encrypted vaults inside other file types (e.g., images) (completely unnecessary!).
+* [ ] **Steganography:** Hiding encrypted vaults inside other file types.
+
 ---
 
 # Mouse support
 ![mouse](https://github.com/user-attachments/assets/8df42fc2-04f5-4f42-9e23-36bf6f5414d1)
-
-# Vim mode (optional)
-![vim](https://github.com/user-attachments/assets/dfa802bc-b2dd-4351-8a4b-0cea1f03ca0a)
-
-- Vim mode can be toggled with a selectable Vim button in both notes and editor views.
-- Vim mode toggle state persists across app restarts.
-- Dynamic Vim indicator dynamically displaying active state (`[ Vim: NORMAL ]`, `[ Vim: INSERT ]`, `[ Vim: VISUAL ]`, etc.) integrated directly into the footer.
-- Uses a **fully custom native state-machine** for handling Vim inputs directly within `tui-textarea` (replacing the previous `vim-line` crate for better stability).
-- Modes: `NORMAL`, `INSERT`, `VISUAL`, `VISUAL LINE`, operator-pending (`d...`/`c...`/`y...`), and command (`:...`).
-- Visual line mode compatibility: `V` enters linewise selection, `j`/`k` extends, `y`/`d`/`c`/`x`/`p` applies.
-- Motions/navigation: `h`, `j`, `k`, `l`, `w`, `e`, `b`, `0`, `^`, `$`.
-- Vertical jumps & scrolling: `gg`, `G`, `<NUMBER>g`, `<NUMBER>G`, `PageDown`, `PageUp`, `Ctrl+d` (20 lines down), `Ctrl+u` (20 lines up).
-- Operator motions: `d`, `y`, `c` with combinations like `dw`, `cw`, `yw`, plus `dd`, `yy`, `cc`.
-- Inner object compatibility operators:
-  - Change inner: ``` ciw, ci(, ci[, ci{, ci<, ci", ci', ci` ```
-  - Delete inner: ``` diw, di(, di[, di{, di<, di", di`, di` ```
-  - Yank inner: ``` yiw, yi(, yi[, yi{, yi<, yi", yi`, yi` ```
-- Additional Vim edit actions: `x`, `p`, `u` (undo), `Ctrl+r` (redo).
-- Command mode integration: `:q` (quit) notes continually autosave.
 
 # CLI flags
 ![arguments](https://github.com/user-attachments/assets/b6fb344a-79ef-47ae-aefb-8ae637f939d8)
@@ -136,19 +117,22 @@ cargo install --path .
 ## CLI Commands
 
 ```
-clin                   → Launch TUI
-clin -q <text> [title] → Quick note & exit
-clin -n [title]        → New note
-clin -l                → List notes
-clin -e <title>        → Edit note
-clin -f                → Show storage folder
+clin                        -> Launch TUI
+clin -q <text> [title]      -> Quick note & exit
+clin -n [title]             -> New note
+clin -n --template <name>   -> New note from template
+clin -l                     -> List notes
+clin -e <title>             -> Edit note
+clin --storage-path         -> Show storage folder
+clin --set-storage-path <p> -> Set storage folder
+clin --keybinds             -> Show current keybinds
+clin --list-templates       -> List all templates
 
 ```
 
 ## Controls
 **Notes list** ->
-`UP/DOWN` select • `Enter` open • `d` delete • `f` folder • `Tab` focus • `?` help • `q` quit
+`UP/DOWN` select | `Enter` open | `d` delete item | `n` create folder | `m` move item | `.` tags | `Tab` focus | `?` help | `q` quit
 
 **Editor** ->
-`Tab` cycle • `Esc` back • `Ctrl+Q` quit (autosaving always active)
-_Vim mode_ toggleable + persistent
+`Tab` cycle | `Esc` back | `Ctrl+Q` quit (autosaving always active)

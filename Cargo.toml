@@ -1,6 +1,6 @@
 [package]
 name = "clin"
-version = "0.1.1-1"
+version = "0.2.1-2"
 edition = "2024"
 description = "Encrypted terminal note-taking app"
 license = "MIT"
@@ -9,7 +9,7 @@ license = "MIT"
 name = "clin"
 maintainer = "reekta <reekta@localhost>"
 copyright = "2026, reekta"
-depends = "$auto"
+depends = "libc6 (>= 2.31)"
 section = "utils"
 priority = "optional"
 assets = [
@@ -36,5 +36,14 @@ rand = "0.8"
 ratatui = "0.29"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+serde_yml = "0.0.12"
+toml = "0.8"
 tui-textarea = { version = "0.7", features = ["crossterm"] }
 uuid = { version = "1.8", features = ["v4"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+strip = true
+opt-level = "s"
