@@ -452,6 +452,42 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
 
         frame.render_stateful_widget(list, popup_area, &mut state);
     }
+
+    if let Some(palette) = &mut app.command_palette {
+        let palette_area = centered_rect(60, 60, area);
+        frame.render_widget(Clear, palette_area);
+
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(3), Constraint::Min(0)])
+            .split(palette_area);
+
+        frame.render_widget(&palette.input, chunks[0]);
+
+        let items: Vec<ListItem> = palette
+            .items
+            .iter()
+            .map(|item| {
+                ListItem::new(vec![
+                    Line::from(Span::styled(
+                        &item.name,
+                        Style::default().add_modifier(Modifier::BOLD),
+                    )),
+                    Line::from(Span::styled(
+                        &item.description,
+                        Style::default().fg(Color::DarkGray),
+                    )),
+                ])
+            })
+            .collect();
+
+        let list = ratatui::widgets::List::new(items)
+            .block(Block::default().borders(Borders::ALL).title(" Commands "))
+            .highlight_style(Style::default().bg(Color::DarkGray).fg(Color::White))
+            .highlight_symbol(">> ");
+
+        frame.render_stateful_widget(list, chunks[1], &mut palette.state);
+    }
 }
 
 pub fn draw_template_popup(frame: &mut Frame, popup: &TemplatePopup, area: Rect) {

@@ -112,6 +112,7 @@ pub struct App {
     pub folder_expanded: HashSet<String>,
     pub filter_tags: Vec<String>,
     pub filter_popup: Option<TextArea<'static>>,
+    pub command_palette: Option<crate::palette::CommandPalette>,
     /// Cached help page text (rebuilt when keybinds change)
     pub help_text_cache: Option<Text<'static>>,
     pub list_state: ListState,
@@ -177,6 +178,7 @@ impl App {
             folder_expanded: HashSet::new(),
             filter_tags: Vec::new(),
             filter_popup: None,
+            command_palette: None,
             help_text_cache: None,
             list_state: ListState::default(),
         };

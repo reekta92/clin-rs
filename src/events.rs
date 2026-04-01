@@ -6,6 +6,27 @@ use ratatui::prelude::*;
 use tui_textarea::*;
 
 pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
+    if let Some(mut palette) = app.command_palette.take() {
+        if palette.handle_input(key) {
+            if key.code == KeyCode::Enter {
+                if let Some(selected_idx) = palette.state.selected() {
+                    if let Some(item) = palette.items.get(selected_idx) {
+                        let action_id = item.id.clone();
+                        let note_id = palette.context_note_id.clone();
+                        if let Err(e) =
+                            crate::actions::execute_action(&action_id, app, note_id.as_deref())
+                        {
+                            app.set_temporary_status(&format!("Action failed: {}", e));
+                        }
+                    }
+                }
+            }
+            return false;
+        }
+        app.command_palette = Some(palette);
+        return false;
+    }
+
     // Handle folder popup if open
     if let Some(mut popup) = app.folder_popup.take() {
         if key.code == KeyCode::Esc {
@@ -203,6 +224,25 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     }
     if app.keybinds.matches_list(ListAction::FilterTags, &key) {
         app.begin_filter_tags();
+        return false;
+    }
+    if app
+        .keybinds
+        .matches_list(ListAction::OpenCommandPalette, &key)
+    {
+        if let Some(item) = app.visual_list.get(app.visual_index) {
+            match item {
+                crate::app::VisualItem::Note { id, .. } => {
+                    app.command_palette =
+                        Some(crate::palette::CommandPalette::new(Some(id.clone())));
+                }
+                _ => {
+                    app.command_palette = Some(crate::palette::CommandPalette::new(None));
+                }
+            }
+        } else {
+            app.command_palette = Some(crate::palette::CommandPalette::new(None));
+        }
         return false;
     }
 

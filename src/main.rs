@@ -3,6 +3,8 @@ pub mod constants;
 pub mod frontmatter;
 mod keybinds;
 mod templates;
+pub mod actions;
+pub mod palette;
 
 use crate::config::BootstrapConfig;
 use crate::keybinds::{EditAction, HelpAction, Keybinds, ListAction};

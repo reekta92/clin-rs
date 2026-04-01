@@ -195,6 +195,7 @@ pub enum ListAction {
     FilterTags,
     CollapseFolder,
     ExpandFolder,
+    OpenCommandPalette,
 }
 
 /// Actions that can be bound to keys in edit view
@@ -346,6 +347,17 @@ impl Default for Keybinds {
         list.insert(
             ListAction::CollapseFolder,
             vec![KeyCombo::simple(KeyCode::Char('h'))],
+        );
+        list.insert(
+            ListAction::ExpandFolder,
+            vec![KeyCombo::simple(KeyCode::Char('l'))],
+        );
+        list.insert(
+            ListAction::OpenCommandPalette,
+            vec![
+                KeyCombo::ctrl(KeyCode::Char('p')),
+                KeyCombo::shift(KeyCode::Enter),
+            ],
         );
         list.insert(
             ListAction::ExpandFolder,
@@ -674,6 +686,7 @@ fn list_action_to_string(action: ListAction) -> &'static str {
         ListAction::FilterTags => "filter_tags",
         ListAction::CollapseFolder => "collapse_folder",
         ListAction::ExpandFolder => "expand_folder",
+        ListAction::OpenCommandPalette => "open_command_palette",
     }
 }
 
