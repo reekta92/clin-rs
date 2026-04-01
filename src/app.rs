@@ -439,9 +439,36 @@ impl App {
             let temp_id = uuid::Uuid::new_v4().to_string();
             let temp_file_path = temp_dir.join(format!("clin_{}.md", temp_id));
 
-            if let Err(e) = std::fs::write(&temp_file_path, &note.content) {
-                self.set_temporary_status(&format!("Failed to write temp file: {}", e));
-                return;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::OpenOptionsExt;
+                let file = std::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .mode(0o600)
+                    .open(&temp_file_path);
+
+                match file {
+                    Ok(mut f) => {
+                        use std::io::Write;
+                        if let Err(e) = f.write_all(note.content.as_bytes()) {
+                            self.set_temporary_status(&format!("Failed to write temp file: {}", e));
+                            return;
+                        }
+                    }
+                    Err(e) => {
+                        self.set_temporary_status(&format!("Failed to create temp file: {}", e));
+                        return;
+                    }
+                }
+            }
+
+            #[cfg(not(unix))]
+            {
+                if let Err(e) = std::fs::write(&temp_file_path, &note.content) {
+                    self.set_temporary_status(&format!("Failed to write temp file: {}", e));
+                    return;
+                }
             }
 
             // Suspend TUI
@@ -509,6 +536,10 @@ impl App {
                 }
             }
 
+            // Secure: Overwrite file contents before deletion
+            if let Ok(len) = std::fs::metadata(&temp_file_path).map(|m| m.len()) {
+                let _ = std::fs::write(&temp_file_path, vec![0u8; len as usize]);
+            }
             let _ = std::fs::remove_file(&temp_file_path);
         } else {
             self.set_temporary_status("Failed to load note for external editor!");
