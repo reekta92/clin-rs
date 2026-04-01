@@ -99,6 +99,19 @@ impl Storage {
 
         let key_path = data_dir.join("key.bin");
         let key = if key_path.exists() {
+            #[cfg(unix)]
+            {
+                // Enforce permissions on existing key file
+                use std::os::unix::fs::PermissionsExt;
+                if let Ok(metadata) = fs::metadata(&key_path) {
+                    let mut perms = metadata.permissions();
+                    if perms.mode() & 0o777 != 0o400 {
+                        perms.set_mode(0o400);
+                        let _ = fs::set_permissions(&key_path, perms);
+                    }
+                }
+            }
+
             let raw = fs::read(&key_path).context("failed to read encryption key")?;
             if raw.len() != 32 {
                 anyhow::bail!("invalid key file length")
@@ -110,7 +123,25 @@ impl Storage {
             let mut key = [0_u8; 32];
             rand::rngs::OsRng.fill_bytes(&mut key);
             fs::create_dir_all(&data_dir).context("failed to create app data directory")?;
-            fs::write(&key_path, key).context("failed to write encryption key")?;
+            
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::OpenOptionsExt;
+                let mut file = std::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .mode(0o400)
+                    .open(&key_path)
+                    .context("failed to create encryption key file")?;
+                use std::io::Write;
+                file.write_all(&key).context("failed to write encryption key")?;
+            }
+            
+            #[cfg(not(unix))]
+            {
+                fs::write(&key_path, key).context("failed to write encryption key")?;
+            }
+            
             key
         };
 
