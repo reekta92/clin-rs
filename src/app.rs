@@ -155,7 +155,6 @@ pub enum CliCommand {
 
 impl App {
     pub fn new(storage: Storage) -> Result<Self> {
-        let settings = storage.load_settings();
         let keybinds = storage.load_keybinds();
         let bootstrap_config = crate::config::BootstrapConfig::load().unwrap_or_default();
 
@@ -170,7 +169,7 @@ impl App {
             editing_id: None,
             title_editor: make_title_editor(""),
             editor: TextArea::default(),
-            encryption_enabled: settings.encryption_enabled,
+            encryption_enabled: bootstrap_config.encryption_enabled,
             external_editor_enabled: bootstrap_config.external_editor_enabled,
             external_editor: bootstrap_config.external_editor,
             status: Cow::Borrowed(LIST_HELP_HINTS),
@@ -1184,9 +1183,10 @@ impl App {
     pub fn toggle_encryption_mode(&mut self) {
         self.encryption_enabled = !self.encryption_enabled;
         self.set_default_status();
-        self.storage.save_settings(&crate::storage::AppSettings {
-            encryption_enabled: self.encryption_enabled,
-        });
+        if let Ok(mut config) = crate::config::BootstrapConfig::load() {
+            config.encryption_enabled = self.encryption_enabled;
+            let _ = config.save();
+        }
     }
 
     pub fn toggle_external_editor_mode(&mut self) {

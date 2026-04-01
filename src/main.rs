@@ -16,6 +16,7 @@ use std::io::{self, Stdout, Write};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use std::{env, process};
+use uuid::Uuid;
 
 use anyhow::{Context, Result};
 use crossterm::event::{
@@ -56,80 +57,75 @@ fn main() -> Result<()> {
         }
         CliCommand::QuickNote { content, title } => {
             let storage = Storage::init()?;
-            let final_title = title
-                .map(|t| t.trim().to_string())
-                .filter(|t| !t.is_empty())
-                .unwrap_or_else(|| String::from("Untitled note"));
+            let bootstrap = config::BootstrapConfig::load().unwrap_or_default();
 
+            let id = Uuid::new_v4().simple().to_string();
+            let final_title = title.unwrap_or_else(|| "Quick Note".to_string());
             let note = Note {
                 title: final_title.clone(),
                 content,
-                updated_at: now_unix_secs(),
+                updated_at: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)?
+                    .as_secs(),
                 tags: Vec::new(),
             };
 
-            let id = storage.new_note_id();
-            let saved_id = storage.save_note(&id, &note, true)?;
-            println!("Saved quick note \"{final_title}\" as {saved_id}.clin");
+            let ext = if bootstrap.encryption_enabled {
+                "bin"
+            } else {
+                "md"
+            };
+
+            let _saved_id = storage.save_note(&id, &note, bootstrap.encryption_enabled)?;
+
+            println!("Created note: {} (ext: {})", final_title, ext);
+
             Ok(())
         }
         CliCommand::NewAndOpen { title, template } => {
             let storage = Storage::init()?;
-            let settings = storage.load_settings();
-
-            // Get content from template if specified
-            let (final_title, content) = if let Some(template_name) = template {
-                let template_manager = storage.template_manager();
-                if let Ok(tmpl) = template_manager.load(&template_name) {
-                    let rendered = tmpl.render();
-                    let t = title
-                        .or(rendered.title)
-                        .map(|t| t.trim().to_string())
-                        .filter(|t| !t.is_empty())
-                        .unwrap_or_else(|| String::from("Untitled note"));
-                    (t, rendered.content)
-                } else {
-                    eprintln!("Template '{template_name}' not found");
-                    process::exit(1);
-                }
-            } else {
-                let t = title
-                    .map(|t| t.trim().to_string())
-                    .filter(|t| !t.is_empty())
-                    .unwrap_or_else(|| String::from("Untitled note"));
-                (t, String::new())
-            };
-
-            let note = Note {
-                title: final_title.clone(),
-                content,
-                updated_at: now_unix_secs(),
-                tags: Vec::new(),
-            };
-
-            let ext = if settings.encryption_enabled {
-                "clin"
-            } else {
-                "md"
-            };
-            let base_id = storage.new_note_id();
-            let id = format!("{base_id}.{ext}");
-            let saved_id = storage.save_note(&id, &note, settings.encryption_enabled)?;
-
             let mut app = App::new(storage)?;
-            if let Some(v_idx) = app.visual_list.iter().position(|v| {
-                if let crate::app::VisualItem::Note { id: v_id, .. } = v {
-                    v_id == &saved_id
+            
+            // Use provided title or default
+            let final_title = title.unwrap_or_else(|| "New Note".to_string());
+            
+            // Create note from template or default
+            let (content, tags) = if let Some(tmpl_name) = template {
+                let template_manager = app.storage.template_manager();
+                if let Ok(templates) = template_manager.list() {
+                    if let Some(template_summary) = templates.into_iter().find(|t| t.name == tmpl_name) {
+                        if let Ok(template_data) = template_manager.load(&template_summary.filename) {
+                            (template_data.content.template.clone(), Vec::new())
+                        } else {
+                            eprintln!("Failed to load template data: {tmpl_name}");
+                            process::exit(1);
+                        }
+                    } else {
+                        eprintln!("Template not found: {tmpl_name}");
+                        process::exit(1);
+                    }
                 } else {
-                    false
+                    (String::new(), Vec::new())
                 }
-            }) {
-                app.visual_index = v_idx;
-                app.open_selected();
             } else {
-                app.open_note_by_title(&final_title);
-            }
-
+                (String::new(), Vec::new())
+            };
+            
+            let id = Uuid::new_v4().simple().to_string();
+            let note = Note {
+                title: final_title,
+                content,
+                updated_at: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)?
+                    .as_secs(),
+                tags,
+            };
+            
+            let saved_id = app.storage.save_note(&id, &note, app.encryption_enabled)?;
+            
+            app.editing_id = Some(saved_id.clone());
+            app.refresh_notes()?;
+            app.load_and_open_note(&saved_id);
             run_tui_session(&mut app)
         }
         CliCommand::Run { edit_title } => {
@@ -246,32 +242,6 @@ fn main() -> Result<()> {
                 &from.join("key.bin"),
                 &to.join("key.bin"),
                 "key.bin",
-                conflict_action,
-            )?;
-            migrated_count += m;
-            skipped_count += s;
-            if action.is_some() {
-                conflict_action = action;
-            }
-
-            // Migrate settings.json
-            let (m, s, action) = migrate_file_with_conflict(
-                &from.join("settings.json"),
-                &to.join("settings.json"),
-                "settings.json",
-                conflict_action,
-            )?;
-            migrated_count += m;
-            skipped_count += s;
-            if action.is_some() {
-                conflict_action = action;
-            }
-
-            // Migrate keybinds.toml
-            let (m, s, action) = migrate_file_with_conflict(
-                &from.join("keybinds.toml"),
-                &to.join("keybinds.toml"),
-                "keybinds.toml",
                 conflict_action,
             )?;
             migrated_count += m;

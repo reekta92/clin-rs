@@ -6,12 +6,12 @@
 
 # **clin is not a text editor!**
 
-> `clin` is originally a app i made when i got into C it was really rough and basic, i decided to remake it in Rust with more features and improved user experience to better fit your workflow!
+> `clin` was originally an app I made when I got into C. It was really rough and basic, so I decided to remake it in Rust with more features and an improved user experience to better fit your workflow!
 
 ---
 
 ## Highlights
--  Unicode gylphs, **requires a nerd font**
+-  Unicode glyphs, **requires a Nerd Font**
 -  **ChaCha20-Poly1305** encryption (optional)
 -  Binary `.clin` files
 -  Full-screen TUI with list + editor + help views  
@@ -25,7 +25,7 @@
 * [ ] **Smart folders:** Automatic movement of specific tagged notes to specific folders.
 * [x] **Custom storage path:** Change where the encrypted vault lives.
 * [x] **User-defined templates:** Boilerplate for new notes.
-* [ ] **Custom keybinds:** Remap controls to fit the user's workflow.
+* [x] **Custom keybinds:** Remap controls to fit the user's workflow.
 * [ ] **Git integration:** Automate backups and versioning via Git.
 
 ---
@@ -34,7 +34,7 @@
 
 * [ ] **OCR Paste:** Pasting from screenshots using `ocrs` or `tesseract`.
 * [ ] **Word & Character metrics:** Real-time word counts and progress goals.
-* [ ] **Status line customization:** Flexible `status_fornat = "{title} | {word_count} words | {encryption_status}" )`
+* [ ] **Status line customization:** Flexible `status_format = "{title} | {word_count} words | {encryption_status}"`
 * [ ] **External editor support:** Opening notes in `nvim`, `helix`, etc.
 * [ ] **Improved mouse support:** Right-click context menus within the editor.
 
@@ -63,6 +63,27 @@
 
 * [ ] **Lua Scripting:** Allowing users to write scripts to extend app functionality.
 * [ ] **Steganography:** Hiding encrypted vaults inside other file types.
+
+---
+# Configuration
+
+clin uses `~/.config/clin/config.toml` for app configuration and `~/.config/clin/keybinds.toml` for custom keybinds.
+
+### App Configuration (`config.toml`)
+This file is generated automatically. You can edit it to change your settings:
+```toml
+storage_path = "/custom/path/to/vault" # Optional: Change where notes are stored
+external_editor = "nvim" # Optional: Command to use for the external editor
+external_editor_enabled = false
+encryption_enabled = true # Whether new notes should be encrypted by default
+```
+
+### Custom Keybinds (`keybinds.toml`)
+You can fully customize clin's keybindings! To get started, generate the default configuration using the CLI:
+```bash
+clin --export-keybinds > ~/.config/clin/keybinds.toml
+```
+Then, edit the file to change bindings for the list, editor, or help menus.
 
 ---
 # User Defined Templates
@@ -103,11 +124,11 @@ https://github.com/user-attachments/assets/5f67e240-87b7-4ac6-996c-ca58a542792b
 Encryption can be toggled with selecting it with `Tab` and pressing `Enter` to turn it on/off. 
 ### Encryption ON
 - Created notes will be `.clin` files, encrypted and assigned to `[ENC]` tag(invisible when encryption is on).
-- When trying to open a unencrypted note(`[UENC]`) app will require a confirmation since it will **overwrite** the original file and encrypt it! This behaviour will be changed to create a encrypted copy of the original file instead and it will be a config option to customize it's behaviour.
+- When trying to open an unencrypted note (`[UENC]`), the app will require confirmation since it will **overwrite** the original file and encrypt it! This behaviour will be changed to create an encrypted copy of the original file instead, and it will be a config option to customize its behaviour.
 
 ### Encryption OFF
 - Created notes will be `.md` files and assigned to `[UENC]` tag.
-- Encrypted notes will be shown with their [ENC] tag and they will be **unaccessible**.
+- Encrypted notes will be shown with their `[ENC]` tag and they will be **inaccessible**.
 
 ---
 
@@ -190,6 +211,7 @@ CONFIGURATION:
   --storage-path            Show current storage path
   --set-storage-path <PATH> Set custom storage path
   --reset-storage-path      Reset to default storage path
+  --migrate-storage         Migrate data from previous storage location
 
 KEYBINDS:
   --keybinds                Show current keybindings

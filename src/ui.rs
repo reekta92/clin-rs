@@ -192,7 +192,7 @@ pub fn help_page_text(keybinds: &Keybinds) -> Text<'static> {
 
     lines.push(help_heading("󰒓", "Configuration"));
     lines.extend(help_item_dyn(
-        "Keybinds file: <storage>/keybinds.toml",
+        "Keybinds file: ~/.config/clin/keybinds.toml",
         None,
     ));
     lines.extend(help_item_dyn("Templates dir: <storage>/templates/", None));

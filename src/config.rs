@@ -26,6 +26,13 @@ pub struct BootstrapConfig {
     /// Whether external editor mode is enabled
     #[serde(default)]
     pub external_editor_enabled: bool,
+    /// Whether new notes should be encrypted by default
+    #[serde(default = "default_encryption_enabled")]
+    pub encryption_enabled: bool,
+}
+
+fn default_encryption_enabled() -> bool {
+    true
 }
 
 impl BootstrapConfig {

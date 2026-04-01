@@ -15,23 +15,6 @@ use std::path::PathBuf;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AppSettings {
-    #[serde(default = "default_encryption_enabled")]
-    pub encryption_enabled: bool,
-}
-
-impl Default for AppSettings {
-    fn default() -> Self {
-        Self {
-            encryption_enabled: true,
-        }
-    }
-}
-
-fn default_encryption_enabled() -> bool {
-    true
-}
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Note {
     pub title: String,
     pub content: String,
@@ -67,6 +50,8 @@ pub struct Storage {
     #[zeroize(skip)]
     pub data_dir: PathBuf,
     #[zeroize(skip)]
+    pub config_dir: PathBuf,
+    #[zeroize(skip)]
     pub notes_dir: PathBuf,
     #[zeroize(skip)]
     pub templates_dir: PathBuf,
@@ -95,6 +80,10 @@ impl Storage {
         let data_dir = bootstrap
             .effective_storage_path()
             .context("failed to determine storage path")?;
+
+        let proj_dirs = directories::ProjectDirs::from("com", "clin", "clin")
+            .context("could not determine config directory")?;
+        let config_dir = proj_dirs.config_dir().to_path_buf();
 
         let notes_dir = data_dir.join("notes");
         let templates_dir = data_dir.join("templates");
@@ -151,18 +140,15 @@ impl Storage {
 
         Ok(Self {
             data_dir,
+            config_dir,
             notes_dir,
             templates_dir,
             key,
         })
     }
 
-    pub fn settings_path(&self) -> PathBuf {
-        self.data_dir.join("settings.json")
-    }
-
     pub fn keybinds_path(&self) -> PathBuf {
-        self.data_dir.join("keybinds.toml")
+        self.config_dir.join("keybinds.toml")
     }
 
     pub fn load_keybinds(&self) -> Keybinds {
@@ -175,24 +161,6 @@ impl Storage {
 
     pub fn template_manager(&self) -> TemplateManager {
         TemplateManager::new(self.templates_dir.clone())
-    }
-
-    pub fn load_settings(&self) -> AppSettings {
-        let path = self.settings_path();
-        if !path.exists() {
-            return AppSettings::default();
-        }
-
-        fs::read_to_string(path)
-            .ok()
-            .and_then(|raw| serde_json::from_str::<AppSettings>(&raw).ok())
-            .unwrap_or_default()
-    }
-
-    pub fn save_settings(&self, settings: &AppSettings) {
-        if let Ok(raw) = serde_json::to_string_pretty(settings) {
-            let _ = fs::write(self.settings_path(), raw);
-        }
     }
 
     pub fn note_path(&self, id: &str) -> PathBuf {
