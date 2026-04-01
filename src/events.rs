@@ -147,7 +147,8 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     if app.keybinds.matches_list(ListAction::CycleFocus, &key) {
         app.list_focus = match app.list_focus {
             ListFocus::Notes => ListFocus::EncryptionToggle,
-            ListFocus::EncryptionToggle => ListFocus::Notes,
+            ListFocus::EncryptionToggle => ListFocus::ExternalEditorToggle,
+            ListFocus::ExternalEditorToggle => ListFocus::Notes,
         };
         return false;
     }
@@ -156,6 +157,14 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     if app.list_focus == ListFocus::EncryptionToggle {
         if app.keybinds.matches_list(ListAction::ToggleButton, &key) {
             app.toggle_encryption_mode();
+        } else if app.keybinds.matches_list(ListAction::Quit, &key) {
+            return true;
+        }
+        return false;
+    }
+    if app.list_focus == ListFocus::ExternalEditorToggle {
+        if app.keybinds.matches_list(ListAction::ToggleButton, &key) {
+            app.toggle_external_editor_mode();
         } else if app.keybinds.matches_list(ListAction::Quit, &key) {
             return true;
         }
@@ -297,7 +306,8 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
         *focus = match *focus {
             EditFocus::Title => EditFocus::Body,
             EditFocus::Body => EditFocus::EncryptionToggle,
-            EditFocus::EncryptionToggle => EditFocus::Title,
+            EditFocus::EncryptionToggle => EditFocus::ExternalEditorToggle,
+            EditFocus::ExternalEditorToggle => EditFocus::Title,
         };
         return false;
     }
@@ -335,6 +345,11 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
         EditFocus::EncryptionToggle => {
             if app.keybinds.matches_edit(EditAction::ToggleButton, &key) {
                 app.toggle_encryption_mode();
+            }
+        }
+        EditFocus::ExternalEditorToggle => {
+            if app.keybinds.matches_edit(EditAction::ToggleButton, &key) {
+                app.toggle_external_editor_mode();
             }
         }
     }

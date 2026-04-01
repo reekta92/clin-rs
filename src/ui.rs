@@ -155,7 +155,7 @@ pub fn help_page_text(keybinds: &Keybinds) -> Text<'static> {
 
     lines.push(help_heading("󰷈", "Editor"));
     lines.extend(help_item_dyn(
-        "Change focus (Title, Content, buttons)",
+        "Change focus (Title, Content, toggles)",
         Some(&edit_focus),
     ));
     lines.extend(help_item_dyn(
@@ -387,8 +387,28 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
     };
 
+    let ext_button_label = if app.external_editor_enabled {
+        "[ Ext: ON ]"
+    } else {
+        "[ Ext: OFF ]"
+    };
+    let ext_button_style = if app.list_focus == ListFocus::ExternalEditorToggle {
+        Style::default()
+            .fg(Color::Black)
+            .bg(Color::Yellow)
+            .add_modifier(Modifier::BOLD)
+    } else if app.external_editor_enabled {
+        Style::default()
+            .fg(Color::Green)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
+    };
+
     let footer_line = Line::from(vec![
         Span::styled(enc_button_label, enc_button_style),
+        Span::raw(" "),
+        Span::styled(ext_button_label, ext_button_style),
         Span::raw("   "),
         Span::raw(app.status.as_ref()),
     ]);
@@ -584,7 +604,49 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     );
     frame.render_widget(&app.editor, chunks[1]);
 
-    let status_line = Line::from(vec![Span::raw(app.status.as_ref())]);
+    let enc_button_label = if app.encryption_enabled {
+        "[ Enc: ON ]"
+    } else {
+        "[ Enc: OFF ]"
+    };
+    let enc_button_style = if focus == EditFocus::EncryptionToggle {
+        Style::default()
+            .fg(Color::Black)
+            .bg(Color::Yellow)
+            .add_modifier(Modifier::BOLD)
+    } else if app.encryption_enabled {
+        Style::default()
+            .fg(Color::Green)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
+    };
+
+    let ext_button_label = if app.external_editor_enabled {
+        "[ Ext: ON ]"
+    } else {
+        "[ Ext: OFF ]"
+    };
+    let ext_button_style = if focus == EditFocus::ExternalEditorToggle {
+        Style::default()
+            .fg(Color::Black)
+            .bg(Color::Yellow)
+            .add_modifier(Modifier::BOLD)
+    } else if app.external_editor_enabled {
+        Style::default()
+            .fg(Color::Green)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
+    };
+
+    let status_line = Line::from(vec![
+        Span::styled(enc_button_label, enc_button_style),
+        Span::raw(" "),
+        Span::styled(ext_button_label, ext_button_style),
+        Span::raw("   "),
+        Span::raw(app.status.as_ref()),
+    ]);
 
     let status =
         Paragraph::new(status_line).block(Block::default().borders(Borders::ALL).title("Help"));
