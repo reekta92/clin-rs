@@ -1,6 +1,6 @@
 [package]
 name = "clin-rs"
-version = "0.2.1-2"
+version = "0.2.1"
 edition = "2024"
 description = "Encrypted terminal note-taking app"
 license = "MIT"
