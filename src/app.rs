@@ -458,15 +458,16 @@ impl App {
                 .or_else(|| std::env::var("EDITOR").ok())
                 .unwrap_or_else(|| "vi".to_string());
 
-            let mut command = if cfg!(target_os = "windows") {
-                let mut c = std::process::Command::new("cmd");
-                c.arg("/C").arg(format!("{} \"{}\"", editor, temp_file_path.display()));
-                c
-            } else {
-                let mut c = std::process::Command::new("sh");
-                c.arg("-c").arg(format!("{} \"{}\"", editor, temp_file_path.display()));
-                c
-            };
+            let parts: Vec<&str> = editor.split_whitespace().collect();
+            let (program, editor_args) = parts.split_first()
+                .map(|(p, a)| (*p, a.to_vec()))
+                .unwrap_or(("vi", vec![]));
+
+            let mut command = std::process::Command::new(program);
+            for arg in editor_args {
+                command.arg(arg);
+            }
+            command.arg(&temp_file_path);
             let result = command.status();
 
             // Resume TUI
