@@ -20,6 +20,12 @@ pub struct BootstrapConfig {
     /// Previous storage path, used for migration. Cleared after successful migration.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub previous_storage_path: Option<PathBuf>,
+    /// External editor command (e.g. "nvim", "code", "nano")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub external_editor: Option<String>,
+    /// Whether external editor mode is enabled
+    #[serde(default)]
+    pub external_editor_enabled: bool,
 }
 
 impl BootstrapConfig {

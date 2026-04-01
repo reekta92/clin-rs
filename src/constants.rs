@@ -20,8 +20,8 @@ Notes view shortcuts\n\
 - y or Enter: confirm delete\n\
 - n or Esc: cancel delete\n\
 - f: open selected note location\n\
-- Tab: switch focus between note list and Encryption toggle button
-- Enter/Space on Encryption button: toggle Encryption
+- Tab: switch focus between note list and toggle buttons
+- Enter/Space on toggle button: switch state
 - ?: open help page
 - q: quit app
 

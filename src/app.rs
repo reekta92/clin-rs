@@ -1,7 +1,6 @@
 use crate::constants::*;
 use crate::events::get_title_text;
 use crate::events::make_title_editor;
-use crate::storage::AppSettings;
 use crate::ui::help_page_text;
 use crate::ui::text_area_from_content;
 use crate::ui::{now_unix_secs, open_in_file_manager};
@@ -16,6 +15,7 @@ use crate::keybinds::Keybinds;
 use crate::storage::{Note, NoteSummary, Storage};
 use crate::templates::{Template, TemplateSummary};
 use anyhow::Result;
+use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use tui_textarea::TextArea;
@@ -31,6 +31,7 @@ pub enum ViewMode {
 pub enum ListFocus {
     Notes,
     EncryptionToggle,
+    ExternalEditorToggle,
 }
 
 pub struct ContextMenu {
@@ -99,6 +100,8 @@ pub struct App {
     pub title_editor: TextArea<'static>,
     pub editor: TextArea<'static>,
     pub encryption_enabled: bool,
+    pub external_editor_enabled: bool,
+    pub external_editor: Option<String>,
     pub status: Cow<'static, str>,
     pub status_until: Option<Instant>,
     pub pending_delete_note_id: Option<String>,
@@ -115,6 +118,7 @@ pub struct App {
     /// Cached help page text (rebuilt when keybinds change)
     pub help_text_cache: Option<Text<'static>>,
     pub list_state: ListState,
+    pub needs_full_redraw: bool,
 }
 
 pub enum CliCommand {
@@ -151,6 +155,7 @@ impl App {
     pub fn new(storage: Storage) -> Result<Self> {
         let settings = storage.load_settings();
         let keybinds = storage.load_keybinds();
+        let bootstrap_config = crate::config::BootstrapConfig::load().unwrap_or_default();
 
         let mut app = Self {
             storage,
@@ -164,6 +169,8 @@ impl App {
             title_editor: make_title_editor(""),
             editor: TextArea::default(),
             encryption_enabled: settings.encryption_enabled,
+            external_editor_enabled: bootstrap_config.external_editor_enabled,
+            external_editor: bootstrap_config.external_editor,
             status: Cow::Borrowed(LIST_HELP_HINTS),
             status_until: None,
             pending_delete_note_id: None,
@@ -179,6 +186,7 @@ impl App {
             filter_popup: None,
             help_text_cache: None,
             list_state: ListState::default(),
+            needs_full_redraw: false,
         };
         app.context_menu = None;
         app.template_popup = None;
@@ -401,7 +409,11 @@ impl App {
                 };
 
                 if let Some(id) = note_id {
-                    self.load_and_open_note(&id);
+                    if self.external_editor_enabled {
+                        self.open_note_in_external_editor(&id);
+                    } else {
+                        self.load_and_open_note(&id);
+                    }
                 }
             }
         }
@@ -419,9 +431,94 @@ impl App {
         }
     }
 
+    pub fn open_note_in_external_editor(&mut self, note_id: &str) {
+        if let Ok(note) = self.storage.load_note(note_id) {
+            let temp_dir = std::env::temp_dir();
+            let temp_id = uuid::Uuid::new_v4().to_string();
+            let temp_file_path = temp_dir.join(format!("clin_{}.md", temp_id));
+
+            if let Err(e) = std::fs::write(&temp_file_path, &note.content) {
+                self.set_temporary_status(&format!("Failed to write temp file: {}", e));
+                return;
+            }
+
+            // Suspend TUI
+            let _ = disable_raw_mode();
+            let _ = crossterm::execute!(
+                std::io::stdout(),
+                LeaveAlternateScreen,
+                crossterm::event::DisableMouseCapture,
+                crossterm::event::DisableBracketedPaste
+            );
+
+            let editor = self.external_editor.clone()
+                .or_else(|| std::env::var("VISUAL").ok())
+                .or_else(|| std::env::var("EDITOR").ok())
+                .unwrap_or_else(|| "vi".to_string());
+
+            let mut command = if cfg!(target_os = "windows") {
+                let mut c = std::process::Command::new("cmd");
+                c.arg("/C").arg(format!("{} \"{}\"", editor, temp_file_path.display()));
+                c
+            } else {
+                let mut c = std::process::Command::new("sh");
+                c.arg("-c").arg(format!("{} \"{}\"", editor, temp_file_path.display()));
+                c
+            };
+            let result = command.status();
+
+            // Resume TUI
+            let _ = enable_raw_mode();
+            let _ = crossterm::execute!(
+                std::io::stdout(),
+                EnterAlternateScreen,
+                crossterm::event::EnableMouseCapture,
+                crossterm::event::EnableBracketedPaste,
+                crossterm::terminal::Clear(crossterm::terminal::ClearType::All)
+            );
+            self.needs_full_redraw = true;
+
+            match result {
+                Ok(status) if status.success() => {
+                    if let Ok(new_content) = std::fs::read_to_string(&temp_file_path) {
+                        if new_content != note.content {
+                            let mut updated_note = note.clone();
+                            updated_note.content = new_content;
+                            updated_note.updated_at = now_unix_secs();
+                            if let Err(e) = self.storage.save_note(note_id, &updated_note, self.encryption_enabled) {
+                                self.set_temporary_status(&format!("Failed to save note: {}", e));
+                            } else {
+                                self.set_temporary_status("Note saved from external editor.");
+                                let _ = self.refresh_notes();
+                            }
+                        } else {
+                            self.set_temporary_status("No changes made in external editor.");
+                        }
+                    } else {
+                        self.set_temporary_status("Failed to read from temp file.");
+                    }
+                }
+                Ok(status) => {
+                    self.set_temporary_status(&format!("Editor '{}' exited with status: {}", editor, status));
+                }
+                Err(e) => {
+                    self.set_temporary_status(&format!("Failed to launch editor '{}': {}", editor, e));
+                }
+            }
+
+            let _ = std::fs::remove_file(&temp_file_path);
+        } else {
+            self.set_temporary_status("Failed to load note for external editor!");
+        }
+    }
+
     pub fn confirm_encrypt_warning(&mut self) {
         if let Some(id) = self.pending_encrypt_note_id.take() {
-            self.load_and_open_note(&id);
+            if self.external_editor_enabled {
+                self.open_note_in_external_editor(&id);
+            } else {
+                self.load_and_open_note(&id);
+            }
         }
     }
 
@@ -553,11 +650,26 @@ impl App {
     }
 
     pub fn start_blank_note(&mut self, folder: String) {
-        self.mode = ViewMode::Edit;
         let mut new_id = self.storage.new_note_id();
         if !folder.is_empty() {
             new_id = format!("{}/{}", folder, new_id);
         }
+        
+        if self.external_editor_enabled {
+            let new_note = Note {
+                title: String::from("Untitled note"),
+                content: String::new(),
+                updated_at: now_unix_secs(),
+                tags: Vec::new(),
+            };
+            if let Ok(_) = self.storage.save_note(&new_id, &new_note, self.encryption_enabled) {
+                let _ = self.refresh_notes();
+                self.open_note_in_external_editor(&new_id);
+            }
+            return;
+        }
+
+        self.mode = ViewMode::Edit;
         self.editing_id = Some(new_id);
         self.title_editor = make_title_editor("");
         self.editor = TextArea::default();
@@ -571,11 +683,26 @@ impl App {
     pub fn start_note_from_template(&mut self, template: &Template, folder: String) {
         let rendered = template.render();
 
-        self.mode = ViewMode::Edit;
         let mut new_id = self.storage.new_note_id();
         if !folder.is_empty() {
             new_id = format!("{}/{}", folder, new_id);
         }
+
+        if self.external_editor_enabled {
+            let new_note = Note {
+                title: rendered.title.clone().unwrap_or_else(|| String::from("Untitled note")),
+                content: rendered.content.clone(),
+                updated_at: now_unix_secs(),
+                tags: Vec::new(),
+            };
+            if let Ok(_) = self.storage.save_note(&new_id, &new_note, self.encryption_enabled) {
+                let _ = self.refresh_notes();
+                self.open_note_in_external_editor(&new_id);
+            }
+            return;
+        }
+
+        self.mode = ViewMode::Edit;
         self.editing_id = Some(new_id);
 
         self.title_editor = make_title_editor(rendered.title.as_deref().unwrap_or(""));
@@ -1009,9 +1136,18 @@ impl App {
     pub fn toggle_encryption_mode(&mut self) {
         self.encryption_enabled = !self.encryption_enabled;
         self.set_default_status();
-        self.storage.save_settings(&AppSettings {
+        self.storage.save_settings(&crate::storage::AppSettings {
             encryption_enabled: self.encryption_enabled,
         });
+    }
+
+    pub fn toggle_external_editor_mode(&mut self) {
+        self.external_editor_enabled = !self.external_editor_enabled;
+        self.set_default_status();
+        if let Ok(mut config) = crate::config::BootstrapConfig::load() {
+            config.external_editor_enabled = self.external_editor_enabled;
+            let _ = config.save();
+        }
     }
 
     pub fn open_help_page(&mut self) {
@@ -1069,4 +1205,5 @@ pub enum EditFocus {
     Title,
     Body,
     EncryptionToggle,
+    ExternalEditorToggle,
 }
