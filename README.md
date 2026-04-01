@@ -32,11 +32,11 @@
 
 ### Editor Enhancements
 
-* [ ] **OCR Paste:** Pasting from screenshots using `ocrs` or `tesseract`.
+* [X] **OCR Paste:** Pasting from screenshots using `ocrs` or `tesseract`.
 * [ ] **Word & Character metrics:** Real-time word counts and progress goals.
 * [ ] **Status line customization:** Flexible `status_format = "{title} | {word_count} words | {encryption_status}"`
-* [ ] **External editor support:** Opening notes in `nvim`, `helix`, etc.
-* [ ] **Improved mouse support:** Right-click context menus within the editor.
+* [X] **External editor support:** Opening notes in `nvim`, `helix`, etc.
+* [X] **Improved mouse support:** Right-click context menus within the editor.
 
 ---
 
@@ -47,7 +47,7 @@
 * [ ] **Enhanced UI:** Sorting options, line numbers, and a preview pane.
 * [ ] **Fast Search:** Immediate note discovery using the `fd` utility.
 * [ ] **Asset management:** Icon rendering and assigning icons to specific notes.
-* [ ] **Data portability:** Easy backup/restore and text file importing.
+* [X] **Data portability:** Easy backup/restore and text file importing by making encryption optional.
 
 ---
 
