@@ -745,12 +745,6 @@ fn run_app(
 
     while !should_quit {
         app.tick_status();
-
-        if app.needs_full_redraw {
-            terminal.clear()?;
-            app.needs_full_redraw = false;
-        }
-
         terminal.draw(|frame| draw_ui(frame, app, focus))?;
 
         if event::poll(Duration::from_millis(200)).context("event poll failed")? {
@@ -808,9 +802,9 @@ fn run_app(
                     }
                     EditFocus::Body => {
                         app.editor.insert_str(data);
-                        app.status = Cow::Borrowed("Pasted body text");
+                        app.status = Cow::Borrowed("Pasted content");
                     }
-                    EditFocus::EncryptionToggle | EditFocus::ExternalEditorToggle => {}
+                    EditFocus::EncryptionToggle => {}
                 },
                 _ => {}
             }
