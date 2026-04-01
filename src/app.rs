@@ -118,6 +118,7 @@ pub struct App {
     pub command_palette: Option<crate::palette::CommandPalette>,
     /// Cached help page text (rebuilt when keybinds change)
     pub help_text_cache: Option<Text<'static>>,
+    pub folder_cache: Option<Vec<String>>,
     pub list_state: ListState,
     pub needs_full_redraw: bool,
 }
@@ -187,6 +188,7 @@ impl App {
             filter_popup: None,
             command_palette: None,
             help_text_cache: None,
+            folder_cache: None,
             list_state: ListState::default(),
             needs_full_redraw: false,
         };
@@ -242,8 +244,8 @@ impl App {
 
         // Always show root folder "Vault"
         visual.push(VisualItem::Folder {
-            path: "".to_string(),
-            name: "Vault".to_string(),
+            path: String::new(),
+            name: String::from("Vault"),
             depth: 0,
             is_expanded: self.folder_expanded.contains(""),
             note_count: by_folder
@@ -263,7 +265,7 @@ impl App {
                 }
             }
             visual.push(VisualItem::CreateNew {
-                path: "".to_string(),
+                path: String::new(),
                 depth: 1,
             });
         }
@@ -278,9 +280,16 @@ impl App {
 
         // Wait, what if a parent folder has no notes but has subfolders?
         // We should really build a proper tree from `storage.list_folders()`.
-        if let Ok(all_folders) = self.storage.list_folders() {
-            for folder in all_folders {
-                let parts: Vec<&str> = folder.split('/').collect();
+        let all_folders = if let Some(ref cached) = self.folder_cache {
+            cached.clone()
+        } else {
+            let folders = self.storage.list_folders().unwrap_or_default();
+            self.folder_cache = Some(folders.clone());
+            folders
+        };
+
+        for folder in all_folders {
+            let parts: Vec<&str> = folder.split('/').collect();
                 let depth = parts.len();
                 let name = parts.last().unwrap_or(&"").to_string();
 
@@ -288,7 +297,7 @@ impl App {
                 let parent_path = if parts.len() > 1 {
                     parts[..parts.len() - 1].join("/")
                 } else {
-                    "".to_string()
+                    String::new()
                 };
 
                 // Fast check if parent is expanded
@@ -302,7 +311,7 @@ impl App {
                     if let Some(slash) = current_parent.rfind('/') {
                         current_parent = current_parent[..slash].to_string();
                     } else {
-                        current_parent = "".to_string();
+                        current_parent = String::new();
                     }
                 }
 
@@ -341,7 +350,6 @@ impl App {
                     }
                 }
             }
-        }
 
         self.visual_list = visual;
     }
@@ -512,20 +520,23 @@ impl App {
                 Ok(status) if status.success() => {
                     if let Ok(new_content) = std::fs::read_to_string(&temp_file_path) {
                         if new_content != note.content {
-                            let mut updated_note = note.clone();
-                            updated_note.content = new_content;
-                            updated_note.updated_at = now_unix_secs();
+                            let updated_note = Note {
+                                title: note.title,
+                                content: new_content,
+                                updated_at: now_unix_secs(),
+                                tags: note.tags,
+                            };
                             if let Err(e) = self.storage.save_note(note_id, &updated_note, self.encryption_enabled) {
                                 self.set_temporary_status(&format!("Failed to save note: {}", e));
                             } else {
-                                self.set_temporary_status("Note saved from external editor.");
+                                self.set_temporary_status_static("Note saved from external editor.");
                                 let _ = self.refresh_notes();
                             }
                         } else {
-                            self.set_temporary_status("No changes made in external editor.");
+                            self.set_temporary_status_static("No changes made in external editor.");
                         }
                     } else {
-                        self.set_temporary_status("Failed to read from temp file.");
+                        self.set_temporary_status_static("Failed to read from temp file.");
                     }
                 }
                 Ok(status) => {
@@ -542,7 +553,7 @@ impl App {
             }
             let _ = std::fs::remove_file(&temp_file_path);
         } else {
-            self.set_temporary_status("Failed to load note for external editor!");
+            self.set_temporary_status_static("Failed to load note for external editor!");
         }
     }
 
@@ -766,7 +777,7 @@ impl App {
                 }
             }
             Err(_) => {
-                self.set_temporary_status("Failed to load templates");
+                self.set_temporary_status_static("Failed to load templates");
             }
         }
     }
@@ -785,7 +796,7 @@ impl App {
                 self.start_note_from_template(&template, folder);
                 return;
             } else {
-                self.set_temporary_status("Failed to load selected template");
+                self.set_temporary_status_static("Failed to load selected template");
             }
         }
     }
@@ -800,19 +811,18 @@ impl App {
             Some(id) => id.clone(),
             None => return,
         };
+        
+        let (updated_at, tags) = self
+            .storage
+            .load_note(&id)
+            .map(|n| (n.updated_at, n.tags))
+            .unwrap_or_else(|_| (now_unix_secs(), Vec::new()));
+            
         let note = Note {
-            title: title.clone(),
+            title,
             content,
-            updated_at: self
-                .storage
-                .load_note(&id)
-                .map(|n| n.updated_at)
-                .unwrap_or_else(|_| now_unix_secs()),
-            tags: self
-                .storage
-                .load_note(&id)
-                .map(|n| n.tags)
-                .unwrap_or_default(),
+            updated_at,
+            tags,
         };
         if let Ok(saved_id) = self.storage.save_note(&id, &note, self.encryption_enabled) {
             self.editing_id = Some(saved_id);
@@ -875,11 +885,11 @@ impl App {
 
     pub fn begin_delete_selected(&mut self) {
         if self.visual_index >= self.visual_list.len() {
-            self.set_temporary_status("No item selected to delete");
+            self.set_temporary_status_static("No item selected to delete");
             return;
         }
 
-        match &self.visual_list[self.visual_index].clone() {
+        match &self.visual_list[self.visual_index] {
             VisualItem::Note { summary_idx, .. } => {
                 if let Some(note) = self.notes.get(*summary_idx) {
                     self.pending_delete_note_id = Some(note.id.clone());
@@ -890,18 +900,19 @@ impl App {
             }
             VisualItem::Folder { path, .. } => {
                 if path.is_empty() {
-                    self.set_temporary_status("Cannot delete Vault root");
+                    self.set_temporary_status_static("Cannot delete Vault root");
                     return;
                 }
                 if let Err(e) = self.storage.delete_folder(path) {
                     self.set_temporary_status(&format!("Failed to delete folder: {e}"));
                 } else {
+                    self.folder_cache = None;
                     let _ = self.refresh_notes();
-                    self.set_temporary_status("Folder deleted");
+                    self.set_temporary_status_static("Folder deleted");
                 }
             }
             _ => {
-                self.set_temporary_status("Cannot delete this item");
+                self.set_temporary_status_static("Cannot delete this item");
             }
         }
     }
@@ -923,7 +934,7 @@ impl App {
                 if self.visual_index >= self.visual_list.len() && !self.visual_list.is_empty() {
                     self.visual_index = self.visual_list.len() - 1;
                 }
-                self.set_temporary_status("Note deleted");
+                self.set_temporary_status_static("Note deleted");
             }
             Err(err) => {
                 self.pending_delete_note_id = None;
@@ -957,7 +968,7 @@ impl App {
     pub fn begin_rename_folder(&mut self) {
         if let Some(VisualItem::Folder { path, .. }) = self.visual_list.get(self.visual_index) {
             if path.is_empty() {
-                self.set_temporary_status("Cannot rename Vault root");
+                self.set_temporary_status_static("Cannot rename Vault root");
                 return;
             }
             let mut input = TextArea::default();
@@ -974,7 +985,7 @@ impl App {
                 input,
             });
         } else {
-            self.set_temporary_status("Select a folder to rename");
+            self.set_temporary_status_static("Select a folder to rename");
         }
     }
 
@@ -983,7 +994,7 @@ impl App {
             let text = popup.input.lines().join("");
             let text = text.trim();
             if text.is_empty() {
-                self.set_temporary_status("Folder name cannot be empty");
+                self.set_temporary_status_static("Folder name cannot be empty");
                 return;
             }
 
@@ -998,16 +1009,18 @@ impl App {
                     if let Err(e) = self.storage.create_folder(&full_path) {
                         self.set_temporary_status(&format!("Failed to create folder: {e}"));
                     } else {
+                        self.folder_cache = None;
                         let _ = self.refresh_notes();
-                        self.set_temporary_status("Folder created");
+                        self.set_temporary_status_static("Folder created");
                     }
                 }
                 FolderPopupMode::Rename { old_path } => {
                     if let Err(e) = self.storage.rename_folder(old_path, text) {
                         self.set_temporary_status(&format!("Failed to rename folder: {e}"));
                     } else {
+                        self.folder_cache = None;
                         let _ = self.refresh_notes();
-                        self.set_temporary_status("Folder renamed");
+                        self.set_temporary_status_static("Folder renamed");
                     }
                 }
             }
@@ -1027,10 +1040,10 @@ impl App {
                     selected: 0,
                 });
             } else {
-                self.set_temporary_status("Failed to list folders");
+                self.set_temporary_status_static("Failed to list folders");
             }
         } else {
-            self.set_temporary_status("Select a note to move");
+            self.set_temporary_status_static("Select a note to move");
         }
     }
 
@@ -1041,8 +1054,9 @@ impl App {
             if let Err(e) = self.storage.move_note(&picker.note_id, target_folder) {
                 self.set_temporary_status(&format!("Failed to move note: {e}"));
             } else {
+                self.folder_cache = None;
                 let _ = self.refresh_notes();
-                self.set_temporary_status("Note moved");
+                self.set_temporary_status_static("Note moved");
             }
         }
     }
@@ -1066,7 +1080,7 @@ impl App {
                 input,
             });
         } else {
-            self.set_temporary_status("Select a note to manage tags");
+            self.set_temporary_status_static("Select a note to manage tags");
         }
     }
 
@@ -1080,14 +1094,14 @@ impl App {
                 .collect();
 
             if let Ok(mut note) = self.storage.load_note(&popup.note_id) {
-                note.tags = tags.clone();
                 let is_clin = popup.note_id.ends_with(".clin");
+                note.tags = tags;
                 if let Err(e) = self.storage.save_note(&popup.note_id, &note, is_clin) {
                     self.set_temporary_status(&format!("Failed to save tags: {e}"));
                 } else {
                     let mut all_tags = self.storage.load_tag_cache();
                     let mut changed = false;
-                    for t in &tags {
+                    for t in &note.tags {
                         if !all_tags.contains(t) {
                             all_tags.push(t.clone());
                             changed = true;
@@ -1098,10 +1112,10 @@ impl App {
                         let _ = self.storage.save_tag_cache(&all_tags);
                     }
                     let _ = self.refresh_notes();
-                    self.set_temporary_status("Tags updated");
+                    self.set_temporary_status_static("Tags updated");
                 }
             } else {
-                self.set_temporary_status("Failed to load note to update tags");
+                self.set_temporary_status_static("Failed to load note to update tags");
             }
         }
     }
@@ -1138,31 +1152,31 @@ impl App {
 
     pub fn open_selected_note_location(&mut self) {
         if self.visual_index >= self.visual_list.len() {
-            self.set_temporary_status("No note selected for location");
+            self.set_temporary_status_static("No note selected for location");
             return;
         }
 
         let summary_idx = match &self.visual_list[self.visual_index] {
             VisualItem::Note { summary_idx, .. } => *summary_idx,
             _ => {
-                self.set_temporary_status("Selected item is not a note");
+                self.set_temporary_status_static("Selected item is not a note");
                 return;
             }
         };
 
         let Some(note) = self.notes.get(summary_idx) else {
-            self.set_temporary_status("No note selected for location");
+            self.set_temporary_status_static("No note selected for location");
             return;
         };
 
         let note_path = self.storage.note_path(&note.id);
         let Some(parent) = note_path.parent() else {
-            self.set_temporary_status("Could not determine note directory");
+            self.set_temporary_status_static("Could not determine note directory");
             return;
         };
 
         match open_in_file_manager(parent) {
-            Ok(()) => self.set_temporary_status("Opened note file location"),
+            Ok(()) => self.set_temporary_status_static("Opened note file location"),
             Err(err) => self.set_temporary_status(&format!("Open location failed: {err:#}")),
         }
     }
@@ -1215,6 +1229,11 @@ impl App {
         self.status_until = Some(Instant::now() + Duration::from_secs(2));
     }
 
+    pub fn set_temporary_status_static(&mut self, message: &'static str) {
+        self.status = Cow::Borrowed(message);
+        self.status_until = Some(Instant::now() + Duration::from_secs(2));
+    }
+
     pub fn tick_status(&mut self) {
         if let Some(until) = self.status_until
             && Instant::now() >= until
@@ -1224,13 +1243,11 @@ impl App {
     }
 
     /// Get cached help text, building it if necessary
-    pub fn get_help_text(&mut self) -> Text<'static> {
-        if let Some(ref text) = self.help_text_cache {
-            return text.clone();
+    pub fn get_help_text(&mut self) -> &Text<'static> {
+        if self.help_text_cache.is_none() {
+            self.help_text_cache = Some(help_page_text(&self.keybinds));
         }
-        let text = help_page_text(&self.keybinds);
-        self.help_text_cache = Some(text.clone());
-        text
+        self.help_text_cache.as_ref().unwrap()
     }
 }
 

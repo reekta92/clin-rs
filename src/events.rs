@@ -569,6 +569,10 @@ pub fn move_textarea_cursor_to_mouse(
 
     let mut scroll_row = 0;
     let mut scroll_col = 0;
+
+    // Unfortunately, tui-textarea doesn't currently expose public viewport accessors.
+    // We must rely on debug string formatting to extract the scroll offset.
+    // This allocation happens on mouse drag, but it's the only way without upstream changes.
     let debug_str = format!("{textarea:?}");
     if let Some(start) = debug_str.find("viewport: Viewport(") {
         let after_start = &debug_str[start + "viewport: Viewport(".len()..];
@@ -683,11 +687,23 @@ pub fn make_title_editor(initial: &str) -> TextArea<'static> {
     title
 }
 
-pub fn get_title_text(title_editor: &TextArea<'static>) -> String {
-    title_editor
-        .lines()
-        .join(" ")
-        .replace(['\r', '\n'], " ")
-        .trim()
-        .to_string()
+use std::borrow::Cow;
+
+pub fn get_title_text<'a>(title_editor: &'a TextArea<'static>) -> Cow<'a, str> {
+    let lines = title_editor.lines();
+
+    if lines.len() == 1 {
+        let line = lines[0].trim();
+        if !line.contains(['\r', '\n']) {
+            return Cow::Borrowed(line);
+        }
+    }
+
+    Cow::Owned(
+        lines
+            .join(" ")
+            .replace(['\r', '\n'], " ")
+            .trim()
+            .to_string(),
+    )
 }

@@ -317,6 +317,7 @@ dependencies = [
  "directories",
  "fuzzy-matcher",
  "image",
+ "once_cell",
  "rand 0.8.5",
  "ratatui",
  "serde",

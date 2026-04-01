@@ -26,7 +26,7 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
         .constraints([Constraint::Min(8), Constraint::Length(3)])
         .split(area);
 
-    let help_text = app.get_help_text();
+    let help_text = app.get_help_text().clone();
     let help = Paragraph::new(help_text)
         .block(Block::default().borders(Borders::ALL).title("Help"))
         .wrap(Wrap { trim: false })
@@ -248,13 +248,13 @@ pub fn help_item_dyn(text: &str, key: Option<&str>) -> Vec<Line<'static>> {
                 ]),
                 Line::from(vec![
                     Span::styled("    • ", Style::default().fg(Color::DarkGray)),
-                    Span::raw(text.to_string()),
+                    Span::raw(text.to_owned()),
                 ]),
             ]
         }
         None => vec![Line::from(vec![
             Span::styled("  • ", Style::default().fg(Color::DarkGray)),
-            Span::raw(text.to_string()),
+            Span::raw(text.to_owned()),
         ])],
     }
 }
@@ -282,7 +282,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     .block(Block::default().borders(Borders::ALL).title("Notes"));
     frame.render_widget(header, chunks[0]);
 
-    let mut items: Vec<ListItem> = Vec::new();
+    let mut items: Vec<ListItem> = Vec::with_capacity(app.visual_list.len());
 
     for item in &app.visual_list {
         match item {

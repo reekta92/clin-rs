@@ -1,8 +1,7 @@
-use crate::actions::get_all_actions;
-use ratatui::widgets::ListState;
-use tui_textarea::TextArea;
 use ratatui::style::Style;
+use ratatui::widgets::ListState;
 use ratatui::widgets::{Block, Borders};
+use tui_textarea::TextArea;
 
 pub struct PaletteItem {
     pub id: String,
@@ -23,7 +22,11 @@ impl CommandPalette {
         let mut input = TextArea::default();
         input.set_cursor_line_style(Style::default());
         input.set_placeholder_text("Search commands...");
-        input.set_block(Block::default().borders(Borders::ALL).title(" Command Palette "));
+        input.set_block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" Command Palette "),
+        );
 
         let mut p = Self {
             input,
@@ -36,30 +39,29 @@ impl CommandPalette {
     }
 
     pub fn refresh_items(&mut self) {
-        let query = self.input.lines()[0].clone();
-        let actions = get_all_actions();
-        let mut matched = Vec::new();
+        let query = self.input.lines()[0].as_str();
+        let actions = crate::actions::get_cached_action_infos();
+        let mut matched = Vec::with_capacity(actions.len());
 
         if query.is_empty() {
             for action in actions {
                 matched.push(PaletteItem {
-                    id: action.id().into_owned(),
-                    name: action.name().into_owned(),
-                    description: action.description().into_owned(),
+                    id: action.id.clone(),
+                    name: action.name.clone(),
+                    description: action.description.clone(),
                     score: 0,
                 });
             }
         } else {
-            use fuzzy_matcher::FuzzyMatcher;
             use fuzzy_matcher::skim::SkimMatcherV2;
+            use fuzzy_matcher::FuzzyMatcher;
             let matcher = SkimMatcherV2::default();
             for action in actions {
-                let name = action.name();
-                if let Some(score) = matcher.fuzzy_match(&name, &query) {
+                if let Some(score) = matcher.fuzzy_match(&action.name, query) {
                     matched.push(PaletteItem {
-                        id: action.id().into_owned(),
-                        name: name.into_owned(),
-                        description: action.description().into_owned(),
+                        id: action.id.clone(),
+                        name: action.name.clone(),
+                        description: action.description.clone(),
                         score,
                     });
                 }

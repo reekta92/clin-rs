@@ -31,7 +31,9 @@ fn get_clipboard_image_wayland() -> Result<DynamicImage> {
 
     let mut stdout = child.stdout.take().context("Failed to capture stdout")?;
     let mut image_data = Vec::new();
-    stdout.read_to_end(&mut image_data).context("Failed to read image data")?;
+    stdout
+        .read_to_end(&mut image_data)
+        .context("Failed to read image data")?;
 
     let status = child.wait().context("Failed to wait on wl-paste")?;
 
@@ -48,7 +50,7 @@ fn get_clipboard_image_wayland() -> Result<DynamicImage> {
     }
 
     if image_data.is_empty() {
-         anyhow::bail!("wl-paste returned empty data.");
+        anyhow::bail!("wl-paste returned empty data.");
     }
 
     // Decode the image
@@ -91,13 +93,12 @@ impl Action for OcrPasteAction {
         let note_id = context_note_id.context("No note selected for OCR Paste")?;
 
         let dynamic_image = if is_wayland() {
-            get_clipboard_image_wayland()
-                .or_else(|e| {
-                    // Fallback to arboard if Wayland method fails for some reason
-                    // e.g. user is on Wayland but has Xwayland primary clipboard synced
-                    eprintln!("Wayland clipboard failed: {}. Falling back to arboard.", e);
-                    get_clipboard_image_arboard()
-                })?
+            get_clipboard_image_wayland().or_else(|e| {
+                // Fallback to arboard if Wayland method fails for some reason
+                // e.g. user is on Wayland but has Xwayland primary clipboard synced
+                eprintln!("Wayland clipboard failed: {}. Falling back to arboard.", e);
+                get_clipboard_image_arboard()
+            })?
         } else {
             get_clipboard_image_arboard()?
         };
