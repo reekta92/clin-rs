@@ -161,7 +161,17 @@ cargo run
 
 # Install globally
 cargo install --path .
+
+### With Cargo
+```bash
+# Install Rust
+curl https://sh.rustup.rs -sSf | sh
+
+# Install clin
+cargo install clin-rs
 ```
+
+
 ## CLI Commands
 
 ```
