@@ -51,6 +51,7 @@ toml = "0.8"
 tui-textarea = { version = "0.7", features = ["crossterm"] }
 uuid = { version = "1.8", features = ["v4"] }
 which = "8.0.2"
+zeroize = { version = "1.8.2", features = ["derive"] }
 
 [profile.release]
 lto = "thin"

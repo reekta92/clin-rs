@@ -62,9 +62,13 @@ pub struct NoteSummary {
 }
 
 #[derive(Clone, Debug)]
+#[derive(zeroize::Zeroize, zeroize::ZeroizeOnDrop)]
 pub struct Storage {
+    #[zeroize(skip)]
     pub data_dir: PathBuf,
+    #[zeroize(skip)]
     pub notes_dir: PathBuf,
+    #[zeroize(skip)]
     pub templates_dir: PathBuf,
     pub key: [u8; 32],
 }
