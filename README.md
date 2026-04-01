@@ -161,6 +161,7 @@ cargo run
 
 # Install globally
 cargo install --path .
+```
 
 ### With Cargo
 ```bash
