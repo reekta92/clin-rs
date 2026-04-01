@@ -95,10 +95,6 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
             KeyCode::Esc | KeyCode::Char('h') => {
                 app.close_template_popup();
             }
-            // Allow creating blank note with 'b'
-            KeyCode::Char('b') => {
-                app.start_blank_note(String::new());
-            }
             _ => {
                 app.template_popup = Some(popup);
             }

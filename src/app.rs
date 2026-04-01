@@ -51,7 +51,7 @@ pub struct TagPopup {
 }
 
 pub enum FolderPopupMode {
-    Create,
+    Create { parent_path: String },
     Rename { old_path: String },
 }
 
@@ -137,6 +137,7 @@ pub enum CliCommand {
         path: PathBuf,
     },
     ResetStoragePath,
+    MigrateStorage,
     // Keybind commands
     ShowKeybinds,
     ExportKeybinds,
@@ -333,6 +334,23 @@ impl App {
         }
 
         self.visual_list = visual;
+    }
+
+    /// Get the folder context based on current selection.
+    /// If a folder is selected, returns that folder's path.
+    /// If a note is selected, returns the folder containing that note.
+    /// If a "Create New" item is selected, returns its target folder.
+    pub fn get_current_folder_context(&self) -> String {
+        match self.visual_list.get(self.visual_index) {
+            Some(VisualItem::Folder { path, .. }) => path.clone(),
+            Some(VisualItem::Note { summary_idx, .. }) => self
+                .notes
+                .get(*summary_idx)
+                .map(|n| n.folder.clone())
+                .unwrap_or_default(),
+            Some(VisualItem::CreateNew { path, .. }) => path.clone(),
+            None => String::new(),
+        }
     }
 
     pub fn open_selected(&mut self) {
@@ -597,17 +615,18 @@ impl App {
     }
 
     pub fn select_template(&mut self) {
+        let folder = self.get_current_folder_context();
         if let Some(popup) = self.template_popup.take()
             && let Some(summary) = popup.templates.get(popup.selected)
         {
             let template_manager = self.storage.template_manager();
             if let Ok(template) = template_manager.load(&summary.filename) {
-                self.start_note_from_template(&template, String::new());
+                self.start_note_from_template(&template, folder);
                 return;
+            } else {
+                self.set_temporary_status("Failed to load selected template");
             }
         }
-        // Fallback to blank note if something went wrong
-        self.start_blank_note(String::new());
     }
 
     pub fn autosave(&mut self) {
@@ -753,14 +772,23 @@ impl App {
     }
 
     pub fn begin_create_folder(&mut self) {
+        let parent_path = self.get_current_folder_context();
         let mut input = TextArea::default();
+        let title = if parent_path.is_empty() {
+            "Create Folder - Esc to cancel, Enter to save".to_string()
+        } else {
+            format!(
+                "Create Folder in '{}' - Esc to cancel, Enter to save",
+                parent_path
+            )
+        };
         input.set_block(
             ratatui::widgets::Block::default()
                 .borders(ratatui::widgets::Borders::ALL)
-                .title("Create Folder (e.g. 'work/projects') - Esc to cancel, Enter to save"),
+                .title(title),
         );
         self.folder_popup = Some(FolderPopup {
-            mode: FolderPopupMode::Create,
+            mode: FolderPopupMode::Create { parent_path },
             input,
         });
     }
@@ -799,8 +827,14 @@ impl App {
             }
 
             match &popup.mode {
-                FolderPopupMode::Create => {
-                    if let Err(e) = self.storage.create_folder(text) {
+                FolderPopupMode::Create { parent_path } => {
+                    // Combine parent path with the new folder name
+                    let full_path = if parent_path.is_empty() {
+                        text.to_string()
+                    } else {
+                        format!("{}/{}", parent_path, text)
+                    };
+                    if let Err(e) = self.storage.create_folder(&full_path) {
                         self.set_temporary_status(&format!("Failed to create folder: {e}"));
                     } else {
                         let _ = self.refresh_notes();
