@@ -2,6 +2,7 @@ mod config;
 pub mod constants;
 pub mod frontmatter;
 mod keybinds;
+pub mod sanitize;
 mod templates;
 pub mod actions;
 pub mod palette;

@@ -295,7 +295,8 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             } => {
                 let indent = "  ".repeat(*depth);
                 let icon = if *is_expanded { " " } else { " " };
-                let text = format!("{indent}{icon} {name} ({note_count})");
+                let sanitized_name = crate::sanitize::sanitize_for_terminal(name);
+                let text = format!("{indent}{icon} {sanitized_name} ({note_count})");
                 items.push(ListItem::new(Line::from(vec![Span::styled(
                     text,
                     Style::default()
@@ -331,13 +332,16 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     spans.push(Span::styled("[ENC] ", text_style));
                 }
 
-                spans.push(Span::styled(summary.title.as_str(), text_style));
+                let sanitized_title =
+                    crate::sanitize::sanitize_for_terminal(summary.title.as_str());
+                spans.push(Span::styled(sanitized_title, text_style));
 
                 // Tag badges
                 for tag in &summary.tags {
                     spans.push(Span::raw(" "));
+                    let sanitized_tag = crate::sanitize::sanitize_for_terminal(tag);
                     spans.push(Span::styled(
-                        format!("[{}]", tag),
+                        format!("[{}]", sanitized_tag),
                         Style::default().fg(Color::LightMagenta),
                     ));
                 }
@@ -410,7 +414,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         Span::raw(" "),
         Span::styled(ext_button_label, ext_button_style),
         Span::raw("   "),
-        Span::raw(app.status.as_ref()),
+        Span::raw(crate::sanitize::sanitize_for_terminal(app.status.as_ref())),
     ]);
 
     let footer =
@@ -645,7 +649,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         Span::raw(" "),
         Span::styled(ext_button_label, ext_button_style),
         Span::raw("   "),
-        Span::raw(app.status.as_ref()),
+        Span::raw(crate::sanitize::sanitize_for_terminal(app.status.as_ref())),
     ]);
 
     let status =
