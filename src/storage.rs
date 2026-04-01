@@ -161,7 +161,28 @@ impl Storage {
     }
 
     pub fn note_path(&self, id: &str) -> PathBuf {
-        self.notes_dir.join(id)
+        self.validate_path_within_notes_dir(id)
+            .unwrap_or_else(|| self.notes_dir.join("invalid"))
+    }
+
+    fn validate_path_within_notes_dir(&self, rel_path: &str) -> Option<PathBuf> {
+        let path = std::path::Path::new(rel_path);
+        let mut normalized = PathBuf::new();
+        for component in path.components() {
+            match component {
+                std::path::Component::ParentDir => return None,
+                std::path::Component::Normal(c) => {
+                    let s = c.to_string_lossy();
+                    if s.starts_with('.') || s.contains('\0') {
+                        return None;
+                    }
+                    normalized.push(c);
+                }
+                std::path::Component::RootDir | std::path::Component::Prefix(_) => return None,
+                std::path::Component::CurDir => {}
+            }
+        }
+        Some(self.notes_dir.join(normalized))
     }
 
     pub fn list_note_ids(&self) -> Result<Vec<String>> {
@@ -339,18 +360,22 @@ impl Storage {
     }
 
     pub fn create_folder(&self, path: &str) -> Result<()> {
-        let full_path = self.notes_dir.join(path);
+        let full_path = self.validate_path_within_notes_dir(path)
+            .ok_or_else(|| anyhow::anyhow!("Invalid folder path"))?;
         fs::create_dir_all(full_path).context("failed to create folder")
     }
 
     pub fn delete_folder(&self, path: &str) -> Result<()> {
-        let full_path = self.notes_dir.join(path);
+        let full_path = self.validate_path_within_notes_dir(path)
+            .ok_or_else(|| anyhow::anyhow!("Invalid folder path"))?;
         fs::remove_dir(full_path).context("failed to delete folder")
     }
 
     pub fn rename_folder(&self, old_path: &str, new_path: &str) -> Result<()> {
-        let old_full = self.notes_dir.join(old_path);
-        let new_full = self.notes_dir.join(new_path);
+        let old_full = self.validate_path_within_notes_dir(old_path)
+            .ok_or_else(|| anyhow::anyhow!("Invalid source folder path"))?;
+        let new_full = self.validate_path_within_notes_dir(new_path)
+            .ok_or_else(|| anyhow::anyhow!("Invalid target folder path"))?;
 
         if !old_full.exists() {
             anyhow::bail!("Folder does not exist");
