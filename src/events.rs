@@ -6,6 +6,27 @@ use ratatui::prelude::*;
 use tui_textarea::*;
 
 pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
+    if let Some(mut palette) = app.command_palette.take() {
+        if palette.handle_input(key) {
+            if key.code == KeyCode::Enter {
+                if let Some(selected_idx) = palette.state.selected() {
+                    if let Some(item) = palette.items.get(selected_idx) {
+                        let action_id = item.id.clone();
+                        let note_id = palette.context_note_id.clone();
+                        if let Err(e) =
+                            crate::actions::execute_action(&action_id, app, note_id.as_deref())
+                        {
+                            app.set_temporary_status(&format!("Action failed: {}", e));
+                        }
+                    }
+                }
+            }
+            return false;
+        }
+        app.command_palette = Some(palette);
+        return false;
+    }
+
     // Handle folder popup if open
     if let Some(mut popup) = app.folder_popup.take() {
         if key.code == KeyCode::Esc {
@@ -95,10 +116,6 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
             KeyCode::Esc | KeyCode::Char('h') => {
                 app.close_template_popup();
             }
-            // Allow creating blank note with 'b'
-            KeyCode::Char('b') => {
-                app.start_blank_note(String::new());
-            }
             _ => {
                 app.template_popup = Some(popup);
             }
@@ -130,7 +147,8 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     if app.keybinds.matches_list(ListAction::CycleFocus, &key) {
         app.list_focus = match app.list_focus {
             ListFocus::Notes => ListFocus::EncryptionToggle,
-            ListFocus::EncryptionToggle => ListFocus::Notes,
+            ListFocus::EncryptionToggle => ListFocus::ExternalEditorToggle,
+            ListFocus::ExternalEditorToggle => ListFocus::Notes,
         };
         return false;
     }
@@ -139,6 +157,14 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     if app.list_focus == ListFocus::EncryptionToggle {
         if app.keybinds.matches_list(ListAction::ToggleButton, &key) {
             app.toggle_encryption_mode();
+        } else if app.keybinds.matches_list(ListAction::Quit, &key) {
+            return true;
+        }
+        return false;
+    }
+    if app.list_focus == ListFocus::ExternalEditorToggle {
+        if app.keybinds.matches_list(ListAction::ToggleButton, &key) {
+            app.toggle_external_editor_mode();
         } else if app.keybinds.matches_list(ListAction::Quit, &key) {
             return true;
         }
@@ -209,6 +235,25 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         app.begin_filter_tags();
         return false;
     }
+    if app
+        .keybinds
+        .matches_list(ListAction::OpenCommandPalette, &key)
+    {
+        if let Some(item) = app.visual_list.get(app.visual_index) {
+            match item {
+                crate::app::VisualItem::Note { id, .. } => {
+                    app.command_palette =
+                        Some(crate::palette::CommandPalette::new(Some(id.clone())));
+                }
+                _ => {
+                    app.command_palette = Some(crate::palette::CommandPalette::new(None));
+                }
+            }
+        } else {
+            app.command_palette = Some(crate::palette::CommandPalette::new(None));
+        }
+        return false;
+    }
 
     false
 }
@@ -261,7 +306,8 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
         *focus = match *focus {
             EditFocus::Title => EditFocus::Body,
             EditFocus::Body => EditFocus::EncryptionToggle,
-            EditFocus::EncryptionToggle => EditFocus::Title,
+            EditFocus::EncryptionToggle => EditFocus::ExternalEditorToggle,
+            EditFocus::ExternalEditorToggle => EditFocus::Title,
         };
         return false;
     }
@@ -299,6 +345,11 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
         EditFocus::EncryptionToggle => {
             if app.keybinds.matches_edit(EditAction::ToggleButton, &key) {
                 app.toggle_encryption_mode();
+            }
+        }
+        EditFocus::ExternalEditorToggle => {
+            if app.keybinds.matches_edit(EditAction::ToggleButton, &key) {
+                app.toggle_external_editor_mode();
             }
         }
     }
@@ -518,6 +569,10 @@ pub fn move_textarea_cursor_to_mouse(
 
     let mut scroll_row = 0;
     let mut scroll_col = 0;
+
+    // Unfortunately, tui-textarea doesn't currently expose public viewport accessors.
+    // We must rely on debug string formatting to extract the scroll offset.
+    // This allocation happens on mouse drag, but it's the only way without upstream changes.
     let debug_str = format!("{textarea:?}");
     if let Some(start) = debug_str.find("viewport: Viewport(") {
         let after_start = &debug_str[start + "viewport: Viewport(".len()..];
@@ -632,11 +687,23 @@ pub fn make_title_editor(initial: &str) -> TextArea<'static> {
     title
 }
 
-pub fn get_title_text(title_editor: &TextArea<'static>) -> String {
-    title_editor
-        .lines()
-        .join(" ")
-        .replace(['\r', '\n'], " ")
-        .trim()
-        .to_string()
+use std::borrow::Cow;
+
+pub fn get_title_text<'a>(title_editor: &'a TextArea<'static>) -> Cow<'a, str> {
+    let lines = title_editor.lines();
+
+    if lines.len() == 1 {
+        let line = lines[0].trim();
+        if !line.contains(['\r', '\n']) {
+            return Cow::Borrowed(line);
+        }
+    }
+
+    Cow::Owned(
+        lines
+            .join(" ")
+            .replace(['\r', '\n'], " ")
+            .trim()
+            .to_string(),
+    )
 }

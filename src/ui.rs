@@ -26,7 +26,7 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
         .constraints([Constraint::Min(8), Constraint::Length(3)])
         .split(area);
 
-    let help_text = app.get_help_text();
+    let help_text = app.get_help_text().clone();
     let help = Paragraph::new(help_text)
         .block(Block::default().borders(Borders::ALL).title("Help"))
         .wrap(Wrap { trim: false })
@@ -84,49 +84,104 @@ pub fn help_page_text(keybinds: &Keybinds) -> Text<'static> {
 
     let mut lines = Vec::new();
     lines.push(Line::from(vec![
-        Span::styled("󰠮 clin", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "󰠮 clin",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::styled(" Help", Style::default().add_modifier(Modifier::BOLD)),
     ]));
     lines.push(Line::from(""));
 
     lines.push(help_heading("󰋗", "Core Features"));
     lines.extend(help_item_dyn("Encrypted local note files (.clin)", None));
-    lines.extend(help_item_dyn("In-terminal note list, full text editor, and continual auto-save", None));
-    lines.extend(help_item_dyn("Open note file location from notes view", Some(&list_location)));
-    lines.extend(help_item_dyn("Delete selected note or folder", Some(&list_delete)));
+    lines.extend(help_item_dyn(
+        "In-terminal note list, full text editor, and continual auto-save",
+        None,
+    ));
+    lines.extend(help_item_dyn(
+        "Open note file location from notes view",
+        Some(&list_location),
+    ));
+    lines.extend(help_item_dyn(
+        "Delete selected note or folder",
+        Some(&list_delete),
+    ));
     lines.push(Line::from(""));
 
     lines.push(help_heading("󰮋", "Notes View"));
     lines.extend(help_item_dyn("Move selection", Some(&list_move)));
-    lines.extend(help_item_dyn("Expand/Collapse folder", Some(&list_expand_collapse)));
-    lines.extend(help_item_dyn("Open selected folder, note, or create new", Some(&list_open)));
-    lines.extend(help_item_dyn("Create new folder", Some(&list_create_folder)));
+    lines.extend(help_item_dyn(
+        "Expand/Collapse folder",
+        Some(&list_expand_collapse),
+    ));
+    lines.extend(help_item_dyn(
+        "Open selected folder, note, or create new",
+        Some(&list_open),
+    ));
+    lines.extend(help_item_dyn(
+        "Create new folder",
+        Some(&list_create_folder),
+    ));
     lines.extend(help_item_dyn("Rename folder", Some(&list_rename_folder)));
     lines.extend(help_item_dyn("Move note to folder", Some(&list_move_note)));
     lines.extend(help_item_dyn("Manage note tags", Some(&list_manage_tags)));
     lines.extend(help_item_dyn("Filter tags", Some(&list_filter_tags)));
     lines.extend(help_item_dyn("Delete note or folder", Some(&list_delete)));
-    lines.extend(help_item_dyn("Confirm / cancel delete", Some("y/Enter / n/Esc")));
-    lines.extend(help_item_dyn("Open selected note file location", Some(&list_location)));
-    lines.extend(help_item_dyn("Change focus (notes list <-> buttons)", Some(&list_focus)));
-    lines.extend(help_item_dyn("Toggle Encryption from focused button", Some("Enter/Space")));
+    lines.extend(help_item_dyn(
+        "Confirm / cancel delete",
+        Some("y/Enter / n/Esc"),
+    ));
+    lines.extend(help_item_dyn(
+        "Open selected note file location",
+        Some(&list_location),
+    ));
+    lines.extend(help_item_dyn(
+        "Change focus (notes list <-> buttons)",
+        Some(&list_focus),
+    ));
+    lines.extend(help_item_dyn(
+        "Toggle Encryption from focused button",
+        Some("Enter/Space"),
+    ));
     lines.extend(help_item_dyn("Open help", Some(&list_help)));
     lines.extend(help_item_dyn("Quit app", Some(&list_quit)));
-    lines.extend(help_item_dyn("New note from template", Some(&list_template)));
+    lines.extend(help_item_dyn(
+        "New note from template",
+        Some(&list_template),
+    ));
     lines.push(Line::from(""));
 
     lines.push(help_heading("󰷈", "Editor"));
-    lines.extend(help_item_dyn("Change focus (Title, Content, buttons)", Some(&edit_focus)));
-    lines.extend(help_item_dyn("Return to notes (continually auto-saved)", Some(&edit_back)));
+    lines.extend(help_item_dyn(
+        "Change focus (Title, Content, toggles)",
+        Some(&edit_focus),
+    ));
+    lines.extend(help_item_dyn(
+        "Return to notes (continually auto-saved)",
+        Some(&edit_back),
+    ));
     lines.extend(help_item_dyn("Save and quit", Some(&edit_quit)));
-    lines.extend(help_item_dyn("Copy / Cut / Paste", Some(&format!("{edit_copy} / {edit_cut} / {edit_paste}"))));
-    lines.extend(help_item_dyn("Select all / Undo / Redo", Some(&format!("{edit_select_all} / {edit_undo} / {edit_redo}"))));
-    lines.extend(help_item_dyn("Delete prev/next word", Some(&format!("{edit_del_word} / {edit_del_next_word}"))));
+    lines.extend(help_item_dyn(
+        "Copy / Cut / Paste",
+        Some(&format!("{edit_copy} / {edit_cut} / {edit_paste}")),
+    ));
+    lines.extend(help_item_dyn(
+        "Select all / Undo / Redo",
+        Some(&format!("{edit_select_all} / {edit_undo} / {edit_redo}")),
+    ));
+    lines.extend(help_item_dyn(
+        "Delete prev/next word",
+        Some(&format!("{edit_del_word} / {edit_del_next_word}")),
+    ));
     lines.push(Line::from(""));
 
     lines.push(help_heading("󰑃", "Templates"));
-    lines.extend(help_item_dyn("New note from template (in notes view)", Some(&list_template)));
-    lines.extend(help_item_dyn("Create blank note in popup", Some("b")));
+    lines.extend(help_item_dyn(
+        "New note from template (in notes view)",
+        Some(&list_template),
+    ));
     lines.extend(help_item_dyn("Cancel template selection", Some("Esc")));
     lines.push(Line::from(""));
 
@@ -136,7 +191,10 @@ pub fn help_page_text(keybinds: &Keybinds) -> Text<'static> {
     lines.push(Line::from(""));
 
     lines.push(help_heading("󰒓", "Configuration"));
-    lines.extend(help_item_dyn("Keybinds file: <storage>/keybinds.toml", None));
+    lines.extend(help_item_dyn(
+        "Keybinds file: ~/.config/clin/keybinds.toml",
+        None,
+    ));
     lines.extend(help_item_dyn("Templates dir: <storage>/templates/", None));
     lines.extend(help_item_dyn("Run 'clin --help' for CLI commands", None));
 
@@ -161,9 +219,16 @@ pub fn help_heading(icon: &'static str, title: &'static str) -> Line<'static> {
 }
 
 fn format_keybind(key: &str) -> String {
-    let parts: Vec<_> = key.split(" / ").map(|group| {
-        group.split('/').map(|k| format!("<{}>", k)).collect::<Vec<_>>().join("/")
-    }).collect();
+    let parts: Vec<_> = key
+        .split(" / ")
+        .map(|group| {
+            group
+                .split('/')
+                .map(|k| format!("<{}>", k))
+                .collect::<Vec<_>>()
+                .join("/")
+        })
+        .collect();
     parts.join(" / ")
 }
 
@@ -183,13 +248,13 @@ pub fn help_item_dyn(text: &str, key: Option<&str>) -> Vec<Line<'static>> {
                 ]),
                 Line::from(vec![
                     Span::styled("    • ", Style::default().fg(Color::DarkGray)),
-                    Span::raw(text.to_string()),
+                    Span::raw(text.to_owned()),
                 ]),
             ]
-        },
+        }
         None => vec![Line::from(vec![
             Span::styled("  • ", Style::default().fg(Color::DarkGray)),
-            Span::raw(text.to_string()),
+            Span::raw(text.to_owned()),
         ])],
     }
 }
@@ -217,7 +282,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     .block(Block::default().borders(Borders::ALL).title("Notes"));
     frame.render_widget(header, chunks[0]);
 
-    let mut items: Vec<ListItem> = Vec::new();
+    let mut items: Vec<ListItem> = Vec::with_capacity(app.visual_list.len());
 
     for item in &app.visual_list {
         match item {
@@ -230,7 +295,8 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             } => {
                 let indent = "  ".repeat(*depth);
                 let icon = if *is_expanded { " " } else { " " };
-                let text = format!("{indent}{icon} {name} ({note_count})");
+                let sanitized_name = crate::sanitize::sanitize_for_terminal(name);
+                let text = format!("{indent}{icon} {sanitized_name} ({note_count})");
                 items.push(ListItem::new(Line::from(vec![Span::styled(
                     text,
                     Style::default()
@@ -266,13 +332,16 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     spans.push(Span::styled("[ENC] ", text_style));
                 }
 
-                spans.push(Span::styled(summary.title.as_str(), text_style));
+                let sanitized_title =
+                    crate::sanitize::sanitize_for_terminal(summary.title.as_str());
+                spans.push(Span::styled(sanitized_title, text_style));
 
                 // Tag badges
                 for tag in &summary.tags {
                     spans.push(Span::raw(" "));
+                    let sanitized_tag = crate::sanitize::sanitize_for_terminal(tag);
                     spans.push(Span::styled(
-                        format!("[{}]", tag),
+                        format!("[{}]", sanitized_tag),
                         Style::default().fg(Color::LightMagenta),
                     ));
                 }
@@ -322,10 +391,30 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
     };
 
+    let ext_button_label = if app.external_editor_enabled {
+        "[ Ext: ON ]"
+    } else {
+        "[ Ext: OFF ]"
+    };
+    let ext_button_style = if app.list_focus == ListFocus::ExternalEditorToggle {
+        Style::default()
+            .fg(Color::Black)
+            .bg(Color::Yellow)
+            .add_modifier(Modifier::BOLD)
+    } else if app.external_editor_enabled {
+        Style::default()
+            .fg(Color::Green)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
+    };
+
     let footer_line = Line::from(vec![
         Span::styled(enc_button_label, enc_button_style),
+        Span::raw(" "),
+        Span::styled(ext_button_label, ext_button_style),
         Span::raw("   "),
-        Span::raw(app.status.as_ref()),
+        Span::raw(crate::sanitize::sanitize_for_terminal(app.status.as_ref())),
     ]);
 
     let footer =
@@ -387,6 +476,42 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
 
         frame.render_stateful_widget(list, popup_area, &mut state);
     }
+
+    if let Some(palette) = &mut app.command_palette {
+        let palette_area = centered_rect(60, 60, area);
+        frame.render_widget(Clear, palette_area);
+
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(3), Constraint::Min(0)])
+            .split(palette_area);
+
+        frame.render_widget(&palette.input, chunks[0]);
+
+        let items: Vec<ListItem> = palette
+            .items
+            .iter()
+            .map(|item| {
+                ListItem::new(vec![
+                    Line::from(Span::styled(
+                        &item.name,
+                        Style::default().add_modifier(Modifier::BOLD),
+                    )),
+                    Line::from(Span::styled(
+                        &item.description,
+                        Style::default().fg(Color::DarkGray),
+                    )),
+                ])
+            })
+            .collect();
+
+        let list = ratatui::widgets::List::new(items)
+            .block(Block::default().borders(Borders::ALL).title(" Commands "))
+            .highlight_style(Style::default().bg(Color::DarkGray).fg(Color::White))
+            .highlight_symbol(">> ");
+
+        frame.render_stateful_widget(list, chunks[1], &mut palette.state);
+    }
 }
 
 pub fn draw_template_popup(frame: &mut Frame, popup: &TemplatePopup, area: Rect) {
@@ -397,7 +522,7 @@ pub fn draw_template_popup(frame: &mut Frame, popup: &TemplatePopup, area: Rect)
     frame.render_widget(Clear, popup_area);
 
     // Build list items
-    let mut items: Vec<ListItem> = popup
+    let items: Vec<ListItem> = popup
         .templates
         .iter()
         .map(|t| {
@@ -411,17 +536,11 @@ pub fn draw_template_popup(frame: &mut Frame, popup: &TemplatePopup, area: Rect)
         })
         .collect();
 
-    // Add blank note option at the end
-    items.push(ListItem::new(Line::from(vec![
-        Span::styled("Blank note", Style::default().fg(Color::Green)),
-        Span::styled("  (no template)", Style::default().fg(Color::DarkGray)),
-    ])));
-
     let list = List::new(items)
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .title("Select Template (Enter to select, b for blank, Esc to cancel)")
+                .title("Select Template (Enter to select, Esc to cancel)")
                 .border_style(Style::default().fg(Color::Yellow)),
         )
         .highlight_style(
@@ -489,7 +608,49 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     );
     frame.render_widget(&app.editor, chunks[1]);
 
-    let status_line = Line::from(vec![Span::raw(app.status.as_ref())]);
+    let enc_button_label = if app.encryption_enabled {
+        "[ Enc: ON ]"
+    } else {
+        "[ Enc: OFF ]"
+    };
+    let enc_button_style = if focus == EditFocus::EncryptionToggle {
+        Style::default()
+            .fg(Color::Black)
+            .bg(Color::Yellow)
+            .add_modifier(Modifier::BOLD)
+    } else if app.encryption_enabled {
+        Style::default()
+            .fg(Color::Green)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
+    };
+
+    let ext_button_label = if app.external_editor_enabled {
+        "[ Ext: ON ]"
+    } else {
+        "[ Ext: OFF ]"
+    };
+    let ext_button_style = if focus == EditFocus::ExternalEditorToggle {
+        Style::default()
+            .fg(Color::Black)
+            .bg(Color::Yellow)
+            .add_modifier(Modifier::BOLD)
+    } else if app.external_editor_enabled {
+        Style::default()
+            .fg(Color::Green)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
+    };
+
+    let status_line = Line::from(vec![
+        Span::styled(enc_button_label, enc_button_style),
+        Span::raw(" "),
+        Span::styled(ext_button_label, ext_button_style),
+        Span::raw("   "),
+        Span::raw(crate::sanitize::sanitize_for_terminal(app.status.as_ref())),
+    ]);
 
     let status =
         Paragraph::new(status_line).block(Block::default().borders(Borders::ALL).title("Help"));
@@ -583,6 +744,8 @@ pub fn format_relative_time(unix_ts: u64) -> Cow<'static, str> {
 }
 
 pub fn open_in_file_manager(path: &Path) -> Result<()> {
+    use std::process::Stdio;
+
     let command = if cfg!(target_os = "linux") {
         "xdg-open"
     } else if cfg!(target_os = "macos") {
@@ -593,8 +756,12 @@ pub fn open_in_file_manager(path: &Path) -> Result<()> {
         anyhow::bail!("opening file manager is not supported on this platform")
     };
 
+    // Suppress stdio to prevent corrupting the TUI terminal state
     Command::new(command)
         .arg(path)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .spawn()
         .with_context(|| format!("failed to launch {command}"))?;
     Ok(())

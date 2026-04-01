@@ -17,6 +17,22 @@ use serde::{Deserialize, Serialize};
 pub struct BootstrapConfig {
     /// Custom storage path for the vault. If None, uses default XDG data directory.
     pub storage_path: Option<PathBuf>,
+    /// Previous storage path, used for migration. Cleared after successful migration.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub previous_storage_path: Option<PathBuf>,
+    /// External editor command (e.g. "nvim", "code", "nano")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub external_editor: Option<String>,
+    /// Whether external editor mode is enabled
+    #[serde(default)]
+    pub external_editor_enabled: bool,
+    /// Whether new notes should be encrypted by default
+    #[serde(default = "default_encryption_enabled")]
+    pub encryption_enabled: bool,
+}
+
+fn default_encryption_enabled() -> bool {
+    true
 }
 
 impl BootstrapConfig {
@@ -91,6 +107,16 @@ impl BootstrapConfig {
     /// Check if a custom storage path is set
     pub fn has_custom_storage_path(&self) -> bool {
         self.storage_path.is_some()
+    }
+
+    /// Set the previous storage path (called before changing to new path)
+    pub fn set_previous_storage_path(&mut self, path: PathBuf) {
+        self.previous_storage_path = Some(path);
+    }
+
+    /// Clear the previous storage path (called after successful migration)
+    pub fn clear_previous_storage_path(&mut self) {
+        self.previous_storage_path = None;
     }
 }
 

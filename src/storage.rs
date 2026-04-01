@@ -15,23 +15,6 @@ use std::path::PathBuf;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AppSettings {
-    #[serde(default = "default_encryption_enabled")]
-    pub encryption_enabled: bool,
-}
-
-impl Default for AppSettings {
-    fn default() -> Self {
-        Self {
-            encryption_enabled: true,
-        }
-    }
-}
-
-fn default_encryption_enabled() -> bool {
-    true
-}
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Note {
     pub title: String,
     pub content: String,
@@ -62,9 +45,15 @@ pub struct NoteSummary {
 }
 
 #[derive(Clone, Debug)]
+#[derive(zeroize::Zeroize, zeroize::ZeroizeOnDrop)]
 pub struct Storage {
+    #[zeroize(skip)]
     pub data_dir: PathBuf,
+    #[zeroize(skip)]
+    pub config_dir: PathBuf,
+    #[zeroize(skip)]
     pub notes_dir: PathBuf,
+    #[zeroize(skip)]
     pub templates_dir: PathBuf,
     pub key: [u8; 32],
 }
@@ -92,6 +81,10 @@ impl Storage {
             .effective_storage_path()
             .context("failed to determine storage path")?;
 
+        let proj_dirs = directories::ProjectDirs::from("com", "clin", "clin")
+            .context("could not determine config directory")?;
+        let config_dir = proj_dirs.config_dir().to_path_buf();
+
         let notes_dir = data_dir.join("notes");
         let templates_dir = data_dir.join("templates");
         fs::create_dir_all(&notes_dir).context("failed to create notes directory")?;
@@ -99,6 +92,19 @@ impl Storage {
 
         let key_path = data_dir.join("key.bin");
         let key = if key_path.exists() {
+            #[cfg(unix)]
+            {
+                // Enforce permissions on existing key file
+                use std::os::unix::fs::PermissionsExt;
+                if let Ok(metadata) = fs::metadata(&key_path) {
+                    let mut perms = metadata.permissions();
+                    if perms.mode() & 0o777 != 0o400 {
+                        perms.set_mode(0o400);
+                        let _ = fs::set_permissions(&key_path, perms);
+                    }
+                }
+            }
+
             let raw = fs::read(&key_path).context("failed to read encryption key")?;
             if raw.len() != 32 {
                 anyhow::bail!("invalid key file length")
@@ -110,24 +116,39 @@ impl Storage {
             let mut key = [0_u8; 32];
             rand::rngs::OsRng.fill_bytes(&mut key);
             fs::create_dir_all(&data_dir).context("failed to create app data directory")?;
-            fs::write(&key_path, key).context("failed to write encryption key")?;
+            
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::OpenOptionsExt;
+                let mut file = std::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .mode(0o400)
+                    .open(&key_path)
+                    .context("failed to create encryption key file")?;
+                use std::io::Write;
+                file.write_all(&key).context("failed to write encryption key")?;
+            }
+            
+            #[cfg(not(unix))]
+            {
+                fs::write(&key_path, key).context("failed to write encryption key")?;
+            }
+            
             key
         };
 
         Ok(Self {
             data_dir,
+            config_dir,
             notes_dir,
             templates_dir,
             key,
         })
     }
 
-    pub fn settings_path(&self) -> PathBuf {
-        self.data_dir.join("settings.json")
-    }
-
     pub fn keybinds_path(&self) -> PathBuf {
-        self.data_dir.join("keybinds.toml")
+        self.config_dir.join("keybinds.toml")
     }
 
     pub fn load_keybinds(&self) -> Keybinds {
@@ -142,26 +163,29 @@ impl Storage {
         TemplateManager::new(self.templates_dir.clone())
     }
 
-    pub fn load_settings(&self) -> AppSettings {
-        let path = self.settings_path();
-        if !path.exists() {
-            return AppSettings::default();
-        }
-
-        fs::read_to_string(path)
-            .ok()
-            .and_then(|raw| serde_json::from_str::<AppSettings>(&raw).ok())
-            .unwrap_or_default()
-    }
-
-    pub fn save_settings(&self, settings: &AppSettings) {
-        if let Ok(raw) = serde_json::to_string_pretty(settings) {
-            let _ = fs::write(self.settings_path(), raw);
-        }
-    }
-
     pub fn note_path(&self, id: &str) -> PathBuf {
-        self.notes_dir.join(id)
+        self.validate_path_within_notes_dir(id)
+            .unwrap_or_else(|| self.notes_dir.join("invalid"))
+    }
+
+    fn validate_path_within_notes_dir(&self, rel_path: &str) -> Option<PathBuf> {
+        let path = std::path::Path::new(rel_path);
+        let mut normalized = PathBuf::new();
+        for component in path.components() {
+            match component {
+                std::path::Component::ParentDir => return None,
+                std::path::Component::Normal(c) => {
+                    let s = c.to_string_lossy();
+                    if s.starts_with('.') || s.contains('\0') {
+                        return None;
+                    }
+                    normalized.push(c);
+                }
+                std::path::Component::RootDir | std::path::Component::Prefix(_) => return None,
+                std::path::Component::CurDir => {}
+            }
+        }
+        Some(self.notes_dir.join(normalized))
     }
 
     pub fn list_note_ids(&self) -> Result<Vec<String>> {
@@ -339,18 +363,22 @@ impl Storage {
     }
 
     pub fn create_folder(&self, path: &str) -> Result<()> {
-        let full_path = self.notes_dir.join(path);
+        let full_path = self.validate_path_within_notes_dir(path)
+            .ok_or_else(|| anyhow::anyhow!("Invalid folder path"))?;
         fs::create_dir_all(full_path).context("failed to create folder")
     }
 
     pub fn delete_folder(&self, path: &str) -> Result<()> {
-        let full_path = self.notes_dir.join(path);
+        let full_path = self.validate_path_within_notes_dir(path)
+            .ok_or_else(|| anyhow::anyhow!("Invalid folder path"))?;
         fs::remove_dir(full_path).context("failed to delete folder")
     }
 
     pub fn rename_folder(&self, old_path: &str, new_path: &str) -> Result<()> {
-        let old_full = self.notes_dir.join(old_path);
-        let new_full = self.notes_dir.join(new_path);
+        let old_full = self.validate_path_within_notes_dir(old_path)
+            .ok_or_else(|| anyhow::anyhow!("Invalid source folder path"))?;
+        let new_full = self.validate_path_within_notes_dir(new_path)
+            .ok_or_else(|| anyhow::anyhow!("Invalid target folder path"))?;
 
         if !old_full.exists() {
             anyhow::bail!("Folder does not exist");

@@ -78,23 +78,41 @@ impl KeyCombo {
 
     /// Convert to a display string
     pub fn to_display_string(&self) -> String {
-        let mut parts = Vec::new();
+        let key = key_code_to_string(&self.code);
+        let mut result = String::with_capacity(24);
 
+        let mut need_sep = false;
         if self.modifiers.contains(KeyModifiers::CONTROL) {
-            parts.push("Ctrl".to_string());
+            result.push_str("Ctrl");
+            need_sep = true;
         }
         if self.modifiers.contains(KeyModifiers::SHIFT) {
-            parts.push("Shift".to_string());
+            if need_sep {
+                result.push('+');
+            }
+            result.push_str("Shift");
+            need_sep = true;
         }
         if self.modifiers.contains(KeyModifiers::ALT) {
-            parts.push("Alt".to_string());
+            if need_sep {
+                result.push('+');
+            }
+            result.push_str("Alt");
+            need_sep = true;
         }
         if self.modifiers.contains(KeyModifiers::SUPER) {
-            parts.push("Super".to_string());
+            if need_sep {
+                result.push('+');
+            }
+            result.push_str("Super");
+            need_sep = true;
         }
+        if need_sep {
+            result.push('+');
+        }
+        result.push_str(&key);
 
-        parts.push(key_code_to_string(&self.code));
-        parts.join("+")
+        result
     }
 
     /// Check if this combo matches a key event
@@ -147,26 +165,28 @@ fn parse_key_code(s: &str) -> Option<KeyCode> {
     }
 }
 
-fn key_code_to_string(code: &KeyCode) -> String {
+use std::borrow::Cow;
+
+fn key_code_to_string(code: &KeyCode) -> Cow<'static, str> {
     match code {
-        KeyCode::Enter => "Enter".to_string(),
-        KeyCode::Esc => "Esc".to_string(),
-        KeyCode::Backspace => "Backspace".to_string(),
-        KeyCode::Tab => "Tab".to_string(),
-        KeyCode::Delete => "Delete".to_string(),
-        KeyCode::Insert => "Insert".to_string(),
-        KeyCode::Home => "Home".to_string(),
-        KeyCode::End => "End".to_string(),
-        KeyCode::PageUp => "PageUp".to_string(),
-        KeyCode::PageDown => "PageDown".to_string(),
-        KeyCode::Up => "Up".to_string(),
-        KeyCode::Down => "Down".to_string(),
-        KeyCode::Left => "Left".to_string(),
-        KeyCode::Right => "Right".to_string(),
-        KeyCode::F(n) => format!("F{}", n),
-        KeyCode::Char(' ') => "Space".to_string(),
-        KeyCode::Char(c) => c.to_string(),
-        _ => "?".to_string(),
+        KeyCode::Enter => Cow::Borrowed("Enter"),
+        KeyCode::Esc => Cow::Borrowed("Esc"),
+        KeyCode::Backspace => Cow::Borrowed("Backspace"),
+        KeyCode::Tab => Cow::Borrowed("Tab"),
+        KeyCode::Delete => Cow::Borrowed("Delete"),
+        KeyCode::Insert => Cow::Borrowed("Insert"),
+        KeyCode::Home => Cow::Borrowed("Home"),
+        KeyCode::End => Cow::Borrowed("End"),
+        KeyCode::PageUp => Cow::Borrowed("PageUp"),
+        KeyCode::PageDown => Cow::Borrowed("PageDown"),
+        KeyCode::Up => Cow::Borrowed("Up"),
+        KeyCode::Down => Cow::Borrowed("Down"),
+        KeyCode::Left => Cow::Borrowed("Left"),
+        KeyCode::Right => Cow::Borrowed("Right"),
+        KeyCode::F(n) => Cow::Owned(format!("F{}", n)),
+        KeyCode::Char(' ') => Cow::Borrowed("Space"),
+        KeyCode::Char(c) => Cow::Owned(c.to_string()),
+        _ => Cow::Borrowed("?"),
     }
 }
 
@@ -195,6 +215,7 @@ pub enum ListAction {
     FilterTags,
     CollapseFolder,
     ExpandFolder,
+    OpenCommandPalette,
 }
 
 /// Actions that can be bound to keys in edit view
@@ -346,6 +367,17 @@ impl Default for Keybinds {
         list.insert(
             ListAction::CollapseFolder,
             vec![KeyCombo::simple(KeyCode::Char('h'))],
+        );
+        list.insert(
+            ListAction::ExpandFolder,
+            vec![KeyCombo::simple(KeyCode::Char('l'))],
+        );
+        list.insert(
+            ListAction::OpenCommandPalette,
+            vec![
+                KeyCombo::ctrl(KeyCode::Char('p')),
+                KeyCombo::shift(KeyCode::Enter),
+            ],
         );
         list.insert(
             ListAction::ExpandFolder,
@@ -674,6 +706,7 @@ fn list_action_to_string(action: ListAction) -> &'static str {
         ListAction::FilterTags => "filter_tags",
         ListAction::CollapseFolder => "collapse_folder",
         ListAction::ExpandFolder => "expand_folder",
+        ListAction::OpenCommandPalette => "open_command_palette",
     }
 }
 
