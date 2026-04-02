@@ -34,6 +34,23 @@ pub enum ListFocus {
     ExternalEditorToggle,
 }
 
+pub enum ConfirmAction {
+    DeleteNote { note_id: String, title: String },
+    EncryptNote { note_id: String },
+    DeleteTag { tag: String },
+    DeleteFromTrash { note_id: String, title: String },
+    EmptyTrash { count: usize },
+}
+
+pub struct ConfirmPopup {
+    pub action: ConfirmAction,
+    pub title: String,
+    pub message: String,
+    pub detail: Option<String>,
+    pub confirm_label: String,
+    pub is_destructive: bool,
+}
+
 pub struct ContextMenu {
     pub x: u16,
     pub y: u16,
@@ -52,7 +69,6 @@ pub struct TagPopup {
     pub all_tags: Vec<String>,
     pub suggestions: Vec<String>,
     pub suggestion_index: usize,
-    pub pending_delete_tag: Option<String>,
 }
 
 pub struct FilterTagPopup {
@@ -158,8 +174,7 @@ pub struct App {
     pub external_editor: Option<String>,
     pub status: Cow<'static, str>,
     pub status_until: Option<Instant>,
-    pub pending_delete_note_id: Option<String>,
-    pub pending_encrypt_note_id: Option<String>,
+    pub confirm_popup: Option<ConfirmPopup>,
     pub help_scroll: u16,
     pub context_menu: Option<ContextMenu>,
     pub template_popup: Option<TemplatePopup>,
@@ -241,8 +256,7 @@ impl App {
             external_editor: bootstrap_config.external_editor,
             status: Cow::Borrowed(LIST_HELP_HINTS),
             status_until: None,
-            pending_delete_note_id: None,
-            pending_encrypt_note_id: None,
+            confirm_popup: None,
             help_scroll: 0,
             context_menu: None,
             template_popup: None,
@@ -530,11 +544,9 @@ impl App {
                     }
 
                     if self.encryption_enabled && !is_clin {
-                        self.pending_encrypt_note_id = Some(summary.id.clone());
-                        self.status_until = None;
-                        self.status = Cow::Borrowed(
-                            "WARNING: This action will encrypt the file! y confirm, n cancel",
-                        );
+                        self.show_confirm(ConfirmAction::EncryptNote {
+                            note_id: summary.id.clone(),
+                        });
                         return;
                     }
                     Some(summary.id.clone())
@@ -681,18 +693,15 @@ impl App {
         }
     }
 
-    pub fn confirm_encrypt_warning(&mut self) {
-        if let Some(id) = self.pending_encrypt_note_id.take() {
-            if self.external_editor_enabled {
-                self.open_note_in_external_editor(&id);
-            } else {
-                self.load_and_open_note(&id);
-            }
+    pub fn confirm_encrypt_warning(&mut self, id: String) {
+        if self.external_editor_enabled {
+            self.open_note_in_external_editor(&id);
+        } else {
+            self.load_and_open_note(&id);
         }
     }
 
     pub fn cancel_encrypt_warning(&mut self) {
-        self.pending_encrypt_note_id = None;
         self.set_default_status();
     }
 
@@ -1036,8 +1045,7 @@ impl App {
         self.list_focus = ListFocus::Notes;
         self.title_editor = make_title_editor("");
         self.editor = TextArea::default();
-        self.pending_delete_note_id = None;
-        self.pending_encrypt_note_id = None;
+        self.confirm_popup = None;
         let _ = self.refresh_notes();
         self.set_default_status();
     }
@@ -1093,10 +1101,10 @@ impl App {
         match &self.visual_list[self.visual_index] {
             VisualItem::Note { summary_idx, .. } => {
                 if let Some(note) = self.notes.get(*summary_idx) {
-                    self.pending_delete_note_id = Some(note.id.clone());
-                    self.status_until = None;
-                    self.status =
-                        Cow::Owned(format!("Delete \"{}\"? y confirm, n cancel", note.title));
+                    self.show_confirm(ConfirmAction::DeleteNote {
+                        note_id: note.id.clone(),
+                        title: note.title.clone(),
+                    });
                 }
             }
             VisualItem::Folder { path, .. } => {
@@ -1118,17 +1126,86 @@ impl App {
         }
     }
 
+    pub fn show_confirm(&mut self, action: ConfirmAction) {
+        let (title, message, detail, confirm_label, is_destructive) = match &action {
+            ConfirmAction::DeleteNote { title, .. } => (
+                "Confirm Delete".into(),
+                format!("Delete \"{}\"?", title),
+                Some("This action cannot be undone.".into()),
+                "Delete".into(),
+                true,
+            ),
+            ConfirmAction::EncryptNote { .. } => (
+                "Confirm Encrypt".into(),
+                "Encrypt this note?".into(),
+                Some("The file will be encrypted on disk.".into()),
+                "Encrypt".into(),
+                false,
+            ),
+            ConfirmAction::DeleteTag { tag } => (
+                "Confirm Delete Tag".into(),
+                format!("Delete tag \"{}\"?", tag),
+                Some("This will remove the tag from all notes.".into()),
+                "Delete".into(),
+                true,
+            ),
+            ConfirmAction::DeleteFromTrash { title, .. } => (
+                "Confirm Permanent Delete".into(),
+                format!("Permanently delete \"{}\"?", title),
+                Some("This action cannot be undone.".into()),
+                "Delete Forever".into(),
+                true,
+            ),
+            ConfirmAction::EmptyTrash { count } => (
+                "Confirm Empty Trash".into(),
+                format!("Permanently delete {} note(s)?", count),
+                Some("This action cannot be undone.".into()),
+                "Empty Trash".into(),
+                true,
+            ),
+        };
+
+        self.confirm_popup = Some(ConfirmPopup {
+            action,
+            title,
+            message,
+            detail,
+            confirm_label,
+            is_destructive,
+        });
+    }
+
+    pub fn confirm_action(&mut self) {
+        if let Some(popup) = self.confirm_popup.take() {
+            match popup.action {
+                ConfirmAction::DeleteNote { note_id, .. } => {
+                    self.confirm_delete_selected(note_id);
+                }
+                ConfirmAction::EncryptNote { note_id } => {
+                    self.confirm_encrypt_warning(note_id);
+                }
+                ConfirmAction::DeleteTag { tag } => {
+                    self.confirm_delete_tag(tag);
+                }
+                ConfirmAction::DeleteFromTrash { note_id, .. } => {
+                    self.confirm_delete_from_trash(note_id);
+                }
+                ConfirmAction::EmptyTrash { .. } => {
+                    self.confirm_empty_trash();
+                }
+            }
+        }
+    }
+
+    pub fn cancel_confirm(&mut self) {
+        self.confirm_popup = None;
+    }
+
     pub fn cancel_delete_prompt(&mut self) {
-        self.pending_delete_note_id = None;
         self.set_default_status();
     }
 
-    pub fn confirm_delete_selected(&mut self) {
-        let id = match self.pending_delete_note_id.take() {
-            Some(id) => id,
-            None => return,
-        };
-
+    pub fn confirm_delete_selected(&mut self, id: String) {
         match self.storage.delete_note(&id) {
             Ok(()) => {
                 let _ = self.refresh_notes();
@@ -1138,7 +1215,6 @@ impl App {
                 self.set_temporary_status_static("Note deleted");
             }
             Err(err) => {
-                self.pending_delete_note_id = None;
                 self.set_temporary_status(&format!("Delete failed: {err:#}"));
             }
         }
@@ -1350,7 +1426,6 @@ impl App {
                 all_tags,
                 suggestions: Vec::new(),
                 suggestion_index: 0,
-                pending_delete_tag: None,
             });
             self.update_tag_suggestions();
         } else {
@@ -1459,67 +1534,52 @@ impl App {
     pub fn begin_delete_tag(&mut self) {
         if let Some(popup) = &mut self.tag_popup {
             if let Some(tag) = popup.suggestions.get(popup.suggestion_index).cloned() {
-                popup.pending_delete_tag = Some(tag);
+                self.show_confirm(ConfirmAction::DeleteTag { tag: tag.clone() });
             }
         }
     }
 
-    pub fn cancel_delete_tag(&mut self) {
-        if let Some(popup) = &mut self.tag_popup {
-            popup.pending_delete_tag = None;
-        }
-    }
-
-    pub fn confirm_delete_tag(&mut self) {
-        let tag_to_delete = if let Some(popup) = &self.tag_popup {
-            popup.pending_delete_tag.clone()
-        } else {
-            None
-        };
-
-        if let Some(tag) = tag_to_delete {
-            let mut count = 0;
-            if let Ok(note_ids) = self.storage.list_note_ids() {
-                for note_id in note_ids {
-                    if let Ok(mut note) = self.storage.load_note(&note_id) {
-                        if note.tags.contains(&tag) {
-                            note.tags.retain(|t| t != &tag);
-                            let is_clin = note_id.ends_with(".clin");
-                            let _ = self.storage.save_note(&note_id, &note, is_clin);
-                            count += 1;
-                        }
+    pub fn confirm_delete_tag(&mut self, tag: String) {
+        let mut count = 0;
+        if let Ok(note_ids) = self.storage.list_note_ids() {
+            for note_id in note_ids {
+                if let Ok(mut note) = self.storage.load_note(&note_id) {
+                    if note.tags.contains(&tag) {
+                        note.tags.retain(|t| t != &tag);
+                        let is_clin = note_id.ends_with(".clin");
+                        let _ = self.storage.save_note(&note_id, &note, is_clin);
+                        count += 1;
                     }
                 }
             }
-
-            self.set_temporary_status(&format!("Deleted '{}' from {} note(s)", tag, count));
-            let _ = self.refresh_notes();
-            let live_tags = self.collect_live_tags();
-
-            if let Some(popup) = &mut self.tag_popup {
-                popup.pending_delete_tag = None;
-                popup.all_tags = live_tags;
-                let text = popup.input.lines().join("");
-                
-                // If the deleted tag was typed in the input, remove it
-                let entered_tags: Vec<String> = text
-                    .split(',')
-                    .map(|s| s.trim().to_string())
-                    .filter(|s| !s.is_empty() && s != &tag)
-                    .collect();
-                
-                let new_text = if entered_tags.is_empty() {
-                    String::new()
-                } else {
-                    format!("{}, ", entered_tags.join(", "))
-                };
-                
-                popup.input.select_all();
-                popup.input.cut();
-                popup.input.insert_str(&new_text);
-            }
-            self.update_tag_suggestions();
         }
+
+        self.set_temporary_status(&format!("Deleted '{}' from {} note(s)", tag, count));
+        let _ = self.refresh_notes();
+        let live_tags = self.collect_live_tags();
+
+        if let Some(popup) = &mut self.tag_popup {
+            popup.all_tags = live_tags;
+            let text = popup.input.lines().join("");
+            
+            // If the deleted tag was typed in the input, remove it
+            let entered_tags: Vec<String> = text
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty() && s != &tag)
+                .collect();
+            
+            let new_text = if entered_tags.is_empty() {
+                String::new()
+            } else {
+                format!("{}, ", entered_tags.join(", "))
+            };
+            
+            popup.input.select_all();
+            popup.input.cut();
+            popup.input.insert_str(&new_text);
+        }
+        self.update_tag_suggestions();
     }
 
     pub fn begin_filter_tags(&mut self) {
@@ -2039,33 +2099,52 @@ impl App {
     }
 
     /// Permanently delete selected note from trash
-    pub fn delete_from_trash(&mut self) {
-        if let Some(ref mut trash) = self.trash_view {
+    pub fn begin_delete_from_trash(&mut self) {
+        if let Some(trash) = &self.trash_view {
             if let Some(note) = trash.notes.get(trash.selected) {
-                let note_id = note.id.clone();
-                match self.storage.delete_from_trash(&note_id) {
-                    Ok(()) => {
-                        if let Ok(notes) = self.storage.list_trash() {
-                            if notes.is_empty() {
-                                self.trash_view = None;
-                                self.set_temporary_status_static("Note deleted, trash is now empty");
-                            } else {
-                                trash.notes = notes;
-                                trash.selected = trash.selected.min(trash.notes.len().saturating_sub(1));
-                                self.set_temporary_status_static("Note permanently deleted");
-                            }
+                self.show_confirm(ConfirmAction::DeleteFromTrash {
+                    note_id: note.id.clone(),
+                    title: note.title.clone(),
+                });
+            }
+        }
+    }
+
+    pub fn confirm_delete_from_trash(&mut self, note_id: String) {
+        match self.storage.delete_from_trash(&note_id) {
+            Ok(()) => {
+                if let Some(ref mut trash) = self.trash_view {
+                    if let Ok(notes) = self.storage.list_trash() {
+                        if notes.is_empty() {
+                            self.trash_view = None;
+                            self.set_temporary_status_static("Note deleted, trash is now empty");
+                        } else {
+                            trash.notes = notes;
+                            trash.selected = trash.selected.min(trash.notes.len().saturating_sub(1));
+                            self.set_temporary_status_static("Note permanently deleted");
                         }
                     }
-                    Err(e) => {
-                        self.set_temporary_status(&format!("Failed to delete: {e}"));
-                    }
                 }
+            }
+            Err(e) => {
+                self.set_temporary_status(&format!("Failed to delete: {e}"));
             }
         }
     }
 
     /// Empty the entire trash
-    pub fn empty_trash(&mut self) {
+    pub fn begin_empty_trash(&mut self) {
+        if let Some(trash) = &self.trash_view {
+            let count = trash.notes.len();
+            if count > 0 {
+                self.show_confirm(ConfirmAction::EmptyTrash { count });
+            } else {
+                self.set_temporary_status_static("Trash is already empty");
+            }
+        }
+    }
+
+    pub fn confirm_empty_trash(&mut self) {
         match self.storage.empty_trash() {
             Ok(count) => {
                 self.trash_view = None;

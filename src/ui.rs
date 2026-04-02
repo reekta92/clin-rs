@@ -1,4 +1,4 @@
-use crate::app::{App, EditFocus, ListFocus, TemplatePopup, ViewMode};
+use crate::app::{App, ConfirmPopup, EditFocus, ListFocus, TemplatePopup, ViewMode};
 use crate::constants::*;
 use crate::events::get_title_text;
 use crate::keybinds::*;
@@ -503,26 +503,12 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             })
             .collect();
 
-        if let Some(tag_to_delete) = &popup.pending_delete_tag {
-            let confirmation = Paragraph::new(format!(
-                "\n  Delete tag '{}' from all notes? (y/n)",
-                tag_to_delete
-            ))
-            .style(Style::default().fg(Color::Red))
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title("Confirm Delete"),
-            );
-            frame.render_widget(confirmation, chunks[1]);
-        } else {
-            let suggestions_list = List::new(suggestion_items).block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title("Suggestions (Tab: accept, Shift+D: delete)"),
-            );
-            frame.render_widget(suggestions_list, chunks[1]);
-        }
+        let suggestions_list = List::new(suggestion_items).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Suggestions (Tab: accept, Shift+D: delete)"),
+        );
+        frame.render_widget(suggestions_list, chunks[1]);
 
         let tag_display = popup.all_tags.join("  •  ");
         let tags_paragraph = Paragraph::new(tag_display).wrap(Wrap { trim: true }).block(
@@ -719,6 +705,10 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     }
 
     // Preview pane (handled differently - see below)
+
+    if let Some(popup) = &app.confirm_popup {
+        draw_confirm_popup(frame, popup, area);
+    }
 }
 
 pub fn draw_template_popup(frame: &mut Frame, popup: &TemplatePopup, area: Rect) {
@@ -948,6 +938,63 @@ pub fn format_relative_time(unix_ts: u64) -> Cow<'static, str> {
     let secs = UNIX_EPOCH + Duration::from_secs(unix_ts);
     let dt: chrono::DateTime<chrono::Local> = secs.into();
     Cow::Owned(dt.format("%Y-%m-%d %H:%M").to_string())
+}
+
+pub fn draw_confirm_popup(frame: &mut Frame, popup: &ConfirmPopup, area: Rect) {
+    let popup_area = centered_rect(50, 30, area);
+    frame.render_widget(Clear, popup_area);
+
+    let border_color = if popup.is_destructive {
+        Color::Red
+    } else {
+        Color::Yellow
+    };
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(border_color))
+        .title(popup.title.as_str());
+
+    let inner = block.inner(popup_area);
+    frame.render_widget(block, popup_area);
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .margin(1)
+        .constraints([
+            Constraint::Length(2),
+            Constraint::Length(2),
+            Constraint::Min(1),
+            Constraint::Length(1),
+        ])
+        .split(inner);
+
+    let message = Paragraph::new(popup.message.as_str()).alignment(Alignment::Center);
+    frame.render_widget(message, chunks[0]);
+
+    if let Some(detail) = &popup.detail {
+        let detail_para = Paragraph::new(detail.as_str())
+            .style(Style::default().fg(Color::DarkGray))
+            .alignment(Alignment::Center);
+        frame.render_widget(detail_para, chunks[1]);
+    }
+
+    let confirm_style = if popup.is_destructive {
+        Style::default().fg(Color::White).bg(Color::Red)
+    } else {
+        Style::default().fg(Color::Black).bg(Color::Green)
+    };
+
+    let buttons = Line::from(vec![
+        Span::styled(format!(" {} (y) ", popup.confirm_label), confirm_style),
+        Span::raw("   "),
+        Span::styled(
+            " Cancel (n) ",
+            Style::default().fg(Color::White).bg(Color::DarkGray),
+        ),
+    ]);
+    let buttons_para = Paragraph::new(buttons).alignment(Alignment::Center);
+    frame.render_widget(buttons_para, chunks[3]);
 }
 
 pub fn open_in_file_manager(path: &Path) -> Result<()> {

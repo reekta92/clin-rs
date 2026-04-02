@@ -57,17 +57,6 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
 
     // Handle tag popup if open
     if let Some(mut popup) = app.tag_popup.take() {
-        if popup.pending_delete_tag.is_some() {
-            if key.code == KeyCode::Char('y') || key.code == KeyCode::Enter {
-                app.tag_popup = Some(popup);
-                app.confirm_delete_tag();
-            } else if key.code == KeyCode::Char('n') || key.code == KeyCode::Esc {
-                app.tag_popup = Some(popup);
-                app.cancel_delete_tag();
-            }
-            return false;
-        }
-
         if key.code == KeyCode::Esc {
             app.tag_popup = None;
         } else if key.code == KeyCode::Enter {
@@ -166,10 +155,10 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 app.restore_from_trash();
             }
             KeyCode::Char('d') | KeyCode::Delete => {
-                app.delete_from_trash();
+                app.begin_delete_from_trash();
             }
             KeyCode::Char('E') => {
-                app.empty_trash();
+                app.begin_empty_trash();
             }
             KeyCode::Esc | KeyCode::Char('q') => {
                 app.close_trash_view();
@@ -233,22 +222,12 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
-    // Handle delete confirmation
-    if app.pending_delete_note_id.is_some() {
-        if app.keybinds.matches_list(ListAction::ConfirmDelete, &key) {
-            app.confirm_delete_selected();
-        } else if app.keybinds.matches_list(ListAction::CancelDelete, &key) {
-            app.cancel_delete_prompt();
-        }
-        return false;
-    }
-
-    // Handle encrypt warning confirmation
-    if app.pending_encrypt_note_id.is_some() {
-        if app.keybinds.matches_list(ListAction::ConfirmEncrypt, &key) {
-            app.confirm_encrypt_warning();
-        } else if app.keybinds.matches_list(ListAction::CancelEncrypt, &key) {
-            app.cancel_encrypt_warning();
+    // Handle confirm popup
+    if app.confirm_popup.is_some() {
+        if app.keybinds.matches_list(ListAction::Confirm, &key) {
+            app.confirm_action();
+        } else if app.keybinds.matches_list(ListAction::Cancel, &key) {
+            app.cancel_confirm();
         }
         return false;
     }
@@ -528,7 +507,7 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
 }
 
 pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: Rect) {
-    if app.pending_delete_note_id.is_some() || app.pending_encrypt_note_id.is_some() {
+    if app.confirm_popup.is_some() {
         return;
     }
 
