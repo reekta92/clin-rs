@@ -125,7 +125,7 @@ pub fn help_page_text(keybinds: &Keybinds) -> Text<'static> {
         Some(&list_create_folder),
     ));
     lines.extend(help_item_dyn("Rename folder", Some(&list_rename_folder)));
-    lines.extend(help_item_dyn("Move note to folder", Some(&list_move_note)));
+    lines.extend(help_item_dyn("Move note or folder", Some(&list_move_note)));
     lines.extend(help_item_dyn("Manage note tags", Some(&list_manage_tags)));
     lines.extend(help_item_dyn("Filter tags", Some(&list_filter_tags)));
     lines.extend(help_item_dyn("Delete note or folder", Some(&list_delete)));
@@ -470,15 +470,117 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     }
 
     if let Some(popup) = &mut app.tag_popup {
-        let popup_area = centered_rect(50, 20, area);
+        let popup_area = centered_rect(60, 40, area);
         frame.render_widget(Clear, popup_area);
-        frame.render_widget(&popup.input, popup_area);
+
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(3),
+                Constraint::Length(5),
+                Constraint::Min(5),
+            ])
+            .split(popup_area);
+
+        let input_block = Block::default()
+            .borders(Borders::ALL)
+            .title("Manage Tags (comma separated) - Tab: autocomplete, Enter: save, Esc: cancel");
+        let input_inner = input_block.inner(chunks[0]);
+        frame.render_widget(input_block, chunks[0]);
+        frame.render_widget(&popup.input, input_inner);
+
+        let suggestion_items: Vec<ListItem> = popup
+            .suggestions
+            .iter()
+            .enumerate()
+            .map(|(i, tag)| {
+                let style = if i == popup.suggestion_index {
+                    Style::default().fg(Color::Black).bg(Color::Yellow)
+                } else {
+                    Style::default()
+                };
+                ListItem::new(format!("  {}", tag)).style(style)
+            })
+            .collect();
+
+        if let Some(tag_to_delete) = &popup.pending_delete_tag {
+            let confirmation = Paragraph::new(format!(
+                "\n  Delete tag '{}' from all notes? (y/n)",
+                tag_to_delete
+            ))
+            .style(Style::default().fg(Color::Red))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Confirm Delete"),
+            );
+            frame.render_widget(confirmation, chunks[1]);
+        } else {
+            let suggestions_list = List::new(suggestion_items).block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Suggestions (Tab: accept, Shift+D: delete)"),
+            );
+            frame.render_widget(suggestions_list, chunks[1]);
+        }
+
+        let tag_display = popup.all_tags.join("  •  ");
+        let tags_paragraph = Paragraph::new(tag_display).wrap(Wrap { trim: true }).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("All existing tags"),
+        );
+        frame.render_widget(tags_paragraph, chunks[2]);
     }
 
     if let Some(popup) = &mut app.filter_popup {
-        let popup_area = centered_rect(50, 20, area);
+        let popup_area = centered_rect(60, 40, area);
         frame.render_widget(Clear, popup_area);
-        frame.render_widget(&*popup, popup_area);
+
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(3),
+                Constraint::Length(5),
+                Constraint::Min(5),
+            ])
+            .split(popup_area);
+
+        let input_block = Block::default().borders(Borders::ALL).title(
+            "Filter Tags (comma separated OR logic) - Tab: autocomplete, Enter: apply, Esc: cancel",
+        );
+        let input_inner = input_block.inner(chunks[0]);
+        frame.render_widget(input_block, chunks[0]);
+        frame.render_widget(&popup.input, input_inner);
+
+        let suggestion_items: Vec<ListItem> = popup
+            .suggestions
+            .iter()
+            .enumerate()
+            .map(|(i, tag)| {
+                let style = if i == popup.suggestion_index {
+                    Style::default().fg(Color::Black).bg(Color::Yellow)
+                } else {
+                    Style::default()
+                };
+                ListItem::new(format!("  {}", tag)).style(style)
+            })
+            .collect();
+
+        let suggestions_list = List::new(suggestion_items).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Suggestions (Tab to accept)"),
+        );
+        frame.render_widget(suggestions_list, chunks[1]);
+
+        let tag_display = popup.all_tags.join("  •  ");
+        let tags_paragraph = Paragraph::new(tag_display).wrap(Wrap { trim: true }).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("All existing tags"),
+        );
+        frame.render_widget(tags_paragraph, chunks[2]);
     }
 
     if let Some(picker) = &app.folder_picker {
@@ -494,12 +596,18 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             })
             .collect();
 
+        let title = match &picker.mode {
+            crate::app::FolderPickerMode::MoveNote { .. } => {
+                format!("Move note to folder")
+            }
+            crate::app::FolderPickerMode::MoveFolder { folder_path } => {
+                let folder_name = folder_path.rsplit('/').next().unwrap_or(folder_path);
+                format!("Move '{}' folder to", folder_name)
+            }
+        };
+
         let list = List::new(items)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title("Select Folder to Move to"),
-            )
+            .block(Block::default().borders(Borders::ALL).title(title))
             .highlight_style(
                 Style::default()
                     .fg(Color::Black)

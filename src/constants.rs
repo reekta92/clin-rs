@@ -29,9 +29,9 @@ Notes view shortcuts\n\
 - y or Enter: confirm delete\n\
 - n or Esc: cancel delete\n\
 - f: open selected note location\n\
-- m: move note to folder\n\
-- .: manage tags\n\
-- /: filter by tags\n\
+- m: move note or folder\n\
+- .: manage tags (with autocomplete, Shift+D to delete)\n\
+- /: filter by tags (with autocomplete)\n\
 - Tab: switch focus between note list and toggle buttons\n\
 - Enter/Space on toggle button: switch state\n\
 - ?: open help page\n\

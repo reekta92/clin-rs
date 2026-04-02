@@ -43,14 +43,40 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
 
     // Handle tag popup if open
     if let Some(mut popup) = app.tag_popup.take() {
+        if popup.pending_delete_tag.is_some() {
+            if key.code == KeyCode::Char('y') || key.code == KeyCode::Enter {
+                app.tag_popup = Some(popup);
+                app.confirm_delete_tag();
+            } else if key.code == KeyCode::Char('n') || key.code == KeyCode::Esc {
+                app.tag_popup = Some(popup);
+                app.cancel_delete_tag();
+            }
+            return false;
+        }
+
         if key.code == KeyCode::Esc {
             app.tag_popup = None;
         } else if key.code == KeyCode::Enter {
             app.tag_popup = Some(popup);
             app.confirm_manage_tags();
+        } else if key.code == KeyCode::Char('D') && key.modifiers.contains(KeyModifiers::SHIFT) {
+            app.tag_popup = Some(popup);
+            app.begin_delete_tag();
+        } else if key.code == KeyCode::Tab {
+            app.tag_popup = Some(popup);
+            if app
+                .tag_popup
+                .as_ref()
+                .map_or(false, |p| !p.suggestions.is_empty())
+            {
+                app.accept_tag_suggestion();
+            } else {
+                app.cycle_tag_suggestion();
+            }
         } else {
             popup.input.input(Input::from(key));
             app.tag_popup = Some(popup);
+            app.update_tag_suggestions();
         }
         return false;
     }
@@ -62,9 +88,21 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         } else if key.code == KeyCode::Enter {
             app.filter_popup = Some(popup);
             app.confirm_filter_tags();
-        } else {
-            popup.input(Input::from(key));
+        } else if key.code == KeyCode::Tab {
             app.filter_popup = Some(popup);
+            if app
+                .filter_popup
+                .as_ref()
+                .map_or(false, |p| !p.suggestions.is_empty())
+            {
+                app.accept_filter_suggestion();
+            } else {
+                app.cycle_filter_suggestion();
+            }
+        } else {
+            popup.input.input(Input::from(key));
+            app.filter_popup = Some(popup);
+            app.update_filter_suggestions();
         }
         return false;
     }
@@ -142,7 +180,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
             }
             KeyCode::Enter | KeyCode::Char('l') => {
                 app.folder_picker = Some(picker);
-                app.confirm_move_note();
+                app.confirm_move();
             }
             KeyCode::Esc | KeyCode::Char('h') => {
                 app.folder_picker = None;
@@ -248,12 +286,14 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     if app.keybinds.matches_list(ListAction::MoveDown, &key) {
         if app.visual_index < app.visual_list.len().saturating_sub(1) {
             app.visual_index += 1;
+            app.update_preview();
         }
         return false;
     }
     if app.keybinds.matches_list(ListAction::MoveUp, &key) {
         if app.visual_index > 0 {
             app.visual_index -= 1;
+            app.update_preview();
         }
         return false;
     }
@@ -291,7 +331,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
     if app.keybinds.matches_list(ListAction::MoveNote, &key) {
-        app.begin_move_note();
+        app.begin_move();
         return false;
     }
     if app.keybinds.matches_list(ListAction::ManageTags, &key) {
