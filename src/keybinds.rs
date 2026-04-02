@@ -209,6 +209,7 @@ pub enum ListAction {
     ToggleButton,
     NewFromTemplate,
     CreateFolder,
+    CreateNote,
     RenameFolder,
     MoveNote,
     ManageTags,
@@ -359,6 +360,10 @@ impl Default for Keybinds {
         list.insert(
             ListAction::CreateFolder,
             vec![KeyCombo::simple(KeyCode::Char('n'))],
+        );
+        list.insert(
+            ListAction::CreateNote,
+            vec![KeyCombo::simple(KeyCode::Char('a'))],
         );
         list.insert(
             ListAction::RenameFolder,
@@ -692,6 +697,7 @@ fn parse_list_action(s: &str) -> Option<ListAction> {
         "toggle_button" => Some(ListAction::ToggleButton),
         "new_from_template" => Some(ListAction::NewFromTemplate),
         "create_folder" => Some(ListAction::CreateFolder),
+        "create_note" => Some(ListAction::CreateNote),
         "rename_folder" => Some(ListAction::RenameFolder),
         "move_note" => Some(ListAction::MoveNote),
         "manage_tags" => Some(ListAction::ManageTags),
@@ -748,6 +754,7 @@ fn list_action_to_string(action: ListAction) -> &'static str {
         ListAction::ToggleButton => "toggle_button",
         ListAction::NewFromTemplate => "new_from_template",
         ListAction::CreateFolder => "create_folder",
+        ListAction::CreateNote => "create_note",
         ListAction::RenameFolder => "rename_folder",
         ListAction::MoveNote => "move_note",
         ListAction::ManageTags => "manage_tags",

@@ -89,6 +89,12 @@ pub struct NoteRenamePopup {
     pub input: TextArea<'static>,
 }
 
+/// Note create popup state
+pub struct NoteCreatePopup {
+    pub folder: String,
+    pub input: TextArea<'static>,
+}
+
 /// Search popup state for filtering notes
 pub struct SearchPopup {
     pub input: TextArea<'static>,
@@ -171,6 +177,7 @@ pub struct App {
     pub needs_full_redraw: bool,
     // QoL features
     pub note_rename_popup: Option<NoteRenamePopup>,
+    pub note_create_popup: Option<NoteCreatePopup>,
     pub search_popup: Option<SearchPopup>,
     pub sort_field: SortField,
     pub sort_order: SortOrder,
@@ -252,6 +259,7 @@ impl App {
             needs_full_redraw: false,
             // QoL features
             note_rename_popup: None,
+            note_create_popup: None,
             search_popup: None,
             sort_field: SortField::Modified,
             sort_order: SortOrder::Descending,
@@ -499,7 +507,7 @@ impl App {
 
         match &self.visual_list[self.visual_index] {
             VisualItem::CreateNew { path, .. } => {
-                self.start_new_note(path.clone());
+                self.begin_create_note_in_folder(path.clone());
             }
             VisualItem::Folder { path, .. } => {
                 // Toggle expand/collapse
@@ -810,6 +818,16 @@ impl App {
         }
     }
 
+    pub fn start_new_note_with_title(&mut self, folder: String, title: String) {
+        // Check if default template exists and use it
+        let template_manager = self.storage.template_manager();
+        if let Some(default_template) = template_manager.load_default() {
+            self.start_note_from_template_with_title(&default_template, folder, title);
+        } else {
+            self.start_blank_note_with_title(folder, title);
+        }
+    }
+
     pub fn start_blank_note(&mut self, folder: String) {
         let mut new_id = self.storage.new_note_id();
         if !folder.is_empty() {
@@ -833,6 +851,37 @@ impl App {
         self.mode = ViewMode::Edit;
         self.editing_id = Some(new_id);
         self.title_editor = make_title_editor("");
+        self.editor = TextArea::default();
+        self.editor
+            .set_cursor_style(Style::default().fg(Color::Black).bg(Color::Cyan));
+        self.editor
+            .set_cursor_line_style(Style::default().bg(Color::Rgb(32, 36, 44)));
+        self.set_default_status();
+    }
+
+    pub fn start_blank_note_with_title(&mut self, folder: String, title: String) {
+        let mut new_id = self.storage.new_note_id();
+        if !folder.is_empty() {
+            new_id = format!("{}/{}", folder, new_id);
+        }
+        
+        if self.external_editor_enabled {
+            let new_note = Note {
+                title: title,
+                content: String::new(),
+                updated_at: now_unix_secs(),
+                tags: Vec::new(),
+            };
+            if let Ok(_) = self.storage.save_note(&new_id, &new_note, self.encryption_enabled) {
+                let _ = self.refresh_notes();
+                self.open_note_in_external_editor(&new_id);
+            }
+            return;
+        }
+
+        self.mode = ViewMode::Edit;
+        self.editing_id = Some(new_id);
+        self.title_editor = make_title_editor(&title);
         self.editor = TextArea::default();
         self.editor
             .set_cursor_style(Style::default().fg(Color::Black).bg(Color::Cyan));
@@ -867,6 +916,42 @@ impl App {
         self.editing_id = Some(new_id);
 
         self.title_editor = make_title_editor(rendered.title.as_deref().unwrap_or(""));
+        self.editor = text_area_from_content(&rendered.content);
+
+        self.editor
+            .set_cursor_style(Style::default().fg(Color::Black).bg(Color::Cyan));
+        self.editor
+            .set_cursor_line_style(Style::default().bg(Color::Rgb(32, 36, 44)));
+
+        self.set_default_status();
+    }
+
+    pub fn start_note_from_template_with_title(&mut self, template: &Template, folder: String, title: String) {
+        let rendered = template.render();
+
+        let mut new_id = self.storage.new_note_id();
+        if !folder.is_empty() {
+            new_id = format!("{}/{}", folder, new_id);
+        }
+
+        if self.external_editor_enabled {
+            let new_note = Note {
+                title: title,
+                content: rendered.content.clone(),
+                updated_at: now_unix_secs(),
+                tags: Vec::new(),
+            };
+            if let Ok(_) = self.storage.save_note(&new_id, &new_note, self.encryption_enabled) {
+                let _ = self.refresh_notes();
+                self.open_note_in_external_editor(&new_id);
+            }
+            return;
+        }
+
+        self.mode = ViewMode::Edit;
+        self.editing_id = Some(new_id);
+
+        self.title_editor = make_title_editor(&title);
         self.editor = text_area_from_content(&rendered.content);
 
         self.editor
@@ -1632,6 +1717,38 @@ impl App {
     }
 
     // ===== QoL Feature Methods =====
+
+    /// Begin creating a new note with a name prompt
+    pub fn begin_create_note(&mut self) {
+        let folder = self.get_current_folder_context();
+        self.begin_create_note_in_folder(folder);
+    }
+
+    /// Begin creating a new note in a specific folder
+    pub fn begin_create_note_in_folder(&mut self, folder: String) {
+        let mut input = TextArea::default();
+        input.set_block(
+            ratatui::widgets::Block::default()
+                .borders(ratatui::widgets::Borders::ALL)
+                .title("New Note Name - Esc to cancel, Enter to create"),
+        );
+        self.note_create_popup = Some(NoteCreatePopup {
+            folder,
+            input,
+        });
+    }
+
+    /// Confirm and create the note with the prompted name
+    pub fn confirm_create_note(&mut self) {
+        if let Some(popup) = self.note_create_popup.take() {
+            let mut title = popup.input.lines().join("");
+            title = title.trim().to_string();
+            if title.is_empty() {
+                title = String::from("Untitled note");
+            }
+            self.start_new_note_with_title(popup.folder, title);
+        }
+    }
 
     /// Begin renaming a note (context-sensitive with folder rename)
     pub fn begin_rename_note(&mut self) {

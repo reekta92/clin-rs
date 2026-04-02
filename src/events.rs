@@ -27,6 +27,20 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
+    // Handle note create popup if open
+    if let Some(mut popup) = app.note_create_popup.take() {
+        if key.code == KeyCode::Esc {
+            app.note_create_popup = None;
+        } else if key.code == KeyCode::Enter {
+            app.note_create_popup = Some(popup);
+            app.confirm_create_note();
+        } else {
+            popup.input.input(Input::from(key));
+            app.note_create_popup = Some(popup);
+        }
+        return false;
+    }
+
     // Handle folder popup if open
     if let Some(mut popup) = app.folder_popup.take() {
         if key.code == KeyCode::Esc {
@@ -315,6 +329,10 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     }
     if app.keybinds.matches_list(ListAction::CreateFolder, &key) {
         app.begin_create_folder();
+        return false;
+    }
+    if app.keybinds.matches_list(ListAction::CreateNote, &key) {
+        app.begin_create_note();
         return false;
     }
     if app.keybinds.matches_list(ListAction::RenameFolder, &key)

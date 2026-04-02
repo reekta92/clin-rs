@@ -89,6 +89,7 @@ mod tests {
     fn test_serialize() {
         let fm = Frontmatter {
             tags: vec!["work".to_string()],
+            pinned: false,
         };
         let content = "My note";
         let serialized = serialize(&fm, content);

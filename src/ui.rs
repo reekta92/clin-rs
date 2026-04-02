@@ -667,6 +667,13 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         frame.render_widget(&popup.input, popup_area);
     }
 
+    // Note create popup
+    if let Some(popup) = &mut app.note_create_popup {
+        let popup_area = centered_rect(50, 20, area);
+        frame.render_widget(Clear, popup_area);
+        frame.render_widget(&popup.input, popup_area);
+    }
+
     // Search popup
     if let Some(popup) = &mut app.search_popup {
         let popup_area = centered_rect(50, 20, area);
