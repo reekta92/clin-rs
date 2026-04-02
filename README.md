@@ -89,7 +89,7 @@
 
 * [ ] **Lua Scripting:** Allowing users to write scripts to extend app functionality.
 * [ ] **Steganography:** Hiding encrypted vaults inside other file types.
-* [ ] **History:**Access change history of a note. Using `git2`, `crate`. **Will conflict with auto-save.**
+* [ ] **History:** Access change history of a note. Using `git2`, `crate`. **Will conflict with auto-save.**
 
 ---
 # Configuration
