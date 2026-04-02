@@ -224,7 +224,17 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
 
     // Handle confirm popup
     if app.confirm_popup.is_some() {
-        if app.keybinds.matches_list(ListAction::Confirm, &key) {
+        if key.code == KeyCode::Left || key.code == KeyCode::Char('h') {
+            app.confirm_popup_select_confirm();
+        } else if key.code == KeyCode::Right || key.code == KeyCode::Char('l') {
+            app.confirm_popup_select_cancel();
+        } else if key.code == KeyCode::Tab {
+            app.confirm_popup_toggle_button();
+        } else if key.code == KeyCode::Enter {
+            app.confirm_popup_activate();
+        } else if key.code == KeyCode::Esc {
+            app.cancel_confirm();
+        } else if app.keybinds.matches_list(ListAction::Confirm, &key) {
             app.confirm_action();
         } else if app.keybinds.matches_list(ListAction::Cancel, &key) {
             app.cancel_confirm();
@@ -508,6 +518,24 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
 
 pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: Rect) {
     if app.confirm_popup.is_some() {
+        if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
+            let popup_area = crate::ui::centered_rect(50, 30, terminal_area);
+            let click_x = mouse_event.column;
+            let click_y = mouse_event.row;
+
+            if click_x >= popup_area.x
+                && click_x < popup_area.x + popup_area.width
+                && click_y >= popup_area.y
+                && click_y < popup_area.y + popup_area.height
+            {
+                let mid_x = popup_area.x + popup_area.width / 2;
+                if click_x < mid_x {
+                    app.confirm_action();
+                } else {
+                    app.cancel_confirm();
+                }
+            }
+        }
         return;
     }
 

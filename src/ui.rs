@@ -979,19 +979,39 @@ pub fn draw_confirm_popup(frame: &mut Frame, popup: &ConfirmPopup, area: Rect) {
         frame.render_widget(detail_para, chunks[1]);
     }
 
-    let confirm_style = if popup.is_destructive {
-        Style::default().fg(Color::White).bg(Color::Red)
+    let (confirm_style, cancel_style) = if popup.selected_button == 0 {
+        // Confirm is selected
+        let confirm = if popup.is_destructive {
+            Style::default()
+                .fg(Color::White)
+                .bg(Color::Red)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+                .fg(Color::Black)
+                .bg(Color::Green)
+                .add_modifier(Modifier::BOLD)
+        };
+        let cancel = Style::default().fg(Color::DarkGray).bg(Color::Black);
+        (confirm, cancel)
     } else {
-        Style::default().fg(Color::Black).bg(Color::Green)
+        // Cancel is selected
+        let confirm = if popup.is_destructive {
+            Style::default().fg(Color::Red).bg(Color::Black)
+        } else {
+            Style::default().fg(Color::Green).bg(Color::Black)
+        };
+        let cancel = Style::default()
+            .fg(Color::White)
+            .bg(Color::DarkGray)
+            .add_modifier(Modifier::BOLD);
+        (confirm, cancel)
     };
 
     let buttons = Line::from(vec![
         Span::styled(format!(" {} (y) ", popup.confirm_label), confirm_style),
         Span::raw("   "),
-        Span::styled(
-            " Cancel (n) ",
-            Style::default().fg(Color::White).bg(Color::DarkGray),
-        ),
+        Span::styled(" Cancel (n) ", cancel_style),
     ]);
     let buttons_para = Paragraph::new(buttons).alignment(Alignment::Center);
     frame.render_widget(buttons_para, chunks[3]);

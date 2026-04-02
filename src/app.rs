@@ -49,6 +49,7 @@ pub struct ConfirmPopup {
     pub detail: Option<String>,
     pub confirm_label: String,
     pub is_destructive: bool,
+    pub selected_button: usize, // 0 = Confirm, 1 = Cancel
 }
 
 pub struct ContextMenu {
@@ -1172,6 +1173,7 @@ impl App {
             detail,
             confirm_label,
             is_destructive,
+            selected_button: 1,
         });
     }
 
@@ -1199,6 +1201,33 @@ impl App {
 
     pub fn cancel_confirm(&mut self) {
         self.confirm_popup = None;
+    }
+
+    pub fn confirm_popup_select_confirm(&mut self) {
+        if let Some(popup) = &mut self.confirm_popup {
+            popup.selected_button = 0;
+        }
+    }
+
+    pub fn confirm_popup_select_cancel(&mut self) {
+        if let Some(popup) = &mut self.confirm_popup {
+            popup.selected_button = 1;
+        }
+    }
+
+    pub fn confirm_popup_toggle_button(&mut self) {
+        if let Some(popup) = &mut self.confirm_popup {
+            popup.selected_button = (popup.selected_button + 1) % 2;
+        }
+    }
+
+    pub fn confirm_popup_activate(&mut self) {
+        let is_confirm = self.confirm_popup.as_ref().map(|p| p.selected_button == 0).unwrap_or(false);
+        if is_confirm {
+            self.confirm_action();
+        } else {
+            self.cancel_confirm();
+        }
     }
 
     pub fn cancel_delete_prompt(&mut self) {
