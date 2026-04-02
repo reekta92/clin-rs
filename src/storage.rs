@@ -42,6 +42,7 @@ pub struct NoteSummary {
     pub updated_at: u64,
     pub folder: String,
     pub tags: Vec<String>,
+    pub pinned: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -224,8 +225,10 @@ impl Storage {
         if ext == "clin" {
             let file_content = fs::read(&path).context("failed to read note")?;
             let mut tags = Vec::new();
+            let mut pinned = false;
             if let Some(fm) = extract_frontmatter_from_bytes(&file_content) {
                 tags = fm.tags;
+                pinned = fm.pinned;
             }
 
             let plain = self.decrypt(&file_content)?;
@@ -238,6 +241,7 @@ impl Storage {
                 updated_at: note.updated_at,
                 folder,
                 tags,
+                pinned,
             })
         } else {
             let content = fs::read_to_string(&path).unwrap_or_default();
@@ -259,6 +263,7 @@ impl Storage {
                 updated_at,
                 folder,
                 tags: fm.tags,
+                pinned: fm.pinned,
             })
         }
     }
@@ -320,6 +325,7 @@ impl Storage {
         let target_id = self.unique_note_id(&preferred_stem, target_ext, id);
         let fm = frontmatter::Frontmatter {
             tags: note.tags.clone(),
+            pinned: false,
         };
 
         let target_path = self.note_path(&target_id);
@@ -356,6 +362,232 @@ impl Storage {
     pub fn delete_note(&self, id: &str) -> Result<()> {
         fs::remove_file(self.note_path(id)).context("failed to delete note")?;
         Ok(())
+    }
+
+    /// Rename a note by updating its title (which changes the filename)
+    pub fn rename_note(&self, id: &str, new_title: &str) -> Result<String> {
+        let mut note = self.load_note(id)?;
+        note.title = new_title.to_string();
+        note.updated_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        let is_encrypted = id.ends_with(".clin");
+        self.save_note(id, &note, is_encrypted)
+    }
+
+    /// Duplicate a note with a new title
+    pub fn duplicate_note(&self, id: &str) -> Result<String> {
+        let note = self.load_note(id)?;
+        let new_title = format!("{} (Copy)", note.title);
+        let mut new_note = note;
+        new_note.title = new_title;
+        new_note.updated_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        // Generate a new unique ID for the duplicate
+        let new_id = self.new_note_id();
+        let is_encrypted = id.ends_with(".clin");
+
+        // Determine the folder from the original note
+        let folder = if let Some(idx) = id.rfind('/') {
+            &id[..idx]
+        } else {
+            ""
+        };
+
+        // Create initial ID with folder prefix
+        let initial_id = if folder.is_empty() {
+            format!("{}.{}", new_id, if is_encrypted { "clin" } else { "md" })
+        } else {
+            format!("{}/{}.{}", folder, new_id, if is_encrypted { "clin" } else { "md" })
+        };
+
+        self.save_note(&initial_id, &new_note, is_encrypted)
+    }
+
+    /// Move a note to the trash folder instead of permanently deleting it
+    pub fn trash_note(&self, id: &str) -> Result<()> {
+        let trash_dir = self.notes_dir.join(".trash");
+        fs::create_dir_all(&trash_dir).context("failed to create trash directory")?;
+
+        let src_path = self.note_path(id);
+        if !src_path.exists() {
+            anyhow::bail!("Note does not exist");
+        }
+
+        let file_name = src_path
+            .file_name()
+            .unwrap_or_default()
+            .to_str()
+            .unwrap_or("");
+
+        // Add timestamp to avoid conflicts
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        let (stem, ext) = if let Some(dot_idx) = file_name.rfind('.') {
+            (&file_name[..dot_idx], &file_name[dot_idx..])
+        } else {
+            (file_name, "")
+        };
+
+        let trash_name = format!("{}_deleted_{}{}", stem, timestamp, ext);
+        let dest_path = trash_dir.join(&trash_name);
+
+        fs::rename(&src_path, &dest_path).context("failed to move note to trash")?;
+        Ok(())
+    }
+
+    /// List notes in the trash folder
+    pub fn list_trash(&self) -> Result<Vec<NoteSummary>> {
+        let trash_dir = self.notes_dir.join(".trash");
+        if !trash_dir.exists() {
+            return Ok(Vec::new());
+        }
+
+        let mut summaries = Vec::new();
+        if let Ok(entries) = fs::read_dir(&trash_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_file() {
+                    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+                    if ext == "clin" || ext == "md" || ext == "txt" {
+                        let id = format!(".trash/{}", path.file_name().unwrap_or_default().to_str().unwrap_or(""));
+                        if let Ok(summary) = self.load_note_summary(&id) {
+                            summaries.push(summary);
+                        }
+                    }
+                }
+            }
+        }
+
+        summaries.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+        Ok(summaries)
+    }
+
+    /// Restore a note from the trash folder
+    pub fn restore_note(&self, trash_id: &str) -> Result<String> {
+        let src_path = self.note_path(trash_id);
+        if !src_path.exists() {
+            anyhow::bail!("Note does not exist in trash");
+        }
+
+        let file_name = src_path
+            .file_name()
+            .unwrap_or_default()
+            .to_str()
+            .unwrap_or("");
+
+        // Remove the _deleted_timestamp suffix
+        let restored_name = if let Some(idx) = file_name.find("_deleted_") {
+            let ext_start = file_name.rfind('.').unwrap_or(file_name.len());
+            format!("{}{}", &file_name[..idx], &file_name[ext_start..])
+        } else {
+            file_name.to_string()
+        };
+
+        let dest_path = self.notes_dir.join(&restored_name);
+
+        // Ensure unique name
+        let final_dest = if dest_path.exists() {
+            let stem = dest_path.file_stem().unwrap_or_default().to_str().unwrap_or("");
+            let ext = dest_path.extension().unwrap_or_default().to_str().unwrap_or("");
+            let mut counter = 1;
+            loop {
+                let new_name = format!("{}_{}.{}", stem, counter, ext);
+                let new_path = self.notes_dir.join(&new_name);
+                if !new_path.exists() {
+                    break new_path;
+                }
+                counter += 1;
+            }
+        } else {
+            dest_path
+        };
+
+        fs::rename(&src_path, &final_dest).context("failed to restore note from trash")?;
+
+        let restored_id = final_dest
+            .strip_prefix(&self.notes_dir)
+            .ok()
+            .and_then(|p| p.to_str())
+            .unwrap_or("")
+            .to_string();
+
+        Ok(restored_id)
+    }
+
+    /// Permanently delete a note from trash
+    pub fn delete_from_trash(&self, trash_id: &str) -> Result<()> {
+        let path = self.note_path(trash_id);
+        if !path.exists() {
+            anyhow::bail!("Note does not exist in trash");
+        }
+        fs::remove_file(&path).context("failed to permanently delete note")?;
+        Ok(())
+    }
+
+    /// Empty the entire trash folder
+    pub fn empty_trash(&self) -> Result<usize> {
+        let trash_dir = self.notes_dir.join(".trash");
+        if !trash_dir.exists() {
+            return Ok(0);
+        }
+
+        let mut count = 0;
+        if let Ok(entries) = fs::read_dir(&trash_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_file() {
+                    if fs::remove_file(&path).is_ok() {
+                        count += 1;
+                    }
+                }
+            }
+        }
+        Ok(count)
+    }
+
+    /// Toggle the pinned status of a note
+    pub fn toggle_pin(&self, id: &str) -> Result<bool> {
+        let path = self.note_path(id);
+        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+
+        if ext == "clin" {
+            // For encrypted notes, we need to update frontmatter
+            let file_content = fs::read(&path).context("failed to read note")?;
+            let mut fm = extract_frontmatter_from_bytes(&file_content).unwrap_or_default();
+            fm.pinned = !fm.pinned;
+            let new_pinned = fm.pinned;
+
+            // Decrypt, update frontmatter, and re-encrypt
+            let plain = self.decrypt(&file_content)?;
+            let fm_string = frontmatter::serialize(&fm, "");
+            let mut final_output = fm_string.into_bytes();
+
+            // Re-encrypt the original decrypted content
+            let encrypted = self.encrypt(&plain)?;
+            final_output.extend_from_slice(&encrypted);
+
+            fs::write(&path, final_output).context("failed to write note")?;
+            Ok(new_pinned)
+        } else {
+            // For plain notes, parse and update frontmatter
+            let content = fs::read_to_string(&path).context("failed to read note")?;
+            let (mut fm, body) = frontmatter::parse(&content);
+            fm.pinned = !fm.pinned;
+            let new_pinned = fm.pinned;
+
+            let new_content = frontmatter::serialize(&fm, body);
+            fs::write(&path, new_content).context("failed to write note")?;
+            Ok(new_pinned)
+        }
     }
 
     pub fn new_note_id(&self) -> String {

@@ -282,6 +282,17 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     .block(Block::default().borders(Borders::ALL).title("Notes"));
     frame.render_widget(header, chunks[0]);
 
+    // Split main area for preview if enabled
+    let (list_area, preview_area) = if app.preview_enabled {
+        let main_chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .split(chunks[1]);
+        (main_chunks[0], Some(main_chunks[1]))
+    } else {
+        (chunks[1], None)
+    };
+
     let mut items: Vec<ListItem> = Vec::with_capacity(app.visual_list.len());
 
     for item in &app.visual_list {
@@ -318,7 +329,17 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
 
                 let mut spans = Vec::new();
                 spans.push(Span::raw(indent));
-                spans.push(Span::raw("  "));
+                spans.push(Span::raw("  "));
+
+                // Pinned indicator
+                if summary.pinned {
+                    spans.push(Span::styled(
+                        "* ",
+                        Style::default()
+                            .fg(Color::Yellow)
+                            .add_modifier(Modifier::BOLD),
+                    ));
+                }
 
                 if !is_clin {
                     spans.push(Span::styled(
@@ -371,7 +392,23 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         .highlight_symbol("  > ");
 
     app.list_state.select(Some(app.visual_index));
-    frame.render_stateful_widget(list, chunks[1], &mut app.list_state);
+    frame.render_stateful_widget(list, list_area, &mut app.list_state);
+
+    // Render preview pane if enabled
+    if let Some(preview_rect) = preview_area {
+        let preview_text = app
+            .preview_content
+            .as_deref()
+            .unwrap_or("Select a note to preview");
+        let preview = Paragraph::new(preview_text)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Preview (Shift+P to close)"),
+            )
+            .wrap(ratatui::widgets::Wrap { trim: false });
+        frame.render_widget(preview, preview_rect);
+    }
 
     let enc_button_label = if app.encryption_enabled {
         "[ Enc: ON ]"
@@ -512,6 +549,61 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
 
         frame.render_stateful_widget(list, chunks[1], &mut palette.state);
     }
+
+    // QoL feature popups
+
+    // Note rename popup
+    if let Some(popup) = &mut app.note_rename_popup {
+        let popup_area = centered_rect(50, 20, area);
+        frame.render_widget(Clear, popup_area);
+        frame.render_widget(&popup.input, popup_area);
+    }
+
+    // Search popup
+    if let Some(popup) = &mut app.search_popup {
+        let popup_area = centered_rect(50, 20, area);
+        frame.render_widget(Clear, popup_area);
+        frame.render_widget(&popup.input, popup_area);
+    }
+
+    // Trash view popup
+    if let Some(trash) = &app.trash_view {
+        let popup_area = centered_rect(70, 70, area);
+        frame.render_widget(Clear, popup_area);
+
+        let items: Vec<ListItem> = trash
+            .notes
+            .iter()
+            .map(|n| {
+                let when = format_relative_time(n.updated_at);
+                ListItem::new(Line::from(vec![
+                    Span::raw(&n.title),
+                    Span::styled(format!("  ({when})"), Style::default().fg(Color::DarkGray)),
+                ]))
+            })
+            .collect();
+
+        let list = List::new(items)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Trash - r:restore d:delete E:empty q:close"),
+            )
+            .highlight_style(
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )
+            .highlight_symbol("> ");
+
+        let mut state = ListState::default();
+        state.select(Some(trash.selected));
+
+        frame.render_stateful_widget(list, popup_area, &mut state);
+    }
+
+    // Preview pane (handled differently - see below)
 }
 
 pub fn draw_template_popup(frame: &mut Frame, popup: &TemplatePopup, area: Rect) {

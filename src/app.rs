@@ -67,6 +67,38 @@ pub struct FolderPicker {
     pub selected: usize,
 }
 
+/// Note rename popup state
+pub struct NoteRenamePopup {
+    pub note_id: String,
+    pub input: TextArea<'static>,
+}
+
+/// Search popup state for filtering notes
+pub struct SearchPopup {
+    pub input: TextArea<'static>,
+    pub original_index: usize,
+}
+
+/// Sort field options
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum SortField {
+    Title,
+    Modified,
+}
+
+/// Sort order options
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum SortOrder {
+    Ascending,
+    Descending,
+}
+
+/// Trash view state
+pub struct TrashView {
+    pub notes: Vec<NoteSummary>,
+    pub selected: usize,
+}
+
 #[derive(Debug, Clone)]
 pub enum VisualItem {
     Folder {
@@ -121,6 +153,18 @@ pub struct App {
     pub folder_cache: Option<Vec<String>>,
     pub list_state: ListState,
     pub needs_full_redraw: bool,
+    // QoL features
+    pub note_rename_popup: Option<NoteRenamePopup>,
+    pub search_popup: Option<SearchPopup>,
+    pub sort_field: SortField,
+    pub sort_order: SortOrder,
+    pub trash_view: Option<TrashView>,
+    pub preview_enabled: bool,
+    pub preview_content: Option<String>,
+    /// For vim-style 'gg' command - tracks last 'g' press time
+    pub last_g_press: Option<Instant>,
+    /// Page size for Ctrl+u/d navigation
+    pub page_size: usize,
 }
 
 pub enum CliCommand {
@@ -190,6 +234,16 @@ impl App {
             folder_cache: None,
             list_state: ListState::default(),
             needs_full_redraw: false,
+            // QoL features
+            note_rename_popup: None,
+            search_popup: None,
+            sort_field: SortField::Modified,
+            sort_order: SortOrder::Descending,
+            trash_view: None,
+            preview_enabled: false,
+            preview_content: None,
+            last_g_press: None,
+            page_size: 10,
         };
         app.context_menu = None;
         app.template_popup = None;
@@ -217,10 +271,39 @@ impl App {
                 summaries.push(summary);
             }
         }
+        
+        // Sort based on current sort options
+        // Pinned notes always come first, then apply user's sort preference
         summaries.sort_by(|a, b| {
+            // Pinned notes first
+            let pin_cmp = b.pinned.cmp(&a.pinned);
+            if pin_cmp != std::cmp::Ordering::Equal {
+                return pin_cmp;
+            }
+            
+            // Then encrypted notes (for backwards compat)
             let a_clin = a.id.ends_with(".clin");
             let b_clin = b.id.ends_with(".clin");
-            b_clin.cmp(&a_clin).then(b.updated_at.cmp(&a.updated_at))
+            let clin_cmp = b_clin.cmp(&a_clin);
+            if clin_cmp != std::cmp::Ordering::Equal {
+                return clin_cmp;
+            }
+            
+            // Then apply user's sort preference
+            match self.sort_field {
+                SortField::Modified => {
+                    match self.sort_order {
+                        SortOrder::Descending => b.updated_at.cmp(&a.updated_at),
+                        SortOrder::Ascending => a.updated_at.cmp(&b.updated_at),
+                    }
+                }
+                SortField::Title => {
+                    match self.sort_order {
+                        SortOrder::Ascending => a.title.to_lowercase().cmp(&b.title.to_lowercase()),
+                        SortOrder::Descending => b.title.to_lowercase().cmp(&a.title.to_lowercase()),
+                    }
+                }
+            }
         });
         self.notes = summaries;
 
@@ -1248,6 +1331,348 @@ impl App {
             self.help_text_cache = Some(help_page_text(&self.keybinds));
         }
         self.help_text_cache.as_ref().unwrap()
+    }
+
+    // ===== QoL Feature Methods =====
+
+    /// Begin renaming a note (context-sensitive with folder rename)
+    pub fn begin_rename_note(&mut self) {
+        if let Some(VisualItem::Note { summary_idx, id, .. }) = self.visual_list.get(self.visual_index).cloned() {
+            let note = &self.notes[summary_idx];
+            let mut input = TextArea::default();
+            input.insert_str(&note.title);
+            input.set_block(
+                ratatui::widgets::Block::default()
+                    .borders(ratatui::widgets::Borders::ALL)
+                    .title("Rename Note - Esc to cancel, Enter to save"),
+            );
+            self.note_rename_popup = Some(NoteRenamePopup {
+                note_id: id,
+                input,
+            });
+        } else {
+            self.set_temporary_status_static("Select a note to rename");
+        }
+    }
+
+    /// Confirm and apply note rename
+    pub fn confirm_rename_note(&mut self) {
+        if let Some(popup) = self.note_rename_popup.take() {
+            let new_title = popup.input.lines().join("");
+            let new_title = new_title.trim();
+            if new_title.is_empty() {
+                self.set_temporary_status_static("Title cannot be empty");
+                return;
+            }
+            match self.storage.rename_note(&popup.note_id, new_title) {
+                Ok(_) => {
+                    let _ = self.refresh_notes();
+                    self.set_temporary_status_static("Note renamed");
+                }
+                Err(e) => {
+                    self.set_temporary_status(&format!("Failed to rename: {e}"));
+                }
+            }
+        }
+    }
+
+    /// Duplicate the selected note
+    pub fn duplicate_note(&mut self) {
+        if let Some(VisualItem::Note { id, .. }) = self.visual_list.get(self.visual_index).cloned() {
+            match self.storage.duplicate_note(&id) {
+                Ok(_) => {
+                    let _ = self.refresh_notes();
+                    self.set_temporary_status_static("Note duplicated");
+                }
+                Err(e) => {
+                    self.set_temporary_status(&format!("Failed to duplicate: {e}"));
+                }
+            }
+        } else {
+            self.set_temporary_status_static("Select a note to duplicate");
+        }
+    }
+
+    /// Toggle pin status of selected note
+    pub fn toggle_pin(&mut self) {
+        if let Some(VisualItem::Note { id, .. }) = self.visual_list.get(self.visual_index).cloned() {
+            match self.storage.toggle_pin(&id) {
+                Ok(pinned) => {
+                    let _ = self.refresh_notes();
+                    if pinned {
+                        self.set_temporary_status_static("Note pinned");
+                    } else {
+                        self.set_temporary_status_static("Note unpinned");
+                    }
+                }
+                Err(e) => {
+                    self.set_temporary_status(&format!("Failed to toggle pin: {e}"));
+                }
+            }
+        } else {
+            self.set_temporary_status_static("Select a note to pin/unpin");
+        }
+    }
+
+    /// Cycle through sort options
+    pub fn cycle_sort(&mut self) {
+        match (self.sort_field, self.sort_order) {
+            (SortField::Modified, SortOrder::Descending) => {
+                self.sort_field = SortField::Modified;
+                self.sort_order = SortOrder::Ascending;
+            }
+            (SortField::Modified, SortOrder::Ascending) => {
+                self.sort_field = SortField::Title;
+                self.sort_order = SortOrder::Ascending;
+            }
+            (SortField::Title, SortOrder::Ascending) => {
+                self.sort_field = SortField::Title;
+                self.sort_order = SortOrder::Descending;
+            }
+            (SortField::Title, SortOrder::Descending) => {
+                self.sort_field = SortField::Modified;
+                self.sort_order = SortOrder::Descending;
+            }
+        }
+        let _ = self.refresh_notes();
+        let sort_desc = match (self.sort_field, self.sort_order) {
+            (SortField::Modified, SortOrder::Descending) => "Sort: Modified (newest)",
+            (SortField::Modified, SortOrder::Ascending) => "Sort: Modified (oldest)",
+            (SortField::Title, SortOrder::Ascending) => "Sort: Title (A-Z)",
+            (SortField::Title, SortOrder::Descending) => "Sort: Title (Z-A)",
+        };
+        self.set_temporary_status_static(sort_desc);
+    }
+
+    /// Begin search/filter mode
+    pub fn begin_search(&mut self) {
+        let mut input = TextArea::default();
+        input.set_block(
+            ratatui::widgets::Block::default()
+                .borders(ratatui::widgets::Borders::ALL)
+                .title("Search Notes - Esc to cancel, Enter to confirm"),
+        );
+        input.set_cursor_line_style(Style::default());
+        self.search_popup = Some(SearchPopup {
+            input,
+            original_index: self.visual_index,
+        });
+    }
+
+    /// Update search results as user types
+    pub fn update_search(&mut self) {
+        if let Some(popup) = &self.search_popup {
+            let query = popup.input.lines().join("").to_lowercase();
+            if query.is_empty() {
+                return;
+            }
+
+            // Find first matching note
+            for (idx, item) in self.visual_list.iter().enumerate() {
+                if let VisualItem::Note { summary_idx, .. } = item {
+                    let note = &self.notes[*summary_idx];
+                    if note.title.to_lowercase().contains(&query) {
+                        self.visual_index = idx;
+                        self.update_preview();
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Confirm search and stay at current position
+    pub fn confirm_search(&mut self) {
+        self.search_popup = None;
+    }
+
+    /// Cancel search and return to original position
+    pub fn cancel_search(&mut self) {
+        if let Some(popup) = self.search_popup.take() {
+            self.visual_index = popup.original_index;
+            self.update_preview();
+        }
+    }
+
+    // ===== Vim-style Navigation =====
+
+    /// Jump to the top of the list
+    pub fn jump_to_top(&mut self) {
+        self.visual_index = 0;
+        self.update_preview();
+    }
+
+    /// Jump to the bottom of the list
+    pub fn jump_to_bottom(&mut self) {
+        self.visual_index = self.visual_list.len().saturating_sub(1);
+        self.update_preview();
+    }
+
+    /// Page up (half page)
+    pub fn page_up(&mut self) {
+        self.visual_index = self.visual_index.saturating_sub(self.page_size);
+        self.update_preview();
+    }
+
+    /// Page down (half page)
+    pub fn page_down(&mut self) {
+        let max_index = self.visual_list.len().saturating_sub(1);
+        self.visual_index = (self.visual_index + self.page_size).min(max_index);
+        self.update_preview();
+    }
+
+    /// Handle 'g' key press for vim-style gg
+    pub fn handle_g_press(&mut self) -> bool {
+        let now = Instant::now();
+        if let Some(last) = self.last_g_press {
+            if now.duration_since(last) < Duration::from_millis(500) {
+                self.last_g_press = None;
+                self.jump_to_top();
+                return true;
+            }
+        }
+        self.last_g_press = Some(now);
+        false
+    }
+
+    // ===== Trash Functions =====
+
+    /// Move note to trash instead of permanent delete
+    pub fn trash_selected_note(&mut self) {
+        if let Some(VisualItem::Note { id, .. }) = self.visual_list.get(self.visual_index).cloned() {
+            match self.storage.trash_note(&id) {
+                Ok(()) => {
+                    let _ = self.refresh_notes();
+                    self.set_temporary_status_static("Note moved to trash");
+                }
+                Err(e) => {
+                    self.set_temporary_status(&format!("Failed to trash: {e}"));
+                }
+            }
+        } else {
+            self.set_temporary_status_static("Select a note to delete");
+        }
+    }
+
+    /// Open trash view
+    pub fn open_trash_view(&mut self) {
+        match self.storage.list_trash() {
+            Ok(notes) => {
+                if notes.is_empty() {
+                    self.set_temporary_status_static("Trash is empty");
+                    return;
+                }
+                self.trash_view = Some(TrashView { notes, selected: 0 });
+            }
+            Err(e) => {
+                self.set_temporary_status(&format!("Failed to open trash: {e}"));
+            }
+        }
+    }
+
+    /// Close trash view
+    pub fn close_trash_view(&mut self) {
+        self.trash_view = None;
+    }
+
+    /// Restore selected note from trash
+    pub fn restore_from_trash(&mut self) {
+        if let Some(ref mut trash) = self.trash_view {
+            if let Some(note) = trash.notes.get(trash.selected) {
+                let note_id = note.id.clone();
+                match self.storage.restore_note(&note_id) {
+                    Ok(_) => {
+                        // Refresh trash view
+                        if let Ok(notes) = self.storage.list_trash() {
+                            if notes.is_empty() {
+                                self.trash_view = None;
+                                self.set_temporary_status_static("Note restored, trash is now empty");
+                            } else {
+                                trash.notes = notes;
+                                trash.selected = trash.selected.min(trash.notes.len().saturating_sub(1));
+                                self.set_temporary_status_static("Note restored");
+                            }
+                        }
+                        let _ = self.refresh_notes();
+                    }
+                    Err(e) => {
+                        self.set_temporary_status(&format!("Failed to restore: {e}"));
+                    }
+                }
+            }
+        }
+    }
+
+    /// Permanently delete selected note from trash
+    pub fn delete_from_trash(&mut self) {
+        if let Some(ref mut trash) = self.trash_view {
+            if let Some(note) = trash.notes.get(trash.selected) {
+                let note_id = note.id.clone();
+                match self.storage.delete_from_trash(&note_id) {
+                    Ok(()) => {
+                        if let Ok(notes) = self.storage.list_trash() {
+                            if notes.is_empty() {
+                                self.trash_view = None;
+                                self.set_temporary_status_static("Note deleted, trash is now empty");
+                            } else {
+                                trash.notes = notes;
+                                trash.selected = trash.selected.min(trash.notes.len().saturating_sub(1));
+                                self.set_temporary_status_static("Note permanently deleted");
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        self.set_temporary_status(&format!("Failed to delete: {e}"));
+                    }
+                }
+            }
+        }
+    }
+
+    /// Empty the entire trash
+    pub fn empty_trash(&mut self) {
+        match self.storage.empty_trash() {
+            Ok(count) => {
+                self.trash_view = None;
+                self.set_temporary_status(&format!("Deleted {} notes from trash", count));
+            }
+            Err(e) => {
+                self.set_temporary_status(&format!("Failed to empty trash: {e}"));
+            }
+        }
+    }
+
+    // ===== Preview Pane =====
+
+    /// Toggle preview pane
+    pub fn toggle_preview(&mut self) {
+        self.preview_enabled = !self.preview_enabled;
+        if self.preview_enabled {
+            self.update_preview();
+            self.set_temporary_status_static("Preview enabled");
+        } else {
+            self.preview_content = None;
+            self.set_temporary_status_static("Preview disabled");
+        }
+    }
+
+    /// Update preview content for currently selected note
+    pub fn update_preview(&mut self) {
+        if !self.preview_enabled {
+            return;
+        }
+
+        if let Some(VisualItem::Note { id, .. }) = self.visual_list.get(self.visual_index).cloned() {
+            if let Ok(note) = self.storage.load_note(&id) {
+                // Truncate to first 50 lines for preview
+                let preview: String = note.content.lines().take(50).collect::<Vec<_>>().join("\n");
+                self.preview_content = Some(preview);
+            } else {
+                self.preview_content = None;
+            }
+        } else {
+            self.preview_content = None;
+        }
     }
 }
 

@@ -216,6 +216,18 @@ pub enum ListAction {
     CollapseFolder,
     ExpandFolder,
     OpenCommandPalette,
+    // QoL features
+    Rename,        // Context-sensitive rename (note or folder)
+    Duplicate,     // Duplicate note
+    TogglePin,     // Pin/unpin note
+    CycleSort,     // Cycle through sort options
+    Search,        // Quick search by title
+    JumpToTop,     // Vim-style G
+    JumpToBottom,  // Vim-style gg (handled specially)
+    PageUp,        // Half page up (Ctrl+u)
+    PageDown,      // Half page down (Ctrl+d)
+    OpenTrash,     // Open trash view
+    TogglePreview, // Toggle preview pane
 }
 
 /// Actions that can be bound to keys in edit view
@@ -382,6 +394,42 @@ impl Default for Keybinds {
         list.insert(
             ListAction::ExpandFolder,
             vec![KeyCombo::simple(KeyCode::Char('l'))],
+        );
+
+        // QoL feature keybinds
+        list.insert(
+            ListAction::Rename,
+            vec![KeyCombo::simple(KeyCode::Char('r'))],
+        );
+        list.insert(
+            ListAction::Duplicate,
+            vec![KeyCombo::simple(KeyCode::Char('y'))],
+        );
+        list.insert(
+            ListAction::TogglePin,
+            vec![KeyCombo::simple(KeyCode::Char('p'))],
+        );
+        list.insert(
+            ListAction::CycleSort,
+            vec![KeyCombo::simple(KeyCode::Char('s'))],
+        );
+        list.insert(ListAction::Search, vec![KeyCombo::ctrl(KeyCode::Char('f'))]);
+        list.insert(
+            ListAction::JumpToTop,
+            vec![KeyCombo::shift(KeyCode::Char('G'))],
+        );
+        list.insert(ListAction::PageUp, vec![KeyCombo::ctrl(KeyCode::Char('u'))]);
+        list.insert(
+            ListAction::PageDown,
+            vec![KeyCombo::ctrl(KeyCode::Char('d'))],
+        );
+        list.insert(
+            ListAction::OpenTrash,
+            vec![KeyCombo::shift(KeyCode::Char('T'))],
+        );
+        list.insert(
+            ListAction::TogglePreview,
+            vec![KeyCombo::shift(KeyCode::Char('P'))],
         );
 
         let mut edit = HashMap::new();
@@ -707,6 +755,18 @@ fn list_action_to_string(action: ListAction) -> &'static str {
         ListAction::CollapseFolder => "collapse_folder",
         ListAction::ExpandFolder => "expand_folder",
         ListAction::OpenCommandPalette => "open_command_palette",
+        // QoL features
+        ListAction::Rename => "rename",
+        ListAction::Duplicate => "duplicate",
+        ListAction::TogglePin => "toggle_pin",
+        ListAction::CycleSort => "cycle_sort",
+        ListAction::Search => "search",
+        ListAction::JumpToTop => "jump_to_top",
+        ListAction::JumpToBottom => "jump_to_bottom",
+        ListAction::PageUp => "page_up",
+        ListAction::PageDown => "page_down",
+        ListAction::OpenTrash => "open_trash",
+        ListAction::TogglePreview => "toggle_preview",
     }
 }
 

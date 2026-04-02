@@ -69,6 +69,64 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
+    // Handle note rename popup if open
+    if let Some(mut popup) = app.note_rename_popup.take() {
+        if key.code == KeyCode::Esc {
+            app.note_rename_popup = None;
+        } else if key.code == KeyCode::Enter {
+            app.note_rename_popup = Some(popup);
+            app.confirm_rename_note();
+        } else {
+            popup.input.input(Input::from(key));
+            app.note_rename_popup = Some(popup);
+        }
+        return false;
+    }
+
+    // Handle search popup if open
+    if let Some(mut popup) = app.search_popup.take() {
+        if key.code == KeyCode::Esc {
+            app.search_popup = Some(popup);
+            app.cancel_search();
+        } else if key.code == KeyCode::Enter {
+            app.search_popup = Some(popup);
+            app.confirm_search();
+        } else {
+            popup.input.input(Input::from(key));
+            app.search_popup = Some(popup);
+            app.update_search();
+        }
+        return false;
+    }
+
+    // Handle trash view if open
+    if let Some(ref mut trash) = app.trash_view {
+        match key.code {
+            KeyCode::Up | KeyCode::Char('k') => {
+                trash.selected = trash.selected.saturating_sub(1);
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                if trash.selected + 1 < trash.notes.len() {
+                    trash.selected += 1;
+                }
+            }
+            KeyCode::Char('r') | KeyCode::Enter => {
+                app.restore_from_trash();
+            }
+            KeyCode::Char('d') | KeyCode::Delete => {
+                app.delete_from_trash();
+            }
+            KeyCode::Char('E') => {
+                app.empty_trash();
+            }
+            KeyCode::Esc | KeyCode::Char('q') => {
+                app.close_trash_view();
+            }
+            _ => {}
+        }
+        return false;
+    }
+
     // Handle folder picker if open
     if let Some(mut picker) = app.folder_picker.take() {
         match key.code {
@@ -219,8 +277,17 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         app.begin_create_folder();
         return false;
     }
-    if app.keybinds.matches_list(ListAction::RenameFolder, &key) {
-        app.begin_rename_folder();
+    if app.keybinds.matches_list(ListAction::RenameFolder, &key)
+        || app.keybinds.matches_list(ListAction::Rename, &key)
+    {
+        // Context-sensitive rename: folder or note based on selection
+        if let Some(item) = app.visual_list.get(app.visual_index) {
+            match item {
+                crate::app::VisualItem::Folder { .. } => app.begin_rename_folder(),
+                crate::app::VisualItem::Note { .. } => app.begin_rename_note(),
+                _ => app.set_temporary_status_static("Select a note or folder to rename"),
+            }
+        }
         return false;
     }
     if app.keybinds.matches_list(ListAction::MoveNote, &key) {
@@ -253,6 +320,51 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
             app.command_palette = Some(crate::palette::CommandPalette::new(None));
         }
         return false;
+    }
+
+    // QoL feature handlers
+    if app.keybinds.matches_list(ListAction::Duplicate, &key) {
+        app.duplicate_note();
+        return false;
+    }
+    if app.keybinds.matches_list(ListAction::TogglePin, &key) {
+        app.toggle_pin();
+        return false;
+    }
+    if app.keybinds.matches_list(ListAction::CycleSort, &key) {
+        app.cycle_sort();
+        return false;
+    }
+    if app.keybinds.matches_list(ListAction::Search, &key) {
+        app.begin_search();
+        return false;
+    }
+    if app.keybinds.matches_list(ListAction::JumpToTop, &key) {
+        app.jump_to_bottom(); // G jumps to bottom (vim convention)
+        return false;
+    }
+    if app.keybinds.matches_list(ListAction::PageUp, &key) {
+        app.page_up();
+        return false;
+    }
+    if app.keybinds.matches_list(ListAction::PageDown, &key) {
+        app.page_down();
+        return false;
+    }
+    if app.keybinds.matches_list(ListAction::OpenTrash, &key) {
+        app.open_trash_view();
+        return false;
+    }
+    if app.keybinds.matches_list(ListAction::TogglePreview, &key) {
+        app.toggle_preview();
+        return false;
+    }
+
+    // Handle vim-style 'g' for gg (jump to top)
+    if key.code == KeyCode::Char('g') {
+        if app.handle_g_press() {
+            return false;
+        }
     }
 
     false
