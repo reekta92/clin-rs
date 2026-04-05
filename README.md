@@ -164,13 +164,13 @@ Encryption can be toggled with selecting it with `Tab` and pressing `Enter` to t
 ### Debian/Ubuntu (.deb)
 Download the latest `.deb` from the [Releases](https://github.com/reekta/clin/releases) page.
 ```bash
-sudo dpkg -i clin-rs_0.3.4-1_amd64.deb
+sudo dpkg -i clin-rs_0.3.4-1-1_amd64.deb
 ```
 
 ### Fedora/RHEL (.rpm)
 Download the latest `.rpm` from the [Releases](https://github.com/reekta/clin/releases) page.
 ```bash
-sudo rpm -i clin-rs-0.3.4-1.x86_64.rpm
+sudo rpm -i clin-rs-0.3.4-1-1.x86_64.rpm
 ```
 
 ### Arch Linux (PKGBUILD)
