@@ -1,0 +1,26 @@
+name: Update README Version
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  update-version:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Update version strings
+        run: |
+          TAG_NAME="${{ github.event.release.tag_name }}"
+          CLEAN_VERSION="${TAG_NAME#v}"
+          sed -i "s/clin-rs_[^_]*_amd64.deb/clin-rs_${CLEAN_VERSION}_amd64.deb/g" README.md
+          sed -i "s/clin-rs-.*\.x86_64\.rpm/clin-rs-${CLEAN_VERSION}.x86_64.rpm/g" README.md
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          git commit -m "docs: update installation versions to $TAG_NAME"
+          git push
