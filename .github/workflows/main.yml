@@ -4,6 +4,9 @@ on:
   release:
     types: [published, edited]
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   update-version:
     runs-on: ubuntu-latest
@@ -13,7 +16,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          # This forces it to checkout your main branch instead of the detached tag
           ref: ${{ github.event.repository.default_branch }}
 
       - name: Update version strings
@@ -21,17 +23,14 @@ jobs:
           TAG_NAME="${{ github.event.release.tag_name }}"
           CLEAN_VERSION="${TAG_NAME#v}"
           
-          # Replace the versions in the README
           sed -i -E "s/clin-rs_[0-9a-zA-Z.-]+_amd64\.deb/clin-rs_${CLEAN_VERSION}_amd64.deb/g" README.md
           sed -i -E "s/clin-rs-[0-9a-zA-Z.-]+\.x86_64\.rpm/clin-rs-${CLEAN_VERSION}.x86_64.rpm/g" README.md
           sed -i -E "s/clin-rs-[0-9a-zA-Z.-]+-x86_64\.tar\.gz/clin-rs-${CLEAN_VERSION}-x86_64.tar.gz/g" README.md
           
-          # Setup git bot
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add README.md
           
-          # Check if there are actually changes to commit
           if ! git diff-index --quiet HEAD; then
             git commit -m "docs: update installation versions to $TAG_NAME"
             git push
