@@ -16,12 +16,16 @@ jobs:
           ref: main
 
       - name: Update version strings
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           TAG_NAME="${{ github.event.release.tag_name }}"
-          CLEAN_VERSION="${TAG_NAME#v}"
-          sed -i -E "s/clin-rs_[0-9a-zA-Z.-]+_amd64\.deb/clin-rs_${CLEAN_VERSION}_amd64.deb/g" README.md
-          sed -i -E "s/clin-rs-[0-9a-zA-Z.-]+\.x86_64\.rpm/clin-rs-${CLEAN_VERSION}.x86_64.rpm/g" README.md
-          sed -i -E "s/clin-rs-[0-9a-zA-Z.-]+-x86_64\.tar\.gz/clin-rs-${CLEAN_VERSION}-x86_64.tar.gz/g" README.md
+          DEB_FILE=$(gh release view "$TAG_NAME" --json assets --jq '.assets[].name | select(endswith(".deb"))')
+          RPM_FILE=$(gh release view "$TAG_NAME" --json assets --jq '.assets[].name | select(endswith(".rpm"))')
+          TAR_FILE=$(gh release view "$TAG_NAME" --json assets --jq '.assets[].name | select(startswith("clin-rs") and endswith(".tar.gz"))')
+          sed -i -E "s/clin-rs_[0-9a-zA-Z.-]+_amd64\.deb/$DEB_FILE/g" README.md
+          sed -i -E "s/clin-rs-[0-9a-zA-Z.-]+\.x86_64\.rpm/$RPM_FILE/g" README.md
+          sed -i -E "s/clin-rs-[0-9a-zA-Z.-]+-x86_64\.tar\.gz/$TAR_FILE/g" README.md
 
       - name: Commit and Push
         run: |
