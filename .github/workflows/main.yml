@@ -30,8 +30,5 @@ jobs:
           git add README.md
           git diff-index --quiet HEAD || git commit -m "docs: update installation versions to $TAG_NAME"
 
-      - name: Checkout target branch
-        run: git checkout ${{ github.event.release.target_commitish }}
-
       - name: Push changes
-        run: git push
+        run: git push origin HEAD:main
