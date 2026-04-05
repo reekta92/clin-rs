@@ -1,4 +1,4 @@
-use crate::app::{App, EditFocus, ListFocus, TemplatePopup, ViewMode};
+use crate::app::{App, ConfirmPopup, EditFocus, ListFocus, TemplatePopup, ViewMode};
 use crate::constants::*;
 use crate::events::get_title_text;
 use crate::keybinds::*;
@@ -125,7 +125,7 @@ pub fn help_page_text(keybinds: &Keybinds) -> Text<'static> {
         Some(&list_create_folder),
     ));
     lines.extend(help_item_dyn("Rename folder", Some(&list_rename_folder)));
-    lines.extend(help_item_dyn("Move note to folder", Some(&list_move_note)));
+    lines.extend(help_item_dyn("Move note or folder", Some(&list_move_note)));
     lines.extend(help_item_dyn("Manage note tags", Some(&list_manage_tags)));
     lines.extend(help_item_dyn("Filter tags", Some(&list_filter_tags)));
     lines.extend(help_item_dyn("Delete note or folder", Some(&list_delete)));
@@ -282,6 +282,17 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     .block(Block::default().borders(Borders::ALL).title("Notes"));
     frame.render_widget(header, chunks[0]);
 
+    // Split main area for preview if enabled
+    let (list_area, preview_area) = if app.preview_enabled {
+        let main_chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .split(chunks[1]);
+        (main_chunks[0], Some(main_chunks[1]))
+    } else {
+        (chunks[1], None)
+    };
+
     let mut items: Vec<ListItem> = Vec::with_capacity(app.visual_list.len());
 
     for item in &app.visual_list {
@@ -318,7 +329,17 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
 
                 let mut spans = Vec::new();
                 spans.push(Span::raw(indent));
-                spans.push(Span::raw("  "));
+                spans.push(Span::raw("  "));
+
+                // Pinned indicator
+                if summary.pinned {
+                    spans.push(Span::styled(
+                        "* ",
+                        Style::default()
+                            .fg(Color::Yellow)
+                            .add_modifier(Modifier::BOLD),
+                    ));
+                }
 
                 if !is_clin {
                     spans.push(Span::styled(
@@ -371,7 +392,23 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         .highlight_symbol("  > ");
 
     app.list_state.select(Some(app.visual_index));
-    frame.render_stateful_widget(list, chunks[1], &mut app.list_state);
+    frame.render_stateful_widget(list, list_area, &mut app.list_state);
+
+    // Render preview pane if enabled
+    if let Some(preview_rect) = preview_area {
+        let preview_text = app
+            .preview_content
+            .as_deref()
+            .unwrap_or("Select a note to preview");
+        let preview = Paragraph::new(preview_text)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Preview (Shift+P to close)"),
+            )
+            .wrap(ratatui::widgets::Wrap { trim: false });
+        frame.render_widget(preview, preview_rect);
+    }
 
     let enc_button_label = if app.encryption_enabled {
         "[ Enc: ON ]"
@@ -433,15 +470,103 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     }
 
     if let Some(popup) = &mut app.tag_popup {
-        let popup_area = centered_rect(50, 20, area);
+        let popup_area = centered_rect(60, 40, area);
         frame.render_widget(Clear, popup_area);
-        frame.render_widget(&popup.input, popup_area);
+
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(3),
+                Constraint::Length(5),
+                Constraint::Min(5),
+            ])
+            .split(popup_area);
+
+        let input_block = Block::default()
+            .borders(Borders::ALL)
+            .title("Manage Tags (comma separated) - Tab: autocomplete, Enter: save, Esc: cancel");
+        let input_inner = input_block.inner(chunks[0]);
+        frame.render_widget(input_block, chunks[0]);
+        frame.render_widget(&popup.input, input_inner);
+
+        let suggestion_items: Vec<ListItem> = popup
+            .suggestions
+            .iter()
+            .enumerate()
+            .map(|(i, tag)| {
+                let style = if i == popup.suggestion_index {
+                    Style::default().fg(Color::Black).bg(Color::Yellow)
+                } else {
+                    Style::default()
+                };
+                ListItem::new(format!("  {}", tag)).style(style)
+            })
+            .collect();
+
+        let suggestions_list = List::new(suggestion_items).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Suggestions (Tab: accept, Shift+D: delete)"),
+        );
+        frame.render_widget(suggestions_list, chunks[1]);
+
+        let tag_display = popup.all_tags.join("  •  ");
+        let tags_paragraph = Paragraph::new(tag_display).wrap(Wrap { trim: true }).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("All existing tags"),
+        );
+        frame.render_widget(tags_paragraph, chunks[2]);
     }
 
     if let Some(popup) = &mut app.filter_popup {
-        let popup_area = centered_rect(50, 20, area);
+        let popup_area = centered_rect(60, 40, area);
         frame.render_widget(Clear, popup_area);
-        frame.render_widget(&*popup, popup_area);
+
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(3),
+                Constraint::Length(5),
+                Constraint::Min(5),
+            ])
+            .split(popup_area);
+
+        let input_block = Block::default().borders(Borders::ALL).title(
+            "Filter Tags (comma separated OR logic) - Tab: autocomplete, Enter: apply, Esc: cancel",
+        );
+        let input_inner = input_block.inner(chunks[0]);
+        frame.render_widget(input_block, chunks[0]);
+        frame.render_widget(&popup.input, input_inner);
+
+        let suggestion_items: Vec<ListItem> = popup
+            .suggestions
+            .iter()
+            .enumerate()
+            .map(|(i, tag)| {
+                let style = if i == popup.suggestion_index {
+                    Style::default().fg(Color::Black).bg(Color::Yellow)
+                } else {
+                    Style::default()
+                };
+                ListItem::new(format!("  {}", tag)).style(style)
+            })
+            .collect();
+
+        let suggestions_list = List::new(suggestion_items).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Suggestions (Tab to accept)"),
+        );
+        frame.render_widget(suggestions_list, chunks[1]);
+
+        let tag_display = popup.all_tags.join("  •  ");
+        let tags_paragraph = Paragraph::new(tag_display).wrap(Wrap { trim: true }).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("All existing tags"),
+        );
+        frame.render_widget(tags_paragraph, chunks[2]);
     }
 
     if let Some(picker) = &app.folder_picker {
@@ -457,12 +582,18 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             })
             .collect();
 
+        let title = match &picker.mode {
+            crate::app::FolderPickerMode::MoveNote { .. } => {
+                format!("Move note to folder")
+            }
+            crate::app::FolderPickerMode::MoveFolder { folder_path } => {
+                let folder_name = folder_path.rsplit('/').next().unwrap_or(folder_path);
+                format!("Move '{}' folder to", folder_name)
+            }
+        };
+
         let list = List::new(items)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title("Select Folder to Move to"),
-            )
+            .block(Block::default().borders(Borders::ALL).title(title))
             .highlight_style(
                 Style::default()
                     .fg(Color::Black)
@@ -511,6 +642,72 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             .highlight_symbol(">> ");
 
         frame.render_stateful_widget(list, chunks[1], &mut palette.state);
+    }
+
+    // QoL feature popups
+
+    // Note rename popup
+    if let Some(popup) = &mut app.note_rename_popup {
+        let popup_area = centered_rect(50, 20, area);
+        frame.render_widget(Clear, popup_area);
+        frame.render_widget(&popup.input, popup_area);
+    }
+
+    // Note create popup
+    if let Some(popup) = &mut app.note_create_popup {
+        let popup_area = centered_rect(50, 20, area);
+        frame.render_widget(Clear, popup_area);
+        frame.render_widget(&popup.input, popup_area);
+    }
+
+    // Search popup
+    if let Some(popup) = &mut app.search_popup {
+        let popup_area = centered_rect(50, 20, area);
+        frame.render_widget(Clear, popup_area);
+        frame.render_widget(&popup.input, popup_area);
+    }
+
+    // Trash view popup
+    if let Some(trash) = &app.trash_view {
+        let popup_area = centered_rect(70, 70, area);
+        frame.render_widget(Clear, popup_area);
+
+        let items: Vec<ListItem> = trash
+            .notes
+            .iter()
+            .map(|n| {
+                let when = format_relative_time(n.updated_at);
+                ListItem::new(Line::from(vec![
+                    Span::raw(&n.title),
+                    Span::styled(format!("  ({when})"), Style::default().fg(Color::DarkGray)),
+                ]))
+            })
+            .collect();
+
+        let list = List::new(items)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Trash - r:restore d:delete E:empty q:close"),
+            )
+            .highlight_style(
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )
+            .highlight_symbol("> ");
+
+        let mut state = ListState::default();
+        state.select(Some(trash.selected));
+
+        frame.render_stateful_widget(list, popup_area, &mut state);
+    }
+
+    // Preview pane (handled differently - see below)
+
+    if let Some(popup) = &app.confirm_popup {
+        draw_confirm_popup(frame, popup, area);
     }
 }
 
@@ -741,6 +938,83 @@ pub fn format_relative_time(unix_ts: u64) -> Cow<'static, str> {
     let secs = UNIX_EPOCH + Duration::from_secs(unix_ts);
     let dt: chrono::DateTime<chrono::Local> = secs.into();
     Cow::Owned(dt.format("%Y-%m-%d %H:%M").to_string())
+}
+
+pub fn draw_confirm_popup(frame: &mut Frame, popup: &ConfirmPopup, area: Rect) {
+    let popup_area = centered_rect(50, 30, area);
+    frame.render_widget(Clear, popup_area);
+
+    let border_color = if popup.is_destructive {
+        Color::Red
+    } else {
+        Color::Yellow
+    };
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(border_color))
+        .title(popup.title.as_str());
+
+    let inner = block.inner(popup_area);
+    frame.render_widget(block, popup_area);
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .margin(1)
+        .constraints([
+            Constraint::Length(2),
+            Constraint::Length(2),
+            Constraint::Min(1),
+            Constraint::Length(1),
+        ])
+        .split(inner);
+
+    let message = Paragraph::new(popup.message.as_str()).alignment(Alignment::Center);
+    frame.render_widget(message, chunks[0]);
+
+    if let Some(detail) = &popup.detail {
+        let detail_para = Paragraph::new(detail.as_str())
+            .style(Style::default().fg(Color::DarkGray))
+            .alignment(Alignment::Center);
+        frame.render_widget(detail_para, chunks[1]);
+    }
+
+    let (confirm_style, cancel_style) = if popup.selected_button == 0 {
+        // Confirm is selected
+        let confirm = if popup.is_destructive {
+            Style::default()
+                .fg(Color::White)
+                .bg(Color::Red)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+                .fg(Color::Black)
+                .bg(Color::Green)
+                .add_modifier(Modifier::BOLD)
+        };
+        let cancel = Style::default().fg(Color::DarkGray).bg(Color::Black);
+        (confirm, cancel)
+    } else {
+        // Cancel is selected
+        let confirm = if popup.is_destructive {
+            Style::default().fg(Color::Red).bg(Color::Black)
+        } else {
+            Style::default().fg(Color::Green).bg(Color::Black)
+        };
+        let cancel = Style::default()
+            .fg(Color::White)
+            .bg(Color::DarkGray)
+            .add_modifier(Modifier::BOLD);
+        (confirm, cancel)
+    };
+
+    let buttons = Line::from(vec![
+        Span::styled(format!(" {} (y) ", popup.confirm_label), confirm_style),
+        Span::raw("   "),
+        Span::styled(" Cancel (n) ", cancel_style),
+    ]);
+    let buttons_para = Paragraph::new(buttons).alignment(Alignment::Center);
+    frame.render_widget(buttons_para, chunks[3]);
 }
 
 pub fn open_in_file_manager(path: &Path) -> Result<()> {

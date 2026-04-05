@@ -202,13 +202,12 @@ pub enum ListAction {
     Help,
     OpenLocation,
     CycleFocus,
-    ConfirmDelete,
-    CancelDelete,
-    ConfirmEncrypt,
-    CancelEncrypt,
+    Confirm,
+    Cancel,
     ToggleButton,
     NewFromTemplate,
     CreateFolder,
+    CreateNote,
     RenameFolder,
     MoveNote,
     ManageTags,
@@ -216,6 +215,18 @@ pub enum ListAction {
     CollapseFolder,
     ExpandFolder,
     OpenCommandPalette,
+    // QoL features
+    Rename,        // Context-sensitive rename (note or folder)
+    Duplicate,     // Duplicate note
+    TogglePin,     // Pin/unpin note
+    CycleSort,     // Cycle through sort options
+    Search,        // Quick search by title
+    JumpToTop,     // Vim-style G
+    JumpToBottom,  // Vim-style gg (handled specially)
+    PageUp,        // Half page up (Ctrl+u)
+    PageDown,      // Half page down (Ctrl+d)
+    OpenTrash,     // Open trash view
+    TogglePreview, // Toggle preview pane
 }
 
 /// Actions that can be bound to keys in edit view
@@ -306,28 +317,14 @@ impl Default for Keybinds {
         );
         list.insert(ListAction::CycleFocus, vec![KeyCombo::simple(KeyCode::Tab)]);
         list.insert(
-            ListAction::ConfirmDelete,
+            ListAction::Confirm,
             vec![
                 KeyCombo::simple(KeyCode::Char('y')),
                 KeyCombo::simple(KeyCode::Enter),
             ],
         );
         list.insert(
-            ListAction::CancelDelete,
-            vec![
-                KeyCombo::simple(KeyCode::Char('n')),
-                KeyCombo::simple(KeyCode::Esc),
-            ],
-        );
-        list.insert(
-            ListAction::ConfirmEncrypt,
-            vec![
-                KeyCombo::simple(KeyCode::Char('y')),
-                KeyCombo::simple(KeyCode::Enter),
-            ],
-        );
-        list.insert(
-            ListAction::CancelEncrypt,
+            ListAction::Cancel,
             vec![
                 KeyCombo::simple(KeyCode::Char('n')),
                 KeyCombo::simple(KeyCode::Esc),
@@ -347,6 +344,10 @@ impl Default for Keybinds {
         list.insert(
             ListAction::CreateFolder,
             vec![KeyCombo::simple(KeyCode::Char('n'))],
+        );
+        list.insert(
+            ListAction::CreateNote,
+            vec![KeyCombo::simple(KeyCode::Char('a'))],
         );
         list.insert(
             ListAction::RenameFolder,
@@ -382,6 +383,42 @@ impl Default for Keybinds {
         list.insert(
             ListAction::ExpandFolder,
             vec![KeyCombo::simple(KeyCode::Char('l'))],
+        );
+
+        // QoL feature keybinds
+        list.insert(
+            ListAction::Rename,
+            vec![KeyCombo::simple(KeyCode::Char('r'))],
+        );
+        list.insert(
+            ListAction::Duplicate,
+            vec![KeyCombo::simple(KeyCode::Char('y'))],
+        );
+        list.insert(
+            ListAction::TogglePin,
+            vec![KeyCombo::simple(KeyCode::Char('p'))],
+        );
+        list.insert(
+            ListAction::CycleSort,
+            vec![KeyCombo::simple(KeyCode::Char('s'))],
+        );
+        list.insert(ListAction::Search, vec![KeyCombo::ctrl(KeyCode::Char('f'))]);
+        list.insert(
+            ListAction::JumpToTop,
+            vec![KeyCombo::shift(KeyCode::Char('G'))],
+        );
+        list.insert(ListAction::PageUp, vec![KeyCombo::ctrl(KeyCode::Char('u'))]);
+        list.insert(
+            ListAction::PageDown,
+            vec![KeyCombo::ctrl(KeyCode::Char('d'))],
+        );
+        list.insert(
+            ListAction::OpenTrash,
+            vec![KeyCombo::shift(KeyCode::Char('T'))],
+        );
+        list.insert(
+            ListAction::TogglePreview,
+            vec![KeyCombo::shift(KeyCode::Char('P'))],
         );
 
         let mut edit = HashMap::new();
@@ -637,13 +674,12 @@ fn parse_list_action(s: &str) -> Option<ListAction> {
         "help" => Some(ListAction::Help),
         "open_location" => Some(ListAction::OpenLocation),
         "cycle_focus" => Some(ListAction::CycleFocus),
-        "confirm_delete" => Some(ListAction::ConfirmDelete),
-        "cancel_delete" => Some(ListAction::CancelDelete),
-        "confirm_encrypt" => Some(ListAction::ConfirmEncrypt),
-        "cancel_encrypt" => Some(ListAction::CancelEncrypt),
+        "confirm" => Some(ListAction::Confirm),
+        "cancel" => Some(ListAction::Cancel),
         "toggle_button" => Some(ListAction::ToggleButton),
         "new_from_template" => Some(ListAction::NewFromTemplate),
         "create_folder" => Some(ListAction::CreateFolder),
+        "create_note" => Some(ListAction::CreateNote),
         "rename_folder" => Some(ListAction::RenameFolder),
         "move_note" => Some(ListAction::MoveNote),
         "manage_tags" => Some(ListAction::ManageTags),
@@ -693,13 +729,12 @@ fn list_action_to_string(action: ListAction) -> &'static str {
         ListAction::Help => "help",
         ListAction::OpenLocation => "open_location",
         ListAction::CycleFocus => "cycle_focus",
-        ListAction::ConfirmDelete => "confirm_delete",
-        ListAction::CancelDelete => "cancel_delete",
-        ListAction::ConfirmEncrypt => "confirm_encrypt",
-        ListAction::CancelEncrypt => "cancel_encrypt",
+        ListAction::Confirm => "confirm",
+        ListAction::Cancel => "cancel",
         ListAction::ToggleButton => "toggle_button",
         ListAction::NewFromTemplate => "new_from_template",
         ListAction::CreateFolder => "create_folder",
+        ListAction::CreateNote => "create_note",
         ListAction::RenameFolder => "rename_folder",
         ListAction::MoveNote => "move_note",
         ListAction::ManageTags => "manage_tags",
@@ -707,6 +742,18 @@ fn list_action_to_string(action: ListAction) -> &'static str {
         ListAction::CollapseFolder => "collapse_folder",
         ListAction::ExpandFolder => "expand_folder",
         ListAction::OpenCommandPalette => "open_command_palette",
+        // QoL features
+        ListAction::Rename => "rename",
+        ListAction::Duplicate => "duplicate",
+        ListAction::TogglePin => "toggle_pin",
+        ListAction::CycleSort => "cycle_sort",
+        ListAction::Search => "search",
+        ListAction::JumpToTop => "jump_to_top",
+        ListAction::JumpToBottom => "jump_to_bottom",
+        ListAction::PageUp => "page_up",
+        ListAction::PageDown => "page_down",
+        ListAction::OpenTrash => "open_trash",
+        ListAction::TogglePreview => "toggle_preview",
     }
 }
 

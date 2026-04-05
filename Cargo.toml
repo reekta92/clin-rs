@@ -1,6 +1,6 @@
 [package]
 name = "clin-rs"
-version = "0.3.3"
+version = "0.3.4-1"
 edition = "2024"
 description = "Encrypted terminal note-taking app"
 authors = ["reekta92 mdag.92988@protonmail.com"]

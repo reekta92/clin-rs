@@ -34,6 +34,24 @@ pub enum ListFocus {
     ExternalEditorToggle,
 }
 
+pub enum ConfirmAction {
+    DeleteNote { note_id: String, title: String },
+    EncryptNote { note_id: String },
+    DeleteTag { tag: String },
+    DeleteFromTrash { note_id: String, title: String },
+    EmptyTrash { count: usize },
+}
+
+pub struct ConfirmPopup {
+    pub action: ConfirmAction,
+    pub title: String,
+    pub message: String,
+    pub detail: Option<String>,
+    pub confirm_label: String,
+    pub is_destructive: bool,
+    pub selected_button: usize, // 0 = Confirm, 1 = Cancel
+}
+
 pub struct ContextMenu {
     pub x: u16,
     pub y: u16,
@@ -49,6 +67,16 @@ pub struct TemplatePopup {
 pub struct TagPopup {
     pub note_id: String,
     pub input: TextArea<'static>,
+    pub all_tags: Vec<String>,
+    pub suggestions: Vec<String>,
+    pub suggestion_index: usize,
+}
+
+pub struct FilterTagPopup {
+    pub input: TextArea<'static>,
+    pub all_tags: Vec<String>,
+    pub suggestions: Vec<String>,
+    pub suggestion_index: usize,
 }
 
 pub enum FolderPopupMode {
@@ -61,9 +89,52 @@ pub struct FolderPopup {
     pub input: TextArea<'static>,
 }
 
+pub enum FolderPickerMode {
+    MoveNote { note_id: String },
+    MoveFolder { folder_path: String },
+}
+
 pub struct FolderPicker {
-    pub note_id: String,
+    pub mode: FolderPickerMode,
     pub folders: Vec<String>,
+    pub selected: usize,
+}
+
+/// Note rename popup state
+pub struct NoteRenamePopup {
+    pub note_id: String,
+    pub input: TextArea<'static>,
+}
+
+/// Note create popup state
+pub struct NoteCreatePopup {
+    pub folder: String,
+    pub input: TextArea<'static>,
+}
+
+/// Search popup state for filtering notes
+pub struct SearchPopup {
+    pub input: TextArea<'static>,
+    pub original_index: usize,
+}
+
+/// Sort field options
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum SortField {
+    Title,
+    Modified,
+}
+
+/// Sort order options
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum SortOrder {
+    Ascending,
+    Descending,
+}
+
+/// Trash view state
+pub struct TrashView {
+    pub notes: Vec<NoteSummary>,
     pub selected: usize,
 }
 
@@ -104,8 +175,7 @@ pub struct App {
     pub external_editor: Option<String>,
     pub status: Cow<'static, str>,
     pub status_until: Option<Instant>,
-    pub pending_delete_note_id: Option<String>,
-    pub pending_encrypt_note_id: Option<String>,
+    pub confirm_popup: Option<ConfirmPopup>,
     pub help_scroll: u16,
     pub context_menu: Option<ContextMenu>,
     pub template_popup: Option<TemplatePopup>,
@@ -114,13 +184,26 @@ pub struct App {
     pub folder_picker: Option<FolderPicker>,
     pub folder_expanded: HashSet<String>,
     pub filter_tags: Vec<String>,
-    pub filter_popup: Option<TextArea<'static>>,
+    pub filter_popup: Option<FilterTagPopup>,
     pub command_palette: Option<crate::palette::CommandPalette>,
     /// Cached help page text (rebuilt when keybinds change)
     pub help_text_cache: Option<Text<'static>>,
     pub folder_cache: Option<Vec<String>>,
     pub list_state: ListState,
     pub needs_full_redraw: bool,
+    // QoL features
+    pub note_rename_popup: Option<NoteRenamePopup>,
+    pub note_create_popup: Option<NoteCreatePopup>,
+    pub search_popup: Option<SearchPopup>,
+    pub sort_field: SortField,
+    pub sort_order: SortOrder,
+    pub trash_view: Option<TrashView>,
+    pub preview_enabled: bool,
+    pub preview_content: Option<String>,
+    /// For vim-style 'gg' command - tracks last 'g' press time
+    pub last_g_press: Option<Instant>,
+    /// Page size for Ctrl+u/d navigation
+    pub page_size: usize,
 }
 
 pub enum CliCommand {
@@ -174,8 +257,7 @@ impl App {
             external_editor: bootstrap_config.external_editor,
             status: Cow::Borrowed(LIST_HELP_HINTS),
             status_until: None,
-            pending_delete_note_id: None,
-            pending_encrypt_note_id: None,
+            confirm_popup: None,
             help_scroll: 0,
             context_menu: None,
             template_popup: None,
@@ -190,9 +272,21 @@ impl App {
             folder_cache: None,
             list_state: ListState::default(),
             needs_full_redraw: false,
+            // QoL features
+            note_rename_popup: None,
+            note_create_popup: None,
+            search_popup: None,
+            sort_field: SortField::Modified,
+            sort_order: SortOrder::Descending,
+            trash_view: None,
+            preview_enabled: bootstrap_config.preview_enabled,
+            preview_content: None,
+            last_g_press: None,
+            page_size: 10,
         };
         app.context_menu = None;
         app.template_popup = None;
+        app.folder_expanded.insert(String::new());
         app.refresh_notes()?;
         Ok(app)
     }
@@ -217,11 +311,57 @@ impl App {
                 summaries.push(summary);
             }
         }
+        
+        // Sort based on current sort options
+        // Pinned notes always come first, then apply user's sort preference
         summaries.sort_by(|a, b| {
+            // Pinned notes first
+            let pin_cmp = b.pinned.cmp(&a.pinned);
+            if pin_cmp != std::cmp::Ordering::Equal {
+                return pin_cmp;
+            }
+            
+            // Then encrypted notes (for backwards compat)
             let a_clin = a.id.ends_with(".clin");
             let b_clin = b.id.ends_with(".clin");
-            b_clin.cmp(&a_clin).then(b.updated_at.cmp(&a.updated_at))
+            let clin_cmp = b_clin.cmp(&a_clin);
+            if clin_cmp != std::cmp::Ordering::Equal {
+                return clin_cmp;
+            }
+            
+            // Then apply user's sort preference
+            match self.sort_field {
+                SortField::Modified => {
+                    match self.sort_order {
+                        SortOrder::Descending => b.updated_at.cmp(&a.updated_at),
+                        SortOrder::Ascending => a.updated_at.cmp(&b.updated_at),
+                    }
+                }
+                SortField::Title => {
+                    match self.sort_order {
+                        SortOrder::Ascending => a.title.to_lowercase().cmp(&b.title.to_lowercase()),
+                        SortOrder::Descending => b.title.to_lowercase().cmp(&a.title.to_lowercase()),
+                    }
+                }
+            }
         });
+
+        if !self.filter_tags.is_empty() {
+            for summary in &summaries {
+                if !summary.folder.is_empty() {
+                    let mut path = String::new();
+                    for part in summary.folder.split('/') {
+                        if !path.is_empty() {
+                            path.push('/');
+                        }
+                        path.push_str(part);
+                        self.folder_expanded.insert(path.clone());
+                    }
+                }
+            }
+            self.folder_expanded.insert(String::new());
+        }
+
         self.notes = summaries;
 
         self.refresh_visual_list();
@@ -382,7 +522,7 @@ impl App {
 
         match &self.visual_list[self.visual_index] {
             VisualItem::CreateNew { path, .. } => {
-                self.start_new_note(path.clone());
+                self.begin_create_note_in_folder(path.clone());
             }
             VisualItem::Folder { path, .. } => {
                 // Toggle expand/collapse
@@ -405,11 +545,9 @@ impl App {
                     }
 
                     if self.encryption_enabled && !is_clin {
-                        self.pending_encrypt_note_id = Some(summary.id.clone());
-                        self.status_until = None;
-                        self.status = Cow::Borrowed(
-                            "WARNING: This action will encrypt the file! y confirm, n cancel",
-                        );
+                        self.show_confirm(ConfirmAction::EncryptNote {
+                            note_id: summary.id.clone(),
+                        });
                         return;
                     }
                     Some(summary.id.clone())
@@ -556,18 +694,15 @@ impl App {
         }
     }
 
-    pub fn confirm_encrypt_warning(&mut self) {
-        if let Some(id) = self.pending_encrypt_note_id.take() {
-            if self.external_editor_enabled {
-                self.open_note_in_external_editor(&id);
-            } else {
-                self.load_and_open_note(&id);
-            }
+    pub fn confirm_encrypt_warning(&mut self, id: String) {
+        if self.external_editor_enabled {
+            self.open_note_in_external_editor(&id);
+        } else {
+            self.load_and_open_note(&id);
         }
     }
 
     pub fn cancel_encrypt_warning(&mut self) {
-        self.pending_encrypt_note_id = None;
         self.set_default_status();
     }
 
@@ -693,6 +828,16 @@ impl App {
         }
     }
 
+    pub fn start_new_note_with_title(&mut self, folder: String, title: String) {
+        // Check if default template exists and use it
+        let template_manager = self.storage.template_manager();
+        if let Some(default_template) = template_manager.load_default() {
+            self.start_note_from_template_with_title(&default_template, folder, title);
+        } else {
+            self.start_blank_note_with_title(folder, title);
+        }
+    }
+
     pub fn start_blank_note(&mut self, folder: String) {
         let mut new_id = self.storage.new_note_id();
         if !folder.is_empty() {
@@ -716,6 +861,37 @@ impl App {
         self.mode = ViewMode::Edit;
         self.editing_id = Some(new_id);
         self.title_editor = make_title_editor("");
+        self.editor = TextArea::default();
+        self.editor
+            .set_cursor_style(Style::default().fg(Color::Black).bg(Color::Cyan));
+        self.editor
+            .set_cursor_line_style(Style::default().bg(Color::Rgb(32, 36, 44)));
+        self.set_default_status();
+    }
+
+    pub fn start_blank_note_with_title(&mut self, folder: String, title: String) {
+        let mut new_id = self.storage.new_note_id();
+        if !folder.is_empty() {
+            new_id = format!("{}/{}", folder, new_id);
+        }
+        
+        if self.external_editor_enabled {
+            let new_note = Note {
+                title: title,
+                content: String::new(),
+                updated_at: now_unix_secs(),
+                tags: Vec::new(),
+            };
+            if let Ok(_) = self.storage.save_note(&new_id, &new_note, self.encryption_enabled) {
+                let _ = self.refresh_notes();
+                self.open_note_in_external_editor(&new_id);
+            }
+            return;
+        }
+
+        self.mode = ViewMode::Edit;
+        self.editing_id = Some(new_id);
+        self.title_editor = make_title_editor(&title);
         self.editor = TextArea::default();
         self.editor
             .set_cursor_style(Style::default().fg(Color::Black).bg(Color::Cyan));
@@ -750,6 +926,42 @@ impl App {
         self.editing_id = Some(new_id);
 
         self.title_editor = make_title_editor(rendered.title.as_deref().unwrap_or(""));
+        self.editor = text_area_from_content(&rendered.content);
+
+        self.editor
+            .set_cursor_style(Style::default().fg(Color::Black).bg(Color::Cyan));
+        self.editor
+            .set_cursor_line_style(Style::default().bg(Color::Rgb(32, 36, 44)));
+
+        self.set_default_status();
+    }
+
+    pub fn start_note_from_template_with_title(&mut self, template: &Template, folder: String, title: String) {
+        let rendered = template.render();
+
+        let mut new_id = self.storage.new_note_id();
+        if !folder.is_empty() {
+            new_id = format!("{}/{}", folder, new_id);
+        }
+
+        if self.external_editor_enabled {
+            let new_note = Note {
+                title: title,
+                content: rendered.content.clone(),
+                updated_at: now_unix_secs(),
+                tags: Vec::new(),
+            };
+            if let Ok(_) = self.storage.save_note(&new_id, &new_note, self.encryption_enabled) {
+                let _ = self.refresh_notes();
+                self.open_note_in_external_editor(&new_id);
+            }
+            return;
+        }
+
+        self.mode = ViewMode::Edit;
+        self.editing_id = Some(new_id);
+
+        self.title_editor = make_title_editor(&title);
         self.editor = text_area_from_content(&rendered.content);
 
         self.editor
@@ -834,8 +1046,7 @@ impl App {
         self.list_focus = ListFocus::Notes;
         self.title_editor = make_title_editor("");
         self.editor = TextArea::default();
-        self.pending_delete_note_id = None;
-        self.pending_encrypt_note_id = None;
+        self.confirm_popup = None;
         let _ = self.refresh_notes();
         self.set_default_status();
     }
@@ -891,10 +1102,10 @@ impl App {
         match &self.visual_list[self.visual_index] {
             VisualItem::Note { summary_idx, .. } => {
                 if let Some(note) = self.notes.get(*summary_idx) {
-                    self.pending_delete_note_id = Some(note.id.clone());
-                    self.status_until = None;
-                    self.status =
-                        Cow::Owned(format!("Delete \"{}\"? y confirm, n cancel", note.title));
+                    self.show_confirm(ConfirmAction::DeleteNote {
+                        note_id: note.id.clone(),
+                        title: note.title.clone(),
+                    });
                 }
             }
             VisualItem::Folder { path, .. } => {
@@ -916,17 +1127,114 @@ impl App {
         }
     }
 
+    pub fn show_confirm(&mut self, action: ConfirmAction) {
+        let (title, message, detail, confirm_label, is_destructive) = match &action {
+            ConfirmAction::DeleteNote { title, .. } => (
+                "Confirm Delete".into(),
+                format!("Delete \"{}\"?", title),
+                Some("This action cannot be undone.".into()),
+                "Delete".into(),
+                true,
+            ),
+            ConfirmAction::EncryptNote { .. } => (
+                "Confirm Encrypt".into(),
+                "Encrypt this note?".into(),
+                Some("The file will be encrypted on disk.".into()),
+                "Encrypt".into(),
+                false,
+            ),
+            ConfirmAction::DeleteTag { tag } => (
+                "Confirm Delete Tag".into(),
+                format!("Delete tag \"{}\"?", tag),
+                Some("This will remove the tag from all notes.".into()),
+                "Delete".into(),
+                true,
+            ),
+            ConfirmAction::DeleteFromTrash { title, .. } => (
+                "Confirm Permanent Delete".into(),
+                format!("Permanently delete \"{}\"?", title),
+                Some("This action cannot be undone.".into()),
+                "Delete Forever".into(),
+                true,
+            ),
+            ConfirmAction::EmptyTrash { count } => (
+                "Confirm Empty Trash".into(),
+                format!("Permanently delete {} note(s)?", count),
+                Some("This action cannot be undone.".into()),
+                "Empty Trash".into(),
+                true,
+            ),
+        };
+
+        self.confirm_popup = Some(ConfirmPopup {
+            action,
+            title,
+            message,
+            detail,
+            confirm_label,
+            is_destructive,
+            selected_button: 1,
+        });
+    }
+
+    pub fn confirm_action(&mut self) {
+        if let Some(popup) = self.confirm_popup.take() {
+            match popup.action {
+                ConfirmAction::DeleteNote { note_id, .. } => {
+                    self.confirm_delete_selected(note_id);
+                }
+                ConfirmAction::EncryptNote { note_id } => {
+                    self.confirm_encrypt_warning(note_id);
+                }
+                ConfirmAction::DeleteTag { tag } => {
+                    self.confirm_delete_tag(tag);
+                }
+                ConfirmAction::DeleteFromTrash { note_id, .. } => {
+                    self.confirm_delete_from_trash(note_id);
+                }
+                ConfirmAction::EmptyTrash { .. } => {
+                    self.confirm_empty_trash();
+                }
+            }
+        }
+    }
+
+    pub fn cancel_confirm(&mut self) {
+        self.confirm_popup = None;
+    }
+
+    pub fn confirm_popup_select_confirm(&mut self) {
+        if let Some(popup) = &mut self.confirm_popup {
+            popup.selected_button = 0;
+        }
+    }
+
+    pub fn confirm_popup_select_cancel(&mut self) {
+        if let Some(popup) = &mut self.confirm_popup {
+            popup.selected_button = 1;
+        }
+    }
+
+    pub fn confirm_popup_toggle_button(&mut self) {
+        if let Some(popup) = &mut self.confirm_popup {
+            popup.selected_button = (popup.selected_button + 1) % 2;
+        }
+    }
+
+    pub fn confirm_popup_activate(&mut self) {
+        let is_confirm = self.confirm_popup.as_ref().map(|p| p.selected_button == 0).unwrap_or(false);
+        if is_confirm {
+            self.confirm_action();
+        } else {
+            self.cancel_confirm();
+        }
+    }
+
     pub fn cancel_delete_prompt(&mut self) {
-        self.pending_delete_note_id = None;
         self.set_default_status();
     }
 
-    pub fn confirm_delete_selected(&mut self) {
-        let id = match self.pending_delete_note_id.take() {
-            Some(id) => id,
-            None => return,
-        };
-
+    pub fn confirm_delete_selected(&mut self, id: String) {
         match self.storage.delete_note(&id) {
             Ok(()) => {
                 let _ = self.refresh_notes();
@@ -936,7 +1244,6 @@ impl App {
                 self.set_temporary_status_static("Note deleted");
             }
             Err(err) => {
-                self.pending_delete_note_id = None;
                 self.set_temporary_status(&format!("Delete failed: {err:#}"));
             }
         }
@@ -1034,7 +1341,7 @@ impl App {
                 let mut all_folders = vec!["".to_string()]; // Root folder
                 all_folders.extend(folders);
                 self.folder_picker = Some(FolderPicker {
-                    note_id: note.id.clone(),
+                    mode: FolderPickerMode::MoveNote { note_id: note.id.clone() },
                     folders: all_folders,
                     selected: 0,
                 });
@@ -1046,18 +1353,90 @@ impl App {
         }
     }
 
-    pub fn confirm_move_note(&mut self) {
+    pub fn begin_move_folder(&mut self) {
+        if let Some(VisualItem::Folder { path, .. }) = self.visual_list.get(self.visual_index) {
+            let folder_path = path.clone();
+            if let Ok(folders) = self.storage.list_folders() {
+                let mut all_folders = vec!["".to_string()]; // Root folder
+                all_folders.extend(
+                    folders.into_iter()
+                        .filter(|f| f != &folder_path && !f.starts_with(&format!("{}/", folder_path)))
+                );
+                
+                self.folder_picker = Some(FolderPicker {
+                    mode: FolderPickerMode::MoveFolder { folder_path },
+                    folders: all_folders,
+                    selected: 0,
+                });
+            } else {
+                self.set_temporary_status_static("Failed to list folders");
+            }
+        } else {
+            self.set_temporary_status_static("Select a folder to move");
+        }
+    }
+
+    /// Context-sensitive move - works for both notes and folders
+    pub fn begin_move(&mut self) {
+        match self.visual_list.get(self.visual_index) {
+            Some(VisualItem::Note { .. }) => self.begin_move_note(),
+            Some(VisualItem::Folder { .. }) => self.begin_move_folder(),
+            _ => self.set_temporary_status_static("Nothing selected"),
+        }
+    }
+
+    pub fn confirm_move(&mut self) {
         if let Some(picker) = self.folder_picker.take()
             && let Some(target_folder) = picker.folders.get(picker.selected)
         {
-            if let Err(e) = self.storage.move_note(&picker.note_id, target_folder) {
-                self.set_temporary_status(&format!("Failed to move note: {e}"));
-            } else {
-                self.folder_cache = None;
-                let _ = self.refresh_notes();
-                self.set_temporary_status_static("Note moved");
+            match picker.mode {
+                FolderPickerMode::MoveNote { note_id } => {
+                    if let Err(e) = self.storage.move_note(&note_id, target_folder) {
+                        self.set_temporary_status(&format!("Failed to move note: {e}"));
+                    } else {
+                        self.folder_cache = None;
+                        let _ = self.refresh_notes();
+                        self.set_temporary_status_static("Note moved");
+                    }
+                }
+                FolderPickerMode::MoveFolder { folder_path } => {
+                    let folder_name = folder_path.rsplit('/').next().unwrap_or(&folder_path);
+                    let new_path = if target_folder.is_empty() {
+                        folder_name.to_string()
+                    } else {
+                        format!("{}/{}", target_folder, folder_name)
+                    };
+                    
+                    if folder_path == new_path {
+                        self.set_temporary_status_static("Folder is already in this location");
+                        return;
+                    }
+                    
+                    if let Err(e) = self.storage.rename_folder(&folder_path, &new_path) {
+                        self.set_temporary_status(&format!("Failed to move folder: {e}"));
+                    } else {
+                        if self.folder_expanded.remove(&folder_path) {
+                            self.folder_expanded.insert(new_path);
+                        }
+                        self.folder_cache = None;
+                        let _ = self.refresh_notes();
+                        self.set_temporary_status_static("Folder moved");
+                    }
+                }
             }
         }
+    }
+
+    pub fn collect_live_tags(&self) -> Vec<String> {
+        let mut tags: HashSet<String> = HashSet::new();
+        for note in &self.notes {
+            for tag in &note.tags {
+                tags.insert(tag.clone());
+            }
+        }
+        let mut result: Vec<String> = tags.into_iter().collect();
+        result.sort();
+        result
     }
 
     pub fn begin_manage_tags(&mut self) {
@@ -1065,19 +1444,19 @@ impl App {
         {
             let note = &self.notes[*summary_idx];
             let current_tags = note.tags.clone();
+            let all_tags = self.collect_live_tags();
 
             let mut input = TextArea::default();
             input.insert_str(current_tags.join(", "));
-            input.set_block(
-                ratatui::widgets::Block::default()
-                    .borders(ratatui::widgets::Borders::ALL)
-                    .title("Manage Tags (comma separated) - Esc to cancel, Enter to save"),
-            );
 
             self.tag_popup = Some(TagPopup {
                 note_id: note.id.clone(),
                 input,
+                all_tags,
+                suggestions: Vec::new(),
+                suggestion_index: 0,
             });
+            self.update_tag_suggestions();
         } else {
             self.set_temporary_status_static("Select a note to manage tags");
         }
@@ -1098,18 +1477,6 @@ impl App {
                 if let Err(e) = self.storage.save_note(&popup.note_id, &note, is_clin) {
                     self.set_temporary_status(&format!("Failed to save tags: {e}"));
                 } else {
-                    let mut all_tags = self.storage.load_tag_cache();
-                    let mut changed = false;
-                    for t in &note.tags {
-                        if !all_tags.contains(t) {
-                            all_tags.push(t.clone());
-                            changed = true;
-                        }
-                    }
-                    if changed {
-                        all_tags.sort();
-                        let _ = self.storage.save_tag_cache(&all_tags);
-                    }
                     let _ = self.refresh_notes();
                     self.set_temporary_status_static("Tags updated");
                 }
@@ -1119,20 +1486,148 @@ impl App {
         }
     }
 
+    /// Extract the current word being typed (after last comma)
+    fn get_current_tag_word(input: &str) -> &str {
+        input.rsplit(',').next().map(|s| s.trim()).unwrap_or("")
+    }
+
+    /// Update tag suggestions based on current input
+    pub fn update_tag_suggestions(&mut self) {
+        if let Some(popup) = &mut self.tag_popup {
+            let text = popup.input.lines().join("");
+            let current_word = Self::get_current_tag_word(&text).to_lowercase();
+            
+            // Get already entered tags
+            let entered_tags: Vec<String> = text
+                .split(',')
+                .map(|s| s.trim().to_lowercase())
+                .filter(|s| !s.is_empty())
+                .collect();
+            
+            if current_word.is_empty() {
+                popup.suggestions.clear();
+            } else {
+                // Filter suggestions: match prefix, exclude already entered
+                popup.suggestions = popup.all_tags
+                    .iter()
+                    .filter(|tag| {
+                        let tag_lower = tag.to_lowercase();
+                        tag_lower.starts_with(&current_word) 
+                            && !entered_tags.contains(&tag_lower)
+                    })
+                    .cloned()
+                    .collect();
+            }
+            popup.suggestion_index = 0;
+        }
+    }
+
+    /// Cycle to next suggestion
+    pub fn cycle_tag_suggestion(&mut self) {
+        if let Some(popup) = &mut self.tag_popup {
+            if !popup.suggestions.is_empty() {
+                popup.suggestion_index = (popup.suggestion_index + 1) % popup.suggestions.len();
+            }
+        }
+    }
+
+    /// Accept current suggestion (replace current word)
+    pub fn accept_tag_suggestion(&mut self) {
+        if let Some(popup) = &mut self.tag_popup {
+            if let Some(suggestion) = popup.suggestions.get(popup.suggestion_index).cloned() {
+                let text = popup.input.lines().join("");
+                
+                // Find position of last comma
+                if let Some(last_comma) = text.rfind(',') {
+                    // Replace everything after last comma with suggestion
+                    let prefix = &text[..=last_comma];
+                    let new_text = format!("{} {}, ", prefix, suggestion);
+                    
+                    // Clear and re-insert
+                    popup.input.select_all();
+                    popup.input.cut();
+                    popup.input.insert_str(&new_text);
+                } else {
+                    // No comma, replace entire text
+                    popup.input.select_all();
+                    popup.input.cut();
+                    popup.input.insert_str(&format!("{}, ", suggestion));
+                }
+                
+                popup.suggestions.clear();
+                popup.suggestion_index = 0;
+            }
+        }
+    }
+
+    pub fn begin_delete_tag(&mut self) {
+        if let Some(popup) = &mut self.tag_popup {
+            if let Some(tag) = popup.suggestions.get(popup.suggestion_index).cloned() {
+                self.show_confirm(ConfirmAction::DeleteTag { tag: tag.clone() });
+            }
+        }
+    }
+
+    pub fn confirm_delete_tag(&mut self, tag: String) {
+        let mut count = 0;
+        if let Ok(note_ids) = self.storage.list_note_ids() {
+            for note_id in note_ids {
+                if let Ok(mut note) = self.storage.load_note(&note_id) {
+                    if note.tags.contains(&tag) {
+                        note.tags.retain(|t| t != &tag);
+                        let is_clin = note_id.ends_with(".clin");
+                        let _ = self.storage.save_note(&note_id, &note, is_clin);
+                        count += 1;
+                    }
+                }
+            }
+        }
+
+        self.set_temporary_status(&format!("Deleted '{}' from {} note(s)", tag, count));
+        let _ = self.refresh_notes();
+        let live_tags = self.collect_live_tags();
+
+        if let Some(popup) = &mut self.tag_popup {
+            popup.all_tags = live_tags;
+            let text = popup.input.lines().join("");
+            
+            // If the deleted tag was typed in the input, remove it
+            let entered_tags: Vec<String> = text
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty() && s != &tag)
+                .collect();
+            
+            let new_text = if entered_tags.is_empty() {
+                String::new()
+            } else {
+                format!("{}, ", entered_tags.join(", "))
+            };
+            
+            popup.input.select_all();
+            popup.input.cut();
+            popup.input.insert_str(&new_text);
+        }
+        self.update_tag_suggestions();
+    }
+
     pub fn begin_filter_tags(&mut self) {
+        let all_tags = self.collect_live_tags();
         let mut input = TextArea::default();
         input.insert_str(self.filter_tags.join(", "));
-        input.set_block(
-            ratatui::widgets::Block::default()
-                .borders(ratatui::widgets::Borders::ALL)
-                .title("Filter Tags (comma separated OR logic) - Esc to clear, Enter to apply"),
-        );
-        self.filter_popup = Some(input);
+        
+        self.filter_popup = Some(FilterTagPopup {
+            input,
+            all_tags,
+            suggestions: Vec::new(),
+            suggestion_index: 0,
+        });
+        self.update_filter_suggestions();
     }
 
     pub fn confirm_filter_tags(&mut self) {
-        if let Some(input) = self.filter_popup.take() {
-            let text = input.lines().join("");
+        if let Some(popup) = self.filter_popup.take() {
+            let text = popup.input.lines().join("");
             let tags: Vec<String> = text
                 .split(',')
                 .map(|s| s.trim().to_string())
@@ -1147,6 +1642,66 @@ impl App {
 
     pub fn cancel_filter_tags(&mut self) {
         self.filter_popup = None;
+    }
+
+    pub fn update_filter_suggestions(&mut self) {
+        if let Some(popup) = &mut self.filter_popup {
+            let text = popup.input.lines().join("");
+            let current_word = Self::get_current_tag_word(&text).to_lowercase();
+            
+            let entered_tags: Vec<String> = text
+                .split(',')
+                .map(|s| s.trim().to_lowercase())
+                .filter(|s| !s.is_empty())
+                .collect();
+            
+            if current_word.is_empty() {
+                popup.suggestions.clear();
+            } else {
+                popup.suggestions = popup.all_tags
+                    .iter()
+                    .filter(|tag| {
+                        let tag_lower = tag.to_lowercase();
+                        tag_lower.starts_with(&current_word) 
+                            && !entered_tags.contains(&tag_lower)
+                    })
+                    .cloned()
+                    .collect();
+            }
+            popup.suggestion_index = 0;
+        }
+    }
+
+    pub fn cycle_filter_suggestion(&mut self) {
+        if let Some(popup) = &mut self.filter_popup {
+            if !popup.suggestions.is_empty() {
+                popup.suggestion_index = (popup.suggestion_index + 1) % popup.suggestions.len();
+            }
+        }
+    }
+
+    pub fn accept_filter_suggestion(&mut self) {
+        if let Some(popup) = &mut self.filter_popup {
+            if let Some(suggestion) = popup.suggestions.get(popup.suggestion_index).cloned() {
+                let text = popup.input.lines().join("");
+                
+                if let Some(last_comma) = text.rfind(',') {
+                    let prefix = &text[..=last_comma];
+                    let new_text = format!("{} {}, ", prefix, suggestion);
+                    
+                    popup.input.select_all();
+                    popup.input.cut();
+                    popup.input.insert_str(&new_text);
+                } else {
+                    popup.input.select_all();
+                    popup.input.cut();
+                    popup.input.insert_str(&format!("{}, ", suggestion));
+                }
+                
+                popup.suggestions.clear();
+                popup.suggestion_index = 0;
+            }
+        }
     }
 
     pub fn open_selected_note_location(&mut self) {
@@ -1248,6 +1803,419 @@ impl App {
             self.help_text_cache = Some(help_page_text(&self.keybinds));
         }
         self.help_text_cache.as_ref().unwrap()
+    }
+
+    // ===== QoL Feature Methods =====
+
+    /// Begin creating a new note with a name prompt
+    pub fn begin_create_note(&mut self) {
+        let folder = self.get_current_folder_context();
+        self.begin_create_note_in_folder(folder);
+    }
+
+    /// Begin creating a new note in a specific folder
+    pub fn begin_create_note_in_folder(&mut self, folder: String) {
+        let mut input = TextArea::default();
+        input.set_block(
+            ratatui::widgets::Block::default()
+                .borders(ratatui::widgets::Borders::ALL)
+                .title("New Note Name - Esc to cancel, Enter to create"),
+        );
+        self.note_create_popup = Some(NoteCreatePopup {
+            folder,
+            input,
+        });
+    }
+
+    /// Confirm and create the note with the prompted name
+    pub fn confirm_create_note(&mut self) {
+        if let Some(popup) = self.note_create_popup.take() {
+            let mut title = popup.input.lines().join("");
+            title = title.trim().to_string();
+            if title.is_empty() {
+                title = String::from("Untitled note");
+            }
+            self.start_new_note_with_title(popup.folder, title);
+        }
+    }
+
+    /// Begin renaming a note (context-sensitive with folder rename)
+    pub fn begin_rename_note(&mut self) {
+        if let Some(VisualItem::Note { summary_idx, id, .. }) = self.visual_list.get(self.visual_index).cloned() {
+            let note = &self.notes[summary_idx];
+            let mut input = TextArea::default();
+            input.insert_str(&note.title);
+            input.set_block(
+                ratatui::widgets::Block::default()
+                    .borders(ratatui::widgets::Borders::ALL)
+                    .title("Rename Note - Esc to cancel, Enter to save"),
+            );
+            self.note_rename_popup = Some(NoteRenamePopup {
+                note_id: id,
+                input,
+            });
+        } else {
+            self.set_temporary_status_static("Select a note to rename");
+        }
+    }
+
+    /// Confirm and apply note rename
+    pub fn confirm_rename_note(&mut self) {
+        if let Some(popup) = self.note_rename_popup.take() {
+            let new_title = popup.input.lines().join("");
+            let new_title = new_title.trim();
+            if new_title.is_empty() {
+                self.set_temporary_status_static("Title cannot be empty");
+                return;
+            }
+            match self.storage.rename_note(&popup.note_id, new_title) {
+                Ok(_) => {
+                    let _ = self.refresh_notes();
+                    self.set_temporary_status_static("Note renamed");
+                }
+                Err(e) => {
+                    self.set_temporary_status(&format!("Failed to rename: {e}"));
+                }
+            }
+        }
+    }
+
+    /// Duplicate the selected note
+    pub fn duplicate_note(&mut self) {
+        if let Some(VisualItem::Note { id, .. }) = self.visual_list.get(self.visual_index).cloned() {
+            match self.storage.duplicate_note(&id) {
+                Ok(_) => {
+                    let _ = self.refresh_notes();
+                    self.set_temporary_status_static("Note duplicated");
+                }
+                Err(e) => {
+                    self.set_temporary_status(&format!("Failed to duplicate: {e}"));
+                }
+            }
+        } else {
+            self.set_temporary_status_static("Select a note to duplicate");
+        }
+    }
+
+    /// Toggle pin status of selected note
+    pub fn toggle_pin(&mut self) {
+        if let Some(VisualItem::Note { id, .. }) = self.visual_list.get(self.visual_index).cloned() {
+            match self.storage.toggle_pin(&id) {
+                Ok(pinned) => {
+                    let _ = self.refresh_notes();
+                    if pinned {
+                        self.set_temporary_status_static("Note pinned");
+                    } else {
+                        self.set_temporary_status_static("Note unpinned");
+                    }
+                }
+                Err(e) => {
+                    self.set_temporary_status(&format!("Failed to toggle pin: {e}"));
+                }
+            }
+        } else {
+            self.set_temporary_status_static("Select a note to pin/unpin");
+        }
+    }
+
+    /// Cycle through sort options
+    pub fn cycle_sort(&mut self) {
+        match (self.sort_field, self.sort_order) {
+            (SortField::Modified, SortOrder::Descending) => {
+                self.sort_field = SortField::Modified;
+                self.sort_order = SortOrder::Ascending;
+            }
+            (SortField::Modified, SortOrder::Ascending) => {
+                self.sort_field = SortField::Title;
+                self.sort_order = SortOrder::Ascending;
+            }
+            (SortField::Title, SortOrder::Ascending) => {
+                self.sort_field = SortField::Title;
+                self.sort_order = SortOrder::Descending;
+            }
+            (SortField::Title, SortOrder::Descending) => {
+                self.sort_field = SortField::Modified;
+                self.sort_order = SortOrder::Descending;
+            }
+        }
+        let _ = self.refresh_notes();
+        let sort_desc = match (self.sort_field, self.sort_order) {
+            (SortField::Modified, SortOrder::Descending) => "Sort: Modified (newest)",
+            (SortField::Modified, SortOrder::Ascending) => "Sort: Modified (oldest)",
+            (SortField::Title, SortOrder::Ascending) => "Sort: Title (A-Z)",
+            (SortField::Title, SortOrder::Descending) => "Sort: Title (Z-A)",
+        };
+        self.set_temporary_status_static(sort_desc);
+    }
+
+    /// Begin search/filter mode
+    pub fn begin_search(&mut self) {
+        let mut input = TextArea::default();
+        input.set_block(
+            ratatui::widgets::Block::default()
+                .borders(ratatui::widgets::Borders::ALL)
+                .title("Search Notes - Esc to cancel, Enter to confirm"),
+        );
+        input.set_cursor_line_style(Style::default());
+        self.search_popup = Some(SearchPopup {
+            input,
+            original_index: self.visual_index,
+        });
+    }
+
+    /// Update search results as user types
+    pub fn update_search(&mut self) {
+        if let Some(popup) = &self.search_popup {
+            let query = popup.input.lines().join("").to_lowercase();
+            if query.is_empty() {
+                return;
+            }
+
+            // Find first matching note
+            for (note_idx, note) in self.notes.iter().enumerate() {
+                if note.title.to_lowercase().contains(&query) {
+                    // Expand the folder containing this note
+                    if !note.folder.is_empty() {
+                        let mut path = String::new();
+                        for part in note.folder.split('/') {
+                            if !path.is_empty() {
+                                path.push('/');
+                            }
+                            path.push_str(part);
+                            self.folder_expanded.insert(path.clone());
+                        }
+                    }
+                    
+                    // Rebuild visual list with newly expanded folders
+                    let _ = self.refresh_visual_list();
+                    
+                    // Find the note in the updated visual_list
+                    for (idx, item) in self.visual_list.iter().enumerate() {
+                        if let VisualItem::Note { summary_idx, .. } = item {
+                            if *summary_idx == note_idx {
+                                self.visual_index = idx;
+                                self.update_preview();
+                                return;
+                            }
+                        }
+                    }
+                    return;
+                }
+            }
+        }
+    }
+
+    /// Confirm search and stay at current position
+    pub fn confirm_search(&mut self) {
+        self.search_popup = None;
+    }
+
+    /// Cancel search and return to original position
+    pub fn cancel_search(&mut self) {
+        if let Some(popup) = self.search_popup.take() {
+            self.visual_index = popup.original_index;
+            self.update_preview();
+        }
+    }
+
+    // ===== Vim-style Navigation =====
+
+    /// Jump to the top of the list
+    pub fn jump_to_top(&mut self) {
+        self.visual_index = 0;
+        self.update_preview();
+    }
+
+    /// Jump to the bottom of the list
+    pub fn jump_to_bottom(&mut self) {
+        self.visual_index = self.visual_list.len().saturating_sub(1);
+        self.update_preview();
+    }
+
+    /// Page up (half page)
+    pub fn page_up(&mut self) {
+        self.visual_index = self.visual_index.saturating_sub(self.page_size);
+        self.update_preview();
+    }
+
+    /// Page down (half page)
+    pub fn page_down(&mut self) {
+        let max_index = self.visual_list.len().saturating_sub(1);
+        self.visual_index = (self.visual_index + self.page_size).min(max_index);
+        self.update_preview();
+    }
+
+    /// Handle 'g' key press for vim-style gg
+    pub fn handle_g_press(&mut self) -> bool {
+        let now = Instant::now();
+        if let Some(last) = self.last_g_press {
+            if now.duration_since(last) < Duration::from_millis(500) {
+                self.last_g_press = None;
+                self.jump_to_top();
+                return true;
+            }
+        }
+        self.last_g_press = Some(now);
+        false
+    }
+
+    // ===== Trash Functions =====
+
+    /// Move note to trash instead of permanent delete
+    pub fn trash_selected_note(&mut self) {
+        if let Some(VisualItem::Note { id, .. }) = self.visual_list.get(self.visual_index).cloned() {
+            match self.storage.trash_note(&id) {
+                Ok(()) => {
+                    let _ = self.refresh_notes();
+                    self.set_temporary_status_static("Note moved to trash");
+                }
+                Err(e) => {
+                    self.set_temporary_status(&format!("Failed to trash: {e}"));
+                }
+            }
+        } else {
+            self.set_temporary_status_static("Select a note to delete");
+        }
+    }
+
+    /// Open trash view
+    pub fn open_trash_view(&mut self) {
+        match self.storage.list_trash() {
+            Ok(notes) => {
+                if notes.is_empty() {
+                    self.set_temporary_status_static("Trash is empty");
+                    return;
+                }
+                self.trash_view = Some(TrashView { notes, selected: 0 });
+            }
+            Err(e) => {
+                self.set_temporary_status(&format!("Failed to open trash: {e}"));
+            }
+        }
+    }
+
+    /// Close trash view
+    pub fn close_trash_view(&mut self) {
+        self.trash_view = None;
+    }
+
+    /// Restore selected note from trash
+    pub fn restore_from_trash(&mut self) {
+        if let Some(ref mut trash) = self.trash_view {
+            if let Some(note) = trash.notes.get(trash.selected) {
+                let note_id = note.id.clone();
+                match self.storage.restore_note(&note_id) {
+                    Ok(_) => {
+                        // Refresh trash view
+                        if let Ok(notes) = self.storage.list_trash() {
+                            if notes.is_empty() {
+                                self.trash_view = None;
+                                self.set_temporary_status_static("Note restored, trash is now empty");
+                            } else {
+                                trash.notes = notes;
+                                trash.selected = trash.selected.min(trash.notes.len().saturating_sub(1));
+                                self.set_temporary_status_static("Note restored");
+                            }
+                        }
+                        let _ = self.refresh_notes();
+                    }
+                    Err(e) => {
+                        self.set_temporary_status(&format!("Failed to restore: {e}"));
+                    }
+                }
+            }
+        }
+    }
+
+    /// Permanently delete selected note from trash
+    pub fn begin_delete_from_trash(&mut self) {
+        if let Some(trash) = &self.trash_view {
+            if let Some(note) = trash.notes.get(trash.selected) {
+                self.show_confirm(ConfirmAction::DeleteFromTrash {
+                    note_id: note.id.clone(),
+                    title: note.title.clone(),
+                });
+            }
+        }
+    }
+
+    pub fn confirm_delete_from_trash(&mut self, note_id: String) {
+        match self.storage.delete_from_trash(&note_id) {
+            Ok(()) => {
+                if let Some(ref mut trash) = self.trash_view {
+                    if let Ok(notes) = self.storage.list_trash() {
+                        if notes.is_empty() {
+                            self.trash_view = None;
+                            self.set_temporary_status_static("Note deleted, trash is now empty");
+                        } else {
+                            trash.notes = notes;
+                            trash.selected = trash.selected.min(trash.notes.len().saturating_sub(1));
+                            self.set_temporary_status_static("Note permanently deleted");
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                self.set_temporary_status(&format!("Failed to delete: {e}"));
+            }
+        }
+    }
+
+    /// Empty the entire trash
+    pub fn begin_empty_trash(&mut self) {
+        if let Some(trash) = &self.trash_view {
+            let count = trash.notes.len();
+            if count > 0 {
+                self.show_confirm(ConfirmAction::EmptyTrash { count });
+            } else {
+                self.set_temporary_status_static("Trash is already empty");
+            }
+        }
+    }
+
+    pub fn confirm_empty_trash(&mut self) {
+        match self.storage.empty_trash() {
+            Ok(count) => {
+                self.trash_view = None;
+                self.set_temporary_status(&format!("Deleted {} notes from trash", count));
+            }
+            Err(e) => {
+                self.set_temporary_status(&format!("Failed to empty trash: {e}"));
+            }
+        }
+    }
+
+    // ===== Preview Pane =====
+
+    /// Toggle preview pane
+    pub fn toggle_preview(&mut self) {
+        self.preview_enabled = !self.preview_enabled;
+        if self.preview_enabled {
+            self.update_preview();
+            self.set_temporary_status_static("Preview enabled");
+        } else {
+            self.preview_content = None;
+            self.set_temporary_status_static("Preview disabled");
+        }
+    }
+
+    /// Update preview content for currently selected note
+    pub fn update_preview(&mut self) {
+        if !self.preview_enabled {
+            return;
+        }
+
+        if let Some(VisualItem::Note { id, .. }) = self.visual_list.get(self.visual_index).cloned() {
+            if let Ok(note) = self.storage.load_note(&id) {
+                // Truncate to first 50 lines for preview
+                let preview: String = note.content.lines().take(50).collect::<Vec<_>>().join("\n");
+                self.preview_content = Some(preview);
+            } else {
+                self.preview_content = None;
+            }
+        } else {
+            self.preview_content = None;
+        }
     }
 }
 

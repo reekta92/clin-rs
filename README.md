@@ -32,7 +32,6 @@
 
 ### Editor Enhancements
 
-* [X] **OCR Paste:** Pasting from screenshots using `ocrs` or `tesseract`.
 * [ ] **Word & Character metrics:** Real-time word counts and progress goals.
 * [ ] **Status line customization:** Flexible `status_format = "{title} | {word_count} words | {encryption_status}"`
 * [X] **External editor support:** Opening notes in `nvim`, `helix`, etc.
@@ -41,12 +40,13 @@
 ---
 
 ### Note Management & Navigation
-
+* [ ] **Batch Tagging:** Improve tag manager popup to batch tag multiple notes.
+* [ ] **Better Templates:** Improvements for templates popup with searching, easier template creation, setting up a default template to always use on new notes.
 * [x] **Folders & Tags:** Hierarchical and metadata-based organization.
-* [x] **Mouse support:** Navigation and selection within the notes list.
-* [ ] **Enhanced UI:** Sorting options, line numbers, and a preview pane.
-* [ ] **Fast Search:** Immediate note discovery using the `fd` utility.
-* [ ] **Asset management:** Icon rendering and assigning icons to specific notes.
+* [x] **Mouse Support:** Navigation and selection within the notes list.
+* [X] **Enhanced UI:** Sorting options, pinned notes, confirmation dialogs, and a preview pane.
+* [X] **Fast Search:** Immediate note discovery using the `fd` utility. (Implemented without `fd` for now.)
+* [X] **Asset management:** Icon rendering and assigning icons to specific notes. **DISCONTINUED Reason: implemented using unicode glyphs, users will be able to config their own glyphs via config.**
 * [X] **Data portability:** Easy backup/restore and text file importing by making encryption optional.
 
 ---
@@ -54,15 +54,42 @@
 ### Integration & CLI Usage
 
 * [ ] **Pre-piping:** Routing notes through external tools for custom rendering.
-* [ ] **Markdown integration:** Using `glow`.
+* [ ] **Markdown integration:** Markdown preview in preview pane and in editor mode as a seperate *markdown view* readonly mode. Using `glow` or alternatives.
 * [x] **Expanded CLI:** More argument options for command-line interactions.
 
 ---
+
+### Command Palette
+* [X] **Command palette:** Implement command palette for doing special actions(OCR, graph view, back/forward-link checks etc. on notes.
+* [X] **OCR Paste:** Insert text from a copied image at clipboard into a note, should support external editors. Using `tesseract`.
+* [ ] **PDF to Text:** Insert PDF contents as `.md` format. Using `pdftotext` or `poppler`.
+* [ ] **Export as PDF:** Export as formatted PDF. Using `pandoc` or `weasyprint`.
+* [ ] **CSV to Table:** Insert CSV contents as `.md` table format.
+* [ ] **URL to Article:** Insert article containing URL's as `.md`. Using `ureq` or `html2md`.
+* [ ] **Linking Notes:** Link notes with `[[<note_name>]]`.
+* [ ] **Backlinks:** Related to **Linking notes**, allow for following backlinks. Using indexing caching.
+* [ ] **Forwardlinks:** Related to **Linking notes**, allow for following forward links.
+* [ ] **Sub-notes:** Orphan notes, creating virtual sub-notes that are attached to a note without physically existing on the disk. Using **backlinks**.
+* [ ] **Graph View:** Visual graph of linked notes, related to **Linking notes**.
+* [ ] **Insert Date/Time:** Insert date/time.
+* [ ] **Calculator:** Simple calculator, inserts the simple mathematical calculations result.
+* [ ] **Calendar Picker:** Calendar UI to pick and insert a specific date.
+* [ ] **Date/Time Calculator:** Inserts results of calculations like `now + 2 weeks` or `7 pm + 156 minutes` or `now -t 13.04.2028`(results the amount of days).
+* [ ] **Date/Time Linking:** Link the date/time of the created note for **graph view**.
+* [ ] **Clipboard History:** Access clipboard items and allow for multi-pasting, formatting before pasting, pasting as plain text, pasting as code etc. **HIGH SECURITY AND PRIVACY CONCERN MIGHT BE DISCONTINUED.**
+* [ ] **Merge Notes:** Merge Two or more notes together.
+* [ ] **Split Notes:** Split notes according to headlines from `.md` format.
+* [ ] **Redact Paste:** Replace wanted sections of a text with ████ while pasting from clipboard.
+* [ ] **Tree Outline:** Show the note as a treeview with each root being a headling from `.md` format and notes being branches.
+* [ ] **Text Search:** Search for a specific text. Using `ripgrep` or `grep`.
+* [ ] **Common Words:** Extract most used words from a note.
+
 
 ### Experimental & Advanced
 
 * [ ] **Lua Scripting:** Allowing users to write scripts to extend app functionality.
 * [ ] **Steganography:** Hiding encrypted vaults inside other file types.
+* [ ] **History:** Access change history of a note. Using `git2`, `crate`. **Will conflict with auto-save.**
 
 ---
 # Configuration

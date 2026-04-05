@@ -29,9 +29,16 @@ pub struct BootstrapConfig {
     /// Whether new notes should be encrypted by default
     #[serde(default = "default_encryption_enabled")]
     pub encryption_enabled: bool,
+    /// Whether the preview pane is enabled by default
+    #[serde(default = "default_preview_enabled")]
+    pub preview_enabled: bool,
 }
 
 fn default_encryption_enabled() -> bool {
+    true
+}
+
+fn default_preview_enabled() -> bool {
     true
 }
 

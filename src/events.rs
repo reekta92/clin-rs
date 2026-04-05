@@ -27,6 +27,20 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
+    // Handle note create popup if open
+    if let Some(mut popup) = app.note_create_popup.take() {
+        if key.code == KeyCode::Esc {
+            app.note_create_popup = None;
+        } else if key.code == KeyCode::Enter {
+            app.note_create_popup = Some(popup);
+            app.confirm_create_note();
+        } else {
+            popup.input.input(Input::from(key));
+            app.note_create_popup = Some(popup);
+        }
+        return false;
+    }
+
     // Handle folder popup if open
     if let Some(mut popup) = app.folder_popup.take() {
         if key.code == KeyCode::Esc {
@@ -48,9 +62,24 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         } else if key.code == KeyCode::Enter {
             app.tag_popup = Some(popup);
             app.confirm_manage_tags();
+        } else if key.code == KeyCode::Char('D') && key.modifiers.contains(KeyModifiers::SHIFT) {
+            app.tag_popup = Some(popup);
+            app.begin_delete_tag();
+        } else if key.code == KeyCode::Tab {
+            app.tag_popup = Some(popup);
+            if app
+                .tag_popup
+                .as_ref()
+                .map_or(false, |p| !p.suggestions.is_empty())
+            {
+                app.accept_tag_suggestion();
+            } else {
+                app.cycle_tag_suggestion();
+            }
         } else {
             popup.input.input(Input::from(key));
             app.tag_popup = Some(popup);
+            app.update_tag_suggestions();
         }
         return false;
     }
@@ -62,9 +91,79 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         } else if key.code == KeyCode::Enter {
             app.filter_popup = Some(popup);
             app.confirm_filter_tags();
-        } else {
-            popup.input(Input::from(key));
+        } else if key.code == KeyCode::Tab {
             app.filter_popup = Some(popup);
+            if app
+                .filter_popup
+                .as_ref()
+                .map_or(false, |p| !p.suggestions.is_empty())
+            {
+                app.accept_filter_suggestion();
+            } else {
+                app.cycle_filter_suggestion();
+            }
+        } else {
+            popup.input.input(Input::from(key));
+            app.filter_popup = Some(popup);
+            app.update_filter_suggestions();
+        }
+        return false;
+    }
+
+    // Handle note rename popup if open
+    if let Some(mut popup) = app.note_rename_popup.take() {
+        if key.code == KeyCode::Esc {
+            app.note_rename_popup = None;
+        } else if key.code == KeyCode::Enter {
+            app.note_rename_popup = Some(popup);
+            app.confirm_rename_note();
+        } else {
+            popup.input.input(Input::from(key));
+            app.note_rename_popup = Some(popup);
+        }
+        return false;
+    }
+
+    // Handle search popup if open
+    if let Some(mut popup) = app.search_popup.take() {
+        if key.code == KeyCode::Esc {
+            app.search_popup = Some(popup);
+            app.cancel_search();
+        } else if key.code == KeyCode::Enter {
+            app.search_popup = Some(popup);
+            app.confirm_search();
+        } else {
+            popup.input.input(Input::from(key));
+            app.search_popup = Some(popup);
+            app.update_search();
+        }
+        return false;
+    }
+
+    // Handle trash view if open
+    if let Some(ref mut trash) = app.trash_view {
+        match key.code {
+            KeyCode::Up | KeyCode::Char('k') => {
+                trash.selected = trash.selected.saturating_sub(1);
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                if trash.selected + 1 < trash.notes.len() {
+                    trash.selected += 1;
+                }
+            }
+            KeyCode::Char('r') | KeyCode::Enter => {
+                app.restore_from_trash();
+            }
+            KeyCode::Char('d') | KeyCode::Delete => {
+                app.begin_delete_from_trash();
+            }
+            KeyCode::Char('E') => {
+                app.begin_empty_trash();
+            }
+            KeyCode::Esc | KeyCode::Char('q') => {
+                app.close_trash_view();
+            }
+            _ => {}
         }
         return false;
     }
@@ -84,7 +183,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
             }
             KeyCode::Enter | KeyCode::Char('l') => {
                 app.folder_picker = Some(picker);
-                app.confirm_move_note();
+                app.confirm_move();
             }
             KeyCode::Esc | KeyCode::Char('h') => {
                 app.folder_picker = None;
@@ -123,22 +222,22 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
-    // Handle delete confirmation
-    if app.pending_delete_note_id.is_some() {
-        if app.keybinds.matches_list(ListAction::ConfirmDelete, &key) {
-            app.confirm_delete_selected();
-        } else if app.keybinds.matches_list(ListAction::CancelDelete, &key) {
-            app.cancel_delete_prompt();
-        }
-        return false;
-    }
-
-    // Handle encrypt warning confirmation
-    if app.pending_encrypt_note_id.is_some() {
-        if app.keybinds.matches_list(ListAction::ConfirmEncrypt, &key) {
-            app.confirm_encrypt_warning();
-        } else if app.keybinds.matches_list(ListAction::CancelEncrypt, &key) {
-            app.cancel_encrypt_warning();
+    // Handle confirm popup
+    if app.confirm_popup.is_some() {
+        if key.code == KeyCode::Left || key.code == KeyCode::Char('h') {
+            app.confirm_popup_select_confirm();
+        } else if key.code == KeyCode::Right || key.code == KeyCode::Char('l') {
+            app.confirm_popup_select_cancel();
+        } else if key.code == KeyCode::Tab {
+            app.confirm_popup_toggle_button();
+        } else if key.code == KeyCode::Enter {
+            app.confirm_popup_activate();
+        } else if key.code == KeyCode::Esc {
+            app.cancel_confirm();
+        } else if app.keybinds.matches_list(ListAction::Confirm, &key) {
+            app.confirm_action();
+        } else if app.keybinds.matches_list(ListAction::Cancel, &key) {
+            app.cancel_confirm();
         }
         return false;
     }
@@ -190,12 +289,14 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     if app.keybinds.matches_list(ListAction::MoveDown, &key) {
         if app.visual_index < app.visual_list.len().saturating_sub(1) {
             app.visual_index += 1;
+            app.update_preview();
         }
         return false;
     }
     if app.keybinds.matches_list(ListAction::MoveUp, &key) {
         if app.visual_index > 0 {
             app.visual_index -= 1;
+            app.update_preview();
         }
         return false;
     }
@@ -219,12 +320,25 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         app.begin_create_folder();
         return false;
     }
-    if app.keybinds.matches_list(ListAction::RenameFolder, &key) {
-        app.begin_rename_folder();
+    if app.keybinds.matches_list(ListAction::CreateNote, &key) {
+        app.begin_create_note();
+        return false;
+    }
+    if app.keybinds.matches_list(ListAction::RenameFolder, &key)
+        || app.keybinds.matches_list(ListAction::Rename, &key)
+    {
+        // Context-sensitive rename: folder or note based on selection
+        if let Some(item) = app.visual_list.get(app.visual_index) {
+            match item {
+                crate::app::VisualItem::Folder { .. } => app.begin_rename_folder(),
+                crate::app::VisualItem::Note { .. } => app.begin_rename_note(),
+                _ => app.set_temporary_status_static("Select a note or folder to rename"),
+            }
+        }
         return false;
     }
     if app.keybinds.matches_list(ListAction::MoveNote, &key) {
-        app.begin_move_note();
+        app.begin_move();
         return false;
     }
     if app.keybinds.matches_list(ListAction::ManageTags, &key) {
@@ -253,6 +367,51 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
             app.command_palette = Some(crate::palette::CommandPalette::new(None));
         }
         return false;
+    }
+
+    // QoL feature handlers
+    if app.keybinds.matches_list(ListAction::Duplicate, &key) {
+        app.duplicate_note();
+        return false;
+    }
+    if app.keybinds.matches_list(ListAction::TogglePin, &key) {
+        app.toggle_pin();
+        return false;
+    }
+    if app.keybinds.matches_list(ListAction::CycleSort, &key) {
+        app.cycle_sort();
+        return false;
+    }
+    if app.keybinds.matches_list(ListAction::Search, &key) {
+        app.begin_search();
+        return false;
+    }
+    if app.keybinds.matches_list(ListAction::JumpToTop, &key) {
+        app.jump_to_bottom(); // G jumps to bottom (vim convention)
+        return false;
+    }
+    if app.keybinds.matches_list(ListAction::PageUp, &key) {
+        app.page_up();
+        return false;
+    }
+    if app.keybinds.matches_list(ListAction::PageDown, &key) {
+        app.page_down();
+        return false;
+    }
+    if app.keybinds.matches_list(ListAction::OpenTrash, &key) {
+        app.open_trash_view();
+        return false;
+    }
+    if app.keybinds.matches_list(ListAction::TogglePreview, &key) {
+        app.toggle_preview();
+        return false;
+    }
+
+    // Handle vim-style 'g' for gg (jump to top)
+    if key.code == KeyCode::Char('g') {
+        if app.handle_g_press() {
+            return false;
+        }
     }
 
     false
@@ -358,7 +517,25 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
 }
 
 pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: Rect) {
-    if app.pending_delete_note_id.is_some() || app.pending_encrypt_note_id.is_some() {
+    if app.confirm_popup.is_some() {
+        if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
+            let popup_area = crate::ui::centered_rect(50, 30, terminal_area);
+            let click_x = mouse_event.column;
+            let click_y = mouse_event.row;
+
+            if click_x >= popup_area.x
+                && click_x < popup_area.x + popup_area.width
+                && click_y >= popup_area.y
+                && click_y < popup_area.y + popup_area.height
+            {
+                let mid_x = popup_area.x + popup_area.width / 2;
+                if click_x < mid_x {
+                    app.confirm_action();
+                } else {
+                    app.cancel_confirm();
+                }
+            }
+        }
         return;
     }
 

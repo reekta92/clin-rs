@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 pub struct Frontmatter {
     #[serde(default)]
     pub tags: Vec<String>,
+    #[serde(default)]
+    pub pinned: bool,
 }
 
 /// Parses frontmatter from note content.
@@ -39,9 +41,9 @@ pub fn parse(content: &str) -> (Frontmatter, &str) {
 }
 
 /// Serializes frontmatter and prepends it to content.
-/// If the frontmatter is empty (no tags), returns the content as is.
+/// If the frontmatter is empty (no tags, not pinned), returns the content as is.
 pub fn serialize(frontmatter: &Frontmatter, content: &str) -> String {
-    if frontmatter.tags.is_empty() {
+    if frontmatter.tags.is_empty() && !frontmatter.pinned {
         return content.to_string();
     }
 
@@ -87,6 +89,7 @@ mod tests {
     fn test_serialize() {
         let fm = Frontmatter {
             tags: vec!["work".to_string()],
+            pinned: false,
         };
         let content = "My note";
         let serialized = serialize(&fm, content);
