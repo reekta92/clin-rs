@@ -20,9 +20,27 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG_NAME="${{ github.event.release.tag_name }}"
-          DEB_FILE=$(gh release view "$TAG_NAME" --json assets --jq '.assets[].name | select(endswith(".deb"))')
-          RPM_FILE=$(gh release view "$TAG_NAME" --json assets --jq '.assets[].name | select(endswith(".rpm"))')
-          TAR_FILE=$(gh release view "$TAG_NAME" --json assets --jq '.assets[].name | select(startswith("clin-rs") and endswith(".tar.gz"))')
+          TIMEOUT=300
+          INTERVAL=15
+          ELAPSED=0
+
+          while [ $ELAPSED -lt $TIMEOUT ]; do
+            DEB_FILE=$(gh release view "$TAG_NAME" --json assets --jq '.assets[].name | select(endswith("_amd64.deb"))')
+            RPM_FILE=$(gh release view "$TAG_NAME" --json assets --jq '.assets[].name | select(endswith(".x86_64.rpm"))')
+            TAR_FILE=$(gh release view "$TAG_NAME" --json assets --jq '.assets[].name | select(startswith("clin-rs") and endswith("-x86_64.tar.gz"))')
+
+            if [ -n "$DEB_FILE" ] && [ -n "$RPM_FILE" ] && [ -n "$TAR_FILE" ]; then
+              break
+            fi
+
+            sleep $INTERVAL
+            ELAPSED=$((ELAPSED + INTERVAL))
+          done
+
+          if [ -z "$DEB_FILE" ] || [ -z "$RPM_FILE" ] || [ -z "$TAR_FILE" ]; then
+            exit 1
+          fi
+
           sed -i -E "s/clin-rs_[0-9a-zA-Z.-]+_amd64\.deb/$DEB_FILE/g" README.md
           sed -i -E "s/clin-rs-[0-9a-zA-Z.-]+\.x86_64\.rpm/$RPM_FILE/g" README.md
           sed -i -E "s/clin-rs-[0-9a-zA-Z.-]+-x86_64\.tar\.gz/$TAR_FILE/g" README.md
