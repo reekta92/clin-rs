@@ -31,6 +31,12 @@ assets = [
 	{ source = "clin.ico", dest = "/usr/share/pixmaps/clin.ico", mode = "0644" },
 ]
 
+[package.metadata.wix]
+upgrade-guid = "D50B8203-1B47-4DF1-AAFA-13F768A95CC2"
+path-guid = "5B92891F-ADFC-494A-8FA5-0F2BA2B3A786"
+license = false
+eula = false
+
 [dependencies]
 anyhow = "1.0"
 arboard = "3.6.1"
@@ -60,3 +66,8 @@ codegen-units = 1
 panic = "abort"
 strip = true
 opt-level = "s"
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
