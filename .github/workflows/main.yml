@@ -22,18 +22,16 @@ jobs:
         run: |
           TAG_NAME="${{ github.event.release.tag_name }}"
           CLEAN_VERSION="${TAG_NAME#v}"
-          
           sed -i -E "s/clin-rs_[0-9a-zA-Z.-]+_amd64\.deb/clin-rs_${CLEAN_VERSION}_amd64.deb/g" README.md
           sed -i -E "s/clin-rs-[0-9a-zA-Z.-]+\.x86_64\.rpm/clin-rs-${CLEAN_VERSION}.x86_64.rpm/g" README.md
           sed -i -E "s/clin-rs-[0-9a-zA-Z.-]+-x86_64\.tar\.gz/clin-rs-${CLEAN_VERSION}-x86_64.tar.gz/g" README.md
-          
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add README.md
-          
-          if ! git diff-index --quiet HEAD; then
-            git commit -m "docs: update installation versions to $TAG_NAME"
-            git push
-          else
-            echo "No changes found in README.md. Skipping commit."
-          fi
+          git diff-index --quiet HEAD || git commit -m "docs: update installation versions to $TAG_NAME"
+
+      - name: Checkout target branch
+        run: git checkout ${{ github.event.release.target_commitish }}
+
+      - name: Push changes
+        run: git push
