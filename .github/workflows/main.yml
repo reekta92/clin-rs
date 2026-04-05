@@ -4,16 +4,13 @@ on:
   release:
     types: [published, edited]
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   update-version:
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           ref: main
@@ -25,10 +22,13 @@ jobs:
           sed -i -E "s/clin-rs_[0-9a-zA-Z.-]+_amd64\.deb/clin-rs_${CLEAN_VERSION}_amd64.deb/g" README.md
           sed -i -E "s/clin-rs-[0-9a-zA-Z.-]+\.x86_64\.rpm/clin-rs-${CLEAN_VERSION}.x86_64.rpm/g" README.md
           sed -i -E "s/clin-rs-[0-9a-zA-Z.-]+-x86_64\.tar\.gz/clin-rs-${CLEAN_VERSION}-x86_64.tar.gz/g" README.md
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add README.md
-          git diff-index --quiet HEAD || git commit -m "docs: update installation versions to $TAG_NAME"
 
-      - name: Push changes
-        run: git push origin HEAD:main
+      - name: Commit and Push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          if ! git diff --staged --quiet; then
+            git commit -m "docs: update installation versions to ${{ github.event.release.tag_name }}"
+            git push origin main
+          fi
