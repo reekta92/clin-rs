@@ -15,6 +15,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Update version strings
         run: |
@@ -31,8 +33,7 @@ jobs:
           
           if ! git diff-index --quiet HEAD; then
             git commit -m "docs: update installation versions to $TAG_NAME"
-            # Explicitly push the detached HEAD to the repository's default branch (usually 'main' or 'master')
-            git push origin HEAD:${{ github.event.repository.default_branch }}
+            git push
           else
             echo "No changes found in README.md. Skipping commit."
           fi
