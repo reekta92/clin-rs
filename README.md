@@ -74,7 +74,8 @@
 * [ ] **Insert Date/Time:** Insert date/time.
 * [ ] **Calculator:** Simple calculator, inserts the simple mathematical calculations result.
 * [ ] **Calendar Picker:** Calendar UI to pick and insert a specific date.
-* [ ] **Date/Time Calculator:** Inserts results of calculations like `now + 2 weeks` or `7 pm + 156 minutes` or `now -t 13.04.2028`(results the amount of days).
+* [ ] **Date/Time Calculator:** Inserts results of calculations like `now + 2 weeks` or `7 pm + 156 minutes` or `now -t 13.04.2028`(results the amount of days), also user defined dates i.e birthdays etc..
+* [ ] **Timezone Converter:** Inserts the converted timezone i.e `UTC+3 -> GMT+3`.
 * [ ] **Date/Time Linking:** Link the date/time of the created note for **graph view**.
 * [ ] **Clipboard History:** Access clipboard items and allow for multi-pasting, formatting before pasting, pasting as plain text, pasting as code etc. **HIGH SECURITY AND PRIVACY CONCERN MIGHT BE DISCONTINUED.**
 * [ ] **Merge Notes:** Merge Two or more notes together.
@@ -87,6 +88,8 @@
 
 ### Experimental & Advanced
 
+* [ ] **Canvas Alternative:** An alternative way to manage notes as canvases inspired by Obsidian.
+* [ ] **AOW Pinning:** Pin notes as a seperate window to always display on other windows.
 * [ ] **Lua Scripting:** Allowing users to write scripts to extend app functionality.
 * [ ] **Steganography:** Hiding encrypted vaults inside other file types.
 * [ ] **History:** Access change history of a note. Using `git2`, `crate`. **Will conflict with auto-save.**
@@ -164,13 +167,13 @@ Encryption can be toggled with selecting it with `Tab` and pressing `Enter` to t
 ### Debian/Ubuntu (.deb)
 Download the latest `.deb` from the [Releases](https://github.com/reekta/clin/releases) page.
 ```bash
-sudo dpkg -i clin-rs_0.3.4-5-1_amd64.deb
+sudo dpkg -i clin-rs_0.3.4-1-1_amd64.deb
 ```
 
 ### Fedora/RHEL (.rpm)
 Download the latest `.rpm` from the [Releases](https://github.com/reekta/clin/releases) page.
 ```bash
-sudo rpm -i clin-rs-0.3.4-5-1.x86_64.rpm
+sudo rpm -i clin-rs-0.3.4-1-1.x86_64.rpm
 ```
 
 ### Arch Linux (PKGBUILD)
@@ -187,8 +190,8 @@ makepkg -si
 Download the latest `.tar.gz` from [Releases](https://github.com/reekta/clin/releases) page for manual installation.
 ```bash
 # Extract the archive
-tar -xzf clin-rs-0.3.4-5-x86_64.tar.gz
-cd clin-rs-0.3.4-5-x86_64.tar.gz
+tar -xzf clin-rs-0.3.4-1-x86_64.tar.gz
+cd clin-rs-0.3.4-1-x86_64.tar.gz
 
 # Give executable permission
 chmod +x clin
