@@ -673,12 +673,13 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         frame.render_widget(Clear, popup_area);
 
         let items: Vec<ListItem> = trash
-            .notes
+            .items
             .iter()
-            .map(|n| {
-                let when = format_relative_time(n.updated_at);
+            .map(|item| {
+                let name = item.name.to_string_lossy();
+                let when = format_relative_time(item.time_deleted as u64);
                 ListItem::new(Line::from(vec![
-                    Span::raw(&n.title),
+                    Span::raw(name.to_string()),
                     Span::styled(format!("  ({when})"), Style::default().fg(Color::DarkGray)),
                 ]))
             })

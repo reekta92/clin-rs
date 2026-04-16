@@ -36,10 +36,11 @@ pub enum ListFocus {
 
 pub enum ConfirmAction {
     DeleteNote { note_id: String, title: String },
+    DeleteFolder { path: String },
     EncryptNote { note_id: String },
     DeleteTag { tag: String },
-    DeleteFromTrash { note_id: String, title: String },
-    EmptyTrash { count: usize },
+    DeleteFromTrash { item: trash::TrashItem },
+    EmptyTrash { items: Vec<trash::TrashItem> },
 }
 
 pub struct ConfirmPopup {
@@ -134,7 +135,7 @@ pub enum SortOrder {
 
 /// Trash view state
 pub struct TrashView {
-    pub notes: Vec<NoteSummary>,
+    pub items: Vec<trash::TrashItem>,
     pub selected: usize,
 }
 
@@ -667,7 +668,8 @@ impl App {
                                 self.set_temporary_status(&format!("Failed to save note: {}", e));
                             } else {
                                 self.set_temporary_status_static("Note saved from external editor.");
-                                let _ = self.refresh_notes();
+                        self.folder_cache = None;
+                        let _ = self.refresh_notes();
                             }
                         } else {
                             self.set_temporary_status_static("No changes made in external editor.");
@@ -1113,13 +1115,7 @@ impl App {
                     self.set_temporary_status_static("Cannot delete Vault root");
                     return;
                 }
-                if let Err(e) = self.storage.delete_folder(path) {
-                    self.set_temporary_status(&format!("Failed to delete folder: {e}"));
-                } else {
-                    self.folder_cache = None;
-                    let _ = self.refresh_notes();
-                    self.set_temporary_status_static("Folder deleted");
-                }
+                self.show_confirm(ConfirmAction::DeleteFolder { path: path.clone() });
             }
             _ => {
                 self.set_temporary_status_static("Cannot delete this item");
@@ -1130,11 +1126,18 @@ impl App {
     pub fn show_confirm(&mut self, action: ConfirmAction) {
         let (title, message, detail, confirm_label, is_destructive) = match &action {
             ConfirmAction::DeleteNote { title, .. } => (
-                "Confirm Delete".into(),
-                format!("Delete \"{}\"?", title),
-                Some("This action cannot be undone.".into()),
-                "Delete".into(),
-                true,
+                "Move to Trash".into(),
+                format!("Move \"{}\" to trash?", title),
+                Some("Use Shift+T to view/restore trashed notes.".into()),
+                "Trash".into(),
+                false,
+            ),
+            ConfirmAction::DeleteFolder { path } => (
+                "Move Folder to Trash".into(),
+                format!("Move folder \"{}\" and all contents to trash?", path),
+                Some("Use Shift+T to view/restore trashed notes.".into()),
+                "Trash".into(),
+                false,
             ),
             ConfirmAction::EncryptNote { .. } => (
                 "Confirm Encrypt".into(),
@@ -1150,16 +1153,16 @@ impl App {
                 "Delete".into(),
                 true,
             ),
-            ConfirmAction::DeleteFromTrash { title, .. } => (
+            ConfirmAction::DeleteFromTrash { item } => (
                 "Confirm Permanent Delete".into(),
-                format!("Permanently delete \"{}\"?", title),
+                format!("Permanently delete \"{}\"?", item.name.to_string_lossy()),
                 Some("This action cannot be undone.".into()),
                 "Delete Forever".into(),
                 true,
             ),
-            ConfirmAction::EmptyTrash { count } => (
+            ConfirmAction::EmptyTrash { items } => (
                 "Confirm Empty Trash".into(),
-                format!("Permanently delete {} note(s)?", count),
+                format!("Permanently delete {} note(s)?", items.len()),
                 Some("This action cannot be undone.".into()),
                 "Empty Trash".into(),
                 true,
@@ -1183,17 +1186,20 @@ impl App {
                 ConfirmAction::DeleteNote { note_id, .. } => {
                     self.confirm_delete_selected(note_id);
                 }
+                ConfirmAction::DeleteFolder { path } => {
+                    self.confirm_delete_folder(path);
+                }
                 ConfirmAction::EncryptNote { note_id } => {
                     self.confirm_encrypt_warning(note_id);
                 }
                 ConfirmAction::DeleteTag { tag } => {
                     self.confirm_delete_tag(tag);
                 }
-                ConfirmAction::DeleteFromTrash { note_id, .. } => {
-                    self.confirm_delete_from_trash(note_id);
+                ConfirmAction::DeleteFromTrash { item } => {
+                    self.confirm_delete_from_trash(item);
                 }
-                ConfirmAction::EmptyTrash { .. } => {
-                    self.confirm_empty_trash();
+                ConfirmAction::EmptyTrash { items } => {
+                    self.confirm_empty_trash(items);
                 }
             }
         }
@@ -1235,16 +1241,32 @@ impl App {
     }
 
     pub fn confirm_delete_selected(&mut self, id: String) {
-        match self.storage.delete_note(&id) {
+        match self.storage.trash_note(&id) {
             Ok(()) => {
                 let _ = self.refresh_notes();
                 if self.visual_index >= self.visual_list.len() && !self.visual_list.is_empty() {
                     self.visual_index = self.visual_list.len() - 1;
                 }
-                self.set_temporary_status_static("Note deleted");
+                self.set_temporary_status_static("Note moved to trash");
             }
             Err(err) => {
-                self.set_temporary_status(&format!("Delete failed: {err:#}"));
+                self.set_temporary_status(&format!("Move to trash failed: {err:#}"));
+            }
+        }
+    }
+
+    pub fn confirm_delete_folder(&mut self, path: String) {
+        match self.storage.trash_folder(&path) {
+            Ok(()) => {
+                self.folder_cache = None;
+                let _ = self.refresh_notes();
+                if self.visual_index >= self.visual_list.len() && !self.visual_list.is_empty() {
+                    self.visual_index = self.visual_list.len() - 1;
+                }
+                self.set_temporary_status_static("Folder moved to trash");
+            }
+            Err(e) => {
+                self.set_temporary_status(&format!("Failed to trash folder: {e}"));
             }
         }
     }
@@ -2061,32 +2083,14 @@ impl App {
 
     // ===== Trash Functions =====
 
-    /// Move note to trash instead of permanent delete
-    pub fn trash_selected_note(&mut self) {
-        if let Some(VisualItem::Note { id, .. }) = self.visual_list.get(self.visual_index).cloned() {
-            match self.storage.trash_note(&id) {
-                Ok(()) => {
-                    let _ = self.refresh_notes();
-                    self.set_temporary_status_static("Note moved to trash");
-                }
-                Err(e) => {
-                    self.set_temporary_status(&format!("Failed to trash: {e}"));
-                }
-            }
-        } else {
-            self.set_temporary_status_static("Select a note to delete");
-        }
-    }
-
-    /// Open trash view
     pub fn open_trash_view(&mut self) {
         match self.storage.list_trash() {
-            Ok(notes) => {
-                if notes.is_empty() {
+            Ok(items) => {
+                if items.is_empty() {
                     self.set_temporary_status_static("Trash is empty");
                     return;
                 }
-                self.trash_view = Some(TrashView { notes, selected: 0 });
+                self.trash_view = Some(TrashView { items, selected: 0 });
             }
             Err(e) => {
                 self.set_temporary_status(&format!("Failed to open trash: {e}"));
@@ -2094,62 +2098,58 @@ impl App {
         }
     }
 
-    /// Close trash view
     pub fn close_trash_view(&mut self) {
         self.trash_view = None;
     }
 
-    /// Restore selected note from trash
     pub fn restore_from_trash(&mut self) {
-        if let Some(ref mut trash) = self.trash_view {
-            if let Some(note) = trash.notes.get(trash.selected) {
-                let note_id = note.id.clone();
-                match self.storage.restore_note(&note_id) {
-                    Ok(_) => {
-                        // Refresh trash view
-                        if let Ok(notes) = self.storage.list_trash() {
-                            if notes.is_empty() {
-                                self.trash_view = None;
-                                self.set_temporary_status_static("Note restored, trash is now empty");
-                            } else {
-                                trash.notes = notes;
-                                trash.selected = trash.selected.min(trash.notes.len().saturating_sub(1));
-                                self.set_temporary_status_static("Note restored");
-                            }
-                        }
-                        let _ = self.refresh_notes();
-                    }
-                    Err(e) => {
-                        self.set_temporary_status(&format!("Failed to restore: {e}"));
+        let item = self
+            .trash_view
+            .as_ref()
+            .and_then(|t| t.items.get(t.selected).cloned());
+
+        let Some(item) = item else { return };
+
+        match self.storage.restore_trash_items(vec![item]) {
+            Ok(_) => {
+                if let Ok(items) = self.storage.list_trash() {
+                    if items.is_empty() {
+                        self.trash_view = None;
+                        self.set_temporary_status_static("Note restored, trash is now empty");
+                    } else if let Some(ref mut trash) = self.trash_view {
+                        trash.items = items;
+                        trash.selected = trash.selected.min(trash.items.len().saturating_sub(1));
+                        self.set_temporary_status_static("Note restored");
                     }
                 }
+                self.folder_cache = None;
+                let _ = self.refresh_notes();
+            }
+            Err(e) => {
+                self.set_temporary_status(&format!("Failed to restore: {e}"));
             }
         }
     }
 
-    /// Permanently delete selected note from trash
     pub fn begin_delete_from_trash(&mut self) {
         if let Some(trash) = &self.trash_view {
-            if let Some(note) = trash.notes.get(trash.selected) {
-                self.show_confirm(ConfirmAction::DeleteFromTrash {
-                    note_id: note.id.clone(),
-                    title: note.title.clone(),
-                });
+            if let Some(item) = trash.items.get(trash.selected).cloned() {
+                self.show_confirm(ConfirmAction::DeleteFromTrash { item });
             }
         }
     }
 
-    pub fn confirm_delete_from_trash(&mut self, note_id: String) {
-        match self.storage.delete_from_trash(&note_id) {
+    pub fn confirm_delete_from_trash(&mut self, item: trash::TrashItem) {
+        match self.storage.purge_trash_items(vec![item]) {
             Ok(()) => {
                 if let Some(ref mut trash) = self.trash_view {
-                    if let Ok(notes) = self.storage.list_trash() {
-                        if notes.is_empty() {
+                    if let Ok(items) = self.storage.list_trash() {
+                        if items.is_empty() {
                             self.trash_view = None;
                             self.set_temporary_status_static("Note deleted, trash is now empty");
                         } else {
-                            trash.notes = notes;
-                            trash.selected = trash.selected.min(trash.notes.len().saturating_sub(1));
+                            trash.items = items;
+                            trash.selected = trash.selected.min(trash.items.len().saturating_sub(1));
                             self.set_temporary_status_static("Note permanently deleted");
                         }
                     }
@@ -2161,21 +2161,22 @@ impl App {
         }
     }
 
-    /// Empty the entire trash
     pub fn begin_empty_trash(&mut self) {
         if let Some(trash) = &self.trash_view {
-            let count = trash.notes.len();
-            if count > 0 {
-                self.show_confirm(ConfirmAction::EmptyTrash { count });
-            } else {
+            if trash.items.is_empty() {
                 self.set_temporary_status_static("Trash is already empty");
+            } else {
+                self.show_confirm(ConfirmAction::EmptyTrash {
+                    items: trash.items.clone(),
+                });
             }
         }
     }
 
-    pub fn confirm_empty_trash(&mut self) {
-        match self.storage.empty_trash() {
-            Ok(count) => {
+    pub fn confirm_empty_trash(&mut self, items: Vec<trash::TrashItem>) {
+        let count = items.len();
+        match self.storage.purge_trash_items(items) {
+            Ok(()) => {
                 self.trash_view = None;
                 self.set_temporary_status(&format!("Deleted {} notes from trash", count));
             }

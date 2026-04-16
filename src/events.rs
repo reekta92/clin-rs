@@ -140,6 +140,26 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
+    // Handle confirm popup (must be before trash view since both can be open)
+    if app.confirm_popup.is_some() {
+        if key.code == KeyCode::Left || key.code == KeyCode::Char('h') {
+            app.confirm_popup_select_confirm();
+        } else if key.code == KeyCode::Right || key.code == KeyCode::Char('l') {
+            app.confirm_popup_select_cancel();
+        } else if key.code == KeyCode::Tab {
+            app.confirm_popup_toggle_button();
+        } else if key.code == KeyCode::Enter {
+            app.confirm_popup_activate();
+        } else if key.code == KeyCode::Esc {
+            app.cancel_confirm();
+        } else if app.keybinds.matches_list(ListAction::Confirm, &key) {
+            app.confirm_action();
+        } else if app.keybinds.matches_list(ListAction::Cancel, &key) {
+            app.cancel_confirm();
+        }
+        return false;
+    }
+
     // Handle trash view if open
     if let Some(ref mut trash) = app.trash_view {
         match key.code {
@@ -147,7 +167,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 trash.selected = trash.selected.saturating_sub(1);
             }
             KeyCode::Down | KeyCode::Char('j') => {
-                if trash.selected + 1 < trash.notes.len() {
+                if trash.selected + 1 < trash.items.len() {
                     trash.selected += 1;
                 }
             }
@@ -218,26 +238,6 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
             _ => {
                 app.template_popup = Some(popup);
             }
-        }
-        return false;
-    }
-
-    // Handle confirm popup
-    if app.confirm_popup.is_some() {
-        if key.code == KeyCode::Left || key.code == KeyCode::Char('h') {
-            app.confirm_popup_select_confirm();
-        } else if key.code == KeyCode::Right || key.code == KeyCode::Char('l') {
-            app.confirm_popup_select_cancel();
-        } else if key.code == KeyCode::Tab {
-            app.confirm_popup_toggle_button();
-        } else if key.code == KeyCode::Enter {
-            app.confirm_popup_activate();
-        } else if key.code == KeyCode::Esc {
-            app.cancel_confirm();
-        } else if app.keybinds.matches_list(ListAction::Confirm, &key) {
-            app.confirm_action();
-        } else if app.keybinds.matches_list(ListAction::Cancel, &key) {
-            app.cancel_confirm();
         }
         return false;
     }

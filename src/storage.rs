@@ -409,149 +409,35 @@ impl Storage {
         self.save_note(&initial_id, &new_note, is_encrypted)
     }
 
-    /// Move a note to the trash folder instead of permanently deleting it
     pub fn trash_note(&self, id: &str) -> Result<()> {
-        let trash_dir = self.notes_dir.join(".trash");
-        fs::create_dir_all(&trash_dir).context("failed to create trash directory")?;
-
-        let src_path = self.note_path(id);
-        if !src_path.exists() {
+        let path = self.note_path(id);
+        if !path.exists() {
             anyhow::bail!("Note does not exist");
         }
-
-        let file_name = src_path
-            .file_name()
-            .unwrap_or_default()
-            .to_str()
-            .unwrap_or("");
-
-        // Add timestamp to avoid conflicts
-        let timestamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-
-        let (stem, ext) = if let Some(dot_idx) = file_name.rfind('.') {
-            (&file_name[..dot_idx], &file_name[dot_idx..])
-        } else {
-            (file_name, "")
-        };
-
-        let trash_name = format!("{}_deleted_{}{}", stem, timestamp, ext);
-        let dest_path = trash_dir.join(&trash_name);
-
-        fs::rename(&src_path, &dest_path).context("failed to move note to trash")?;
+        trash::delete(&path).context("failed to move note to trash")?;
         Ok(())
     }
 
-    /// List notes in the trash folder
-    pub fn list_trash(&self) -> Result<Vec<NoteSummary>> {
-        let trash_dir = self.notes_dir.join(".trash");
-        if !trash_dir.exists() {
-            return Ok(Vec::new());
-        }
-
-        let mut summaries = Vec::new();
-        if let Ok(entries) = fs::read_dir(&trash_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.is_file() {
-                    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-                    if ext == "clin" || ext == "md" || ext == "txt" {
-                        let id = format!(".trash/{}", path.file_name().unwrap_or_default().to_str().unwrap_or(""));
-                        if let Ok(summary) = self.load_note_summary(&id) {
-                            summaries.push(summary);
-                        }
-                    }
-                }
-            }
-        }
-
-        summaries.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
-        Ok(summaries)
+    pub fn list_trash(&self) -> Result<Vec<trash::TrashItem>> {
+        let items = trash::os_limited::list()
+            .map_err(|e| anyhow::anyhow!("failed to list trash: {e}"))?;
+        let vault_items: Vec<trash::TrashItem> = items
+            .into_iter()
+            .filter(|item| item.original_parent.starts_with(&self.notes_dir))
+            .collect();
+        Ok(vault_items)
     }
 
-    /// Restore a note from the trash folder
-    pub fn restore_note(&self, trash_id: &str) -> Result<String> {
-        let src_path = self.note_path(trash_id);
-        if !src_path.exists() {
-            anyhow::bail!("Note does not exist in trash");
-        }
-
-        let file_name = src_path
-            .file_name()
-            .unwrap_or_default()
-            .to_str()
-            .unwrap_or("");
-
-        // Remove the _deleted_timestamp suffix
-        let restored_name = if let Some(idx) = file_name.find("_deleted_") {
-            let ext_start = file_name.rfind('.').unwrap_or(file_name.len());
-            format!("{}{}", &file_name[..idx], &file_name[ext_start..])
-        } else {
-            file_name.to_string()
-        };
-
-        let dest_path = self.notes_dir.join(&restored_name);
-
-        // Ensure unique name
-        let final_dest = if dest_path.exists() {
-            let stem = dest_path.file_stem().unwrap_or_default().to_str().unwrap_or("");
-            let ext = dest_path.extension().unwrap_or_default().to_str().unwrap_or("");
-            let mut counter = 1;
-            loop {
-                let new_name = format!("{}_{}.{}", stem, counter, ext);
-                let new_path = self.notes_dir.join(&new_name);
-                if !new_path.exists() {
-                    break new_path;
-                }
-                counter += 1;
-            }
-        } else {
-            dest_path
-        };
-
-        fs::rename(&src_path, &final_dest).context("failed to restore note from trash")?;
-
-        let restored_id = final_dest
-            .strip_prefix(&self.notes_dir)
-            .ok()
-            .and_then(|p| p.to_str())
-            .unwrap_or("")
-            .to_string();
-
-        Ok(restored_id)
-    }
-
-    /// Permanently delete a note from trash
-    pub fn delete_from_trash(&self, trash_id: &str) -> Result<()> {
-        let path = self.note_path(trash_id);
-        if !path.exists() {
-            anyhow::bail!("Note does not exist in trash");
-        }
-        fs::remove_file(&path).context("failed to permanently delete note")?;
+    pub fn restore_trash_items(&self, items: Vec<trash::TrashItem>) -> Result<()> {
+        trash::os_limited::restore_all(items)
+            .map_err(|e| anyhow::anyhow!("failed to restore: {e}"))?;
         Ok(())
     }
 
-    /// Empty the entire trash folder
-    pub fn empty_trash(&self) -> Result<usize> {
-        let trash_dir = self.notes_dir.join(".trash");
-        if !trash_dir.exists() {
-            return Ok(0);
-        }
-
-        let mut count = 0;
-        if let Ok(entries) = fs::read_dir(&trash_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.is_file() {
-                    if fs::remove_file(&path).is_ok() {
-                        count += 1;
-                    }
-                }
-            }
-        }
-        Ok(count)
+    pub fn purge_trash_items(&self, items: Vec<trash::TrashItem>) -> Result<()> {
+        trash::os_limited::purge_all(items)
+            .map_err(|e| anyhow::anyhow!("failed to purge: {e}"))?;
+        Ok(())
     }
 
     /// Toggle the pinned status of a note
@@ -603,7 +489,17 @@ impl Storage {
     pub fn delete_folder(&self, path: &str) -> Result<()> {
         let full_path = self.validate_path_within_notes_dir(path)
             .ok_or_else(|| anyhow::anyhow!("Invalid folder path"))?;
-        fs::remove_dir(full_path).context("failed to delete folder")
+        fs::remove_dir_all(full_path).context("failed to delete folder")
+    }
+
+    pub fn trash_folder(&self, path: &str) -> Result<()> {
+        let full_path = self.validate_path_within_notes_dir(path)
+            .ok_or_else(|| anyhow::anyhow!("Invalid folder path"))?;
+        if !full_path.exists() {
+            anyhow::bail!("Folder does not exist");
+        }
+        trash::delete(&full_path).context("failed to move folder to trash")?;
+        Ok(())
     }
 
     pub fn rename_folder(&self, old_path: &str, new_path: &str) -> Result<()> {

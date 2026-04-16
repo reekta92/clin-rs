@@ -1,0 +1,26 @@
+name: Release
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-windows-msi:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        
+      - name: Install cargo-wix
+        run: cargo install cargo-wix
+        
+      - name: Build MSI
+        run: cargo wix
+        
+      - name: Upload Installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: target/wix/*.msi
