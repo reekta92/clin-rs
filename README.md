@@ -118,6 +118,8 @@ Then, edit the file to change bindings for the list, editor, or help menus.
 ---
 # User Defined Templates
 
+<img width="720" height="779" alt="templates" src="https://github.com/user-attachments/assets/8e10ac1f-e3ac-4d36-bba2-bc86a20eb18f" />
+
 Template popup can be accessed with the default `t` key.
 
 You can create your own templates in `~/.local/share/clin/templates` folder with `.toml` format to quickly use in your editor!
@@ -133,17 +135,25 @@ template = """
 
 # Folders
 
+<img width="720" height="779" alt="folders" src="https://github.com/user-attachments/assets/84af3975-d895-4e44-870f-c3b99d0a8c5e" />
+
 You can move files in folders using the default `m` key via it's popup!
 
 # Tags
+
+<img width="720" height="779" alt="tags" src="https://github.com/user-attachments/assets/7f76c1af-1085-4450-afa0-c5f85042ad87" />
 
 You can add tags to the files using the default `.` key via it's popup!
 
 # Right-Click Context Menu
 
+<img width="720" height="779" alt="mouse_support" src="https://github.com/user-attachments/assets/2a604694-2e99-41b4-9e44-b1ef45d44db5" />
+
 In editor mode, right-click context menu has basic features such as `Copy`, `Paste`, `Cut`, `Select All`. For now system clipboard **doesn't** integrate with this system. This will be changed in the future as a config option!
 
 # Optional Encryption Using ChaCha20-Poly1305
+
+<img width="720" height="779" alt="encryption" src="https://github.com/user-attachments/assets/0b0627da-5530-48a1-b599-ab2c6affb382" />
 
 Encryption can be toggled with selecting it with `Tab` and pressing `Enter` to turn it on/off. 
 ### Encryption ON
