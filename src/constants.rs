@@ -1,7 +1,8 @@
 pub const FILE_MAGIC: &[u8; 5] = b"CLIN1";
 pub const NONCE_LEN: usize = 12;
 pub const LIST_HELP_HINTS: &str = "j/k move  Enter open  r rename  d delete  p pin  s sort  Ctrl+f search  P preview  ? help  q quit";
-pub const EDIT_HELP_HINTS: &str = "Esc back   Tab change focus   Ctrl+Q quit";
+pub const EDIT_HELP_HINTS: &str =
+    "Esc back   Tab change focus   Ctrl+Q quit   Ctrl+P markdown preview";
 pub const HELP_PAGE_HINTS: &str = "Esc/q/?/F1 close help";
 pub const _HELP_PAGE_TEXT: &str = "clin help\n\
 \n\
@@ -23,7 +24,7 @@ Notes view shortcuts\n\
 - p: pin/unpin note\n\
 - s: cycle sort options\n\
 - Ctrl+f: search notes by title\n\
-- Shift+P: toggle preview pane\n\
+- Shift+P: toggle preview pane (uses glow for markdown)\n\
 - Shift+T: open trash\n\
 - d/Delete: move note to trash\n\
 - y or Enter: confirm delete\n\
@@ -41,6 +42,7 @@ Editor shortcuts\n\
 - Tab: change focus (Title, Content, Encryption toggle button)\n\
 - Esc: return to notes view\n\
 - Ctrl+Q: quit app\n\
+- Ctrl+P: toggle markdown preview panel (uses glow)\n\
 - Mouse selection in content area\n\
 - Clipboard: Ctrl+C/Ctrl+X/Ctrl+V, Ctrl+Insert, Shift+Insert, Shift+Delete\n\
 - Edit: Ctrl+A, Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z\n\

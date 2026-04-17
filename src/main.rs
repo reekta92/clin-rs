@@ -2,6 +2,7 @@ mod config;
 pub mod constants;
 pub mod frontmatter;
 mod keybinds;
+pub mod markdown;
 pub mod sanitize;
 mod templates;
 pub mod actions;
@@ -726,7 +727,24 @@ fn run_app(
 
         terminal.draw(|frame| draw_ui(frame, app, focus))?;
 
-        if event::poll(Duration::from_millis(200)).context("event poll failed")? {
+        let poll_timeout = if app.preview_renderer.as_ref().map_or(false, |r| r.is_pending())
+            || app
+                .md_preview_renderer
+                .as_ref()
+                .map_or(false, |r| r.is_pending())
+        {
+            Duration::from_millis(50)
+        } else {
+            Duration::from_millis(200)
+        };
+
+        let need_redraw = app.poll_renderers();
+
+        if need_redraw {
+            terminal.draw(|frame| draw_ui(frame, app, focus))?;
+        }
+
+        if event::poll(poll_timeout).context("event poll failed")? {
             match event::read().context("failed to read event")? {
                 Event::Key(key) if key.kind == KeyEventKind::Press => match app.mode {
                     ViewMode::List => {

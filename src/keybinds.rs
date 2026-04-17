@@ -248,6 +248,7 @@ pub enum EditAction {
     DeleteNextWord,
     MoveToTop,
     MoveToBottom,
+    ToggleMarkdownPreview,
 }
 
 /// Actions that can be bound to keys in help view
@@ -475,6 +476,10 @@ impl Default for Keybinds {
         );
         edit.insert(EditAction::MoveToTop, vec![KeyCombo::ctrl(KeyCode::Home)]);
         edit.insert(EditAction::MoveToBottom, vec![KeyCombo::ctrl(KeyCode::End)]);
+        edit.insert(
+            EditAction::ToggleMarkdownPreview,
+            vec![KeyCombo::ctrl(KeyCode::Char('p'))],
+        );
 
         let mut help = HashMap::new();
         help.insert(
@@ -706,6 +711,7 @@ fn parse_edit_action(s: &str) -> Option<EditAction> {
         "delete_next_word" => Some(EditAction::DeleteNextWord),
         "move_to_top" => Some(EditAction::MoveToTop),
         "move_to_bottom" => Some(EditAction::MoveToBottom),
+        "toggle_markdown_preview" => Some(EditAction::ToggleMarkdownPreview),
         _ => None,
     }
 }
@@ -773,6 +779,7 @@ fn edit_action_to_string(action: EditAction) -> &'static str {
         EditAction::DeleteNextWord => "delete_next_word",
         EditAction::MoveToTop => "move_to_top",
         EditAction::MoveToBottom => "move_to_bottom",
+        EditAction::ToggleMarkdownPreview => "toggle_markdown_preview",
     }
 }
 

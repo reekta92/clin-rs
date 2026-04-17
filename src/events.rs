@@ -479,6 +479,15 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
         return false;
     }
 
+    // Toggle markdown preview
+    if app
+        .keybinds
+        .matches_edit(EditAction::ToggleMarkdownPreview, &key)
+    {
+        app.toggle_markdown_preview();
+        return false;
+    }
+
     match *focus {
         EditFocus::Title => {
             if key.code == KeyCode::Enter {
@@ -556,6 +565,30 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         list_area.height.saturating_sub(2),
     );
 
+    // Check if scroll is in preview pane area
+    if app.preview_enabled {
+        let main_chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .split(chunks[1]);
+        let preview_area = main_chunks[1];
+
+        if contains_cell(preview_area, mouse_event.column, mouse_event.row) {
+            if mouse_event.kind == MouseEventKind::ScrollUp {
+                if let Some(renderer) = &mut app.preview_renderer {
+                    renderer.scroll_up(3);
+                }
+                return;
+            }
+            if mouse_event.kind == MouseEventKind::ScrollDown {
+                if let Some(renderer) = &mut app.preview_renderer {
+                    renderer.scroll_down(3, preview_area.height.saturating_sub(2));
+                }
+                return;
+            }
+        }
+    }
+
     if mouse_event.kind == MouseEventKind::ScrollUp {
         let current = app.list_state.selected().unwrap_or(0);
         app.list_state.select(Some(current.saturating_sub(1)));
@@ -631,7 +664,8 @@ pub fn handle_edit_mouse(
     }
 
     if mouse_event.kind == MouseEventKind::Down(MouseButton::Right) {
-        let (title_inner, body_inner) = edit_view_input_areas(terminal_area);
+        let (title_inner, body_inner) =
+            edit_view_input_areas(terminal_area, app.markdown_preview_enabled);
 
         if contains_cell(title_inner, mouse_event.column, mouse_event.row) {
             *focus = EditFocus::Title;
@@ -661,7 +695,31 @@ pub fn handle_edit_mouse(
         return;
     }
 
-    let (title_inner, body_inner) = edit_view_input_areas(terminal_area);
+    let (title_inner, body_inner) =
+        edit_view_input_areas(terminal_area, app.markdown_preview_enabled);
+
+    // Handle scroll in markdown preview pane
+    if app.markdown_preview_enabled {
+        if let Some(md_area) = edit_view_md_preview_area(terminal_area) {
+            if contains_cell(md_area, mouse_event.column, mouse_event.row) {
+                match mouse_event.kind {
+                    MouseEventKind::ScrollUp => {
+                        if let Some(renderer) = &mut app.md_preview_renderer {
+                            renderer.scroll_up(3);
+                        }
+                        return;
+                    }
+                    MouseEventKind::ScrollDown => {
+                        if let Some(renderer) = &mut app.md_preview_renderer {
+                            renderer.scroll_down(3, md_area.height.saturating_sub(2));
+                        }
+                        return;
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
 
     match mouse_event.kind {
         MouseEventKind::Down(MouseButton::Left) => {
@@ -773,7 +831,7 @@ pub fn move_textarea_cursor_to_mouse(
     textarea.move_cursor(CursorMove::Jump(target_row as u16, target_col as u16));
 }
 
-pub fn edit_view_input_areas(area: Rect) -> (Rect, Rect) {
+pub fn edit_view_input_areas(area: Rect, md_preview: bool) -> (Rect, Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -787,12 +845,44 @@ pub fn edit_view_input_areas(area: Rect) -> (Rect, Rect) {
         vertical: 1,
         horizontal: 1,
     });
-    let body_inner = chunks[1].inner(Margin {
+
+    let body_area = if md_preview {
+        let content_chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .split(chunks[1]);
+        content_chunks[0]
+    } else {
+        chunks[1]
+    };
+
+    let body_inner = body_area.inner(Margin {
         vertical: 1,
         horizontal: 1,
     });
 
     (title_inner, body_inner)
+}
+
+pub fn edit_view_md_preview_area(area: Rect) -> Option<Rect> {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3),
+            Constraint::Min(8),
+            Constraint::Length(3),
+        ])
+        .split(area);
+
+    let content_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(chunks[1]);
+
+    Some(content_chunks[1].inner(Margin {
+        vertical: 1,
+        horizontal: 1,
+    }))
 }
 
 pub fn contains_cell(rect: Rect, col: u16, row: u16) -> bool {

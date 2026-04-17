@@ -4,6 +4,7 @@ use crate::events::make_title_editor;
 use crate::ui::help_page_text;
 use crate::ui::text_area_from_content;
 use crate::ui::{now_unix_secs, open_in_file_manager};
+use crate::markdown::MarkdownRenderer;
 use ratatui::style::{Color, Style};
 use ratatui::text::Text;
 use ratatui::widgets::ListState;
@@ -200,7 +201,9 @@ pub struct App {
     pub sort_order: SortOrder,
     pub trash_view: Option<TrashView>,
     pub preview_enabled: bool,
-    pub preview_content: Option<String>,
+    pub preview_renderer: Option<MarkdownRenderer>,
+    pub markdown_preview_enabled: bool,
+    pub md_preview_renderer: Option<MarkdownRenderer>,
     /// For vim-style 'gg' command - tracks last 'g' press time
     pub last_g_press: Option<Instant>,
     /// Page size for Ctrl+u/d navigation
@@ -281,7 +284,9 @@ impl App {
             sort_order: SortOrder::Descending,
             trash_view: None,
             preview_enabled: bootstrap_config.preview_enabled,
-            preview_content: None,
+            preview_renderer: None,
+            markdown_preview_enabled: bootstrap_config.markdown_preview_enabled,
+            md_preview_renderer: None,
             last_g_press: None,
             page_size: 10,
         };
@@ -1049,6 +1054,7 @@ impl App {
         self.title_editor = make_title_editor("");
         self.editor = TextArea::default();
         self.confirm_popup = None;
+        self.md_preview_renderer = None;
         let _ = self.refresh_notes();
         self.set_default_status();
     }
@@ -2195,9 +2201,28 @@ impl App {
             self.update_preview();
             self.set_temporary_status_static("Preview enabled");
         } else {
-            self.preview_content = None;
+            self.preview_renderer = None;
             self.set_temporary_status_static("Preview disabled");
         }
+        if let Ok(mut config) = crate::config::BootstrapConfig::load() {
+            config.preview_enabled = self.preview_enabled;
+            let _ = config.save();
+        }
+    }
+
+    pub fn poll_renderers(&mut self) -> bool {
+        let mut updated = false;
+        if let Some(renderer) = &mut self.preview_renderer {
+            if renderer.poll() {
+                updated = true;
+            }
+        }
+        if let Some(renderer) = &mut self.md_preview_renderer {
+            if renderer.poll() {
+                updated = true;
+            }
+        }
+        updated
     }
 
     /// Update preview content for currently selected note
@@ -2208,14 +2233,42 @@ impl App {
 
         if let Some(VisualItem::Note { id, .. }) = self.visual_list.get(self.visual_index).cloned() {
             if let Ok(note) = self.storage.load_note(&id) {
-                // Truncate to first 50 lines for preview
-                let preview: String = note.content.lines().take(50).collect::<Vec<_>>().join("\n");
-                self.preview_content = Some(preview);
+                let width = 80u16.saturating_sub(2).max(40);
+                let mut renderer = MarkdownRenderer::new(width);
+                renderer.render(&note.content, width);
+                self.preview_renderer = Some(renderer);
             } else {
-                self.preview_content = None;
+                self.preview_renderer = None;
             }
         } else {
-            self.preview_content = None;
+            self.preview_renderer = None;
+        }
+    }
+
+    pub fn update_editor_markdown_preview(&mut self) {
+        if !self.markdown_preview_enabled {
+            return;
+        }
+
+        let content = self.editor.lines().join("\n");
+        let width = 80u16.saturating_sub(2).max(40);
+        let mut renderer = MarkdownRenderer::new(width);
+        renderer.render(&content, width);
+        self.md_preview_renderer = Some(renderer);
+    }
+
+    pub fn toggle_markdown_preview(&mut self) {
+        self.markdown_preview_enabled = !self.markdown_preview_enabled;
+        if self.markdown_preview_enabled {
+            self.update_editor_markdown_preview();
+            self.set_temporary_status_static("Markdown preview enabled");
+        } else {
+            self.md_preview_renderer = None;
+            self.set_temporary_status_static("Markdown preview disabled");
+        }
+        if let Ok(mut config) = crate::config::BootstrapConfig::load() {
+            config.markdown_preview_enabled = self.markdown_preview_enabled;
+            let _ = config.save();
         }
     }
 }

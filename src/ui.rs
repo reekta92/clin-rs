@@ -74,6 +74,7 @@ pub fn help_page_text(keybinds: &Keybinds) -> Text<'static> {
     let edit_redo = keybinds.edit_keys_display(EditAction::Redo);
     let edit_del_word = keybinds.edit_keys_display(EditAction::DeleteWord);
     let edit_del_next_word = keybinds.edit_keys_display(EditAction::DeleteNextWord);
+    let edit_md_preview = keybinds.edit_keys_display(EditAction::ToggleMarkdownPreview);
 
     let help_close = keybinds.help_keys_display(HelpAction::Close);
     let help_scroll = format!(
@@ -174,6 +175,10 @@ pub fn help_page_text(keybinds: &Keybinds) -> Text<'static> {
     lines.extend(help_item_dyn(
         "Delete prev/next word",
         Some(&format!("{edit_del_word} / {edit_del_next_word}")),
+    ));
+    lines.extend(help_item_dyn(
+        "Toggle markdown preview",
+        Some(&edit_md_preview),
     ));
     lines.push(Line::from(""));
 
@@ -396,18 +401,36 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
 
     // Render preview pane if enabled
     if let Some(preview_rect) = preview_area {
-        let preview_text = app
-            .preview_content
-            .as_deref()
-            .unwrap_or("Select a note to preview");
-        let preview = Paragraph::new(preview_text)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title("Preview (Shift+P to close)"),
-            )
-            .wrap(ratatui::widgets::Wrap { trim: false });
-        frame.render_widget(preview, preview_rect);
+        match &app.preview_renderer {
+            Some(renderer) if !renderer.is_pending() => {
+                let widget = crate::markdown::ScrollablePseudoTerminal::new(renderer.screen())
+                    .scroll_offset(renderer.scroll_offset())
+                    .block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .title("Preview (Shift+P to close)"),
+                    );
+                frame.render_widget(widget, preview_rect);
+            }
+            Some(_) => {
+                let loading = Paragraph::new("Rendering preview...")
+                    .style(Style::default().fg(Color::DarkGray))
+                    .block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .title("Preview (Shift+P to close)"),
+                    );
+                frame.render_widget(loading, preview_rect);
+            }
+            None => {
+                let placeholder = Paragraph::new("Select a note to preview").block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title("Preview (Shift+P to close)"),
+                );
+                frame.render_widget(placeholder, preview_rect);
+            }
+        }
     }
 
     let enc_button_label = if app.encryption_enabled {
@@ -766,7 +789,6 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         ])
         .split(area);
 
-    // Set block directly on app's editor to avoid clone
     let title_border = if focus == EditFocus::Title {
         Style::default().fg(Color::Yellow)
     } else {
@@ -792,19 +814,72 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         frame.render_widget(placeholder, title_inner);
     }
 
-    // Set block directly on app's editor to avoid clone
-    let body_border = if focus == EditFocus::Body {
-        Style::default().fg(Color::Yellow)
+    if app.markdown_preview_enabled {
+        let content_chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .split(chunks[1]);
+
+        let body_border = if focus == EditFocus::Body {
+            Style::default().fg(Color::Yellow)
+        } else {
+            Style::default()
+        };
+        app.editor.set_block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(body_border)
+                .title("Content"),
+        );
+        frame.render_widget(&app.editor, content_chunks[0]);
+
+        match &app.md_preview_renderer {
+            Some(renderer) if !renderer.is_pending() => {
+                let md_widget = crate::markdown::ScrollablePseudoTerminal::new(renderer.screen())
+                    .scroll_offset(renderer.scroll_offset())
+                    .block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .border_style(Style::default().fg(Color::Cyan))
+                            .title("Markdown Preview (Ctrl+P)"),
+                    );
+                frame.render_widget(md_widget, content_chunks[1]);
+            }
+            Some(_) => {
+                let loading = Paragraph::new("Rendering preview...")
+                    .style(Style::default().fg(Color::DarkGray))
+                    .block(
+                        Block::default()
+                            .borders(Borders::ALL)
+                            .border_style(Style::default().fg(Color::Cyan))
+                            .title("Markdown Preview (Ctrl+P)"),
+                    );
+                frame.render_widget(loading, content_chunks[1]);
+            }
+            None => {
+                let placeholder = Paragraph::new("Press Ctrl+P to render preview").block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .border_style(Style::default().fg(Color::Cyan))
+                        .title("Markdown Preview (Ctrl+P)"),
+                );
+                frame.render_widget(placeholder, content_chunks[1]);
+            }
+        }
     } else {
-        Style::default()
-    };
-    app.editor.set_block(
-        Block::default()
-            .borders(Borders::ALL)
-            .border_style(body_border)
-            .title("Content"),
-    );
-    frame.render_widget(&app.editor, chunks[1]);
+        let body_border = if focus == EditFocus::Body {
+            Style::default().fg(Color::Yellow)
+        } else {
+            Style::default()
+        };
+        app.editor.set_block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(body_border)
+                .title("Content"),
+        );
+        frame.render_widget(&app.editor, chunks[1]);
+    }
 
     let enc_button_label = if app.encryption_enabled {
         "[ Enc: ON ]"

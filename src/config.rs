@@ -32,6 +32,9 @@ pub struct BootstrapConfig {
     /// Whether the preview pane is enabled by default
     #[serde(default = "default_preview_enabled")]
     pub preview_enabled: bool,
+    /// Whether the editor markdown preview panel is enabled by default
+    #[serde(default)]
+    pub markdown_preview_enabled: bool,
 }
 
 fn default_encryption_enabled() -> bool {
