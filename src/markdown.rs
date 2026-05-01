@@ -165,6 +165,7 @@ fn render_in_thread(content: &str, cols: u16, estimated_rows: u16) -> Option<Ren
     cmd.arg("-s");
     cmd.arg("dark");
     cmd.arg(&temp_path);
+    cmd.env("TERM", "dumb");
 
     let mut child = pair.slave.spawn_command(cmd).ok()?;
     drop(pair.slave);
