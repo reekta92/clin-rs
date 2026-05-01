@@ -211,6 +211,7 @@ pub struct App {
     pub graph_kill_tx: Option<std::sync::mpsc::Sender<()>>,
     pub return_mode: Option<ViewMode>,
     pub graph_mouse_state: crate::graph::input::GraphMouseState,
+    pub graph_label_mode: crate::config::GraphLabelMode,
 }
 
 pub enum CliCommand {
@@ -295,6 +296,7 @@ impl App {
             graph_kill_tx: None,
             return_mode: None,
             graph_mouse_state: crate::graph::input::GraphMouseState::default(),
+            graph_label_mode: bootstrap_config.graph_label_mode,
         };
         app.context_menu = None;
         app.template_popup = None;
@@ -1817,7 +1819,6 @@ impl App {
             selected_node: None,
             dragging_node: None,
             is_settled: false,
-            show_labels: true,
         };
         let vp = state
             .viewport

@@ -2,7 +2,7 @@ use ratatui::layout::Rect;
 
 use super::GraphState;
 
-const PAN_AMOUNT: f64 = 15.0;
+const PAN_AMOUNT: f64 = 5.0;
 const ZOOM_FACTOR: f64 = 1.15;
 
 #[derive(Clone)]
@@ -23,20 +23,21 @@ impl Default for Viewport {
 }
 
 impl Viewport {
-    pub fn x_bounds(&self, aspect: f64) -> [f64; 2] {
-        let half_w = aspect * 100.0 / self.zoom;
+    pub fn x_bounds(&self, _aspect: f64) -> [f64; 2] {
+        let half_w = 100.0 / self.zoom;
         [self.center_x - half_w, self.center_x + half_w]
     }
 
-    pub fn y_bounds(&self) -> [f64; 2] {
-        let half_h = 100.0 / self.zoom;
+    pub fn y_bounds(&self, _aspect: f64) -> [f64; 2] {
+        const CELL_ASPECT: f64 = 0.5;
+        let half_h = 100.0 * CELL_ASPECT / self.zoom;
         [self.center_y - half_h, self.center_y + half_h]
     }
 
     pub fn screen_to_world(&self, col: u16, row: u16, area: Rect) -> (f64, f64) {
         let aspect = area.width as f64 / area.height as f64;
         let [x_left, x_right] = self.x_bounds(aspect);
-        let [y_bottom, y_top] = self.y_bounds();
+        let [y_bottom, y_top] = self.y_bounds(aspect);
 
         let wx = x_left + (col as f64 / area.width as f64) * (x_right - x_left);
         let wy = y_top - (row as f64 / area.height as f64) * (y_top - y_bottom);

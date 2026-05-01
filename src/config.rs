@@ -12,6 +12,19 @@ use anyhow::{Context, Result};
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 
+/// Controls how node labels (titles) are displayed in the graph view.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum GraphLabelMode {
+    /// Only show the label of the selected node.
+    #[default]
+    Selected,
+    /// Show labels for the selected node and its direct neighbors.
+    Neighbors,
+    /// Show labels for all nodes.
+    All,
+}
+
 /// Bootstrap configuration loaded from ~/.config/clin/config.toml
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct BootstrapConfig {
@@ -32,6 +45,9 @@ pub struct BootstrapConfig {
     /// Whether the editor markdown preview panel is enabled by default
     #[serde(default)]
     pub markdown_preview_enabled: bool,
+    /// How node labels (titles) are displayed in the graph view
+    #[serde(default)]
+    pub graph_label_mode: GraphLabelMode,
 }
 
 fn default_preview_enabled() -> bool {

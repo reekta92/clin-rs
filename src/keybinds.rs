@@ -272,7 +272,6 @@ pub enum GraphAction {
     ZoomIn,
     ZoomOut,
     OpenNote,
-    ToggleLabels,
     AutoFit,
     Help,
 }
@@ -550,10 +549,6 @@ impl Default for Keybinds {
         graph.insert(
             GraphAction::OpenNote,
             vec![KeyCombo::simple(KeyCode::Enter)],
-        );
-        graph.insert(
-            GraphAction::ToggleLabels,
-            vec![KeyCombo::shift(KeyCode::Char('L'))],
         );
         graph.insert(
             GraphAction::AutoFit,
@@ -839,7 +834,6 @@ fn parse_graph_action(s: &str) -> Option<GraphAction> {
         "zoom_in" => Some(GraphAction::ZoomIn),
         "zoom_out" => Some(GraphAction::ZoomOut),
         "open_note" => Some(GraphAction::OpenNote),
-        "toggle_labels" => Some(GraphAction::ToggleLabels),
         "auto_fit" => Some(GraphAction::AutoFit),
         "help" => Some(GraphAction::Help),
         _ => None,
@@ -923,7 +917,6 @@ fn graph_action_to_string(action: GraphAction) -> &'static str {
         GraphAction::ZoomIn => "zoom_in",
         GraphAction::ZoomOut => "zoom_out",
         GraphAction::OpenNote => "open_note",
-        GraphAction::ToggleLabels => "toggle_labels",
         GraphAction::AutoFit => "auto_fit",
         GraphAction::Help => "help",
     }

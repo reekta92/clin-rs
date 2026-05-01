@@ -802,14 +802,19 @@ fn run_app(
                     let size = terminal.size().context("failed to get terminal size")?;
                     let area = Rect::new(0, 0, size.width, size.height);
 
-                    let was_click = matches!(
+                    let was_double_click = matches!(
                         mouse_event.kind,
                         crossterm::event::MouseEventKind::Up(crossterm::event::MouseButton::Left)
                     ) && app
                         .graph_mouse_state
                         .drag_origin
                         .is_some_and(|(c, r)| c == mouse_event.column && r == mouse_event.row)
-                        && !app.graph_mouse_state.is_panning;
+                        && !app.graph_mouse_state.is_panning
+                        && app
+                            .graph_mouse_state
+                            .last_click_time
+                            .is_some_and(|t| t.elapsed().as_millis() < 300)
+                        && app.graph_mouse_state.last_clicked_node.is_some();
 
                     if let Some(graph_state) = &app.graph_state {
                         crate::graph::input::handle_graph_mouse(
@@ -820,7 +825,7 @@ fn run_app(
                         );
                     }
 
-                    if was_click {
+                    if was_double_click {
                         let note_id = app.graph_state.as_ref().and_then(|state| {
                             let guard = state.read().unwrap_or_else(|e| e.into_inner());
                             guard.selected_node.and_then(|idx| {

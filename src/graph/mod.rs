@@ -26,7 +26,6 @@ pub struct GraphState {
     pub selected_node: Option<NodeIndex>,
     pub dragging_node: Option<NodeIndex>,
     pub is_settled: bool,
-    pub show_labels: bool,
 }
 
 static WIKILINK_RE: Lazy<Regex> =
@@ -96,7 +95,7 @@ pub fn build_graph(storage: &Storage) -> Result<ForceGraph<GraphNodeData, ()>> {
 }
 
 pub fn create_simulation(graph: ForceGraph<GraphNodeData, ()>) -> Simulation<GraphNodeData, ()> {
-    let force = fdg_sim::force::handy(45.0, 0.975, true, true);
-    let params = SimulationParameters::new(200.0, fdg_sim::Dimensions::Two, force);
+    let force = fdg_sim::force::handy(80.0, 0.95, true, true);
+    let params = SimulationParameters::new(800.0, fdg_sim::Dimensions::Two, force);
     Simulation::from_graph(graph, params)
 }

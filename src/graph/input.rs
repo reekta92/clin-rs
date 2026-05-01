@@ -1,4 +1,5 @@
 use std::sync::{Arc, RwLock};
+use std::time::Instant;
 
 use crossterm::event::{KeyEvent, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::Rect;
@@ -60,10 +61,6 @@ pub fn handle_graph_keys(app: &mut crate::app::App, key: KeyEvent) -> bool {
         if let Some(id) = note_id {
             app.open_note_from_graph(&id);
         }
-    } else if keybinds.matches_graph(crate::keybinds::GraphAction::ToggleLabels, &key) {
-        let state = app.graph_state.as_ref().unwrap();
-        let mut guard = state.write().unwrap_or_else(|e| e.into_inner());
-        guard.show_labels = !guard.show_labels;
     } else if keybinds.matches_graph(crate::keybinds::GraphAction::AutoFit, &key) {
         let state = app.graph_state.as_ref().unwrap();
         let mut guard = state.write().unwrap_or_else(|e| e.into_inner());
@@ -79,6 +76,8 @@ pub fn handle_graph_keys(app: &mut crate::app::App, key: KeyEvent) -> bool {
 pub struct GraphMouseState {
     pub drag_origin: Option<(u16, u16)>,
     pub is_panning: bool,
+    pub last_click_time: Option<Instant>,
+    pub last_clicked_node: Option<fdg_sim::petgraph::graph::NodeIndex>,
 }
 
 pub fn handle_graph_mouse(
@@ -109,18 +108,26 @@ pub fn handle_graph_mouse(
                 guard.viewport.hit_test(wx, wy, &guard)
             };
 
+            let is_double_click = mouse_state
+                .last_click_time
+                .is_some_and(|t| t.elapsed().as_millis() < 300);
+
             if let Some(node_idx) = hit {
                 let mut guard = state.write().unwrap_or_else(|e| e.into_inner());
                 guard.selected_node = Some(node_idx);
                 guard.dragging_node = Some(node_idx);
                 mouse_state.drag_origin = Some((mouse_event.column, mouse_event.row));
                 mouse_state.is_panning = false;
+                mouse_state.last_clicked_node = Some(node_idx);
             } else {
                 let mut guard = state.write().unwrap_or_else(|e| e.into_inner());
-                guard.selected_node = None;
+                if is_double_click {
+                    guard.selected_node = None;
+                }
                 guard.dragging_node = None;
                 mouse_state.drag_origin = Some((mouse_event.column, mouse_event.row));
                 mouse_state.is_panning = true;
+                mouse_state.last_clicked_node = None;
             }
         }
         MouseEventKind::Drag(MouseButton::Left) => {
@@ -129,10 +136,10 @@ pub fn handle_graph_mouse(
             };
 
             if mouse_state.is_panning {
-                let dx = (mouse_event.column as f64 - orig_col as f64) * 0.5;
-                let dy = -(mouse_event.row as f64 - orig_row as f64) * 0.5;
+                let dx = -(mouse_event.column as f64 - orig_col as f64) * 0.2;
+                let dy = (mouse_event.row as f64 - orig_row as f64) * 0.2;
                 let mut guard = state.write().unwrap_or_else(|e| e.into_inner());
-                guard.viewport.pan(-dx, dy);
+                guard.viewport.pan(dx, dy);
                 mouse_state.drag_origin = Some((mouse_event.column, mouse_event.row));
             } else {
                 let (wx, wy) = {
@@ -162,6 +169,7 @@ pub fn handle_graph_mouse(
             }
             mouse_state.drag_origin = None;
             mouse_state.is_panning = false;
+            mouse_state.last_click_time = Some(Instant::now());
         }
         _ => {}
     }
