@@ -14,7 +14,7 @@
 -  Unicode glyphs, **requires a Nerd Font**
 -  **ChaCha20-Poly1305** encryption (optional)
 -  Binary `.clin` files
--  Full-screen TUI with list + editor + help views  
+-  Full-screen TUI with list + editor + help + graph views
 -  Mouse support + bracketed paste  
 -  **Folders & Tags**  
 -  **Continuous Auto-save** (with panic crash safety logic)
@@ -70,7 +70,7 @@
 * [ ] **Backlinks:** Related to **Linking notes**, allow for following backlinks. Using indexing caching.
 * [ ] **Forwardlinks:** Related to **Linking notes**, allow for following forward links.
 * [ ] **Sub-notes:** Orphan notes, creating virtual sub-notes that are attached to a note without physically existing on the disk. Using **backlinks**.
-* [ ] **Graph View:** Visual graph of linked notes, related to **Linking notes**.
+* [x] **Graph View:** Visual graph of linked notes, related to **Linking notes**. Force-directed layout with `[[wikilinks]]`, pan/zoom, click-to-open.
 * [ ] **Insert Date/Time:** Insert date/time.
 * [ ] **Calculator:** Simple calculator, inserts the simple mathematical calculations result.
 * [ ] **Calendar Picker:** Calendar UI to pick and insert a specific date.
@@ -105,7 +105,6 @@ This file is generated automatically. You can edit it to change your settings:
 storage_path = "/custom/path/to/vault" # Optional: Change where notes are stored
 external_editor = "nvim" # Optional: Command to use for the external editor
 external_editor_enabled = false
-encryption_enabled = true # Whether new notes should be encrypted by default
 ```
 
 ### Custom Keybinds (`keybinds.toml`)

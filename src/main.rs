@@ -1,11 +1,13 @@
+pub mod actions;
 mod config;
 pub mod constants;
 pub mod frontmatter;
+pub mod graph;
 mod keybinds;
+pub mod markdown;
+pub mod palette;
 pub mod sanitize;
 mod templates;
-pub mod actions;
-pub mod palette;
 
 use crate::config::BootstrapConfig;
 use crate::keybinds::{EditAction, HelpAction, Keybinds, ListAction};
@@ -57,7 +59,6 @@ fn main() -> Result<()> {
         }
         CliCommand::QuickNote { content, title } => {
             let storage = Storage::init()?;
-            let bootstrap = config::BootstrapConfig::load().unwrap_or_default();
 
             let id = Uuid::new_v4().simple().to_string();
             let final_title = title.unwrap_or_else(|| "Quick Note".to_string());
@@ -70,31 +71,28 @@ fn main() -> Result<()> {
                 tags: Vec::new(),
             };
 
-            let ext = if bootstrap.encryption_enabled {
-                "bin"
-            } else {
-                "md"
-            };
+            let _saved_id = storage.save_note(&id, &note)?;
 
-            let _saved_id = storage.save_note(&id, &note, bootstrap.encryption_enabled)?;
-
-            println!("Created note: {} (ext: {})", final_title, ext);
+            println!("Created note: {}", final_title);
 
             Ok(())
         }
         CliCommand::NewAndOpen { title, template } => {
             let storage = Storage::init()?;
             let mut app = App::new(storage)?;
-            
+
             // Use provided title or default
             let final_title = title.unwrap_or_else(|| "New Note".to_string());
-            
+
             // Create note from template or default
             let (content, tags) = if let Some(tmpl_name) = template {
                 let template_manager = app.storage.template_manager();
                 if let Ok(templates) = template_manager.list() {
-                    if let Some(template_summary) = templates.into_iter().find(|t| t.name == tmpl_name) {
-                        if let Ok(template_data) = template_manager.load(&template_summary.filename) {
+                    if let Some(template_summary) =
+                        templates.into_iter().find(|t| t.name == tmpl_name)
+                    {
+                        if let Ok(template_data) = template_manager.load(&template_summary.filename)
+                        {
                             (template_data.content.template.clone(), Vec::new())
                         } else {
                             eprintln!("Failed to load template data: {tmpl_name}");
@@ -110,7 +108,7 @@ fn main() -> Result<()> {
             } else {
                 (String::new(), Vec::new())
             };
-            
+
             let id = Uuid::new_v4().simple().to_string();
             let note = Note {
                 title: final_title,
@@ -120,9 +118,9 @@ fn main() -> Result<()> {
                     .as_secs(),
                 tags,
             };
-            
-            let saved_id = app.storage.save_note(&id, &note, app.encryption_enabled)?;
-            
+
+            let saved_id = app.storage.save_note(&id, &note)?;
+
             app.editing_id = Some(saved_id.clone());
             app.refresh_notes()?;
             app.load_and_open_note(&saved_id);
@@ -267,8 +265,11 @@ fn main() -> Result<()> {
             let templates_dst = to.join("templates");
             if templates_src.exists() && templates_src.is_dir() {
                 fs::create_dir_all(&templates_dst)?;
-                let (m, s, _) =
-                    migrate_directory_with_conflict(&templates_src, &templates_dst, conflict_action)?;
+                let (m, s, _) = migrate_directory_with_conflict(
+                    &templates_src,
+                    &templates_dst,
+                    conflict_action,
+                )?;
                 migrated_count += m;
                 skipped_count += s;
             }
@@ -609,8 +610,7 @@ fn migrate_file_with_conflict(
                 return Ok((0, 1, new_action));
             }
             ConflictAction::Overwrite | ConflictAction::OverwriteAll => {
-                fs::copy(src, dst)
-                    .with_context(|| format!("failed to copy {}", src.display()))?;
+                fs::copy(src, dst).with_context(|| format!("failed to copy {}", src.display()))?;
                 println!("  Overwritten: {}", display_name);
                 let new_action = if matches!(action, ConflictAction::OverwriteAll) {
                     Some(ConflictAction::OverwriteAll)
@@ -726,7 +726,29 @@ fn run_app(
 
         terminal.draw(|frame| draw_ui(frame, app, focus))?;
 
-        if event::poll(Duration::from_millis(200)).context("event poll failed")? {
+        let poll_timeout = if app.mode == ViewMode::Graph {
+            Duration::from_millis(33)
+        } else if app
+            .preview_renderer
+            .as_ref()
+            .map_or(false, |r| r.is_pending())
+            || app
+                .md_preview_renderer
+                .as_ref()
+                .map_or(false, |r| r.is_pending())
+        {
+            Duration::from_millis(50)
+        } else {
+            Duration::from_millis(200)
+        };
+
+        let need_redraw = app.poll_renderers();
+
+        if need_redraw {
+            terminal.draw(|frame| draw_ui(frame, app, focus))?;
+        }
+
+        if event::poll(poll_timeout).context("event poll failed")? {
             match event::read().context("failed to read event")? {
                 Event::Key(key) if key.kind == KeyEventKind::Press => match app.mode {
                     ViewMode::List => {
@@ -741,6 +763,9 @@ fn run_app(
                     }
                     ViewMode::Help => {
                         handle_help_keys(app, key);
+                    }
+                    ViewMode::Graph => {
+                        crate::graph::input::handle_graph_keys(app, key);
                     }
                 },
                 Event::Mouse(mouse_event) if app.mode == ViewMode::List => {
@@ -773,6 +798,44 @@ fn run_app(
                         app.help_scroll = app.help_scroll.saturating_add(3).min(max_scroll);
                     }
                 }
+                Event::Mouse(mouse_event) if app.mode == ViewMode::Graph => {
+                    let size = terminal.size().context("failed to get terminal size")?;
+                    let area = Rect::new(0, 0, size.width, size.height);
+
+                    let was_click = matches!(
+                        mouse_event.kind,
+                        crossterm::event::MouseEventKind::Up(crossterm::event::MouseButton::Left)
+                    ) && app
+                        .graph_mouse_state
+                        .drag_origin
+                        .is_some_and(|(c, r)| c == mouse_event.column && r == mouse_event.row)
+                        && !app.graph_mouse_state.is_panning;
+
+                    if let Some(graph_state) = &app.graph_state {
+                        crate::graph::input::handle_graph_mouse(
+                            graph_state,
+                            mouse_event,
+                            area,
+                            &mut app.graph_mouse_state,
+                        );
+                    }
+
+                    if was_click {
+                        let note_id = app.graph_state.as_ref().and_then(|state| {
+                            let guard = state.read().unwrap_or_else(|e| e.into_inner());
+                            guard.selected_node.and_then(|idx| {
+                                guard
+                                    .simulation
+                                    .get_graph()
+                                    .node_weight(idx)
+                                    .map(|n| n.data.note_id.clone())
+                            })
+                        });
+                        if let Some(id) = note_id {
+                            app.open_note_from_graph(&id);
+                        }
+                    }
+                }
                 Event::Paste(data) if app.mode == ViewMode::Edit => match focus {
                     EditFocus::Title => {
                         let normalized = data.replace(['\r', '\n'], " ");
@@ -783,7 +846,7 @@ fn run_app(
                         app.editor.insert_str(data);
                         app.status = Cow::Borrowed("Pasted body text");
                     }
-                    EditFocus::EncryptionToggle | EditFocus::ExternalEditorToggle => {}
+                    EditFocus::ExternalEditorToggle => {}
                 },
                 _ => {}
             }

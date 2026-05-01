@@ -45,8 +45,7 @@ pub struct NoteSummary {
     pub pinned: bool,
 }
 
-#[derive(Clone, Debug)]
-#[derive(zeroize::Zeroize, zeroize::ZeroizeOnDrop)]
+#[derive(Clone, Debug, zeroize::Zeroize, zeroize::ZeroizeOnDrop)]
 pub struct Storage {
     #[zeroize(skip)]
     pub data_dir: PathBuf,
@@ -95,7 +94,6 @@ impl Storage {
         let key = if key_path.exists() {
             #[cfg(unix)]
             {
-                // Enforce permissions on existing key file
                 use std::os::unix::fs::PermissionsExt;
                 if let Ok(metadata) = fs::metadata(&key_path) {
                     let mut perms = metadata.permissions();
@@ -114,29 +112,7 @@ impl Storage {
             key.copy_from_slice(&raw);
             key
         } else {
-            let mut key = [0_u8; 32];
-            rand::rngs::OsRng.fill_bytes(&mut key);
-            fs::create_dir_all(&data_dir).context("failed to create app data directory")?;
-            
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::OpenOptionsExt;
-                let mut file = std::fs::OpenOptions::new()
-                    .write(true)
-                    .create_new(true)
-                    .mode(0o400)
-                    .open(&key_path)
-                    .context("failed to create encryption key file")?;
-                use std::io::Write;
-                file.write_all(&key).context("failed to write encryption key")?;
-            }
-            
-            #[cfg(not(unix))]
-            {
-                fs::write(&key_path, key).context("failed to write encryption key")?;
-            }
-            
-            key
+            [0_u8; 32]
         };
 
         Ok(Self {
@@ -146,6 +122,149 @@ impl Storage {
             templates_dir,
             key,
         })
+    }
+
+    fn key_path(&self) -> PathBuf {
+        self.data_dir.join("key.bin")
+    }
+
+    pub fn ensure_key(&mut self) -> Result<()> {
+        if self.key != [0_u8; 32] {
+            return Ok(());
+        }
+
+        let key_path = self.key_path();
+        if key_path.exists() {
+            let raw = fs::read(&key_path).context("failed to read encryption key")?;
+            if raw.len() != 32 {
+                anyhow::bail!("invalid key file length");
+            }
+            self.key.copy_from_slice(&raw);
+            return Ok(());
+        }
+
+        rand::rngs::OsRng.fill_bytes(&mut self.key);
+        fs::create_dir_all(&self.data_dir).context("failed to create app data directory")?;
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            let mut file = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .mode(0o400)
+                .open(&key_path)
+                .context("failed to create encryption key file")?;
+            use std::io::Write;
+            file.write_all(&self.key)
+                .context("failed to write encryption key")?;
+        }
+
+        #[cfg(not(unix))]
+        {
+            fs::write(&key_path, self.key).context("failed to write encryption key")?;
+        }
+
+        Ok(())
+    }
+
+    pub fn encrypt_note(&mut self, id: &str) -> Result<String> {
+        if id.ends_with(".clin") {
+            anyhow::bail!("Note is already encrypted");
+        }
+
+        self.ensure_key()?;
+
+        let note = self.load_note(id)?;
+        let old_path = self.note_path(id);
+
+        let folder = if let Some(idx) = id.rfind('/') {
+            &id[..idx]
+        } else {
+            ""
+        };
+
+        let stem = old_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("Untitled note");
+        let clin_id = if folder.is_empty() {
+            format!("{}.clin", stem)
+        } else {
+            format!("{}/{}.clin", folder, stem)
+        };
+        let target_id = self.unique_note_id(stem, "clin", &clin_id);
+        let target_path = self.note_path(&target_id);
+
+        if let Some(parent) = target_path.parent() {
+            fs::create_dir_all(parent).unwrap_or_default();
+        }
+
+        let fm = frontmatter::Frontmatter {
+            tags: note.tags.clone(),
+            pinned: false,
+        };
+        let bytes = bincode::serde::encode_to_vec(&note, bincode::config::standard())
+            .context("failed to encode note")?;
+        let encrypted = self.encrypt(&bytes)?;
+        let fm_string = frontmatter::serialize(&fm, "");
+        let mut final_output = fm_string.into_bytes();
+        final_output.extend_from_slice(&encrypted);
+
+        fs::write(&target_path, final_output).context("failed to write encrypted note")?;
+
+        if old_path.exists() {
+            fs::remove_file(&old_path).context("failed to remove plain note after encryption")?;
+        }
+
+        Ok(target_id)
+    }
+
+    pub fn decrypt_note(&mut self, id: &str) -> Result<String> {
+        if !id.ends_with(".clin") {
+            anyhow::bail!("Note is not encrypted");
+        }
+
+        self.ensure_key()?;
+
+        let note = self.load_note(id)?;
+        let old_path = self.note_path(id);
+
+        let folder = if let Some(idx) = id.rfind('/') {
+            &id[..idx]
+        } else {
+            ""
+        };
+
+        let stem = old_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("Untitled note");
+        let md_id = if folder.is_empty() {
+            format!("{}.md", stem)
+        } else {
+            format!("{}/{}.md", folder, stem)
+        };
+        let target_id = self.unique_note_id(stem, "md", &md_id);
+        let target_path = self.note_path(&target_id);
+
+        if let Some(parent) = target_path.parent() {
+            fs::create_dir_all(parent).unwrap_or_default();
+        }
+
+        let fm = frontmatter::Frontmatter {
+            tags: note.tags.clone(),
+            pinned: false,
+        };
+        let final_content = frontmatter::serialize(&fm, &note.content);
+        fs::write(&target_path, final_content).context("failed to write decrypted note")?;
+
+        if old_path.exists() {
+            fs::remove_file(&old_path)
+                .context("failed to remove encrypted note after decryption")?;
+        }
+
+        Ok(target_id)
     }
 
     pub fn keybinds_path(&self) -> PathBuf {
@@ -308,15 +427,13 @@ impl Storage {
         }
     }
 
-    pub fn save_note(&self, id: &str, note: &Note, encryption_enabled: bool) -> Result<String> {
+    pub fn save_note(&self, id: &str, note: &Note) -> Result<String> {
         let preferred_stem = self.note_file_stem_from_title(&note.title);
 
         let old_path = self.note_path(id);
         let old_ext = old_path.extension().and_then(|e| e.to_str()).unwrap_or("");
 
-        let target_ext = if encryption_enabled {
-            "clin"
-        } else if old_ext == "txt" || old_ext == "md" {
+        let target_ext = if old_ext == "clin" || old_ext == "txt" || old_ext == "md" {
             old_ext
         } else {
             "md"
@@ -373,8 +490,8 @@ impl Storage {
             .unwrap()
             .as_secs();
 
-        let is_encrypted = id.ends_with(".clin");
-        self.save_note(id, &note, is_encrypted)
+        let _is_encrypted = id.ends_with(".clin");
+        self.save_note(id, &note)
     }
 
     /// Duplicate a note with a new title
@@ -403,10 +520,15 @@ impl Storage {
         let initial_id = if folder.is_empty() {
             format!("{}.{}", new_id, if is_encrypted { "clin" } else { "md" })
         } else {
-            format!("{}/{}.{}", folder, new_id, if is_encrypted { "clin" } else { "md" })
+            format!(
+                "{}/{}.{}",
+                folder,
+                new_id,
+                if is_encrypted { "clin" } else { "md" }
+            )
         };
 
-        self.save_note(&initial_id, &new_note, is_encrypted)
+        self.save_note(&initial_id, &new_note)
     }
 
     pub fn trash_note(&self, id: &str) -> Result<()> {
@@ -419,8 +541,8 @@ impl Storage {
     }
 
     pub fn list_trash(&self) -> Result<Vec<trash::TrashItem>> {
-        let items = trash::os_limited::list()
-            .map_err(|e| anyhow::anyhow!("failed to list trash: {e}"))?;
+        let items =
+            trash::os_limited::list().map_err(|e| anyhow::anyhow!("failed to list trash: {e}"))?;
         let vault_items: Vec<trash::TrashItem> = items
             .into_iter()
             .filter(|item| item.original_parent.starts_with(&self.notes_dir))
@@ -435,8 +557,7 @@ impl Storage {
     }
 
     pub fn purge_trash_items(&self, items: Vec<trash::TrashItem>) -> Result<()> {
-        trash::os_limited::purge_all(items)
-            .map_err(|e| anyhow::anyhow!("failed to purge: {e}"))?;
+        trash::os_limited::purge_all(items).map_err(|e| anyhow::anyhow!("failed to purge: {e}"))?;
         Ok(())
     }
 
@@ -481,19 +602,22 @@ impl Storage {
     }
 
     pub fn create_folder(&self, path: &str) -> Result<()> {
-        let full_path = self.validate_path_within_notes_dir(path)
+        let full_path = self
+            .validate_path_within_notes_dir(path)
             .ok_or_else(|| anyhow::anyhow!("Invalid folder path"))?;
         fs::create_dir_all(full_path).context("failed to create folder")
     }
 
     pub fn delete_folder(&self, path: &str) -> Result<()> {
-        let full_path = self.validate_path_within_notes_dir(path)
+        let full_path = self
+            .validate_path_within_notes_dir(path)
             .ok_or_else(|| anyhow::anyhow!("Invalid folder path"))?;
         fs::remove_dir_all(full_path).context("failed to delete folder")
     }
 
     pub fn trash_folder(&self, path: &str) -> Result<()> {
-        let full_path = self.validate_path_within_notes_dir(path)
+        let full_path = self
+            .validate_path_within_notes_dir(path)
             .ok_or_else(|| anyhow::anyhow!("Invalid folder path"))?;
         if !full_path.exists() {
             anyhow::bail!("Folder does not exist");
@@ -503,9 +627,11 @@ impl Storage {
     }
 
     pub fn rename_folder(&self, old_path: &str, new_path: &str) -> Result<()> {
-        let old_full = self.validate_path_within_notes_dir(old_path)
+        let old_full = self
+            .validate_path_within_notes_dir(old_path)
             .ok_or_else(|| anyhow::anyhow!("Invalid source folder path"))?;
-        let new_full = self.validate_path_within_notes_dir(new_path)
+        let new_full = self
+            .validate_path_within_notes_dir(new_path)
             .ok_or_else(|| anyhow::anyhow!("Invalid target folder path"))?;
 
         if !old_full.exists() {

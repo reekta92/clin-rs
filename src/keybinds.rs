@@ -227,6 +227,7 @@ pub enum ListAction {
     PageDown,      // Half page down (Ctrl+d)
     OpenTrash,     // Open trash view
     TogglePreview, // Toggle preview pane
+    OpenGraph,     // Open graph view
 }
 
 /// Actions that can be bound to keys in edit view
@@ -248,6 +249,7 @@ pub enum EditAction {
     DeleteNextWord,
     MoveToTop,
     MoveToBottom,
+    ToggleMarkdownPreview,
 }
 
 /// Actions that can be bound to keys in help view
@@ -259,6 +261,22 @@ pub enum HelpAction {
     ScrollDown,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GraphAction {
+    Quit,
+    PanUp,
+    PanDown,
+    PanLeft,
+    PanRight,
+    ZoomIn,
+    ZoomOut,
+    OpenNote,
+    ToggleLabels,
+    AutoFit,
+    Help,
+}
+
 /// TOML representation of keybinds for serialization
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct KeybindsToml {
@@ -268,6 +286,8 @@ pub struct KeybindsToml {
     pub edit: HashMap<String, Vec<String>>,
     #[serde(default)]
     pub help: HashMap<String, Vec<String>>,
+    #[serde(default)]
+    pub graph: HashMap<String, Vec<String>>,
 }
 
 /// Main keybinds configuration
@@ -276,6 +296,7 @@ pub struct Keybinds {
     pub list: HashMap<ListAction, Vec<KeyCombo>>,
     pub edit: HashMap<EditAction, Vec<KeyCombo>>,
     pub help: HashMap<HelpAction, Vec<KeyCombo>>,
+    pub graph: HashMap<GraphAction, Vec<KeyCombo>>,
 }
 
 impl Default for Keybinds {
@@ -420,6 +441,10 @@ impl Default for Keybinds {
             ListAction::TogglePreview,
             vec![KeyCombo::shift(KeyCode::Char('P'))],
         );
+        list.insert(
+            ListAction::OpenGraph,
+            vec![KeyCombo::shift(KeyCode::Char('G'))],
+        );
 
         let mut edit = HashMap::new();
         edit.insert(EditAction::Quit, vec![KeyCombo::ctrl(KeyCode::Char('q'))]);
@@ -475,6 +500,10 @@ impl Default for Keybinds {
         );
         edit.insert(EditAction::MoveToTop, vec![KeyCombo::ctrl(KeyCode::Home)]);
         edit.insert(EditAction::MoveToBottom, vec![KeyCombo::ctrl(KeyCode::End)]);
+        edit.insert(
+            EditAction::ToggleMarkdownPreview,
+            vec![KeyCombo::ctrl(KeyCode::Char('p'))],
+        );
 
         let mut help = HashMap::new();
         help.insert(
@@ -501,7 +530,49 @@ impl Default for Keybinds {
             ],
         );
 
-        Self { list, edit, help }
+        let mut graph = HashMap::new();
+        graph.insert(GraphAction::Quit, vec![KeyCombo::simple(KeyCode::Esc)]);
+        graph.insert(GraphAction::PanUp, vec![KeyCombo::simple(KeyCode::Up)]);
+        graph.insert(GraphAction::PanDown, vec![KeyCombo::simple(KeyCode::Down)]);
+        graph.insert(GraphAction::PanLeft, vec![KeyCombo::simple(KeyCode::Left)]);
+        graph.insert(
+            GraphAction::PanRight,
+            vec![KeyCombo::simple(KeyCode::Right)],
+        );
+        graph.insert(
+            GraphAction::ZoomIn,
+            vec![KeyCombo::simple(KeyCode::Char('+'))],
+        );
+        graph.insert(
+            GraphAction::ZoomOut,
+            vec![KeyCombo::simple(KeyCode::Char('-'))],
+        );
+        graph.insert(
+            GraphAction::OpenNote,
+            vec![KeyCombo::simple(KeyCode::Enter)],
+        );
+        graph.insert(
+            GraphAction::ToggleLabels,
+            vec![KeyCombo::shift(KeyCode::Char('L'))],
+        );
+        graph.insert(
+            GraphAction::AutoFit,
+            vec![KeyCombo::simple(KeyCode::Char('a'))],
+        );
+        graph.insert(
+            GraphAction::Help,
+            vec![
+                KeyCombo::simple(KeyCode::Char('?')),
+                KeyCombo::simple(KeyCode::F(1)),
+            ],
+        );
+
+        Self {
+            list,
+            edit,
+            help,
+            graph,
+        }
     }
 }
 
@@ -556,6 +627,18 @@ impl Keybinds {
             }
         }
 
+        for (action_str, combos_str) in &toml.graph {
+            if let Some(action) = parse_graph_action(action_str) {
+                let combos: Vec<KeyCombo> = combos_str
+                    .iter()
+                    .filter_map(|s| KeyCombo::parse(s))
+                    .collect();
+                if !combos.is_empty() {
+                    keybinds.graph.insert(action, combos);
+                }
+            }
+        }
+
         Ok(keybinds)
     }
 
@@ -597,6 +680,12 @@ impl Keybinds {
             toml.help.insert(key.to_string(), values);
         }
 
+        for (action, combos) in &self.graph {
+            let key = graph_action_to_string(*action);
+            let values: Vec<String> = combos.iter().map(KeyCombo::to_display_string).collect();
+            toml.graph.insert(key.to_string(), values);
+        }
+
         toml
     }
 
@@ -617,6 +706,12 @@ impl Keybinds {
     /// Check if a key event matches a help action
     pub fn matches_help(&self, action: HelpAction, event: &KeyEvent) -> bool {
         self.help
+            .get(&action)
+            .is_some_and(|combos| combos.iter().any(|c| c.matches(event)))
+    }
+
+    pub fn matches_graph(&self, action: GraphAction, event: &KeyEvent) -> bool {
+        self.graph
             .get(&action)
             .is_some_and(|combos| combos.iter().any(|c| c.matches(event)))
     }
@@ -662,6 +757,19 @@ impl Keybinds {
             })
             .unwrap_or_default()
     }
+
+    pub fn graph_keys_display(&self, action: GraphAction) -> String {
+        self.graph
+            .get(&action)
+            .map(|combos| {
+                combos
+                    .iter()
+                    .map(KeyCombo::to_display_string)
+                    .collect::<Vec<_>>()
+                    .join("/")
+            })
+            .unwrap_or_default()
+    }
 }
 
 fn parse_list_action(s: &str) -> Option<ListAction> {
@@ -686,6 +794,7 @@ fn parse_list_action(s: &str) -> Option<ListAction> {
         "filter_tags" => Some(ListAction::FilterTags),
         "collapse_folder" => Some(ListAction::CollapseFolder),
         "expand_folder" => Some(ListAction::ExpandFolder),
+        "open_graph" => Some(ListAction::OpenGraph),
         _ => None,
     }
 }
@@ -706,6 +815,7 @@ fn parse_edit_action(s: &str) -> Option<EditAction> {
         "delete_next_word" => Some(EditAction::DeleteNextWord),
         "move_to_top" => Some(EditAction::MoveToTop),
         "move_to_bottom" => Some(EditAction::MoveToBottom),
+        "toggle_markdown_preview" => Some(EditAction::ToggleMarkdownPreview),
         _ => None,
     }
 }
@@ -715,6 +825,23 @@ fn parse_help_action(s: &str) -> Option<HelpAction> {
         "close" => Some(HelpAction::Close),
         "scroll_up" => Some(HelpAction::ScrollUp),
         "scroll_down" => Some(HelpAction::ScrollDown),
+        _ => None,
+    }
+}
+
+fn parse_graph_action(s: &str) -> Option<GraphAction> {
+    match s {
+        "quit" => Some(GraphAction::Quit),
+        "pan_up" => Some(GraphAction::PanUp),
+        "pan_down" => Some(GraphAction::PanDown),
+        "pan_left" => Some(GraphAction::PanLeft),
+        "pan_right" => Some(GraphAction::PanRight),
+        "zoom_in" => Some(GraphAction::ZoomIn),
+        "zoom_out" => Some(GraphAction::ZoomOut),
+        "open_note" => Some(GraphAction::OpenNote),
+        "toggle_labels" => Some(GraphAction::ToggleLabels),
+        "auto_fit" => Some(GraphAction::AutoFit),
+        "help" => Some(GraphAction::Help),
         _ => None,
     }
 }
@@ -754,6 +881,7 @@ fn list_action_to_string(action: ListAction) -> &'static str {
         ListAction::PageDown => "page_down",
         ListAction::OpenTrash => "open_trash",
         ListAction::TogglePreview => "toggle_preview",
+        ListAction::OpenGraph => "open_graph",
     }
 }
 
@@ -773,6 +901,7 @@ fn edit_action_to_string(action: EditAction) -> &'static str {
         EditAction::DeleteNextWord => "delete_next_word",
         EditAction::MoveToTop => "move_to_top",
         EditAction::MoveToBottom => "move_to_bottom",
+        EditAction::ToggleMarkdownPreview => "toggle_markdown_preview",
     }
 }
 
@@ -781,6 +910,22 @@ fn help_action_to_string(action: HelpAction) -> &'static str {
         HelpAction::Close => "close",
         HelpAction::ScrollUp => "scroll_up",
         HelpAction::ScrollDown => "scroll_down",
+    }
+}
+
+fn graph_action_to_string(action: GraphAction) -> &'static str {
+    match action {
+        GraphAction::Quit => "quit",
+        GraphAction::PanUp => "pan_up",
+        GraphAction::PanDown => "pan_down",
+        GraphAction::PanLeft => "pan_left",
+        GraphAction::PanRight => "pan_right",
+        GraphAction::ZoomIn => "zoom_in",
+        GraphAction::ZoomOut => "zoom_out",
+        GraphAction::OpenNote => "open_note",
+        GraphAction::ToggleLabels => "toggle_labels",
+        GraphAction::AutoFit => "auto_fit",
+        GraphAction::Help => "help",
     }
 }
 

@@ -137,8 +137,7 @@ impl Action for OcrPasteAction {
         note.content.push_str(&extracted_text);
         note.updated_at = crate::ui::now_unix_secs();
 
-        let is_clin = note_id.ends_with(".clin");
-        app.storage.save_note(note_id, &note, is_clin)?;
+        app.storage.save_note(note_id, &note)?;
         app.refresh_notes()?;
         app.set_temporary_status("OCR text appended successfully");
 

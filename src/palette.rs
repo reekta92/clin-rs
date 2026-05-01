@@ -53,8 +53,8 @@ impl CommandPalette {
                 });
             }
         } else {
-            use fuzzy_matcher::skim::SkimMatcherV2;
             use fuzzy_matcher::FuzzyMatcher;
+            use fuzzy_matcher::skim::SkimMatcherV2;
             let matcher = SkimMatcherV2::default();
             for action in actions {
                 if let Some(score) = matcher.fuzzy_match(&action.name, query) {
