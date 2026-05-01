@@ -396,6 +396,10 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         app.toggle_preview();
         return false;
     }
+    if app.keybinds.matches_list(ListAction::OpenGraph, &key) {
+        app.open_graph_view();
+        return false;
+    }
 
     // Handle vim-style 'g' for gg (jump to top)
     if key.code == KeyCode::Char('g') {

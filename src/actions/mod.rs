@@ -1,5 +1,6 @@
 pub mod decrypt;
 pub mod encrypt;
+pub mod graph;
 pub mod ocr;
 
 use crate::app::App;
@@ -24,6 +25,7 @@ pub static ACTIONS: Lazy<Vec<Box<dyn Action>>> = Lazy::new(|| {
     vec![
         Box::new(encrypt::EncryptNoteAction),
         Box::new(decrypt::DecryptNoteAction),
+        Box::new(graph::OpenGraphAction),
         Box::new(ocr::OcrPasteAction),
     ]
 });

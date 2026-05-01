@@ -28,6 +28,7 @@ pub enum ViewMode {
     List,
     Edit,
     Help,
+    Graph,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -205,8 +206,11 @@ pub struct App {
     pub md_preview_renderer: Option<MarkdownRenderer>,
     /// For vim-style 'gg' command - tracks last 'g' press time
     pub last_g_press: Option<Instant>,
-    /// Page size for Ctrl+u/d navigation
     pub page_size: usize,
+    pub graph_state: Option<std::sync::Arc<std::sync::RwLock<crate::graph::GraphState>>>,
+    pub graph_kill_tx: Option<std::sync::mpsc::Sender<()>>,
+    pub return_mode: Option<ViewMode>,
+    pub graph_mouse_state: crate::graph::input::GraphMouseState,
 }
 
 pub enum CliCommand {
@@ -287,6 +291,10 @@ impl App {
             md_preview_renderer: None,
             last_g_press: None,
             page_size: 10,
+            graph_state: None,
+            graph_kill_tx: None,
+            return_mode: None,
+            graph_mouse_state: crate::graph::input::GraphMouseState::default(),
         };
         app.context_menu = None;
         app.template_popup = None;
@@ -1046,6 +1054,16 @@ impl App {
     }
 
     pub fn back_to_list(&mut self) {
+        if let Some(return_to) = self.return_mode.take() {
+            self.editing_id = None;
+            self.title_editor = make_title_editor("");
+            self.editor = TextArea::default();
+            self.confirm_popup = None;
+            self.md_preview_renderer = None;
+            self.mode = return_to;
+            self.set_default_status();
+            return;
+        }
         self.mode = ViewMode::List;
         self.editing_id = None;
         self.list_focus = ListFocus::Notes;
@@ -1778,11 +1796,74 @@ impl App {
         self.set_default_status();
     }
 
+    pub fn open_graph_view(&mut self) {
+        let graph = match crate::graph::build_graph(&self.storage) {
+            Ok(g) => g,
+            Err(e) => {
+                self.set_temporary_status(&format!("Failed to build graph: {e}"));
+                return;
+            }
+        };
+
+        if graph.node_count() == 0 {
+            self.set_temporary_status_static("No notes found for graph view");
+            return;
+        }
+
+        let simulation = crate::graph::create_simulation(graph);
+        let mut state = crate::graph::GraphState {
+            viewport: crate::graph::viewport::Viewport::default(),
+            simulation,
+            selected_node: None,
+            dragging_node: None,
+            is_settled: false,
+            show_labels: true,
+        };
+        let vp = state
+            .viewport
+            .auto_fit_from_graph(state.simulation.get_graph());
+        state.viewport = vp;
+
+        let state = std::sync::Arc::new(std::sync::RwLock::new(state));
+        let (kill_tx, kill_rx) = std::sync::mpsc::channel();
+        crate::graph::physics::start_physics(state.clone(), kill_rx);
+
+        self.graph_state = Some(state);
+        self.graph_kill_tx = Some(kill_tx);
+        self.graph_mouse_state = crate::graph::input::GraphMouseState::default();
+        self.mode = ViewMode::Graph;
+        self.return_mode = None;
+        self.set_default_status();
+    }
+
+    pub fn close_graph_view(&mut self) {
+        if let Some(tx) = self.graph_kill_tx.take() {
+            let _ = tx.send(());
+        }
+        self.graph_state = None;
+        self.mode = ViewMode::List;
+        self.set_default_status();
+    }
+
+    pub fn open_note_from_graph(&mut self, note_id: &str) {
+        if note_id.ends_with(".clin") {
+            self.set_temporary_status_static("Cannot open encrypted notes. Decrypt first.");
+            return;
+        }
+        self.return_mode = Some(ViewMode::Graph);
+        if self.external_editor_enabled {
+            self.open_note_in_external_editor(note_id);
+        } else {
+            self.load_and_open_note(note_id);
+        }
+    }
+
     pub fn default_status_text(&self) -> &'static str {
         match self.mode {
             ViewMode::List => LIST_HELP_HINTS,
             ViewMode::Edit => EDIT_HELP_HINTS,
             ViewMode::Help => HELP_PAGE_HINTS,
+            ViewMode::Graph => "Graph View | Esc: back | +/-: zoom | L: labels | a: fit",
         }
     }
 

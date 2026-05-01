@@ -60,6 +60,8 @@ trash = "5"
 tui-term = "0.2"
 tui-textarea = { version = "0.7", features = ["crossterm"] }
 uuid = { version = "1.8", features = ["v4"] }
+fdg-sim = "0.9"
+regex = "1"
 which = "8.0.2"
 zeroize = { version = "1.8.2", features = ["derive"] }
 

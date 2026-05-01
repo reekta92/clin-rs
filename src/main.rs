@@ -2,6 +2,7 @@ pub mod actions;
 mod config;
 pub mod constants;
 pub mod frontmatter;
+pub mod graph;
 mod keybinds;
 pub mod markdown;
 pub mod palette;
@@ -725,7 +726,9 @@ fn run_app(
 
         terminal.draw(|frame| draw_ui(frame, app, focus))?;
 
-        let poll_timeout = if app
+        let poll_timeout = if app.mode == ViewMode::Graph {
+            Duration::from_millis(33)
+        } else if app
             .preview_renderer
             .as_ref()
             .map_or(false, |r| r.is_pending())
@@ -761,6 +764,9 @@ fn run_app(
                     ViewMode::Help => {
                         handle_help_keys(app, key);
                     }
+                    ViewMode::Graph => {
+                        crate::graph::input::handle_graph_keys(app, key);
+                    }
                 },
                 Event::Mouse(mouse_event) if app.mode == ViewMode::List => {
                     let size = terminal.size().context("failed to get terminal size")?;
@@ -790,6 +796,44 @@ fn run_app(
                             .as_ref()
                             .map_or(0, |t| t.height().saturating_sub(5) as u16);
                         app.help_scroll = app.help_scroll.saturating_add(3).min(max_scroll);
+                    }
+                }
+                Event::Mouse(mouse_event) if app.mode == ViewMode::Graph => {
+                    let size = terminal.size().context("failed to get terminal size")?;
+                    let area = Rect::new(0, 0, size.width, size.height);
+
+                    let was_click = matches!(
+                        mouse_event.kind,
+                        crossterm::event::MouseEventKind::Up(crossterm::event::MouseButton::Left)
+                    ) && app
+                        .graph_mouse_state
+                        .drag_origin
+                        .is_some_and(|(c, r)| c == mouse_event.column && r == mouse_event.row)
+                        && !app.graph_mouse_state.is_panning;
+
+                    if let Some(graph_state) = &app.graph_state {
+                        crate::graph::input::handle_graph_mouse(
+                            graph_state,
+                            mouse_event,
+                            area,
+                            &mut app.graph_mouse_state,
+                        );
+                    }
+
+                    if was_click {
+                        let note_id = app.graph_state.as_ref().and_then(|state| {
+                            let guard = state.read().unwrap_or_else(|e| e.into_inner());
+                            guard.selected_node.and_then(|idx| {
+                                guard
+                                    .simulation
+                                    .get_graph()
+                                    .node_weight(idx)
+                                    .map(|n| n.data.note_id.clone())
+                            })
+                        });
+                        if let Some(id) = note_id {
+                            app.open_note_from_graph(&id);
+                        }
                     }
                 }
                 Event::Paste(data) if app.mode == ViewMode::Edit => match focus {
