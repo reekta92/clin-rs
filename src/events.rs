@@ -245,22 +245,12 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     // Cycle focus with Tab
     if app.keybinds.matches_list(ListAction::CycleFocus, &key) {
         app.list_focus = match app.list_focus {
-            ListFocus::Notes => ListFocus::EncryptionToggle,
-            ListFocus::EncryptionToggle => ListFocus::ExternalEditorToggle,
+            ListFocus::Notes => ListFocus::ExternalEditorToggle,
             ListFocus::ExternalEditorToggle => ListFocus::Notes,
         };
         return false;
     }
 
-    // Handle toggle buttons when focused
-    if app.list_focus == ListFocus::EncryptionToggle {
-        if app.keybinds.matches_list(ListAction::ToggleButton, &key) {
-            app.toggle_encryption_mode();
-        } else if app.keybinds.matches_list(ListAction::Quit, &key) {
-            return true;
-        }
-        return false;
-    }
     if app.list_focus == ListFocus::ExternalEditorToggle {
         if app.keybinds.matches_list(ListAction::ToggleButton, &key) {
             app.toggle_external_editor_mode();
@@ -464,8 +454,7 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
     if app.keybinds.matches_edit(EditAction::CycleFocus, &key) {
         *focus = match *focus {
             EditFocus::Title => EditFocus::Body,
-            EditFocus::Body => EditFocus::EncryptionToggle,
-            EditFocus::EncryptionToggle => EditFocus::ExternalEditorToggle,
+            EditFocus::Body => EditFocus::ExternalEditorToggle,
             EditFocus::ExternalEditorToggle => EditFocus::Title,
         };
         return false;
@@ -509,11 +498,6 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 return false;
             }
             app.editor.input(Input::from(key));
-        }
-        EditFocus::EncryptionToggle => {
-            if app.keybinds.matches_edit(EditAction::ToggleButton, &key) {
-                app.toggle_encryption_mode();
-            }
         }
         EditFocus::ExternalEditorToggle => {
             if app.keybinds.matches_edit(EditAction::ToggleButton, &key) {

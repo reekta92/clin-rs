@@ -346,16 +346,12 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     ));
                 }
 
-                if !is_clin {
+                if *is_clin {
+                    text_style = text_style.fg(Color::DarkGray);
                     spans.push(Span::styled(
-                        "[UENC] ",
-                        Style::default()
-                            .fg(Color::Yellow)
-                            .add_modifier(Modifier::BOLD),
+                        "\u{f023} ",
+                        Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
                     ));
-                } else if !app.encryption_enabled {
-                    text_style = text_style.fg(Color::Red);
-                    spans.push(Span::styled("[ENC] ", text_style));
                 }
 
                 let sanitized_title =
@@ -433,24 +429,6 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         }
     }
 
-    let enc_button_label = if app.encryption_enabled {
-        "[ Enc: ON ]"
-    } else {
-        "[ Enc: OFF ]"
-    };
-    let enc_button_style = if app.list_focus == ListFocus::EncryptionToggle {
-        Style::default()
-            .fg(Color::Black)
-            .bg(Color::Yellow)
-            .add_modifier(Modifier::BOLD)
-    } else if app.encryption_enabled {
-        Style::default()
-            .fg(Color::Green)
-            .add_modifier(Modifier::BOLD)
-    } else {
-        Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
-    };
-
     let ext_button_label = if app.external_editor_enabled {
         "[ Ext: ON ]"
     } else {
@@ -470,8 +448,6 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     };
 
     let footer_line = Line::from(vec![
-        Span::styled(enc_button_label, enc_button_style),
-        Span::raw(" "),
         Span::styled(ext_button_label, ext_button_style),
         Span::raw("   "),
         Span::raw(crate::sanitize::sanitize_for_terminal(app.status.as_ref())),
@@ -881,24 +857,6 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         frame.render_widget(&app.editor, chunks[1]);
     }
 
-    let enc_button_label = if app.encryption_enabled {
-        "[ Enc: ON ]"
-    } else {
-        "[ Enc: OFF ]"
-    };
-    let enc_button_style = if focus == EditFocus::EncryptionToggle {
-        Style::default()
-            .fg(Color::Black)
-            .bg(Color::Yellow)
-            .add_modifier(Modifier::BOLD)
-    } else if app.encryption_enabled {
-        Style::default()
-            .fg(Color::Green)
-            .add_modifier(Modifier::BOLD)
-    } else {
-        Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
-    };
-
     let ext_button_label = if app.external_editor_enabled {
         "[ Ext: ON ]"
     } else {
@@ -918,8 +876,6 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     };
 
     let status_line = Line::from(vec![
-        Span::styled(enc_button_label, enc_button_style),
-        Span::raw(" "),
         Span::styled(ext_button_label, ext_button_style),
         Span::raw("   "),
         Span::raw(crate::sanitize::sanitize_for_terminal(app.status.as_ref())),

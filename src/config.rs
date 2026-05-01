@@ -26,19 +26,12 @@ pub struct BootstrapConfig {
     /// Whether external editor mode is enabled
     #[serde(default)]
     pub external_editor_enabled: bool,
-    /// Whether new notes should be encrypted by default
-    #[serde(default = "default_encryption_enabled")]
-    pub encryption_enabled: bool,
     /// Whether the preview pane is enabled by default
     #[serde(default = "default_preview_enabled")]
     pub preview_enabled: bool,
     /// Whether the editor markdown preview panel is enabled by default
     #[serde(default)]
     pub markdown_preview_enabled: bool,
-}
-
-fn default_encryption_enabled() -> bool {
-    true
 }
 
 fn default_preview_enabled() -> bool {

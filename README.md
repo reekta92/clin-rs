@@ -105,7 +105,6 @@ This file is generated automatically. You can edit it to change your settings:
 storage_path = "/custom/path/to/vault" # Optional: Change where notes are stored
 external_editor = "nvim" # Optional: Command to use for the external editor
 external_editor_enabled = false
-encryption_enabled = true # Whether new notes should be encrypted by default
 ```
 
 ### Custom Keybinds (`keybinds.toml`)

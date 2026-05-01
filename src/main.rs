@@ -1,12 +1,12 @@
+pub mod actions;
 mod config;
 pub mod constants;
 pub mod frontmatter;
 mod keybinds;
 pub mod markdown;
+pub mod palette;
 pub mod sanitize;
 mod templates;
-pub mod actions;
-pub mod palette;
 
 use crate::config::BootstrapConfig;
 use crate::keybinds::{EditAction, HelpAction, Keybinds, ListAction};
@@ -58,7 +58,6 @@ fn main() -> Result<()> {
         }
         CliCommand::QuickNote { content, title } => {
             let storage = Storage::init()?;
-            let bootstrap = config::BootstrapConfig::load().unwrap_or_default();
 
             let id = Uuid::new_v4().simple().to_string();
             let final_title = title.unwrap_or_else(|| "Quick Note".to_string());
@@ -71,31 +70,28 @@ fn main() -> Result<()> {
                 tags: Vec::new(),
             };
 
-            let ext = if bootstrap.encryption_enabled {
-                "bin"
-            } else {
-                "md"
-            };
+            let _saved_id = storage.save_note(&id, &note)?;
 
-            let _saved_id = storage.save_note(&id, &note, bootstrap.encryption_enabled)?;
-
-            println!("Created note: {} (ext: {})", final_title, ext);
+            println!("Created note: {}", final_title);
 
             Ok(())
         }
         CliCommand::NewAndOpen { title, template } => {
             let storage = Storage::init()?;
             let mut app = App::new(storage)?;
-            
+
             // Use provided title or default
             let final_title = title.unwrap_or_else(|| "New Note".to_string());
-            
+
             // Create note from template or default
             let (content, tags) = if let Some(tmpl_name) = template {
                 let template_manager = app.storage.template_manager();
                 if let Ok(templates) = template_manager.list() {
-                    if let Some(template_summary) = templates.into_iter().find(|t| t.name == tmpl_name) {
-                        if let Ok(template_data) = template_manager.load(&template_summary.filename) {
+                    if let Some(template_summary) =
+                        templates.into_iter().find(|t| t.name == tmpl_name)
+                    {
+                        if let Ok(template_data) = template_manager.load(&template_summary.filename)
+                        {
                             (template_data.content.template.clone(), Vec::new())
                         } else {
                             eprintln!("Failed to load template data: {tmpl_name}");
@@ -111,7 +107,7 @@ fn main() -> Result<()> {
             } else {
                 (String::new(), Vec::new())
             };
-            
+
             let id = Uuid::new_v4().simple().to_string();
             let note = Note {
                 title: final_title,
@@ -121,9 +117,9 @@ fn main() -> Result<()> {
                     .as_secs(),
                 tags,
             };
-            
-            let saved_id = app.storage.save_note(&id, &note, app.encryption_enabled)?;
-            
+
+            let saved_id = app.storage.save_note(&id, &note)?;
+
             app.editing_id = Some(saved_id.clone());
             app.refresh_notes()?;
             app.load_and_open_note(&saved_id);
@@ -268,8 +264,11 @@ fn main() -> Result<()> {
             let templates_dst = to.join("templates");
             if templates_src.exists() && templates_src.is_dir() {
                 fs::create_dir_all(&templates_dst)?;
-                let (m, s, _) =
-                    migrate_directory_with_conflict(&templates_src, &templates_dst, conflict_action)?;
+                let (m, s, _) = migrate_directory_with_conflict(
+                    &templates_src,
+                    &templates_dst,
+                    conflict_action,
+                )?;
                 migrated_count += m;
                 skipped_count += s;
             }
@@ -610,8 +609,7 @@ fn migrate_file_with_conflict(
                 return Ok((0, 1, new_action));
             }
             ConflictAction::Overwrite | ConflictAction::OverwriteAll => {
-                fs::copy(src, dst)
-                    .with_context(|| format!("failed to copy {}", src.display()))?;
+                fs::copy(src, dst).with_context(|| format!("failed to copy {}", src.display()))?;
                 println!("  Overwritten: {}", display_name);
                 let new_action = if matches!(action, ConflictAction::OverwriteAll) {
                     Some(ConflictAction::OverwriteAll)
@@ -727,7 +725,10 @@ fn run_app(
 
         terminal.draw(|frame| draw_ui(frame, app, focus))?;
 
-        let poll_timeout = if app.preview_renderer.as_ref().map_or(false, |r| r.is_pending())
+        let poll_timeout = if app
+            .preview_renderer
+            .as_ref()
+            .map_or(false, |r| r.is_pending())
             || app
                 .md_preview_renderer
                 .as_ref()
@@ -801,7 +802,7 @@ fn run_app(
                         app.editor.insert_str(data);
                         app.status = Cow::Borrowed("Pasted body text");
                     }
-                    EditFocus::EncryptionToggle | EditFocus::ExternalEditorToggle => {}
+                    EditFocus::ExternalEditorToggle => {}
                 },
                 _ => {}
             }
