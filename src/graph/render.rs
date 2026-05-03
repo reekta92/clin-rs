@@ -645,10 +645,11 @@ pub fn draw_graph_view(
         let legend_text: Vec<ratatui::text::Line> = items
             .iter()
             .map(|(t, c)| {
+                let display_text = if t.is_empty() { "/" } else { t };
                 ratatui::text::Line::from(vec![
                     ratatui::text::Span::styled("● ", ratatui::style::Style::default().fg(*c)),
                     ratatui::text::Span::styled(
-                        t.clone(),
+                        display_text.clone(),
                         ratatui::style::Style::default().fg(colors.label_color),
                     ),
                 ])

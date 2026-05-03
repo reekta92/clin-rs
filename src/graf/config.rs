@@ -900,6 +900,9 @@ impl GrafConfig {
                     let _ = fs::set_permissions(&path, fs::Permissions::from_mode(0o600));
                 }
                 created = true;
+                if let Ok(loaded) = toml::from_str::<GrafConfig>(generate_default_toml()) {
+                    config = loaded;
+                }
             }
         }
 
