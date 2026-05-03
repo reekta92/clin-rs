@@ -649,7 +649,7 @@ pub fn draw_graph_view(
                 ratatui::text::Line::from(vec![
                     ratatui::text::Span::styled("● ", ratatui::style::Style::default().fg(*c)),
                     ratatui::text::Span::styled(
-                        display_text.clone(),
+                        display_text,
                         ratatui::style::Style::default().fg(colors.label_color),
                     ),
                 ])

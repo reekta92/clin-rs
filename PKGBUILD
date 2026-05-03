@@ -12,7 +12,7 @@ arch=("x86_64")
 provides=("clin-rs")
 conflicts=("clin-rs")
 source=("https://github.com/reekta92/clin-rs/releases/download/v$pkgver/clin-rs-$pkgver-x86_64.tar.gz")
-sha256sums=("f32f01dd7db7ca7391a2d882b74693872abb3a4860fd451ff6ea52b2bbda9f30")
+sha256sums=("a806a7177f30cf08535af22bbf768b602532dd8ad37f1a23149f1cebc4d9c5ca")
 
 package() {
     install -Dm755 clin-rs -t "$pkgdir/usr/bin"
