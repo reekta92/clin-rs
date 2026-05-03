@@ -110,7 +110,7 @@ You can fully customize clin's keybindings! To get started, generate the default
 ```bash
 clin --export-keybinds > ~/.config/clin/keybinds.toml
 ```
-Then, edit the file to change bindings for the list, editor, or help menus.
+Then, edit the file to change bindings for the list, editor, help, or graph menus.
 
 ---
 # User Defined Templates
