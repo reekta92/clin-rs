@@ -207,11 +207,7 @@ pub struct App {
     /// For vim-style 'gg' command - tracks last 'g' press time
     pub last_g_press: Option<Instant>,
     pub page_size: usize,
-    pub graph_state: Option<std::sync::Arc<std::sync::RwLock<crate::graph::GraphState>>>,
-    pub graph_kill_tx: Option<std::sync::mpsc::Sender<()>>,
     pub return_mode: Option<ViewMode>,
-    pub graph_mouse_state: crate::graph::input::GraphMouseState,
-    pub graph_label_mode: crate::config::GraphLabelMode,
 }
 
 pub enum CliCommand {
@@ -292,11 +288,7 @@ impl App {
             md_preview_renderer: None,
             last_g_press: None,
             page_size: 10,
-            graph_state: None,
-            graph_kill_tx: None,
             return_mode: None,
-            graph_mouse_state: crate::graph::input::GraphMouseState::default(),
-            graph_label_mode: bootstrap_config.graph_label_mode,
         };
         app.context_menu = None;
         app.template_popup = None;
@@ -1799,50 +1791,12 @@ impl App {
     }
 
     pub fn open_graph_view(&mut self) {
-        let graph = match crate::graph::build_graph(&self.storage) {
-            Ok(g) => g,
-            Err(e) => {
-                self.set_temporary_status(&format!("Failed to build graph: {e}"));
-                return;
-            }
-        };
-
-        if graph.node_count() == 0 {
-            self.set_temporary_status_static("No notes found for graph view");
-            return;
-        }
-
-        let simulation = crate::graph::create_simulation(graph);
-        let mut state = crate::graph::GraphState {
-            viewport: crate::graph::viewport::Viewport::default(),
-            simulation,
-            selected_node: None,
-            dragging_node: None,
-            is_settled: false,
-        };
-        let vp = state
-            .viewport
-            .auto_fit_from_graph(state.simulation.get_graph());
-        state.viewport = vp;
-
-        let state = std::sync::Arc::new(std::sync::RwLock::new(state));
-        let (kill_tx, kill_rx) = std::sync::mpsc::channel();
-        crate::graph::physics::start_physics(state.clone(), kill_rx);
-
-        self.graph_state = Some(state);
-        self.graph_kill_tx = Some(kill_tx);
-        self.graph_mouse_state = crate::graph::input::GraphMouseState::default();
+        self.return_mode = Some(self.mode);
         self.mode = ViewMode::Graph;
-        self.return_mode = None;
-        self.set_default_status();
     }
 
     pub fn close_graph_view(&mut self) {
-        if let Some(tx) = self.graph_kill_tx.take() {
-            let _ = tx.send(());
-        }
-        self.graph_state = None;
-        self.mode = ViewMode::List;
+        self.mode = self.return_mode.unwrap_or(ViewMode::List);
         self.set_default_status();
     }
 
@@ -1854,6 +1808,7 @@ impl App {
         self.return_mode = Some(ViewMode::Graph);
         if self.external_editor_enabled {
             self.open_note_in_external_editor(note_id);
+            self.mode = self.return_mode.take().unwrap_or(ViewMode::List);
         } else {
             self.load_and_open_note(note_id);
         }

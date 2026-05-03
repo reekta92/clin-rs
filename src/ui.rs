@@ -16,12 +16,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         ViewMode::List => draw_list_view(frame, app),
         ViewMode::Edit => draw_edit_view(frame, app, focus),
         ViewMode::Help => draw_help_view(frame, app),
-        ViewMode::Graph => {
-            if let Some(state) = &app.graph_state {
-                let guard = state.read().unwrap_or_else(|e| e.into_inner());
-                crate::graph::render::draw_graph_view(frame, &guard, &app.graph_label_mode);
-            }
-        }
+        ViewMode::Graph => {}
     }
 }
 

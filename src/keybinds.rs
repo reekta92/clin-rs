@@ -442,7 +442,7 @@ impl Default for Keybinds {
         );
         list.insert(
             ListAction::OpenGraph,
-            vec![KeyCombo::shift(KeyCode::Char('G'))],
+            vec![KeyCombo::ctrl(KeyCode::Char('g'))],
         );
 
         let mut edit = HashMap::new();
@@ -531,20 +531,47 @@ impl Default for Keybinds {
 
         let mut graph = HashMap::new();
         graph.insert(GraphAction::Quit, vec![KeyCombo::simple(KeyCode::Esc)]);
-        graph.insert(GraphAction::PanUp, vec![KeyCombo::simple(KeyCode::Up)]);
-        graph.insert(GraphAction::PanDown, vec![KeyCombo::simple(KeyCode::Down)]);
-        graph.insert(GraphAction::PanLeft, vec![KeyCombo::simple(KeyCode::Left)]);
+        graph.insert(
+            GraphAction::PanUp,
+            vec![
+                KeyCombo::simple(KeyCode::Up),
+                KeyCombo::simple(KeyCode::Char('k')),
+            ],
+        );
+        graph.insert(
+            GraphAction::PanDown,
+            vec![
+                KeyCombo::simple(KeyCode::Down),
+                KeyCombo::simple(KeyCode::Char('j')),
+            ],
+        );
+        graph.insert(
+            GraphAction::PanLeft,
+            vec![
+                KeyCombo::simple(KeyCode::Left),
+                KeyCombo::simple(KeyCode::Char('h')),
+            ],
+        );
         graph.insert(
             GraphAction::PanRight,
-            vec![KeyCombo::simple(KeyCode::Right)],
+            vec![
+                KeyCombo::simple(KeyCode::Right),
+                KeyCombo::simple(KeyCode::Char('l')),
+            ],
         );
         graph.insert(
             GraphAction::ZoomIn,
-            vec![KeyCombo::simple(KeyCode::Char('+'))],
+            vec![
+                KeyCombo::simple(KeyCode::Char('+')),
+                KeyCombo::ctrl(KeyCode::Char('j')),
+            ],
         );
         graph.insert(
             GraphAction::ZoomOut,
-            vec![KeyCombo::simple(KeyCode::Char('-'))],
+            vec![
+                KeyCombo::simple(KeyCode::Char('-')),
+                KeyCombo::ctrl(KeyCode::Char('k')),
+            ],
         );
         graph.insert(
             GraphAction::OpenNote,
