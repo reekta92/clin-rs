@@ -1,8 +1,6 @@
 <div align="center">
 <img width="512" height="512" alt="clin logo" src="https://github.com/user-attachments/assets/80248532-f055-4b8e-beda-1a3eaafbd0ba" />
-</div>
-
-# **clin - Your notes. Encrypted. Instant. Private. Simple.**  
+</div>  
 
 # **clin is not a text editor!**
 
