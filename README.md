@@ -8,6 +8,10 @@
 
 ---
 
+`clin-rs` is a TUI reimagination of Obsidian. It is goal is to provide a feature complete note management tool like Obsidian does but as a TUI rather than a GUI.
+
+---
+
 ## Highlights
 - **Notes view** with folders, tags, preview pane, filtering, searching and file management(copy, paste, delete, write).
 - **Editor view** with built in very simple text editor with mouse support and support for **external editors**.
