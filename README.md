@@ -90,9 +90,187 @@
 
 ### config.toml example
 
+```toml
+# Custom vault storage path (default: ~/.local/share/clin)
+# storage_path = "/path/to/your/vault"
+
+# Previous storage path, used for migration (cleared after successful migration)
+# previous_storage_path = "/old/vault/path"
+
+# External editor command (e.g. "nvim", "code", "nano")
+# external_editor = "nvim"
+# external_editor_enabled = false
+
+# Show the preview pane by default
+# preview_enabled = true
+
+# Show the markdown preview panel in the editor by default
+# markdown_preview_enabled = false
+
+# How node labels are displayed in the graph view
+# Options: "selected" (default), "neighbors", "all"
+# graph_label_mode = "selected"
+```
+
 ### keybinds.toml example
 
+```toml
+# List view keybinds
+[list]
+move_up = ["Up", "k"]
+move_down = ["Down", "j"]
+open = ["Enter"]
+delete = ["d", "Delete"]
+quit = ["q"]
+help = ["?", "F1"]
+open_location = ["f"]
+cycle_focus = ["Tab"]
+confirm = ["y", "Enter"]
+cancel = ["n", "Esc"]
+toggle_button = ["Enter", "Space"]
+new_from_template = ["t"]
+create_folder = ["n"]
+create_note = ["a"]
+rename_folder = ["r"]
+move_note = ["m"]
+manage_tags = ["."]
+filter_tags = ["/"]
+collapse_folder = ["h"]
+expand_folder = ["l"]
+open_command_palette = ["Ctrl+p", "Shift+Enter"]
+open_graph = ["Ctrl+g"]
+
+# QoL bindings
+rename = ["r"]
+duplicate = ["y"]
+toggle_pin = ["p"]
+cycle_sort = ["s"]
+search = ["Ctrl+f"]
+jump_to_top = ["Shift+G"]
+page_up = ["Ctrl+u"]
+page_down = ["Ctrl+d"]
+open_trash = ["Shift+T"]
+toggle_preview = ["Shift+P"]
+
+# Editor view keybinds
+[edit]
+quit = ["Ctrl+q"]
+back = ["Esc"]
+cycle_focus = ["Tab"]
+toggle_button = ["Enter", "Space"]
+select_all = ["Ctrl+a"]
+copy = ["Ctrl+c", "Ctrl+Insert"]
+cut = ["Ctrl+x", "Shift+Delete"]
+paste = ["Ctrl+v", "Shift+Insert"]
+undo = ["Ctrl+z"]
+redo = ["Ctrl+y", "Ctrl+Shift+z"]
+delete_word = ["Ctrl+Backspace"]
+delete_next_word = ["Ctrl+Delete"]
+move_to_top = ["Ctrl+Home"]
+move_to_bottom = ["Ctrl+End"]
+toggle_markdown_preview = ["Ctrl+p"]
+
+# Help view keybinds
+[help]
+close = ["Esc", "q", "?", "F1"]
+scroll_up = ["Up", "k"]
+scroll_down = ["Down", "j"]
+
+# Graph view keybinds
+[graph]
+quit = ["Esc"]
+pan_up = ["Up", "k"]
+pan_down = ["Down", "j"]
+pan_left = ["Left", "h"]
+pan_right = ["Right", "l"]
+zoom_in = ["+", "Ctrl+j"]
+zoom_out = ["-", "Ctrl+k"]
+open_note = ["Enter"]
+auto_fit = ["a"]
+help = ["?", "F1"]
+```
+
 ### graf.toml example
+
+```toml
+[visual]
+theme = "onedark"
+background = "transparent"
+node_color_mode = "folder"
+edge_color_mode = "uniform"
+label_mode = "selected"
+label_max_length = 20
+node_size = 2.0
+node_size_mode = "fixed"
+edge_thickness = 1
+show_legend = true
+show_grid = false
+show_minimap = false
+minimap_position = "top_right"
+minimap_width = 24
+minimap_height = 12
+canvas_marker = "braille"
+minimap_marker = "half_block"
+node_shape = "circle"
+label_offset = 4.0
+grid_divisions = 10
+
+# Color overrides (uncomment to customize)
+# [visual.colors]
+# node_color = "#ff6600"
+# edge_color = "#445566"
+# label_color = "#aabbcc"
+# selection_ring_color = "#ff00ff"
+# border_color = "#334455"
+# title_color = "#66ffcc"
+# grid_color = "#222233"
+# legend_text_color = "#ccddee"
+# status_bar_color = "#556677"
+# background_color = "#1a1a2e"
+
+[physics]
+ideal_distance = 80.0
+damping = 0.95
+max_iterations = 800
+gravity = 0.01
+cooling = true
+prevent_overlapping = true
+timestep = 0.016
+thread_sleep_ms = 16
+
+[interaction]
+double_click_ms = 300
+zoom_factor = 1.15
+drag_sensitivity = 1.0
+auto_fit_padding = 1.4
+drag_scale = 200.0
+
+[display]
+show_status_bar = true
+# status_format = "{files} files | {links} links | {selected}"
+border_style = "rounded"
+border_title = "graf"
+
+[filter]
+# exclude_tags = ["draft", "private"]
+# exclude_patterns = ["templates/", "private/"]
+min_links = 0
+max_nodes = 500
+
+[legend]
+position = "bottom_right"
+max_items = 10
+
+[search]
+max_results = 20
+max_visible = 10
+popup_width = 50
+popup_y = 3
+cursor_glyph = "▎"
+
+[editor]
+# command = "nano"
+```
 
 <FEATURES>
 
