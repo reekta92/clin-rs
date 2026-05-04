@@ -94,24 +94,24 @@ See the [full configuration reference](docs/CONFIG_REFERENCE.md) for all availab
 
 ```toml
 # Custom vault storage path (default: ~/.local/share/clin)
-# storage_path = "/path/to/your/vault"
+storage_path = "/path/to/your/vault"
 
 # Previous storage path, used for migration (cleared after successful migration)
-# previous_storage_path = "/old/vault/path"
+previous_storage_path = "/old/vault/path"
 
 # External editor command (e.g. "nvim", "code", "nano")
-# external_editor = "nvim"
-# external_editor_enabled = false
+external_editor = "nvim"
+external_editor_enabled = false
 
 # Show the preview pane by default
-# preview_enabled = true
+preview_enabled = true
 
 # Show the markdown preview panel in the editor by default
-# markdown_preview_enabled = false
+markdown_preview_enabled = false
 
 # How node labels are displayed in the graph view
 # Options: "selected" (default), "neighbors", "all"
-# graph_label_mode = "selected"
+graph_label_mode = "selected"
 ```
 
 ### keybinds.toml example
