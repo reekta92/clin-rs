@@ -2,166 +2,99 @@
 <img width="512" height="512" alt="clin logo" src="https://github.com/user-attachments/assets/80248532-f055-4b8e-beda-1a3eaafbd0ba" />
 </div>  
 
-# **clin is not a text editor!**
+# ****clin is not a text editor!****
 
 > `clin` was originally an app I made when I got into C. It was really rough and basic, so I decided to remake it in Rust with more features and an improved user experience to better fit your workflow!
 
 ---
 
 ## Highlights
--  Unicode glyphs, **requires a Nerd Font**
--  **ChaCha20-Poly1305** encryption (optional)
--  Binary `.clin` files
--  Full-screen TUI with list + editor + help + graph views
--  Mouse support + bracketed paste  
--  **Folders & Tags**  
--  **Continuous Auto-save** (with panic crash safety logic)
+- **Notes view** with folders, tags, preview pane, filtering, searching and file management(copy, paste, delete, write).
+- **Editor view** with built in very simple text editor with mouse support and support for **external editors**.
+ - Built in editor is a **placeholder** and it will be reworked in the future.
 
-## Future Plans
-### Configuration & Customization
+- **Interactable graph view** via `graf` for markdown files which works with wikilinks or tags.
+- **Command palette** for more advanced actions, currently has **OCR** with `tesseract`, encrypt/decrypt and graph view.
+ - Some features in the command palette will later be implemented in the reworked editor view for allowing users to use them in **any editor** or any cursor location.
 
-* [ ] **Smart folders:** Automatic movement of specific tagged notes to specific folders.
-* [x] **Custom storage path:** Change where the encrypted vault lives.
-* [x] **User-defined templates:** Boilerplate for new notes.
-* [x] **Custom keybinds:** Remap controls to fit the user's workflow.
-* [ ] **Git integration:** Automate backups and versioning via Git.
+- **Encryption** with ChaCha20-Poly1305, works completely on demand with encrypt/decrypt options.
 
----
+## Roadmap
 
-### Editor Enhancements
+### Notes View
+- [X] **Folders & tags:** folder management and assigning tags to notes.
+- [X] **Searching & sorting & pinning:** search, filter by date, name etc. and pin notes at top.
+- [ ] **Text search:** search for strings using `grep` or `ripgrep`.
+- [ ] **Smart folders:** automatically move specific tagged notes to their specific folder.
+- [ ] **Word & character metrics:** visual meter for how many words written or setup personal goals for word counts for a time period.
+- [ ] **Batch tagging:** tag multiple lines at once.
+- [ ] **Better template management:** better and easier to use template popup with more features.
+- [X] **Markdown preview pane:** render markdown files with `glow` as a preview pane.
 
-* [ ] **Word & Character metrics:** Real-time word counts and progress goals.
-* [ ] **Status line customization:** Flexible `status_format = "{title} | {word_count} words | {encryption_status}"`
-* [X] **External editor support:** Opening notes in `nvim`, `helix`, etc.
-* [X] **Improved mouse support:** Right-click context menus within the editor.
+### Editor
+- [X] **External editor:** allow users to use their own editor instead of the built in one.
+- [X] **Improved mouse support:** right click context menu, proper selecting etc.
 
----
+### Graph View
+- [ ] **Date/time linking:** link the date/time of the note to the node for categorization.
 
-### Note Management & Navigation
-* [ ] **Batch Tagging:** Improve tag manager popup to batch tag multiple notes.
-* [ ] **Better Templates:** Improvements for templates popup with searching, easier template creation, setting up a default template to always use on new notes.
-* [x] **Folders & Tags:** Hierarchical and metadata-based organization.
-* [x] **Mouse Support:** Navigation and selection within the notes list.
-* [X] **Enhanced UI:** Sorting options, pinned notes, confirmation dialogs, and a preview pane.
-* [X] **Fast Search:** Immediate note discovery using the `fd` utility. (Implemented without `fd` for now.)
-* [X] **Asset management:** Icon rendering and assigning icons to specific notes. **DISCONTINUED Reason: implemented using unicode glyphs, users will be able to config their own glyphs via config.**
-* [X] **Data portability:** Easy backup/restore and text file importing by making encryption optional.
-
----
-
-### Integration & CLI Usage
-
-* [ ] **Pre-piping:** Routing notes through external tools for custom rendering.
-* [ ] **Markdown integration:** Markdown preview in preview pane and in editor mode as a seperate *markdown view* readonly mode. Using `glow` or alternatives.
-* [x] **Expanded CLI:** More argument options for command-line interactions.
-
----
+### Canvas
+- [ ] **Drawable canvas:** alternative to Obsidian's canvases; drawable, interactable, writable(inserting text) TUI area with it's own file format.
+ - [ ] **Obsidian canvas support:** try to import `.canvas` files from Obsidian.
 
 ### Command Palette
-* [X] **Command palette:** Implement command palette for doing special actions(OCR, graph view, back/forward-link checks etc. on notes.
-* [X] **OCR Paste:** Insert text from a copied image at clipboard into a note, should support external editors. Using `tesseract`.
-* [ ] **PDF to Text:** Insert PDF contents as `.md` format. Using `pdftotext` or `poppler`.
-* [ ] **Export as PDF:** Export as formatted PDF. Using `pandoc` or `weasyprint`.
-* [ ] **CSV to Table:** Insert CSV contents as `.md` table format.
-* [ ] **URL to Article:** Insert article containing URL's as `.md`. Using `ureq` or `html2md`.
-* [ ] **Linking Notes:** Link notes with `[[<note_name>]]`.
-* [ ] **Backlinks:** Related to **Linking notes**, allow for following backlinks. Using indexing caching.
-* [ ] **Forwardlinks:** Related to **Linking notes**, allow for following forward links.
-* [ ] **Sub-notes:** Orphan notes, creating virtual sub-notes that are attached to a note without physically existing on the disk. Using **backlinks**.
-* [x] **Graph View:** Visual graph of linked notes, related to **Linking notes**. Force-directed layout with `[[wikilinks]]`, pan/zoom, click-to-open.
-* [ ] **Insert Date/Time:** Insert date/time.
-* [ ] **Calculator:** Simple calculator, inserts the simple mathematical calculations result.
-* [ ] **Calendar Picker:** Calendar UI to pick and insert a specific date.
-* [ ] **Date/Time Calculator:** Inserts results of calculations like `now + 2 weeks` or `7 pm + 156 minutes` or `now -t 13.04.2028`(results the amount of days), also user defined dates i.e birthdays etc..
+- [X] **Command palette:** implement command palette for more advanced actions.
+ - [X] **OCR paste:** use `tesseract` for OCR processing of clipboard images into the note.
+ - [ ] **PDF to text/markdown:** import PDF files as text files, preferably markdown files with proper formatting.
+ - [ ] **Export as PDF:** export the note as a properly formatted PDF file.
+ - [ ] **CSV to markdown:** import CSV tables as markdown tables.
+ - [ ] **Import URL content:** import content from the article URL as formatted markdown file.
+ - [ ] **Linking notes:** create backlinks, forwardlinks between notes via [[note_name]] format.
+ - [ ] **Sub-notes:** create virtual notes which does not physically exists on the disk rather than store it as a encrypted file and assign it to physical notes.
+ - [ ] **Insert dynamic variables:** insert realtime values like date/time etc.
+ - [ ] **Advanced clipboard:** allow for copying/pasting multiple selections at once.
+ - [ ] **Merge notes:** merge 2 or more notes into one by appending them to before after the target note.
+ - [ ] **Split notes:** split notes according to their markdown formatting like headers, paragraphs etc.
+ - [ ] **Redact sections:** redact specific selections like ████.
+ - [ ] **Common words:** show most used words in the note.
+
+### Configuration
+- [X] **Custom storage path:** allow users to set their own notes path.
+- [X] **User defined note templates:** allow users to create their own note templates(i.e diary, to do etc.) for quicker note taking.
+- [X] **Custom keybinds:** allow users to set their own keybinds.
+- [ ] **Status line customization:** allow users to customize the status line via preset variables, i.e `status_format = "{title} | {word_count} words | {encryption_status}"`
+
+### Other
+- [X] **Data portability:** make encryption on demand, allow external file import for markdowns.
+- [X] **CLI arguments:** allow for creating quick notes, read and write notes, config management, vault path management etc.
+- [ ] **Calculator:** basic calculator to insert the result.
+- [ ] **Date/time calculator:** a calculator for processing commands like `now + 2 weeks` or `7 pm + 156 minutes` or `now -t 13.04.2028` results the amount of days.
 * [ ] **Timezone Converter:** Inserts the converted timezone i.e `UTC+3 -> GMT+3`.
-* [ ] **Date/Time Linking:** Link the date/time of the created note for **graph view**.
-* [ ] **Clipboard History:** Access clipboard items and allow for multi-pasting, formatting before pasting, pasting as plain text, pasting as code etc. **HIGH SECURITY AND PRIVACY CONCERN MIGHT BE DISCONTINUED.**
-* [ ] **Merge Notes:** Merge Two or more notes together.
-* [ ] **Split Notes:** Split notes according to headlines from `.md` format.
-* [ ] **Redact Paste:** Replace wanted sections of a text with ████ while pasting from clipboard.
-* [ ] **Tree Outline:** Show the note as a treeview with each root being a headling from `.md` format and notes being branches.
-* [ ] **Text Search:** Search for a specific text. Using `ripgrep` or `grep`.
-* [ ] **Common Words:** Extract most used words from a note.
+- [ ] **Tree outline:** show a tree structure showing headers as roots and notes/paragraphs as branches.
+- [ ] **Git integration:** for versioning the notes vault and backup.
+- [ ] **Beautify the UI:** use unicode glyphs, popups and user accessibility features to make the TUI/TUX better.
 
+### Experimental
+- [ ] **Pre/post piping notes:** allow for external tool piping onto notes.
+- [ ] **AOD pinning:** pin the note as a seperate window to show it over any other window.
+- [ ] **Plugin support:** scripting with Lua language.
+- [ ] **Steganography:** hide notes as other filetypes, completely for the fun.
 
-### Experimental & Advanced
-
-* [ ] **Canvas Alternative:** An alternative way to manage notes as canvases inspired by Obsidian.
-* [ ] **AOW Pinning:** Pin notes as a seperate window to always display on other windows.
-* [ ] **Lua Scripting:** Allowing users to write scripts to extend app functionality.
-* [ ] **Steganography:** Hiding encrypted vaults inside other file types.
-* [ ] **History:** Access change history of a note. Using `git2`, `crate`. **Will conflict with auto-save.**
 
 ---
-# Configuration
+## Configuration
 
-clin uses `~/.config/clin/config.toml` for app configuration and `~/.config/clin/keybinds.toml` for custom keybinds.
+`~/.config/clin/config.toml` -> main configuration file
+`~/.config/clin/keybinds.toml` -> keybind configuration file
+`~/.config/clin/graf.toml` -> graph view `graf` configuration file
 
-### App Configuration (`config.toml`)
-This file is generated automatically. You can edit it to change your settings:
-```toml
-storage_path = "/custom/path/to/vault" # Optional: Change where notes are stored
-external_editor = "nvim" # Optional: Command to use for the external editor
-external_editor_enabled = false
-```
+### config.toml example
 
-### Custom Keybinds (`keybinds.toml`)
-You can fully customize clin's keybindings! To get started, generate the default configuration using the CLI:
-```bash
-clin --export-keybinds > ~/.config/clin/keybinds.toml
-```
-Then, edit the file to change bindings for the list, editor, help, or graph menus.
+### keybinds.toml example
 
----
-# User Defined Templates
+### graf.toml example
 
-<img width="720" height="779" alt="templates" src="https://github.com/user-attachments/assets/8e10ac1f-e3ac-4d36-bba2-bc86a20eb18f" />
-
-Template popup can be accessed with the default `t` key.
-
-You can create your own templates in `~/.local/share/clin/templates` folder with `.toml` format to quickly use in your editor!
-Template format should simply be:
-```toml
-name = "<TEMPLATE_NAME>"
-[title]
-template = "<TEMPLATE_TITLE>"
-[content]
-template = """
-<TEMPLATE_CONTENT>
-```
-
-# Folders
-
-<img width="720" height="779" alt="folders" src="https://github.com/user-attachments/assets/84af3975-d895-4e44-870f-c3b99d0a8c5e" />
-
-You can move files in folders using the default `m` key via it's popup!
-
-# Tags
-
-<img width="720" height="779" alt="tags" src="https://github.com/user-attachments/assets/7f76c1af-1085-4450-afa0-c5f85042ad87" />
-
-You can add tags to the files using the default `.` key via it's popup!
-
-# Right-Click Context Menu
-
-<img width="720" height="779" alt="mouse_support" src="https://github.com/user-attachments/assets/2a604694-2e99-41b4-9e44-b1ef45d44db5" />
-
-In editor mode, right-click context menu has basic features such as `Copy`, `Paste`, `Cut`, `Select All`. For now system clipboard **doesn't** integrate with this system. This will be changed in the future as a config option!
-
-# Optional Encryption Using ChaCha20-Poly1305
-
-<img width="720" height="779" alt="encryption" src="https://github.com/user-attachments/assets/0b0627da-5530-48a1-b599-ab2c6affb382" />
-
-Encryption can be toggled with selecting it with `Tab` and pressing `Enter` to turn it on/off. 
-### Encryption ON
-- Created notes will be `.clin` files, encrypted and assigned to `[ENC]` tag(invisible when encryption is on).
-- When trying to open an unencrypted note (`[UENC]`), the app will require confirmation since it will **overwrite** the original file and encrypt it! This behaviour will be changed to create an encrypted copy of the original file instead, and it will be a config option to customize its behaviour.
-
-### Encryption OFF
-- Created notes will be `.md` files and assigned to `[UENC]` tag.
-- Encrypted notes will be shown with their `[ENC]` tag and they will be **inaccessible**.
-
----
+<FEATURES>
 
 ## Installation
 
@@ -254,3 +187,5 @@ TEMPLATES:
   --create-example-templates Create example templates
 
 ```
+
+---
