@@ -374,14 +374,14 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
             match item {
                 crate::app::VisualItem::Note { id, .. } => {
                     app.command_palette =
-                        Some(crate::palette::CommandPalette::new(Some(id.clone())));
+                        Some(crate::palette::CommandPalette::new(Some(id.clone()), &app.app_theme));
                 }
                 _ => {
-                    app.command_palette = Some(crate::palette::CommandPalette::new(None));
+                    app.command_palette = Some(crate::palette::CommandPalette::new(None, &app.app_theme));
                 }
             }
         } else {
-            app.command_palette = Some(crate::palette::CommandPalette::new(None));
+            app.command_palette = Some(crate::palette::CommandPalette::new(None, &app.app_theme));
         }
         return false;
     }

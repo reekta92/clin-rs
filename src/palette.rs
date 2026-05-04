@@ -18,12 +18,14 @@ pub struct CommandPalette {
 }
 
 impl CommandPalette {
-    pub fn new(context_note_id: Option<String>) -> Self {
+    pub fn new(context_note_id: Option<String>, theme: &crate::app_theme::AppThemeColors) -> Self {
         let mut input = TextArea::default();
         input.set_cursor_line_style(Style::default());
         input.set_placeholder_text("Search commands...");
+        input.set_style(theme.bg_style());
         input.set_block(
             Block::default()
+                .style(theme.bg_style())
                 .borders(Borders::ALL)
                 .title(" Command Palette "),
         );

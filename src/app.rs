@@ -1302,8 +1302,10 @@ impl App {
                 parent_path
             )
         };
+        input.set_style(self.app_theme.bg_style());
         input.set_block(
             ratatui::widgets::Block::default()
+                .style(self.app_theme.bg_style())
                 .borders(ratatui::widgets::Borders::ALL)
                 .title(title),
         );
@@ -1321,8 +1323,10 @@ impl App {
             }
             let mut input = TextArea::default();
             input.insert_str(path);
+            input.set_style(self.app_theme.bg_style());
             input.set_block(
                 ratatui::widgets::Block::default()
+                    .style(self.app_theme.bg_style())
                     .borders(ratatui::widgets::Borders::ALL)
                     .title("Rename Folder - Esc to cancel, Enter to save"),
             );
@@ -1492,6 +1496,7 @@ impl App {
             let all_tags = self.collect_live_tags();
 
             let mut input = TextArea::default();
+            input.set_style(self.app_theme.bg_style());
             input.insert_str(current_tags.join(", "));
 
             self.tag_popup = Some(TagPopup {
@@ -1657,6 +1662,7 @@ impl App {
     pub fn begin_filter_tags(&mut self) {
         let all_tags = self.collect_live_tags();
         let mut input = TextArea::default();
+        input.set_style(self.app_theme.bg_style());
         input.insert_str(self.filter_tags.join(", "));
 
         self.filter_popup = Some(FilterTagPopup {
@@ -1875,8 +1881,10 @@ impl App {
     /// Begin creating a new note in a specific folder
     pub fn begin_create_note_in_folder(&mut self, folder: String) {
         let mut input = TextArea::default();
+        input.set_style(self.app_theme.bg_style());
         input.set_block(
             ratatui::widgets::Block::default()
+                .style(self.app_theme.bg_style())
                 .borders(ratatui::widgets::Borders::ALL)
                 .title("New Note Name - Esc to cancel, Enter to create"),
         );
@@ -1904,8 +1912,10 @@ impl App {
             let note = &self.notes[summary_idx];
             let mut input = TextArea::default();
             input.insert_str(&note.title);
+            input.set_style(self.app_theme.bg_style());
             input.set_block(
                 ratatui::widgets::Block::default()
+                    .style(self.app_theme.bg_style())
                     .borders(ratatui::widgets::Borders::ALL)
                     .title("Rename Note - Esc to cancel, Enter to save"),
             );
@@ -2009,8 +2019,10 @@ impl App {
     /// Begin search/filter mode
     pub fn begin_search(&mut self) {
         let mut input = TextArea::default();
+        input.set_style(self.app_theme.bg_style());
         input.set_block(
             ratatui::widgets::Block::default()
+                .style(self.app_theme.bg_style())
                 .borders(ratatui::widgets::Borders::ALL)
                 .title("Search Notes - Esc to cancel, Enter to confirm"),
         );
