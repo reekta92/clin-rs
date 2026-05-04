@@ -88,6 +88,8 @@
 `~/.config/clin/keybinds.toml` -> keybind configuration file
 `~/.config/clin/graf.toml` -> graph view `graf` configuration file
 
+See the [full configuration reference](docs/CONFIG_REFERENCE.md) for all available options.
+
 ### config.toml example
 
 ```toml
