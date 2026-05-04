@@ -12,8 +12,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tui_textarea::*;
 
 pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
-    if let Some(bg) = app.app_theme.bg {
-        let block = Block::default().style(Style::default().bg(bg));
+    if let Some(_bg) = app.app_theme.bg {
+        let block = Block::default().style(app.app_theme.bg_style());
         frame.render_widget(block, frame.area());
     }
 
@@ -38,13 +38,13 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
 
     let help_text = app.get_help_text().clone();
     let help = Paragraph::new(help_text)
-        .block(Block::default().borders(Borders::ALL).title("Help"))
+        .block(Block::default().style(app.app_theme.bg_style()).borders(Borders::ALL).title("Help"))
         .wrap(Wrap { trim: false })
         .scroll((app.help_scroll, 0));
     frame.render_widget(help, chunks[0]);
 
     let footer = Paragraph::new(HELP_PAGE_HINTS)
-        .block(Block::default().borders(Borders::ALL).title("Navigation"));
+        .block(Block::default().style(app.app_theme.bg_style()).borders(Borders::ALL).title("Navigation"));
     frame.render_widget(footer, chunks[1]);
 }
 
@@ -300,7 +300,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         ),
         Span::raw("  encrypted terminal notes"),
     ]))
-    .block(Block::default().borders(Borders::ALL).title("Notes"));
+    .block(Block::default().style(app.app_theme.bg_style()).borders(Borders::ALL).title("Notes"));
     frame.render_widget(header, chunks[0]);
 
     // Split main area for preview if enabled
@@ -399,7 +399,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     }
 
     let list = List::new(items)
-        .block(Block::default().borders(Borders::ALL).title("Select"))
+        .block(Block::default().style(app.app_theme.bg_style()).borders(Borders::ALL).title("Select"))
         .highlight_style(
             Style::default()
                 .fg(app.app_theme.highlight_fg)
@@ -417,8 +417,9 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             Some(renderer) if !renderer.is_pending() => {
                 let widget = crate::markdown::ScrollablePseudoTerminal::new(renderer.screen())
                     .scroll_offset(renderer.scroll_offset())
+                    .theme_bg(app.app_theme.bg)
                     .block(
-                        Block::default()
+                        Block::default().style(app.app_theme.bg_style())
                             .borders(Borders::ALL)
                             .title("Preview (Shift+P to close)"),
                     );
@@ -428,7 +429,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 let loading = Paragraph::new("Rendering preview...")
                     .style(Style::default().fg(app.app_theme.muted))
                     .block(
-                        Block::default()
+                        Block::default().style(app.app_theme.bg_style())
                             .borders(Borders::ALL)
                             .title("Preview (Shift+P to close)"),
                     );
@@ -436,7 +437,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             }
             None => {
                 let placeholder = Paragraph::new("Select a note to preview").block(
-                    Block::default()
+                    Block::default().style(app.app_theme.bg_style())
                         .borders(Borders::ALL)
                         .title("Preview (Shift+P to close)"),
                 );
@@ -470,7 +471,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     ]);
 
     let footer =
-        Paragraph::new(footer_line).block(Block::default().borders(Borders::ALL).title("Help"));
+        Paragraph::new(footer_line).block(Block::default().style(app.app_theme.bg_style()).borders(Borders::ALL).title("Help"));
     frame.render_widget(footer, chunks[2]);
 
     // Draw template popup if open
@@ -497,7 +498,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             ])
             .split(popup_area);
 
-        let input_block = Block::default()
+        let input_block = Block::default().style(app.app_theme.bg_style())
             .borders(Borders::ALL)
             .title("Manage Tags (comma separated) - Tab: autocomplete, Enter: save, Esc: cancel");
         let input_inner = input_block.inner(chunks[0]);
@@ -519,7 +520,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             .collect();
 
         let suggestions_list = List::new(suggestion_items).block(
-            Block::default()
+            Block::default().style(app.app_theme.bg_style())
                 .borders(Borders::ALL)
                 .title("Suggestions (Tab: accept, Shift+D: delete)"),
         );
@@ -527,7 +528,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
 
         let tag_display = popup.all_tags.join("  •  ");
         let tags_paragraph = Paragraph::new(tag_display).wrap(Wrap { trim: true }).block(
-            Block::default()
+            Block::default().style(app.app_theme.bg_style())
                 .borders(Borders::ALL)
                 .title("All existing tags"),
         );
@@ -547,7 +548,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             ])
             .split(popup_area);
 
-        let input_block = Block::default().borders(Borders::ALL).title(
+        let input_block = Block::default().style(app.app_theme.bg_style()).borders(Borders::ALL).title(
             "Filter Tags (comma separated OR logic) - Tab: autocomplete, Enter: apply, Esc: cancel",
         );
         let input_inner = input_block.inner(chunks[0]);
@@ -569,7 +570,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             .collect();
 
         let suggestions_list = List::new(suggestion_items).block(
-            Block::default()
+            Block::default().style(app.app_theme.bg_style())
                 .borders(Borders::ALL)
                 .title("Suggestions (Tab to accept)"),
         );
@@ -577,7 +578,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
 
         let tag_display = popup.all_tags.join("  •  ");
         let tags_paragraph = Paragraph::new(tag_display).wrap(Wrap { trim: true }).block(
-            Block::default()
+            Block::default().style(app.app_theme.bg_style())
                 .borders(Borders::ALL)
                 .title("All existing tags"),
         );
@@ -608,7 +609,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         };
 
         let list = List::new(items)
-            .block(Block::default().borders(Borders::ALL).title(title))
+            .block(Block::default().style(app.app_theme.bg_style()).borders(Borders::ALL).title(title))
             .highlight_style(
                 Style::default()
                     .fg(app.app_theme.highlight_fg)
@@ -652,7 +653,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             .collect();
 
         let list = ratatui::widgets::List::new(items)
-            .block(Block::default().borders(Borders::ALL).title(" Commands "))
+            .block(Block::default().style(app.app_theme.bg_style()).borders(Borders::ALL).title(" Commands "))
             .highlight_style(Style::default().bg(app.app_theme.muted).fg(app.app_theme.fg))
             .highlight_symbol(">> ");
 
@@ -702,7 +703,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
 
         let list = List::new(items)
             .block(
-                Block::default()
+                Block::default().style(app.app_theme.bg_style())
                     .borders(Borders::ALL)
                     .title("Trash - r:restore d:delete E:empty q:close"),
             )
@@ -751,7 +752,7 @@ pub fn draw_template_popup(frame: &mut Frame, popup: &TemplatePopup, area: Rect,
 
     let list = List::new(items)
         .block(
-            Block::default()
+            Block::default().style(theme.bg_style())
                 .borders(Borders::ALL)
                 .title("Select Template (Enter to select, Esc to cancel)")
                 .border_style(Style::default().fg(theme.heading)),
@@ -783,7 +784,7 @@ pub fn draw_theme_popup(frame: &mut Frame, popup: &ThemePopup, area: Rect, theme
 
     let list = List::new(items)
         .block(
-            Block::default()
+            Block::default().style(theme.bg_style())
                 .borders(Borders::ALL)
                 .title("Select Theme (Enter to apply, Esc to cancel)")
                 .border_style(Style::default().fg(theme.heading)),
@@ -819,11 +820,12 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         Style::default()
     };
     app.title_editor.set_block(
-        Block::default()
+        Block::default().style(app.app_theme.bg_style())
             .borders(Borders::ALL)
             .border_style(title_border)
             .title("Title"),
     );
+    app.title_editor.set_style(app.app_theme.bg_style());
     frame.render_widget(&app.title_editor, chunks[0]);
 
     if get_title_text(&app.title_editor).is_empty() {
@@ -850,19 +852,21 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             Style::default()
         };
         app.editor.set_block(
-            Block::default()
+            Block::default().style(app.app_theme.bg_style())
                 .borders(Borders::ALL)
                 .border_style(body_border)
                 .title("Content"),
         );
+        app.editor.set_style(app.app_theme.bg_style());
         frame.render_widget(&app.editor, content_chunks[0]);
 
         match &app.md_preview_renderer {
             Some(renderer) if !renderer.is_pending() => {
                 let md_widget = crate::markdown::ScrollablePseudoTerminal::new(renderer.screen())
                     .scroll_offset(renderer.scroll_offset())
+                    .theme_bg(app.app_theme.bg)
                     .block(
-                        Block::default()
+                        Block::default().style(app.app_theme.bg_style())
                             .borders(Borders::ALL)
                             .border_style(Style::default().fg(app.app_theme.accent))
                             .title("Markdown Preview (Ctrl+P)"),
@@ -873,7 +877,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 let loading = Paragraph::new("Rendering preview...")
                     .style(Style::default().fg(app.app_theme.muted))
                     .block(
-                        Block::default()
+                        Block::default().style(app.app_theme.bg_style())
                             .borders(Borders::ALL)
                             .border_style(Style::default().fg(app.app_theme.accent))
                             .title("Markdown Preview (Ctrl+P)"),
@@ -882,7 +886,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             }
             None => {
                 let placeholder = Paragraph::new("Press Ctrl+P to render preview").block(
-                    Block::default()
+                    Block::default().style(app.app_theme.bg_style())
                         .borders(Borders::ALL)
                         .border_style(Style::default().fg(app.app_theme.accent))
                         .title("Markdown Preview (Ctrl+P)"),
@@ -897,11 +901,12 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             Style::default()
         };
         app.editor.set_block(
-            Block::default()
+            Block::default().style(app.app_theme.bg_style())
                 .borders(Borders::ALL)
                 .border_style(body_border)
                 .title("Content"),
         );
+        app.editor.set_style(app.app_theme.bg_style());
         frame.render_widget(&app.editor, chunks[1]);
     }
 
@@ -930,14 +935,14 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     ]);
 
     let status =
-        Paragraph::new(status_line).block(Block::default().borders(Borders::ALL).title("Help"));
+        Paragraph::new(status_line).block(Block::default().style(app.app_theme.bg_style()).borders(Borders::ALL).title("Help"));
     frame.render_widget(status, chunks[2]);
 
     if app.status.starts_with("Save failed") || app.status.starts_with("Could not open") {
         let popup = centered_rect(75, 20, area);
         frame.render_widget(Clear, popup);
         let text = Paragraph::new(app.status.as_ref())
-            .block(Block::default().borders(Borders::ALL).title("Error"))
+            .block(Block::default().style(app.app_theme.bg_style()).borders(Borders::ALL).title("Error"))
             .wrap(Wrap { trim: true });
         frame.render_widget(text, popup);
     }
@@ -950,7 +955,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             ListItem::new(" Select All "),
         ];
         let list = List::new(items)
-            .block(Block::default().borders(Borders::ALL))
+            .block(Block::default().style(app.app_theme.bg_style()).borders(Borders::ALL))
             .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
 
         let menu_area = Rect::new(menu.x, menu.y, 14, 6);
@@ -1030,7 +1035,7 @@ pub fn draw_confirm_popup(frame: &mut Frame, popup: &ConfirmPopup, area: Rect, t
         theme.heading
     };
 
-    let block = Block::default()
+    let block = Block::default().style(theme.bg_style())
         .borders(Borders::ALL)
         .border_style(Style::default().fg(border_color))
         .title(popup.title.as_str());

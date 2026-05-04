@@ -1,4 +1,4 @@
-use ratatui::style::Color;
+use ratatui::style::{Color, Style};
 use crate::graf::config::themes::theme_colors;
 use crate::graf::config::{Theme, Background};
 use crate::config::ThemeConfig;
@@ -99,5 +99,13 @@ impl AppThemeColors {
         }
 
         colors
+    }
+
+    /// Returns a Style with the theme's background color set, or a default Style if transparent.
+    pub fn bg_style(&self) -> Style {
+        match self.bg {
+            Some(bg) => Style::default().bg(bg),
+            None => Style::default(),
+        }
     }
 }

@@ -217,6 +217,7 @@ pub struct ScrollablePseudoTerminal<'a> {
     screen: &'a vt100::Screen,
     scroll_offset: u16,
     block: Option<Block<'a>>,
+    theme_bg: Option<Color>,
 }
 
 impl<'a> ScrollablePseudoTerminal<'a> {
@@ -225,6 +226,7 @@ impl<'a> ScrollablePseudoTerminal<'a> {
             screen,
             scroll_offset: 0,
             block: None,
+            theme_bg: None,
         }
     }
 
@@ -235,6 +237,11 @@ impl<'a> ScrollablePseudoTerminal<'a> {
 
     pub fn block(mut self, block: Block<'a>) -> Self {
         self.block = Some(block);
+        self
+    }
+
+    pub fn theme_bg(mut self, bg: Option<Color>) -> Self {
+        self.theme_bg = bg;
         self
     }
 }
@@ -280,7 +287,14 @@ impl Widget for ScrollablePseudoTerminal<'_> {
                     }
 
                     let fg = convert_color(screen_cell.fgcolor());
-                    let bg = convert_color(screen_cell.bgcolor());
+                    let bg = match screen_cell.bgcolor() {
+                        vt100::Color::Default => {
+                            // When glow doesn't set an explicit bg, use the theme bg
+                            // instead of Color::Reset which would override the themed background
+                            self.theme_bg.unwrap_or(Color::Reset)
+                        }
+                        other => convert_color(other),
+                    };
                     style = style.fg(fg).bg(bg);
 
                     let cell = &mut buf[(buf_col, buf_row)];
