@@ -3,12 +3,13 @@ use ratatui::Frame;
 
 use crate::graf::app::GrafAppState;
 use crate::graf::config::GrafConfig;
+use crate::keybinds::{GraphAction, Keybinds};
 
-pub fn draw_ui(frame: &mut Frame, state: &GrafAppState, config: &GrafConfig) {
+pub fn draw_ui(frame: &mut Frame, state: &GrafAppState, config: &GrafConfig, keybinds: &Keybinds) {
     let area = frame.area();
 
     if state.show_help {
-        draw_help(frame, area, config);
+        draw_help(frame, area, config, keybinds);
         return;
     }
 
@@ -107,29 +108,68 @@ fn suggest_fix(err: &str) -> Option<String> {
     None
 }
 
-fn draw_help(frame: &mut Frame, area: Rect, config: &GrafConfig) {
-    let help_text = vec![
-        "Keyboard",
-        "  Arrows      Navigate nodes",
-        "  +/-         Zoom in/out",
-        "  Enter       Open selected file",
-        "  a           Auto-fit view",
-        "  f           Search nodes",
-        "  Shift+m     Toggle minimap",
-        "  Shift+l     Toggle legend",
-        "  Shift+g     Toggle grid",
-        "  Shift+s     Toggle status bar",
-        "  r           Refresh simulation",
-        "  Ctrl+r      Reload config",
-        "  ?           Toggle help",
-        "  q/Esc       Quit",
-        "",
-        "Mouse",
-        "  Scroll    Zoom in/out",
-        "  Drag bg   Pan view",
-        "  Drag node Move node",
-        "  Click     Select node",
-        "  Dbl-click Open file",
+fn draw_help(frame: &mut Frame, area: Rect, config: &GrafConfig, keybinds: &Keybinds) {
+    let help_text: Vec<String> = vec![
+        "Keyboard".to_string(),
+        format!(
+            "  {:<12}Jump between nodes",
+            keybinds.graph_keys_display(GraphAction::PanUp)
+        ),
+        format!(
+            "  {:<12}Zoom in/out",
+            keybinds.graph_keys_display(GraphAction::ZoomIn)
+        ),
+        format!(
+            "  {:<12}Open selected file",
+            keybinds.graph_keys_display(GraphAction::OpenNote)
+        ),
+        format!(
+            "  {:<12}Auto-fit view",
+            keybinds.graph_keys_display(GraphAction::AutoFit)
+        ),
+        format!(
+            "  {:<12}Search nodes",
+            keybinds.graph_keys_display(GraphAction::ToggleSearch)
+        ),
+        format!(
+            "  {:<12}Toggle minimap",
+            keybinds.graph_keys_display(GraphAction::ToggleMinimap)
+        ),
+        format!(
+            "  {:<12}Toggle legend",
+            keybinds.graph_keys_display(GraphAction::ToggleLegend)
+        ),
+        format!(
+            "  {:<12}Toggle grid",
+            keybinds.graph_keys_display(GraphAction::ToggleGrid)
+        ),
+        format!(
+            "  {:<12}Toggle status bar",
+            keybinds.graph_keys_display(GraphAction::ToggleStatus)
+        ),
+        format!(
+            "  {:<12}Refresh simulation",
+            keybinds.graph_keys_display(GraphAction::Refresh)
+        ),
+        format!(
+            "  {:<12}Reload config",
+            keybinds.graph_keys_display(GraphAction::ReloadConfig)
+        ),
+        format!(
+            "  {:<12}Toggle help",
+            keybinds.graph_keys_display(GraphAction::Help)
+        ),
+        format!(
+            "  {:<12}Quit",
+            keybinds.graph_keys_display(GraphAction::Quit)
+        ),
+        "".to_string(),
+        "Mouse".to_string(),
+        "  Scroll    Zoom in/out".to_string(),
+        "  Drag bg   Pan view".to_string(),
+        "  Drag node Move node".to_string(),
+        "  Click     Select node".to_string(),
+        "  Dbl-click Open file".to_string(),
     ];
 
     let text: String = help_text.join("\n");
@@ -154,7 +194,13 @@ fn draw_help(frame: &mut Frame, area: Rect, config: &GrafConfig) {
     frame.render_widget(paragraph, help_area);
 }
 
-fn draw_search(frame: &mut Frame, area: Rect, state: &GrafAppState, config: &GrafConfig, colors: &crate::graf::config::ThemeColors) {
+fn draw_search(
+    frame: &mut Frame,
+    area: Rect,
+    state: &GrafAppState,
+    config: &GrafConfig,
+    colors: &crate::graf::config::ThemeColors,
+) {
     let max_visible = config.search.max_visible;
     let result_count = state.search_results.len();
     let visible_count = result_count.min(max_visible);
@@ -226,7 +272,8 @@ fn draw_search(frame: &mut Frame, area: Rect, state: &GrafAppState, config: &Gra
                 ratatui::style::Style::default().fg(colors.label_color)
             };
             let prefix = "  ";
-            let display = crate::graf::util::truncate(title, (popup_width as usize).saturating_sub(6));
+            let display =
+                crate::graf::util::truncate(title, (popup_width as usize).saturating_sub(6));
             lines.push(ratatui::text::Line::styled(
                 format!("{}{}", prefix, display),
                 style,
@@ -244,7 +291,12 @@ fn draw_search(frame: &mut Frame, area: Rect, state: &GrafAppState, config: &Gra
     frame.render_widget(paragraph, popup_area);
 }
 
-fn draw_reload_notification(frame: &mut Frame, area: Rect, msg: &str, colors: &crate::graf::config::ThemeColors) {
+fn draw_reload_notification(
+    frame: &mut Frame,
+    area: Rect,
+    msg: &str,
+    colors: &crate::graf::config::ThemeColors,
+) {
     let width = (msg.len() as u16 + 4).min(area.width);
     let height = 3u16;
     let x = (area.width.saturating_sub(width)) / 2;

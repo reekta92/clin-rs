@@ -730,7 +730,7 @@ fn run_app(
                 app.set_temporary_status_static("Created default graf config");
             }
 
-            match crate::graf::app::run_graf_view(terminal, app.storage.clone(), &mut config) {
+            match crate::graf::app::run_graf_view(terminal, app.storage.clone(), &mut config, &app.keybinds) {
                 Ok(Some(note_id)) => {
                     app.mode = ViewMode::List;
                     app.open_note_from_graph(&note_id);

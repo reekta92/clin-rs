@@ -274,6 +274,13 @@ pub enum GraphAction {
     OpenNote,
     AutoFit,
     Help,
+    ToggleSearch,
+    ToggleMinimap,
+    ToggleLegend,
+    ToggleGrid,
+    ToggleStatus,
+    Refresh,
+    ReloadConfig,
 }
 
 /// TOML representation of keybinds for serialization
@@ -588,6 +595,34 @@ impl Default for Keybinds {
                 KeyCombo::simple(KeyCode::F(1)),
             ],
         );
+        graph.insert(
+            GraphAction::ToggleSearch,
+            vec![KeyCombo::simple(KeyCode::Char('f'))],
+        );
+        graph.insert(
+            GraphAction::ToggleMinimap,
+            vec![KeyCombo::shift(KeyCode::Char('M'))],
+        );
+        graph.insert(
+            GraphAction::ToggleLegend,
+            vec![KeyCombo::shift(KeyCode::Char('L'))],
+        );
+        graph.insert(
+            GraphAction::ToggleGrid,
+            vec![KeyCombo::shift(KeyCode::Char('G'))],
+        );
+        graph.insert(
+            GraphAction::ToggleStatus,
+            vec![KeyCombo::shift(KeyCode::Char('S'))],
+        );
+        graph.insert(
+            GraphAction::Refresh,
+            vec![KeyCombo::simple(KeyCode::Char('r'))],
+        );
+        graph.insert(
+            GraphAction::ReloadConfig,
+            vec![KeyCombo::ctrl(KeyCode::Char('r'))],
+        );
 
         Self {
             list,
@@ -863,6 +898,13 @@ fn parse_graph_action(s: &str) -> Option<GraphAction> {
         "open_note" => Some(GraphAction::OpenNote),
         "auto_fit" => Some(GraphAction::AutoFit),
         "help" => Some(GraphAction::Help),
+        "toggle_search" => Some(GraphAction::ToggleSearch),
+        "toggle_minimap" => Some(GraphAction::ToggleMinimap),
+        "toggle_legend" => Some(GraphAction::ToggleLegend),
+        "toggle_grid" => Some(GraphAction::ToggleGrid),
+        "toggle_status" => Some(GraphAction::ToggleStatus),
+        "refresh" => Some(GraphAction::Refresh),
+        "reload_config" => Some(GraphAction::ReloadConfig),
         _ => None,
     }
 }
@@ -946,6 +988,13 @@ fn graph_action_to_string(action: GraphAction) -> &'static str {
         GraphAction::OpenNote => "open_note",
         GraphAction::AutoFit => "auto_fit",
         GraphAction::Help => "help",
+        GraphAction::ToggleSearch => "toggle_search",
+        GraphAction::ToggleMinimap => "toggle_minimap",
+        GraphAction::ToggleLegend => "toggle_legend",
+        GraphAction::ToggleGrid => "toggle_grid",
+        GraphAction::ToggleStatus => "toggle_status",
+        GraphAction::Refresh => "refresh",
+        GraphAction::ReloadConfig => "reload_config",
     }
 }
 

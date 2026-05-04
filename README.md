@@ -190,6 +190,13 @@ zoom_out = ["-", "Ctrl+k"]
 open_note = ["Enter"]
 auto_fit = ["a"]
 help = ["?", "F1"]
+toggle_search = ["f"]
+toggle_minimap = ["Shift+M"]
+toggle_legend = ["Shift+L"]
+toggle_grid = ["Shift+G"]
+toggle_status = ["Shift+S"]
+refresh = ["r"]
+reload_config = ["Ctrl+r"]
 ```
 
 ### graf.toml example

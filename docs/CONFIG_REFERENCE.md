@@ -97,15 +97,22 @@ Key combos are strings like `"a"`, `"Enter"`, `"Ctrl+q"`, `"Ctrl+Shift+z"`, `"Al
 | Action | Default Keys | Description |
 |---|---|---|
 | `quit` | `Esc` | Quit graph view |
-| `pan_up` | `Up`, `k` | Pan camera up |
-| `pan_down` | `Down`, `j` | Pan camera down |
-| `pan_left` | `Left`, `h` | Pan camera left |
-| `pan_right` | `Right`, `l` | Pan camera right |
+| `pan_up` | `Up`, `k` | Jump to node above |
+| `pan_down` | `Down`, `j` | Jump to node below |
+| `pan_left` | `Left`, `h` | Jump to node left |
+| `pan_right` | `Right`, `l` | Jump to node right |
 | `zoom_in` | `+`, `Ctrl+j` | Zoom in |
 | `zoom_out` | `-`, `Ctrl+k` | Zoom out |
 | `open_note` | `Enter` | Open selected note |
 | `auto_fit` | `a` | Auto-fit view to all nodes |
 | `help` | `?`, `F1` | Show help |
+| `toggle_search` | `f` | Toggle node search |
+| `toggle_minimap` | `Shift+M` | Toggle minimap |
+| `toggle_legend` | `Shift+L` | Toggle legend |
+| `toggle_grid` | `Shift+G` | Toggle grid |
+| `toggle_status` | `Shift+S` | Toggle status bar |
+| `refresh` | `r` | Refresh simulation |
+| `reload_config` | `Ctrl+r` | Reload config file |
 
 ---
 

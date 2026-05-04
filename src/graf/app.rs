@@ -5,6 +5,7 @@ use fdg_sim::petgraph::graph::NodeIndex;
 
 use crate::graf::config::GrafConfig;
 use crate::graph::input::GraphMouseState;
+use crate::keybinds::Keybinds;
 use crate::storage::Storage;
 
 pub struct GrafAppState {
@@ -63,7 +64,6 @@ impl GrafAppState {
             crate::graph::physics::start_physics(state.clone(), config, kill_rx);
             self.graph_state = Some(state);
             self.graph_kill_tx = Some(kill_tx);
-            // Clear search state — old NodeIndex values are invalid in the new graph
             self.search_results.clear();
             self.search_selected = 0;
         }
@@ -86,6 +86,7 @@ pub fn run_graf_view(
     terminal: &mut ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
     storage: crate::storage::Storage,
     config: &mut crate::graf::config::GrafConfig,
+    keybinds: &Keybinds,
 ) -> anyhow::Result<Option<String>> {
     let mut app_state = GrafAppState::new(config, storage, vec![])?;
     let mut running = true;
@@ -93,13 +94,13 @@ pub fn run_graf_view(
 
     while running {
         terminal.draw(|frame| {
-            crate::graf::ui::draw_ui(frame, &app_state, config);
+            crate::graf::ui::draw_ui(frame, &app_state, config, keybinds);
         })?;
 
         if crossterm::event::poll(std::time::Duration::from_millis(16))? {
             loop {
                 let ev = crossterm::event::read()?;
-                if let Some(action) = handle_event(ev, &mut app_state, config, terminal)? {
+                if let Some(action) = handle_event(ev, &mut app_state, config, keybinds, terminal)? {
                     match action {
                         EventAction::Quit => {
                             app_state.shutdown();
@@ -112,8 +113,7 @@ pub fn run_graf_view(
                         }
                     }
                 }
-                
-                // Break if we stopped running or if there are no more events immediately available
+
                 if !running || !crossterm::event::poll(std::time::Duration::from_millis(0))? {
                     break;
                 }
@@ -127,13 +127,14 @@ fn handle_event(
     ev: crossterm::event::Event,
     app_state: &mut GrafAppState,
     config: &crate::graf::config::GrafConfig,
+    keybinds: &Keybinds,
     terminal: &ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
 ) -> anyhow::Result<Option<EventAction>> {
     match ev {
         crossterm::event::Event::Key(key) => {
             if app_state.show_help {
-                if key.code == crossterm::event::KeyCode::Esc
-                    || key.code == crossterm::event::KeyCode::Char('?')
+                if keybinds.matches_graph(crate::keybinds::GraphAction::Quit, &key)
+                    || keybinds.matches_graph(crate::keybinds::GraphAction::Help, &key)
                 {
                     app_state.show_help = false;
                 }
@@ -146,44 +147,43 @@ fn handle_event(
             }
 
             if let Some(graph_state) = &app_state.graph_state
-                && let Some(action) = crate::graph::input::handle_graph_keys(graph_state, key, config)
+                && let Some(action) = crate::graph::input::handle_graph_keys(graph_state, key, keybinds, config)
             {
-                use crate::graph::input::GraphAction;
+                use crate::graph::input::GraphInputAction;
                 match action {
-                    GraphAction::Quit => return Ok(Some(EventAction::Quit)),
-                    GraphAction::ToggleHelp => {
+                    GraphInputAction::Quit => return Ok(Some(EventAction::Quit)),
+                    GraphInputAction::ToggleHelp => {
                         app_state.show_help = true;
                         return Ok(None);
                     }
-                    GraphAction::ToggleSearch => {
+                    GraphInputAction::ToggleSearch => {
                         app_state.search_active = true;
                         return Ok(None);
                     }
-                    GraphAction::ToggleMinimap => {
+                    GraphInputAction::ToggleMinimap => {
                         app_state.show_minimap = !app_state.show_minimap;
                         return Ok(None);
                     }
-                    GraphAction::ToggleLegend => {
+                    GraphInputAction::ToggleLegend => {
                         app_state.show_legend = !app_state.show_legend;
                         return Ok(None);
                     }
-                    GraphAction::ToggleGrid => {
+                    GraphInputAction::ToggleGrid => {
                         app_state.show_grid = !app_state.show_grid;
                         return Ok(None);
                     }
-                    GraphAction::ToggleStatus => {
+                    GraphInputAction::ToggleStatus => {
                         app_state.show_status_bar = !app_state.show_status_bar;
                         return Ok(None);
                     }
-                    GraphAction::OpenFile(path) => {
+                    GraphInputAction::OpenFile(path) => {
                         return Ok(Some(EventAction::OpenFile(path)));
                     }
-                    GraphAction::Refresh => {
+                    GraphInputAction::Refresh => {
                         app_state.refresh_simulation(config);
                         return Ok(None);
                     }
-                    GraphAction::ReloadConfig => {
-                        // ignore config reload for now
+                    GraphInputAction::ReloadConfig => {
                         return Ok(None);
                     }
                 }
@@ -204,7 +204,8 @@ fn handle_event(
                     &mut app_state.graph_mouse_state,
                     config,
                 ) {
-                    if let crate::graph::input::GraphAction::OpenFile(path) = action {
+                    use crate::graph::input::GraphInputAction;
+                    if let GraphInputAction::OpenFile(path) = action {
                         return Ok(Some(EventAction::OpenFile(path)));
                     }
                 }
