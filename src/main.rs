@@ -1,4 +1,5 @@
 pub mod actions;
+pub mod app_theme;
 mod config;
 pub mod graf;
 pub mod constants;
@@ -730,13 +731,20 @@ fn run_app(
                 app.set_temporary_status_static("Created default graf config");
             }
 
+            let theme_name = app.app_theme_name();
+            if !theme_name.is_empty() {
+                config.visual.theme = theme_name.parse().unwrap_or_default();
+            }
+
             match crate::graf::app::run_graf_view(terminal, app.storage.clone(), &mut config, &app.keybinds) {
                 Ok(Some(note_id)) => {
                     app.mode = ViewMode::List;
+                    app.reload_theme();
                     app.open_note_from_graph(&note_id);
                 }
                 _ => {
                     app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
+                    app.reload_theme();
                 }
             }
             app.needs_full_redraw = true;

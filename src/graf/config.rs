@@ -7,7 +7,7 @@ use ratatui::style::Color;
 use serde::{Deserialize, Serialize};
 
 #[path = "themes.rs"]
-mod themes;
+pub mod themes;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]

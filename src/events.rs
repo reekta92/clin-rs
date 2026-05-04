@@ -242,6 +242,33 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
+    // Handle theme popup if open
+    if let Some(mut popup) = app.theme_popup.take() {
+        match key.code {
+            KeyCode::Up | KeyCode::Char('k') => {
+                popup.selected = popup.selected.saturating_sub(1);
+                app.theme_popup = Some(popup);
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                if popup.selected + 1 < popup.themes.len() {
+                    popup.selected += 1;
+                }
+                app.theme_popup = Some(popup);
+            }
+            KeyCode::Enter | KeyCode::Char('l') => {
+                app.theme_popup = Some(popup);
+                app.select_theme();
+            }
+            KeyCode::Esc | KeyCode::Char('h') => {
+                app.close_theme_popup();
+            }
+            _ => {
+                app.theme_popup = Some(popup);
+            }
+        }
+        return false;
+    }
+
     // Cycle focus with Tab
     if app.keybinds.matches_list(ListAction::CycleFocus, &key) {
         app.list_focus = match app.list_focus {

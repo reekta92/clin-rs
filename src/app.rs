@@ -67,6 +67,11 @@ pub struct TemplatePopup {
     pub selected: usize,
 }
 
+pub struct ThemePopup {
+    pub themes: Vec<String>,
+    pub selected: usize,
+}
+
 pub struct TagPopup {
     pub note_id: String,
     pub input: TextArea<'static>,
@@ -181,6 +186,7 @@ pub struct App {
     pub help_scroll: u16,
     pub context_menu: Option<ContextMenu>,
     pub template_popup: Option<TemplatePopup>,
+    pub theme_popup: Option<ThemePopup>,
     pub tag_popup: Option<TagPopup>,
     pub folder_popup: Option<FolderPopup>,
     pub folder_picker: Option<FolderPicker>,
@@ -208,6 +214,7 @@ pub struct App {
     pub last_g_press: Option<Instant>,
     pub page_size: usize,
     pub return_mode: Option<ViewMode>,
+    pub app_theme: crate::app_theme::AppThemeColors,
 }
 
 pub enum CliCommand {
@@ -244,6 +251,7 @@ impl App {
     pub fn new(storage: Storage) -> Result<Self> {
         let keybinds = storage.load_keybinds();
         let bootstrap_config = crate::config::BootstrapConfig::load().unwrap_or_default();
+        let app_theme = crate::app_theme::AppThemeColors::from_config(&bootstrap_config.theme);
 
         let mut app = Self {
             storage,
@@ -264,6 +272,7 @@ impl App {
             help_scroll: 0,
             context_menu: None,
             template_popup: None,
+            theme_popup: None,
             tag_popup: None,
             folder_popup: None,
             folder_picker: None,
@@ -289,6 +298,7 @@ impl App {
             last_g_press: None,
             page_size: 10,
             return_mode: None,
+            app_theme,
         };
         app.context_menu = None;
         app.template_popup = None;
@@ -1849,7 +1859,7 @@ impl App {
     /// Get cached help text, building it if necessary
     pub fn get_help_text(&mut self) -> &Text<'static> {
         if self.help_text_cache.is_none() {
-            self.help_text_cache = Some(help_page_text(&self.keybinds));
+            self.help_text_cache = Some(help_page_text(&self.keybinds, &self.app_theme));
         }
         self.help_text_cache.as_ref().unwrap()
     }
@@ -2292,6 +2302,55 @@ impl App {
             config.markdown_preview_enabled = self.markdown_preview_enabled;
             let _ = config.save();
         }
+    }
+
+    pub fn reload_theme(&mut self) {
+        let config = crate::config::BootstrapConfig::load().unwrap_or_default();
+        self.app_theme = crate::app_theme::AppThemeColors::from_config(&config.theme);
+        if self.mode == ViewMode::Help {
+            self.help_text_cache = Some(crate::ui::help_page_text(&self.keybinds, &self.app_theme));
+        }
+    }
+
+    pub fn begin_theme_selection(&mut self) {
+        let themes = vec![
+            "default".to_string(), "tokyonight".to_string(), "catppuccin_mocha".to_string(),
+            "onedark".to_string(), "gruvbox".to_string(), "dracula".to_string(),
+            "nord".to_string(), "rosepine".to_string(), "everforest".to_string(),
+            "kanagawa".to_string(), "solarized".to_string()
+        ];
+        
+        let config = crate::config::BootstrapConfig::load().unwrap_or_default();
+        let current = config.theme.theme.to_lowercase();
+        let selected = themes.iter().position(|t| t == &current).unwrap_or(0);
+
+        self.theme_popup = Some(ThemePopup {
+            themes,
+            selected,
+        });
+    }
+
+    pub fn select_theme(&mut self) {
+        if let Some(popup) = self.theme_popup.take() {
+            let next_theme = popup.themes[popup.selected].clone();
+            let mut config = crate::config::BootstrapConfig::load().unwrap_or_default();
+            config.theme.theme = next_theme.clone();
+            if let Err(e) = config.save() {
+                self.set_temporary_status(&format!("Failed to save theme: {}", e));
+                return;
+            }
+            self.reload_theme();
+            self.set_temporary_status(&format!("Theme set to: {}", next_theme));
+        }
+    }
+
+    pub fn close_theme_popup(&mut self) {
+        self.theme_popup = None;
+    }
+
+    pub fn app_theme_name(&self) -> String {
+        let config = crate::config::BootstrapConfig::load().unwrap_or_default();
+        config.theme.theme.clone()
     }
 }
 

@@ -25,6 +25,38 @@ pub enum GraphLabelMode {
     All,
 }
 
+/// Theme configuration for the main TUI views
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ThemeConfig {
+    /// Theme name: "tokyo_night", "catppuccin_mocha", "dracula", etc. (empty = default)
+    #[serde(default)]
+    pub theme: String,
+    /// Background mode: "transparent" or "solid" (empty = transparent)
+    #[serde(default)]
+    pub background: String,
+    /// Per-color hex overrides (e.g. "#7aa2f7")
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub accent: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub heading: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub success: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub destructive: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub muted: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub border: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tag: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub folder: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub background_color: Option<String>,
+}
+
 /// Bootstrap configuration loaded from ~/.config/clin/config.toml
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct BootstrapConfig {
@@ -48,6 +80,9 @@ pub struct BootstrapConfig {
     /// How node labels (titles) are displayed in the graph view
     #[serde(default)]
     pub graph_label_mode: GraphLabelMode,
+    /// Theme configuration for the main TUI
+    #[serde(default)]
+    pub theme: ThemeConfig,
 }
 
 fn default_preview_enabled() -> bool {
