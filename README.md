@@ -11,11 +11,11 @@
 ## Highlights
 - **Notes view** with folders, tags, preview pane, filtering, searching and file management(copy, paste, delete, write).
 - **Editor view** with built in very simple text editor with mouse support and support for **external editors**.
- - Built in editor is a **placeholder** and it will be reworked in the future.
+> - Built in editor is a **placeholder** and it will be reworked in the future.
 
 - **Interactable graph view** via `graf` for markdown files which works with wikilinks or tags.
 - **Command palette** for more advanced actions, currently has **OCR** with `tesseract`, encrypt/decrypt and graph view.
- - Some features in the command palette will later be implemented in the reworked editor view for allowing users to use them in **any editor** or any cursor location.
+> - Some features in the command palette will later be implemented in the reworked editor view for allowing users to use them in **any editor** or any cursor location.
 
 - **Encryption** with ChaCha20-Poly1305, works completely on demand with encrypt/decrypt options.
 
@@ -40,23 +40,23 @@
 
 ### Canvas
 - [ ] **Drawable canvas:** alternative to Obsidian's canvases; drawable, interactable, writable(inserting text) TUI area with it's own file format.
- - [ ] **Obsidian canvas support:** try to import `.canvas` files from Obsidian.
+> - [ ] **Obsidian canvas support:** try to import `.canvas` files from Obsidian.
 
 ### Command Palette
 - [X] **Command palette:** implement command palette for more advanced actions.
- - [X] **OCR paste:** use `tesseract` for OCR processing of clipboard images into the note.
- - [ ] **PDF to text/markdown:** import PDF files as text files, preferably markdown files with proper formatting.
- - [ ] **Export as PDF:** export the note as a properly formatted PDF file.
- - [ ] **CSV to markdown:** import CSV tables as markdown tables.
- - [ ] **Import URL content:** import content from the article URL as formatted markdown file.
- - [ ] **Linking notes:** create backlinks, forwardlinks between notes via [[note_name]] format.
- - [ ] **Sub-notes:** create virtual notes which does not physically exists on the disk rather than store it as a encrypted file and assign it to physical notes.
- - [ ] **Insert dynamic variables:** insert realtime values like date/time etc.
- - [ ] **Advanced clipboard:** allow for copying/pasting multiple selections at once.
- - [ ] **Merge notes:** merge 2 or more notes into one by appending them to before after the target note.
- - [ ] **Split notes:** split notes according to their markdown formatting like headers, paragraphs etc.
- - [ ] **Redact sections:** redact specific selections like ████.
- - [ ] **Common words:** show most used words in the note.
+- [X] **OCR paste:** use `tesseract` for OCR processing of clipboard images into the note.
+- [ ] **PDF to text/markdown:** import PDF files as text files, preferably markdown files with proper formatting.
+- [ ] **Export as PDF:** export the note as a properly formatted PDF file.
+- [ ] **CSV to markdown:** import CSV tables as markdown tables.
+- [ ] **Import URL content:** import content from the article URL as formatted markdown file.
+- [ ] **Linking notes:** create backlinks, forwardlinks between notes via [[note_name]] format.
+- [ ] **Sub-notes:** create virtual notes which does not physically exists on the disk rather than store it as a encrypted file and assign it to physical notes.
+- [ ] **Insert dynamic variables:** insert realtime values like date/time etc.
+- [ ] **Advanced clipboard:** allow for copying/pasting multiple selections at once.
+- [ ] **Merge notes:** merge 2 or more notes into one by appending them to before after the target note.
+- [ ] **Split notes:** split notes according to their markdown formatting like headers, paragraphs etc.
+- [ ] **Redact sections:** redact specific selections like ████.
+- [ ] **Common words:** show most used words in the note.
 
 ### Configuration
 - [X] **Custom storage path:** allow users to set their own notes path.
