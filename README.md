@@ -38,13 +38,24 @@
 ### Editor
 - [X] **External editor:** allow users to use their own editor instead of the built in one.
 - [X] **Improved mouse support:** right click context menu, proper selecting etc.
+- [ ] **Rework as side panel:** rework the editor view as a feature list side panel from command palette and the external editor pane.
+- [ ] **Cursor insert:** insert at the cursor location for related command palette features like OCR etc. 
 
-### Graph View
+### Graph View (graf)
+- [ ] **Help page improvements:** unify the view of help page with other parts of the app.
 - [ ] **Date/time linking:** link the date/time of the note to the node for categorization.
+- [ ] **Create links:** create wikilinks directly from the graph view via a popup. Should also allow for batch creating links.
+- [ ] **Assign tags:** assign tags directly from the graph view.
+- [ ] **Mouse right click:** right click context menu for actions like creating links, assigning tags etc.
 
 ### Canvas
 - [ ] **Drawable canvas:** alternative to Obsidian's canvases; drawable, interactable, writable(inserting text) TUI area with it's own file format.
 > - [ ] **Obsidian canvas support:** try to import `.canvas` files from Obsidian.
+- [ ] **Drawing:** mouse drawing similar to most paint style apps, same logic as the graph view.
+- [ ] **Insert shapes:** insert pre defined shapes like rectangles, circles etc.
+- [ ] **Link objects:** create links between objects.
+- [ ] **Grouping objects:** create groups to merge multiple objects as a one object.
+- [ ] **Insert note links:** insert note links into the drawing area as a object.
 
 ### Command Palette
 - [X] **Command palette:** implement command palette for more advanced actions.
