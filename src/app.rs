@@ -67,9 +67,19 @@ pub struct TemplatePopup {
     pub selected: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ThemePopupFocus {
+    ThemeList,
+    GeneralBg,
+    GraphBg,
+}
+
 pub struct ThemePopup {
     pub themes: Vec<String>,
     pub selected: usize,
+    pub focus: ThemePopupFocus,
+    pub general_is_solid: bool,
+    pub graph_is_solid: bool,
 }
 
 pub struct TagPopup {
@@ -2335,24 +2345,59 @@ impl App {
         let config = crate::config::BootstrapConfig::load().unwrap_or_default();
         let current = config.theme.theme.to_lowercase();
         let selected = themes.iter().position(|t| t == &current).unwrap_or(0);
+        let general_is_solid = config.theme.background == "solid";
+
+        let (graf_config, _, _) = crate::graf::config::GrafConfig::load_from_path(crate::graf::config::GrafConfig::config_path().ok());
+        let graph_is_solid = matches!(graf_config.visual.background, crate::graf::config::Background::Solid);
 
         self.theme_popup = Some(ThemePopup {
             themes,
             selected,
+            focus: ThemePopupFocus::ThemeList,
+            general_is_solid,
+            graph_is_solid,
         });
     }
 
     pub fn select_theme(&mut self) {
-        if let Some(popup) = self.theme_popup.take() {
-            let next_theme = popup.themes[popup.selected].clone();
-            let mut config = crate::config::BootstrapConfig::load().unwrap_or_default();
-            config.theme.theme = next_theme.clone();
-            if let Err(e) = config.save() {
-                self.set_temporary_status(&format!("Failed to save theme: {}", e));
-                return;
+        if let Some(mut popup) = self.theme_popup.take() {
+            match popup.focus {
+                ThemePopupFocus::ThemeList => {
+                    let next_theme = popup.themes[popup.selected].clone();
+                    let mut config = crate::config::BootstrapConfig::load().unwrap_or_default();
+                    config.theme.theme = next_theme.clone();
+                    if let Err(e) = config.save() {
+                        self.set_temporary_status(&format!("Failed to save theme: {}", e));
+                        return;
+                    }
+                    self.reload_theme();
+                    self.set_temporary_status(&format!("Theme set to: {}", next_theme));
+                    self.theme_popup = Some(popup);
+                }
+                ThemePopupFocus::GeneralBg => {
+                    popup.general_is_solid = !popup.general_is_solid;
+                    let mut config = crate::config::BootstrapConfig::load().unwrap_or_default();
+                    config.theme.background = if popup.general_is_solid { "solid" } else { "transparent" }.to_string();
+                    if let Err(e) = config.save() {
+                        self.set_temporary_status(&format!("Failed to save bg: {}", e));
+                    }
+                    self.reload_theme();
+                    self.theme_popup = Some(popup);
+                }
+                ThemePopupFocus::GraphBg => {
+                    popup.graph_is_solid = !popup.graph_is_solid;
+                    let (mut graf_config, _, _) = crate::graf::config::GrafConfig::load_from_path(crate::graf::config::GrafConfig::config_path().ok());
+                    graf_config.visual.background = if popup.graph_is_solid { 
+                        crate::graf::config::Background::Solid 
+                    } else { 
+                        crate::graf::config::Background::Transparent 
+                    };
+                    if let Err(e) = graf_config.save() {
+                        self.set_temporary_status(&format!("Failed to save graph bg: {}", e));
+                    }
+                    self.theme_popup = Some(popup);
+                }
             }
-            self.reload_theme();
-            self.set_temporary_status(&format!("Theme set to: {}", next_theme));
         }
     }
 

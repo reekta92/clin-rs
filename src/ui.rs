@@ -777,22 +777,37 @@ pub fn draw_template_popup(frame: &mut Frame, popup: &TemplatePopup, area: Rect,
 }
 
 pub fn draw_theme_popup(frame: &mut Frame, popup: &ThemePopup, area: Rect, theme: &crate::app_theme::AppThemeColors) {
-    let popup_area = centered_rect(40, 50, area);
-
+    let popup_area = centered_rect(40, 60, area);
     frame.render_widget(Clear, popup_area);
 
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Min(0),
+            Constraint::Length(3),
+            Constraint::Length(3),
+        ])
+        .split(popup_area);
+
+    // 1. Theme List
     let items: Vec<ListItem> = popup
         .themes
         .iter()
         .map(|t| ListItem::new(Line::from(Span::raw(t))))
         .collect();
 
+    let list_style = if popup.focus == crate::app::ThemePopupFocus::ThemeList {
+        Style::default().fg(theme.heading)
+    } else {
+        Style::default()
+    };
+
     let list = List::new(items)
         .block(
             Block::default().style(theme.bg_style())
                 .borders(Borders::ALL)
-                .title("Select Theme (Enter to apply, Esc to cancel)")
-                .border_style(Style::default().fg(theme.heading)),
+                .title(" Themes (Tab to navigate) ")
+                .border_style(list_style),
         )
         .highlight_style(
             Style::default()
@@ -804,8 +819,31 @@ pub fn draw_theme_popup(frame: &mut Frame, popup: &ThemePopup, area: Rect, theme
 
     let mut state = ListState::default();
     state.select(Some(popup.selected));
+    frame.render_stateful_widget(list, chunks[0], &mut state);
 
-    frame.render_stateful_widget(list, popup_area, &mut state);
+    // 2. General Background Button
+    let gen_label = if popup.general_is_solid { " [X] General Solid Bg " } else { " [ ] General Solid Bg " };
+    let gen_style = if popup.focus == crate::app::ThemePopupFocus::GeneralBg {
+        Style::default().fg(theme.highlight_fg).bg(theme.highlight_bg).add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(theme.fg).patch(theme.bg_style())
+    };
+    let gen_btn = Paragraph::new(gen_label)
+        .alignment(Alignment::Center)
+        .block(Block::default().borders(Borders::ALL).border_style(if popup.focus == crate::app::ThemePopupFocus::GeneralBg { Style::default().fg(theme.heading) } else { Style::default() }));
+    frame.render_widget(gen_btn.style(gen_style), chunks[1]);
+
+    // 3. Graph Background Button
+    let graph_label = if popup.graph_is_solid { " [X] Graph Solid Bg " } else { " [ ] Graph Solid Bg " };
+    let graph_style = if popup.focus == crate::app::ThemePopupFocus::GraphBg {
+        Style::default().fg(theme.highlight_fg).bg(theme.highlight_bg).add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(theme.fg).patch(theme.bg_style())
+    };
+    let graph_btn = Paragraph::new(graph_label)
+        .alignment(Alignment::Center)
+        .block(Block::default().borders(Borders::ALL).border_style(if popup.focus == crate::app::ThemePopupFocus::GraphBg { Style::default().fg(theme.heading) } else { Style::default() }));
+    frame.render_widget(graph_btn.style(graph_style), chunks[2]);
 }
 
 pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {

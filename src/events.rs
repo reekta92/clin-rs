@@ -246,16 +246,48 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     if let Some(mut popup) = app.theme_popup.take() {
         match key.code {
             KeyCode::Up | KeyCode::Char('k') => {
-                popup.selected = popup.selected.saturating_sub(1);
-                app.theme_popup = Some(popup);
-            }
-            KeyCode::Down | KeyCode::Char('j') => {
-                if popup.selected + 1 < popup.themes.len() {
-                    popup.selected += 1;
+                match popup.focus {
+                    crate::app::ThemePopupFocus::ThemeList => {
+                        popup.selected = popup.selected.saturating_sub(1);
+                    }
+                    crate::app::ThemePopupFocus::GeneralBg => {
+                        popup.focus = crate::app::ThemePopupFocus::ThemeList;
+                        popup.selected = popup.themes.len().saturating_sub(1);
+                    }
+                    crate::app::ThemePopupFocus::GraphBg => {
+                        popup.focus = crate::app::ThemePopupFocus::GeneralBg;
+                    }
                 }
                 app.theme_popup = Some(popup);
             }
-            KeyCode::Enter | KeyCode::Char('l') => {
+            KeyCode::Down | KeyCode::Char('j') => {
+                match popup.focus {
+                    crate::app::ThemePopupFocus::ThemeList => {
+                        if popup.selected + 1 < popup.themes.len() {
+                            popup.selected += 1;
+                        } else {
+                            popup.focus = crate::app::ThemePopupFocus::GeneralBg;
+                        }
+                    }
+                    crate::app::ThemePopupFocus::GeneralBg => {
+                        popup.focus = crate::app::ThemePopupFocus::GraphBg;
+                    }
+                    crate::app::ThemePopupFocus::GraphBg => {
+                        popup.focus = crate::app::ThemePopupFocus::ThemeList;
+                        popup.selected = 0;
+                    }
+                }
+                app.theme_popup = Some(popup);
+            }
+            KeyCode::Tab => {
+                match popup.focus {
+                    crate::app::ThemePopupFocus::ThemeList => popup.focus = crate::app::ThemePopupFocus::GeneralBg,
+                    crate::app::ThemePopupFocus::GeneralBg => popup.focus = crate::app::ThemePopupFocus::GraphBg,
+                    crate::app::ThemePopupFocus::GraphBg => popup.focus = crate::app::ThemePopupFocus::ThemeList,
+                }
+                app.theme_popup = Some(popup);
+            }
+            KeyCode::Enter | KeyCode::Char('l') | KeyCode::Char(' ') => {
                 app.theme_popup = Some(popup);
                 app.select_theme();
             }

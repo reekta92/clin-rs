@@ -750,6 +750,16 @@ impl GrafConfig {
         Ok(proj_dirs.config_dir().join("graf.toml"))
     }
 
+    pub fn save(&self) -> anyhow::Result<()> {
+        let path = Self::config_path()?;
+        if let Some(parent) = path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        let content = toml::to_string_pretty(self)?;
+        fs::write(path, content)?;
+        Ok(())
+    }
+
     pub fn theme_colors(&self) -> ThemeColors {
         let mut colors = themes::theme_colors(&self.visual.theme, self.visual.background.clone());
 
