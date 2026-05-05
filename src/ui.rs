@@ -654,7 +654,12 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
 
         let list = ratatui::widgets::List::new(items)
             .block(Block::default().style(app.app_theme.bg_style()).borders(Borders::ALL).title(" Commands "))
-            .highlight_style(Style::default().bg(app.app_theme.muted).fg(app.app_theme.fg))
+            .highlight_style(
+                Style::default()
+                    .fg(app.app_theme.highlight_fg)
+                    .bg(app.app_theme.highlight_bg)
+                    .add_modifier(Modifier::BOLD),
+            )
             .highlight_symbol(">> ");
 
         frame.render_stateful_widget(list, chunks[1], &mut palette.state);
@@ -1068,7 +1073,7 @@ pub fn draw_confirm_popup(frame: &mut Frame, popup: &ConfirmPopup, area: Rect, t
         // Confirm is selected
         let confirm = if popup.is_destructive {
             Style::default()
-                .fg(theme.fg)
+                .fg(theme.highlight_fg)
                 .bg(theme.destructive)
                 .add_modifier(Modifier::BOLD)
         } else {
@@ -1087,8 +1092,8 @@ pub fn draw_confirm_popup(frame: &mut Frame, popup: &ConfirmPopup, area: Rect, t
             Style::default().fg(theme.success).patch(theme.bg_style())
         };
         let cancel = Style::default()
-            .fg(theme.fg)
-            .bg(theme.muted)
+            .fg(theme.highlight_fg)
+            .bg(theme.highlight_bg)
             .add_modifier(Modifier::BOLD);
         (confirm, cancel)
     };

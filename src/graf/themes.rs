@@ -239,7 +239,16 @@ fn default_theme_colors(background: Background) -> ThemeColors {
     let reset = Color::Reset;
     let white = Color::White;
     ThemeColors {
-        node_colors: vec![gray; 8],
+        node_colors: vec![
+            Color::Cyan,
+            Color::Magenta,
+            Color::Blue,
+            Color::Yellow,
+            Color::Green,
+            Color::Red,
+            Color::LightCyan,
+            Color::LightMagenta,
+        ],
         edge_color: dark_gray,
         border_color: dark_gray,
         title_color: gray,
