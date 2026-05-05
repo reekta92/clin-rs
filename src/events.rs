@@ -521,7 +521,7 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
 
             if app.title_editor.input(Input::from(key)) && app.title_editor.lines().len() > 1 {
                 let normalized = get_title_text(&app.title_editor).replace(['\r', '\n'], " ");
-                app.title_editor = make_title_editor(&normalized);
+                app.title_editor = make_title_editor(&normalized, app.app_theme.highlight_fg, app.app_theme.highlight_bg);
             }
         }
         EditFocus::Body => {
@@ -959,13 +959,13 @@ pub fn handle_os_shortcuts(
     false
 }
 
-pub fn make_title_editor(initial: &str) -> TextArea<'static> {
+pub fn make_title_editor(initial: &str, highlight_fg: Color, highlight_bg: Color) -> TextArea<'static> {
     let mut title = if initial.is_empty() {
         TextArea::default()
     } else {
         TextArea::from([initial.to_string()])
     };
-    title.set_cursor_style(Style::default().fg(Color::Black).bg(Color::Cyan));
+    title.set_cursor_style(Style::default().fg(highlight_fg).bg(highlight_bg));
     title
 }
 

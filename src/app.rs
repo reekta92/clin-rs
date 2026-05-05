@@ -262,7 +262,7 @@ impl App {
             list_focus: ListFocus::Notes,
             mode: ViewMode::List,
             editing_id: None,
-            title_editor: make_title_editor(""),
+            title_editor: make_title_editor("", Color::Black, Color::Cyan), // Default theme for initial app state before theme load
             editor: TextArea::default(),
             external_editor_enabled: bootstrap_config.external_editor_enabled,
             external_editor: bootstrap_config.external_editor,
@@ -574,7 +574,7 @@ impl App {
     pub fn load_and_open_note(&mut self, note_id: &str) {
         if let Ok(note) = self.storage.load_note(note_id) {
             self.editing_id = Some(note_id.to_string());
-            self.title_editor = make_title_editor(&note.title);
+            self.title_editor = make_title_editor(&note.title, self.app_theme.highlight_fg, self.app_theme.highlight_bg);
             self.editor = text_area_from_content(&note.content);
             self.mode = ViewMode::Edit;
             self.status = Cow::Borrowed(EDIT_HELP_HINTS);
@@ -865,12 +865,12 @@ impl App {
 
         self.mode = ViewMode::Edit;
         self.editing_id = Some(new_id);
-        self.title_editor = make_title_editor("");
+        self.title_editor = make_title_editor("", self.app_theme.highlight_fg, self.app_theme.highlight_bg);
         self.editor = TextArea::default();
         self.editor
-            .set_cursor_style(Style::default().fg(Color::Black).bg(Color::Cyan));
+            .set_cursor_style(Style::default().fg(self.app_theme.highlight_fg).bg(self.app_theme.highlight_bg));
         self.editor
-            .set_cursor_line_style(Style::default().bg(Color::Rgb(32, 36, 44)));
+            .set_cursor_line_style(Style::default());
         self.set_default_status();
     }
 
@@ -896,12 +896,12 @@ impl App {
 
         self.mode = ViewMode::Edit;
         self.editing_id = Some(new_id);
-        self.title_editor = make_title_editor(&title);
+        self.title_editor = make_title_editor(&title, self.app_theme.highlight_fg, self.app_theme.highlight_bg);
         self.editor = TextArea::default();
         self.editor
-            .set_cursor_style(Style::default().fg(Color::Black).bg(Color::Cyan));
+            .set_cursor_style(Style::default().fg(self.app_theme.highlight_fg).bg(self.app_theme.highlight_bg));
         self.editor
-            .set_cursor_line_style(Style::default().bg(Color::Rgb(32, 36, 44)));
+            .set_cursor_line_style(Style::default());
         self.set_default_status();
     }
 
@@ -933,13 +933,13 @@ impl App {
         self.mode = ViewMode::Edit;
         self.editing_id = Some(new_id);
 
-        self.title_editor = make_title_editor(rendered.title.as_deref().unwrap_or(""));
+        self.title_editor = make_title_editor(rendered.title.as_deref().unwrap_or(""), self.app_theme.highlight_fg, self.app_theme.highlight_bg);
         self.editor = text_area_from_content(&rendered.content);
 
         self.editor
-            .set_cursor_style(Style::default().fg(Color::Black).bg(Color::Cyan));
+            .set_cursor_style(Style::default().fg(self.app_theme.highlight_fg).bg(self.app_theme.highlight_bg));
         self.editor
-            .set_cursor_line_style(Style::default().bg(Color::Rgb(32, 36, 44)));
+            .set_cursor_line_style(Style::default());
 
         self.set_default_status();
     }
@@ -974,13 +974,13 @@ impl App {
         self.mode = ViewMode::Edit;
         self.editing_id = Some(new_id);
 
-        self.title_editor = make_title_editor(&title);
+        self.title_editor = make_title_editor(&title, self.app_theme.highlight_fg, self.app_theme.highlight_bg);
         self.editor = text_area_from_content(&rendered.content);
 
         self.editor
-            .set_cursor_style(Style::default().fg(Color::Black).bg(Color::Cyan));
+            .set_cursor_style(Style::default().fg(self.app_theme.highlight_fg).bg(self.app_theme.highlight_bg));
         self.editor
-            .set_cursor_line_style(Style::default().bg(Color::Rgb(32, 36, 44)));
+            .set_cursor_line_style(Style::default());
 
         self.set_default_status();
     }
@@ -1060,7 +1060,7 @@ impl App {
     pub fn back_to_list(&mut self) {
         if let Some(return_to) = self.return_mode.take() {
             self.editing_id = None;
-            self.title_editor = make_title_editor("");
+            self.title_editor = make_title_editor("", self.app_theme.highlight_fg, self.app_theme.highlight_bg);
             self.editor = TextArea::default();
             self.confirm_popup = None;
             self.md_preview_renderer = None;
@@ -1071,7 +1071,7 @@ impl App {
         self.mode = ViewMode::List;
         self.editing_id = None;
         self.list_focus = ListFocus::Notes;
-        self.title_editor = make_title_editor("");
+        self.title_editor = make_title_editor("", self.app_theme.highlight_fg, self.app_theme.highlight_bg);
         self.editor = TextArea::default();
         self.confirm_popup = None;
         self.md_preview_renderer = None;

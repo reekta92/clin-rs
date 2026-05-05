@@ -1077,14 +1077,14 @@ pub fn draw_confirm_popup(frame: &mut Frame, popup: &ConfirmPopup, area: Rect, t
                 .bg(theme.success)
                 .add_modifier(Modifier::BOLD)
         };
-        let cancel = Style::default().fg(theme.muted).bg(Color::Black);
+        let cancel = Style::default().fg(theme.muted).patch(theme.bg_style());
         (confirm, cancel)
     } else {
         // Cancel is selected
         let confirm = if popup.is_destructive {
-            Style::default().fg(theme.destructive).bg(Color::Black)
+            Style::default().fg(theme.destructive).patch(theme.bg_style())
         } else {
-            Style::default().fg(theme.success).bg(Color::Black)
+            Style::default().fg(theme.success).patch(theme.bg_style())
         };
         let cancel = Style::default()
             .fg(theme.fg)
