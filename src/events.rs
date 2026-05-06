@@ -3,7 +3,7 @@ use crate::app::{App, EditFocus, ListFocus};
 use crate::keybinds::*;
 use crossterm::event::*;
 use ratatui::prelude::*;
-use tui_textarea::*;
+use ratatui_textarea::*;
 
 pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     if let Some(mut palette) = app.command_palette.take() {
@@ -27,7 +27,6 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
-    
     if let Some(mut popup) = app.note_create_popup.take() {
         if key.code == KeyCode::Esc {
             app.note_create_popup = None;
@@ -41,7 +40,6 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
-    
     if let Some(mut popup) = app.canvas_create_popup.take() {
         if key.code == KeyCode::Esc {
             app.canvas_create_popup = None;
@@ -55,7 +53,6 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
-    
     if let Some(mut popup) = app.folder_popup.take() {
         if key.code == KeyCode::Esc {
             app.folder_popup = None;
@@ -69,7 +66,6 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
-    
     if let Some(mut popup) = app.tag_popup.take() {
         if key.code == KeyCode::Esc {
             app.tag_popup = None;
@@ -98,7 +94,6 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
-    
     if let Some(mut popup) = app.filter_popup.take() {
         if key.code == KeyCode::Esc {
             app.cancel_filter_tags();
@@ -124,7 +119,6 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
-    
     if let Some(mut popup) = app.note_rename_popup.take() {
         if key.code == KeyCode::Esc {
             app.note_rename_popup = None;
@@ -138,7 +132,6 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
-    
     if let Some(mut popup) = app.search_popup.take() {
         if key.code == KeyCode::Esc {
             app.search_popup = Some(popup);
@@ -154,7 +147,6 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
-    
     if app.confirm_popup.is_some() {
         if key.code == KeyCode::Left || key.code == KeyCode::Char('h') {
             app.confirm_popup_select_confirm();
@@ -174,7 +166,6 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
-    
     if let Some(ref mut trash) = app.trash_view {
         match key.code {
             KeyCode::Up | KeyCode::Char('k') => {
@@ -202,7 +193,6 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
-    
     if let Some(mut picker) = app.folder_picker.take() {
         match key.code {
             KeyCode::Up | KeyCode::Char('k') => {
@@ -229,7 +219,6 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
-    
     if let Some(mut popup) = app.template_popup.take() {
         match key.code {
             KeyCode::Up | KeyCode::Char('k') => {
@@ -256,7 +245,6 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
-    
     if let Some(mut popup) = app.theme_popup.take() {
         match key.code {
             KeyCode::Up | KeyCode::Char('k') => {
@@ -295,9 +283,15 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
             }
             KeyCode::Tab => {
                 match popup.focus {
-                    crate::app::ThemePopupFocus::ThemeList => popup.focus = crate::app::ThemePopupFocus::GeneralBg,
-                    crate::app::ThemePopupFocus::GeneralBg => popup.focus = crate::app::ThemePopupFocus::GraphBg,
-                    crate::app::ThemePopupFocus::GraphBg => popup.focus = crate::app::ThemePopupFocus::ThemeList,
+                    crate::app::ThemePopupFocus::ThemeList => {
+                        popup.focus = crate::app::ThemePopupFocus::GeneralBg
+                    }
+                    crate::app::ThemePopupFocus::GeneralBg => {
+                        popup.focus = crate::app::ThemePopupFocus::GraphBg
+                    }
+                    crate::app::ThemePopupFocus::GraphBg => {
+                        popup.focus = crate::app::ThemePopupFocus::ThemeList
+                    }
                 }
                 app.theme_popup = Some(popup);
             }
@@ -315,7 +309,6 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
-    
     if app.keybinds.matches_list(ListAction::CycleFocus, &key) {
         app.list_focus = match app.list_focus {
             ListFocus::Notes => ListFocus::ExternalEditorToggle,
@@ -333,7 +326,6 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
-    
     if app.keybinds.matches_list(ListAction::Quit, &key) {
         return true;
     }
@@ -390,7 +382,6 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     if app.keybinds.matches_list(ListAction::RenameFolder, &key)
         || app.keybinds.matches_list(ListAction::Rename, &key)
     {
-        
         if let Some(item) = app.visual_list.get(app.visual_index) {
             match item {
                 crate::app::VisualItem::Folder { .. } => app.begin_rename_folder(),
@@ -419,11 +410,14 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         if let Some(item) = app.visual_list.get(app.visual_index) {
             match item {
                 crate::app::VisualItem::Note { id, .. } => {
-                    app.command_palette =
-                        Some(crate::palette::CommandPalette::new(Some(id.clone()), &app.app_theme));
+                    app.command_palette = Some(crate::palette::CommandPalette::new(
+                        Some(id.clone()),
+                        &app.app_theme,
+                    ));
                 }
                 _ => {
-                    app.command_palette = Some(crate::palette::CommandPalette::new(None, &app.app_theme));
+                    app.command_palette =
+                        Some(crate::palette::CommandPalette::new(None, &app.app_theme));
                 }
             }
         } else {
@@ -432,7 +426,6 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
-    
     if app.keybinds.matches_list(ListAction::Duplicate, &key) {
         app.duplicate_note();
         return false;
@@ -450,7 +443,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
     if app.keybinds.matches_list(ListAction::JumpToTop, &key) {
-        app.jump_to_bottom(); 
+        app.jump_to_bottom();
         return false;
     }
     if app.keybinds.matches_list(ListAction::PageUp, &key) {
@@ -478,7 +471,6 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
-    
     if key.code == KeyCode::Char('g') {
         if app.handle_g_press() {
             return false;
@@ -499,7 +491,6 @@ pub fn handle_help_keys(app: &mut App, key: KeyEvent) {
 }
 
 pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> bool {
-    
     if let Some(mut menu) = app.context_menu.take() {
         match key.code {
             KeyCode::Up => {
@@ -525,13 +516,11 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
         return false;
     }
 
-    
     if app.keybinds.matches_edit(EditAction::Quit, &key) {
         app.autosave();
         return true;
     }
 
-    
     if app.keybinds.matches_edit(EditAction::CycleFocus, &key) {
         *focus = match *focus {
             EditFocus::Title => EditFocus::Body,
@@ -541,7 +530,6 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
         return false;
     }
 
-    
     if app.keybinds.matches_edit(EditAction::Back, &key) {
         app.autosave();
         app.back_to_list();
@@ -549,7 +537,6 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
         return false;
     }
 
-    
     if app
         .keybinds
         .matches_edit(EditAction::ToggleMarkdownPreview, &key)
@@ -571,7 +558,11 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
 
             if app.title_editor.input(Input::from(key)) && app.title_editor.lines().len() > 1 {
                 let normalized = get_title_text(&app.title_editor).replace(['\r', '\n'], " ");
-                app.title_editor = make_title_editor(&normalized, app.app_theme.highlight_fg, app.app_theme.highlight_bg);
+                app.title_editor = make_title_editor(
+                    &normalized,
+                    app.app_theme.highlight_fg,
+                    app.app_theme.highlight_bg,
+                );
             }
         }
         EditFocus::Body => {
@@ -630,7 +621,6 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         list_area.height.saturating_sub(2),
     );
 
-    
     if app.preview_enabled {
         let main_chunks = Layout::default()
             .direction(Direction::Horizontal)
@@ -657,10 +647,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
     if mouse_event.kind == MouseEventKind::ScrollUp {
         let current = app.list_state.selected().unwrap_or(0);
         app.list_state.select(Some(current.saturating_sub(1)));
-        
-        
-        
-        
+
         handle_list_keys(app, KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
         return;
     }
@@ -680,7 +667,6 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
 
         if clicked_visual_index < app.visual_list.len() {
             if app.visual_index == clicked_visual_index {
-                
                 app.open_selected();
             } else {
                 app.visual_index = clicked_visual_index;
@@ -763,7 +749,6 @@ pub fn handle_edit_mouse(
     let (title_inner, body_inner) =
         edit_view_input_areas(terminal_area, app.markdown_preview_enabled);
 
-    
     if app.markdown_preview_enabled {
         if let Some(md_area) = edit_view_md_preview_area(terminal_area) {
             if contains_cell(md_area, mouse_event.column, mouse_event.row) {
@@ -870,9 +855,6 @@ pub fn move_textarea_cursor_to_mouse(
     let mut scroll_row = 0;
     let mut scroll_col = 0;
 
-    
-    
-    
     let debug_str = format!("{textarea:?}");
     if let Some(start) = debug_str.find("viewport: Viewport(") {
         let after_start = &debug_str[start + "viewport: Viewport(".len()..];
@@ -964,7 +946,6 @@ pub fn handle_os_shortcuts(
     textarea: &mut TextArea<'static>,
     key: KeyEvent,
 ) -> bool {
-    
     if keybinds.matches_edit(EditAction::SelectAll, &key) {
         textarea.select_all();
         return true;
@@ -1009,7 +990,11 @@ pub fn handle_os_shortcuts(
     false
 }
 
-pub fn make_title_editor(initial: &str, highlight_fg: Color, highlight_bg: Color) -> TextArea<'static> {
+pub fn make_title_editor(
+    initial: &str,
+    highlight_fg: Color,
+    highlight_bg: Color,
+) -> TextArea<'static> {
     let mut title = if initial.is_empty() {
         TextArea::default()
     } else {

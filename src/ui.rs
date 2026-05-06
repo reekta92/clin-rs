@@ -4,12 +4,12 @@ use crate::events::get_title_text;
 use crate::keybinds::*;
 use anyhow::{Context, Result};
 use ratatui::{prelude::*, widgets::*};
+use ratatui_textarea::*;
 use std::borrow::Cow;
 use std::path::Path;
 use std::process::Command;
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tui_textarea::*;
 
 pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     if let Some(_bg) = app.app_theme.bg {
@@ -39,18 +39,29 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
 
     let help_text = app.get_help_text().clone();
     let help = Paragraph::new(help_text)
-        .block(Block::default().style(app.app_theme.bg_style()).borders(Borders::ALL).title("Help"))
+        .block(
+            Block::default()
+                .style(app.app_theme.bg_style())
+                .borders(Borders::ALL)
+                .title("Help"),
+        )
         .wrap(Wrap { trim: false })
         .scroll((app.help_scroll, 0));
     frame.render_widget(help, chunks[0]);
 
-    let footer = Paragraph::new(HELP_PAGE_HINTS)
-        .block(Block::default().style(app.app_theme.bg_style()).borders(Borders::ALL).title("Navigation"));
+    let footer = Paragraph::new(HELP_PAGE_HINTS).block(
+        Block::default()
+            .style(app.app_theme.bg_style())
+            .borders(Borders::ALL)
+            .title("Navigation"),
+    );
     frame.render_widget(footer, chunks[1]);
 }
 
-pub fn help_page_text(keybinds: &Keybinds, theme: &crate::app_theme::AppThemeColors) -> Text<'static> {
-    
+pub fn help_page_text(
+    keybinds: &Keybinds,
+    theme: &crate::app_theme::AppThemeColors,
+) -> Text<'static> {
     let list_move = format!(
         "{}/{}",
         keybinds.list_keys_display(ListAction::MoveUp),
@@ -107,7 +118,11 @@ pub fn help_page_text(keybinds: &Keybinds, theme: &crate::app_theme::AppThemeCol
     lines.push(Line::from(""));
 
     lines.push(help_heading("󰋗", "Core Features", theme));
-    lines.extend(help_item_dyn("Encrypted local note files (.clin)", None, theme));
+    lines.extend(help_item_dyn(
+        "Encrypted local note files (.clin)",
+        None,
+        theme,
+    ));
     lines.extend(help_item_dyn(
         "In-terminal note list, full text editor, and continual auto-save",
         None,
@@ -115,11 +130,13 @@ pub fn help_page_text(keybinds: &Keybinds, theme: &crate::app_theme::AppThemeCol
     ));
     lines.extend(help_item_dyn(
         "Open note file location from notes view",
-        Some(&list_location), theme
+        Some(&list_location),
+        theme,
     ));
     lines.extend(help_item_dyn(
         "Delete selected note or folder",
-        Some(&list_delete), theme
+        Some(&list_delete),
+        theme,
     ));
     lines.push(Line::from(""));
 
@@ -127,7 +144,8 @@ pub fn help_page_text(keybinds: &Keybinds, theme: &crate::app_theme::AppThemeCol
     lines.extend(help_item_dyn("Move selection", Some(&list_move), theme));
     lines.extend(help_item_dyn(
         "Expand/Collapse folder",
-        Some(&list_expand_collapse), theme
+        Some(&list_expand_collapse),
+        theme,
     ));
     lines.extend(help_item_dyn(
         "Open selected folder, note, or create new",
@@ -136,34 +154,56 @@ pub fn help_page_text(keybinds: &Keybinds, theme: &crate::app_theme::AppThemeCol
     ));
     lines.extend(help_item_dyn(
         "Create new folder",
-        Some(&list_create_folder), theme
+        Some(&list_create_folder),
+        theme,
     ));
-    lines.extend(help_item_dyn("Rename folder", Some(&list_rename_folder), theme));
-    lines.extend(help_item_dyn("Move note or folder", Some(&list_move_note), theme));
-    lines.extend(help_item_dyn("Manage note tags", Some(&list_manage_tags), theme));
+    lines.extend(help_item_dyn(
+        "Rename folder",
+        Some(&list_rename_folder),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Move note or folder",
+        Some(&list_move_note),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Manage note tags",
+        Some(&list_manage_tags),
+        theme,
+    ));
     lines.extend(help_item_dyn("Filter tags", Some(&list_filter_tags), theme));
-    lines.extend(help_item_dyn("Delete note or folder", Some(&list_delete), theme));
+    lines.extend(help_item_dyn(
+        "Delete note or folder",
+        Some(&list_delete),
+        theme,
+    ));
     lines.extend(help_item_dyn(
         "Confirm / cancel delete",
-        Some("y/Enter / n/Esc"), theme
+        Some("y/Enter / n/Esc"),
+        theme,
     ));
     lines.extend(help_item_dyn(
         "Open selected note file location",
-        Some(&list_location), theme
+        Some(&list_location),
+        theme,
     ));
     lines.extend(help_item_dyn(
         "Change focus (notes list <-> buttons)",
-        Some(&list_focus), theme
+        Some(&list_focus),
+        theme,
     ));
     lines.extend(help_item_dyn(
         "Toggle Encryption from focused button",
-        Some("Enter/Space"), theme
+        Some("Enter/Space"),
+        theme,
     ));
     lines.extend(help_item_dyn("Open help", Some(&list_help), theme));
     lines.extend(help_item_dyn("Quit app", Some(&list_quit), theme));
     lines.extend(help_item_dyn(
         "New note from template",
-        Some(&list_template), theme
+        Some(&list_template),
+        theme,
     ));
     lines.push(Line::from(""));
 
@@ -175,7 +215,8 @@ pub fn help_page_text(keybinds: &Keybinds, theme: &crate::app_theme::AppThemeCol
     ));
     lines.extend(help_item_dyn(
         "Return to notes (continually auto-saved)",
-        Some(&edit_back), theme
+        Some(&edit_back),
+        theme,
     ));
     lines.extend(help_item_dyn("Save and quit", Some(&edit_quit), theme));
     lines.extend(help_item_dyn(
@@ -195,16 +236,22 @@ pub fn help_page_text(keybinds: &Keybinds, theme: &crate::app_theme::AppThemeCol
     ));
     lines.extend(help_item_dyn(
         "Toggle markdown preview",
-        Some(&edit_md_preview), theme
+        Some(&edit_md_preview),
+        theme,
     ));
     lines.push(Line::from(""));
 
     lines.push(help_heading("󰑃", "Templates", theme));
     lines.extend(help_item_dyn(
         "New note from template (in notes view)",
-        Some(&list_template), theme
+        Some(&list_template),
+        theme,
     ));
-    lines.extend(help_item_dyn("Cancel template selection", Some("Esc"), theme));
+    lines.extend(help_item_dyn(
+        "Cancel template selection",
+        Some("Esc"),
+        theme,
+    ));
     lines.push(Line::from(""));
 
     lines.push(help_heading("󰞋", "Help Page", theme));
@@ -215,15 +262,28 @@ pub fn help_page_text(keybinds: &Keybinds, theme: &crate::app_theme::AppThemeCol
     lines.push(help_heading("󰒓", "Configuration", theme));
     lines.extend(help_item_dyn(
         "Keybinds file: ~/.config/clin/keybinds.toml",
-        None, theme
+        None,
+        theme,
     ));
-    lines.extend(help_item_dyn("Templates dir: <storage>/templates/", None, theme));
-    lines.extend(help_item_dyn("Run 'clin --help' for CLI commands", None, theme));
+    lines.extend(help_item_dyn(
+        "Templates dir: <storage>/templates/",
+        None,
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Run 'clin --help' for CLI commands",
+        None,
+        theme,
+    ));
 
     Text::from(lines)
 }
 
-pub fn help_heading(icon: &'static str, title: &'static str, theme: &crate::app_theme::AppThemeColors) -> Line<'static> {
+pub fn help_heading(
+    icon: &'static str,
+    title: &'static str,
+    theme: &crate::app_theme::AppThemeColors,
+) -> Line<'static> {
     Line::from(vec![
         Span::styled(
             format!("{} ", icon),
@@ -254,7 +314,11 @@ fn format_keybind(key: &str) -> String {
     parts.join(" / ")
 }
 
-pub fn help_item_dyn(text: &str, key: Option<&str>, theme: &crate::app_theme::AppThemeColors) -> Vec<Line<'static>> {
+pub fn help_item_dyn(
+    text: &str,
+    key: Option<&str>,
+    theme: &crate::app_theme::AppThemeColors,
+) -> Vec<Line<'static>> {
     match key {
         Some(key) => {
             let formatted_key = format_keybind(key);
@@ -301,10 +365,14 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         ),
         Span::raw("  encrypted terminal notes"),
     ]))
-    .block(Block::default().style(app.app_theme.bg_style()).borders(Borders::ALL).title("Notes"));
+    .block(
+        Block::default()
+            .style(app.app_theme.bg_style())
+            .borders(Borders::ALL)
+            .title("Notes"),
+    );
     frame.render_widget(header, chunks[0]);
 
-    
     let (list_area, preview_area) = if app.preview_enabled {
         let main_chunks = Layout::default()
             .direction(Direction::Horizontal)
@@ -354,7 +422,6 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 spans.push(Span::raw(indent));
                 spans.push(Span::raw("  "));
 
-                
                 if summary.pinned {
                     spans.push(Span::styled(
                         "* ",
@@ -368,14 +435,18 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     text_style = text_style.fg(app.app_theme.muted);
                     spans.push(Span::styled(
                         "\u{f023} ",
-                        Style::default().fg(app.app_theme.destructive).add_modifier(Modifier::BOLD),
+                        Style::default()
+                            .fg(app.app_theme.destructive)
+                            .add_modifier(Modifier::BOLD),
                     ));
                 }
 
                 if *is_canvas {
                     spans.push(Span::styled(
-                        "\u{f1fc} ", 
-                        Style::default().fg(app.app_theme.success).add_modifier(Modifier::BOLD),
+                        "\u{f1fc} ",
+                        Style::default()
+                            .fg(app.app_theme.success)
+                            .add_modifier(Modifier::BOLD),
                     ));
                 }
 
@@ -383,7 +454,6 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     crate::sanitize::sanitize_for_terminal(summary.title.as_str());
                 spans.push(Span::styled(sanitized_title, text_style));
 
-                
                 for tag in &summary.tags {
                     spans.push(Span::raw(" "));
                     let sanitized_tag = crate::sanitize::sanitize_for_terminal(tag);
@@ -408,7 +478,12 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     }
 
     let list = List::new(items)
-        .block(Block::default().style(app.app_theme.bg_style()).borders(Borders::ALL).title("Select"))
+        .block(
+            Block::default()
+                .style(app.app_theme.bg_style())
+                .borders(Borders::ALL)
+                .title("Select"),
+        )
         .highlight_style(
             Style::default()
                 .fg(app.app_theme.highlight_fg)
@@ -420,7 +495,6 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     app.list_state.select(Some(app.visual_index));
     frame.render_stateful_widget(list, list_area, &mut app.list_state);
 
-    
     if let Some(preview_rect) = preview_area {
         match &app.preview_renderer {
             Some(renderer) if !renderer.is_pending() => {
@@ -428,7 +502,8 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     .scroll_offset(renderer.scroll_offset())
                     .theme_bg(app.app_theme.bg)
                     .block(
-                        Block::default().style(app.app_theme.bg_style())
+                        Block::default()
+                            .style(app.app_theme.bg_style())
                             .borders(Borders::ALL)
                             .title("Preview (Shift+P to close)"),
                     );
@@ -438,7 +513,8 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 let loading = Paragraph::new("Rendering preview...")
                     .style(Style::default().fg(app.app_theme.muted))
                     .block(
-                        Block::default().style(app.app_theme.bg_style())
+                        Block::default()
+                            .style(app.app_theme.bg_style())
                             .borders(Borders::ALL)
                             .title("Preview (Shift+P to close)"),
                     );
@@ -446,7 +522,8 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             }
             None => {
                 let placeholder = Paragraph::new("Select a note to preview").block(
-                    Block::default().style(app.app_theme.bg_style())
+                    Block::default()
+                        .style(app.app_theme.bg_style())
                         .borders(Borders::ALL)
                         .title("Preview (Shift+P to close)"),
                 );
@@ -470,7 +547,9 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             .fg(app.app_theme.success)
             .add_modifier(Modifier::BOLD)
     } else {
-        Style::default().fg(app.app_theme.destructive).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(app.app_theme.destructive)
+            .add_modifier(Modifier::BOLD)
     };
 
     let footer_line = Line::from(vec![
@@ -479,11 +558,14 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         Span::raw(crate::sanitize::sanitize_for_terminal(app.status.as_ref())),
     ]);
 
-    let footer =
-        Paragraph::new(footer_line).block(Block::default().style(app.app_theme.bg_style()).borders(Borders::ALL).title("Help"));
+    let footer = Paragraph::new(footer_line).block(
+        Block::default()
+            .style(app.app_theme.bg_style())
+            .borders(Borders::ALL)
+            .title("Help"),
+    );
     frame.render_widget(footer, chunks[2]);
 
-    
     if let Some(popup) = &app.template_popup {
         draw_template_popup(frame, popup, area, &app.app_theme);
     }
@@ -507,7 +589,8 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             ])
             .split(popup_area);
 
-        let input_block = Block::default().style(app.app_theme.bg_style())
+        let input_block = Block::default()
+            .style(app.app_theme.bg_style())
             .borders(Borders::ALL)
             .title("Manage Tags (comma separated) - Tab: autocomplete, Enter: save, Esc: cancel");
         let input_inner = input_block.inner(chunks[0]);
@@ -520,7 +603,9 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             .enumerate()
             .map(|(i, tag)| {
                 let style = if i == popup.suggestion_index {
-                    Style::default().fg(app.app_theme.highlight_fg).bg(app.app_theme.heading)
+                    Style::default()
+                        .fg(app.app_theme.highlight_fg)
+                        .bg(app.app_theme.heading)
                 } else {
                     Style::default()
                 };
@@ -529,7 +614,8 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             .collect();
 
         let suggestions_list = List::new(suggestion_items).block(
-            Block::default().style(app.app_theme.bg_style())
+            Block::default()
+                .style(app.app_theme.bg_style())
                 .borders(Borders::ALL)
                 .title("Suggestions (Tab: accept, Shift+D: delete)"),
         );
@@ -537,7 +623,8 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
 
         let tag_display = popup.all_tags.join("  •  ");
         let tags_paragraph = Paragraph::new(tag_display).wrap(Wrap { trim: true }).block(
-            Block::default().style(app.app_theme.bg_style())
+            Block::default()
+                .style(app.app_theme.bg_style())
                 .borders(Borders::ALL)
                 .title("All existing tags"),
         );
@@ -570,7 +657,9 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             .enumerate()
             .map(|(i, tag)| {
                 let style = if i == popup.suggestion_index {
-                    Style::default().fg(app.app_theme.highlight_fg).bg(app.app_theme.heading)
+                    Style::default()
+                        .fg(app.app_theme.highlight_fg)
+                        .bg(app.app_theme.heading)
                 } else {
                     Style::default()
                 };
@@ -579,7 +668,8 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             .collect();
 
         let suggestions_list = List::new(suggestion_items).block(
-            Block::default().style(app.app_theme.bg_style())
+            Block::default()
+                .style(app.app_theme.bg_style())
                 .borders(Borders::ALL)
                 .title("Suggestions (Tab to accept)"),
         );
@@ -587,7 +677,8 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
 
         let tag_display = popup.all_tags.join("  •  ");
         let tags_paragraph = Paragraph::new(tag_display).wrap(Wrap { trim: true }).block(
-            Block::default().style(app.app_theme.bg_style())
+            Block::default()
+                .style(app.app_theme.bg_style())
                 .borders(Borders::ALL)
                 .title("All existing tags"),
         );
@@ -618,7 +709,12 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         };
 
         let list = List::new(items)
-            .block(Block::default().style(app.app_theme.bg_style()).borders(Borders::ALL).title(title))
+            .block(
+                Block::default()
+                    .style(app.app_theme.bg_style())
+                    .borders(Borders::ALL)
+                    .title(title),
+            )
             .highlight_style(
                 Style::default()
                     .fg(app.app_theme.highlight_fg)
@@ -662,7 +758,12 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             .collect();
 
         let list = ratatui::widgets::List::new(items)
-            .block(Block::default().style(app.app_theme.bg_style()).borders(Borders::ALL).title(" Commands "))
+            .block(
+                Block::default()
+                    .style(app.app_theme.bg_style())
+                    .borders(Borders::ALL)
+                    .title(" Commands "),
+            )
             .highlight_style(
                 Style::default()
                     .fg(app.app_theme.highlight_fg)
@@ -674,37 +775,30 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         frame.render_stateful_widget(list, chunks[1], &mut palette.state);
     }
 
-    
-
-    
     if let Some(popup) = &mut app.note_rename_popup {
         let popup_area = centered_rect(50, 20, area);
         frame.render_widget(Clear, popup_area);
         frame.render_widget(&popup.input, popup_area);
     }
 
-    
     if let Some(popup) = &mut app.note_create_popup {
         let popup_area = centered_rect(50, 20, area);
         frame.render_widget(Clear, popup_area);
         frame.render_widget(&popup.input, popup_area);
     }
 
-    
     if let Some(popup) = &mut app.canvas_create_popup {
         let popup_area = centered_rect(50, 20, area);
         frame.render_widget(Clear, popup_area);
         frame.render_widget(&popup.input, popup_area);
     }
 
-    
     if let Some(popup) = &mut app.search_popup {
         let popup_area = centered_rect(50, 20, area);
         frame.render_widget(Clear, popup_area);
         frame.render_widget(&popup.input, popup_area);
     }
 
-    
     if let Some(trash) = &app.trash_view {
         let popup_area = centered_rect(70, 70, area);
         frame.render_widget(Clear, popup_area);
@@ -717,14 +811,18 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 let when = format_relative_time(item.time_deleted as u64);
                 ListItem::new(Line::from(vec![
                     Span::raw(name.to_string()),
-                    Span::styled(format!("  ({when})"), Style::default().fg(app.app_theme.muted)),
+                    Span::styled(
+                        format!("  ({when})"),
+                        Style::default().fg(app.app_theme.muted),
+                    ),
                 ]))
             })
             .collect();
 
         let list = List::new(items)
             .block(
-                Block::default().style(app.app_theme.bg_style())
+                Block::default()
+                    .style(app.app_theme.bg_style())
                     .borders(Borders::ALL)
                     .title("Trash - r:restore d:delete E:empty q:close"),
             )
@@ -742,21 +840,21 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         frame.render_stateful_widget(list, popup_area, &mut state);
     }
 
-    
-
     if let Some(popup) = &app.confirm_popup {
         draw_confirm_popup(frame, popup, area, &app.app_theme);
     }
 }
 
-pub fn draw_template_popup(frame: &mut Frame, popup: &TemplatePopup, area: Rect, theme: &crate::app_theme::AppThemeColors) {
-    
+pub fn draw_template_popup(
+    frame: &mut Frame,
+    popup: &TemplatePopup,
+    area: Rect,
+    theme: &crate::app_theme::AppThemeColors,
+) {
     let popup_area = centered_rect(60, 60, area);
 
-    
     frame.render_widget(Clear, popup_area);
 
-    
     let items: Vec<ListItem> = popup
         .templates
         .iter()
@@ -773,7 +871,8 @@ pub fn draw_template_popup(frame: &mut Frame, popup: &TemplatePopup, area: Rect,
 
     let list = List::new(items)
         .block(
-            Block::default().style(theme.bg_style())
+            Block::default()
+                .style(theme.bg_style())
                 .borders(Borders::ALL)
                 .title("Select Template (Enter to select, Esc to cancel)")
                 .border_style(Style::default().fg(theme.heading)),
@@ -792,7 +891,12 @@ pub fn draw_template_popup(frame: &mut Frame, popup: &TemplatePopup, area: Rect,
     frame.render_stateful_widget(list, popup_area, &mut state);
 }
 
-pub fn draw_theme_popup(frame: &mut Frame, popup: &ThemePopup, area: Rect, theme: &crate::app_theme::AppThemeColors) {
+pub fn draw_theme_popup(
+    frame: &mut Frame,
+    popup: &ThemePopup,
+    area: Rect,
+    theme: &crate::app_theme::AppThemeColors,
+) {
     let popup_area = centered_rect(40, 60, area);
     frame.render_widget(Clear, popup_area);
 
@@ -805,7 +909,6 @@ pub fn draw_theme_popup(frame: &mut Frame, popup: &ThemePopup, area: Rect, theme
         ])
         .split(popup_area);
 
-    
     let items: Vec<ListItem> = popup
         .themes
         .iter()
@@ -820,7 +923,8 @@ pub fn draw_theme_popup(frame: &mut Frame, popup: &ThemePopup, area: Rect, theme
 
     let list = List::new(items)
         .block(
-            Block::default().style(theme.bg_style())
+            Block::default()
+                .style(theme.bg_style())
                 .borders(Borders::ALL)
                 .title(" Themes (Tab to navigate) ")
                 .border_style(list_style),
@@ -837,28 +941,52 @@ pub fn draw_theme_popup(frame: &mut Frame, popup: &ThemePopup, area: Rect, theme
     state.select(Some(popup.selected));
     frame.render_stateful_widget(list, chunks[0], &mut state);
 
-    
-    let gen_label = if popup.general_is_solid { " [X] General Solid Bg " } else { " [ ] General Solid Bg " };
+    let gen_label = if popup.general_is_solid {
+        " [X] General Solid Bg "
+    } else {
+        " [ ] General Solid Bg "
+    };
     let gen_style = if popup.focus == crate::app::ThemePopupFocus::GeneralBg {
-        Style::default().fg(theme.highlight_fg).bg(theme.highlight_bg).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(theme.highlight_fg)
+            .bg(theme.highlight_bg)
+            .add_modifier(Modifier::BOLD)
     } else {
         Style::default().fg(theme.fg).patch(theme.bg_style())
     };
     let gen_btn = Paragraph::new(gen_label)
         .alignment(Alignment::Center)
-        .block(Block::default().borders(Borders::ALL).border_style(if popup.focus == crate::app::ThemePopupFocus::GeneralBg { Style::default().fg(theme.heading) } else { Style::default() }));
+        .block(Block::default().borders(Borders::ALL).border_style(
+            if popup.focus == crate::app::ThemePopupFocus::GeneralBg {
+                Style::default().fg(theme.heading)
+            } else {
+                Style::default()
+            },
+        ));
     frame.render_widget(gen_btn.style(gen_style), chunks[1]);
 
-    
-    let graph_label = if popup.graph_is_solid { " [X] Graph Solid Bg " } else { " [ ] Graph Solid Bg " };
+    let graph_label = if popup.graph_is_solid {
+        " [X] Graph Solid Bg "
+    } else {
+        " [ ] Graph Solid Bg "
+    };
     let graph_style = if popup.focus == crate::app::ThemePopupFocus::GraphBg {
-        Style::default().fg(theme.highlight_fg).bg(theme.highlight_bg).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(theme.highlight_fg)
+            .bg(theme.highlight_bg)
+            .add_modifier(Modifier::BOLD)
     } else {
         Style::default().fg(theme.fg).patch(theme.bg_style())
     };
     let graph_btn = Paragraph::new(graph_label)
         .alignment(Alignment::Center)
-        .block(Block::default().borders(Borders::ALL).border_style(if popup.focus == crate::app::ThemePopupFocus::GraphBg { Style::default().fg(theme.heading) } else { Style::default() }));
+        .block(Block::default().borders(Borders::ALL).border_style(
+            if popup.focus == crate::app::ThemePopupFocus::GraphBg {
+                Style::default().fg(theme.heading)
+            } else {
+                Style::default()
+            },
+        ));
     frame.render_widget(graph_btn.style(graph_style), chunks[2]);
 }
 
@@ -879,7 +1007,8 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         Style::default()
     };
     app.title_editor.set_block(
-        Block::default().style(app.app_theme.bg_style())
+        Block::default()
+            .style(app.app_theme.bg_style())
             .borders(Borders::ALL)
             .border_style(title_border)
             .title("Title"),
@@ -911,7 +1040,8 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             Style::default()
         };
         app.editor.set_block(
-            Block::default().style(app.app_theme.bg_style())
+            Block::default()
+                .style(app.app_theme.bg_style())
                 .borders(Borders::ALL)
                 .border_style(body_border)
                 .title("Content"),
@@ -925,7 +1055,8 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     .scroll_offset(renderer.scroll_offset())
                     .theme_bg(app.app_theme.bg)
                     .block(
-                        Block::default().style(app.app_theme.bg_style())
+                        Block::default()
+                            .style(app.app_theme.bg_style())
                             .borders(Borders::ALL)
                             .border_style(Style::default().fg(app.app_theme.accent))
                             .title("Markdown Preview (Ctrl+P)"),
@@ -936,7 +1067,8 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 let loading = Paragraph::new("Rendering preview...")
                     .style(Style::default().fg(app.app_theme.muted))
                     .block(
-                        Block::default().style(app.app_theme.bg_style())
+                        Block::default()
+                            .style(app.app_theme.bg_style())
                             .borders(Borders::ALL)
                             .border_style(Style::default().fg(app.app_theme.accent))
                             .title("Markdown Preview (Ctrl+P)"),
@@ -945,7 +1077,8 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             }
             None => {
                 let placeholder = Paragraph::new("Press Ctrl+P to render preview").block(
-                    Block::default().style(app.app_theme.bg_style())
+                    Block::default()
+                        .style(app.app_theme.bg_style())
                         .borders(Borders::ALL)
                         .border_style(Style::default().fg(app.app_theme.accent))
                         .title("Markdown Preview (Ctrl+P)"),
@@ -960,7 +1093,8 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             Style::default()
         };
         app.editor.set_block(
-            Block::default().style(app.app_theme.bg_style())
+            Block::default()
+                .style(app.app_theme.bg_style())
                 .borders(Borders::ALL)
                 .border_style(body_border)
                 .title("Content"),
@@ -984,7 +1118,9 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             .fg(app.app_theme.success)
             .add_modifier(Modifier::BOLD)
     } else {
-        Style::default().fg(app.app_theme.destructive).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(app.app_theme.destructive)
+            .add_modifier(Modifier::BOLD)
     };
 
     let status_line = Line::from(vec![
@@ -993,15 +1129,24 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         Span::raw(crate::sanitize::sanitize_for_terminal(app.status.as_ref())),
     ]);
 
-    let status =
-        Paragraph::new(status_line).block(Block::default().style(app.app_theme.bg_style()).borders(Borders::ALL).title("Help"));
+    let status = Paragraph::new(status_line).block(
+        Block::default()
+            .style(app.app_theme.bg_style())
+            .borders(Borders::ALL)
+            .title("Help"),
+    );
     frame.render_widget(status, chunks[2]);
 
     if app.status.starts_with("Save failed") || app.status.starts_with("Could not open") {
         let popup = centered_rect(75, 20, area);
         frame.render_widget(Clear, popup);
         let text = Paragraph::new(app.status.as_ref())
-            .block(Block::default().style(app.app_theme.bg_style()).borders(Borders::ALL).title("Error"))
+            .block(
+                Block::default()
+                    .style(app.app_theme.bg_style())
+                    .borders(Borders::ALL)
+                    .title("Error"),
+            )
             .wrap(Wrap { trim: true });
         frame.render_widget(text, popup);
     }
@@ -1014,7 +1159,11 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             ListItem::new(" Select All "),
         ];
         let list = List::new(items)
-            .block(Block::default().style(app.app_theme.bg_style()).borders(Borders::ALL))
+            .block(
+                Block::default()
+                    .style(app.app_theme.bg_style())
+                    .borders(Borders::ALL),
+            )
             .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
 
         let menu_area = Rect::new(menu.x, menu.y, 14, 6);
@@ -1084,7 +1233,12 @@ pub fn format_relative_time(unix_ts: u64) -> Cow<'static, str> {
     Cow::Owned(dt.format("%Y-%m-%d %H:%M").to_string())
 }
 
-pub fn draw_confirm_popup(frame: &mut Frame, popup: &ConfirmPopup, area: Rect, theme: &crate::app_theme::AppThemeColors) {
+pub fn draw_confirm_popup(
+    frame: &mut Frame,
+    popup: &ConfirmPopup,
+    area: Rect,
+    theme: &crate::app_theme::AppThemeColors,
+) {
     let popup_area = centered_rect(50, 30, area);
     frame.render_widget(Clear, popup_area);
 
@@ -1094,7 +1248,8 @@ pub fn draw_confirm_popup(frame: &mut Frame, popup: &ConfirmPopup, area: Rect, t
         theme.heading
     };
 
-    let block = Block::default().style(theme.bg_style())
+    let block = Block::default()
+        .style(theme.bg_style())
         .borders(Borders::ALL)
         .border_style(Style::default().fg(border_color))
         .title(popup.title.as_str());
@@ -1124,7 +1279,6 @@ pub fn draw_confirm_popup(frame: &mut Frame, popup: &ConfirmPopup, area: Rect, t
     }
 
     let (confirm_style, cancel_style) = if popup.selected_button == 0 {
-        
         let confirm = if popup.is_destructive {
             Style::default()
                 .fg(theme.highlight_fg)
@@ -1139,9 +1293,10 @@ pub fn draw_confirm_popup(frame: &mut Frame, popup: &ConfirmPopup, area: Rect, t
         let cancel = Style::default().fg(theme.muted).patch(theme.bg_style());
         (confirm, cancel)
     } else {
-        
         let confirm = if popup.is_destructive {
-            Style::default().fg(theme.destructive).patch(theme.bg_style())
+            Style::default()
+                .fg(theme.destructive)
+                .patch(theme.bg_style())
         } else {
             Style::default().fg(theme.success).patch(theme.bg_style())
         };
@@ -1174,7 +1329,6 @@ pub fn open_in_file_manager(path: &Path) -> Result<()> {
         anyhow::bail!("opening file manager is not supported on this platform")
     };
 
-    
     Command::new(command)
         .arg(path)
         .stdin(Stdio::null())

@@ -1,7 +1,7 @@
 use ratatui::style::Style;
 use ratatui::widgets::ListState;
 use ratatui::widgets::{Block, Borders};
-use tui_textarea::TextArea;
+use ratatui_textarea::TextArea;
 
 pub struct PaletteItem {
     pub id: String,
@@ -55,8 +55,8 @@ impl CommandPalette {
                 });
             }
         } else {
-            use fuzzy_matcher::FuzzyMatcher;
             use fuzzy_matcher::skim::SkimMatcherV2;
+            use fuzzy_matcher::FuzzyMatcher;
             let matcher = SkimMatcherV2::default();
             for action in actions {
                 if let Some(score) = matcher.fuzzy_match(&action.name, query) {
@@ -114,8 +114,6 @@ impl CommandPalette {
                 }
             }
             KeyCode::Enter => {
-                
-                
                 return true;
             }
             _ => {

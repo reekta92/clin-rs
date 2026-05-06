@@ -21,7 +21,7 @@ use crossterm::terminal::{
 };
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use tui_textarea::TextArea;
+use ratatui_textarea::TextArea;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ViewMode {

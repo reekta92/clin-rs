@@ -1,10 +1,10 @@
+use crate::canvas::input::handle_event;
+use crate::canvas::render::draw_canvas;
 use crate::canvas::state::{CanvasData, Viewport};
 use crate::keybinds::Keybinds;
-use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
+use ratatui::Terminal;
 use std::io::Stdout;
-use crate::canvas::render::draw_canvas;
-use crate::canvas::input::handle_event;
 
 pub enum EventAction {
     Quit,
@@ -13,7 +13,7 @@ pub enum EventAction {
 
 use ratatui::layout::Rect;
 
-use tui_textarea::TextArea;
+use ratatui_textarea::TextArea;
 use std::time::Instant;
 
 pub struct CanvasAppState {
@@ -26,7 +26,7 @@ pub struct CanvasAppState {
     pub current_stroke: Option<crate::canvas::state::Stroke>,
     pub last_area: Rect,
     pub last_mouse_pos: Option<(u16, u16)>,
-    pub text_editor: Option<(usize, TextArea<'static>)>, 
+    pub text_editor: Option<(usize, TextArea<'static>)>,
     pub last_click: Option<(u16, u16, Instant)>,
     pub theme: crate::app_theme::AppThemeColors,
     pub active_shape_type: crate::canvas::state::ShapeType,
@@ -91,7 +91,7 @@ pub fn run_canvas_view(
     theme: crate::app_theme::AppThemeColors,
 ) -> anyhow::Result<Option<String>> {
     let mut app_state = CanvasAppState::new(storage, file_id, theme);
-    
+
     while app_state.running {
         terminal.draw(|frame| {
             app_state.last_area = frame.area();
@@ -112,12 +112,14 @@ pub fn run_canvas_view(
                     }
                 }
 
-                if !app_state.running || !crossterm::event::poll(std::time::Duration::from_millis(0))? {
+                if !app_state.running
+                    || !crossterm::event::poll(std::time::Duration::from_millis(0))?
+                {
                     break;
                 }
             }
         }
     }
-    
+
     Ok(None)
 }
