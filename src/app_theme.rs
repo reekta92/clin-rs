@@ -79,12 +79,12 @@ impl AppThemeColors {
                 border: t.border_color,
                 tag: t.node_colors.get(1).copied().unwrap_or(Color::LightMagenta),
                 folder: t.node_colors.get(2).copied().unwrap_or(Color::Blue),
-                highlight_fg: t.background_color.unwrap_or(Color::Black), // inverted bg
+                highlight_fg: t.background_color.unwrap_or(Color::Black), 
                 highlight_bg: t.node_colors.get(0).copied().unwrap_or(Color::Cyan),
             }
         };
 
-        // Apply overrides
+        
         if let Some(c) = config.accent.as_ref().and_then(|h| Self::parse_hex(h)) { colors.accent = c; }
         if let Some(c) = config.heading.as_ref().and_then(|h| Self::parse_hex(h)) { colors.heading = c; }
         if let Some(c) = config.success.as_ref().and_then(|h| Self::parse_hex(h)) { colors.success = c; }
@@ -101,7 +101,7 @@ impl AppThemeColors {
         colors
     }
 
-    /// Returns a Style with the theme's background color set, or a default Style if transparent.
+    
     pub fn bg_style(&self) -> Style {
         match self.bg {
             Some(bg) => Style::default().bg(bg),

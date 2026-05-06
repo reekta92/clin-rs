@@ -842,7 +842,7 @@ impl GrafConfig {
         fmt.replace("{ratio}", &format!("{:.1}x", viewport_ratio.unwrap_or(1.0)))
     }
 
-    /// Validate config values, return vec of error msgs.
+    
     pub fn validate(&self) -> Vec<String> {
         let mut errs = Vec::new();
         if self.visual.label_max_length < 1 || self.visual.label_max_length > 60 {
@@ -869,7 +869,7 @@ impl GrafConfig {
                 self.interaction.zoom_factor
             ));
         }
-        // Warn if legend and minimap would overlap in the same corner
+        
         if self.visual.show_legend && self.visual.show_minimap {
             let same_corner = matches!(
                 (&self.legend.position, &self.visual.minimap_position),

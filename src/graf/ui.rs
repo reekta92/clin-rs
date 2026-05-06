@@ -18,7 +18,7 @@ pub fn draw_ui(frame: &mut Frame, state: &GrafAppState, config: &GrafConfig, key
         return;
     }
 
-    // Compute theme colors once for all drawing functions
+    
     let colors = config.theme_colors();
 
     if let Some(graph_state) = &state.graph_state {

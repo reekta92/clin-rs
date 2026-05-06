@@ -289,8 +289,8 @@ impl Widget for ScrollablePseudoTerminal<'_> {
                     let fg = convert_color(screen_cell.fgcolor());
                     let bg = match screen_cell.bgcolor() {
                         vt100::Color::Default => {
-                            // When glow doesn't set an explicit bg, use the theme bg
-                            // instead of Color::Reset which would override the themed background
+                            
+                            
                             self.theme_bg.unwrap_or(Color::Reset)
                         }
                         other => convert_color(other),

@@ -29,6 +29,7 @@ pub enum ViewMode {
     Edit,
     Help,
     Graph,
+    Canvas,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,7 +53,7 @@ pub struct ConfirmPopup {
     pub detail: Option<String>,
     pub confirm_label: String,
     pub is_destructive: bool,
-    pub selected_button: usize, // 0 = Confirm, 1 = Cancel
+    pub selected_button: usize, 
 }
 
 pub struct ContextMenu {
@@ -61,7 +62,7 @@ pub struct ContextMenu {
     pub selected: usize,
 }
 
-/// Template selection popup state
+
 pub struct TemplatePopup {
     pub templates: Vec<TemplateSummary>,
     pub selected: usize,
@@ -118,39 +119,39 @@ pub struct FolderPicker {
     pub selected: usize,
 }
 
-/// Note rename popup state
+
 pub struct NoteRenamePopup {
     pub note_id: String,
     pub input: TextArea<'static>,
 }
 
-/// Note create popup state
+
 pub struct NoteCreatePopup {
     pub folder: String,
     pub input: TextArea<'static>,
 }
 
-/// Search popup state for filtering notes
+
 pub struct SearchPopup {
     pub input: TextArea<'static>,
     pub original_index: usize,
 }
 
-/// Sort field options
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum SortField {
     Title,
     Modified,
 }
 
-/// Sort order options
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum SortOrder {
     Ascending,
     Descending,
 }
 
-/// Trash view state
+
 pub struct TrashView {
     pub items: Vec<trash::TrashItem>,
     pub selected: usize,
@@ -170,6 +171,7 @@ pub enum VisualItem {
         summary_idx: usize,
         depth: usize,
         is_clin: bool,
+        is_canvas: bool,
     },
     CreateNew {
         path: String,
@@ -204,14 +206,15 @@ pub struct App {
     pub filter_tags: Vec<String>,
     pub filter_popup: Option<FilterTagPopup>,
     pub command_palette: Option<crate::palette::CommandPalette>,
-    /// Cached help page text (rebuilt when keybinds change)
+    
     pub help_text_cache: Option<Text<'static>>,
     pub folder_cache: Option<Vec<String>>,
     pub list_state: ListState,
     pub needs_full_redraw: bool,
-    // QoL features
+    
     pub note_rename_popup: Option<NoteRenamePopup>,
     pub note_create_popup: Option<NoteCreatePopup>,
+    pub canvas_create_popup: Option<NoteCreatePopup>, 
     pub search_popup: Option<SearchPopup>,
     pub sort_field: SortField,
     pub sort_order: SortOrder,
@@ -220,7 +223,7 @@ pub struct App {
     pub preview_renderer: Option<MarkdownRenderer>,
     pub markdown_preview_enabled: bool,
     pub md_preview_renderer: Option<MarkdownRenderer>,
-    /// For vim-style 'gg' command - tracks last 'g' press time
+    
     pub last_g_press: Option<Instant>,
     pub page_size: usize,
     pub return_mode: Option<ViewMode>,
@@ -241,18 +244,18 @@ pub enum CliCommand {
     },
     ListNoteTitles,
     Help,
-    // Storage path commands
+    
     ShowStoragePath,
     SetStoragePath {
         path: PathBuf,
     },
     ResetStoragePath,
     MigrateStorage,
-    // Keybind commands
+    
     ShowKeybinds,
     ExportKeybinds,
     ResetKeybinds,
-    // Template commands
+    
     ListTemplates,
     CreateExampleTemplates,
 }
@@ -272,7 +275,7 @@ impl App {
             list_focus: ListFocus::Notes,
             mode: ViewMode::List,
             editing_id: None,
-            title_editor: make_title_editor("", Color::Black, Color::Cyan), // Default theme for initial app state before theme load
+            title_editor: make_title_editor("", Color::Black, Color::Cyan), 
             editor: TextArea::default(),
             external_editor_enabled: bootstrap_config.external_editor_enabled,
             external_editor: bootstrap_config.external_editor,
@@ -294,9 +297,10 @@ impl App {
             folder_cache: None,
             list_state: ListState::default(),
             needs_full_redraw: false,
-            // QoL features
+            
             note_rename_popup: None,
             note_create_popup: None,
+            canvas_create_popup: None,
             search_popup: None,
             sort_field: SortField::Modified,
             sort_order: SortOrder::Descending,
@@ -321,7 +325,7 @@ impl App {
         let mut summaries = Vec::new();
         for id in self.storage.list_note_ids()? {
             if let Ok(summary) = self.storage.load_note_summary(&id) {
-                // Apply tag filter
+                
                 if !self.filter_tags.is_empty() {
                     let mut matches = false;
                     for tag in &self.filter_tags {
@@ -338,16 +342,16 @@ impl App {
             }
         }
 
-        // Sort based on current sort options
-        // Pinned notes always come first, then apply user's sort preference
+        
+        
         summaries.sort_by(|a, b| {
-            // Pinned notes first
+            
             let pin_cmp = b.pinned.cmp(&a.pinned);
             if pin_cmp != std::cmp::Ordering::Equal {
                 return pin_cmp;
             }
 
-            // Then encrypted notes (for backwards compat)
+            
             let a_clin = a.id.ends_with(".clin");
             let b_clin = b.id.ends_with(".clin");
             let clin_cmp = b_clin.cmp(&a_clin);
@@ -355,7 +359,7 @@ impl App {
                 return clin_cmp;
             }
 
-            // Then apply user's sort preference
+            
             match self.sort_field {
                 SortField::Modified => match self.sort_order {
                     SortOrder::Descending => b.updated_at.cmp(&a.updated_at),
@@ -393,8 +397,8 @@ impl App {
     pub fn refresh_visual_list(&mut self) {
         let mut visual = Vec::new();
 
-        // Notes are currently flattened. Let's group them by folder.
-        // We'll construct a simple tree.
+        
+        
         let mut by_folder: HashMap<String, Vec<(usize, &NoteSummary)>> = HashMap::new();
         for (i, note) in self.notes.iter().enumerate() {
             by_folder
@@ -403,7 +407,7 @@ impl App {
                 .push((i, note));
         }
 
-        // Always show root folder "Vault"
+        
         visual.push(VisualItem::Folder {
             path: String::new(),
             name: String::from("Vault"),
@@ -422,6 +426,7 @@ impl App {
                         summary_idx: *idx,
                         depth: 1,
                         is_clin: note.id.ends_with(".clin"),
+                        is_canvas: note.id.ends_with(".canvas"),
                     });
                 }
             }
@@ -431,7 +436,7 @@ impl App {
             });
         }
 
-        // Get all other folders sorted
+        
         let mut subfolders: Vec<String> = by_folder
             .keys()
             .filter(|k: &&String| !k.is_empty())
@@ -439,8 +444,8 @@ impl App {
             .collect();
         subfolders.sort();
 
-        // Wait, what if a parent folder has no notes but has subfolders?
-        // We should really build a proper tree from `storage.list_folders()`.
+        
+        
         let all_folders = if let Some(ref cached) = self.folder_cache {
             cached.clone()
         } else {
@@ -454,14 +459,14 @@ impl App {
             let depth = parts.len();
             let name = parts.last().unwrap_or(&"").to_string();
 
-            // Only show if parent is expanded
+            
             let parent_path = if parts.len() > 1 {
                 parts[..parts.len() - 1].join("/")
             } else {
                 String::new()
             };
 
-            // Fast check if parent is expanded
+            
             let mut is_visible = true;
             let mut current_parent = parent_path.clone();
             while !current_parent.is_empty() {
@@ -476,7 +481,7 @@ impl App {
                 }
             }
 
-            // Finally check root
+            
             if !self.folder_expanded.contains("") {
                 is_visible = false;
             }
@@ -501,8 +506,8 @@ impl App {
                                 summary_idx: *idx,
                                 depth: depth + 1,
                                 is_clin: note.id.ends_with(".clin"),
-                            });
-                        }
+                                is_canvas: note.id.ends_with(".canvas"),
+                            });                        }
                     }
                     visual.push(VisualItem::CreateNew {
                         path: folder.clone(),
@@ -515,10 +520,10 @@ impl App {
         self.visual_list = visual;
     }
 
-    /// Get the folder context based on current selection.
-    /// If a folder is selected, returns that folder's path.
-    /// If a note is selected, returns the folder containing that note.
-    /// If a "Create New" item is selected, returns its target folder.
+    
+    
+    
+    
     pub fn get_current_folder_context(&self) -> String {
         match self.visual_list.get(self.visual_index) {
             Some(VisualItem::Folder { path, .. }) => path.clone(),
@@ -537,7 +542,7 @@ impl App {
             return;
         }
 
-        // Clamp index
+        
         if self.visual_index >= self.visual_list.len() {
             self.visual_index = self.visual_list.len().saturating_sub(1);
         }
@@ -547,7 +552,7 @@ impl App {
                 self.begin_create_note_in_folder(path.clone());
             }
             VisualItem::Folder { path, .. } => {
-                // Toggle expand/collapse
+                
                 let p = path.clone();
                 if self.folder_expanded.contains(&p) {
                     self.folder_expanded.remove(&p);
@@ -556,7 +561,11 @@ impl App {
                 }
                 self.refresh_visual_list();
             }
-            VisualItem::Note { summary_idx, .. } => {
+            VisualItem::Note { summary_idx, is_canvas, .. } => {
+                if *is_canvas {
+                    self.open_canvas_view();
+                    return;
+                }
                 let note_id = if let Some(summary) = self.notes.get(*summary_idx) {
                     let is_clin = summary.id.ends_with(".clin");
                     if is_clin {
@@ -631,7 +640,7 @@ impl App {
                 }
             }
 
-            // Suspend TUI
+            
             let _ = disable_raw_mode();
             let _ = crossterm::execute!(
                 std::io::stdout(),
@@ -660,7 +669,7 @@ impl App {
             command.arg(&temp_file_path);
             let result = command.status();
 
-            // Resume TUI
+            
             let _ = enable_raw_mode();
             let _ = crossterm::execute!(
                 std::io::stdout(),
@@ -711,7 +720,7 @@ impl App {
                 }
             }
 
-            // Secure: Overwrite file contents before deletion
+            
             if let Ok(len) = std::fs::metadata(&temp_file_path).map(|m| m.len()) {
                 let _ = std::fs::write(&temp_file_path, vec![0u8; len as usize]);
             }
@@ -738,12 +747,12 @@ impl App {
                     self.folder_expanded.remove(path);
                     self.refresh_visual_list();
                 } else {
-                    // Navigate to parent folder
+                    
                     if !path.is_empty() {
                         let parent_path = if let Some(slash) = path.rfind('/') {
                             &path[..slash]
                         } else {
-                            "" // root
+                            "" 
                         };
 
                         if let Some(idx) = self.visual_list.iter().position(|v| {
@@ -759,7 +768,7 @@ impl App {
                 }
             }
             VisualItem::Note { .. } | VisualItem::CreateNew { .. } => {
-                // Determine folder path and navigate to parent folder
+                
                 let item_path = match &self.visual_list[self.visual_index] {
                     VisualItem::Note { summary_idx, .. } => &self.notes[*summary_idx].folder,
                     VisualItem::CreateNew { path, .. } => path,
@@ -796,7 +805,7 @@ impl App {
                     self.folder_expanded.insert(path.clone());
                     self.refresh_visual_list();
                 } else {
-                    // Navigate to first child
+                    
                     if self.visual_index + 1 < self.visual_list.len() {
                         self.visual_index += 1;
                     }
@@ -819,7 +828,7 @@ impl App {
             .iter()
             .position(|note| note.title.eq_ignore_ascii_case(query))
         {
-            // Now we need to find its visual index...
+            
             if let Some(v_idx) = self.visual_list.iter().position(|v| match v {
                 VisualItem::Note { summary_idx, .. } => *summary_idx == index,
                 _ => false,
@@ -834,7 +843,7 @@ impl App {
     }
 
     pub fn start_new_note(&mut self, folder: String) {
-        // Check if default template exists and use it
+        
         let template_manager = self.storage.template_manager();
         if let Some(default_template) = template_manager.load_default() {
             self.start_note_from_template(&default_template, folder);
@@ -844,7 +853,7 @@ impl App {
     }
 
     pub fn start_new_note_with_title(&mut self, folder: String, title: String) {
-        // Check if default template exists and use it
+        
         let template_manager = self.storage.template_manager();
         if let Some(default_template) = template_manager.load_default() {
             self.start_note_from_template_with_title(&default_template, folder, title);
@@ -1362,7 +1371,7 @@ impl App {
 
             match &popup.mode {
                 FolderPopupMode::Create { parent_path } => {
-                    // Combine parent path with the new folder name
+                    
                     let full_path = if parent_path.is_empty() {
                         text.to_string()
                     } else {
@@ -1394,7 +1403,7 @@ impl App {
         {
             let note = &self.notes[*summary_idx];
             if let Ok(folders) = self.storage.list_folders() {
-                let mut all_folders = vec!["".to_string()]; // Root folder
+                let mut all_folders = vec!["".to_string()]; 
                 all_folders.extend(folders);
                 self.folder_picker = Some(FolderPicker {
                     mode: FolderPickerMode::MoveNote {
@@ -1415,7 +1424,7 @@ impl App {
         if let Some(VisualItem::Folder { path, .. }) = self.visual_list.get(self.visual_index) {
             let folder_path = path.clone();
             if let Ok(folders) = self.storage.list_folders() {
-                let mut all_folders = vec!["".to_string()]; // Root folder
+                let mut all_folders = vec!["".to_string()]; 
                 all_folders.extend(
                     folders.into_iter().filter(|f| {
                         f != &folder_path && !f.starts_with(&format!("{}/", folder_path))
@@ -1435,7 +1444,7 @@ impl App {
         }
     }
 
-    /// Context-sensitive move - works for both notes and folders
+    
     pub fn begin_move(&mut self) {
         match self.visual_list.get(self.visual_index) {
             Some(VisualItem::Note { .. }) => self.begin_move_note(),
@@ -1545,18 +1554,18 @@ impl App {
         }
     }
 
-    /// Extract the current word being typed (after last comma)
+    
     fn get_current_tag_word(input: &str) -> &str {
         input.rsplit(',').next().map(|s| s.trim()).unwrap_or("")
     }
 
-    /// Update tag suggestions based on current input
+    
     pub fn update_tag_suggestions(&mut self) {
         if let Some(popup) = &mut self.tag_popup {
             let text = popup.input.lines().join("");
             let current_word = Self::get_current_tag_word(&text).to_lowercase();
 
-            // Get already entered tags
+            
             let entered_tags: Vec<String> = text
                 .split(',')
                 .map(|s| s.trim().to_lowercase())
@@ -1566,7 +1575,7 @@ impl App {
             if current_word.is_empty() {
                 popup.suggestions.clear();
             } else {
-                // Filter suggestions: match prefix, exclude already entered
+                
                 popup.suggestions = popup
                     .all_tags
                     .iter()
@@ -1581,7 +1590,7 @@ impl App {
         }
     }
 
-    /// Cycle to next suggestion
+    
     pub fn cycle_tag_suggestion(&mut self) {
         if let Some(popup) = &mut self.tag_popup {
             if !popup.suggestions.is_empty() {
@@ -1590,24 +1599,24 @@ impl App {
         }
     }
 
-    /// Accept current suggestion (replace current word)
+    
     pub fn accept_tag_suggestion(&mut self) {
         if let Some(popup) = &mut self.tag_popup {
             if let Some(suggestion) = popup.suggestions.get(popup.suggestion_index).cloned() {
                 let text = popup.input.lines().join("");
 
-                // Find position of last comma
+                
                 if let Some(last_comma) = text.rfind(',') {
-                    // Replace everything after last comma with suggestion
+                    
                     let prefix = &text[..=last_comma];
                     let new_text = format!("{} {}, ", prefix, suggestion);
 
-                    // Clear and re-insert
+                    
                     popup.input.select_all();
                     popup.input.cut();
                     popup.input.insert_str(&new_text);
                 } else {
-                    // No comma, replace entire text
+                    
                     popup.input.select_all();
                     popup.input.cut();
                     popup.input.insert_str(&format!("{}, ", suggestion));
@@ -1649,7 +1658,7 @@ impl App {
             popup.all_tags = live_tags;
             let text = popup.input.lines().join("");
 
-            // If the deleted tag was typed in the input, remove it
+            
             let entered_tags: Vec<String> = text
                 .split(',')
                 .map(|s| s.trim().to_string())
@@ -1826,6 +1835,28 @@ impl App {
         self.set_default_status();
     }
 
+    pub fn open_canvas_view(&mut self) {
+        self.return_mode = Some(self.mode);
+        self.mode = ViewMode::Canvas;
+    }
+
+    pub fn close_canvas_view(&mut self) {
+        self.editing_id = None;
+        self.mode = self.return_mode.take().unwrap_or(ViewMode::List);
+        self.set_default_status();
+    }
+
+    pub fn get_selected_note_id(&self) -> Option<String> {
+        if let Some(id) = &self.editing_id {
+            return Some(id.clone());
+        }
+        if let Some(VisualItem::Note { id, .. }) = self.visual_list.get(self.visual_index) {
+            Some(id.clone())
+        } else {
+            None
+        }
+    }
+
     pub fn open_note_from_graph(&mut self, note_id: &str) {
         if note_id.ends_with(".clin") {
             self.set_temporary_status_static("Cannot open encrypted notes. Decrypt first.");
@@ -1846,6 +1877,7 @@ impl App {
             ViewMode::Edit => EDIT_HELP_HINTS,
             ViewMode::Help => HELP_PAGE_HINTS,
             ViewMode::Graph => "Graph View | Esc: back | +/-: zoom | L: labels | a: fit",
+            ViewMode::Canvas => "Canvas View | Esc: back | d: draw | s: shape | t: text | e: erase | Ctrl+S: save",
         }
     }
 
@@ -1872,7 +1904,7 @@ impl App {
         }
     }
 
-    /// Get cached help text, building it if necessary
+    
     pub fn get_help_text(&mut self) -> &Text<'static> {
         if self.help_text_cache.is_none() {
             self.help_text_cache = Some(help_page_text(&self.keybinds, &self.app_theme));
@@ -1880,15 +1912,15 @@ impl App {
         self.help_text_cache.as_ref().unwrap()
     }
 
-    // ===== QoL Feature Methods =====
+    
 
-    /// Begin creating a new note with a name prompt
+    
     pub fn begin_create_note(&mut self) {
         let folder = self.get_current_folder_context();
         self.begin_create_note_in_folder(folder);
     }
 
-    /// Begin creating a new note in a specific folder
+    
     pub fn begin_create_note_in_folder(&mut self, folder: String) {
         let mut input = TextArea::default();
         input.set_style(self.app_theme.bg_style());
@@ -1901,7 +1933,7 @@ impl App {
         self.note_create_popup = Some(NoteCreatePopup { folder, input });
     }
 
-    /// Confirm and create the note with the prompted name
+    
     pub fn confirm_create_note(&mut self) {
         if let Some(popup) = self.note_create_popup.take() {
             let mut title = popup.input.lines().join("");
@@ -1913,7 +1945,47 @@ impl App {
         }
     }
 
-    /// Begin renaming a note (context-sensitive with folder rename)
+    
+    pub fn begin_create_canvas(&mut self) {
+        let folder = self.get_current_folder_context();
+        let mut input = TextArea::default();
+        input.set_style(self.app_theme.bg_style());
+        input.set_block(
+            ratatui::widgets::Block::default()
+                .style(self.app_theme.bg_style())
+                .borders(ratatui::widgets::Borders::ALL)
+                .title("New Canvas Name - Esc to cancel, Enter to create"),
+        );
+        self.canvas_create_popup = Some(NoteCreatePopup { folder, input });
+    }
+
+    
+    pub fn confirm_create_canvas(&mut self) {
+        if let Some(popup) = self.canvas_create_popup.take() {
+            let mut title = popup.input.lines().join("");
+            title = title.trim().to_string();
+            if title.is_empty() {
+                title = String::from("Untitled canvas");
+            }
+            
+            let canvas_id = if popup.folder.is_empty() {
+                format!("{}.canvas", title)
+            } else {
+                format!("{}/{}.canvas", popup.folder, title)
+            };
+            
+            
+            
+            self.return_mode = Some(self.mode);
+            self.mode = ViewMode::Canvas;
+            
+            
+            
+            self.editing_id = Some(canvas_id);
+        }
+    }
+
+    
     pub fn begin_rename_note(&mut self) {
         if let Some(VisualItem::Note {
             summary_idx, id, ..
@@ -1935,7 +2007,7 @@ impl App {
         }
     }
 
-    /// Confirm and apply note rename
+    
     pub fn confirm_rename_note(&mut self) {
         if let Some(popup) = self.note_rename_popup.take() {
             let new_title = popup.input.lines().join("");
@@ -1956,7 +2028,7 @@ impl App {
         }
     }
 
-    /// Duplicate the selected note
+    
     pub fn duplicate_note(&mut self) {
         if let Some(VisualItem::Note { id, .. }) = self.visual_list.get(self.visual_index).cloned()
         {
@@ -1974,7 +2046,7 @@ impl App {
         }
     }
 
-    /// Toggle pin status of selected note
+    
     pub fn toggle_pin(&mut self) {
         if let Some(VisualItem::Note { id, .. }) = self.visual_list.get(self.visual_index).cloned()
         {
@@ -1996,7 +2068,7 @@ impl App {
         }
     }
 
-    /// Cycle through sort options
+    
     pub fn cycle_sort(&mut self) {
         match (self.sort_field, self.sort_order) {
             (SortField::Modified, SortOrder::Descending) => {
@@ -2026,7 +2098,7 @@ impl App {
         self.set_temporary_status_static(sort_desc);
     }
 
-    /// Begin search/filter mode
+    
     pub fn begin_search(&mut self) {
         let mut input = TextArea::default();
         input.set_style(self.app_theme.bg_style());
@@ -2043,7 +2115,7 @@ impl App {
         });
     }
 
-    /// Update search results as user types
+    
     pub fn update_search(&mut self) {
         if let Some(popup) = &self.search_popup {
             let query = popup.input.lines().join("").to_lowercase();
@@ -2051,10 +2123,10 @@ impl App {
                 return;
             }
 
-            // Find first matching note
+            
             for (note_idx, note) in self.notes.iter().enumerate() {
                 if note.title.to_lowercase().contains(&query) {
-                    // Expand the folder containing this note
+                    
                     if !note.folder.is_empty() {
                         let mut path = String::new();
                         for part in note.folder.split('/') {
@@ -2066,10 +2138,10 @@ impl App {
                         }
                     }
 
-                    // Rebuild visual list with newly expanded folders
+                    
                     let _ = self.refresh_visual_list();
 
-                    // Find the note in the updated visual_list
+                    
                     for (idx, item) in self.visual_list.iter().enumerate() {
                         if let VisualItem::Note { summary_idx, .. } = item {
                             if *summary_idx == note_idx {
@@ -2085,12 +2157,12 @@ impl App {
         }
     }
 
-    /// Confirm search and stay at current position
+    
     pub fn confirm_search(&mut self) {
         self.search_popup = None;
     }
 
-    /// Cancel search and return to original position
+    
     pub fn cancel_search(&mut self) {
         if let Some(popup) = self.search_popup.take() {
             self.visual_index = popup.original_index;
@@ -2098,34 +2170,34 @@ impl App {
         }
     }
 
-    // ===== Vim-style Navigation =====
+    
 
-    /// Jump to the top of the list
+    
     pub fn jump_to_top(&mut self) {
         self.visual_index = 0;
         self.update_preview();
     }
 
-    /// Jump to the bottom of the list
+    
     pub fn jump_to_bottom(&mut self) {
         self.visual_index = self.visual_list.len().saturating_sub(1);
         self.update_preview();
     }
 
-    /// Page up (half page)
+    
     pub fn page_up(&mut self) {
         self.visual_index = self.visual_index.saturating_sub(self.page_size);
         self.update_preview();
     }
 
-    /// Page down (half page)
+    
     pub fn page_down(&mut self) {
         let max_index = self.visual_list.len().saturating_sub(1);
         self.visual_index = (self.visual_index + self.page_size).min(max_index);
         self.update_preview();
     }
 
-    /// Handle 'g' key press for vim-style gg
+    
     pub fn handle_g_press(&mut self) -> bool {
         let now = Instant::now();
         if let Some(last) = self.last_g_press {
@@ -2139,7 +2211,7 @@ impl App {
         false
     }
 
-    // ===== Trash Functions =====
+    
 
     pub fn open_trash_view(&mut self) {
         match self.storage.list_trash() {
@@ -2245,9 +2317,9 @@ impl App {
         }
     }
 
-    // ===== Preview Pane =====
+    
 
-    /// Toggle preview pane
+    
     pub fn toggle_preview(&mut self) {
         self.preview_enabled = !self.preview_enabled;
         if self.preview_enabled {
@@ -2278,7 +2350,7 @@ impl App {
         updated
     }
 
-    /// Update preview content for currently selected note
+    
     pub fn update_preview(&mut self) {
         if !self.preview_enabled {
             return;

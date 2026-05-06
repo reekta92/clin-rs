@@ -1,5 +1,6 @@
 pub mod actions;
 pub mod app_theme;
+pub mod canvas;
 mod config;
 pub mod graf;
 pub mod constants;
@@ -83,10 +84,10 @@ fn main() -> Result<()> {
             let storage = Storage::init()?;
             let mut app = App::new(storage)?;
 
-            // Use provided title or default
+            
             let final_title = title.unwrap_or_else(|| "New Note".to_string());
 
-            // Create note from template or default
+            
             let (content, tags) = if let Some(tmpl_name) = template {
                 let template_manager = app.storage.template_manager();
                 if let Ok(templates) = template_manager.list() {
@@ -141,7 +142,7 @@ fn main() -> Result<()> {
 
             run_tui_session(&mut app)
         }
-        // Storage path commands
+        
         CliCommand::ShowStoragePath => {
             let bootstrap = BootstrapConfig::load()?;
             let effective = bootstrap.effective_storage_path()?;
@@ -157,16 +158,16 @@ fn main() -> Result<()> {
             let mut bootstrap = BootstrapConfig::load()?;
             let old_path = bootstrap.effective_storage_path()?;
 
-            // Validate path
+            
             if !path.is_absolute() {
                 anyhow::bail!("Storage path must be absolute: {}", path.display());
             }
 
-            // Create directory if it doesn't exist
+            
             fs::create_dir_all(&path)
                 .with_context(|| format!("failed to create directory: {}", path.display()))?;
 
-            // Store old path for migration before setting new path
+            
             if old_path.exists() && old_path != path {
                 bootstrap.set_previous_storage_path(old_path);
             }
@@ -176,7 +177,7 @@ fn main() -> Result<()> {
 
             println!("Storage path set to: {}", path.display());
 
-            // Suggest migration if old path has data
+            
             if bootstrap.previous_storage_path.is_some() {
                 println!("\nRun 'clin --migrate-storage' to migrate your existing data.");
             }
@@ -195,11 +196,11 @@ fn main() -> Result<()> {
             let mut bootstrap = BootstrapConfig::load()?;
             let to = bootstrap.effective_storage_path()?;
 
-            // Determine source path
+            
             let from = match bootstrap.previous_storage_path.clone() {
                 Some(path) if path.exists() && path.is_dir() => path,
                 _ => {
-                    // Fallback: check if default path has data
+                    
                     let default = BootstrapConfig::default_storage_path()?;
                     if default.exists() && default.is_dir() && default != to {
                         println!("No previous storage path recorded.");
@@ -229,7 +230,7 @@ fn main() -> Result<()> {
             println!("  To:   {}", to.display());
             println!();
 
-            // Create destination directories
+            
             fs::create_dir_all(&to)
                 .with_context(|| format!("failed to create destination: {}", to.display()))?;
 
@@ -237,7 +238,7 @@ fn main() -> Result<()> {
             let mut skipped_count = 0;
             let mut conflict_action: Option<ConflictAction> = None;
 
-            // Migrate key.bin (encryption key) - critical
+            
             let (m, s, action) = migrate_file_with_conflict(
                 &from.join("key.bin"),
                 &to.join("key.bin"),
@@ -250,7 +251,7 @@ fn main() -> Result<()> {
                 conflict_action = action;
             }
 
-            // Migrate notes directory
+            
             let notes_src = from.join("notes");
             let notes_dst = to.join("notes");
             if notes_src.exists() && notes_src.is_dir() {
@@ -262,7 +263,7 @@ fn main() -> Result<()> {
                 conflict_action = action;
             }
 
-            // Migrate templates directory
+            
             let templates_src = from.join("templates");
             let templates_dst = to.join("templates");
             if templates_src.exists() && templates_src.is_dir() {
@@ -276,7 +277,7 @@ fn main() -> Result<()> {
                 skipped_count += s;
             }
 
-            // Clear previous storage path from config
+            
             bootstrap.clear_previous_storage_path();
             bootstrap.save()?;
 
@@ -292,7 +293,7 @@ fn main() -> Result<()> {
 
             Ok(())
         }
-        // Keybind commands
+        
         CliCommand::ShowKeybinds => {
             let storage = Storage::init()?;
             let keybinds = storage.load_keybinds();
@@ -403,7 +404,7 @@ fn main() -> Result<()> {
             println!("Keybinds file: {}", storage.keybinds_path().display());
             Ok(())
         }
-        // Template commands
+        
         CliCommand::ListTemplates => {
             let storage = Storage::init()?;
             let template_manager = storage.template_manager();
@@ -451,7 +452,7 @@ fn parse_cli_command() -> Result<CliCommand> {
         "-h" | "--help" => Ok(CliCommand::Help),
         "-l" => Ok(CliCommand::ListNoteTitles),
         "-n" => {
-            // Check for --template flag
+            
             let mut title = None;
             let mut template = None;
             let mut i = 1;
@@ -492,7 +493,7 @@ fn parse_cli_command() -> Result<CliCommand> {
                 edit_title: Some(args[1..].join(" ")),
             })
         }
-        // Storage path commands
+        
         "--storage-path" => Ok(CliCommand::ShowStoragePath),
         "--set-storage-path" => {
             if args.len() < 2 {
@@ -504,11 +505,11 @@ fn parse_cli_command() -> Result<CliCommand> {
         }
         "--reset-storage-path" => Ok(CliCommand::ResetStoragePath),
         "--migrate-storage" => Ok(CliCommand::MigrateStorage),
-        // Keybind commands
+        
         "--keybinds" => Ok(CliCommand::ShowKeybinds),
         "--export-keybinds" => Ok(CliCommand::ExportKeybinds),
         "--reset-keybinds" => Ok(CliCommand::ResetKeybinds),
-        // Template commands
+        
         "--list-templates" => Ok(CliCommand::ListTemplates),
         "--create-example-templates" => Ok(CliCommand::CreateExampleTemplates),
         unknown => anyhow::bail!("unknown argument: {unknown}. Use clin -h for help."),
@@ -550,7 +551,7 @@ fn print_cli_help() {
     );
 }
 
-/// User's choice when a file conflict is encountered during migration.
+
 #[derive(Clone, Copy)]
 enum ConflictAction {
     Skip,
@@ -559,8 +560,8 @@ enum ConflictAction {
     OverwriteAll,
 }
 
-/// Prompt user for conflict resolution on a single file.
-/// Returns the chosen action.
+
+
 fn prompt_conflict_action(file_name: &str) -> Result<ConflictAction> {
     println!("  Conflict: '{}' already exists at destination.", file_name);
     print!("  Action? [s]kip, skip [a]ll, [o]verwrite, overwrite a[l]l: ");
@@ -581,8 +582,8 @@ fn prompt_conflict_action(file_name: &str) -> Result<ConflictAction> {
     }
 }
 
-/// Migrate a single file with conflict handling.
-/// Returns (migrated_count, skipped_count, updated_conflict_action).
+
+
 fn migrate_file_with_conflict(
     src: &Path,
     dst: &Path,
@@ -594,7 +595,7 @@ fn migrate_file_with_conflict(
     }
 
     if dst.exists() {
-        // Handle conflict
+        
         let action = match current_action {
             Some(ConflictAction::SkipAll) => ConflictAction::SkipAll,
             Some(ConflictAction::OverwriteAll) => ConflictAction::OverwriteAll,
@@ -623,15 +624,15 @@ fn migrate_file_with_conflict(
             }
         }
     } else {
-        // No conflict, just copy
+        
         fs::copy(src, dst).with_context(|| format!("failed to copy {}", src.display()))?;
         println!("  Migrated: {}", display_name);
         Ok((1, 0, current_action))
     }
 }
 
-/// Recursively migrate a directory with conflict handling.
-/// Returns (migrated_count, skipped_count, updated_conflict_action).
+
+
 fn migrate_directory_with_conflict(
     src: &Path,
     dst: &Path,
@@ -723,7 +724,7 @@ fn run_app(
             let config_path = crate::graf::config::GrafConfig::config_path().ok();
             let (mut config, errs, created) = crate::graf::config::GrafConfig::load_from_path(config_path);
             
-            // Show config errors if any
+            
             for err in errs {
                 app.set_temporary_status(&format!("Graf config error: {}", err));
             }
@@ -745,6 +746,19 @@ fn run_app(
                 _ => {
                     app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
                     app.reload_theme();
+                }
+            }
+            app.needs_full_redraw = true;
+            terminal.clear()?;
+            continue;
+        }
+
+        if app.mode == ViewMode::Canvas {
+            let note_id = app.get_selected_note_id();
+
+            match crate::canvas::app::run_canvas_view(terminal, app.storage.clone(), &app.keybinds, note_id, app.app_theme.clone()) {
+                _ => {
+                    app.close_canvas_view();
                 }
             }
             app.needs_full_redraw = true;
@@ -798,6 +812,7 @@ fn run_app(
                         handle_help_keys(app, key);
                     }
                     ViewMode::Graph => {}
+                    ViewMode::Canvas => {}
                 },
                 Event::Mouse(mouse_event) if app.mode == ViewMode::List => {
                     let size = terminal.size().context("failed to get terminal size")?;

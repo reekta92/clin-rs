@@ -41,7 +41,7 @@ impl ThemePalette {
 }
 
 const PALETTES: [ThemePalette; 10] = [
-    // 0: TokyoNight
+    
     ThemePalette {
         nodes: [
             [122, 162, 247],
@@ -60,7 +60,7 @@ const PALETTES: [ThemePalette; 10] = [
         grid: [56, 62, 95],
         bg: [26, 27, 38],
     },
-    // 1: CatppuccinMocha
+    
     ThemePalette {
         nodes: [
             [137, 180, 250],
@@ -79,7 +79,7 @@ const PALETTES: [ThemePalette; 10] = [
         grid: [49, 50, 68],
         bg: [30, 30, 46],
     },
-    // 2: Onedark
+    
     ThemePalette {
         nodes: [
             [97, 175, 239],
@@ -98,7 +98,7 @@ const PALETTES: [ThemePalette; 10] = [
         grid: [56, 63, 76],
         bg: [40, 44, 52],
     },
-    // 3: Gruvbox
+    
     ThemePalette {
         nodes: [
             [184, 187, 38],
@@ -117,7 +117,7 @@ const PALETTES: [ThemePalette; 10] = [
         grid: [60, 56, 54],
         bg: [40, 40, 40],
     },
-    // 4: Dracula
+    
     ThemePalette {
         nodes: [
             [139, 233, 253],
@@ -136,7 +136,7 @@ const PALETTES: [ThemePalette; 10] = [
         grid: [68, 71, 90],
         bg: [40, 42, 54],
     },
-    // 5: Nord
+    
     ThemePalette {
         nodes: [
             [136, 192, 208],
@@ -155,7 +155,7 @@ const PALETTES: [ThemePalette; 10] = [
         grid: [59, 66, 82],
         bg: [46, 52, 64],
     },
-    // 6: RosePine
+    
     ThemePalette {
         nodes: [
             [180, 142, 173],
@@ -174,7 +174,7 @@ const PALETTES: [ThemePalette; 10] = [
         grid: [57, 53, 82],
         bg: [40, 37, 61],
     },
-    // 7: Everforest
+    
     ThemePalette {
         nodes: [
             [255, 215, 89],
@@ -193,7 +193,7 @@ const PALETTES: [ThemePalette; 10] = [
         grid: [40, 50, 45],
         bg: [30, 38, 34],
     },
-    // 8: Kanagawa
+    
     ThemePalette {
         nodes: [
             [147, 191, 254],
@@ -212,7 +212,7 @@ const PALETTES: [ThemePalette; 10] = [
         grid: [34, 40, 62],
         bg: [26, 30, 48],
     },
-    // 9: Solarized
+    
     ThemePalette {
         nodes: [
             [181, 137, 0],
@@ -228,7 +228,7 @@ const PALETTES: [ThemePalette; 10] = [
         title: [131, 148, 150],
         text: [131, 148, 150],
         fg: [253, 246, 227],
-        grid: [0, 74, 94], // Lighter than bg (0, 43, 54) for visibility
+        grid: [0, 74, 94], 
         bg: [0, 43, 54],
     },
 ];

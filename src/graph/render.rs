@@ -57,11 +57,11 @@ impl Shape for GraphEdgesShape {
                 }
                 .draw(painter);
             } else {
-                // Compute perpendicular offset direction for visual thickness
+                
                 let dx = edge.x2 - edge.x1;
                 let dy = edge.y2 - edge.y1;
                 let len = (dx * dx + dy * dy).sqrt().max(1e-6);
-                let nx = -dy / len; // perpendicular unit vector
+                let nx = -dy / len; 
                 let ny = dx / len;
                 let spacing = 0.4;
                 for t in 0..edge.thickness {
@@ -248,29 +248,29 @@ pub struct FeatureFlags {
     pub show_status_bar: bool,
 }
 
-/// Persistent cache for render data that avoids per-frame allocations.
-///
-/// Topology-dependent data (color maps, legend) is rebuilt only when
-/// `topology_dirty` is set. Position-dependent buffers (edges, nodes,
-/// labels, minimap grid) are cleared and refilled each frame, but
-/// their underlying Vec capacity is retained across frames.
+
+
+
+
+
+
 pub struct RenderCache {
-    // Topology-dependent (rebuilt when graph structure or config changes)
+    
     pub tag_colors: HashMap<String, Color>,
     pub folder_colors: HashMap<String, Color>,
     pub node_own_color: HashMap<NodeIndex, Color>,
     pub legend_data: Option<Vec<(String, Color)>>,
     pub max_link_count: usize,
 
-    // Reusable position-dependent buffers
+    
     pub edges: Vec<EdgeData>,
     pub nodes: Vec<NodeRenderData>,
     pub labels: Vec<LabelData>,
 
-    // Minimap reusable buffer
+    
     pub minimap_grid: Vec<Option<Color>>,
 
-    /// Set to true when graph topology or config changes.
+    
     pub topology_dirty: bool,
 }
 
@@ -290,7 +290,7 @@ impl RenderCache {
         }
     }
 
-    /// Rebuild topology-dependent caches (color maps, legend data).
+    
     pub fn rebuild_topology(
         &mut self,
         graph: &fdg_sim::ForceGraph<super::GraphNodeData, ()>,
@@ -298,14 +298,14 @@ impl RenderCache {
         colors: &crate::graf::config::ThemeColors,
         show_legend: bool,
     ) {
-        // max_link_count
+        
         self.max_link_count = graph
             .node_weights()
             .map(|n| n.data.link_count)
             .max()
             .unwrap_or(0);
 
-        // tag_colors
+        
         self.tag_colors.clear();
         {
             let mut unique_tags: HashSet<String> = HashSet::new();
@@ -323,7 +323,7 @@ impl RenderCache {
             }
         }
 
-        // folder_colors
+        
         self.folder_colors.clear();
         {
             let mut unique_folders: HashSet<String> = HashSet::new();
@@ -339,7 +339,7 @@ impl RenderCache {
             }
         }
 
-        // node_own_color
+        
         self.node_own_color.clear();
         for idx in graph.node_indices() {
             let node = &graph[idx];
@@ -366,7 +366,7 @@ impl RenderCache {
             self.node_own_color.insert(idx, color);
         }
 
-        // legend_data
+        
         self.legend_data = if show_legend {
             let items = match config.visual.node_color_mode {
                 NodeColorMode::Folder => &self.folder_colors,
@@ -387,7 +387,7 @@ impl RenderCache {
         self.topology_dirty = false;
     }
 
-    /// Fill the edges buffer from current node positions.
+    
     pub fn fill_edges(
         &mut self,
         graph: &fdg_sim::ForceGraph<super::GraphNodeData, ()>,
@@ -420,7 +420,7 @@ impl RenderCache {
         }
     }
 
-    /// Fill the nodes buffer from current node positions.
+    
     pub fn fill_nodes(
         &mut self,
         graph: &fdg_sim::ForceGraph<super::GraphNodeData, ()>,
@@ -468,7 +468,7 @@ impl RenderCache {
         }
     }
 
-    /// Fill the labels buffer from current node positions.
+    
     pub fn fill_labels(
         &mut self,
         graph: &fdg_sim::ForceGraph<super::GraphNodeData, ()>,
@@ -528,15 +528,15 @@ pub fn draw_graph_view(
     let colors = config.theme_colors();
     let graph = state.simulation.get_graph();
 
-    // Update render cache
+    
     let mut cache = state.render_cache.lock().unwrap_or_else(|e| e.into_inner());
 
-    // Rebuild topology-dependent data if dirty
+    
     if cache.topology_dirty {
         cache.rebuild_topology(graph, config, &colors, flags.show_legend);
     }
 
-    // Fill position-dependent buffers (reuses Vec capacity across frames)
+    
     cache.fill_edges(graph, config, colors.edge_color);
     cache.fill_nodes(
         graph,
@@ -546,7 +546,7 @@ pub fn draw_graph_view(
     );
     cache.fill_labels(graph, config, state.selected_node);
 
-    // Clone data for the Canvas paint closure (Fn requires data to be reusable)
+    
     let edges = cache.edges.clone();
     let nodes = cache.nodes.clone();
     let labels = cache.labels.clone();
@@ -574,7 +574,7 @@ pub fn draw_graph_view(
                 .title(config.expand_border_title())
                 .title_style(ratatui::style::Style::default().fg(colors.title_color));
 
-            // Add background color to block for solid background mode
+            
             if let Some(bg) = colors.background_color {
                 block = block.style(ratatui::style::Style::default().bg(bg));
             }
@@ -620,7 +620,7 @@ pub fn draw_graph_view(
 
     frame.render_widget(canvas, area);
 
-    // Draw legend overlay if data exists
+    
     if let Some(ref items) = cache.legend_data {
         let max_len = items.iter().map(|(t, _)| t.len()).max().unwrap_or(0);
         let legend_width = (max_len + 4) as u16;
@@ -710,7 +710,7 @@ pub fn draw_graph_view(
     if flags.show_minimap {
         let minimap_area = compute_minimap_area(area, config);
         frame.render_widget(ratatui::widgets::Clear, minimap_area);
-        // Take the grid buffer out to avoid borrow conflict with node_colors
+        
         let mut minimap_grid = std::mem::take(&mut cache.minimap_grid);
         draw_minimap(
             frame,
@@ -724,7 +724,7 @@ pub fn draw_graph_view(
             },
             &mut minimap_grid,
         );
-        // Put the grid buffer back (retains its capacity for next frame)
+        
         cache.minimap_grid = minimap_grid;
     }
 }
@@ -820,19 +820,19 @@ struct MinimapParams<'a> {
     colors: &'a crate::graf::config::ThemeColors,
 }
 
-/// Draw the minimap using half-block sub-cell rendering.
-///
-/// Each terminal cell represents 2 vertical sub-pixels via `▀`, `▄`, or `█`
-/// characters, giving 2× vertical resolution compared to one-char-per-cell.
-/// World coordinates are mapped to integer sub-pixel positions with floor+clamp
-/// — fully deterministic, no boundary rounding flicker.
+
+
+
+
+
+
 fn draw_minimap(frame: &mut ratatui::Frame, area: Rect, params: MinimapParams<'_>, grid: &mut Vec<Option<Color>>) {
     let (wx_min, wx_max, wy_min, wy_max) = params.graph_bounds;
     let aspect = area.width as f64 / area.height as f64;
     let vp_x = params.viewport.x_bounds(aspect);
     let vp_y = params.viewport.y_bounds(aspect);
 
-    // Render the border block
+    
     let block = ratatui::widgets::Block::default()
         .borders(ratatui::widgets::Borders::ALL)
         .border_style(ratatui::style::Style::default().fg(params.colors.minimap_border_color));
@@ -845,7 +845,7 @@ fn draw_minimap(frame: &mut ratatui::Frame, area: Rect, params: MinimapParams<'_
 
     let iw = inner.width as usize;
     let ih = inner.height as usize;
-    let sub_h = ih * 2; // 2 vertical sub-pixels per cell
+    let sub_h = ih * 2; 
     let world_w = wx_max - wx_min;
     let world_h = wy_max - wy_min;
 
@@ -853,33 +853,33 @@ fn draw_minimap(frame: &mut ratatui::Frame, area: Rect, params: MinimapParams<'_
         return;
     }
 
-    // Map world coordinate to sub-pixel column (0-based, same as cell column)
+    
     let world_to_col = |x: f64| -> usize {
         let t = (x - wx_min) / world_w;
         let col = (t * iw as f64).floor() as isize;
         col.clamp(0, (iw as isize) - 1) as usize
     };
 
-    // Map world coordinate to sub-pixel row (0-based, y-inverted, 2× resolution)
+    
     let world_to_subrow = |y: f64| -> usize {
         let t = (wy_max - y) / world_h;
         let row = (t * sub_h as f64).floor() as isize;
         row.clamp(0, (sub_h as isize) - 1) as usize
     };
 
-    // Map world coordinate to cell row (for viewport rectangle)
+    
     let world_to_row = |y: f64| -> usize {
         let t = (wy_max - y) / world_h;
         let row = (t * ih as f64).floor() as isize;
         row.clamp(0, (ih as isize) - 1) as usize
     };
 
-    // Reuse sub-pixel grid buffer: resize if needed, then clear
+    
     let grid_size = sub_h * iw;
     grid.resize(grid_size, None);
     grid.fill(None);
 
-    // Plot nodes into the sub-pixel grid
+    
     for idx in params.graph.node_indices() {
         let node = &params.graph[idx];
         let nx = node.location.x as f64;
@@ -893,7 +893,7 @@ fn draw_minimap(frame: &mut ratatui::Frame, area: Rect, params: MinimapParams<'_
     let buf = frame.buffer_mut();
     let bg_color = params.colors.minimap_bg_color;
 
-    // Composite sub-pixel grid into half-block characters
+    
     for cell_row in 0..ih {
         let top_sub = cell_row * 2;
         let bot_sub = cell_row * 2 + 1;
@@ -911,14 +911,14 @@ fn draw_minimap(frame: &mut ratatui::Frame, area: Rect, params: MinimapParams<'_
 
             match (top_color, bot_color) {
                 (None, None) => {
-                    // Empty cell — set background if configured
+                    
                     if let Some(bg) = bg_color {
                         cell.set_symbol(" ");
                         cell.set_style(ratatui::style::Style::default().bg(bg));
                     }
                 }
                 (Some(tc), None) => {
-                    // Only top sub-pixel set: upper half block
+                    
                     cell.set_symbol("▀");
                     let mut style = ratatui::style::Style::default().fg(tc);
                     if let Some(bg) = bg_color {
@@ -927,7 +927,7 @@ fn draw_minimap(frame: &mut ratatui::Frame, area: Rect, params: MinimapParams<'_
                     cell.set_style(style);
                 }
                 (None, Some(bc)) => {
-                    // Only bottom sub-pixel set: lower half block
+                    
                     cell.set_symbol("▄");
                     let mut style = ratatui::style::Style::default().fg(bc);
                     if let Some(bg) = bg_color {
@@ -936,7 +936,7 @@ fn draw_minimap(frame: &mut ratatui::Frame, area: Rect, params: MinimapParams<'_
                     cell.set_style(style);
                 }
                 (Some(tc), Some(bc)) => {
-                    // Both sub-pixels set: lower half block with fg=bottom, bg=top
+                    
                     cell.set_symbol("▄");
                     cell.set_style(ratatui::style::Style::default().fg(bc).bg(tc));
                 }
@@ -944,11 +944,11 @@ fn draw_minimap(frame: &mut ratatui::Frame, area: Rect, params: MinimapParams<'_
         }
     }
 
-    // Compute viewport rectangle cell bounds
+    
     let vp_col_min = world_to_col(vp_x[0].max(wx_min));
     let vp_col_max = world_to_col(vp_x[1].min(wx_max));
-    let vp_row_min = world_to_row(vp_y[1].min(wy_max)); // y inverted: max y → min row
-    let vp_row_max = world_to_row(vp_y[0].max(wy_min)); // min y → max row
+    let vp_row_min = world_to_row(vp_y[1].min(wy_max)); 
+    let vp_row_max = world_to_row(vp_y[0].max(wy_min)); 
 
     if vp_col_min >= vp_col_max || vp_row_min >= vp_row_max {
         return;
@@ -956,16 +956,16 @@ fn draw_minimap(frame: &mut ratatui::Frame, area: Rect, params: MinimapParams<'_
 
     let vp_style = ratatui::style::Style::default().fg(params.colors.minimap_viewport_color);
 
-    // Draw horizontal edges of viewport rectangle
+    
     for col in vp_col_min..=vp_col_max {
         let x = inner.x + col as u16;
-        // Top edge
+        
         let y_top = inner.y + vp_row_min as u16;
         if let Some(cell) = buf.cell_mut((x, y_top)) {
             cell.set_symbol("─");
             cell.set_style(vp_style);
         }
-        // Bottom edge
+        
         let y_bot = inner.y + vp_row_max as u16;
         if let Some(cell) = buf.cell_mut((x, y_bot)) {
             cell.set_symbol("─");
@@ -973,16 +973,16 @@ fn draw_minimap(frame: &mut ratatui::Frame, area: Rect, params: MinimapParams<'_
         }
     }
 
-    // Draw vertical edges of viewport rectangle
+    
     for row in vp_row_min..=vp_row_max {
         let y = inner.y + row as u16;
-        // Left edge
+        
         let x_left = inner.x + vp_col_min as u16;
         if let Some(cell) = buf.cell_mut((x_left, y)) {
             cell.set_symbol("│");
             cell.set_style(vp_style);
         }
-        // Right edge
+        
         let x_right = inner.x + vp_col_max as u16;
         if let Some(cell) = buf.cell_mut((x_right, y)) {
             cell.set_symbol("│");
@@ -990,7 +990,7 @@ fn draw_minimap(frame: &mut ratatui::Frame, area: Rect, params: MinimapParams<'_
         }
     }
 
-    // Draw corners (after edges so they overwrite)
+    
     let corners: [(usize, usize, &str); 4] = [
         (vp_col_min, vp_row_min, "┌"),
         (vp_col_max, vp_row_min, "┐"),

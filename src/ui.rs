@@ -22,6 +22,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         ViewMode::Edit => draw_edit_view(frame, app, focus),
         ViewMode::Help => draw_help_view(frame, app),
         ViewMode::Graph => {}
+        ViewMode::Canvas => {}
     }
 
     if let Some(popup) = &app.theme_popup {
@@ -49,7 +50,7 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
 }
 
 pub fn help_page_text(keybinds: &Keybinds, theme: &crate::app_theme::AppThemeColors) -> Text<'static> {
-    // Get keybind display strings
+    
     let list_move = format!(
         "{}/{}",
         keybinds.list_keys_display(ListAction::MoveUp),
@@ -303,7 +304,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     .block(Block::default().style(app.app_theme.bg_style()).borders(Borders::ALL).title("Notes"));
     frame.render_widget(header, chunks[0]);
 
-    // Split main area for preview if enabled
+    
     let (list_area, preview_area) = if app.preview_enabled {
         let main_chunks = Layout::default()
             .direction(Direction::Horizontal)
@@ -340,6 +341,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 summary_idx,
                 depth,
                 is_clin,
+                is_canvas,
                 ..
             } => {
                 let summary = &app.notes[*summary_idx];
@@ -352,7 +354,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 spans.push(Span::raw(indent));
                 spans.push(Span::raw("  "));
 
-                // Pinned indicator
+                
                 if summary.pinned {
                     spans.push(Span::styled(
                         "* ",
@@ -370,11 +372,18 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     ));
                 }
 
+                if *is_canvas {
+                    spans.push(Span::styled(
+                        "\u{f1fc} ", 
+                        Style::default().fg(app.app_theme.success).add_modifier(Modifier::BOLD),
+                    ));
+                }
+
                 let sanitized_title =
                     crate::sanitize::sanitize_for_terminal(summary.title.as_str());
                 spans.push(Span::styled(sanitized_title, text_style));
 
-                // Tag badges
+                
                 for tag in &summary.tags {
                     spans.push(Span::raw(" "));
                     let sanitized_tag = crate::sanitize::sanitize_for_terminal(tag);
@@ -411,7 +420,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     app.list_state.select(Some(app.visual_index));
     frame.render_stateful_widget(list, list_area, &mut app.list_state);
 
-    // Render preview pane if enabled
+    
     if let Some(preview_rect) = preview_area {
         match &app.preview_renderer {
             Some(renderer) if !renderer.is_pending() => {
@@ -474,7 +483,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         Paragraph::new(footer_line).block(Block::default().style(app.app_theme.bg_style()).borders(Borders::ALL).title("Help"));
     frame.render_widget(footer, chunks[2]);
 
-    // Draw template popup if open
+    
     if let Some(popup) = &app.template_popup {
         draw_template_popup(frame, popup, area, &app.app_theme);
     }
@@ -665,30 +674,37 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         frame.render_stateful_widget(list, chunks[1], &mut palette.state);
     }
 
-    // QoL feature popups
+    
 
-    // Note rename popup
+    
     if let Some(popup) = &mut app.note_rename_popup {
         let popup_area = centered_rect(50, 20, area);
         frame.render_widget(Clear, popup_area);
         frame.render_widget(&popup.input, popup_area);
     }
 
-    // Note create popup
+    
     if let Some(popup) = &mut app.note_create_popup {
         let popup_area = centered_rect(50, 20, area);
         frame.render_widget(Clear, popup_area);
         frame.render_widget(&popup.input, popup_area);
     }
 
-    // Search popup
+    
+    if let Some(popup) = &mut app.canvas_create_popup {
+        let popup_area = centered_rect(50, 20, area);
+        frame.render_widget(Clear, popup_area);
+        frame.render_widget(&popup.input, popup_area);
+    }
+
+    
     if let Some(popup) = &mut app.search_popup {
         let popup_area = centered_rect(50, 20, area);
         frame.render_widget(Clear, popup_area);
         frame.render_widget(&popup.input, popup_area);
     }
 
-    // Trash view popup
+    
     if let Some(trash) = &app.trash_view {
         let popup_area = centered_rect(70, 70, area);
         frame.render_widget(Clear, popup_area);
@@ -726,7 +742,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         frame.render_stateful_widget(list, popup_area, &mut state);
     }
 
-    // Preview pane (handled differently - see below)
+    
 
     if let Some(popup) = &app.confirm_popup {
         draw_confirm_popup(frame, popup, area, &app.app_theme);
@@ -734,13 +750,13 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
 }
 
 pub fn draw_template_popup(frame: &mut Frame, popup: &TemplatePopup, area: Rect, theme: &crate::app_theme::AppThemeColors) {
-    // Create popup area
+    
     let popup_area = centered_rect(60, 60, area);
 
-    // Clear the area
+    
     frame.render_widget(Clear, popup_area);
 
-    // Build list items
+    
     let items: Vec<ListItem> = popup
         .templates
         .iter()
@@ -789,7 +805,7 @@ pub fn draw_theme_popup(frame: &mut Frame, popup: &ThemePopup, area: Rect, theme
         ])
         .split(popup_area);
 
-    // 1. Theme List
+    
     let items: Vec<ListItem> = popup
         .themes
         .iter()
@@ -821,7 +837,7 @@ pub fn draw_theme_popup(frame: &mut Frame, popup: &ThemePopup, area: Rect, theme
     state.select(Some(popup.selected));
     frame.render_stateful_widget(list, chunks[0], &mut state);
 
-    // 2. General Background Button
+    
     let gen_label = if popup.general_is_solid { " [X] General Solid Bg " } else { " [ ] General Solid Bg " };
     let gen_style = if popup.focus == crate::app::ThemePopupFocus::GeneralBg {
         Style::default().fg(theme.highlight_fg).bg(theme.highlight_bg).add_modifier(Modifier::BOLD)
@@ -833,7 +849,7 @@ pub fn draw_theme_popup(frame: &mut Frame, popup: &ThemePopup, area: Rect, theme
         .block(Block::default().borders(Borders::ALL).border_style(if popup.focus == crate::app::ThemePopupFocus::GeneralBg { Style::default().fg(theme.heading) } else { Style::default() }));
     frame.render_widget(gen_btn.style(gen_style), chunks[1]);
 
-    // 3. Graph Background Button
+    
     let graph_label = if popup.graph_is_solid { " [X] Graph Solid Bg " } else { " [ ] Graph Solid Bg " };
     let graph_style = if popup.focus == crate::app::ThemePopupFocus::GraphBg {
         Style::default().fg(theme.highlight_fg).bg(theme.highlight_bg).add_modifier(Modifier::BOLD)
@@ -1108,7 +1124,7 @@ pub fn draw_confirm_popup(frame: &mut Frame, popup: &ConfirmPopup, area: Rect, t
     }
 
     let (confirm_style, cancel_style) = if popup.selected_button == 0 {
-        // Confirm is selected
+        
         let confirm = if popup.is_destructive {
             Style::default()
                 .fg(theme.highlight_fg)
@@ -1123,7 +1139,7 @@ pub fn draw_confirm_popup(frame: &mut Frame, popup: &ConfirmPopup, area: Rect, t
         let cancel = Style::default().fg(theme.muted).patch(theme.bg_style());
         (confirm, cancel)
     } else {
-        // Cancel is selected
+        
         let confirm = if popup.is_destructive {
             Style::default().fg(theme.destructive).patch(theme.bg_style())
         } else {
@@ -1158,7 +1174,7 @@ pub fn open_in_file_manager(path: &Path) -> Result<()> {
         anyhow::bail!("opening file manager is not supported on this platform")
     };
 
-    // Suppress stdio to prevent corrupting the TUI terminal state
+    
     Command::new(command)
         .arg(path)
         .stdin(Stdio::null())

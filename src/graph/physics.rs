@@ -23,13 +23,13 @@ pub fn start_physics(
         };
 
         if should_update {
-            // Acquire write lock for simulation update only
+            
             let new_bounds = {
                 let mut guard = state.write().unwrap_or_else(|e| e.into_inner());
                 guard.simulation.update(timestep as f32);
 
-                // Override dragged node position *before* computing bounds
-                // so the bounds always include the drag target position.
+                
+                
                 if let Some((tx, ty)) = guard.drag_target
                     && let Some(idx) = guard.dragging_node {
                         let graph = guard.simulation.get_graph_mut();
@@ -55,17 +55,17 @@ pub fn start_physics(
                     guard.is_settled = true;
                 }
 
-                // Compute bounds while we still hold the lock (graph data needed)
+                
                 super::render::compute_graph_bounds(guard.simulation.get_graph())
-            }; // write lock released here
+            }; 
 
-            // Update bounds with a short separate write lock
+            
             {
                 let mut guard = state.write().unwrap_or_else(|e| e.into_inner());
                 guard.graph_bounds = new_bounds;
             }
         } else {
-            // Graph is settled — sleep longer to avoid wasting CPU
+            
             std::thread::sleep(std::time::Duration::from_millis(sleep_ms * 6));
             continue;
         }

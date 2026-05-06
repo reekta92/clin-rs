@@ -1,7 +1,7 @@
-//! Template management module
-//!
-//! This module handles user-defined note templates stored in <`storage_path>/templates`/
-//! Templates are TOML files that define boilerplate content for new notes.
+
+
+
+
 
 use std::fs;
 use std::io::Write;
@@ -11,43 +11,43 @@ use anyhow::{Context, Result};
 use chrono::Local;
 use serde::{Deserialize, Serialize};
 
-/// A note template
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Template {
-    /// Display name for the template
+    
     pub name: String,
 
-    /// Title configuration
+    
     #[serde(default)]
     pub title: TitleConfig,
 
-    /// Content configuration
+    
     pub content: ContentConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct TitleConfig {
-    /// Template string for the title (supports variables)
+    
     #[serde(default)]
     pub template: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ContentConfig {
-    /// Template string for the content (supports variables)
+    
     #[serde(default)]
     pub template: String,
 }
 
 impl Template {
-    /// Load a template from a TOML file
+    
     pub fn load(path: &Path) -> Result<Self> {
         let content = fs::read_to_string(path).context("failed to read template file")?;
         let template: Template = toml::from_str(&content).context("failed to parse template")?;
         Ok(template)
     }
 
-    /// Save the template to a TOML file
+    
     pub fn save(&self, path: &Path) -> Result<()> {
         let content = toml::to_string_pretty(self).context("failed to serialize template")?;
 
@@ -62,7 +62,7 @@ impl Template {
         Ok(())
     }
 
-    /// Render the template with variable substitution
+    
     pub fn render(&self) -> RenderedTemplate {
         let vars = TemplateVariables::now();
 
@@ -74,27 +74,27 @@ impl Template {
     }
 }
 
-/// Result of rendering a template
+
 #[derive(Debug, Clone)]
 pub struct RenderedTemplate {
     pub title: Option<String>,
     pub content: String,
 }
 
-/// Variables available for template substitution
+
 #[derive(Debug, Clone)]
 pub struct TemplateVariables {
-    pub date: String,     // YYYY-MM-DD
-    pub datetime: String, // YYYY-MM-DD HH:MM
-    pub time: String,     // HH:MM
-    pub weekday: String,  // Monday, Tuesday, etc.
-    pub year: String,     // YYYY
-    pub month: String,    // MM
-    pub day: String,      // DD
+    pub date: String,     
+    pub datetime: String, 
+    pub time: String,     
+    pub weekday: String,  
+    pub year: String,     
+    pub month: String,    
+    pub day: String,      
 }
 
 impl TemplateVariables {
-    /// Create variables for the current time
+    
     pub fn now() -> Self {
         let now = Local::now();
         Self {
@@ -108,7 +108,7 @@ impl TemplateVariables {
         }
     }
 
-    /// Substitute variables in a template string
+    
     pub fn substitute(&self, template: &str) -> String {
         let mut result = String::with_capacity(template.len() + 50);
         let mut chars = template.chars().peekable();
@@ -153,31 +153,31 @@ impl TemplateVariables {
     }
 }
 
-/// Template manager for CRUD operations
+
 #[derive(Debug)]
 pub struct TemplateManager {
     templates_dir: PathBuf,
 }
 
 impl TemplateManager {
-    /// Create a new template manager for the given templates directory
+    
     pub fn new(templates_dir: PathBuf) -> Self {
         Self { templates_dir }
     }
 
-    /// Ensure the templates directory exists
+    
     pub fn ensure_dir(&self) -> Result<()> {
         fs::create_dir_all(&self.templates_dir).context("failed to create templates directory")?;
         Ok(())
     }
 
-    /// Get the path for a template by name
+    
     pub fn template_path(&self, name: &str) -> PathBuf {
         let filename = sanitize_filename(name);
         self.templates_dir.join(format!("{filename}.toml"))
     }
 
-    /// List all available templates
+    
     pub fn list(&self) -> Result<Vec<TemplateSummary>> {
         let mut templates = Vec::new();
 
@@ -209,42 +209,42 @@ impl TemplateManager {
                     });
                 }
                 Err(_) => {
-                    // Skip invalid templates
+                    
                     continue;
                 }
             }
         }
 
-        // Sort by name
+        
         templates.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
 
         Ok(templates)
     }
 
-    /// Load a template by filename (without extension)
+    
     pub fn load(&self, filename: &str) -> Result<Template> {
         let path = self.template_path(filename);
         Template::load(&path)
     }
 
-    /// Save a template
+    
     pub fn save(&self, filename: &str, template: &Template) -> Result<()> {
         self.ensure_dir()?;
         let path = self.template_path(filename);
         template.save(&path)
     }
 
-    /// Load the default template if it exists
+    
     pub fn load_default(&self) -> Option<Template> {
         self.load("default").ok()
     }
 
-    /// Check if any templates exist
+    
     pub fn has_templates(&self) -> bool {
         self.list().map(|t| !t.is_empty()).unwrap_or(false)
     }
 
-    /// Create example templates if none exist
+    
     pub fn create_examples(&self) -> Result<()> {
         if self.has_templates() {
             return Ok(());
@@ -252,7 +252,7 @@ impl TemplateManager {
 
         self.ensure_dir()?;
 
-        // Meeting notes template
+        
         let meeting = Template {
             name: "Meeting Notes".to_string(),
             title: TitleConfig {
@@ -286,7 +286,7 @@ impl TemplateManager {
         };
         self.save("meeting", &meeting)?;
 
-        // Todo list template
+        
         let todo = Template {
             name: "Todo List".to_string(),
             title: TitleConfig {
@@ -315,7 +315,7 @@ impl TemplateManager {
         };
         self.save("todo", &todo)?;
 
-        // Journal entry template
+        
         let journal = Template {
             name: "Journal Entry".to_string(),
             title: TitleConfig {
@@ -350,16 +350,16 @@ impl TemplateManager {
     }
 }
 
-/// Summary of a template for listing
+
 #[derive(Debug, Clone)]
 pub struct TemplateSummary {
-    /// Filename without extension
+    
     pub filename: String,
-    /// Display name from the template
+    
     pub name: String,
 }
 
-/// Sanitize a string for use as a filename
+
 fn sanitize_filename(name: &str) -> String {
     let mut result = String::new();
     for c in name.chars() {

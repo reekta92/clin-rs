@@ -1,8 +1,8 @@
-//! Bootstrap configuration module
-//!
-//! This module handles the bootstrap config that lives at ~/.config/clin/config.toml
-//! and is read before the main storage is initialized. It allows users to customize
-//! the storage path for their vault.
+
+
+
+
+
 
 use std::fs;
 use std::io::Write;
@@ -12,29 +12,29 @@ use anyhow::{Context, Result};
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 
-/// Controls how node labels (titles) are displayed in the graph view.
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum GraphLabelMode {
-    /// Only show the label of the selected node.
+    
     #[default]
     Selected,
-    /// Show labels for the selected node and its direct neighbors.
+    
     Neighbors,
-    /// Show labels for all nodes.
+    
     All,
 }
 
-/// Theme configuration for the main TUI views
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ThemeConfig {
-    /// Theme name: "tokyo_night", "catppuccin_mocha", "dracula", etc. (empty = default)
+    
     #[serde(default)]
     pub theme: String,
-    /// Background mode: "transparent" or "solid" (empty = transparent)
+    
     #[serde(default)]
     pub background: String,
-    /// Per-color hex overrides (e.g. "#7aa2f7")
+    
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub accent: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -57,30 +57,30 @@ pub struct ThemeConfig {
     pub background_color: Option<String>,
 }
 
-/// Bootstrap configuration loaded from ~/.config/clin/config.toml
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct BootstrapConfig {
-    /// Custom storage path for the vault. If None, uses default XDG data directory.
+    
     pub storage_path: Option<PathBuf>,
-    /// Previous storage path, used for migration. Cleared after successful migration.
+    
     #[serde(skip_serializing_if = "Option::is_none")]
     pub previous_storage_path: Option<PathBuf>,
-    /// External editor command (e.g. "nvim", "code", "nano")
+    
     #[serde(skip_serializing_if = "Option::is_none")]
     pub external_editor: Option<String>,
-    /// Whether external editor mode is enabled
+    
     #[serde(default)]
     pub external_editor_enabled: bool,
-    /// Whether the preview pane is enabled by default
+    
     #[serde(default = "default_preview_enabled")]
     pub preview_enabled: bool,
-    /// Whether the editor markdown preview panel is enabled by default
+    
     #[serde(default)]
     pub markdown_preview_enabled: bool,
-    /// How node labels (titles) are displayed in the graph view
+    
     #[serde(default)]
     pub graph_label_mode: GraphLabelMode,
-    /// Theme configuration for the main TUI
+    
     #[serde(default)]
     pub theme: ThemeConfig,
 }
@@ -90,21 +90,21 @@ fn default_preview_enabled() -> bool {
 }
 
 impl BootstrapConfig {
-    /// Get the path to the bootstrap config file (~/.config/clin/config.toml)
+    
     pub fn config_path() -> Result<PathBuf> {
         let proj_dirs = ProjectDirs::from("com", "clin", "clin")
             .context("could not determine config directory")?;
         Ok(proj_dirs.config_dir().join("config.toml"))
     }
 
-    /// Get the default storage path (~/.local/share/clin)
+    
     pub fn default_storage_path() -> Result<PathBuf> {
         let proj_dirs = ProjectDirs::from("com", "clin", "clin")
             .context("could not determine data directory")?;
         Ok(proj_dirs.data_local_dir().to_path_buf())
     }
 
-    /// Load the bootstrap config from disk, or return defaults if not found
+    
     pub fn load() -> Result<Self> {
         let config_path = Self::config_path()?;
 
@@ -121,11 +121,11 @@ impl BootstrapConfig {
         Ok(config)
     }
 
-    /// Save the bootstrap config to disk
+    
     pub fn save(&self) -> Result<()> {
         let config_path = Self::config_path()?;
 
-        // Ensure parent directory exists
+        
         if let Some(parent) = config_path.parent() {
             fs::create_dir_all(parent).context("failed to create config directory")?;
         }
@@ -140,7 +140,7 @@ impl BootstrapConfig {
         Ok(())
     }
 
-    /// Get the effective storage path (custom or default)
+    
     pub fn effective_storage_path(&self) -> Result<PathBuf> {
         match &self.storage_path {
             Some(path) => Ok(path.clone()),
@@ -148,27 +148,27 @@ impl BootstrapConfig {
         }
     }
 
-    /// Set a custom storage path
+    
     pub fn set_storage_path(&mut self, path: PathBuf) {
         self.storage_path = Some(path);
     }
 
-    /// Reset to default storage path
+    
     pub fn reset_storage_path(&mut self) {
         self.storage_path = None;
     }
 
-    /// Check if a custom storage path is set
+    
     pub fn has_custom_storage_path(&self) -> bool {
         self.storage_path.is_some()
     }
 
-    /// Set the previous storage path (called before changing to new path)
+    
     pub fn set_previous_storage_path(&mut self, path: PathBuf) {
         self.previous_storage_path = Some(path);
     }
 
-    /// Clear the previous storage path (called after successful migration)
+    
     pub fn clear_previous_storage_path(&mut self) {
         self.previous_storage_path = None;
     }

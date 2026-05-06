@@ -26,8 +26,8 @@ impl Default for Viewport {
 }
 
 impl Viewport {
-    // BUG-11: aspect parameter ignored. Dot markers need aspect correction but
-    // braille/halfblock (99% of users) work correctly with fixed CELL_ASPECT.
+    
+    
     pub fn x_bounds(&self, _aspect: f64) -> [f64; 2] {
         let half_w = 100.0 / self.zoom;
         [self.center_x - half_w, self.center_x + half_w]

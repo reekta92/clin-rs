@@ -1,8 +1,8 @@
-//! Keybind configuration module
-//!
-//! This module handles customizable keyboard shortcuts for the application.
-//! Keybinds are stored in <`storage_path>/keybinds.toml` and can be customized
-//! by the user. Vim mode keybindings are NOT affected by this system.
+
+
+
+
+
 
 use std::collections::HashMap;
 use std::fs;
@@ -13,7 +13,7 @@ use anyhow::{Context, Result};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use serde::{Deserialize, Serialize};
 
-/// A key combination (e.g., "Ctrl+q", "Enter", "Shift+Delete")
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct KeyCombo {
     pub code: KeyCode,
@@ -49,7 +49,7 @@ impl KeyCombo {
         }
     }
 
-    /// Parse a key combo from a string like "Ctrl+Shift+a", "Enter", "F1"
+    
     pub fn parse(s: &str) -> Option<Self> {
         let parts: Vec<&str> = s.split('+').collect();
         let mut modifiers = KeyModifiers::NONE;
@@ -58,10 +58,10 @@ impl KeyCombo {
         for (i, part) in parts.iter().enumerate() {
             let part_lower = part.to_lowercase();
             if i == parts.len() - 1 {
-                // Last part is the key
+                
                 key_part = part;
             } else {
-                // Modifier
+                
                 match part_lower.as_str() {
                     "ctrl" | "control" => modifiers |= KeyModifiers::CONTROL,
                     "shift" => modifiers |= KeyModifiers::SHIFT,
@@ -76,7 +76,7 @@ impl KeyCombo {
         Some(Self { code, modifiers })
     }
 
-    /// Convert to a display string
+    
     pub fn to_display_string(&self) -> String {
         let key = key_code_to_string(&self.code);
         let mut result = String::with_capacity(24);
@@ -115,7 +115,7 @@ impl KeyCombo {
         result
     }
 
-    /// Check if this combo matches a key event
+    
     pub fn matches(&self, event: &KeyEvent) -> bool {
         self.code == event.code && self.modifiers == event.modifiers
     }
@@ -124,7 +124,7 @@ impl KeyCombo {
 fn parse_key_code(s: &str) -> Option<KeyCode> {
     let s_lower = s.to_lowercase();
     match s_lower.as_str() {
-        // Special keys
+        
         "enter" | "return" => Some(KeyCode::Enter),
         "esc" | "escape" => Some(KeyCode::Esc),
         "backspace" | "bs" => Some(KeyCode::Backspace),
@@ -141,7 +141,7 @@ fn parse_key_code(s: &str) -> Option<KeyCode> {
         "left" => Some(KeyCode::Left),
         "right" => Some(KeyCode::Right),
 
-        // Function keys
+        
         "f1" => Some(KeyCode::F(1)),
         "f2" => Some(KeyCode::F(2)),
         "f3" => Some(KeyCode::F(3)),
@@ -155,7 +155,7 @@ fn parse_key_code(s: &str) -> Option<KeyCode> {
         "f11" => Some(KeyCode::F(11)),
         "f12" => Some(KeyCode::F(12)),
 
-        // Single character
+        
         _ if s.len() == 1 => {
             let c = s.chars().next()?;
             Some(KeyCode::Char(c.to_ascii_lowercase()))
@@ -190,7 +190,7 @@ fn key_code_to_string(code: &KeyCode) -> Cow<'static, str> {
     }
 }
 
-/// Actions that can be bound to keys in list view
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ListAction {
@@ -215,22 +215,23 @@ pub enum ListAction {
     CollapseFolder,
     ExpandFolder,
     OpenCommandPalette,
-    // QoL features
-    Rename,        // Context-sensitive rename (note or folder)
-    Duplicate,     // Duplicate note
-    TogglePin,     // Pin/unpin note
-    CycleSort,     // Cycle through sort options
-    Search,        // Quick search by title
-    JumpToTop,     // Vim-style G
-    JumpToBottom,  // Vim-style gg (handled specially)
-    PageUp,        // Half page up (Ctrl+u)
-    PageDown,      // Half page down (Ctrl+d)
-    OpenTrash,     // Open trash view
-    TogglePreview, // Toggle preview pane
-    OpenGraph,     // Open graph view
+    
+    Rename,        
+    Duplicate,     
+    TogglePin,     
+    CycleSort,     
+    Search,        
+    JumpToTop,     
+    JumpToBottom,  
+    PageUp,        
+    PageDown,      
+    OpenTrash,     
+    TogglePreview, 
+    OpenGraph,     
+    OpenCanvas,    
 }
 
-/// Actions that can be bound to keys in edit view
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EditAction {
@@ -238,7 +239,7 @@ pub enum EditAction {
     Back,
     CycleFocus,
     ToggleButton,
-    // Text editing shortcuts
+    
     SelectAll,
     Copy,
     Cut,
@@ -252,7 +253,7 @@ pub enum EditAction {
     ToggleMarkdownPreview,
 }
 
-/// Actions that can be bound to keys in help view
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum HelpAction {
@@ -283,7 +284,7 @@ pub enum GraphAction {
     ReloadConfig,
 }
 
-/// TOML representation of keybinds for serialization
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct KeybindsToml {
     #[serde(default)]
@@ -296,7 +297,7 @@ pub struct KeybindsToml {
     pub graph: HashMap<String, Vec<String>>,
 }
 
-/// Main keybinds configuration
+
 #[derive(Debug, Clone)]
 pub struct Keybinds {
     pub list: HashMap<ListAction, Vec<KeyCombo>>,
@@ -412,7 +413,7 @@ impl Default for Keybinds {
             vec![KeyCombo::simple(KeyCode::Char('l'))],
         );
 
-        // QoL feature keybinds
+        
         list.insert(
             ListAction::Rename,
             vec![KeyCombo::simple(KeyCode::Char('r'))],
@@ -450,6 +451,10 @@ impl Default for Keybinds {
         list.insert(
             ListAction::OpenGraph,
             vec![KeyCombo::ctrl(KeyCode::Char('g'))],
+        );
+        list.insert(
+            ListAction::OpenCanvas,
+            vec![KeyCombo::ctrl(KeyCode::Char('o'))],
         );
 
         let mut edit = HashMap::new();
@@ -634,7 +639,7 @@ impl Default for Keybinds {
 }
 
 impl Keybinds {
-    /// Load keybinds from file, merging with defaults
+    
     pub fn load(path: &Path) -> Result<Self> {
         let mut keybinds = Self::default();
 
@@ -647,7 +652,7 @@ impl Keybinds {
         let toml: KeybindsToml =
             toml::from_str(&content).context("failed to parse keybinds file")?;
 
-        // Apply overrides from TOML
+        
         for (action_str, combos_str) in &toml.list {
             if let Some(action) = parse_list_action(action_str) {
                 let combos: Vec<KeyCombo> = combos_str
@@ -699,7 +704,7 @@ impl Keybinds {
         Ok(keybinds)
     }
 
-    /// Save keybinds to file
+    
     pub fn save(&self, path: &Path) -> Result<()> {
         let toml = self.to_toml();
         let content = toml::to_string_pretty(&toml).context("failed to serialize keybinds")?;
@@ -715,7 +720,7 @@ impl Keybinds {
         Ok(())
     }
 
-    /// Convert to TOML representation
+    
     pub fn to_toml(&self) -> KeybindsToml {
         let mut toml = KeybindsToml::default();
 
@@ -746,21 +751,21 @@ impl Keybinds {
         toml
     }
 
-    /// Check if a key event matches a list action
+    
     pub fn matches_list(&self, action: ListAction, event: &KeyEvent) -> bool {
         self.list
             .get(&action)
             .is_some_and(|combos| combos.iter().any(|c| c.matches(event)))
     }
 
-    /// Check if a key event matches an edit action
+    
     pub fn matches_edit(&self, action: EditAction, event: &KeyEvent) -> bool {
         self.edit
             .get(&action)
             .is_some_and(|combos| combos.iter().any(|c| c.matches(event)))
     }
 
-    /// Check if a key event matches a help action
+    
     pub fn matches_help(&self, action: HelpAction, event: &KeyEvent) -> bool {
         self.help
             .get(&action)
@@ -773,7 +778,7 @@ impl Keybinds {
             .is_some_and(|combos| combos.iter().any(|c| c.matches(event)))
     }
 
-    /// Get display string for a list action's keybinds
+    
     pub fn list_keys_display(&self, action: ListAction) -> String {
         self.list
             .get(&action)
@@ -787,7 +792,7 @@ impl Keybinds {
             .unwrap_or_default()
     }
 
-    /// Get display string for an edit action's keybinds
+    
     pub fn edit_keys_display(&self, action: EditAction) -> String {
         self.edit
             .get(&action)
@@ -801,7 +806,7 @@ impl Keybinds {
             .unwrap_or_default()
     }
 
-    /// Get display string for a help action's keybinds
+    
     pub fn help_keys_display(&self, action: HelpAction) -> String {
         self.help
             .get(&action)
@@ -852,6 +857,7 @@ fn parse_list_action(s: &str) -> Option<ListAction> {
         "collapse_folder" => Some(ListAction::CollapseFolder),
         "expand_folder" => Some(ListAction::ExpandFolder),
         "open_graph" => Some(ListAction::OpenGraph),
+        "open_canvas" => Some(ListAction::OpenCanvas),
         _ => None,
     }
 }
@@ -932,7 +938,7 @@ fn list_action_to_string(action: ListAction) -> &'static str {
         ListAction::CollapseFolder => "collapse_folder",
         ListAction::ExpandFolder => "expand_folder",
         ListAction::OpenCommandPalette => "open_command_palette",
-        // QoL features
+        
         ListAction::Rename => "rename",
         ListAction::Duplicate => "duplicate",
         ListAction::TogglePin => "toggle_pin",
@@ -945,9 +951,9 @@ fn list_action_to_string(action: ListAction) -> &'static str {
         ListAction::OpenTrash => "open_trash",
         ListAction::TogglePreview => "toggle_preview",
         ListAction::OpenGraph => "open_graph",
+        ListAction::OpenCanvas => "open_canvas",
     }
 }
-
 fn edit_action_to_string(action: EditAction) -> &'static str {
     match action {
         EditAction::Quit => "quit",

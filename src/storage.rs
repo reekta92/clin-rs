@@ -29,10 +29,10 @@ pub struct NoteBorrowed<'a> {
     #[allow(dead_code)]
     pub content: Cow<'a, str>,
     pub updated_at: u64,
-    // Add default deserialization logic if tags aren't present (for bincode backwards compatibility)
-    // Actually, bincode doesn't handle schema changes easily without a specific setup.
-    // BUT we decided that tags will be stored in FRONTMATTER, not in the bincode blob!
-    // So the bincode blob remains identical.
+    
+    
+    
+    
 }
 
 #[derive(Debug, Clone)]
@@ -75,7 +75,7 @@ fn extract_frontmatter_from_bytes(bytes: &[u8]) -> Option<frontmatter::Frontmatt
 
 impl Storage {
     pub fn init() -> Result<Self> {
-        // Load bootstrap config to get storage path
+        
         let bootstrap = BootstrapConfig::load().context("failed to load bootstrap config")?;
         let data_dir = bootstrap
             .effective_storage_path()
@@ -320,7 +320,7 @@ impl Storage {
                 if path.is_dir() {
                     dirs_to_visit.push(path);
                 } else if let Some(ext) = path.extension().and_then(|e| e.to_str())
-                    && (ext == "clin" || ext == "md" || ext == "txt")
+                    && (ext == "clin" || ext == "md" || ext == "txt" || ext == "canvas")
                     && let Ok(rel_path) = path.strip_prefix(&self.notes_dir)
                     && let Some(rel_str) = rel_path.to_str()
                 {
@@ -455,7 +455,7 @@ impl Storage {
                 .context("failed to encode note")?;
             let encrypted = self.encrypt(&bytes)?;
 
-            // Serialize frontmatter and prepend to encrypted bytes
+            
             let fm_string = frontmatter::serialize(&fm, "");
             let mut final_output = fm_string.into_bytes();
             final_output.extend_from_slice(&encrypted);
@@ -481,7 +481,7 @@ impl Storage {
         Ok(())
     }
 
-    /// Rename a note by updating its title (which changes the filename)
+    
     pub fn rename_note(&self, id: &str, new_title: &str) -> Result<String> {
         let mut note = self.load_note(id)?;
         note.title = new_title.to_string();
@@ -494,7 +494,7 @@ impl Storage {
         self.save_note(id, &note)
     }
 
-    /// Duplicate a note with a new title
+    
     pub fn duplicate_note(&self, id: &str) -> Result<String> {
         let note = self.load_note(id)?;
         let new_title = format!("{} (Copy)", note.title);
@@ -505,18 +505,18 @@ impl Storage {
             .unwrap()
             .as_secs();
 
-        // Generate a new unique ID for the duplicate
+        
         let new_id = self.new_note_id();
         let is_encrypted = id.ends_with(".clin");
 
-        // Determine the folder from the original note
+        
         let folder = if let Some(idx) = id.rfind('/') {
             &id[..idx]
         } else {
             ""
         };
 
-        // Create initial ID with folder prefix
+        
         let initial_id = if folder.is_empty() {
             format!("{}.{}", new_id, if is_encrypted { "clin" } else { "md" })
         } else {
@@ -561,31 +561,31 @@ impl Storage {
         Ok(())
     }
 
-    /// Toggle the pinned status of a note
+    
     pub fn toggle_pin(&self, id: &str) -> Result<bool> {
         let path = self.note_path(id);
         let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
 
         if ext == "clin" {
-            // For encrypted notes, we need to update frontmatter
+            
             let file_content = fs::read(&path).context("failed to read note")?;
             let mut fm = extract_frontmatter_from_bytes(&file_content).unwrap_or_default();
             fm.pinned = !fm.pinned;
             let new_pinned = fm.pinned;
 
-            // Decrypt, update frontmatter, and re-encrypt
+            
             let plain = self.decrypt(&file_content)?;
             let fm_string = frontmatter::serialize(&fm, "");
             let mut final_output = fm_string.into_bytes();
 
-            // Re-encrypt the original decrypted content
+            
             let encrypted = self.encrypt(&plain)?;
             final_output.extend_from_slice(&encrypted);
 
             fs::write(&path, final_output).context("failed to write note")?;
             Ok(new_pinned)
         } else {
-            // For plain notes, parse and update frontmatter
+            
             let content = fs::read_to_string(&path).context("failed to read note")?;
             let (mut fm, body) = frontmatter::parse(&content);
             fm.pinned = !fm.pinned;
@@ -665,7 +665,7 @@ impl Storage {
         };
 
         if id == target_id {
-            return Ok(id.to_string()); // No change
+            return Ok(id.to_string()); 
         }
 
         let new_path = self.note_path(&target_id);

@@ -114,8 +114,8 @@ impl CommandPalette {
                 }
             }
             KeyCode::Enter => {
-                // Return true, but we need to signal that we picked an item
-                // This is a quick way to handle it: return true and the caller checks state
+                
+                
                 return true;
             }
             _ => {

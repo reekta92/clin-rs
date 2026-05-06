@@ -8,9 +8,9 @@ pub struct Frontmatter {
     pub pinned: bool,
 }
 
-/// Parses frontmatter from note content.
-/// Returns the parsed frontmatter and the remaining content.
-/// If no frontmatter is found, returns default frontmatter and the original content.
+
+
+
 pub fn parse(content: &str) -> (Frontmatter, &str) {
     if !content.starts_with("---\n") && !content.starts_with("---\r\n") {
         return (Frontmatter::default(), content);
@@ -21,7 +21,7 @@ pub fn parse(content: &str) -> (Frontmatter, &str) {
         let frontmatter_str = &content[3..3 + end_idx];
 
         let remaining_start = 3 + end_idx + end_marker.len();
-        // Skip trailing newline after the end marker if present
+        
         let mut content_start = remaining_start;
         if content[remaining_start..].starts_with("\r\n") {
             content_start += 2;
@@ -31,7 +31,7 @@ pub fn parse(content: &str) -> (Frontmatter, &str) {
 
         let remaining_content = &content[content_start..];
 
-        // Parse YAML
+        
         if let Ok(frontmatter) = serde_yml::from_str::<Frontmatter>(frontmatter_str) {
             return (frontmatter, remaining_content);
         }
@@ -40,8 +40,8 @@ pub fn parse(content: &str) -> (Frontmatter, &str) {
     (Frontmatter::default(), content)
 }
 
-/// Serializes frontmatter and prepends it to content.
-/// If the frontmatter is empty (no tags, not pinned), returns the content as is.
+
+
 pub fn serialize(frontmatter: &Frontmatter, content: &str) -> String {
     if frontmatter.tags.is_empty() && !frontmatter.pinned {
         return content.to_string();
@@ -49,19 +49,19 @@ pub fn serialize(frontmatter: &Frontmatter, content: &str) -> String {
 
     match serde_yml::to_string(frontmatter) {
         Ok(yaml) => {
-            // serde_yml typically adds `---` at the beginning, but let's be sure
+            
             let yaml = yaml.trim();
             let yaml = yaml.to_string();
 
-            // Format:
-            // ---
-            // tags:
-            // - tag1
-            // ---
-            // <content>
+            
+            
+            
+            
+            
+            
             format!("---\n{}\n---\n{}", yaml, content)
         }
-        Err(_) => content.to_string(), // Fallback on failure
+        Err(_) => content.to_string(), 
     }
 }
 
