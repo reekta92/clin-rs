@@ -1940,6 +1940,7 @@ impl App {
     pub fn close_canvas_view(&mut self) {
         self.editing_id = None;
         self.mode = self.return_mode.take().unwrap_or(ViewMode::List);
+        let _ = self.refresh_notes();
         self.set_default_status();
     }
 
