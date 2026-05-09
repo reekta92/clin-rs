@@ -882,10 +882,12 @@ fn run_app(
                         let normalized = data.replace(['\r', '\n'], " ");
                         app.title_editor.insert_str(normalized);
                         app.status = Cow::Borrowed("Pasted title text");
+                        app.request_editor_preview_update();
                     }
                     EditFocus::Body => {
                         app.editor.insert_str(data);
                         app.status = Cow::Borrowed("Pasted body text");
+                        app.request_editor_preview_update();
                     }
                     EditFocus::ExternalEditorToggle => {}
                 },

@@ -707,6 +707,17 @@ pub struct ClinConfig {
     #[serde(default)]
     pub theme: ThemeConfig,
 
+    #[serde(default)]
+    pub default_sort_field: Option<crate::app::SortField>,
+    #[serde(default)]
+    pub default_sort_order: Option<crate::app::SortOrder>,
+    #[serde(default)]
+    pub default_folder: Option<String>,
+    #[serde(default = "default_true")]
+    pub confirm_on_delete: bool,
+    #[serde(default = "default_true")]
+    pub show_line_numbers: bool,
+
     // Graf-origin sub-structs
     #[serde(default)]
     pub visual: VisualConfig,
@@ -841,8 +852,83 @@ impl ClinConfig {
                 let _ = fs::rename(&graf_path, graf_path.with_extension("toml.migrated"));
             }
 
-            let content = toml::to_string_pretty(&config)
-                .context("failed to serialize default config")?;
+            let content = r#"# Clin Configuration File
+
+# ── Storage & Editor ──────────────────────────────────────────────────────────
+
+# Custom path for notes storage (e.g., "/home/user/vault").
+# If not set, defaults to the standard data directory for your OS.
+# storage_path = "/path/to/your/notes"
+
+# External editor command (e.g., "nvim", "code", "nano").
+# external_editor = "nvim"
+
+# Enable external editor mode by default.
+external_editor_enabled = false
+
+# ── General UI ────────────────────────────────────────────────────────────────
+
+# Show the preview pane in the notes list by default.
+preview_enabled = true
+
+# Show the markdown preview in the editor view by default.
+editor_preview_enabled = false
+
+# Show line numbers in the editor.
+show_line_numbers = true
+
+# Confirm before moving a note or folder to the trash.
+confirm_on_delete = true
+
+# ── Default Sorting & Organization ──────────────────────────────────────────
+
+# Default sorting field for the notes list ("title" or "modified").
+default_sort_field = "title"
+
+# Default sorting order ("ascending" or "descending").
+default_sort_order = "ascending"
+
+# Default folder for new notes (relative to vault root).
+# default_folder = "inbox"
+
+# ── Theme ─────────────────────────────────────────────────────────────────────
+
+[theme]
+# Theme to use ("default", "tokyo_night", "catppuccin_mocha", "onedark", "gruvbox", etc.)
+theme = "default"
+# Background style ("transparent" or "solid")
+background = "transparent"
+
+# ── Graph View (Graf) ─────────────────────────────────────────────────────────
+
+[visual]
+# Graph background style ("solid", "transparent")
+graph_background = "solid"
+# Node color mode ("folder", "tag", "uniform")
+node_color_mode = "folder"
+# Edge color mode ("uniform", "gradient")
+edge_color_mode = "uniform"
+# Label display mode ("selected", "neighbors", "all", "none")
+label_mode = "selected"
+# Show legend in graph view
+show_legend = true
+# Show minimap in graph view
+show_minimap = false
+
+[physics]
+# Ideal distance between nodes
+ideal_distance = 80.0
+# Damping factor for simulation
+damping = 0.95
+# Enable simulation cooling (stops movement after a while)
+cooling = true
+
+[interaction]
+# Zoom sensitivity factor
+zoom_factor = 1.15
+# Drag sensitivity factor
+drag_sensitivity = 1.0
+"#;
             let mut file = fs::File::create(&config_path)
                 .context("failed to create config file")?;
             file.write_all(content.as_bytes())

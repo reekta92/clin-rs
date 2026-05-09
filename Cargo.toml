@@ -1,6 +1,6 @@
 [package]
 name = "clin-rs"
-version = "0.7.0-41"
+version = "0.7.0-43"
 edition = "2024"
 description = "Encrypted terminal note-taking app"
 authors = ["reekta92 mdag.92988@protonmail.com"]
@@ -8,7 +8,7 @@ repository = "https://github.com/reekta92/clin-rs"
 license = "GPL-3.0"
 
 [[bin]]
-name = "clin-rs"
+name = "clin"
 path = "src/main.rs"
 
 [package.metadata.deb]
@@ -19,7 +19,7 @@ depends = "libc6 (>= 2.31)"
 section = "utils"
 priority = "optional"
 assets = [
-	["target/release/clin-rs", "usr/bin/clin-rs", "755"],
+	["target/release/clin", "usr/bin/clin", "755"],
 	["clin.ico", "usr/share/pixmaps/clin.ico", "644"],
 ]
 extended-description = "clin-rs is a terminal-first encrypted note app with in-app editing and mouse support."
@@ -27,7 +27,7 @@ extended-description = "clin-rs is a terminal-first encrypted note app with in-a
 [package.metadata.generate-rpm]
 name = "clin-rs"
 assets = [
-	{ source = "target/release/clin-rs", dest = "/usr/bin/clin-rs", mode = "0755" },
+	{ source = "target/release/clin", dest = "/usr/bin/clin", mode = "0755" },
 	{ source = "clin.ico", dest = "/usr/share/pixmaps/clin.ico", mode = "0644" },
 ]
 

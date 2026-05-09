@@ -452,10 +452,6 @@ impl Default for Keybinds {
             ListAction::OpenGraph,
             vec![KeyCombo::ctrl(KeyCode::Char('g'))],
         );
-        list.insert(
-            ListAction::OpenCanvas,
-            vec![KeyCombo::ctrl(KeyCode::Char('o'))],
-        );
 
         let mut edit = HashMap::new();
         edit.insert(EditAction::Quit, vec![KeyCombo::ctrl(KeyCode::Char('q'))]);

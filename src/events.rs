@@ -350,14 +350,14 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     if app.keybinds.matches_list(ListAction::MoveDown, &key) {
         if app.visual_index < app.visual_list.len().saturating_sub(1) {
             app.visual_index += 1;
-            app.update_preview();
+            app.request_preview_update();
         }
         return false;
     }
     if app.keybinds.matches_list(ListAction::MoveUp, &key) {
         if app.visual_index > 0 {
             app.visual_index -= 1;
-            app.update_preview();
+            app.request_preview_update();
         }
         return false;
     }
@@ -580,6 +580,7 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
             }
 
             if handle_os_shortcuts(&app.keybinds, &mut app.title_editor, key) {
+                app.request_editor_preview_update();
                 return false;
             }
 
@@ -591,12 +592,16 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                     app.app_theme.highlight_bg,
                 );
             }
+            app.request_editor_preview_update();
         }
         EditFocus::Body => {
             if handle_os_shortcuts(&app.keybinds, &mut app.editor, key) {
+                app.request_editor_preview_update();
                 return false;
             }
-            app.editor.input(Input::from(key));
+            if app.editor.input(Input::from(key)) {
+                app.request_editor_preview_update();
+            }
         }
         EditFocus::ExternalEditorToggle => {
             if app.keybinds.matches_edit(EditAction::ToggleButton, &key) {

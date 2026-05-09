@@ -8,7 +8,7 @@
 
 ---
 
-`clin-rs` is a TUI reimagination of Obsidian. It is goal is to provide a feature complete note management tool like Obsidian does but as a TUI rather than a GUI.
+`clin` is a TUI reimagination of Obsidian. Its goal is to provide a feature-complete note management tool like Obsidian, but as a TUI rather than a GUI.
 
 ---
 
@@ -18,7 +18,8 @@
 > - Built in editor is a **placeholder** and it will be reworked in the future.
 
 - **Interactable graph view** via `graf` for markdown files which works with wikilinks or tags.
-- **Command palette** for more advanced actions, currently has **OCR** with `tesseract`, encrypt/decrypt and graph view.
+- **Canvas view** with drawable, interactable TUI area with its own file format, support for shapes and text.
+- **Command palette** for more advanced actions, currently has **OCR** with `tesseract`, encrypt/decrypt, graph view and theme management.
 > - Some features in the command palette will later be implemented in the reworked editor view for allowing users to use them in **any editor** or any cursor location.
 
 - **Encryption** with ChaCha20-Poly1305, works completely on demand with encrypt/decrypt options.
@@ -42,20 +43,20 @@
 - [ ] **Cursor insert:** insert at the cursor location for related command palette features like OCR etc. 
 
 ### Graph View (graf)
-- [ ] **Help page improvements:** unify the view of help page with other parts of the app.
+- [X] **Help page improvements:** unify the view of help page with other parts of the app.
 - [ ] **Date/time linking:** link the date/time of the note to the node for categorization.
 - [ ] **Create links:** create wikilinks directly from the graph view via a popup. Should also allow for batch creating links.
 - [ ] **Assign tags:** assign tags directly from the graph view.
 - [ ] **Mouse right click:** right click context menu for actions like creating links, assigning tags etc.
 
 ### Canvas
-- [ ] **Drawable canvas:** alternative to Obsidian's canvases; drawable, interactable, writable(inserting text) TUI area with it's own file format.
-> - [ ] **Obsidian canvas support:** try to import `.canvas` files from Obsidian.
-- [ ] **Drawing:** mouse drawing similar to most paint style apps, same logic as the graph view.
-- [ ] **Insert shapes:** insert pre defined shapes like rectangles, circles etc.
+- [X] **Drawable canvas:** alternative to Obsidian's canvases; drawable, interactable, writable(inserting text) TUI area with it's own file format.
+- [X] **Drawing:** mouse drawing similar to most paint style apps, same logic as the graph view.
+- [X] **Insert shapes:** insert pre defined shapes like rectangles, circles etc.
 - [ ] **Link objects:** create links between objects.
 - [ ] **Grouping objects:** create groups to merge multiple objects as a one object.
 - [ ] **Insert note links:** insert note links into the drawing area as a object.
+- [ ] **Obsidian canvas support:** try to import `.canvas` files from Obsidian.
 
 ### Command Palette
 - [X] **Command palette:** implement command palette for more advanced actions.
@@ -303,13 +304,13 @@ cursor_glyph = "▎"
 ### Debian/Ubuntu (.deb)
 Download the latest `.deb` from the [Releases](https://github.com/reekta/clin/releases) page.
 ```bash
-sudo dpkg -i clin-rs_0.5.0-2-1_amd64.deb
+sudo dpkg -i clin-rs_0.7.0-43_amd64.deb
 ```
 
 ### Fedora/RHEL (.rpm)
 Download the latest `.rpm` from the [Releases](https://github.com/reekta/clin/releases) page.
 ```bash
-sudo rpm -i clin-rs-0.5.0-2-1.x86_64.rpm
+sudo rpm -i clin-rs-0.7.0-43.x86_64.rpm
 ```
 
 ### Arch Linux (PKGBUILD)
@@ -323,11 +324,10 @@ cd clin
 makepkg -si
 ```
 ### Other
-Download the latest `.tar.gz` from [Releases](https://github.com/reekta/clin/releases) page for manual installation.
+Download the latest `.tar.gz` from the [Releases](https://github.com/reekta/clin/releases) page for manual installation.
 ```bash
 # Extract the archive
-tar -xzf clin-rs-0.5.0-2-x86_64.tar.gz
-cd clin-rs-0.5.0-2-x86_64.tar.gz
+tar -xzf clin-rs-0.7.0-43-x86_64.tar.gz
 
 # Give executable permission
 chmod +x clin

@@ -10,6 +10,7 @@ use ratatui::{
 };
 
 use once_cell::sync::Lazy;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use tui_term::vt100;
@@ -37,6 +38,13 @@ pub struct MarkdownRenderer {
     parser: vt100::Parser,
     scroll_offset: u16,
     content_rows: u16,
+    cancel_token: Arc<AtomicBool>,
+}
+
+impl Drop for MarkdownRenderer {
+    fn drop(&mut self) {
+        self.cancel_token.store(true, Ordering::Relaxed);
+    }
 }
 
 impl MarkdownRenderer {
@@ -47,6 +55,7 @@ impl MarkdownRenderer {
             parser: vt100::Parser::new(rows, cols, 0),
             scroll_offset: 0,
             content_rows: rows,
+            cancel_token: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -70,8 +79,9 @@ impl MarkdownRenderer {
         let (tx, rx) = mpsc::channel();
         self.state = RendererState::Pending(rx);
 
+        let cancel_token = Arc::clone(&self.cancel_token);
         std::thread::spawn(move || {
-            let result = render_in_thread(&content_owned, cols, estimated_rows);
+            let result = render_in_thread(&content_owned, cols, estimated_rows, cancel_token);
             let _ = tx.send(result);
         });
     }
@@ -127,7 +137,12 @@ impl MarkdownRenderer {
     }
 }
 
-fn render_in_thread(content: &str, cols: u16, estimated_rows: u16) -> Option<RenderResult> {
+fn render_in_thread(
+    content: &str,
+    cols: u16,
+    estimated_rows: u16,
+    cancel_token: Arc<AtomicBool>,
+) -> Option<RenderResult> {
     let mut parser = vt100::Parser::new(estimated_rows, cols, 0);
 
     if !glow_available() {
@@ -136,6 +151,10 @@ fn render_in_thread(content: &str, cols: u16, estimated_rows: u16) -> Option<Ren
             parser,
             content_rows: estimated_rows,
         });
+    }
+
+    if cancel_token.load(Ordering::Relaxed) {
+        return None;
     }
 
     let mut temp_file = tempfile::Builder::new()
@@ -175,7 +194,16 @@ fn render_in_thread(content: &str, cols: u16, estimated_rows: u16) -> Option<Ren
 
     let mut output = Vec::new();
     let mut buf = [0u8; 8192];
+
+    
+    
+    
     loop {
+        if cancel_token.load(Ordering::Relaxed) {
+            let _ = child.kill();
+            return None;
+        }
+
         match reader.read(&mut buf) {
             Ok(0) => break,
             Ok(n) => output.extend_from_slice(&buf[..n]),

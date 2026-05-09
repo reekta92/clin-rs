@@ -6,9 +6,10 @@ use crate::templates::TemplateManager;
 use anyhow::{Context, Result, anyhow};
 use chacha20poly1305::aead::{Aead, KeyInit};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
+use once_cell::sync::Lazy;
 use rand::RngCore;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::borrow::Cow;
 
 use std::fs;
 use std::path::PathBuf;
@@ -23,18 +24,6 @@ pub struct Note {
     pub tags: Vec<String>,
 }
 
-#[derive(Debug, bincode::BorrowDecode)]
-pub struct NoteBorrowed<'a> {
-    pub title: Cow<'a, str>,
-    #[allow(dead_code)]
-    pub content: Cow<'a, str>,
-    pub updated_at: u64,
-    
-    
-    
-    
-}
-
 #[derive(Debug, Clone)]
 pub struct NoteSummary {
     pub id: String,
@@ -43,6 +32,17 @@ pub struct NoteSummary {
     pub folder: String,
     pub tags: Vec<String>,
     pub pinned: bool,
+    pub links: Vec<String>,
+}
+
+static WIKILINK_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]").unwrap());
+
+pub fn extract_wikilinks(content: &str) -> Vec<String> {
+    WIKILINK_RE
+        .captures_iter(content)
+        .filter_map(|c| c.get(1).map(|m| m.as_str().trim().to_string()))
+        .collect()
 }
 
 #[derive(Clone, Debug, zeroize::Zeroize, zeroize::ZeroizeOnDrop)]
@@ -201,8 +201,11 @@ impl Storage {
         }
 
         let fm = frontmatter::Frontmatter {
+            title: Some(note.title.clone()),
+            updated_at: Some(note.updated_at),
             tags: note.tags.clone(),
             pinned: false,
+            links: Some(extract_wikilinks(&note.content)),
         };
         let bytes = bincode::serde::encode_to_vec(&note, bincode::config::standard())
             .context("failed to encode note")?;
@@ -253,8 +256,11 @@ impl Storage {
         }
 
         let fm = frontmatter::Frontmatter {
+            title: Some(note.title.clone()),
+            updated_at: Some(note.updated_at),
             tags: note.tags.clone(),
             pinned: false,
+            links: Some(extract_wikilinks(&note.content)),
         };
         let final_content = frontmatter::serialize(&fm, &note.content);
         fs::write(&target_path, final_content).context("failed to write decrypted note")?;
@@ -343,39 +349,64 @@ impl Storage {
 
         if ext == "clin" {
             let file_content = fs::read(&path).context("failed to read note")?;
-            let mut tags = Vec::new();
-            let mut pinned = false;
+            
             if let Some(fm) = extract_frontmatter_from_bytes(&file_content) {
-                tags = fm.tags;
-                pinned = fm.pinned;
+                if let (Some(title), Some(updated_at)) = (fm.title, fm.updated_at) {
+                    return Ok(NoteSummary {
+                        id: id.to_string(),
+                        title,
+                        updated_at,
+                        folder,
+                        tags: fm.tags,
+                        pinned: fm.pinned,
+                        links: fm.links.unwrap_or_default(),
+                    });
+                }
             }
 
             let plain = self.decrypt(&file_content)?;
-            let (note, _): (NoteBorrowed, usize) =
-                bincode::borrow_decode_from_slice(&plain, bincode::config::standard())
+            let (note, _): (Note, usize) =
+                bincode::serde::decode_from_slice(&plain, bincode::config::standard())
                     .context("failed to decode note")?;
+            
+            let (tags, pinned, links) = extract_frontmatter_from_bytes(&file_content)
+                .map(|fm| (fm.tags, fm.pinned, fm.links.unwrap_or_default()))
+                .unwrap_or_else(|| (note.tags.clone(), false, extract_wikilinks(&note.content)));
+
             Ok(NoteSummary {
                 id: id.to_string(),
-                title: note.title.into_owned(),
+                title: note.title,
                 updated_at: note.updated_at,
                 folder,
                 tags,
                 pinned,
+                links,
             })
         } else {
             let content = fs::read_to_string(&path).unwrap_or_default();
-            let (fm, _) = frontmatter::parse(&content);
+            let (fm, plain_content) = frontmatter::parse(&content);
 
-            let title = path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("Untitled note")
-                .to_string();
-            let updated_at = fs::metadata(&path)
-                .and_then(|m| m.modified())
-                .ok()
-                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                .map_or(0, |d| d.as_secs());
+            let title = if let Some(t) = fm.title {
+                t
+            } else {
+                path.file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("Untitled note")
+                    .to_string()
+            };
+
+            let updated_at = if let Some(ua) = fm.updated_at {
+                ua
+            } else {
+                fs::metadata(&path)
+                    .and_then(|m| m.modified())
+                    .ok()
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map_or(0, |d| d.as_secs())
+            };
+
+            let links = fm.links.unwrap_or_else(|| extract_wikilinks(plain_content));
+
             Ok(NoteSummary {
                 id: id.to_string(),
                 title,
@@ -383,6 +414,7 @@ impl Storage {
                 folder,
                 tags: fm.tags,
                 pinned: fm.pinned,
+                links,
             })
         }
     }
@@ -393,31 +425,46 @@ impl Storage {
 
         if ext == "clin" {
             let file_content = fs::read(&path).context("failed to read note")?;
-            let mut tags = Vec::new();
-            if let Some(fm) = extract_frontmatter_from_bytes(&file_content) {
-                tags = fm.tags;
-            }
+            let fm = extract_frontmatter_from_bytes(&file_content);
 
             let plain = self.decrypt(&file_content)?;
             let (mut note, _) =
                 bincode::serde::decode_from_slice::<Note, _>(&plain, bincode::config::standard())
                     .context("failed to decode note")?;
-            note.tags = tags;
+            
+            if let Some(fm) = fm {
+                note.tags = fm.tags;
+                if let Some(t) = fm.title {
+                    note.title = t;
+                }
+                if let Some(ua) = fm.updated_at {
+                    note.updated_at = ua;
+                }
+            }
             Ok(note)
         } else {
             let file_content = fs::read_to_string(&path).context("failed to read plain note")?;
             let (fm, plain_content) = frontmatter::parse(&file_content);
 
-            let title = path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("Untitled note")
-                .to_string();
-            let updated_at = fs::metadata(&path)
-                .and_then(|m| m.modified())
-                .ok()
-                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                .map_or(0, |d| d.as_secs());
+            let title = if let Some(t) = fm.title {
+                t
+            } else {
+                path.file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("Untitled note")
+                    .to_string()
+            };
+
+            let updated_at = if let Some(ua) = fm.updated_at {
+                ua
+            } else {
+                fs::metadata(&path)
+                    .and_then(|m| m.modified())
+                    .ok()
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map_or(0, |d| d.as_secs())
+            };
+
             Ok(Note {
                 title,
                 content: plain_content.to_string(),
@@ -441,9 +488,13 @@ impl Storage {
 
         let target_id = self.unique_note_id(&preferred_stem, target_ext, id);
         let existing_pinned = self.load_note_summary(id).map(|s| s.pinned).unwrap_or(false);
+        let links = extract_wikilinks(&note.content);
         let fm = frontmatter::Frontmatter {
+            title: Some(note.title.clone()),
+            updated_at: Some(note.updated_at),
             tags: note.tags.clone(),
             pinned: existing_pinned,
+            links: Some(links),
         };
 
         let target_path = self.note_path(&target_id);

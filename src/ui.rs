@@ -1304,13 +1304,17 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         let line_count = app.editor.lines().len();
         let cursor_row = app.editor.cursor().0;
         let scroll_row = cursor_row.saturating_sub(app.editor.screen_cursor().row as usize);
-        let digits = line_count.max(1).to_string().len() as u16;
-        let gutter_width = digits + 1;
-        let gutter_area = Rect::new(content_area.x, content_area.y, gutter_width.min(content_area.width), content_area.height);
-        let editor_area = Rect::new(content_area.x + gutter_area.width, content_area.y, content_area.width.saturating_sub(gutter_area.width), content_area.height);
-
-        let gutter = line_number_gutter(line_count, cursor_row, scroll_row, content_area.height, &app.app_theme);
-        frame.render_widget(gutter, gutter_area);
+        
+        let editor_area = if app.show_line_numbers {
+            let digits = line_count.max(1).to_string().len() as u16;
+            let gutter_width = digits + 1;
+            let gutter_area = Rect::new(content_area.x, content_area.y, gutter_width.min(content_area.width), content_area.height);
+            let gutter = line_number_gutter(line_count, cursor_row, scroll_row, content_area.height, &app.app_theme);
+            frame.render_widget(gutter, gutter_area);
+            Rect::new(content_area.x + gutter_area.width, content_area.y, content_area.width.saturating_sub(gutter_area.width), content_area.height)
+        } else {
+            content_area
+        };
 
         app.editor.set_block(
             Block::default()
@@ -1379,14 +1383,18 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         let line_count = app.editor.lines().len();
         let cursor_row = app.editor.cursor().0;
         let scroll_row = cursor_row.saturating_sub(app.editor.screen_cursor().row as usize);
-        let digits = line_count.max(1).to_string().len() as u16;
-        let gutter_width = digits + 1;
         let content_area = editor_container;
-        let gutter_area = Rect::new(content_area.x, content_area.y, gutter_width.min(content_area.width), content_area.height);
-        let editor_area = Rect::new(content_area.x + gutter_area.width, content_area.y, content_area.width.saturating_sub(gutter_area.width), content_area.height);
 
-        let gutter = line_number_gutter(line_count, cursor_row, scroll_row, content_area.height, &app.app_theme);
-        frame.render_widget(gutter, gutter_area);
+        let editor_area = if app.show_line_numbers {
+            let digits = line_count.max(1).to_string().len() as u16;
+            let gutter_width = digits + 1;
+            let gutter_area = Rect::new(content_area.x, content_area.y, gutter_width.min(content_area.width), content_area.height);
+            let gutter = line_number_gutter(line_count, cursor_row, scroll_row, content_area.height, &app.app_theme);
+            frame.render_widget(gutter, gutter_area);
+            Rect::new(content_area.x + gutter_area.width, content_area.y, content_area.width.saturating_sub(gutter_area.width), content_area.height)
+        } else {
+            content_area
+        };
 
         app.editor.set_block(
             Block::default()

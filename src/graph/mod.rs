@@ -8,8 +8,6 @@ use std::sync::Mutex;
 
 use fdg_sim::petgraph::graph::NodeIndex;
 use fdg_sim::{ForceGraph, ForceGraphHelper, Simulation, SimulationParameters};
-use once_cell::sync::Lazy;
-use regex::Regex;
 
 use crate::config::ClinConfig;
 use crate::storage::Storage;
@@ -34,53 +32,38 @@ pub struct GraphState {
     pub render_cache: Mutex<render::RenderCache>,
 }
 
-static WIKILINK_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]").unwrap());
-
-fn extract_wikilinks(content: &str) -> Vec<String> {
-    WIKILINK_RE
-        .captures_iter(content)
-        .filter_map(|c| c.get(1).map(|m| m.as_str().trim().to_string()))
-        .collect()
-}
-
 pub fn build_graph(storage: &Storage, config: &ClinConfig) -> anyhow::Result<ForceGraph<GraphNodeData, ()>> {
     let note_ids = storage.list_note_ids()?;
     let mut graph: ForceGraph<GraphNodeData, ()> = ForceGraph::default();
     let mut title_to_index: HashMap<String, NodeIndex> = HashMap::new();
 
+    let mut summaries = Vec::new();
     let mut links_map: HashMap<String, Vec<String>> = HashMap::new();
     let mut link_counts: HashMap<String, usize> = HashMap::new();
     
     for id in &note_ids {
-        if id.ends_with(".clin") { continue; }
-        if let Ok(note) = storage.load_note(id) {
-            let links = extract_wikilinks(&note.content);
-            link_counts.insert(id.clone(), links.len());
-            links_map.insert(id.clone(), links);
+        if let Ok(summary) = storage.load_note_summary(id) {
+            link_counts.insert(id.clone(), summary.links.len());
+            links_map.insert(id.clone(), summary.links.clone());
+            summaries.push(summary);
         }
     }
 
     let min_links = config.filter.min_links;
     
-    for id in &note_ids {
-        let lc = link_counts.get(id).copied().unwrap_or(0);
+    for summary in &summaries {
+        let lc = link_counts.get(&summary.id).copied().unwrap_or(0);
         if lc < min_links { continue; }
         
-        let summary = match storage.load_note_summary(id) {
-            Ok(s) => s,
-            Err(_) => continue,
-        };
-
         if !config.filter.exclude_tags.is_empty() {
             if summary.tags.iter().any(|t| config.filter.exclude_tags.contains(t)) {
                 continue;
             }
         }
 
-        let is_encrypted = id.ends_with(".clin");
+        let is_encrypted = summary.id.ends_with(".clin");
         let data = GraphNodeData {
-            note_id: id.clone(),
+            note_id: summary.id.clone(),
             title: summary.title.clone(),
             is_encrypted,
             tags: summary.tags.clone(),
@@ -92,12 +75,9 @@ pub fn build_graph(storage: &Storage, config: &ClinConfig) -> anyhow::Result<For
         title_to_index.insert(summary.title.to_lowercase(), idx);
     }
 
-    for id in &note_ids {
-        if let Some(links) = links_map.get(id) {
-            let source_title = match storage.load_note_summary(id) {
-                Ok(s) => s.title.to_lowercase(),
-                Err(_) => continue,
-            };
+    for summary in &summaries {
+        if let Some(links) = links_map.get(&summary.id) {
+            let source_title = summary.title.to_lowercase();
             
             let source_idx = match title_to_index.get(&source_title) {
                 Some(&idx) => idx,

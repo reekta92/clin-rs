@@ -3,9 +3,15 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Frontmatter {
     #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub updated_at: Option<u64>,
+    #[serde(default)]
     pub tags: Vec<String>,
     #[serde(default)]
     pub pinned: bool,
+    #[serde(default)]
+    pub links: Option<Vec<String>>,
 }
 
 
@@ -43,7 +49,12 @@ pub fn parse(content: &str) -> (Frontmatter, &str) {
 
 
 pub fn serialize(frontmatter: &Frontmatter, content: &str) -> String {
-    if frontmatter.tags.is_empty() && !frontmatter.pinned {
+    if frontmatter.tags.is_empty() 
+        && !frontmatter.pinned 
+        && frontmatter.title.is_none() 
+        && frontmatter.updated_at.is_none()
+        && frontmatter.links.is_none()
+    {
         return content.to_string();
     }
 
@@ -90,6 +101,7 @@ mod tests {
         let fm = Frontmatter {
             tags: vec!["work".to_string()],
             pinned: false,
+            ..Default::default()
         };
         let content = "My note";
         let serialized = serialize(&fm, content);

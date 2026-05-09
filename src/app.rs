@@ -192,14 +192,15 @@ pub struct SearchPopup {
 }
 
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum SortField {
     Title,
     Modified,
 }
 
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum SortOrder {
     Ascending,
     Descending,
@@ -279,8 +280,15 @@ pub struct App {
     pub preview_renderer: Option<MarkdownRenderer>,
     pub editor_preview_enabled: bool,
     pub md_preview_renderer: Option<MarkdownRenderer>,
+    pub show_line_numbers: bool,
+    pub confirm_on_delete: bool,
+    pub default_folder: Option<String>,
     
     pub last_g_press: Option<Instant>,
+    pub last_selection_change: Option<Instant>,
+    pub pending_preview_update: bool,
+    pub last_editor_change: Option<Instant>,
+    pub pending_editor_preview_update: bool,
     pub page_size: usize,
     pub return_mode: Option<ViewMode>,
     pub app_theme: crate::app_theme::AppThemeColors,
@@ -360,14 +368,21 @@ impl App {
             note_create_popup: None,
             canvas_create_popup: None,
             search_popup: None,
-            sort_field: SortField::Modified,
-            sort_order: SortOrder::Descending,
+            sort_field: bootstrap_config.default_sort_field.unwrap_or(SortField::Title),
+            sort_order: bootstrap_config.default_sort_order.unwrap_or(SortOrder::Ascending),
             trash_view: None,
             preview_enabled: bootstrap_config.preview_enabled,
             preview_renderer: None,
             editor_preview_enabled: bootstrap_config.editor_preview_enabled,
             md_preview_renderer: None,
+            show_line_numbers: bootstrap_config.show_line_numbers,
+            confirm_on_delete: bootstrap_config.confirm_on_delete,
+            default_folder: bootstrap_config.default_folder.clone(),
             last_g_press: None,
+            last_selection_change: None,
+            pending_preview_update: false,
+            last_editor_change: None,
+            pending_editor_preview_update: false,
             page_size: 10,
             return_mode: None,
             app_theme,
@@ -457,10 +472,10 @@ impl App {
 
         
         
-        let mut by_folder: HashMap<String, Vec<(usize, &NoteSummary)>> = HashMap::new();
+        let mut by_folder: HashMap<&str, Vec<(usize, &NoteSummary)>> = HashMap::new();
         for (i, note) in self.notes.iter().enumerate() {
             by_folder
-                .entry(note.folder.clone())
+                .entry(note.folder.as_str())
                 .or_default()
                 .push((i, note));
         }
@@ -473,7 +488,7 @@ impl App {
             is_expanded: self.folder_expanded.contains(""),
             note_count: by_folder
                 .get("")
-                .map_or(0, |v: &Vec<(usize, &NoteSummary)>| v.len()),
+                .map_or(0, |v| v.len()),
         });
 
         if self.folder_expanded.contains("") {
@@ -493,14 +508,6 @@ impl App {
                 depth: 1,
             });
         }
-
-        
-        let mut subfolders: Vec<String> = by_folder
-            .keys()
-            .filter(|k: &&String| !k.is_empty())
-            .cloned()
-            .collect();
-        subfolders.sort();
 
         
         
@@ -552,12 +559,12 @@ impl App {
                     depth,
                     is_expanded,
                     note_count: by_folder
-                        .get(&folder)
-                        .map_or(0, |v: &Vec<(usize, &NoteSummary)>| v.len()),
+                        .get(folder.as_str())
+                        .map_or(0, |v| v.len()),
                 });
 
                 if is_expanded {
-                    if let Some(notes) = by_folder.get(&folder) {
+                    if let Some(notes) = by_folder.get(folder.as_str()) {
                         for (idx, note) in notes {
                             visual.push(VisualItem::Note {
                                 id: note.id.clone(),
@@ -583,7 +590,7 @@ impl App {
     
     
     pub fn get_current_folder_context(&self) -> String {
-        match self.visual_list.get(self.visual_index) {
+        let current = match self.visual_list.get(self.visual_index) {
             Some(VisualItem::Folder { path, .. }) => path.clone(),
             Some(VisualItem::Note { summary_idx, .. }) => self
                 .notes
@@ -592,6 +599,12 @@ impl App {
                 .unwrap_or_default(),
             Some(VisualItem::CreateNew { path, .. }) => path.clone(),
             None => String::new(),
+        };
+
+        if current.is_empty() {
+            self.default_folder.clone().unwrap_or_default()
+        } else {
+            current
         }
     }
 
@@ -654,8 +667,11 @@ impl App {
             self.title_editor = make_title_editor(&note.title, self.app_theme.highlight_fg, self.app_theme.highlight_bg);
             self.editor = text_area_from_content(&note.content);
             self.mode = ViewMode::Edit;
-            self.editor_preview_enabled = false;
-            self.md_preview_renderer = None;
+            if self.editor_preview_enabled {
+                self.update_editor_markdown_preview();
+            } else {
+                self.md_preview_renderer = None;
+            }
             self.status = Cow::Borrowed(EDIT_HELP_HINTS);
         } else {
             self.status = Cow::Borrowed("Failed to load note!");
@@ -1209,10 +1225,16 @@ impl App {
         match &self.visual_list[self.visual_index] {
             VisualItem::Note { summary_idx, .. } => {
                 if let Some(note) = self.notes.get(*summary_idx) {
-                    self.show_confirm(ConfirmAction::DeleteNote {
-                        note_id: note.id.clone(),
-                        title: note.title.clone(),
-                    });
+                    let note_id = note.id.clone();
+                    let title = note.title.clone();
+                    if self.confirm_on_delete {
+                        self.show_confirm(ConfirmAction::DeleteNote {
+                            note_id,
+                            title,
+                        });
+                    } else {
+                        self.confirm_delete_selected(note_id);
+                    }
                 }
             }
             VisualItem::Folder { path, .. } => {
@@ -1220,7 +1242,12 @@ impl App {
                     self.set_temporary_status_static("Cannot delete Vault root");
                     return;
                 }
-                self.show_confirm(ConfirmAction::DeleteFolder { path: path.clone() });
+                let path = path.clone();
+                if self.confirm_on_delete {
+                    self.show_confirm(ConfirmAction::DeleteFolder { path });
+                } else {
+                    self.confirm_delete_folder(path);
+                }
             }
             _ => {
                 self.set_temporary_status_static("Cannot delete this item");
@@ -2231,7 +2258,7 @@ impl App {
                         if let VisualItem::Note { summary_idx, .. } = item {
                             if *summary_idx == note_idx {
                                 self.visual_index = idx;
-                                self.update_preview();
+                                self.request_preview_update();
                                 return;
                             }
                         }
@@ -2251,7 +2278,7 @@ impl App {
     pub fn cancel_search(&mut self) {
         if let Some(popup) = self.search_popup.take() {
             self.visual_index = popup.original_index;
-            self.update_preview();
+            self.request_preview_update();
         }
     }
 
@@ -2260,26 +2287,26 @@ impl App {
     
     pub fn jump_to_top(&mut self) {
         self.visual_index = 0;
-        self.update_preview();
+        self.request_preview_update();
     }
 
     
     pub fn jump_to_bottom(&mut self) {
         self.visual_index = self.visual_list.len().saturating_sub(1);
-        self.update_preview();
+        self.request_preview_update();
     }
 
     
     pub fn page_up(&mut self) {
         self.visual_index = self.visual_index.saturating_sub(self.page_size);
-        self.update_preview();
+        self.request_preview_update();
     }
 
     
     pub fn page_down(&mut self) {
         let max_index = self.visual_list.len().saturating_sub(1);
         self.visual_index = (self.visual_index + self.page_size).min(max_index);
-        self.update_preview();
+        self.request_preview_update();
     }
 
     
@@ -2422,6 +2449,25 @@ impl App {
 
     pub fn poll_renderers(&mut self) -> bool {
         let mut updated = false;
+
+        if let Some(last) = self.last_selection_change {
+            if last.elapsed() > Duration::from_millis(150) && self.pending_preview_update {
+                self.update_preview();
+                self.pending_preview_update = false;
+                self.last_selection_change = None;
+                updated = true;
+            }
+        }
+
+        if let Some(last) = self.last_editor_change {
+            if last.elapsed() > Duration::from_millis(150) && self.pending_editor_preview_update {
+                self.update_editor_markdown_preview();
+                self.pending_editor_preview_update = false;
+                self.last_editor_change = None;
+                updated = true;
+            }
+        }
+
         if let Some(renderer) = &mut self.preview_renderer {
             if renderer.poll() {
                 updated = true;
@@ -2436,6 +2482,22 @@ impl App {
     }
 
     
+    pub fn request_preview_update(&mut self) {
+        if !self.preview_enabled {
+            return;
+        }
+        self.last_selection_change = Some(Instant::now());
+        self.pending_preview_update = true;
+    }
+
+    pub fn request_editor_preview_update(&mut self) {
+        if !self.editor_preview_enabled {
+            return;
+        }
+        self.last_editor_change = Some(Instant::now());
+        self.pending_editor_preview_update = true;
+    }
+
     pub fn update_preview(&mut self) {
         if !self.preview_enabled {
             return;
