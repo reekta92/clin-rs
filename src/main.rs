@@ -746,7 +746,7 @@ fn run_app(
                 }
             }
 
-            // Persist any config changes made during the graph session.
+            
             let _ = config.save();
             app.needs_full_redraw = true;
             terminal.clear()?;
@@ -834,22 +834,22 @@ fn run_app(
                 Event::Mouse(mouse_event) if app.mode == ViewMode::Help => {
                     let size = terminal.size().context("failed to get terminal size")?;
                     let area = Rect::new(0, 0, size.width, size.height);
-                    // Tab bar is in the first row (y=0, height=1)
+                    
                     let tab_bar_y = area.y;
                     if mouse_event.kind == ratatui::crossterm::event::MouseEventKind::Down(
                         ratatui::crossterm::event::MouseButton::Left,
                     ) && mouse_event.row == tab_bar_y
                     {
-                        // Compute tab positions (same as draw_help_view)
+                        
                         let tab_names = ["Notes", "Editor", "Graph", "Canvas", "About"];
                         let mut tab_widths: [u16; 5] = [0; 5];
                         let mut total_width: u16 = 0;
                         for (i, name) in tab_names.iter().enumerate() {
-                            // Each tab: " {name} " = name.len() + 2
+                            
                             tab_widths[i] = name.len() as u16 + 2;
                             total_width += tab_widths[i];
                             if i < tab_names.len() - 1 {
-                                total_width += 3; // " │ "
+                                total_width += 3; 
                             }
                         }
                         let start_x = area.x + (area.width.saturating_sub(total_width)) / 2;

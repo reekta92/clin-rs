@@ -11,7 +11,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 #[path = "graf/themes.rs"]
 pub mod themes;
 
-// ── Enums ────────────────────────────────────────────────────────────────────
+
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -293,7 +293,7 @@ impl FromStr for LegendPosition {
     }
 }
 
-// ── Color helpers ────────────────────────────────────────────────────────────
+
 
 fn parse_hex_color(s: &str) -> Option<Color> {
     let s = s.strip_prefix('#')?;
@@ -320,7 +320,7 @@ where
     }
 }
 
-// ── ColorOverrides ───────────────────────────────────────────────────────────
+
 
 #[derive(Debug, Clone, Default)]
 pub struct ColorOverrides {
@@ -788,7 +788,7 @@ where D: Deserializer<'de> {
     s.parse::<Background>().map_err(serde::de::Error::custom)
 }
 
-// ── ThemeColors ──────────────────────────────────────────────────────────────
+
 
 pub struct ThemeColors {
     pub node_colors: Vec<Color>,
@@ -807,7 +807,7 @@ pub struct ThemeColors {
     pub minimap_bg_color: Option<Color>,
 }
 
-// ── ClinConfig implementation ─────────────────────────────────────────────────
+
 
 impl ClinConfig {
     pub fn config_path() -> Result<PathBuf> {
@@ -830,14 +830,14 @@ impl ClinConfig {
                 fs::create_dir_all(parent).context("failed to create config directory")?;
             }
 
-            // Check for old graf.toml to migrate
+            
             let proj_dirs = ProjectDirs::from("com", "clin", "clin")
                 .ok_or_else(|| anyhow::anyhow!("no home dir"))?;
             let graf_path = proj_dirs.config_dir().join("graf.toml");
             let mut config = Self::default();
 
             if graf_path.exists() {
-                // Migrate: load graf.toml, merge, rename old file
+                
                 if let Ok(content) = fs::read_to_string(&graf_path) {
                     if let Ok(graf_config) = toml::from_str::<GrafConfigOnly>(&content) {
                         config.visual = graf_config.visual;
@@ -1106,7 +1106,7 @@ drag_sensitivity = 1.0
     }
 }
 
-// ── Helper struct for graf.toml migration ─────────────────────────────────────
+
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct GrafConfigOnly {
@@ -1126,7 +1126,7 @@ struct GrafConfigOnly {
     search: SearchConfig,
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
+
 
 #[cfg(test)]
 mod tests {

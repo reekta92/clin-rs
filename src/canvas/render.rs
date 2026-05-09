@@ -11,7 +11,7 @@ use crate::canvas::state::{CanvasElement, Stroke, CanvasTool, Shape, ShapeType};
 pub fn draw_canvas(frame: &mut Frame, app: &CanvasAppState) {
     let area = frame.area();
     
-    // Determine bounds based on viewport and zoom
+    
     let x_bounds = [
         app.viewport.x - 100.0 / app.viewport.zoom,
         app.viewport.x + 100.0 / app.viewport.zoom,
@@ -29,7 +29,7 @@ pub fn draw_canvas(frame: &mut Frame, app: &CanvasAppState) {
         .x_bounds(x_bounds)
         .y_bounds(y_bounds)
         .paint(|ctx| {
-            // Draw existing elements
+            
             for element in &app.data.elements {
                 match element {
                     CanvasElement::Stroke(stroke) => {
@@ -52,12 +52,12 @@ pub fn draw_canvas(frame: &mut Frame, app: &CanvasAppState) {
                 }
             }
 
-            // Draw current active stroke
+            
             if let Some(stroke) = &app.current_stroke {
                 draw_stroke(ctx, stroke);
             }
 
-            // Draw preview element (dragging shape)
+            
             if let Some(element) = &app.preview_element {
                 match element {
                     CanvasElement::Shape(shape) => {
@@ -70,7 +70,7 @@ pub fn draw_canvas(frame: &mut Frame, app: &CanvasAppState) {
 
     frame.render_widget(canvas, area);
 
-    // Toolbar
+    
     let toolbar_width = 42;
     let toolbar_area = Rect::new(
         area.width.saturating_sub(toolbar_width) / 2,
@@ -105,7 +105,7 @@ pub fn draw_canvas(frame: &mut Frame, app: &CanvasAppState) {
         toolbar_area,
     );
 
-    // Shape Selector Popup
+    
     if app.show_shape_selector {
         let popup_width = 20;
         let popup_height = 7;
@@ -143,7 +143,7 @@ pub fn draw_canvas(frame: &mut Frame, app: &CanvasAppState) {
         frame.render_widget(list, popup_area);
     }
 
-    // Draw text editor popup if active
+    
     if let Some((_, textarea)) = &app.text_editor {
         let popup_area = Rect::new(
             area.width / 4,
@@ -239,7 +239,7 @@ fn draw_shape(ctx: &mut Context, shape: &Shape) {
                 color,
             });
             
-            // Arrow head
+            
             let angle = (y2 - y1).atan2(x2 - x1);
             let head_len = 5.0;
             let head_angle = std::f64::consts::PI / 6.0;

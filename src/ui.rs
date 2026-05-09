@@ -36,13 +36,13 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1), // Tab bar
-            Constraint::Min(8),    // Help content
-            Constraint::Length(1), // Hint line
+            Constraint::Length(1), 
+            Constraint::Min(8),    
+            Constraint::Length(1), 
         ])
         .split(area);
 
-    // Tab bar
+    
     let tab_names = ["Notes", "Editor", "Graph", "Canvas", "About"];
     let mut tab_spans: Vec<Span<'static>> = Vec::new();
     for (i, name) in tab_names.iter().enumerate() {
@@ -1172,7 +1172,7 @@ pub fn draw_theme_popup(
     state.select(Some(popup.selected));
     frame.render_stateful_widget(list, chunks[0], &mut state);
 
-    // Horizontal pills row
+    
     let gen_label = if popup.general_is_solid { "general:bg on" } else { "general:bg off" };
     let graph_label = if popup.graph_is_solid { "graph:bg on" } else { "graph:bg off" };
 
@@ -1264,7 +1264,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     let title_area = inner_chunks[0];
     let editor_container = inner_chunks[1];
 
-    // Title bar — accent stripe on left, title_bg
+    
     app.title_editor.set_style(
         app.app_theme.title_bar_bg_style().fg(app.app_theme.heading)
     );
@@ -1609,9 +1609,9 @@ pub fn draw_confirm_popup(
     frame.render_widget(buttons_para, chunks[3]);
 }
 
-// ── Zen UI helpers ──────────────────────────────────────────────
 
-/// Renders a dim │ character in every row of a 1-column-wide area
+
+
 fn draw_dim_vline(frame: &mut Frame, area: Rect, color: Color) {
     let buf = frame.buffer_mut();
     for row in area.top()..area.bottom() {
@@ -1664,7 +1664,7 @@ fn draw_corner_watermark(frame: &mut Frame, area: Rect, color: Color) {
     frame.render_widget(para, wm_area);
 }
 
-/// Fill the entire cursor row with bg color after textarea renders
+
 fn fill_cursor_line_bg(frame: &mut Frame, editor: &TextArea, area: Rect, bg: Color) {
     let screen = editor.screen_cursor();
     let inner_y = editor.block().map(|b| b.inner(area).y).unwrap_or(area.y);

@@ -109,16 +109,16 @@ impl AppThemeColors {
         }
     }
 
-    /// Preview pane: slightly darker than base bg
+    
     pub fn preview_bg(&self) -> Option<Color> { derive_color(self.bg, -15) }
 
-    /// Editor title bar: slightly darker than base bg
+    
     pub fn title_bar_bg(&self) -> Option<Color> { derive_color(self.bg, -10) }
 
-    /// Hint line at bottom: slightly darker than base bg
+    
     pub fn hint_line_bg(&self) -> Option<Color> { derive_color(self.bg, -8) }
 
-    /// Base pane bg (same as self.bg, but explicit for clarity)
+    
     pub fn pane_bg(&self) -> Option<Color> { self.bg }
 
     pub fn preview_bg_style(&self) -> Style {

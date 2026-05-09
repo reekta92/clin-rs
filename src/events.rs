@@ -645,7 +645,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         .split(terminal_area);
 
     let list_area = chunks[0];
-    // List block uses Padding::new(2, 2, 1, 1) with Borders::NONE
+    
     let inner_list_area = Rect::new(
         list_area.x.saturating_add(2),
         list_area.y.saturating_add(1),
@@ -924,7 +924,7 @@ pub fn edit_view_input_areas(area: Rect, md_preview: bool) -> (Rect, Rect) {
         ])
         .split(area);
 
-    // Title block uses Padding::new(2, 1, 1, 1) with Borders::NONE
+    
     let title_inner = Rect::new(
         chunks[0].x + 2,
         chunks[0].y + 1,
@@ -941,13 +941,13 @@ pub fn edit_view_input_areas(area: Rect, md_preview: bool) -> (Rect, Rect) {
                 Constraint::Percentage(50),
             ])
             .split(area);
-        // Content is in the left column, clipped to chunks[1] height
+        
         Rect::new(content_chunks[0].x, chunks[1].y, content_chunks[0].width, chunks[1].height)
     } else {
         chunks[1]
     };
 
-    // Body block uses Padding::new(2, 2, 1, 0) with Borders::NONE
+    
     let body_inner = Rect::new(
         body_area.x + 2,
         body_area.y + 1,
@@ -977,9 +977,9 @@ pub fn edit_view_md_preview_area(area: Rect) -> Option<Rect> {
         ])
         .split(area);
 
-    // Preview is in the right column, clipped to chunks[1] height, padded
+    
     let preview_area = Rect::new(content_chunks[2].x, chunks[1].y, content_chunks[2].width, chunks[1].height);
-    // Preview block uses Padding::new(2, 2, 1, 1) with Borders::NONE
+    
     Some(Rect::new(
         preview_area.x + 2,
         preview_area.y + 1,

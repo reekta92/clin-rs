@@ -390,7 +390,7 @@ fn erase_at(cx: f64, cy: f64, app: &mut CanvasAppState) {
                         ..
                     } => !(cx >= *x && cx <= x + width && cy >= *y && cy <= y + height),
                     Shape::Line { x1, y1, x2, y2, .. } => {
-                        // Rough line distance
+                        
                         let d = ((x2 - x1) * (y1 - cy) - (x1 - cx) * (y2 - y1)).abs()
                             / ((x2 - x1).powi(2) + (y2 - y1).powi(2)).sqrt();
                         d >= threshold
