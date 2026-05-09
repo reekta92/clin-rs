@@ -1,5 +1,5 @@
 use crate::app::ContextMenu;
-use crate::app::{App, EditFocus, ListFocus};
+use crate::app::{App, EditFocus, HelpTab, ListFocus};
 use crate::keybinds::*;
 use crossterm::event::*;
 use ratatui::prelude::*;
@@ -493,6 +493,27 @@ pub fn handle_help_keys(app: &mut App, key: KeyEvent) {
         app.help_scroll = app.help_scroll.saturating_add(1);
     } else if app.keybinds.matches_help(HelpAction::ScrollUp, &key) {
         app.help_scroll = app.help_scroll.saturating_sub(1);
+    } else {
+        match key.code {
+            KeyCode::Right | KeyCode::Char('l') => {
+                app.switch_help_tab(app.help_tab.next());
+            }
+            KeyCode::Left | KeyCode::Char('h') => {
+                app.switch_help_tab(app.help_tab.prev());
+            }
+            KeyCode::Tab if !key.modifiers.contains(crossterm::event::KeyModifiers::SHIFT) => {
+                app.switch_help_tab(app.help_tab.next());
+            }
+            KeyCode::BackTab | KeyCode::Tab if key.modifiers.contains(crossterm::event::KeyModifiers::SHIFT) => {
+                app.switch_help_tab(app.help_tab.prev());
+            }
+            KeyCode::Char('1') => app.switch_help_tab(HelpTab::Notes),
+            KeyCode::Char('2') => app.switch_help_tab(HelpTab::Editor),
+            KeyCode::Char('3') => app.switch_help_tab(HelpTab::Graph),
+            KeyCode::Char('4') => app.switch_help_tab(HelpTab::Canvas),
+            KeyCode::Char('5') => app.switch_help_tab(HelpTab::About),
+            _ => {}
+        }
     }
 }
 
@@ -726,7 +747,7 @@ pub fn handle_edit_mouse(
 
     if mouse_event.kind == MouseEventKind::Down(MouseButton::Right) {
         let (title_inner, body_inner) =
-            edit_view_input_areas(terminal_area, app.markdown_preview_enabled);
+            edit_view_input_areas(terminal_area, app.editor_preview_enabled);
 
         if contains_cell(title_inner, mouse_event.column, mouse_event.row) {
             *focus = EditFocus::Title;
@@ -757,9 +778,9 @@ pub fn handle_edit_mouse(
     }
 
     let (title_inner, body_inner) =
-        edit_view_input_areas(terminal_area, app.markdown_preview_enabled);
+        edit_view_input_areas(terminal_area, app.editor_preview_enabled);
 
-    if app.markdown_preview_enabled {
+    if app.editor_preview_enabled {
         if let Some(md_area) = edit_view_md_preview_area(terminal_area) {
             if contains_cell(md_area, mouse_event.column, mouse_event.row) {
                 match mouse_event.kind {

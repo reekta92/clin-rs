@@ -11,7 +11,7 @@ use fdg_sim::{ForceGraph, ForceGraphHelper, Simulation, SimulationParameters};
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-use crate::graf::config::GrafConfig;
+use crate::config::ClinConfig;
 use crate::storage::Storage;
 
 pub struct GraphNodeData {
@@ -44,7 +44,7 @@ fn extract_wikilinks(content: &str) -> Vec<String> {
         .collect()
 }
 
-pub fn build_graph(storage: &Storage, config: &GrafConfig) -> anyhow::Result<ForceGraph<GraphNodeData, ()>> {
+pub fn build_graph(storage: &Storage, config: &ClinConfig) -> anyhow::Result<ForceGraph<GraphNodeData, ()>> {
     let note_ids = storage.list_note_ids()?;
     let mut graph: ForceGraph<GraphNodeData, ()> = ForceGraph::default();
     let mut title_to_index: HashMap<String, NodeIndex> = HashMap::new();
@@ -124,7 +124,7 @@ pub fn build_graph(storage: &Storage, config: &GrafConfig) -> anyhow::Result<For
 
 pub fn create_simulation(
     graph: ForceGraph<GraphNodeData, ()>,
-    config: &GrafConfig,
+    config: &ClinConfig,
 ) -> Simulation<GraphNodeData, ()> {
     let force = fdg_sim::force::handy(
         config.physics.ideal_distance as f32,
@@ -141,7 +141,7 @@ pub fn create_simulation(
 }
 
 impl GraphState {
-    pub fn new(storage: &Storage, config: &GrafConfig) -> anyhow::Result<Self> {
+    pub fn new(storage: &Storage, config: &ClinConfig) -> anyhow::Result<Self> {
         let graph = build_graph(storage, config)?;
         let simulation = create_simulation(graph, config);
         let mut state = Self {

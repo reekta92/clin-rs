@@ -26,7 +26,7 @@ pub fn handle_event(
                     t.content = new_content;
                 }
                 app.text_editor = None;
-                return Ok(None);
+                return Ok(Some(EventAction::Save));
             }
             _ => {
                 textarea.input(ev);
@@ -72,11 +72,6 @@ pub fn handle_event(
         Event::Key(KeyEvent {
             code: KeyCode::Esc, ..
         }) => Ok(Some(EventAction::Quit)),
-        Event::Key(KeyEvent {
-            code: KeyCode::Char('s'),
-            modifiers: crossterm::event::KeyModifiers::CONTROL,
-            ..
-        }) => Ok(Some(EventAction::Save)),
         Event::Key(KeyEvent {
             code: KeyCode::Char('d'),
             ..
@@ -201,6 +196,7 @@ fn handle_mouse(ev: MouseEvent, app: &mut CanvasAppState) -> anyhow::Result<Opti
                         y: cy,
                         color: (255, 255, 255),
                     }));
+                    return Ok(Some(EventAction::Save));
                 }
                 CanvasTool::Erase => {
                     erase_at(cx, cy, app);
@@ -247,13 +243,22 @@ fn handle_mouse(ev: MouseEvent, app: &mut CanvasAppState) -> anyhow::Result<Opti
             panning(ev.column, ev.row, app);
         }
         MouseEventKind::Up(MouseButton::Left) => {
+            let mut changed = false;
             if let Some(stroke) = app.current_stroke.take() {
                 app.data.elements.push(CanvasElement::Stroke(stroke));
+                changed = true;
             }
             if let Some(element) = app.preview_element.take() {
                 app.data.elements.push(element);
+                changed = true;
+            }
+            if app.active_tool == CanvasTool::Erase {
+                changed = true;
             }
             app.creation_origin = None;
+            if changed {
+                return Ok(Some(EventAction::Save));
+            }
         }
         MouseEventKind::Up(_) => {
             app.last_mouse_pos = None;

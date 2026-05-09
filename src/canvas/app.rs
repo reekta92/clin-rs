@@ -107,6 +107,7 @@ pub fn run_canvas_view(
                             app_state.running = false;
                         }
                         EventAction::Save => {
+                            // Manual save still allowed but autosave will also happen
                             app_state.save_canvas()?;
                         }
                     }
@@ -121,5 +122,6 @@ pub fn run_canvas_view(
         }
     }
 
+    app_state.save_canvas()?;
     Ok(None)
 }

@@ -6,8 +6,8 @@ use ratatui::layout::Rect;
 use ratatui::style::Color;
 use ratatui::widgets::canvas::{Canvas, Line, Painter, Shape};
 
-use crate::graf::config::{
-    EdgeColorMode, GrafConfig, LabelMode, LegendPosition, NodeColorMode, NodeShape, NodeSizeMode,
+use crate::config::{
+    ClinConfig, EdgeColorMode, LabelMode, LegendPosition, NodeColorMode, NodeShape, NodeSizeMode,
 };
 use crate::graph::viewport::Viewport;
 use crate::graph::GraphState;
@@ -294,8 +294,8 @@ impl RenderCache {
     pub fn rebuild_topology(
         &mut self,
         graph: &fdg_sim::ForceGraph<super::GraphNodeData, ()>,
-        config: &GrafConfig,
-        colors: &crate::graf::config::ThemeColors,
+        config: &ClinConfig,
+        colors: &crate::config::ThemeColors,
         show_legend: bool,
     ) {
         
@@ -391,7 +391,7 @@ impl RenderCache {
     pub fn fill_edges(
         &mut self,
         graph: &fdg_sim::ForceGraph<super::GraphNodeData, ()>,
-        config: &GrafConfig,
+        config: &ClinConfig,
         edge_color: Color,
     ) {
         self.edges.clear();
@@ -424,7 +424,7 @@ impl RenderCache {
     pub fn fill_nodes(
         &mut self,
         graph: &fdg_sim::ForceGraph<super::GraphNodeData, ()>,
-        config: &GrafConfig,
+        config: &ClinConfig,
         selected_node: Option<NodeIndex>,
         selection_ring_color: Color,
     ) {
@@ -472,7 +472,7 @@ impl RenderCache {
     pub fn fill_labels(
         &mut self,
         graph: &fdg_sim::ForceGraph<super::GraphNodeData, ()>,
-        config: &GrafConfig,
+        config: &ClinConfig,
         selected_node: Option<NodeIndex>,
     ) {
         self.labels.clear();
@@ -519,7 +519,7 @@ impl RenderCache {
 pub fn draw_graph_view(
     frame: &mut ratatui::Frame,
     state: &GraphState,
-    config: &GrafConfig,
+    config: &ClinConfig,
     flags: &FeatureFlags,
 ) {
     let area = frame.area();
@@ -532,7 +532,7 @@ pub fn draw_graph_view(
     let mut cache = state.render_cache.lock().unwrap_or_else(|e| e.into_inner());
 
     
-    if cache.topology_dirty {
+    if cache.topology_dirty || (flags.show_legend && cache.legend_data.is_none()) {
         cache.rebuild_topology(graph, config, &colors, flags.show_legend);
     }
 
@@ -598,46 +598,48 @@ pub fn draw_graph_view(
     frame.render_widget(canvas, area);
 
     
-    if let Some(ref items) = cache.legend_data {
-        let max_len = items.iter().map(|(t, _)| t.len()).max().unwrap_or(0);
-        let legend_width = (max_len + 4) as u16;
-        let legend_height = (items.len() as u16).min(config.legend.max_items as u16) + 2;
-        let (legend_x, legend_y) = match config.legend.position {
-            LegendPosition::TopLeft => (area.x, area.y),
-            LegendPosition::TopRight => (
-                area.x + area.width.saturating_sub(legend_width),
-                area.y,
-            ),
-            LegendPosition::BottomLeft => (
-                area.x,
-                area.y + area.height.saturating_sub(legend_height + 1),
-            ),
-            LegendPosition::BottomRight => (
-                area.x + area.width.saturating_sub(legend_width),
-                area.y + area.height.saturating_sub(legend_height + 1),
-            ),
-        };
-        let legend_area =
-            ratatui::layout::Rect::new(legend_x, legend_y, legend_width, legend_height);
-        let legend_text: Vec<ratatui::text::Line> = items
-            .iter()
-            .map(|(t, c)| {
-                let display_text = if t.is_empty() { "/" } else { t };
-                ratatui::text::Line::from(vec![
-                    ratatui::text::Span::styled("● ", ratatui::style::Style::default().fg(*c)),
-                    ratatui::text::Span::styled(
-                        display_text,
-                        ratatui::style::Style::default().fg(colors.label_color),
-                    ),
-                ])
-            })
-            .collect();
-        let legend_widget = ratatui::widgets::Paragraph::new(legend_text).block(
-            ratatui::widgets::Block::default()
-                .borders(ratatui::widgets::Borders::ALL)
-                .border_style(ratatui::style::Style::default().fg(colors.border_color)),
-        );
-        frame.render_widget(legend_widget, legend_area);
+    if flags.show_legend {
+        if let Some(ref items) = cache.legend_data {
+            let max_len = items.iter().map(|(t, _)| t.len()).max().unwrap_or(0);
+            let legend_width = (max_len + 4) as u16;
+            let legend_height = (items.len() as u16).min(config.legend.max_items as u16) + 2;
+            let (legend_x, legend_y) = match config.legend.position {
+                LegendPosition::TopLeft => (area.x, area.y),
+                LegendPosition::TopRight => (
+                    area.x + area.width.saturating_sub(legend_width),
+                    area.y,
+                ),
+                LegendPosition::BottomLeft => (
+                    area.x,
+                    area.y + area.height.saturating_sub(legend_height + 1),
+                ),
+                LegendPosition::BottomRight => (
+                    area.x + area.width.saturating_sub(legend_width),
+                    area.y + area.height.saturating_sub(legend_height + 1),
+                ),
+            };
+            let legend_area =
+                ratatui::layout::Rect::new(legend_x, legend_y, legend_width, legend_height);
+            let legend_text: Vec<ratatui::text::Line> = items
+                .iter()
+                .map(|(t, c)| {
+                    let display_text = if t.is_empty() { "/" } else { t };
+                    ratatui::text::Line::from(vec![
+                        ratatui::text::Span::styled("● ", ratatui::style::Style::default().fg(*c)),
+                        ratatui::text::Span::styled(
+                            display_text,
+                            ratatui::style::Style::default().fg(colors.label_color),
+                        ),
+                    ])
+                })
+                .collect();
+            let legend_widget = ratatui::widgets::Paragraph::new(legend_text).block(
+                ratatui::widgets::Block::default()
+                    .borders(ratatui::widgets::Borders::ALL)
+                    .border_style(ratatui::style::Style::default().fg(colors.border_color)),
+            );
+            frame.render_widget(legend_widget, legend_area);
+        }
     }
 
     if flags.show_status_bar {
@@ -739,7 +741,7 @@ fn draw_grid(
     }
 }
 
-pub fn compute_minimap_area(frame_area: Rect, config: &GrafConfig) -> Rect {
+pub fn compute_minimap_area(frame_area: Rect, config: &ClinConfig) -> Rect {
     let w = config.visual.minimap_width;
     let h = config.visual.minimap_height;
     let (x, y) = match config.visual.minimap_position {
@@ -794,7 +796,7 @@ struct MinimapParams<'a> {
     graph: &'a fdg_sim::ForceGraph<super::GraphNodeData, ()>,
     graph_bounds: (f64, f64, f64, f64),
     node_colors: &'a HashMap<NodeIndex, Color>,
-    colors: &'a crate::graf::config::ThemeColors,
+    colors: &'a crate::config::ThemeColors,
 }
 
 

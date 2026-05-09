@@ -3,7 +3,7 @@ use std::sync::RwLock;
 
 use fdg_sim::petgraph::graph::NodeIndex;
 
-use crate::graf::config::GrafConfig;
+use crate::config::ClinConfig;
 use crate::graph::input::GraphMouseState;
 use crate::keybinds::Keybinds;
 use crate::storage::Storage;
@@ -13,7 +13,6 @@ pub struct GrafAppState {
     pub graph_kill_tx: Option<std::sync::mpsc::Sender<()>>,
     pub graph_mouse_state: GraphMouseState,
     pub storage: Storage,
-    pub show_help: bool,
     pub config_errors: Vec<String>,
     pub search_active: bool,
     pub search_query: String,
@@ -28,7 +27,7 @@ pub struct GrafAppState {
 }
 
 impl GrafAppState {
-    pub fn new(config: &GrafConfig, storage: Storage, config_errors: Vec<String>) -> anyhow::Result<Self> {
+    pub fn new(config: &ClinConfig, storage: Storage, config_errors: Vec<String>) -> anyhow::Result<Self> {
         let graph_state = crate::graph::GraphState::new(&storage, config)?;
         let state = Arc::new(RwLock::new(graph_state));
         let (kill_tx, kill_rx) = std::sync::mpsc::channel();
@@ -39,7 +38,7 @@ impl GrafAppState {
             graph_kill_tx: Some(kill_tx),
             graph_mouse_state: GraphMouseState::default(),
             storage,
-            show_help: false,
+
             config_errors,
             search_active: false,
             search_query: String::new(),
@@ -54,7 +53,7 @@ impl GrafAppState {
         })
     }
 
-    pub fn refresh_simulation(&mut self, config: &GrafConfig) {
+    pub fn refresh_simulation(&mut self, config: &ClinConfig) {
         if let Some(kill_tx) = self.graph_kill_tx.take() {
             let _ = kill_tx.send(());
         }
@@ -80,17 +79,24 @@ impl GrafAppState {
 pub enum EventAction {
     Quit,
     OpenFile(String),
+    OpenHelp,
+}
+
+pub enum GrafResult {
+    NoteOpened(String),
+    Quit,
+    OpenHelp,
 }
 
 pub fn run_graf_view(
     terminal: &mut ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
     storage: crate::storage::Storage,
-    config: &mut crate::graf::config::GrafConfig,
+    config: &mut crate::config::ClinConfig,
     keybinds: &Keybinds,
-) -> anyhow::Result<Option<String>> {
+) -> anyhow::Result<GrafResult> {
     let mut app_state = GrafAppState::new(config, storage, vec![])?;
     let mut running = true;
-    let mut result_note_id = None;
+    let mut result = GrafResult::Quit;
 
     while running {
         terminal.draw(|frame| {
@@ -104,11 +110,17 @@ pub fn run_graf_view(
                     match action {
                         EventAction::Quit => {
                             app_state.shutdown();
+                            result = GrafResult::Quit;
                             running = false;
                         }
                         EventAction::OpenFile(id) => {
                             app_state.shutdown();
-                            result_note_id = Some(id);
+                            result = GrafResult::NoteOpened(id);
+                            running = false;
+                        }
+                        EventAction::OpenHelp => {
+                            app_state.shutdown();
+                            result = GrafResult::OpenHelp;
                             running = false;
                         }
                     }
@@ -120,27 +132,18 @@ pub fn run_graf_view(
             }
         }
     }
-    Ok(result_note_id)
+    Ok(result)
 }
 
 fn handle_event(
     ev: crossterm::event::Event,
     app_state: &mut GrafAppState,
-    config: &crate::graf::config::GrafConfig,
+    config: &crate::config::ClinConfig,
     keybinds: &Keybinds,
     terminal: &ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
 ) -> anyhow::Result<Option<EventAction>> {
     match ev {
         crossterm::event::Event::Key(key) => {
-            if app_state.show_help {
-                if keybinds.matches_graph(crate::keybinds::GraphAction::Quit, &key)
-                    || keybinds.matches_graph(crate::keybinds::GraphAction::Help, &key)
-                {
-                    app_state.show_help = false;
-                }
-                return Ok(None);
-            }
-
             if app_state.search_active {
                 handle_search_keys(app_state, key, config);
                 return Ok(None);
@@ -153,8 +156,7 @@ fn handle_event(
                 match action {
                     GraphInputAction::Quit => return Ok(Some(EventAction::Quit)),
                     GraphInputAction::ToggleHelp => {
-                        app_state.show_help = true;
-                        return Ok(None);
+                        return Ok(Some(EventAction::OpenHelp));
                     }
                     GraphInputAction::ToggleSearch => {
                         app_state.search_active = true;
@@ -191,7 +193,7 @@ fn handle_event(
             Ok(None)
         }
         crossterm::event::Event::Mouse(mouse_event) => {
-            if app_state.show_help || app_state.search_active {
+            if app_state.search_active {
                 return Ok(None);
             }
             if let Some(graph_state) = &app_state.graph_state {
@@ -219,7 +221,7 @@ fn handle_event(
 fn handle_search_keys(
     app_state: &mut GrafAppState,
     key: crossterm::event::KeyEvent,
-    config: &crate::graf::config::GrafConfig,
+    config: &crate::config::ClinConfig,
 ) {
     use crossterm::event::{KeyCode, KeyModifiers};
 
@@ -383,7 +385,7 @@ fn delete_word_back(app_state: &mut GrafAppState) {
     app_state.search_cursor = cut_to;
 }
 
-fn run_search(app_state: &mut GrafAppState, config: &crate::graf::config::GrafConfig) {
+fn run_search(app_state: &mut GrafAppState, config: &crate::config::ClinConfig) {
     if let Some(graph_state) = &app_state.graph_state {
         let guard = graph_state.read().unwrap_or_else(|e| e.into_inner());
         app_state.search_results = crate::graph::search_nodes(

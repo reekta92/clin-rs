@@ -2,16 +2,11 @@ use ratatui::layout::Rect;
 use ratatui::Frame;
 
 use crate::graf::app::GrafAppState;
-use crate::graf::config::GrafConfig;
-use crate::keybinds::{GraphAction, Keybinds};
+use crate::config::ClinConfig;
+use crate::keybinds::Keybinds;
 
-pub fn draw_ui(frame: &mut Frame, state: &GrafAppState, config: &GrafConfig, keybinds: &Keybinds) {
+pub fn draw_ui(frame: &mut Frame, state: &GrafAppState, config: &ClinConfig, _keybinds: &Keybinds) {
     let area = frame.area();
-
-    if state.show_help {
-        draw_help(frame, area, config, keybinds);
-        return;
-    }
 
     if !state.config_errors.is_empty() {
         draw_config_errors(frame, area, &state.config_errors, config);
@@ -41,8 +36,8 @@ pub fn draw_ui(frame: &mut Frame, state: &GrafAppState, config: &GrafConfig, key
     }
 }
 
-fn draw_config_errors(frame: &mut Frame, area: Rect, errors: &[String], config: &GrafConfig) {
-    let config_path = crate::graf::config::GrafConfig::config_path()
+fn draw_config_errors(frame: &mut Frame, area: Rect, errors: &[String], config: &ClinConfig) {
+    let config_path = crate::config::ClinConfig::config_path()
         .unwrap_or_default()
         .display()
         .to_string();
@@ -108,98 +103,12 @@ fn suggest_fix(err: &str) -> Option<String> {
     None
 }
 
-fn draw_help(frame: &mut Frame, area: Rect, config: &GrafConfig, keybinds: &Keybinds) {
-    let help_text: Vec<String> = vec![
-        "Keyboard".to_string(),
-        format!(
-            "  {:<12}Jump between nodes",
-            keybinds.graph_keys_display(GraphAction::PanUp)
-        ),
-        format!(
-            "  {:<12}Zoom in/out",
-            keybinds.graph_keys_display(GraphAction::ZoomIn)
-        ),
-        format!(
-            "  {:<12}Open selected file",
-            keybinds.graph_keys_display(GraphAction::OpenNote)
-        ),
-        format!(
-            "  {:<12}Auto-fit view",
-            keybinds.graph_keys_display(GraphAction::AutoFit)
-        ),
-        format!(
-            "  {:<12}Search nodes",
-            keybinds.graph_keys_display(GraphAction::ToggleSearch)
-        ),
-        format!(
-            "  {:<12}Toggle minimap",
-            keybinds.graph_keys_display(GraphAction::ToggleMinimap)
-        ),
-        format!(
-            "  {:<12}Toggle legend",
-            keybinds.graph_keys_display(GraphAction::ToggleLegend)
-        ),
-        format!(
-            "  {:<12}Toggle grid",
-            keybinds.graph_keys_display(GraphAction::ToggleGrid)
-        ),
-        format!(
-            "  {:<12}Toggle status bar",
-            keybinds.graph_keys_display(GraphAction::ToggleStatus)
-        ),
-        format!(
-            "  {:<12}Refresh simulation",
-            keybinds.graph_keys_display(GraphAction::Refresh)
-        ),
-        format!(
-            "  {:<12}Reload config",
-            keybinds.graph_keys_display(GraphAction::ReloadConfig)
-        ),
-        format!(
-            "  {:<12}Toggle help",
-            keybinds.graph_keys_display(GraphAction::Help)
-        ),
-        format!(
-            "  {:<12}Quit",
-            keybinds.graph_keys_display(GraphAction::Quit)
-        ),
-        "".to_string(),
-        "Mouse".to_string(),
-        "  Scroll    Zoom in/out".to_string(),
-        "  Drag bg   Pan view".to_string(),
-        "  Drag node Move node".to_string(),
-        "  Click     Select node".to_string(),
-        "  Dbl-click Open file".to_string(),
-    ];
-
-    let text: String = help_text.join("\n");
-    let paragraph = ratatui::widgets::Paragraph::new(text)
-        .block(
-            ratatui::widgets::Block::default()
-                .borders(ratatui::widgets::Borders::ALL)
-                .title("Help")
-                .border_type(config.display.border_style.to_border_type()),
-        )
-        .alignment(ratatui::layout::Alignment::Left);
-
-    let max_width = help_text.iter().map(|l| l.len()).max().unwrap_or(0) + 4;
-    let help_height = help_text.len() as u16 + 2;
-    let help_area = ratatui::layout::Rect {
-        x: (area.width.saturating_sub(max_width as u16)) / 2,
-        y: (area.height.saturating_sub(help_height)) / 2,
-        width: max_width.min(area.width as usize) as u16,
-        height: help_height.min(area.height),
-    };
-
-    frame.render_widget(paragraph, help_area);
-}
-
 fn draw_search(
     frame: &mut Frame,
     area: Rect,
     state: &GrafAppState,
-    config: &GrafConfig,
-    colors: &crate::graf::config::ThemeColors,
+    config: &ClinConfig,
+    colors: &crate::config::ThemeColors,
 ) {
     let max_visible = config.search.max_visible;
     let result_count = state.search_results.len();
@@ -295,7 +204,7 @@ fn draw_reload_notification(
     frame: &mut Frame,
     area: Rect,
     msg: &str,
-    colors: &crate::graf::config::ThemeColors,
+    colors: &crate::config::ThemeColors,
 ) {
     let width = (msg.len() as u16 + 4).min(area.width);
     let height = 3u16;

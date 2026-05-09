@@ -1,8 +1,47 @@
-# graf configuration
+# clin configuration
+# See https://github.com/clin-notes/clin for full documentation
+
+# Storage path — custom directory for notes data.
+# If unset, uses the platform default:
+#   Linux:   ~/.local/share/clin
+#   macOS:   ~/Library/Application Support/com.clin.clin
+#   Windows: C:\Users\<user>\AppData\Local\clin\clin
+# storage_path = "/absolute/path/to/notes"
+
+# External editor command (e.g. "code --wait", "nano", "vim").
+# Falls back to $VISUAL then $EDITOR if unset.
+# external_editor = "code --wait"
+
+# Enable external editor on open (default: false).
+external_editor_enabled = false
+
+# Enable inline preview pane in list view (default: true).
+preview_enabled = true
+
+# Enable markdown preview in edit view (default: false).
+editor_preview_enabled = false
+
+[theme]
+# Theme name: default, tokyonight, catppuccin_mocha, onedark, gruvbox,
+#             dracula, nord, rosepine, everforest, kanagawa, solarized
+theme = "default"
+# Background style: "transparent" or "solid"
+background = "transparent"
+
+# Individual color overrides (hex format, optional)
+# accent = "#00ffff"
+# heading = "#ffff00"
+# success = "#00ff00"
+# destructive = "#ff0000"
+# muted = "#888888"
+# text = "#ffffff"
+# border = "#444444"
+# tag = "#ff88ff"
+# folder = "#4488ff"
+# background_color = "#111122"
 
 [visual]
-theme = "onedark"
-background = "transparent"
+graph_background = "transparent"
 node_color_mode = "folder"
 edge_color_mode = "uniform"
 label_mode = "selected"
@@ -58,9 +97,7 @@ border_title = ""
 
 [filter]
 # exclude_tags = ["draft", "private"]
-# exclude_patterns = ["templates/", "private/"]
 # min_links = 0
-# max_nodes = 500
 
 [legend]
 position = "bottom_right"
@@ -71,7 +108,3 @@ max_results = 20
 max_visible = 10
 popup_width = 50
 popup_y = 3
-cursor_glyph = "▎"
-
-[editor]
-# command = "nano"

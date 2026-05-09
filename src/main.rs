@@ -12,7 +12,7 @@ pub mod palette;
 pub mod sanitize;
 mod templates;
 
-use crate::config::BootstrapConfig;
+use crate::config::ClinConfig;
 use crate::keybinds::{EditAction, HelpAction, Keybinds, ListAction};
 
 use std::borrow::Cow;
@@ -144,7 +144,7 @@ fn main() -> Result<()> {
         }
         
         CliCommand::ShowStoragePath => {
-            let bootstrap = BootstrapConfig::load()?;
+            let bootstrap = ClinConfig::load()?;
             let effective = bootstrap.effective_storage_path()?;
             println!("Storage path: {}", effective.display());
             if bootstrap.has_custom_storage_path() {
@@ -155,7 +155,7 @@ fn main() -> Result<()> {
             Ok(())
         }
         CliCommand::SetStoragePath { path } => {
-            let mut bootstrap = BootstrapConfig::load()?;
+            let mut bootstrap = ClinConfig::load()?;
             let old_path = bootstrap.effective_storage_path()?;
 
             
@@ -185,15 +185,15 @@ fn main() -> Result<()> {
             Ok(())
         }
         CliCommand::ResetStoragePath => {
-            let mut bootstrap = BootstrapConfig::load()?;
+            let mut bootstrap = ClinConfig::load()?;
             bootstrap.reset_storage_path();
             bootstrap.save()?;
-            let default = BootstrapConfig::default_storage_path()?;
+            let default = ClinConfig::default_storage_path()?;
             println!("Storage path reset to default: {}", default.display());
             Ok(())
         }
         CliCommand::MigrateStorage => {
-            let mut bootstrap = BootstrapConfig::load()?;
+            let mut bootstrap = ClinConfig::load()?;
             let to = bootstrap.effective_storage_path()?;
 
             
@@ -201,7 +201,7 @@ fn main() -> Result<()> {
                 Some(path) if path.exists() && path.is_dir() => path,
                 _ => {
                     
-                    let default = BootstrapConfig::default_storage_path()?;
+                    let default = ClinConfig::default_storage_path()?;
                     if default.exists() && default.is_dir() && default != to {
                         println!("No previous storage path recorded.");
                         println!("Found data at default location: {}", default.display());
@@ -721,33 +721,33 @@ fn run_app(
 
     while !should_quit {
         if app.mode == ViewMode::Graph {
-            let config_path = crate::graf::config::GrafConfig::config_path().ok();
-            let (mut config, errs, created) = crate::graf::config::GrafConfig::load_from_path(config_path);
-            
-            
-            for err in errs {
-                app.set_temporary_status(&format!("Graf config error: {}", err));
-            }
-            if created {
-                app.set_temporary_status_static("Created default graf config");
-            }
-
-            let theme_name = app.app_theme_name();
-            if !theme_name.is_empty() {
-                config.visual.theme = theme_name.parse().unwrap_or_default();
-            }
+            let mut config = match ClinConfig::load() {
+                Ok(c) => c,
+                Err(e) => {
+                    app.set_temporary_status(&format!("Config error: {}", e));
+                    ClinConfig::default()
+                }
+            };
 
             match crate::graf::app::run_graf_view(terminal, app.storage.clone(), &mut config, &app.keybinds) {
-                Ok(Some(note_id)) => {
+                Ok(crate::graf::app::GrafResult::NoteOpened(note_id)) => {
                     app.mode = ViewMode::List;
                     app.reload_theme();
                     app.open_note_from_graph(&note_id);
+                }
+                Ok(crate::graf::app::GrafResult::OpenHelp) => {
+                    app.reload_theme();
+                    app.return_mode = Some(ViewMode::Graph);
+                    app.open_help_page_with_tab(crate::app::HelpTab::Graph);
                 }
                 _ => {
                     app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
                     app.reload_theme();
                 }
             }
+
+            // Persist any config changes made during the graph session.
+            let _ = config.save();
             app.needs_full_redraw = true;
             terminal.clear()?;
             continue;
@@ -832,7 +832,39 @@ fn run_app(
                     );
                 }
                 Event::Mouse(mouse_event) if app.mode == ViewMode::Help => {
-                    if mouse_event.kind == ratatui::crossterm::event::MouseEventKind::ScrollUp {
+                    let size = terminal.size().context("failed to get terminal size")?;
+                    let area = Rect::new(0, 0, size.width, size.height);
+                    // Tab bar is in the first row (y=0, height=1)
+                    let tab_bar_y = area.y;
+                    if mouse_event.kind == ratatui::crossterm::event::MouseEventKind::Down(
+                        ratatui::crossterm::event::MouseButton::Left,
+                    ) && mouse_event.row == tab_bar_y
+                    {
+                        // Compute tab positions (same as draw_help_view)
+                        let tab_names = ["Notes", "Editor", "Graph", "Canvas", "About"];
+                        let mut tab_widths: [u16; 5] = [0; 5];
+                        let mut total_width: u16 = 0;
+                        for (i, name) in tab_names.iter().enumerate() {
+                            // Each tab: " {name} " = name.len() + 2
+                            tab_widths[i] = name.len() as u16 + 2;
+                            total_width += tab_widths[i];
+                            if i < tab_names.len() - 1 {
+                                total_width += 3; // " │ "
+                            }
+                        }
+                        let start_x = area.x + (area.width.saturating_sub(total_width)) / 2;
+                        let click_x = mouse_event.column;
+                        if click_x >= start_x && click_x < start_x + total_width {
+                            let mut offset = start_x;
+                            for i in 0..tab_names.len() {
+                                if click_x < offset + tab_widths[i] {
+                                    app.switch_help_tab(crate::app::HelpTab::from_index(i));
+                                    break;
+                                }
+                                offset += tab_widths[i] + 3;
+                            }
+                        }
+                    } else if mouse_event.kind == ratatui::crossterm::event::MouseEventKind::ScrollUp {
                         app.help_scroll = app.help_scroll.saturating_sub(3);
                     } else if mouse_event.kind
                         == ratatui::crossterm::event::MouseEventKind::ScrollDown

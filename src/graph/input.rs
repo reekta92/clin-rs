@@ -6,7 +6,7 @@ use ratatui::layout::Rect;
 
 use super::viewport::CELL_ASPECT;
 use super::GraphState;
-use crate::graf::config::GrafConfig;
+use crate::config::ClinConfig;
 use crate::keybinds::{GraphAction, Keybinds};
 
 #[derive(Debug)]
@@ -27,7 +27,7 @@ pub fn handle_graph_keys(
     state: &Arc<RwLock<GraphState>>,
     key: KeyEvent,
     keybinds: &Keybinds,
-    config: &GrafConfig,
+    config: &ClinConfig,
 ) -> Option<GraphInputAction> {
     let mut guard = state.write().unwrap_or_else(|e| e.into_inner());
 
@@ -94,7 +94,7 @@ pub fn handle_graph_mouse(
     mouse_event: MouseEvent,
     area: Rect,
     mouse_state: &mut GraphMouseState,
-    config: &GrafConfig,
+    config: &ClinConfig,
 ) -> Option<GraphInputAction> {
     let minimap_area = if config.visual.show_minimap {
         Some(super::render::compute_minimap_area(area, config))

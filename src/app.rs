@@ -2,7 +2,6 @@ use crate::constants::*;
 use crate::events::get_title_text;
 use crate::events::make_title_editor;
 use crate::markdown::MarkdownRenderer;
-use crate::ui::help_page_text;
 use crate::ui::text_area_from_content;
 use crate::ui::{now_unix_secs, open_in_file_manager};
 use ratatui::style::{Color, Style};
@@ -30,6 +29,61 @@ pub enum ViewMode {
     Help,
     Graph,
     Canvas,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum HelpTab {
+    Notes,
+    Editor,
+    Graph,
+    Canvas,
+    About,
+}
+
+impl HelpTab {
+    pub fn prev(self) -> Self {
+        match self {
+            HelpTab::Notes => HelpTab::About,
+            HelpTab::Editor => HelpTab::Notes,
+            HelpTab::Graph => HelpTab::Editor,
+            HelpTab::Canvas => HelpTab::Graph,
+            HelpTab::About => HelpTab::Canvas,
+        }
+    }
+
+    pub fn next(self) -> Self {
+        match self {
+            HelpTab::Notes => HelpTab::Editor,
+            HelpTab::Editor => HelpTab::Graph,
+            HelpTab::Graph => HelpTab::Canvas,
+            HelpTab::Canvas => HelpTab::About,
+            HelpTab::About => HelpTab::Notes,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            HelpTab::Notes => "Notes",
+            HelpTab::Editor => "Editor",
+            HelpTab::Graph => "Graph",
+            HelpTab::Canvas => "Canvas",
+            HelpTab::About => "About",
+        }
+    }
+
+    pub fn from_index(i: usize) -> Self {
+        match i {
+            0 => HelpTab::Notes,
+            1 => HelpTab::Editor,
+            2 => HelpTab::Graph,
+            3 => HelpTab::Canvas,
+            _ => HelpTab::About,
+        }
+    }
+
+    pub fn count() -> usize {
+        5
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -196,6 +250,8 @@ pub struct App {
     pub status_until: Option<Instant>,
     pub confirm_popup: Option<ConfirmPopup>,
     pub help_scroll: u16,
+    pub help_tab: HelpTab,
+    pub help_tab_scroll: HashMap<HelpTab, u16>,
     pub context_menu: Option<ContextMenu>,
     pub template_popup: Option<TemplatePopup>,
     pub theme_popup: Option<ThemePopup>,
@@ -221,7 +277,7 @@ pub struct App {
     pub trash_view: Option<TrashView>,
     pub preview_enabled: bool,
     pub preview_renderer: Option<MarkdownRenderer>,
-    pub markdown_preview_enabled: bool,
+    pub editor_preview_enabled: bool,
     pub md_preview_renderer: Option<MarkdownRenderer>,
     
     pub last_g_press: Option<Instant>,
@@ -263,7 +319,7 @@ pub enum CliCommand {
 impl App {
     pub fn new(storage: Storage) -> Result<Self> {
         let keybinds = storage.load_keybinds();
-        let bootstrap_config = crate::config::BootstrapConfig::load().unwrap_or_default();
+        let bootstrap_config = crate::config::ClinConfig::load().unwrap_or_default();
         let app_theme = crate::app_theme::AppThemeColors::from_config(&bootstrap_config.theme);
 
         let mut app = Self {
@@ -283,6 +339,8 @@ impl App {
             status_until: None,
             confirm_popup: None,
             help_scroll: 0,
+            help_tab: HelpTab::Notes,
+            help_tab_scroll: HashMap::new(),
             context_menu: None,
             template_popup: None,
             theme_popup: None,
@@ -307,7 +365,7 @@ impl App {
             trash_view: None,
             preview_enabled: bootstrap_config.preview_enabled,
             preview_renderer: None,
-            markdown_preview_enabled: bootstrap_config.markdown_preview_enabled,
+            editor_preview_enabled: bootstrap_config.editor_preview_enabled,
             md_preview_renderer: None,
             last_g_press: None,
             page_size: 10,
@@ -596,7 +654,7 @@ impl App {
             self.title_editor = make_title_editor(&note.title, self.app_theme.highlight_fg, self.app_theme.highlight_bg);
             self.editor = text_area_from_content(&note.content);
             self.mode = ViewMode::Edit;
-            self.markdown_preview_enabled = false;
+            self.editor_preview_enabled = false;
             self.md_preview_renderer = None;
             self.status = Cow::Borrowed(EDIT_HELP_HINTS);
         } else {
@@ -1808,22 +1866,32 @@ impl App {
     pub fn toggle_external_editor_mode(&mut self) {
         self.external_editor_enabled = !self.external_editor_enabled;
         self.set_default_status();
-        if let Ok(mut config) = crate::config::BootstrapConfig::load() {
+        if let Ok(mut config) = crate::config::ClinConfig::load() {
             config.external_editor_enabled = self.external_editor_enabled;
             let _ = config.save();
         }
     }
 
     pub fn open_help_page(&mut self) {
+        self.open_help_page_with_tab(HelpTab::Notes);
+    }
+
+    pub fn open_help_page_with_tab(&mut self, tab: HelpTab) {
         self.mode = ViewMode::Help;
+        self.help_tab = tab;
         self.help_scroll = 0;
+        self.help_tab_scroll.insert(tab, 0);
         self.status = Cow::Borrowed(HELP_PAGE_HINTS);
         self.status_until = None;
+        self.help_text_cache = None;
     }
 
     pub fn close_help_page(&mut self) {
-        self.mode = ViewMode::List;
+        self.mode = self.return_mode.take().unwrap_or(ViewMode::List);
         self.help_scroll = 0;
+        self.help_tab = HelpTab::Notes;
+        self.help_tab_scroll.clear();
+        self.help_text_cache = None;
         self.set_default_status();
     }
 
@@ -1907,9 +1975,24 @@ impl App {
     }
 
     
+    pub fn switch_help_tab(&mut self, tab: HelpTab) {
+        if tab == self.help_tab {
+            return;
+        }
+        // Save current scroll
+        let current_scroll = self.help_scroll;
+        self.help_tab_scroll.insert(self.help_tab, current_scroll);
+        // Switch tab
+        self.help_tab = tab;
+        self.help_scroll = self.help_tab_scroll.get(&tab).copied().unwrap_or(0);
+        // Invalidate cached text so it regenerates for new tab
+        self.help_text_cache = None;
+    }
+
     pub fn get_help_text(&mut self) -> &Text<'static> {
+        let tab = self.help_tab;
         if self.help_text_cache.is_none() {
-            self.help_text_cache = Some(help_page_text(&self.keybinds, &self.app_theme));
+            self.help_text_cache = Some(crate::ui::help_text_for_tab(tab, &self.keybinds, &self.app_theme));
         }
         self.help_text_cache.as_ref().unwrap()
     }
@@ -2331,7 +2414,7 @@ impl App {
             self.preview_renderer = None;
             self.set_temporary_status_static("Preview disabled");
         }
-        if let Ok(mut config) = crate::config::BootstrapConfig::load() {
+        if let Ok(mut config) = crate::config::ClinConfig::load() {
             config.preview_enabled = self.preview_enabled;
             let _ = config.save();
         }
@@ -2374,7 +2457,7 @@ impl App {
     }
 
     pub fn update_editor_markdown_preview(&mut self) {
-        if !self.markdown_preview_enabled {
+        if !self.editor_preview_enabled {
             return;
         }
 
@@ -2386,40 +2469,41 @@ impl App {
     }
 
     pub fn toggle_markdown_preview(&mut self) {
-        self.markdown_preview_enabled = !self.markdown_preview_enabled;
-        if self.markdown_preview_enabled {
+        self.editor_preview_enabled = !self.editor_preview_enabled;
+        if self.editor_preview_enabled {
             self.update_editor_markdown_preview();
             self.set_temporary_status_static("Markdown preview enabled");
         } else {
             self.md_preview_renderer = None;
             self.set_temporary_status_static("Markdown preview disabled");
         }
-
+        if let Ok(mut config) = crate::config::ClinConfig::load() {
+            config.editor_preview_enabled = self.editor_preview_enabled;
+            let _ = config.save();
+        }
     }
 
     pub fn reload_theme(&mut self) {
-        let config = crate::config::BootstrapConfig::load().unwrap_or_default();
+        let config = crate::config::ClinConfig::load().unwrap_or_default();
         self.app_theme = crate::app_theme::AppThemeColors::from_config(&config.theme);
         if self.mode == ViewMode::Help {
-            self.help_text_cache = Some(crate::ui::help_page_text(&self.keybinds, &self.app_theme));
+            self.help_text_cache = None;
         }
     }
 
     pub fn begin_theme_selection(&mut self) {
         let themes = vec![
-            "default".to_string(), "tokyonight".to_string(), "catppuccin_mocha".to_string(),
+            "default".to_string(), "tokyo_night".to_string(), "catppuccin_mocha".to_string(),
             "onedark".to_string(), "gruvbox".to_string(), "dracula".to_string(),
-            "nord".to_string(), "rosepine".to_string(), "everforest".to_string(),
+            "nord".to_string(), "rose_pine".to_string(), "everforest".to_string(),
             "kanagawa".to_string(), "solarized".to_string()
         ];
         
-        let config = crate::config::BootstrapConfig::load().unwrap_or_default();
-        let current = config.theme.theme.to_lowercase();
+        let config = crate::config::ClinConfig::load().unwrap_or_default();
+        let current = config.theme.theme.to_string();
         let selected = themes.iter().position(|t| t == &current).unwrap_or(0);
-        let general_is_solid = config.theme.background == "solid";
-
-        let (graf_config, _, _) = crate::graf::config::GrafConfig::load_from_path(crate::graf::config::GrafConfig::config_path().ok());
-        let graph_is_solid = matches!(graf_config.visual.background, crate::graf::config::Background::Solid);
+        let general_is_solid = matches!(config.theme.background, crate::config::Background::Solid);
+        let graph_is_solid = matches!(config.visual.graph_background, crate::config::Background::Solid);
 
         self.theme_popup = Some(ThemePopup {
             themes,
@@ -2435,8 +2519,8 @@ impl App {
             match popup.focus {
                 ThemePopupFocus::ThemeList => {
                     let next_theme = popup.themes[popup.selected].clone();
-                    let mut config = crate::config::BootstrapConfig::load().unwrap_or_default();
-                    config.theme.theme = next_theme.clone();
+                    let mut config = crate::config::ClinConfig::load().unwrap_or_default();
+                    config.theme.theme = next_theme.parse().unwrap_or_default();
                     if let Err(e) = config.save() {
                         self.set_temporary_status(&format!("Failed to save theme: {}", e));
                         return;
@@ -2447,8 +2531,8 @@ impl App {
                 }
                 ThemePopupFocus::GeneralBg => {
                     popup.general_is_solid = !popup.general_is_solid;
-                    let mut config = crate::config::BootstrapConfig::load().unwrap_or_default();
-                    config.theme.background = if popup.general_is_solid { "solid" } else { "transparent" }.to_string();
+                    let mut config = crate::config::ClinConfig::load().unwrap_or_default();
+                    config.theme.background = if popup.general_is_solid { crate::config::Background::Solid } else { crate::config::Background::Transparent };
                     if let Err(e) = config.save() {
                         self.set_temporary_status(&format!("Failed to save bg: {}", e));
                     }
@@ -2457,13 +2541,13 @@ impl App {
                 }
                 ThemePopupFocus::GraphBg => {
                     popup.graph_is_solid = !popup.graph_is_solid;
-                    let (mut graf_config, _, _) = crate::graf::config::GrafConfig::load_from_path(crate::graf::config::GrafConfig::config_path().ok());
-                    graf_config.visual.background = if popup.graph_is_solid { 
-                        crate::graf::config::Background::Solid 
-                    } else { 
-                        crate::graf::config::Background::Transparent 
+                    let mut config = crate::config::ClinConfig::load().unwrap_or_default();
+                    config.visual.graph_background = if popup.graph_is_solid {
+                        crate::config::Background::Solid
+                    } else {
+                        crate::config::Background::Transparent
                     };
-                    if let Err(e) = graf_config.save() {
+                    if let Err(e) = config.save() {
                         self.set_temporary_status(&format!("Failed to save graph bg: {}", e));
                     }
                     self.theme_popup = Some(popup);
@@ -2477,8 +2561,8 @@ impl App {
     }
 
     pub fn app_theme_name(&self) -> String {
-        let config = crate::config::BootstrapConfig::load().unwrap_or_default();
-        config.theme.theme.clone()
+        let config = crate::config::ClinConfig::load().unwrap_or_default();
+        config.theme.theme.to_string()
     }
 }
 

@@ -1,11 +1,11 @@
 use std::sync::{mpsc, Arc, RwLock};
 
 use super::GraphState;
-use crate::graf::config::GrafConfig;
+use crate::config::ClinConfig;
 
 pub fn start_physics(
     state: Arc<RwLock<GraphState>>,
-    config: &GrafConfig,
+    config: &ClinConfig,
     kill_rx: mpsc::Receiver<()>,
 ) {
     let gravity = config.physics.gravity;

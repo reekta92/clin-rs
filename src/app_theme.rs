@@ -1,6 +1,6 @@
 use ratatui::style::{Color, Style};
-use crate::graf::config::themes::theme_colors;
-use crate::graf::config::{Theme, Background};
+use crate::config::themes::theme_colors;
+use crate::config::{Theme, Background};
 use crate::config::ThemeConfig;
 
 #[derive(Debug, Clone)]
@@ -40,8 +40,8 @@ impl AppThemeColors {
     }
 
     pub fn from_config(config: &ThemeConfig) -> Self {
-        let theme_enum = config.theme.parse::<Theme>().unwrap_or(Theme::Default);
-        let bg_enum = config.background.parse::<Background>().unwrap_or(Background::Transparent);
+        let theme_enum = config.theme.clone();
+        let bg_enum = config.background.clone();
 
         let t = theme_colors(&theme_enum, bg_enum.clone());
 

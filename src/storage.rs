@@ -1,4 +1,4 @@
-use crate::config::BootstrapConfig;
+use crate::config::ClinConfig;
 use crate::constants::*;
 use crate::frontmatter;
 use crate::keybinds::Keybinds;
@@ -76,7 +76,7 @@ fn extract_frontmatter_from_bytes(bytes: &[u8]) -> Option<frontmatter::Frontmatt
 impl Storage {
     pub fn init() -> Result<Self> {
         
-        let bootstrap = BootstrapConfig::load().context("failed to load bootstrap config")?;
+        let bootstrap = ClinConfig::load().context("failed to load config")?;
         let data_dir = bootstrap
             .effective_storage_path()
             .context("failed to determine storage path")?;

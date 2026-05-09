@@ -99,11 +99,9 @@ pub fn draw_canvas(frame: &mut Frame, app: &CanvasAppState) {
         spans.push(Span::styled(*label, style));
     }
     
-    frame.render_widget(Clear, toolbar_area);
     frame.render_widget(
         Paragraph::new(TuiLine::from(spans))
-            .alignment(Alignment::Center)
-            .block(Block::default().style(app.theme.bg_style())),
+            .alignment(Alignment::Center),
         toolbar_area,
     );
 

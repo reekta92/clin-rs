@@ -1,4 +1,5 @@
-use crate::app::{App, ConfirmPopup, EditFocus, ListFocus, TemplatePopup, ThemePopup, ViewMode};
+use crate::app::{App, ConfirmPopup, EditFocus, HelpTab, ListFocus, TemplatePopup, ThemePopup, ViewMode};
+use crate::app_theme::AppThemeColors;
 use crate::constants::*;
 use crate::events::get_title_text;
 use crate::keybinds::*;
@@ -34,28 +35,81 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(8), Constraint::Length(1)])
+        .constraints([
+            Constraint::Length(1), // Tab bar
+            Constraint::Min(8),    // Help content
+            Constraint::Length(1), // Hint line
+        ])
         .split(area);
 
+    // Tab bar
+    let tab_names = ["Notes", "Editor", "Graph", "Canvas", "About"];
+    let mut tab_spans: Vec<Span<'static>> = Vec::new();
+    for (i, name) in tab_names.iter().enumerate() {
+        let tab = HelpTab::from_index(i);
+        if tab == app.help_tab {
+            tab_spans.push(Span::styled(
+                format!(" {} ", name),
+                Style::default()
+                    .fg(app.app_theme.accent)
+                    .add_modifier(Modifier::BOLD),
+            ));
+        } else {
+            tab_spans.push(Span::styled(
+                format!(" {} ", name),
+                Style::default().fg(app.app_theme.muted),
+            ));
+        }
+        if i < tab_names.len() - 1 {
+            tab_spans.push(Span::styled(
+                " | ",
+                Style::default().fg(app.app_theme.muted),
+            ));
+        }
+    }
+    let tab_line = Line::from(tab_spans);
+    let tab_bar = Paragraph::new(tab_line)
+        .style(app.app_theme.title_bar_bg_style())
+        .alignment(Alignment::Center);
+    frame.render_widget(tab_bar, chunks[0]);
+
+    // Help content
     let help_text = app.get_help_text().clone();
     let help = Paragraph::new(help_text)
         .block(
             Block::default()
                 .style(app.app_theme.bg_style())
-                .borders(Borders::NONE),
+                .borders(Borders::NONE)
+                .padding(Padding::new(2, 2, 1, 1)),
         )
         .wrap(Wrap { trim: false })
         .scroll((app.help_scroll, 0));
-    frame.render_widget(help, chunks[0]);
+    frame.render_widget(help, chunks[1]);
 
+    // Hint line
+    let hint_text = "<- -> switch tab  |  up/down scroll  |  Esc close";
     let hint = Paragraph::new(Span::styled(
-        "Esc close",
+        hint_text,
         Style::default().fg(app.app_theme.muted),
     )).style(app.app_theme.hint_line_bg_style());
-    frame.render_widget(hint, chunks[1]);
+    frame.render_widget(hint, chunks[2]);
 }
 
-pub fn help_page_text(
+pub fn help_text_for_tab(
+    tab: crate::app::HelpTab,
+    keybinds: &Keybinds,
+    theme: &crate::app_theme::AppThemeColors,
+) -> Text<'static> {
+    match tab {
+        crate::app::HelpTab::Notes => notes_help_text(keybinds, theme),
+        crate::app::HelpTab::Editor => editor_help_text(keybinds, theme),
+        crate::app::HelpTab::Graph => graph_help_text(keybinds, theme),
+        crate::app::HelpTab::Canvas => canvas_help_text(theme),
+        crate::app::HelpTab::About => about_help_text(keybinds, theme),
+    }
+}
+
+fn notes_help_text(
     keybinds: &Keybinds,
     theme: &crate::app_theme::AppThemeColors,
 ) -> Text<'static> {
@@ -82,62 +136,9 @@ pub fn help_page_text(
     let list_manage_tags = keybinds.list_keys_display(ListAction::ManageTags);
     let list_filter_tags = keybinds.list_keys_display(ListAction::FilterTags);
 
-    let edit_quit = keybinds.edit_keys_display(EditAction::Quit);
-    let edit_back = keybinds.edit_keys_display(EditAction::Back);
-    let edit_focus = keybinds.edit_keys_display(EditAction::CycleFocus);
-    let edit_copy = keybinds.edit_keys_display(EditAction::Copy);
-    let edit_cut = keybinds.edit_keys_display(EditAction::Cut);
-    let edit_paste = keybinds.edit_keys_display(EditAction::Paste);
-    let edit_select_all = keybinds.edit_keys_display(EditAction::SelectAll);
-    let edit_undo = keybinds.edit_keys_display(EditAction::Undo);
-    let edit_redo = keybinds.edit_keys_display(EditAction::Redo);
-    let edit_del_word = keybinds.edit_keys_display(EditAction::DeleteWord);
-    let edit_del_next_word = keybinds.edit_keys_display(EditAction::DeleteNextWord);
-    let edit_md_preview = keybinds.edit_keys_display(EditAction::ToggleMarkdownPreview);
-
-    let help_close = keybinds.help_keys_display(HelpAction::Close);
-    let help_scroll = format!(
-        "{}/{}",
-        keybinds.help_keys_display(HelpAction::ScrollUp),
-        keybinds.help_keys_display(HelpAction::ScrollDown)
-    );
-
     let mut lines = Vec::new();
-    lines.push(Line::from(vec![
-        Span::styled(
-            "󰠮 clin",
-            Style::default()
-                .fg(theme.accent)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(" Help", Style::default().add_modifier(Modifier::BOLD)),
-    ]));
+    lines.push(help_heading("Notes View", theme));
     lines.push(Line::from(""));
-
-    lines.push(help_heading("󰋗", "Core Features", theme));
-    lines.extend(help_item_dyn(
-        "Encrypted local note files (.clin)",
-        None,
-        theme,
-    ));
-    lines.extend(help_item_dyn(
-        "In-terminal note list, full text editor, and continual auto-save",
-        None,
-        theme,
-    ));
-    lines.extend(help_item_dyn(
-        "Open note file location from notes view",
-        Some(&list_location),
-        theme,
-    ));
-    lines.extend(help_item_dyn(
-        "Delete selected note or folder",
-        Some(&list_delete),
-        theme,
-    ));
-    lines.push(Line::from(""));
-
-    lines.push(help_heading("󰮋", "Notes View", theme));
     lines.extend(help_item_dyn("Move selection", Some(&list_move), theme));
     lines.extend(help_item_dyn(
         "Expand/Collapse folder",
@@ -202,20 +203,41 @@ pub fn help_page_text(
         Some(&list_template),
         theme,
     ));
-    lines.push(Line::from(""));
+    Text::from(lines)
+}
 
-    lines.push(help_heading("󰷈", "Editor", theme));
+fn editor_help_text(
+    keybinds: &Keybinds,
+    theme: &crate::app_theme::AppThemeColors,
+) -> Text<'static> {
+    let edit_quit = keybinds.edit_keys_display(EditAction::Quit);
+    let edit_back = keybinds.edit_keys_display(EditAction::Back);
+    let edit_focus = keybinds.edit_keys_display(EditAction::CycleFocus);
+    let edit_copy = keybinds.edit_keys_display(EditAction::Copy);
+    let edit_cut = keybinds.edit_keys_display(EditAction::Cut);
+    let edit_paste = keybinds.edit_keys_display(EditAction::Paste);
+    let edit_select_all = keybinds.edit_keys_display(EditAction::SelectAll);
+    let edit_undo = keybinds.edit_keys_display(EditAction::Undo);
+    let edit_redo = keybinds.edit_keys_display(EditAction::Redo);
+    let edit_del_word = keybinds.edit_keys_display(EditAction::DeleteWord);
+    let edit_del_next_word = keybinds.edit_keys_display(EditAction::DeleteNextWord);
+    let edit_md_preview = keybinds.edit_keys_display(EditAction::ToggleMarkdownPreview);
+
+    let mut lines = Vec::new();
+    lines.push(help_heading("Editor", theme));
+    lines.push(Line::from(""));
     lines.extend(help_item_dyn(
         "Change focus (Title, Content, toggles)",
         Some(&edit_focus),
         theme,
     ));
     lines.extend(help_item_dyn(
-        "Return to notes (continually auto-saved)",
+        "Return to notes (auto-saved on exit)",
         Some(&edit_back),
         theme,
     ));
-    lines.extend(help_item_dyn("Save and quit", Some(&edit_quit), theme));
+    lines.extend(help_item_dyn("Save + quit app entirely", Some(&edit_quit), theme));
+    lines.push(Line::from(""));
     lines.extend(help_item_dyn(
         "Copy / Cut / Paste",
         Some(&format!("{edit_copy} / {edit_cut} / {edit_paste}")),
@@ -231,34 +253,222 @@ pub fn help_page_text(
         Some(&format!("{edit_del_word} / {edit_del_next_word}")),
         theme,
     ));
+    lines.push(Line::from(""));
     lines.extend(help_item_dyn(
-        "Toggle markdown preview",
+        "Toggle markdown preview panel",
         Some(&edit_md_preview),
         theme,
     ));
-    lines.push(Line::from(""));
+    Text::from(lines)
+}
 
-    lines.push(help_heading("󰑃", "Templates", theme));
+fn graph_help_text(
+    keybinds: &Keybinds,
+    theme: &crate::app_theme::AppThemeColors,
+) -> Text<'static> {
+    let mut lines = Vec::new();
+
+    lines.push(help_heading("Keyboard Controls", theme));
+    lines.push(Line::from(""));
     lines.extend(help_item_dyn(
-        "New note from template (in notes view)",
-        Some(&list_template),
+        "Navigate nodes (up/down/left/right)",
+        Some(&format!(
+            "{}/{}/{}/{}",
+            keybinds.graph_keys_display(crate::keybinds::GraphAction::PanUp),
+            keybinds.graph_keys_display(crate::keybinds::GraphAction::PanDown),
+            keybinds.graph_keys_display(crate::keybinds::GraphAction::PanLeft),
+            keybinds.graph_keys_display(crate::keybinds::GraphAction::PanRight)
+        )),
         theme,
     ));
     lines.extend(help_item_dyn(
-        "Cancel template selection",
-        Some("Esc"),
+        "Zoom in/out",
+        Some(&format!(
+            "{}/{}",
+            keybinds.graph_keys_display(crate::keybinds::GraphAction::ZoomIn),
+            keybinds.graph_keys_display(crate::keybinds::GraphAction::ZoomOut)
+        )),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Open selected note",
+        Some(&keybinds.graph_keys_display(crate::keybinds::GraphAction::OpenNote)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Auto-fit graph to viewport",
+        Some(&keybinds.graph_keys_display(crate::keybinds::GraphAction::AutoFit)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Search nodes by title",
+        Some(&keybinds.graph_keys_display(crate::keybinds::GraphAction::ToggleSearch)),
         theme,
     ));
     lines.push(Line::from(""));
 
-    lines.push(help_heading("󰞋", "Help Page", theme));
-    lines.extend(help_item_dyn("Close help", Some(&help_close), theme));
-    lines.extend(help_item_dyn("Scroll", Some(&help_scroll), theme));
+    lines.push(help_heading("Display Options", theme));
+    lines.push(Line::from(""));
+    lines.extend(help_item_dyn(
+        "Toggle minimap",
+        Some(&keybinds.graph_keys_display(crate::keybinds::GraphAction::ToggleMinimap)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Toggle legend (node colors, link types)",
+        Some(&keybinds.graph_keys_display(crate::keybinds::GraphAction::ToggleLegend)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Toggle background grid",
+        Some(&keybinds.graph_keys_display(crate::keybinds::GraphAction::ToggleGrid)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Toggle status bar",
+        Some(&keybinds.graph_keys_display(crate::keybinds::GraphAction::ToggleStatus)),
+        theme,
+    ));
     lines.push(Line::from(""));
 
-    lines.push(help_heading("󰒓", "Configuration", theme));
+    lines.extend(help_item_dyn(
+        "Refresh physics simulation",
+        Some(&keybinds.graph_keys_display(crate::keybinds::GraphAction::Refresh)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Reload graf config file",
+        Some(&keybinds.graph_keys_display(crate::keybinds::GraphAction::ReloadConfig)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Quit graph view",
+        Some(&keybinds.graph_keys_display(crate::keybinds::GraphAction::Quit)),
+        theme,
+    ));
+    lines.push(Line::from(""));
+
+    lines.push(help_heading("Mouse Controls", theme));
+    lines.push(Line::from(""));
+    lines.extend(help_item_dyn("Scroll wheel to zoom in/out", None, theme));
+    lines.extend(help_item_dyn("Click and drag background to pan", None, theme));
+    lines.extend(help_item_dyn("Click node to select", None, theme));
+    lines.extend(help_item_dyn("Double-click node to open note", None, theme));
+    Text::from(lines)
+}
+
+fn canvas_help_text(
+    theme: &crate::app_theme::AppThemeColors,
+) -> Text<'static> {
+    let mut lines = Vec::new();
+    lines.push(help_heading("Tools", theme));
+    lines.push(Line::from(""));
+    lines.extend(help_item_dyn(
+        "Draw freehand strokes",
+        Some("d"),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Shape tool (opens picker)",
+        Some("s"),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Place text label at click position",
+        Some("t"),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Erase elements (hover + click/drag)",
+        Some("e"),
+        theme,
+    ));
+    lines.push(Line::from(""));
+
+    lines.push(help_heading("Shapes", theme));
+    lines.push(Line::from(""));
+    lines.extend(help_item_dyn(
+        "Press s, then pick type in popup (Up/Down)",
+        None,
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Shape types: Rect, Ellipse, Diamond, Line, Arrow",
+        None,
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Click + drag to place shape at desired size",
+        None,
+        theme,
+    ));
+    lines.push(Line::from(""));
+
+    lines.push(help_heading("Text Editing", theme));
+    lines.push(Line::from(""));
+    lines.extend(help_item_dyn(
+        "Right-click on existing text to edit content",
+        None,
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Edit line: Enter to confirm, Esc to cancel",
+        None,
+        theme,
+    ));
+    lines.push(Line::from(""));
+
+    lines.push(help_heading("Navigation", theme));
+    lines.push(Line::from(""));
+    lines.extend(help_item_dyn("Scroll wheel to zoom in/out", None, theme));
+    lines.extend(help_item_dyn("Right-click or middle-click drag to pan", None, theme));
+    lines.extend(help_item_dyn("Select tool from toolbar at bottom", None, theme));
+    lines.push(Line::from(""));
+
+    lines.push(help_heading("General", theme));
+    lines.push(Line::from(""));
+    lines.extend(help_item_dyn("Auto-saved on changes & quit", None, theme));
+    lines.extend(help_item_dyn("Exit canvas view", Some("Esc"), theme));
+    Text::from(lines)
+}
+
+fn about_help_text(
+    _keybinds: &Keybinds,
+    theme: &crate::app_theme::AppThemeColors,
+) -> Text<'static> {
+    let mut lines = Vec::new();
+    lines.push(Line::from(vec![
+        Span::styled(
+            "clin",
+            Style::default()
+                .fg(theme.accent)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            format!("  v{}", env!("CARGO_PKG_VERSION")),
+            Style::default()
+                .fg(theme.accent)
+                .add_modifier(Modifier::BOLD),
+        ),
+    ]));
+    lines.push(Line::from(""));
+    lines.extend(help_item_dyn(
+        "Encrypted terminal note-taking app",
+        None,
+        theme,
+    ));
+
+    lines.push(Line::from(""));
+
+    lines.push(help_heading("Configuration", theme));
+    lines.push(Line::from(""));
     lines.extend(help_item_dyn(
         "Keybinds file: ~/.config/clin/keybinds.toml",
+        None,
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Theme + storage:  ~/.config/clin/config.toml",
         None,
         theme,
     ));
@@ -267,34 +477,86 @@ pub fn help_page_text(
         None,
         theme,
     ));
-    lines.extend(help_item_dyn(
-        "Run 'clin --help' for CLI commands",
-        None,
-        theme,
-    ));
+    lines.push(Line::from(""));
+
+    lines.push(help_heading("CLI Usage", theme));
+    lines.push(Line::from(""));
+    lines.push(Line::from(vec![
+        Span::styled("  clin", Style::default().fg(theme.success).add_modifier(Modifier::BOLD)),
+        Span::raw("                         Launch interactive TUI"),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled("  clin -n [TITLE]", Style::default().fg(theme.success).add_modifier(Modifier::BOLD)),
+        Span::raw("                Create note + open editor"),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled("  clin -q <text> [TITLE]", Style::default().fg(theme.success).add_modifier(Modifier::BOLD)),
+        Span::raw("        Quick note without TUI"),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled("  clin -e <TITLE>", Style::default().fg(theme.success).add_modifier(Modifier::BOLD)),
+        Span::raw("                Open existing note by title"),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled("  clin -l", Style::default().fg(theme.success).add_modifier(Modifier::BOLD)),
+        Span::raw("                          List all note titles"),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled("  clin -h, --help", Style::default().fg(theme.success).add_modifier(Modifier::BOLD)),
+        Span::raw("                 Show CLI help message"),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled("  clin --storage-path", Style::default().fg(theme.success).add_modifier(Modifier::BOLD)),
+        Span::raw("           Show current storage path"),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled("  clin --set-storage-path <PATH>", Style::default().fg(theme.success).add_modifier(Modifier::BOLD)),
+        Span::raw("  Set storage directory"),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled("  clin --reset-storage-path", Style::default().fg(theme.success).add_modifier(Modifier::BOLD)),
+        Span::raw("       Reset to default storage"),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled("  clin --migrate-storage", Style::default().fg(theme.success).add_modifier(Modifier::BOLD)),
+        Span::raw("         Migrate data from old location"),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled("  clin --keybinds", Style::default().fg(theme.success).add_modifier(Modifier::BOLD)),
+        Span::raw("                Show current keybindings"),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled("  clin --export-keybinds", Style::default().fg(theme.success).add_modifier(Modifier::BOLD)),
+        Span::raw("         Export keybinds as TOML"),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled("  clin --reset-keybinds", Style::default().fg(theme.success).add_modifier(Modifier::BOLD)),
+        Span::raw("          Reset keybinds to defaults"),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled("  clin --list-templates", Style::default().fg(theme.success).add_modifier(Modifier::BOLD)),
+        Span::raw("          List available templates"),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled("  clin --create-example-templates", Style::default().fg(theme.success).add_modifier(Modifier::BOLD)),
+        Span::raw("  Create example template files"),
+    ]));
 
     Text::from(lines)
 }
 
+
 pub fn help_heading(
-    icon: &'static str,
     title: &'static str,
     theme: &crate::app_theme::AppThemeColors,
 ) -> Line<'static> {
-    Line::from(vec![
-        Span::styled(
-            format!("{} ", icon),
-            Style::default()
-                .fg(theme.heading)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(
-            title,
-            Style::default()
-                .fg(theme.heading)
-                .add_modifier(Modifier::BOLD),
-        ),
-    ])
+    Line::from(Span::styled(
+        format!(" {} ", title.to_uppercase()),
+        Style::default()
+            .fg(theme.highlight_fg)
+            .bg(theme.highlight_bg)
+            .add_modifier(Modifier::BOLD),
+    ))
 }
 
 fn format_keybind(key: &str) -> String {
@@ -409,7 +671,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
 
                 if summary.pinned {
                     spans.push(Span::styled(
-                        "* ",
+                        "\u{f4cc} ",
                         Style::default()
                             .fg(app.app_theme.heading)
                             .add_modifier(Modifier::BOLD),
@@ -936,16 +1198,71 @@ pub fn draw_theme_popup(
     frame.render_widget(pills_para, chunks[1]);
 }
 
+fn line_number_gutter(line_count: usize, cursor_row: usize, scroll_row: usize, height: u16, theme: &AppThemeColors) -> Paragraph<'static> {
+    let digits = line_count.max(1).to_string().len();
+    let display_lines = height as usize;
+    let mut gutter_lines: Vec<Line<'static>> = Vec::with_capacity(display_lines);
+    for i in 0..display_lines.min(line_count.saturating_sub(scroll_row)) {
+        let current_line_idx = i + scroll_row;
+        let is_current = current_line_idx == cursor_row;
+        let style = if is_current {
+            Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(theme.muted)
+        };
+        gutter_lines.push(Line::from(vec![
+            Span::styled(
+                format!("{:>width$} ", current_line_idx + 1, width = digits),
+                style,
+            ),
+        ]));
+    }
+    for _ in gutter_lines.len()..display_lines {
+        gutter_lines.push(Line::from(Span::raw(" ")));
+    }
+    Paragraph::new(gutter_lines)
+        .style(theme.bg_style())
+        .block(Block::default().padding(Padding::new(0, 0, 1, 0)))
+}
+
 pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     let area = frame.area();
-    let chunks = Layout::default()
+
+    let outer_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),
-            Constraint::Min(8),
+            Constraint::Min(0),
             Constraint::Length(1),
         ])
         .split(area);
+
+    let body_area = outer_chunks[0];
+    let hint_area = outer_chunks[1];
+
+    let (edit_area, preview_area_rect, splitter_area) = if app.editor_preview_enabled {
+        let cols = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Percentage(50),
+                Constraint::Length(1),
+                Constraint::Percentage(50),
+            ])
+            .split(body_area);
+        (cols[0], Some(cols[2]), Some(cols[1]))
+    } else {
+        (body_area, None, None)
+    };
+
+    let inner_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3),
+            Constraint::Min(0),
+        ])
+        .split(edit_area);
+
+    let title_area = inner_chunks[0];
+    let editor_container = inner_chunks[1];
 
     // Title bar — accent stripe on left, title_bg
     app.title_editor.set_style(
@@ -965,13 +1282,13 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         },
     );
     app.title_editor.set_cursor_line_style(Style::default());
-    frame.render_widget(&app.title_editor, chunks[0]);
+    frame.render_widget(&app.title_editor, title_area);
 
     if get_title_text(&app.title_editor).is_empty() {
         let title_inner = Rect::new(
-            chunks[0].x + 3,
-            chunks[0].y + 1,
-            chunks[0].width.saturating_sub(4),
+            title_area.x + 3,
+            title_area.y + 1,
+            title_area.width.saturating_sub(4),
             1,
         );
         let placeholder = Paragraph::new(Line::from(Span::styled(
@@ -981,24 +1298,25 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         frame.render_widget(placeholder, title_inner);
     }
 
-    if app.markdown_preview_enabled {
-        let full_cols = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([
-                Constraint::Percentage(50),
-                Constraint::Length(1),
-                Constraint::Percentage(50),
-            ])
-            .split(area);
+    if let Some(preview_area_rect) = preview_area_rect {
+        let content_area = editor_container;
 
-        let content_area = Rect::new(full_cols[0].x, chunks[1].y, full_cols[0].width, chunks[1].height);
-        let preview_area_rect = Rect::new(full_cols[2].x, chunks[1].y, full_cols[2].width, chunks[1].height);
+        let line_count = app.editor.lines().len();
+        let cursor_row = app.editor.cursor().0;
+        let scroll_row = cursor_row.saturating_sub(app.editor.screen_cursor().row as usize);
+        let digits = line_count.max(1).to_string().len() as u16;
+        let gutter_width = digits + 1;
+        let gutter_area = Rect::new(content_area.x, content_area.y, gutter_width.min(content_area.width), content_area.height);
+        let editor_area = Rect::new(content_area.x + gutter_area.width, content_area.y, content_area.width.saturating_sub(gutter_area.width), content_area.height);
+
+        let gutter = line_number_gutter(line_count, cursor_row, scroll_row, content_area.height, &app.app_theme);
+        frame.render_widget(gutter, gutter_area);
 
         app.editor.set_block(
             Block::default()
                 .style(app.app_theme.bg_style())
                 .borders(Borders::NONE)
-                .padding(Padding::new(2, 2, 1, 0)),
+                .padding(Padding::new(0, 2, 1, 0)),
         );
         app.editor.set_style(app.app_theme.bg_style());
         app.editor.set_cursor_style(
@@ -1015,10 +1333,10 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 Style::default()
             },
         );
-        frame.render_widget(&app.editor, content_area);
+        frame.render_widget(&app.editor, editor_area);
         if focus == EditFocus::Body {
             let cursor_bg = app.app_theme.preview_bg().unwrap_or(app.app_theme.highlight_bg);
-            fill_cursor_line_bg(frame, &app.editor, content_area, cursor_bg);
+            fill_cursor_line_bg(frame, &app.editor, editor_area, cursor_bg);
         }
 
         match &app.md_preview_renderer {
@@ -1058,11 +1376,23 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             }
         }
     } else {
+        let line_count = app.editor.lines().len();
+        let cursor_row = app.editor.cursor().0;
+        let scroll_row = cursor_row.saturating_sub(app.editor.screen_cursor().row as usize);
+        let digits = line_count.max(1).to_string().len() as u16;
+        let gutter_width = digits + 1;
+        let content_area = editor_container;
+        let gutter_area = Rect::new(content_area.x, content_area.y, gutter_width.min(content_area.width), content_area.height);
+        let editor_area = Rect::new(content_area.x + gutter_area.width, content_area.y, content_area.width.saturating_sub(gutter_area.width), content_area.height);
+
+        let gutter = line_number_gutter(line_count, cursor_row, scroll_row, content_area.height, &app.app_theme);
+        frame.render_widget(gutter, gutter_area);
+
         app.editor.set_block(
             Block::default()
                 .style(app.app_theme.bg_style())
                 .borders(Borders::NONE)
-                .padding(Padding::new(2, 2, 1, 0)),
+                .padding(Padding::new(0, 2, 1, 0)),
         );
         app.editor.set_style(app.app_theme.bg_style());
         app.editor.set_cursor_style(
@@ -1079,25 +1409,17 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 Style::default()
             },
         );
-        frame.render_widget(&app.editor, chunks[1]);
+        frame.render_widget(&app.editor, editor_area);
         if focus == EditFocus::Body {
             let cursor_bg = app.app_theme.preview_bg().unwrap_or(app.app_theme.highlight_bg);
-            fill_cursor_line_bg(frame, &app.editor, chunks[1], cursor_bg);
+            fill_cursor_line_bg(frame, &app.editor, editor_area, cursor_bg);
         }
     }
 
-    draw_hint_line(frame, chunks[2], app, EDIT_HELP_HINTS, false, false);
-    draw_corner_watermark(frame, chunks[2], app.app_theme.muted);
-    if app.markdown_preview_enabled {
-        let full_cols = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([
-                Constraint::Percentage(50),
-                Constraint::Length(1),
-                Constraint::Percentage(50),
-            ])
-            .split(area);
-        draw_dim_vline(frame, full_cols[1], app.app_theme.muted);
+    draw_hint_line(frame, hint_area, app, EDIT_HELP_HINTS, false, false);
+    draw_corner_watermark(frame, hint_area, app.app_theme.muted);
+    if let Some(splitter_area) = splitter_area {
+        draw_dim_vline(frame, splitter_area, app.app_theme.muted);
     }
 
     if app.status.starts_with("Save failed") || app.status.starts_with("Could not open") {
