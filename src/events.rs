@@ -251,6 +251,9 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 match popup.focus {
                     crate::app::ThemePopupFocus::ThemeList => {
                         popup.selected = popup.selected.saturating_sub(1);
+                        app.theme_popup = Some(popup);
+                        app.select_theme();
+                        return false;
                     }
                     crate::app::ThemePopupFocus::GeneralBg => {
                         popup.focus = crate::app::ThemePopupFocus::ThemeList;
@@ -267,6 +270,9 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                     crate::app::ThemePopupFocus::ThemeList => {
                         if popup.selected + 1 < popup.themes.len() {
                             popup.selected += 1;
+                            app.theme_popup = Some(popup);
+                            app.select_theme();
+                            return false;
                         } else {
                             popup.focus = crate::app::ThemePopupFocus::GeneralBg;
                         }
@@ -524,8 +530,8 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
     if app.keybinds.matches_edit(EditAction::CycleFocus, &key) {
         *focus = match *focus {
             EditFocus::Title => EditFocus::Body,
-            EditFocus::Body => EditFocus::ExternalEditorToggle,
-            EditFocus::ExternalEditorToggle => EditFocus::Title,
+            EditFocus::Body => EditFocus::Title,
+            _ => EditFocus::Title,
         };
         return false;
     }
@@ -607,26 +613,30 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),
             Constraint::Min(5),
-            Constraint::Length(3),
+            Constraint::Length(1),
         ])
         .split(terminal_area);
 
-    let list_area = chunks[1];
+    let list_area = chunks[0];
+    // List block uses Padding::new(2, 2, 1, 1) with Borders::NONE
     let inner_list_area = Rect::new(
-        list_area.x.saturating_add(1),
+        list_area.x.saturating_add(2),
         list_area.y.saturating_add(1),
-        list_area.width.saturating_sub(2),
+        list_area.width.saturating_sub(4),
         list_area.height.saturating_sub(2),
     );
 
     if app.preview_enabled {
         let main_chunks = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-            .split(chunks[1]);
-        let preview_area = main_chunks[1];
+            .constraints([
+                Constraint::Percentage(50),
+                Constraint::Length(1),
+                Constraint::Percentage(50),
+            ])
+            .split(terminal_area);
+        let preview_area = Rect::new(main_chunks[2].x, main_chunks[2].y, main_chunks[2].width, chunks[0].height);
 
         if contains_cell(preview_area, mouse_event.column, mouse_event.row) {
             if mouse_event.kind == MouseEventKind::ScrollUp {
@@ -884,29 +894,40 @@ pub fn edit_view_input_areas(area: Rect, md_preview: bool) -> (Rect, Rect) {
         .constraints([
             Constraint::Length(3),
             Constraint::Min(8),
-            Constraint::Length(3),
+            Constraint::Length(1),
         ])
         .split(area);
 
-    let title_inner = chunks[0].inner(Margin {
-        vertical: 1,
-        horizontal: 1,
-    });
+    // Title block uses Padding::new(2, 1, 1, 1) with Borders::NONE
+    let title_inner = Rect::new(
+        chunks[0].x + 2,
+        chunks[0].y + 1,
+        chunks[0].width.saturating_sub(4),
+        chunks[0].height.saturating_sub(2),
+    );
 
     let body_area = if md_preview {
         let content_chunks = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-            .split(chunks[1]);
-        content_chunks[0]
+            .constraints([
+                Constraint::Percentage(50),
+                Constraint::Length(1),
+                Constraint::Percentage(50),
+            ])
+            .split(area);
+        // Content is in the left column, clipped to chunks[1] height
+        Rect::new(content_chunks[0].x, chunks[1].y, content_chunks[0].width, chunks[1].height)
     } else {
         chunks[1]
     };
 
-    let body_inner = body_area.inner(Margin {
-        vertical: 1,
-        horizontal: 1,
-    });
+    // Body block uses Padding::new(2, 2, 1, 0) with Borders::NONE
+    let body_inner = Rect::new(
+        body_area.x + 2,
+        body_area.y + 1,
+        body_area.width.saturating_sub(4),
+        body_area.height.saturating_sub(1),
+    );
 
     (title_inner, body_inner)
 }
@@ -917,19 +938,28 @@ pub fn edit_view_md_preview_area(area: Rect) -> Option<Rect> {
         .constraints([
             Constraint::Length(3),
             Constraint::Min(8),
-            Constraint::Length(3),
+            Constraint::Length(1),
         ])
         .split(area);
 
     let content_chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(chunks[1]);
+        .constraints([
+            Constraint::Percentage(50),
+            Constraint::Length(1),
+            Constraint::Percentage(50),
+        ])
+        .split(area);
 
-    Some(content_chunks[1].inner(Margin {
-        vertical: 1,
-        horizontal: 1,
-    }))
+    // Preview is in the right column, clipped to chunks[1] height, padded
+    let preview_area = Rect::new(content_chunks[2].x, chunks[1].y, content_chunks[2].width, chunks[1].height);
+    // Preview block uses Padding::new(2, 2, 1, 1) with Borders::NONE
+    Some(Rect::new(
+        preview_area.x + 2,
+        preview_area.y + 1,
+        preview_area.width.saturating_sub(4),
+        preview_area.height.saturating_sub(2),
+    ))
 }
 
 pub fn contains_cell(rect: Rect, col: u16, row: u16) -> bool {

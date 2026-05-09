@@ -166,7 +166,7 @@ fn handle_mouse(ev: MouseEvent, app: &mut CanvasAppState) -> anyhow::Result<Opti
         MouseEventKind::Down(MouseButton::Left) => {
             let toolbar_width = 42;
             let tx = area.width.saturating_sub(toolbar_width) / 2;
-            let ty = area.height.saturating_sub(2);
+            let ty = area.height.saturating_sub(1);
 
             if ev.row == ty && ev.column >= tx && ev.column < tx + toolbar_width {
                 let col_rel = ev.column - tx;

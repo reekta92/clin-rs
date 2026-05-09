@@ -557,31 +557,8 @@ pub fn draw_graph_view(
     let x_bounds = viewport.x_bounds(aspect);
     let y_bounds = viewport.y_bounds(aspect);
 
-    let border_type = config.display.border_style.to_border_type();
-
-    let block = {
-        let b = ratatui::widgets::Block::default();
-        if matches!(
-            config.display.border_style,
-            crate::graf::config::BorderStyle::None
-        ) {
-            b
-        } else {
-            let mut block = b
-                .borders(ratatui::widgets::Borders::ALL)
-                .border_type(border_type)
-                .border_style(ratatui::style::Style::default().fg(colors.border_color))
-                .title(config.expand_border_title())
-                .title_style(ratatui::style::Style::default().fg(colors.title_color));
-
-            
-            if let Some(bg) = colors.background_color {
-                block = block.style(ratatui::style::Style::default().bg(bg));
-            }
-
-            block
-        }
-    };
+    let block = ratatui::widgets::Block::default()
+        .style(ratatui::style::Style::default().bg(colors.background_color.unwrap_or(Color::Reset)));
 
     let canvas = Canvas::default()
         .background_color(colors.background_color.unwrap_or(Color::Reset))
@@ -626,17 +603,17 @@ pub fn draw_graph_view(
         let legend_width = (max_len + 4) as u16;
         let legend_height = (items.len() as u16).min(config.legend.max_items as u16) + 2;
         let (legend_x, legend_y) = match config.legend.position {
-            LegendPosition::TopLeft => (area.x + 1, area.y + 1),
+            LegendPosition::TopLeft => (area.x, area.y),
             LegendPosition::TopRight => (
-                area.x + area.width.saturating_sub(legend_width + 1),
-                area.y + 1,
+                area.x + area.width.saturating_sub(legend_width),
+                area.y,
             ),
             LegendPosition::BottomLeft => (
-                area.x + 1,
+                area.x,
                 area.y + area.height.saturating_sub(legend_height + 1),
             ),
             LegendPosition::BottomRight => (
-                area.x + area.width.saturating_sub(legend_width + 1),
+                area.x + area.width.saturating_sub(legend_width),
                 area.y + area.height.saturating_sub(legend_height + 1),
             ),
         };
@@ -699,9 +676,9 @@ pub fn draw_graph_view(
         let status_bar = ratatui::widgets::Paragraph::new(status)
             .style(ratatui::style::Style::default().fg(colors.status_bar_color));
         let status_area = ratatui::layout::Rect::new(
-            area.x + 1,
+            area.x,
             area.y + area.height.saturating_sub(1),
-            area.width.saturating_sub(2),
+            area.width,
             1,
         );
         frame.render_widget(status_bar, status_area);
@@ -709,7 +686,7 @@ pub fn draw_graph_view(
 
     if flags.show_minimap {
         let minimap_area = compute_minimap_area(area, config);
-        frame.render_widget(ratatui::widgets::Clear, minimap_area);
+
         
         let mut minimap_grid = std::mem::take(&mut cache.minimap_grid);
         draw_minimap(
@@ -766,14 +743,14 @@ pub fn compute_minimap_area(frame_area: Rect, config: &GrafConfig) -> Rect {
     let w = config.visual.minimap_width;
     let h = config.visual.minimap_height;
     let (x, y) = match config.visual.minimap_position {
-        LegendPosition::TopLeft => (frame_area.x + 1, frame_area.y + 1),
+        LegendPosition::TopLeft => (frame_area.x, frame_area.y),
         LegendPosition::TopRight => (
-            frame_area.x + frame_area.width.saturating_sub(w + 1),
-            frame_area.y + 1,
+            frame_area.x + frame_area.width.saturating_sub(w),
+            frame_area.y,
         ),
         LegendPosition::BottomLeft => (
-            frame_area.x + 1,
-            frame_area.y + frame_area.height.saturating_sub(h + 1),
+            frame_area.x,
+            frame_area.y + frame_area.height.saturating_sub(h),
         ),
         LegendPosition::BottomRight => (
             frame_area.x + frame_area.width.saturating_sub(w + 1),
@@ -835,7 +812,8 @@ fn draw_minimap(frame: &mut ratatui::Frame, area: Rect, params: MinimapParams<'_
     
     let block = ratatui::widgets::Block::default()
         .borders(ratatui::widgets::Borders::ALL)
-        .border_style(ratatui::style::Style::default().fg(params.colors.minimap_border_color));
+        .border_style(ratatui::style::Style::default().fg(params.colors.minimap_border_color))
+        .style(ratatui::style::Style::default());
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
@@ -891,7 +869,7 @@ fn draw_minimap(frame: &mut ratatui::Frame, area: Rect, params: MinimapParams<'_
     }
 
     let buf = frame.buffer_mut();
-    let bg_color = params.colors.minimap_bg_color;
+    let bg_color: Option<Color> = None;
 
     
     for cell_row in 0..ih {

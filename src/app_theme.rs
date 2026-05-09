@@ -108,4 +108,38 @@ impl AppThemeColors {
             None => Style::default(),
         }
     }
+
+    /// Preview pane: slightly darker than base bg
+    pub fn preview_bg(&self) -> Option<Color> { derive_color(self.bg, -15) }
+
+    /// Editor title bar: slightly darker than base bg
+    pub fn title_bar_bg(&self) -> Option<Color> { derive_color(self.bg, -10) }
+
+    /// Hint line at bottom: slightly darker than base bg
+    pub fn hint_line_bg(&self) -> Option<Color> { derive_color(self.bg, -8) }
+
+    /// Base pane bg (same as self.bg, but explicit for clarity)
+    pub fn pane_bg(&self) -> Option<Color> { self.bg }
+
+    pub fn preview_bg_style(&self) -> Style {
+        match self.preview_bg() { Some(c) => Style::default().bg(c), None => Style::default() }
+    }
+
+    pub fn title_bar_bg_style(&self) -> Style {
+        match self.title_bar_bg() { Some(c) => Style::default().bg(c), None => Style::default() }
+    }
+
+    pub fn hint_line_bg_style(&self) -> Style {
+        match self.hint_line_bg() { Some(c) => Style::default().bg(c), None => Style::default() }
+    }
+}
+
+fn derive_color(base: Option<Color>, delta: i16) -> Option<Color> {
+    base.map(|c| match c {
+        Color::Rgb(r, g, b) => {
+            let clamp = |v: i16| v.clamp(0, 255) as u8;
+            Color::Rgb(clamp(r as i16 + delta), clamp(g as i16 + delta), clamp(b as i16 + delta))
+        }
+        other => other,
+    })
 }

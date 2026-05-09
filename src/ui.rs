@@ -34,7 +34,7 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(8), Constraint::Length(3)])
+        .constraints([Constraint::Min(8), Constraint::Length(1)])
         .split(area);
 
     let help_text = app.get_help_text().clone();
@@ -42,20 +42,17 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
         .block(
             Block::default()
                 .style(app.app_theme.bg_style())
-                .borders(Borders::ALL)
-                .title("Help"),
+                .borders(Borders::NONE),
         )
         .wrap(Wrap { trim: false })
         .scroll((app.help_scroll, 0));
     frame.render_widget(help, chunks[0]);
 
-    let footer = Paragraph::new(HELP_PAGE_HINTS).block(
-        Block::default()
-            .style(app.app_theme.bg_style())
-            .borders(Borders::ALL)
-            .title("Navigation"),
-    );
-    frame.render_widget(footer, chunks[1]);
+    let hint = Paragraph::new(Span::styled(
+        "Esc close",
+        Style::default().fg(app.app_theme.muted),
+    )).style(app.app_theme.hint_line_bg_style());
+    frame.render_widget(hint, chunks[1]);
 }
 
 pub fn help_page_text(
@@ -350,42 +347,30 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),
             Constraint::Min(5),
-            Constraint::Length(3),
+            Constraint::Length(1),
         ])
         .split(area);
 
-    let header = Paragraph::new(Line::from(vec![
-        Span::styled(
-            "clin",
-            Style::default()
-                .fg(app.app_theme.accent)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::raw("  encrypted terminal notes"),
-    ]))
-    .block(
-        Block::default()
-            .style(app.app_theme.bg_style())
-            .borders(Borders::ALL)
-            .title("Notes"),
-    );
-    frame.render_widget(header, chunks[0]);
-
     let (list_area, preview_area) = if app.preview_enabled {
-        let main_chunks = Layout::default()
+        let full_cols = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-            .split(chunks[1]);
-        (main_chunks[0], Some(main_chunks[1]))
+            .constraints([
+                Constraint::Percentage(50),
+                Constraint::Length(1),
+                Constraint::Percentage(50),
+            ])
+            .split(area);
+        let list_area = Rect::new(full_cols[0].x, full_cols[0].y, full_cols[0].width, chunks[0].height);
+        let preview_area = Some(Rect::new(full_cols[2].x, full_cols[2].y, full_cols[2].width, chunks[0].height));
+        (list_area, preview_area)
     } else {
-        (chunks[1], None)
+        (chunks[0], None)
     };
 
     let mut items: Vec<ListItem> = Vec::with_capacity(app.visual_list.len());
 
-    for item in &app.visual_list {
+    for (vi, item) in app.visual_list.iter().enumerate() {
         match item {
             crate::app::VisualItem::Folder {
                 path: _,
@@ -463,7 +448,12 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     ));
                 }
 
-                spans.push(Span::raw(format!("  ({when})")));
+                if vi == app.visual_index {
+                    spans.push(Span::styled(
+                        format!("  ({when})"),
+                        Style::default().fg(app.app_theme.muted),
+                    ));
+                }
                 items.push(ListItem::new(Line::from(spans)));
             }
             crate::app::VisualItem::CreateNew { depth, .. } => {
@@ -481,16 +471,15 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         .block(
             Block::default()
                 .style(app.app_theme.bg_style())
-                .borders(Borders::ALL)
-                .title("Select"),
+                .borders(Borders::NONE)
+                .padding(Padding::new(2, 2, 1, 1)),
         )
         .highlight_style(
             Style::default()
                 .fg(app.app_theme.highlight_fg)
                 .bg(app.app_theme.highlight_bg)
                 .add_modifier(Modifier::BOLD),
-        )
-        .highlight_symbol("  > ");
+        );
 
     app.list_state.select(Some(app.visual_index));
     frame.render_stateful_widget(list, list_area, &mut app.list_state);
@@ -500,12 +489,12 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             Some(renderer) if !renderer.is_pending() => {
                 let widget = crate::markdown::ScrollablePseudoTerminal::new(renderer.screen())
                     .scroll_offset(renderer.scroll_offset())
-                    .theme_bg(app.app_theme.bg)
+                    .theme_bg(app.app_theme.preview_bg())
                     .block(
                         Block::default()
-                            .style(app.app_theme.bg_style())
-                            .borders(Borders::ALL)
-                            .title("Preview (Shift+P to close)"),
+                            .style(app.app_theme.preview_bg_style())
+                            .borders(Borders::NONE)
+                            .padding(Padding::new(2, 2, 1, 1)),
                     );
                 frame.render_widget(widget, preview_rect);
             }
@@ -514,57 +503,39 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     .style(Style::default().fg(app.app_theme.muted))
                     .block(
                         Block::default()
-                            .style(app.app_theme.bg_style())
-                            .borders(Borders::ALL)
-                            .title("Preview (Shift+P to close)"),
+                            .style(app.app_theme.preview_bg_style())
+                            .borders(Borders::NONE)
+                            .padding(Padding::new(2, 2, 1, 1)),
                     );
                 frame.render_widget(loading, preview_rect);
             }
             None => {
-                let placeholder = Paragraph::new("Select a note to preview").block(
-                    Block::default()
-                        .style(app.app_theme.bg_style())
-                        .borders(Borders::ALL)
-                        .title("Preview (Shift+P to close)"),
-                );
+                let placeholder = Paragraph::new("Select a note to preview")
+                    .style(app.app_theme.preview_bg_style())
+                    .block(
+                        Block::default()
+                            .style(app.app_theme.preview_bg_style())
+                            .borders(Borders::NONE)
+                            .padding(Padding::new(2, 2, 1, 1)),
+                    );
                 frame.render_widget(placeholder, preview_rect);
             }
         }
     }
 
-    let ext_button_label = if app.external_editor_enabled {
-        "[ Ext: ON ]"
-    } else {
-        "[ Ext: OFF ]"
-    };
-    let ext_button_style = if app.list_focus == ListFocus::ExternalEditorToggle {
-        Style::default()
-            .fg(app.app_theme.highlight_fg)
-            .bg(app.app_theme.heading)
-            .add_modifier(Modifier::BOLD)
-    } else if app.external_editor_enabled {
-        Style::default()
-            .fg(app.app_theme.success)
-            .add_modifier(Modifier::BOLD)
-    } else {
-        Style::default()
-            .fg(app.app_theme.destructive)
-            .add_modifier(Modifier::BOLD)
-    };
-
-    let footer_line = Line::from(vec![
-        Span::styled(ext_button_label, ext_button_style),
-        Span::raw("   "),
-        Span::raw(crate::sanitize::sanitize_for_terminal(app.status.as_ref())),
-    ]);
-
-    let footer = Paragraph::new(footer_line).block(
-        Block::default()
-            .style(app.app_theme.bg_style())
-            .borders(Borders::ALL)
-            .title("Help"),
-    );
-    frame.render_widget(footer, chunks[2]);
+    draw_hint_line(frame, chunks[1], app, LIST_HELP_HINTS, app.list_focus == ListFocus::ExternalEditorToggle, true);
+    draw_corner_watermark(frame, chunks[1], app.app_theme.muted);
+    if app.preview_enabled {
+        let full_cols = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Percentage(50),
+                Constraint::Length(1),
+                Constraint::Percentage(50),
+            ])
+            .split(area);
+        draw_dim_vline(frame, full_cols[1], app.app_theme.muted);
+    }
 
     if let Some(popup) = &app.template_popup {
         draw_template_popup(frame, popup, area, &app.app_theme);
@@ -904,8 +875,7 @@ pub fn draw_theme_popup(
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Min(0),
-            Constraint::Length(3),
-            Constraint::Length(3),
+            Constraint::Length(1),
         ])
         .split(popup_area);
 
@@ -934,60 +904,36 @@ pub fn draw_theme_popup(
                 .fg(theme.highlight_fg)
                 .bg(theme.highlight_bg)
                 .add_modifier(Modifier::BOLD),
-        )
-        .highlight_symbol("> ");
+        );
 
     let mut state = ListState::default();
     state.select(Some(popup.selected));
     frame.render_stateful_widget(list, chunks[0], &mut state);
 
-    let gen_label = if popup.general_is_solid {
-        " [X] General Solid Bg "
-    } else {
-        " [ ] General Solid Bg "
-    };
-    let gen_style = if popup.focus == crate::app::ThemePopupFocus::GeneralBg {
-        Style::default()
-            .fg(theme.highlight_fg)
-            .bg(theme.highlight_bg)
-            .add_modifier(Modifier::BOLD)
-    } else {
-        Style::default().fg(theme.fg).patch(theme.bg_style())
-    };
-    let gen_btn = Paragraph::new(gen_label)
-        .alignment(Alignment::Center)
-        .block(Block::default().borders(Borders::ALL).border_style(
-            if popup.focus == crate::app::ThemePopupFocus::GeneralBg {
-                Style::default().fg(theme.heading)
-            } else {
-                Style::default()
-            },
-        ));
-    frame.render_widget(gen_btn.style(gen_style), chunks[1]);
+    // Horizontal pills row
+    let gen_label = if popup.general_is_solid { "general:bg on" } else { "general:bg off" };
+    let graph_label = if popup.graph_is_solid { "graph:bg on" } else { "graph:bg off" };
 
-    let graph_label = if popup.graph_is_solid {
-        " [X] Graph Solid Bg "
+    let gen_style = if popup.focus == crate::app::ThemePopupFocus::GeneralBg {
+        Style::default().fg(theme.highlight_fg).bg(theme.heading).add_modifier(Modifier::BOLD)
     } else {
-        " [ ] Graph Solid Bg "
+        Style::default().fg(theme.muted)
     };
     let graph_style = if popup.focus == crate::app::ThemePopupFocus::GraphBg {
-        Style::default()
-            .fg(theme.highlight_fg)
-            .bg(theme.highlight_bg)
-            .add_modifier(Modifier::BOLD)
+        Style::default().fg(theme.highlight_fg).bg(theme.heading).add_modifier(Modifier::BOLD)
     } else {
-        Style::default().fg(theme.fg).patch(theme.bg_style())
+        Style::default().fg(theme.muted)
     };
-    let graph_btn = Paragraph::new(graph_label)
+
+    let pills = Line::from(vec![
+        Span::styled(format!(" {} ", gen_label), gen_style),
+        Span::raw("  "),
+        Span::styled(format!(" {} ", graph_label), graph_style),
+    ]);
+    let pills_para = Paragraph::new(pills)
         .alignment(Alignment::Center)
-        .block(Block::default().borders(Borders::ALL).border_style(
-            if popup.focus == crate::app::ThemePopupFocus::GraphBg {
-                Style::default().fg(theme.heading)
-            } else {
-                Style::default()
-            },
-        ));
-    frame.render_widget(graph_btn.style(graph_style), chunks[2]);
+        .style(theme.bg_style());
+    frame.render_widget(pills_para, chunks[1]);
 }
 
 pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
@@ -997,30 +943,37 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         .constraints([
             Constraint::Length(3),
             Constraint::Min(8),
-            Constraint::Length(3),
+            Constraint::Length(1),
         ])
         .split(area);
 
-    let title_border = if focus == EditFocus::Title {
-        Style::default().fg(app.app_theme.heading)
-    } else {
-        Style::default()
-    };
+    // Title bar — accent stripe on left, title_bg
+    app.title_editor.set_style(
+        app.app_theme.title_bar_bg_style().fg(app.app_theme.heading)
+    );
     app.title_editor.set_block(
         Block::default()
-            .style(app.app_theme.bg_style())
-            .borders(Borders::ALL)
-            .border_style(title_border)
-            .title("Title"),
+            .style(app.app_theme.title_bar_bg_style())
+            .borders(Borders::NONE)
+            .padding(Padding::new(2, 1, 1, 1)),
     );
-    app.title_editor.set_style(app.app_theme.bg_style());
+    app.title_editor.set_cursor_style(
+        if focus == EditFocus::Title {
+            Style::default().add_modifier(Modifier::REVERSED)
+        } else {
+            Style::default()
+        },
+    );
+    app.title_editor.set_cursor_line_style(Style::default());
     frame.render_widget(&app.title_editor, chunks[0]);
 
     if get_title_text(&app.title_editor).is_empty() {
-        let title_inner = chunks[0].inner(Margin {
-            vertical: 1,
-            horizontal: 1,
-        });
+        let title_inner = Rect::new(
+            chunks[0].x + 3,
+            chunks[0].y + 1,
+            chunks[0].width.saturating_sub(4),
+            1,
+        );
         let placeholder = Paragraph::new(Line::from(Span::styled(
             "Untitled note",
             Style::default().fg(app.app_theme.muted),
@@ -1029,113 +982,123 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     }
 
     if app.markdown_preview_enabled {
-        let content_chunks = Layout::default()
+        let full_cols = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-            .split(chunks[1]);
+            .constraints([
+                Constraint::Percentage(50),
+                Constraint::Length(1),
+                Constraint::Percentage(50),
+            ])
+            .split(area);
 
-        let body_border = if focus == EditFocus::Body {
-            Style::default().fg(app.app_theme.heading)
-        } else {
-            Style::default()
-        };
+        let content_area = Rect::new(full_cols[0].x, chunks[1].y, full_cols[0].width, chunks[1].height);
+        let preview_area_rect = Rect::new(full_cols[2].x, chunks[1].y, full_cols[2].width, chunks[1].height);
+
         app.editor.set_block(
             Block::default()
                 .style(app.app_theme.bg_style())
-                .borders(Borders::ALL)
-                .border_style(body_border)
-                .title("Content"),
+                .borders(Borders::NONE)
+                .padding(Padding::new(2, 2, 1, 0)),
         );
         app.editor.set_style(app.app_theme.bg_style());
-        frame.render_widget(&app.editor, content_chunks[0]);
+        app.editor.set_cursor_style(
+            if focus == EditFocus::Body {
+                Style::default().add_modifier(Modifier::REVERSED)
+            } else {
+                Style::default()
+            },
+        );
+        app.editor.set_cursor_line_style(
+            if focus == EditFocus::Body {
+                Style::default().bg(app.app_theme.preview_bg().unwrap_or(Color::DarkGray))
+            } else {
+                Style::default()
+            },
+        );
+        frame.render_widget(&app.editor, content_area);
+        if focus == EditFocus::Body {
+            let cursor_bg = app.app_theme.preview_bg().unwrap_or(app.app_theme.highlight_bg);
+            fill_cursor_line_bg(frame, &app.editor, content_area, cursor_bg);
+        }
 
         match &app.md_preview_renderer {
             Some(renderer) if !renderer.is_pending() => {
                 let md_widget = crate::markdown::ScrollablePseudoTerminal::new(renderer.screen())
                     .scroll_offset(renderer.scroll_offset())
-                    .theme_bg(app.app_theme.bg)
+                    .theme_bg(app.app_theme.preview_bg())
                     .block(
                         Block::default()
-                            .style(app.app_theme.bg_style())
-                            .borders(Borders::ALL)
-                            .border_style(Style::default().fg(app.app_theme.accent))
-                            .title("Markdown Preview (Ctrl+P)"),
+                            .style(app.app_theme.preview_bg_style())
+                            .borders(Borders::NONE)
+                            .padding(Padding::new(2, 2, 1, 1)),
                     );
-                frame.render_widget(md_widget, content_chunks[1]);
+                frame.render_widget(md_widget, preview_area_rect);
             }
             Some(_) => {
                 let loading = Paragraph::new("Rendering preview...")
                     .style(Style::default().fg(app.app_theme.muted))
                     .block(
                         Block::default()
-                            .style(app.app_theme.bg_style())
-                            .borders(Borders::ALL)
-                            .border_style(Style::default().fg(app.app_theme.accent))
-                            .title("Markdown Preview (Ctrl+P)"),
+                            .style(app.app_theme.preview_bg_style())
+                            .borders(Borders::NONE)
+                            .padding(Padding::new(2, 2, 1, 1)),
                     );
-                frame.render_widget(loading, content_chunks[1]);
+                frame.render_widget(loading, preview_area_rect);
             }
             None => {
-                let placeholder = Paragraph::new("Press Ctrl+P to render preview").block(
-                    Block::default()
-                        .style(app.app_theme.bg_style())
-                        .borders(Borders::ALL)
-                        .border_style(Style::default().fg(app.app_theme.accent))
-                        .title("Markdown Preview (Ctrl+P)"),
-                );
-                frame.render_widget(placeholder, content_chunks[1]);
+                let placeholder = Paragraph::new("Press Ctrl+P to render preview")
+                    .style(app.app_theme.preview_bg_style())
+                    .block(
+                        Block::default()
+                            .style(app.app_theme.preview_bg_style())
+                            .borders(Borders::NONE)
+                            .padding(Padding::new(2, 2, 1, 1)),
+                    );
+                frame.render_widget(placeholder, preview_area_rect);
             }
         }
     } else {
-        let body_border = if focus == EditFocus::Body {
-            Style::default().fg(app.app_theme.heading)
-        } else {
-            Style::default()
-        };
         app.editor.set_block(
             Block::default()
                 .style(app.app_theme.bg_style())
-                .borders(Borders::ALL)
-                .border_style(body_border)
-                .title("Content"),
+                .borders(Borders::NONE)
+                .padding(Padding::new(2, 2, 1, 0)),
         );
         app.editor.set_style(app.app_theme.bg_style());
+        app.editor.set_cursor_style(
+            if focus == EditFocus::Body {
+                Style::default().add_modifier(Modifier::REVERSED)
+            } else {
+                Style::default()
+            },
+        );
+        app.editor.set_cursor_line_style(
+            if focus == EditFocus::Body {
+                Style::default().bg(app.app_theme.preview_bg().unwrap_or(Color::DarkGray))
+            } else {
+                Style::default()
+            },
+        );
         frame.render_widget(&app.editor, chunks[1]);
+        if focus == EditFocus::Body {
+            let cursor_bg = app.app_theme.preview_bg().unwrap_or(app.app_theme.highlight_bg);
+            fill_cursor_line_bg(frame, &app.editor, chunks[1], cursor_bg);
+        }
     }
 
-    let ext_button_label = if app.external_editor_enabled {
-        "[ Ext: ON ]"
-    } else {
-        "[ Ext: OFF ]"
-    };
-    let ext_button_style = if focus == EditFocus::ExternalEditorToggle {
-        Style::default()
-            .fg(app.app_theme.highlight_fg)
-            .bg(app.app_theme.heading)
-            .add_modifier(Modifier::BOLD)
-    } else if app.external_editor_enabled {
-        Style::default()
-            .fg(app.app_theme.success)
-            .add_modifier(Modifier::BOLD)
-    } else {
-        Style::default()
-            .fg(app.app_theme.destructive)
-            .add_modifier(Modifier::BOLD)
-    };
-
-    let status_line = Line::from(vec![
-        Span::styled(ext_button_label, ext_button_style),
-        Span::raw("   "),
-        Span::raw(crate::sanitize::sanitize_for_terminal(app.status.as_ref())),
-    ]);
-
-    let status = Paragraph::new(status_line).block(
-        Block::default()
-            .style(app.app_theme.bg_style())
-            .borders(Borders::ALL)
-            .title("Help"),
-    );
-    frame.render_widget(status, chunks[2]);
+    draw_hint_line(frame, chunks[2], app, EDIT_HELP_HINTS, false, false);
+    draw_corner_watermark(frame, chunks[2], app.app_theme.muted);
+    if app.markdown_preview_enabled {
+        let full_cols = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Percentage(50),
+                Constraint::Length(1),
+                Constraint::Percentage(50),
+            ])
+            .split(area);
+        draw_dim_vline(frame, full_cols[1], app.app_theme.muted);
+    }
 
     if app.status.starts_with("Save failed") || app.status.starts_with("Could not open") {
         let popup = centered_rect(75, 20, area);
@@ -1314,6 +1277,75 @@ pub fn draw_confirm_popup(
     ]);
     let buttons_para = Paragraph::new(buttons).alignment(Alignment::Center);
     frame.render_widget(buttons_para, chunks[3]);
+}
+
+// ── Zen UI helpers ──────────────────────────────────────────────
+
+/// Renders a dim │ character in every row of a 1-column-wide area
+fn draw_dim_vline(frame: &mut Frame, area: Rect, color: Color) {
+    let buf = frame.buffer_mut();
+    for row in area.top()..area.bottom() {
+        if let Some(cell) = buf.cell_mut((area.x, row)) {
+            cell.set_symbol("│");
+            cell.set_fg(color);
+        }
+    }
+}
+
+fn draw_hint_line(frame: &mut Frame, area: Rect, app: &App, hints: &str, ext_focused: bool, show_ext: bool) {
+    let status = app.status.as_ref();
+    let right_text = if !status.is_empty() && status != "Ready" {
+        crate::sanitize::sanitize_for_terminal(status)
+    } else {
+        Cow::Owned(hints.to_string())
+    };
+
+    let mut spans: Vec<Span> = Vec::new();
+
+    if show_ext {
+        let ext_label = if app.external_editor_enabled { "ext:on" } else { "ext:off" };
+        let ext_style = if ext_focused {
+            Style::default().fg(app.app_theme.highlight_fg).bg(app.app_theme.heading).add_modifier(Modifier::BOLD)
+        } else if app.external_editor_enabled {
+            Style::default().fg(app.app_theme.success).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(app.app_theme.muted)
+        };
+        spans.push(Span::styled(format!(" {} ", ext_label), ext_style));
+        spans.push(Span::raw("  "));
+    }
+
+    spans.push(Span::styled(right_text, Style::default().fg(app.app_theme.muted)));
+
+    let line = Line::from(spans);
+    let para = Paragraph::new(line)
+        .style(app.app_theme.hint_line_bg_style());
+    frame.render_widget(para, area);
+}
+
+fn draw_corner_watermark(frame: &mut Frame, area: Rect, color: Color) {
+    let version = env!("CARGO_PKG_VERSION");
+    let text = format!("clin v{}", version);
+    let width = text.len() as u16;
+    if area.width < width + 2 || area.height < 1 { return; }
+    let wm_area = Rect::new(area.x + area.width - width - 1, area.y, width, 1);
+    let para = Paragraph::new(text)
+        .style(Style::default().fg(color));
+    frame.render_widget(para, wm_area);
+}
+
+/// Fill the entire cursor row with bg color after textarea renders
+fn fill_cursor_line_bg(frame: &mut Frame, editor: &TextArea, area: Rect, bg: Color) {
+    let screen = editor.screen_cursor();
+    let inner_y = editor.block().map(|b| b.inner(area).y).unwrap_or(area.y);
+    let y = inner_y + screen.row as u16;
+    if y < area.y || y >= area.bottom() { return; }
+    let buf = frame.buffer_mut();
+    for x in area.left()..area.right() {
+        if let Some(cell) = buf.cell_mut((x, y)) {
+            cell.set_bg(bg);
+        }
+    }
 }
 
 pub fn open_in_file_manager(path: &Path) -> Result<()> {

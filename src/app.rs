@@ -596,6 +596,8 @@ impl App {
             self.title_editor = make_title_editor(&note.title, self.app_theme.highlight_fg, self.app_theme.highlight_bg);
             self.editor = text_area_from_content(&note.content);
             self.mode = ViewMode::Edit;
+            self.markdown_preview_enabled = false;
+            self.md_preview_renderer = None;
             self.status = Cow::Borrowed(EDIT_HELP_HINTS);
         } else {
             self.status = Cow::Borrowed("Failed to load note!");
@@ -2392,10 +2394,7 @@ impl App {
             self.md_preview_renderer = None;
             self.set_temporary_status_static("Markdown preview disabled");
         }
-        if let Ok(mut config) = crate::config::BootstrapConfig::load() {
-            config.markdown_preview_enabled = self.markdown_preview_enabled;
-            let _ = config.save();
-        }
+
     }
 
     pub fn reload_theme(&mut self) {

@@ -22,9 +22,7 @@ pub fn draw_canvas(frame: &mut Frame, app: &CanvasAppState) {
     ];
 
     let canvas = Canvas::default()
-        .block(Block::bordered()
-            .title(format!(" Canvas [{:?}] (Esc: exit, d/s/t/e: tools) ", app.active_tool))
-            .border_style(Style::default().fg(app.theme.border))
+        .block(Block::default()
             .style(Style::default().bg(app.theme.bg.unwrap_or(Color::Reset))))
         .background_color(app.theme.bg.unwrap_or(Color::Reset))
         .marker(Marker::Braille)
@@ -76,7 +74,7 @@ pub fn draw_canvas(frame: &mut Frame, app: &CanvasAppState) {
     let toolbar_width = 42;
     let toolbar_area = Rect::new(
         area.width.saturating_sub(toolbar_width) / 2,
-        area.height.saturating_sub(2),
+        area.height.saturating_sub(1),
         toolbar_width,
         1,
     );

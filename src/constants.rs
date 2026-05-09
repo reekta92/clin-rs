@@ -1,9 +1,8 @@
 pub const FILE_MAGIC: &[u8; 5] = b"CLIN1";
 pub const NONCE_LEN: usize = 12;
-pub const LIST_HELP_HINTS: &str = "j/k move  Enter open  r rename  d delete  p pin  s sort  Ctrl+f search  P preview  ? help  q quit";
-pub const EDIT_HELP_HINTS: &str =
-    "Esc back   Tab change focus   Ctrl+Q quit   Ctrl+P markdown preview";
-pub const HELP_PAGE_HINTS: &str = "Esc/q/?/F1 close help";
+pub const LIST_HELP_HINTS: &str = "j/k move · Enter open · ? help · q quit";
+pub const EDIT_HELP_HINTS: &str = "Tab focus · Esc back · Ctrl+Q quit · Ctrl+P preview";
+pub const HELP_PAGE_HINTS: &str = "Esc close";
 pub const _HELP_PAGE_TEXT: &str = "clin help\n\
 \n\
 Core features\n\

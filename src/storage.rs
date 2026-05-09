@@ -440,9 +440,10 @@ impl Storage {
         };
 
         let target_id = self.unique_note_id(&preferred_stem, target_ext, id);
+        let existing_pinned = self.load_note_summary(id).map(|s| s.pinned).unwrap_or(false);
         let fm = frontmatter::Frontmatter {
             tags: note.tags.clone(),
-            pinned: false,
+            pinned: existing_pinned,
         };
 
         let target_path = self.note_path(&target_id);
