@@ -372,7 +372,7 @@ dependencies = [
 
 [[package]]
 name = "clin-rs"
-version = "0.7.0-41"
+version = "0.7.0-43"
 dependencies = [
  "anyhow",
  "arboard",
