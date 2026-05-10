@@ -301,7 +301,15 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 }
                 app.theme_popup = Some(popup);
             }
-            KeyCode::Enter | KeyCode::Char('l') | KeyCode::Char(' ') => {
+            KeyCode::Enter => {
+                let is_list = matches!(popup.focus, crate::app::ThemePopupFocus::ThemeList);
+                app.theme_popup = Some(popup);
+                app.select_theme();
+                if is_list {
+                    app.close_theme_popup();
+                }
+            }
+            KeyCode::Char('l') | KeyCode::Char(' ') => {
                 app.theme_popup = Some(popup);
                 app.select_theme();
             }
