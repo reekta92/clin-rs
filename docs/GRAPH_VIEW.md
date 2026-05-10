@@ -209,7 +209,7 @@ All graf options are stored in the main `config.toml` under sections:
 
 The old `graf.toml` file is auto-merged into `config.toml` on read for backward compatibility.
 
-See [[CONFIG_REFERENCE.md]] for full option documentation.
+See [CONFIG_REFERENCE.md](CONFIG_REFERENCE.md) for full option documentation.
 
 ---
 
@@ -227,13 +227,13 @@ pub fn theme_colors(theme: &Theme) -> HashMap<String, String> {
 }
 ```
 
-See [[THEME_SYSTEM.md]] for details on themes and color derivation.
+See [THEME_SYSTEM.md](THEME_SYSTEM.md) for details on themes and color derivation.
 
 ---
 
 ## Connections
 
-- [[ARCHITECTURE.md]] — event loop, threading model
-- [[THEME_SYSTEM.md]] — theme palettes used by the graph
-- [[CONFIG_REFERENCE.md]] — all graph-related config options
-- [[COMMAND_PALETTE.md]] — `OpenGraphAction`
+- [ARCHITECTURE.md](ARCHITECTURE.md) — event loop, threading model
+- [THEME_SYSTEM.md](THEME_SYSTEM.md) — theme palettes used by the graph
+- [CONFIG_REFERENCE.md](CONFIG_REFERENCE.md) — all graph-related config options
+- [COMMAND_PALETTE.md](COMMAND_PALETTE.md) — `OpenGraphAction`

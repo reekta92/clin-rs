@@ -192,5 +192,5 @@ pub struct TemplateSummary {
 
 ## Connections
 
-- [[ARCHITECTURE.md]] — how templates integrate with App note creation flow
-- [[COMMAND_PALETTE.md]] — template picker interaction
+- [ARCHITECTURE.md](ARCHITECTURE.md) — how templates integrate with App note creation flow
+- [COMMAND_PALETTE.md](COMMAND_PALETTE.md) — template picker interaction

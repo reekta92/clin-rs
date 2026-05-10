@@ -211,7 +211,7 @@ Rendering happens in `src/pinstar/render.rs`. The canvas uses:
 
 ## Connection with Other Systems
 
-- [[ARCHITECTURE.md]] — overall state machine and event loop
-- [[COMMAND_PALETTE.md]] — `CreateCanvasAction` (Ctrl+P → New Canvas)
-- [[STORAGE.md]] — canvas files stored alongside notes in vault
-- [[ENCRYPTION.md]] — canvas files are not encrypted; only `.clin` notes are
+- [ARCHITECTURE.md](ARCHITECTURE.md) — overall state machine and event loop
+- [COMMAND_PALETTE.md](COMMAND_PALETTE.md) — `CreateCanvasAction` (Ctrl+P → New Canvas)
+- [STORAGE.md](STORAGE.md) — canvas files stored alongside notes in vault
+- [ENCRYPTION.md](ENCRYPTION.md) — canvas files are not encrypted; only `.clin` notes are

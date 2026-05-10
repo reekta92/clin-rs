@@ -310,12 +310,12 @@ pub trait Action: Send + Sync {
 }
 ```
 
-Actions are registered in a `Lazy<Vec<Box<dyn Action>>>` in `actions/mod.rs`. The command palette (`src/palette.rs`) provides a searchable popup. See [[COMMAND_PALETTE.md]] for details.
+Actions are registered in a `Lazy<Vec<Box<dyn Action>>>` in `actions/mod.rs`. The command palette (`src/palette.rs`) provides a searchable popup. See [COMMAND_PALETTE.md](COMMAND_PALETTE.md) for details.
 
 ### Theme System
 
-`ThemeConfig` from config.toml → `AppThemeColors` derived at load time. See [[THEME_SYSTEM.md]] for details.
+`ThemeConfig` from config.toml → `AppThemeColors` derived at load time. See [THEME_SYSTEM.md](THEME_SYSTEM.md) for details.
 
 ### Storage / Encryption
 
-`Storage` handles all file I/O, key management, and ChaCha20-Poly1305 encryption for `.clin` files. See [[ENCRYPTION.md]] for details.
+`Storage` handles all file I/O, key management, and ChaCha20-Poly1305 encryption for `.clin` files. See [ENCRYPTION.md](ENCRYPTION.md) for details.

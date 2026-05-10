@@ -190,9 +190,9 @@ The palette is modeless-modal: it's rendered as a centered popup over the curren
 
 ## Connections
 
-- [[ARCHITECTURE.md]] — event loop, App state
-- [[ENCRYPTION.md]] — `EncryptNoteAction`, `DecryptNoteAction`
-- [[THEME_SYSTEM.md]] — `SwitchThemeAction`
-- [[CANVAS.md]] — `CreateCanvasAction`
-- [[DRAW.md]] — `CreateDrawAction`
-- [[GRAPH_VIEW.md]] — `OpenGraphAction`
+- [ARCHITECTURE.md](ARCHITECTURE.md) — event loop, App state
+- [ENCRYPTION.md](ENCRYPTION.md) — `EncryptNoteAction`, `DecryptNoteAction`
+- [THEME_SYSTEM.md](THEME_SYSTEM.md) — `SwitchThemeAction`
+- [CANVAS.md](CANVAS.md) — `CreateCanvasAction`
+- [DRAW.md](DRAW.md) — `CreateDrawAction`
+- [GRAPH_VIEW.md](GRAPH_VIEW.md) — `OpenGraphAction`

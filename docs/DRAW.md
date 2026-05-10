@@ -200,6 +200,6 @@ run_draw_view()
 
 ## Connections
 
-- [[ARCHITECTURE.md]] — event loop, rendering pipeline
-- [[COMMAND_PALETTE.md]] — `CreateDrawAction`
-- [[THEME_SYSTEM.md]] — colors for draw canvas rendering
+- [ARCHITECTURE.md](ARCHITECTURE.md) — event loop, rendering pipeline
+- [COMMAND_PALETTE.md](COMMAND_PALETTE.md) — `CreateDrawAction`
+- [THEME_SYSTEM.md](THEME_SYSTEM.md) — colors for draw canvas rendering

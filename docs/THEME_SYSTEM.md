@@ -205,13 +205,13 @@ impl AppThemeColors {
 
 The `SwitchThemeAction` (via command palette, Ctrl+P) opens a theme popup. Users can cycle through themes live — the change applies immediately and saves to `config.toml`.
 
-See [[COMMAND_PALETTE.md]] for action details.
+See [COMMAND_PALETTE.md](COMMAND_PALETTE.md) for action details.
 
 ---
 
 ## Connections
 
-- [[CONFIG_REFERENCE.md]] — `[theme]` config section
-- [[ARCHITECTURE.md]] — how `AppThemeColors` flows through the rendering pipeline
-- [[GRAPH_VIEW.md]] — graf theme palettes
-- [[COMMAND_PALETTE.md]] — `SwitchThemeAction`
+- [CONFIG_REFERENCE.md](CONFIG_REFERENCE.md) — `[theme]` config section
+- [ARCHITECTURE.md](ARCHITECTURE.md) — how `AppThemeColors` flows through the rendering pipeline
+- [GRAPH_VIEW.md](GRAPH_VIEW.md) — graf theme palettes
+- [COMMAND_PALETTE.md](COMMAND_PALETTE.md) — `SwitchThemeAction`

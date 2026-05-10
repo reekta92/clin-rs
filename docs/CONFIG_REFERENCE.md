@@ -28,7 +28,7 @@ Full reference of all configuration options for clin-rs.
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `theme` | `enum` | `"default"` | Color theme. See [[THEME_SYSTEM.md]] for all 11 options |
+| `theme` | `enum` | `"default"` | Color theme. See [THEME_SYSTEM.md](THEME_SYSTEM.md) for all 11 options |
 | `background` | `enum` | `"transparent"` | Background mode: `"transparent"`, `"solid"` |
 | `accent` | `String` | — | Hex color override for accent (#ff6600) |
 | `heading` | `String` | — | Hex color override for headings |
@@ -320,6 +320,6 @@ All graf options can also be overridden via environment variables prefixed with 
 
 ## See Also
 
-- [[READEME.md]] — Quickstart, installation, CLI commands
-- [[THEME_SYSTEM.md]] — Theme system details and color reference
-- [[GRAPH_VIEW.md]] — Graph view configuration context
+- [READEME.md](READEME.md) — Quickstart, installation, CLI commands
+- [THEME_SYSTEM.md](THEME_SYSTEM.md) — Theme system details and color reference
+- [GRAPH_VIEW.md](GRAPH_VIEW.md) — Graph view configuration context

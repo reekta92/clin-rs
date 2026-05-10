@@ -194,7 +194,7 @@ Encrypt/Decrypt are available via the command palette (Ctrl+P):
 - `EncryptNoteAction` — `note.encrypt`
 - `DecryptNoteAction` — `note.decrypt`
 
-See [[COMMAND_PALETTE.md]] for the action system.
+See [COMMAND_PALETTE.md](COMMAND_PALETTE.md) for the action system.
 
 ---
 
