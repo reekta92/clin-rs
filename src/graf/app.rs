@@ -273,7 +273,7 @@ fn handle_search_keys(
                 app_state.search_selected += 1;
             }
         }
-        KeyCode::Tab if shift => {
+        KeyCode::BackTab | KeyCode::Tab if shift => {
             if !app_state.search_results.is_empty() {
                 app_state.search_selected = app_state
                     .search_selected

@@ -1974,8 +1974,8 @@ impl App {
             ViewMode::List => LIST_HELP_HINTS,
             ViewMode::Edit => EDIT_HELP_HINTS,
             ViewMode::Help => HELP_PAGE_HINTS,
-            ViewMode::Graph => "Graph View | Esc: back | +/-: zoom | L: labels | a: fit",
-            ViewMode::Canvas => "Canvas View | Esc: back | d: draw | s: shape | t: text | e: erase | Ctrl+S: save",
+            ViewMode::Graph => "Graph View · Esc: back · +/-: zoom · L: labels · a: fit",
+            ViewMode::Canvas => "Canvas View · Esc: back · d: draw · s: shape · t: text · e: erase · Ctrl+S: save",
         }
     }
 

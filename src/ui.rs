@@ -62,7 +62,7 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
         }
         if i < tab_names.len() - 1 {
             tab_spans.push(Span::styled(
-                " | ",
+                " · ",
                 Style::default().fg(app.app_theme.muted),
             ));
         }
@@ -87,9 +87,8 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
     frame.render_widget(help, chunks[1]);
 
     // Hint line
-    let hint_text = "<- -> switch tab  |  up/down scroll  |  Esc close";
     let hint = Paragraph::new(Span::styled(
-        hint_text,
+        HELP_PAGE_HINTS,
         Style::default().fg(app.app_theme.muted),
     )).style(app.app_theme.hint_line_bg_style());
     frame.render_widget(hint, chunks[2]);
