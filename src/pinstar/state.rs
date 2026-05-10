@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use anyhow::Result;
 use crate::pinstar::data::CanvasData;
-use ratatui_textarea::TextArea;
+use ratatui_textarea::{TextArea, WrapMode};
 
 pub struct PinstarState {
     pub path: PathBuf,
@@ -18,9 +18,27 @@ pub struct PinstarState {
     pub context_menu: Option<PinstarContextMenu>,
     pub context_menu_pos: (f64, f64), // Canvas coordinates for menu trigger
     pub connection_source_id: Option<String>, // ID of source node during connection creation
+    pub resizing_node_id: Option<String>,
+    pub is_dragging_resize_handle: bool,
+    pub deleting_connection_source_id: Option<String>,
+    pub trigger_ext_editor: bool,
     pub show_editor_pane: bool,
     pub drag_start_pos: Option<(f64, f64)>, // (x, y) in canvas coords when right-drag starts
     pub rename_popup: Option<TextArea<'static>>,
+    pub ext_editor_enabled: bool,
+    pub last_mouse_canvas_pos: Option<(f64, f64)>,
+    pub ext_focused: bool,
+    pub drag_captured_nodes: std::collections::HashSet<String>,
+    pub show_grid: bool,
+    pub mouse_selecting: bool,
+    pub mouse_dragged: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum PinstarMenuType {
+    Canvas,
+    Editor,
+    ColorPicker,
 }
 
 pub struct PinstarContextMenu {
@@ -28,6 +46,7 @@ pub struct PinstarContextMenu {
     pub y: u16,
     pub selected: usize,
     pub items: Vec<String>,
+    pub menu_type: PinstarMenuType,
 }
 
 impl PinstarState {
@@ -52,9 +71,20 @@ impl PinstarState {
             context_menu: None,
             context_menu_pos: (0.0, 0.0),
             connection_source_id: None,
+            resizing_node_id: None,
+            is_dragging_resize_handle: false,
+            deleting_connection_source_id: None,
+            trigger_ext_editor: false,
             show_editor_pane: false,
             drag_start_pos: None,
             rename_popup: None,
+            ext_editor_enabled: false,
+            last_mouse_canvas_pos: None,
+            ext_focused: false,
+            drag_captured_nodes: std::collections::HashSet::new(),
+            show_grid: true,
+            mouse_selecting: false,
+            mouse_dragged: false,
         })
     }
 
@@ -113,19 +143,33 @@ impl PinstarState {
     }
 
     pub fn select_node_at(&mut self, x: f64, y: f64) -> Option<String> {
-        // Simple hit test
-        // Iterate backwards to select nodes on top first
-        for node in self.data.nodes.iter().rev() {
+        // Rank multiple candidates by smallest bounding area to correctly support picking smaller children over larger container groups
+        let mut best_hit: Option<(String, f64, usize)> = None; // (ID, Area, CreationOrderIndex)
+
+        for (idx, node) in self.data.nodes.iter().enumerate() {
             let (nx, ny) = node.pos();
             let (nw, nh) = node.size();
             if x >= nx && x <= nx + nw && y >= ny && y <= ny + nh {
-                let id = node.id().to_string();
-                self.selected_node_id = Some(id.clone());
-                return Some(id);
+                let area = nw * nh;
+                let should_replace = match &best_hit {
+                    None => true,
+                    Some((_, best_area, _)) if area < *best_area => true,
+                    Some((_, best_area, best_idx)) if (area - *best_area).abs() < 0.0001 && idx > *best_idx => true,
+                    _ => false,
+                };
+                if should_replace {
+                    best_hit = Some((node.id().to_string(), area, idx));
+                }
             }
         }
-        self.selected_node_id = None;
-        None
+
+        if let Some((id, _, _)) = best_hit {
+            self.selected_node_id = Some(id.clone());
+            Some(id)
+        } else {
+            self.selected_node_id = None;
+            None
+        }
     }
 
     pub fn select_node_in_direction(&mut self, dx: f64, dy: f64) {
@@ -197,31 +241,23 @@ impl PinstarState {
             if let Some(node) = self.data.nodes.iter().find(|n| n.id() == node_id) {
                 let mut textarea = TextArea::from(node.text().lines().map(String::from).collect::<Vec<_>>());
                 textarea.set_cursor_line_style(ratatui::style::Style::default());
+                textarea.set_wrap_mode(WrapMode::Word);
                 self.floating_editor = Some(textarea);
             }
         }
     }
 
     pub fn open_context_menu(&mut self, x: u16, y: u16, canvas_x: f64, canvas_y: f64) {
-        let items = if let Some(id) = &self.selected_node_id {
-            let is_group = self.data.nodes.iter().any(|n| n.id() == id && matches!(n, crate::pinstar::data::CanvasNode::Group(_)));
-            let mut menu_items = Vec::new();
-            
-            if !is_group {
-                menu_items.push("Create Connection".to_string());
-            }
-            
-            menu_items.extend(vec![
+        let items = if self.selected_node_id.is_some() {
+            vec![
+                "Create Connection".to_string(),
+                "Delete Connection".to_string(),
                 "Rename Node".to_string(),
-                "Set Color: Default".to_string(),
-                "Set Color: Red".to_string(),
-                "Set Color: Green".to_string(),
-                "Set Color: Yellow".to_string(),
-                "Set Color: Blue".to_string(),
+                "Resize Node".to_string(),
+                "Set Color...".to_string(),
                 "Delete All Connections".to_string(),
                 "Delete Node".to_string(),
-            ]);
-            menu_items
+            ]
         } else {
             vec!["Add Text Node".to_string(), "Add Group".to_string()]
         };
@@ -232,15 +268,53 @@ impl PinstarState {
             y,
             selected: 0,
             items,
+            menu_type: PinstarMenuType::Canvas,
         });
+    }
+
+    pub fn open_editor_context_menu(&mut self, x: u16, y: u16) {
+        let items = vec![
+            "Copy".to_string(),
+            "Cut".to_string(),
+            "Paste".to_string(),
+            "Select All".to_string(),
+        ];
+
+        self.context_menu = Some(PinstarContextMenu {
+            x,
+            y,
+            selected: 0,
+            items,
+            menu_type: PinstarMenuType::Editor,
+        });
+    }
+
+    pub fn start_resize(&mut self) {
+        if let Some(id) = &self.selected_node_id {
+            self.resizing_node_id = Some(id.clone());
+            self.context_menu = None;
+        }
+    }
+
+    pub fn start_delete_connection(&mut self) {
+        if let Some(id) = &self.selected_node_id {
+            self.deleting_connection_source_id = Some(id.clone());
+            self.context_menu = None;
+        }
     }
 
     pub fn rename_node(&mut self, new_id: String) {
         if let Some(old_id) = self.selected_node_id.take() {
-            if old_id == new_id || new_id.is_empty() {
+            if old_id == new_id {
                 self.selected_node_id = Some(old_id);
                 return;
             }
+            let final_id = if new_id.is_empty() {
+                uuid::Uuid::new_v4().to_string()
+            } else {
+                new_id
+            };
+            let new_id = final_id;
 
             // Update node ID
             for node in &mut self.data.nodes {
@@ -300,10 +374,11 @@ impl PinstarState {
             y,
             width: 200.0,
             height: 100.0,
-            text: "New Node".to_string(),
+            text: "".to_string(),
             color: None,
         }));
-        self.selected_node_id = Some(id);
+        self.selected_node_id = Some(id.clone());
+        self.resizing_node_id = Some(id);
         let _ = self.save();
         self.sync_to_raw_editor();
     }
@@ -320,7 +395,8 @@ impl PinstarState {
             label: Some("New Group".to_string()),
             color: None,
         }));
-        self.selected_node_id = Some(id);
+        self.selected_node_id = Some(id.clone());
+        self.resizing_node_id = Some(id);
         let _ = self.save();
         self.sync_to_raw_editor();
     }
@@ -354,17 +430,75 @@ impl PinstarState {
         }
     }
 
-    pub fn move_selected_node(&mut self, dx: f64, dy: f64) {
-        if let Some(id) = &self.selected_node_id {
+    pub fn finish_delete_connection(&mut self, target_id: &str) {
+        if let Some(source_id) = self.deleting_connection_source_id.take() {
+            if source_id != target_id {
+                self.data.edges.retain(|e| !(e.from_node == source_id && e.to_node == target_id));
+                let _ = self.save();
+                self.sync_to_raw_editor();
+            }
+        }
+    }
+
+    pub fn resize_selected_node(&mut self, dw: f64, dh: f64) {
+        if let Some(id) = &self.resizing_node_id {
             for node in &mut self.data.nodes {
                 if node.id() == id {
+                    match node {
+                        crate::pinstar::data::CanvasNode::Text(n) => { n.width = (n.width + dw).max(10.0); n.height = (n.height + dh).max(10.0); },
+                        crate::pinstar::data::CanvasNode::File(n) => { n.width = (n.width + dw).max(10.0); n.height = (n.height + dh).max(10.0); },
+                        crate::pinstar::data::CanvasNode::Link(n) => { n.width = (n.width + dw).max(10.0); n.height = (n.height + dh).max(10.0); },
+                        crate::pinstar::data::CanvasNode::Group(n) => { n.width = (n.width + dw).max(10.0); n.height = (n.height + dh).max(10.0); },
+                    }
+                    break;
+                }
+            }
+            self.sync_to_raw_editor();
+        }
+    }
+
+    pub fn capture_drag_nodes(&mut self) {
+        self.drag_captured_nodes.clear();
+        if let Some(id) = &self.selected_node_id {
+            let mut group_bounds = None;
+            for node in &self.data.nodes {
+                if node.id() == id {
+                    if let crate::pinstar::data::CanvasNode::Group(n) = node {
+                        group_bounds = Some((n.x, n.y, n.width, n.height));
+                    }
+                    break;
+                }
+            }
+
+            if let Some((gx, gy, gw, gh)) = group_bounds {
+                for node in &self.data.nodes {
+                    let nid = node.id();
+                    if nid != id {
+                        let (nx, ny) = node.pos();
+                        let (nw, nh) = node.size();
+                        // Require the nested node to be fully enclosed by the group's bounds.
+                        // This prevents capturing the surrounding container if its center coincidentally falls beneath the child.
+                        if nx >= gx && ny >= gy && (nx + nw) <= (gx + gw) && (ny + nh) <= (gy + gh) {
+                            self.drag_captured_nodes.insert(nid.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn move_selected_node(&mut self, dx: f64, dy: f64) {
+        if let Some(id) = &self.selected_node_id {
+            // Translate both the selected node and all snapshot captured children concurrently
+            for node in &mut self.data.nodes {
+                let nid = node.id();
+                if nid == id || self.drag_captured_nodes.contains(nid) {
                     match node {
                         crate::pinstar::data::CanvasNode::Text(n) => { n.x += dx; n.y += dy; },
                         crate::pinstar::data::CanvasNode::File(n) => { n.x += dx; n.y += dy; },
                         crate::pinstar::data::CanvasNode::Link(n) => { n.x += dx; n.y += dy; },
                         crate::pinstar::data::CanvasNode::Group(n) => { n.x += dx; n.y += dy; },
                     }
-                    break;
                 }
             }
             // Sync to raw editor but don't save to disk on every drag frame for performance

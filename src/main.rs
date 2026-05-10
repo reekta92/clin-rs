@@ -769,7 +769,7 @@ fn run_app(
 
         if app.mode == ViewMode::Pinstar {
             let note_id = app.get_selected_note_id();
-            match crate::pinstar::app::run_pinstar_view(terminal, app.storage.clone(), &app.keybinds, note_id, app.app_theme.clone()) {
+            match crate::pinstar::app::run_pinstar_view(terminal, app.storage.clone(), &app.keybinds, note_id, app.app_theme.clone(), app.external_editor_enabled, app.external_editor.clone()) {
                 _ => {
                     app.close_pinstar_view();
                 }

@@ -1220,7 +1220,25 @@ pub fn draw_theme_popup(
     frame.render_widget(pills_para, chunks[1]);
 }
 
-fn line_number_gutter(line_count: usize, cursor_row: usize, scroll_row: usize, height: u16, theme: &AppThemeColors) -> Paragraph<'static> {
+pub fn get_textarea_scroll(textarea: &TextArea) -> (usize, usize) {
+    let mut scroll_row = 0;
+    let mut scroll_col = 0;
+
+    let debug_str = format!("{textarea:?}");
+    if let Some(start) = debug_str.find("viewport: Viewport(") {
+        let after_start = &debug_str[start + "viewport: Viewport(".len()..];
+        if let Some(end) = after_start.find(')') {
+            let number_str = &after_start[..end];
+            if let Ok(number) = number_str.parse::<u64>() {
+                scroll_row = ((number >> 16) & 0xFFFF) as usize;
+                scroll_col = (number & 0xFFFF) as usize;
+            }
+        }
+    }
+    (scroll_row, scroll_col)
+}
+
+pub fn line_number_gutter(line_count: usize, cursor_row: usize, scroll_row: usize, height: u16, theme: &AppThemeColors, top_padding: u16) -> Paragraph<'static> {
     let digits = line_count.max(1).to_string().len();
     let display_lines = height as usize;
     let mut gutter_lines: Vec<Line<'static>> = Vec::with_capacity(display_lines);
@@ -1243,8 +1261,8 @@ fn line_number_gutter(line_count: usize, cursor_row: usize, scroll_row: usize, h
         gutter_lines.push(Line::from(Span::raw(" ")));
     }
     Paragraph::new(gutter_lines)
-        .style(theme.bg_style())
-        .block(Block::default().padding(Padding::new(0, 0, 1, 0)))
+        .style(theme.preview_bg_style())
+        .block(Block::default().padding(Padding::new(0, 0, top_padding, 0)).style(theme.preview_bg_style()))
 }
 
 pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
@@ -1325,13 +1343,13 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
 
         let line_count = app.editor.lines().len();
         let cursor_row = app.editor.cursor().0;
-        let scroll_row = cursor_row.saturating_sub(app.editor.screen_cursor().row as usize);
+        let scroll_row = get_textarea_scroll(&app.editor).0;
         
         let editor_area = if app.show_line_numbers {
             let digits = line_count.max(1).to_string().len() as u16;
             let gutter_width = digits + 1;
             let gutter_area = Rect::new(content_area.x, content_area.y, gutter_width.min(content_area.width), content_area.height);
-            let gutter = line_number_gutter(line_count, cursor_row, scroll_row, content_area.height, &app.app_theme);
+            let gutter = line_number_gutter(line_count, cursor_row, scroll_row, content_area.height, &app.app_theme, 0);
             frame.render_widget(gutter, gutter_area);
             Rect::new(content_area.x + gutter_area.width, content_area.y, content_area.width.saturating_sub(gutter_area.width), content_area.height)
         } else {
@@ -1342,7 +1360,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             Block::default()
                 .style(app.app_theme.bg_style())
                 .borders(Borders::NONE)
-                .padding(Padding::new(0, 2, 1, 0)),
+                .padding(Padding::new(0, 2, 0, 0)),
         );
         app.editor.set_style(app.app_theme.bg_style());
         app.editor.set_cursor_style(
@@ -1404,14 +1422,14 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     } else {
         let line_count = app.editor.lines().len();
         let cursor_row = app.editor.cursor().0;
-        let scroll_row = cursor_row.saturating_sub(app.editor.screen_cursor().row as usize);
+        let scroll_row = get_textarea_scroll(&app.editor).0;
         let content_area = editor_container;
 
         let editor_area = if app.show_line_numbers {
             let digits = line_count.max(1).to_string().len() as u16;
             let gutter_width = digits + 1;
             let gutter_area = Rect::new(content_area.x, content_area.y, gutter_width.min(content_area.width), content_area.height);
-            let gutter = line_number_gutter(line_count, cursor_row, scroll_row, content_area.height, &app.app_theme);
+            let gutter = line_number_gutter(line_count, cursor_row, scroll_row, content_area.height, &app.app_theme, 0);
             frame.render_widget(gutter, gutter_area);
             Rect::new(content_area.x + gutter_area.width, content_area.y, content_area.width.saturating_sub(gutter_area.width), content_area.height)
         } else {
@@ -1422,7 +1440,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             Block::default()
                 .style(app.app_theme.bg_style())
                 .borders(Borders::NONE)
-                .padding(Padding::new(0, 2, 1, 0)),
+                .padding(Padding::new(0, 2, 0, 0)),
         );
         app.editor.set_style(app.app_theme.bg_style());
         app.editor.set_cursor_style(
@@ -1476,12 +1494,12 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         let list = List::new(items)
             .block(
                 Block::default()
-                    .style(app.app_theme.bg_style())
-                    .borders(Borders::ALL),
+                    .style(app.app_theme.preview_bg_style())
+                    .borders(Borders::NONE),
             )
             .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
 
-        let menu_area = Rect::new(menu.x, menu.y, 14, 6);
+        let menu_area = Rect::new(menu.x, menu.y, 14, 4);
         let mut state = ListState::default();
         state.select(Some(menu.selected));
 
@@ -1687,10 +1705,15 @@ fn draw_corner_watermark(frame: &mut Frame, area: Rect, color: Color) {
 }
 
 
-fn fill_cursor_line_bg(frame: &mut Frame, editor: &TextArea, area: Rect, bg: Color) {
-    let screen = editor.screen_cursor();
+pub fn fill_cursor_line_bg(frame: &mut Frame, editor: &TextArea, area: Rect, bg: Color) {
+    if editor.selection_range().is_some() {
+        return;
+    }
+    let (scroll_row, _) = get_textarea_scroll(editor);
+    let cursor_row = editor.cursor().0;
+    let screen_row = cursor_row.saturating_sub(scroll_row) as u16;
     let inner_y = editor.block().map(|b| b.inner(area).y).unwrap_or(area.y);
-    let y = inner_y + screen.row as u16;
+    let y = inner_y + screen_row;
     if y < area.y || y >= area.bottom() { return; }
     let buf = frame.buffer_mut();
     for x in area.left()..area.right() {

@@ -754,10 +754,10 @@ pub fn handle_edit_mouse(
     mouse_dragged: &mut bool,
 ) {
     if let Some(menu) = &app.context_menu {
-        let menu_rect = Rect::new(menu.x, menu.y, 14, 6);
+        let menu_rect = Rect::new(menu.x, menu.y, 14, 4);
         if contains_cell(menu_rect, mouse_event.column, mouse_event.row) {
             if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
-                let clicked_idx = mouse_event.row.saturating_sub(menu.y).saturating_sub(1) as usize;
+                let clicked_idx = mouse_event.row.saturating_sub(menu.y) as usize;
                 if clicked_idx < 4 {
                     app.handle_menu_action(clicked_idx, focus);
                 }
@@ -786,7 +786,7 @@ pub fn handle_edit_mouse(
 
     if mouse_event.kind == MouseEventKind::Down(MouseButton::Right) {
         let (title_inner, body_inner) =
-            edit_view_input_areas(terminal_area, app.editor_preview_enabled);
+            edit_view_input_areas(terminal_area, app.editor_preview_enabled, app.editor.lines().len(), app.show_line_numbers);
 
         if contains_cell(title_inner, mouse_event.column, mouse_event.row) {
             *focus = EditFocus::Title;
@@ -807,7 +807,7 @@ pub fn handle_edit_mouse(
         }
 
         let max_x = terminal_area.width.saturating_sub(14);
-        let max_y = terminal_area.height.saturating_sub(6);
+        let max_y = terminal_area.height.saturating_sub(4);
         app.context_menu = Some(ContextMenu {
             x: mouse_event.column.min(max_x),
             y: mouse_event.row.min(max_y),
@@ -817,7 +817,7 @@ pub fn handle_edit_mouse(
     }
 
     let (title_inner, body_inner) =
-        edit_view_input_areas(terminal_area, app.editor_preview_enabled);
+        edit_view_input_areas(terminal_area, app.editor_preview_enabled, app.editor.lines().len(), app.show_line_numbers);
 
     if app.editor_preview_enabled {
         if let Some(md_area) = edit_view_md_preview_area(terminal_area) {
@@ -922,20 +922,7 @@ pub fn move_textarea_cursor_to_mouse(
         return;
     }
 
-    let mut scroll_row = 0;
-    let mut scroll_col = 0;
-
-    let debug_str = format!("{textarea:?}");
-    if let Some(start) = debug_str.find("viewport: Viewport(") {
-        let after_start = &debug_str[start + "viewport: Viewport(".len()..];
-        if let Some(end) = after_start.find(')') {
-            let number_str = &after_start[..end];
-            if let Ok(number) = number_str.parse::<u64>() {
-                scroll_row = ((number >> 16) & 0xFFFF) as usize;
-                scroll_col = (number & 0xFFFF) as usize;
-            }
-        }
-    }
+    let (scroll_row, scroll_col) = crate::ui::get_textarea_scroll(textarea);
 
     let row = mouse_row.saturating_sub(body_inner.y) as usize + scroll_row;
     let col = mouse_col.saturating_sub(body_inner.x) as usize + scroll_col;
@@ -948,7 +935,7 @@ pub fn move_textarea_cursor_to_mouse(
     textarea.move_cursor(CursorMove::Jump(target_row as u16, target_col as u16));
 }
 
-pub fn edit_view_input_areas(area: Rect, md_preview: bool) -> (Rect, Rect) {
+pub fn edit_view_input_areas(area: Rect, md_preview: bool, line_count: usize, show_line_numbers: bool) -> (Rect, Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -981,12 +968,17 @@ pub fn edit_view_input_areas(area: Rect, md_preview: bool) -> (Rect, Rect) {
         chunks[1]
     };
 
+    let gutter_width = if show_line_numbers {
+        (line_count.max(1).to_string().len() as u16) + 1
+    } else {
+        0
+    };
     
     let body_inner = Rect::new(
-        body_area.x + 2,
-        body_area.y + 1,
-        body_area.width.saturating_sub(4),
-        body_area.height.saturating_sub(1),
+        body_area.x + gutter_width,
+        body_area.y,
+        body_area.width.saturating_sub(gutter_width + 2),
+        body_area.height,
     );
 
     (title_inner, body_inner)

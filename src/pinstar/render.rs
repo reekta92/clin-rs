@@ -25,7 +25,9 @@ fn get_node_color(color_code: Option<&str>, theme: &AppThemeColors) -> Color {
 }
 
 pub fn draw_pinstar_view(frame: &mut Frame, state: &mut PinstarState, theme: &AppThemeColors) {
-    let area = frame.area();
+    let total_area = frame.area();
+    let mut area = total_area;
+    area.height = area.height.saturating_sub(1);
     
     let (editor_area, canvas_area) = if state.show_editor_pane {
         let main_chunks = Layout::default()
@@ -46,9 +48,37 @@ pub fn draw_pinstar_view(frame: &mut Frame, state: &mut PinstarState, theme: &Ap
         let editor_block = Block::default()
             .borders(Borders::RIGHT)
             .border_style(Style::default().fg(editor_border_color))
-            .title(" Source (JSON) ");
+            .title(" Source (JSON) ")
+            .style(theme.preview_bg_style());
+
+        let line_count = state.raw_editor.lines().len();
+        let cursor_row = state.raw_editor.cursor().0;
+        let scroll_row = crate::ui::get_textarea_scroll(&state.raw_editor).0;
+        
+        let content_area = editor_area;
+        let digits = line_count.max(1).to_string().len() as u16;
+        let gutter_width = digits + 1;
+        let gutter_area = Rect::new(content_area.x, content_area.y, gutter_width.min(content_area.width), content_area.height);
+        let gutter = crate::ui::line_number_gutter(line_count, cursor_row, scroll_row, content_area.height, theme, 1);
+        frame.render_widget(gutter, gutter_area);
+        
+        let editor_rect = Rect::new(content_area.x + gutter_area.width, content_area.y, content_area.width.saturating_sub(gutter_area.width), content_area.height);
+
         state.raw_editor.set_block(editor_block);
-        frame.render_widget(&state.raw_editor, editor_area);
+        state.raw_editor.set_style(theme.preview_bg_style());
+        state.raw_editor.set_cursor_line_style(
+            if state.editor_focus {
+                Style::default().bg(theme.preview_bg().unwrap_or(Color::DarkGray))
+            } else {
+                Style::default()
+            },
+        );
+        frame.render_widget(&state.raw_editor, editor_rect);
+        
+        if state.editor_focus {
+            let cursor_bg = theme.preview_bg().unwrap_or(theme.highlight_bg);
+            crate::ui::fill_cursor_line_bg(frame, &state.raw_editor, editor_rect, cursor_bg);
+        }
     }
 
     // 2. Draw Canvas (70% or 100%)
@@ -58,8 +88,156 @@ pub fn draw_pinstar_view(frame: &mut Frame, state: &mut PinstarState, theme: &Ap
         .border_style(Style::default().fg(canvas_border_color))
         .style(theme.bg_style());
     frame.render_widget(canvas_block, canvas_area);
+    
+    // 2b. Draw Canvas Grid (sub-layer)
+    if state.show_grid {
+        let mut grid_step_x = 100.0;
+        let mut grid_step_y = 50.0;
+        // Prevent rendering extreme grid density when zooming far out
+        while grid_step_y * state.zoom < 6.0 {
+            grid_step_x *= 2.0;
+            grid_step_y *= 2.0;
+        }
+        
+        let (cx1, cy1) = state.screen_to_canvas(canvas_area.left(), canvas_area.top(), canvas_area);
+        let (cx2, cy2) = state.screen_to_canvas(canvas_area.right(), canvas_area.bottom(), canvas_area);
+        
+        let min_cx = cx1.min(cx2);
+        let max_cx = cx1.max(cx2);
+        let min_cy = cy1.min(cy2);
+        let max_cy = cy1.max(cy2);
+        
+        let start_x = (min_cx / grid_step_x).floor() * grid_step_x;
+        let end_x = (max_cx / grid_step_x).ceil() * grid_step_x;
+        let start_y = (min_cy / grid_step_y).floor() * grid_step_y;
+        let end_y = (max_cy / grid_step_y).ceil() * grid_step_y;
+        
+        let buf = frame.buffer_mut();
+        let mut cur_x = start_x;
+        while cur_x <= end_x {
+            let mut cur_y = start_y;
+            while cur_y <= end_y {
+                let sx = (((cur_x - state.viewport_x) * state.zoom) + (canvas_area.x as f64 + canvas_area.width as f64 / 2.0)).round() as i32;
+                let sy = (((cur_y - state.viewport_y) * state.zoom) + (canvas_area.y as f64 + canvas_area.height as f64 / 2.0)).round() as i32;
+                
+                if sx >= canvas_area.left() as i32 && sx < canvas_area.right() as i32 &&
+                   sy >= canvas_area.top() as i32 && sy < canvas_area.bottom() as i32 {
+                    if sx >= 0 && sx < buf.area.width as i32 && sy >= 0 && sy < buf.area.height as i32 {
+                        // Use faint mid-dots for non-obtrusive spatial reference
+                        if let Some(cell) = buf.cell_mut((sx as u16, sy as u16)) {
+                            cell.set_char('·')
+                                .set_fg(theme.muted);
+                        }
+                    }
+                }
+                cur_y += grid_step_y;
+            }
+            cur_x += grid_step_x;
+        }
+    }
 
-    // 2a. Draw Edges FIRST (behind nodes)
+    // Pass 1: Draw Group nodes FIRST (bottom layer)
+    for node in &state.data.nodes {
+        if let crate::pinstar::data::CanvasNode::Group(g) = node {
+            let (nx, ny) = node.pos();
+            let (nw, nh) = node.size();
+            
+            let sx = ((nx - state.viewport_x) * state.zoom) + (canvas_area.x as f64 + canvas_area.width as f64 / 2.0);
+            let sy = ((ny - state.viewport_y) * state.zoom) + (canvas_area.y as f64 + canvas_area.height as f64 / 2.0);
+            let sw = nw * state.zoom;
+            let sh = nh * state.zoom;
+
+            if sx + sw < canvas_area.left() as f64 || sx > canvas_area.right() as f64 || 
+               sy + sh < canvas_area.top() as f64 || sy > canvas_area.bottom() as f64 {
+                continue; 
+            }
+
+            let left = sx.max(canvas_area.left() as f64);
+            let top = sy.max(canvas_area.top() as f64);
+            let right = (sx + sw).min(canvas_area.right() as f64);
+            let bottom = (sy + sh).min(canvas_area.bottom() as f64);
+
+            if right <= left || bottom <= top {
+                continue;
+            }
+
+            let node_rect = Rect::new(
+                left as u16,
+                top as u16,
+                (right - left) as u16,
+                (bottom - top) as u16,
+            );
+
+            let is_selected = state.selected_node_id.as_ref() == Some(&g.id.to_string());
+            let is_editing = is_selected && state.floating_editor.is_some();
+            let base_color = get_node_color(g.color.as_deref(), theme);
+            let border_color = if is_editing { theme.accent } else { base_color };
+            
+            let mut label = g.label.as_deref().unwrap_or("Group").to_string();
+            if is_editing {
+                label = format!("[EDITING] {}", label);
+            }
+
+            let mut block = Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(border_color))
+                .title(Span::styled(label, Style::default().fg(if is_editing { theme.accent } else { base_color })))
+                .style(theme.bg_style());
+            
+            if is_selected && !is_editing {
+                // Apply dashed border overlay via custom symbol set for selection state
+                block = block.border_set(ratatui::symbols::border::Set {
+                    top_left: "┌",
+                    top_right: "┐",
+                    bottom_left: "└",
+                    bottom_right: "┘",
+                    vertical_left: "┆",
+                    vertical_right: "┆",
+                    horizontal_top: "┄",
+                    horizontal_bottom: "┄",
+                });
+            } else {
+                block = block.border_type(if is_editing { BorderType::Rounded } else { BorderType::Double });
+            }
+            
+            frame.render_widget(block, node_rect);
+
+            if is_selected {
+                let corner_style = Style::default().fg(theme.accent).add_modifier(Modifier::BOLD);
+                if node_rect.width > 0 && node_rect.height > 0 {
+                    // Top-Left
+                    frame.render_widget(Paragraph::new("⇘").style(corner_style), Rect::new(node_rect.x, node_rect.y, 1, 1));
+                    // Top-Right
+                    if node_rect.width > 1 {
+                        frame.render_widget(Paragraph::new("⇙").style(corner_style), Rect::new(node_rect.x + node_rect.width - 1, node_rect.y, 1, 1));
+                    }
+                    // Bottom-Left
+                    if node_rect.height > 1 {
+                        frame.render_widget(Paragraph::new("⇗").style(corner_style), Rect::new(node_rect.x, node_rect.y + node_rect.height - 1, 1, 1));
+                    }
+                    // Bottom-Right
+                    if node_rect.width > 1 && node_rect.height > 1 {
+                        frame.render_widget(Paragraph::new("⇖").style(corner_style), Rect::new(node_rect.x + node_rect.width - 1, node_rect.y + node_rect.height - 1, 1, 1));
+                    }
+                }
+            }
+
+            // Draw resize handle if in resize mode for this group
+            if state.resizing_node_id.as_ref() == Some(&g.id.to_string()) {
+                let handle_text = "[↘]";
+                let handle_style = Style::default().fg(theme.accent).add_modifier(Modifier::BOLD);
+                let handle_rect = Rect::new(
+                    (sx + sw - 3.0).max(0.0) as u16,
+                    (sy + sh - 1.0).max(0.0) as u16,
+                    3,
+                    1,
+                );
+                frame.render_widget(Paragraph::new(handle_text).style(handle_style), handle_rect);
+            }
+        }
+    }
+
+    // 2a. Draw Edges (middle layer, above groups)
     for edge in &state.data.edges {
         let from_node = state.data.nodes.iter().find(|n| n.id() == edge.from_node);
         let to_node = state.data.nodes.iter().find(|n| n.id() == edge.to_node);
@@ -143,8 +321,10 @@ pub fn draw_pinstar_view(frame: &mut Frame, state: &mut PinstarState, theme: &Ap
         }
     }
 
-    // 2b. Draw Nodes SECOND (above edges)
+    // Pass 3: Draw Text, File, and Link nodes (top layer)
     for node in &state.data.nodes {
+        if matches!(node, crate::pinstar::data::CanvasNode::Group(_)) { continue; }
+
         let (nx, ny) = node.pos();
         let (nw, nh) = node.size();
         
@@ -158,59 +338,118 @@ pub fn draw_pinstar_view(frame: &mut Frame, state: &mut PinstarState, theme: &Ap
             continue; 
         }
 
-        if sx < canvas_area.left() as f64 || sy < canvas_area.top() as f64 {
+        let left = sx.max(canvas_area.left() as f64);
+        let top = sy.max(canvas_area.top() as f64);
+        let right = (sx + sw).min(canvas_area.right() as f64);
+        let bottom = (sy + sh).min(canvas_area.bottom() as f64);
+
+        if right <= left || bottom <= top {
             continue;
         }
 
         let node_rect = Rect::new(
-            sx as u16,
-            sy as u16,
-            sw.min(canvas_area.right() as f64 - sx) as u16,
-            sh.min(canvas_area.bottom() as f64 - sy) as u16,
+            left as u16,
+            top as u16,
+            (right - left) as u16,
+            (bottom - top) as u16,
         );
 
         // CLEAR the node area explicitly before rendering content to prevent edge "bleed through"
         frame.render_widget(Clear, node_rect);
 
         let is_selected = state.selected_node_id.as_ref() == Some(&node.id().to_string());
+        let is_editing = is_selected && state.floating_editor.is_some();
         
         let node_color_attr = match node {
             crate::pinstar::data::CanvasNode::Text(n) => n.color.as_deref(),
             crate::pinstar::data::CanvasNode::File(n) => n.color.as_deref(),
             crate::pinstar::data::CanvasNode::Link(n) => n.color.as_deref(),
-            crate::pinstar::data::CanvasNode::Group(n) => n.color.as_deref(),
+            _ => None,
         };
 
         let base_color = get_node_color(node_color_attr, theme);
-        let border_color = if is_selected {
-            theme.accent
-        } else {
-            base_color
+        let border_color = if is_editing { theme.accent } else { base_color };
+        
+        let mut border_type = BorderType::Plain;
+        if is_editing {
+            border_type = BorderType::Double;
+        }
+
+        let mut node_title = match node {
+            crate::pinstar::data::CanvasNode::File(n) => {
+                std::path::Path::new(&n.file).file_name().and_then(|s| s.to_str()).unwrap_or(&n.file).to_string()
+            },
+            crate::pinstar::data::CanvasNode::Link(n) => n.url.clone(),
+            _ => if is_generated_id(&node.id()) {
+                "".to_string()
+            } else {
+                node.id().to_string()
+            },
         };
 
-        let block = Block::default()
+        if is_editing {
+            node_title = format!("[EDITING] {}", node_title);
+        }
+
+        let mut block = Block::default()
             .borders(Borders::ALL)
             .border_style(Style::default().fg(border_color))
-            .title(node.id())
+            .title(Span::styled(node_title, Style::default().fg(if is_editing { theme.accent } else { base_color })))
             .style(theme.bg_style());
+            
+        if is_selected && !is_editing {
+            // Apply dashed border overlay via custom symbol set for selection state
+            block = block.border_set(ratatui::symbols::border::Set {
+                top_left: "┌",
+                top_right: "┐",
+                bottom_left: "└",
+                bottom_right: "┘",
+                vertical_left: "┆",
+                vertical_right: "┆",
+                horizontal_top: "┄",
+                horizontal_bottom: "┄",
+            });
+        } else {
+            block = block.border_type(border_type);
+        }
 
-        match node {
-            crate::pinstar::data::CanvasNode::Group(g) => {
-                let group_block = Block::default()
-                    .borders(Borders::ALL)
-                    .border_type(BorderType::Rounded)
-                    .border_style(Style::default().fg(border_color))
-                    .title(g.label.as_deref().unwrap_or("Group"))
-                    .style(theme.bg_style());
-                frame.render_widget(group_block, node_rect);
+        let text = Paragraph::new(node.text())
+            .block(block)
+            .style(Style::default().fg(theme.text))
+            .wrap(Wrap { trim: false });
+        frame.render_widget(text, node_rect);
+
+        if is_selected {
+            let corner_style = Style::default().fg(theme.accent).add_modifier(Modifier::BOLD);
+            if node_rect.width > 0 && node_rect.height > 0 {
+                // Top-Left
+                frame.render_widget(Paragraph::new("⇘").style(corner_style), Rect::new(node_rect.x, node_rect.y, 1, 1));
+                // Top-Right
+                if node_rect.width > 1 {
+                    frame.render_widget(Paragraph::new("⇙").style(corner_style), Rect::new(node_rect.x + node_rect.width - 1, node_rect.y, 1, 1));
+                }
+                // Bottom-Left
+                if node_rect.height > 1 {
+                    frame.render_widget(Paragraph::new("⇗").style(corner_style), Rect::new(node_rect.x, node_rect.y + node_rect.height - 1, 1, 1));
+                }
+                // Bottom-Right
+                if node_rect.width > 1 && node_rect.height > 1 {
+                    frame.render_widget(Paragraph::new("⇖").style(corner_style), Rect::new(node_rect.x + node_rect.width - 1, node_rect.y + node_rect.height - 1, 1, 1));
+                }
             }
-            _ => {
-                let text = Paragraph::new(node.text())
-                    .block(block)
-                    .style(Style::default().fg(theme.text)) // Force text color to stay consistent
-                    .wrap(Wrap { trim: false });
-                frame.render_widget(text, node_rect);
-            }
+        }
+
+        // Draw resize handle if in resize mode for this node
+        if state.resizing_node_id.as_ref() == Some(&node.id().to_string()) {
+            let handle_text = "[↘]";
+            let handle_style = Style::default().fg(theme.accent).add_modifier(Modifier::BOLD);
+            let handle_rect = Rect::new(
+                (sx + sw - 3.0).max(0.0) as u16,
+                (sy + sh - 1.0).max(0.0) as u16,
+                3,
+                1,
+            );
+            frame.render_widget(Paragraph::new(handle_text).style(handle_style), handle_rect);
         }
     }
 
@@ -226,37 +465,68 @@ pub fn draw_pinstar_view(frame: &mut Frame, state: &mut PinstarState, theme: &Ap
                 let sw = nw * state.zoom;
                 let sh = nh * state.zoom;
 
-                let editor_rect = Rect::new(
-                    sx.max(canvas_area.left() as f64) as u16,
-                    sy.max(canvas_area.top() as f64) as u16,
-                    sw as u16,
-                    sh as u16,
-                );
+                let left = sx.max(canvas_area.left() as f64);
+                let top = sy.max(canvas_area.top() as f64);
+                let right = (sx + sw).min(canvas_area.right() as f64);
+                let bottom = (sy + sh).min(canvas_area.bottom() as f64);
 
-                frame.render_widget(Clear, editor_rect);
-                frame.render_widget(&*editor, editor_rect);
+                if right > left && bottom > top {
+                    let editor_rect = Rect::new(
+                        left as u16,
+                        top as u16,
+                        (right - left) as u16,
+                        (bottom - top) as u16,
+                    );
+
+                    editor.set_block(Block::default()
+                        .borders(Borders::ALL)
+                        .border_style(Style::default().fg(theme.accent))
+                        .style(theme.bg_style()));
+                    editor.set_style(theme.bg_style());
+
+                    frame.render_widget(Clear, editor_rect);
+                    frame.render_widget(&*editor, editor_rect);
+                }
             }
         }
     }
 
     // Draw hint line at the bottom
-    let mut hint_text = "Pinstar View · Tab: switch focus · Esc: back · Arrows: select · i/Enter: edit · Ctrl+S: save".to_string();
+    let mut hint_text = "Tab switch focus · Esc back · Arrows select · i/Enter edit · Ctrl+S save".to_string();
     if state.connection_source_id.is_some() {
         hint_text = "CONNECTION MODE: Select target node with mouse or Enter".to_string();
+    } else if state.deleting_connection_source_id.is_some() {
+        hint_text = "DELETE CONNECTION MODE: Select target node to remove link".to_string();
+    } else if state.resizing_node_id.is_some() {
+        hint_text = "RESIZE MODE: Drag mouse to resize, Left-click to confirm".to_string();
     }
     
-    let hint = Paragraph::new(Span::styled(
+    let mut spans = Vec::new();
+    let ext_label = if state.ext_editor_enabled { "ext:on" } else { "ext:off" };
+    let ext_style = if state.ext_focused {
+        Style::default().fg(theme.highlight_fg).bg(theme.heading).add_modifier(Modifier::BOLD)
+    } else if state.ext_editor_enabled {
+        Style::default().fg(theme.success).add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(theme.muted)
+    };
+    spans.push(Span::styled(format!(" {} ", ext_label), ext_style));
+    spans.push(Span::raw("  "));
+    spans.push(Span::styled(
         hint_text,
         Style::default().fg(theme.muted),
-    )).style(theme.hint_line_bg_style());
+    ));
+
+    let hint = Paragraph::new(Line::from(spans))
+        .style(theme.hint_line_bg_style());
     
-    let hint_area = Rect::new(area.x, area.bottom().saturating_sub(1), area.width, 1);
+    let hint_area = Rect::new(total_area.x, total_area.bottom().saturating_sub(1), total_area.width, 1);
     frame.render_widget(hint, hint_area);
 
     // 3. Draw Context Menu
     if let Some(menu) = &state.context_menu {
         let menu_width = 25;
-        let menu_height = menu.items.len() as u16 + 2;
+        let menu_height = menu.items.len() as u16;
         let menu_rect = Rect::new(
             menu.x.min(area.width.saturating_sub(menu_width)),
             menu.y.min(area.height.saturating_sub(menu_height)),
@@ -275,14 +545,22 @@ pub fn draw_pinstar_view(frame: &mut Frame, state: &mut PinstarState, theme: &Ap
             ListItem::new(format!("  {}", item)).style(style)
         }).collect();
 
-        let list = List::new(items).block(Block::default().borders(Borders::NONE).style(theme.bg_style()));
+        let list = List::new(items).block(Block::default().borders(Borders::NONE).style(theme.preview_bg_style()));
         frame.render_widget(list, menu_rect);
     }
 
     // 4. Draw Rename Popup
-    if let Some(textarea) = &state.rename_popup {
+    if let Some(textarea) = &mut state.rename_popup {
         let popup_area = centered_rect(60, 20, area); // Increased height and width for visibility
         frame.render_widget(Clear, popup_area);
+        
+        textarea.set_style(theme.bg_style());
+        textarea.set_block(Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(theme.accent))
+            .style(theme.bg_style())
+            .title(Span::styled(" Rename Node (ID) - Enter to confirm, Esc to cancel ", Style::default().fg(theme.accent))));
+            
         frame.render_widget(&*textarea, popup_area);
     }
 }
@@ -305,4 +583,17 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
             Constraint::Percentage((100 - percent_x) / 2),
         ])
         .split(popup_layout[1])[1]
+}
+
+fn is_generated_id(id: &str) -> bool {
+    if id.starts_with("node_") && id.len() <= 16 {
+        return true;
+    }
+    if id.len() == 16 && id.chars().all(|c| c.is_ascii_hexdigit()) {
+        return true;
+    }
+    if id.len() == 36 && id.chars().all(|c| c.is_ascii_hexdigit() || c == '-') {
+        return true;
+    }
+    false
 }
