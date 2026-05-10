@@ -2,7 +2,7 @@
 
 Welcome to clin-rs technical documentation. This index lists all documentation files with brief descriptions.
 
-For installation, quickstart, and general project info, see the [README.md](README.md).
+For installation, quickstart, and general project info, see the [README.md](../README.md).
 
 ---
 
@@ -25,7 +25,7 @@ For installation, quickstart, and general project info, see the [README.md](READ
 
 ## Configuration
 
-- [README.md](README.md) — Quickstart, config.toml example, keybinds.toml example, CLI commands
+- [README.md](../README.md) — Quickstart, config.toml example, keybinds.toml example, CLI commands
 - [CONFIG_REFERENCE.md](CONFIG_REFERENCE.md) — Full configuration reference: all config.toml options, keybinds.toml, graf config sections
 
 ---

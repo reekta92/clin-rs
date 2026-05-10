@@ -320,6 +320,6 @@ All graf options can also be overridden via environment variables prefixed with 
 
 ## See Also
 
-- [READEME.md](READEME.md) — Quickstart, installation, CLI commands
+- [README.md](../README.md) — Quickstart, installation, CLI commands
 - [THEME_SYSTEM.md](THEME_SYSTEM.md) — Theme system details and color reference
 - [GRAPH_VIEW.md](GRAPH_VIEW.md) — Graph view configuration context
