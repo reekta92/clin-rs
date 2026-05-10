@@ -315,7 +315,7 @@ impl Storage {
     }
 
     pub fn list_note_ids(&self) -> Result<Vec<String>> {
-        // Migration: rename old extensions
+        
         self.migrate_extensions();
 
         let mut ids = Vec::new();
@@ -340,9 +340,9 @@ impl Storage {
         Ok(ids)
     }
 
-    /// Migrate file extensions:
-    /// - `.pinstar` → `.canvas` (native Obsidian-compatible canvas)
-    /// - Old Draw `.canvas` (format: `{ elements: [...] }`) → `.draw`
+    
+    
+    
     fn migrate_extensions(&self) {
         let mut dirs_to_visit = vec![self.notes_dir.clone()];
 
@@ -356,15 +356,15 @@ impl Storage {
                     } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
                         match ext {
                             "pinstar" => {
-                                // Rename .pinstar → .canvas
+                                
                                 let new_path = path.with_extension("canvas");
                                 if !new_path.exists() {
                                     let _ = fs::rename(&path, &new_path);
                                 }
                             }
                             "canvas" => {
-                                // Check if it's an old Draw format (has "elements" key)
-                                // or a new Canvas format (has "nodes" key)
+                                
+                                
                                 if let Ok(content) = fs::read_to_string(&path) {
                                     let trimmed = content.trim();
                                     let is_draw_format = trimmed.starts_with("{\
@@ -376,7 +376,7 @@ impl Storage {
                                             let _ = fs::rename(&path, &new_path);
                                         }
                                     }
-                                    // Otherwise it's a .canvas file (Obsidian-compatible) — keep as-is
+                                    
                                 }
                             }
                             _ => {}

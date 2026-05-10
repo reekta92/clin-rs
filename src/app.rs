@@ -2332,7 +2332,7 @@ impl App {
             return;
         }
 
-        // markdown / clin note
+        
         if let Ok(note) = self.storage.load_note(&id) {
             let width = 80u16.saturating_sub(2).max(40);
             let mut renderer = MarkdownRenderer::new(width);

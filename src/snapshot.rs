@@ -9,12 +9,12 @@ use crate::app_theme::AppThemeColors;
 use crate::draw::state::{DrawData, DrawElement, Shape, Stroke};
 use crate::pinstar::data::{CanvasData, CanvasNode};
 
-/// Offscreen preview width in cells
+
 const PREVIEW_COLS: u16 = 78;
-/// Offscreen preview height in cells
+
 const PREVIEW_ROWS: u16 = 38;
 
-// ── Canvas snapshot ────────────────────────────────────────────
+
 
 pub fn render_canvas_snapshot(
     data: &CanvasData,
@@ -53,7 +53,7 @@ pub fn render_canvas_snapshot(
         fill_buf_bg(frame.buffer_mut(), area, preview_bg);
         let buf = frame.buffer_mut();
 
-        // Draw edges as braille dots
+        
         for edge in &data.edges {
             let from = data.nodes.iter().find(|n| n.id() == edge.from_node);
             let to = data.nodes.iter().find(|n| n.id() == edge.to_node);
@@ -77,7 +77,7 @@ pub fn render_canvas_snapshot(
             }
         }
 
-        // Draw nodes as bordered blocks
+        
         for node in &data.nodes {
             let (nx, ny) = node.pos();
             let (nw, nh) = node.size();
@@ -124,7 +124,7 @@ pub fn render_canvas_snapshot(
             };
 
             let inner_text = node.text();
-            // Truncate text to fit preview node rect
+            
             let max_text_len = (node_rect.width.saturating_sub(2) as usize)
                 .min(node_rect.height.saturating_sub(2) as usize * node_rect.width.saturating_sub(2) as usize);
             let display_text = if inner_text.len() > max_text_len && max_text_len > 10 {
@@ -144,8 +144,8 @@ pub fn render_canvas_snapshot(
                 .style(Style::default().fg(theme.fg))
                 .wrap(Wrap { trim: false });
 
-            // Render to a temp area that matches node_rect dimensions
-            // We use a sub-backend approach: clear + render into the node rect
+            
+            
             frame.render_widget(Clear, node_rect);
             frame.render_widget(text, node_rect);
         }
@@ -154,7 +154,7 @@ pub fn render_canvas_snapshot(
     extract_grid(terminal, width, height)
 }
 
-// ── Draw snapshot ──────────────────────────────────────────────
+
 
 pub fn render_draw_snapshot(
     data: &DrawData,
@@ -213,10 +213,10 @@ pub fn render_draw_snapshot(
     extract_grid(terminal, width, height)
 }
 
-// ── RenderedSnapshot widget ────────────────────────────────────
+
 
 pub struct RenderedSnapshot<'a> {
-    grid: Vec<(char, Style)>, // flattened rows of the grid, owned
+    grid: Vec<(char, Style)>, 
     cols: u16,
     rows: u16,
     scroll_offset: u16,
@@ -281,9 +281,9 @@ impl Widget for RenderedSnapshot<'_> {
     }
 }
 
-// ── Helpers ────────────────────────────────────────────────────
 
-/// Fill every cell in `area` of the buffer with the given background color.
+
+
 fn fill_buf_bg(buf: &mut Buffer, area: Rect, bg: Option<Color>) {
     let Some(bg) = bg else { return };
     for y in area.top()..area.bottom() {

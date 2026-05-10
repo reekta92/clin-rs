@@ -23,7 +23,7 @@ impl Default for DrawData {
     }
 }
 
-/// New format serialized shape
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct NewDrawData {
     pub version: u8,
@@ -87,7 +87,7 @@ impl<'de> Deserialize<'de> for DrawData {
 
                 let elements = elements.unwrap_or_default();
 
-                // Old format: no "version" key → promote
+                
                 if version.is_none() {
                     return Ok(DrawData {
                         version: 0,
