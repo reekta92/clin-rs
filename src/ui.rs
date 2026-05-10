@@ -676,9 +676,17 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 note_count,
             } => {
                 let indent = "  ".repeat(*depth);
-                let icon = if *is_expanded { " " } else { " " };
+                let icon = if *is_expanded { " " } else { " " };
                 let sanitized_name = crate::sanitize::sanitize_for_terminal(name);
-                let text = format!("{indent}{icon} {sanitized_name} ({note_count})");
+                let mut text = format!("{indent}{icon} {sanitized_name} ({note_count})");
+                if app.list.list_mode == crate::list_view::ListMode::Select {
+                    let checkbox = if app.list.selected_indices.contains(&vi) {
+                        "[x] "
+                    } else {
+                        "[ ] "
+                    };
+                    text = format!("{indent}{checkbox}{icon} {sanitized_name} ({note_count})");
+                }
                 items.push(ListItem::new(Line::from(vec![Span::styled(
                     text,
                     Style::default()
@@ -702,6 +710,23 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
 
                 let mut spans = Vec::new();
                 spans.push(Span::raw(indent));
+
+                if app.list.list_mode == crate::list_view::ListMode::Select {
+                    let checkbox = if app.list.selected_indices.contains(&vi) {
+                        "[x] "
+                    } else {
+                        "[ ] "
+                    };
+                    spans.push(Span::styled(
+                        checkbox,
+                        if app.list.selected_indices.contains(&vi) {
+                            Style::default().fg(app.app_theme.accent).add_modifier(Modifier::BOLD)
+                        } else {
+                            Style::default().fg(app.app_theme.muted)
+                        },
+                    ));
+                }
+
                 spans.push(Span::raw("  "));
 
                 if summary.pinned {
@@ -789,6 +814,21 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
 
     app.list.list_state.select(Some(app.list.visual_index));
     frame.render_stateful_widget(list, list_area, &mut app.list.list_state);
+
+    if app.list.list_mode == crate::list_view::ListMode::Select {
+        let select_hint = format!(" SELECT MODE: {} selected ", app.list.selected_indices.len());
+        let select_para = Paragraph::new(Span::styled(
+            select_hint,
+            Style::default()
+                .fg(app.app_theme.highlight_fg)
+                .bg(app.app_theme.accent)
+                .add_modifier(Modifier::BOLD),
+        ));
+        let max_width = list_area.width.saturating_sub(4);
+        let select_width = 34.min(max_width);
+        let select_area = Rect::new(list_area.x + 2, list_area.y, select_width, 1);
+        frame.render_widget(select_para, select_area);
+    }
 
     if let Some(preview_rect) = preview_area {
         match &app.list.preview_content {
@@ -974,17 +1014,47 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     }
 
     if let Some(picker) = &app.popups.folder_picker {
-        let popup_area = centered_rect(40, 60, area);
+        let popup_area = centered_rect(50, 60, area);
         frame.render_widget(Clear, popup_area);
 
-        let items: Vec<ListItem> = picker
-            .folders
-            .iter()
-            .map(|f| {
-                let label = if f.is_empty() { "Vault (Root)" } else { f };
-                ListItem::new(label)
-            })
-            .collect();
+        let inner = popup_area;
+
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(3), Constraint::Min(1)])
+            .split(inner);
+
+        let search_border = if picker.focus == crate::app::FolderPickerFocus::Search {
+            Style::default().fg(app.app_theme.heading)
+        } else {
+            Style::default().fg(app.app_theme.muted)
+        };
+        let search = Paragraph::new(format!("Search: {}", picker.query))
+            .block(
+                Block::default()
+                    .style(app.app_theme.bg_style())
+                    .borders(Borders::ALL)
+                    .border_style(search_border)
+                    .title("Folder search (Tab switch focus)"),
+            )
+            .style(Style::default().fg(app.app_theme.muted));
+        frame.render_widget(search, chunks[0]);
+
+        let items: Vec<ListItem> = if picker.filtered_folders.is_empty() {
+            vec![ListItem::new(Span::styled(
+                "(no matching folders)",
+                Style::default().fg(app.app_theme.muted),
+            ))]
+        } else {
+            picker
+                .filtered_folders
+                .iter()
+                .map(|f| {
+                    let label = if f.is_empty() { "Vault (Root)" } else { f };
+                    ListItem::new(label)
+                })
+                .collect()
+        };
 
         let title = match &picker.mode {
             crate::app::FolderPickerMode::MoveNote { .. } => {
@@ -994,14 +1064,23 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 let folder_name = folder_path.rsplit('/').next().unwrap_or(folder_path);
                 format!("Move '{}' folder to", folder_name)
             }
+            crate::app::FolderPickerMode::BulkMoveNotes { note_ids } => {
+                format!("Move {} selected note(s) to", note_ids.len())
+            }
         };
 
+        let results_border = if picker.focus == crate::app::FolderPickerFocus::Results {
+            Style::default().fg(app.app_theme.heading)
+        } else {
+            Style::default().fg(app.app_theme.muted)
+        };
         let list = List::new(items)
             .block(
                 Block::default()
                     .style(app.app_theme.bg_style())
                     .borders(Borders::ALL)
-                    .title(title),
+                    .border_style(results_border)
+                    .title(format!("{} (Tab switch focus)", title)),
             )
             .highlight_style(
                 Style::default()
@@ -1012,9 +1091,11 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             .highlight_symbol("> ");
 
         let mut state = ListState::default();
-        state.select(Some(picker.selected));
+        if !picker.filtered_folders.is_empty() {
+            state.select(Some(picker.selected));
+        }
 
-        frame.render_stateful_widget(list, popup_area, &mut state);
+        frame.render_stateful_widget(list, chunks[1], &mut state);
     }
 
     if let Some(palette) = &mut app.command_palette {
@@ -1088,9 +1169,94 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     }
 
     if let Some(popup) = &mut app.popups.search {
-        let popup_area = centered_rect(50, 20, area);
+        let popup_area = centered_rect(60, 55, area);
         frame.render_widget(Clear, popup_area);
-        frame.render_widget(&popup.input, popup_area);
+
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(3),
+                Constraint::Length(3),
+                Constraint::Min(3),
+            ])
+            .split(popup_area);
+
+        let notes_border = if popup.focus == crate::app::SearchPopupFocus::Notes {
+            Style::default().fg(app.app_theme.heading)
+        } else {
+            Style::default().fg(app.app_theme.muted)
+        };
+        popup.note_input.set_style(app.app_theme.bg_style());
+        popup.note_input.set_block(
+            Block::default()
+                .style(app.app_theme.bg_style())
+                .borders(Borders::ALL)
+                .border_style(notes_border)
+                .title("Search notes title (Tab switch focus)"),
+        );
+        frame.render_widget(&popup.note_input, chunks[0]);
+
+        let grep_border = if popup.focus == crate::app::SearchPopupFocus::Grep {
+            Style::default().fg(app.app_theme.heading)
+        } else {
+            Style::default().fg(app.app_theme.muted)
+        };
+        popup.grep_input.set_style(app.app_theme.bg_style());
+        popup.grep_input.set_block(
+            Block::default()
+                .style(app.app_theme.bg_style())
+                .borders(Borders::ALL)
+                .border_style(grep_border)
+                .title("Grep content search (Tab switch focus)"),
+        );
+        frame.render_widget(&popup.grep_input, chunks[1]);
+
+        let note_query = popup.note_input.lines().join("");
+        let grep_query = popup.grep_input.lines().join("");
+        let grep_items: Vec<ListItem> = if popup.grep_results.is_empty() {
+            let msg = if note_query.trim().is_empty() && grep_query.trim().is_empty() {
+                "Type in Notes/Grep search to show results"
+            } else {
+                "No results"
+            };
+            vec![ListItem::new(Span::styled(
+                msg,
+                Style::default().fg(app.app_theme.muted),
+            ))]
+        } else {
+            popup
+                .grep_results
+                .iter()
+                .map(|entry| ListItem::new(entry.clone()))
+                .collect()
+        };
+
+        let grep_results_border = if popup.focus == crate::app::SearchPopupFocus::GrepResults {
+            Style::default().fg(app.app_theme.heading)
+        } else {
+            Style::default().fg(app.app_theme.muted)
+        };
+        let grep_results = List::new(grep_items)
+            .block(
+                Block::default()
+                    .style(app.app_theme.bg_style())
+                    .borders(Borders::ALL)
+                    .border_style(grep_results_border)
+                    .title("Results (Tab switch focus)"),
+            )
+            .highlight_style(
+                Style::default()
+                    .fg(app.app_theme.highlight_fg)
+                    .bg(app.app_theme.highlight_bg)
+                    .add_modifier(Modifier::BOLD),
+            )
+            .highlight_symbol("> ");
+
+        let mut grep_state = ListState::default();
+        if !popup.grep_results.is_empty() {
+            grep_state.select(Some(popup.grep_selected));
+        }
+        frame.render_stateful_widget(grep_results, chunks[2], &mut grep_state);
     }
 
     if let Some(trash) = &app.popups.trash_view {

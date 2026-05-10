@@ -218,6 +218,8 @@ pub enum ListAction {
     OpenGraph,
     OpenCanvas,
     CreatePinstar,
+    ToggleSelectMode,
+    ToggleSelectItem,
     }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -326,7 +328,7 @@ impl Default for Keybinds {
         );
         list.insert(
             ListAction::OpenLocation,
-            vec![KeyCombo::simple(KeyCode::Char('f'))],
+            vec![KeyCombo::ctrl(KeyCode::Char('f'))],
         );
         list.insert(ListAction::CycleFocus, vec![KeyCombo::simple(KeyCode::Tab)]);
         list.insert(
@@ -414,7 +416,7 @@ impl Default for Keybinds {
             ListAction::CycleSort,
             vec![KeyCombo::simple(KeyCode::Char('s'))],
         );
-        list.insert(ListAction::Search, vec![KeyCombo::ctrl(KeyCode::Char('f'))]);
+        list.insert(ListAction::Search, vec![KeyCombo::simple(KeyCode::Char('f'))]);
         list.insert(
             ListAction::JumpToTop,
             vec![KeyCombo::shift(KeyCode::Char('G'))],
@@ -435,6 +437,14 @@ impl Default for Keybinds {
         list.insert(
             ListAction::OpenGraph,
             vec![KeyCombo::ctrl(KeyCode::Char('g'))],
+        );
+        list.insert(
+            ListAction::ToggleSelectMode,
+            vec![KeyCombo::simple(KeyCode::Char('v'))],
+        );
+        list.insert(
+            ListAction::ToggleSelectItem,
+            vec![KeyCombo::simple(KeyCode::Char(' '))],
         );
 
         let mut edit = HashMap::new();
@@ -830,6 +840,8 @@ fn parse_list_action(s: &str) -> Option<ListAction> {
         "open_graph" => Some(ListAction::OpenGraph),
         "open_canvas" => Some(ListAction::OpenCanvas),
         "create_pinstar" => Some(ListAction::CreatePinstar),
+        "toggle_select_mode" => Some(ListAction::ToggleSelectMode),
+        "toggle_select_item" => Some(ListAction::ToggleSelectItem),
         _ => None,
     }
 }
@@ -925,6 +937,8 @@ fn list_action_to_string(action: ListAction) -> &'static str {
         ListAction::OpenGraph => "open_graph",
         ListAction::OpenCanvas => "open_canvas",
         ListAction::CreatePinstar => "create_pinstar",
+        ListAction::ToggleSelectMode => "toggle_select_mode",
+        ListAction::ToggleSelectItem => "toggle_select_item",
     }
 }
 fn edit_action_to_string(action: EditAction) -> &'static str {

@@ -5,6 +5,12 @@ use ratatui::style::Style;
 use std::collections::HashSet;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ListMode {
+    Normal,
+    Select,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ListFocus {
     Notes,
     ExternalEditorToggle,
@@ -63,6 +69,8 @@ pub struct ListView {
     pub pending_preview_update: bool,
     pub last_selection_change: Option<std::time::Instant>,
     pub page_size: usize,
+    pub list_mode: ListMode,
+    pub selected_indices: HashSet<usize>,
     pub help_text_cache: Option<Text<'static>>,
 }
 
@@ -84,6 +92,8 @@ impl Default for ListView {
             pending_preview_update: false,
             last_selection_change: None,
             page_size: 30,
+            list_mode: ListMode::Normal,
+            selected_indices: HashSet::new(),
             help_text_cache: None,
         }
     }

@@ -7,6 +7,7 @@ pub enum ConfirmAction {
     DeleteTag { tag: String },
     DeleteFromTrash { item: trash::TrashItem },
     EmptyTrash { items: Vec<trash::TrashItem> },
+    BulkDeleteNotes { note_ids: Vec<String> },
 }
 
 pub struct ConfirmPopup {
@@ -73,12 +74,22 @@ pub struct FolderPopup {
 pub enum FolderPickerMode {
     MoveNote { note_id: String },
     MoveFolder { folder_path: String },
+    BulkMoveNotes { note_ids: Vec<String> },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FolderPickerFocus {
+    Search,
+    Results,
 }
 
 pub struct FolderPicker {
     pub mode: FolderPickerMode,
-    pub folders: Vec<String>,
+    pub all_folders: Vec<String>,
+    pub filtered_folders: Vec<String>,
     pub selected: usize,
+    pub query: String,
+    pub focus: FolderPickerFocus,
 }
 
 pub struct NoteRenamePopup {
@@ -91,9 +102,22 @@ pub struct NoteCreatePopup {
     pub input: TextArea<'static>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SearchPopupFocus {
+    Notes,
+    Grep,
+    GrepResults,
+}
+
 pub struct SearchPopup {
-    pub input: TextArea<'static>,
+    pub note_input: TextArea<'static>,
+    pub grep_input: TextArea<'static>,
+    pub grep_results: Vec<String>,
+    pub grep_result_note_indices: Vec<usize>,
+    pub grep_selected: usize,
+    pub focus: SearchPopupFocus,
     pub original_index: usize,
+    pub original_folder_expanded: std::collections::HashSet<String>,
 }
 
 pub struct TrashView {

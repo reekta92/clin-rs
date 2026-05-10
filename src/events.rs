@@ -1,5 +1,6 @@
 use crate::app::ContextMenu;
 use crate::app::{App, EditFocus, HelpTab, ListFocus};
+use crate::list_view::ListMode;
 use crate::keybinds::*;
 use crossterm::event::*;
 use ratatui::prelude::*;
@@ -148,13 +149,58 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         if key.code == KeyCode::Esc {
             app.popups.search = Some(popup);
             app.cancel_search();
-        } else if key.code == KeyCode::Enter {
+        } else if key.code == KeyCode::Tab {
+            popup.focus = match popup.focus {
+                crate::app::SearchPopupFocus::Notes => crate::app::SearchPopupFocus::Grep,
+                crate::app::SearchPopupFocus::Grep => crate::app::SearchPopupFocus::GrepResults,
+                crate::app::SearchPopupFocus::GrepResults => crate::app::SearchPopupFocus::Notes,
+            };
             app.popups.search = Some(popup);
-            app.confirm_search();
         } else {
-            popup.input.input(Input::from(key));
-            app.popups.search = Some(popup);
-            app.update_search();
+            match popup.focus {
+                crate::app::SearchPopupFocus::Notes => {
+                    if key.code == KeyCode::Enter {
+                        app.popups.search = Some(popup);
+                        app.confirm_search();
+                    } else {
+                        popup.note_input.input(Input::from(key));
+                        app.popups.search = Some(popup);
+                        app.update_search();
+                    }
+                }
+                crate::app::SearchPopupFocus::Grep => {
+                    if key.code == KeyCode::Enter {
+                        app.popups.search = Some(popup);
+                        app.confirm_search();
+                    } else {
+                        popup.grep_input.input(Input::from(key));
+                        app.popups.search = Some(popup);
+                        app.update_search();
+                    }
+                }
+                crate::app::SearchPopupFocus::GrepResults => {
+                    match key.code {
+                        KeyCode::Up | KeyCode::Char('k') => {
+                            popup.grep_selected = popup.grep_selected.saturating_sub(1);
+                            app.popups.search = Some(popup);
+                        }
+                        KeyCode::Down | KeyCode::Char('j') => {
+                            if popup.grep_selected + 1 < popup.grep_results.len() {
+                                popup.grep_selected += 1;
+                            }
+                            app.popups.search = Some(popup);
+                        }
+                        KeyCode::Enter | KeyCode::Char('l') => {
+                            app.popups.search = Some(popup);
+                            app.jump_to_selected_grep_result();
+                            app.confirm_search_with_restore();
+                        }
+                        _ => {
+                            app.popups.search = Some(popup);
+                        }
+                    }
+                }
+            }
         }
         return false;
     }
@@ -207,25 +253,61 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
 
     if let Some(mut picker) = app.popups.folder_picker.take() {
         match key.code {
-            KeyCode::Up | KeyCode::Char('k') => {
-                picker.selected = picker.selected.saturating_sub(1);
+            KeyCode::Tab => {
+                picker.focus = match picker.focus {
+                    crate::app::FolderPickerFocus::Search => crate::app::FolderPickerFocus::Results,
+                    crate::app::FolderPickerFocus::Results => crate::app::FolderPickerFocus::Search,
+                };
                 app.popups.folder_picker = Some(picker);
             }
-            KeyCode::Down | KeyCode::Char('j') => {
-                if picker.selected + 1 < picker.folders.len() {
-                    picker.selected += 1;
-                }
-                app.popups.folder_picker = Some(picker);
-            }
-            KeyCode::Enter | KeyCode::Char('l') => {
-                app.popups.folder_picker = Some(picker);
-                app.confirm_move();
-            }
-            KeyCode::Esc | KeyCode::Char('h') => {
+            KeyCode::Esc => {
                 app.popups.folder_picker = None;
             }
             _ => {
-                app.popups.folder_picker = Some(picker);
+                match picker.focus {
+                    crate::app::FolderPickerFocus::Results => {
+                        match key.code {
+                            KeyCode::Up | KeyCode::Char('k') => {
+                                picker.selected = picker.selected.saturating_sub(1);
+                                app.popups.folder_picker = Some(picker);
+                            }
+                            KeyCode::Down | KeyCode::Char('j') => {
+                                if picker.selected + 1 < picker.filtered_folders.len() {
+                                    picker.selected += 1;
+                                }
+                                app.popups.folder_picker = Some(picker);
+                            }
+                            KeyCode::Enter | KeyCode::Char('l') => {
+                                app.popups.folder_picker = Some(picker);
+                                app.confirm_move();
+                            }
+                            _ => {
+                                app.popups.folder_picker = Some(picker);
+                            }
+                        }
+                    }
+                    crate::app::FolderPickerFocus::Search => {
+                        match key.code {
+                            KeyCode::Backspace => {
+                                picker.query.pop();
+                                app.popups.folder_picker = Some(picker);
+                                app.update_folder_picker_filter();
+                            }
+                            KeyCode::Enter => {
+                                picker.focus = crate::app::FolderPickerFocus::Results;
+                                app.popups.folder_picker = Some(picker);
+                            }
+                            KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) && !key.modifiers.contains(KeyModifiers::ALT) => {
+                                picker.query.push(c);
+                                app.popups.folder_picker = Some(picker);
+                                app.update_folder_picker_filter();
+                            }
+                            _ => {
+                                app.popups.folder_picker = Some(picker);
+                            }
+                        }
+                    }
+                }
             }
         }
         return false;
@@ -352,9 +434,45 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
+    if key.code == KeyCode::Esc && app.restore_post_search_view() {
+        return false;
+    }
+
     if app.keybinds.matches_list(ListAction::Quit, &key) {
         return true;
     }
+
+    if app.keybinds.matches_list(ListAction::ToggleSelectMode, &key) {
+        app.list.list_mode = match app.list.list_mode {
+            ListMode::Normal => {
+                app.list.selected_indices.clear();
+                app.list.selected_indices.insert(app.list.visual_index);
+                ListMode::Select
+            }
+            ListMode::Select => {
+                app.list.selected_indices.clear();
+                ListMode::Normal
+            }
+        };
+        return false;
+    }
+
+    if app.list.list_mode == ListMode::Select {
+        if app.keybinds.matches_list(ListAction::ToggleSelectItem, &key) {
+            if app.list.selected_indices.contains(&app.list.visual_index) {
+                app.list.selected_indices.remove(&app.list.visual_index);
+            } else {
+                app.list.selected_indices.insert(app.list.visual_index);
+            }
+            return false;
+        }
+        if key.code == KeyCode::Esc {
+            app.list.list_mode = ListMode::Normal;
+            app.list.selected_indices.clear();
+            return false;
+        }
+    }
+
     if app.keybinds.matches_list(ListAction::Help, &key) {
         app.open_help_page();
         return false;
