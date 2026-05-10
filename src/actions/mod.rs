@@ -2,6 +2,7 @@ pub mod decrypt;
 pub mod encrypt;
 pub mod graph;
 pub mod canvas;
+pub mod pinstar;
 pub mod ocr;
 pub mod theme;
 
@@ -29,6 +30,8 @@ pub static ACTIONS: Lazy<Vec<Box<dyn Action>>> = Lazy::new(|| {
         Box::new(decrypt::DecryptNoteAction),
         Box::new(graph::OpenGraphAction),
         Box::new(canvas::CreateCanvasAction),
+        Box::new(pinstar::CreatePinstarAction),
+        Box::new(pinstar::ImportCanvasAction),
         Box::new(ocr::OcrPasteAction),
         Box::new(theme::SwitchThemeAction),
     ]

@@ -29,6 +29,7 @@ pub enum ViewMode {
     Help,
     Graph,
     Canvas,
+    Pinstar,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -227,6 +228,7 @@ pub enum VisualItem {
         depth: usize,
         is_clin: bool,
         is_canvas: bool,
+        is_pinstar: bool,
     },
     CreateNew {
         path: String,
@@ -271,7 +273,9 @@ pub struct App {
     
     pub note_rename_popup: Option<NoteRenamePopup>,
     pub note_create_popup: Option<NoteCreatePopup>,
-    pub canvas_create_popup: Option<NoteCreatePopup>, 
+    pub canvas_create_popup: Option<NoteCreatePopup>,
+    pub pinstar_create_popup: Option<NoteCreatePopup>, 
+    pub import_canvas_popup: Option<NoteCreatePopup>,
     pub search_popup: Option<SearchPopup>,
     pub sort_field: SortField,
     pub sort_order: SortOrder,
@@ -292,6 +296,7 @@ pub struct App {
     pub page_size: usize,
     pub return_mode: Option<ViewMode>,
     pub app_theme: crate::app_theme::AppThemeColors,
+    pub pinstar_state: Option<crate::pinstar::state::PinstarState>,
 }
 
 pub enum CliCommand {
@@ -367,6 +372,8 @@ impl App {
             note_rename_popup: None,
             note_create_popup: None,
             canvas_create_popup: None,
+            pinstar_create_popup: None,
+            import_canvas_popup: None,
             search_popup: None,
             sort_field: bootstrap_config.default_sort_field.unwrap_or(SortField::Title),
             sort_order: bootstrap_config.default_sort_order.unwrap_or(SortOrder::Ascending),
@@ -386,6 +393,7 @@ impl App {
             page_size: 10,
             return_mode: None,
             app_theme,
+            pinstar_state: None,
         };
         app.context_menu = None;
         app.template_popup = None;
@@ -500,6 +508,7 @@ impl App {
                         depth: 1,
                         is_clin: note.id.ends_with(".clin"),
                         is_canvas: note.id.ends_with(".canvas"),
+                        is_pinstar: note.id.ends_with(".pinstar"),
                     });
                 }
             }
@@ -572,6 +581,7 @@ impl App {
                                 depth: depth + 1,
                                 is_clin: note.id.ends_with(".clin"),
                                 is_canvas: note.id.ends_with(".canvas"),
+                                is_pinstar: note.id.ends_with(".pinstar"),
                             });                        }
                     }
                     visual.push(VisualItem::CreateNew {
@@ -632,9 +642,13 @@ impl App {
                 }
                 self.refresh_visual_list();
             }
-            VisualItem::Note { summary_idx, is_canvas, .. } => {
+            VisualItem::Note { summary_idx, is_canvas, is_pinstar, .. } => {
                 if *is_canvas {
                     self.open_canvas_view();
+                    return;
+                }
+                if *is_pinstar {
+                    self.open_pinstar_view();
                     return;
                 }
                 let note_id = if let Some(summary) = self.notes.get(*summary_idx) {
@@ -1944,6 +1958,29 @@ impl App {
         self.set_default_status();
     }
 
+    pub fn open_pinstar_view(&mut self) {
+        if let Some(VisualItem::Note { id, .. }) = self.visual_list.get(self.visual_index) {
+            let path = self.storage.note_path(id);
+            if let Ok(state) = crate::pinstar::state::PinstarState::load(&path) {
+                self.pinstar_state = Some(state);
+                self.return_mode = Some(self.mode);
+                self.mode = ViewMode::Pinstar;
+                self.editing_id = Some(id.clone());
+                self.set_default_status();
+            } else {
+                self.set_temporary_status_static("Failed to load .pinstar file!");
+            }
+        }
+    }
+
+    pub fn close_pinstar_view(&mut self) {
+        self.editing_id = None;
+        self.pinstar_state = None;
+        self.mode = self.return_mode.take().unwrap_or(ViewMode::List);
+        let _ = self.refresh_notes();
+        self.set_default_status();
+    }
+
     pub fn get_selected_note_id(&self) -> Option<String> {
         if let Some(id) = &self.editing_id {
             return Some(id.clone());
@@ -1976,6 +2013,7 @@ impl App {
             ViewMode::Help => HELP_PAGE_HINTS,
             ViewMode::Graph => "Graph View · Esc: back · +/-: zoom · L: labels · a: fit",
             ViewMode::Canvas => "Canvas View · Esc: back · d: draw · s: shape · t: text · e: erase · Ctrl+S: save",
+            ViewMode::Pinstar => "Pinstar View · Esc: back · Arrows: pan · i/Enter: edit · Ctrl+S: save",
         }
     }
 
@@ -2080,24 +2118,162 @@ impl App {
             if title.is_empty() {
                 title = String::from("Untitled canvas");
             }
-            
+
             let canvas_id = if popup.folder.is_empty() {
                 format!("{}.canvas", title)
             } else {
                 format!("{}/{}.canvas", popup.folder, title)
             };
-            
-            
-            
+
             self.return_mode = Some(self.mode);
             self.mode = ViewMode::Canvas;
-            
-            
-            
+
             self.editing_id = Some(canvas_id);
         }
     }
 
+    pub fn begin_create_pinstar(&mut self) {
+        let folder = self.get_current_folder_context();
+        let mut input = TextArea::default();
+        input.set_style(self.app_theme.bg_style());
+        input.set_block(
+            ratatui::widgets::Block::default()
+                .style(self.app_theme.bg_style())
+                .borders(ratatui::widgets::Borders::ALL)
+                .title("New Pinstar Name - Esc to cancel, Enter to create"),
+        );
+        self.pinstar_create_popup = Some(NoteCreatePopup { folder, input });
+    }
+
+    pub fn confirm_create_pinstar(&mut self) {
+        if let Some(popup) = self.pinstar_create_popup.take() {
+            let mut title = popup.input.lines().join("");
+            title = title.trim().to_string();
+            if title.is_empty() {
+                title = String::from("Untitled pinstar");
+            }
+
+            let pinstar_id = if popup.folder.is_empty() {
+                format!("{}.pinstar", title)
+            } else {
+                format!("{}/{}.pinstar", popup.folder, title)
+            };
+
+            let path = self.storage.note_path(&pinstar_id);
+            if !path.exists() {
+                if let Some(parent) = path.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                let data = crate::pinstar::data::CanvasData {
+                    nodes: vec![],
+                    edges: vec![],
+                };
+                if let Ok(content) = serde_json::to_string_pretty(&data) {
+                    if let Err(e) = std::fs::write(&path, content) {
+                        self.set_temporary_status(&format!("Failed to write pinstar file: {}", e));
+                        return;
+                    }
+                }
+            }
+
+            self.return_mode = Some(self.mode);
+            self.mode = ViewMode::Pinstar;
+            self.editing_id = Some(pinstar_id);
+            if let Ok(state) = crate::pinstar::state::PinstarState::load(&path) {
+                self.pinstar_state = Some(state);
+            }
+            self.set_default_status();
+        }
+    }
+
+    pub fn begin_import_canvas(&mut self) {
+        let folder = self.get_current_folder_context();
+        
+        match crate::ui::pick_file("Obsidian Canvas", ".canvas") {
+            Ok(Some(path_str)) => {
+                let source_path = std::path::Path::new(&path_str);
+                let stem = source_path.file_stem().and_then(|s| s.to_str()).unwrap_or("Imported Canvas");
+                let pinstar_id = if folder.is_empty() {
+                    format!("{}.pinstar", stem)
+                } else {
+                    format!("{}/{}.pinstar", folder, stem)
+                };
+
+                let target_path = self.storage.note_path(&pinstar_id);
+                if let Some(parent) = target_path.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+
+                if let Err(e) = std::fs::copy(source_path, &target_path) {
+                    self.set_temporary_status(&format!("Failed to copy file: {}", e));
+                    return;
+                }
+
+                self.return_mode = Some(self.mode);
+                self.mode = ViewMode::Pinstar;
+                self.editing_id = Some(pinstar_id);
+                if let Ok(state) = crate::pinstar::state::PinstarState::load(&target_path) {
+                    self.pinstar_state = Some(state);
+                }
+                self.set_default_status();
+            }
+            Ok(None) => {
+                // User cancelled or no picker available, fallback to manual input
+                let mut input = TextArea::default();
+                input.set_style(self.app_theme.bg_style());
+                input.set_block(
+                    ratatui::widgets::Block::default()
+                        .style(self.app_theme.bg_style())
+                        .borders(ratatui::widgets::Borders::ALL)
+                        .title("Full path to Obsidian .canvas file - Esc to cancel, Enter to import"),
+                );
+                self.import_canvas_popup = Some(NoteCreatePopup { folder, input });
+            }
+            Err(e) => {
+                self.set_temporary_status(&format!("File picker error: {}", e));
+            }
+        }
+    }
+
+    pub fn confirm_import_canvas(&mut self) {
+        if let Some(popup) = self.import_canvas_popup.take() {
+            let path_str = popup.input.lines().join("").trim().to_string();
+            if path_str.is_empty() {
+                return;
+            }
+
+            let source_path = std::path::Path::new(&path_str);
+            if !source_path.exists() {
+                self.set_temporary_status(&format!("Source file does not exist: {}", path_str));
+                return;
+            }
+
+            let stem = source_path.file_stem().and_then(|s| s.to_str()).unwrap_or("Imported Canvas");
+            let pinstar_id = if popup.folder.is_empty() {
+                format!("{}.pinstar", stem)
+            } else {
+                format!("{}/{}.pinstar", popup.folder, stem)
+            };
+
+            let target_path = self.storage.note_path(&pinstar_id);
+            if let Some(parent) = target_path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+
+            if let Err(e) = std::fs::copy(source_path, &target_path) {
+                self.set_temporary_status(&format!("Failed to copy file: {}", e));
+                return;
+            }
+
+            self.return_mode = Some(self.mode);
+            self.mode = ViewMode::Pinstar;
+            self.editing_id = Some(pinstar_id);
+            if let Ok(state) = crate::pinstar::state::PinstarState::load(&target_path) {
+                self.pinstar_state = Some(state);
+            }
+            self.set_default_status();
+        }
+    }
     
     pub fn begin_rename_note(&mut self) {
         if let Some(VisualItem::Note {

@@ -53,6 +53,32 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
+    if let Some(mut popup) = app.pinstar_create_popup.take() {
+        if key.code == KeyCode::Esc {
+            app.pinstar_create_popup = None;
+        } else if key.code == KeyCode::Enter {
+            app.pinstar_create_popup = Some(popup);
+            app.confirm_create_pinstar();
+        } else {
+            popup.input.input(Input::from(key));
+            app.pinstar_create_popup = Some(popup);
+        }
+        return false;
+    }
+
+    if let Some(mut popup) = app.import_canvas_popup.take() {
+        if key.code == KeyCode::Esc {
+            app.import_canvas_popup = None;
+        } else if key.code == KeyCode::Enter {
+            app.import_canvas_popup = Some(popup);
+            app.confirm_import_canvas();
+        } else {
+            popup.input.input(Input::from(key));
+            app.import_canvas_popup = Some(popup);
+        }
+        return false;
+    }
+
     if let Some(mut popup) = app.folder_popup.take() {
         if key.code == KeyCode::Esc {
             app.folder_popup = None;

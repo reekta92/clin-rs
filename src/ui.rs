@@ -24,6 +24,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         ViewMode::Help => draw_help_view(frame, app),
         ViewMode::Graph => {}
         ViewMode::Canvas => {}
+        ViewMode::Pinstar => {}
     }
 
     if let Some(popup) = &app.theme_popup {
@@ -656,6 +657,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 depth,
                 is_clin,
                 is_canvas,
+                is_pinstar,
                 ..
             } => {
                 let summary = &app.notes[*summary_idx];
@@ -692,6 +694,15 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                         "\u{f1fc} ",
                         Style::default()
                             .fg(app.app_theme.success)
+                            .add_modifier(Modifier::BOLD),
+                    ));
+                }
+
+                if *is_pinstar {
+                    spans.push(Span::styled(
+                        "\u{f005} ",
+                        Style::default()
+                            .fg(app.app_theme.accent)
                             .add_modifier(Modifier::BOLD),
                     ));
                 }
@@ -1021,6 +1032,18 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
 
     if let Some(popup) = &mut app.canvas_create_popup {
         let popup_area = centered_rect(50, 20, area);
+        frame.render_widget(Clear, popup_area);
+        frame.render_widget(&popup.input, popup_area);
+    }
+
+    if let Some(popup) = &mut app.pinstar_create_popup {
+        let popup_area = centered_rect(50, 20, area);
+        frame.render_widget(Clear, popup_area);
+        frame.render_widget(&popup.input, popup_area);
+    }
+
+    if let Some(popup) = &mut app.import_canvas_popup {
+        let popup_area = centered_rect(60, 20, area);
         frame.render_widget(Clear, popup_area);
         frame.render_widget(&popup.input, popup_area);
     }
@@ -1698,4 +1721,56 @@ pub fn open_in_file_manager(path: &Path) -> Result<()> {
         .spawn()
         .with_context(|| format!("failed to launch {command}"))?;
     Ok(())
+}
+
+pub fn pick_file(filter_name: &str, filter_ext: &str) -> Result<Option<String>> {
+    if cfg!(target_os = "linux") {
+        if which::which("zenity").is_ok() {
+            let output = Command::new("zenity")
+                .arg("--file-selection")
+                .arg(format!("--file-filter={} | *{}", filter_name, filter_ext))
+                .output()?;
+            if output.status.success() {
+                return Ok(Some(String::from_utf8_lossy(&output.stdout).trim().to_string()));
+            }
+        } else if which::which("kdialog").is_ok() {
+            let output = Command::new("kdialog")
+                .arg("--getopenfilename")
+                .arg(".")
+                .arg(format!("*{}", filter_ext))
+                .output()?;
+            if output.status.success() {
+                return Ok(Some(String::from_utf8_lossy(&output.stdout).trim().to_string()));
+            }
+        }
+    } else if cfg!(target_os = "macos") {
+        let posix_script = format!(
+            "POSIX path of (choose file with prompt \"Select a {} file\" of type {{\"{}\"}})",
+            filter_name, filter_ext.trim_start_matches('.')
+        );
+        let output = Command::new("osascript")
+            .arg("-e")
+            .arg(posix_script)
+            .output()?;
+        if output.status.success() {
+            return Ok(Some(String::from_utf8_lossy(&output.stdout).trim().to_string()));
+        }
+    } else if cfg!(target_os = "windows") {
+        let ps_script = format!(
+            "Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.OpenFileDialog; $f.Filter = '{} (*{})|*{}'; $f.ShowDialog() | Out-Null; $f.FileName",
+            filter_name, filter_ext, filter_ext
+        );
+        let output = Command::new("powershell")
+            .arg("-Command")
+            .arg(ps_script)
+            .output()?;
+        if output.status.success() {
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !path.is_empty() {
+                return Ok(Some(path));
+            }
+        }
+    }
+
+    Ok(None)
 }

@@ -326,7 +326,7 @@ impl Storage {
                 if path.is_dir() {
                     dirs_to_visit.push(path);
                 } else if let Some(ext) = path.extension().and_then(|e| e.to_str())
-                    && (ext == "clin" || ext == "md" || ext == "txt" || ext == "canvas")
+                    && (ext == "clin" || ext == "md" || ext == "txt" || ext == "canvas" || ext == "pinstar")
                     && let Ok(rel_path) = path.strip_prefix(&self.notes_dir)
                     && let Some(rel_str) = rel_path.to_str()
                 {

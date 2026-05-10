@@ -1,0 +1,374 @@
+use std::path::{Path, PathBuf};
+use anyhow::Result;
+use crate::pinstar::data::CanvasData;
+use ratatui_textarea::TextArea;
+
+pub struct PinstarState {
+    pub path: PathBuf,
+    pub data: CanvasData,
+    pub viewport_x: f64,
+    pub viewport_y: f64,
+    pub zoom: f64,
+    pub selected_node_id: Option<String>,
+    pub floating_editor: Option<TextArea<'static>>,
+    pub raw_editor: TextArea<'static>,
+    pub editor_focus: bool, // true if raw_editor has focus
+    pub last_mouse_pos: Option<(u16, u16)>,
+    pub last_click: Option<(u16, u16, std::time::Instant)>,
+    pub context_menu: Option<PinstarContextMenu>,
+    pub context_menu_pos: (f64, f64), // Canvas coordinates for menu trigger
+    pub connection_source_id: Option<String>, // ID of source node during connection creation
+    pub show_editor_pane: bool,
+    pub drag_start_pos: Option<(f64, f64)>, // (x, y) in canvas coords when right-drag starts
+    pub rename_popup: Option<TextArea<'static>>,
+}
+
+pub struct PinstarContextMenu {
+    pub x: u16,
+    pub y: u16,
+    pub selected: usize,
+    pub items: Vec<String>,
+}
+
+impl PinstarState {
+    pub fn load(path: &Path) -> Result<Self> {
+        let content = std::fs::read_to_string(path)?;
+        let data: CanvasData = serde_json::from_str(&content)?;
+        let mut raw_editor = TextArea::from(content.lines().map(String::from).collect::<Vec<_>>());
+        raw_editor.set_cursor_line_style(ratatui::style::Style::default());
+        
+        Ok(Self {
+            path: path.to_path_buf(),
+            data,
+            viewport_x: 0.0,
+            viewport_y: 0.0,
+            zoom: 0.1, // Start zoomed out for better overview
+            selected_node_id: None,
+            floating_editor: None,
+            raw_editor,
+            editor_focus: false,
+            last_mouse_pos: None,
+            last_click: None,
+            context_menu: None,
+            context_menu_pos: (0.0, 0.0),
+            connection_source_id: None,
+            show_editor_pane: false,
+            drag_start_pos: None,
+            rename_popup: None,
+        })
+    }
+
+    pub fn save(&self) -> Result<()> {
+        let content = serde_json::to_string_pretty(&self.data)?;
+        std::fs::write(&self.path, content)?;
+        Ok(())
+    }
+
+    pub fn sync_from_raw_editor(&mut self) -> Result<()> {
+        let content = self.raw_editor.lines().join("\n");
+        if let Ok(data) = serde_json::from_str::<CanvasData>(&content) {
+            self.data = data;
+            let _ = self.save();
+            Ok(())
+        } else {
+            anyhow::bail!("Invalid JSON in editor")
+        }
+    }
+
+    pub fn sync_to_raw_editor(&mut self) {
+        if let Ok(content) = serde_json::to_string_pretty(&self.data) {
+            self.raw_editor = TextArea::from(content.lines().map(String::from).collect::<Vec<_>>());
+            self.raw_editor.set_cursor_line_style(ratatui::style::Style::default());
+        }
+    }
+
+    pub fn pan(&mut self, dx: f64, dy: f64) {
+        self.viewport_x += dx / self.zoom;
+        self.viewport_y += dy / self.zoom;
+    }
+
+    pub fn center_on_selected(&mut self) {
+        if let Some(id) = &self.selected_node_id {
+            if let Some(node) = self.data.nodes.iter().find(|n| n.id() == id) {
+                let (nx, ny) = node.pos();
+                let (nw, nh) = node.size();
+                self.viewport_x = nx + nw / 2.0;
+                self.viewport_y = ny + nh / 2.0;
+            }
+        }
+    }
+
+    pub fn zoom_in(&mut self) {
+        self.zoom *= 1.1;
+    }
+
+    pub fn zoom_out(&mut self) {
+        self.zoom /= 1.1;
+    }
+
+    pub fn screen_to_canvas(&self, sx: u16, sy: u16, area: ratatui::layout::Rect) -> (f64, f64) {
+        let cx = (sx as f64 - (area.x as f64 + area.width as f64 / 2.0)) / self.zoom + self.viewport_x;
+        let cy = (sy as f64 - (area.y as f64 + area.height as f64 / 2.0)) / self.zoom + self.viewport_y;
+        (cx, cy)
+    }
+
+    pub fn select_node_at(&mut self, x: f64, y: f64) -> Option<String> {
+        // Simple hit test
+        // Iterate backwards to select nodes on top first
+        for node in self.data.nodes.iter().rev() {
+            let (nx, ny) = node.pos();
+            let (nw, nh) = node.size();
+            if x >= nx && x <= nx + nw && y >= ny && y <= ny + nh {
+                let id = node.id().to_string();
+                self.selected_node_id = Some(id.clone());
+                return Some(id);
+            }
+        }
+        self.selected_node_id = None;
+        None
+    }
+
+    pub fn select_node_in_direction(&mut self, dx: f64, dy: f64) {
+        let current_node = if let Some(id) = &self.selected_node_id {
+            self.data.nodes.iter().find(|n| n.id() == id)
+        } else {
+            None
+        };
+
+        let (cur_x, cur_y) = if let Some(n) = current_node {
+            let (nx, ny) = n.pos();
+            let (nw, nh) = n.size();
+            (nx + nw / 2.0, ny + nh / 2.0)
+        } else {
+            (self.viewport_x, self.viewport_y)
+        };
+
+        let mut best_node = None;
+        let mut min_dist = f64::MAX;
+
+        for node in &self.data.nodes {
+            if let Some(id) = &self.selected_node_id {
+                if node.id() == id { continue; }
+            }
+
+            let (nx, ny) = node.pos();
+            let (nw, nh) = node.size();
+            let (tx, ty) = (nx + nw / 2.0, ny + nh / 2.0);
+
+            let v_x = tx - cur_x;
+            let v_y = ty - cur_y;
+
+            // Check if node is in the general direction
+            let dot = v_x * dx + v_y * dy;
+            if dot <= 0.0 { continue; }
+
+            // Weight distance by angle to favor strict directional movement
+            let dist_sq = v_x * v_x + v_y * v_y;
+            let ortho_dist = (v_x * -dy + v_y * dx).abs();
+            let score = dist_sq + ortho_dist * ortho_dist * 2.0;
+
+            if score < min_dist {
+                min_dist = score;
+                best_node = Some(node.id().to_string());
+            }
+        }
+
+        if let Some(id) = best_node {
+            self.selected_node_id = Some(id);
+        } else if self.selected_node_id.is_none() && !self.data.nodes.is_empty() {
+            self.selected_node_id = Some(self.data.nodes[0].id().to_string());
+        }
+    }
+
+    pub fn toggle_editor(&mut self) {
+        if self.floating_editor.is_some() {
+            if let Some(node_id) = &self.selected_node_id {
+                let text = self.floating_editor.as_ref().unwrap().lines().join("\n");
+                for node in &mut self.data.nodes {
+                    if node.id() == node_id {
+                        node.set_text(text);
+                        break;
+                    }
+                }
+                let _ = self.save();
+            }
+            self.floating_editor = None;
+        } else if let Some(node_id) = &self.selected_node_id {
+            if let Some(node) = self.data.nodes.iter().find(|n| n.id() == node_id) {
+                let mut textarea = TextArea::from(node.text().lines().map(String::from).collect::<Vec<_>>());
+                textarea.set_cursor_line_style(ratatui::style::Style::default());
+                self.floating_editor = Some(textarea);
+            }
+        }
+    }
+
+    pub fn open_context_menu(&mut self, x: u16, y: u16, canvas_x: f64, canvas_y: f64) {
+        let items = if let Some(id) = &self.selected_node_id {
+            let is_group = self.data.nodes.iter().any(|n| n.id() == id && matches!(n, crate::pinstar::data::CanvasNode::Group(_)));
+            let mut menu_items = Vec::new();
+            
+            if !is_group {
+                menu_items.push("Create Connection".to_string());
+            }
+            
+            menu_items.extend(vec![
+                "Rename Node".to_string(),
+                "Set Color: Default".to_string(),
+                "Set Color: Red".to_string(),
+                "Set Color: Green".to_string(),
+                "Set Color: Yellow".to_string(),
+                "Set Color: Blue".to_string(),
+                "Delete All Connections".to_string(),
+                "Delete Node".to_string(),
+            ]);
+            menu_items
+        } else {
+            vec!["Add Text Node".to_string(), "Add Group".to_string()]
+        };
+
+        self.context_menu_pos = (canvas_x, canvas_y);
+        self.context_menu = Some(PinstarContextMenu {
+            x,
+            y,
+            selected: 0,
+            items,
+        });
+    }
+
+    pub fn rename_node(&mut self, new_id: String) {
+        if let Some(old_id) = self.selected_node_id.take() {
+            if old_id == new_id || new_id.is_empty() {
+                self.selected_node_id = Some(old_id);
+                return;
+            }
+
+            // Update node ID
+            for node in &mut self.data.nodes {
+                match node {
+                    crate::pinstar::data::CanvasNode::Text(n) if n.id == old_id => n.id = new_id.clone(),
+                    crate::pinstar::data::CanvasNode::File(n) if n.id == old_id => n.id = new_id.clone(),
+                    crate::pinstar::data::CanvasNode::Link(n) if n.id == old_id => n.id = new_id.clone(),
+                    crate::pinstar::data::CanvasNode::Group(n) if n.id == old_id => n.id = new_id.clone(),
+                    _ => {}
+                }
+            }
+
+            // Update all edges referencing this ID
+            for edge in &mut self.data.edges {
+                if edge.from_node == old_id { edge.from_node = new_id.clone(); }
+                if edge.to_node == old_id { edge.to_node = new_id.clone(); }
+            }
+
+            self.selected_node_id = Some(new_id);
+            let _ = self.save();
+            self.sync_to_raw_editor();
+        }
+    }
+
+    pub fn delete_node_connections(&mut self) {
+        if let Some(id) = &self.selected_node_id {
+            let id_clone = id.clone();
+            self.data.edges.retain(|e| e.from_node != id_clone && e.to_node != id_clone);
+            let _ = self.save();
+            self.sync_to_raw_editor();
+        }
+    }
+
+    pub fn set_node_color(&mut self, color: Option<String>) {
+        if let Some(id) = &self.selected_node_id {
+            for node in &mut self.data.nodes {
+                if node.id() == id {
+                    match node {
+                        crate::pinstar::data::CanvasNode::Text(n) => n.color = color.clone(),
+                        crate::pinstar::data::CanvasNode::File(n) => n.color = color.clone(),
+                        crate::pinstar::data::CanvasNode::Link(n) => n.color = color.clone(),
+                        crate::pinstar::data::CanvasNode::Group(n) => n.color = color.clone(),
+                    }
+                    break;
+                }
+            }
+            let _ = self.save();
+            self.sync_to_raw_editor();
+        }
+    }
+
+    pub fn add_text_node(&mut self, x: f64, y: f64) {
+        let id = format!("node_{}", uuid::Uuid::new_v4().to_string()[..8].to_string());
+        self.data.nodes.push(crate::pinstar::data::CanvasNode::Text(crate::pinstar::data::TextNode {
+            id: id.clone(),
+            x,
+            y,
+            width: 200.0,
+            height: 100.0,
+            text: "New Node".to_string(),
+            color: None,
+        }));
+        self.selected_node_id = Some(id);
+        let _ = self.save();
+        self.sync_to_raw_editor();
+    }
+
+    pub fn add_group(&mut self, x: f64, y: f64) {
+        let id = format!("group_{}", uuid::Uuid::new_v4().to_string()[..8].to_string());
+        // Groups should ideally be added at the beginning of the list so they are rendered first (behind others)
+        self.data.nodes.insert(0, crate::pinstar::data::CanvasNode::Group(crate::pinstar::data::GroupNode {
+            id: id.clone(),
+            x,
+            y,
+            width: 400.0,
+            height: 300.0,
+            label: Some("New Group".to_string()),
+            color: None,
+        }));
+        self.selected_node_id = Some(id);
+        let _ = self.save();
+        self.sync_to_raw_editor();
+    }
+
+    pub fn start_connection(&mut self) {
+        if let Some(id) = &self.selected_node_id {
+            self.connection_source_id = Some(id.clone());
+            self.context_menu = None;
+        }
+    }
+
+    pub fn finish_connection(&mut self, target_id: &str) {
+        if let Some(source_id) = self.connection_source_id.take() {
+            if source_id != target_id {
+                let edge_id = format!("edge_{}_{}", source_id, target_id);
+                // Check if edge already exists
+                if !self.data.edges.iter().any(|e| e.from_node == source_id && e.to_node == target_id) {
+                    self.data.edges.push(crate::pinstar::data::CanvasEdge {
+                        id: edge_id,
+                        from_node: source_id,
+                        from_side: Some("right".to_string()),
+                        to_node: target_id.to_string(),
+                        to_side: Some("left".to_string()),
+                        label: None,
+                        color: None,
+                    });
+                    let _ = self.save();
+                    self.sync_to_raw_editor();
+                }
+            }
+        }
+    }
+
+    pub fn move_selected_node(&mut self, dx: f64, dy: f64) {
+        if let Some(id) = &self.selected_node_id {
+            for node in &mut self.data.nodes {
+                if node.id() == id {
+                    match node {
+                        crate::pinstar::data::CanvasNode::Text(n) => { n.x += dx; n.y += dy; },
+                        crate::pinstar::data::CanvasNode::File(n) => { n.x += dx; n.y += dy; },
+                        crate::pinstar::data::CanvasNode::Link(n) => { n.x += dx; n.y += dy; },
+                        crate::pinstar::data::CanvasNode::Group(n) => { n.x += dx; n.y += dy; },
+                    }
+                    break;
+                }
+            }
+            // Sync to raw editor but don't save to disk on every drag frame for performance
+            self.sync_to_raw_editor();
+        }
+    }
+}

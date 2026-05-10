@@ -9,6 +9,7 @@ pub mod graph;
 mod keybinds;
 pub mod markdown;
 pub mod palette;
+pub mod pinstar;
 pub mod sanitize;
 mod templates;
 
@@ -766,6 +767,18 @@ fn run_app(
             continue;
         }
 
+        if app.mode == ViewMode::Pinstar {
+            let note_id = app.get_selected_note_id();
+            match crate::pinstar::app::run_pinstar_view(terminal, app.storage.clone(), &app.keybinds, note_id, app.app_theme.clone()) {
+                _ => {
+                    app.close_pinstar_view();
+                }
+            }
+            app.needs_full_redraw = true;
+            terminal.clear()?;
+            continue;
+        }
+
         app.tick_status();
 
         if app.needs_full_redraw {
@@ -813,6 +826,7 @@ fn run_app(
                     }
                     ViewMode::Graph => {}
                     ViewMode::Canvas => {}
+                    ViewMode::Pinstar => {}
                 },
                 Event::Mouse(mouse_event) if app.mode == ViewMode::List => {
                     let size = terminal.size().context("failed to get terminal size")?;

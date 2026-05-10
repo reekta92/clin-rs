@@ -227,10 +227,10 @@ pub enum ListAction {
     PageDown,      
     OpenTrash,     
     TogglePreview, 
-    OpenGraph,     
-    OpenCanvas,    
-}
-
+    OpenGraph,
+    OpenCanvas,
+    CreatePinstar,
+    }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -854,6 +854,7 @@ fn parse_list_action(s: &str) -> Option<ListAction> {
         "expand_folder" => Some(ListAction::ExpandFolder),
         "open_graph" => Some(ListAction::OpenGraph),
         "open_canvas" => Some(ListAction::OpenCanvas),
+        "create_pinstar" => Some(ListAction::CreatePinstar),
         _ => None,
     }
 }
@@ -948,6 +949,7 @@ fn list_action_to_string(action: ListAction) -> &'static str {
         ListAction::TogglePreview => "toggle_preview",
         ListAction::OpenGraph => "open_graph",
         ListAction::OpenCanvas => "open_canvas",
+        ListAction::CreatePinstar => "create_pinstar",
     }
 }
 fn edit_action_to_string(action: EditAction) -> &'static str {
