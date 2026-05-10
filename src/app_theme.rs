@@ -67,7 +67,7 @@ impl AppThemeColors {
             }
         } else {
             Self {
-                accent: t.node_colors.get(0).copied().unwrap_or(Color::Cyan),
+                accent: t.node_colors.first().copied().unwrap_or(Color::Cyan),
                 heading: t.node_colors.get(3).copied().unwrap_or(Color::Yellow),
                 success: t.node_colors.get(4).copied().unwrap_or(Color::Green),
                 warning: t.node_colors.get(3).copied().unwrap_or(Color::Yellow),
@@ -80,11 +80,10 @@ impl AppThemeColors {
                 tag: t.node_colors.get(1).copied().unwrap_or(Color::LightMagenta),
                 folder: t.node_colors.get(2).copied().unwrap_or(Color::Blue),
                 highlight_fg: t.background_color.unwrap_or(Color::Black), 
-                highlight_bg: t.node_colors.get(0).copied().unwrap_or(Color::Cyan),
+                highlight_bg: t.node_colors.first().copied().unwrap_or(Color::Cyan),
             }
         };
 
-        
         if let Some(c) = config.accent.as_ref().and_then(|h| Self::parse_hex(h)) { colors.accent = c; }
         if let Some(c) = config.heading.as_ref().and_then(|h| Self::parse_hex(h)) { colors.heading = c; }
         if let Some(c) = config.success.as_ref().and_then(|h| Self::parse_hex(h)) { colors.success = c; }
@@ -101,7 +100,6 @@ impl AppThemeColors {
         colors
     }
 
-    
     pub fn bg_style(&self) -> Style {
         match self.bg {
             Some(bg) => Style::default().bg(bg),
@@ -109,16 +107,12 @@ impl AppThemeColors {
         }
     }
 
-    
     pub fn preview_bg(&self) -> Option<Color> { derive_color(self.bg, -15) }
 
-    
     pub fn title_bar_bg(&self) -> Option<Color> { derive_color(self.bg, -10) }
 
-    
     pub fn hint_line_bg(&self) -> Option<Color> { derive_color(self.bg, -8) }
 
-    
     pub fn pane_bg(&self) -> Option<Color> { self.bg }
 
     pub fn preview_bg_style(&self) -> Style {

@@ -11,8 +11,6 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 #[path = "graf/themes.rs"]
 pub mod themes;
 
-
-
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum Theme {
@@ -293,8 +291,6 @@ impl FromStr for LegendPosition {
     }
 }
 
-
-
 fn parse_hex_color(s: &str) -> Option<Color> {
     let s = s.strip_prefix('#')?;
     if s.len() == 6 {
@@ -319,8 +315,6 @@ where
             .ok_or_else(|| serde::de::Error::custom(format!("invalid hex color: {}", s))),
     }
 }
-
-
 
 #[derive(Debug, Clone, Default)]
 pub struct ColorOverrides {
@@ -427,8 +421,6 @@ impl<'de> serde::Deserialize<'de> for ColorOverrides {
         })
     }
 }
-
-// ── Graf sub-config structs ───────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VisualConfig {
@@ -583,20 +575,12 @@ impl Default for DisplayConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Default)]
 pub struct FilterConfig {
     #[serde(default)]
     pub exclude_tags: Vec<String>,
     #[serde(default)]
     pub min_links: usize,
-}
-
-impl Default for FilterConfig {
-    fn default() -> Self {
-        Self {
-            exclude_tags: Vec::new(),
-            min_links: 0,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -638,8 +622,6 @@ impl Default for SearchConfig {
         }
     }
 }
-
-// ── ThemeConfig (from old BootstrapConfig) ────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ThemeConfig {
@@ -688,11 +670,8 @@ impl Default for ThemeConfig {
     }
 }
 
-// ── ClinConfig (unified) ──────────────────────────────────────────────────────
-
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ClinConfig {
-    // Bootstrap-origin fields
     pub storage_path: Option<PathBuf>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub previous_storage_path: Option<PathBuf>,
@@ -718,7 +697,6 @@ pub struct ClinConfig {
     #[serde(default = "default_true")]
     pub show_line_numbers: bool,
 
-    // Graf-origin sub-structs
     #[serde(default)]
     pub visual: VisualConfig,
     #[serde(default)]
@@ -734,8 +712,6 @@ pub struct ClinConfig {
     #[serde(default)]
     pub search: SearchConfig,
 }
-
-// ── Default helper functions ──────────────────────────────────────────────────
 
 fn default_preview_enabled() -> bool { true }
 fn default_label_max() -> usize { 20 }
@@ -788,8 +764,6 @@ where D: Deserializer<'de> {
     s.parse::<Background>().map_err(serde::de::Error::custom)
 }
 
-
-
 pub struct ThemeColors {
     pub node_colors: Vec<Color>,
     pub edge_color: Color,
@@ -806,8 +780,6 @@ pub struct ThemeColors {
     pub minimap_viewport_color: Color,
     pub minimap_bg_color: Option<Color>,
 }
-
-
 
 impl ClinConfig {
     pub fn config_path() -> Result<PathBuf> {
@@ -830,7 +802,6 @@ impl ClinConfig {
                 fs::create_dir_all(parent).context("failed to create config directory")?;
             }
 
-            
             let proj_dirs = ProjectDirs::from("com", "clin", "clin")
                 .ok_or_else(|| anyhow::anyhow!("no home dir"))?;
             let graf_path = proj_dirs.config_dir().join("graf.toml");
@@ -838,8 +809,8 @@ impl ClinConfig {
 
             if graf_path.exists() {
                 
-                if let Ok(content) = fs::read_to_string(&graf_path) {
-                    if let Ok(graf_config) = toml::from_str::<GrafConfigOnly>(&content) {
+                if let Ok(content) = fs::read_to_string(&graf_path)
+                    && let Ok(graf_config) = toml::from_str::<GrafConfigOnly>(&content) {
                         config.visual = graf_config.visual;
                         config.physics = graf_config.physics;
                         config.interaction = graf_config.interaction;
@@ -848,7 +819,6 @@ impl ClinConfig {
                         config.legend = graf_config.legend;
                         config.search = graf_config.search;
                     }
-                }
                 let _ = fs::rename(&graf_path, graf_path.with_extension("toml.migrated"));
             }
 
@@ -1106,8 +1076,6 @@ drag_sensitivity = 1.0
     }
 }
 
-
-
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct GrafConfigOnly {
     #[serde(default)]
@@ -1125,8 +1093,6 @@ struct GrafConfigOnly {
     #[serde(default)]
     search: SearchConfig,
 }
-
-
 
 #[cfg(test)]
 mod tests {

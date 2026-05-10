@@ -1,16 +1,23 @@
-pub mod actions;
-pub mod app_theme;
-pub mod canvas;
+#![allow(dead_code)]
+
+pub(crate) mod actions;
+pub(crate) mod app_theme;
+pub(crate) mod draw;
+pub(crate) mod popups;
+pub(crate) mod editor;
+pub(crate) mod list_view;
+pub(crate) mod cli;
+pub(crate) mod migration;
 mod config;
-pub mod graf;
-pub mod constants;
-pub mod frontmatter;
-pub mod graph;
+pub(crate) mod graf;
+pub(crate) mod constants;
+pub(crate) mod frontmatter;
 mod keybinds;
-pub mod markdown;
-pub mod palette;
-pub mod pinstar;
-pub mod sanitize;
+pub(crate) mod markdown;
+pub(crate) mod palette;
+pub(crate) mod pinstar;
+pub(crate) mod sanitize;
+pub(crate) mod snapshot;
 mod templates;
 
 use crate::config::ClinConfig;
@@ -19,7 +26,7 @@ use crate::keybinds::{EditAction, HelpAction, Keybinds, ListAction};
 use std::borrow::Cow;
 use std::fs;
 use std::io::{self, Stdout, Write};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::Duration;
 use std::{env, process};
 use uuid::Uuid;
@@ -85,10 +92,8 @@ fn main() -> Result<()> {
             let storage = Storage::init()?;
             let mut app = App::new(storage)?;
 
-            
             let final_title = title.unwrap_or_else(|| "New Note".to_string());
 
-            
             let (content, tags) = if let Some(tmpl_name) = template {
                 let template_manager = app.storage.template_manager();
                 if let Ok(templates) = template_manager.list() {
@@ -125,7 +130,7 @@ fn main() -> Result<()> {
 
             let saved_id = app.storage.save_note(&id, &note)?;
 
-            app.editing_id = Some(saved_id.clone());
+            app.editor.editing_id = Some(saved_id.clone());
             app.refresh_notes()?;
             app.load_and_open_note(&saved_id);
             run_tui_session(&mut app)
@@ -159,16 +164,13 @@ fn main() -> Result<()> {
             let mut bootstrap = ClinConfig::load()?;
             let old_path = bootstrap.effective_storage_path()?;
 
-            
             if !path.is_absolute() {
                 anyhow::bail!("Storage path must be absolute: {}", path.display());
             }
 
-            
             fs::create_dir_all(&path)
                 .with_context(|| format!("failed to create directory: {}", path.display()))?;
 
-            
             if old_path.exists() && old_path != path {
                 bootstrap.set_previous_storage_path(old_path);
             }
@@ -178,7 +180,6 @@ fn main() -> Result<()> {
 
             println!("Storage path set to: {}", path.display());
 
-            
             if bootstrap.previous_storage_path.is_some() {
                 println!("\nRun 'clin --migrate-storage' to migrate your existing data.");
             }
@@ -197,7 +198,6 @@ fn main() -> Result<()> {
             let mut bootstrap = ClinConfig::load()?;
             let to = bootstrap.effective_storage_path()?;
 
-            
             let from = match bootstrap.previous_storage_path.clone() {
                 Some(path) if path.exists() && path.is_dir() => path,
                 _ => {
@@ -231,16 +231,14 @@ fn main() -> Result<()> {
             println!("  To:   {}", to.display());
             println!();
 
-            
             fs::create_dir_all(&to)
                 .with_context(|| format!("failed to create destination: {}", to.display()))?;
 
             let mut migrated_count = 0;
             let mut skipped_count = 0;
-            let mut conflict_action: Option<ConflictAction> = None;
+            let mut conflict_action: Option<migration::ConflictAction> = None;
 
-            
-            let (m, s, action) = migrate_file_with_conflict(
+            let (m, s, action) = migration::migrate_file_with_conflict(
                 &from.join("key.bin"),
                 &to.join("key.bin"),
                 "key.bin",
@@ -252,24 +250,22 @@ fn main() -> Result<()> {
                 conflict_action = action;
             }
 
-            
             let notes_src = from.join("notes");
             let notes_dst = to.join("notes");
             if notes_src.exists() && notes_src.is_dir() {
                 fs::create_dir_all(&notes_dst)?;
                 let (m, s, action) =
-                    migrate_directory_with_conflict(&notes_src, &notes_dst, conflict_action)?;
+                    migration::migrate_directory_with_conflict(&notes_src, &notes_dst, conflict_action)?;
                 migrated_count += m;
                 skipped_count += s;
                 conflict_action = action;
             }
 
-            
             let templates_src = from.join("templates");
             let templates_dst = to.join("templates");
             if templates_src.exists() && templates_src.is_dir() {
                 fs::create_dir_all(&templates_dst)?;
-                let (m, s, _) = migrate_directory_with_conflict(
+                let (m, s, _) = migration::migrate_directory_with_conflict(
                     &templates_src,
                     &templates_dst,
                     conflict_action,
@@ -278,7 +274,6 @@ fn main() -> Result<()> {
                 skipped_count += s;
             }
 
-            
             bootstrap.clear_previous_storage_path();
             bootstrap.save()?;
 
@@ -552,123 +547,6 @@ fn print_cli_help() {
     );
 }
 
-
-#[derive(Clone, Copy)]
-enum ConflictAction {
-    Skip,
-    SkipAll,
-    Overwrite,
-    OverwriteAll,
-}
-
-
-
-fn prompt_conflict_action(file_name: &str) -> Result<ConflictAction> {
-    println!("  Conflict: '{}' already exists at destination.", file_name);
-    print!("  Action? [s]kip, skip [a]ll, [o]verwrite, overwrite a[l]l: ");
-    io::stdout().flush()?;
-
-    let mut input = String::new();
-    io::stdin().read_line(&mut input)?;
-
-    match input.trim().to_lowercase().as_str() {
-        "s" | "skip" | "" => Ok(ConflictAction::Skip),
-        "a" | "skip all" => Ok(ConflictAction::SkipAll),
-        "o" | "overwrite" => Ok(ConflictAction::Overwrite),
-        "l" | "overwrite all" => Ok(ConflictAction::OverwriteAll),
-        _ => {
-            println!("  Unknown option, skipping...");
-            Ok(ConflictAction::Skip)
-        }
-    }
-}
-
-
-
-fn migrate_file_with_conflict(
-    src: &Path,
-    dst: &Path,
-    display_name: &str,
-    current_action: Option<ConflictAction>,
-) -> Result<(usize, usize, Option<ConflictAction>)> {
-    if !src.exists() {
-        return Ok((0, 0, current_action));
-    }
-
-    if dst.exists() {
-        
-        let action = match current_action {
-            Some(ConflictAction::SkipAll) => ConflictAction::SkipAll,
-            Some(ConflictAction::OverwriteAll) => ConflictAction::OverwriteAll,
-            _ => prompt_conflict_action(display_name)?,
-        };
-
-        match action {
-            ConflictAction::Skip | ConflictAction::SkipAll => {
-                println!("  Skipped: {}", display_name);
-                let new_action = if matches!(action, ConflictAction::SkipAll) {
-                    Some(ConflictAction::SkipAll)
-                } else {
-                    current_action
-                };
-                return Ok((0, 1, new_action));
-            }
-            ConflictAction::Overwrite | ConflictAction::OverwriteAll => {
-                fs::copy(src, dst).with_context(|| format!("failed to copy {}", src.display()))?;
-                println!("  Overwritten: {}", display_name);
-                let new_action = if matches!(action, ConflictAction::OverwriteAll) {
-                    Some(ConflictAction::OverwriteAll)
-                } else {
-                    current_action
-                };
-                return Ok((1, 0, new_action));
-            }
-        }
-    } else {
-        
-        fs::copy(src, dst).with_context(|| format!("failed to copy {}", src.display()))?;
-        println!("  Migrated: {}", display_name);
-        Ok((1, 0, current_action))
-    }
-}
-
-
-
-fn migrate_directory_with_conflict(
-    src: &Path,
-    dst: &Path,
-    mut current_action: Option<ConflictAction>,
-) -> Result<(usize, usize, Option<ConflictAction>)> {
-    let mut migrated = 0;
-    let mut skipped = 0;
-
-    for entry in fs::read_dir(src).with_context(|| format!("failed to read {}", src.display()))? {
-        let entry = entry?;
-        let src_path = entry.path();
-        let file_name = entry.file_name();
-        let dst_path = dst.join(&file_name);
-        let display_name = file_name.to_string_lossy().to_string();
-
-        if src_path.is_dir() {
-            fs::create_dir_all(&dst_path)
-                .with_context(|| format!("failed to create {}", dst_path.display()))?;
-            let (m, s, action) =
-                migrate_directory_with_conflict(&src_path, &dst_path, current_action)?;
-            migrated += m;
-            skipped += s;
-            current_action = action;
-        } else if src_path.is_file() {
-            let (m, s, action) =
-                migrate_file_with_conflict(&src_path, &dst_path, &display_name, current_action)?;
-            migrated += m;
-            skipped += s;
-            current_action = action;
-        }
-    }
-
-    Ok((migrated, skipped, current_action))
-}
-
 fn run_tui_session(app: &mut App) -> Result<()> {
     enable_raw_mode().context("failed to enable raw mode")?;
     let mut stdout = io::stdout();
@@ -747,8 +625,17 @@ fn run_app(
                 }
             }
 
-            
             let _ = config.save();
+            app.needs_full_redraw = true;
+            terminal.clear()?;
+            continue;
+        }
+
+        if app.mode == ViewMode::Draw {
+            let note_id = app.get_selected_note_id();
+
+            let _ = crate::draw::app::run_draw_view(terminal, app.storage.clone(), &app.keybinds, note_id, app.app_theme.clone());
+            app.close_draw_view();
             app.needs_full_redraw = true;
             terminal.clear()?;
             continue;
@@ -756,22 +643,14 @@ fn run_app(
 
         if app.mode == ViewMode::Canvas {
             let note_id = app.get_selected_note_id();
-
-            match crate::canvas::app::run_canvas_view(terminal, app.storage.clone(), &app.keybinds, note_id, app.app_theme.clone()) {
+            match crate::pinstar::app::run_pinstar_view(terminal, app.storage.clone(), &app.keybinds, note_id, app.app_theme.clone(), app.editor.external_editor_enabled, app.editor.external_editor.clone()) {
+                Ok(crate::pinstar::app::PinstarResult::HelpRequested) => {
+                    app.reload_theme();
+                    app.return_mode = Some(ViewMode::Canvas);
+                    app.open_help_page_with_tab(crate::app::HelpTab::Canvas);
+                }
                 _ => {
                     app.close_canvas_view();
-                }
-            }
-            app.needs_full_redraw = true;
-            terminal.clear()?;
-            continue;
-        }
-
-        if app.mode == ViewMode::Pinstar {
-            let note_id = app.get_selected_note_id();
-            match crate::pinstar::app::run_pinstar_view(terminal, app.storage.clone(), &app.keybinds, note_id, app.app_theme.clone(), app.external_editor_enabled, app.external_editor.clone()) {
-                _ => {
-                    app.close_pinstar_view();
                 }
             }
             app.needs_full_redraw = true;
@@ -788,14 +667,12 @@ fn run_app(
 
         terminal.draw(|frame| draw_ui(frame, app, focus))?;
 
-        let poll_timeout = if app
-            .preview_renderer
-            .as_ref()
-            .map_or(false, |r| r.is_pending())
-            || app
-                .md_preview_renderer
+        let poll_timeout = if matches!(
+            app.list.preview_content,
+            Some(crate::list_view::PreviewContent::Markdown(ref r)) if r.is_pending()
+        ) || app.editor.md_preview_renderer
                 .as_ref()
-                .map_or(false, |r| r.is_pending())
+                .is_some_and(|r| r.is_pending())
         {
             Duration::from_millis(50)
         } else {
@@ -825,8 +702,8 @@ fn run_app(
                         handle_help_keys(app, key);
                     }
                     ViewMode::Graph => {}
+                    ViewMode::Draw => {}
                     ViewMode::Canvas => {}
-                    ViewMode::Pinstar => {}
                 },
                 Event::Mouse(mouse_event) if app.mode == ViewMode::List => {
                     let size = terminal.size().context("failed to get terminal size")?;
@@ -855,8 +732,8 @@ fn run_app(
                     ) && mouse_event.row == tab_bar_y
                     {
                         
-                        let tab_names = ["Notes", "Editor", "Graph", "Canvas", "About"];
-                        let mut tab_widths: [u16; 5] = [0; 5];
+                        let tab_names = ["Notes", "Editor", "Graph", "Draw", "Pinstar", "About"];
+                        let mut tab_widths: [u16; 6] = [0; 6];
                         let mut total_width: u16 = 0;
                         for (i, name) in tab_names.iter().enumerate() {
                             
@@ -870,12 +747,12 @@ fn run_app(
                         let click_x = mouse_event.column;
                         if click_x >= start_x && click_x < start_x + total_width {
                             let mut offset = start_x;
-                            for i in 0..tab_names.len() {
-                                if click_x < offset + tab_widths[i] {
+                            for (i, tw) in tab_widths.iter().enumerate().take(tab_names.len()) {
+                                if click_x < offset + tw {
                                     app.switch_help_tab(crate::app::HelpTab::from_index(i));
                                     break;
                                 }
-                                offset += tab_widths[i] + 3;
+                                offset += tw + 3;
                             }
                         }
                     } else if mouse_event.kind == ratatui::crossterm::event::MouseEventKind::ScrollUp {
@@ -883,8 +760,7 @@ fn run_app(
                     } else if mouse_event.kind
                         == ratatui::crossterm::event::MouseEventKind::ScrollDown
                     {
-                        let max_scroll = app
-                            .help_text_cache
+                        let max_scroll = app.list.help_text_cache
                             .as_ref()
                             .map_or(0, |t| t.height().saturating_sub(5) as u16);
                         app.help_scroll = app.help_scroll.saturating_add(3).min(max_scroll);
@@ -894,12 +770,12 @@ fn run_app(
                 Event::Paste(data) if app.mode == ViewMode::Edit => match focus {
                     EditFocus::Title => {
                         let normalized = data.replace(['\r', '\n'], " ");
-                        app.title_editor.insert_str(normalized);
+                        app.editor.title_editor.insert_str(normalized);
                         app.status = Cow::Borrowed("Pasted title text");
                         app.request_editor_preview_update();
                     }
                     EditFocus::Body => {
-                        app.editor.insert_str(data);
+                        app.editor.editor.insert_str(data);
                         app.status = Cow::Borrowed("Pasted body text");
                         app.request_editor_preview_update();
                     }

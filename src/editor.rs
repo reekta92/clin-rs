@@ -1,0 +1,52 @@
+use crate::markdown::MarkdownRenderer;
+use ratatui_textarea::TextArea;
+use std::time::Instant;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EditFocus {
+    Title,
+    Body,
+    ExternalEditorToggle,
+}
+
+#[derive(Default)]
+pub struct NoteEditor {
+    pub editing_id: Option<String>,
+    pub title_editor: TextArea<'static>,
+    pub editor: TextArea<'static>,
+    pub external_editor_enabled: bool,
+    pub external_editor: Option<String>,
+    pub editor_preview_enabled: bool,
+    pub md_preview_renderer: Option<MarkdownRenderer>,
+    pub show_line_numbers: bool,
+    pub pending_editor_preview_update: bool,
+    pub last_editor_change: Option<Instant>,
+}
+
+
+impl NoteEditor {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn is_editing(&self) -> bool {
+        self.editing_id.is_some()
+    }
+
+    pub fn editor_content(&self) -> String {
+        self.editor.lines().join("\n")
+    }
+
+    pub fn title_text(&self) -> String {
+        self.title_editor.lines().join("")
+    }
+
+    pub fn reset(&mut self) {
+        self.editing_id = None;
+        self.title_editor = TextArea::default();
+        self.editor = TextArea::default();
+        self.md_preview_renderer = None;
+        self.pending_editor_preview_update = false;
+        self.last_editor_change = None;
+    }
+}

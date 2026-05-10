@@ -63,7 +63,7 @@ impl MarkdownRenderer {
         let estimated_rows = if content.is_empty() {
             1
         } else {
-            (content.lines().count() as u16).max(50).min(2000)
+            (content.lines().count() as u16).clamp(50, 2000)
         };
 
         self.scroll_offset = 0;
@@ -195,9 +195,6 @@ fn render_in_thread(
     let mut output = Vec::new();
     let mut buf = [0u8; 8192];
 
-    
-    
-    
     loop {
         if cancel_token.load(Ordering::Relaxed) {
             let _ = child.kill();
@@ -317,7 +314,6 @@ impl Widget for ScrollablePseudoTerminal<'_> {
                     let fg = convert_color(screen_cell.fgcolor());
                     let bg = match screen_cell.bgcolor() {
                         vt100::Color::Default => {
-                            
                             
                             self.theme_bg.unwrap_or(Color::Reset)
                         }

@@ -14,9 +14,6 @@ pub struct Frontmatter {
     pub links: Option<Vec<String>>,
 }
 
-
-
-
 pub fn parse(content: &str) -> (Frontmatter, &str) {
     if !content.starts_with("---\n") && !content.starts_with("---\r\n") {
         return (Frontmatter::default(), content);
@@ -37,7 +34,6 @@ pub fn parse(content: &str) -> (Frontmatter, &str) {
 
         let remaining_content = &content[content_start..];
 
-        
         if let Ok(frontmatter) = serde_yml::from_str::<Frontmatter>(frontmatter_str) {
             return (frontmatter, remaining_content);
         }
@@ -45,8 +41,6 @@ pub fn parse(content: &str) -> (Frontmatter, &str) {
 
     (Frontmatter::default(), content)
 }
-
-
 
 pub fn serialize(frontmatter: &Frontmatter, content: &str) -> String {
     if frontmatter.tags.is_empty() 
@@ -64,12 +58,6 @@ pub fn serialize(frontmatter: &Frontmatter, content: &str) -> String {
             let yaml = yaml.trim();
             let yaml = yaml.to_string();
 
-            
-            
-            
-            
-            
-            
             format!("---\n{}\n---\n{}", yaml, content)
         }
         Err(_) => content.to_string(), 

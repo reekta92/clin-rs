@@ -1,7 +1,3 @@
-pub mod input;
-pub mod physics;
-pub mod render;
-pub mod viewport;
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -23,13 +19,13 @@ pub struct GraphNodeData {
 
 pub struct GraphState {
     pub simulation: Simulation<GraphNodeData, ()>,
-    pub viewport: viewport::Viewport,
+    pub viewport: super::viewport::Viewport,
     pub selected_node: Option<NodeIndex>,
     pub dragging_node: Option<NodeIndex>,
     pub drag_target: Option<(f32, f32)>,
     pub is_settled: bool,
     pub graph_bounds: (f64, f64, f64, f64),
-    pub render_cache: Mutex<render::RenderCache>,
+    pub render_cache: Mutex<super::render::RenderCache>,
 }
 
 pub fn build_graph(storage: &Storage, config: &ClinConfig) -> anyhow::Result<ForceGraph<GraphNodeData, ()>> {
@@ -55,11 +51,10 @@ pub fn build_graph(storage: &Storage, config: &ClinConfig) -> anyhow::Result<For
         let lc = link_counts.get(&summary.id).copied().unwrap_or(0);
         if lc < min_links { continue; }
         
-        if !config.filter.exclude_tags.is_empty() {
-            if summary.tags.iter().any(|t| config.filter.exclude_tags.contains(t)) {
+        if !config.filter.exclude_tags.is_empty()
+            && summary.tags.iter().any(|t| config.filter.exclude_tags.contains(t)) {
                 continue;
             }
-        }
 
         let is_encrypted = summary.id.ends_with(".clin");
         let data = GraphNodeData {
@@ -87,14 +82,13 @@ pub fn build_graph(storage: &Storage, config: &ClinConfig) -> anyhow::Result<For
             let mut seen_targets = std::collections::HashSet::new();
             for link in links {
                 let target_lower = link.to_lowercase();
-                if let Some(&target_idx) = title_to_index.get(&target_lower) {
-                    if target_idx != source_idx
+                if let Some(&target_idx) = title_to_index.get(&target_lower)
+                    && target_idx != source_idx
                         && seen_targets.insert(target_idx)
                         && graph.edges_connecting(source_idx, target_idx).count() == 0
                     {
                         graph.add_edge(source_idx, target_idx, ());
                     }
-                }
             }
         }
     }
@@ -125,20 +119,20 @@ impl GraphState {
         let graph = build_graph(storage, config)?;
         let simulation = create_simulation(graph, config);
         let mut state = Self {
-            viewport: viewport::Viewport::default(),
+            viewport: super::viewport::Viewport::default(),
             simulation,
             selected_node: None,
             dragging_node: None,
             drag_target: None,
             is_settled: false,
             graph_bounds: (0.0, 0.0, 0.0, 0.0),
-            render_cache: Mutex::new(render::RenderCache::new()),
+            render_cache: Mutex::new(super::render::RenderCache::new()),
         };
         state.viewport = state.viewport.auto_fit_from_graph(
             state.simulation.get_graph(),
             config.interaction.auto_fit_padding,
         );
-        state.graph_bounds = render::compute_graph_bounds(state.simulation.get_graph());
+        state.graph_bounds = super::render::compute_graph_bounds(state.simulation.get_graph());
         Ok(state)
     }
 }

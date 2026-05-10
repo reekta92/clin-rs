@@ -8,9 +8,9 @@ use ratatui_textarea::*;
 pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     if let Some(mut palette) = app.command_palette.take() {
         if palette.handle_input(key) {
-            if key.code == KeyCode::Enter {
-                if let Some(selected_idx) = palette.state.selected() {
-                    if let Some(item) = palette.items.get(selected_idx) {
+            if key.code == KeyCode::Enter
+                && let Some(selected_idx) = palette.state.selected()
+                    && let Some(item) = palette.items.get(selected_idx) {
                         let action_id = item.id.clone();
                         let note_id = palette.context_note_id.clone();
                         if let Err(e) =
@@ -19,94 +19,80 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                             app.set_temporary_status(&format!("Action failed: {}", e));
                         }
                     }
-                }
-            }
             return false;
         }
         app.command_palette = Some(palette);
         return false;
     }
 
-    if let Some(mut popup) = app.note_create_popup.take() {
+    if let Some(mut popup) = app.popups.note_create.take() {
         if key.code == KeyCode::Esc {
-            app.note_create_popup = None;
+            app.popups.note_create = None;
         } else if key.code == KeyCode::Enter {
-            app.note_create_popup = Some(popup);
+            app.popups.note_create = Some(popup);
             app.confirm_create_note();
         } else {
             popup.input.input(Input::from(key));
-            app.note_create_popup = Some(popup);
+            app.popups.note_create = Some(popup);
         }
         return false;
     }
 
-    if let Some(mut popup) = app.canvas_create_popup.take() {
+    if let Some(mut popup) = app.popups.draw_create.take() {
         if key.code == KeyCode::Esc {
-            app.canvas_create_popup = None;
+            app.popups.draw_create = None;
         } else if key.code == KeyCode::Enter {
-            app.canvas_create_popup = Some(popup);
+            app.popups.draw_create = Some(popup);
+            app.confirm_create_draw();
+        } else {
+            popup.input.input(Input::from(key));
+            app.popups.draw_create = Some(popup);
+        }
+        return false;
+    }
+
+    if let Some(mut popup) = app.popups.canvas_create.take() {
+        if key.code == KeyCode::Esc {
+            app.popups.canvas_create = None;
+        } else if key.code == KeyCode::Enter {
+            app.popups.canvas_create = Some(popup);
             app.confirm_create_canvas();
         } else {
             popup.input.input(Input::from(key));
-            app.canvas_create_popup = Some(popup);
+            app.popups.canvas_create = Some(popup);
         }
         return false;
     }
 
-    if let Some(mut popup) = app.pinstar_create_popup.take() {
-        if key.code == KeyCode::Esc {
-            app.pinstar_create_popup = None;
-        } else if key.code == KeyCode::Enter {
-            app.pinstar_create_popup = Some(popup);
-            app.confirm_create_pinstar();
-        } else {
-            popup.input.input(Input::from(key));
-            app.pinstar_create_popup = Some(popup);
-        }
-        return false;
-    }
 
-    if let Some(mut popup) = app.import_canvas_popup.take() {
+    if let Some(mut popup) = app.popups.folder.take() {
         if key.code == KeyCode::Esc {
-            app.import_canvas_popup = None;
+            app.popups.folder = None;
         } else if key.code == KeyCode::Enter {
-            app.import_canvas_popup = Some(popup);
-            app.confirm_import_canvas();
-        } else {
-            popup.input.input(Input::from(key));
-            app.import_canvas_popup = Some(popup);
-        }
-        return false;
-    }
-
-    if let Some(mut popup) = app.folder_popup.take() {
-        if key.code == KeyCode::Esc {
-            app.folder_popup = None;
-        } else if key.code == KeyCode::Enter {
-            app.folder_popup = Some(popup);
+            app.popups.folder = Some(popup);
             app.confirm_folder_popup();
         } else {
             popup.input.input(Input::from(key));
-            app.folder_popup = Some(popup);
+            app.popups.folder = Some(popup);
         }
         return false;
     }
 
-    if let Some(mut popup) = app.tag_popup.take() {
+    if let Some(mut popup) = app.popups.tag.take() {
         if key.code == KeyCode::Esc {
-            app.tag_popup = None;
+            app.popups.tag = None;
         } else if key.code == KeyCode::Enter {
-            app.tag_popup = Some(popup);
+            app.popups.tag = Some(popup);
             app.confirm_manage_tags();
         } else if key.code == KeyCode::Char('D') && key.modifiers.contains(KeyModifiers::SHIFT) {
-            app.tag_popup = Some(popup);
+            app.popups.tag = Some(popup);
             app.begin_delete_tag();
         } else if key.code == KeyCode::Tab {
-            app.tag_popup = Some(popup);
+            app.popups.tag = Some(popup);
             if app
-                .tag_popup
+                .popups.tag
                 .as_ref()
-                .map_or(false, |p| !p.suggestions.is_empty())
+                .is_some_and(|p| !p.suggestions.is_empty())
             {
                 app.accept_tag_suggestion();
             } else {
@@ -114,24 +100,24 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
             }
         } else {
             popup.input.input(Input::from(key));
-            app.tag_popup = Some(popup);
+            app.popups.tag = Some(popup);
             app.update_tag_suggestions();
         }
         return false;
     }
 
-    if let Some(mut popup) = app.filter_popup.take() {
+    if let Some(mut popup) = app.popups.filter_tag.take() {
         if key.code == KeyCode::Esc {
             app.cancel_filter_tags();
         } else if key.code == KeyCode::Enter {
-            app.filter_popup = Some(popup);
+            app.popups.filter_tag = Some(popup);
             app.confirm_filter_tags();
         } else if key.code == KeyCode::Tab {
-            app.filter_popup = Some(popup);
+            app.popups.filter_tag = Some(popup);
             if app
-                .filter_popup
+                .popups.filter_tag
                 .as_ref()
-                .map_or(false, |p| !p.suggestions.is_empty())
+                .is_some_and(|p| !p.suggestions.is_empty())
             {
                 app.accept_filter_suggestion();
             } else {
@@ -139,41 +125,41 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
             }
         } else {
             popup.input.input(Input::from(key));
-            app.filter_popup = Some(popup);
+            app.popups.filter_tag = Some(popup);
             app.update_filter_suggestions();
         }
         return false;
     }
 
-    if let Some(mut popup) = app.note_rename_popup.take() {
+    if let Some(mut popup) = app.popups.note_rename.take() {
         if key.code == KeyCode::Esc {
-            app.note_rename_popup = None;
+            app.popups.note_rename = None;
         } else if key.code == KeyCode::Enter {
-            app.note_rename_popup = Some(popup);
+            app.popups.note_rename = Some(popup);
             app.confirm_rename_note();
         } else {
             popup.input.input(Input::from(key));
-            app.note_rename_popup = Some(popup);
+            app.popups.note_rename = Some(popup);
         }
         return false;
     }
 
-    if let Some(mut popup) = app.search_popup.take() {
+    if let Some(mut popup) = app.popups.search.take() {
         if key.code == KeyCode::Esc {
-            app.search_popup = Some(popup);
+            app.popups.search = Some(popup);
             app.cancel_search();
         } else if key.code == KeyCode::Enter {
-            app.search_popup = Some(popup);
+            app.popups.search = Some(popup);
             app.confirm_search();
         } else {
             popup.input.input(Input::from(key));
-            app.search_popup = Some(popup);
+            app.popups.search = Some(popup);
             app.update_search();
         }
         return false;
     }
 
-    if app.confirm_popup.is_some() {
+    if app.popups.confirm.is_some() {
         if key.code == KeyCode::Left || key.code == KeyCode::Char('h') {
             app.confirm_popup_select_confirm();
         } else if key.code == KeyCode::Right || key.code == KeyCode::Char('l') {
@@ -192,7 +178,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
-    if let Some(ref mut trash) = app.trash_view {
+    if let Some(ref mut trash) = app.popups.trash_view {
         match key.code {
             KeyCode::Up | KeyCode::Char('k') => {
                 trash.selected = trash.selected.saturating_sub(1);
@@ -219,65 +205,65 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
-    if let Some(mut picker) = app.folder_picker.take() {
+    if let Some(mut picker) = app.popups.folder_picker.take() {
         match key.code {
             KeyCode::Up | KeyCode::Char('k') => {
                 picker.selected = picker.selected.saturating_sub(1);
-                app.folder_picker = Some(picker);
+                app.popups.folder_picker = Some(picker);
             }
             KeyCode::Down | KeyCode::Char('j') => {
                 if picker.selected + 1 < picker.folders.len() {
                     picker.selected += 1;
                 }
-                app.folder_picker = Some(picker);
+                app.popups.folder_picker = Some(picker);
             }
             KeyCode::Enter | KeyCode::Char('l') => {
-                app.folder_picker = Some(picker);
+                app.popups.folder_picker = Some(picker);
                 app.confirm_move();
             }
             KeyCode::Esc | KeyCode::Char('h') => {
-                app.folder_picker = None;
+                app.popups.folder_picker = None;
             }
             _ => {
-                app.folder_picker = Some(picker);
+                app.popups.folder_picker = Some(picker);
             }
         }
         return false;
     }
 
-    if let Some(mut popup) = app.template_popup.take() {
+    if let Some(mut popup) = app.popups.template.take() {
         match key.code {
             KeyCode::Up | KeyCode::Char('k') => {
                 popup.selected = popup.selected.saturating_sub(1);
-                app.template_popup = Some(popup);
+                app.popups.template = Some(popup);
             }
             KeyCode::Down | KeyCode::Char('j') => {
                 if popup.selected + 1 < popup.templates.len() {
                     popup.selected += 1;
                 }
-                app.template_popup = Some(popup);
+                app.popups.template = Some(popup);
             }
             KeyCode::Enter | KeyCode::Char('l') => {
-                app.template_popup = Some(popup);
+                app.popups.template = Some(popup);
                 app.select_template();
             }
             KeyCode::Esc | KeyCode::Char('h') => {
                 app.close_template_popup();
             }
             _ => {
-                app.template_popup = Some(popup);
+                app.popups.template = Some(popup);
             }
         }
         return false;
     }
 
-    if let Some(mut popup) = app.theme_popup.take() {
+    if let Some(mut popup) = app.popups.theme.take() {
         match key.code {
             KeyCode::Up | KeyCode::Char('k') => {
                 match popup.focus {
                     crate::app::ThemePopupFocus::ThemeList => {
                         popup.selected = popup.selected.saturating_sub(1);
-                        app.theme_popup = Some(popup);
+                        app.popups.theme = Some(popup);
                         app.select_theme();
                         return false;
                     }
@@ -289,14 +275,14 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                         popup.focus = crate::app::ThemePopupFocus::GeneralBg;
                     }
                 }
-                app.theme_popup = Some(popup);
+                app.popups.theme = Some(popup);
             }
             KeyCode::Down | KeyCode::Char('j') => {
                 match popup.focus {
                     crate::app::ThemePopupFocus::ThemeList => {
                         if popup.selected + 1 < popup.themes.len() {
                             popup.selected += 1;
-                            app.theme_popup = Some(popup);
+                            app.popups.theme = Some(popup);
                             app.select_theme();
                             return false;
                         } else {
@@ -311,7 +297,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                         popup.selected = 0;
                     }
                 }
-                app.theme_popup = Some(popup);
+                app.popups.theme = Some(popup);
             }
             KeyCode::Tab => {
                 match popup.focus {
@@ -325,39 +311,39 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                         popup.focus = crate::app::ThemePopupFocus::ThemeList
                     }
                 }
-                app.theme_popup = Some(popup);
+                app.popups.theme = Some(popup);
             }
             KeyCode::Enter => {
                 let is_list = matches!(popup.focus, crate::app::ThemePopupFocus::ThemeList);
-                app.theme_popup = Some(popup);
+                app.popups.theme = Some(popup);
                 app.select_theme();
                 if is_list {
                     app.close_theme_popup();
                 }
             }
             KeyCode::Char('l') | KeyCode::Char(' ') => {
-                app.theme_popup = Some(popup);
+                app.popups.theme = Some(popup);
                 app.select_theme();
             }
             KeyCode::Esc | KeyCode::Char('h') => {
                 app.close_theme_popup();
             }
             _ => {
-                app.theme_popup = Some(popup);
+                app.popups.theme = Some(popup);
             }
         }
         return false;
     }
 
     if app.keybinds.matches_list(ListAction::CycleFocus, &key) {
-        app.list_focus = match app.list_focus {
+        app.list.list_focus = match app.list.list_focus {
             ListFocus::Notes => ListFocus::ExternalEditorToggle,
             ListFocus::ExternalEditorToggle => ListFocus::Notes,
         };
         return false;
     }
 
-    if app.list_focus == ListFocus::ExternalEditorToggle {
+    if app.list.list_focus == ListFocus::ExternalEditorToggle {
         if app.keybinds.matches_list(ListAction::ToggleButton, &key) {
             app.toggle_external_editor_mode();
         } else if app.keybinds.matches_list(ListAction::Quit, &key) {
@@ -382,15 +368,15 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
     if app.keybinds.matches_list(ListAction::MoveDown, &key) {
-        if app.visual_index < app.visual_list.len().saturating_sub(1) {
-            app.visual_index += 1;
+        if app.list.visual_index < app.list.visual_list.len().saturating_sub(1) {
+            app.list.visual_index += 1;
             app.request_preview_update();
         }
         return false;
     }
     if app.keybinds.matches_list(ListAction::MoveUp, &key) {
-        if app.visual_index > 0 {
-            app.visual_index -= 1;
+        if app.list.visual_index > 0 {
+            app.list.visual_index -= 1;
             app.request_preview_update();
         }
         return false;
@@ -422,7 +408,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     if app.keybinds.matches_list(ListAction::RenameFolder, &key)
         || app.keybinds.matches_list(ListAction::Rename, &key)
     {
-        if let Some(item) = app.visual_list.get(app.visual_index) {
+        if let Some(item) = app.list.visual_list.get(app.list.visual_index) {
             match item {
                 crate::app::VisualItem::Folder { .. } => app.begin_rename_folder(),
                 crate::app::VisualItem::Note { .. } => app.begin_rename_note(),
@@ -447,21 +433,14 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         .keybinds
         .matches_list(ListAction::OpenCommandPalette, &key)
     {
-        if let Some(item) = app.visual_list.get(app.visual_index) {
-            match item {
-                crate::app::VisualItem::Note { id, .. } => {
-                    app.command_palette = Some(crate::palette::CommandPalette::new(
-                        Some(id.clone()),
-                        &app.app_theme,
-                    ));
-                }
-                _ => {
-                    app.command_palette =
-                        Some(crate::palette::CommandPalette::new(None, &app.app_theme));
-                }
-            }
+        if let Some(crate::app::VisualItem::Note { id, .. }) = app.list.visual_list.get(app.list.visual_index) {
+            app.command_palette = Some(crate::palette::CommandPalette::new(
+                Some(id.clone()),
+                &app.app_theme,
+            ));
         } else {
-            app.command_palette = Some(crate::palette::CommandPalette::new(None, &app.app_theme));
+            app.command_palette =
+                Some(crate::palette::CommandPalette::new(None, &app.app_theme));
         }
         return false;
     }
@@ -507,15 +486,14 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
     if app.keybinds.matches_list(ListAction::OpenCanvas, &key) {
-        app.open_canvas_view();
+        app.open_draw_view();
         return false;
     }
 
-    if key.code == KeyCode::Char('g') {
-        if app.handle_g_press() {
+    if key.code == KeyCode::Char('g')
+        && app.handle_g_press() {
             return false;
         }
-    }
 
     false
 }
@@ -544,34 +522,34 @@ pub fn handle_help_keys(app: &mut App, key: KeyEvent) {
             KeyCode::Char('1') => app.switch_help_tab(HelpTab::Notes),
             KeyCode::Char('2') => app.switch_help_tab(HelpTab::Editor),
             KeyCode::Char('3') => app.switch_help_tab(HelpTab::Graph),
-            KeyCode::Char('4') => app.switch_help_tab(HelpTab::Canvas),
-            KeyCode::Char('5') => app.switch_help_tab(HelpTab::About),
+            KeyCode::Char('4') => app.switch_help_tab(HelpTab::Draw),
+            KeyCode::Char('5') => app.switch_help_tab(HelpTab::Canvas),
             _ => {}
         }
     }
 }
 
 pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> bool {
-    if let Some(mut menu) = app.context_menu.take() {
+    if let Some(mut menu) = app.popups.context_menu.take() {
         match key.code {
             KeyCode::Up => {
                 menu.selected = menu.selected.saturating_sub(1);
-                app.context_menu = Some(menu);
+                app.popups.context_menu = Some(menu);
             }
             KeyCode::Down => {
                 if menu.selected < 3 {
                     menu.selected += 1;
                 }
-                app.context_menu = Some(menu);
+                app.popups.context_menu = Some(menu);
             }
             KeyCode::Enter => {
                 app.handle_menu_action(menu.selected, focus);
             }
             KeyCode::Esc => {
-                app.context_menu = None;
+                app.popups.context_menu = None;
             }
             _ => {
-                app.context_menu = Some(menu);
+                app.popups.context_menu = Some(menu);
             }
         }
         return false;
@@ -613,14 +591,14 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 return false;
             }
 
-            if handle_os_shortcuts(&app.keybinds, &mut app.title_editor, key) {
+            if handle_os_shortcuts(&app.keybinds, &mut app.editor.title_editor, key) {
                 app.request_editor_preview_update();
                 return false;
             }
 
-            if app.title_editor.input(Input::from(key)) && app.title_editor.lines().len() > 1 {
-                let normalized = get_title_text(&app.title_editor).replace(['\r', '\n'], " ");
-                app.title_editor = make_title_editor(
+            if app.editor.title_editor.input(Input::from(key)) && app.editor.title_editor.lines().len() > 1 {
+                let normalized = get_title_text(&app.editor.title_editor).replace(['\r', '\n'], " ");
+                app.editor.title_editor = make_title_editor(
                     &normalized,
                     app.app_theme.highlight_fg,
                     app.app_theme.highlight_bg,
@@ -629,11 +607,11 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
             app.request_editor_preview_update();
         }
         EditFocus::Body => {
-            if handle_os_shortcuts(&app.keybinds, &mut app.editor, key) {
+            if handle_os_shortcuts(&app.keybinds, &mut app.editor.editor, key) {
                 app.request_editor_preview_update();
                 return false;
             }
-            if app.editor.input(Input::from(key)) {
+            if app.editor.editor.input(Input::from(key)) {
                 app.request_editor_preview_update();
             }
         }
@@ -648,7 +626,7 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
 }
 
 pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: Rect) {
-    if app.confirm_popup.is_some() {
+    if app.popups.confirm.is_some() {
         if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
             let popup_area = crate::ui::centered_rect(50, 30, terminal_area);
             let click_x = mouse_event.column;
@@ -687,7 +665,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         list_area.height.saturating_sub(2),
     );
 
-    if app.preview_enabled {
+    if app.list.preview_enabled {
         let main_chunks = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
@@ -699,24 +677,35 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         let preview_area = Rect::new(main_chunks[2].x, main_chunks[2].y, main_chunks[2].width, chunks[0].height);
 
         if contains_cell(preview_area, mouse_event.column, mouse_event.row) {
-            if mouse_event.kind == MouseEventKind::ScrollUp {
-                if let Some(renderer) = &mut app.preview_renderer {
-                    renderer.scroll_up(3);
+            match &mut app.list.preview_content {
+                Some(crate::list_view::PreviewContent::Markdown(renderer)) => {
+                    if mouse_event.kind == MouseEventKind::ScrollUp {
+                        renderer.scroll_up(3);
+                        return;
+                    }
+                    if mouse_event.kind == MouseEventKind::ScrollDown {
+                        renderer.scroll_down(3, preview_area.height.saturating_sub(2));
+                        return;
+                    }
                 }
-                return;
-            }
-            if mouse_event.kind == MouseEventKind::ScrollDown {
-                if let Some(renderer) = &mut app.preview_renderer {
-                    renderer.scroll_down(3, preview_area.height.saturating_sub(2));
+                Some(crate::list_view::PreviewContent::CanvasGrid(_) | crate::list_view::PreviewContent::DrawGrid(_)) => {
+                    if mouse_event.kind == MouseEventKind::ScrollUp {
+                        app.list.snapshot_scroll_offset = app.list.snapshot_scroll_offset.saturating_sub(3);
+                        return;
+                    }
+                    if mouse_event.kind == MouseEventKind::ScrollDown {
+                        app.list.snapshot_scroll_offset = app.list.snapshot_scroll_offset.saturating_add(3);
+                        return;
+                    }
                 }
-                return;
+                None => {}
             }
         }
     }
 
     if mouse_event.kind == MouseEventKind::ScrollUp {
-        let current = app.list_state.selected().unwrap_or(0);
-        app.list_state.select(Some(current.saturating_sub(1)));
+        let current = app.list.list_state.selected().unwrap_or(0);
+        app.list.list_state.select(Some(current.saturating_sub(1)));
 
         handle_list_keys(app, KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
         return;
@@ -733,13 +722,13 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
 
     if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
         let visual_row = mouse_event.row.saturating_sub(inner_list_area.y) as usize;
-        let clicked_visual_index = app.list_state.offset().saturating_add(visual_row);
+        let clicked_visual_index = app.list.list_state.offset().saturating_add(visual_row);
 
-        if clicked_visual_index < app.visual_list.len() {
-            if app.visual_index == clicked_visual_index {
+        if clicked_visual_index < app.list.visual_list.len() {
+            if app.list.visual_index == clicked_visual_index {
                 app.open_selected();
             } else {
-                app.visual_index = clicked_visual_index;
+                app.list.visual_index = clicked_visual_index;
             }
         }
     }
@@ -753,7 +742,7 @@ pub fn handle_edit_mouse(
     mouse_selecting: &mut bool,
     mouse_dragged: &mut bool,
 ) {
-    if let Some(menu) = &app.context_menu {
+    if let Some(menu) = &app.popups.context_menu {
         let menu_rect = Rect::new(menu.x, menu.y, 14, 4);
         if contains_cell(menu_rect, mouse_event.column, mouse_event.row) {
             if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
@@ -761,21 +750,21 @@ pub fn handle_edit_mouse(
                 if clicked_idx < 4 {
                     app.handle_menu_action(clicked_idx, focus);
                 }
-                app.context_menu = None;
+                app.popups.context_menu = None;
             } else if mouse_event.kind == MouseEventKind::ScrollUp {
-                let mut menu_copy = app.context_menu.take().unwrap();
+                let mut menu_copy = app.popups.context_menu.take().unwrap();
                 menu_copy.selected = menu_copy.selected.saturating_sub(1);
-                app.context_menu = Some(menu_copy);
+                app.popups.context_menu = Some(menu_copy);
             } else if mouse_event.kind == MouseEventKind::ScrollDown {
-                let mut menu_copy = app.context_menu.take().unwrap();
+                let mut menu_copy = app.popups.context_menu.take().unwrap();
                 if menu_copy.selected < 3 {
                     menu_copy.selected += 1;
                 }
-                app.context_menu = Some(menu_copy);
+                app.popups.context_menu = Some(menu_copy);
             }
             return;
         } else if matches!(mouse_event.kind, MouseEventKind::Down(_)) {
-            app.context_menu = None;
+            app.popups.context_menu = None;
             if mouse_event.kind != MouseEventKind::Down(MouseButton::Right) {
                 return;
             }
@@ -786,12 +775,12 @@ pub fn handle_edit_mouse(
 
     if mouse_event.kind == MouseEventKind::Down(MouseButton::Right) {
         let (title_inner, body_inner) =
-            edit_view_input_areas(terminal_area, app.editor_preview_enabled, app.editor.lines().len(), app.show_line_numbers);
+            edit_view_input_areas(terminal_area, app.editor.editor_preview_enabled, app.editor.editor.lines().len(), app.editor.show_line_numbers);
 
         if contains_cell(title_inner, mouse_event.column, mouse_event.row) {
             *focus = EditFocus::Title;
             move_textarea_cursor_to_mouse(
-                &mut app.title_editor,
+                &mut app.editor.title_editor,
                 title_inner,
                 mouse_event.column,
                 mouse_event.row,
@@ -799,7 +788,7 @@ pub fn handle_edit_mouse(
         } else if contains_cell(body_inner, mouse_event.column, mouse_event.row) {
             *focus = EditFocus::Body;
             move_textarea_cursor_to_mouse(
-                &mut app.editor,
+                &mut app.editor.editor,
                 body_inner,
                 mouse_event.column,
                 mouse_event.row,
@@ -808,7 +797,7 @@ pub fn handle_edit_mouse(
 
         let max_x = terminal_area.width.saturating_sub(14);
         let max_y = terminal_area.height.saturating_sub(4);
-        app.context_menu = Some(ContextMenu {
+        app.popups.context_menu = Some(ContextMenu {
             x: mouse_event.column.min(max_x),
             y: mouse_event.row.min(max_y),
             selected: 0,
@@ -817,20 +806,20 @@ pub fn handle_edit_mouse(
     }
 
     let (title_inner, body_inner) =
-        edit_view_input_areas(terminal_area, app.editor_preview_enabled, app.editor.lines().len(), app.show_line_numbers);
+        edit_view_input_areas(terminal_area, app.editor.editor_preview_enabled, app.editor.editor.lines().len(), app.editor.show_line_numbers);
 
-    if app.editor_preview_enabled {
-        if let Some(md_area) = edit_view_md_preview_area(terminal_area) {
-            if contains_cell(md_area, mouse_event.column, mouse_event.row) {
+    if app.editor.editor_preview_enabled
+        && let Some(md_area) = edit_view_md_preview_area(terminal_area)
+            && contains_cell(md_area, mouse_event.column, mouse_event.row) {
                 match mouse_event.kind {
                     MouseEventKind::ScrollUp => {
-                        if let Some(renderer) = &mut app.md_preview_renderer {
+                        if let Some(renderer) = &mut app.editor.md_preview_renderer {
                             renderer.scroll_up(3);
                         }
                         return;
                     }
                     MouseEventKind::ScrollDown => {
-                        if let Some(renderer) = &mut app.md_preview_renderer {
+                        if let Some(renderer) = &mut app.editor.md_preview_renderer {
                             renderer.scroll_down(3, md_area.height.saturating_sub(2));
                         }
                         return;
@@ -838,8 +827,6 @@ pub fn handle_edit_mouse(
                     _ => {}
                 }
             }
-        }
-    }
 
     match mouse_event.kind {
         MouseEventKind::Down(MouseButton::Left) => {
@@ -848,22 +835,22 @@ pub fn handle_edit_mouse(
             if contains_cell(body_inner, mouse_event.column, mouse_event.row) {
                 *focus = EditFocus::Body;
                 move_textarea_cursor_to_mouse(
-                    &mut app.editor,
+                    &mut app.editor.editor,
                     body_inner,
                     mouse_event.column,
                     mouse_event.row,
                 );
-                app.editor.start_selection();
+                app.editor.editor.start_selection();
                 *mouse_selecting = true;
             } else if contains_cell(title_inner, mouse_event.column, mouse_event.row) {
                 *focus = EditFocus::Title;
                 move_textarea_cursor_to_mouse(
-                    &mut app.title_editor,
+                    &mut app.editor.title_editor,
                     title_inner,
                     mouse_event.column,
                     mouse_event.row,
                 );
-                app.title_editor.start_selection();
+                app.editor.title_editor.start_selection();
                 *mouse_selecting = true;
             }
         }
@@ -872,14 +859,14 @@ pub fn handle_edit_mouse(
                 *mouse_dragged = true;
                 if *focus == EditFocus::Body {
                     move_textarea_cursor_to_mouse(
-                        &mut app.editor,
+                        &mut app.editor.editor,
                         body_inner,
                         mouse_event.column,
                         mouse_event.row,
                     );
                 } else {
                     move_textarea_cursor_to_mouse(
-                        &mut app.title_editor,
+                        &mut app.editor.title_editor,
                         title_inner,
                         mouse_event.column,
                         mouse_event.row,
@@ -890,9 +877,9 @@ pub fn handle_edit_mouse(
         MouseEventKind::Up(MouseButton::Left) => {
             if *mouse_selecting && !*mouse_dragged {
                 if *focus == EditFocus::Body {
-                    app.editor.cancel_selection();
+                    app.editor.editor.cancel_selection();
                 } else {
-                    app.title_editor.cancel_selection();
+                    app.editor.title_editor.cancel_selection();
                 }
             }
             *mouse_selecting = false;
@@ -900,12 +887,12 @@ pub fn handle_edit_mouse(
         }
         MouseEventKind::ScrollDown => {
             if *focus == EditFocus::Body {
-                app.editor.scroll((3, 0));
+                app.editor.editor.scroll((3, 0));
             }
         }
         MouseEventKind::ScrollUp => {
             if *focus == EditFocus::Body {
-                app.editor.scroll((-3, 0));
+                app.editor.editor.scroll((-3, 0));
             }
         }
         _ => {}
@@ -945,7 +932,6 @@ pub fn edit_view_input_areas(area: Rect, md_preview: bool, line_count: usize, sh
         ])
         .split(area);
 
-    
     let title_inner = Rect::new(
         chunks[0].x + 2,
         chunks[0].y + 1,
@@ -1003,7 +989,6 @@ pub fn edit_view_md_preview_area(area: Rect) -> Option<Rect> {
         ])
         .split(area);
 
-    
     let preview_area = Rect::new(content_chunks[2].x, chunks[1].y, content_chunks[2].width, chunks[1].height);
     
     Some(Rect::new(

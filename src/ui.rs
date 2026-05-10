@@ -1,6 +1,7 @@
 use crate::app::{App, ConfirmPopup, EditFocus, HelpTab, ListFocus, TemplatePopup, ThemePopup, ViewMode};
 use crate::app_theme::AppThemeColors;
 use crate::constants::*;
+use crate::list_view::PreviewContent;
 use crate::events::get_title_text;
 use crate::keybinds::*;
 use anyhow::{Context, Result};
@@ -23,11 +24,11 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         ViewMode::Edit => draw_edit_view(frame, app, focus),
         ViewMode::Help => draw_help_view(frame, app),
         ViewMode::Graph => {}
+        ViewMode::Draw => {}
         ViewMode::Canvas => {}
-        ViewMode::Pinstar => {}
     }
 
-    if let Some(popup) = &app.theme_popup {
+    if let Some(popup) = &app.popups.theme {
         draw_theme_popup(frame, popup, frame.area(), &app.app_theme);
     }
 }
@@ -43,8 +44,7 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
         ])
         .split(area);
 
-    
-    let tab_names = ["Notes", "Editor", "Graph", "Canvas", "About"];
+    let tab_names = ["Notes", "Editor", "Graph", "Draw", "Canvas", "About"];
     let mut tab_spans: Vec<Span<'static>> = Vec::new();
     for (i, name) in tab_names.iter().enumerate() {
         let tab = HelpTab::from_index(i);
@@ -74,7 +74,6 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
         .alignment(Alignment::Center);
     frame.render_widget(tab_bar, chunks[0]);
 
-    // Help content
     let help_text = app.get_help_text().clone();
     let help = Paragraph::new(help_text)
         .block(
@@ -87,7 +86,6 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
         .scroll((app.help_scroll, 0));
     frame.render_widget(help, chunks[1]);
 
-    // Hint line
     let hint = Paragraph::new(Span::styled(
         HELP_PAGE_HINTS,
         Style::default().fg(app.app_theme.muted),
@@ -104,6 +102,7 @@ pub fn help_text_for_tab(
         crate::app::HelpTab::Notes => notes_help_text(keybinds, theme),
         crate::app::HelpTab::Editor => editor_help_text(keybinds, theme),
         crate::app::HelpTab::Graph => graph_help_text(keybinds, theme),
+        crate::app::HelpTab::Draw => draw_help_text(theme),
         crate::app::HelpTab::Canvas => canvas_help_text(theme),
         crate::app::HelpTab::About => about_help_text(keybinds, theme),
     }
@@ -357,7 +356,7 @@ fn graph_help_text(
     Text::from(lines)
 }
 
-fn canvas_help_text(
+fn draw_help_text(
     theme: &crate::app_theme::AppThemeColors,
 ) -> Text<'static> {
     let mut lines = Vec::new();
@@ -429,6 +428,42 @@ fn canvas_help_text(
     lines.push(Line::from(""));
     lines.extend(help_item_dyn("Auto-saved on changes & quit", None, theme));
     lines.extend(help_item_dyn("Exit canvas view", Some("Esc"), theme));
+    Text::from(lines)
+}
+
+fn canvas_help_text(
+    theme: &crate::app_theme::AppThemeColors,
+) -> Text<'static> {
+    let mut lines = Vec::new();
+    lines.push(help_heading("Navigation", theme));
+    lines.extend(help_item_dyn("Move selection", Some("←/→/↑/↓ / h/l/k/j"), theme));
+    lines.extend(help_item_dyn("Zoom in", Some("+/="), theme));
+    lines.extend(help_item_dyn("Zoom out", Some("-/_"), theme));
+    lines.extend(help_item_dyn("Zoom in (fine)", Some("Ctrl+j"), theme));
+    lines.extend(help_item_dyn("Zoom out (fine)", Some("Ctrl+k"), theme));
+    lines.push(Line::from(""));
+    lines.push(help_heading("Editing", theme));
+    lines.extend(help_item_dyn("Open / edit selected node", Some("i / Enter"), theme));
+    lines.extend(help_item_dyn("Connect two nodes", Some("i / Enter"), theme));
+    lines.extend(help_item_dyn("Context menu", Some("a"), theme));
+    lines.push(Line::from(""));
+    lines.push(help_heading("Interface", theme));
+    lines.extend(help_item_dyn("Toggle grid", Some("Ctrl+g"), theme));
+    lines.extend(help_item_dyn("Toggle editor pane", Some("Ctrl+e"), theme));
+    lines.extend(help_item_dyn("Focus editor / ext toggle", Some("Tab"), theme));
+    lines.extend(help_item_dyn("Toggle external editor mode", Some("Space"), theme));
+    lines.push(Line::from(""));
+    lines.push(help_heading("Editor (focused)", theme));
+    lines.extend(help_item_dyn("Exit editor focus", Some("Esc / Tab"), theme));
+    lines.extend(help_item_dyn("Save raw editor changes", Some("Ctrl+s"), theme));
+    lines.push(Line::from(""));
+    lines.push(help_heading("General", theme));
+    lines.extend(help_item_dyn("Save canvas file", Some("Ctrl+s"), theme));
+    lines.extend(help_item_dyn("Cancel connection", Some("Esc"), theme));
+    lines.extend(help_item_dyn("Exit canvas view", Some("Esc"), theme));
+    lines.push(Line::from(""));
+    lines.extend(help_item_dyn("* Ctrl+Enter in editor to save", None, theme));
+    lines.extend(help_item_dyn("* Nodes auto-saved on changes", None, theme));
     Text::from(lines)
 }
 
@@ -545,7 +580,6 @@ fn about_help_text(
     Text::from(lines)
 }
 
-
 pub fn help_heading(
     title: &'static str,
     theme: &crate::app_theme::AppThemeColors,
@@ -614,7 +648,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         ])
         .split(area);
 
-    let (list_area, preview_area) = if app.preview_enabled {
+    let (list_area, preview_area) = if app.list.preview_enabled {
         let full_cols = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
@@ -630,9 +664,9 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         (chunks[0], None)
     };
 
-    let mut items: Vec<ListItem> = Vec::with_capacity(app.visual_list.len());
+    let mut items: Vec<ListItem> = Vec::with_capacity(app.list.visual_list.len());
 
-    for (vi, item) in app.visual_list.iter().enumerate() {
+    for (vi, item) in app.list.visual_list.iter().enumerate() {
         match item {
             crate::app::VisualItem::Folder {
                 path: _,
@@ -656,8 +690,8 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 summary_idx,
                 depth,
                 is_clin,
+                is_draw,
                 is_canvas,
-                is_pinstar,
                 ..
             } => {
                 let summary = &app.notes[*summary_idx];
@@ -689,7 +723,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     ));
                 }
 
-                if *is_canvas {
+                if *is_draw {
                     spans.push(Span::styled(
                         "\u{f1fc} ",
                         Style::default()
@@ -698,7 +732,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     ));
                 }
 
-                if *is_pinstar {
+                if *is_canvas {
                     spans.push(Span::styled(
                         "\u{f005} ",
                         Style::default()
@@ -720,7 +754,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     ));
                 }
 
-                if vi == app.visual_index {
+                if vi == app.list.visual_index {
                     spans.push(Span::styled(
                         format!("  ({when})"),
                         Style::default().fg(app.app_theme.muted),
@@ -753,12 +787,12 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 .add_modifier(Modifier::BOLD),
         );
 
-    app.list_state.select(Some(app.visual_index));
-    frame.render_stateful_widget(list, list_area, &mut app.list_state);
+    app.list.list_state.select(Some(app.list.visual_index));
+    frame.render_stateful_widget(list, list_area, &mut app.list.list_state);
 
     if let Some(preview_rect) = preview_area {
-        match &app.preview_renderer {
-            Some(renderer) if !renderer.is_pending() => {
+        match &app.list.preview_content {
+            Some(PreviewContent::Markdown(renderer)) if !renderer.is_pending() => {
                 let widget = crate::markdown::ScrollablePseudoTerminal::new(renderer.screen())
                     .scroll_offset(renderer.scroll_offset())
                     .theme_bg(app.app_theme.preview_bg())
@@ -770,7 +804,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     );
                 frame.render_widget(widget, preview_rect);
             }
-            Some(_) => {
+            Some(PreviewContent::Markdown(_)) => {
                 let loading = Paragraph::new("Rendering preview...")
                     .style(Style::default().fg(app.app_theme.muted))
                     .block(
@@ -780,6 +814,17 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                             .padding(Padding::new(2, 2, 1, 1)),
                     );
                 frame.render_widget(loading, preview_rect);
+            }
+            Some(PreviewContent::CanvasGrid(grid) | PreviewContent::DrawGrid(grid)) => {
+                let snapshot = crate::snapshot::RenderedSnapshot::new(grid)
+                    .scroll_offset(app.list.snapshot_scroll_offset)
+                    .block(
+                        Block::default()
+                            .style(app.app_theme.preview_bg_style())
+                            .borders(Borders::NONE)
+                            .padding(Padding::new(2, 2, 1, 1)),
+                    );
+                frame.render_widget(snapshot, preview_rect);
             }
             None => {
                 let placeholder = Paragraph::new("Select a note to preview")
@@ -795,9 +840,9 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         }
     }
 
-    draw_hint_line(frame, chunks[1], app, LIST_HELP_HINTS, app.list_focus == ListFocus::ExternalEditorToggle, true);
+    draw_hint_line(frame, chunks[1], app, LIST_HELP_HINTS, app.list.list_focus == ListFocus::ExternalEditorToggle, true);
     draw_corner_watermark(frame, chunks[1], app.app_theme.muted);
-    if app.preview_enabled {
+    if app.list.preview_enabled {
         let full_cols = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
@@ -809,17 +854,17 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         draw_dim_vline(frame, full_cols[1], app.app_theme.muted);
     }
 
-    if let Some(popup) = &app.template_popup {
+    if let Some(popup) = &app.popups.template {
         draw_template_popup(frame, popup, area, &app.app_theme);
     }
 
-    if let Some(popup) = &mut app.folder_popup {
+    if let Some(popup) = &mut app.popups.folder {
         let popup_area = centered_rect(50, 20, area);
         frame.render_widget(Clear, popup_area);
         frame.render_widget(&popup.input, popup_area);
     }
 
-    if let Some(popup) = &mut app.tag_popup {
+    if let Some(popup) = &mut app.popups.tag {
         let popup_area = centered_rect(60, 40, area);
         frame.render_widget(Clear, popup_area);
 
@@ -874,7 +919,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         frame.render_widget(tags_paragraph, chunks[2]);
     }
 
-    if let Some(popup) = &mut app.filter_popup {
+    if let Some(popup) = &mut app.popups.filter_tag {
         let popup_area = centered_rect(60, 40, area);
         frame.render_widget(Clear, popup_area);
 
@@ -928,7 +973,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         frame.render_widget(tags_paragraph, chunks[2]);
     }
 
-    if let Some(picker) = &app.folder_picker {
+    if let Some(picker) = &app.popups.folder_picker {
         let popup_area = centered_rect(40, 60, area);
         frame.render_widget(Clear, popup_area);
 
@@ -943,7 +988,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
 
         let title = match &picker.mode {
             crate::app::FolderPickerMode::MoveNote { .. } => {
-                format!("Move note to folder")
+                "Move note to folder".to_string()
             }
             crate::app::FolderPickerMode::MoveFolder { folder_path } => {
                 let folder_name = folder_path.rsplit('/').next().unwrap_or(folder_path);
@@ -1018,43 +1063,37 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         frame.render_stateful_widget(list, chunks[1], &mut palette.state);
     }
 
-    if let Some(popup) = &mut app.note_rename_popup {
+    if let Some(popup) = &mut app.popups.note_rename {
         let popup_area = centered_rect(50, 20, area);
         frame.render_widget(Clear, popup_area);
         frame.render_widget(&popup.input, popup_area);
     }
 
-    if let Some(popup) = &mut app.note_create_popup {
+    if let Some(popup) = &mut app.popups.note_create {
         let popup_area = centered_rect(50, 20, area);
         frame.render_widget(Clear, popup_area);
         frame.render_widget(&popup.input, popup_area);
     }
 
-    if let Some(popup) = &mut app.canvas_create_popup {
+    if let Some(popup) = &mut app.popups.draw_create {
         let popup_area = centered_rect(50, 20, area);
         frame.render_widget(Clear, popup_area);
         frame.render_widget(&popup.input, popup_area);
     }
 
-    if let Some(popup) = &mut app.pinstar_create_popup {
+    if let Some(popup) = &mut app.popups.canvas_create {
         let popup_area = centered_rect(50, 20, area);
         frame.render_widget(Clear, popup_area);
         frame.render_widget(&popup.input, popup_area);
     }
 
-    if let Some(popup) = &mut app.import_canvas_popup {
-        let popup_area = centered_rect(60, 20, area);
-        frame.render_widget(Clear, popup_area);
-        frame.render_widget(&popup.input, popup_area);
-    }
-
-    if let Some(popup) = &mut app.search_popup {
+    if let Some(popup) = &mut app.popups.search {
         let popup_area = centered_rect(50, 20, area);
         frame.render_widget(Clear, popup_area);
         frame.render_widget(&popup.input, popup_area);
     }
 
-    if let Some(trash) = &app.trash_view {
+    if let Some(trash) = &app.popups.trash_view {
         let popup_area = centered_rect(70, 70, area);
         frame.render_widget(Clear, popup_area);
 
@@ -1095,7 +1134,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         frame.render_stateful_widget(list, popup_area, &mut state);
     }
 
-    if let Some(popup) = &app.confirm_popup {
+    if let Some(popup) = &app.popups.confirm {
         draw_confirm_popup(frame, popup, area, &app.app_theme);
     }
 }
@@ -1194,7 +1233,6 @@ pub fn draw_theme_popup(
     state.select(Some(popup.selected));
     frame.render_stateful_widget(list, chunks[0], &mut state);
 
-    
     let gen_label = if popup.general_is_solid { "general:bg on" } else { "general:bg off" };
     let graph_label = if popup.graph_is_solid { "graph:bg on" } else { "graph:bg off" };
 
@@ -1279,7 +1317,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     let body_area = outer_chunks[0];
     let hint_area = outer_chunks[1];
 
-    let (edit_area, preview_area_rect, splitter_area) = if app.editor_preview_enabled {
+    let (edit_area, preview_area_rect, splitter_area) = if app.editor.editor_preview_enabled {
         let cols = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
@@ -1304,27 +1342,26 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     let title_area = inner_chunks[0];
     let editor_container = inner_chunks[1];
 
-    
-    app.title_editor.set_style(
+    app.editor.title_editor.set_style(
         app.app_theme.title_bar_bg_style().fg(app.app_theme.heading)
     );
-    app.title_editor.set_block(
+    app.editor.title_editor.set_block(
         Block::default()
             .style(app.app_theme.title_bar_bg_style())
             .borders(Borders::NONE)
             .padding(Padding::new(2, 1, 1, 1)),
     );
-    app.title_editor.set_cursor_style(
+    app.editor.title_editor.set_cursor_style(
         if focus == EditFocus::Title {
             Style::default().add_modifier(Modifier::REVERSED)
         } else {
             Style::default()
         },
     );
-    app.title_editor.set_cursor_line_style(Style::default());
-    frame.render_widget(&app.title_editor, title_area);
+    app.editor.title_editor.set_cursor_line_style(Style::default());
+    frame.render_widget(&app.editor.title_editor, title_area);
 
-    if get_title_text(&app.title_editor).is_empty() {
+    if get_title_text(&app.editor.title_editor).is_empty() {
         let title_inner = Rect::new(
             title_area.x + 3,
             title_area.y + 1,
@@ -1341,11 +1378,11 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     if let Some(preview_area_rect) = preview_area_rect {
         let content_area = editor_container;
 
-        let line_count = app.editor.lines().len();
-        let cursor_row = app.editor.cursor().0;
-        let scroll_row = get_textarea_scroll(&app.editor).0;
+        let line_count = app.editor.editor.lines().len();
+        let cursor_row = app.editor.editor.cursor().0;
+        let scroll_row = get_textarea_scroll(&app.editor.editor).0;
         
-        let editor_area = if app.show_line_numbers {
+        let editor_area = if app.editor.show_line_numbers {
             let digits = line_count.max(1).to_string().len() as u16;
             let gutter_width = digits + 1;
             let gutter_area = Rect::new(content_area.x, content_area.y, gutter_width.min(content_area.width), content_area.height);
@@ -1356,34 +1393,34 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             content_area
         };
 
-        app.editor.set_block(
+        app.editor.editor.set_block(
             Block::default()
                 .style(app.app_theme.bg_style())
                 .borders(Borders::NONE)
                 .padding(Padding::new(0, 2, 0, 0)),
         );
-        app.editor.set_style(app.app_theme.bg_style());
-        app.editor.set_cursor_style(
+        app.editor.editor.set_style(app.app_theme.bg_style());
+        app.editor.editor.set_cursor_style(
             if focus == EditFocus::Body {
                 Style::default().add_modifier(Modifier::REVERSED)
             } else {
                 Style::default()
             },
         );
-        app.editor.set_cursor_line_style(
+        app.editor.editor.set_cursor_line_style(
             if focus == EditFocus::Body {
                 Style::default().bg(app.app_theme.preview_bg().unwrap_or(Color::DarkGray))
             } else {
                 Style::default()
             },
         );
-        frame.render_widget(&app.editor, editor_area);
+        frame.render_widget(&app.editor.editor, editor_area);
         if focus == EditFocus::Body {
             let cursor_bg = app.app_theme.preview_bg().unwrap_or(app.app_theme.highlight_bg);
-            fill_cursor_line_bg(frame, &app.editor, editor_area, cursor_bg);
+            fill_cursor_line_bg(frame, &app.editor.editor, editor_area, cursor_bg);
         }
 
-        match &app.md_preview_renderer {
+        match &app.editor.md_preview_renderer {
             Some(renderer) if !renderer.is_pending() => {
                 let md_widget = crate::markdown::ScrollablePseudoTerminal::new(renderer.screen())
                     .scroll_offset(renderer.scroll_offset())
@@ -1420,12 +1457,12 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             }
         }
     } else {
-        let line_count = app.editor.lines().len();
-        let cursor_row = app.editor.cursor().0;
-        let scroll_row = get_textarea_scroll(&app.editor).0;
+        let line_count = app.editor.editor.lines().len();
+        let cursor_row = app.editor.editor.cursor().0;
+        let scroll_row = get_textarea_scroll(&app.editor.editor).0;
         let content_area = editor_container;
 
-        let editor_area = if app.show_line_numbers {
+        let editor_area = if app.editor.show_line_numbers {
             let digits = line_count.max(1).to_string().len() as u16;
             let gutter_width = digits + 1;
             let gutter_area = Rect::new(content_area.x, content_area.y, gutter_width.min(content_area.width), content_area.height);
@@ -1436,31 +1473,31 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             content_area
         };
 
-        app.editor.set_block(
+        app.editor.editor.set_block(
             Block::default()
                 .style(app.app_theme.bg_style())
                 .borders(Borders::NONE)
                 .padding(Padding::new(0, 2, 0, 0)),
         );
-        app.editor.set_style(app.app_theme.bg_style());
-        app.editor.set_cursor_style(
+        app.editor.editor.set_style(app.app_theme.bg_style());
+        app.editor.editor.set_cursor_style(
             if focus == EditFocus::Body {
                 Style::default().add_modifier(Modifier::REVERSED)
             } else {
                 Style::default()
             },
         );
-        app.editor.set_cursor_line_style(
+        app.editor.editor.set_cursor_line_style(
             if focus == EditFocus::Body {
                 Style::default().bg(app.app_theme.preview_bg().unwrap_or(Color::DarkGray))
             } else {
                 Style::default()
             },
         );
-        frame.render_widget(&app.editor, editor_area);
+        frame.render_widget(&app.editor.editor, editor_area);
         if focus == EditFocus::Body {
             let cursor_bg = app.app_theme.preview_bg().unwrap_or(app.app_theme.highlight_bg);
-            fill_cursor_line_bg(frame, &app.editor, editor_area, cursor_bg);
+            fill_cursor_line_bg(frame, &app.editor.editor, editor_area, cursor_bg);
         }
     }
 
@@ -1484,7 +1521,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         frame.render_widget(text, popup);
     }
 
-    if let Some(menu) = &app.context_menu {
+    if let Some(menu) = &app.popups.context_menu {
         let items = vec![
             ListItem::new(" Copy       "),
             ListItem::new(" Cut        "),
@@ -1649,9 +1686,6 @@ pub fn draw_confirm_popup(
     frame.render_widget(buttons_para, chunks[3]);
 }
 
-
-
-
 fn draw_dim_vline(frame: &mut Frame, area: Rect, color: Color) {
     let buf = frame.buffer_mut();
     for row in area.top()..area.bottom() {
@@ -1673,10 +1707,10 @@ fn draw_hint_line(frame: &mut Frame, area: Rect, app: &App, hints: &str, ext_foc
     let mut spans: Vec<Span> = Vec::new();
 
     if show_ext {
-        let ext_label = if app.external_editor_enabled { "ext:on" } else { "ext:off" };
+        let ext_label = if app.editor.external_editor_enabled { "ext:on" } else { "ext:off" };
         let ext_style = if ext_focused {
             Style::default().fg(app.app_theme.highlight_fg).bg(app.app_theme.heading).add_modifier(Modifier::BOLD)
-        } else if app.external_editor_enabled {
+        } else if app.editor.external_editor_enabled {
             Style::default().fg(app.app_theme.success).add_modifier(Modifier::BOLD)
         } else {
             Style::default().fg(app.app_theme.muted)
@@ -1703,7 +1737,6 @@ fn draw_corner_watermark(frame: &mut Frame, area: Rect, color: Color) {
         .style(Style::default().fg(color));
     frame.render_widget(para, wm_area);
 }
-
 
 pub fn fill_cursor_line_bg(frame: &mut Frame, editor: &TextArea, area: Rect, bg: Color) {
     if editor.selection_range().is_some() {

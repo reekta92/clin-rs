@@ -1,6 +1,6 @@
 use std::sync::{mpsc, Arc, RwLock};
 
-use super::GraphState;
+use super::graph::GraphState;
 use crate::config::ClinConfig;
 
 pub fn start_physics(
@@ -28,8 +28,6 @@ pub fn start_physics(
                 let mut guard = state.write().unwrap_or_else(|e| e.into_inner());
                 guard.simulation.update(timestep as f32);
 
-                
-                
                 if let Some((tx, ty)) = guard.drag_target
                     && let Some(idx) = guard.dragging_node {
                         let graph = guard.simulation.get_graph_mut();
@@ -55,11 +53,9 @@ pub fn start_physics(
                     guard.is_settled = true;
                 }
 
-                
                 super::render::compute_graph_bounds(guard.simulation.get_graph())
             }; 
 
-            
             {
                 let mut guard = state.write().unwrap_or_else(|e| e.into_inner());
                 guard.graph_bounds = new_bounds;
@@ -73,4 +69,3 @@ pub fn start_physics(
         std::thread::sleep(std::time::Duration::from_millis(sleep_ms));
     });
 }
-

@@ -1,14 +1,14 @@
-use crate::canvas::app::{CanvasAppState, EventAction};
-use crate::canvas::state::{CanvasElement, CanvasTool, Shape, ShapeType, Stroke, Text};
+use crate::draw::app::{DrawAppState, DrawEventAction};
+use crate::draw::state::{DrawElement, DrawTool, Shape, DrawShapeType, Stroke, Text};
 use crate::keybinds::Keybinds;
 use crossterm::event::{Event, KeyCode, KeyEvent, MouseButton, MouseEvent, MouseEventKind};
 use ratatui_textarea::TextArea;
 
 pub fn handle_event(
     ev: Event,
-    app: &mut CanvasAppState,
+    app: &mut DrawAppState,
     _keybinds: &Keybinds,
-) -> anyhow::Result<Option<EventAction>> {
+) -> anyhow::Result<Option<DrawEventAction>> {
     if let Some((idx, textarea)) = &mut app.text_editor {
         match ev {
             Event::Key(KeyEvent {
@@ -22,11 +22,11 @@ pub fn handle_event(
                 ..
             }) => {
                 let new_content = textarea.lines()[0].clone();
-                if let Some(CanvasElement::Text(t)) = app.data.elements.get_mut(*idx) {
+                if let Some(DrawElement::Text(t)) = app.data.elements.get_mut(*idx) {
                     t.content = new_content;
                 }
                 app.text_editor = None;
-                return Ok(Some(EventAction::Save));
+                return Ok(Some(DrawEventAction::Save));
             }
             _ => {
                 textarea.input(ev);
@@ -48,7 +48,7 @@ pub fn handle_event(
                 ..
             }) => {
                 app.show_shape_selector = false;
-                app.active_tool = CanvasTool::Shape;
+                app.active_tool = DrawTool::Shape;
                 return Ok(None);
             }
             Event::Key(KeyEvent {
@@ -71,12 +71,12 @@ pub fn handle_event(
     match ev {
         Event::Key(KeyEvent {
             code: KeyCode::Esc, ..
-        }) => Ok(Some(EventAction::Quit)),
+        }) => Ok(Some(DrawEventAction::Quit)),
         Event::Key(KeyEvent {
             code: KeyCode::Char('d'),
             ..
         }) => {
-            app.active_tool = CanvasTool::Draw;
+            app.active_tool = DrawTool::Draw;
             Ok(None)
         }
         Event::Key(KeyEvent {
@@ -90,14 +90,14 @@ pub fn handle_event(
             code: KeyCode::Char('t'),
             ..
         }) => {
-            app.active_tool = CanvasTool::Text;
+            app.active_tool = DrawTool::Text;
             Ok(None)
         }
         Event::Key(KeyEvent {
             code: KeyCode::Char('e'),
             ..
         }) => {
-            app.active_tool = CanvasTool::Erase;
+            app.active_tool = DrawTool::Erase;
             Ok(None)
         }
         Event::Mouse(mouse_event) => handle_mouse(mouse_event, app),
@@ -105,13 +105,13 @@ pub fn handle_event(
     }
 }
 
-fn cycle_shape_type(app: &mut CanvasAppState, delta: i32) {
+fn cycle_shape_type(app: &mut DrawAppState, delta: i32) {
     let shapes = [
-        ShapeType::Rect,
-        ShapeType::Ellipse,
-        ShapeType::Diamond,
-        ShapeType::Line,
-        ShapeType::Arrow,
+        DrawShapeType::Rect,
+        DrawShapeType::Ellipse,
+        DrawShapeType::Diamond,
+        DrawShapeType::Line,
+        DrawShapeType::Arrow,
     ];
     let current_idx = shapes
         .iter()
@@ -121,7 +121,7 @@ fn cycle_shape_type(app: &mut CanvasAppState, delta: i32) {
     app.active_shape_type = shapes[next_idx];
 }
 
-fn handle_mouse(ev: MouseEvent, app: &mut CanvasAppState) -> anyhow::Result<Option<EventAction>> {
+fn handle_mouse(ev: MouseEvent, app: &mut DrawAppState) -> anyhow::Result<Option<DrawEventAction>> {
     let area = app.last_area;
 
     if app.show_shape_selector {
@@ -138,15 +138,15 @@ fn handle_mouse(ev: MouseEvent, app: &mut CanvasAppState) -> anyhow::Result<Opti
             {
                 let row_rel = (ev.row - py - 1) as usize;
                 let shapes = [
-                    ShapeType::Rect,
-                    ShapeType::Ellipse,
-                    ShapeType::Diamond,
-                    ShapeType::Line,
-                    ShapeType::Arrow,
+                    DrawShapeType::Rect,
+                    DrawShapeType::Ellipse,
+                    DrawShapeType::Diamond,
+                    DrawShapeType::Line,
+                    DrawShapeType::Arrow,
                 ];
                 if let Some(&st) = shapes.get(row_rel) {
                     app.active_shape_type = st;
-                    app.active_tool = CanvasTool::Shape;
+                    app.active_tool = DrawTool::Shape;
                     app.show_shape_selector = false;
                     return Ok(None);
                 }
@@ -166,13 +166,13 @@ fn handle_mouse(ev: MouseEvent, app: &mut CanvasAppState) -> anyhow::Result<Opti
             if ev.row == ty && ev.column >= tx && ev.column < tx + toolbar_width {
                 let col_rel = ev.column - tx;
                 if col_rel < 10 {
-                    app.active_tool = CanvasTool::Draw;
+                    app.active_tool = DrawTool::Draw;
                 } else if col_rel < 21 {
                     app.show_shape_selector = true;
                 } else if col_rel < 32 {
-                    app.active_tool = CanvasTool::Text;
+                    app.active_tool = DrawTool::Text;
                 } else {
-                    app.active_tool = CanvasTool::Erase;
+                    app.active_tool = DrawTool::Erase;
                 }
                 return Ok(None);
             }
@@ -180,25 +180,25 @@ fn handle_mouse(ev: MouseEvent, app: &mut CanvasAppState) -> anyhow::Result<Opti
             let (cx, cy) = screen_to_canvas(ev.column, ev.row, app);
 
             match app.active_tool {
-                CanvasTool::Draw => {
+                DrawTool::Draw => {
                     app.current_stroke = Some(Stroke {
                         points: vec![(cx, cy)],
                         color: (255, 255, 255),
                     });
                 }
-                CanvasTool::Shape => {
+                DrawTool::Shape => {
                     app.creation_origin = Some((cx, cy));
                 }
-                CanvasTool::Text => {
-                    app.data.elements.push(CanvasElement::Text(Text {
+                DrawTool::Text => {
+                    app.data.elements.push(DrawElement::Text(Text {
                         content: "New Text".to_string(),
                         x: cx,
                         y: cy,
                         color: (255, 255, 255),
                     }));
-                    return Ok(Some(EventAction::Save));
+                    return Ok(Some(DrawEventAction::Save));
                 }
-                CanvasTool::Erase => {
+                DrawTool::Erase => {
                     erase_at(cx, cy, app);
                 }
             }
@@ -206,13 +206,12 @@ fn handle_mouse(ev: MouseEvent, app: &mut CanvasAppState) -> anyhow::Result<Opti
         MouseEventKind::Down(MouseButton::Right) => {
             let (cx, cy) = screen_to_canvas(ev.column, ev.row, app);
 
-            if let Some(idx) = find_text_at(cx, cy, app) {
-                if let Some(CanvasElement::Text(t)) = app.data.elements.get(idx) {
+            if let Some(idx) = find_text_at(cx, cy, app)
+                && let Some(DrawElement::Text(t)) = app.data.elements.get(idx) {
                     let textarea = TextArea::new(vec![t.content.clone()]);
                     app.text_editor = Some((idx, textarea));
                     return Ok(None);
                 }
-            }
 
             app.last_mouse_pos = Some((ev.column, ev.row));
         }
@@ -222,21 +221,21 @@ fn handle_mouse(ev: MouseEvent, app: &mut CanvasAppState) -> anyhow::Result<Opti
         MouseEventKind::Drag(MouseButton::Left) => {
             let (cx, cy) = screen_to_canvas(ev.column, ev.row, app);
             match app.active_tool {
-                CanvasTool::Draw => {
+                DrawTool::Draw => {
                     if let Some(stroke) = &mut app.current_stroke {
                         stroke.points.push((cx, cy));
                     }
                 }
-                CanvasTool::Erase => {
+                DrawTool::Erase => {
                     erase_at(cx, cy, app);
                 }
-                CanvasTool::Shape => {
+                DrawTool::Shape => {
                     if let Some((ox, oy)) = app.creation_origin {
                         app.preview_element =
                             Some(create_shape(ox, oy, cx, cy, app.active_shape_type));
                     }
                 }
-                CanvasTool::Text => {}
+                DrawTool::Text => {}
             }
         }
         MouseEventKind::Drag(MouseButton::Right) | MouseEventKind::Drag(MouseButton::Middle) => {
@@ -245,19 +244,19 @@ fn handle_mouse(ev: MouseEvent, app: &mut CanvasAppState) -> anyhow::Result<Opti
         MouseEventKind::Up(MouseButton::Left) => {
             let mut changed = false;
             if let Some(stroke) = app.current_stroke.take() {
-                app.data.elements.push(CanvasElement::Stroke(stroke));
+                app.data.elements.push(DrawElement::Stroke(stroke));
                 changed = true;
             }
             if let Some(element) = app.preview_element.take() {
                 app.data.elements.push(element);
                 changed = true;
             }
-            if app.active_tool == CanvasTool::Erase {
+            if app.active_tool == DrawTool::Erase {
                 changed = true;
             }
             app.creation_origin = None;
             if changed {
-                return Ok(Some(EventAction::Save));
+                return Ok(Some(DrawEventAction::Save));
             }
         }
         MouseEventKind::Up(_) => {
@@ -275,38 +274,38 @@ fn handle_mouse(ev: MouseEvent, app: &mut CanvasAppState) -> anyhow::Result<Opti
     Ok(None)
 }
 
-fn create_shape(ox: f64, oy: f64, cx: f64, cy: f64, st: ShapeType) -> CanvasElement {
+fn create_shape(ox: f64, oy: f64, cx: f64, cy: f64, st: DrawShapeType) -> DrawElement {
     let color = (255, 255, 255);
     match st {
-        ShapeType::Rect => CanvasElement::Shape(Shape::Rect {
+        DrawShapeType::Rect => DrawElement::Shape(Shape::Rect {
             x: ox.min(cx),
             y: oy.min(cy),
             width: (ox - cx).abs(),
             height: (oy - cy).abs(),
             color,
         }),
-        ShapeType::Ellipse => CanvasElement::Shape(Shape::Ellipse {
+        DrawShapeType::Ellipse => DrawElement::Shape(Shape::Ellipse {
             x: ox.min(cx),
             y: oy.min(cy),
             width: (ox - cx).abs(),
             height: (oy - cy).abs(),
             color,
         }),
-        ShapeType::Diamond => CanvasElement::Shape(Shape::Diamond {
+        DrawShapeType::Diamond => DrawElement::Shape(Shape::Diamond {
             x: ox.min(cx),
             y: oy.min(cy),
             width: (ox - cx).abs(),
             height: (oy - cy).abs(),
             color,
         }),
-        ShapeType::Line => CanvasElement::Shape(Shape::Line {
+        DrawShapeType::Line => DrawElement::Shape(Shape::Line {
             x1: ox,
             y1: oy,
             x2: cx,
             y2: cy,
             color,
         }),
-        ShapeType::Arrow => CanvasElement::Shape(Shape::Arrow {
+        DrawShapeType::Arrow => DrawElement::Shape(Shape::Arrow {
             x1: ox,
             y1: oy,
             x2: cx,
@@ -316,19 +315,18 @@ fn create_shape(ox: f64, oy: f64, cx: f64, cy: f64, st: ShapeType) -> CanvasElem
     }
 }
 
-fn find_text_at(cx: f64, cy: f64, app: &CanvasAppState) -> Option<usize> {
+fn find_text_at(cx: f64, cy: f64, app: &DrawAppState) -> Option<usize> {
     let threshold = 5.0 / app.viewport.zoom;
     for (i, el) in app.data.elements.iter().enumerate() {
-        if let CanvasElement::Text(t) = el {
-            if ((t.x - cx).powi(2) + (t.y - cy).powi(2)).sqrt() < threshold * 2.0 {
+        if let DrawElement::Text(t) = el
+            && ((t.x - cx).powi(2) + (t.y - cy).powi(2)).sqrt() < threshold * 2.0 {
                 return Some(i);
             }
-        }
     }
     None
 }
 
-fn panning(col: u16, row: u16, app: &mut CanvasAppState) {
+fn panning(col: u16, row: u16, app: &mut DrawAppState) {
     if let Some((last_col, last_row)) = app.last_mouse_pos {
         let dx = col as f64 - last_col as f64;
         let dy = row as f64 - last_row as f64;
@@ -346,15 +344,15 @@ fn panning(col: u16, row: u16, app: &mut CanvasAppState) {
     }
 }
 
-fn erase_at(cx: f64, cy: f64, app: &mut CanvasAppState) {
+fn erase_at(cx: f64, cy: f64, app: &mut DrawAppState) {
     let threshold = 5.0 / app.viewport.zoom;
     app.data.elements.retain(|el| {
         match el {
-            CanvasElement::Stroke(s) => !s
+            DrawElement::Stroke(s) => !s
                 .points
                 .iter()
                 .any(|(px, py)| ((px - cx).powi(2) + (py - cy).powi(2)).sqrt() < threshold),
-            CanvasElement::Shape(s) => {
+            DrawElement::Shape(s) => {
                 match s {
                     Shape::Rect {
                         x,
@@ -402,14 +400,14 @@ fn erase_at(cx: f64, cy: f64, app: &mut CanvasAppState) {
                     }
                 }
             }
-            CanvasElement::Text(t) => {
+            DrawElement::Text(t) => {
                 ((t.x - cx).powi(2) + (t.y - cy).powi(2)).sqrt() >= threshold * 2.0
             }
         }
     });
 }
 
-fn screen_to_canvas(col: u16, row: u16, app: &CanvasAppState) -> (f64, f64) {
+fn screen_to_canvas(col: u16, row: u16, app: &DrawAppState) -> (f64, f64) {
     let area = app.last_area;
     if area.width == 0 || area.height == 0 {
         return (0.0, 0.0);

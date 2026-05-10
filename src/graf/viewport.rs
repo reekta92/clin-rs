@@ -2,7 +2,7 @@ use ratatui::layout::Rect;
 
 use fdg_sim::petgraph::graph::NodeIndex;
 
-use super::GraphState;
+use super::graph::GraphState;
 
 pub const CELL_ASPECT: f64 = 0.5;
 
@@ -27,7 +27,6 @@ impl Default for Viewport {
 
 impl Viewport {
     
-    
     pub fn x_bounds(&self, _aspect: f64) -> [f64; 2] {
         let half_w = 100.0 / self.zoom;
         [self.center_x - half_w, self.center_x + half_w]
@@ -50,7 +49,7 @@ impl Viewport {
 
     pub fn auto_fit_from_graph(
         &self,
-        graph: &fdg_sim::ForceGraph<super::GraphNodeData, ()>,
+        graph: &fdg_sim::ForceGraph<super::graph::GraphNodeData, ()>,
         auto_fit_padding: f64,
     ) -> Viewport {
         let mut vp = self.clone();

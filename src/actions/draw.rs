@@ -3,23 +3,23 @@ use crate::app::App;
 use anyhow::Result;
 use std::borrow::Cow;
 
-pub struct CreateCanvasAction;
+pub struct CreateDrawAction;
 
-impl Action for CreateCanvasAction {
+impl Action for CreateDrawAction {
     fn id(&self) -> Cow<'static, str> {
-        Cow::Borrowed("canvas.create")
+        Cow::Borrowed("draw.create")
     }
 
     fn name(&self) -> Cow<'static, str> {
-        Cow::Borrowed("Create Canvas")
+        Cow::Borrowed("Create Drawing")
     }
 
     fn description(&self) -> Cow<'static, str> {
-        Cow::Borrowed("Create a new drawable canvas file")
+        Cow::Borrowed("Create a new drawing file")
     }
 
     fn execute(&self, app: &mut App, _context_note_id: Option<&str>) -> Result<()> {
-        app.begin_create_canvas();
+        app.begin_create_draw();
         Ok(())
     }
 }

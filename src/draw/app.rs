@@ -1,12 +1,12 @@
-use crate::canvas::input::handle_event;
-use crate::canvas::render::draw_canvas;
-use crate::canvas::state::{CanvasData, Viewport};
+use crate::draw::input::handle_event;
+use crate::draw::render::draw_canvas;
+use crate::draw::state::{DrawData, Viewport};
 use crate::keybinds::Keybinds;
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 use std::io::Stdout;
 
-pub enum EventAction {
+pub enum DrawEventAction {
     Quit,
     Save,
 }
@@ -16,41 +16,39 @@ use ratatui::layout::Rect;
 use ratatui_textarea::TextArea;
 use std::time::Instant;
 
-pub struct CanvasAppState {
-    pub data: CanvasData,
+pub struct DrawAppState {
+    pub data: DrawData,
     pub viewport: Viewport,
     pub storage: crate::storage::Storage,
     pub current_file: Option<String>,
     pub running: bool,
-    pub active_tool: crate::canvas::state::CanvasTool,
-    pub current_stroke: Option<crate::canvas::state::Stroke>,
+    pub active_tool: crate::draw::state::DrawTool,
+    pub current_stroke: Option<crate::draw::state::Stroke>,
     pub last_area: Rect,
     pub last_mouse_pos: Option<(u16, u16)>,
     pub text_editor: Option<(usize, TextArea<'static>)>,
     pub last_click: Option<(u16, u16, Instant)>,
     pub theme: crate::app_theme::AppThemeColors,
-    pub active_shape_type: crate::canvas::state::ShapeType,
+    pub active_shape_type: crate::draw::state::DrawShapeType,
     pub show_shape_selector: bool,
     pub creation_origin: Option<(f64, f64)>,
-    pub preview_element: Option<crate::canvas::state::CanvasElement>,
+    pub preview_element: Option<crate::draw::state::DrawElement>,
 }
 
-impl CanvasAppState {
+impl DrawAppState {
     pub fn new(
         storage: crate::storage::Storage,
         file_id: Option<String>,
         theme: crate::app_theme::AppThemeColors,
     ) -> Self {
-        let mut data = CanvasData::default();
+        let mut data = DrawData::default();
         if let Some(id) = &file_id {
             let path = storage.note_path(id);
-            if path.exists() {
-                if let Ok(content) = std::fs::read_to_string(path) {
-                    if let Ok(loaded_data) = serde_json::from_str(&content) {
+            if path.exists()
+                && let Ok(content) = std::fs::read_to_string(path)
+                    && let Ok(loaded_data) = serde_json::from_str(&content) {
                         data = loaded_data;
                     }
-                }
-            }
         }
 
         Self {
@@ -59,21 +57,21 @@ impl CanvasAppState {
             storage,
             current_file: file_id,
             running: true,
-            active_tool: crate::canvas::state::CanvasTool::Draw,
+            active_tool: crate::draw::state::DrawTool::Draw,
             current_stroke: None,
             last_area: Rect::default(),
             last_mouse_pos: None,
             text_editor: None,
             last_click: None,
             theme,
-            active_shape_type: crate::canvas::state::ShapeType::Rect,
+            active_shape_type: crate::draw::state::DrawShapeType::Rect,
             show_shape_selector: false,
             creation_origin: None,
             preview_element: None,
         }
     }
 
-    pub fn save_canvas(&self) -> anyhow::Result<()> {
+    pub fn save_draw(&self) -> anyhow::Result<()> {
         if let Some(id) = &self.current_file {
             let path = self.storage.note_path(id);
             let content = serde_json::to_string(&self.data)?;
@@ -83,14 +81,14 @@ impl CanvasAppState {
     }
 }
 
-pub fn run_canvas_view(
+pub fn run_draw_view(
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
     storage: crate::storage::Storage,
     keybinds: &Keybinds,
     file_id: Option<String>,
     theme: crate::app_theme::AppThemeColors,
 ) -> anyhow::Result<Option<String>> {
-    let mut app_state = CanvasAppState::new(storage, file_id, theme);
+    let mut app_state = DrawAppState::new(storage, file_id, theme);
 
     while app_state.running {
         terminal.draw(|frame| {
@@ -103,12 +101,12 @@ pub fn run_canvas_view(
                 let ev = crossterm::event::read()?;
                 if let Some(action) = handle_event(ev, &mut app_state, keybinds)? {
                     match action {
-                        EventAction::Quit => {
+                        DrawEventAction::Quit => {
                             app_state.running = false;
                         }
-                        EventAction::Save => {
+                        DrawEventAction::Save => {
                             
-                            app_state.save_canvas()?;
+                            app_state.save_draw()?;
                         }
                     }
                 }
@@ -122,6 +120,6 @@ pub fn run_canvas_view(
         }
     }
 
-    app_state.save_canvas()?;
+    app_state.save_draw()?;
     Ok(None)
 }

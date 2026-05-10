@@ -5,12 +5,11 @@ use ratatui::symbols::Marker;
 use ratatui::style::{Color, Style, Modifier};
 use ratatui::layout::{Rect, Alignment};
 use ratatui::text::{Span, Line as TuiLine};
-use crate::canvas::app::CanvasAppState;
-use crate::canvas::state::{CanvasElement, Stroke, CanvasTool, Shape, ShapeType};
+use crate::draw::app::DrawAppState;
+use crate::draw::state::{DrawElement, Stroke, DrawTool, Shape, DrawShapeType};
 
-pub fn draw_canvas(frame: &mut Frame, app: &CanvasAppState) {
+pub fn draw_canvas(frame: &mut Frame, app: &DrawAppState) {
     let area = frame.area();
-    
     
     let x_bounds = [
         app.viewport.x - 100.0 / app.viewport.zoom,
@@ -32,13 +31,13 @@ pub fn draw_canvas(frame: &mut Frame, app: &CanvasAppState) {
             
             for element in &app.data.elements {
                 match element {
-                    CanvasElement::Stroke(stroke) => {
+                    DrawElement::Stroke(stroke) => {
                         draw_stroke(ctx, stroke);
                     }
-                    CanvasElement::Shape(shape) => {
+                    DrawElement::Shape(shape) => {
                         draw_shape(ctx, shape);
                     }
-                    CanvasElement::Text(text) => {
+                    DrawElement::Text(text) => {
                         let content = text.content.clone();
                         let color = Color::Rgb(text.color.0, text.color.1, text.color.2);
                         ctx.print(
@@ -52,25 +51,17 @@ pub fn draw_canvas(frame: &mut Frame, app: &CanvasAppState) {
                 }
             }
 
-            
             if let Some(stroke) = &app.current_stroke {
                 draw_stroke(ctx, stroke);
             }
 
-            
-            if let Some(element) = &app.preview_element {
-                match element {
-                    CanvasElement::Shape(shape) => {
-                        draw_shape(ctx, shape);
-                    }
-                    _ => {}
-                }
+            if let Some(DrawElement::Shape(shape)) = &app.preview_element {
+                draw_shape(ctx, shape);
             }
         });
 
     frame.render_widget(canvas, area);
 
-    
     let toolbar_width = 42;
     let toolbar_area = Rect::new(
         area.width.saturating_sub(toolbar_width) / 2,
@@ -80,10 +71,10 @@ pub fn draw_canvas(frame: &mut Frame, app: &CanvasAppState) {
     );
     
     let tools = [
-        (CanvasTool::Draw, "\u{f040} Draw"),
-        (CanvasTool::Shape, "\u{f0c8} Shape"),
-        (CanvasTool::Text, "\u{f031} Text"),
-        (CanvasTool::Erase, "\u{f1f8} Erase"),
+        (DrawTool::Draw, "\u{f040} Draw"),
+        (DrawTool::Shape, "\u{f0c8} Shape"),
+        (DrawTool::Text, "\u{f031} Text"),
+        (DrawTool::Erase, "\u{f1f8} Erase"),
     ];
     
     let mut spans = Vec::new();
@@ -105,7 +96,6 @@ pub fn draw_canvas(frame: &mut Frame, app: &CanvasAppState) {
         toolbar_area,
     );
 
-    
     if app.show_shape_selector {
         let popup_width = 20;
         let popup_height = 7;
@@ -117,11 +107,11 @@ pub fn draw_canvas(frame: &mut Frame, app: &CanvasAppState) {
         );
         
         let shapes = [
-            (ShapeType::Rect, "Rect"),
-            (ShapeType::Ellipse, "Ellipse"),
-            (ShapeType::Diamond, "Diamond"),
-            (ShapeType::Line, "Line"),
-            (ShapeType::Arrow, "Arrow"),
+            (DrawShapeType::Rect, "Rect"),
+            (DrawShapeType::Ellipse, "Ellipse"),
+            (DrawShapeType::Diamond, "Diamond"),
+            (DrawShapeType::Line, "Line"),
+            (DrawShapeType::Arrow, "Arrow"),
         ];
         
         let items: Vec<ListItem> = shapes.iter().map(|(st, name)| {
@@ -143,7 +133,6 @@ pub fn draw_canvas(frame: &mut Frame, app: &CanvasAppState) {
         frame.render_widget(list, popup_area);
     }
 
-    
     if let Some((_, textarea)) = &app.text_editor {
         let popup_area = Rect::new(
             area.width / 4,
@@ -238,7 +227,6 @@ fn draw_shape(ctx: &mut Context, shape: &Shape) {
                 x2: *x2, y2: *y2,
                 color,
             });
-            
             
             let angle = (y2 - y1).atan2(x2 - x1);
             let head_len = 5.0;

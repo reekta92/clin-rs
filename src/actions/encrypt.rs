@@ -22,8 +22,8 @@ impl Action for EncryptNoteAction {
         let note_id = context_note_id
             .map(|s| s.to_string())
             .or_else(|| {
-                app.visual_list
-                    .get(app.visual_index)
+                app.list.visual_list
+                    .get(app.list.visual_index)
                     .and_then(|item| match item {
                         crate::app::VisualItem::Note { id, .. } => Some(id.clone()),
                         _ => None,
@@ -38,7 +38,7 @@ impl Action for EncryptNoteAction {
 
         match app.storage.encrypt_note(&note_id) {
             Ok(new_id) => {
-                app.folder_cache = None;
+                app.list.folder_cache = None;
                 let _ = app.refresh_notes();
                 app.set_temporary_status(&format!("Note encrypted: {}", new_id));
             }

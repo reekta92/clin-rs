@@ -315,6 +315,9 @@ impl Storage {
     }
 
     pub fn list_note_ids(&self) -> Result<Vec<String>> {
+        // Migration: rename old extensions
+        self.migrate_extensions();
+
         let mut ids = Vec::new();
         let mut dirs_to_visit = vec![self.notes_dir.clone()];
 
@@ -326,7 +329,7 @@ impl Storage {
                 if path.is_dir() {
                     dirs_to_visit.push(path);
                 } else if let Some(ext) = path.extension().and_then(|e| e.to_str())
-                    && (ext == "clin" || ext == "md" || ext == "txt" || ext == "canvas" || ext == "pinstar")
+                    && (ext == "clin" || ext == "md" || ext == "txt" || ext == "draw" || ext == "canvas")
                     && let Ok(rel_path) = path.strip_prefix(&self.notes_dir)
                     && let Some(rel_str) = rel_path.to_str()
                 {
@@ -335,6 +338,53 @@ impl Storage {
             }
         }
         Ok(ids)
+    }
+
+    /// Migrate file extensions:
+    /// - `.pinstar` → `.canvas` (native Obsidian-compatible canvas)
+    /// - Old Draw `.canvas` (format: `{ elements: [...] }`) → `.draw`
+    fn migrate_extensions(&self) {
+        let mut dirs_to_visit = vec![self.notes_dir.clone()];
+
+        while let Some(dir) = dirs_to_visit.pop() {
+            if let Ok(entries) = fs::read_dir(&dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+
+                    if path.is_dir() {
+                        dirs_to_visit.push(path);
+                    } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                        match ext {
+                            "pinstar" => {
+                                // Rename .pinstar → .canvas
+                                let new_path = path.with_extension("canvas");
+                                if !new_path.exists() {
+                                    let _ = fs::rename(&path, &new_path);
+                                }
+                            }
+                            "canvas" => {
+                                // Check if it's an old Draw format (has "elements" key)
+                                // or a new Canvas format (has "nodes" key)
+                                if let Ok(content) = fs::read_to_string(&path) {
+                                    let trimmed = content.trim();
+                                    let is_draw_format = trimmed.starts_with("{\
+  \"elements\"") || trimmed.starts_with("{\"elements\"");
+                                    let is_new_draw = trimmed.contains("\"version\"");
+                                    if is_draw_format || is_new_draw {
+                                        let new_path = path.with_extension("draw");
+                                        if !new_path.exists() {
+                                            let _ = fs::rename(&path, &new_path);
+                                        }
+                                    }
+                                    // Otherwise it's a .canvas file (Obsidian-compatible) — keep as-is
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
     }
 
     pub fn load_note_summary(&self, id: &str) -> Result<NoteSummary> {
@@ -350,8 +400,8 @@ impl Storage {
         if ext == "clin" {
             let file_content = fs::read(&path).context("failed to read note")?;
             
-            if let Some(fm) = extract_frontmatter_from_bytes(&file_content) {
-                if let (Some(title), Some(updated_at)) = (fm.title, fm.updated_at) {
+            if let Some(fm) = extract_frontmatter_from_bytes(&file_content)
+                && let (Some(title), Some(updated_at)) = (fm.title, fm.updated_at) {
                     return Ok(NoteSummary {
                         id: id.to_string(),
                         title,
@@ -362,7 +412,6 @@ impl Storage {
                         links: fm.links.unwrap_or_default(),
                     });
                 }
-            }
 
             let plain = self.decrypt(&file_content)?;
             let (note, _): (Note, usize) =
@@ -507,7 +556,6 @@ impl Storage {
                 .context("failed to encode note")?;
             let encrypted = self.encrypt(&bytes)?;
 
-            
             let fm_string = frontmatter::serialize(&fm, "");
             let mut final_output = fm_string.into_bytes();
             final_output.extend_from_slice(&encrypted);
@@ -528,47 +576,32 @@ impl Storage {
         Ok(target_id)
     }
 
-    pub fn delete_note(&self, id: &str) -> Result<()> {
-        fs::remove_file(self.note_path(id)).context("failed to delete note")?;
-        Ok(())
-    }
 
-    
+
     pub fn rename_note(&self, id: &str, new_title: &str) -> Result<String> {
         let mut note = self.load_note(id)?;
         note.title = new_title.to_string();
-        note.updated_at = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+        note.updated_at = crate::ui::now_unix_secs();
 
-        let _is_encrypted = id.ends_with(".clin");
         self.save_note(id, &note)
     }
 
-    
     pub fn duplicate_note(&self, id: &str) -> Result<String> {
         let note = self.load_note(id)?;
         let new_title = format!("{} (Copy)", note.title);
         let mut new_note = note;
         new_note.title = new_title;
-        new_note.updated_at = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+        new_note.updated_at = crate::ui::now_unix_secs();
 
-        
         let new_id = self.new_note_id();
         let is_encrypted = id.ends_with(".clin");
 
-        
         let folder = if let Some(idx) = id.rfind('/') {
             &id[..idx]
         } else {
             ""
         };
 
-        
         let initial_id = if folder.is_empty() {
             format!("{}.{}", new_id, if is_encrypted { "clin" } else { "md" })
         } else {
@@ -613,7 +646,6 @@ impl Storage {
         Ok(())
     }
 
-    
     pub fn toggle_pin(&self, id: &str) -> Result<bool> {
         let path = self.note_path(id);
         let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
@@ -625,12 +657,10 @@ impl Storage {
             fm.pinned = !fm.pinned;
             let new_pinned = fm.pinned;
 
-            
             let plain = self.decrypt(&file_content)?;
             let fm_string = frontmatter::serialize(&fm, "");
             let mut final_output = fm_string.into_bytes();
 
-            
             let encrypted = self.encrypt(&plain)?;
             final_output.extend_from_slice(&encrypted);
 
@@ -660,12 +690,7 @@ impl Storage {
         fs::create_dir_all(full_path).context("failed to create folder")
     }
 
-    pub fn delete_folder(&self, path: &str) -> Result<()> {
-        let full_path = self
-            .validate_path_within_notes_dir(path)
-            .ok_or_else(|| anyhow::anyhow!("Invalid folder path"))?;
-        fs::remove_dir_all(full_path).context("failed to delete folder")
-    }
+
 
     pub fn trash_folder(&self, path: &str) -> Result<()> {
         let full_path = self
@@ -756,24 +781,7 @@ impl Storage {
         Ok(folders)
     }
 
-    pub fn load_tag_cache(&self) -> Vec<String> {
-        let path = self.data_dir.join("tags.json");
-        if let Ok(data) = fs::read_to_string(path)
-            && let Ok(tags) = serde_json::from_str::<Vec<String>>(&data)
-        {
-            return tags;
-        }
-        Vec::new()
-    }
 
-    pub fn save_tag_cache(&self, tags: &[String]) -> Result<()> {
-        let path = self.data_dir.join("tags.json");
-        let mut unique_tags = tags.to_vec();
-        unique_tags.sort();
-        unique_tags.dedup();
-        let json = serde_json::to_string_pretty(&unique_tags)?;
-        fs::write(path, json).context("failed to save tag cache")
-    }
 
     pub fn note_file_stem_from_title(&self, title: &str) -> String {
         let trimmed = title.trim();

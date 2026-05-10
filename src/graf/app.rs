@@ -4,12 +4,12 @@ use std::sync::RwLock;
 use fdg_sim::petgraph::graph::NodeIndex;
 
 use crate::config::ClinConfig;
-use crate::graph::input::GraphMouseState;
+use crate::graf::input::GraphMouseState;
 use crate::keybinds::Keybinds;
 use crate::storage::Storage;
 
 pub struct GrafAppState {
-    pub graph_state: Option<Arc<RwLock<crate::graph::GraphState>>>,
+    pub graph_state: Option<Arc<RwLock<crate::graf::graph::GraphState>>>,
     pub graph_kill_tx: Option<std::sync::mpsc::Sender<()>>,
     pub graph_mouse_state: GraphMouseState,
     pub storage: Storage,
@@ -28,10 +28,10 @@ pub struct GrafAppState {
 
 impl GrafAppState {
     pub fn new(config: &ClinConfig, storage: Storage, config_errors: Vec<String>) -> anyhow::Result<Self> {
-        let graph_state = crate::graph::GraphState::new(&storage, config)?;
+        let graph_state = crate::graf::graph::GraphState::new(&storage, config)?;
         let state = Arc::new(RwLock::new(graph_state));
         let (kill_tx, kill_rx) = std::sync::mpsc::channel();
-        crate::graph::physics::start_physics(state.clone(), config, kill_rx);
+        crate::graf::physics::start_physics(state.clone(), config, kill_rx);
 
         Ok(Self {
             graph_state: Some(state),
@@ -57,10 +57,10 @@ impl GrafAppState {
         if let Some(kill_tx) = self.graph_kill_tx.take() {
             let _ = kill_tx.send(());
         }
-        if let Ok(graph_state) = crate::graph::GraphState::new(&self.storage, config) {
+        if let Ok(graph_state) = crate::graf::graph::GraphState::new(&self.storage, config) {
             let state = Arc::new(RwLock::new(graph_state));
             let (kill_tx, kill_rx) = std::sync::mpsc::channel();
-            crate::graph::physics::start_physics(state.clone(), config, kill_rx);
+            crate::graf::physics::start_physics(state.clone(), config, kill_rx);
             self.graph_state = Some(state);
             self.graph_kill_tx = Some(kill_tx);
             self.search_results.clear();
@@ -150,9 +150,9 @@ fn handle_event(
             }
 
             if let Some(graph_state) = &app_state.graph_state
-                && let Some(action) = crate::graph::input::handle_graph_keys(graph_state, key, keybinds, config)
+                && let Some(action) = crate::graf::input::handle_graph_keys(graph_state, key, keybinds, config)
             {
-                use crate::graph::input::GraphInputAction;
+                use crate::graf::input::GraphInputAction;
                 match action {
                     GraphInputAction::Quit => return Ok(Some(EventAction::Quit)),
                     GraphInputAction::ToggleHelp => {
@@ -199,14 +199,14 @@ fn handle_event(
             if let Some(graph_state) = &app_state.graph_state {
                 let size = terminal.size().unwrap();
                 let area = ratatui::layout::Rect::new(0, 0, size.width, size.height);
-                if let Some(action) = crate::graph::input::handle_graph_mouse(
+                if let Some(action) = crate::graf::input::handle_graph_mouse(
                     graph_state,
                     mouse_event,
                     area,
                     &mut app_state.graph_mouse_state,
                     config,
                 ) {
-                    use crate::graph::input::GraphInputAction;
+                    use crate::graf::input::GraphInputAction;
                     if let GraphInputAction::OpenFile(path) = action {
                         return Ok(Some(EventAction::OpenFile(path)));
                     }
@@ -388,7 +388,7 @@ fn delete_word_back(app_state: &mut GrafAppState) {
 fn run_search(app_state: &mut GrafAppState, config: &crate::config::ClinConfig) {
     if let Some(graph_state) = &app_state.graph_state {
         let guard = graph_state.read().unwrap_or_else(|e| e.into_inner());
-        app_state.search_results = crate::graph::search_nodes(
+        app_state.search_results = crate::graf::graph::search_nodes(
             &guard.simulation,
             &app_state.search_query,
             config.search.max_results,

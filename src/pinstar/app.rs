@@ -10,6 +10,11 @@ use crate::storage::Storage;
 use crossterm::event::{self, Event};
 use std::time::Duration;
 
+pub enum PinstarResult {
+    Normal,
+    HelpRequested,
+}
+
 pub fn run_pinstar_view(
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
     storage: Storage,
@@ -18,7 +23,7 @@ pub fn run_pinstar_view(
     theme: AppThemeColors,
     ext_editor_enabled: bool,
     external_editor: Option<String>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<PinstarResult> {
     let mut state = if let Some(id) = file_id {
         let path = storage.note_path(&id);
         let mut s = PinstarState::load(&path)?;
@@ -78,8 +83,8 @@ pub fn run_pinstar_view(
                 );
                 terminal.clear()?;
 
-                if let Ok(new_text) = std::fs::read_to_string(&temp_file_path) {
-                    if new_text != node_text {
+                if let Ok(new_text) = std::fs::read_to_string(&temp_file_path)
+                    && new_text != node_text {
                         for node in &mut state.data.nodes {
                             if node.id() == node_id {
                                 node.set_text(new_text);
@@ -89,7 +94,6 @@ pub fn run_pinstar_view(
                         let _ = state.save();
                         state.sync_to_raw_editor();
                     }
-                }
                 let _ = std::fs::remove_file(&temp_file_path);
             }
         }
@@ -105,7 +109,6 @@ pub fn run_pinstar_view(
                 match event::read()? {
                     Event::Key(key) => {
                         if !handle_pinstar_event(&mut state, key, &mut running, area.into()) {
-                            // event handled
                         }
                     }
                     Event::Mouse(mouse) => {
@@ -118,5 +121,9 @@ pub fn run_pinstar_view(
         }
     }
 
-    Ok(())
+    if state.help_requested {
+        Ok(PinstarResult::HelpRequested)
+    } else {
+        Ok(PinstarResult::Normal)
+    }
 }

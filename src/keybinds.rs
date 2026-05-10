@@ -1,9 +1,4 @@
 
-
-
-
-
-
 use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
@@ -12,7 +7,6 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use serde::{Deserialize, Serialize};
-
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct KeyCombo {
@@ -49,7 +43,6 @@ impl KeyCombo {
         }
     }
 
-    
     pub fn parse(s: &str) -> Option<Self> {
         let parts: Vec<&str> = s.split('+').collect();
         let mut modifiers = KeyModifiers::NONE;
@@ -76,7 +69,6 @@ impl KeyCombo {
         Some(Self { code, modifiers })
     }
 
-    
     pub fn to_display_string(&self) -> String {
         let key = key_code_to_string(&self.code);
         let mut result = String::with_capacity(24);
@@ -115,7 +107,6 @@ impl KeyCombo {
         result
     }
 
-    
     pub fn matches(&self, event: &KeyEvent) -> bool {
         self.code == event.code && self.modifiers == event.modifiers
     }
@@ -141,7 +132,6 @@ fn parse_key_code(s: &str) -> Option<KeyCode> {
         "left" => Some(KeyCode::Left),
         "right" => Some(KeyCode::Right),
 
-        
         "f1" => Some(KeyCode::F(1)),
         "f2" => Some(KeyCode::F(2)),
         "f3" => Some(KeyCode::F(3)),
@@ -155,7 +145,6 @@ fn parse_key_code(s: &str) -> Option<KeyCode> {
         "f11" => Some(KeyCode::F(11)),
         "f12" => Some(KeyCode::F(12)),
 
-        
         _ if s.len() == 1 => {
             let c = s.chars().next()?;
             Some(KeyCode::Char(c.to_ascii_lowercase()))
@@ -189,7 +178,6 @@ fn key_code_to_string(code: &KeyCode) -> Cow<'static, str> {
         _ => Cow::Borrowed("?"),
     }
 }
-
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -253,7 +241,6 @@ pub enum EditAction {
     ToggleMarkdownPreview,
 }
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum HelpAction {
@@ -284,7 +271,6 @@ pub enum GraphAction {
     ReloadConfig,
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct KeybindsToml {
     #[serde(default)]
@@ -296,7 +282,6 @@ pub struct KeybindsToml {
     #[serde(default)]
     pub graph: HashMap<String, Vec<String>>,
 }
-
 
 #[derive(Debug, Clone)]
 pub struct Keybinds {
@@ -413,7 +398,6 @@ impl Default for Keybinds {
             vec![KeyCombo::simple(KeyCode::Char('l'))],
         );
 
-        
         list.insert(
             ListAction::Rename,
             vec![KeyCombo::simple(KeyCode::Char('r'))],
@@ -648,7 +632,6 @@ impl Keybinds {
         let toml: KeybindsToml =
             toml::from_str(&content).context("failed to parse keybinds file")?;
 
-        
         for (action_str, combos_str) in &toml.list {
             if let Some(action) = parse_list_action(action_str) {
                 let combos: Vec<KeyCombo> = combos_str
@@ -700,7 +683,6 @@ impl Keybinds {
         Ok(keybinds)
     }
 
-    
     pub fn save(&self, path: &Path) -> Result<()> {
         let toml = self.to_toml();
         let content = toml::to_string_pretty(&toml).context("failed to serialize keybinds")?;
@@ -716,7 +698,6 @@ impl Keybinds {
         Ok(())
     }
 
-    
     pub fn to_toml(&self) -> KeybindsToml {
         let mut toml = KeybindsToml::default();
 
@@ -747,21 +728,18 @@ impl Keybinds {
         toml
     }
 
-    
     pub fn matches_list(&self, action: ListAction, event: &KeyEvent) -> bool {
         self.list
             .get(&action)
             .is_some_and(|combos| combos.iter().any(|c| c.matches(event)))
     }
 
-    
     pub fn matches_edit(&self, action: EditAction, event: &KeyEvent) -> bool {
         self.edit
             .get(&action)
             .is_some_and(|combos| combos.iter().any(|c| c.matches(event)))
     }
 
-    
     pub fn matches_help(&self, action: HelpAction, event: &KeyEvent) -> bool {
         self.help
             .get(&action)
@@ -774,7 +752,6 @@ impl Keybinds {
             .is_some_and(|combos| combos.iter().any(|c| c.matches(event)))
     }
 
-    
     pub fn list_keys_display(&self, action: ListAction) -> String {
         self.list
             .get(&action)
@@ -788,7 +765,6 @@ impl Keybinds {
             .unwrap_or_default()
     }
 
-    
     pub fn edit_keys_display(&self, action: EditAction) -> String {
         self.edit
             .get(&action)
@@ -802,7 +778,6 @@ impl Keybinds {
             .unwrap_or_default()
     }
 
-    
     pub fn help_keys_display(&self, action: HelpAction) -> String {
         self.help
             .get(&action)

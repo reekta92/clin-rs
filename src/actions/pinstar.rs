@@ -3,44 +3,25 @@ use crate::app::App;
 use anyhow::Result;
 use std::borrow::Cow;
 
-pub struct CreatePinstarAction;
+pub struct CreateCanvasAction;
 
-impl Action for CreatePinstarAction {
+impl Action for CreateCanvasAction {
     fn id(&self) -> Cow<'static, str> {
-        Cow::Borrowed("create_pinstar")
+        Cow::Borrowed("create_canvas")
     }
 
     fn name(&self) -> Cow<'static, str> {
-        Cow::Borrowed("Create Pinstar Map")
+        Cow::Borrowed("Create Canvas Map")
     }
 
     fn description(&self) -> Cow<'static, str> {
-        Cow::Borrowed("Create a new text-driven Pinstar map (Obsidian JSON)")
+        Cow::Borrowed("Create a new .canvas map file (Obsidian-compatible)")
     }
 
     fn execute(&self, app: &mut App, _context_note_id: Option<&str>) -> Result<()> {
-        app.begin_create_pinstar();
+        app.begin_create_canvas();
         Ok(())
     }
 }
 
-pub struct ImportCanvasAction;
 
-impl Action for ImportCanvasAction {
-    fn id(&self) -> Cow<'static, str> {
-        Cow::Borrowed("import_canvas")
-    }
-
-    fn name(&self) -> Cow<'static, str> {
-        Cow::Borrowed("Import Obsidian Canvas")
-    }
-
-    fn description(&self) -> Cow<'static, str> {
-        Cow::Borrowed("Import an existing .canvas file as a Pinstar map")
-    }
-
-    fn execute(&self, app: &mut App, _context_note_id: Option<&str>) -> Result<()> {
-        app.begin_import_canvas();
-        Ok(())
-    }
-}

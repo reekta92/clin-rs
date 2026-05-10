@@ -9,8 +9,8 @@ use ratatui::widgets::canvas::{Canvas, Line, Painter, Shape};
 use crate::config::{
     ClinConfig, EdgeColorMode, LabelMode, LegendPosition, NodeColorMode, NodeShape, NodeSizeMode,
 };
-use crate::graph::viewport::Viewport;
-use crate::graph::GraphState;
+use crate::graf::viewport::Viewport;
+use crate::graf::graph::GraphState;
 fn tag_color(tag: &str, index: usize, _total: usize, palette: &[Color]) -> Color {
     let palette_len = palette.len();
     if palette_len == 0 {
@@ -248,12 +248,6 @@ pub struct FeatureFlags {
     pub show_status_bar: bool,
 }
 
-
-
-
-
-
-
 pub struct RenderCache {
     
     pub tag_colors: HashMap<String, Color>,
@@ -262,16 +256,19 @@ pub struct RenderCache {
     pub legend_data: Option<Vec<(String, Color)>>,
     pub max_link_count: usize,
 
-    
     pub edges: Vec<EdgeData>,
     pub nodes: Vec<NodeRenderData>,
     pub labels: Vec<LabelData>,
 
-    
     pub minimap_grid: Vec<Option<Color>>,
 
-    
     pub topology_dirty: bool,
+}
+
+impl Default for RenderCache {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl RenderCache {
@@ -290,10 +287,9 @@ impl RenderCache {
         }
     }
 
-    
     pub fn rebuild_topology(
         &mut self,
-        graph: &fdg_sim::ForceGraph<super::GraphNodeData, ()>,
+        graph: &fdg_sim::ForceGraph<super::graph::GraphNodeData, ()>,
         config: &ClinConfig,
         colors: &crate::config::ThemeColors,
         show_legend: bool,
@@ -305,7 +301,6 @@ impl RenderCache {
             .max()
             .unwrap_or(0);
 
-        
         self.tag_colors.clear();
         {
             let mut unique_tags: HashSet<String> = HashSet::new();
@@ -323,7 +318,6 @@ impl RenderCache {
             }
         }
 
-        
         self.folder_colors.clear();
         {
             let mut unique_folders: HashSet<String> = HashSet::new();
@@ -339,7 +333,6 @@ impl RenderCache {
             }
         }
 
-        
         self.node_own_color.clear();
         for idx in graph.node_indices() {
             let node = &graph[idx];
@@ -366,7 +359,6 @@ impl RenderCache {
             self.node_own_color.insert(idx, color);
         }
 
-        
         self.legend_data = if show_legend {
             let items = match config.visual.node_color_mode {
                 NodeColorMode::Folder => &self.folder_colors,
@@ -387,10 +379,9 @@ impl RenderCache {
         self.topology_dirty = false;
     }
 
-    
     pub fn fill_edges(
         &mut self,
-        graph: &fdg_sim::ForceGraph<super::GraphNodeData, ()>,
+        graph: &fdg_sim::ForceGraph<super::graph::GraphNodeData, ()>,
         config: &ClinConfig,
         edge_color: Color,
     ) {
@@ -420,10 +411,9 @@ impl RenderCache {
         }
     }
 
-    
     pub fn fill_nodes(
         &mut self,
-        graph: &fdg_sim::ForceGraph<super::GraphNodeData, ()>,
+        graph: &fdg_sim::ForceGraph<super::graph::GraphNodeData, ()>,
         config: &ClinConfig,
         selected_node: Option<NodeIndex>,
         selection_ring_color: Color,
@@ -468,10 +458,9 @@ impl RenderCache {
         }
     }
 
-    
     pub fn fill_labels(
         &mut self,
-        graph: &fdg_sim::ForceGraph<super::GraphNodeData, ()>,
+        graph: &fdg_sim::ForceGraph<super::graph::GraphNodeData, ()>,
         config: &ClinConfig,
         selected_node: Option<NodeIndex>,
     ) {
@@ -528,15 +517,12 @@ pub fn draw_graph_view(
     let colors = config.theme_colors();
     let graph = state.simulation.get_graph();
 
-    
     let mut cache = state.render_cache.lock().unwrap_or_else(|e| e.into_inner());
 
-    
     if cache.topology_dirty || (flags.show_legend && cache.legend_data.is_none()) {
         cache.rebuild_topology(graph, config, &colors, flags.show_legend);
     }
 
-    
     cache.fill_edges(graph, config, colors.edge_color);
     cache.fill_nodes(
         graph,
@@ -546,7 +532,6 @@ pub fn draw_graph_view(
     );
     cache.fill_labels(graph, config, state.selected_node);
 
-    
     let edges = cache.edges.clone();
     let nodes = cache.nodes.clone();
     let labels = cache.labels.clone();
@@ -597,10 +582,9 @@ pub fn draw_graph_view(
 
     frame.render_widget(canvas, area);
 
-    
-    if flags.show_legend {
-        if let Some(ref items) = cache.legend_data {
-            let max_len = items.iter().map(|(t, _)| t.len()).max().unwrap_or(0);
+    if flags.show_legend
+        && let Some(ref items) = cache.legend_data {
+            let max_len = items.iter().map(|(t, _): &(String, ratatui::style::Color)| t.len()).max().unwrap_or(0);
             let legend_width = (max_len + 4) as u16;
             let legend_height = (items.len() as u16).min(config.legend.max_items as u16) + 2;
             let (legend_x, legend_y) = match config.legend.position {
@@ -622,7 +606,7 @@ pub fn draw_graph_view(
                 ratatui::layout::Rect::new(legend_x, legend_y, legend_width, legend_height);
             let legend_text: Vec<ratatui::text::Line> = items
                 .iter()
-                .map(|(t, c)| {
+                .map(|(t, c): &(String, ratatui::style::Color)| {
                     let display_text = if t.is_empty() { "/" } else { t };
                     ratatui::text::Line::from(vec![
                         ratatui::text::Span::styled("● ", ratatui::style::Style::default().fg(*c)),
@@ -640,7 +624,6 @@ pub fn draw_graph_view(
             );
             frame.render_widget(legend_widget, legend_area);
         }
-    }
 
     if flags.show_status_bar {
         let selected_info = state
@@ -689,7 +672,6 @@ pub fn draw_graph_view(
     if flags.show_minimap {
         let minimap_area = compute_minimap_area(area, config);
 
-        
         let mut minimap_grid = std::mem::take(&mut cache.minimap_grid);
         draw_minimap(
             frame,
@@ -707,7 +689,6 @@ pub fn draw_graph_view(
         cache.minimap_grid = minimap_grid;
     }
 }
-
 
 fn draw_grid(
     ctx: &mut ratatui::widgets::canvas::Context,
@@ -763,7 +744,7 @@ pub fn compute_minimap_area(frame_area: Rect, config: &ClinConfig) -> Rect {
 }
 
 pub fn compute_graph_bounds(
-    graph: &fdg_sim::ForceGraph<super::GraphNodeData, ()>,
+    graph: &fdg_sim::ForceGraph<super::graph::GraphNodeData, ()>,
 ) -> (f64, f64, f64, f64) {
     let mut min_x = f64::MAX;
     let mut max_x = f64::MIN;
@@ -793,17 +774,11 @@ pub fn compute_graph_bounds(
 
 struct MinimapParams<'a> {
     viewport: &'a Viewport,
-    graph: &'a fdg_sim::ForceGraph<super::GraphNodeData, ()>,
+    graph: &'a fdg_sim::ForceGraph<super::graph::GraphNodeData, ()>,
     graph_bounds: (f64, f64, f64, f64),
     node_colors: &'a HashMap<NodeIndex, Color>,
     colors: &'a crate::config::ThemeColors,
 }
-
-
-
-
-
-
 
 fn draw_minimap(frame: &mut ratatui::Frame, area: Rect, params: MinimapParams<'_>, grid: &mut Vec<Option<Color>>) {
     let (wx_min, wx_max, wy_min, wy_max) = params.graph_bounds;
@@ -811,7 +786,6 @@ fn draw_minimap(frame: &mut ratatui::Frame, area: Rect, params: MinimapParams<'_
     let vp_x = params.viewport.x_bounds(aspect);
     let vp_y = params.viewport.y_bounds(aspect);
 
-    
     let block = ratatui::widgets::Block::default()
         .borders(ratatui::widgets::Borders::ALL)
         .border_style(ratatui::style::Style::default().fg(params.colors.minimap_border_color))
@@ -833,33 +807,28 @@ fn draw_minimap(frame: &mut ratatui::Frame, area: Rect, params: MinimapParams<'_
         return;
     }
 
-    
     let world_to_col = |x: f64| -> usize {
         let t = (x - wx_min) / world_w;
         let col = (t * iw as f64).floor() as isize;
         col.clamp(0, (iw as isize) - 1) as usize
     };
 
-    
     let world_to_subrow = |y: f64| -> usize {
         let t = (wy_max - y) / world_h;
         let row = (t * sub_h as f64).floor() as isize;
         row.clamp(0, (sub_h as isize) - 1) as usize
     };
 
-    
     let world_to_row = |y: f64| -> usize {
         let t = (wy_max - y) / world_h;
         let row = (t * ih as f64).floor() as isize;
         row.clamp(0, (ih as isize) - 1) as usize
     };
 
-    
     let grid_size = sub_h * iw;
     grid.resize(grid_size, None);
     grid.fill(None);
 
-    
     for idx in params.graph.node_indices() {
         let node = &params.graph[idx];
         let nx = node.location.x as f64;
@@ -873,7 +842,6 @@ fn draw_minimap(frame: &mut ratatui::Frame, area: Rect, params: MinimapParams<'_
     let buf = frame.buffer_mut();
     let bg_color: Option<Color> = None;
 
-    
     for cell_row in 0..ih {
         let top_sub = cell_row * 2;
         let bot_sub = cell_row * 2 + 1;
@@ -924,7 +892,6 @@ fn draw_minimap(frame: &mut ratatui::Frame, area: Rect, params: MinimapParams<'_
         }
     }
 
-    
     let vp_col_min = world_to_col(vp_x[0].max(wx_min));
     let vp_col_max = world_to_col(vp_x[1].min(wx_max));
     let vp_row_min = world_to_row(vp_y[1].min(wy_max)); 
@@ -936,7 +903,6 @@ fn draw_minimap(frame: &mut ratatui::Frame, area: Rect, params: MinimapParams<'_
 
     let vp_style = ratatui::style::Style::default().fg(params.colors.minimap_viewport_color);
 
-    
     for col in vp_col_min..=vp_col_max {
         let x = inner.x + col as u16;
         
@@ -953,7 +919,6 @@ fn draw_minimap(frame: &mut ratatui::Frame, area: Rect, params: MinimapParams<'_
         }
     }
 
-    
     for row in vp_row_min..=vp_row_max {
         let y = inner.y + row as u16;
         
@@ -970,7 +935,6 @@ fn draw_minimap(frame: &mut ratatui::Frame, area: Rect, params: MinimapParams<'_
         }
     }
 
-    
     let corners: [(usize, usize, &str); 4] = [
         (vp_col_min, vp_row_min, "┌"),
         (vp_col_max, vp_row_min, "┐"),
@@ -986,4 +950,3 @@ fn draw_minimap(frame: &mut ratatui::Frame, area: Rect, params: MinimapParams<'_
         }
     }
 }
-

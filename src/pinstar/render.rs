@@ -14,12 +14,12 @@ fn get_node_color(color_code: Option<&str>, theme: &AppThemeColors) -> Color {
                 theme.accent
             }
         }
-        Some("1") | Some("red") => Color::Rgb(255, 82, 82),      // Vibrant Red
-        Some("2") | Some("orange") => Color::Rgb(255, 152, 0),   // Vivid Orange
-        Some("3") | Some("yellow") => Color::Rgb(255, 235, 59),  // Bright Yellow
-        Some("4") | Some("green") => Color::Rgb(76, 175, 80),    // Leaf Green
-        Some("5") | Some("cyan") => Color::Rgb(0, 188, 212),     // Sky Blue
-        Some("6") | Some("purple") => Color::Rgb(156, 39, 176),  // Deep Purple
+        Some("1") | Some("red") => Color::Rgb(255, 82, 82),
+        Some("2") | Some("orange") => Color::Rgb(255, 152, 0),
+        Some("3") | Some("yellow") => Color::Rgb(255, 235, 59),
+        Some("4") | Some("green") => Color::Rgb(76, 175, 80),
+        Some("5") | Some("cyan") => Color::Rgb(0, 188, 212),
+        Some("6") | Some("purple") => Color::Rgb(156, 39, 176),
         _ => theme.accent,
     }
 }
@@ -42,7 +42,6 @@ pub fn draw_pinstar_view(frame: &mut Frame, state: &mut PinstarState, theme: &Ap
         (None, area)
     };
 
-    // 1. Draw Raw Editor (30%) if enabled
     if let Some(editor_area) = editor_area {
         let editor_border_color = if state.editor_focus { theme.accent } else { theme.muted };
         let editor_block = Block::default()
@@ -81,7 +80,6 @@ pub fn draw_pinstar_view(frame: &mut Frame, state: &mut PinstarState, theme: &Ap
         }
     }
 
-    // 2. Draw Canvas (70% or 100%)
     let canvas_border_color = if !state.editor_focus || !state.show_editor_pane { theme.accent } else { theme.muted };
     let canvas_block = Block::default()
         .borders(Borders::NONE)
@@ -89,11 +87,9 @@ pub fn draw_pinstar_view(frame: &mut Frame, state: &mut PinstarState, theme: &Ap
         .style(theme.bg_style());
     frame.render_widget(canvas_block, canvas_area);
     
-    // 2b. Draw Canvas Grid (sub-layer)
     if state.show_grid {
         let mut grid_step_x = 100.0;
         let mut grid_step_y = 50.0;
-        // Prevent rendering extreme grid density when zooming far out
         while grid_step_y * state.zoom < 6.0 {
             grid_step_x *= 2.0;
             grid_step_y *= 2.0;
@@ -121,22 +117,18 @@ pub fn draw_pinstar_view(frame: &mut Frame, state: &mut PinstarState, theme: &Ap
                 let sy = (((cur_y - state.viewport_y) * state.zoom) + (canvas_area.y as f64 + canvas_area.height as f64 / 2.0)).round() as i32;
                 
                 if sx >= canvas_area.left() as i32 && sx < canvas_area.right() as i32 &&
-                   sy >= canvas_area.top() as i32 && sy < canvas_area.bottom() as i32 {
-                    if sx >= 0 && sx < buf.area.width as i32 && sy >= 0 && sy < buf.area.height as i32 {
-                        // Use faint mid-dots for non-obtrusive spatial reference
-                        if let Some(cell) = buf.cell_mut((sx as u16, sy as u16)) {
+                   sy >= canvas_area.top() as i32 && sy < canvas_area.bottom() as i32
+                    && sx >= 0 && sx < buf.area.width as i32 && sy >= 0 && sy < buf.area.height as i32
+                        && let Some(cell) = buf.cell_mut((sx as u16, sy as u16)) {
                             cell.set_char('·')
                                 .set_fg(theme.muted);
                         }
-                    }
-                }
                 cur_y += grid_step_y;
             }
             cur_x += grid_step_x;
         }
     }
 
-    // Pass 1: Draw Group nodes FIRST (bottom layer)
     for node in &state.data.nodes {
         if let crate::pinstar::data::CanvasNode::Group(g) = node {
             let (nx, ny) = node.pos();
@@ -185,7 +177,6 @@ pub fn draw_pinstar_view(frame: &mut Frame, state: &mut PinstarState, theme: &Ap
                 .style(theme.bg_style());
             
             if is_selected && !is_editing {
-                // Apply dashed border overlay via custom symbol set for selection state
                 block = block.border_set(ratatui::symbols::border::Set {
                     top_left: "┌",
                     top_right: "┐",
@@ -205,24 +196,19 @@ pub fn draw_pinstar_view(frame: &mut Frame, state: &mut PinstarState, theme: &Ap
             if is_selected {
                 let corner_style = Style::default().fg(theme.accent).add_modifier(Modifier::BOLD);
                 if node_rect.width > 0 && node_rect.height > 0 {
-                    // Top-Left
                     frame.render_widget(Paragraph::new("⇘").style(corner_style), Rect::new(node_rect.x, node_rect.y, 1, 1));
-                    // Top-Right
                     if node_rect.width > 1 {
                         frame.render_widget(Paragraph::new("⇙").style(corner_style), Rect::new(node_rect.x + node_rect.width - 1, node_rect.y, 1, 1));
                     }
-                    // Bottom-Left
                     if node_rect.height > 1 {
                         frame.render_widget(Paragraph::new("⇗").style(corner_style), Rect::new(node_rect.x, node_rect.y + node_rect.height - 1, 1, 1));
                     }
-                    // Bottom-Right
                     if node_rect.width > 1 && node_rect.height > 1 {
                         frame.render_widget(Paragraph::new("⇖").style(corner_style), Rect::new(node_rect.x + node_rect.width - 1, node_rect.y + node_rect.height - 1, 1, 1));
                     }
                 }
             }
 
-            // Draw resize handle if in resize mode for this group
             if state.resizing_node_id.as_ref() == Some(&g.id.to_string()) {
                 let handle_text = "[↘]";
                 let handle_style = Style::default().fg(theme.accent).add_modifier(Modifier::BOLD);
@@ -237,7 +223,6 @@ pub fn draw_pinstar_view(frame: &mut Frame, state: &mut PinstarState, theme: &Ap
         }
     }
 
-    // 2a. Draw Edges (middle layer, above groups)
     for edge in &state.data.edges {
         let from_node = state.data.nodes.iter().find(|n| n.id() == edge.from_node);
         let to_node = state.data.nodes.iter().find(|n| n.id() == edge.to_node);
@@ -248,7 +233,6 @@ pub fn draw_pinstar_view(frame: &mut Frame, state: &mut PinstarState, theme: &Ap
             let (tx, ty) = t.pos();
             let (tw, th) = t.size();
 
-            // Calculate border anchor points
             let scx = fx + fw / 2.0;
             let scy = fy + fh / 2.0;
             let tcx = tx + tw / 2.0;
@@ -321,7 +305,6 @@ pub fn draw_pinstar_view(frame: &mut Frame, state: &mut PinstarState, theme: &Ap
         }
     }
 
-    // Pass 3: Draw Text, File, and Link nodes (top layer)
     for node in &state.data.nodes {
         if matches!(node, crate::pinstar::data::CanvasNode::Group(_)) { continue; }
 
@@ -354,7 +337,6 @@ pub fn draw_pinstar_view(frame: &mut Frame, state: &mut PinstarState, theme: &Ap
             (bottom - top) as u16,
         );
 
-        // CLEAR the node area explicitly before rendering content to prevent edge "bleed through"
         frame.render_widget(Clear, node_rect);
 
         let is_selected = state.selected_node_id.as_ref() == Some(&node.id().to_string());
@@ -380,7 +362,7 @@ pub fn draw_pinstar_view(frame: &mut Frame, state: &mut PinstarState, theme: &Ap
                 std::path::Path::new(&n.file).file_name().and_then(|s| s.to_str()).unwrap_or(&n.file).to_string()
             },
             crate::pinstar::data::CanvasNode::Link(n) => n.url.clone(),
-            _ => if is_generated_id(&node.id()) {
+            _ => if is_generated_id(node.id()) {
                 "".to_string()
             } else {
                 node.id().to_string()
@@ -398,7 +380,6 @@ pub fn draw_pinstar_view(frame: &mut Frame, state: &mut PinstarState, theme: &Ap
             .style(theme.bg_style());
             
         if is_selected && !is_editing {
-            // Apply dashed border overlay via custom symbol set for selection state
             block = block.border_set(ratatui::symbols::border::Set {
                 top_left: "┌",
                 top_right: "┐",
@@ -422,24 +403,19 @@ pub fn draw_pinstar_view(frame: &mut Frame, state: &mut PinstarState, theme: &Ap
         if is_selected {
             let corner_style = Style::default().fg(theme.accent).add_modifier(Modifier::BOLD);
             if node_rect.width > 0 && node_rect.height > 0 {
-                // Top-Left
                 frame.render_widget(Paragraph::new("⇘").style(corner_style), Rect::new(node_rect.x, node_rect.y, 1, 1));
-                // Top-Right
                 if node_rect.width > 1 {
                     frame.render_widget(Paragraph::new("⇙").style(corner_style), Rect::new(node_rect.x + node_rect.width - 1, node_rect.y, 1, 1));
                 }
-                // Bottom-Left
                 if node_rect.height > 1 {
                     frame.render_widget(Paragraph::new("⇗").style(corner_style), Rect::new(node_rect.x, node_rect.y + node_rect.height - 1, 1, 1));
                 }
-                // Bottom-Right
                 if node_rect.width > 1 && node_rect.height > 1 {
                     frame.render_widget(Paragraph::new("⇖").style(corner_style), Rect::new(node_rect.x + node_rect.width - 1, node_rect.y + node_rect.height - 1, 1, 1));
                 }
             }
         }
 
-        // Draw resize handle if in resize mode for this node
         if state.resizing_node_id.as_ref() == Some(&node.id().to_string()) {
             let handle_text = "[↘]";
             let handle_style = Style::default().fg(theme.accent).add_modifier(Modifier::BOLD);
@@ -453,10 +429,9 @@ pub fn draw_pinstar_view(frame: &mut Frame, state: &mut PinstarState, theme: &Ap
         }
     }
 
-    // Draw floating editor if active
-    if let Some(editor) = &mut state.floating_editor {
-        if let Some(node_id) = &state.selected_node_id {
-            if let Some(node) = state.data.nodes.iter().find(|n| n.id() == node_id) {
+    if let Some(editor) = &mut state.floating_editor
+        && let Some(node_id) = &state.selected_node_id
+            && let Some(node) = state.data.nodes.iter().find(|n| n.id() == node_id) {
                 let (nx, ny) = node.pos();
                 let (nw, nh) = node.size();
                 
@@ -488,10 +463,7 @@ pub fn draw_pinstar_view(frame: &mut Frame, state: &mut PinstarState, theme: &Ap
                     frame.render_widget(&*editor, editor_rect);
                 }
             }
-        }
-    }
 
-    // Draw hint line at the bottom
     let mut hint_text = "Tab switch focus · Esc back · Arrows select · i/Enter edit · Ctrl+S save".to_string();
     if state.connection_source_id.is_some() {
         hint_text = "CONNECTION MODE: Select target node with mouse or Enter".to_string();
@@ -523,7 +495,6 @@ pub fn draw_pinstar_view(frame: &mut Frame, state: &mut PinstarState, theme: &Ap
     let hint_area = Rect::new(total_area.x, total_area.bottom().saturating_sub(1), total_area.width, 1);
     frame.render_widget(hint, hint_area);
 
-    // 3. Draw Context Menu
     if let Some(menu) = &state.context_menu {
         let menu_width = 25;
         let menu_height = menu.items.len() as u16;
@@ -549,9 +520,8 @@ pub fn draw_pinstar_view(frame: &mut Frame, state: &mut PinstarState, theme: &Ap
         frame.render_widget(list, menu_rect);
     }
 
-    // 4. Draw Rename Popup
     if let Some(textarea) = &mut state.rename_popup {
-        let popup_area = centered_rect(60, 20, area); // Increased height and width for visibility
+        let popup_area = centered_rect(60, 20, area);
         frame.render_widget(Clear, popup_area);
         
         textarea.set_style(theme.bg_style());

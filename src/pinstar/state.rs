@@ -12,18 +12,18 @@ pub struct PinstarState {
     pub selected_node_id: Option<String>,
     pub floating_editor: Option<TextArea<'static>>,
     pub raw_editor: TextArea<'static>,
-    pub editor_focus: bool, // true if raw_editor has focus
+    pub editor_focus: bool,
     pub last_mouse_pos: Option<(u16, u16)>,
     pub last_click: Option<(u16, u16, std::time::Instant)>,
     pub context_menu: Option<PinstarContextMenu>,
-    pub context_menu_pos: (f64, f64), // Canvas coordinates for menu trigger
-    pub connection_source_id: Option<String>, // ID of source node during connection creation
+    pub context_menu_pos: (f64, f64),
+    pub connection_source_id: Option<String>,
     pub resizing_node_id: Option<String>,
     pub is_dragging_resize_handle: bool,
     pub deleting_connection_source_id: Option<String>,
     pub trigger_ext_editor: bool,
     pub show_editor_pane: bool,
-    pub drag_start_pos: Option<(f64, f64)>, // (x, y) in canvas coords when right-drag starts
+    pub drag_start_pos: Option<(f64, f64)>,
     pub rename_popup: Option<TextArea<'static>>,
     pub ext_editor_enabled: bool,
     pub last_mouse_canvas_pos: Option<(f64, f64)>,
@@ -32,6 +32,7 @@ pub struct PinstarState {
     pub show_grid: bool,
     pub mouse_selecting: bool,
     pub mouse_dragged: bool,
+    pub help_requested: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -61,7 +62,7 @@ impl PinstarState {
             data,
             viewport_x: 0.0,
             viewport_y: 0.0,
-            zoom: 0.1, // Start zoomed out for better overview
+            zoom: 0.1,
             selected_node_id: None,
             floating_editor: None,
             raw_editor,
@@ -85,6 +86,7 @@ impl PinstarState {
             show_grid: true,
             mouse_selecting: false,
             mouse_dragged: false,
+            help_requested: false,
         })
     }
 
@@ -118,14 +120,13 @@ impl PinstarState {
     }
 
     pub fn center_on_selected(&mut self) {
-        if let Some(id) = &self.selected_node_id {
-            if let Some(node) = self.data.nodes.iter().find(|n| n.id() == id) {
+        if let Some(id) = &self.selected_node_id
+            && let Some(node) = self.data.nodes.iter().find(|n| n.id() == id) {
                 let (nx, ny) = node.pos();
                 let (nw, nh) = node.size();
                 self.viewport_x = nx + nw / 2.0;
                 self.viewport_y = ny + nh / 2.0;
             }
-        }
     }
 
     pub fn zoom_in(&mut self) {
@@ -143,8 +144,7 @@ impl PinstarState {
     }
 
     pub fn select_node_at(&mut self, x: f64, y: f64) -> Option<String> {
-        // Rank multiple candidates by smallest bounding area to correctly support picking smaller children over larger container groups
-        let mut best_hit: Option<(String, f64, usize)> = None; // (ID, Area, CreationOrderIndex)
+        let mut best_hit: Option<(String, f64, usize)> = None;
 
         for (idx, node) in self.data.nodes.iter().enumerate() {
             let (nx, ny) = node.pos();
@@ -191,9 +191,8 @@ impl PinstarState {
         let mut min_dist = f64::MAX;
 
         for node in &self.data.nodes {
-            if let Some(id) = &self.selected_node_id {
-                if node.id() == id { continue; }
-            }
+            if let Some(id) = &self.selected_node_id
+                && node.id() == id { continue; }
 
             let (nx, ny) = node.pos();
             let (nw, nh) = node.size();
@@ -202,11 +201,9 @@ impl PinstarState {
             let v_x = tx - cur_x;
             let v_y = ty - cur_y;
 
-            // Check if node is in the general direction
             let dot = v_x * dx + v_y * dy;
             if dot <= 0.0 { continue; }
 
-            // Weight distance by angle to favor strict directional movement
             let dist_sq = v_x * v_x + v_y * v_y;
             let ortho_dist = (v_x * -dy + v_y * dx).abs();
             let score = dist_sq + ortho_dist * ortho_dist * 2.0;
@@ -237,14 +234,13 @@ impl PinstarState {
                 let _ = self.save();
             }
             self.floating_editor = None;
-        } else if let Some(node_id) = &self.selected_node_id {
-            if let Some(node) = self.data.nodes.iter().find(|n| n.id() == node_id) {
+        } else if let Some(node_id) = &self.selected_node_id
+            && let Some(node) = self.data.nodes.iter().find(|n| n.id() == node_id) {
                 let mut textarea = TextArea::from(node.text().lines().map(String::from).collect::<Vec<_>>());
                 textarea.set_cursor_line_style(ratatui::style::Style::default());
                 textarea.set_wrap_mode(WrapMode::Word);
                 self.floating_editor = Some(textarea);
             }
-        }
     }
 
     pub fn open_context_menu(&mut self, x: u16, y: u16, canvas_x: f64, canvas_y: f64) {
@@ -316,7 +312,6 @@ impl PinstarState {
             };
             let new_id = final_id;
 
-            // Update node ID
             for node in &mut self.data.nodes {
                 match node {
                     crate::pinstar::data::CanvasNode::Text(n) if n.id == old_id => n.id = new_id.clone(),
@@ -327,7 +322,6 @@ impl PinstarState {
                 }
             }
 
-            // Update all edges referencing this ID
             for edge in &mut self.data.edges {
                 if edge.from_node == old_id { edge.from_node = new_id.clone(); }
                 if edge.to_node == old_id { edge.to_node = new_id.clone(); }
@@ -367,7 +361,7 @@ impl PinstarState {
     }
 
     pub fn add_text_node(&mut self, x: f64, y: f64) {
-        let id = format!("node_{}", uuid::Uuid::new_v4().to_string()[..8].to_string());
+        let id = format!("node_{}", &uuid::Uuid::new_v4().to_string()[..8]);
         self.data.nodes.push(crate::pinstar::data::CanvasNode::Text(crate::pinstar::data::TextNode {
             id: id.clone(),
             x,
@@ -384,8 +378,7 @@ impl PinstarState {
     }
 
     pub fn add_group(&mut self, x: f64, y: f64) {
-        let id = format!("group_{}", uuid::Uuid::new_v4().to_string()[..8].to_string());
-        // Groups should ideally be added at the beginning of the list so they are rendered first (behind others)
+        let id = format!("group_{}", &uuid::Uuid::new_v4().to_string()[..8]);
         self.data.nodes.insert(0, crate::pinstar::data::CanvasNode::Group(crate::pinstar::data::GroupNode {
             id: id.clone(),
             x,
@@ -409,10 +402,9 @@ impl PinstarState {
     }
 
     pub fn finish_connection(&mut self, target_id: &str) {
-        if let Some(source_id) = self.connection_source_id.take() {
-            if source_id != target_id {
+        if let Some(source_id) = self.connection_source_id.take()
+            && source_id != target_id {
                 let edge_id = format!("edge_{}_{}", source_id, target_id);
-                // Check if edge already exists
                 if !self.data.edges.iter().any(|e| e.from_node == source_id && e.to_node == target_id) {
                     self.data.edges.push(crate::pinstar::data::CanvasEdge {
                         id: edge_id,
@@ -427,17 +419,15 @@ impl PinstarState {
                     self.sync_to_raw_editor();
                 }
             }
-        }
     }
 
     pub fn finish_delete_connection(&mut self, target_id: &str) {
-        if let Some(source_id) = self.deleting_connection_source_id.take() {
-            if source_id != target_id {
+        if let Some(source_id) = self.deleting_connection_source_id.take()
+            && source_id != target_id {
                 self.data.edges.retain(|e| !(e.from_node == source_id && e.to_node == target_id));
                 let _ = self.save();
                 self.sync_to_raw_editor();
             }
-        }
     }
 
     pub fn resize_selected_node(&mut self, dw: f64, dh: f64) {
@@ -476,8 +466,6 @@ impl PinstarState {
                     if nid != id {
                         let (nx, ny) = node.pos();
                         let (nw, nh) = node.size();
-                        // Require the nested node to be fully enclosed by the group's bounds.
-                        // This prevents capturing the surrounding container if its center coincidentally falls beneath the child.
                         if nx >= gx && ny >= gy && (nx + nw) <= (gx + gw) && (ny + nh) <= (gy + gh) {
                             self.drag_captured_nodes.insert(nid.to_string());
                         }
@@ -489,7 +477,6 @@ impl PinstarState {
 
     pub fn move_selected_node(&mut self, dx: f64, dy: f64) {
         if let Some(id) = &self.selected_node_id {
-            // Translate both the selected node and all snapshot captured children concurrently
             for node in &mut self.data.nodes {
                 let nid = node.id();
                 if nid == id || self.drag_captured_nodes.contains(nid) {
@@ -501,7 +488,6 @@ impl PinstarState {
                     }
                 }
             }
-            // Sync to raw editor but don't save to disk on every drag frame for performance
             self.sync_to_raw_editor();
         }
     }

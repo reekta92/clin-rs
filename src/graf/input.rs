@@ -5,7 +5,7 @@ use crossterm::event::{KeyEvent, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::Rect;
 
 use super::viewport::CELL_ASPECT;
-use super::GraphState;
+use super::graph::GraphState;
 use crate::config::ClinConfig;
 use crate::keybinds::{GraphAction, Keybinds};
 

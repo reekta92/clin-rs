@@ -13,18 +13,17 @@ pub fn draw_ui(frame: &mut Frame, state: &GrafAppState, config: &ClinConfig, _ke
         return;
     }
 
-    
     let colors = config.theme_colors();
 
     if let Some(graph_state) = &state.graph_state {
         let guard = graph_state.read().unwrap_or_else(|e| e.into_inner());
-        let flags = crate::graph::render::FeatureFlags {
+        let flags = crate::graf::render::FeatureFlags {
             show_legend: state.show_legend,
             show_grid: state.show_grid,
             show_minimap: state.show_minimap,
             show_status_bar: state.show_status_bar,
         };
-        crate::graph::render::draw_graph_view(frame, &guard, config, &flags);
+        crate::graf::render::draw_graph_view(frame, &guard, config, &flags);
     }
 
     if state.search_active {
@@ -176,7 +175,7 @@ fn draw_search(
             let style = if is_selected {
                 ratatui::style::Style::default()
                     .fg(colors.background_color.unwrap_or(ratatui::style::Color::Black))
-                    .bg(colors.node_colors.get(0).copied().unwrap_or(colors.label_color))
+                    .bg(colors.node_colors.first().copied().unwrap_or(colors.label_color))
             } else {
                 ratatui::style::Style::default().fg(colors.label_color)
             };

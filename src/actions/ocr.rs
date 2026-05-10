@@ -20,7 +20,6 @@ fn get_clipboard_image_wayland() -> Result<DynamicImage> {
         anyhow::bail!("wl-paste is not installed. Please install wl-clipboard.");
     }
 
-    
     let mut child = Command::new("wl-paste")
         .arg("--type")
         .arg("image/png")
@@ -53,7 +52,6 @@ fn get_clipboard_image_wayland() -> Result<DynamicImage> {
         anyhow::bail!("wl-paste returned empty data.");
     }
 
-    
     let img = image::load_from_memory(&image_data)
         .context("Failed to decode clipboard image data (expected PNG)")?;
 
@@ -95,7 +93,6 @@ impl Action for OcrPasteAction {
         let dynamic_image = if is_wayland() {
             get_clipboard_image_wayland().or_else(|e| {
                 
-                
                 eprintln!("Wayland clipboard failed: {}. Falling back to arboard.", e);
                 get_clipboard_image_arboard()
             })?
@@ -106,12 +103,10 @@ impl Action for OcrPasteAction {
         let temp_file = NamedTempFile::new().context("Failed to create temporary image file")?;
         let temp_path = temp_file.path().to_owned();
 
-        
         dynamic_image
             .save_with_format(&temp_path, image::ImageFormat::Png)
             .context("Failed to save clipboard image to temp file")?;
 
-        
         let output = Command::new("tesseract")
             .arg(temp_path)
             .arg("-") 
@@ -131,7 +126,6 @@ impl Action for OcrPasteAction {
             anyhow::bail!("OCR extracted no text.");
         }
 
-        
         let mut note = app.storage.load_note(note_id)?;
         note.content.push_str("\n\n---\n**OCR Extract:**\n");
         note.content.push_str(&extracted_text);

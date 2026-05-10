@@ -1,8 +1,4 @@
 
-
-
-
-
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -11,17 +7,14 @@ use anyhow::{Context, Result};
 use chrono::Local;
 use serde::{Deserialize, Serialize};
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Template {
     
     pub name: String,
 
-    
     #[serde(default)]
     pub title: TitleConfig,
 
-    
     pub content: ContentConfig,
 }
 
@@ -47,7 +40,6 @@ impl Template {
         Ok(template)
     }
 
-    
     pub fn save(&self, path: &Path) -> Result<()> {
         let content = toml::to_string_pretty(self).context("failed to serialize template")?;
 
@@ -62,7 +54,6 @@ impl Template {
         Ok(())
     }
 
-    
     pub fn render(&self) -> RenderedTemplate {
         let vars = TemplateVariables::now();
 
@@ -74,13 +65,11 @@ impl Template {
     }
 }
 
-
 #[derive(Debug, Clone)]
 pub struct RenderedTemplate {
     pub title: Option<String>,
     pub content: String,
 }
-
 
 #[derive(Debug, Clone)]
 pub struct TemplateVariables {
@@ -108,7 +97,6 @@ impl TemplateVariables {
         }
     }
 
-    
     pub fn substitute(&self, template: &str) -> String {
         let mut result = String::with_capacity(template.len() + 50);
         let mut chars = template.chars().peekable();
@@ -153,7 +141,6 @@ impl TemplateVariables {
     }
 }
 
-
 #[derive(Debug)]
 pub struct TemplateManager {
     templates_dir: PathBuf,
@@ -165,19 +152,16 @@ impl TemplateManager {
         Self { templates_dir }
     }
 
-    
     pub fn ensure_dir(&self) -> Result<()> {
         fs::create_dir_all(&self.templates_dir).context("failed to create templates directory")?;
         Ok(())
     }
 
-    
     pub fn template_path(&self, name: &str) -> PathBuf {
         let filename = sanitize_filename(name);
         self.templates_dir.join(format!("{filename}.toml"))
     }
 
-    
     pub fn list(&self) -> Result<Vec<TemplateSummary>> {
         let mut templates = Vec::new();
 
@@ -215,36 +199,30 @@ impl TemplateManager {
             }
         }
 
-        
         templates.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
 
         Ok(templates)
     }
 
-    
     pub fn load(&self, filename: &str) -> Result<Template> {
         let path = self.template_path(filename);
         Template::load(&path)
     }
 
-    
     pub fn save(&self, filename: &str, template: &Template) -> Result<()> {
         self.ensure_dir()?;
         let path = self.template_path(filename);
         template.save(&path)
     }
 
-    
     pub fn load_default(&self) -> Option<Template> {
         self.load("default").ok()
     }
 
-    
     pub fn has_templates(&self) -> bool {
         self.list().map(|t| !t.is_empty()).unwrap_or(false)
     }
 
-    
     pub fn create_examples(&self) -> Result<()> {
         if self.has_templates() {
             return Ok(());
@@ -252,7 +230,6 @@ impl TemplateManager {
 
         self.ensure_dir()?;
 
-        
         let meeting = Template {
             name: "Meeting Notes".to_string(),
             title: TitleConfig {
@@ -286,7 +263,6 @@ impl TemplateManager {
         };
         self.save("meeting", &meeting)?;
 
-        
         let todo = Template {
             name: "Todo List".to_string(),
             title: TitleConfig {
@@ -315,7 +291,6 @@ impl TemplateManager {
         };
         self.save("todo", &todo)?;
 
-        
         let journal = Template {
             name: "Journal Entry".to_string(),
             title: TitleConfig {
@@ -326,11 +301,7 @@ impl TemplateManager {
 
 ## How I'm feeling
 
-
-
 ## What happened today
-
-
 
 ## Grateful for
 
@@ -350,7 +321,6 @@ impl TemplateManager {
     }
 }
 
-
 #[derive(Debug, Clone)]
 pub struct TemplateSummary {
     
@@ -358,7 +328,6 @@ pub struct TemplateSummary {
     
     pub name: String,
 }
-
 
 fn sanitize_filename(name: &str) -> String {
     let mut result = String::new();
