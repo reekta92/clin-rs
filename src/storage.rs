@@ -612,7 +612,7 @@ impl Storage {
         self.save_note(id, &note)
     }
 
-    pub fn duplicate_note(&self, id: &str) -> Result<String> {
+    pub fn duplicate_note(&self, id: &str, target_folder: &str) -> Result<String> {
         let note = self.load_note(id)?;
         let new_title = format!("{} (Copy)", note.title);
         let mut new_note = note;
@@ -622,18 +622,12 @@ impl Storage {
         let new_id = self.new_note_id();
         let is_encrypted = id.ends_with(".clin");
 
-        let folder = if let Some(idx) = id.rfind('/') {
-            &id[..idx]
-        } else {
-            ""
-        };
-
-        let initial_id = if folder.is_empty() {
+        let initial_id = if target_folder.is_empty() {
             format!("{}.{}", new_id, if is_encrypted { "clin" } else { "md" })
         } else {
             format!(
                 "{}/{}.{}",
-                folder,
+                target_folder,
                 new_id,
                 if is_encrypted { "clin" } else { "md" }
             )

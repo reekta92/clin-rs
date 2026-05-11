@@ -15,6 +15,25 @@ use std::process::Command;
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+fn split_lock_spans(text: &str, theme: &AppThemeColors) -> Vec<Span<'static>> {
+    let mut result = Vec::new();
+    let mut last = 0;
+    for (i, _) in text.match_indices('\u{f023}') {
+        if i > last {
+            result.push(Span::raw(text[last..i].to_string()));
+        }
+        result.push(Span::styled(
+            "\u{f023}".to_string(),
+            Style::default().fg(theme.destructive).add_modifier(Modifier::BOLD),
+        ));
+        last = i + '\u{f023}'.len_utf8();
+    }
+    if last < text.len() {
+        result.push(Span::raw(text[last..].to_string()));
+    }
+    result
+}
+
 /// Style a result line with colored tags [..] and count (..) spans
 fn styled_result_line(s: &str, theme: &AppThemeColors) -> Line<'static> {
     // Check for tag section " [tags]" at end of line (before optional "  (count)")
@@ -24,7 +43,7 @@ fn styled_result_line(s: &str, theme: &AppThemeColors) -> Line<'static> {
             let after_bracket = &after_tag[close_bracket + 1..];
             let is_end_tag = after_bracket.is_empty() || after_bracket.starts_with(" (");
             if is_end_tag {
-                let label_part = s[..tag_start].to_string();
+                let label_part = &s[..tag_start];
                 let tag_end = if let Some(count_start) = after_tag.find(" (") {
                     count_start
                 } else {
@@ -36,13 +55,13 @@ fn styled_result_line(s: &str, theme: &AppThemeColors) -> Line<'static> {
                 } else {
                     None
                 };
-                let mut spans: Vec<Span<'static>> = vec![
-                    Span::raw(label_part),
-                    Span::styled(
-                        tag_content.to_string(),
-                        Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
-                    ),
-                ];
+
+                let mut spans = split_lock_spans(label_part, theme);
+                spans.push(Span::styled(
+                    tag_content.to_string(),
+                    Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+                ));
+
                 if let Some(count) = count_part {
                     spans.push(Span::styled(
                         count.to_string(),
@@ -61,17 +80,16 @@ fn styled_result_line(s: &str, theme: &AppThemeColors) -> Line<'static> {
             && count_part.ends_with(')')
             && count_part[1..count_part.len() - 1].chars().all(|c| c.is_ascii_digit())
         {
-            let label_part = s[..count_start + 1].to_string();
-            return Line::from(vec![
-                Span::raw(label_part),
-                Span::styled(
-                    count_part.to_string(),
-                    Style::default().fg(theme.heading).add_modifier(Modifier::BOLD),
-                ),
-            ]);
+            let label_part = &s[..count_start + 1];
+            let mut spans = split_lock_spans(label_part, theme);
+            spans.push(Span::styled(
+                count_part.to_string(),
+                Style::default().fg(theme.heading).add_modifier(Modifier::BOLD),
+            ));
+            return Line::from(spans);
         }
     }
-    Line::from(s.to_string())
+    Line::from(split_lock_spans(s, theme))
 }
 
 pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
@@ -193,6 +211,8 @@ fn notes_help_text(keybinds: &Keybinds, theme: &crate::app_theme::AppThemeColors
     let list_open = keybinds.list_keys_display(ListAction::Open);
     let list_delete = keybinds.list_keys_display(ListAction::Delete);
     let list_location = keybinds.list_keys_display(ListAction::OpenLocation);
+    let list_page_up = keybinds.list_keys_display(ListAction::PageUp);
+    let list_page_down = keybinds.list_keys_display(ListAction::PageDown);
     let list_focus = keybinds.list_keys_display(ListAction::CycleFocus);
     let list_help = keybinds.list_keys_display(ListAction::Help);
     let list_quit = keybinds.list_keys_display(ListAction::Quit);
@@ -201,6 +221,11 @@ fn notes_help_text(keybinds: &Keybinds, theme: &crate::app_theme::AppThemeColors
     let list_rename_folder = keybinds.list_keys_display(ListAction::RenameFolder);
     let list_move_note = keybinds.list_keys_display(ListAction::MoveNote);
     let list_manage_tags = keybinds.list_keys_display(ListAction::ManageTags);
+    let list_pin = keybinds.list_keys_display(ListAction::TogglePin);
+    let list_select_mode = keybinds.list_keys_display(ListAction::ToggleSelectMode);
+    let list_select_item = keybinds.list_keys_display(ListAction::ToggleSelectItem);
+    let list_trash = keybinds.list_keys_display(ListAction::OpenTrash);
+    let list_search = keybinds.list_keys_display(ListAction::Search);
     let mut lines = Vec::new();
     lines.push(help_heading("Notes View", theme));
     lines.push(Line::from(""));
@@ -251,6 +276,31 @@ fn notes_help_text(keybinds: &Keybinds, theme: &crate::app_theme::AppThemeColors
         theme,
     ));
     lines.extend(help_item_dyn(
+        "Scroll Up / Down half page",
+        Some(&format!("{}/{}", list_page_up, list_page_down)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Toggle pin note",
+        Some(&list_pin),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Toggle select mode",
+        Some(&list_select_mode),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Select / deselect item",
+        Some(&list_select_item),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "View / restore trash",
+        Some(&list_trash),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
         "Change focus (notes list <-> buttons)",
         Some(&list_focus),
         theme,
@@ -271,12 +321,12 @@ fn notes_help_text(keybinds: &Keybinds, theme: &crate::app_theme::AppThemeColors
     lines.push(help_heading("Popups", theme));
     lines.push(Line::from(""));
     lines.push(Line::from(vec![Span::styled(
-        " Search Popup (/)",
+        format!(" Search Popup ({})", list_search),
         Style::default().fg(theme.heading),
     )]));
     lines.extend(help_item_dyn(
-        "Search notes by title or filename",
-        Some("Type query"),
+        "Search notes / Filter by tags",
+        Some("Type query / tag"),
         theme,
     ));
     lines.extend(help_item_dyn(
@@ -296,7 +346,7 @@ fn notes_help_text(keybinds: &Keybinds, theme: &crate::app_theme::AppThemeColors
     ));
     lines.push(Line::from(""));
     lines.push(Line::from(vec![Span::styled(
-        " Tag Popup (t)",
+        format!(" Tag Popup ({})", keybinds.list_keys_display(ListAction::ManageTags)),
         Style::default().fg(theme.heading),
     )]));
     lines.extend(help_item_dyn(
@@ -316,17 +366,7 @@ fn notes_help_text(keybinds: &Keybinds, theme: &crate::app_theme::AppThemeColors
     ));
     lines.push(Line::from(""));
     lines.push(Line::from(vec![Span::styled(
-        " Filter Tags Popup (F)",
-        Style::default().fg(theme.heading),
-    )]));
-    lines.extend(help_item_dyn(
-        "Show only notes with specific tags",
-        Some("Click/drag tags to filter list"),
-        theme,
-    ));
-    lines.push(Line::from(""));
-    lines.push(Line::from(vec![Span::styled(
-        " Template Popup (T)",
+        format!(" Template Popup ({})", keybinds.list_keys_display(ListAction::NewFromTemplate)),
         Style::default().fg(theme.heading),
     )]));
     lines.extend(help_item_dyn(
@@ -337,6 +377,16 @@ fn notes_help_text(keybinds: &Keybinds, theme: &crate::app_theme::AppThemeColors
     lines.extend(help_item_dyn(
         "Create new template from current note",
         Some("n / Create button"),
+        theme,
+    ));
+    lines.push(Line::from(""));
+    lines.push(Line::from(vec![Span::styled(
+        format!(" Markdown Preview ({})", keybinds.list_keys_display(ListAction::TogglePreview)),
+        Style::default().fg(theme.heading),
+    )]));
+    lines.extend(help_item_dyn(
+        "Toggle preview pane in notes list",
+        None,
         theme,
     ));
     lines.push(Line::from(""));
@@ -381,7 +431,7 @@ fn editor_help_text(
     keybinds: &Keybinds,
     theme: &crate::app_theme::AppThemeColors,
 ) -> Text<'static> {
-    let edit_quit = keybinds.edit_keys_display(EditAction::Quit);
+    let _edit_quit = keybinds.edit_keys_display(EditAction::Quit);
     let edit_back = keybinds.edit_keys_display(EditAction::Back);
     let edit_focus = keybinds.edit_keys_display(EditAction::CycleFocus);
     let edit_copy = keybinds.edit_keys_display(EditAction::Copy);
@@ -407,11 +457,6 @@ fn editor_help_text(
         Some(&edit_back),
         theme,
     ));
-    lines.extend(help_item_dyn(
-        "Save + quit app entirely",
-        Some(&edit_quit),
-        theme,
-    ));
     lines.push(Line::from(""));
     lines.extend(help_item_dyn(
         "Copy / Cut / Paste",
@@ -432,6 +477,11 @@ fn editor_help_text(
     lines.extend(help_item_dyn(
         "Toggle markdown preview panel",
         Some(&edit_md_preview),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Open external editor",
+        Some(&edit_focus),
         theme,
     ));
     Text::from(lines)
@@ -477,6 +527,11 @@ fn graph_help_text(keybinds: &Keybinds, theme: &crate::app_theme::AppThemeColors
         Some(&keybinds.graph_keys_display(crate::keybinds::GraphAction::ToggleSearch)),
         theme,
     ));
+    lines.extend(help_item_dyn(
+        "Open filter menu",
+        Some("f"),
+        theme,
+    ));
     lines.push(Line::from(""));
 
     lines.push(help_heading("Display Options", theme));
@@ -499,6 +554,21 @@ fn graph_help_text(keybinds: &Keybinds, theme: &crate::app_theme::AppThemeColors
     lines.extend(help_item_dyn(
         "Toggle status bar",
         Some(&keybinds.graph_keys_display(crate::keybinds::GraphAction::ToggleStatus)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Show/Hide legend",
+        Some("L"),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Show/Hide minimap",
+        Some("M"),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Show/Hide grid",
+        Some("G"),
         theme,
     ));
     lines.push(Line::from(""));
@@ -659,9 +729,6 @@ fn canvas_help_text(theme: &crate::app_theme::AppThemeColors) -> Text<'static> {
     lines.extend(help_item_dyn("Save canvas file", Some("Ctrl+s"), theme));
     lines.extend(help_item_dyn("Cancel connection", Some("Esc"), theme));
     lines.extend(help_item_dyn("Exit canvas view", Some("Esc"), theme));
-    lines.push(Line::from(""));
-    lines.extend(help_item_dyn("* Ctrl+Enter in editor to save", None, theme));
-    lines.extend(help_item_dyn("* Nodes auto-saved on changes", None, theme));
     Text::from(lines)
 }
 
@@ -1441,9 +1508,22 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     }
 
     if let Some(popup) = &mut app.popups.folder {
-        let popup_area = centered_rect(50, 20, area);
+        let popup_area = centered_rect(50, 10, area);
         frame.render_widget(Clear, popup_area);
-        frame.render_widget(&popup.input, popup_area);
+
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(3), Constraint::Length(1)])
+            .split(popup_area);
+
+        popup.input.set_block(
+            Block::default()
+                .style(app.app_theme.bg_style())
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(app.app_theme.heading)),
+        );
+        frame.render_widget(&popup.input, chunks[0]);
+        draw_popup_footer(frame, chunks[1], &app.app_theme, "Enter confirm · Esc cancel");
     }
 
     if let Some(popup) = &mut app.popups.tag {
@@ -1480,7 +1560,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             .style(app.app_theme.bg_style())
             .borders(Borders::ALL)
             .border_style(input_border)
-            .title("Manage Tags");
+            .title("");
         let input_inner = input_block.inner(input_chunks[0]);
         frame.render_widget(input_block, chunks[0]);
         frame.render_widget(&popup.input, input_inner);
@@ -1519,9 +1599,10 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         } else {
             Style::default().fg(app.app_theme.muted)
         };
-        let tag_items: Vec<ListItem> = if popup.all_tags.is_empty() {
+        let tag_empty = popup.all_tags.is_empty();
+        let tag_items: Vec<ListItem> = if tag_empty {
             vec![ListItem::new(Span::styled(
-                "(no tags)",
+                "No tags found",
                 Style::default().fg(app.app_theme.muted),
             ))]
         } else {
@@ -1538,7 +1619,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     .style(app.app_theme.bg_style())
                     .borders(Borders::ALL)
                     .border_style(all_tags_border)
-                    .title("All Tags"),
+                    .title(if tag_empty { String::new() } else { "All Tags".to_string() }),
             )
             .highlight_style(
                 Style::default()
@@ -1562,7 +1643,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         );
     }
 
-    if let Some(picker) = &app.popups.folder_picker {
+    if let Some(picker) = &mut app.popups.folder_picker {
         let popup_area = centered_rect(NOTES_POPUP_LARGE_W_PCT, NOTES_POPUP_LARGE_H_PCT, area);
         frame.render_widget(Clear, popup_area);
 
@@ -1582,16 +1663,14 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         } else {
             Style::default().fg(app.app_theme.muted)
         };
-        let search = Paragraph::new(format!("Search: {}", picker.query))
-            .block(
-                Block::default()
-                    .style(app.app_theme.bg_style())
-                    .borders(Borders::ALL)
-                    .border_style(search_border)
-                    .title("Folder Search"),
-            )
-            .style(Style::default().fg(app.app_theme.muted));
-        frame.render_widget(search, chunks[0]);
+        picker.input.set_block(
+            Block::default()
+                .style(app.app_theme.bg_style())
+                .borders(Borders::ALL)
+                .border_style(search_border)
+                .title(""),
+        );
+        frame.render_widget(&picker.input, chunks[0]);
 
         let items: Vec<ListItem> = if picker.filtered_folders.is_empty() {
             vec![ListItem::new(Span::styled(
@@ -1609,8 +1688,9 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 .collect()
         };
 
-        let title = match &picker.mode {
+        let _title = match &picker.mode {
             crate::app::FolderPickerMode::MoveNote { .. } => "Move note to folder".to_string(),
+            crate::app::FolderPickerMode::CopyNote { .. } => "Copy note to folder".to_string(),
             crate::app::FolderPickerMode::MoveFolder { folder_path } => {
                 let folder_name = folder_path.rsplit('/').next().unwrap_or(folder_path);
                 format!("Move '{}' folder to", folder_name)
@@ -1631,7 +1711,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     .style(app.app_theme.bg_style())
                     .borders(Borders::ALL)
                     .border_style(results_border)
-                    .title(title),
+                    .title(""),
             )
             .highlight_style(
                 Style::default()
@@ -1670,6 +1750,13 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             ])
             .split(palette_area);
 
+        palette.input.set_block(
+            Block::default()
+                .style(app.app_theme.bg_style())
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(app.app_theme.muted))
+                .title(""),
+        );
         frame.render_widget(&palette.input, chunks[0]);
 
         let items: Vec<ListItem> = palette
@@ -1695,7 +1782,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     .style(app.app_theme.bg_style())
                     .borders(Borders::ALL)
                     .border_style(Style::default().fg(app.app_theme.muted))
-                    .title("Commands"),
+                    .title(""),
             )
             .highlight_style(
                 Style::default()
@@ -1715,27 +1802,79 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     }
 
     if let Some(popup) = &mut app.popups.note_rename {
-        let popup_area = centered_rect(50, 20, area);
+        let popup_area = centered_rect(50, 10, area);
         frame.render_widget(Clear, popup_area);
-        frame.render_widget(&popup.input, popup_area);
+
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(3), Constraint::Length(1)])
+            .split(popup_area);
+
+        popup.input.set_block(
+            Block::default()
+                .style(app.app_theme.bg_style())
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(app.app_theme.heading)),
+        );
+        frame.render_widget(&popup.input, chunks[0]);
+        draw_popup_footer(frame, chunks[1], &app.app_theme, "Enter rename · Esc cancel");
     }
 
     if let Some(popup) = &mut app.popups.note_create {
-        let popup_area = centered_rect(50, 20, area);
+        let popup_area = centered_rect(50, 10, area);
         frame.render_widget(Clear, popup_area);
-        frame.render_widget(&popup.input, popup_area);
+
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(3), Constraint::Length(1)])
+            .split(popup_area);
+
+        popup.input.set_block(
+            Block::default()
+                .style(app.app_theme.bg_style())
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(app.app_theme.heading)),
+        );
+        frame.render_widget(&popup.input, chunks[0]);
+        draw_popup_footer(frame, chunks[1], &app.app_theme, "Enter create · Esc cancel");
     }
 
     if let Some(popup) = &mut app.popups.draw_create {
-        let popup_area = centered_rect(50, 20, area);
+        let popup_area = centered_rect(50, 10, area);
         frame.render_widget(Clear, popup_area);
-        frame.render_widget(&popup.input, popup_area);
+
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(3), Constraint::Length(1)])
+            .split(popup_area);
+
+        popup.input.set_block(
+            Block::default()
+                .style(app.app_theme.bg_style())
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(app.app_theme.heading)),
+        );
+        frame.render_widget(&popup.input, chunks[0]);
+        draw_popup_footer(frame, chunks[1], &app.app_theme, "Enter create · Esc cancel");
     }
 
     if let Some(popup) = &mut app.popups.canvas_create {
-        let popup_area = centered_rect(50, 20, area);
+        let popup_area = centered_rect(50, 10, area);
         frame.render_widget(Clear, popup_area);
-        frame.render_widget(&popup.input, popup_area);
+
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(3), Constraint::Length(1)])
+            .split(popup_area);
+
+        popup.input.set_block(
+            Block::default()
+                .style(app.app_theme.bg_style())
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(app.app_theme.heading)),
+        );
+        frame.render_widget(&popup.input, chunks[0]);
+        draw_popup_footer(frame, chunks[1], &app.app_theme, "Enter create · Esc cancel");
     }
 
     if let Some(popup) = &mut app.popups.search {
@@ -1841,7 +1980,6 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         let results_chunk = if has_filter { chunks[2] } else { chunks[1] };
         let footer_chunk = if has_filter { chunks[3] } else { chunks[2] };
 
-        popup.input.set_style(app.app_theme.bg_style());
         popup.input.set_block(
             Block::default()
                 .style(app.app_theme.bg_style())
@@ -1851,7 +1989,8 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 } else {
                     Style::default().fg(app.app_theme.muted)
                 })
-                .title("Search"),
+                .title(""),
+
         );
         frame.render_widget(&popup.input, input_chunk);
 
@@ -1871,7 +2010,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             let mut i = 0;
             while i < popup.grep_results.len() {
                 let is_collapsed = popup.grep_is_header[i]
-                    && popup.grep_collapsed.contains(&i);
+                    && !popup.grep_expanded.contains(&i);
                 let icon = if popup.grep_is_header[i] {
                     if is_collapsed { "\u{25b6}" } else { "\u{25bc}" }
                 } else {
@@ -1888,14 +2027,14 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             let items: Vec<ListItem> = visible.iter()
                 .map(|(_, t)| ListItem::new(styled_result_line(t, &app.app_theme)))
                 .collect();
-            (items, "Results")
+            (items, "")
         } else if has_title {
             let items: Vec<ListItem> = popup
                 .title_results
                 .iter()
                 .map(|entry| ListItem::new(styled_result_line(entry, &app.app_theme)))
                 .collect();
-            (items, "Results")
+            (items, "")
         } else {
             let msg = if query_text.trim().is_empty() && !has_filter {
                 "Type to search notes"
@@ -1905,7 +2044,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             (vec![ListItem::new(Span::styled(
                 msg.to_string(),
                 Style::default().fg(app.app_theme.muted),
-            ))], "Results")
+            ))], "")
         };
 
         let results_list = List::new(all_items)
@@ -1930,7 +2069,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             let mut i = 0;
             while i < popup.grep_results.len() && i <= popup.grep_selected {
                 let is_collapsed = popup.grep_is_header[i]
-                    && popup.grep_collapsed.contains(&i);
+                    && !popup.grep_expanded.contains(&i);
                 if i == popup.grep_selected {
                     list_state.select(Some(vis_pos));
                     break;
@@ -1952,7 +2091,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             frame,
             footer_chunk,
             &app.app_theme,
-            "Tab switch · Enter open · Esc cancel · f:folder p:pinned t:tag g:text",
+            "Tab switch · Enter open · Esc cancel · f:folder p:pinned t:tag g:text · \\e\\ escapes filters",
         );
     }
 
@@ -1972,6 +2111,12 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             popup_area.width,
             1,
         );
+
+        let border_color = if trash.items.is_empty() {
+            app.app_theme.muted
+        } else {
+            app.app_theme.heading
+        };
 
         let items: Vec<ListItem> = trash
             .items
@@ -1994,7 +2139,8 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 Block::default()
                     .style(app.app_theme.bg_style())
                     .borders(Borders::ALL)
-                    .title("Trash"),
+                    .border_style(Style::default().fg(border_color))
+                    .title(""),
             )
             .highlight_style(
                 Style::default()
@@ -2008,11 +2154,12 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         state.select(Some(trash.selected));
 
         frame.render_stateful_widget(list, list_area, &mut state);
+
         draw_popup_footer(
             frame,
             footer_area,
             &app.app_theme,
-            "r restore  d delete  E empty  q close",
+            "r restore · d delete · E empty · q close",
         );
     }
 
@@ -2040,21 +2187,20 @@ pub fn draw_template_popup(
         ])
         .split(popup_area);
 
-    let search_border = if popup.focus == crate::popups::TemplatePopupFocus::Search {
-        Style::default().fg(theme.heading)
-    } else {
-        Style::default().fg(theme.muted)
-    };
-    let search = Paragraph::new(format!("Search: {}", popup.query))
-        .block(
+        let mut input = popup.input.clone();
+        input.set_style(theme.bg_style());
+        input.set_block(
             Block::default()
                 .style(theme.bg_style())
                 .borders(Borders::ALL)
-                .border_style(search_border)
-                .title("Search Templates"),
-        )
-        .style(Style::default().fg(theme.muted));
-    frame.render_widget(search, chunks[0]);
+                .border_style(if popup.focus == crate::popups::TemplatePopupFocus::Search {
+                    Style::default().fg(theme.heading)
+                } else {
+                    Style::default().fg(theme.muted)
+                })
+                .title(""),
+        );
+        frame.render_widget(&input, chunks[0]);
 
     let items: Vec<ListItem> = if popup.filtered_templates.is_empty() {
         vec![ListItem::new(Span::styled(
@@ -2110,7 +2256,7 @@ pub fn draw_template_popup(
         frame,
         chunks[2],
         theme,
-        "Tab switch · Enter use template · n create new · d delete · Space edit · ? help · Esc cancel",
+        "Tab switch · Enter use template · n create template · d delete · Space edit · ? help · Esc cancel",
     );
 }
 
@@ -2645,8 +2791,7 @@ pub fn draw_confirm_popup(
     let block = Block::default()
         .style(theme.bg_style())
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(border_color))
-        .title(popup.title.as_str());
+        .border_style(Style::default().fg(border_color));
 
     let inner = block.inner(popup_area);
     frame.render_widget(block, popup_area);
@@ -2729,10 +2874,19 @@ fn draw_hint_line(
     show_ext: bool,
 ) {
     let status = app.status.as_ref();
-    let right_text = if !status.is_empty() && status != "Ready" {
-        crate::sanitize::sanitize_for_terminal(status)
+
+    let popup_hint = if app.command_palette.is_some() {
+        Some("Command palette...")
     } else {
-        Cow::Owned(hints.to_string())
+        app.popups.active_popup_hint()
+    };
+
+    let (right_text, is_popup_hint) = if let Some(hint) = popup_hint {
+        (Cow::Borrowed(hint), true)
+    } else if status != app.default_status_text() && !status.is_empty() && status != "Ready" {
+        (crate::sanitize::sanitize_for_terminal(status), false)
+    } else {
+        (Cow::Owned(hints.to_string()), false)
     };
 
     let mut spans: Vec<Span> = Vec::new();
@@ -2759,10 +2913,19 @@ fn draw_hint_line(
         spans.push(Span::raw("  "));
     }
 
-    spans.push(Span::styled(
-        right_text,
-        Style::default().fg(app.app_theme.muted),
-    ));
+    if is_popup_hint {
+        spans.push(Span::styled(
+            right_text,
+            Style::default()
+                .fg(app.app_theme.accent)
+                .add_modifier(Modifier::BOLD),
+        ));
+    } else {
+        spans.push(Span::styled(
+            right_text,
+            Style::default().fg(app.app_theme.muted),
+        ));
+    }
 
     let line = Line::from(spans);
     let para = Paragraph::new(line).style(app.app_theme.hint_line_bg_style());

@@ -219,19 +219,19 @@ fn draw_reload_notification(
     let popup_area = ratatui::layout::Rect::new(x, y, width, height);
 
     let is_error = msg.starts_with("Config error");
-    let fg = if is_error {
+    let border_color = if is_error {
         ratatui::style::Color::Red
     } else {
-        colors.label_color
+        colors.border_color
     };
 
     let paragraph = ratatui::widgets::Paragraph::new(msg)
-        .style(ratatui::style::Style::default().fg(fg))
+        .style(ratatui::style::Style::default().fg(colors.label_color))
         .alignment(ratatui::layout::Alignment::Center)
         .block(
             ratatui::widgets::Block::default()
                 .borders(ratatui::widgets::Borders::ALL)
-                .border_style(ratatui::style::Style::default().fg(colors.border_color)),
+                .border_style(ratatui::style::Style::default().fg(border_color)),
         );
 
     frame.render_widget(paragraph, popup_area);

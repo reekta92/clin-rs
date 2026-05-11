@@ -226,7 +226,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 while parent > 0 && !p.grep_is_header[parent] {
                     parent -= 1;
                 }
-                if !p.grep_collapsed.contains(&parent) {
+                if p.grep_expanded.contains(&parent) {
                     return i;
                 }
                 if i == 0 { return 0; }
@@ -241,7 +241,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 while parent > 0 && !p.grep_is_header[parent] {
                     parent -= 1;
                 }
-                if !p.grep_collapsed.contains(&parent) {
+                if p.grep_expanded.contains(&parent) {
                     return i;
                 }
                 i += 1;
@@ -267,7 +267,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 if popup.focus == crate::popups::SearchFocus::Results && has_results {
                     app.popups.search = Some(popup);
                     app.jump_to_selected_result();
-                    app.confirm_search_with_restore();
+                    app.confirm_search();
                 } else {
                     app.popups.search = Some(popup);
                     app.confirm_search();
@@ -282,16 +282,16 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                     && popup.grep_is_header.get(popup.grep_selected).copied().unwrap_or(false)
                 {
                     // Toggle collapse
-                    if popup.grep_collapsed.contains(&popup.grep_selected) {
-                        popup.grep_collapsed.remove(&popup.grep_selected);
+                    if popup.grep_expanded.contains(&popup.grep_selected) {
+                        popup.grep_expanded.remove(&popup.grep_selected);
                     } else {
-                        popup.grep_collapsed.insert(popup.grep_selected);
+                        popup.grep_expanded.insert(popup.grep_selected);
                     }
                     app.popups.search = Some(popup);
                 } else if has_results {
                     app.popups.search = Some(popup);
                     app.jump_to_selected_result();
-                    app.confirm_search_with_restore();
+                    app.confirm_search();
                 } else {
                     app.popups.search = Some(popup);
                     app.update_search();
@@ -326,10 +326,14 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 }
             }
             KeyCode::Right | KeyCode::Char(' ') => {
-                if has_grep
+                if popup.focus == crate::popups::SearchFocus::Input {
+                    popup.input.input(Input::from(key));
+                    app.popups.search = Some(popup);
+                    app.update_search();
+                } else if has_grep
                     && popup.grep_is_header.get(popup.grep_selected).copied().unwrap_or(false)
                 {
-                    popup.grep_collapsed.remove(&popup.grep_selected);
+                    popup.grep_expanded.insert(popup.grep_selected);
                     app.popups.search = Some(popup);
                 } else {
                     popup.focus = crate::popups::SearchFocus::Input;
@@ -339,10 +343,14 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 }
             }
             KeyCode::Left => {
-                if has_grep
+                if popup.focus == crate::popups::SearchFocus::Input {
+                    popup.input.input(Input::from(key));
+                    app.popups.search = Some(popup);
+                    app.update_search();
+                } else if has_grep
                     && popup.grep_is_header.get(popup.grep_selected).copied().unwrap_or(false)
                 {
-                    popup.grep_collapsed.insert(popup.grep_selected);
+                    popup.grep_expanded.remove(&popup.grep_selected);
                     app.popups.search = Some(popup);
                 } else {
                     popup.focus = crate::popups::SearchFocus::Input;
@@ -439,28 +447,20 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                         app.popups.folder_picker = Some(picker);
                     }
                 },
-                crate::app::FolderPickerFocus::Search => match key.code {
-                    KeyCode::Backspace => {
-                        picker.query.pop();
+                crate::app::FolderPickerFocus::Search => {
+                    let old_query = picker.input.lines().join("");
+                    picker.input.input(Input::from(key));
+                    let new_query = picker.input.lines().join("");
+                    if old_query != new_query {
                         app.popups.folder_picker = Some(picker);
                         app.update_folder_picker_filter();
-                    }
-                    KeyCode::Enter => {
+                    } else if key.code == KeyCode::Enter {
                         picker.focus = crate::app::FolderPickerFocus::Results;
                         app.popups.folder_picker = Some(picker);
-                    }
-                    KeyCode::Char(c)
-                        if !key.modifiers.contains(KeyModifiers::CONTROL)
-                            && !key.modifiers.contains(KeyModifiers::ALT) =>
-                    {
-                        picker.query.push(c);
-                        app.popups.folder_picker = Some(picker);
-                        app.update_folder_picker_filter();
-                    }
-                    _ => {
+                    } else {
                         app.popups.folder_picker = Some(picker);
                     }
-                },
+                }
             },
         }
         return false;
@@ -483,12 +483,24 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 app.close_template_popup();
             }
             KeyCode::Char('?') => {
-                app.popups.template = Some(popup);
-                app.open_help_page_with_tab(HelpTab::Templates);
+                if popup.focus == crate::popups::TemplatePopupFocus::Results {
+                    app.popups.template = Some(popup);
+                    app.open_help_page_with_tab(HelpTab::Templates);
+                } else {
+                    popup.input.input(Input::from(key));
+                    app.popups.template = Some(popup);
+                    app.update_template_popup_filter();
+                }
             }
             KeyCode::Char('n') => {
-                app.popups.template = Some(popup);
-                app.create_template_from_popup();
+                if popup.focus == crate::popups::TemplatePopupFocus::Results {
+                    app.popups.template = Some(popup);
+                    app.create_template_from_popup();
+                } else {
+                    popup.input.input(Input::from(key));
+                    app.popups.template = Some(popup);
+                    app.update_template_popup_filter();
+                }
             }
             _ => match popup.focus {
                 crate::popups::TemplatePopupFocus::Results => match key.code {
@@ -522,25 +534,14 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                     }
                 },
                 crate::popups::TemplatePopupFocus::Search => match key.code {
-                    KeyCode::Backspace => {
-                        popup.query.pop();
-                        app.popups.template = Some(popup);
-                        app.update_template_popup_filter();
-                    }
                     KeyCode::Enter => {
                         popup.focus = crate::popups::TemplatePopupFocus::Results;
                         app.popups.template = Some(popup);
                     }
-                    KeyCode::Char(c)
-                        if !key.modifiers.contains(KeyModifiers::CONTROL)
-                            && !key.modifiers.contains(KeyModifiers::ALT) =>
-                    {
-                        popup.query.push(c);
+                    _ => {
+                        popup.input.input(Input::from(key));
                         app.popups.template = Some(popup);
                         app.update_template_popup_filter();
-                    }
-                    _ => {
-                        app.popups.template = Some(popup);
                     }
                 },
             },
@@ -626,6 +627,10 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
+    if key.code == KeyCode::Esc {
+        app.handle_esc_press();
+    }
+
     if app.keybinds.matches_list(ListAction::CycleFocus, &key) {
         app.list.list_focus = match app.list.list_focus {
             ListFocus::Notes => ListFocus::ExternalEditorToggle,
@@ -643,9 +648,6 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
-    if key.code == KeyCode::Esc && app.restore_post_search_view() {
-        return false;
-    }
 
     if app.keybinds.matches_list(ListAction::Quit, &key) {
         return true;
@@ -916,10 +918,10 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
         return false;
     }
 
-    if app.keybinds.matches_edit(EditAction::Quit, &key) {
-        app.autosave();
-        return true;
-    }
+    // if app.keybinds.matches_edit(EditAction::Quit, &key) {
+    //     app.autosave();
+    //     return true;
+    // }
 
     if app.keybinds.matches_edit(EditAction::CycleFocus, &key) {
         *focus = match *focus {
@@ -1174,7 +1176,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
 
         if open_selected {
             app.jump_to_selected_result();
-            app.confirm_search_with_restore();
+            app.confirm_search();
             return;
         }
 

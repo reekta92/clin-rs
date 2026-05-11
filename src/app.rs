@@ -293,10 +293,10 @@ pub struct App {
     pub pinned_on_top: bool,
     pub default_folder: Option<String>,
     pub last_g_press: Option<Instant>,
+    pub last_esc_press: Option<Instant>,
     pub return_mode: Option<ViewMode>,
     pub app_theme: crate::app_theme::AppThemeColors,
     pub canvas_state: Option<crate::pinstar::state::PinstarState>,
-    pub search_restore_state: Option<(usize, HashSet<String>)>,
 }
 
 impl App {
@@ -342,10 +342,10 @@ impl App {
             pinned_on_top: bootstrap_config.pinned_on_top,
             default_folder: bootstrap_config.default_folder.clone(),
             last_g_press: None,
+            last_esc_press: None,
             return_mode: None,
             app_theme,
             canvas_state: None,
-            search_restore_state: None,
         };
         app.list.folder_expanded.insert(String::new());
         app.refresh_notes()?;
@@ -556,6 +556,28 @@ impl App {
         }
     }
 
+    pub fn open_note_at_line(&mut self, note_id: &str, line_number: Option<usize>) {
+        if note_id.ends_with(".draw") {
+            self.open_draw_view();
+            return;
+        }
+        if note_id.ends_with(".canvas") {
+            self.open_canvas_view();
+            return;
+        }
+        if note_id.ends_with(".clin") {
+            self.status = Cow::Borrowed(
+                "Note is encrypted. Use command palette (Ctrl+P) to decrypt.",
+            );
+            return;
+        }
+        if self.editor.external_editor_enabled {
+            self.open_note_in_external_editor(note_id, line_number);
+        } else {
+            self.load_and_open_note(note_id, line_number);
+        }
+    }
+
     pub fn open_selected(&mut self) {
         if self.list.visual_list.is_empty() {
             return;
@@ -580,43 +602,17 @@ impl App {
             }
             VisualItem::Note {
                 summary_idx,
-                is_draw,
-                is_canvas,
                 ..
             } => {
-                if *is_draw {
-                    self.open_draw_view();
-                    return;
-                }
-                if *is_canvas {
-                    self.open_canvas_view();
-                    return;
-                }
-                let note_id = if let Some(summary) = self.notes.get(*summary_idx) {
-                    let is_clin = summary.id.ends_with(".clin");
-                    if is_clin {
-                        self.status = Cow::Borrowed(
-                            "Note is encrypted. Use command palette (Ctrl+P) to decrypt.",
-                        );
-                        return;
-                    }
-                    Some(summary.id.clone())
-                } else {
-                    None
-                };
-
+                let note_id = self.notes.get(*summary_idx).map(|s| s.id.clone());
                 if let Some(id) = note_id {
-                    if self.editor.external_editor_enabled {
-                        self.open_note_in_external_editor(&id);
-                    } else {
-                        self.load_and_open_note(&id);
-                    }
+                    self.open_note_at_line(&id, None);
                 }
             }
         }
     }
 
-    pub fn load_and_open_note(&mut self, note_id: &str) {
+    pub fn load_and_open_note(&mut self, note_id: &str, line_number: Option<usize>) {
         if let Ok(note) = self.storage.load_note(note_id) {
             self.editor.editing_id = Some(note_id.to_string());
             self.editor.title_editor = make_title_editor(
@@ -624,7 +620,14 @@ impl App {
                 self.app_theme.highlight_fg,
                 self.app_theme.highlight_bg,
             );
-            self.editor.editor = text_area_from_content(&note.content);
+            let mut editor = text_area_from_content(&note.content);
+            if let Some(l) = line_number {
+                editor.move_cursor(ratatui_textarea::CursorMove::Jump(
+                    l.saturating_sub(1) as u16,
+                    0,
+                ));
+            }
+            self.editor.editor = editor;
             self.mode = ViewMode::Edit;
             if self.editor.editor_preview_enabled {
                 self.update_editor_markdown_preview();
@@ -637,7 +640,7 @@ impl App {
         }
     }
 
-    pub fn open_note_in_external_editor(&mut self, note_id: &str) {
+    pub fn open_note_in_external_editor(&mut self, note_id: &str, line_number: Option<usize>) {
         if let Ok(note) = self.storage.load_note(note_id) {
             let temp_dir = std::env::temp_dir();
             let temp_id = uuid::Uuid::new_v4().to_string();
@@ -700,6 +703,9 @@ impl App {
             let mut command = std::process::Command::new(program);
             for arg in editor_args {
                 command.arg(arg);
+            }
+            if let Some(l) = line_number {
+                command.arg(format!("+{}", l));
             }
             command.arg(&temp_file_path);
             let result = command.status();
@@ -907,7 +913,7 @@ impl App {
                 if let Err(e) = self.refresh_notes() {
                     self.set_temporary_status(&format!("Refresh failed: {e}"));
                 }
-                self.open_note_in_external_editor(&new_id);
+                self.open_note_in_external_editor(&new_id, None);
             }
             return;
         }
@@ -943,7 +949,7 @@ impl App {
                 if let Err(e) = self.refresh_notes() {
                     self.set_temporary_status(&format!("Refresh failed: {e}"));
                 }
-                self.open_note_in_external_editor(&new_id);
+                self.open_note_in_external_editor(&new_id, None);
             }
             return;
         }
@@ -987,7 +993,7 @@ impl App {
                 if let Err(e) = self.refresh_notes() {
                     self.set_temporary_status(&format!("Refresh failed: {e}"));
                 }
-                self.open_note_in_external_editor(&new_id);
+                self.open_note_in_external_editor(&new_id, None);
             }
             return;
         }
@@ -1036,7 +1042,7 @@ impl App {
                 if let Err(e) = self.refresh_notes() {
                     self.set_temporary_status(&format!("Refresh failed: {e}"));
                 }
-                self.open_note_in_external_editor(&new_id);
+                self.open_note_in_external_editor(&new_id, None);
             }
             return;
         }
@@ -1065,10 +1071,14 @@ impl App {
         let template_manager = self.storage.template_manager();
         match template_manager.list() {
             Ok(templates) => {
+                let mut input = TextArea::default();
+                input.set_style(self.app_theme.bg_style());
+                input.set_cursor_line_style(Style::default());
+                input.set_placeholder_text("Search templates...");
                 self.popups.template = Some(TemplatePopup {
                     all_templates: templates.clone(),
                     filtered_templates: templates,
-                    query: String::new(),
+                    input,
                     selected: 0,
                     focus: crate::popups::TemplatePopupFocus::Search,
                 });
@@ -1152,7 +1162,7 @@ impl App {
 
     pub fn update_template_popup_filter(&mut self) {
         if let Some(popup) = &mut self.popups.template {
-            let query = popup.query.trim().to_lowercase();
+            let query = popup.input.lines()[0].trim().to_lowercase();
             if query.is_empty() {
                 popup.filtered_templates = popup.all_templates.clone();
             } else {
@@ -1190,13 +1200,11 @@ impl App {
         match template_manager.delete(&filename) {
             Ok(()) => {
                 if let Some(popup) = &mut self.popups.template {
-                    let query = popup.query.clone();
                     let selected = popup.selected;
                     let focus = popup.focus;
                     match template_manager.list() {
                         Ok(all_templates) => {
                             popup.all_templates = all_templates;
-                            popup.query = query;
                             popup.focus = focus;
                             self.update_template_popup_filter();
                             if let Some(popup) = &mut self.popups.template {
@@ -1667,6 +1675,7 @@ template = """
             return;
         }
         let mut input = TextArea::default();
+        input.set_cursor_line_style(ratatui::style::Style::default());
         let title = if parent_path.is_empty() {
             "Create Folder - Esc to cancel, Enter to save".to_string()
         } else {
@@ -1701,6 +1710,7 @@ template = """
                 return;
             }
             let mut input = TextArea::default();
+            input.set_cursor_line_style(ratatui::style::Style::default());
             input.insert_str(path);
             input.set_style(self.app_theme.bg_style());
             input.set_block(
@@ -1801,6 +1811,9 @@ template = """
             if let Ok(folders) = self.storage.list_folders() {
                 let mut all_folders = vec!["".to_string()];
                 all_folders.extend(folders);
+                let mut input = TextArea::default();
+                input.set_cursor_line_style(ratatui::style::Style::default());
+                input.set_placeholder_text("Search folders...");
                 self.popups.folder_picker = Some(FolderPicker {
                     mode: FolderPickerMode::MoveNote {
                         note_id: note.id.clone(),
@@ -1808,8 +1821,8 @@ template = """
                     filtered_folders: all_folders.clone(),
                     all_folders,
                     selected: 0,
-                    query: String::new(),
-                    focus: FolderPickerFocus::Results,
+                    input,
+                    focus: FolderPickerFocus::Search,
                 });
             } else {
                 self.set_temporary_status_static("Failed to list folders");
@@ -1836,13 +1849,16 @@ template = """
                     }),
                 );
 
+                let mut input = TextArea::default();
+                input.set_cursor_line_style(ratatui::style::Style::default());
+                input.set_placeholder_text("Search folders...");
                 self.popups.folder_picker = Some(FolderPicker {
                     mode: FolderPickerMode::MoveFolder { folder_path },
                     filtered_folders: all_folders.clone(),
                     all_folders,
                     selected: 0,
-                    query: String::new(),
-                    focus: FolderPickerFocus::Results,
+                    input,
+                    focus: FolderPickerFocus::Search,
                 });
             } else {
                 self.set_temporary_status_static("Failed to list folders");
@@ -1865,13 +1881,16 @@ template = """
                 if let Ok(folders) = self.storage.list_folders() {
                     let mut all_folders = vec!["".to_string()];
                     all_folders.extend(folders);
+                    let mut input = TextArea::default();
+                    input.set_cursor_line_style(ratatui::style::Style::default());
+                    input.set_placeholder_text("Search folders...");
                     self.popups.folder_picker = Some(FolderPicker {
                         mode: FolderPickerMode::BulkMoveNotes { note_ids },
                         filtered_folders: all_folders.clone(),
                         all_folders,
                         selected: 0,
-                        query: String::new(),
-                        focus: FolderPickerFocus::Results,
+                        input,
+                        focus: FolderPickerFocus::Search,
                     });
                     return;
                 }
@@ -1899,6 +1918,17 @@ template = """
                             self.set_temporary_status(&format!("Refresh failed: {e}"));
                         }
                         self.set_temporary_status_static("Note moved");
+                    }
+                }
+                FolderPickerMode::CopyNote { note_id } => {
+                    if let Err(e) = self.storage.duplicate_note(&note_id, target_folder) {
+                        self.set_temporary_status(&format!("Failed to copy note: {e}"));
+                    } else {
+                        self.list.folder_cache = None;
+                        if let Err(e) = self.refresh_notes() {
+                            self.set_temporary_status(&format!("Refresh failed: {e}"));
+                        }
+                        self.set_temporary_status_static("Note copied");
                     }
                 }
                 FolderPickerMode::MoveFolder { folder_path } => {
@@ -1954,7 +1984,7 @@ template = """
 
     pub fn update_folder_picker_filter(&mut self) {
         if let Some(picker) = &mut self.popups.folder_picker {
-            let query = picker.query.trim().to_lowercase();
+            let query = picker.input.lines().join("").trim().to_lowercase();
             if query.is_empty() {
                 picker.filtered_folders = picker.all_folders.clone();
             } else {
@@ -1992,7 +2022,9 @@ template = """
             let all_tags = self.collect_live_tags();
 
             let mut input = TextArea::default();
+            input.set_cursor_line_style(ratatui::style::Style::default());
             input.set_style(self.app_theme.bg_style());
+            input.set_placeholder_text("Add tags...");
             input.insert_str(current_tags.join(", "));
 
             self.popups.tag = Some(TagPopup {
@@ -2342,10 +2374,10 @@ template = """
         }
         self.return_mode = Some(ViewMode::Graph);
         if self.editor.external_editor_enabled {
-            self.open_note_in_external_editor(note_id);
+            self.open_note_in_external_editor(note_id, None);
             self.mode = self.return_mode.take().unwrap_or(ViewMode::List);
         } else {
-            self.load_and_open_note(note_id);
+            self.load_and_open_note(note_id, None);
         }
     }
 
@@ -2421,6 +2453,7 @@ template = """
             return;
         }
         let mut input = TextArea::default();
+        input.set_cursor_line_style(ratatui::style::Style::default());
         input.set_style(self.app_theme.bg_style());
         input.set_block(
             ratatui::widgets::Block::default()
@@ -2449,6 +2482,7 @@ template = """
             return;
         }
         let mut input = TextArea::default();
+        input.set_cursor_line_style(ratatui::style::Style::default());
         input.set_style(self.app_theme.bg_style());
         input.set_block(
             ratatui::widgets::Block::default()
@@ -2487,6 +2521,7 @@ template = """
             return;
         }
         let mut input = TextArea::default();
+        input.set_cursor_line_style(ratatui::style::Style::default());
         input.set_style(self.app_theme.bg_style());
         input.set_block(
             ratatui::widgets::Block::default()
@@ -2545,6 +2580,7 @@ template = """
         {
             let note = &self.notes[summary_idx];
             let mut input = TextArea::default();
+            input.set_cursor_line_style(ratatui::style::Style::default());
             input.insert_str(&note.title);
             input.set_style(self.app_theme.bg_style());
             input.set_block(
@@ -2585,16 +2621,22 @@ template = """
         if let Some(VisualItem::Note { id, .. }) =
             self.list.visual_list.get(self.list.visual_index).cloned()
         {
-            match self.storage.duplicate_note(&id) {
-                Ok(_) => {
-                    if let Err(e) = self.refresh_notes() {
-                        self.set_temporary_status(&format!("Refresh failed: {e}"));
-                    }
-                    self.set_temporary_status_static("Note duplicated");
-                }
-                Err(e) => {
-                    self.set_temporary_status(&format!("Failed to duplicate: {e}"));
-                }
+            if let Ok(folders) = self.storage.list_folders() {
+                let mut all_folders = vec!["".to_string()];
+                all_folders.extend(folders);
+                let mut input = ratatui_textarea::TextArea::default();
+                input.set_cursor_line_style(ratatui::style::Style::default());
+                input.set_placeholder_text("Search folders...");
+                self.popups.folder_picker = Some(crate::popups::FolderPicker {
+                    mode: crate::popups::FolderPickerMode::CopyNote { note_id: id },
+                    filtered_folders: all_folders.clone(),
+                    all_folders,
+                    selected: 0,
+                    input,
+                    focus: crate::popups::FolderPickerFocus::Search,
+                });
+            } else {
+                self.set_temporary_status_static("Failed to list folders");
             }
         } else {
             self.set_temporary_status_static("Select a note to duplicate");
@@ -2660,8 +2702,8 @@ template = """
         let mut input = TextArea::default();
         input.set_style(self.app_theme.bg_style());
         input.set_cursor_line_style(Style::default());
+        input.set_placeholder_text("Search notes...");
 
-        self.search_restore_state = None;
         self.popups.search = Some(SearchPopup {
             input,
             focus: crate::popups::SearchFocus::Input,
@@ -2671,7 +2713,7 @@ template = """
             grep_results: Vec::new(),
             grep_result_indices: Vec::new(),
             grep_is_header: Vec::new(),
-            grep_collapsed: std::collections::HashSet::new(),
+            grep_expanded: std::collections::HashSet::new(),
             grep_selected: 0,
             original_index: self.list.visual_index,
             original_folder_expanded: self.list.folder_expanded.clone(),
@@ -2727,7 +2769,7 @@ template = """
                 popup.grep_results.clear();
                 popup.grep_result_indices.clear();
                 popup.grep_is_header.clear();
-                popup.grep_collapsed.clear();
+                popup.grep_expanded.clear();
                 popup.grep_selected = 0;
             }
             return;
@@ -2789,6 +2831,7 @@ template = """
             } else {
                 format!("{}/{}", note.folder, note.title)
             };
+            let lock_prefix = if note.id.ends_with(".clin") { "\u{f023} " } else { "" };
             let tags_str = if note.tags.is_empty() {
                 String::new()
             } else {
@@ -2804,7 +2847,7 @@ template = """
 
             // Title results: always computed when title_query is non-empty
             if !title_query.is_empty() && matched_title {
-                title_results.push(format!("{}{}", label, tags_str));
+                title_results.push(format!("{}{}{}", lock_prefix, label, tags_str));
                 title_result_indices.push(note_idx);
             }
 
@@ -2819,7 +2862,7 @@ template = """
                         .lines()
                         .filter(|l| l.to_lowercase().contains(&grep_query))
                         .count();
-                    grep_results.push(format!(" {}{} ({})", label, tags_str, match_count));
+                    grep_results.push(format!(" {}{}{} ({})", lock_prefix, label, tags_str, match_count));
                     grep_result_indices.push(note_idx);
                     grep_is_header.push(true);
 
@@ -2863,7 +2906,7 @@ template = """
                             .join(" ")
                     )
                 };
-                title_results.push(format!("{}{}", label, tags_str));
+                title_results.push(format!("{}{}{}", lock_prefix, label, tags_str));
                 title_result_indices.push(note_idx);
             }
         }
@@ -2887,35 +2930,28 @@ template = """
         self.popups.search = None;
     }
 
-    pub fn confirm_search_with_restore(&mut self) {
-        if let Some(popup) = self.popups.search.take() {
-            self.search_restore_state =
-                Some((popup.original_index, popup.original_folder_expanded));
-        }
-    }
-
-    pub fn restore_post_search_view(&mut self) -> bool {
-        if let Some((original_index, original_folder_expanded)) = self.search_restore_state.take() {
-            self.list.folder_expanded = original_folder_expanded;
-            self.refresh_visual_list();
-            if !self.list.visual_list.is_empty() {
-                self.list.visual_index =
-                    original_index.min(self.list.visual_list.len().saturating_sub(1));
-            } else {
-                self.list.visual_index = 0;
-            }
-            self.request_preview_update();
-            return true;
-        }
-        false
-    }
 
     pub fn jump_to_selected_result(&mut self) {
         if let Some(popup) = &self.popups.search {
+            let mut target_line = None;
             let note_idx = match popup.focus {
                 crate::popups::SearchFocus::Results => {
                     let has_grep = !popup.grep_results.is_empty();
                     if has_grep {
+                        let is_header = popup.grep_is_header.get(popup.grep_selected).copied().unwrap_or(false);
+                        if !is_header {
+                            if let Some(line_str) = popup.grep_results.get(popup.grep_selected) {
+                                if let Some(l_pos) = line_str.find('L') {
+                                    if let Some(colon_pos) = line_str.find(':') {
+                                        if colon_pos > l_pos + 1 {
+                                            if let Ok(num) = line_str[l_pos + 1..colon_pos].trim().parse::<usize>() {
+                                                target_line = Some(num);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         popup.grep_result_indices.get(popup.grep_selected).copied()
                     } else {
                         popup.title_result_indices.get(popup.title_selected).copied()
@@ -2923,9 +2959,12 @@ template = """
                 }
                 crate::popups::SearchFocus::Input => None,
             };
-            if let Some(note_idx) = note_idx {
-                self.jump_to_note_index(note_idx);
-                return;
+            if let Some(idx) = note_idx {
+                self.jump_to_note_index(idx);
+                if let Some(note) = self.notes.get(idx) {
+                    let id = note.id.clone();
+                    self.open_note_at_line(&id, target_line);
+                }
             }
         }
     }
@@ -2977,6 +3016,25 @@ template = """
         }
         self.last_g_press = Some(now);
         false
+    }
+
+    pub fn handle_esc_press(&mut self) {
+        let now = Instant::now();
+        if let Some(last) = self.last_esc_press
+            && now.duration_since(last) < Duration::from_millis(500)
+        {
+            self.last_esc_press = None;
+            self.collapse_all_folders();
+            return;
+        }
+        self.last_esc_press = Some(now);
+    }
+
+    pub fn collapse_all_folders(&mut self) {
+        self.list.folder_expanded.clear();
+        self.list.folder_expanded.insert(String::new());
+        self.refresh_visual_list();
+        self.request_preview_update();
     }
 
     pub fn open_trash_view(&mut self) {

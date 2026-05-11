@@ -132,7 +132,7 @@ fn main() -> Result<()> {
 
             app.editor.editing_id = Some(saved_id.clone());
             app.refresh_notes()?;
-            app.load_and_open_note(&saved_id);
+            app.load_and_open_note(&saved_id, None);
             run_tui_session(&mut app)
         }
         CliCommand::Run { edit_title } => {

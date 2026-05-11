@@ -442,7 +442,6 @@ impl Default for Keybinds {
         );
 
         let mut edit = HashMap::new();
-        edit.insert(EditAction::Quit, vec![KeyCombo::ctrl(KeyCode::Char('q'))]);
         edit.insert(EditAction::Back, vec![KeyCombo::simple(KeyCode::Esc)]);
         edit.insert(EditAction::CycleFocus, vec![KeyCombo::simple(KeyCode::Tab)]);
         edit.insert(

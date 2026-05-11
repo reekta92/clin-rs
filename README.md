@@ -14,7 +14,7 @@
 
 ## Highlights
 
-- **Notes view** — folder tree, tags, markdown preview pane (via `glow`), search, filter, sort, pin, file management (copy, paste, delete, rename, move).
+- **Notes view** — folder tree, tags, markdown preview pane (via `glow`), search, filter, sort, pin, multi-select, trash management, file management (copy, paste, delete, rename, move).
 - **Editor view** — built-in text editor with mouse support, line numbers, undo/redo, and **external editor** integration (VISUAL/EDITOR env or config). Markdown preview pane alongside editor.
 - **Graph view** — fully integrated force-directed graph visualization of your note corpus. Edges from `[[wikilinks]]`. Physics simulation, minimap, legend, search, configurable colors and layout. See [GRAPH_VIEW.md](docs/GRAPH_VIEW.md).
 - **Canvas view** — Obsidian-compatible `.canvas` file format. Place text/file/link/group nodes on an infinite 2D canvas, connect them with edges. Right-click context menu, drag, resize, zoom. See [CANVAS.md](docs/CANVAS.md).
@@ -43,7 +43,7 @@
 - [X] **Tag management** — add, remove, filter by tags
 - [X] **Sorting & pinning** — sort by title/modified, pin notes to top
 - [X] **Custom keybinds** — fully rebindable via keybinds.toml
-- [X] **Graph view full integration** — `graf` is no longer external; physics, minimap, legend, search, config
+- [X] **Graph view full integration (graf)** — `graf` is no longer external; physics, minimap, legend, search, config
 
 ### In Progress / Future
 
@@ -77,13 +77,13 @@
 - [ ] **Advanced clipboard** — multi-selection copy/paste
 - [ ] **Dynamic variables** — insert realtime values
 - [ ] **Word frequency** — show most used words
+- [ ] **Git integration** — vault versioning and backup
 
 #### Configuration
 - [ ] **Status line customization** — `status_format = "{title} | {word_count} words"`
 - [ ] **Plugin support** — Lua scripting
 
 #### Other
-- [ ] **Git integration** — vault versioning and backup
 - [ ] **Tree outline** — note hierarchy from headers
 - [ ] **Calendar/time tools** — date calculator, timezone converter
 - [ ] **AOD pinning** — overlay note on screen

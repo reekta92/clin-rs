@@ -30,7 +30,7 @@ pub struct ContextMenu {
 pub struct TemplatePopup {
     pub all_templates: Vec<TemplateSummary>,
     pub filtered_templates: Vec<TemplateSummary>,
-    pub query: String,
+    pub input: TextArea<'static>,
     pub selected: usize,
     pub focus: TemplatePopupFocus,
 }
@@ -84,6 +84,7 @@ pub struct FolderPopup {
 
 pub enum FolderPickerMode {
     MoveNote { note_id: String },
+    CopyNote { note_id: String },
     MoveFolder { folder_path: String },
     BulkMoveNotes { note_ids: Vec<String> },
 }
@@ -99,7 +100,7 @@ pub struct FolderPicker {
     pub all_folders: Vec<String>,
     pub filtered_folders: Vec<String>,
     pub selected: usize,
-    pub query: String,
+    pub input: TextArea<'static>,
     pub focus: FolderPickerFocus,
 }
 
@@ -131,7 +132,7 @@ pub struct SearchPopup {
     pub grep_results: Vec<String>,
     pub grep_result_indices: Vec<usize>,
     pub grep_is_header: Vec<bool>,
-    pub grep_collapsed: std::collections::HashSet<usize>,
+    pub grep_expanded: std::collections::HashSet<usize>,
     pub grep_selected: usize,
     pub original_index: usize,
     pub original_folder_expanded: std::collections::HashSet<String>,
@@ -158,4 +159,57 @@ pub struct PopupManager {
     pub search: Option<SearchPopup>,
     pub context_menu: Option<ContextMenu>,
     pub trash_view: Option<TrashView>,
+}
+
+impl PopupManager {
+    pub fn active_popup_hint(&self) -> Option<&'static str> {
+        if self.confirm.is_some() {
+            return Some("Awaiting confirmation...");
+        }
+        if self.search.is_some() {
+            return Some("Searching for notes...");
+        }
+        if let Some(picker) = &self.folder_picker {
+            return match picker.mode {
+                FolderPickerMode::MoveNote { .. } => Some("Moving note..."),
+                FolderPickerMode::CopyNote { .. } => Some("Copying note..."),
+                FolderPickerMode::MoveFolder { .. } => Some("Moving folder..."),
+                FolderPickerMode::BulkMoveNotes { .. } => Some("Moving notes..."),
+            };
+        }
+        if self.tag.is_some() {
+            return Some("Managing tags...");
+        }
+        if let Some(popup) = &self.folder {
+            return match popup.mode {
+                FolderPopupMode::Create { .. } => Some("Creating folder..."),
+                FolderPopupMode::Rename { .. } => Some("Renaming folder..."),
+            };
+        }
+        if self.template.is_some() {
+            return Some("Selecting template...");
+        }
+        if self.theme.is_some() {
+            return Some("Selecting theme...");
+        }
+        if self.note_rename.is_some() {
+            return Some("Renaming note...");
+        }
+        if self.note_create.is_some() {
+            return Some("Creating note...");
+        }
+        if self.draw_create.is_some() {
+            return Some("Creating drawing...");
+        }
+        if self.canvas_create.is_some() {
+            return Some("Creating canvas...");
+        }
+        if self.context_menu.is_some() {
+            return Some("Context menu...");
+        }
+        if self.trash_view.is_some() {
+            return Some("Viewing trash...");
+        }
+        None
+    }
 }
