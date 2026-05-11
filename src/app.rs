@@ -289,6 +289,8 @@ pub struct App {
     pub command_palette: Option<crate::palette::CommandPalette>,
     pub needs_full_redraw: bool,
     pub confirm_on_delete: bool,
+    pub confirm_on_quit: bool,
+    pub should_quit: bool,
     pub preview_encryption: bool,
     pub pinned_on_top: bool,
     pub default_folder: Option<String>,
@@ -338,6 +340,8 @@ impl App {
             popups: crate::popups::PopupManager::default(),
             needs_full_redraw: false,
             confirm_on_delete: bootstrap_config.confirm_on_delete,
+            confirm_on_quit: bootstrap_config.confirm_on_quit,
+            should_quit: false,
             preview_encryption: bootstrap_config.preview_encryption,
             pinned_on_top: bootstrap_config.pinned_on_top,
             default_folder: bootstrap_config.default_folder.clone(),
@@ -1552,6 +1556,13 @@ template = """
                 "Trash".into(),
                 false,
             ),
+            ConfirmAction::QuitApp => (
+                "Exit Application".into(),
+                "Are you sure you want to quit?".into(),
+                None,
+                "Quit".into(),
+                false,
+            ),
         };
 
         self.popups.confirm = Some(ConfirmPopup {
@@ -1588,6 +1599,9 @@ template = """
                 }
                 ConfirmAction::BulkDeleteNotes { note_ids } => {
                     self.confirm_bulk_delete(note_ids);
+                }
+                ConfirmAction::QuitApp => {
+                    self.should_quit = true;
                 }
             }
         }
@@ -3016,6 +3030,14 @@ template = """
         }
         self.last_g_press = Some(now);
         false
+    }
+
+    pub fn initiate_quit(&mut self) {
+        if self.confirm_on_quit {
+            self.show_confirm(ConfirmAction::QuitApp);
+        } else {
+            self.should_quit = true;
+        }
     }
 
     pub fn handle_esc_press(&mut self) {

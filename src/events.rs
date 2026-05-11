@@ -643,14 +643,16 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         if app.keybinds.matches_list(ListAction::ToggleButton, &key) {
             app.toggle_external_editor_mode();
         } else if app.keybinds.matches_list(ListAction::Quit, &key) {
-            return true;
+            app.initiate_quit();
+            return false;
         }
         return false;
     }
 
 
     if app.keybinds.matches_list(ListAction::Quit, &key) {
-        return true;
+        app.initiate_quit();
+        return false;
     }
 
     if app

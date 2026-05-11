@@ -107,6 +107,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         ViewMode::Canvas => {}
     }
 
+
     if let Some(popup) = &app.popups.theme {
         draw_theme_popup(frame, popup, frame.area(), &app.app_theme);
     }
@@ -1510,6 +1511,11 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     if let Some(popup) = &mut app.popups.folder {
         let popup_area = centered_rect(50, 10, area);
         frame.render_widget(Clear, popup_area);
+        let title = match popup.mode {
+            crate::popups::FolderPopupMode::Create { .. } => "NEW FOLDER",
+            crate::popups::FolderPopupMode::Rename { .. } => "RENAME FOLDER",
+        };
+        draw_popup_banner(frame, popup_area, title, &app.app_theme);
 
         let chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -1529,6 +1535,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     if let Some(popup) = &mut app.popups.tag {
         let popup_area = centered_rect(NOTES_POPUP_LARGE_W_PCT, NOTES_POPUP_LARGE_H_PCT, area);
         frame.render_widget(Clear, popup_area);
+        draw_popup_banner(frame, popup_area, "TAGS", &app.app_theme);
 
         let suggestion_height = if popup.suggestions.is_empty() {
             0u16
@@ -1646,6 +1653,11 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     if let Some(picker) = &mut app.popups.folder_picker {
         let popup_area = centered_rect(NOTES_POPUP_LARGE_W_PCT, NOTES_POPUP_LARGE_H_PCT, area);
         frame.render_widget(Clear, popup_area);
+        let title = match picker.mode {
+            crate::popups::FolderPickerMode::CopyNote { .. } => "COPY",
+            _ => "MOVE",
+        };
+        draw_popup_banner(frame, popup_area, title, &app.app_theme);
 
         let inner = popup_area;
 
@@ -1740,6 +1752,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     if let Some(palette) = &mut app.command_palette {
         let palette_area = centered_rect(NOTES_POPUP_LARGE_W_PCT, NOTES_POPUP_LARGE_H_PCT, area);
         frame.render_widget(Clear, palette_area);
+        draw_popup_banner(frame, palette_area, "COMMANDS", &app.app_theme);
 
         let chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -1804,6 +1817,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     if let Some(popup) = &mut app.popups.note_rename {
         let popup_area = centered_rect(50, 10, area);
         frame.render_widget(Clear, popup_area);
+        draw_popup_banner(frame, popup_area, "RENAME", &app.app_theme);
 
         let chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -1823,6 +1837,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     if let Some(popup) = &mut app.popups.note_create {
         let popup_area = centered_rect(50, 10, area);
         frame.render_widget(Clear, popup_area);
+        draw_popup_banner(frame, popup_area, "NEW NOTE", &app.app_theme);
 
         let chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -1842,6 +1857,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     if let Some(popup) = &mut app.popups.draw_create {
         let popup_area = centered_rect(50, 10, area);
         frame.render_widget(Clear, popup_area);
+        draw_popup_banner(frame, popup_area, "NEW DRAWING", &app.app_theme);
 
         let chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -1861,6 +1877,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     if let Some(popup) = &mut app.popups.canvas_create {
         let popup_area = centered_rect(50, 10, area);
         frame.render_widget(Clear, popup_area);
+        draw_popup_banner(frame, popup_area, "NEW CANVAS", &app.app_theme);
 
         let chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -1880,6 +1897,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     if let Some(popup) = &mut app.popups.search {
         let popup_area = centered_rect(NOTES_POPUP_LARGE_W_PCT, NOTES_POPUP_LARGE_H_PCT, area);
         frame.render_widget(Clear, popup_area);
+        draw_popup_banner(frame, popup_area, "SEARCH", &app.app_theme);
 
         let query_text = popup.input.lines().join("");
         let parsed = crate::app::parse_search_query(&query_text);
@@ -2098,6 +2116,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     if let Some(trash) = &app.popups.trash_view {
         let popup_area = centered_rect(70, 70, area);
         frame.render_widget(Clear, popup_area);
+        draw_popup_banner(frame, popup_area, "TRASH", &app.app_theme);
 
         let list_area = Rect::new(
             popup_area.x,
@@ -2177,6 +2196,7 @@ pub fn draw_template_popup(
     let popup_area = centered_rect(NOTES_POPUP_LARGE_W_PCT, NOTES_POPUP_LARGE_H_PCT, area);
 
     frame.render_widget(Clear, popup_area);
+    draw_popup_banner(frame, popup_area, "TEMPLATES", theme);
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -2268,6 +2288,7 @@ pub fn draw_theme_popup(
 ) {
     let popup_area = centered_rect(40, 60, area);
     frame.render_widget(Clear, popup_area);
+    draw_popup_banner(frame, popup_area, "THEMES", theme);
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -2296,7 +2317,6 @@ pub fn draw_theme_popup(
             Block::default()
                 .style(theme.bg_style())
                 .borders(Borders::ALL)
-                .title(" Themes ")
                 .border_style(list_style),
         )
         .highlight_style(
@@ -2703,6 +2723,29 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     }
 }
 
+fn draw_popup_banner(frame: &mut Frame, popup_area: Rect, title: &str, theme: &AppThemeColors) {
+    let display_text = format!(" {} ", title.to_uppercase());
+    let width = display_text.len() as u16;
+    if popup_area.y == 0 {
+        return;
+    }
+    let banner_area = Rect::new(
+        popup_area.x + (popup_area.width.saturating_sub(width)) / 2,
+        popup_area.y - 1,
+        width.min(popup_area.width),
+        1,
+    );
+    frame.render_widget(Clear, banner_area);
+    let p = Paragraph::new(Line::from(vec![Span::styled(
+        display_text,
+        Style::default()
+            .fg(theme.highlight_fg)
+            .bg(theme.heading)
+            .add_modifier(Modifier::BOLD),
+    )]));
+    frame.render_widget(p, banner_area);
+}
+
 pub fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
     let vertical = Layout::default()
         .direction(Direction::Vertical)
@@ -2781,6 +2824,7 @@ pub fn draw_confirm_popup(
 ) {
     let popup_area = centered_rect(50, 30, area);
     frame.render_widget(Clear, popup_area);
+    draw_popup_banner(frame, popup_area, "CONFIRM", theme);
 
     let border_color = if popup.is_destructive {
         theme.destructive
@@ -2875,18 +2919,10 @@ fn draw_hint_line(
 ) {
     let status = app.status.as_ref();
 
-    let popup_hint = if app.command_palette.is_some() {
-        Some("Command palette...")
+    let right_text = if status != app.default_status_text() && !status.is_empty() && status != "Ready" {
+        crate::sanitize::sanitize_for_terminal(status)
     } else {
-        app.popups.active_popup_hint()
-    };
-
-    let (right_text, is_popup_hint) = if let Some(hint) = popup_hint {
-        (Cow::Borrowed(hint), true)
-    } else if status != app.default_status_text() && !status.is_empty() && status != "Ready" {
-        (crate::sanitize::sanitize_for_terminal(status), false)
-    } else {
-        (Cow::Owned(hints.to_string()), false)
+        Cow::Owned(hints.to_string())
     };
 
     let mut spans: Vec<Span> = Vec::new();
@@ -2913,19 +2949,10 @@ fn draw_hint_line(
         spans.push(Span::raw("  "));
     }
 
-    if is_popup_hint {
-        spans.push(Span::styled(
-            right_text,
-            Style::default()
-                .fg(app.app_theme.accent)
-                .add_modifier(Modifier::BOLD),
-        ));
-    } else {
-        spans.push(Span::styled(
-            right_text,
-            Style::default().fg(app.app_theme.muted),
-        ));
-    }
+    spans.push(Span::styled(
+        right_text,
+        Style::default().fg(app.app_theme.muted),
+    ));
 
     let line = Line::from(spans);
     let para = Paragraph::new(line).style(app.app_theme.hint_line_bg_style());

@@ -594,12 +594,11 @@ fn run_app(
     terminal: &mut Terminal<ratatui::backend::CrosstermBackend<Stdout>>,
     app: &mut App,
 ) -> Result<()> {
-    let mut should_quit = false;
     let mut focus = EditFocus::Body;
     let mut mouse_selecting = false;
     let mut mouse_dragged = false;
 
-    while !should_quit {
+    while !app.should_quit {
         if app.mode == ViewMode::Graph {
             let mut config = match ClinConfig::load() {
                 Ok(c) => c,
@@ -711,14 +710,10 @@ fn run_app(
             match event::read().context("failed to read event")? {
                 Event::Key(key) if key.kind == KeyEventKind::Press => match app.mode {
                     ViewMode::List => {
-                        if handle_list_keys(app, key) {
-                            should_quit = true;
-                        }
+                        handle_list_keys(app, key);
                     }
                     ViewMode::Edit => {
-                        if handle_edit_keys(app, key, &mut focus) {
-                            should_quit = true;
-                        }
+                        handle_edit_keys(app, key, &mut focus);
                     }
                     ViewMode::Help => {
                         handle_help_keys(app, key);

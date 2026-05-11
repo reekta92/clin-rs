@@ -703,6 +703,8 @@ pub struct ClinConfig {
     pub default_folder: Option<String>,
     #[serde(default = "default_true")]
     pub confirm_on_delete: bool,
+    #[serde(default)]
+    pub confirm_on_quit: bool,
     #[serde(default = "default_true")]
     pub show_line_numbers: bool,
     #[serde(default)]

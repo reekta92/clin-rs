@@ -9,6 +9,7 @@ pub enum ConfirmAction {
     DeleteFromTrash { item: trash::TrashItem },
     EmptyTrash { items: Vec<trash::TrashItem> },
     BulkDeleteNotes { note_ids: Vec<String> },
+    QuitApp,
 }
 
 pub struct ConfirmPopup {
@@ -162,54 +163,4 @@ pub struct PopupManager {
 }
 
 impl PopupManager {
-    pub fn active_popup_hint(&self) -> Option<&'static str> {
-        if self.confirm.is_some() {
-            return Some("Awaiting confirmation...");
-        }
-        if self.search.is_some() {
-            return Some("Searching for notes...");
-        }
-        if let Some(picker) = &self.folder_picker {
-            return match picker.mode {
-                FolderPickerMode::MoveNote { .. } => Some("Moving note..."),
-                FolderPickerMode::CopyNote { .. } => Some("Copying note..."),
-                FolderPickerMode::MoveFolder { .. } => Some("Moving folder..."),
-                FolderPickerMode::BulkMoveNotes { .. } => Some("Moving notes..."),
-            };
-        }
-        if self.tag.is_some() {
-            return Some("Managing tags...");
-        }
-        if let Some(popup) = &self.folder {
-            return match popup.mode {
-                FolderPopupMode::Create { .. } => Some("Creating folder..."),
-                FolderPopupMode::Rename { .. } => Some("Renaming folder..."),
-            };
-        }
-        if self.template.is_some() {
-            return Some("Selecting template...");
-        }
-        if self.theme.is_some() {
-            return Some("Selecting theme...");
-        }
-        if self.note_rename.is_some() {
-            return Some("Renaming note...");
-        }
-        if self.note_create.is_some() {
-            return Some("Creating note...");
-        }
-        if self.draw_create.is_some() {
-            return Some("Creating drawing...");
-        }
-        if self.canvas_create.is_some() {
-            return Some("Creating canvas...");
-        }
-        if self.context_menu.is_some() {
-            return Some("Context menu...");
-        }
-        if self.trash_view.is_some() {
-            return Some("Viewing trash...");
-        }
-        None
-    }
 }
