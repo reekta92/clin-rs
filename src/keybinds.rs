@@ -266,6 +266,7 @@ pub enum GraphAction {
     ToggleStatus,
     Refresh,
     ReloadConfig,
+    TogglePreview,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -611,6 +612,10 @@ impl Default for Keybinds {
             GraphAction::ReloadConfig,
             vec![KeyCombo::ctrl(KeyCode::Char('r'))],
         );
+        graph.insert(
+            GraphAction::TogglePreview,
+            vec![KeyCombo::shift(KeyCode::Char('P'))],
+        );
 
         Self {
             list,
@@ -887,6 +892,7 @@ fn parse_graph_action(s: &str) -> Option<GraphAction> {
         "toggle_status" => Some(GraphAction::ToggleStatus),
         "refresh" => Some(GraphAction::Refresh),
         "reload_config" => Some(GraphAction::ReloadConfig),
+        "toggle_preview" => Some(GraphAction::TogglePreview),
         _ => None,
     }
 }
@@ -980,6 +986,7 @@ fn graph_action_to_string(action: GraphAction) -> &'static str {
         GraphAction::ToggleStatus => "toggle_status",
         GraphAction::Refresh => "refresh",
         GraphAction::ReloadConfig => "reload_config",
+        GraphAction::TogglePreview => "toggle_preview",
     }
 }
 

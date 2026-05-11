@@ -6,6 +6,8 @@ use fdg_sim::petgraph::graph::NodeIndex;
 use crate::config::ClinConfig;
 use crate::graf::input::GraphMouseState;
 use crate::keybinds::Keybinds;
+use crate::list_view::PreviewContent;
+use crate::markdown::MarkdownRenderer;
 use crate::storage::Storage;
 
 pub struct GrafAppState {
@@ -24,6 +26,11 @@ pub struct GrafAppState {
     pub show_grid: bool,
     pub show_status_bar: bool,
     pub config_reload_msg: Option<String>,
+
+    pub preview_enabled: bool,
+    pub preview_content: Option<PreviewContent>,
+    pub preview_note_id: Option<String>,
+    pub app_theme: crate::app_theme::AppThemeColors,
 }
 
 impl GrafAppState {
@@ -54,6 +61,11 @@ impl GrafAppState {
             show_grid: config.visual.show_grid,
             show_status_bar: config.display.show_status_bar,
             config_reload_msg: None,
+
+            preview_enabled: config.graph_preview_enabled,
+            preview_content: None,
+            preview_note_id: None,
+            app_theme: crate::app_theme::AppThemeColors::from_config(&config.theme),
         })
     }
 
@@ -77,6 +89,113 @@ impl GrafAppState {
             let _ = kill_tx.send(());
         }
         self.graph_state = None;
+    }
+
+    pub fn poll_renderers(&mut self) -> bool {
+        if let Some(PreviewContent::Markdown(renderer)) = &mut self.preview_content {
+            renderer.poll()
+        } else {
+            false
+        }
+    }
+
+    pub fn sync_preview(&mut self, config: &ClinConfig) {
+        if !self.preview_enabled {
+            return;
+        }
+        let selected_note_id = if let Some(gs) = &self.graph_state {
+            let guard = gs.read().unwrap_or_else(|e| e.into_inner());
+            if let Some(idx) = guard.selected_node {
+                guard
+                    .simulation
+                    .get_graph()
+                    .node_weight(idx)
+                    .map(|n| n.data.note_id.clone())
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        if selected_note_id != self.preview_note_id {
+            self.preview_note_id = selected_note_id;
+            self.update_preview(config);
+        }
+    }
+
+    pub fn update_preview(&mut self, config: &ClinConfig) {
+        if !self.preview_enabled {
+            self.preview_content = None;
+            return;
+        }
+
+        let Some(id) = self.preview_note_id.clone() else {
+            self.preview_content = None;
+            return;
+        };
+
+        let is_draw = id.ends_with(".draw");
+        let is_canvas = id.ends_with(".canvas");
+        let is_clin = id.ends_with(".clin");
+
+        if config.preview_encryption && is_clin {
+            self.preview_content = None;
+            return;
+        }
+
+        if is_draw {
+            let path = self.storage.note_path(&id);
+            match std::fs::read_to_string(path) {
+                Ok(content) => {
+                    match serde_json::from_str::<crate::draw::state::DrawData>(&content) {
+                        Ok(data) => {
+                            let grid =
+                                crate::snapshot::render_draw_snapshot(&data, &self.app_theme);
+                            self.preview_content = Some(PreviewContent::DrawGrid(grid));
+                        }
+                        Err(_) => {
+                            self.preview_content = None;
+                        }
+                    }
+                }
+                Err(_) => {
+                    self.preview_content = None;
+                }
+            }
+            return;
+        }
+
+        if is_canvas {
+            let path = self.storage.note_path(&id);
+            match std::fs::read_to_string(path) {
+                Ok(content) => {
+                    match serde_json::from_str::<crate::pinstar::data::CanvasData>(&content) {
+                        Ok(data) => {
+                            let grid =
+                                crate::snapshot::render_canvas_snapshot(&data, &self.app_theme);
+                            self.preview_content = Some(PreviewContent::CanvasGrid(grid));
+                        }
+                        Err(_) => {
+                            self.preview_content = None;
+                        }
+                    }
+                }
+                Err(_) => {
+                    self.preview_content = None;
+                }
+            }
+            return;
+        }
+
+        if let Ok(note) = self.storage.load_note(&id) {
+            let width = 80u16.saturating_sub(2).max(40);
+            let mut renderer = MarkdownRenderer::new(width);
+            renderer.render(&note.content, width);
+            self.preview_content = Some(PreviewContent::Markdown(Box::new(renderer)));
+        } else {
+            self.preview_content = None;
+        }
     }
 }
 
@@ -103,6 +222,9 @@ pub fn run_graf_view(
     let mut result = GrafResult::Quit;
 
     while running {
+        app_state.sync_preview(config);
+        let _ = app_state.poll_renderers();
+
         terminal.draw(|frame| {
             crate::graf::ui::draw_ui(frame, &app_state, config, keybinds);
         })?;
@@ -194,6 +316,16 @@ fn handle_event(
                     GraphInputAction::ReloadConfig => {
                         return Ok(None);
                     }
+                    GraphInputAction::TogglePreview => {
+                        app_state.preview_enabled = !app_state.preview_enabled;
+                        if app_state.preview_enabled {
+                            app_state.sync_preview(config);
+                        } else {
+                            app_state.preview_content = None;
+                            app_state.preview_note_id = None;
+                        }
+                        return Ok(None);
+                    }
                 }
             }
             Ok(None)
@@ -204,11 +336,39 @@ fn handle_event(
             }
             if let Some(graph_state) = &app_state.graph_state {
                 let size = terminal.size().unwrap();
-                let area = ratatui::layout::Rect::new(0, 0, size.width, size.height);
+                let full_area = ratatui::layout::Rect::new(0, 0, size.width, size.height);
+                let graph_area = if app_state.preview_enabled {
+                    let (constraints, main_idx) = match config.preview_position {
+                        crate::config::PreviewPosition::Left => (
+                            [
+                                ratatui::layout::Constraint::Length(82),
+                                ratatui::layout::Constraint::Length(1),
+                                ratatui::layout::Constraint::Min(0),
+                            ],
+                            2,
+                        ),
+                        crate::config::PreviewPosition::Right => (
+                            [
+                                ratatui::layout::Constraint::Min(0),
+                                ratatui::layout::Constraint::Length(1),
+                                ratatui::layout::Constraint::Length(82),
+                            ],
+                            0,
+                        ),
+                    };
+                    let chunks = ratatui::layout::Layout::default()
+                        .direction(ratatui::layout::Direction::Horizontal)
+                        .constraints(constraints)
+                        .split(full_area);
+                    chunks[main_idx]
+                } else {
+                    full_area
+                };
+
                 if let Some(action) = crate::graf::input::handle_graph_mouse(
                     graph_state,
                     mouse_event,
-                    area,
+                    graph_area,
                     &mut app_state.graph_mouse_state,
                     config,
                 ) {

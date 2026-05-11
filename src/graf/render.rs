@@ -505,11 +505,11 @@ impl RenderCache {
 
 pub fn draw_graph_view(
     frame: &mut ratatui::Frame,
+    area: Rect,
     state: &GraphState,
     config: &ClinConfig,
     flags: &FeatureFlags,
 ) {
-    let area = frame.area();
     let aspect = area.width as f64 / area.height as f64;
     let viewport = &state.viewport;
     let colors = config.theme_colors();

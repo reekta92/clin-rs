@@ -1126,31 +1126,41 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(5), Constraint::Length(1)])
         .split(area);
-
     let (list_area, preview_area) = if app.list.preview_enabled {
+        let (constraints, list_idx, p_idx) = match app.preview_position {
+            crate::config::PreviewPosition::Left => (
+                [Constraint::Length(82), Constraint::Length(1), Constraint::Min(0)],
+                2,
+                0,
+            ),
+            crate::config::PreviewPosition::Right => (
+                [Constraint::Min(0), Constraint::Length(1), Constraint::Length(82)],
+                0,
+                2,
+            ),
+        };
         let full_cols = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([
-                Constraint::Percentage(50),
-                Constraint::Length(1),
-                Constraint::Percentage(50),
-            ])
-            .split(area);
+            .constraints(constraints)
+            .split(chunks[0]);
         let list_area = Rect::new(
-            full_cols[0].x,
-            full_cols[0].y,
-            full_cols[0].width,
-            chunks[0].height,
+            full_cols[list_idx].x,
+            full_cols[list_idx].y,
+            full_cols[list_idx].width,
+            full_cols[list_idx].height,
         );
         let preview_area = Some(Rect::new(
-            full_cols[2].x,
-            full_cols[2].y,
-            full_cols[2].width,
-            chunks[0].height,
+            full_cols[p_idx].x,
+            full_cols[p_idx].y,
+            full_cols[p_idx].width,
+            full_cols[p_idx].height,
         ));
         (list_area, preview_area)
     } else {
-        (chunks[0], None)
+        (
+            Rect::new(area.x, area.y, area.width, chunks[0].height),
+            None,
+        )
     };
 
     let mut items: Vec<ListItem> = Vec::with_capacity(app.list.visual_list.len());
@@ -1493,13 +1503,17 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     );
     draw_corner_watermark(frame, chunks[1], app.app_theme.muted);
     if app.list.preview_enabled {
+        let constraints = match app.preview_position {
+            crate::config::PreviewPosition::Left => {
+                [Constraint::Length(82), Constraint::Length(1), Constraint::Min(0)]
+            }
+            crate::config::PreviewPosition::Right => {
+                [Constraint::Min(0), Constraint::Length(1), Constraint::Length(82)]
+            }
+        };
         let full_cols = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([
-                Constraint::Percentage(50),
-                Constraint::Length(1),
-                Constraint::Percentage(50),
-            ])
+            .constraints(constraints)
             .split(area);
         draw_dim_vline(frame, full_cols[1], app.app_theme.muted);
     }
@@ -2457,15 +2471,23 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     let hint_area = outer_chunks[1];
 
     let (edit_area, preview_area_rect, splitter_area) = if app.editor.editor_preview_enabled {
+        let (constraints, main_idx, p_idx) = match app.preview_position {
+            crate::config::PreviewPosition::Left => (
+                [Constraint::Length(82), Constraint::Length(1), Constraint::Min(0)],
+                2,
+                0,
+            ),
+            crate::config::PreviewPosition::Right => (
+                [Constraint::Min(0), Constraint::Length(1), Constraint::Length(82)],
+                0,
+                2,
+            ),
+        };
         let cols = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([
-                Constraint::Percentage(50),
-                Constraint::Length(1),
-                Constraint::Percentage(50),
-            ])
+            .constraints(constraints)
             .split(body_area);
-        (cols[0], Some(cols[2]), Some(cols[1]))
+        (cols[main_idx], Some(cols[p_idx]), Some(cols[1]))
     } else {
         (body_area, None, None)
     };

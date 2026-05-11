@@ -1,5 +1,8 @@
+use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::widgets::{Block, Borders, Padding, Paragraph};
+use ratatui::style::{Color, Modifier, Style};
+use ratatui::text::{Line, Span};
 use ratatui::Frame;
-use ratatui::layout::Rect;
 
 use crate::config::ClinConfig;
 use crate::graf::app::GrafAppState;
@@ -13,6 +16,28 @@ pub fn draw_ui(frame: &mut Frame, state: &GrafAppState, config: &ClinConfig, _ke
         return;
     }
 
+    let (graph_area, preview_area) = if state.preview_enabled {
+        let (constraints, main_idx, p_idx) = match config.preview_position {
+            crate::config::PreviewPosition::Left => (
+                [Constraint::Length(82), Constraint::Length(1), Constraint::Min(0)],
+                2,
+                0,
+            ),
+            crate::config::PreviewPosition::Right => (
+                [Constraint::Min(0), Constraint::Length(1), Constraint::Length(82)],
+                0,
+                2,
+            ),
+        };
+        let full_cols = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints(constraints)
+            .split(area);
+        (full_cols[main_idx], Some((full_cols[p_idx], full_cols[1])))
+    } else {
+        (area, None)
+    };
+
     let colors = config.theme_colors();
 
     if let Some(graph_state) = &state.graph_state {
@@ -23,7 +48,12 @@ pub fn draw_ui(frame: &mut Frame, state: &GrafAppState, config: &ClinConfig, _ke
             show_minimap: state.show_minimap,
             show_status_bar: state.show_status_bar,
         };
-        crate::graf::render::draw_graph_view(frame, &guard, config, &flags);
+        crate::graf::render::draw_graph_view(frame, graph_area, &guard, config, &flags);
+    }
+
+    if let Some((p_area, sep_area)) = preview_area {
+        draw_preview(frame, p_area, state, config);
+        draw_dim_vline(frame, sep_area, state.app_theme.muted);
     }
 
     if state.search_active {
@@ -235,4 +265,124 @@ fn draw_reload_notification(
         );
 
     frame.render_widget(paragraph, popup_area);
+}
+
+fn draw_preview(
+    frame: &mut Frame,
+    preview_rect: Rect,
+    state: &GrafAppState,
+    config: &ClinConfig,
+) {
+    let hide_encrypted = config.preview_encryption
+        && state
+            .preview_note_id
+            .as_ref()
+            .is_some_and(|id| id.ends_with(".clin"));
+
+    if hide_encrypted {
+        let lock_lines = vec![
+            Line::from(vec![
+                Span::raw("  "),
+                Span::styled(
+                    "\u{f023}  Encrypted Note",
+                    Style::default()
+                        .fg(state.app_theme.destructive)
+                        .add_modifier(Modifier::BOLD),
+                ),
+            ]),
+            Line::from(vec![
+                Span::raw("  "),
+                Span::styled(
+                    "Content hidden — decrypt to preview",
+                    Style::default().fg(state.app_theme.muted),
+                ),
+            ]),
+        ];
+        let lock_para = Paragraph::new(lock_lines)
+            .style(state.app_theme.preview_bg_style())
+            .block(
+                Block::default()
+                    .style(state.app_theme.preview_bg_style())
+                    .borders(Borders::NONE)
+                    .padding(Padding::new(2, 2, 1, 1)),
+            );
+        frame.render_widget(lock_para, preview_rect);
+    } else {
+        match &state.preview_content {
+            Some(crate::list_view::PreviewContent::Markdown(renderer))
+                if !renderer.is_pending() =>
+            {
+                let content_empty = renderer.screen().contents().trim().is_empty();
+                if content_empty {
+                    let placeholder = Paragraph::new(Line::from(vec![Span::styled(
+                        "(empty note)",
+                        Style::default().fg(state.app_theme.muted),
+                    )]))
+                    .style(state.app_theme.preview_bg_style())
+                    .block(
+                        Block::default()
+                            .style(state.app_theme.preview_bg_style())
+                            .borders(Borders::NONE)
+                            .padding(Padding::new(2, 2, 1, 1)),
+                    );
+                    frame.render_widget(placeholder, preview_rect);
+                } else {
+                    let widget = crate::markdown::ScrollablePseudoTerminal::new(renderer.screen())
+                        .scroll_offset(renderer.scroll_offset())
+                        .theme_bg(state.app_theme.preview_bg())
+                        .block(
+                            Block::default()
+                                .style(state.app_theme.preview_bg_style())
+                                .borders(Borders::NONE)
+                                .padding(Padding::new(2, 2, 1, 1)),
+                        );
+                    frame.render_widget(widget, preview_rect);
+                }
+            }
+            Some(crate::list_view::PreviewContent::Markdown(_)) => {
+                let loading = Paragraph::new("Rendering preview...")
+                    .style(Style::default().fg(state.app_theme.muted))
+                    .block(
+                        Block::default()
+                            .style(state.app_theme.preview_bg_style())
+                            .borders(Borders::NONE)
+                            .padding(Padding::new(2, 2, 1, 1)),
+                    );
+                frame.render_widget(loading, preview_rect);
+            }
+            Some(
+                crate::list_view::PreviewContent::CanvasGrid(grid)
+                | crate::list_view::PreviewContent::DrawGrid(grid),
+            ) => {
+                let snapshot = crate::snapshot::RenderedSnapshot::new(grid).block(
+                    Block::default()
+                        .style(state.app_theme.preview_bg_style())
+                        .borders(Borders::NONE)
+                        .padding(Padding::new(2, 2, 1, 1)),
+                );
+                frame.render_widget(snapshot, preview_rect);
+            }
+            None => {
+                let placeholder = Paragraph::new("Select a note to preview")
+                    .style(state.app_theme.preview_bg_style())
+                    .block(
+                        Block::default()
+                            .style(state.app_theme.preview_bg_style())
+                            .borders(Borders::NONE)
+                            .padding(Padding::new(2, 2, 1, 1)),
+                    );
+                frame.render_widget(placeholder, preview_rect);
+            }
+        }
+    }
+}
+
+fn draw_dim_vline(frame: &mut Frame, area: Rect, color: Color) {
+    let buf = frame.buffer_mut();
+    for row in area.top()..area.bottom() {
+        if let Some(cell) = buf.cell_mut((area.x, row)) {
+            cell.set_symbol("│");
+            cell.set_fg(color);
+        }
+    }
 }

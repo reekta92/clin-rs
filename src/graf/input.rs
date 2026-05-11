@@ -21,6 +21,7 @@ pub enum GraphInputAction {
     ToggleStatus,
     Refresh,
     ReloadConfig,
+    TogglePreview,
 }
 
 pub fn handle_graph_keys(
@@ -75,6 +76,8 @@ pub fn handle_graph_keys(
         return Some(GraphInputAction::Refresh);
     } else if keybinds.matches_graph(GraphAction::ReloadConfig, &key) {
         return Some(GraphInputAction::ReloadConfig);
+    } else if keybinds.matches_graph(GraphAction::TogglePreview, &key) {
+        return Some(GraphInputAction::TogglePreview);
     }
 
     None
@@ -109,16 +112,30 @@ pub fn handle_graph_mouse(
             && mouse_event.row < ma.y + ma.height
     });
 
+    let inside_area = mouse_event.column >= area.x
+        && mouse_event.column < area.x + area.width
+        && mouse_event.row >= area.y
+        && mouse_event.row < area.y + area.height;
+
     match mouse_event.kind {
         MouseEventKind::ScrollUp => {
+            if !inside_area {
+                return None;
+            }
             let mut guard = state.write().unwrap_or_else(|e| e.into_inner());
             guard.viewport.zoom_in(config.interaction.zoom_factor);
         }
         MouseEventKind::ScrollDown => {
+            if !inside_area {
+                return None;
+            }
             let mut guard = state.write().unwrap_or_else(|e| e.into_inner());
             guard.viewport.zoom_out(config.interaction.zoom_factor);
         }
         MouseEventKind::Down(MouseButton::Left) => {
+            if !inside_area {
+                return None;
+            }
             if in_minimap {
                 if let Some(ma) = minimap_area {
                     let world = minimap_screen_to_world(

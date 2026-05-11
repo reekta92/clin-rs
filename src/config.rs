@@ -574,6 +574,16 @@ impl Default for DisplayConfig {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum PreviewPosition {
+    Left,
+    #[default]
+    Right,
+}
+
+
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct FilterConfig {
     #[serde(default)]
@@ -688,6 +698,10 @@ pub struct ClinConfig {
     pub external_editor_enabled: bool,
     #[serde(default = "default_preview_enabled")]
     pub preview_enabled: bool,
+    #[serde(default)]
+    pub graph_preview_enabled: bool,
+    #[serde(default)]
+    pub preview_position: PreviewPosition,
     #[serde(default)]
     pub editor_preview_enabled: bool,
     #[serde(default)]
