@@ -1070,7 +1070,7 @@ impl App {
                     filtered_templates: templates,
                     query: String::new(),
                     selected: 0,
-                    focus: crate::popups::TemplatePopupFocus::Results,
+                    focus: crate::popups::TemplatePopupFocus::Search,
                 });
             }
             Err(_) => {
