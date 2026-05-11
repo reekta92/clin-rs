@@ -75,7 +75,6 @@ fn extract_frontmatter_from_bytes(bytes: &[u8]) -> Option<frontmatter::Frontmatt
 
 impl Storage {
     pub fn init() -> Result<Self> {
-        
         let bootstrap = ClinConfig::load().context("failed to load config")?;
         let data_dir = bootstrap
             .effective_storage_path()
@@ -200,12 +199,17 @@ impl Storage {
             fs::create_dir_all(parent).unwrap_or_default();
         }
 
+        let original_ext = old_path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.to_string());
         let fm = frontmatter::Frontmatter {
             title: Some(note.title.clone()),
             updated_at: Some(note.updated_at),
             tags: note.tags.clone(),
             pinned: false,
             links: Some(extract_wikilinks(&note.content)),
+            original_ext,
         };
         let bytes = bincode::serde::encode_to_vec(&note, bincode::config::standard())
             .context("failed to encode note")?;
@@ -230,8 +234,14 @@ impl Storage {
 
         self.ensure_key()?;
 
-        let note = self.load_note(id)?;
+        // Read original extension from frontmatter before loading
         let old_path = self.note_path(id);
+        let clin_content = fs::read(&old_path).context("failed to read encrypted note")?;
+        let orig_ext = extract_frontmatter_from_bytes(&clin_content)
+            .and_then(|fm| fm.original_ext)
+            .unwrap_or_else(|| "md".to_string());
+
+        let note = self.load_note(id)?;
 
         let folder = if let Some(idx) = id.rfind('/') {
             &id[..idx]
@@ -243,27 +253,34 @@ impl Storage {
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("Untitled note");
-        let md_id = if folder.is_empty() {
-            format!("{}.md", stem)
+        let target_id = if folder.is_empty() {
+            format!("{}.{}", stem, orig_ext)
         } else {
-            format!("{}/{}.md", folder, stem)
+            format!("{}/{}.{}", folder, stem, orig_ext)
         };
-        let target_id = self.unique_note_id(stem, "md", &md_id);
+        let target_id = self.unique_note_id(stem, &orig_ext, &target_id);
         let target_path = self.note_path(&target_id);
 
         if let Some(parent) = target_path.parent() {
             fs::create_dir_all(parent).unwrap_or_default();
         }
 
-        let fm = frontmatter::Frontmatter {
-            title: Some(note.title.clone()),
-            updated_at: Some(note.updated_at),
-            tags: note.tags.clone(),
-            pinned: false,
-            links: Some(extract_wikilinks(&note.content)),
-        };
-        let final_content = frontmatter::serialize(&fm, &note.content);
-        fs::write(&target_path, final_content).context("failed to write decrypted note")?;
+        // For .canvas/.draw files, write raw JSON without frontmatter
+        let is_raw = orig_ext == "canvas" || orig_ext == "draw";
+        if is_raw {
+            fs::write(&target_path, &note.content).context("failed to write decrypted note")?;
+        } else {
+            let fm = frontmatter::Frontmatter {
+                title: Some(note.title.clone()),
+                updated_at: Some(note.updated_at),
+                tags: note.tags.clone(),
+                pinned: false,
+                links: Some(extract_wikilinks(&note.content)),
+                original_ext: None,
+            };
+            let final_content = frontmatter::serialize(&fm, &note.content);
+            fs::write(&target_path, final_content).context("failed to write decrypted note")?;
+        }
 
         if old_path.exists() {
             fs::remove_file(&old_path)
@@ -315,7 +332,6 @@ impl Storage {
     }
 
     pub fn list_note_ids(&self) -> Result<Vec<String>> {
-        
         self.migrate_extensions();
 
         let mut ids = Vec::new();
@@ -329,7 +345,11 @@ impl Storage {
                 if path.is_dir() {
                     dirs_to_visit.push(path);
                 } else if let Some(ext) = path.extension().and_then(|e| e.to_str())
-                    && (ext == "clin" || ext == "md" || ext == "txt" || ext == "draw" || ext == "canvas")
+                    && (ext == "clin"
+                        || ext == "md"
+                        || ext == "txt"
+                        || ext == "draw"
+                        || ext == "canvas")
                     && let Ok(rel_path) = path.strip_prefix(&self.notes_dir)
                     && let Some(rel_str) = rel_path.to_str()
                 {
@@ -340,9 +360,6 @@ impl Storage {
         Ok(ids)
     }
 
-    
-    
-    
     fn migrate_extensions(&self) {
         let mut dirs_to_visit = vec![self.notes_dir.clone()];
 
@@ -356,19 +373,18 @@ impl Storage {
                     } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
                         match ext {
                             "pinstar" => {
-                                
                                 let new_path = path.with_extension("canvas");
                                 if !new_path.exists() {
                                     let _ = fs::rename(&path, &new_path);
                                 }
                             }
                             "canvas" => {
-                                
-                                
                                 if let Ok(content) = fs::read_to_string(&path) {
                                     let trimmed = content.trim();
-                                    let is_draw_format = trimmed.starts_with("{\
-  \"elements\"") || trimmed.starts_with("{\"elements\"");
+                                    let is_draw_format = trimmed.starts_with(
+                                        "{\
+  \"elements\"",
+                                    ) || trimmed.starts_with("{\"elements\"");
                                     let is_new_draw = trimmed.contains("\"version\"");
                                     if is_draw_format || is_new_draw {
                                         let new_path = path.with_extension("draw");
@@ -376,7 +392,6 @@ impl Storage {
                                             let _ = fs::rename(&path, &new_path);
                                         }
                                     }
-                                    
                                 }
                             }
                             _ => {}
@@ -399,25 +414,26 @@ impl Storage {
 
         if ext == "clin" {
             let file_content = fs::read(&path).context("failed to read note")?;
-            
+
             if let Some(fm) = extract_frontmatter_from_bytes(&file_content)
-                && let (Some(title), Some(updated_at)) = (fm.title, fm.updated_at) {
-                    return Ok(NoteSummary {
-                        id: id.to_string(),
-                        title,
-                        updated_at,
-                        folder,
-                        tags: fm.tags,
-                        pinned: fm.pinned,
-                        links: fm.links.unwrap_or_default(),
-                    });
-                }
+                && let (Some(title), Some(updated_at)) = (fm.title, fm.updated_at)
+            {
+                return Ok(NoteSummary {
+                    id: id.to_string(),
+                    title,
+                    updated_at,
+                    folder,
+                    tags: fm.tags,
+                    pinned: fm.pinned,
+                    links: fm.links.unwrap_or_default(),
+                });
+            }
 
             let plain = self.decrypt(&file_content)?;
             let (note, _): (Note, usize) =
                 bincode::serde::decode_from_slice(&plain, bincode::config::standard())
                     .context("failed to decode note")?;
-            
+
             let (tags, pinned, links) = extract_frontmatter_from_bytes(&file_content)
                 .map(|fm| (fm.tags, fm.pinned, fm.links.unwrap_or_default()))
                 .unwrap_or_else(|| (note.tags.clone(), false, extract_wikilinks(&note.content)));
@@ -480,7 +496,7 @@ impl Storage {
             let (mut note, _) =
                 bincode::serde::decode_from_slice::<Note, _>(&plain, bincode::config::standard())
                     .context("failed to decode note")?;
-            
+
             if let Some(fm) = fm {
                 note.tags = fm.tags;
                 if let Some(t) = fm.title {
@@ -529,14 +545,22 @@ impl Storage {
         let old_path = self.note_path(id);
         let old_ext = old_path.extension().and_then(|e| e.to_str()).unwrap_or("");
 
-        let target_ext = if old_ext == "clin" || old_ext == "txt" || old_ext == "md" {
+        let target_ext = if old_ext == "clin"
+            || old_ext == "txt"
+            || old_ext == "md"
+            || old_ext == "canvas"
+            || old_ext == "draw"
+        {
             old_ext
         } else {
             "md"
         };
 
         let target_id = self.unique_note_id(&preferred_stem, target_ext, id);
-        let existing_pinned = self.load_note_summary(id).map(|s| s.pinned).unwrap_or(false);
+        let existing_pinned = self
+            .load_note_summary(id)
+            .map(|s| s.pinned)
+            .unwrap_or(false);
         let links = extract_wikilinks(&note.content);
         let fm = frontmatter::Frontmatter {
             title: Some(note.title.clone()),
@@ -544,6 +568,7 @@ impl Storage {
             tags: note.tags.clone(),
             pinned: existing_pinned,
             links: Some(links),
+            original_ext: None,
         };
 
         let target_path = self.note_path(&target_id);
@@ -561,6 +586,9 @@ impl Storage {
             final_output.extend_from_slice(&encrypted);
 
             fs::write(target_path, final_output).context("failed to write note")?;
+        } else if target_ext == "canvas" || target_ext == "draw" {
+            // Write raw JSON without frontmatter
+            fs::write(target_path, &note.content).context("failed to write note")?;
         } else {
             let final_content = frontmatter::serialize(&fm, &note.content);
             fs::write(target_path, final_content).context("failed to write plain note")?;
@@ -575,8 +603,6 @@ impl Storage {
 
         Ok(target_id)
     }
-
-
 
     pub fn rename_note(&self, id: &str, new_title: &str) -> Result<String> {
         let mut note = self.load_note(id)?;
@@ -651,7 +677,6 @@ impl Storage {
         let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
 
         if ext == "clin" {
-            
             let file_content = fs::read(&path).context("failed to read note")?;
             let mut fm = extract_frontmatter_from_bytes(&file_content).unwrap_or_default();
             fm.pinned = !fm.pinned;
@@ -667,7 +692,6 @@ impl Storage {
             fs::write(&path, final_output).context("failed to write note")?;
             Ok(new_pinned)
         } else {
-            
             let content = fs::read_to_string(&path).context("failed to read note")?;
             let (mut fm, body) = frontmatter::parse(&content);
             fm.pinned = !fm.pinned;
@@ -689,8 +713,6 @@ impl Storage {
             .ok_or_else(|| anyhow::anyhow!("Invalid folder path"))?;
         fs::create_dir_all(full_path).context("failed to create folder")
     }
-
-
 
     pub fn trash_folder(&self, path: &str) -> Result<()> {
         let full_path = self
@@ -742,7 +764,7 @@ impl Storage {
         };
 
         if id == target_id {
-            return Ok(id.to_string()); 
+            return Ok(id.to_string());
         }
 
         let new_path = self.note_path(&target_id);
@@ -780,8 +802,6 @@ impl Storage {
         folders.sort();
         Ok(folders)
     }
-
-
 
     pub fn note_file_stem_from_title(&self, title: &str) -> String {
         let trimmed = title.trim();

@@ -1,7 +1,7 @@
-use std::io::{self, Write};
-use std::path::Path;
 use anyhow::{Context, Result};
 use std::fs;
+use std::io::{self, Write};
+use std::path::Path;
 
 #[derive(Clone, Copy)]
 pub enum ConflictAction {
@@ -59,8 +59,7 @@ pub fn migrate_file_with_conflict(
                 Ok((0, 1, new_action))
             }
             ConflictAction::Overwrite | ConflictAction::OverwriteAll => {
-                fs::copy(src, dst)
-                    .with_context(|| format!("failed to copy {}", src.display()))?;
+                fs::copy(src, dst).with_context(|| format!("failed to copy {}", src.display()))?;
                 println!("  Overwritten: {}", display_name);
                 let new_action = if matches!(action, ConflictAction::OverwriteAll) {
                     Some(ConflictAction::OverwriteAll)
@@ -71,8 +70,7 @@ pub fn migrate_file_with_conflict(
             }
         }
     } else {
-        fs::copy(src, dst)
-            .with_context(|| format!("failed to copy {}", src.display()))?;
+        fs::copy(src, dst).with_context(|| format!("failed to copy {}", src.display()))?;
         println!("  Migrated: {}", display_name);
         Ok((1, 0, current_action))
     }
@@ -86,9 +84,7 @@ pub fn migrate_directory_with_conflict(
     let mut migrated = 0;
     let mut skipped = 0;
 
-    for entry in
-        fs::read_dir(src).with_context(|| format!("failed to read {}", src.display()))?
-    {
+    for entry in fs::read_dir(src).with_context(|| format!("failed to read {}", src.display()))? {
         let entry = entry?;
         let src_path = entry.path();
         let file_name = entry.file_name();
@@ -105,9 +101,7 @@ pub fn migrate_directory_with_conflict(
             current_action = action;
         } else if src_path.is_file() {
             let (m, s, action) =
-                migrate_file_with_conflict(
-                    &src_path, &dst_path, &display_name, current_action,
-                )?;
+                migrate_file_with_conflict(&src_path, &dst_path, &display_name, current_action)?;
             migrated += m;
             skipped += s;
             current_action = action;

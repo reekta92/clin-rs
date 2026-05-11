@@ -2,8 +2,8 @@ use crate::draw::input::handle_event;
 use crate::draw::render::draw_canvas;
 use crate::draw::state::{DrawData, Viewport};
 use crate::keybinds::Keybinds;
-use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
+use ratatui::backend::CrosstermBackend;
 use std::io::Stdout;
 
 pub enum DrawEventAction {
@@ -46,9 +46,10 @@ impl DrawAppState {
             let path = storage.note_path(id);
             if path.exists()
                 && let Ok(content) = std::fs::read_to_string(path)
-                    && let Ok(loaded_data) = serde_json::from_str(&content) {
-                        data = loaded_data;
-                    }
+                && let Ok(loaded_data) = serde_json::from_str(&content)
+            {
+                data = loaded_data;
+            }
         }
 
         Self {
@@ -105,7 +106,6 @@ pub fn run_draw_view(
                             app_state.running = false;
                         }
                         DrawEventAction::Save => {
-                            
                             app_state.save_draw()?;
                         }
                     }

@@ -26,7 +26,6 @@ impl Default for Viewport {
 }
 
 impl Viewport {
-    
     pub fn x_bounds(&self, _aspect: f64) -> [f64; 2] {
         let half_w = 100.0 / self.zoom;
         [self.center_x - half_w, self.center_x + half_w]

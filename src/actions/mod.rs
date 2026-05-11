@@ -1,9 +1,9 @@
 pub mod decrypt;
+pub mod draw;
 pub mod encrypt;
 pub mod graph;
-pub mod draw;
-pub mod pinstar;
 pub mod ocr;
+pub mod pinstar;
 pub mod theme;
 
 use crate::app::App;
@@ -31,7 +31,6 @@ pub static ACTIONS: Lazy<Vec<Box<dyn Action>>> = Lazy::new(|| {
         Box::new(graph::OpenGraphAction),
         Box::new(draw::CreateDrawAction),
         Box::new(pinstar::CreateCanvasAction),
-
         Box::new(ocr::OcrPasteAction),
         Box::new(theme::SwitchThemeAction),
     ]

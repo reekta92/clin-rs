@@ -1,8 +1,8 @@
-use ratatui::layout::Rect;
 use ratatui::Frame;
+use ratatui::layout::Rect;
 
-use crate::graf::app::GrafAppState;
 use crate::config::ClinConfig;
+use crate::graf::app::GrafAppState;
 use crate::keybinds::Keybinds;
 
 pub fn draw_ui(frame: &mut Frame, state: &GrafAppState, config: &ClinConfig, _keybinds: &Keybinds) {
@@ -174,8 +174,14 @@ fn draw_search(
             let is_selected = i == state.search_selected;
             let style = if is_selected {
                 ratatui::style::Style::default()
-                    .fg(colors.background_color.unwrap_or(ratatui::style::Color::Black))
-                    .bg(colors.node_colors.first().copied().unwrap_or(colors.label_color))
+                    .fg(colors
+                        .background_color
+                        .unwrap_or(ratatui::style::Color::Black))
+                    .bg(colors
+                        .node_colors
+                        .first()
+                        .copied()
+                        .unwrap_or(colors.label_color))
             } else {
                 ratatui::style::Style::default().fg(colors.label_color)
             };

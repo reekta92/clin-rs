@@ -1,7 +1,7 @@
 use crate::markdown::MarkdownRenderer;
-use ratatui::widgets::ListState;
-use ratatui::text::Text;
 use ratatui::style::Style;
+use ratatui::text::Text;
+use ratatui::widgets::ListState;
 use std::collections::HashSet;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,6 +46,7 @@ pub enum VisualItem {
         is_clin: bool,
         is_draw: bool,
         is_canvas: bool,
+        in_virtual_pinned_folder: bool,
     },
     CreateNew {
         path: String,
@@ -60,9 +61,9 @@ pub struct ListView {
     pub list_state: ListState,
     pub folder_expanded: HashSet<String>,
     pub folder_cache: Option<Vec<String>>,
-    pub filter_tags: Vec<String>,
     pub preview_enabled: bool,
     pub preview_content: Option<PreviewContent>,
+    pub preview_content_index: Option<usize>,
     pub snapshot_scroll_offset: u16,
     pub sort_field: SortField,
     pub sort_order: SortOrder,
@@ -72,6 +73,7 @@ pub struct ListView {
     pub list_mode: ListMode,
     pub selected_indices: HashSet<usize>,
     pub help_text_cache: Option<Text<'static>>,
+    pub tag_to_assign: Option<String>,
 }
 
 impl Default for ListView {
@@ -83,9 +85,9 @@ impl Default for ListView {
             list_state: ListState::default(),
             folder_expanded: HashSet::new(),
             folder_cache: None,
-            filter_tags: Vec::new(),
             preview_enabled: false,
             preview_content: None,
+            preview_content_index: None,
             snapshot_scroll_offset: 0,
             sort_field: SortField::Modified,
             sort_order: SortOrder::Descending,
@@ -95,6 +97,7 @@ impl Default for ListView {
             list_mode: ListMode::Normal,
             selected_indices: HashSet::new(),
             help_text_cache: None,
+            tag_to_assign: None,
         }
     }
 }

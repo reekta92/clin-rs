@@ -313,10 +313,7 @@ impl Widget for ScrollablePseudoTerminal<'_> {
 
                     let fg = convert_color(screen_cell.fgcolor());
                     let bg = match screen_cell.bgcolor() {
-                        vt100::Color::Default => {
-                            
-                            self.theme_bg.unwrap_or(Color::Reset)
-                        }
+                        vt100::Color::Default => self.theme_bg.unwrap_or(Color::Reset),
                         other => convert_color(other),
                     };
                     style = style.fg(fg).bg(bg);

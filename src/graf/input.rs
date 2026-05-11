@@ -4,8 +4,8 @@ use std::time::Instant;
 use crossterm::event::{KeyEvent, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::Rect;
 
-use super::viewport::CELL_ASPECT;
 use super::graph::GraphState;
+use super::viewport::CELL_ASPECT;
 use crate::config::ClinConfig;
 use crate::keybinds::{GraphAction, Keybinds};
 
@@ -159,10 +159,11 @@ pub fn handle_graph_mouse(
                     mouse_state.last_clicked_node = Some(node_idx);
 
                     if is_double_click
-                        && let Some(node) = guard.simulation.get_graph().node_weight(node_idx) {
-                            mouse_state.last_click_time = Some(Instant::now());
-                            return Some(GraphInputAction::OpenFile(node.data.note_id.clone()));
-                        }
+                        && let Some(node) = guard.simulation.get_graph().node_weight(node_idx)
+                    {
+                        mouse_state.last_click_time = Some(Instant::now());
+                        return Some(GraphInputAction::OpenFile(node.data.note_id.clone()));
+                    }
                 } else {
                     let mut guard = state.write().unwrap_or_else(|e| e.into_inner());
                     if is_double_click {

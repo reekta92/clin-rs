@@ -1,5 +1,5 @@
 use crate::draw::app::{DrawAppState, DrawEventAction};
-use crate::draw::state::{DrawElement, DrawTool, Shape, DrawShapeType, Stroke, Text};
+use crate::draw::state::{DrawElement, DrawShapeType, DrawTool, Shape, Stroke, Text};
 use crate::keybinds::Keybinds;
 use crossterm::event::{Event, KeyCode, KeyEvent, MouseButton, MouseEvent, MouseEventKind};
 use ratatui_textarea::TextArea;
@@ -207,11 +207,12 @@ fn handle_mouse(ev: MouseEvent, app: &mut DrawAppState) -> anyhow::Result<Option
             let (cx, cy) = screen_to_canvas(ev.column, ev.row, app);
 
             if let Some(idx) = find_text_at(cx, cy, app)
-                && let Some(DrawElement::Text(t)) = app.data.elements.get(idx) {
-                    let textarea = TextArea::new(vec![t.content.clone()]);
-                    app.text_editor = Some((idx, textarea));
-                    return Ok(None);
-                }
+                && let Some(DrawElement::Text(t)) = app.data.elements.get(idx)
+            {
+                let textarea = TextArea::new(vec![t.content.clone()]);
+                app.text_editor = Some((idx, textarea));
+                return Ok(None);
+            }
 
             app.last_mouse_pos = Some((ev.column, ev.row));
         }
@@ -319,9 +320,10 @@ fn find_text_at(cx: f64, cy: f64, app: &DrawAppState) -> Option<usize> {
     let threshold = 5.0 / app.viewport.zoom;
     for (i, el) in app.data.elements.iter().enumerate() {
         if let DrawElement::Text(t) = el
-            && ((t.x - cx).powi(2) + (t.y - cy).powi(2)).sqrt() < threshold * 2.0 {
-                return Some(i);
-            }
+            && ((t.x - cx).powi(2) + (t.y - cy).powi(2)).sqrt() < threshold * 2.0
+        {
+            return Some(i);
+        }
     }
     None
 }
@@ -346,64 +348,56 @@ fn panning(col: u16, row: u16, app: &mut DrawAppState) {
 
 fn erase_at(cx: f64, cy: f64, app: &mut DrawAppState) {
     let threshold = 5.0 / app.viewport.zoom;
-    app.data.elements.retain(|el| {
-        match el {
-            DrawElement::Stroke(s) => !s
-                .points
-                .iter()
-                .any(|(px, py)| ((px - cx).powi(2) + (py - cy).powi(2)).sqrt() < threshold),
-            DrawElement::Shape(s) => {
-                match s {
-                    Shape::Rect {
-                        x,
-                        y,
-                        width,
-                        height,
-                        ..
-                    } => !(cx >= *x && cx <= x + width && cy >= *y && cy <= y + height),
-                    Shape::Ellipse {
-                        x,
-                        y,
-                        width,
-                        height,
-                        ..
-                    } => {
-                        let rx = width / 2.0;
-                        let ry = height / 2.0;
-                        let cx_center = x + rx;
-                        let cy_center = y + ry;
-                        if rx == 0.0 || ry == 0.0 {
-                            false
-                        } else {
-                            ((cx - cx_center).powi(2) / rx.powi(2)
-                                + (cy - cy_center).powi(2) / ry.powi(2))
-                                > 1.0
-                        }
-                    }
-                    Shape::Diamond {
-                        x,
-                        y,
-                        width,
-                        height,
-                        ..
-                    } => !(cx >= *x && cx <= x + width && cy >= *y && cy <= y + height),
-                    Shape::Line { x1, y1, x2, y2, .. } => {
-                        
-                        let d = ((x2 - x1) * (y1 - cy) - (x1 - cx) * (y2 - y1)).abs()
-                            / ((x2 - x1).powi(2) + (y2 - y1).powi(2)).sqrt();
-                        d >= threshold
-                    }
-                    Shape::Arrow { x1, y1, x2, y2, .. } => {
-                        let d = ((x2 - x1) * (y1 - cy) - (x1 - cx) * (y2 - y1)).abs()
-                            / ((x2 - x1).powi(2) + (y2 - y1).powi(2)).sqrt();
-                        d >= threshold
-                    }
+    app.data.elements.retain(|el| match el {
+        DrawElement::Stroke(s) => !s
+            .points
+            .iter()
+            .any(|(px, py)| ((px - cx).powi(2) + (py - cy).powi(2)).sqrt() < threshold),
+        DrawElement::Shape(s) => match s {
+            Shape::Rect {
+                x,
+                y,
+                width,
+                height,
+                ..
+            } => !(cx >= *x && cx <= x + width && cy >= *y && cy <= y + height),
+            Shape::Ellipse {
+                x,
+                y,
+                width,
+                height,
+                ..
+            } => {
+                let rx = width / 2.0;
+                let ry = height / 2.0;
+                let cx_center = x + rx;
+                let cy_center = y + ry;
+                if rx == 0.0 || ry == 0.0 {
+                    false
+                } else {
+                    ((cx - cx_center).powi(2) / rx.powi(2) + (cy - cy_center).powi(2) / ry.powi(2))
+                        > 1.0
                 }
             }
-            DrawElement::Text(t) => {
-                ((t.x - cx).powi(2) + (t.y - cy).powi(2)).sqrt() >= threshold * 2.0
+            Shape::Diamond {
+                x,
+                y,
+                width,
+                height,
+                ..
+            } => !(cx >= *x && cx <= x + width && cy >= *y && cy <= y + height),
+            Shape::Line { x1, y1, x2, y2, .. } => {
+                let d = ((x2 - x1) * (y1 - cy) - (x1 - cx) * (y2 - y1)).abs()
+                    / ((x2 - x1).powi(2) + (y2 - y1).powi(2)).sqrt();
+                d >= threshold
             }
-        }
+            Shape::Arrow { x1, y1, x2, y2, .. } => {
+                let d = ((x2 - x1) * (y1 - cy) - (x1 - cx) * (y2 - y1)).abs()
+                    / ((x2 - x1).powi(2) + (y2 - y1).powi(2)).sqrt();
+                d >= threshold
+            }
+        },
+        DrawElement::Text(t) => ((t.x - cx).powi(2) + (t.y - cy).powi(2)).sqrt() >= threshold * 2.0,
     });
 }
 

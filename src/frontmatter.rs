@@ -12,6 +12,8 @@ pub struct Frontmatter {
     pub pinned: bool,
     #[serde(default)]
     pub links: Option<Vec<String>>,
+    #[serde(default)]
+    pub original_ext: Option<String>,
 }
 
 pub fn parse(content: &str) -> (Frontmatter, &str) {
@@ -24,7 +26,7 @@ pub fn parse(content: &str) -> (Frontmatter, &str) {
         let frontmatter_str = &content[3..3 + end_idx];
 
         let remaining_start = 3 + end_idx + end_marker.len();
-        
+
         let mut content_start = remaining_start;
         if content[remaining_start..].starts_with("\r\n") {
             content_start += 2;
@@ -43,24 +45,24 @@ pub fn parse(content: &str) -> (Frontmatter, &str) {
 }
 
 pub fn serialize(frontmatter: &Frontmatter, content: &str) -> String {
-    if frontmatter.tags.is_empty() 
-        && !frontmatter.pinned 
-        && frontmatter.title.is_none() 
+    if frontmatter.tags.is_empty()
+        && !frontmatter.pinned
+        && frontmatter.title.is_none()
         && frontmatter.updated_at.is_none()
         && frontmatter.links.is_none()
+        && frontmatter.original_ext.is_none()
     {
         return content.to_string();
     }
 
     match serde_yml::to_string(frontmatter) {
         Ok(yaml) => {
-            
             let yaml = yaml.trim();
             let yaml = yaml.to_string();
 
             format!("---\n{}\n---\n{}", yaml, content)
         }
-        Err(_) => content.to_string(), 
+        Err(_) => content.to_string(),
     }
 }
 

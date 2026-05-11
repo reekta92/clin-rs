@@ -8,7 +8,12 @@ Technical docs for the note template system — reusable templates with variable
 
 Templates allow users to create notes from predefined structures. They are TOML files stored in `~/.config/clin/templates/`. Templates can include dynamic variables (`{date}`, `{time}`, etc.) that are substituted at creation time.
 
-**Source:** `src/templates.rs` — `Template`, `TemplateVariables`, `TemplateManager`
+**Source:** `src/templates/` module — `Template`, `TemplateVariables`, `TemplateManager`
+
+- `src/templates/model.rs` — template schema + load/save/render
+- `src/templates/variables.rs` — variable substitution
+- `src/templates/store.rs` — filename sanitization
+- `src/templates/manager.rs` — directory/list/load/save/example orchestration
 
 ---
 
@@ -32,7 +37,6 @@ Users can create templates at this path manually or via `clin --create-example-t
 Each template is a `.toml` file:
 
 ```toml
-[template]
 name = "Meeting Notes"
 
 [title]
@@ -67,7 +71,7 @@ template = """
 
 | Section | Field | Type | Description |
 |---|---|---|---|
-| `[template]` | `name` | String | Human-readable template name (shown in palette) |
+| root | `name` | String | Human-readable template name (shown in popup) |
 | `[title]` | `template` | String (optional) | Title template with variables; if absent, prompts for title |
 | `[content]` | `template` | String | Body content template with variables |
 
@@ -144,10 +148,11 @@ If a template file named `default.toml` exists in the templates directory, it is
 ### From TUI
 
 ```
-1. Press `a` on a folder → creates note from default template (if any)
+1. Press `a` on folder → creates note from default template (if any)
    OR press `t` → template picker popup
-2. Select template with up/down
-3. Press Enter → note created with substituted content
+2. Use popup search bar to filter templates (Tab switches Search/Results focus)
+3. Select template with up/down in Results and press Enter
+4. Press `?` inside template popup to open Templates help tab
 ```
 
 ### From CLI
@@ -179,7 +184,7 @@ impl TemplateManager {
 }
 ```
 
-`TemplateSummary` provides filenames and human-readable names for the picker UI:
+`TemplateSummary` provides filenames and human-readable names for searchable picker UI:
 
 ```rust
 pub struct TemplateSummary {

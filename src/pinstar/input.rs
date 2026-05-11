@@ -1,8 +1,12 @@
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind, MouseButton};
-use crate::pinstar::state::{PinstarState, PinstarMenuType};
+use crate::pinstar::state::{PinstarMenuType, PinstarState};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use ratatui_textarea::{Input, TextArea};
 
-pub fn handle_pinstar_mouse(state: &mut PinstarState, mouse: MouseEvent, area: ratatui::layout::Rect) -> bool {
+pub fn handle_pinstar_mouse(
+    state: &mut PinstarState,
+    mouse: MouseEvent,
+    area: ratatui::layout::Rect,
+) -> bool {
     if state.rename_popup.is_some() {
         return true;
     }
@@ -32,10 +36,11 @@ pub fn handle_pinstar_mouse(state: &mut PinstarState, mouse: MouseEvent, area: r
             }
 
             if let Some(editor_area) = editor_area
-                && crate::events::contains_cell(editor_area, mouse.column, mouse.row) {
-                    state.open_editor_context_menu(mouse.column, mouse.row);
-                    return true;
-                }
+                && crate::events::contains_cell(editor_area, mouse.column, mouse.row)
+            {
+                state.open_editor_context_menu(mouse.column, mouse.row);
+                return true;
+            }
 
             let (cx, cy) = state.screen_to_canvas(mouse.column, mouse.row, canvas_area);
             state.select_node_at(cx, cy);
@@ -70,26 +75,28 @@ pub fn handle_pinstar_mouse(state: &mut PinstarState, mouse: MouseEvent, area: r
             state.ext_focused = false;
             let mut menu_action = None;
             let mut close_menu = false;
-            
+
             if let Some(menu) = &state.context_menu {
                 close_menu = true;
                 let menu_width = 25;
                 let menu_height = menu.items.len() as u16;
-                
-                if mouse.column >= menu.x && mouse.column < menu.x + menu_width &&
-                   mouse.row >= menu.y && mouse.row < menu.y + menu_height {
-                    
+
+                if mouse.column >= menu.x
+                    && mouse.column < menu.x + menu_width
+                    && mouse.row >= menu.y
+                    && mouse.row < menu.y + menu_height
+                {
                     let selected = (mouse.row - menu.y) as usize;
                     if selected < menu.items.len() {
                         menu_action = Some((selected, menu.menu_type, menu.x, menu.y));
                     }
                 }
             }
-            
+
             if close_menu {
                 state.context_menu = None;
             }
-            
+
             if let Some((selected, menu_type, mx, my)) = menu_action {
                 execute_menu_action(state, selected, menu_type, mx, my);
                 return true;
@@ -106,7 +113,12 @@ pub fn handle_pinstar_mouse(state: &mut PinstarState, mouse: MouseEvent, area: r
                         editor_area.width.saturating_sub(gutter_width),
                         editor_area.height.saturating_sub(1),
                     );
-                    crate::events::move_textarea_cursor_to_mouse(&mut state.raw_editor, body_inner, mouse.column, mouse.row);
+                    crate::events::move_textarea_cursor_to_mouse(
+                        &mut state.raw_editor,
+                        body_inner,
+                        mouse.column,
+                        mouse.row,
+                    );
                     state.raw_editor.start_selection();
                     state.mouse_selecting = true;
                     state.mouse_dragged = false;
@@ -137,30 +149,34 @@ pub fn handle_pinstar_mouse(state: &mut PinstarState, mouse: MouseEvent, area: r
             }
 
             if let Some(resizing_id) = &state.resizing_node_id
-                && let Some(node) = state.data.nodes.iter().find(|n| n.id() == resizing_id) {
-                    let (nx, ny) = node.pos();
-                    let (nw, nh) = node.size();
-                    let handle_x = nx + nw;
-                    let handle_y = ny + nh;
-                    
-                    let tolerance = 10.0 / state.zoom;
-                    if cx >= handle_x - tolerance && cx <= handle_x + tolerance &&
-                       cy >= handle_y - tolerance && cy <= handle_y + tolerance {
-                        state.is_dragging_resize_handle = true;
-                        state.last_mouse_pos = Some((mouse.column, mouse.row));
-                        return true;
-                    }
+                && let Some(node) = state.data.nodes.iter().find(|n| n.id() == resizing_id)
+            {
+                let (nx, ny) = node.pos();
+                let (nw, nh) = node.size();
+                let handle_x = nx + nw;
+                let handle_y = ny + nh;
+
+                let tolerance = 10.0 / state.zoom;
+                if cx >= handle_x - tolerance
+                    && cx <= handle_x + tolerance
+                    && cy >= handle_y - tolerance
+                    && cy <= handle_y + tolerance
+                {
+                    state.is_dragging_resize_handle = true;
+                    state.last_mouse_pos = Some((mouse.column, mouse.row));
+                    return true;
                 }
+            }
 
             if state.floating_editor.is_some() {
                 let prev_selected = state.selected_node_id.clone();
                 let hit_node = state.select_node_at(cx, cy);
-                
+
                 if hit_node != prev_selected {
                     state.selected_node_id = prev_selected;
                     state.toggle_editor();
                     state.selected_node_id = hit_node.clone();
-                    
+
                     if hit_node.is_none() {
                         return true;
                     }
@@ -179,7 +195,7 @@ pub fn handle_pinstar_mouse(state: &mut PinstarState, mouse: MouseEvent, area: r
 
             if is_double_click && hit_node.is_some() {
                 state.toggle_editor();
-                state.last_click = None; 
+                state.last_click = None;
             } else if hit_node.is_some() {
                 state.drag_start_pos = Some((cx, cy));
                 state.capture_drag_nodes();
@@ -218,19 +234,25 @@ pub fn handle_pinstar_mouse(state: &mut PinstarState, mouse: MouseEvent, area: r
                         editor_area.width.saturating_sub(gutter_width),
                         editor_area.height.saturating_sub(1),
                     );
-                    crate::events::move_textarea_cursor_to_mouse(&mut state.raw_editor, body_inner, mouse.column, mouse.row);
+                    crate::events::move_textarea_cursor_to_mouse(
+                        &mut state.raw_editor,
+                        body_inner,
+                        mouse.column,
+                        mouse.row,
+                    );
                     return true;
                 }
             }
 
             if state.resizing_node_id.is_some()
-                && let Some((lx, ly)) = state.last_mouse_pos {
-                    let dw = mouse.column as f64 - lx as f64;
-                    let dh = mouse.row as f64 - ly as f64;
-                    state.resize_selected_node(dw / state.zoom, dh / state.zoom);
-                    state.last_mouse_pos = Some((mouse.column, mouse.row));
-                    return true;
-                }
+                && let Some((lx, ly)) = state.last_mouse_pos
+            {
+                let dw = mouse.column as f64 - lx as f64;
+                let dh = mouse.row as f64 - ly as f64;
+                state.resize_selected_node(dw / state.zoom, dh / state.zoom);
+                state.last_mouse_pos = Some((mouse.column, mouse.row));
+                return true;
+            }
 
             if let Some(last_pos) = state.drag_start_pos {
                 let (cx, cy) = state.screen_to_canvas(mouse.column, mouse.row, canvas_area);
@@ -269,13 +291,29 @@ pub fn handle_pinstar_mouse(state: &mut PinstarState, mouse: MouseEvent, area: r
     }
 }
 
-fn execute_menu_action(state: &mut PinstarState, selected_index: usize, menu_type: PinstarMenuType, menu_x: u16, menu_y: u16) {
+fn execute_menu_action(
+    state: &mut PinstarState,
+    selected_index: usize,
+    menu_type: PinstarMenuType,
+    menu_x: u16,
+    menu_y: u16,
+) {
     if menu_type == PinstarMenuType::Editor {
         match selected_index {
-            0 => { state.raw_editor.copy(); }
-            1 => { state.raw_editor.cut(); let _ = state.sync_from_raw_editor(); }
-            2 => { state.raw_editor.paste(); let _ = state.sync_from_raw_editor(); }
-            3 => { state.raw_editor.select_all(); }
+            0 => {
+                state.raw_editor.copy();
+            }
+            1 => {
+                state.raw_editor.cut();
+                let _ = state.sync_from_raw_editor();
+            }
+            2 => {
+                state.raw_editor.paste();
+                let _ = state.sync_from_raw_editor();
+            }
+            3 => {
+                state.raw_editor.select_all();
+            }
             _ => {}
         }
         return;
@@ -294,7 +332,7 @@ fn execute_menu_action(state: &mut PinstarState, selected_index: usize, menu_typ
     }
 
     let node_id = state.selected_node_id.clone();
-    
+
     if let Some(id) = node_id {
         match selected_index {
             0 => state.start_connection(),
@@ -302,9 +340,11 @@ fn execute_menu_action(state: &mut PinstarState, selected_index: usize, menu_typ
             2 => {
                 let mut textarea = TextArea::from(vec![id.clone()]);
                 textarea.set_cursor_line_style(ratatui::style::Style::default());
-                textarea.set_block(ratatui::widgets::Block::default()
-                    .borders(ratatui::widgets::Borders::ALL)
-                    .title(" Rename Node (ID) - Enter to confirm, Esc to cancel "));
+                textarea.set_block(
+                    ratatui::widgets::Block::default()
+                        .borders(ratatui::widgets::Borders::ALL)
+                        .title(" Rename Node (ID) - Enter to confirm, Esc to cancel "),
+                );
                 state.rename_popup = Some(textarea);
             }
             3 => state.start_resize(),
@@ -329,7 +369,10 @@ fn execute_menu_action(state: &mut PinstarState, selected_index: usize, menu_typ
             6 => {
                 let id_clone = id.clone();
                 state.data.nodes.retain(|n| n.id() != id_clone);
-                state.data.edges.retain(|e| e.from_node != id_clone && e.to_node != id_clone);
+                state
+                    .data
+                    .edges
+                    .retain(|e| e.from_node != id_clone && e.to_node != id_clone);
                 state.selected_node_id = None;
                 let _ = state.save();
                 state.sync_to_raw_editor();
@@ -345,7 +388,12 @@ fn execute_menu_action(state: &mut PinstarState, selected_index: usize, menu_typ
     }
 }
 
-pub fn handle_pinstar_event(state: &mut PinstarState, key: KeyEvent, running: &mut bool, area: ratatui::layout::Rect) -> bool {
+pub fn handle_pinstar_event(
+    state: &mut PinstarState,
+    key: KeyEvent,
+    running: &mut bool,
+    area: ratatui::layout::Rect,
+) -> bool {
     if let Some(textarea) = &mut state.rename_popup {
         match key.code {
             KeyCode::Esc => {
@@ -365,7 +413,7 @@ pub fn handle_pinstar_event(state: &mut PinstarState, key: KeyEvent, running: &m
 
     let mut menu_action = None;
     let mut close_menu = false;
-    
+
     if let Some(menu) = &mut state.context_menu {
         match key.code {
             KeyCode::Esc => {
@@ -386,18 +434,18 @@ pub fn handle_pinstar_event(state: &mut PinstarState, key: KeyEvent, running: &m
             _ => {}
         }
     }
-    
+
     if close_menu {
         state.context_menu = None;
     }
-    
+
     if let Some((selected, menu_type, mx, my)) = menu_action {
         execute_menu_action(state, selected, menu_type, mx, my);
         return true;
     } else if close_menu {
         return true;
     }
-    
+
     if state.context_menu.is_some() {
         return true;
     }
@@ -526,10 +574,10 @@ pub fn handle_pinstar_event(state: &mut PinstarState, key: KeyEvent, running: &m
         KeyCode::Char('a') => {
             let menu_x = (area.width / 2).saturating_sub(12);
             let menu_y = area.height;
-            
+
             let cx = state.viewport_x;
             let cy = state.viewport_y;
-            
+
             if let Some(id) = &state.selected_node_id {
                 if state.data.nodes.iter().any(|n| n.id() == id) {
                     state.open_context_menu(menu_x, menu_y, cx, cy);

@@ -27,7 +27,11 @@ pub struct GrafAppState {
 }
 
 impl GrafAppState {
-    pub fn new(config: &ClinConfig, storage: Storage, config_errors: Vec<String>) -> anyhow::Result<Self> {
+    pub fn new(
+        config: &ClinConfig,
+        storage: Storage,
+        config_errors: Vec<String>,
+    ) -> anyhow::Result<Self> {
         let graph_state = crate::graf::graph::GraphState::new(&storage, config)?;
         let state = Arc::new(RwLock::new(graph_state));
         let (kill_tx, kill_rx) = std::sync::mpsc::channel();
@@ -106,7 +110,8 @@ pub fn run_graf_view(
         if crossterm::event::poll(std::time::Duration::from_millis(16))? {
             loop {
                 let ev = crossterm::event::read()?;
-                if let Some(action) = handle_event(ev, &mut app_state, config, keybinds, terminal)? {
+                if let Some(action) = handle_event(ev, &mut app_state, config, keybinds, terminal)?
+                {
                     match action {
                         EventAction::Quit => {
                             app_state.shutdown();
@@ -150,7 +155,8 @@ fn handle_event(
             }
 
             if let Some(graph_state) = &app_state.graph_state
-                && let Some(action) = crate::graf::input::handle_graph_keys(graph_state, key, keybinds, config)
+                && let Some(action) =
+                    crate::graf::input::handle_graph_keys(graph_state, key, keybinds, config)
             {
                 use crate::graf::input::GraphInputAction;
                 match action {

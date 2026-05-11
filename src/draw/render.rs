@@ -1,16 +1,16 @@
-use ratatui::Frame;
-use ratatui::widgets::{Block, Clear, Paragraph, List, ListItem};
-use ratatui::widgets::canvas::{Canvas, Line, Context, Rectangle};
-use ratatui::symbols::Marker;
-use ratatui::style::{Color, Style, Modifier};
-use ratatui::layout::{Rect, Alignment};
-use ratatui::text::{Span, Line as TuiLine};
 use crate::draw::app::DrawAppState;
-use crate::draw::state::{DrawElement, Stroke, DrawTool, Shape, DrawShapeType};
+use crate::draw::state::{DrawElement, DrawShapeType, DrawTool, Shape, Stroke};
+use ratatui::Frame;
+use ratatui::layout::{Alignment, Rect};
+use ratatui::style::{Color, Modifier, Style};
+use ratatui::symbols::Marker;
+use ratatui::text::{Line as TuiLine, Span};
+use ratatui::widgets::canvas::{Canvas, Context, Line, Rectangle};
+use ratatui::widgets::{Block, Clear, List, ListItem, Paragraph};
 
 pub fn draw_canvas(frame: &mut Frame, app: &DrawAppState) {
     let area = frame.area();
-    
+
     let x_bounds = [
         app.viewport.x - 100.0 / app.viewport.zoom,
         app.viewport.x + 100.0 / app.viewport.zoom,
@@ -21,14 +21,12 @@ pub fn draw_canvas(frame: &mut Frame, app: &DrawAppState) {
     ];
 
     let canvas = Canvas::default()
-        .block(Block::default()
-            .style(Style::default().bg(app.theme.bg.unwrap_or(Color::Reset))))
+        .block(Block::default().style(Style::default().bg(app.theme.bg.unwrap_or(Color::Reset))))
         .background_color(app.theme.bg.unwrap_or(Color::Reset))
         .marker(Marker::Braille)
         .x_bounds(x_bounds)
         .y_bounds(y_bounds)
         .paint(|ctx| {
-            
             for element in &app.data.elements {
                 match element {
                     DrawElement::Stroke(stroke) => {
@@ -43,9 +41,7 @@ pub fn draw_canvas(frame: &mut Frame, app: &DrawAppState) {
                         ctx.print(
                             text.x,
                             text.y,
-                            ratatui::text::Line::from(content).style(
-                                Style::default().fg(color),
-                            ),
+                            ratatui::text::Line::from(content).style(Style::default().fg(color)),
                         );
                     }
                 }
@@ -69,30 +65,32 @@ pub fn draw_canvas(frame: &mut Frame, app: &DrawAppState) {
         toolbar_width,
         1,
     );
-    
+
     let tools = [
         (DrawTool::Draw, "\u{f040} Draw"),
         (DrawTool::Shape, "\u{f0c8} Shape"),
         (DrawTool::Text, "\u{f031} Text"),
         (DrawTool::Erase, "\u{f1f8} Erase"),
     ];
-    
+
     let mut spans = Vec::new();
     for (i, (tool, label)) in tools.iter().enumerate() {
         if i > 0 {
             spans.push(Span::raw("   "));
         }
         let style = if app.active_tool == *tool {
-            Style::default().fg(app.theme.highlight_fg).bg(app.theme.highlight_bg).add_modifier(Modifier::BOLD)
+            Style::default()
+                .fg(app.theme.highlight_fg)
+                .bg(app.theme.highlight_bg)
+                .add_modifier(Modifier::BOLD)
         } else {
             Style::default().fg(app.theme.fg)
         };
         spans.push(Span::styled(*label, style));
     }
-    
+
     frame.render_widget(
-        Paragraph::new(TuiLine::from(spans))
-            .alignment(Alignment::Center),
+        Paragraph::new(TuiLine::from(spans)).alignment(Alignment::Center),
         toolbar_area,
     );
 
@@ -105,7 +103,7 @@ pub fn draw_canvas(frame: &mut Frame, app: &DrawAppState) {
             popup_width,
             popup_height,
         );
-        
+
         let shapes = [
             (DrawShapeType::Rect, "Rect"),
             (DrawShapeType::Ellipse, "Ellipse"),
@@ -113,41 +111,44 @@ pub fn draw_canvas(frame: &mut Frame, app: &DrawAppState) {
             (DrawShapeType::Line, "Line"),
             (DrawShapeType::Arrow, "Arrow"),
         ];
-        
-        let items: Vec<ListItem> = shapes.iter().map(|(st, name)| {
-            let style = if app.active_shape_type == *st {
-                Style::default().fg(app.theme.highlight_fg).bg(app.theme.highlight_bg)
-            } else {
-                Style::default().fg(app.theme.fg)
-            };
-            ListItem::new(format!("  {}", name)).style(style)
-        }).collect();
-        
-        let list = List::new(items)
-            .block(Block::bordered()
+
+        let items: Vec<ListItem> = shapes
+            .iter()
+            .map(|(st, name)| {
+                let style = if app.active_shape_type == *st {
+                    Style::default()
+                        .fg(app.theme.highlight_fg)
+                        .bg(app.theme.highlight_bg)
+                } else {
+                    Style::default().fg(app.theme.fg)
+                };
+                ListItem::new(format!("  {}", name)).style(style)
+            })
+            .collect();
+
+        let list = List::new(items).block(
+            Block::bordered()
                 .title(" Select Shape ")
                 .border_style(Style::default().fg(app.theme.accent))
-                .style(app.theme.bg_style()));
-        
+                .style(app.theme.bg_style()),
+        );
+
         frame.render_widget(Clear, popup_area);
         frame.render_widget(list, popup_area);
     }
 
     if let Some((_, textarea)) = &app.text_editor {
-        let popup_area = Rect::new(
-            area.width / 4,
-            area.height / 2 - 2,
-            area.width / 2,
-            3,
-        );
-        
+        let popup_area = Rect::new(area.width / 4, area.height / 2 - 2, area.width / 2, 3);
+
         let mut themed_textarea = textarea.clone();
-        themed_textarea.set_block(Block::bordered()
-            .title(" Edit Text (Enter: Save, Esc: Cancel) ")
-            .style(app.theme.bg_style())
-            .border_style(Style::default().fg(app.theme.accent)));
+        themed_textarea.set_block(
+            Block::bordered()
+                .title(" Edit Text (Enter: Save, Esc: Cancel) ")
+                .style(app.theme.bg_style())
+                .border_style(Style::default().fg(app.theme.accent)),
+        );
         themed_textarea.set_style(app.theme.bg_style());
-            
+
         frame.render_widget(Clear, popup_area);
         frame.render_widget(&themed_textarea, popup_area);
     }
@@ -170,7 +171,13 @@ fn draw_stroke(ctx: &mut Context, stroke: &Stroke) {
 
 fn draw_shape(ctx: &mut Context, shape: &Shape) {
     match shape {
-        Shape::Rect { x, y, width, height, color } => {
+        Shape::Rect {
+            x,
+            y,
+            width,
+            height,
+            color,
+        } => {
             ctx.draw(&Rectangle {
                 x: *x,
                 y: *y,
@@ -179,7 +186,13 @@ fn draw_shape(ctx: &mut Context, shape: &Shape) {
                 color: Color::Rgb(color.0, color.1, color.2),
             });
         }
-        Shape::Ellipse { x, y, width, height, color } => {
+        Shape::Ellipse {
+            x,
+            y,
+            width,
+            height,
+            color,
+        } => {
             let color = Color::Rgb(color.0, color.1, color.2);
             let rx = width / 2.0;
             let ry = height / 2.0;
@@ -198,48 +211,74 @@ fn draw_shape(ctx: &mut Context, shape: &Shape) {
                 });
             }
         }
-        Shape::Diamond { x, y, width, height, color } => {
+        Shape::Diamond {
+            x,
+            y,
+            width,
+            height,
+            color,
+        } => {
             let color = Color::Rgb(color.0, color.1, color.2);
             let p1 = (x + width / 2.0, *y);
             let p2 = (x + width, y + height / 2.0);
             let p3 = (x + width / 2.0, y + height);
             let p4 = (*x, y + height / 2.0);
-            
+
             for (start, end) in [(p1, p2), (p2, p3), (p3, p4), (p4, p1)] {
                 ctx.draw(&Line {
-                    x1: start.0, y1: start.1,
-                    x2: end.0, y2: end.1,
+                    x1: start.0,
+                    y1: start.1,
+                    x2: end.0,
+                    y2: end.1,
                     color,
                 });
             }
         }
-        Shape::Line { x1, y1, x2, y2, color } => {
+        Shape::Line {
+            x1,
+            y1,
+            x2,
+            y2,
+            color,
+        } => {
             ctx.draw(&Line {
-                x1: *x1, y1: *y1,
-                x2: *x2, y2: *y2,
+                x1: *x1,
+                y1: *y1,
+                x2: *x2,
+                y2: *y2,
                 color: Color::Rgb(color.0, color.1, color.2),
             });
         }
-        Shape::Arrow { x1, y1, x2, y2, color } => {
+        Shape::Arrow {
+            x1,
+            y1,
+            x2,
+            y2,
+            color,
+        } => {
             let color = Color::Rgb(color.0, color.1, color.2);
             ctx.draw(&Line {
-                x1: *x1, y1: *y1,
-                x2: *x2, y2: *y2,
+                x1: *x1,
+                y1: *y1,
+                x2: *x2,
+                y2: *y2,
                 color,
             });
-            
+
             let angle = (y2 - y1).atan2(x2 - x1);
             let head_len = 5.0;
             let head_angle = std::f64::consts::PI / 6.0;
-            
+
             ctx.draw(&Line {
-                x1: *x2, y1: *y2,
+                x1: *x2,
+                y1: *y2,
                 x2: x2 - head_len * (angle - head_angle).cos(),
                 y2: y2 - head_len * (angle - head_angle).sin(),
                 color,
             });
             ctx.draw(&Line {
-                x1: *x2, y1: *y2,
+                x1: *x2,
+                y1: *y2,
                 x2: x2 - head_len * (angle + head_angle).cos(),
                 y2: y2 - head_len * (angle + head_angle).sin(),
                 color,

@@ -1,10 +1,11 @@
-use ratatui_textarea::TextArea;
 use crate::templates::TemplateSummary;
+use ratatui_textarea::TextArea;
 
 pub enum ConfirmAction {
     DeleteNote { note_id: String, title: String },
     DeleteFolder { path: String },
     DeleteTag { tag: String },
+    DeleteTemplate { filename: String, name: String },
     DeleteFromTrash { item: trash::TrashItem },
     EmptyTrash { items: Vec<trash::TrashItem> },
     BulkDeleteNotes { note_ids: Vec<String> },
@@ -27,8 +28,17 @@ pub struct ContextMenu {
 }
 
 pub struct TemplatePopup {
-    pub templates: Vec<TemplateSummary>,
+    pub all_templates: Vec<TemplateSummary>,
+    pub filtered_templates: Vec<TemplateSummary>,
+    pub query: String,
     pub selected: usize,
+    pub focus: TemplatePopupFocus,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TemplatePopupFocus {
+    Search,
+    Results,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,19 +56,20 @@ pub struct ThemePopup {
     pub graph_is_solid: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TagPopupFocus {
+    Input,
+    AllTagsList,
+}
+
 pub struct TagPopup {
     pub note_id: String,
     pub input: TextArea<'static>,
     pub all_tags: Vec<String>,
     pub suggestions: Vec<String>,
     pub suggestion_index: usize,
-}
-
-pub struct FilterTagPopup {
-    pub input: TextArea<'static>,
-    pub all_tags: Vec<String>,
-    pub suggestions: Vec<String>,
-    pub suggestion_index: usize,
+    pub focus: TagPopupFocus,
+    pub all_tags_selected: usize,
 }
 
 pub enum FolderPopupMode {
@@ -103,19 +114,25 @@ pub struct NoteCreatePopup {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SearchPopupFocus {
-    Notes,
-    Grep,
-    GrepResults,
+pub enum SearchFocus {
+    Input,
+    Results,
 }
 
+#[derive(Debug)]
 pub struct SearchPopup {
-    pub note_input: TextArea<'static>,
-    pub grep_input: TextArea<'static>,
+    pub input: TextArea<'static>,
+    pub focus: SearchFocus,
+    // Title search results
+    pub title_results: Vec<String>,
+    pub title_result_indices: Vec<usize>,
+    pub title_selected: usize,
+    // Grep search results — flat list, headers + children
     pub grep_results: Vec<String>,
-    pub grep_result_note_indices: Vec<usize>,
+    pub grep_result_indices: Vec<usize>,
+    pub grep_is_header: Vec<bool>,
+    pub grep_collapsed: std::collections::HashSet<usize>,
     pub grep_selected: usize,
-    pub focus: SearchPopupFocus,
     pub original_index: usize,
     pub original_folder_expanded: std::collections::HashSet<String>,
 }
@@ -131,7 +148,6 @@ pub struct PopupManager {
     pub template: Option<TemplatePopup>,
     pub theme: Option<ThemePopup>,
     pub tag: Option<TagPopup>,
-    pub filter_tag: Option<FilterTagPopup>,
     pub folder: Option<FolderPopup>,
     pub folder_picker: Option<FolderPicker>,
     pub note_rename: Option<NoteRenamePopup>,

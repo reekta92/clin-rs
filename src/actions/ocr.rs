@@ -15,7 +15,6 @@ fn is_wayland() -> bool {
 }
 
 fn get_clipboard_image_wayland() -> Result<DynamicImage> {
-    
     if which::which("wl-paste").is_err() {
         anyhow::bail!("wl-paste is not installed. Please install wl-clipboard.");
     }
@@ -37,7 +36,6 @@ fn get_clipboard_image_wayland() -> Result<DynamicImage> {
     let status = child.wait().context("Failed to wait on wl-paste")?;
 
     if !status.success() {
-        
         if let Some(mut stderr) = child.stderr {
             let mut err_msg = String::new();
             let _ = stderr.read_to_string(&mut err_msg);
@@ -92,7 +90,6 @@ impl Action for OcrPasteAction {
 
         let dynamic_image = if is_wayland() {
             get_clipboard_image_wayland().or_else(|e| {
-                
                 eprintln!("Wayland clipboard failed: {}. Falling back to arboard.", e);
                 get_clipboard_image_arboard()
             })?
@@ -109,9 +106,9 @@ impl Action for OcrPasteAction {
 
         let output = Command::new("tesseract")
             .arg(temp_path)
-            .arg("-") 
+            .arg("-")
             .arg("-l")
-            .arg("eng") 
+            .arg("eng")
             .output()
             .context("Failed to execute tesseract. Make sure it is installed and in your PATH.")?;
 

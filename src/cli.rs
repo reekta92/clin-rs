@@ -14,18 +14,18 @@ pub enum CliCommand {
     },
     ListNoteTitles,
     Help,
-    
+
     ShowStoragePath,
     SetStoragePath {
         path: PathBuf,
     },
     ResetStoragePath,
     MigrateStorage,
-    
+
     ShowKeybinds,
     ExportKeybinds,
     ResetKeybinds,
-    
+
     ListTemplates,
     CreateExampleTemplates,
 }

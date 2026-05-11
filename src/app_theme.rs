@@ -1,7 +1,7 @@
-use ratatui::style::{Color, Style};
-use crate::config::themes::theme_colors;
-use crate::config::{Theme, Background};
 use crate::config::ThemeConfig;
+use crate::config::themes::theme_colors;
+use crate::config::{Background, Theme};
+use ratatui::style::{Color, Style};
 
 #[derive(Debug, Clone)]
 pub struct AppThemeColors {
@@ -79,21 +79,43 @@ impl AppThemeColors {
                 border: t.border_color,
                 tag: t.node_colors.get(1).copied().unwrap_or(Color::LightMagenta),
                 folder: t.node_colors.get(2).copied().unwrap_or(Color::Blue),
-                highlight_fg: t.background_color.unwrap_or(Color::Black), 
+                highlight_fg: t.background_color.unwrap_or(Color::Black),
                 highlight_bg: t.node_colors.first().copied().unwrap_or(Color::Cyan),
             }
         };
 
-        if let Some(c) = config.accent.as_ref().and_then(|h| Self::parse_hex(h)) { colors.accent = c; }
-        if let Some(c) = config.heading.as_ref().and_then(|h| Self::parse_hex(h)) { colors.heading = c; }
-        if let Some(c) = config.success.as_ref().and_then(|h| Self::parse_hex(h)) { colors.success = c; }
-        if let Some(c) = config.destructive.as_ref().and_then(|h| Self::parse_hex(h)) { colors.destructive = c; }
-        if let Some(c) = config.muted.as_ref().and_then(|h| Self::parse_hex(h)) { colors.muted = c; }
-        if let Some(c) = config.text.as_ref().and_then(|h| Self::parse_hex(h)) { colors.text = c; }
-        if let Some(c) = config.border.as_ref().and_then(|h| Self::parse_hex(h)) { colors.border = c; }
-        if let Some(c) = config.tag.as_ref().and_then(|h| Self::parse_hex(h)) { colors.tag = c; }
-        if let Some(c) = config.folder.as_ref().and_then(|h| Self::parse_hex(h)) { colors.folder = c; }
-        if let Some(c) = config.background_color.as_ref().and_then(|h| Self::parse_hex(h)) {
+        if let Some(c) = config.accent.as_ref().and_then(|h| Self::parse_hex(h)) {
+            colors.accent = c;
+        }
+        if let Some(c) = config.heading.as_ref().and_then(|h| Self::parse_hex(h)) {
+            colors.heading = c;
+        }
+        if let Some(c) = config.success.as_ref().and_then(|h| Self::parse_hex(h)) {
+            colors.success = c;
+        }
+        if let Some(c) = config.destructive.as_ref().and_then(|h| Self::parse_hex(h)) {
+            colors.destructive = c;
+        }
+        if let Some(c) = config.muted.as_ref().and_then(|h| Self::parse_hex(h)) {
+            colors.muted = c;
+        }
+        if let Some(c) = config.text.as_ref().and_then(|h| Self::parse_hex(h)) {
+            colors.text = c;
+        }
+        if let Some(c) = config.border.as_ref().and_then(|h| Self::parse_hex(h)) {
+            colors.border = c;
+        }
+        if let Some(c) = config.tag.as_ref().and_then(|h| Self::parse_hex(h)) {
+            colors.tag = c;
+        }
+        if let Some(c) = config.folder.as_ref().and_then(|h| Self::parse_hex(h)) {
+            colors.folder = c;
+        }
+        if let Some(c) = config
+            .background_color
+            .as_ref()
+            .and_then(|h| Self::parse_hex(h))
+        {
             colors.bg = Some(c);
         }
 
@@ -107,24 +129,41 @@ impl AppThemeColors {
         }
     }
 
-    pub fn preview_bg(&self) -> Option<Color> { derive_color(self.bg, -15) }
+    pub fn preview_bg(&self) -> Option<Color> {
+        derive_color(self.bg, -15)
+    }
 
-    pub fn title_bar_bg(&self) -> Option<Color> { derive_color(self.bg, -10) }
+    pub fn title_bar_bg(&self) -> Option<Color> {
+        derive_color(self.bg, -10)
+    }
 
-    pub fn hint_line_bg(&self) -> Option<Color> { derive_color(self.bg, -8) }
+    pub fn hint_line_bg(&self) -> Option<Color> {
+        derive_color(self.bg, -8)
+    }
 
-    pub fn pane_bg(&self) -> Option<Color> { self.bg }
+    pub fn pane_bg(&self) -> Option<Color> {
+        self.bg
+    }
 
     pub fn preview_bg_style(&self) -> Style {
-        match self.preview_bg() { Some(c) => Style::default().bg(c), None => Style::default() }
+        match self.preview_bg() {
+            Some(c) => Style::default().bg(c),
+            None => Style::default(),
+        }
     }
 
     pub fn title_bar_bg_style(&self) -> Style {
-        match self.title_bar_bg() { Some(c) => Style::default().bg(c), None => Style::default() }
+        match self.title_bar_bg() {
+            Some(c) => Style::default().bg(c),
+            None => Style::default(),
+        }
     }
 
     pub fn hint_line_bg_style(&self) -> Style {
-        match self.hint_line_bg() { Some(c) => Style::default().bg(c), None => Style::default() }
+        match self.hint_line_bg() {
+            Some(c) => Style::default().bg(c),
+            None => Style::default(),
+        }
     }
 }
 
@@ -132,7 +171,11 @@ fn derive_color(base: Option<Color>, delta: i16) -> Option<Color> {
     base.map(|c| match c {
         Color::Rgb(r, g, b) => {
             let clamp = |v: i16| v.clamp(0, 255) as u8;
-            Color::Rgb(clamp(r as i16 + delta), clamp(g as i16 + delta), clamp(b as i16 + delta))
+            Color::Rgb(
+                clamp(r as i16 + delta),
+                clamp(g as i16 + delta),
+                clamp(b as i16 + delta),
+            )
         }
         other => other,
     })

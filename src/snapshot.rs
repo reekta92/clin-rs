@@ -1,20 +1,17 @@
+use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::prelude::*;
+use ratatui::symbols::Marker;
 use ratatui::widgets::canvas::{Canvas, Context, Line as CanvasLine, Rectangle};
 use ratatui::widgets::*;
-use ratatui::symbols::Marker;
-use ratatui::Terminal;
 
 use crate::app_theme::AppThemeColors;
 use crate::draw::state::{DrawData, DrawElement, Shape, Stroke};
 use crate::pinstar::data::{CanvasData, CanvasNode};
 
-
 const PREVIEW_COLS: u16 = 78;
 
 const PREVIEW_ROWS: u16 = 38;
-
-
 
 pub fn render_canvas_snapshot(
     data: &CanvasData,
@@ -53,7 +50,6 @@ pub fn render_canvas_snapshot(
         fill_buf_bg(frame.buffer_mut(), area, preview_bg);
         let buf = frame.buffer_mut();
 
-        
         for edge in &data.edges {
             let from = data.nodes.iter().find(|n| n.id() == edge.from_node);
             let to = data.nodes.iter().find(|n| n.id() == edge.to_node);
@@ -77,7 +73,6 @@ pub fn render_canvas_snapshot(
             }
         }
 
-        
         for node in &data.nodes {
             let (nx, ny) = node.pos();
             let (nw, nh) = node.size();
@@ -124,9 +119,11 @@ pub fn render_canvas_snapshot(
             };
 
             let inner_text = node.text();
-            
-            let max_text_len = (node_rect.width.saturating_sub(2) as usize)
-                .min(node_rect.height.saturating_sub(2) as usize * node_rect.width.saturating_sub(2) as usize);
+
+            let max_text_len = (node_rect.width.saturating_sub(2) as usize).min(
+                node_rect.height.saturating_sub(2) as usize
+                    * node_rect.width.saturating_sub(2) as usize,
+            );
             let display_text = if inner_text.len() > max_text_len && max_text_len > 10 {
                 format!("{}…", &inner_text[..max_text_len.saturating_sub(1)])
             } else {
@@ -144,8 +141,6 @@ pub fn render_canvas_snapshot(
                 .style(Style::default().fg(theme.fg))
                 .wrap(Wrap { trim: false });
 
-            
-            
             frame.render_widget(Clear, node_rect);
             frame.render_widget(text, node_rect);
         }
@@ -154,12 +149,7 @@ pub fn render_canvas_snapshot(
     extract_grid(terminal, width, height)
 }
 
-
-
-pub fn render_draw_snapshot(
-    data: &DrawData,
-    theme: &AppThemeColors,
-) -> Vec<Vec<(char, Style)>> {
+pub fn render_draw_snapshot(data: &DrawData, theme: &AppThemeColors) -> Vec<Vec<(char, Style)>> {
     let width = PREVIEW_COLS;
     let height = PREVIEW_ROWS;
 
@@ -213,10 +203,8 @@ pub fn render_draw_snapshot(
     extract_grid(terminal, width, height)
 }
 
-
-
 pub struct RenderedSnapshot<'a> {
-    grid: Vec<(char, Style)>, 
+    grid: Vec<(char, Style)>,
     cols: u16,
     rows: u16,
     scroll_offset: u16,
@@ -280,9 +268,6 @@ impl Widget for RenderedSnapshot<'_> {
         }
     }
 }
-
-
-
 
 fn fill_buf_bg(buf: &mut Buffer, area: Rect, bg: Option<Color>) {
     let Some(bg) = bg else { return };
@@ -362,19 +347,37 @@ fn draw_bounds(data: &DrawData) -> (f64, f64, f64, f64) {
                 }
             }
             DrawElement::Shape(shape) => match shape {
-                Shape::Rect { x, y, width, height, .. } => {
+                Shape::Rect {
+                    x,
+                    y,
+                    width,
+                    height,
+                    ..
+                } => {
                     min_x = min_x.min(*x);
                     min_y = min_y.min(*y);
                     max_x = max_x.max(x + width);
                     max_y = max_y.max(y + height);
                 }
-                Shape::Ellipse { x, y, width, height, .. } => {
+                Shape::Ellipse {
+                    x,
+                    y,
+                    width,
+                    height,
+                    ..
+                } => {
                     min_x = min_x.min(*x);
                     min_y = min_y.min(*y);
                     max_x = max_x.max(x + width);
                     max_y = max_y.max(y + height);
                 }
-                Shape::Diamond { x, y, width, height, .. } => {
+                Shape::Diamond {
+                    x,
+                    y,
+                    width,
+                    height,
+                    ..
+                } => {
                     min_x = min_x.min(*x);
                     min_y = min_y.min(*y);
                     max_x = max_x.max(x + width);
@@ -426,14 +429,7 @@ fn canvas_color_to_style(color: Option<&str>, theme: &AppThemeColors) -> Color {
     }
 }
 
-fn draw_braille_line(
-    buf: &mut Buffer,
-    mut x1: f64,
-    mut y1: f64,
-    x2: f64,
-    y2: f64,
-    color: Color,
-) {
+fn draw_braille_line(buf: &mut Buffer, mut x1: f64, mut y1: f64, x2: f64, y2: f64, color: Color) {
     let dx = x2 - x1;
     let dy = y2 - y1;
     let dist = (dx * dx + dy * dy).sqrt();
@@ -494,7 +490,13 @@ fn draw_stroke_lines(ctx: &mut Context, stroke: &Stroke) {
 
 fn draw_shape_on_canvas(ctx: &mut Context, shape: &Shape) {
     match shape {
-        Shape::Rect { x, y, width, height, color } => {
+        Shape::Rect {
+            x,
+            y,
+            width,
+            height,
+            color,
+        } => {
             ctx.draw(&Rectangle {
                 x: *x,
                 y: *y,
@@ -550,7 +552,13 @@ fn draw_shape_on_canvas(ctx: &mut Context, shape: &Shape) {
                 });
             }
         }
-        Shape::Line { x1, y1, x2, y2, color } => {
+        Shape::Line {
+            x1,
+            y1,
+            x2,
+            y2,
+            color,
+        } => {
             ctx.draw(&CanvasLine {
                 x1: *x1,
                 y1: *y1,
@@ -559,7 +567,13 @@ fn draw_shape_on_canvas(ctx: &mut Context, shape: &Shape) {
                 color: Color::Rgb(color.0, color.1, color.2),
             });
         }
-        Shape::Arrow { x1, y1, x2, y2, color } => {
+        Shape::Arrow {
+            x1,
+            y1,
+            x2,
+            y2,
+            color,
+        } => {
             let color = Color::Rgb(color.0, color.1, color.2);
             ctx.draw(&CanvasLine {
                 x1: *x1,

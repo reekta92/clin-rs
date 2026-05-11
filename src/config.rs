@@ -574,8 +574,7 @@ impl Default for DisplayConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct FilterConfig {
     #[serde(default)]
     pub exclude_tags: Vec<String>,
@@ -625,9 +624,17 @@ impl Default for SearchConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ThemeConfig {
-    #[serde(default = "default_theme", serialize_with = "serialize_theme", deserialize_with = "deserialize_theme")]
+    #[serde(
+        default = "default_theme",
+        serialize_with = "serialize_theme",
+        deserialize_with = "deserialize_theme"
+    )]
     pub theme: Theme,
-    #[serde(default, serialize_with = "serialize_background", deserialize_with = "deserialize_background")]
+    #[serde(
+        default,
+        serialize_with = "serialize_background",
+        deserialize_with = "deserialize_background"
+    )]
     pub background: Background,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub accent: Option<String>,
@@ -684,6 +691,8 @@ pub struct ClinConfig {
     #[serde(default)]
     pub editor_preview_enabled: bool,
     #[serde(default)]
+    pub preview_encryption: bool,
+    #[serde(default)]
     pub theme: ThemeConfig,
 
     #[serde(default)]
@@ -696,6 +705,8 @@ pub struct ClinConfig {
     pub confirm_on_delete: bool,
     #[serde(default = "default_true")]
     pub show_line_numbers: bool,
+    #[serde(default)]
+    pub pinned_on_top: bool,
 
     #[serde(default)]
     pub visual: VisualConfig,
@@ -713,53 +724,115 @@ pub struct ClinConfig {
     pub search: SearchConfig,
 }
 
-fn default_preview_enabled() -> bool { true }
-fn default_label_max() -> usize { 20 }
-fn default_node_size() -> f64 { 2.0 }
-fn default_edge_thickness() -> u16 { 1 }
-fn default_true() -> bool { true }
-fn default_ideal_distance() -> f64 { 80.0 }
-fn default_damping() -> f32 { 0.95 }
-fn default_max_iterations() -> usize { 800 }
-fn default_gravity() -> f64 { 0.01 }
-fn default_double_click() -> u64 { 300 }
-fn default_zoom_factor() -> f64 { 1.15 }
-fn default_drag_sensitivity() -> f64 { 1.0 }
-fn default_border_title() -> String { "graf".to_string() }
-fn default_max_legend_items() -> usize { 10 }
-fn default_minimap_width() -> u16 { 24 }
-fn default_minimap_height() -> u16 { 12 }
-fn default_label_offset() -> f64 { 4.0 }
-fn default_grid_divisions() -> usize { 10 }
-fn default_timestep() -> f64 { 0.016 }
-fn default_thread_sleep_ms() -> u64 { 16 }
-fn default_auto_fit_padding() -> f64 { 1.4 }
-fn default_drag_scale() -> f64 { 200.0 }
-fn default_search_max_results() -> usize { 20 }
-fn default_search_max_visible() -> usize { 10 }
-fn default_search_popup_width() -> u16 { 50 }
-fn default_search_popup_y() -> u16 { 3 }
+fn default_preview_enabled() -> bool {
+    true
+}
+fn default_label_max() -> usize {
+    20
+}
+fn default_node_size() -> f64 {
+    2.0
+}
+fn default_edge_thickness() -> u16 {
+    1
+}
+fn default_true() -> bool {
+    true
+}
+fn default_ideal_distance() -> f64 {
+    80.0
+}
+fn default_damping() -> f32 {
+    0.95
+}
+fn default_max_iterations() -> usize {
+    800
+}
+fn default_gravity() -> f64 {
+    0.01
+}
+fn default_double_click() -> u64 {
+    300
+}
+fn default_zoom_factor() -> f64 {
+    1.15
+}
+fn default_drag_sensitivity() -> f64 {
+    1.0
+}
+fn default_border_title() -> String {
+    "graf".to_string()
+}
+fn default_max_legend_items() -> usize {
+    10
+}
+fn default_minimap_width() -> u16 {
+    24
+}
+fn default_minimap_height() -> u16 {
+    12
+}
+fn default_label_offset() -> f64 {
+    4.0
+}
+fn default_grid_divisions() -> usize {
+    10
+}
+fn default_timestep() -> f64 {
+    0.016
+}
+fn default_thread_sleep_ms() -> u64 {
+    16
+}
+fn default_auto_fit_padding() -> f64 {
+    1.4
+}
+fn default_drag_scale() -> f64 {
+    200.0
+}
+fn default_search_max_results() -> usize {
+    20
+}
+fn default_search_max_visible() -> usize {
+    10
+}
+fn default_search_popup_width() -> u16 {
+    50
+}
+fn default_search_popup_y() -> u16 {
+    3
+}
 
-fn default_theme() -> Theme { Theme::Default }
+fn default_theme() -> Theme {
+    Theme::Default
+}
 
 fn serialize_theme<S>(theme: &Theme, serializer: S) -> Result<S::Ok, S::Error>
-where S: Serializer {
+where
+    S: Serializer,
+{
     serializer.serialize_str(&theme.to_string())
 }
 
 fn deserialize_theme<'de, D>(deserializer: D) -> Result<Theme, D::Error>
-where D: Deserializer<'de> {
+where
+    D: Deserializer<'de>,
+{
     let s = String::deserialize(deserializer)?;
     s.parse::<Theme>().map_err(serde::de::Error::custom)
 }
 
 fn serialize_background<S>(bg: &Background, serializer: S) -> Result<S::Ok, S::Error>
-where S: Serializer {
+where
+    S: Serializer,
+{
     serializer.serialize_str(&bg.to_string())
 }
 
 fn deserialize_background<'de, D>(deserializer: D) -> Result<Background, D::Error>
-where D: Deserializer<'de> {
+where
+    D: Deserializer<'de>,
+{
     let s = String::deserialize(deserializer)?;
     s.parse::<Background>().map_err(serde::de::Error::custom)
 }
@@ -808,17 +881,17 @@ impl ClinConfig {
             let mut config = Self::default();
 
             if graf_path.exists() {
-                
                 if let Ok(content) = fs::read_to_string(&graf_path)
-                    && let Ok(graf_config) = toml::from_str::<GrafConfigOnly>(&content) {
-                        config.visual = graf_config.visual;
-                        config.physics = graf_config.physics;
-                        config.interaction = graf_config.interaction;
-                        config.display = graf_config.display;
-                        config.filter = graf_config.filter;
-                        config.legend = graf_config.legend;
-                        config.search = graf_config.search;
-                    }
+                    && let Ok(graf_config) = toml::from_str::<GrafConfigOnly>(&content)
+                {
+                    config.visual = graf_config.visual;
+                    config.physics = graf_config.physics;
+                    config.interaction = graf_config.interaction;
+                    config.display = graf_config.display;
+                    config.filter = graf_config.filter;
+                    config.legend = graf_config.legend;
+                    config.search = graf_config.search;
+                }
                 let _ = fs::rename(&graf_path, graf_path.with_extension("toml.migrated"));
             }
 
@@ -899,8 +972,8 @@ zoom_factor = 1.15
 # Drag sensitivity factor
 drag_sensitivity = 1.0
 "#;
-            let mut file = fs::File::create(&config_path)
-                .context("failed to create config file")?;
+            let mut file =
+                fs::File::create(&config_path).context("failed to create config file")?;
             file.write_all(content.as_bytes())
                 .context("failed to write config file")?;
             #[cfg(unix)]
@@ -912,10 +985,8 @@ drag_sensitivity = 1.0
             return Ok(config);
         }
 
-        let content = fs::read_to_string(&config_path)
-            .context("failed to read config")?;
-        let config: ClinConfig = toml::from_str(&content)
-            .context("failed to parse config")?;
+        let content = fs::read_to_string(&config_path).context("failed to read config")?;
+        let config: ClinConfig = toml::from_str(&content).context("failed to parse config")?;
         Ok(config)
     }
 
@@ -924,10 +995,8 @@ drag_sensitivity = 1.0
         if let Some(parent) = config_path.parent() {
             fs::create_dir_all(parent).context("failed to create config directory")?;
         }
-        let content = toml::to_string_pretty(self)
-            .context("failed to serialize config")?;
-        let mut file = fs::File::create(&config_path)
-            .context("failed to create config file")?;
+        let content = toml::to_string_pretty(self).context("failed to serialize config")?;
+        let mut file = fs::File::create(&config_path).context("failed to create config file")?;
         file.write_all(content.as_bytes())
             .context("failed to write config file")?;
         Ok(())
@@ -961,7 +1030,8 @@ drag_sensitivity = 1.0
     }
 
     pub fn theme_colors(&self) -> ThemeColors {
-        let mut colors = themes::theme_colors(&self.theme.theme, self.visual.graph_background.clone());
+        let mut colors =
+            themes::theme_colors(&self.theme.theme, self.visual.graph_background.clone());
 
         if let Some(ref c) = self.visual.colors.node_color {
             colors.node_colors = vec![*c];
@@ -1026,9 +1096,18 @@ drag_sensitivity = 1.0
         let fmt = fmt.replace("{files}", &files.to_string());
         let fmt = fmt.replace("{links}", &links.to_string());
         let fmt = fmt.replace("{selected}", selected.unwrap_or("none"));
-        let fmt = fmt.replace("{date}", &chrono::Local::now().format("%Y-%m-%d").to_string());
-        let fmt = fmt.replace("{time}", &chrono::Local::now().format("%H:%M:%S").to_string());
-        let fmt = fmt.replace("{size}", &format!("{:.0}%", viewport_size_pct.unwrap_or(0.0).clamp(0.0, 100.0)));
+        let fmt = fmt.replace(
+            "{date}",
+            &chrono::Local::now().format("%Y-%m-%d").to_string(),
+        );
+        let fmt = fmt.replace(
+            "{time}",
+            &chrono::Local::now().format("%H:%M:%S").to_string(),
+        );
+        let fmt = fmt.replace(
+            "{size}",
+            &format!("{:.0}%", viewport_size_pct.unwrap_or(0.0).clamp(0.0, 100.0)),
+        );
         fmt.replace("{ratio}", &format!("{:.1}x", viewport_ratio.unwrap_or(1.0)))
     }
 

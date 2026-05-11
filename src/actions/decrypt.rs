@@ -22,7 +22,8 @@ impl Action for DecryptNoteAction {
         let note_id = context_note_id
             .map(|s| s.to_string())
             .or_else(|| {
-                app.list.visual_list
+                app.list
+                    .visual_list
                     .get(app.list.visual_index)
                     .and_then(|item| match item {
                         crate::app::VisualItem::Note { id, .. } => Some(id.clone()),

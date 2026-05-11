@@ -1,4 +1,3 @@
-
 use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
@@ -51,10 +50,8 @@ impl KeyCombo {
         for (i, part) in parts.iter().enumerate() {
             let part_lower = part.to_lowercase();
             if i == parts.len() - 1 {
-                
                 key_part = part;
             } else {
-                
                 match part_lower.as_str() {
                     "ctrl" | "control" => modifiers |= KeyModifiers::CONTROL,
                     "shift" => modifiers |= KeyModifiers::SHIFT,
@@ -115,7 +112,6 @@ impl KeyCombo {
 fn parse_key_code(s: &str) -> Option<KeyCode> {
     let s_lower = s.to_lowercase();
     match s_lower.as_str() {
-        
         "enter" | "return" => Some(KeyCode::Enter),
         "esc" | "escape" => Some(KeyCode::Esc),
         "backspace" | "bs" => Some(KeyCode::Backspace),
@@ -199,28 +195,27 @@ pub enum ListAction {
     RenameFolder,
     MoveNote,
     ManageTags,
-    FilterTags,
     CollapseFolder,
     ExpandFolder,
     OpenCommandPalette,
-    
-    Rename,        
-    Duplicate,     
-    TogglePin,     
-    CycleSort,     
-    Search,        
-    JumpToTop,     
-    JumpToBottom,  
-    PageUp,        
-    PageDown,      
-    OpenTrash,     
-    TogglePreview, 
+
+    Rename,
+    Duplicate,
+    TogglePin,
+    CycleSort,
+    Search,
+    JumpToTop,
+    JumpToBottom,
+    PageUp,
+    PageDown,
+    OpenTrash,
+    TogglePreview,
     OpenGraph,
     OpenCanvas,
     CreatePinstar,
     ToggleSelectMode,
     ToggleSelectItem,
-    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -229,7 +224,7 @@ pub enum EditAction {
     Back,
     CycleFocus,
     ToggleButton,
-    
+
     SelectAll,
     Copy,
     Cut,
@@ -377,10 +372,6 @@ impl Default for Keybinds {
             vec![KeyCombo::simple(KeyCode::Char('.'))],
         );
         list.insert(
-            ListAction::FilterTags,
-            vec![KeyCombo::simple(KeyCode::Char('/'))],
-        );
-        list.insert(
             ListAction::CollapseFolder,
             vec![KeyCombo::simple(KeyCode::Char('h'))],
         );
@@ -416,7 +407,10 @@ impl Default for Keybinds {
             ListAction::CycleSort,
             vec![KeyCombo::simple(KeyCode::Char('s'))],
         );
-        list.insert(ListAction::Search, vec![KeyCombo::simple(KeyCode::Char('f'))]);
+        list.insert(
+            ListAction::Search,
+            vec![KeyCombo::simple(KeyCode::Char('f'))],
+        );
         list.insert(
             ListAction::JumpToTop,
             vec![KeyCombo::shift(KeyCode::Char('G'))],
@@ -629,7 +623,6 @@ impl Default for Keybinds {
 }
 
 impl Keybinds {
-    
     pub fn load(path: &Path) -> Result<Self> {
         let mut keybinds = Self::default();
 
@@ -834,7 +827,7 @@ fn parse_list_action(s: &str) -> Option<ListAction> {
         "rename_folder" => Some(ListAction::RenameFolder),
         "move_note" => Some(ListAction::MoveNote),
         "manage_tags" => Some(ListAction::ManageTags),
-        "filter_tags" => Some(ListAction::FilterTags),
+
         "collapse_folder" => Some(ListAction::CollapseFolder),
         "expand_folder" => Some(ListAction::ExpandFolder),
         "open_graph" => Some(ListAction::OpenGraph),
@@ -918,11 +911,11 @@ fn list_action_to_string(action: ListAction) -> &'static str {
         ListAction::RenameFolder => "rename_folder",
         ListAction::MoveNote => "move_note",
         ListAction::ManageTags => "manage_tags",
-        ListAction::FilterTags => "filter_tags",
+
         ListAction::CollapseFolder => "collapse_folder",
         ListAction::ExpandFolder => "expand_folder",
         ListAction::OpenCommandPalette => "open_command_palette",
-        
+
         ListAction::Rename => "rename",
         ListAction::Duplicate => "duplicate",
         ListAction::TogglePin => "toggle_pin",

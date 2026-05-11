@@ -1,5 +1,5 @@
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde::de::{MapAccess, Visitor};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
 
 #[derive(Debug, Clone)]
@@ -22,7 +22,6 @@ impl Default for DrawData {
         }
     }
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct NewDrawData {
@@ -81,13 +80,14 @@ impl<'de> Deserialize<'de> for DrawData {
                         "height" => height = Some(map.next_value()?),
                         "background" => background = Some(map.next_value()?),
                         "elements" => elements = Some(map.next_value()?),
-                        _ => { let _: serde::de::IgnoredAny = map.next_value()?; }
+                        _ => {
+                            let _: serde::de::IgnoredAny = map.next_value()?;
+                        }
                     }
                 }
 
                 let elements = elements.unwrap_or_default();
 
-                
                 if version.is_none() {
                     return Ok(DrawData {
                         version: 0,

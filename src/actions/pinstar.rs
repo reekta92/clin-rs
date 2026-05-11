@@ -23,5 +23,3 @@ impl Action for CreateCanvasAction {
         Ok(())
     }
 }
-
-

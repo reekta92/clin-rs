@@ -1,7 +1,7 @@
-use std::path::{Path, PathBuf};
-use anyhow::Result;
 use crate::pinstar::data::CanvasData;
+use anyhow::Result;
 use ratatui_textarea::{TextArea, WrapMode};
+use std::path::{Path, PathBuf};
 
 pub struct PinstarState {
     pub path: PathBuf,
@@ -56,7 +56,7 @@ impl PinstarState {
         let data: CanvasData = serde_json::from_str(&content)?;
         let mut raw_editor = TextArea::from(content.lines().map(String::from).collect::<Vec<_>>());
         raw_editor.set_cursor_line_style(ratatui::style::Style::default());
-        
+
         Ok(Self {
             path: path.to_path_buf(),
             data,
@@ -110,7 +110,8 @@ impl PinstarState {
     pub fn sync_to_raw_editor(&mut self) {
         if let Ok(content) = serde_json::to_string_pretty(&self.data) {
             self.raw_editor = TextArea::from(content.lines().map(String::from).collect::<Vec<_>>());
-            self.raw_editor.set_cursor_line_style(ratatui::style::Style::default());
+            self.raw_editor
+                .set_cursor_line_style(ratatui::style::Style::default());
         }
     }
 
@@ -121,12 +122,13 @@ impl PinstarState {
 
     pub fn center_on_selected(&mut self) {
         if let Some(id) = &self.selected_node_id
-            && let Some(node) = self.data.nodes.iter().find(|n| n.id() == id) {
-                let (nx, ny) = node.pos();
-                let (nw, nh) = node.size();
-                self.viewport_x = nx + nw / 2.0;
-                self.viewport_y = ny + nh / 2.0;
-            }
+            && let Some(node) = self.data.nodes.iter().find(|n| n.id() == id)
+        {
+            let (nx, ny) = node.pos();
+            let (nw, nh) = node.size();
+            self.viewport_x = nx + nw / 2.0;
+            self.viewport_y = ny + nh / 2.0;
+        }
     }
 
     pub fn zoom_in(&mut self) {
@@ -138,8 +140,10 @@ impl PinstarState {
     }
 
     pub fn screen_to_canvas(&self, sx: u16, sy: u16, area: ratatui::layout::Rect) -> (f64, f64) {
-        let cx = (sx as f64 - (area.x as f64 + area.width as f64 / 2.0)) / self.zoom + self.viewport_x;
-        let cy = (sy as f64 - (area.y as f64 + area.height as f64 / 2.0)) / self.zoom + self.viewport_y;
+        let cx =
+            (sx as f64 - (area.x as f64 + area.width as f64 / 2.0)) / self.zoom + self.viewport_x;
+        let cy =
+            (sy as f64 - (area.y as f64 + area.height as f64 / 2.0)) / self.zoom + self.viewport_y;
         (cx, cy)
     }
 
@@ -154,7 +158,11 @@ impl PinstarState {
                 let should_replace = match &best_hit {
                     None => true,
                     Some((_, best_area, _)) if area < *best_area => true,
-                    Some((_, best_area, best_idx)) if (area - *best_area).abs() < 0.0001 && idx > *best_idx => true,
+                    Some((_, best_area, best_idx))
+                        if (area - *best_area).abs() < 0.0001 && idx > *best_idx =>
+                    {
+                        true
+                    }
                     _ => false,
                 };
                 if should_replace {
@@ -192,7 +200,10 @@ impl PinstarState {
 
         for node in &self.data.nodes {
             if let Some(id) = &self.selected_node_id
-                && node.id() == id { continue; }
+                && node.id() == id
+            {
+                continue;
+            }
 
             let (nx, ny) = node.pos();
             let (nw, nh) = node.size();
@@ -202,7 +213,9 @@ impl PinstarState {
             let v_y = ty - cur_y;
 
             let dot = v_x * dx + v_y * dy;
-            if dot <= 0.0 { continue; }
+            if dot <= 0.0 {
+                continue;
+            }
 
             let dist_sq = v_x * v_x + v_y * v_y;
             let ortho_dist = (v_x * -dy + v_y * dx).abs();
@@ -235,12 +248,14 @@ impl PinstarState {
             }
             self.floating_editor = None;
         } else if let Some(node_id) = &self.selected_node_id
-            && let Some(node) = self.data.nodes.iter().find(|n| n.id() == node_id) {
-                let mut textarea = TextArea::from(node.text().lines().map(String::from).collect::<Vec<_>>());
-                textarea.set_cursor_line_style(ratatui::style::Style::default());
-                textarea.set_wrap_mode(WrapMode::Word);
-                self.floating_editor = Some(textarea);
-            }
+            && let Some(node) = self.data.nodes.iter().find(|n| n.id() == node_id)
+        {
+            let mut textarea =
+                TextArea::from(node.text().lines().map(String::from).collect::<Vec<_>>());
+            textarea.set_cursor_line_style(ratatui::style::Style::default());
+            textarea.set_wrap_mode(WrapMode::Word);
+            self.floating_editor = Some(textarea);
+        }
     }
 
     pub fn open_context_menu(&mut self, x: u16, y: u16, canvas_x: f64, canvas_y: f64) {
@@ -314,17 +329,29 @@ impl PinstarState {
 
             for node in &mut self.data.nodes {
                 match node {
-                    crate::pinstar::data::CanvasNode::Text(n) if n.id == old_id => n.id = new_id.clone(),
-                    crate::pinstar::data::CanvasNode::File(n) if n.id == old_id => n.id = new_id.clone(),
-                    crate::pinstar::data::CanvasNode::Link(n) if n.id == old_id => n.id = new_id.clone(),
-                    crate::pinstar::data::CanvasNode::Group(n) if n.id == old_id => n.id = new_id.clone(),
+                    crate::pinstar::data::CanvasNode::Text(n) if n.id == old_id => {
+                        n.id = new_id.clone()
+                    }
+                    crate::pinstar::data::CanvasNode::File(n) if n.id == old_id => {
+                        n.id = new_id.clone()
+                    }
+                    crate::pinstar::data::CanvasNode::Link(n) if n.id == old_id => {
+                        n.id = new_id.clone()
+                    }
+                    crate::pinstar::data::CanvasNode::Group(n) if n.id == old_id => {
+                        n.id = new_id.clone()
+                    }
                     _ => {}
                 }
             }
 
             for edge in &mut self.data.edges {
-                if edge.from_node == old_id { edge.from_node = new_id.clone(); }
-                if edge.to_node == old_id { edge.to_node = new_id.clone(); }
+                if edge.from_node == old_id {
+                    edge.from_node = new_id.clone();
+                }
+                if edge.to_node == old_id {
+                    edge.to_node = new_id.clone();
+                }
             }
 
             self.selected_node_id = Some(new_id);
@@ -336,7 +363,9 @@ impl PinstarState {
     pub fn delete_node_connections(&mut self) {
         if let Some(id) = &self.selected_node_id {
             let id_clone = id.clone();
-            self.data.edges.retain(|e| e.from_node != id_clone && e.to_node != id_clone);
+            self.data
+                .edges
+                .retain(|e| e.from_node != id_clone && e.to_node != id_clone);
             let _ = self.save();
             self.sync_to_raw_editor();
         }
@@ -362,15 +391,17 @@ impl PinstarState {
 
     pub fn add_text_node(&mut self, x: f64, y: f64) {
         let id = format!("node_{}", &uuid::Uuid::new_v4().to_string()[..8]);
-        self.data.nodes.push(crate::pinstar::data::CanvasNode::Text(crate::pinstar::data::TextNode {
-            id: id.clone(),
-            x,
-            y,
-            width: 200.0,
-            height: 100.0,
-            text: "".to_string(),
-            color: None,
-        }));
+        self.data.nodes.push(crate::pinstar::data::CanvasNode::Text(
+            crate::pinstar::data::TextNode {
+                id: id.clone(),
+                x,
+                y,
+                width: 200.0,
+                height: 100.0,
+                text: "".to_string(),
+                color: None,
+            },
+        ));
         self.selected_node_id = Some(id.clone());
         self.resizing_node_id = Some(id);
         let _ = self.save();
@@ -379,15 +410,18 @@ impl PinstarState {
 
     pub fn add_group(&mut self, x: f64, y: f64) {
         let id = format!("group_{}", &uuid::Uuid::new_v4().to_string()[..8]);
-        self.data.nodes.insert(0, crate::pinstar::data::CanvasNode::Group(crate::pinstar::data::GroupNode {
-            id: id.clone(),
-            x,
-            y,
-            width: 400.0,
-            height: 300.0,
-            label: Some("New Group".to_string()),
-            color: None,
-        }));
+        self.data.nodes.insert(
+            0,
+            crate::pinstar::data::CanvasNode::Group(crate::pinstar::data::GroupNode {
+                id: id.clone(),
+                x,
+                y,
+                width: 400.0,
+                height: 300.0,
+                label: Some("New Group".to_string()),
+                color: None,
+            }),
+        );
         self.selected_node_id = Some(id.clone());
         self.resizing_node_id = Some(id);
         let _ = self.save();
@@ -403,31 +437,40 @@ impl PinstarState {
 
     pub fn finish_connection(&mut self, target_id: &str) {
         if let Some(source_id) = self.connection_source_id.take()
-            && source_id != target_id {
-                let edge_id = format!("edge_{}_{}", source_id, target_id);
-                if !self.data.edges.iter().any(|e| e.from_node == source_id && e.to_node == target_id) {
-                    self.data.edges.push(crate::pinstar::data::CanvasEdge {
-                        id: edge_id,
-                        from_node: source_id,
-                        from_side: Some("right".to_string()),
-                        to_node: target_id.to_string(),
-                        to_side: Some("left".to_string()),
-                        label: None,
-                        color: None,
-                    });
-                    let _ = self.save();
-                    self.sync_to_raw_editor();
-                }
+            && source_id != target_id
+        {
+            let edge_id = format!("edge_{}_{}", source_id, target_id);
+            if !self
+                .data
+                .edges
+                .iter()
+                .any(|e| e.from_node == source_id && e.to_node == target_id)
+            {
+                self.data.edges.push(crate::pinstar::data::CanvasEdge {
+                    id: edge_id,
+                    from_node: source_id,
+                    from_side: Some("right".to_string()),
+                    to_node: target_id.to_string(),
+                    to_side: Some("left".to_string()),
+                    label: None,
+                    color: None,
+                });
+                let _ = self.save();
+                self.sync_to_raw_editor();
             }
+        }
     }
 
     pub fn finish_delete_connection(&mut self, target_id: &str) {
         if let Some(source_id) = self.deleting_connection_source_id.take()
-            && source_id != target_id {
-                self.data.edges.retain(|e| !(e.from_node == source_id && e.to_node == target_id));
-                let _ = self.save();
-                self.sync_to_raw_editor();
-            }
+            && source_id != target_id
+        {
+            self.data
+                .edges
+                .retain(|e| !(e.from_node == source_id && e.to_node == target_id));
+            let _ = self.save();
+            self.sync_to_raw_editor();
+        }
     }
 
     pub fn resize_selected_node(&mut self, dw: f64, dh: f64) {
@@ -435,10 +478,22 @@ impl PinstarState {
             for node in &mut self.data.nodes {
                 if node.id() == id {
                     match node {
-                        crate::pinstar::data::CanvasNode::Text(n) => { n.width = (n.width + dw).max(10.0); n.height = (n.height + dh).max(10.0); },
-                        crate::pinstar::data::CanvasNode::File(n) => { n.width = (n.width + dw).max(10.0); n.height = (n.height + dh).max(10.0); },
-                        crate::pinstar::data::CanvasNode::Link(n) => { n.width = (n.width + dw).max(10.0); n.height = (n.height + dh).max(10.0); },
-                        crate::pinstar::data::CanvasNode::Group(n) => { n.width = (n.width + dw).max(10.0); n.height = (n.height + dh).max(10.0); },
+                        crate::pinstar::data::CanvasNode::Text(n) => {
+                            n.width = (n.width + dw).max(10.0);
+                            n.height = (n.height + dh).max(10.0);
+                        }
+                        crate::pinstar::data::CanvasNode::File(n) => {
+                            n.width = (n.width + dw).max(10.0);
+                            n.height = (n.height + dh).max(10.0);
+                        }
+                        crate::pinstar::data::CanvasNode::Link(n) => {
+                            n.width = (n.width + dw).max(10.0);
+                            n.height = (n.height + dh).max(10.0);
+                        }
+                        crate::pinstar::data::CanvasNode::Group(n) => {
+                            n.width = (n.width + dw).max(10.0);
+                            n.height = (n.height + dh).max(10.0);
+                        }
                     }
                     break;
                 }
@@ -466,7 +521,8 @@ impl PinstarState {
                     if nid != id {
                         let (nx, ny) = node.pos();
                         let (nw, nh) = node.size();
-                        if nx >= gx && ny >= gy && (nx + nw) <= (gx + gw) && (ny + nh) <= (gy + gh) {
+                        if nx >= gx && ny >= gy && (nx + nw) <= (gx + gw) && (ny + nh) <= (gy + gh)
+                        {
                             self.drag_captured_nodes.insert(nid.to_string());
                         }
                     }
@@ -481,10 +537,22 @@ impl PinstarState {
                 let nid = node.id();
                 if nid == id || self.drag_captured_nodes.contains(nid) {
                     match node {
-                        crate::pinstar::data::CanvasNode::Text(n) => { n.x += dx; n.y += dy; },
-                        crate::pinstar::data::CanvasNode::File(n) => { n.x += dx; n.y += dy; },
-                        crate::pinstar::data::CanvasNode::Link(n) => { n.x += dx; n.y += dy; },
-                        crate::pinstar::data::CanvasNode::Group(n) => { n.x += dx; n.y += dy; },
+                        crate::pinstar::data::CanvasNode::Text(n) => {
+                            n.x += dx;
+                            n.y += dy;
+                        }
+                        crate::pinstar::data::CanvasNode::File(n) => {
+                            n.x += dx;
+                            n.y += dy;
+                        }
+                        crate::pinstar::data::CanvasNode::Link(n) => {
+                            n.x += dx;
+                            n.y += dy;
+                        }
+                        crate::pinstar::data::CanvasNode::Group(n) => {
+                            n.x += dx;
+                            n.y += dy;
+                        }
                     }
                 }
             }

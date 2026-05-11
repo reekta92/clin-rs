@@ -2,20 +2,20 @@
 
 pub(crate) mod actions;
 pub(crate) mod app_theme;
-pub(crate) mod draw;
-pub(crate) mod popups;
-pub(crate) mod editor;
-pub(crate) mod list_view;
 pub(crate) mod cli;
-pub(crate) mod migration;
 mod config;
-pub(crate) mod graf;
 pub(crate) mod constants;
+pub(crate) mod draw;
+pub(crate) mod editor;
 pub(crate) mod frontmatter;
+pub(crate) mod graf;
 mod keybinds;
+pub(crate) mod list_view;
 pub(crate) mod markdown;
+pub(crate) mod migration;
 pub(crate) mod palette;
 pub(crate) mod pinstar;
+pub(crate) mod popups;
 pub(crate) mod sanitize;
 pub(crate) mod snapshot;
 mod templates;
@@ -148,7 +148,7 @@ fn main() -> Result<()> {
 
             run_tui_session(&mut app)
         }
-        
+
         CliCommand::ShowStoragePath => {
             let bootstrap = ClinConfig::load()?;
             let effective = bootstrap.effective_storage_path()?;
@@ -201,7 +201,6 @@ fn main() -> Result<()> {
             let from = match bootstrap.previous_storage_path.clone() {
                 Some(path) if path.exists() && path.is_dir() => path,
                 _ => {
-                    
                     let default = ClinConfig::default_storage_path()?;
                     if default.exists() && default.is_dir() && default != to {
                         println!("No previous storage path recorded.");
@@ -254,8 +253,11 @@ fn main() -> Result<()> {
             let notes_dst = to.join("notes");
             if notes_src.exists() && notes_src.is_dir() {
                 fs::create_dir_all(&notes_dst)?;
-                let (m, s, action) =
-                    migration::migrate_directory_with_conflict(&notes_src, &notes_dst, conflict_action)?;
+                let (m, s, action) = migration::migrate_directory_with_conflict(
+                    &notes_src,
+                    &notes_dst,
+                    conflict_action,
+                )?;
                 migrated_count += m;
                 skipped_count += s;
                 conflict_action = action;
@@ -289,7 +291,7 @@ fn main() -> Result<()> {
 
             Ok(())
         }
-        
+
         CliCommand::ShowKeybinds => {
             let storage = Storage::init()?;
             let keybinds = storage.load_keybinds();
@@ -400,7 +402,7 @@ fn main() -> Result<()> {
             println!("Keybinds file: {}", storage.keybinds_path().display());
             Ok(())
         }
-        
+
         CliCommand::ListTemplates => {
             let storage = Storage::init()?;
             let template_manager = storage.template_manager();
@@ -448,7 +450,6 @@ fn parse_cli_command() -> Result<CliCommand> {
         "-h" | "--help" => Ok(CliCommand::Help),
         "-l" => Ok(CliCommand::ListNoteTitles),
         "-n" => {
-            
             let mut title = None;
             let mut template = None;
             let mut i = 1;
@@ -489,7 +490,7 @@ fn parse_cli_command() -> Result<CliCommand> {
                 edit_title: Some(args[1..].join(" ")),
             })
         }
-        
+
         "--storage-path" => Ok(CliCommand::ShowStoragePath),
         "--set-storage-path" => {
             if args.len() < 2 {
@@ -501,11 +502,11 @@ fn parse_cli_command() -> Result<CliCommand> {
         }
         "--reset-storage-path" => Ok(CliCommand::ResetStoragePath),
         "--migrate-storage" => Ok(CliCommand::MigrateStorage),
-        
+
         "--keybinds" => Ok(CliCommand::ShowKeybinds),
         "--export-keybinds" => Ok(CliCommand::ExportKeybinds),
         "--reset-keybinds" => Ok(CliCommand::ResetKeybinds),
-        
+
         "--list-templates" => Ok(CliCommand::ListTemplates),
         "--create-example-templates" => Ok(CliCommand::CreateExampleTemplates),
         unknown => anyhow::bail!("unknown argument: {unknown}. Use clin -h for help."),
@@ -608,7 +609,12 @@ fn run_app(
                 }
             };
 
-            match crate::graf::app::run_graf_view(terminal, app.storage.clone(), &mut config, &app.keybinds) {
+            match crate::graf::app::run_graf_view(
+                terminal,
+                app.storage.clone(),
+                &mut config,
+                &app.keybinds,
+            ) {
                 Ok(crate::graf::app::GrafResult::NoteOpened(note_id)) => {
                     app.mode = ViewMode::List;
                     app.reload_theme();
@@ -634,7 +640,13 @@ fn run_app(
         if app.mode == ViewMode::Draw {
             let note_id = app.get_selected_note_id();
 
-            let _ = crate::draw::app::run_draw_view(terminal, app.storage.clone(), &app.keybinds, note_id, app.app_theme.clone());
+            let _ = crate::draw::app::run_draw_view(
+                terminal,
+                app.storage.clone(),
+                &app.keybinds,
+                note_id,
+                app.app_theme.clone(),
+            );
             app.close_draw_view();
             app.needs_full_redraw = true;
             terminal.clear()?;
@@ -643,7 +655,15 @@ fn run_app(
 
         if app.mode == ViewMode::Canvas {
             let note_id = app.get_selected_note_id();
-            match crate::pinstar::app::run_pinstar_view(terminal, app.storage.clone(), &app.keybinds, note_id, app.app_theme.clone(), app.editor.external_editor_enabled, app.editor.external_editor.clone()) {
+            match crate::pinstar::app::run_pinstar_view(
+                terminal,
+                app.storage.clone(),
+                &app.keybinds,
+                note_id,
+                app.app_theme.clone(),
+                app.editor.external_editor_enabled,
+                app.editor.external_editor.clone(),
+            ) {
                 Ok(crate::pinstar::app::PinstarResult::HelpRequested) => {
                     app.reload_theme();
                     app.return_mode = Some(ViewMode::Canvas);
@@ -670,9 +690,11 @@ fn run_app(
         let poll_timeout = if matches!(
             app.list.preview_content,
             Some(crate::list_view::PreviewContent::Markdown(ref r)) if r.is_pending()
-        ) || app.editor.md_preview_renderer
-                .as_ref()
-                .is_some_and(|r| r.is_pending())
+        ) || app
+            .editor
+            .md_preview_renderer
+            .as_ref()
+            .is_some_and(|r| r.is_pending())
         {
             Duration::from_millis(50)
         } else {
@@ -725,22 +747,30 @@ fn run_app(
                 Event::Mouse(mouse_event) if app.mode == ViewMode::Help => {
                     let size = terminal.size().context("failed to get terminal size")?;
                     let area = Rect::new(0, 0, size.width, size.height);
-                    
+
                     let tab_bar_y = area.y;
-                    if mouse_event.kind == ratatui::crossterm::event::MouseEventKind::Down(
-                        ratatui::crossterm::event::MouseButton::Left,
-                    ) && mouse_event.row == tab_bar_y
+                    if mouse_event.kind
+                        == ratatui::crossterm::event::MouseEventKind::Down(
+                            ratatui::crossterm::event::MouseButton::Left,
+                        )
+                        && mouse_event.row == tab_bar_y
                     {
-                        
-                        let tab_names = ["Notes", "Editor", "Graph", "Draw", "Pinstar", "About"];
-                        let mut tab_widths: [u16; 6] = [0; 6];
+                        let tab_names = [
+                            "Notes",
+                            "Editor",
+                            "Graph",
+                            "Draw",
+                            "Pinstar",
+                            "Templates",
+                            "About",
+                        ];
+                        let mut tab_widths: [u16; 7] = [0; 7];
                         let mut total_width: u16 = 0;
                         for (i, name) in tab_names.iter().enumerate() {
-                            
                             tab_widths[i] = name.len() as u16 + 2;
                             total_width += tab_widths[i];
                             if i < tab_names.len() - 1 {
-                                total_width += 3; 
+                                total_width += 3;
                             }
                         }
                         let start_x = area.x + (area.width.saturating_sub(total_width)) / 2;
@@ -755,12 +785,16 @@ fn run_app(
                                 offset += tw + 3;
                             }
                         }
-                    } else if mouse_event.kind == ratatui::crossterm::event::MouseEventKind::ScrollUp {
+                    } else if mouse_event.kind
+                        == ratatui::crossterm::event::MouseEventKind::ScrollUp
+                    {
                         app.help_scroll = app.help_scroll.saturating_sub(3);
                     } else if mouse_event.kind
                         == ratatui::crossterm::event::MouseEventKind::ScrollDown
                     {
-                        let max_scroll = app.list.help_text_cache
+                        let max_scroll = app
+                            .list
+                            .help_text_cache
                             .as_ref()
                             .map_or(0, |t| t.height().saturating_sub(5) as u16);
                         app.help_scroll = app.help_scroll.saturating_add(3).min(max_scroll);

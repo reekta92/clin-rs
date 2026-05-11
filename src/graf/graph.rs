@@ -1,4 +1,3 @@
-
 use std::collections::HashMap;
 use std::sync::Mutex;
 
@@ -28,7 +27,10 @@ pub struct GraphState {
     pub render_cache: Mutex<super::render::RenderCache>,
 }
 
-pub fn build_graph(storage: &Storage, config: &ClinConfig) -> anyhow::Result<ForceGraph<GraphNodeData, ()>> {
+pub fn build_graph(
+    storage: &Storage,
+    config: &ClinConfig,
+) -> anyhow::Result<ForceGraph<GraphNodeData, ()>> {
     let note_ids = storage.list_note_ids()?;
     let mut graph: ForceGraph<GraphNodeData, ()> = ForceGraph::default();
     let mut title_to_index: HashMap<String, NodeIndex> = HashMap::new();
@@ -36,7 +38,7 @@ pub fn build_graph(storage: &Storage, config: &ClinConfig) -> anyhow::Result<For
     let mut summaries = Vec::new();
     let mut links_map: HashMap<String, Vec<String>> = HashMap::new();
     let mut link_counts: HashMap<String, usize> = HashMap::new();
-    
+
     for id in &note_ids {
         if let Ok(summary) = storage.load_note_summary(id) {
             link_counts.insert(id.clone(), summary.links.len());
@@ -46,15 +48,21 @@ pub fn build_graph(storage: &Storage, config: &ClinConfig) -> anyhow::Result<For
     }
 
     let min_links = config.filter.min_links;
-    
+
     for summary in &summaries {
         let lc = link_counts.get(&summary.id).copied().unwrap_or(0);
-        if lc < min_links { continue; }
-        
+        if lc < min_links {
+            continue;
+        }
+
         if !config.filter.exclude_tags.is_empty()
-            && summary.tags.iter().any(|t| config.filter.exclude_tags.contains(t)) {
-                continue;
-            }
+            && summary
+                .tags
+                .iter()
+                .any(|t| config.filter.exclude_tags.contains(t))
+        {
+            continue;
+        }
 
         let is_encrypted = summary.id.ends_with(".clin");
         let data = GraphNodeData {
@@ -73,7 +81,7 @@ pub fn build_graph(storage: &Storage, config: &ClinConfig) -> anyhow::Result<For
     for summary in &summaries {
         if let Some(links) = links_map.get(&summary.id) {
             let source_title = summary.title.to_lowercase();
-            
+
             let source_idx = match title_to_index.get(&source_title) {
                 Some(&idx) => idx,
                 None => continue,
@@ -84,11 +92,11 @@ pub fn build_graph(storage: &Storage, config: &ClinConfig) -> anyhow::Result<For
                 let target_lower = link.to_lowercase();
                 if let Some(&target_idx) = title_to_index.get(&target_lower)
                     && target_idx != source_idx
-                        && seen_targets.insert(target_idx)
-                        && graph.edges_connecting(source_idx, target_idx).count() == 0
-                    {
-                        graph.add_edge(source_idx, target_idx, ());
-                    }
+                    && seen_targets.insert(target_idx)
+                    && graph.edges_connecting(source_idx, target_idx).count() == 0
+                {
+                    graph.add_edge(source_idx, target_idx, ());
+                }
             }
         }
     }

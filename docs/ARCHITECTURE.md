@@ -188,7 +188,7 @@ List and Edit views use ratatui's `Layout` to split the terminal into panes:
 
 **Help view layout:**
 ```
-┌─ Tab Bar (Notes · Editor · Graph · Draw · Canvas · About) ─┐
+┌─ Tab Bar (Notes · Editor · Graph · Draw · Canvas · Templates · About) ─┐
 │                                                              │
 │                Help content (scrollable)                     │
 │                                                              │
@@ -220,7 +220,12 @@ src/
 ├── sanitize.rs       — Terminal output sanitization
 ├── snapshot.rs       — Backup/restore snapshots
 ├── storage.rs        — Note CRUD, encryption, key management
-├── templates.rs      — TemplateManager, Template struct
+├── templates/        — modular template system
+│   ├── mod.rs        — public re-exports
+│   ├── model.rs      — Template schema + render
+│   ├── variables.rs  — variable substitution
+│   ├── store.rs      — filename sanitization
+│   └── manager.rs    — TemplateManager orchestration
 ├── ui.rs             — draw_ui(), draw_list_view(), draw_edit_view(), ...
 │
 ├── actions/

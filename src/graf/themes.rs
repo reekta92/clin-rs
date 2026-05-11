@@ -41,7 +41,6 @@ impl ThemePalette {
 }
 
 const PALETTES: [ThemePalette; 10] = [
-    
     ThemePalette {
         nodes: [
             [122, 162, 247],
@@ -60,7 +59,6 @@ const PALETTES: [ThemePalette; 10] = [
         grid: [56, 62, 95],
         bg: [26, 27, 38],
     },
-    
     ThemePalette {
         nodes: [
             [137, 180, 250],
@@ -79,7 +77,6 @@ const PALETTES: [ThemePalette; 10] = [
         grid: [49, 50, 68],
         bg: [30, 30, 46],
     },
-    
     ThemePalette {
         nodes: [
             [97, 175, 239],
@@ -98,7 +95,6 @@ const PALETTES: [ThemePalette; 10] = [
         grid: [56, 63, 76],
         bg: [40, 44, 52],
     },
-    
     ThemePalette {
         nodes: [
             [184, 187, 38],
@@ -117,7 +113,6 @@ const PALETTES: [ThemePalette; 10] = [
         grid: [60, 56, 54],
         bg: [40, 40, 40],
     },
-    
     ThemePalette {
         nodes: [
             [139, 233, 253],
@@ -136,7 +131,6 @@ const PALETTES: [ThemePalette; 10] = [
         grid: [68, 71, 90],
         bg: [40, 42, 54],
     },
-    
     ThemePalette {
         nodes: [
             [136, 192, 208],
@@ -155,7 +149,6 @@ const PALETTES: [ThemePalette; 10] = [
         grid: [59, 66, 82],
         bg: [46, 52, 64],
     },
-    
     ThemePalette {
         nodes: [
             [180, 142, 173],
@@ -174,7 +167,6 @@ const PALETTES: [ThemePalette; 10] = [
         grid: [57, 53, 82],
         bg: [40, 37, 61],
     },
-    
     ThemePalette {
         nodes: [
             [255, 215, 89],
@@ -193,7 +185,6 @@ const PALETTES: [ThemePalette; 10] = [
         grid: [40, 50, 45],
         bg: [30, 38, 34],
     },
-    
     ThemePalette {
         nodes: [
             [147, 191, 254],
@@ -212,7 +203,6 @@ const PALETTES: [ThemePalette; 10] = [
         grid: [34, 40, 62],
         bg: [26, 30, 48],
     },
-    
     ThemePalette {
         nodes: [
             [181, 137, 0],
@@ -228,7 +218,7 @@ const PALETTES: [ThemePalette; 10] = [
         title: [131, 148, 150],
         text: [131, 148, 150],
         fg: [253, 246, 227],
-        grid: [0, 74, 94], 
+        grid: [0, 74, 94],
         bg: [0, 43, 54],
     },
 ];

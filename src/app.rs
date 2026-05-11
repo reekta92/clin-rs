@@ -1,11 +1,11 @@
-use crate::constants::*;
-pub use crate::popups::*;
-pub use crate::editor::*;
-pub use crate::list_view::*;
 pub use crate::cli::CliCommand;
+use crate::constants::*;
+pub use crate::editor::*;
 use crate::events::get_title_text;
 use crate::events::make_title_editor;
+pub use crate::list_view::*;
 use crate::markdown::MarkdownRenderer;
+pub use crate::popups::*;
 use crate::ui::text_area_from_content;
 use crate::ui::{now_unix_secs, open_in_file_manager};
 use ratatui::style::{Color, Style};
@@ -21,8 +21,182 @@ use anyhow::Result;
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
-use std::collections::{HashMap, HashSet};
 use ratatui_textarea::TextArea;
+use std::collections::{HashMap, HashSet};
+
+const VIRTUAL_PINNED_PATH: &str = "__clin_virtual__/pinned";
+pub const VIRTUAL_PINNED_LABEL: &str = "Pinned";
+
+/// Parsed search query with optional filters.
+/// `f:folder` restricts to folder; `p:` restricts to pinned;
+/// `t:tag1,tag2` restricts to notes matching any listed tag;
+/// `g:text` enables grep (content) mode with search term.
+#[derive(Debug, Clone, Default)]
+pub struct SearchQuery {
+    pub text: String,
+    pub folder_filter: Option<String>,
+    pub pinned_only: bool,
+    pub tag_filter: Option<Vec<String>>,
+    pub grep_mode: bool,
+    pub grep_text: String,
+}
+
+/// Parse search query for `f:folder`, `p:`, `t:tag1,tag2`, `g:text` filters.
+/// Filters must be space-separated, e.g. "text f:inbox p: g:needle t:urgent,work".
+/// A filter at the start of the query works too (no leading space needed).
+/// Find all `<prefix>` tokens in `s` and return their positions (sorted left-to-right).
+fn find_filter_tokens(s: &str) -> Vec<(usize, &'static str)> {
+    let spaced = [" f:", " g:", " p:", " t:"];
+    let bare = ["f:", "g:", "p:", "t:"];
+    let mut tokens: Vec<(usize, &'static str)> = Vec::new();
+
+    // Helper: check if position is escaped by \e\ (backslash-e-backslash before prefix)
+    let is_escaped = |s: &str, pos: usize, _prefix_len: usize| -> bool {
+        if pos < 3 { return false; }
+        &s[pos - 3..pos] == "\\e\\"
+    };
+
+    // Mid-string filters (preceded by space)
+    for &prefix in &spaced {
+        let mut start = 0;
+        while let Some(pos) = s[start..].find(prefix) {
+            let abs_pos = start + pos;
+            if !is_escaped(s, abs_pos, prefix.len()) {
+                tokens.push((abs_pos, prefix));
+            }
+            start = abs_pos + prefix.len();
+        }
+    }
+    // Start-of-string filters (no leading space)
+    for &prefix in &bare {
+        if s.starts_with(prefix) && !tokens.iter().any(|&(p, _)| p == 0) {
+            // Only add if not escaped
+            if !is_escaped(s, 0, prefix.len()) {
+                tokens.push((0, prefix));
+            }
+        }
+    }
+    tokens.sort_by_key(|&(pos, _)| pos);
+    tokens
+}
+
+/// Strip \e\ escape sequences only when followed by f: g: p: t: or a space then one of those
+fn strip_escape_filter(s: &str) -> String {
+    if !s.contains("\\e\\") {
+        return s.to_string();
+    }
+    let filter_chars = ['f', 'g', 'p', 't'];
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars().collect::<Vec<_>>().into_iter().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\\' && chars.peek() == Some(&'e') {
+            chars.next(); // consume 'e'
+            if chars.peek() == Some(&'\\') {
+                chars.next(); // consume second \
+                // Check what follows: is it f: g: p: t: (letter then colon)?
+                let next = chars.peek().copied();
+                let after = {
+                    let mut it = chars.clone();
+                    it.next(); // skip the letter
+                    it.next() // the char after letter
+                };
+                let is_filter = next.zip(after).map_or(false, |(ch, colon)| {
+                    filter_chars.contains(&ch) && colon == ':'
+                });
+                if is_filter {
+                    // \e\ before filter prefix — consume escape, keep filter text literal
+                    continue;
+                }
+                // Not a filter escape — keep as literal
+                out.push('\\');
+                out.push('e');
+                out.push('\\');
+            } else {
+                out.push('\\');
+                out.push('e');
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+pub fn parse_search_query(query: &str) -> SearchQuery {
+    let text = query.to_string();
+    let mut folder_filter = None;
+    let mut pinned_only = false;
+    let mut grep_mode = false;
+    let mut grep_text = String::new();
+    let mut tag_filter = None;
+
+    let tokens = find_filter_tokens(&text);
+    if tokens.is_empty() {
+        return SearchQuery {
+            text,
+            folder_filter,
+            pinned_only,
+            grep_mode,
+            grep_text,
+            tag_filter,
+        };
+    }
+
+    // Pre-compute value end for each token (start of next token, or end of string)
+    let mut ranges: Vec<(usize, usize)> = Vec::with_capacity(tokens.len());
+
+    for i in 0..tokens.len() {
+        let (pos, prefix) = tokens[i];
+        let val_start = pos + prefix.len();
+        let val_end = tokens.get(i + 1).map_or(text.len(), |&(next, _)| next);
+        let value = text[val_start..val_end].trim().to_string();
+        ranges.push((pos, val_end));
+
+        match prefix {
+            " f:" | "f:" => {
+                folder_filter = Some(if value.is_empty() {
+                    String::new()
+                } else {
+                    strip_escape_filter(&value)
+                });
+            }
+            " p:" | "p:" => {
+                pinned_only = true;
+            }
+            " g:" | "g:" => {
+                grep_mode = true;
+                grep_text = strip_escape_filter(&value);
+            }
+            " t:" | "t:" => {
+                let stripped = strip_escape_filter(&value);
+                let tags: Vec<String> = stripped
+                    .split(',')
+                    .map(|s| s.trim().to_lowercase())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                tag_filter = Some(tags);
+            }
+            _ => {}
+        }
+    }
+
+    // Remove filter segments from text (right-to-left to preserve indices)
+    let mut clean = text.clone();
+    for (start, end) in ranges.into_iter().rev() {
+        clean.replace_range(start..end, "");
+    }
+    clean = strip_escape_filter(&clean);
+    clean = clean.trim().to_string();
+
+    SearchQuery {
+        text: clean,
+        folder_filter,
+        pinned_only,
+        grep_mode,
+        grep_text,
+        tag_filter,
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ViewMode {
@@ -41,6 +215,7 @@ pub enum HelpTab {
     Graph,
     Draw,
     Canvas,
+    Templates,
     About,
 }
 
@@ -52,7 +227,8 @@ impl HelpTab {
             HelpTab::Graph => HelpTab::Editor,
             HelpTab::Draw => HelpTab::Graph,
             HelpTab::Canvas => HelpTab::Draw,
-            HelpTab::About => HelpTab::Canvas,
+            HelpTab::Templates => HelpTab::Canvas,
+            HelpTab::About => HelpTab::Templates,
         }
     }
 
@@ -62,7 +238,8 @@ impl HelpTab {
             HelpTab::Editor => HelpTab::Graph,
             HelpTab::Graph => HelpTab::Draw,
             HelpTab::Draw => HelpTab::Canvas,
-            HelpTab::Canvas => HelpTab::About,
+            HelpTab::Canvas => HelpTab::Templates,
+            HelpTab::Templates => HelpTab::About,
             HelpTab::About => HelpTab::Notes,
         }
     }
@@ -74,6 +251,7 @@ impl HelpTab {
             HelpTab::Graph => "Graph",
             HelpTab::Draw => "Draw",
             HelpTab::Canvas => "Pinstar",
+            HelpTab::Templates => "Templates",
             HelpTab::About => "About",
         }
     }
@@ -85,23 +263,15 @@ impl HelpTab {
             2 => HelpTab::Graph,
             3 => HelpTab::Draw,
             4 => HelpTab::Canvas,
+            5 => HelpTab::Templates,
             _ => HelpTab::About,
         }
     }
 
     pub fn count() -> usize {
-        6
+        7
     }
 }
-
-
-
-
-
-
-
-
-
 
 pub struct App {
     pub popups: crate::popups::PopupManager,
@@ -119,6 +289,8 @@ pub struct App {
     pub command_palette: Option<crate::palette::CommandPalette>,
     pub needs_full_redraw: bool,
     pub confirm_on_delete: bool,
+    pub preview_encryption: bool,
+    pub pinned_on_top: bool,
     pub default_folder: Option<String>,
     pub last_g_press: Option<Instant>,
     pub return_mode: Option<ViewMode>,
@@ -141,8 +313,12 @@ impl App {
         editor.title_editor = make_title_editor("", Color::Black, Color::Cyan);
 
         let mut list = ListView::new();
-        list.sort_field = bootstrap_config.default_sort_field.unwrap_or(SortField::Title);
-        list.sort_order = bootstrap_config.default_sort_order.unwrap_or(SortOrder::Ascending);
+        list.sort_field = bootstrap_config
+            .default_sort_field
+            .unwrap_or(SortField::Title);
+        list.sort_order = bootstrap_config
+            .default_sort_order
+            .unwrap_or(SortOrder::Ascending);
         list.preview_enabled = bootstrap_config.preview_enabled;
         list.page_size = 10;
 
@@ -162,6 +338,8 @@ impl App {
             popups: crate::popups::PopupManager::default(),
             needs_full_redraw: false,
             confirm_on_delete: bootstrap_config.confirm_on_delete,
+            preview_encryption: bootstrap_config.preview_encryption,
+            pinned_on_top: bootstrap_config.pinned_on_top,
             default_folder: bootstrap_config.default_folder.clone(),
             last_g_press: None,
             return_mode: None,
@@ -174,32 +352,25 @@ impl App {
         Ok(app)
     }
 
+    fn is_virtual_pinned_path(path: &str) -> bool {
+        path == VIRTUAL_PINNED_PATH
+    }
+
     pub fn refresh_notes(&mut self) -> Result<()> {
         let mut summaries = Vec::new();
         for id in self.storage.list_note_ids()? {
             if let Ok(summary) = self.storage.load_note_summary(&id) {
-                
-                if !self.list.filter_tags.is_empty() {
-                    let mut matches = false;
-                    for tag in &self.list.filter_tags {
-                        if summary.tags.contains(tag) {
-                            matches = true;
-                            break;
-                        }
-                    }
-                    if !matches {
-                        continue;
-                    }
-                }
                 summaries.push(summary);
             }
         }
 
         summaries.sort_by(|a, b| {
-            
-            let pin_cmp = b.pinned.cmp(&a.pinned);
-            if pin_cmp != std::cmp::Ordering::Equal {
-                return pin_cmp;
+            // Sort pinned items first only if pinned_on_top is enabled
+            if self.pinned_on_top {
+                let pin_cmp = b.pinned.cmp(&a.pinned);
+                if pin_cmp != std::cmp::Ordering::Equal {
+                    return pin_cmp;
+                }
             }
 
             let a_clin = a.id.ends_with(".clin");
@@ -221,22 +392,6 @@ impl App {
             }
         });
 
-        if !self.list.filter_tags.is_empty() {
-            for summary in &summaries {
-                if !summary.folder.is_empty() {
-                    let mut path = String::new();
-                    for part in summary.folder.split('/') {
-                        if !path.is_empty() {
-                            path.push('/');
-                        }
-                        path.push_str(part);
-                        self.list.folder_expanded.insert(path.clone());
-                    }
-                }
-            }
-            self.list.folder_expanded.insert(String::new());
-        }
-
         self.notes = summaries;
 
         self.refresh_visual_list();
@@ -247,21 +402,47 @@ impl App {
         let mut visual = Vec::new();
 
         let mut by_folder: HashMap<&str, Vec<(usize, &NoteSummary)>> = HashMap::new();
+        let mut pinned_notes: Vec<(usize, &NoteSummary)> = Vec::new();
         for (i, note) in self.notes.iter().enumerate() {
             by_folder
                 .entry(note.folder.as_str())
                 .or_default()
                 .push((i, note));
+            if note.pinned {
+                pinned_notes.push((i, note));
+            }
         }
 
+        // Pinned folder first
+        visual.push(VisualItem::Folder {
+            path: VIRTUAL_PINNED_PATH.to_string(),
+            name: VIRTUAL_PINNED_LABEL.to_string(),
+            depth: 0,
+            is_expanded: self.list.folder_expanded.contains(VIRTUAL_PINNED_PATH),
+            note_count: pinned_notes.len(),
+        });
+
+        if self.list.folder_expanded.contains(VIRTUAL_PINNED_PATH) {
+            for (idx, note) in pinned_notes {
+                visual.push(VisualItem::Note {
+                    id: note.id.clone(),
+                    summary_idx: idx,
+                    depth: 1,
+                    is_clin: note.id.ends_with(".clin"),
+                    is_draw: note.id.ends_with(".draw"),
+                    is_canvas: note.id.ends_with(".canvas"),
+                    in_virtual_pinned_folder: true,
+                });
+            }
+        }
+
+        // Vault folder second
         visual.push(VisualItem::Folder {
             path: String::new(),
             name: String::from("Vault"),
             depth: 0,
             is_expanded: self.list.folder_expanded.contains(""),
-            note_count: by_folder
-                .get("")
-                .map_or(0, |v| v.len()),
+            note_count: by_folder.get("").map_or(0, |v| v.len()),
         });
 
         if self.list.folder_expanded.contains("") {
@@ -274,6 +455,7 @@ impl App {
                         is_clin: note.id.ends_with(".clin"),
                         is_draw: note.id.ends_with(".draw"),
                         is_canvas: note.id.ends_with(".canvas"),
+                        in_virtual_pinned_folder: false,
                     });
                 }
             }
@@ -327,9 +509,7 @@ impl App {
                     name,
                     depth,
                     is_expanded,
-                    note_count: by_folder
-                        .get(folder.as_str())
-                        .map_or(0, |v| v.len()),
+                    note_count: by_folder.get(folder.as_str()).map_or(0, |v| v.len()),
                 });
 
                 if is_expanded {
@@ -342,7 +522,9 @@ impl App {
                                 is_clin: note.id.ends_with(".clin"),
                                 is_draw: note.id.ends_with(".draw"),
                                 is_canvas: note.id.ends_with(".canvas"),
-                            });                        }
+                                in_virtual_pinned_folder: false,
+                            });
+                        }
                     }
                     visual.push(VisualItem::CreateNew {
                         path: folder.clone(),
@@ -388,7 +570,6 @@ impl App {
                 self.begin_create_note_in_folder(path.clone());
             }
             VisualItem::Folder { path, .. } => {
-                
                 let p = path.clone();
                 if self.list.folder_expanded.contains(&p) {
                     self.list.folder_expanded.remove(&p);
@@ -397,7 +578,12 @@ impl App {
                 }
                 self.refresh_visual_list();
             }
-            VisualItem::Note { summary_idx, is_draw, is_canvas, .. } => {
+            VisualItem::Note {
+                summary_idx,
+                is_draw,
+                is_canvas,
+                ..
+            } => {
                 if *is_draw {
                     self.open_draw_view();
                     return;
@@ -433,7 +619,11 @@ impl App {
     pub fn load_and_open_note(&mut self, note_id: &str) {
         if let Ok(note) = self.storage.load_note(note_id) {
             self.editor.editing_id = Some(note_id.to_string());
-            self.editor.title_editor = make_title_editor(&note.title, self.app_theme.highlight_fg, self.app_theme.highlight_bg);
+            self.editor.title_editor = make_title_editor(
+                &note.title,
+                self.app_theme.highlight_fg,
+                self.app_theme.highlight_bg,
+            );
             self.editor.editor = text_area_from_content(&note.content);
             self.mode = ViewMode::Edit;
             if self.editor.editor_preview_enabled {
@@ -493,7 +683,9 @@ impl App {
                 crossterm::event::DisableBracketedPaste
             );
 
-            let editor_prog = self.editor.external_editor
+            let editor_prog = self
+                .editor
+                .external_editor
                 .clone()
                 .or_else(|| std::env::var("VISUAL").ok())
                 .or_else(|| std::env::var("EDITOR").ok())
@@ -539,7 +731,9 @@ impl App {
                                     "Note saved from external editor.",
                                 );
                                 self.list.folder_cache = None;
-                                if let Err(e) = self.refresh_notes() { self.set_temporary_status(&format!("Refresh failed: {e}")); }
+                                if let Err(e) = self.refresh_notes() {
+                                    self.set_temporary_status(&format!("Refresh failed: {e}"));
+                                }
                             }
                         } else {
                             self.set_temporary_status_static("No changes made in external editor.");
@@ -588,12 +782,11 @@ impl App {
                     self.list.folder_expanded.remove(path);
                     self.refresh_visual_list();
                 } else {
-                    
                     if !path.is_empty() {
                         let parent_path = if let Some(slash) = path.rfind('/') {
                             &path[..slash]
                         } else {
-                            "" 
+                            ""
                         };
 
                         if let Some(idx) = self.list.visual_list.iter().position(|v| {
@@ -609,7 +802,6 @@ impl App {
                 }
             }
             VisualItem::Note { .. } | VisualItem::CreateNew { .. } => {
-                
                 let item_path = match &self.list.visual_list[self.list.visual_index] {
                     VisualItem::Note { summary_idx, .. } => &self.notes[*summary_idx].folder,
                     VisualItem::CreateNew { path, .. } => path,
@@ -646,7 +838,6 @@ impl App {
                     self.list.folder_expanded.insert(path.clone());
                     self.refresh_visual_list();
                 } else {
-                    
                     if self.list.visual_index + 1 < self.list.visual_list.len() {
                         self.list.visual_index += 1;
                     }
@@ -668,21 +859,20 @@ impl App {
             .notes
             .iter()
             .position(|note| note.title.eq_ignore_ascii_case(query))
-            
             && let Some(v_idx) = self.list.visual_list.iter().position(|v| match v {
                 VisualItem::Note { summary_idx, .. } => *summary_idx == index,
                 _ => false,
-            }) {
-                self.list.visual_index = v_idx;
-                self.open_selected();
-                return true;
-            }
+            })
+        {
+            self.list.visual_index = v_idx;
+            self.open_selected();
+            return true;
+        }
 
         false
     }
 
     pub fn start_new_note(&mut self, folder: String) {
-        
         let template_manager = self.storage.template_manager();
         if let Some(default_template) = template_manager.load_default() {
             self.start_note_from_template(&default_template, folder);
@@ -692,7 +882,6 @@ impl App {
     }
 
     pub fn start_new_note_with_title(&mut self, folder: String, title: String) {
-        
         let template_manager = self.storage.template_manager();
         if let Some(default_template) = template_manager.load_default() {
             self.start_note_from_template_with_title(&default_template, folder, title);
@@ -715,7 +904,9 @@ impl App {
                 tags: Vec::new(),
             };
             if self.storage.save_note(&new_id, &new_note).is_ok() {
-                if let Err(e) = self.refresh_notes() { self.set_temporary_status(&format!("Refresh failed: {e}")); }
+                if let Err(e) = self.refresh_notes() {
+                    self.set_temporary_status(&format!("Refresh failed: {e}"));
+                }
                 self.open_note_in_external_editor(&new_id);
             }
             return;
@@ -723,12 +914,15 @@ impl App {
 
         self.mode = ViewMode::Edit;
         self.editor.editing_id = Some(new_id);
-        self.editor.title_editor = make_title_editor("", self.app_theme.highlight_fg, self.app_theme.highlight_bg);
+        self.editor.title_editor =
+            make_title_editor("", self.app_theme.highlight_fg, self.app_theme.highlight_bg);
         self.editor.editor = TextArea::default();
-        self.editor.editor
-            .set_cursor_style(Style::default().fg(self.app_theme.highlight_fg).bg(self.app_theme.highlight_bg));
-        self.editor.editor
-            .set_cursor_line_style(Style::default());
+        self.editor.editor.set_cursor_style(
+            Style::default()
+                .fg(self.app_theme.highlight_fg)
+                .bg(self.app_theme.highlight_bg),
+        );
+        self.editor.editor.set_cursor_line_style(Style::default());
         self.set_default_status();
     }
 
@@ -746,7 +940,9 @@ impl App {
                 tags: Vec::new(),
             };
             if self.storage.save_note(&new_id, &new_note).is_ok() {
-                if let Err(e) = self.refresh_notes() { self.set_temporary_status(&format!("Refresh failed: {e}")); }
+                if let Err(e) = self.refresh_notes() {
+                    self.set_temporary_status(&format!("Refresh failed: {e}"));
+                }
                 self.open_note_in_external_editor(&new_id);
             }
             return;
@@ -754,12 +950,18 @@ impl App {
 
         self.mode = ViewMode::Edit;
         self.editor.editing_id = Some(new_id);
-        self.editor.title_editor = make_title_editor(&title, self.app_theme.highlight_fg, self.app_theme.highlight_bg);
+        self.editor.title_editor = make_title_editor(
+            &title,
+            self.app_theme.highlight_fg,
+            self.app_theme.highlight_bg,
+        );
         self.editor.editor = TextArea::default();
-        self.editor.editor
-            .set_cursor_style(Style::default().fg(self.app_theme.highlight_fg).bg(self.app_theme.highlight_bg));
-        self.editor.editor
-            .set_cursor_line_style(Style::default());
+        self.editor.editor.set_cursor_style(
+            Style::default()
+                .fg(self.app_theme.highlight_fg)
+                .bg(self.app_theme.highlight_bg),
+        );
+        self.editor.editor.set_cursor_line_style(Style::default());
         self.set_default_status();
     }
 
@@ -782,7 +984,9 @@ impl App {
                 tags: Vec::new(),
             };
             if self.storage.save_note(&new_id, &new_note).is_ok() {
-                if let Err(e) = self.refresh_notes() { self.set_temporary_status(&format!("Refresh failed: {e}")); }
+                if let Err(e) = self.refresh_notes() {
+                    self.set_temporary_status(&format!("Refresh failed: {e}"));
+                }
                 self.open_note_in_external_editor(&new_id);
             }
             return;
@@ -791,13 +995,19 @@ impl App {
         self.mode = ViewMode::Edit;
         self.editor.editing_id = Some(new_id);
 
-        self.editor.title_editor = make_title_editor(rendered.title.as_deref().unwrap_or(""), self.app_theme.highlight_fg, self.app_theme.highlight_bg);
+        self.editor.title_editor = make_title_editor(
+            rendered.title.as_deref().unwrap_or(""),
+            self.app_theme.highlight_fg,
+            self.app_theme.highlight_bg,
+        );
         self.editor.editor = text_area_from_content(&rendered.content);
 
-        self.editor.editor
-            .set_cursor_style(Style::default().fg(self.app_theme.highlight_fg).bg(self.app_theme.highlight_bg));
-        self.editor.editor
-            .set_cursor_line_style(Style::default());
+        self.editor.editor.set_cursor_style(
+            Style::default()
+                .fg(self.app_theme.highlight_fg)
+                .bg(self.app_theme.highlight_bg),
+        );
+        self.editor.editor.set_cursor_line_style(Style::default());
 
         self.set_default_status();
     }
@@ -823,7 +1033,9 @@ impl App {
                 tags: Vec::new(),
             };
             if self.storage.save_note(&new_id, &new_note).is_ok() {
-                if let Err(e) = self.refresh_notes() { self.set_temporary_status(&format!("Refresh failed: {e}")); }
+                if let Err(e) = self.refresh_notes() {
+                    self.set_temporary_status(&format!("Refresh failed: {e}"));
+                }
                 self.open_note_in_external_editor(&new_id);
             }
             return;
@@ -832,13 +1044,19 @@ impl App {
         self.mode = ViewMode::Edit;
         self.editor.editing_id = Some(new_id);
 
-        self.editor.title_editor = make_title_editor(&title, self.app_theme.highlight_fg, self.app_theme.highlight_bg);
+        self.editor.title_editor = make_title_editor(
+            &title,
+            self.app_theme.highlight_fg,
+            self.app_theme.highlight_bg,
+        );
         self.editor.editor = text_area_from_content(&rendered.content);
 
-        self.editor.editor
-            .set_cursor_style(Style::default().fg(self.app_theme.highlight_fg).bg(self.app_theme.highlight_bg));
-        self.editor.editor
-            .set_cursor_line_style(Style::default());
+        self.editor.editor.set_cursor_style(
+            Style::default()
+                .fg(self.app_theme.highlight_fg)
+                .bg(self.app_theme.highlight_bg),
+        );
+        self.editor.editor.set_cursor_line_style(Style::default());
 
         self.set_default_status();
     }
@@ -847,16 +1065,13 @@ impl App {
         let template_manager = self.storage.template_manager();
         match template_manager.list() {
             Ok(templates) => {
-                if templates.is_empty() {
-                    self.set_temporary_status(
-                        "No templates found. Create templates in the templates directory.",
-                    );
-                } else {
-                    self.popups.template = Some(TemplatePopup {
-                        templates,
-                        selected: 0,
-                    });
-                }
+                self.popups.template = Some(TemplatePopup {
+                    all_templates: templates.clone(),
+                    filtered_templates: templates,
+                    query: String::new(),
+                    selected: 0,
+                    focus: crate::popups::TemplatePopupFocus::Results,
+                });
             }
             Err(_) => {
                 self.set_temporary_status_static("Failed to load templates");
@@ -871,7 +1086,7 @@ impl App {
     pub fn select_template(&mut self) {
         let folder = self.get_current_folder_context();
         if let Some(popup) = self.popups.template.take()
-            && let Some(summary) = popup.templates.get(popup.selected)
+            && let Some(summary) = popup.filtered_templates.get(popup.selected)
         {
             let template_manager = self.storage.template_manager();
             if let Ok(template) = template_manager.load(&summary.filename) {
@@ -882,12 +1097,248 @@ impl App {
         }
     }
 
+    pub fn edit_selected_template_from_popup(&mut self) {
+        let path = if let Some(popup) = self.popups.template.as_ref()
+            && let Some(summary) = popup.filtered_templates.get(popup.selected)
+        {
+            self.storage
+                .template_manager()
+                .template_path(&summary.filename)
+        } else {
+            self.set_temporary_status_static("No template selected");
+            return;
+        };
+
+        self.popups.template = None;
+        self.open_template_path_in_editor(&path);
+    }
+
+    fn open_template_path_in_editor(&mut self, path: &std::path::Path) {
+        if self.editor.external_editor_enabled {
+            self.open_path_in_external_editor(path);
+            return;
+        }
+
+        let content = match std::fs::read_to_string(path) {
+            Ok(content) => content,
+            Err(e) => {
+                self.set_temporary_status(&format!("Failed to load template: {e}"));
+                return;
+            }
+        };
+
+        self.mode = ViewMode::Edit;
+        self.editor.editing_id = None;
+        self.editor.template_edit_path = Some(path.to_path_buf());
+        self.editor.title_editor = make_title_editor(
+            &format!(
+                "Template: {}",
+                path.file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("template")
+            ),
+            self.app_theme.highlight_fg,
+            self.app_theme.highlight_bg,
+        );
+        self.editor.editor = text_area_from_content(&content);
+        self.editor.editor.set_cursor_style(
+            Style::default()
+                .fg(self.app_theme.highlight_fg)
+                .bg(self.app_theme.highlight_bg),
+        );
+        self.editor.editor.set_cursor_line_style(Style::default());
+        self.set_temporary_status_static("Editing template (Esc to save and return)");
+    }
+
+    pub fn update_template_popup_filter(&mut self) {
+        if let Some(popup) = &mut self.popups.template {
+            let query = popup.query.trim().to_lowercase();
+            if query.is_empty() {
+                popup.filtered_templates = popup.all_templates.clone();
+            } else {
+                popup.filtered_templates = popup
+                    .all_templates
+                    .iter()
+                    .filter(|t| {
+                        t.name.to_lowercase().contains(&query)
+                            || t.filename.to_lowercase().contains(&query)
+                    })
+                    .cloned()
+                    .collect();
+            }
+            if popup.selected >= popup.filtered_templates.len() {
+                popup.selected = popup.filtered_templates.len().saturating_sub(1);
+            }
+        }
+    }
+
+    pub fn begin_delete_selected_template_from_popup(&mut self) {
+        let (filename, name) = if let Some(popup) = self.popups.template.as_ref()
+            && let Some(summary) = popup.filtered_templates.get(popup.selected)
+        {
+            (summary.filename.clone(), summary.name.clone())
+        } else {
+            self.set_temporary_status_static("No template selected");
+            return;
+        };
+
+        self.show_confirm(ConfirmAction::DeleteTemplate { filename, name });
+    }
+
+    pub fn confirm_delete_template(&mut self, filename: String) {
+        let template_manager = self.storage.template_manager();
+        match template_manager.delete(&filename) {
+            Ok(()) => {
+                if let Some(popup) = &mut self.popups.template {
+                    let query = popup.query.clone();
+                    let selected = popup.selected;
+                    let focus = popup.focus;
+                    match template_manager.list() {
+                        Ok(all_templates) => {
+                            popup.all_templates = all_templates;
+                            popup.query = query;
+                            popup.focus = focus;
+                            self.update_template_popup_filter();
+                            if let Some(popup) = &mut self.popups.template {
+                                if popup.filtered_templates.is_empty() {
+                                    popup.selected = 0;
+                                } else {
+                                    popup.selected =
+                                        selected.min(popup.filtered_templates.len() - 1);
+                                }
+                            }
+                            self.set_temporary_status_static("Template deleted");
+                        }
+                        Err(e) => {
+                            self.set_temporary_status(&format!(
+                                "Template deleted but refresh failed: {e}"
+                            ));
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                self.set_temporary_status(&format!("Failed to delete template: {e}"));
+            }
+        }
+    }
+
+    pub fn create_template_from_popup(&mut self) {
+        let template_manager = self.storage.template_manager();
+        if let Err(e) = template_manager.ensure_dir() {
+            self.set_temporary_status(&format!("Failed to prepare templates dir: {e}"));
+            return;
+        }
+
+        let mut idx = 1usize;
+        let filename = loop {
+            let candidate = if idx == 1 {
+                "new_template".to_string()
+            } else {
+                format!("new_template_{idx}")
+            };
+            let path = template_manager.template_path(&candidate);
+            if !path.exists() {
+                break candidate;
+            }
+            idx += 1;
+        };
+
+        let path = template_manager.template_path(&filename);
+        let skeleton = r#"name = "New Template"
+
+[title]
+template = "Note - {date}"
+
+[content]
+template = """
+"""
+"#;
+
+        if let Err(e) = std::fs::write(&path, skeleton) {
+            self.set_temporary_status(&format!("Failed to create template: {e}"));
+            return;
+        }
+
+        self.popups.template = None;
+        self.open_template_path_in_editor(&path);
+    }
+
+    fn open_path_in_external_editor(&mut self, path: &std::path::Path) {
+        let _ = disable_raw_mode();
+        let _ = crossterm::execute!(
+            std::io::stdout(),
+            LeaveAlternateScreen,
+            crossterm::event::DisableMouseCapture,
+            crossterm::event::DisableBracketedPaste
+        );
+
+        let editor_prog = self
+            .editor
+            .external_editor
+            .clone()
+            .or_else(|| std::env::var("VISUAL").ok())
+            .or_else(|| std::env::var("EDITOR").ok())
+            .unwrap_or_else(|| "vi".to_string());
+
+        let parts: Vec<&str> = editor_prog.split_whitespace().collect();
+        let (program, editor_args) = parts
+            .split_first()
+            .map(|(p, a)| (*p, a.to_vec()))
+            .unwrap_or(("vi", vec![]));
+
+        let mut command = std::process::Command::new(program);
+        for arg in editor_args {
+            command.arg(arg);
+        }
+        command.arg(path);
+        let result = command.status();
+
+        let _ = enable_raw_mode();
+        let _ = crossterm::execute!(
+            std::io::stdout(),
+            EnterAlternateScreen,
+            crossterm::event::EnableMouseCapture,
+            crossterm::event::EnableBracketedPaste,
+            crossterm::terminal::Clear(crossterm::terminal::ClearType::All)
+        );
+        self.needs_full_redraw = true;
+
+        match result {
+            Ok(status) if status.success() => {
+                self.set_temporary_status_static("External editor closed");
+            }
+            Ok(status) => {
+                self.set_temporary_status(&format!(
+                    "Editor '{}' exited with status: {}",
+                    editor_prog, status
+                ));
+            }
+            Err(e) => {
+                self.set_temporary_status(&format!(
+                    "Failed to launch editor '{}': {}",
+                    editor_prog, e
+                ));
+            }
+        }
+    }
+
     pub fn autosave(&mut self) {
+        let content = self.editor.editor.lines().join("\n");
+
+        if let Some(path) = &self.editor.template_edit_path
+            && self.editor.editing_id.is_none()
+        {
+            if let Err(e) = std::fs::write(path, content) {
+                self.set_temporary_status(&format!("Template save failed: {e}"));
+            }
+            return;
+        }
+
         let mut title = get_title_text(&self.editor.title_editor).trim().to_string();
         if title.is_empty() {
             title = String::from("Untitled note");
         }
-        let content = self.editor.editor.lines().join("\n");
         let id = match &self.editor.editing_id {
             Some(id) => id.clone(),
             None => return,
@@ -917,7 +1368,9 @@ impl App {
     pub fn back_to_list(&mut self) {
         if let Some(return_to) = self.return_mode.take() {
             self.editor.editing_id = None;
-            self.editor.title_editor = make_title_editor("", self.app_theme.highlight_fg, self.app_theme.highlight_bg);
+            self.editor.template_edit_path = None;
+            self.editor.title_editor =
+                make_title_editor("", self.app_theme.highlight_fg, self.app_theme.highlight_bg);
             self.editor.editor = TextArea::default();
             self.popups.confirm = None;
             self.editor.md_preview_renderer = None;
@@ -927,12 +1380,16 @@ impl App {
         }
         self.mode = ViewMode::List;
         self.editor.editing_id = None;
+        self.editor.template_edit_path = None;
         self.list.list_focus = ListFocus::Notes;
-        self.editor.title_editor = make_title_editor("", self.app_theme.highlight_fg, self.app_theme.highlight_bg);
+        self.editor.title_editor =
+            make_title_editor("", self.app_theme.highlight_fg, self.app_theme.highlight_bg);
         self.editor.editor = TextArea::default();
         self.popups.confirm = None;
         self.editor.md_preview_renderer = None;
-        if let Err(e) = self.refresh_notes() { self.set_temporary_status(&format!("Refresh failed: {e}")); }
+        if let Err(e) = self.refresh_notes() {
+            self.set_temporary_status(&format!("Refresh failed: {e}"));
+        }
         self.set_default_status();
     }
 
@@ -1008,10 +1465,7 @@ impl App {
                     let note_id = note.id.clone();
                     let title = note.title.clone();
                     if self.confirm_on_delete {
-                        self.show_confirm(ConfirmAction::DeleteNote {
-                            note_id,
-                            title,
-                        });
+                        self.show_confirm(ConfirmAction::DeleteNote { note_id, title });
                     } else {
                         self.confirm_delete_selected(note_id);
                     }
@@ -1020,6 +1474,10 @@ impl App {
             VisualItem::Folder { path, .. } => {
                 if path.is_empty() {
                     self.set_temporary_status_static("Cannot delete Vault root");
+                    return;
+                }
+                if Self::is_virtual_pinned_path(path) {
+                    self.set_temporary_status_static("Cannot delete virtual Pinned folder");
                     return;
                 }
                 let path = path.clone();
@@ -1055,6 +1513,13 @@ impl App {
                 "Confirm Delete Tag".into(),
                 format!("Delete tag \"{}\"?", tag),
                 Some("This will remove the tag from all notes.".into()),
+                "Delete".into(),
+                true,
+            ),
+            ConfirmAction::DeleteTemplate { name, .. } => (
+                "Delete Template".into(),
+                format!("Delete template \"{}\"?", name),
+                Some("This removes template file permanently.".into()),
                 "Delete".into(),
                 true,
             ),
@@ -1104,6 +1569,9 @@ impl App {
                 ConfirmAction::DeleteTag { tag } => {
                     self.confirm_delete_tag(tag);
                 }
+                ConfirmAction::DeleteTemplate { filename, .. } => {
+                    self.confirm_delete_template(filename);
+                }
                 ConfirmAction::DeleteFromTrash { item } => {
                     self.confirm_delete_from_trash(item);
                 }
@@ -1141,7 +1609,8 @@ impl App {
 
     pub fn confirm_popup_activate(&mut self) {
         let is_confirm = self
-            .popups.confirm
+            .popups
+            .confirm
             .as_ref()
             .map(|p| p.selected_button == 0)
             .unwrap_or(false);
@@ -1152,13 +1621,15 @@ impl App {
         }
     }
 
-
-
     pub fn confirm_delete_selected(&mut self, id: String) {
         match self.storage.trash_note(&id) {
             Ok(()) => {
-                if let Err(e) = self.refresh_notes() { self.set_temporary_status(&format!("Refresh failed: {e}")); }
-                if self.list.visual_index >= self.list.visual_list.len() && !self.list.visual_list.is_empty() {
+                if let Err(e) = self.refresh_notes() {
+                    self.set_temporary_status(&format!("Refresh failed: {e}"));
+                }
+                if self.list.visual_index >= self.list.visual_list.len()
+                    && !self.list.visual_list.is_empty()
+                {
                     self.list.visual_index = self.list.visual_list.len() - 1;
                 }
                 self.set_temporary_status_static("Note moved to trash");
@@ -1173,8 +1644,12 @@ impl App {
         match self.storage.trash_folder(&path) {
             Ok(()) => {
                 self.list.folder_cache = None;
-                if let Err(e) = self.refresh_notes() { self.set_temporary_status(&format!("Refresh failed: {e}")); }
-                if self.list.visual_index >= self.list.visual_list.len() && !self.list.visual_list.is_empty() {
+                if let Err(e) = self.refresh_notes() {
+                    self.set_temporary_status(&format!("Refresh failed: {e}"));
+                }
+                if self.list.visual_index >= self.list.visual_list.len()
+                    && !self.list.visual_list.is_empty()
+                {
                     self.list.visual_index = self.list.visual_list.len() - 1;
                 }
                 self.set_temporary_status_static("Folder moved to trash");
@@ -1187,6 +1662,10 @@ impl App {
 
     pub fn begin_create_folder(&mut self) {
         let parent_path = self.get_current_folder_context();
+        if Self::is_virtual_pinned_path(&parent_path) {
+            self.set_temporary_status_static("Cannot create folder inside virtual Pinned");
+            return;
+        }
         let mut input = TextArea::default();
         let title = if parent_path.is_empty() {
             "Create Folder - Esc to cancel, Enter to save".to_string()
@@ -1210,9 +1689,15 @@ impl App {
     }
 
     pub fn begin_rename_folder(&mut self) {
-        if let Some(VisualItem::Folder { path, .. }) = self.list.visual_list.get(self.list.visual_index) {
+        if let Some(VisualItem::Folder { path, .. }) =
+            self.list.visual_list.get(self.list.visual_index)
+        {
             if path.is_empty() {
                 self.set_temporary_status_static("Cannot rename Vault root");
+                return;
+            }
+            if Self::is_virtual_pinned_path(path) {
+                self.set_temporary_status_static("Cannot rename virtual Pinned folder");
                 return;
             }
             let mut input = TextArea::default();
@@ -1246,7 +1731,12 @@ impl App {
 
             match &popup.mode {
                 FolderPopupMode::Create { parent_path } => {
-                    
+                    if Self::is_virtual_pinned_path(parent_path) {
+                        self.set_temporary_status_static(
+                            "Cannot create folder inside virtual Pinned",
+                        );
+                        return;
+                    }
                     let full_path = if parent_path.is_empty() {
                         text.to_string()
                     } else {
@@ -1256,16 +1746,24 @@ impl App {
                         self.set_temporary_status(&format!("Failed to create folder: {e}"));
                     } else {
                         self.list.folder_cache = None;
-                        if let Err(e) = self.refresh_notes() { self.set_temporary_status(&format!("Refresh failed: {e}")); }
+                        if let Err(e) = self.refresh_notes() {
+                            self.set_temporary_status(&format!("Refresh failed: {e}"));
+                        }
                         self.set_temporary_status_static("Folder created");
                     }
                 }
                 FolderPopupMode::Rename { old_path } => {
+                    if Self::is_virtual_pinned_path(old_path) {
+                        self.set_temporary_status_static("Cannot rename virtual Pinned folder");
+                        return;
+                    }
                     if let Err(e) = self.storage.rename_folder(old_path, text) {
                         self.set_temporary_status(&format!("Failed to rename folder: {e}"));
                     } else {
                         self.list.folder_cache = None;
-                        if let Err(e) = self.refresh_notes() { self.set_temporary_status(&format!("Refresh failed: {e}")); }
+                        if let Err(e) = self.refresh_notes() {
+                            self.set_temporary_status(&format!("Refresh failed: {e}"));
+                        }
                         self.set_temporary_status_static("Folder renamed");
                     }
                 }
@@ -1284,7 +1782,7 @@ impl App {
         if let Err(e) = self.refresh_notes() {
             self.set_temporary_status(&format!("Refresh failed: {e}"));
         }
-        
+
         self.list.selected_indices.clear();
         self.list.list_mode = ListMode::Normal;
 
@@ -1296,11 +1794,12 @@ impl App {
     }
 
     pub fn begin_move_note(&mut self) {
-        if let Some(VisualItem::Note { summary_idx, .. }) = self.list.visual_list.get(self.list.visual_index)
+        if let Some(VisualItem::Note { summary_idx, .. }) =
+            self.list.visual_list.get(self.list.visual_index)
         {
             let note = &self.notes[*summary_idx];
             if let Ok(folders) = self.storage.list_folders() {
-                let mut all_folders = vec!["".to_string()]; 
+                let mut all_folders = vec!["".to_string()];
                 all_folders.extend(folders);
                 self.popups.folder_picker = Some(FolderPicker {
                     mode: FolderPickerMode::MoveNote {
@@ -1321,10 +1820,16 @@ impl App {
     }
 
     pub fn begin_move_folder(&mut self) {
-        if let Some(VisualItem::Folder { path, .. }) = self.list.visual_list.get(self.list.visual_index) {
+        if let Some(VisualItem::Folder { path, .. }) =
+            self.list.visual_list.get(self.list.visual_index)
+        {
+            if Self::is_virtual_pinned_path(path) {
+                self.set_temporary_status_static("Cannot move virtual Pinned folder");
+                return;
+            }
             let folder_path = path.clone();
             if let Ok(folders) = self.storage.list_folders() {
-                let mut all_folders = vec!["".to_string()]; 
+                let mut all_folders = vec!["".to_string()];
                 all_folders.extend(
                     folders.into_iter().filter(|f| {
                         f != &folder_path && !f.starts_with(&format!("{}/", folder_path))
@@ -1390,7 +1895,9 @@ impl App {
                         self.set_temporary_status(&format!("Failed to move note: {e}"));
                     } else {
                         self.list.folder_cache = None;
-                        if let Err(e) = self.refresh_notes() { self.set_temporary_status(&format!("Refresh failed: {e}")); }
+                        if let Err(e) = self.refresh_notes() {
+                            self.set_temporary_status(&format!("Refresh failed: {e}"));
+                        }
                         self.set_temporary_status_static("Note moved");
                     }
                 }
@@ -1414,7 +1921,9 @@ impl App {
                             self.list.folder_expanded.insert(new_path);
                         }
                         self.list.folder_cache = None;
-                        if let Err(e) = self.refresh_notes() { self.set_temporary_status(&format!("Refresh failed: {e}")); }
+                        if let Err(e) = self.refresh_notes() {
+                            self.set_temporary_status(&format!("Refresh failed: {e}"));
+                        }
                         self.set_temporary_status_static("Folder moved");
                     }
                 }
@@ -1475,7 +1984,8 @@ impl App {
     }
 
     pub fn begin_manage_tags(&mut self) {
-        if let Some(VisualItem::Note { summary_idx, .. }) = self.list.visual_list.get(self.list.visual_index)
+        if let Some(VisualItem::Note { summary_idx, .. }) =
+            self.list.visual_list.get(self.list.visual_index)
         {
             let note = &self.notes[*summary_idx];
             let current_tags = note.tags.clone();
@@ -1491,6 +2001,8 @@ impl App {
                 all_tags,
                 suggestions: Vec::new(),
                 suggestion_index: 0,
+                focus: crate::popups::TagPopupFocus::Input,
+                all_tags_selected: 0,
             });
             self.update_tag_suggestions();
         } else {
@@ -1512,7 +2024,9 @@ impl App {
                 if let Err(e) = self.storage.save_note(&popup.note_id, &note) {
                     self.set_temporary_status(&format!("Failed to save tags: {e}"));
                 } else {
-                    if let Err(e) = self.refresh_notes() { self.set_temporary_status(&format!("Refresh failed: {e}")); }
+                    if let Err(e) = self.refresh_notes() {
+                        self.set_temporary_status(&format!("Refresh failed: {e}"));
+                    }
                     self.set_temporary_status_static("Tags updated");
                 }
             } else {
@@ -1539,7 +2053,6 @@ impl App {
             if current_word.is_empty() {
                 popup.suggestions.clear();
             } else {
-                
                 popup.suggestions = popup
                     .all_tags
                     .iter()
@@ -1556,41 +2069,69 @@ impl App {
 
     pub fn cycle_tag_suggestion(&mut self) {
         if let Some(popup) = &mut self.popups.tag
-            && !popup.suggestions.is_empty() {
-                popup.suggestion_index = (popup.suggestion_index + 1) % popup.suggestions.len();
-            }
+            && !popup.suggestions.is_empty()
+        {
+            popup.suggestion_index = (popup.suggestion_index + 1) % popup.suggestions.len();
+        }
     }
 
     pub fn accept_tag_suggestion(&mut self) {
         if let Some(popup) = &mut self.popups.tag
-            && let Some(suggestion) = popup.suggestions.get(popup.suggestion_index).cloned() {
-                let text = popup.input.lines().join("");
+            && let Some(suggestion) = popup.suggestions.get(popup.suggestion_index).cloned()
+        {
+            let text = popup.input.lines().join("");
 
-                if let Some(last_comma) = text.rfind(',') {
-                    
-                    let prefix = &text[..=last_comma];
-                    let new_text = format!("{} {}, ", prefix, suggestion);
+            if let Some(last_comma) = text.rfind(',') {
+                let prefix = &text[..=last_comma];
+                let new_text = format!("{} {}, ", prefix, suggestion);
 
-                    popup.input.select_all();
-                    popup.input.cut();
-                    popup.input.insert_str(&new_text);
-                } else {
-                    
-                    popup.input.select_all();
-                    popup.input.cut();
-                    popup.input.insert_str(format!("{}, ", suggestion));
-                }
-
-                popup.suggestions.clear();
-                popup.suggestion_index = 0;
+                popup.input.select_all();
+                popup.input.cut();
+                popup.input.insert_str(&new_text);
+            } else {
+                popup.input.select_all();
+                popup.input.cut();
+                popup.input.insert_str(format!("{}, ", suggestion));
             }
+
+            popup.suggestions.clear();
+            popup.suggestion_index = 0;
+        }
     }
 
-    pub fn begin_delete_tag(&mut self) {
-        if let Some(popup) = &mut self.popups.tag
-            && let Some(tag) = popup.suggestions.get(popup.suggestion_index).cloned() {
-                self.show_confirm(ConfirmAction::DeleteTag { tag: tag.clone() });
-            }
+    pub fn begin_delete_tag_with_name(&mut self, tag: String) {
+        // Count affected notes
+        let count = self
+            .storage
+            .list_note_ids()
+            .ok()
+            .map(|ids| {
+                ids.iter()
+                    .filter(|id| {
+                        self.storage
+                            .load_note(id)
+                            .ok()
+                            .map_or(false, |n| n.tags.contains(&tag))
+                    })
+                    .count()
+            })
+            .unwrap_or(0);
+
+        let detail = if count == 1 {
+            "Will remove tag from 1 note.".to_string()
+        } else {
+            format!("Will remove tag from {} notes.", count)
+        };
+
+        self.popups.confirm = Some(ConfirmPopup {
+            action: ConfirmAction::DeleteTag { tag: tag.clone() },
+            title: "Confirm Delete Tag".into(),
+            message: format!("Delete tag \"{}\"?", tag),
+            detail: Some(detail),
+            confirm_label: "Delete".into(),
+            is_destructive: true,
+            selected_button: 1,
+        });
     }
 
     pub fn confirm_delete_tag(&mut self, tag: String) {
@@ -1598,16 +2139,19 @@ impl App {
         if let Ok(note_ids) = self.storage.list_note_ids() {
             for note_id in note_ids {
                 if let Ok(mut note) = self.storage.load_note(&note_id)
-                    && note.tags.contains(&tag) {
-                        note.tags.retain(|t| t != &tag);
-                        let _ = self.storage.save_note(&note_id, &note);
-                        count += 1;
-                    }
+                    && note.tags.contains(&tag)
+                {
+                    note.tags.retain(|t| t != &tag);
+                    let _ = self.storage.save_note(&note_id, &note);
+                    count += 1;
+                }
             }
         }
 
         self.set_temporary_status(&format!("Deleted '{}' from {} note(s)", tag, count));
-        if let Err(e) = self.refresh_notes() { self.set_temporary_status(&format!("Refresh failed: {e}")); }
+        if let Err(e) = self.refresh_notes() {
+            self.set_temporary_status(&format!("Refresh failed: {e}"));
+        }
         let live_tags = self.collect_live_tags();
 
         if let Some(popup) = &mut self.popups.tag {
@@ -1633,96 +2177,42 @@ impl App {
         self.update_tag_suggestions();
     }
 
-    pub fn begin_filter_tags(&mut self) {
-        let all_tags = self.collect_live_tags();
-        let mut input = TextArea::default();
-        input.set_style(self.app_theme.bg_style());
-        input.insert_str(self.list.filter_tags.join(", "));
+    pub fn apply_tag_to_selected(&mut self, tag: String) {
+        let mut count = 0;
+        let indices: Vec<usize> = self.list.selected_indices.iter().copied().collect();
 
-        self.popups.filter_tag = Some(FilterTagPopup {
-            input,
-            all_tags,
-            suggestions: Vec::new(),
-            suggestion_index: 0,
-        });
-        self.update_filter_suggestions();
-    }
-
-    pub fn confirm_filter_tags(&mut self) {
-        if let Some(popup) = self.popups.filter_tag.take() {
-            let text = popup.input.lines().join("");
-            let tags: Vec<String> = text
-                .split(',')
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .collect();
-
-            self.list.filter_tags = tags;
-            if let Err(e) = self.refresh_notes() { self.set_temporary_status(&format!("Refresh failed: {e}")); }
-            self.list.visual_index = 0;
-        }
-    }
-
-    pub fn cancel_filter_tags(&mut self) {
-        self.popups.filter_tag = None;
-    }
-
-    pub fn update_filter_suggestions(&mut self) {
-        if let Some(popup) = &mut self.popups.filter_tag {
-            let text = popup.input.lines().join("");
-            let current_word = Self::get_current_tag_word(&text).to_lowercase();
-
-            let entered_tags: Vec<String> = text
-                .split(',')
-                .map(|s| s.trim().to_lowercase())
-                .filter(|s| !s.is_empty())
-                .collect();
-
-            if current_word.is_empty() {
-                popup.suggestions.clear();
-            } else {
-                popup.suggestions = popup
-                    .all_tags
-                    .iter()
-                    .filter(|tag| {
-                        let tag_lower = tag.to_lowercase();
-                        tag_lower.starts_with(&current_word) && !entered_tags.contains(&tag_lower)
-                    })
-                    .cloned()
-                    .collect();
-            }
-            popup.suggestion_index = 0;
-        }
-    }
-
-    pub fn cycle_filter_suggestion(&mut self) {
-        if let Some(popup) = &mut self.popups.filter_tag
-            && !popup.suggestions.is_empty() {
-                popup.suggestion_index = (popup.suggestion_index + 1) % popup.suggestions.len();
-            }
-    }
-
-    pub fn accept_filter_suggestion(&mut self) {
-        if let Some(popup) = &mut self.popups.filter_tag
-            && let Some(suggestion) = popup.suggestions.get(popup.suggestion_index).cloned() {
-                let text = popup.input.lines().join("");
-
-                if let Some(last_comma) = text.rfind(',') {
-                    let prefix = &text[..=last_comma];
-                    let new_text = format!("{} {}, ", prefix, suggestion);
-
-                    popup.input.select_all();
-                    popup.input.cut();
-                    popup.input.insert_str(&new_text);
-                } else {
-                    popup.input.select_all();
-                    popup.input.cut();
-                    popup.input.insert_str(format!("{}, ", suggestion));
+        for &idx in &indices {
+            if let crate::list_view::VisualItem::Note { summary_idx, .. } = self
+                .list
+                .visual_list
+                .get(idx)
+                .unwrap_or(&crate::list_view::VisualItem::CreateNew {
+                    path: String::new(),
+                    depth: 0,
+                })
+            {
+                let note = &self.notes[*summary_idx];
+                let note_id = note.id.clone();
+                if let Ok(mut loaded) = self.storage.load_note(&note_id) {
+                    if !loaded.tags.contains(&tag) {
+                        loaded.tags.push(tag.clone());
+                    }
+                    if self.storage.save_note(&note_id, &loaded).is_ok() {
+                        count += 1;
+                    }
                 }
-
-                popup.suggestions.clear();
-                popup.suggestion_index = 0;
             }
+        }
+
+        self.list.selected_indices.clear();
+        self.list.list_mode = crate::list_view::ListMode::Normal;
+
+        if let Err(e) = self.refresh_notes() {
+            self.set_temporary_status(&format!("Refresh failed: {e}"));
+            return;
+        }
+
+        self.set_temporary_status(&format!("Tag '{}' applied to {} note(s)", tag, count));
     }
 
     pub fn open_selected_note_location(&mut self) {
@@ -1793,8 +2283,6 @@ impl App {
         self.mode = ViewMode::Graph;
     }
 
-
-
     pub fn open_draw_view(&mut self) {
         self.return_mode = Some(self.mode);
         self.mode = ViewMode::Draw;
@@ -1803,12 +2291,15 @@ impl App {
     pub fn close_draw_view(&mut self) {
         self.editor.editing_id = None;
         self.mode = self.return_mode.take().unwrap_or(ViewMode::List);
-        if let Err(e) = self.refresh_notes() { self.set_temporary_status(&format!("Refresh failed: {e}")); }
+        if let Err(e) = self.refresh_notes() {
+            self.set_temporary_status(&format!("Refresh failed: {e}"));
+        }
         self.set_default_status();
     }
 
     pub fn open_canvas_view(&mut self) {
-        if let Some(VisualItem::Note { id, .. }) = self.list.visual_list.get(self.list.visual_index) {
+        if let Some(VisualItem::Note { id, .. }) = self.list.visual_list.get(self.list.visual_index)
+        {
             let path = self.storage.note_path(id);
             if let Ok(state) = crate::pinstar::state::PinstarState::load(&path) {
                 self.canvas_state = Some(state);
@@ -1826,7 +2317,9 @@ impl App {
         self.editor.editing_id = None;
         self.canvas_state = None;
         self.mode = self.return_mode.take().unwrap_or(ViewMode::List);
-        if let Err(e) = self.refresh_notes() { self.set_temporary_status(&format!("Refresh failed: {e}")); }
+        if let Err(e) = self.refresh_notes() {
+            self.set_temporary_status(&format!("Refresh failed: {e}"));
+        }
         self.set_default_status();
     }
 
@@ -1834,7 +2327,8 @@ impl App {
         if let Some(id) = &self.editor.editing_id {
             return Some(id.clone());
         }
-        if let Some(VisualItem::Note { id, .. }) = self.list.visual_list.get(self.list.visual_index) {
+        if let Some(VisualItem::Note { id, .. }) = self.list.visual_list.get(self.list.visual_index)
+        {
             Some(id.clone())
         } else {
             None
@@ -1861,8 +2355,12 @@ impl App {
             ViewMode::Edit => EDIT_HELP_HINTS,
             ViewMode::Help => HELP_PAGE_HINTS,
             ViewMode::Graph => "Graph View · Esc: back · +/-: zoom · L: labels · a: fit",
-            ViewMode::Draw => "Draw View · Esc: back · d: draw · s: shape · t: text · e: erase · Ctrl+S: save",
-            ViewMode::Canvas => "Canvas View · Esc: back · Arrows: pan · i/Enter: edit · Ctrl+S: save",
+            ViewMode::Draw => {
+                "Draw View · Esc: back · d: draw · s: shape · t: text · e: erase · Ctrl+S: save"
+            }
+            ViewMode::Canvas => {
+                "Canvas View · Esc: back · Arrows: pan · i/Enter: edit · Ctrl+S: save"
+            }
         }
     }
 
@@ -1903,7 +2401,11 @@ impl App {
     pub fn get_help_text(&mut self) -> &Text<'static> {
         let tab = self.help_tab;
         if self.list.help_text_cache.is_none() {
-            self.list.help_text_cache = Some(crate::ui::help_text_for_tab(tab, &self.keybinds, &self.app_theme));
+            self.list.help_text_cache = Some(crate::ui::help_text_for_tab(
+                tab,
+                &self.keybinds,
+                &self.app_theme,
+            ));
         }
         self.list.help_text_cache.as_ref().unwrap()
     }
@@ -1914,6 +2416,10 @@ impl App {
     }
 
     pub fn begin_create_note_in_folder(&mut self, folder: String) {
+        if Self::is_virtual_pinned_path(&folder) {
+            self.set_temporary_status_static("Cannot create note inside virtual Pinned");
+            return;
+        }
         let mut input = TextArea::default();
         input.set_style(self.app_theme.bg_style());
         input.set_block(
@@ -1938,6 +2444,10 @@ impl App {
 
     pub fn begin_create_draw(&mut self) {
         let folder = self.get_current_folder_context();
+        if Self::is_virtual_pinned_path(&folder) {
+            self.set_temporary_status_static("Cannot create drawing inside virtual Pinned");
+            return;
+        }
         let mut input = TextArea::default();
         input.set_style(self.app_theme.bg_style());
         input.set_block(
@@ -1972,6 +2482,10 @@ impl App {
 
     pub fn begin_create_canvas(&mut self) {
         let folder = self.get_current_folder_context();
+        if Self::is_virtual_pinned_path(&folder) {
+            self.set_temporary_status_static("Cannot create canvas inside virtual Pinned");
+            return;
+        }
         let mut input = TextArea::default();
         input.set_style(self.app_theme.bg_style());
         input.set_block(
@@ -2007,10 +2521,11 @@ impl App {
                     edges: vec![],
                 };
                 if let Ok(content) = serde_json::to_string_pretty(&data)
-                    && let Err(e) = std::fs::write(&path, content) {
-                        self.set_temporary_status(&format!("Failed to write canvas file: {}", e));
-                        return;
-                    }
+                    && let Err(e) = std::fs::write(&path, content)
+                {
+                    self.set_temporary_status(&format!("Failed to write canvas file: {}", e));
+                    return;
+                }
             }
 
             self.return_mode = Some(self.mode);
@@ -2023,8 +2538,6 @@ impl App {
         }
     }
 
-
-    
     pub fn begin_rename_note(&mut self) {
         if let Some(VisualItem::Note {
             summary_idx, id, ..
@@ -2056,7 +2569,9 @@ impl App {
             }
             match self.storage.rename_note(&popup.note_id, new_title) {
                 Ok(_) => {
-                    if let Err(e) = self.refresh_notes() { self.set_temporary_status(&format!("Refresh failed: {e}")); }
+                    if let Err(e) = self.refresh_notes() {
+                        self.set_temporary_status(&format!("Refresh failed: {e}"));
+                    }
                     self.set_temporary_status_static("Note renamed");
                 }
                 Err(e) => {
@@ -2067,11 +2582,14 @@ impl App {
     }
 
     pub fn duplicate_note(&mut self) {
-        if let Some(VisualItem::Note { id, .. }) = self.list.visual_list.get(self.list.visual_index).cloned()
+        if let Some(VisualItem::Note { id, .. }) =
+            self.list.visual_list.get(self.list.visual_index).cloned()
         {
             match self.storage.duplicate_note(&id) {
                 Ok(_) => {
-                    if let Err(e) = self.refresh_notes() { self.set_temporary_status(&format!("Refresh failed: {e}")); }
+                    if let Err(e) = self.refresh_notes() {
+                        self.set_temporary_status(&format!("Refresh failed: {e}"));
+                    }
                     self.set_temporary_status_static("Note duplicated");
                 }
                 Err(e) => {
@@ -2084,11 +2602,14 @@ impl App {
     }
 
     pub fn toggle_pin(&mut self) {
-        if let Some(VisualItem::Note { id, .. }) = self.list.visual_list.get(self.list.visual_index).cloned()
+        if let Some(VisualItem::Note { id, .. }) =
+            self.list.visual_list.get(self.list.visual_index).cloned()
         {
             match self.storage.toggle_pin(&id) {
                 Ok(pinned) => {
-                    if let Err(e) = self.refresh_notes() { self.set_temporary_status(&format!("Refresh failed: {e}")); }
+                    if let Err(e) = self.refresh_notes() {
+                        self.set_temporary_status(&format!("Refresh failed: {e}"));
+                    }
                     if pinned {
                         self.set_temporary_status_static("Note pinned");
                     } else {
@@ -2123,7 +2644,9 @@ impl App {
                 self.list.sort_order = SortOrder::Descending;
             }
         }
-        if let Err(e) = self.refresh_notes() { self.set_temporary_status(&format!("Refresh failed: {e}")); }
+        if let Err(e) = self.refresh_notes() {
+            self.set_temporary_status(&format!("Refresh failed: {e}"));
+        }
         let sort_desc = match (self.list.sort_field, self.list.sort_order) {
             (SortField::Modified, SortOrder::Descending) => "Sort: Modified (newest)",
             (SortField::Modified, SortOrder::Ascending) => "Sort: Modified (oldest)",
@@ -2134,22 +2657,22 @@ impl App {
     }
 
     pub fn begin_search(&mut self) {
-        let mut note_input = TextArea::default();
-        note_input.set_style(self.app_theme.bg_style());
-        note_input.set_cursor_line_style(Style::default());
-
-        let mut grep_input = TextArea::default();
-        grep_input.set_style(self.app_theme.bg_style());
-        grep_input.set_cursor_line_style(Style::default());
+        let mut input = TextArea::default();
+        input.set_style(self.app_theme.bg_style());
+        input.set_cursor_line_style(Style::default());
 
         self.search_restore_state = None;
         self.popups.search = Some(SearchPopup {
-            note_input,
-            grep_input,
+            input,
+            focus: crate::popups::SearchFocus::Input,
+            title_results: Vec::new(),
+            title_result_indices: Vec::new(),
+            title_selected: 0,
             grep_results: Vec::new(),
-            grep_result_note_indices: Vec::new(),
+            grep_result_indices: Vec::new(),
+            grep_is_header: Vec::new(),
+            grep_collapsed: std::collections::HashSet::new(),
             grep_selected: 0,
-            focus: SearchPopupFocus::Notes,
             original_index: self.list.visual_index,
             original_folder_expanded: self.list.folder_expanded.clone(),
         });
@@ -2157,146 +2680,205 @@ impl App {
 
     fn jump_to_note_index(&mut self, note_idx: usize) {
         if let Some(note) = self.notes.get(note_idx)
-            && !note.folder.is_empty() {
-                let mut path = String::new();
-                for part in note.folder.split('/') {
-                    if !path.is_empty() {
-                        path.push('/');
-                    }
-                    path.push_str(part);
-                    self.list.folder_expanded.insert(path.clone());
+            && !note.folder.is_empty()
+        {
+            let mut path = String::new();
+            for part in note.folder.split('/') {
+                if !path.is_empty() {
+                    path.push('/');
                 }
+                path.push_str(part);
+                self.list.folder_expanded.insert(path.clone());
             }
+        }
 
         self.refresh_visual_list();
 
         for (idx, item) in self.list.visual_list.iter().enumerate() {
             if let VisualItem::Note { summary_idx, .. } = item
-                && *summary_idx == note_idx {
-                    self.list.visual_index = idx;
-                    self.request_preview_update();
-                    return;
-                }
+                && *summary_idx == note_idx
+            {
+                self.list.visual_index = idx;
+                self.request_preview_update();
+                return;
+            }
         }
     }
 
     pub fn update_search(&mut self) {
-        if let Some((focus, note_query, grep_query)) = self.popups.search.as_ref().map(|popup| {
-            (
-                popup.focus,
-                popup.note_input.lines().join(""),
-                popup.grep_input.lines().join(""),
-            )
-        }) {
-            match focus {
-                SearchPopupFocus::Notes => {
-                    let query = note_query.to_lowercase();
-                    if query.is_empty() {
-                        if let Some(popup) = &mut self.popups.search {
-                            popup.grep_results.clear();
-                            popup.grep_result_note_indices.clear();
-                            popup.grep_selected = 0;
-                        }
-                        return;
-                    }
+        let Some(popup) = self.popups.search.as_ref() else {
+            return;
+        };
+        let query_text = popup.input.lines().join("");
+        let parsed = parse_search_query(&query_text);
+        let title_query = parsed.text.trim().to_lowercase();
+        let grep_query = parsed.grep_text.trim().to_lowercase();
 
-                    let mut results = Vec::new();
-                    let mut result_note_indices = Vec::new();
+        let no_filters = title_query.is_empty()
+            && grep_query.is_empty()
+            && parsed.folder_filter.is_none()
+            && !parsed.pinned_only
+            && parsed.tag_filter.is_none();
+        if no_filters {
+            if let Some(popup) = &mut self.popups.search {
+                popup.title_results.clear();
+                popup.title_result_indices.clear();
+                popup.title_selected = 0;
+                popup.grep_results.clear();
+                popup.grep_result_indices.clear();
+                popup.grep_is_header.clear();
+                popup.grep_collapsed.clear();
+                popup.grep_selected = 0;
+            }
+            return;
+        }
 
-                    for (note_idx, note) in self.notes.iter().enumerate() {
-                        if note.title.to_lowercase().contains(&query)
-                            || note.id.to_lowercase().contains(&query)
-                        {
-                            let label = if note.folder.is_empty() {
-                                note.title.clone()
+        let mut title_results = Vec::new();
+        let mut title_result_indices = Vec::new();
+        let mut grep_results = Vec::new();
+        let mut grep_result_indices = Vec::new();
+        let mut grep_is_header = Vec::new();
+
+        for (note_idx, note) in self.notes.iter().enumerate() {
+            // Apply pinned filter
+            if parsed.pinned_only && !note.pinned {
+                continue;
+            }
+            // Apply folder filter if present
+            if let Some(ref folder) = parsed.folder_filter {
+                let matches_folder = if folder.is_empty() {
+                    note.folder.is_empty()
+                } else {
+                    note.folder == *folder
+                        || note.folder.starts_with(&format!("{folder}/"))
+                };
+                if !matches_folder {
+                    continue;
+                }
+            }
+            // Apply tag filter if present (match any listed tag)
+            if let Some(ref tags) = parsed.tag_filter
+                && !tags.is_empty()
+            {
+                let note_tags: Vec<String> =
+                    note.tags.iter().map(|t| t.to_lowercase()).collect();
+                let matches_tag = tags.iter().any(|t| note_tags.contains(t));
+                if !matches_tag {
+                    continue;
+                }
+            }
+
+            // Check title match
+            let matched_title = title_query.is_empty()
+                || note.title.to_lowercase().contains(&title_query)
+                || note.id.to_lowercase().contains(&title_query);
+
+            // Check grep match (load content)
+            let content_opt = if !grep_query.is_empty() {
+                self.storage.load_note(&note.id).ok()
+            } else {
+                None
+            };
+            let matched_grep = grep_query.is_empty()
+                || content_opt
+                    .as_ref()
+                    .is_some_and(|n| n.content.to_lowercase().contains(&grep_query));
+
+            let label = if note.folder.is_empty() {
+                note.title.clone()
+            } else {
+                format!("{}/{}", note.folder, note.title)
+            };
+            let tags_str = if note.tags.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    " [{}]",
+                    note.tags
+                        .iter()
+                        .map(|t| t.as_str())
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                )
+            };
+
+            // Title results: always computed when title_query is non-empty
+            if !title_query.is_empty() && matched_title {
+                title_results.push(format!("{}{}", label, tags_str));
+                title_result_indices.push(note_idx);
+            }
+
+            // Collect grep matches per file for tree grouping
+            if !grep_query.is_empty() && matched_grep && matched_title {
+                if let Some(note_data) = content_opt
+                    .filter(|n| n.content.to_lowercase().contains(&grep_query))
+                {
+                    // Push header
+                    let match_count = note_data
+                        .content
+                        .lines()
+                        .filter(|l| l.to_lowercase().contains(&grep_query))
+                        .count();
+                    grep_results.push(format!(" {}{} ({})", label, tags_str, match_count));
+                    grep_result_indices.push(note_idx);
+                    grep_is_header.push(true);
+
+                    // Push each matching line as child
+                    for (line_no, line) in note_data
+                        .content
+                        .lines()
+                        .enumerate()
+                        .filter(|(_, line)| line.to_lowercase().contains(&grep_query))
+                    {
+                        let trimmed = line.trim();
+                        let snippet: String =
+                            if trimmed.chars().count() > 56 {
+                                trimmed.chars().take(56).collect::<String>() + "…"
                             } else {
-                                format!("{}/{}", note.folder, note.title)
+                                trimmed.to_string()
                             };
-                            results.push(format!("{}  —  {}", label, note.id));
-                            result_note_indices.push(note_idx);
-                        }
-                    }
-
-                    if let Some(popup) = &mut self.popups.search {
-                        popup.grep_results = results;
-                        popup.grep_result_note_indices = result_note_indices;
-                        if popup.grep_selected >= popup.grep_results.len() {
-                            popup.grep_selected = popup.grep_results.len().saturating_sub(1);
-                        }
+                        grep_results.push(format!("  L{}: {}", line_no + 1, snippet));
+                        grep_result_indices.push(note_idx);
+                        grep_is_header.push(false);
                     }
                 }
-                SearchPopupFocus::Grep | SearchPopupFocus::GrepResults => {
-                    let query = grep_query.to_lowercase();
-                    if query.is_empty() {
-                        if let Some(popup) = &mut self.popups.search {
-                            popup.grep_results.clear();
-                            popup.grep_result_note_indices.clear();
-                            popup.grep_selected = 0;
-                        }
-                        return;
-                    }
+            }
 
-                    let mut results = Vec::new();
-                    let mut result_note_indices = Vec::new();
+            // When only filters active (no title, no grep), show all filtered notes
+            if title_query.is_empty()
+                && grep_query.is_empty()
+                && (parsed.folder_filter.is_some()
+                    || parsed.pinned_only
+                    || parsed.tag_filter.is_some())
+            {
+                let tags_str = if note.tags.is_empty() {
+                    String::new()
+                } else {
+                    format!(
+                        "  [{}]",
+                        note.tags
+                            .iter()
+                            .map(|t| t.as_str())
+                            .collect::<Vec<_>>()
+                            .join(" ")
+                    )
+                };
+                title_results.push(format!("{}{}", label, tags_str));
+                title_result_indices.push(note_idx);
+            }
+        }
 
-                    for (note_idx, note) in self.notes.iter().enumerate() {
-                        let file_match = note.title.to_lowercase().contains(&query)
-                            || note.id.to_lowercase().contains(&query);
-
-                        let content_match = self
-                            .storage
-                            .load_note(&note.id)
-                            .ok()
-                            .map(|n| n.content)
-                            .and_then(|content| {
-                                if content.to_lowercase().contains(&query) {
-                                    Some(content)
-                                } else {
-                                    None
-                                }
-                            });
-
-                        if file_match || content_match.is_some() {
-                            let label = if note.folder.is_empty() {
-                                note.title.clone()
-                            } else {
-                                format!("{}/{}", note.folder, note.title)
-                            };
-
-                            let location = if file_match {
-                                note.id.clone()
-                            } else if let Some(content) = content_match {
-                                content
-                                    .lines()
-                                    .enumerate()
-                                    .find(|(_, line)| line.to_lowercase().contains(&query))
-                                    .map(|(line_no, line)| {
-                                        let trimmed = line.trim();
-                                        let snippet: String = if trimmed.chars().count() > 56 {
-                                            trimmed.chars().take(56).collect::<String>() + "…"
-                                        } else {
-                                            trimmed.to_string()
-                                        };
-                                        format!("L{}: {}", line_no + 1, snippet)
-                                    })
-                                    .unwrap_or_else(|| "match".to_string())
-                            } else {
-                                "match".to_string()
-                            };
-
-                            results.push(format!("{}  —  {}", label, location));
-                            result_note_indices.push(note_idx);
-                        }
-                    }
-
-                    if let Some(popup) = &mut self.popups.search {
-                        popup.grep_results = results;
-                        popup.grep_result_note_indices = result_note_indices;
-                        if popup.grep_selected >= popup.grep_results.len() {
-                            popup.grep_selected = popup.grep_results.len().saturating_sub(1);
-                        }
-                    }
-                }
+        if let Some(popup) = &mut self.popups.search {
+            popup.title_results = title_results;
+            popup.title_result_indices = title_result_indices;
+            if popup.title_selected >= popup.title_results.len() {
+                popup.title_selected = popup.title_results.len().saturating_sub(1);
+            }
+            popup.grep_results = grep_results;
+            popup.grep_result_indices = grep_result_indices;
+            popup.grep_is_header = grep_is_header;
+            if popup.grep_selected >= popup.grep_results.len() {
+                popup.grep_selected = popup.grep_results.len().saturating_sub(1);
             }
         }
     }
@@ -2307,7 +2889,8 @@ impl App {
 
     pub fn confirm_search_with_restore(&mut self) {
         if let Some(popup) = self.popups.search.take() {
-            self.search_restore_state = Some((popup.original_index, popup.original_folder_expanded));
+            self.search_restore_state =
+                Some((popup.original_index, popup.original_folder_expanded));
         }
     }
 
@@ -2316,7 +2899,8 @@ impl App {
             self.list.folder_expanded = original_folder_expanded;
             self.refresh_visual_list();
             if !self.list.visual_list.is_empty() {
-                self.list.visual_index = original_index.min(self.list.visual_list.len().saturating_sub(1));
+                self.list.visual_index =
+                    original_index.min(self.list.visual_list.len().saturating_sub(1));
             } else {
                 self.list.visual_index = 0;
             }
@@ -2326,14 +2910,24 @@ impl App {
         false
     }
 
-    pub fn jump_to_selected_grep_result(&mut self) {
-        if let Some(popup) = &self.popups.search
-            && let Some(note_idx) = popup
-                .grep_result_note_indices
-                .get(popup.grep_selected)
-                .copied() {
-                    self.jump_to_note_index(note_idx);
+    pub fn jump_to_selected_result(&mut self) {
+        if let Some(popup) = &self.popups.search {
+            let note_idx = match popup.focus {
+                crate::popups::SearchFocus::Results => {
+                    let has_grep = !popup.grep_results.is_empty();
+                    if has_grep {
+                        popup.grep_result_indices.get(popup.grep_selected).copied()
+                    } else {
+                        popup.title_result_indices.get(popup.title_selected).copied()
+                    }
                 }
+                crate::popups::SearchFocus::Input => None,
+            };
+            if let Some(note_idx) = note_idx {
+                self.jump_to_note_index(note_idx);
+                return;
+            }
+        }
     }
 
     pub fn cancel_search(&mut self) {
@@ -2342,7 +2936,10 @@ impl App {
             self.list.folder_expanded = popup.original_folder_expanded;
             self.refresh_visual_list();
             if !self.list.visual_list.is_empty() {
-                self.list.visual_index = self.list.visual_index.min(self.list.visual_list.len().saturating_sub(1));
+                self.list.visual_index = self
+                    .list
+                    .visual_index
+                    .min(self.list.visual_list.len().saturating_sub(1));
             }
             self.request_preview_update();
         }
@@ -2372,11 +2969,12 @@ impl App {
     pub fn handle_g_press(&mut self) -> bool {
         let now = Instant::now();
         if let Some(last) = self.last_g_press
-            && now.duration_since(last) < Duration::from_millis(500) {
-                self.last_g_press = None;
-                self.jump_to_top();
-                return true;
-            }
+            && now.duration_since(last) < Duration::from_millis(500)
+        {
+            self.last_g_press = None;
+            self.jump_to_top();
+            return true;
+        }
         self.last_g_press = Some(now);
         false
     }
@@ -2402,7 +3000,8 @@ impl App {
 
     pub fn restore_from_trash(&mut self) {
         let item = self
-            .popups.trash_view
+            .popups
+            .trash_view
             .as_ref()
             .and_then(|t| t.items.get(t.selected).cloned());
 
@@ -2421,7 +3020,9 @@ impl App {
                     }
                 }
                 self.list.folder_cache = None;
-                if let Err(e) = self.refresh_notes() { self.set_temporary_status(&format!("Refresh failed: {e}")); }
+                if let Err(e) = self.refresh_notes() {
+                    self.set_temporary_status(&format!("Refresh failed: {e}"));
+                }
             }
             Err(e) => {
                 self.set_temporary_status(&format!("Failed to restore: {e}"));
@@ -2431,26 +3032,27 @@ impl App {
 
     pub fn begin_delete_from_trash(&mut self) {
         if let Some(trash) = &self.popups.trash_view
-            && let Some(item) = trash.items.get(trash.selected).cloned() {
-                self.show_confirm(ConfirmAction::DeleteFromTrash { item });
-            }
+            && let Some(item) = trash.items.get(trash.selected).cloned()
+        {
+            self.show_confirm(ConfirmAction::DeleteFromTrash { item });
+        }
     }
 
     pub fn confirm_delete_from_trash(&mut self, item: trash::TrashItem) {
         match self.storage.purge_trash_items(vec![item]) {
             Ok(()) => {
                 if let Some(ref mut trash) = self.popups.trash_view
-                    && let Ok(items) = self.storage.list_trash() {
-                        if items.is_empty() {
-                            self.popups.trash_view = None;
-                            self.set_temporary_status_static("Note deleted, trash is now empty");
-                        } else {
-                            trash.items = items;
-                            trash.selected =
-                                trash.selected.min(trash.items.len().saturating_sub(1));
-                            self.set_temporary_status_static("Note permanently deleted");
-                        }
+                    && let Ok(items) = self.storage.list_trash()
+                {
+                    if items.is_empty() {
+                        self.popups.trash_view = None;
+                        self.set_temporary_status_static("Note deleted, trash is now empty");
+                    } else {
+                        trash.items = items;
+                        trash.selected = trash.selected.min(trash.items.len().saturating_sub(1));
+                        self.set_temporary_status_static("Note permanently deleted");
                     }
+                }
             }
             Err(e) => {
                 self.set_temporary_status(&format!("Failed to delete: {e}"));
@@ -2502,29 +3104,35 @@ impl App {
         let mut updated = false;
 
         if let Some(last) = self.list.last_selection_change
-            && last.elapsed() > Duration::from_millis(150) && self.list.pending_preview_update {
-                self.update_preview();
-                self.list.pending_preview_update = false;
-                self.list.last_selection_change = None;
-                updated = true;
-            }
+            && last.elapsed() > Duration::from_millis(150)
+            && self.list.pending_preview_update
+        {
+            self.update_preview();
+            self.list.pending_preview_update = false;
+            self.list.last_selection_change = None;
+            updated = true;
+        }
 
         if let Some(last) = self.editor.last_editor_change
-            && last.elapsed() > Duration::from_millis(150) && self.editor.pending_editor_preview_update {
-                self.update_editor_markdown_preview();
-                self.editor.pending_editor_preview_update = false;
-                self.editor.last_editor_change = None;
-                updated = true;
-            }
+            && last.elapsed() > Duration::from_millis(150)
+            && self.editor.pending_editor_preview_update
+        {
+            self.update_editor_markdown_preview();
+            self.editor.pending_editor_preview_update = false;
+            self.editor.last_editor_change = None;
+            updated = true;
+        }
 
         if let Some(PreviewContent::Markdown(renderer)) = &mut self.list.preview_content
-            && renderer.poll() {
-                updated = true;
-            }
+            && renderer.poll()
+        {
+            updated = true;
+        }
         if let Some(renderer) = &mut self.editor.md_preview_renderer
-            && renderer.poll() {
-                updated = true;
-            }
+            && renderer.poll()
+        {
+            updated = true;
+        }
         updated
     }
 
@@ -2532,6 +3140,8 @@ impl App {
         if !self.list.preview_enabled {
             return;
         }
+        // Mark current content as stale — will be refreshed by update_preview
+        self.list.preview_content_index = None;
         self.list.last_selection_change = Some(Instant::now());
         self.list.pending_preview_update = true;
     }
@@ -2553,32 +3163,42 @@ impl App {
             id,
             is_draw,
             is_canvas,
+            is_clin,
             ..
         }) = self.list.visual_list.get(self.list.visual_index).cloned()
         else {
             self.list.preview_content = None;
+            self.list.preview_content_index = None;
             return;
         };
+
+        // When preview_encryption is on, clear content for encrypted notes
+        // to avoid stale encrypted content flashing when moving to another note
+        if self.preview_encryption && is_clin {
+            self.list.preview_content = None;
+            self.list.preview_content_index = Some(self.list.visual_index);
+            return;
+        }
 
         if is_draw {
             let path = self.storage.note_path(&id);
             match std::fs::read_to_string(&path) {
-                Ok(content) => match serde_json::from_str::<crate::draw::state::DrawData>(&content) {
+                Ok(content) => match serde_json::from_str::<crate::draw::state::DrawData>(&content)
+                {
                     Ok(data) => {
                         let grid = crate::snapshot::render_draw_snapshot(&data, &self.app_theme);
-                        self.list.preview_content =
-                            Some(PreviewContent::DrawGrid(grid));
+                        self.list.preview_content = Some(PreviewContent::DrawGrid(grid));
                     }
                     Err(e) => {
                         self.list.preview_content = None;
-                        self.status =
-                            Cow::Owned(format!("Failed to parse draw: {e}"));
+                        self.status = Cow::Owned(format!("Failed to parse draw: {e}"));
                     }
                 },
                 Err(_) => {
                     self.list.preview_content = None;
                 }
             }
+            self.list.preview_content_index = Some(self.list.visual_index);
             return;
         }
 
@@ -2588,14 +3208,13 @@ impl App {
                 Ok(content) => {
                     match serde_json::from_str::<crate::pinstar::data::CanvasData>(&content) {
                         Ok(data) => {
-                            let grid = crate::snapshot::render_canvas_snapshot(&data, &self.app_theme);
-                            self.list.preview_content =
-                                Some(PreviewContent::CanvasGrid(grid));
+                            let grid =
+                                crate::snapshot::render_canvas_snapshot(&data, &self.app_theme);
+                            self.list.preview_content = Some(PreviewContent::CanvasGrid(grid));
                         }
                         Err(e) => {
                             self.list.preview_content = None;
-                            self.status =
-                                Cow::Owned(format!("Failed to parse canvas: {e}"));
+                            self.status = Cow::Owned(format!("Failed to parse canvas: {e}"));
                         }
                     }
                 }
@@ -2603,10 +3222,10 @@ impl App {
                     self.list.preview_content = None;
                 }
             }
+            self.list.preview_content_index = Some(self.list.visual_index);
             return;
         }
 
-        
         if let Ok(note) = self.storage.load_note(&id) {
             let width = 80u16.saturating_sub(2).max(40);
             let mut renderer = MarkdownRenderer::new(width);
@@ -2615,6 +3234,7 @@ impl App {
         } else {
             self.list.preview_content = None;
         }
+        self.list.preview_content_index = Some(self.list.visual_index);
     }
 
     pub fn update_editor_markdown_preview(&mut self) {
@@ -2654,17 +3274,27 @@ impl App {
 
     pub fn begin_theme_selection(&mut self) {
         let themes = vec![
-            "default".to_string(), "tokyo_night".to_string(), "catppuccin_mocha".to_string(),
-            "onedark".to_string(), "gruvbox".to_string(), "dracula".to_string(),
-            "nord".to_string(), "rose_pine".to_string(), "everforest".to_string(),
-            "kanagawa".to_string(), "solarized".to_string()
+            "default".to_string(),
+            "tokyo_night".to_string(),
+            "catppuccin_mocha".to_string(),
+            "onedark".to_string(),
+            "gruvbox".to_string(),
+            "dracula".to_string(),
+            "nord".to_string(),
+            "rose_pine".to_string(),
+            "everforest".to_string(),
+            "kanagawa".to_string(),
+            "solarized".to_string(),
         ];
-        
+
         let config = crate::config::ClinConfig::load().unwrap_or_default();
         let current = config.theme.theme.to_string();
         let selected = themes.iter().position(|t| t == &current).unwrap_or(0);
         let general_is_solid = matches!(config.theme.background, crate::config::Background::Solid);
-        let graph_is_solid = matches!(config.visual.graph_background, crate::config::Background::Solid);
+        let graph_is_solid = matches!(
+            config.visual.graph_background,
+            crate::config::Background::Solid
+        );
 
         self.popups.theme = Some(ThemePopup {
             themes,
@@ -2693,7 +3323,11 @@ impl App {
                 ThemePopupFocus::GeneralBg => {
                     popup.general_is_solid = !popup.general_is_solid;
                     let mut config = crate::config::ClinConfig::load().unwrap_or_default();
-                    config.theme.background = if popup.general_is_solid { crate::config::Background::Solid } else { crate::config::Background::Transparent };
+                    config.theme.background = if popup.general_is_solid {
+                        crate::config::Background::Solid
+                    } else {
+                        crate::config::Background::Transparent
+                    };
                     if let Err(e) = config.save() {
                         self.set_temporary_status(&format!("Failed to save bg: {}", e));
                     }
@@ -2726,5 +3360,3 @@ impl App {
         config.theme.theme.to_string()
     }
 }
-
-

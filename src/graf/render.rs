@@ -9,8 +9,8 @@ use ratatui::widgets::canvas::{Canvas, Line, Painter, Shape};
 use crate::config::{
     ClinConfig, EdgeColorMode, LabelMode, LegendPosition, NodeColorMode, NodeShape, NodeSizeMode,
 };
-use crate::graf::viewport::Viewport;
 use crate::graf::graph::GraphState;
+use crate::graf::viewport::Viewport;
 fn tag_color(tag: &str, index: usize, _total: usize, palette: &[Color]) -> Color {
     let palette_len = palette.len();
     if palette_len == 0 {
@@ -57,11 +57,10 @@ impl Shape for GraphEdgesShape {
                 }
                 .draw(painter);
             } else {
-                
                 let dx = edge.x2 - edge.x1;
                 let dy = edge.y2 - edge.y1;
                 let len = (dx * dx + dy * dy).sqrt().max(1e-6);
-                let nx = -dy / len; 
+                let nx = -dy / len;
                 let ny = dx / len;
                 let spacing = 0.4;
                 for t in 0..edge.thickness {
@@ -249,7 +248,6 @@ pub struct FeatureFlags {
 }
 
 pub struct RenderCache {
-    
     pub tag_colors: HashMap<String, Color>,
     pub folder_colors: HashMap<String, Color>,
     pub node_own_color: HashMap<NodeIndex, Color>,
@@ -294,7 +292,6 @@ impl RenderCache {
         colors: &crate::config::ThemeColors,
         show_legend: bool,
     ) {
-        
         self.max_link_count = graph
             .node_weights()
             .map(|n| n.data.link_count)
@@ -349,9 +346,11 @@ impl RenderCache {
                     .get(&node.data.folder)
                     .copied()
                     .unwrap_or(Color::Gray),
-                NodeColorMode::LinkCount => {
-                    link_count_color(node.data.link_count, self.max_link_count, &colors.node_colors)
-                }
+                NodeColorMode::LinkCount => link_count_color(
+                    node.data.link_count,
+                    self.max_link_count,
+                    &colors.node_colors,
+                ),
                 NodeColorMode::Uniform => {
                     colors.node_colors.first().copied().unwrap_or(Color::Gray)
                 }
@@ -421,7 +420,11 @@ impl RenderCache {
         self.nodes.clear();
         for idx in graph.node_indices() {
             let node = &graph[idx];
-            let primary_color = self.node_own_color.get(&idx).copied().unwrap_or(Color::Gray);
+            let primary_color = self
+                .node_own_color
+                .get(&idx)
+                .copied()
+                .unwrap_or(Color::Gray);
             let radius = match config.visual.node_size_mode {
                 NodeSizeMode::Fixed => config.visual.node_size,
                 NodeSizeMode::LinkCount => {
@@ -430,8 +433,7 @@ impl RenderCache {
                     } else {
                         config.visual.node_size
                             * (1.0
-                                + (node.data.link_count as f64 / self.max_link_count as f64)
-                                    * 1.5)
+                                + (node.data.link_count as f64 / self.max_link_count as f64) * 1.5)
                     }
                 }
             };
@@ -491,11 +493,7 @@ impl RenderCache {
                 continue;
             }
             let node = &graph[idx];
-            let radius = self
-                .nodes
-                .get(idx.index())
-                .map(|n| n.radius)
-                .unwrap_or(2.0);
+            let radius = self.nodes.get(idx.index()).map(|n| n.radius).unwrap_or(2.0);
             self.labels.push(LabelData {
                 x: node.location.x as f64,
                 y: node.location.y as f64 + radius + config.visual.label_offset,
@@ -542,8 +540,9 @@ pub fn draw_graph_view(
     let x_bounds = viewport.x_bounds(aspect);
     let y_bounds = viewport.y_bounds(aspect);
 
-    let block = ratatui::widgets::Block::default()
-        .style(ratatui::style::Style::default().bg(colors.background_color.unwrap_or(Color::Reset)));
+    let block = ratatui::widgets::Block::default().style(
+        ratatui::style::Style::default().bg(colors.background_color.unwrap_or(Color::Reset)),
+    );
 
     let canvas = Canvas::default()
         .background_color(colors.background_color.unwrap_or(Color::Reset))
@@ -583,47 +582,49 @@ pub fn draw_graph_view(
     frame.render_widget(canvas, area);
 
     if flags.show_legend
-        && let Some(ref items) = cache.legend_data {
-            let max_len = items.iter().map(|(t, _): &(String, ratatui::style::Color)| t.len()).max().unwrap_or(0);
-            let legend_width = (max_len + 4) as u16;
-            let legend_height = (items.len() as u16).min(config.legend.max_items as u16) + 2;
-            let (legend_x, legend_y) = match config.legend.position {
-                LegendPosition::TopLeft => (area.x, area.y),
-                LegendPosition::TopRight => (
-                    area.x + area.width.saturating_sub(legend_width),
-                    area.y,
-                ),
-                LegendPosition::BottomLeft => (
-                    area.x,
-                    area.y + area.height.saturating_sub(legend_height + 1),
-                ),
-                LegendPosition::BottomRight => (
-                    area.x + area.width.saturating_sub(legend_width),
-                    area.y + area.height.saturating_sub(legend_height + 1),
-                ),
-            };
-            let legend_area =
-                ratatui::layout::Rect::new(legend_x, legend_y, legend_width, legend_height);
-            let legend_text: Vec<ratatui::text::Line> = items
-                .iter()
-                .map(|(t, c): &(String, ratatui::style::Color)| {
-                    let display_text = if t.is_empty() { "/" } else { t };
-                    ratatui::text::Line::from(vec![
-                        ratatui::text::Span::styled("● ", ratatui::style::Style::default().fg(*c)),
-                        ratatui::text::Span::styled(
-                            display_text,
-                            ratatui::style::Style::default().fg(colors.label_color),
-                        ),
-                    ])
-                })
-                .collect();
-            let legend_widget = ratatui::widgets::Paragraph::new(legend_text).block(
-                ratatui::widgets::Block::default()
-                    .borders(ratatui::widgets::Borders::ALL)
-                    .border_style(ratatui::style::Style::default().fg(colors.border_color)),
-            );
-            frame.render_widget(legend_widget, legend_area);
-        }
+        && let Some(ref items) = cache.legend_data
+    {
+        let max_len = items
+            .iter()
+            .map(|(t, _): &(String, ratatui::style::Color)| t.len())
+            .max()
+            .unwrap_or(0);
+        let legend_width = (max_len + 4) as u16;
+        let legend_height = (items.len() as u16).min(config.legend.max_items as u16) + 2;
+        let (legend_x, legend_y) = match config.legend.position {
+            LegendPosition::TopLeft => (area.x, area.y),
+            LegendPosition::TopRight => (area.x + area.width.saturating_sub(legend_width), area.y),
+            LegendPosition::BottomLeft => (
+                area.x,
+                area.y + area.height.saturating_sub(legend_height + 1),
+            ),
+            LegendPosition::BottomRight => (
+                area.x + area.width.saturating_sub(legend_width),
+                area.y + area.height.saturating_sub(legend_height + 1),
+            ),
+        };
+        let legend_area =
+            ratatui::layout::Rect::new(legend_x, legend_y, legend_width, legend_height);
+        let legend_text: Vec<ratatui::text::Line> = items
+            .iter()
+            .map(|(t, c): &(String, ratatui::style::Color)| {
+                let display_text = if t.is_empty() { "/" } else { t };
+                ratatui::text::Line::from(vec![
+                    ratatui::text::Span::styled("● ", ratatui::style::Style::default().fg(*c)),
+                    ratatui::text::Span::styled(
+                        display_text,
+                        ratatui::style::Style::default().fg(colors.label_color),
+                    ),
+                ])
+            })
+            .collect();
+        let legend_widget = ratatui::widgets::Paragraph::new(legend_text).block(
+            ratatui::widgets::Block::default()
+                .borders(ratatui::widgets::Borders::ALL)
+                .border_style(ratatui::style::Style::default().fg(colors.border_color)),
+        );
+        frame.render_widget(legend_widget, legend_area);
+    }
 
     if flags.show_status_bar {
         let selected_info = state
@@ -685,7 +686,7 @@ pub fn draw_graph_view(
             },
             &mut minimap_grid,
         );
-        
+
         cache.minimap_grid = minimap_grid;
     }
 }
@@ -780,7 +781,12 @@ struct MinimapParams<'a> {
     colors: &'a crate::config::ThemeColors,
 }
 
-fn draw_minimap(frame: &mut ratatui::Frame, area: Rect, params: MinimapParams<'_>, grid: &mut Vec<Option<Color>>) {
+fn draw_minimap(
+    frame: &mut ratatui::Frame,
+    area: Rect,
+    params: MinimapParams<'_>,
+    grid: &mut Vec<Option<Color>>,
+) {
     let (wx_min, wx_max, wy_min, wy_max) = params.graph_bounds;
     let aspect = area.width as f64 / area.height as f64;
     let vp_x = params.viewport.x_bounds(aspect);
@@ -799,7 +805,7 @@ fn draw_minimap(frame: &mut ratatui::Frame, area: Rect, params: MinimapParams<'_
 
     let iw = inner.width as usize;
     let ih = inner.height as usize;
-    let sub_h = ih * 2; 
+    let sub_h = ih * 2;
     let world_w = wx_max - wx_min;
     let world_h = wy_max - wy_min;
 
@@ -859,14 +865,12 @@ fn draw_minimap(frame: &mut ratatui::Frame, area: Rect, params: MinimapParams<'_
 
             match (top_color, bot_color) {
                 (None, None) => {
-                    
                     if let Some(bg) = bg_color {
                         cell.set_symbol(" ");
                         cell.set_style(ratatui::style::Style::default().bg(bg));
                     }
                 }
                 (Some(tc), None) => {
-                    
                     cell.set_symbol("▀");
                     let mut style = ratatui::style::Style::default().fg(tc);
                     if let Some(bg) = bg_color {
@@ -875,7 +879,6 @@ fn draw_minimap(frame: &mut ratatui::Frame, area: Rect, params: MinimapParams<'_
                     cell.set_style(style);
                 }
                 (None, Some(bc)) => {
-                    
                     cell.set_symbol("▄");
                     let mut style = ratatui::style::Style::default().fg(bc);
                     if let Some(bg) = bg_color {
@@ -884,7 +887,6 @@ fn draw_minimap(frame: &mut ratatui::Frame, area: Rect, params: MinimapParams<'_
                     cell.set_style(style);
                 }
                 (Some(tc), Some(bc)) => {
-                    
                     cell.set_symbol("▄");
                     cell.set_style(ratatui::style::Style::default().fg(bc).bg(tc));
                 }
@@ -894,8 +896,8 @@ fn draw_minimap(frame: &mut ratatui::Frame, area: Rect, params: MinimapParams<'_
 
     let vp_col_min = world_to_col(vp_x[0].max(wx_min));
     let vp_col_max = world_to_col(vp_x[1].min(wx_max));
-    let vp_row_min = world_to_row(vp_y[1].min(wy_max)); 
-    let vp_row_max = world_to_row(vp_y[0].max(wy_min)); 
+    let vp_row_min = world_to_row(vp_y[1].min(wy_max));
+    let vp_row_max = world_to_row(vp_y[0].max(wy_min));
 
     if vp_col_min >= vp_col_max || vp_row_min >= vp_row_max {
         return;
@@ -905,13 +907,13 @@ fn draw_minimap(frame: &mut ratatui::Frame, area: Rect, params: MinimapParams<'_
 
     for col in vp_col_min..=vp_col_max {
         let x = inner.x + col as u16;
-        
+
         let y_top = inner.y + vp_row_min as u16;
         if let Some(cell) = buf.cell_mut((x, y_top)) {
             cell.set_symbol("─");
             cell.set_style(vp_style);
         }
-        
+
         let y_bot = inner.y + vp_row_max as u16;
         if let Some(cell) = buf.cell_mut((x, y_bot)) {
             cell.set_symbol("─");
@@ -921,13 +923,13 @@ fn draw_minimap(frame: &mut ratatui::Frame, area: Rect, params: MinimapParams<'_
 
     for row in vp_row_min..=vp_row_max {
         let y = inner.y + row as u16;
-        
+
         let x_left = inner.x + vp_col_min as u16;
         if let Some(cell) = buf.cell_mut((x_left, y)) {
             cell.set_symbol("│");
             cell.set_style(vp_style);
         }
-        
+
         let x_right = inner.x + vp_col_max as u16;
         if let Some(cell) = buf.cell_mut((x_right, y)) {
             cell.set_symbol("│");
