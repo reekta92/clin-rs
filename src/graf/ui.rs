@@ -310,10 +310,9 @@ fn draw_preview(
     } else {
         match &state.preview_content {
             Some(crate::list_view::PreviewContent::Markdown(renderer))
-                if !renderer.is_pending() =>
+                if !renderer.is_pending() && renderer.pages_built() =>
             {
-                let content_empty = renderer.screen().contents().trim().is_empty();
-                if content_empty {
+                if renderer.is_content_empty() {
                     let placeholder = Paragraph::new(Line::from(vec![Span::styled(
                         "(empty note)",
                         Style::default().fg(state.app_theme.muted),
@@ -326,17 +325,35 @@ fn draw_preview(
                             .padding(Padding::new(2, 2, 1, 1)),
                     );
                     frame.render_widget(placeholder, preview_rect);
-                } else {
-                    let widget = crate::markdown::ScrollablePseudoTerminal::new(renderer.screen())
-                        .scroll_offset(renderer.scroll_offset())
-                        .theme_bg(state.app_theme.preview_bg())
+                } else if let Some(page_grid) = renderer.current_page_grid() {
+                    let snapshot = crate::snapshot::RenderedSnapshot::new(page_grid)
                         .block(
                             Block::default()
                                 .style(state.app_theme.preview_bg_style())
                                 .borders(Borders::NONE)
                                 .padding(Padding::new(2, 2, 1, 1)),
                         );
-                    frame.render_widget(widget, preview_rect);
+                    frame.render_widget(snapshot, preview_rect);
+                    if renderer.total_pages() > 1 {
+                        let indicator = format!(
+                            " {}/{} ",
+                            renderer.current_page() + 1,
+                            renderer.total_pages()
+                        );
+                        let ind_width = indicator.len() as u16;
+                        let ind_x = preview_rect.right().saturating_sub(ind_width + 2);
+                        let ind_y = preview_rect.bottom().saturating_sub(1);
+                        if ind_x >= preview_rect.x && ind_y >= preview_rect.y {
+                            let ind_area = Rect::new(ind_x, ind_y, ind_width, 1);
+                            let ind_widget = Paragraph::new(Span::styled(
+                                indicator,
+                                Style::default()
+                                    .fg(state.app_theme.muted)
+                                    .add_modifier(Modifier::DIM),
+                            ));
+                            frame.render_widget(ind_widget, ind_area);
+                        }
+                    }
                 }
             }
             Some(crate::list_view::PreviewContent::Markdown(_)) => {

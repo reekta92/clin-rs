@@ -3208,11 +3208,19 @@ template = """
         if let Some(PreviewContent::Markdown(renderer)) = &mut self.list.preview_content
             && renderer.poll()
         {
+            if !renderer.pages_built() {
+                let visible = 34u16;
+                renderer.build_pages(visible, self.app_theme.preview_bg());
+            }
             updated = true;
         }
         if let Some(renderer) = &mut self.editor.md_preview_renderer
             && renderer.poll()
         {
+            if !renderer.pages_built() {
+                let visible = 36u16;
+                renderer.build_pages(visible, self.app_theme.preview_bg());
+            }
             updated = true;
         }
         updated

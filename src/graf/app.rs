@@ -3,6 +3,8 @@ use std::sync::RwLock;
 
 use fdg_sim::petgraph::graph::NodeIndex;
 
+use crossterm::event::KeyCode;
+
 use crate::config::ClinConfig;
 use crate::graf::input::GraphMouseState;
 use crate::keybinds::Keybinds;
@@ -93,7 +95,15 @@ impl GrafAppState {
 
     pub fn poll_renderers(&mut self) -> bool {
         if let Some(PreviewContent::Markdown(renderer)) = &mut self.preview_content {
-            renderer.poll()
+            if renderer.poll() {
+                if !renderer.pages_built() {
+                    let visible = 34u16;
+                    renderer.build_pages(visible, self.app_theme.preview_bg());
+                }
+                true
+            } else {
+                false
+            }
         } else {
             false
         }
@@ -274,6 +284,27 @@ fn handle_event(
             if app_state.search_active {
                 handle_search_keys(app_state, key, config);
                 return Ok(None);
+            }
+            if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) {
+                match key.code {
+                    KeyCode::Char('h') => {
+                        if let Some(crate::list_view::PreviewContent::Markdown(renderer)) =
+                            &mut app_state.preview_content
+                        {
+                            renderer.prev_page();
+                            return Ok(None);
+                        }
+                    }
+                    KeyCode::Char('l') => {
+                        if let Some(crate::list_view::PreviewContent::Markdown(renderer)) =
+                            &mut app_state.preview_content
+                        {
+                            renderer.next_page();
+                            return Ok(None);
+                        }
+                    }
+                    _ => {}
+                }
             }
 
             if let Some(graph_state) = &app_state.graph_state

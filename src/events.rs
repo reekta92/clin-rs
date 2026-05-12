@@ -703,6 +703,46 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         }
     }
 
+    if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) {
+        match key.code {
+            KeyCode::Char('h') => {
+                match &mut app.list.preview_content {
+                    Some(crate::list_view::PreviewContent::Markdown(renderer)) => {
+                        renderer.prev_page();
+                        return false;
+                    }
+                    Some(
+                        crate::list_view::PreviewContent::CanvasGrid(_)
+                        | crate::list_view::PreviewContent::DrawGrid(_),
+                    ) => {
+                        app.list.snapshot_scroll_offset =
+                            app.list.snapshot_scroll_offset.saturating_sub(3);
+                        return false;
+                    }
+                    _ => {}
+                }
+            }
+            KeyCode::Char('l') => {
+                match &mut app.list.preview_content {
+                    Some(crate::list_view::PreviewContent::Markdown(renderer)) => {
+                        renderer.next_page();
+                        return false;
+                    }
+                    Some(
+                        crate::list_view::PreviewContent::CanvasGrid(_)
+                        | crate::list_view::PreviewContent::DrawGrid(_),
+                    ) => {
+                        app.list.snapshot_scroll_offset =
+                            app.list.snapshot_scroll_offset.saturating_add(3);
+                        return false;
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+    }
+
     if app.keybinds.matches_list(ListAction::Help, &key) {
         app.open_help_page();
         return false;
@@ -920,10 +960,23 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
         return false;
     }
 
-    // if app.keybinds.matches_edit(EditAction::Quit, &key) {
-    //     app.autosave();
-    //     return true;
-    // }
+    if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) {
+        match key.code {
+            KeyCode::Char('h') => {
+                if let Some(renderer) = &mut app.editor.md_preview_renderer {
+                    renderer.prev_page();
+                    return false;
+                }
+            }
+            KeyCode::Char('l') => {
+                if let Some(renderer) = &mut app.editor.md_preview_renderer {
+                    renderer.next_page();
+                    return false;
+                }
+            }
+            _ => {}
+        }
+    }
 
     if app.keybinds.matches_edit(EditAction::CycleFocus, &key) {
         *focus = match *focus {
@@ -1272,11 +1325,11 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
             match &mut app.list.preview_content {
                 Some(crate::list_view::PreviewContent::Markdown(renderer)) => {
                     if mouse_event.kind == MouseEventKind::ScrollUp {
-                        renderer.scroll_up(3);
+                        renderer.prev_page();
                         return;
                     }
                     if mouse_event.kind == MouseEventKind::ScrollDown {
-                        renderer.scroll_down(3, preview_area.height.saturating_sub(2));
+                        renderer.next_page();
                         return;
                     }
                 }
@@ -1431,13 +1484,13 @@ pub fn handle_edit_mouse(
         match mouse_event.kind {
             MouseEventKind::ScrollUp => {
                 if let Some(renderer) = &mut app.editor.md_preview_renderer {
-                    renderer.scroll_up(3);
+                    renderer.prev_page();
                 }
                 return;
             }
             MouseEventKind::ScrollDown => {
                 if let Some(renderer) = &mut app.editor.md_preview_renderer {
-                    renderer.scroll_down(3, md_area.height.saturating_sub(2));
+                    renderer.next_page();
                 }
                 return;
             }

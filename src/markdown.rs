@@ -2,12 +2,7 @@ use std::io::{Read, Write};
 use std::sync::mpsc;
 
 use portable_pty::{CommandBuilder, NativePtySystem, PtySize, PtySystem};
-use ratatui::{
-    buffer::Buffer,
-    layout::Rect,
-    style::{Color, Modifier, Style},
-    widgets::{Block, Widget},
-};
+use ratatui::style::{Color, Modifier, Style};
 
 use once_cell::sync::Lazy;
 use std::sync::Arc;
@@ -35,10 +30,14 @@ enum RendererState {
 
 pub struct MarkdownRenderer {
     state: RendererState,
-    parser: vt100::Parser,
-    scroll_offset: u16,
+    parser: Option<vt100::Parser>,
     content_rows: u16,
     cancel_token: Arc<AtomicBool>,
+    pages: Vec<Vec<Vec<(char, Style)>>>,
+    current_page: usize,
+    total_pages: usize,
+    content_empty: bool,
+    theme_bg: Option<Color>,
 }
 
 impl Drop for MarkdownRenderer {
@@ -52,10 +51,14 @@ impl MarkdownRenderer {
         let rows = 200;
         Self {
             state: RendererState::Idle,
-            parser: vt100::Parser::new(rows, cols, 0),
-            scroll_offset: 0,
+            parser: Some(vt100::Parser::new(rows, cols, 0)),
             content_rows: rows,
             cancel_token: Arc::new(AtomicBool::new(false)),
+            pages: Vec::new(),
+            current_page: 0,
+            total_pages: 0,
+            content_empty: true,
+            theme_bg: None,
         }
     }
 
@@ -63,14 +66,19 @@ impl MarkdownRenderer {
         let estimated_rows = if content.is_empty() {
             1
         } else {
-            (content.lines().count() as u16).clamp(50, 2000)
+            // Generate a very tall virtual terminal to prevent any content from ever scrolling off.
+            // Multiply source line count by 10 to safely handle extreme word wrapping and formatting expansions.
+            (((content.lines().count() as u32 * 10) + 300).min(20000) as u16).clamp(300, 20000)
         };
 
-        self.scroll_offset = 0;
         self.content_rows = estimated_rows;
+        self.pages.clear();
+        self.current_page = 0;
+        self.total_pages = 0;
+        self.content_empty = content.is_empty();
 
         if content.is_empty() {
-            self.parser = vt100::Parser::new(1, cols, 0);
+            self.parser = Some(vt100::Parser::new(1, cols, 0));
             self.state = RendererState::Ready;
             return;
         }
@@ -94,8 +102,14 @@ impl MarkdownRenderer {
 
         match rx.try_recv() {
             Ok(Some(result)) => {
-                self.parser = result.parser;
                 self.content_rows = result.content_rows;
+                self.content_empty = result
+                    .parser
+                    .screen()
+                    .contents()
+                    .trim()
+                    .is_empty();
+                self.parser = Some(result.parser);
                 self.state = RendererState::Ready;
                 true
             }
@@ -115,25 +129,122 @@ impl MarkdownRenderer {
         matches!(self.state, RendererState::Pending(_))
     }
 
-    pub fn screen(&self) -> &vt100::Screen {
-        self.parser.screen()
+    pub fn is_content_empty(&self) -> bool {
+        self.content_empty
     }
 
-    pub fn scroll_offset(&self) -> u16 {
-        self.scroll_offset
+    pub fn build_pages(&mut self, visible_rows: u16, theme_bg: Option<Color>) {
+        self.theme_bg = theme_bg;
+        let Some(parser) = &self.parser else {
+            return;
+        };
+        let screen = parser.screen();
+        let cols = screen.size().1;
+
+        let mut all_rows: Vec<Vec<(char, Style)>> = Vec::new();
+        let mut last_non_empty_row = 0usize;
+
+        // Optimize: Scan backwards to find the very last row containing actual non-whitespace text.
+        // This allows us to skip allocating vectors and copying styles for thousands of empty padded rows.
+        let mut effective_rows = 0u16;
+        'scan: for r in (0..self.content_rows).rev() {
+            for c in 0..cols {
+                if let Some(screen_cell) = screen.cell(r, c) {
+                    if screen_cell.has_contents() && !screen_cell.contents().trim().is_empty() {
+                        effective_rows = r + 1;
+                        break 'scan;
+                    }
+                }
+            }
+        }
+        // Fallback if empty
+        if effective_rows == 0 && self.content_rows > 0 {
+            effective_rows = 1;
+        }
+
+        for row_idx in 0..effective_rows {
+            let mut row_data: Vec<(char, Style)> = Vec::with_capacity(cols as usize);
+            let mut has_content = false;
+            for col in 0..cols {
+                if let Some(screen_cell) = screen.cell(row_idx, col) {
+                    let ch = if screen_cell.has_contents() {
+                        let contents = screen_cell.contents();
+                        has_content = has_content || !contents.trim().is_empty();
+                        contents.chars().next().unwrap_or(' ')
+                    } else {
+                        ' '
+                    };
+
+                    let mut style = Style::reset();
+                    if screen_cell.bold() {
+                        style = style.add_modifier(Modifier::BOLD);
+                    }
+                    if screen_cell.italic() {
+                        style = style.add_modifier(Modifier::ITALIC);
+                    }
+                    if screen_cell.underline() {
+                        style = style.add_modifier(Modifier::UNDERLINED);
+                    }
+                    if screen_cell.inverse() {
+                        style = style.add_modifier(Modifier::REVERSED);
+                    }
+
+                    let fg = convert_color(screen_cell.fgcolor());
+                    let bg = match screen_cell.bgcolor() {
+                        vt100::Color::Default => theme_bg.unwrap_or(Color::Reset),
+                        other => convert_color(other),
+                    };
+                    style = style.fg(fg).bg(bg);
+
+                    row_data.push((ch, style));
+                } else {
+                    row_data.push((' ', Style::default()));
+                }
+            }
+            if has_content {
+                last_non_empty_row = all_rows.len();
+            }
+            all_rows.push(row_data);
+        }
+
+        let trimmed_rows = &all_rows[..=last_non_empty_row.min(all_rows.len().saturating_sub(1))];
+
+        let page_height = (visible_rows as usize).max(1);
+        self.pages.clear();
+        for chunk in trimmed_rows.chunks(page_height) {
+            self.pages.push(chunk.to_vec());
+        }
+
+        self.total_pages = self.pages.len().max(1);
+        self.current_page = 0;
+
+        self.parser = None;
     }
 
-    pub fn content_rows(&self) -> u16 {
-        self.content_rows
+    pub fn pages_built(&self) -> bool {
+        !self.pages.is_empty() || self.content_empty
     }
 
-    pub fn scroll_up(&mut self, n: u16) {
-        self.scroll_offset = self.scroll_offset.saturating_sub(n);
+    pub fn current_page_grid(&self) -> Option<&Vec<Vec<(char, Style)>>> {
+        self.pages.get(self.current_page)
     }
 
-    pub fn scroll_down(&mut self, n: u16, visible_rows: u16) {
-        let max = self.content_rows.saturating_sub(visible_rows);
-        self.scroll_offset = (self.scroll_offset + n).min(max);
+    pub fn current_page(&self) -> usize {
+        self.current_page
+    }
+
+    pub fn total_pages(&self) -> usize {
+        self.total_pages
+    }
+
+    pub fn next_page(&mut self) {
+        if self.total_pages > 0 && self.current_page < self.total_pages - 1 {
+            self.current_page += 1;
+        }
+    }
+
+    pub fn prev_page(&mut self) {
+        self.current_page = self.current_page.saturating_sub(1);
     }
 }
 
@@ -236,94 +347,6 @@ fn process_fallback(parser: &mut vt100::Parser, content: &str, estimated_rows: u
     fallback_output
         .extend_from_slice(b"\n\x1b[38;5;242mInstall 'glow' for markdown rendering\x1b[0m\n");
     parser.process(&fallback_output);
-}
-
-pub struct ScrollablePseudoTerminal<'a> {
-    screen: &'a vt100::Screen,
-    scroll_offset: u16,
-    block: Option<Block<'a>>,
-    theme_bg: Option<Color>,
-}
-
-impl<'a> ScrollablePseudoTerminal<'a> {
-    pub fn new(screen: &'a vt100::Screen) -> Self {
-        Self {
-            screen,
-            scroll_offset: 0,
-            block: None,
-            theme_bg: None,
-        }
-    }
-
-    pub fn scroll_offset(mut self, offset: u16) -> Self {
-        self.scroll_offset = offset;
-        self
-    }
-
-    pub fn block(mut self, block: Block<'a>) -> Self {
-        self.block = Some(block);
-        self
-    }
-
-    pub fn theme_bg(mut self, bg: Option<Color>) -> Self {
-        self.theme_bg = bg;
-        self
-    }
-}
-
-impl Widget for ScrollablePseudoTerminal<'_> {
-    fn render(self, area: Rect, buf: &mut Buffer) {
-        let inner = match &self.block {
-            Some(b) => {
-                let inner = b.inner(area);
-                b.clone().render(area, buf);
-                inner
-            }
-            None => area,
-        };
-
-        let cols = inner.width;
-        let rows = inner.height;
-        let col_start = inner.x;
-        let row_start = inner.y;
-
-        for row in 0..rows {
-            let screen_row = row + self.scroll_offset;
-            for col in 0..cols {
-                let buf_col = col + col_start;
-                let buf_row = row + row_start;
-                if let Some(screen_cell) = self.screen.cell(screen_row, col) {
-                    if screen_cell.has_contents() {
-                        let cell = &mut buf[(buf_col, buf_row)];
-                        cell.set_symbol(&screen_cell.contents());
-                    }
-                    let mut style = Style::reset();
-                    if screen_cell.bold() {
-                        style = style.add_modifier(Modifier::BOLD);
-                    }
-                    if screen_cell.italic() {
-                        style = style.add_modifier(Modifier::ITALIC);
-                    }
-                    if screen_cell.underline() {
-                        style = style.add_modifier(Modifier::UNDERLINED);
-                    }
-                    if screen_cell.inverse() {
-                        style = style.add_modifier(Modifier::REVERSED);
-                    }
-
-                    let fg = convert_color(screen_cell.fgcolor());
-                    let bg = match screen_cell.bgcolor() {
-                        vt100::Color::Default => self.theme_bg.unwrap_or(Color::Reset),
-                        other => convert_color(other),
-                    };
-                    style = style.fg(fg).bg(bg);
-
-                    let cell = &mut buf[(buf_col, buf_row)];
-                    cell.set_style(style);
-                }
-            }
-        }
-    }
 }
 
 fn convert_color(value: vt100::Color) -> Color {
