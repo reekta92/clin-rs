@@ -27,8 +27,8 @@ impl Default for Viewport {
 
 impl Viewport {
     pub fn x_bounds(&self, aspect: f64) -> [f64; 2] {
-        // Derived to keep circular aspects: half_w / half_h = aspect * CELL_ASPECT
-        // where half_h = 100 * CELL_ASPECT / zoom.
+        
+        
         let half_w = (100.0 * CELL_ASPECT * CELL_ASPECT * aspect) / self.zoom;
         [self.center_x - half_w, self.center_x + half_w]
     }

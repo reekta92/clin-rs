@@ -34,9 +34,9 @@ fn split_lock_spans(text: &str, theme: &AppThemeColors) -> Vec<Span<'static>> {
     result
 }
 
-/// Style a result line with colored tags [..] and count (..) spans
+
 fn styled_result_line(s: &str, theme: &AppThemeColors) -> Line<'static> {
-    // Check for tag section " [tags]" at end of line (before optional "  (count)")
+    
     if let Some(tag_start) = s.find(" [") {
         let after_tag = &s[tag_start..];
         if let Some(close_bracket) = after_tag.find(']') {
@@ -72,9 +72,9 @@ fn styled_result_line(s: &str, theme: &AppThemeColors) -> Line<'static> {
             }
         }
     }
-    // Fallback: no tags but check for standalone count " (digits)" at end of line
+    
     if let Some(count_start) = s.find(" (") {
-        let count_part = &s[count_start + 1..]; // skip " "
+        let count_part = &s[count_start + 1..]; 
         if count_part.starts_with('(')
             && count_part.len() > 2
             && count_part.ends_with(')')
@@ -1374,7 +1374,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 matches!(item, crate::app::VisualItem::Note { is_clin: true, .. })
             });
 
-        // Only show preview content if it matches the current selection
+        
         let content_is_current = app.list.preview_content_index == Some(app.list.visual_index);
         let content = if content_is_current {
             app.list.preview_content.as_ref()
@@ -1465,7 +1465,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             ])
             .split(popup_area);
 
-        // Combined input + suggestions section
+        
         let input_border = if popup.focus == crate::popups::TagPopupFocus::Input {
             Style::default().fg(app.app_theme.heading)
         } else {
@@ -1509,11 +1509,11 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                         .style(app.app_theme.bg_style()),
                 )
                 .highlight_style(Style::default());
-            // suggestions use manual highlighting, not ListState
+            
             frame.render_widget(suggestions_list, input_chunks[1]);
         }
 
-        // All existing tags as a selectable list
+        
         let all_tags_border = if popup.focus == crate::popups::TagPopupFocus::AllTagsList {
             Style::default().fg(app.app_theme.heading)
         } else {
@@ -1838,7 +1838,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             .constraints(constraints)
             .split(popup_area);
 
-        // Render filter badge if any filter active
+        
         if has_filter {
             let mut spans: Vec<Span<'static>> = vec![Span::raw("  ")];
             let mut first = true;
@@ -1936,7 +1936,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         };
 
         let (all_items, results_title) = if has_grep {
-            // Grep tree view
+            
             let mut visible: Vec<(usize, String)> = Vec::new();
             let mut i = 0;
             while i < popup.grep_results.len() {
@@ -1995,7 +1995,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             .highlight_symbol("  ");
         let mut list_state = ListState::default();
         if results_focused && has_grep {
-            // Map grep_selected (real index) to visible position
+            
             let mut vis_pos = 0;
             let mut i = 0;
             while i < popup.grep_results.len() && i <= popup.grep_selected {

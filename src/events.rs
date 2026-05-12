@@ -79,7 +79,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     }
 
     if let Some(mut popup) = app.popups.tag.take() {
-        // When confirm dialog is active, handle confirm keys here (confirm renders on top)
+        
         if app.popups.confirm.is_some() {
             app.popups.tag = Some(popup);
             let confirm_key = key;
@@ -101,7 +101,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
             return false;
         }
 
-        // Ctrl+S: bulk assign tag to selected notes
+        
         if key.code == KeyCode::Char('s') && key.modifiers.contains(KeyModifiers::CONTROL) {
             let tag_text = popup.input.lines().join("");
             let tag = tag_text
@@ -131,7 +131,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
             }
             KeyCode::Tab => {
                 if popup.focus == crate::popups::TagPopupFocus::Input {
-                    // In Input mode: accept suggestion if available, else switch to AllTagsList
+                    
                     if popup.suggestions.is_empty() {
                         popup.focus = crate::popups::TagPopupFocus::AllTagsList;
                     } else {
@@ -216,7 +216,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         let has_grep = !popup.grep_results.is_empty();
         let has_results = has_title || has_grep;
 
-        // Helper: find next/prev visible grep index (skipping collapsed children)
+        
         let grep_prev_visible = |p: &crate::popups::SearchPopup, cur: usize| -> usize {
             if cur == 0 { return 0; }
             let mut i = cur - 1;
@@ -281,7 +281,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 } else if has_grep
                     && popup.grep_is_header.get(popup.grep_selected).copied().unwrap_or(false)
                 {
-                    // Toggle collapse
+                    
                     if popup.grep_expanded.contains(&popup.grep_selected) {
                         popup.grep_expanded.remove(&popup.grep_selected);
                     } else {
@@ -659,7 +659,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         .keybinds
         .matches_list(ListAction::ToggleSelectMode, &key)
     {
-        // Don't toggle if in TAG MODE (tag_to_assign is set)
+        
         if app.list.tag_to_assign.is_some() {
             return false;
         }
@@ -1069,8 +1069,8 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         return;
     }
 
-    // Popup mouse handling in list mode.
-    // Must consume mouse before base list handling to avoid click-through.
+    
+    
     if let Some(popup) = &mut app.popups.template {
         let popup_area = crate::ui::centered_rect(
             crate::constants::NOTES_POPUP_LARGE_W_PCT,

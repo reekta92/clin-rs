@@ -27,10 +27,10 @@ use std::collections::{HashMap, HashSet};
 const VIRTUAL_PINNED_PATH: &str = "__clin_virtual__/pinned";
 pub const VIRTUAL_PINNED_LABEL: &str = "Pinned";
 
-/// Parsed search query with optional filters.
-/// `f:folder` restricts to folder; `p:` restricts to pinned;
-/// `t:tag1,tag2` restricts to notes matching any listed tag;
-/// `g:text` enables grep (content) mode with search term.
+
+
+
+
 #[derive(Debug, Clone, Default)]
 pub struct SearchQuery {
     pub text: String,
@@ -41,22 +41,22 @@ pub struct SearchQuery {
     pub grep_text: String,
 }
 
-/// Parse search query for `f:folder`, `p:`, `t:tag1,tag2`, `g:text` filters.
-/// Filters must be space-separated, e.g. "text f:inbox p: g:needle t:urgent,work".
-/// A filter at the start of the query works too (no leading space needed).
-/// Find all `<prefix>` tokens in `s` and return their positions (sorted left-to-right).
+
+
+
+
 fn find_filter_tokens(s: &str) -> Vec<(usize, &'static str)> {
     let spaced = [" f:", " g:", " p:", " t:"];
     let bare = ["f:", "g:", "p:", "t:"];
     let mut tokens: Vec<(usize, &'static str)> = Vec::new();
 
-    // Helper: check if position is escaped by \e\ (backslash-e-backslash before prefix)
+    
     let is_escaped = |s: &str, pos: usize, _prefix_len: usize| -> bool {
         if pos < 3 { return false; }
         &s[pos - 3..pos] == "\\e\\"
     };
 
-    // Mid-string filters (preceded by space)
+    
     for &prefix in &spaced {
         let mut start = 0;
         while let Some(pos) = s[start..].find(prefix) {
@@ -67,10 +67,10 @@ fn find_filter_tokens(s: &str) -> Vec<(usize, &'static str)> {
             start = abs_pos + prefix.len();
         }
     }
-    // Start-of-string filters (no leading space)
+    
     for &prefix in &bare {
         if s.starts_with(prefix) && !tokens.iter().any(|&(p, _)| p == 0) {
-            // Only add if not escaped
+            
             if !is_escaped(s, 0, prefix.len()) {
                 tokens.push((0, prefix));
             }
@@ -80,7 +80,7 @@ fn find_filter_tokens(s: &str) -> Vec<(usize, &'static str)> {
     tokens
 }
 
-/// Strip \e\ escape sequences only when followed by f: g: p: t: or a space then one of those
+
 fn strip_escape_filter(s: &str) -> String {
     if !s.contains("\\e\\") {
         return s.to_string();
@@ -90,24 +90,24 @@ fn strip_escape_filter(s: &str) -> String {
     let mut chars = s.chars().collect::<Vec<_>>().into_iter().peekable();
     while let Some(c) = chars.next() {
         if c == '\\' && chars.peek() == Some(&'e') {
-            chars.next(); // consume 'e'
+            chars.next(); 
             if chars.peek() == Some(&'\\') {
-                chars.next(); // consume second \
-                // Check what follows: is it f: g: p: t: (letter then colon)?
+                chars.next(); 
+                
                 let next = chars.peek().copied();
                 let after = {
                     let mut it = chars.clone();
-                    it.next(); // skip the letter
-                    it.next() // the char after letter
+                    it.next(); 
+                    it.next() 
                 };
                 let is_filter = next.zip(after).map_or(false, |(ch, colon)| {
                     filter_chars.contains(&ch) && colon == ':'
                 });
                 if is_filter {
-                    // \e\ before filter prefix — consume escape, keep filter text literal
+                    
                     continue;
                 }
-                // Not a filter escape — keep as literal
+                
                 out.push('\\');
                 out.push('e');
                 out.push('\\');
@@ -142,7 +142,7 @@ pub fn parse_search_query(query: &str) -> SearchQuery {
         };
     }
 
-    // Pre-compute value end for each token (start of next token, or end of string)
+    
     let mut ranges: Vec<(usize, usize)> = Vec::with_capacity(tokens.len());
 
     for i in 0..tokens.len() {
@@ -180,7 +180,7 @@ pub fn parse_search_query(query: &str) -> SearchQuery {
         }
     }
 
-    // Remove filter segments from text (right-to-left to preserve indices)
+    
     let mut clean = text.clone();
     for (start, end) in ranges.into_iter().rev() {
         clean.replace_range(start..end, "");
@@ -371,7 +371,7 @@ impl App {
         }
 
         summaries.sort_by(|a, b| {
-            // Sort pinned items first only if pinned_on_top is enabled
+            
             if self.pinned_on_top {
                 let pin_cmp = b.pinned.cmp(&a.pinned);
                 if pin_cmp != std::cmp::Ordering::Equal {
@@ -419,7 +419,7 @@ impl App {
             }
         }
 
-        // Pinned folder first
+        
         visual.push(VisualItem::Folder {
             path: VIRTUAL_PINNED_PATH.to_string(),
             name: VIRTUAL_PINNED_LABEL.to_string(),
@@ -442,7 +442,7 @@ impl App {
             }
         }
 
-        // Vault folder second
+        
         visual.push(VisualItem::Folder {
             path: String::new(),
             name: String::from("Vault"),
@@ -2148,7 +2148,7 @@ template = """
     }
 
     pub fn begin_delete_tag_with_name(&mut self, tag: String) {
-        // Count affected notes
+        
         let count = self
             .storage
             .list_note_ids()
@@ -2798,11 +2798,11 @@ template = """
         let mut grep_is_header = Vec::new();
 
         for (note_idx, note) in self.notes.iter().enumerate() {
-            // Apply pinned filter
+            
             if parsed.pinned_only && !note.pinned {
                 continue;
             }
-            // Apply folder filter if present
+            
             if let Some(ref folder) = parsed.folder_filter {
                 let matches_folder = if folder.is_empty() {
                     note.folder.is_empty()
@@ -2814,7 +2814,7 @@ template = """
                     continue;
                 }
             }
-            // Apply tag filter if present (match any listed tag)
+            
             if let Some(ref tags) = parsed.tag_filter
                 && !tags.is_empty()
             {
@@ -2826,12 +2826,12 @@ template = """
                 }
             }
 
-            // Check title match
+            
             let matched_title = title_query.is_empty()
                 || note.title.to_lowercase().contains(&title_query)
                 || note.id.to_lowercase().contains(&title_query);
 
-            // Check grep match (load content)
+            
             let content_opt = if !grep_query.is_empty() {
                 self.storage.load_note(&note.id).ok()
             } else {
@@ -2861,18 +2861,18 @@ template = """
                 )
             };
 
-            // Title results: always computed when title_query is non-empty
+            
             if !title_query.is_empty() && matched_title {
                 title_results.push(format!("{}{}{}", lock_prefix, label, tags_str));
                 title_result_indices.push(note_idx);
             }
 
-            // Collect grep matches per file for tree grouping
+            
             if !grep_query.is_empty() && matched_grep && matched_title {
                 if let Some(note_data) = content_opt
                     .filter(|n| n.content.to_lowercase().contains(&grep_query))
                 {
-                    // Push header
+                    
                     let match_count = note_data
                         .content
                         .lines()
@@ -2882,7 +2882,7 @@ template = """
                     grep_result_indices.push(note_idx);
                     grep_is_header.push(true);
 
-                    // Push each matching line as child
+                    
                     for (line_no, line) in note_data
                         .content
                         .lines()
@@ -2903,7 +2903,7 @@ template = """
                 }
             }
 
-            // When only filters active (no title, no grep), show all filtered notes
+            
             if title_query.is_empty()
                 && grep_query.is_empty()
                 && (parsed.folder_filter.is_some()
@@ -3230,7 +3230,7 @@ template = """
         if !self.list.preview_enabled {
             return;
         }
-        // Mark current content as stale — will be refreshed by update_preview
+        
         self.list.preview_content_index = None;
         self.list.last_selection_change = Some(Instant::now());
         self.list.pending_preview_update = true;
@@ -3262,8 +3262,8 @@ template = """
             return;
         };
 
-        // When preview_encryption is on, clear content for encrypted notes
-        // to avoid stale encrypted content flashing when moving to another note
+        
+        
         if self.preview_encryption && is_clin {
             self.list.preview_content = None;
             self.list.preview_content_index = Some(self.list.visual_index);

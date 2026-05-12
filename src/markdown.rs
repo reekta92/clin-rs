@@ -66,8 +66,8 @@ impl MarkdownRenderer {
         let estimated_rows = if content.is_empty() {
             1
         } else {
-            // Generate a very tall virtual terminal to prevent any content from ever scrolling off.
-            // Multiply source line count by 10 to safely handle extreme word wrapping and formatting expansions.
+            
+            
             (((content.lines().count() as u32 * 10) + 300).min(20000) as u16).clamp(300, 20000)
         };
 
@@ -144,8 +144,8 @@ impl MarkdownRenderer {
         let mut all_rows: Vec<Vec<(char, Style)>> = Vec::new();
         let mut last_non_empty_row = 0usize;
 
-        // Optimize: Scan backwards to find the very last row containing actual non-whitespace text.
-        // This allows us to skip allocating vectors and copying styles for thousands of empty padded rows.
+        
+        
         let mut effective_rows = 0u16;
         'scan: for r in (0..self.content_rows).rev() {
             for c in 0..cols {
@@ -157,7 +157,7 @@ impl MarkdownRenderer {
                 }
             }
         }
-        // Fallback if empty
+        
         if effective_rows == 0 && self.content_rows > 0 {
             effective_rows = 1;
         }

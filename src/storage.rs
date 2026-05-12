@@ -234,7 +234,7 @@ impl Storage {
 
         self.ensure_key()?;
 
-        // Read original extension from frontmatter before loading
+        
         let old_path = self.note_path(id);
         let clin_content = fs::read(&old_path).context("failed to read encrypted note")?;
         let orig_ext = extract_frontmatter_from_bytes(&clin_content)
@@ -265,7 +265,7 @@ impl Storage {
             fs::create_dir_all(parent).unwrap_or_default();
         }
 
-        // For .canvas/.draw files, write raw JSON without frontmatter
+        
         let is_raw = orig_ext == "canvas" || orig_ext == "draw";
         if is_raw {
             fs::write(&target_path, &note.content).context("failed to write decrypted note")?;
@@ -587,7 +587,7 @@ impl Storage {
 
             fs::write(target_path, final_output).context("failed to write note")?;
         } else if target_ext == "canvas" || target_ext == "draw" {
-            // Write raw JSON without frontmatter
+            
             fs::write(target_path, &note.content).context("failed to write note")?;
         } else {
             let final_content = frontmatter::serialize(&fm, &note.content);

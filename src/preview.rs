@@ -7,15 +7,15 @@ use ratatui::Frame;
 use crate::app_theme::AppThemeColors;
 use crate::list_view::PreviewContent;
 
-/// Draw a preview pane with shared rendering logic.
-///
-/// Handles all 5 states:
-/// 1. `hide_encrypted` → lock icon placeholder
-/// 2. Markdown pending → "Rendering preview..."
-/// 3. Markdown empty → "(empty note)"
-/// 4. Markdown with pages → rendered snapshot + page indicator
-/// 5. CanvasGrid / DrawGrid → rendered snapshot
-/// 6. `None` → "Select a note to preview"
+
+
+
+
+
+
+
+
+
 pub fn draw_preview_pane(
     frame: &mut Frame,
     rect: Rect,

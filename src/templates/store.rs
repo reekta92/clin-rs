@@ -1,4 +1,4 @@
-/// Sanitize a template name into a safe filename.
+
 pub fn sanitize_filename(name: &str) -> String {
     let mut result = String::new();
     for c in name.chars() {
