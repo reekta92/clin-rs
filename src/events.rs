@@ -1336,6 +1336,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                 app.open_selected();
             } else {
                 app.list.visual_index = clicked_visual_index;
+                app.request_preview_update();
             }
         }
     }
