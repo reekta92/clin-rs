@@ -372,7 +372,7 @@ fn handle_event(
                     let (constraints, main_idx) = match config.preview_position {
                         crate::config::PreviewPosition::Left => (
                             [
-                                ratatui::layout::Constraint::Length(82),
+                                ratatui::layout::Constraint::Ratio(43, 100),
                                 ratatui::layout::Constraint::Length(1),
                                 ratatui::layout::Constraint::Min(0),
                             ],
@@ -382,7 +382,7 @@ fn handle_event(
                             [
                                 ratatui::layout::Constraint::Min(0),
                                 ratatui::layout::Constraint::Length(1),
-                                ratatui::layout::Constraint::Length(82),
+                                ratatui::layout::Constraint::Ratio(43, 100),
                             ],
                             0,
                         ),

@@ -1,7 +1,6 @@
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use ratatui::widgets::{Block, Borders, Padding, Paragraph};
-use ratatui::style::{Color, Modifier, Style};
-use ratatui::text::{Line, Span};
+use ratatui::style::Color;
+
 use ratatui::Frame;
 
 use crate::config::ClinConfig;
@@ -19,12 +18,12 @@ pub fn draw_ui(frame: &mut Frame, state: &GrafAppState, config: &ClinConfig, _ke
     let (graph_area, preview_area) = if state.preview_enabled {
         let (constraints, main_idx, p_idx) = match config.preview_position {
             crate::config::PreviewPosition::Left => (
-                [Constraint::Length(82), Constraint::Length(1), Constraint::Min(0)],
+                [Constraint::Ratio(43, 100), Constraint::Length(1), Constraint::Min(0)],
                 2,
                 0,
             ),
             crate::config::PreviewPosition::Right => (
-                [Constraint::Min(0), Constraint::Length(1), Constraint::Length(82)],
+                [Constraint::Min(0), Constraint::Length(1), Constraint::Ratio(43, 100)],
                 0,
                 2,
             ),
@@ -279,119 +278,14 @@ fn draw_preview(
             .as_ref()
             .is_some_and(|id| id.ends_with(".clin"));
 
-    if hide_encrypted {
-        let lock_lines = vec![
-            Line::from(vec![
-                Span::raw("  "),
-                Span::styled(
-                    "\u{f023}  Encrypted Note",
-                    Style::default()
-                        .fg(state.app_theme.destructive)
-                        .add_modifier(Modifier::BOLD),
-                ),
-            ]),
-            Line::from(vec![
-                Span::raw("  "),
-                Span::styled(
-                    "Content hidden — decrypt to preview",
-                    Style::default().fg(state.app_theme.muted),
-                ),
-            ]),
-        ];
-        let lock_para = Paragraph::new(lock_lines)
-            .style(state.app_theme.preview_bg_style())
-            .block(
-                Block::default()
-                    .style(state.app_theme.preview_bg_style())
-                    .borders(Borders::NONE)
-                    .padding(Padding::new(2, 2, 1, 1)),
-            );
-        frame.render_widget(lock_para, preview_rect);
-    } else {
-        match &state.preview_content {
-            Some(crate::list_view::PreviewContent::Markdown(renderer))
-                if !renderer.is_pending() && renderer.pages_built() =>
-            {
-                if renderer.is_content_empty() {
-                    let placeholder = Paragraph::new(Line::from(vec![Span::styled(
-                        "(empty note)",
-                        Style::default().fg(state.app_theme.muted),
-                    )]))
-                    .style(state.app_theme.preview_bg_style())
-                    .block(
-                        Block::default()
-                            .style(state.app_theme.preview_bg_style())
-                            .borders(Borders::NONE)
-                            .padding(Padding::new(2, 2, 1, 1)),
-                    );
-                    frame.render_widget(placeholder, preview_rect);
-                } else if let Some(page_grid) = renderer.current_page_grid() {
-                    let snapshot = crate::snapshot::RenderedSnapshot::new(page_grid)
-                        .block(
-                            Block::default()
-                                .style(state.app_theme.preview_bg_style())
-                                .borders(Borders::NONE)
-                                .padding(Padding::new(2, 2, 1, 1)),
-                        );
-                    frame.render_widget(snapshot, preview_rect);
-                    if renderer.total_pages() > 1 {
-                        let indicator = format!(
-                            " {}/{} ",
-                            renderer.current_page() + 1,
-                            renderer.total_pages()
-                        );
-                        let ind_width = indicator.len() as u16;
-                        let ind_x = preview_rect.right().saturating_sub(ind_width + 2);
-                        let ind_y = preview_rect.bottom().saturating_sub(1);
-                        if ind_x >= preview_rect.x && ind_y >= preview_rect.y {
-                            let ind_area = Rect::new(ind_x, ind_y, ind_width, 1);
-                            let ind_widget = Paragraph::new(Span::styled(
-                                indicator,
-                                Style::default()
-                                    .fg(state.app_theme.muted)
-                                    .add_modifier(Modifier::DIM),
-                            ));
-                            frame.render_widget(ind_widget, ind_area);
-                        }
-                    }
-                }
-            }
-            Some(crate::list_view::PreviewContent::Markdown(_)) => {
-                let loading = Paragraph::new("Rendering preview...")
-                    .style(Style::default().fg(state.app_theme.muted))
-                    .block(
-                        Block::default()
-                            .style(state.app_theme.preview_bg_style())
-                            .borders(Borders::NONE)
-                            .padding(Padding::new(2, 2, 1, 1)),
-                    );
-                frame.render_widget(loading, preview_rect);
-            }
-            Some(
-                crate::list_view::PreviewContent::CanvasGrid(grid)
-                | crate::list_view::PreviewContent::DrawGrid(grid),
-            ) => {
-                let snapshot = crate::snapshot::RenderedSnapshot::new(grid).block(
-                    Block::default()
-                        .style(state.app_theme.preview_bg_style())
-                        .borders(Borders::NONE)
-                        .padding(Padding::new(2, 2, 1, 1)),
-                );
-                frame.render_widget(snapshot, preview_rect);
-            }
-            None => {
-                let placeholder = Paragraph::new("Select a note to preview")
-                    .style(state.app_theme.preview_bg_style())
-                    .block(
-                        Block::default()
-                            .style(state.app_theme.preview_bg_style())
-                            .borders(Borders::NONE)
-                            .padding(Padding::new(2, 2, 1, 1)),
-                    );
-                frame.render_widget(placeholder, preview_rect);
-            }
-        }
-    }
+    crate::preview::draw_preview_pane(
+        frame,
+        preview_rect,
+        &state.app_theme,
+        state.preview_content.as_ref(),
+        hide_encrypted,
+        0,
+    );
 }
 
 fn draw_dim_vline(frame: &mut Frame, area: Rect, color: Color) {

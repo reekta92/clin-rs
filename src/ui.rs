@@ -5,7 +5,7 @@ use crate::app_theme::AppThemeColors;
 use crate::constants::*;
 use crate::events::get_title_text;
 use crate::keybinds::*;
-use crate::list_view::PreviewContent;
+
 use anyhow::{Context, Result};
 use ratatui::{prelude::*, widgets::*};
 use ratatui_textarea::*;
@@ -1129,12 +1129,12 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     let (list_area, preview_area) = if app.list.preview_enabled {
         let (constraints, list_idx, p_idx) = match app.preview_position {
             crate::config::PreviewPosition::Left => (
-                [Constraint::Length(82), Constraint::Length(1), Constraint::Min(0)],
+                [Constraint::Ratio(43, 100), Constraint::Length(1), Constraint::Min(0)],
                 2,
                 0,
             ),
             crate::config::PreviewPosition::Right => (
-                [Constraint::Min(0), Constraint::Length(1), Constraint::Length(82)],
+                [Constraint::Min(0), Constraint::Length(1), Constraint::Ratio(43, 100)],
                 0,
                 2,
             ),
@@ -1369,142 +1369,28 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     }
 
     if let Some(preview_rect) = preview_area {
-        // Check if selected note is encrypted and preview_encryption is enabled
         let hide_encrypted = app.preview_encryption
             && app.list.visual_list.get(app.list.visual_index).is_some_and(|item| {
                 matches!(item, crate::app::VisualItem::Note { is_clin: true, .. })
             });
 
-        if hide_encrypted {
-            // Show lock icon instead of preview content
-            let lock_lines = vec![
-                Line::from(vec![
-                    Span::raw("  "),
-                    Span::styled(
-                        "\u{f023}  Encrypted Note",
-                        Style::default()
-                            .fg(app.app_theme.destructive)
-                            .add_modifier(Modifier::BOLD),
-                    ),
-                ]),
-                Line::from(vec![
-                    Span::raw("  "),
-                    Span::styled(
-                        "Content hidden — decrypt to preview",
-                        Style::default().fg(app.app_theme.muted),
-                    ),
-                ]),
-            ];
-            let lock_para = Paragraph::new(lock_lines)
-                .style(app.app_theme.preview_bg_style())
-                .block(
-                    Block::default()
-                        .style(app.app_theme.preview_bg_style())
-                        .borders(Borders::NONE)
-                        .padding(Padding::new(2, 2, 1, 1)),
-                );
-            frame.render_widget(lock_para, preview_rect);
+        // Only show preview content if it matches the current selection
+        let content_is_current = app.list.preview_content_index == Some(app.list.visual_index);
+        let content = if content_is_current {
+            app.list.preview_content.as_ref()
         } else {
-            // Only show preview content if it matches the current selection
-            let content_is_current = app.list.preview_content_index == Some(app.list.visual_index);
+            None
+        };
 
-            if !content_is_current {
-                let placeholder = Paragraph::new("Select a note to preview")
-                    .style(app.app_theme.preview_bg_style())
-                    .block(
-                        Block::default()
-                            .style(app.app_theme.preview_bg_style())
-                            .borders(Borders::NONE)
-                            .padding(Padding::new(2, 2, 1, 1)),
-                    );
-                frame.render_widget(placeholder, preview_rect);
-            } else {
-            match &app.list.preview_content {
-                Some(PreviewContent::Markdown(renderer)) if !renderer.is_pending() && renderer.pages_built() => {
-                    if renderer.is_content_empty() {
-                        let placeholder = Paragraph::new(Line::from(vec![
-                            Span::styled(
-                                "(empty note)",
-                                Style::default()
-                                    .fg(app.app_theme.muted),
-                            ),
-                        ]))
-                        .style(app.app_theme.preview_bg_style())
-                        .block(
-                            Block::default()
-                                .style(app.app_theme.preview_bg_style())
-                                .borders(Borders::NONE)
-                                .padding(Padding::new(2, 2, 1, 1)),
-                        );
-                        frame.render_widget(placeholder, preview_rect);
-                    } else if let Some(page_grid) = renderer.current_page_grid() {
-                        let snapshot = crate::snapshot::RenderedSnapshot::new(page_grid)
-                            .block(
-                                Block::default()
-                                    .style(app.app_theme.preview_bg_style())
-                                    .borders(Borders::NONE)
-                                    .padding(Padding::new(2, 2, 1, 1)),
-                            );
-                        frame.render_widget(snapshot, preview_rect);
-                        if renderer.total_pages() > 1 {
-                            let indicator = format!(
-                                " {}/{} ",
-                                renderer.current_page() + 1,
-                                renderer.total_pages()
-                            );
-                            let ind_width = indicator.len() as u16;
-                            let ind_x = preview_rect.right().saturating_sub(ind_width + 2);
-                            let ind_y = preview_rect.bottom().saturating_sub(1);
-                            if ind_x >= preview_rect.x && ind_y >= preview_rect.y {
-                                let ind_area = Rect::new(ind_x, ind_y, ind_width, 1);
-                                let ind_widget = Paragraph::new(Span::styled(
-                                    indicator,
-                                    Style::default()
-                                        .fg(app.app_theme.muted)
-                                        .add_modifier(Modifier::DIM),
-                                ));
-                                frame.render_widget(ind_widget, ind_area);
-                            }
-                        }
-                    }
-                }
-                Some(PreviewContent::Markdown(_)) => {
-                    let loading = Paragraph::new("Rendering preview...")
-                        .style(Style::default().fg(app.app_theme.muted))
-                        .block(
-                            Block::default()
-                                .style(app.app_theme.preview_bg_style())
-                                .borders(Borders::NONE)
-                                .padding(Padding::new(2, 2, 1, 1)),
-                        );
-                    frame.render_widget(loading, preview_rect);
-                }
-                Some(PreviewContent::CanvasGrid(grid) | PreviewContent::DrawGrid(grid)) => {
-                    let snapshot = crate::snapshot::RenderedSnapshot::new(grid)
-                        .scroll_offset(app.list.snapshot_scroll_offset)
-                        .block(
-                            Block::default()
-                                .style(app.app_theme.preview_bg_style())
-                                .borders(Borders::NONE)
-                                .padding(Padding::new(2, 2, 1, 1)),
-                        );
-                    frame.render_widget(snapshot, preview_rect);
-                }
-                None => {
-                    let placeholder = Paragraph::new("Select a note to preview")
-                        .style(app.app_theme.preview_bg_style())
-                        .block(
-                            Block::default()
-                                .style(app.app_theme.preview_bg_style())
-                                .borders(Borders::NONE)
-                                .padding(Padding::new(2, 2, 1, 1)),
-                        );
-                    frame.render_widget(placeholder, preview_rect);
-                }
-            } // match
-            } // content_is_current else
-        } // hide_encrypted else
-    } // preview_rect if let
+        crate::preview::draw_preview_pane(
+            frame,
+            preview_rect,
+            &app.app_theme,
+            content,
+            hide_encrypted,
+            app.list.snapshot_scroll_offset,
+        );
+    }
 
     draw_hint_line(
         frame,
@@ -1518,10 +1404,10 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     if app.list.preview_enabled {
         let constraints = match app.preview_position {
             crate::config::PreviewPosition::Left => {
-                [Constraint::Length(82), Constraint::Length(1), Constraint::Min(0)]
+                [Constraint::Ratio(43, 100), Constraint::Length(1), Constraint::Min(0)]
             }
             crate::config::PreviewPosition::Right => {
-                [Constraint::Min(0), Constraint::Length(1), Constraint::Length(82)]
+                [Constraint::Min(0), Constraint::Length(1), Constraint::Ratio(43, 100)]
             }
         };
         let full_cols = Layout::default()
@@ -2486,12 +2372,12 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     let (edit_area, preview_area_rect, splitter_area) = if app.editor.editor_preview_enabled {
         let (constraints, main_idx, p_idx) = match app.preview_position {
             crate::config::PreviewPosition::Left => (
-                [Constraint::Length(82), Constraint::Length(1), Constraint::Min(0)],
+                [Constraint::Ratio(43, 100), Constraint::Length(1), Constraint::Min(0)],
                 2,
                 0,
             ),
             crate::config::PreviewPosition::Right => (
-                [Constraint::Min(0), Constraint::Length(1), Constraint::Length(82)],
+                [Constraint::Min(0), Constraint::Length(1), Constraint::Ratio(43, 100)],
                 0,
                 2,
             ),

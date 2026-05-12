@@ -15,6 +15,7 @@ pub(crate) mod markdown;
 pub(crate) mod migration;
 pub(crate) mod palette;
 pub(crate) mod pinstar;
+pub(crate) mod preview;
 pub(crate) mod popups;
 pub(crate) mod sanitize;
 pub(crate) mod snapshot;

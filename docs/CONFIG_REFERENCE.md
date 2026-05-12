@@ -14,7 +14,8 @@ Full reference of all configuration options for clin-rs.
 | `previous_storage_path` | `PathBuf` | — | Previous storage path for migration (cleared after migration) |
 | `external_editor` | `String` | — | External editor command (e.g. `"nvim"`, `"code"`) |
 | `external_editor_enabled` | `bool` | `false` | Enable external editor mode |
-| `preview_enabled` | `bool` | `true` | Show the preview pane by default |
+| `preview_enabled` | `bool` | `true` | Show the preview pane in notes list by default |
+| `graph_preview_enabled` | `bool` | `false` | Show the preview pane in graph view by default |
 | `editor_preview_enabled` | `bool` | `false` | Show markdown preview panel in editor by default |
 | `markdown_preview_enabled` | `bool` | `false` | *(deprecated — use `editor_preview_enabled`)* |
 | `show_line_numbers` | `bool` | `true` | Show line numbers in the editor |
