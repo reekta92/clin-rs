@@ -14,7 +14,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, Paragraph, Wrap, Padding},
+    widgets::{Block, Borders, Paragraph, Wrap, Padding},
     Frame,
 };
 use crate::backup::state::{BackupInputMode, BackupState, SettingsField};
@@ -275,71 +275,47 @@ fn draw_diff_pane(frame: &mut Frame, area: Rect, state: &BackupState) {
 
 fn draw_commit_popup(frame: &mut Frame, area: Rect, state: &BackupState) {
     let theme = &state.theme;
-    let popup_area = crate::ui::centered_rect(60, 15, area);
-    frame.render_widget(Clear, popup_area);
-    
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Min(0),    // Body (Banner + TextArea)
-            Constraint::Length(1), // Footer
-        ])
-        .split(popup_area);
+    let content = crate::ui::draw_popup_frame(
+        frame,
+        area,
+        "COMMIT",
+        60,
+        15,
+        "Enter confirm · Esc cancel",
+        theme,
+    );
 
-    let body_area = chunks[0];
-    let footer_area = chunks[1];
-
-    // Outer block with border around body only
-    frame.render_widget(Block::default()
+    let block = Block::default()
         .style(theme.bg_style())
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(theme.border)), 
-        body_area
-    );
-    
-    // Banner goes inside body top line (draw_popup_banner uses y-1, so we pass y+1)
-    let banner_area = Rect { 
-        x: body_area.x,
-        y: body_area.y + 1, 
-        width: body_area.width,
-        height: 1 
-    };
-    crate::ui::draw_popup_banner(frame, banner_area, "COMMIT", theme);
-
-    // TextArea inside body borders, below banner
-    let text_area = Rect {
-        x: body_area.x + 1,
-        y: body_area.y + 1,
-        width: body_area.width.saturating_sub(2),
-        height: body_area.height.saturating_sub(2),
-    };
+        .border_style(Style::default().fg(theme.border));
+    let inner = block.inner(content);
+    frame.render_widget(block, content);
 
     let mut textarea = state.commit_textarea.clone();
-    textarea.set_block(Block::default()
-        .borders(Borders::NONE)
-        .padding(Padding::horizontal(1))
-        .style(theme.bg_style()));
+    textarea.set_block(
+        Block::default()
+            .borders(Borders::NONE)
+            .padding(Padding::horizontal(1))
+            .style(theme.bg_style()),
+    );
     textarea.set_cursor_style(Style::default().add_modifier(Modifier::REVERSED));
     textarea.set_cursor_line_style(Style::default());
-    
-    frame.render_widget(&textarea, text_area);
-    
-    crate::ui::draw_popup_footer(frame, footer_area, theme, "Enter confirm · Esc cancel");
+
+    frame.render_widget(&textarea, inner);
 }
 
 fn draw_settings_popup(frame: &mut Frame, area: Rect, state: &BackupState) {
     let theme = &state.theme;
-    let popup_area = crate::ui::centered_rect(50, 65, area);
-    frame.render_widget(Clear, popup_area);
-    frame.render_widget(Block::default().style(theme.bg_style()), popup_area);
-    crate::ui::draw_popup_banner(frame, popup_area, "BACKUP SETTINGS", theme);
-
-    let content_area = Rect {
-        x: popup_area.x,
-        y: popup_area.y + 1,
-        width: popup_area.width,
-        height: popup_area.height.saturating_sub(1),
-    };
+    let content = crate::ui::draw_popup_frame(
+        frame,
+        area,
+        "BACKUP SETTINGS",
+        50,
+        65,
+        "j/k navigate · Enter toggle/edit · Esc cancel",
+        theme,
+    );
 
     let chunks = Layout::default()
         .constraints([
@@ -357,9 +333,8 @@ fn draw_settings_popup(frame: &mut Frame, area: Rect, state: &BackupState) {
             Constraint::Length(1), // spacer
             Constraint::Length(3), // Save button
             Constraint::Min(0),    // filler
-            Constraint::Length(1), // footer
         ])
-        .split(content_area);
+        .split(content);
 
     let draw_heading = |frame: &mut Frame, area: Rect, text: &str| {
         let p = Paragraph::new(Span::styled(text, Style::default().fg(theme.muted)))
@@ -436,5 +411,4 @@ fn draw_settings_popup(frame: &mut Frame, area: Rect, state: &BackupState) {
         .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(save_border)).style(theme.bg_style()));
     frame.render_widget(save_button, chunks[12]);
 
-    crate::ui::draw_popup_footer(frame, chunks[14], theme, "j/k navigate · Enter toggle/edit · Esc cancel");
 }

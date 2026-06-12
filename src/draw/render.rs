@@ -95,13 +95,14 @@ pub fn draw_canvas(frame: &mut Frame, app: &DrawAppState) {
     );
 
     if app.show_shape_selector {
-        let popup_width = 20;
-        let popup_height = 7;
-        let popup_area = Rect::new(
-            (area.width.saturating_sub(popup_width)) / 2,
-            (area.height.saturating_sub(popup_height)) / 2,
-            popup_width,
-            popup_height,
+        let content = crate::ui::draw_popup_frame(
+            frame,
+            area,
+            "SELECT SHAPE",
+            30,
+            40,
+            "Enter select · Esc cancel",
+            &app.theme,
         );
 
         let shapes = [
@@ -128,29 +129,33 @@ pub fn draw_canvas(frame: &mut Frame, app: &DrawAppState) {
 
         let list = List::new(items).block(
             Block::bordered()
-                .title(" Select Shape ")
                 .border_style(Style::default().fg(app.theme.accent))
                 .style(app.theme.bg_style()),
         );
 
-        frame.render_widget(Clear, popup_area);
-        frame.render_widget(list, popup_area);
+        frame.render_widget(list, content);
     }
 
     if let Some((_, textarea)) = &app.text_editor {
-        let popup_area = Rect::new(area.width / 4, area.height / 2 - 2, area.width / 2, 3);
+        let content = crate::ui::draw_popup_frame(
+            frame,
+            area,
+            "EDIT TEXT",
+            50,
+            10,
+            "Enter save · Esc cancel",
+            &app.theme,
+        );
 
         let mut themed_textarea = textarea.clone();
         themed_textarea.set_block(
             Block::bordered()
-                .title(" Edit Text (Enter: Save, Esc: Cancel) ")
                 .style(app.theme.bg_style())
                 .border_style(Style::default().fg(app.theme.accent)),
         );
         themed_textarea.set_style(app.theme.bg_style());
 
-        frame.render_widget(Clear, popup_area);
-        frame.render_widget(&themed_textarea, popup_area);
+        frame.render_widget(&themed_textarea, content);
     }
 }
 

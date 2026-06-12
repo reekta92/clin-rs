@@ -662,22 +662,25 @@ pub fn draw_pinstar_view(frame: &mut Frame, state: &mut PinstarState, theme: &Ap
     }
 
     if let Some(textarea) = &mut state.rename_popup {
-        let popup_area = centered_rect(60, 20, area);
-        frame.render_widget(Clear, popup_area);
+        let content = crate::ui::draw_popup_frame(
+            frame,
+            area,
+            "RENAME NODE",
+            60,
+            20,
+            "Enter confirm · Esc cancel",
+            theme,
+        );
 
         textarea.set_style(theme.bg_style());
         textarea.set_block(
             Block::default()
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(theme.accent))
-                .style(theme.bg_style())
-                .title(Span::styled(
-                    " Rename Node (ID) - Enter to confirm, Esc to cancel ",
-                    Style::default().fg(theme.accent),
-                )),
+                .style(theme.bg_style()),
         );
 
-        frame.render_widget(&*textarea, popup_area);
+        frame.render_widget(&*textarea, content);
     }
 }
 

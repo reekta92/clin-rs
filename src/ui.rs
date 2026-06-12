@@ -1439,18 +1439,19 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     }
 
     if let Some(popup) = &mut app.popups.folder {
-        let popup_area = centered_rect(50, 10, area);
-        frame.render_widget(Clear, popup_area);
         let title = match popup.mode {
             crate::popups::FolderPopupMode::Create { .. } => "NEW FOLDER",
             crate::popups::FolderPopupMode::Rename { .. } => "RENAME FOLDER",
         };
-        draw_popup_banner(frame, popup_area, title, &app.app_theme);
-
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Min(3), Constraint::Length(1)])
-            .split(popup_area);
+        let content = draw_popup_frame(
+            frame,
+            area,
+            title,
+            50,
+            10,
+            "Enter confirm · Esc cancel",
+            &app.app_theme,
+        );
 
         popup.input.set_block(
             Block::default()
@@ -1458,29 +1459,32 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(app.app_theme.heading)),
         );
-        frame.render_widget(&popup.input, chunks[0]);
-        draw_popup_footer(frame, chunks[1], &app.app_theme, "Enter confirm · Esc cancel");
+        frame.render_widget(&popup.input, content);
     }
 
     if let Some(popup) = &mut app.popups.tag {
-        let popup_area = centered_rect(NOTES_POPUP_LARGE_W_PCT, NOTES_POPUP_LARGE_H_PCT, area);
-        frame.render_widget(Clear, popup_area);
-        draw_popup_banner(frame, popup_area, "TAGS", &app.app_theme);
-
         let suggestion_height = if popup.suggestions.is_empty() {
             0u16
         } else {
             (popup.suggestions.len() as u16).min(5).max(1)
         };
+        let content = draw_popup_frame(
+            frame,
+            area,
+            "TAGS",
+            NOTES_POPUP_LARGE_W_PCT,
+            NOTES_POPUP_LARGE_H_PCT,
+            "Ctrl+S batch assign · Tab accept · Enter save · d delete from all · Esc cancel",
+            &app.app_theme,
+        );
 
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
                 Constraint::Length(3u16 + suggestion_height),
                 Constraint::Min(3),
-                Constraint::Length(1),
             ])
-            .split(popup_area);
+            .split(content);
 
         
         let input_border = if popup.focus == crate::popups::TagPopupFocus::Input {
@@ -1572,33 +1576,27 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         }
         frame.render_stateful_widget(tags_list, chunks[1], &mut tags_state);
 
-        draw_popup_footer(
-            frame,
-            chunks[2],
-            &app.app_theme,
-            "Ctrl+S batch assign · Tab accept · Enter save · d delete from all · Esc cancel",
-        );
     }
 
     if let Some(picker) = &mut app.popups.folder_picker {
-        let popup_area = centered_rect(NOTES_POPUP_LARGE_W_PCT, NOTES_POPUP_LARGE_H_PCT, area);
-        frame.render_widget(Clear, popup_area);
         let title = match picker.mode {
             crate::popups::FolderPickerMode::CopyNote { .. } => "COPY",
             _ => "MOVE",
         };
-        draw_popup_banner(frame, popup_area, title, &app.app_theme);
-
-        let inner = popup_area;
+        let content = draw_popup_frame(
+            frame,
+            area,
+            title,
+            NOTES_POPUP_LARGE_W_PCT,
+            NOTES_POPUP_LARGE_H_PCT,
+            "Tab switch  Enter move  Esc cancel",
+            &app.app_theme,
+        );
 
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(3),
-                Constraint::Min(1),
-                Constraint::Length(1),
-            ])
-            .split(inner);
+            .constraints([Constraint::Length(3), Constraint::Min(1)])
+            .split(content);
 
         let search_border = if picker.focus == crate::app::FolderPickerFocus::Search {
             Style::default().fg(app.app_theme.heading)
@@ -1671,27 +1669,23 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         }
 
         frame.render_stateful_widget(list, chunks[1], &mut state);
-        draw_popup_footer(
-            frame,
-            chunks[2],
-            &app.app_theme,
-            "Tab switch  Enter move  Esc cancel",
-        );
     }
 
     if let Some(palette) = &mut app.command_palette {
-        let palette_area = centered_rect(NOTES_POPUP_LARGE_W_PCT, NOTES_POPUP_LARGE_H_PCT, area);
-        frame.render_widget(Clear, palette_area);
-        draw_popup_banner(frame, palette_area, "COMMANDS", &app.app_theme);
+        let content = draw_popup_frame(
+            frame,
+            area,
+            "COMMANDS",
+            NOTES_POPUP_LARGE_W_PCT,
+            NOTES_POPUP_LARGE_H_PCT,
+            "Enter run  ↑/↓ select  Esc close",
+            &app.app_theme,
+        );
 
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(3),
-                Constraint::Min(0),
-                Constraint::Length(1),
-            ])
-            .split(palette_area);
+            .constraints([Constraint::Length(3), Constraint::Min(0)])
+            .split(content);
 
         palette.input.set_block(
             Block::default()
@@ -1736,23 +1730,18 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             .highlight_symbol("  ");
 
         frame.render_stateful_widget(list, chunks[1], &mut palette.state);
-        draw_popup_footer(
-            frame,
-            chunks[2],
-            &app.app_theme,
-            "Enter run  ↑/↓ select  Esc close",
-        );
     }
 
     if let Some(popup) = &mut app.popups.note_rename {
-        let popup_area = centered_rect(50, 10, area);
-        frame.render_widget(Clear, popup_area);
-        draw_popup_banner(frame, popup_area, "RENAME", &app.app_theme);
-
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Min(3), Constraint::Length(1)])
-            .split(popup_area);
+        let content = draw_popup_frame(
+            frame,
+            area,
+            "RENAME",
+            50,
+            10,
+            "Enter rename · Esc cancel",
+            &app.app_theme,
+        );
 
         popup.input.set_block(
             Block::default()
@@ -1760,19 +1749,19 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(app.app_theme.heading)),
         );
-        frame.render_widget(&popup.input, chunks[0]);
-        draw_popup_footer(frame, chunks[1], &app.app_theme, "Enter rename · Esc cancel");
+        frame.render_widget(&popup.input, content);
     }
 
     if let Some(popup) = &mut app.popups.note_create {
-        let popup_area = centered_rect(50, 10, area);
-        frame.render_widget(Clear, popup_area);
-        draw_popup_banner(frame, popup_area, "NEW NOTE", &app.app_theme);
-
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Min(3), Constraint::Length(1)])
-            .split(popup_area);
+        let content = draw_popup_frame(
+            frame,
+            area,
+            "NEW NOTE",
+            50,
+            10,
+            "Enter create · Esc cancel",
+            &app.app_theme,
+        );
 
         popup.input.set_block(
             Block::default()
@@ -1780,19 +1769,19 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(app.app_theme.heading)),
         );
-        frame.render_widget(&popup.input, chunks[0]);
-        draw_popup_footer(frame, chunks[1], &app.app_theme, "Enter create · Esc cancel");
+        frame.render_widget(&popup.input, content);
     }
 
     if let Some(popup) = &mut app.popups.draw_create {
-        let popup_area = centered_rect(50, 10, area);
-        frame.render_widget(Clear, popup_area);
-        draw_popup_banner(frame, popup_area, "NEW DRAWING", &app.app_theme);
-
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Min(3), Constraint::Length(1)])
-            .split(popup_area);
+        let content = draw_popup_frame(
+            frame,
+            area,
+            "NEW DRAWING",
+            50,
+            10,
+            "Enter create · Esc cancel",
+            &app.app_theme,
+        );
 
         popup.input.set_block(
             Block::default()
@@ -1800,19 +1789,19 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(app.app_theme.heading)),
         );
-        frame.render_widget(&popup.input, chunks[0]);
-        draw_popup_footer(frame, chunks[1], &app.app_theme, "Enter create · Esc cancel");
+        frame.render_widget(&popup.input, content);
     }
 
     if let Some(popup) = &mut app.popups.canvas_create {
-        let popup_area = centered_rect(50, 10, area);
-        frame.render_widget(Clear, popup_area);
-        draw_popup_banner(frame, popup_area, "NEW CANVAS", &app.app_theme);
-
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Min(3), Constraint::Length(1)])
-            .split(popup_area);
+        let content = draw_popup_frame(
+            frame,
+            area,
+            "NEW CANVAS",
+            50,
+            10,
+            "Enter create · Esc cancel",
+            &app.app_theme,
+        );
 
         popup.input.set_block(
             Block::default()
@@ -1820,14 +1809,19 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(app.app_theme.heading)),
         );
-        frame.render_widget(&popup.input, chunks[0]);
-        draw_popup_footer(frame, chunks[1], &app.app_theme, "Enter create · Esc cancel");
+        frame.render_widget(&popup.input, content);
     }
 
     if let Some(popup) = &mut app.popups.search {
-        let popup_area = centered_rect(NOTES_POPUP_LARGE_W_PCT, NOTES_POPUP_LARGE_H_PCT, area);
-        frame.render_widget(Clear, popup_area);
-        draw_popup_banner(frame, popup_area, "SEARCH", &app.app_theme);
+        let content = draw_popup_frame(
+            frame,
+            area,
+            "SEARCH",
+            NOTES_POPUP_LARGE_W_PCT,
+            NOTES_POPUP_LARGE_H_PCT,
+            "Tab switch · Enter open · Esc cancel · f:folder p:pinned t:tag g:text · \\e\\ escapes filters",
+            &app.app_theme,
+        );
 
         let query_text = popup.input.lines().join("");
         let parsed = crate::app::parse_search_query(&query_text);
@@ -1841,19 +1835,17 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 Constraint::Length(3),
                 Constraint::Length(1),
                 Constraint::Min(3),
-                Constraint::Length(1),
             ]
         } else {
             vec![
                 Constraint::Length(3),
                 Constraint::Min(3),
-                Constraint::Length(1),
             ]
         };
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints(constraints)
-            .split(popup_area);
+            .split(content);
 
         
         if has_filter {
@@ -1926,7 +1918,6 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
 
         let input_chunk = chunks[0];
         let results_chunk = if has_filter { chunks[2] } else { chunks[1] };
-        let footer_chunk = if has_filter { chunks[3] } else { chunks[2] };
 
         popup.input.set_block(
             Block::default()
@@ -2035,30 +2026,17 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         }
         frame.render_stateful_widget(results_list, results_chunk, &mut list_state);
 
-        draw_popup_footer(
-            frame,
-            footer_chunk,
-            &app.app_theme,
-            "Tab switch · Enter open · Esc cancel · f:folder p:pinned t:tag g:text · \\e\\ escapes filters",
-        );
     }
 
     if let Some(trash) = &app.popups.trash_view {
-        let popup_area = centered_rect(70, 70, area);
-        frame.render_widget(Clear, popup_area);
-        draw_popup_banner(frame, popup_area, "TRASH", &app.app_theme);
-
-        let list_area = Rect::new(
-            popup_area.x,
-            popup_area.y,
-            popup_area.width,
-            popup_area.height.saturating_sub(1),
-        );
-        let footer_area = Rect::new(
-            popup_area.x,
-            popup_area.y + list_area.height,
-            popup_area.width,
-            1,
+        let content = draw_popup_frame(
+            frame,
+            area,
+            "TRASH",
+            70,
+            70,
+            "r restore · d delete · E empty · q close",
+            &app.app_theme,
         );
 
         let border_color = if trash.items.is_empty() {
@@ -2102,14 +2080,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         let mut state = ListState::default();
         state.select(Some(trash.selected));
 
-        frame.render_stateful_widget(list, list_area, &mut state);
-
-        draw_popup_footer(
-            frame,
-            footer_area,
-            &app.app_theme,
-            "r restore · d delete · E empty · q close",
-        );
+        frame.render_stateful_widget(list, content, &mut state);
     }
 
     if let Some(popup) = &app.popups.confirm {
@@ -2123,19 +2094,20 @@ pub fn draw_template_popup(
     area: Rect,
     theme: &crate::app_theme::AppThemeColors,
 ) {
-    let popup_area = centered_rect(NOTES_POPUP_LARGE_W_PCT, NOTES_POPUP_LARGE_H_PCT, area);
-
-    frame.render_widget(Clear, popup_area);
-    draw_popup_banner(frame, popup_area, "TEMPLATES", theme);
+    let content = draw_popup_frame(
+        frame,
+        area,
+        "TEMPLATES",
+        NOTES_POPUP_LARGE_W_PCT,
+        NOTES_POPUP_LARGE_H_PCT,
+        "Tab switch · Enter use template · n create template · d delete · Space edit · ? help · Esc cancel",
+        theme,
+    );
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(3),
-            Constraint::Min(1),
-            Constraint::Length(1),
-        ])
-        .split(popup_area);
+        .constraints([Constraint::Length(3), Constraint::Min(1)])
+        .split(content);
 
         let mut input = popup.input.clone();
         input.set_style(theme.bg_style());
@@ -2202,12 +2174,6 @@ pub fn draw_template_popup(
 
     frame.render_stateful_widget(list, chunks[1], &mut state);
 
-    draw_popup_footer(
-        frame,
-        chunks[2],
-        theme,
-        "Tab switch · Enter use template · n create template · d delete · Space edit · ? help · Esc cancel",
-    );
 }
 
 pub fn draw_theme_popup(
@@ -2216,9 +2182,15 @@ pub fn draw_theme_popup(
     area: Rect,
     theme: &crate::app_theme::AppThemeColors,
 ) {
-    let popup_area = centered_rect(40, 60, area);
-    frame.render_widget(Clear, popup_area);
-    draw_popup_banner(frame, popup_area, "THEMES", theme);
+    let content = draw_popup_frame(
+        frame,
+        area,
+        "THEMES",
+        40,
+        60,
+        "Tab navigate · Enter select · Esc close",
+        theme,
+    );
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -2226,9 +2198,8 @@ pub fn draw_theme_popup(
             Constraint::Min(0),
             Constraint::Length(3),
             Constraint::Length(3),
-            Constraint::Length(1),
         ])
-        .split(popup_area);
+        .split(content);
 
     let items: Vec<ListItem> = popup
         .themes
@@ -2311,12 +2282,6 @@ pub fn draw_theme_popup(
     frame.render_widget(graph_block, chunks[2]);
     frame.render_widget(graph_para, graph_inner);
 
-    draw_popup_footer(
-        frame,
-        chunks[3],
-        theme,
-        "Tab navigate · Enter select · Esc close",
-    );
 }
 
 pub fn get_textarea_scroll(textarea: &TextArea) -> (usize, usize) {
@@ -2774,29 +2739,63 @@ pub fn draw_popup_footer(
     frame.render_widget(footer, area);
 }
 
+/// Renders standard popup chrome (clear + banner + footer) and returns the content Rect.
+/// Caller splits and renders content into the returned Rect.
+pub fn draw_popup_frame(
+    frame: &mut Frame,
+    area: Rect,
+    title: &str,
+    width_pct: u16,
+    height_pct: u16,
+    hints: &str,
+    theme: &crate::app_theme::AppThemeColors,
+) -> Rect {
+    let popup_area = centered_rect(width_pct, height_pct, area);
+    frame.render_widget(Clear, popup_area);
+    draw_popup_banner(frame, popup_area, title, theme);
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(1), Constraint::Length(1)])
+        .split(popup_area);
+    draw_popup_footer(frame, chunks[1], theme, hints);
+    chunks[0]
+}
+
+/// Renders confirmation popup chrome (clear + banner + bordered block) and returns the inner Rect.
+/// Caller renders message/detail/buttons into the returned Rect.
+pub fn draw_confirm_popup_frame(
+    frame: &mut Frame,
+    area: Rect,
+    title: &str,
+    width_pct: u16,
+    height_pct: u16,
+    is_destructive: bool,
+    theme: &crate::app_theme::AppThemeColors,
+) -> Rect {
+    let popup_area = centered_rect(width_pct, height_pct, area);
+    frame.render_widget(Clear, popup_area);
+    draw_popup_banner(frame, popup_area, title, theme);
+    let border_color = if is_destructive {
+        theme.destructive
+    } else {
+        theme.heading
+    };
+    let block = Block::default()
+        .style(theme.bg_style())
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(border_color));
+    let inner = block.inner(popup_area);
+    frame.render_widget(block, popup_area);
+    inner
+}
+
 pub fn draw_confirm_popup(
     frame: &mut Frame,
     popup: &ConfirmPopup,
     area: Rect,
     theme: &crate::app_theme::AppThemeColors,
 ) {
-    let popup_area = centered_rect(50, 30, area);
-    frame.render_widget(Clear, popup_area);
-    draw_popup_banner(frame, popup_area, "CONFIRM", theme);
-
-    let border_color = if popup.is_destructive {
-        theme.destructive
-    } else {
-        theme.heading
-    };
-
-    let block = Block::default()
-        .style(theme.bg_style())
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(border_color));
-
-    let inner = block.inner(popup_area);
-    frame.render_widget(block, popup_area);
+    let inner = draw_confirm_popup_frame(frame, area, "CONFIRM", 50, 30, popup.is_destructive, theme);
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
