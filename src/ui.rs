@@ -105,6 +105,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         ViewMode::Graph => {}
         ViewMode::Draw => {}
         ViewMode::Canvas => {}
+        ViewMode::Backup => {}
     }
 
 
@@ -130,6 +131,7 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
         "Graph",
         "Draw",
         "Canvas",
+        "Backup",
         "Templates",
         "About",
     ];
@@ -193,6 +195,7 @@ pub fn help_text_for_tab(
         crate::app::HelpTab::Graph => graph_help_text(keybinds, theme),
         crate::app::HelpTab::Draw => draw_help_text(theme),
         crate::app::HelpTab::Canvas => canvas_help_text(theme),
+        crate::app::HelpTab::Backup => backup_help_text(theme),
         crate::app::HelpTab::Templates => templates_help_text(keybinds, theme),
         crate::app::HelpTab::About => about_help_text(keybinds, theme),
     }
@@ -730,6 +733,20 @@ fn canvas_help_text(theme: &crate::app_theme::AppThemeColors) -> Text<'static> {
     lines.extend(help_item_dyn("Save canvas file", Some("Ctrl+s"), theme));
     lines.extend(help_item_dyn("Cancel connection", Some("Esc"), theme));
     lines.extend(help_item_dyn("Exit canvas view", Some("Esc"), theme));
+    Text::from(lines)
+}
+
+fn backup_help_text(theme: &crate::app_theme::AppThemeColors) -> Text<'static> {
+    let mut lines = Vec::new();
+    lines.push(help_heading("Backup View", theme));
+    lines.push(Line::from(""));
+    lines.extend(help_item_dyn("Scroll Up / Down", Some("k/↑ / j/↓"), theme));
+    lines.extend(help_item_dyn("Refresh status", Some("r"), theme));
+    lines.extend(help_item_dyn("Commit changes", Some("s"), theme));
+    lines.extend(help_item_dyn("Push to remote", Some("p"), theme));
+    lines.extend(help_item_dyn("Open settings", Some("/"), theme));
+    lines.extend(help_item_dyn("Cycle sections", Some("Tab"), theme));
+    lines.extend(help_item_dyn("Back to list", Some("Esc"), theme));
     Text::from(lines)
 }
 
@@ -2664,7 +2681,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     }
 }
 
-fn draw_popup_banner(frame: &mut Frame, popup_area: Rect, title: &str, theme: &AppThemeColors) {
+pub fn draw_popup_banner(frame: &mut Frame, popup_area: Rect, title: &str, theme: &AppThemeColors) {
     let display_text = format!(" {} ", title.to_uppercase());
     let width = display_text.len() as u16;
     if popup_area.y == 0 {
@@ -2745,7 +2762,7 @@ pub fn format_relative_time(unix_ts: u64) -> Cow<'static, str> {
     Cow::Owned(dt.format("%Y-%m-%d %H:%M").to_string())
 }
 
-fn draw_popup_footer(
+pub fn draw_popup_footer(
     frame: &mut Frame,
     area: Rect,
     theme: &crate::app_theme::AppThemeColors,

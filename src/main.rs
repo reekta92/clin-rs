@@ -15,6 +15,7 @@ pub(crate) mod markdown;
 pub(crate) mod migration;
 pub(crate) mod palette;
 pub(crate) mod pinstar;
+pub(crate) mod backup;
 pub(crate) mod preview;
 pub(crate) mod popups;
 pub(crate) mod sanitize;
@@ -636,6 +637,25 @@ fn run_app(
             terminal.clear()?;
             continue;
         }
+        if app.mode == ViewMode::Backup {
+            let config = match ClinConfig::load() {
+                Ok(c) => c,
+                Err(_) => ClinConfig::default(),
+            };
+            let vault_path = config.effective_storage_path()
+                .unwrap_or_else(|_| PathBuf::from("."));
+
+            let _ = crate::backup::app::run_backup_view(
+                terminal, vault_path, &config, &app.keybinds, &app.app_theme,
+            );
+
+            app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
+            app.reload_theme();
+            app.needs_full_redraw = true;
+            terminal.clear()?;
+            continue;
+        }
+
 
         if app.mode == ViewMode::Draw {
             let note_id = app.get_selected_note_id();
@@ -722,6 +742,7 @@ fn run_app(
                     ViewMode::Graph => {}
                     ViewMode::Draw => {}
                     ViewMode::Canvas => {}
+                    ViewMode::Backup => {}
                 },
                 Event::Mouse(mouse_event) if app.mode == ViewMode::List => {
                     let size = terminal.size().context("failed to get terminal size")?;
@@ -816,6 +837,7 @@ fn run_app(
         }
     }
 
+    app.try_auto_backup_on_quit();
     Ok(())
 }
 

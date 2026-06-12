@@ -1,3 +1,6 @@
+use crate::config::ClinConfig;
+use std::path::PathBuf;
+
 pub use crate::cli::CliCommand;
 use crate::constants::*;
 pub use crate::editor::*;
@@ -206,6 +209,7 @@ pub enum ViewMode {
     Graph,
     Draw,
     Canvas,
+    Backup,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -215,6 +219,7 @@ pub enum HelpTab {
     Graph,
     Draw,
     Canvas,
+    Backup,
     Templates,
     About,
 }
@@ -227,7 +232,8 @@ impl HelpTab {
             HelpTab::Graph => HelpTab::Editor,
             HelpTab::Draw => HelpTab::Graph,
             HelpTab::Canvas => HelpTab::Draw,
-            HelpTab::Templates => HelpTab::Canvas,
+            HelpTab::Backup => HelpTab::Canvas,
+            HelpTab::Templates => HelpTab::Backup,
             HelpTab::About => HelpTab::Templates,
         }
     }
@@ -238,7 +244,8 @@ impl HelpTab {
             HelpTab::Editor => HelpTab::Graph,
             HelpTab::Graph => HelpTab::Draw,
             HelpTab::Draw => HelpTab::Canvas,
-            HelpTab::Canvas => HelpTab::Templates,
+            HelpTab::Canvas => HelpTab::Backup,
+            HelpTab::Backup => HelpTab::Templates,
             HelpTab::Templates => HelpTab::About,
             HelpTab::About => HelpTab::Notes,
         }
@@ -251,6 +258,7 @@ impl HelpTab {
             HelpTab::Graph => "Graph",
             HelpTab::Draw => "Draw",
             HelpTab::Canvas => "Pinstar",
+            HelpTab::Backup => "Backup",
             HelpTab::Templates => "Templates",
             HelpTab::About => "About",
         }
@@ -263,13 +271,14 @@ impl HelpTab {
             2 => HelpTab::Graph,
             3 => HelpTab::Draw,
             4 => HelpTab::Canvas,
-            5 => HelpTab::Templates,
+            5 => HelpTab::Backup,
+            6 => HelpTab::Templates,
             _ => HelpTab::About,
         }
     }
 
     pub fn count() -> usize {
-        7
+        8
     }
 }
 
@@ -739,9 +748,8 @@ impl App {
                             if let Err(e) = self.storage.save_note(note_id, &updated_note) {
                                 self.set_temporary_status(&format!("Failed to save note: {}", e));
                             } else {
-                                self.set_temporary_status_static(
-                                    "Note saved from external editor.",
-                                );
+                                self.try_auto_backup(&updated_note.title);
+                                self.set_temporary_status_static("Note saved");
                                 self.list.folder_cache = None;
                                 if let Err(e) = self.refresh_notes() {
                                     self.set_temporary_status(&format!("Refresh failed: {e}"));
@@ -916,6 +924,7 @@ impl App {
                 tags: Vec::new(),
             };
             if self.storage.save_note(&new_id, &new_note).is_ok() {
+                self.try_auto_backup(&new_note.title);
                 if let Err(e) = self.refresh_notes() {
                     self.set_temporary_status(&format!("Refresh failed: {e}"));
                 }
@@ -952,6 +961,7 @@ impl App {
                 tags: Vec::new(),
             };
             if self.storage.save_note(&new_id, &new_note).is_ok() {
+                self.try_auto_backup(&new_note.title);
                 if let Err(e) = self.refresh_notes() {
                     self.set_temporary_status(&format!("Refresh failed: {e}"));
                 }
@@ -996,6 +1006,7 @@ impl App {
                 tags: Vec::new(),
             };
             if self.storage.save_note(&new_id, &new_note).is_ok() {
+                self.try_auto_backup(&new_note.title);
                 if let Err(e) = self.refresh_notes() {
                     self.set_temporary_status(&format!("Refresh failed: {e}"));
                 }
@@ -1045,6 +1056,7 @@ impl App {
                 tags: Vec::new(),
             };
             if self.storage.save_note(&new_id, &new_note).is_ok() {
+                self.try_auto_backup(&new_note.title);
                 if let Err(e) = self.refresh_notes() {
                     self.set_temporary_status(&format!("Refresh failed: {e}"));
                 }
@@ -1337,6 +1349,44 @@ template = """
         }
     }
 
+    pub fn try_auto_backup(&self, note_title: &str) {
+        if let Ok(config) = ClinConfig::load() {
+            if config.backup.enabled && config.backup.backup_on_save {
+                let vault_path = config.effective_storage_path().unwrap_or_else(|_| PathBuf::from("."));
+                if let Ok(git_ops) = crate::backup::git_ops::GitOps::init(&vault_path) {
+                    if git_ops.has_changes().unwrap_or(false) {
+                        let msg = format!("auto: {}", note_title);
+                        let _ = git_ops.add_all().and_then(|_| git_ops.commit(&msg));
+                        if config.backup.auto_push {
+                            if let Some(remote) = &config.backup.remote_name {
+                                let _ = git_ops.push(remote);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn try_auto_backup_on_quit(&self) {
+        if let Ok(config) = ClinConfig::load() {
+            if config.backup.enabled && config.backup.backup_on_quit {
+                let vault_path = config.effective_storage_path().unwrap_or_else(|_| PathBuf::from("."));
+                if let Ok(git_ops) = crate::backup::git_ops::GitOps::init(&vault_path) {
+                    if git_ops.has_changes().unwrap_or(false) {
+                        let msg = "auto: backup on quit";
+                        let _ = git_ops.add_all().and_then(|_| git_ops.commit(msg));
+                        if config.backup.auto_push {
+                            if let Some(remote) = &config.backup.remote_name {
+                                let _ = git_ops.push(remote);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     pub fn autosave(&mut self) {
         let content = self.editor.editor.lines().join("\n");
 
@@ -1376,6 +1426,7 @@ template = """
         };
         if let Ok(saved_id) = self.storage.save_note(&id, &note) {
             self.editor.editing_id = Some(saved_id);
+            self.try_auto_backup(&note.title);
         }
     }
 
@@ -2072,6 +2123,7 @@ template = """
                 if let Err(e) = self.storage.save_note(&popup.note_id, &note) {
                     self.set_temporary_status(&format!("Failed to save tags: {e}"));
                 } else {
+                    self.try_auto_backup(&note.title);
                     if let Err(e) = self.refresh_notes() {
                         self.set_temporary_status(&format!("Refresh failed: {e}"));
                     }
@@ -2190,7 +2242,9 @@ template = """
                     && note.tags.contains(&tag)
                 {
                     note.tags.retain(|t| t != &tag);
-                    let _ = self.storage.save_note(&note_id, &note);
+                    if self.storage.save_note(&note_id, &note).is_ok() {
+                        self.try_auto_backup(&note.title);
+                    }
                     count += 1;
                 }
             }
@@ -2246,6 +2300,7 @@ template = """
                         loaded.tags.push(tag.clone());
                     }
                     if self.storage.save_note(&note_id, &loaded).is_ok() {
+                        self.try_auto_backup(&loaded.title);
                         count += 1;
                     }
                 }
@@ -2331,6 +2386,11 @@ template = """
         self.mode = ViewMode::Graph;
     }
 
+    pub fn open_backup_view(&mut self) {
+        self.return_mode = Some(self.mode);
+        self.mode = ViewMode::Backup;
+    }
+
     pub fn open_draw_view(&mut self) {
         self.return_mode = Some(self.mode);
         self.mode = ViewMode::Draw;
@@ -2409,6 +2469,7 @@ template = """
             ViewMode::Canvas => {
                 "Canvas View · Esc: back · Arrows: pan · i/Enter: edit · Ctrl+S: save"
             }
+            ViewMode::Backup => "Backup · Esc: back · s: commit · p: push · r: refresh · /: settings",
         }
     }
 

@@ -632,6 +632,24 @@ impl Default for SearchConfig {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct BackupConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub backup_on_save: bool,
+    #[serde(default)]
+    pub backup_on_quit: bool,
+    #[serde(default)]
+    pub auto_push: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub remote_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub remote_name: Option<String>,
+    #[serde(default)]
+    pub commit_message_template: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ThemeConfig {
     #[serde(
@@ -738,6 +756,8 @@ pub struct ClinConfig {
     pub legend: LegendConfig,
     #[serde(default)]
     pub search: SearchConfig,
+    #[serde(default)]
+    pub backup: BackupConfig,
 }
 
 fn default_preview_enabled() -> bool {

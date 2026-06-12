@@ -1,6 +1,6 @@
 [package]
 name = "clin-rs"
-version = "0.7.0-61"
+version = "0.8.0-3"
 edition = "2024"
 description = "Encrypted terminal note-taking app"
 authors = ["reekta92 mdag.92988@protonmail.com"]
@@ -32,7 +32,7 @@ assets = [
 ]
 
 [package.metadata.wix]
-upgrade-guid = "D50B8203-1B47-4DF1-AAFA-13F768A95CC2"
+upgrade-guid = "D50.8.0-33-1B47-4DF1-AAFA-13F768A95CC2"
 path-guid = "5B92891F-ADFC-494A-8FA5-0F2BA2B3A786"
 license = false
 eula = false
@@ -64,6 +64,7 @@ regex = "1"
 which = "8.0.2"
 zeroize = { version = "1.8.2", features = ["derive"] }
 portable-pty = "0.8"
+git2 = "0.20"
 
 [profile.release]
 lto = "thin"
