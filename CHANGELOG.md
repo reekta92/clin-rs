@@ -1,104 +1,206 @@
-# CHANGELOG
+# Changelog
 
-All notable changes comparing the previous stable release (`v0.5.2` from `clin-old`) to the current version (`v0.7.0`) of Clin.
+All notable changes to clin are documented in this file.
 
----
+## [0.8.6-2] - 2026-06-13
 
-## [0.7.0] - 2026-05-12
+### Miscellaneous
 
-### Overview
-This release constitutes a massive architectural overhaul and product expansion, maturing **Clin** from a basic encrypted note-taker into a highly extensible, feature-complete spatial and knowledge management tool. 
+- Removed dist remainings
+- Removed dist dependency
+- Even more CI fixes
+## [0.8.6-1] - 2026-06-13
 
-The primary focus of this upgrade includes monolithic struct decomposition for improved codebase reliability, alongside the introduction of high-impact graphical features: **Canvas** visualization and direct terminal **Drawing**.
+### Miscellaneous
 
----
+- More CI fixes
+- More CI fixes
+## [0.8.6] - 2026-06-13
 
-### MAJOR FEATURES & BREAKTHROUGHS
+### Added
 
-#### Obsidian-Compatible Canvas (`pinstar`)
-Introduced a robust **Canvas layout** providing a visual mapping experience compatible with standard Canvas JSON formats.
-- **Node Types**: Integrated support for Text, Local File, Link, and Group container nodes.
-- **Spatial Interactions**: Fully scalable infinite viewport with zoom levels, smooth drag-and-drop repositioning, and resizing handlers.
-- **Dynamic Connections**: Interactive connection establishment between nodes with intelligent orthogonal routing.
-- **Integrated Tools**: Built-in context menus, inline text editor overlays, and a raw raw JSON editing pane available for high-precision control.
-- **Files**: Persistent state loaded and saved via `.canvas` extension files.
+- Insert/append actions
+- Content tree for notes
+- Content tree for notes
+- Grid view in notes view
+- Title bar for views
+- Backup system using git
 
-#### Terminal Drawing Engine (`draw`)
-Empowered users with the capability to express non-textual data using a vector-based ASCII drawing system directly inside the terminal.
-- **Tools Suite**: Select between dynamic Stroke drawing, Erasing, and explicit Shape drawing.
-- **Primitive Support**: Renders Rectangles, Ellipses, Diamonds, Lines, and Arrows using customizable coordinates.
-- **Infinite Canvas**: Decouples geometry from terminal boundaries through an independent viewport manipulation system.
-- **Text Layering**: Add floating text elements over any diagram area.
-- **Files**: Visualizations serialised into human-readable `.draw` JSON assets.
+### Documentation
 
-#### Upgraded Graph System (`graf`)
-The foundational Graph view underwent an intense modularization drive and engineering polish.
-- **Physics Performance**: Extracted physics calculations into asynchronous-capable isolation with tunable cooldown thresholds and overlap prevention strategies.
-- **Navigation**: Introduction of interactive HUD enhancements including a navigational minimap, color legends, and explicit grid layers.
-- **Color Modes**: Support logic to dynamically color nodes dynamically based on parent folder depth, tag associations, or linkage volumes.
-- **Rendering**: Separation of concerns through the distinct `render.rs`, `input.rs`, and `viewport.rs` modules for ultra-responsive rendering ticks.
+- Update installation versions to v0.7.0-61
+- Update installation versions to v0.7.0-43
 
-#### Comprehensive Code Architecture Decomposition
-A foundational internal refactor shattered the monolithic `App` object (a 'God struct') into loosely-coupled stateful components. 
-- **`NoteEditor` Extraction**: Encapsulated editing logic, cursor management, and undo operations.
-- **`ListView` Encapsulation**: Moved sorting, filtering logic, and search cache management from the root core.
-- **`PopupManager` Separation**: Centralized modal state logic avoiding state pollution in global navigation cycles.
-- **Maintenance & Testing**: Highly improved testability and cognitive performance during development.
+### Fixed
 
-#### Advanced Theme & Cosmetic Subsystem
-Dramatically enhanced visual accessibility through a global unified theming infrastructure.
-- **Presets**: Out-of-the-box deployment of 11 premium preset themes (e.g., *Tokyo Night*, *Catppuccin Mocha*, *Nord*, *Everforest*).
-- **Flexibility**: Seamless configuration toggles between Solid visual buffers and background Transparency.
-- **Color-Overrides**: Deep YAML-backed customization support allows manual adjustment of accents, headings, and alert colors.
+- Pinstar and draw view mouse click precision
+- Modularized popup system so all the popups share the same template
+- Preview pane not scales with the window size
+- Lifelong bug of markdown preview is fixed
+- Mouse selecting doesn't trigger the preview
 
----
+### Miscellaneous
 
-### FUNCTIONAL UPDATES & REFINEMENTS
+- CI fixes
+- Publishing CI and even more automation
+- CI and contributing documentation
+- Refactoring
+- Comment updates
+- Update PKGBUILD
 
-#### Configuration Overhaul
-- Consolidated disparate configuration schemas. The separate `graf.toml` legacy format is now structurally embedded within the main `config.toml`.
-- Implemented **Automatic Migration**: Detects legacy `graf.toml` files on boot, merges configurations into the new hierarchical schema, and safely archives the old copy to `*.migrated`.
+### Add
 
-#### Storage & Content Intelligence
-- **Wikilink Discovery**: Frontmatter parsing subsystem now parses `[[wikilinks]]` in real-time, establishing internal graph relations derived automatically from your content.
-- **Safe Delete (Trash)**: Operations upgraded to move objects to a staging trash subsystem rather than executing destructive deletes immediately.
-- **Multi-Format Routing**: Full extension awareness determining if logic routes to the markdown engine, canvas compiler, or draw engine.
+- Preview pane for graph view and preview pane position customization, bug fix for graph view scaling
+- More QOL, title bar for popups
+- More QOL and UX/UI improvements, changes
+- Popup improvements for notes view, lots QOL additions, reworked search engine
+- Popup improvements for notes view, lots QOL additions, reworked search engine
+- QOL improvements to notes view, grep search, improved popups and more
+## [0.7.0-61] - 2026-05-10
 
-#### Command Palette & Keybinds
-- **Global Launcher**: Added `Ctrl+P` launcher housing rapid action triggers: encrypt, create canvas, flip theme, initiate drawing, or graph toggles.
-- **Exhaustive Modifiers**: Refined cross-view context handling to reduce input collisions, improving simultaneous modifier usage responsiveness.
+### Fixed
 
-#### User Template Engine Upgrade
-- Transitioned from code-defined templates to a dynamic filesystem configuration subsystem.
-- Expanded support for smart injection variables: inserts `{date}`, `{time}`, and `{weekday}` at insertion time.
-- Embedded example generator (`--create-example-templates`) provides canonical structures instantly.
+- Canvas file doesn't show up in the notes view
 
-#### Command Line Interface (CLI) Expansion
-Major growth in non-interactive capabilities.
-- `clin -q "content" [title]`: Create fire-and-forget rapid notes.
-- `clin -n [--template <name>] [title]`: Programmatically build from specific template schema.
-- Storage tools provided: `--set-storage-path`, `--reset-storage-path`, and specific system tools to `--migrate-storage`.
+### Miscellaneous
 
----
+- Updated documentation
+- Updated documentation
+- Updated documentation
+- Comment removals for proper documentation later
 
-### BACKWARD COMPATIBILITY & UPGRADE GUIDE
+### Add
 
-#### Binary Rebranding
-- **Change**: Binary naming structure transitioned from `clin-rs` to standard alias `clin`.
-- **Impact**: User scripts, aliasing conventions, and symbolic environment paths relying on `clin-rs` execution will require trivial updating to reference `clin`.
+- Pinstar final touches and code structure refactorings
+- Pinstar view improvements, enhancements, Obsidian import and more
+- Pinstar view mimicing Obsidian canvas feature
 
-#### Dependencies Upgrades
-Important crate upgrades were merged impacting the terminal rendering runtime:
-- `crossterm`: 0.28 $\rightarrow$ 0.29
-- `ratatui`: 0.29 $\rightarrow$ 0.30
-- `tui-textarea` $\rightarrow$ `ratatui-textarea` (0.9)
+### Overhaul
 
-#### Configuration Auto-Migration
-The upgrade path maintains perfect schema stability. On standard installation:
-- Default config persistence directory continues executing consistently at `ProjectDirs::from("com", "clin", "clin")`. 
-- Existing users will have no breakages, as data directory resolutions map identically.
-- Automatic in-place legacy format conversion for the visual graph configurations triggers instantly without data-loss risks.
+- Complete overhaul of the UI, added demo paint like canvas, lots of QOL changes, migrated to ratatui 0.30 and more
+- Complete overhaul of the UI, added demo paint like canvas, lots of QOL changes, migrated to ratatui 0.30 and more
 
-#### File Format Stability
-- All existing `.md` (Markdown) and `.clin` (Encrypted) user vault contents are fully read/write compatible and backward reachable without translation operations required.
-- New `.canvas` and `.draw` resources will not render appropriately if downgraded below v0.7.0, though they remain safely stored as standard parseable JSON payloads.
+### Qol
+
+- Shift + tab to cycle backwards in graph view
+- Enter now closes the theme switcher
+## [0.7.0-43] - 2026-05-09
+
+### Fixed
+
+- Default theme colors
+- More unaffected background colors
+- Background color of command palette input field
+- Background color for notes view
+
+### Miscellaneous
+
+- Doc updates
+- Migrated to ratatui 0.30
+
+### Add
+
+- Added demo canvas using the same logic as graf
+- Button for solid backgrounds
+- Universal theme and switch theme option
+
+### Overhaul
+
+- Complete overhaul of the UI, added demo paint like canvas, lots of QOL changes, migrated to ratatui 0.30 and more
+## [0.5.2-1] - 2026-05-04
+
+### Fixed
+
+- Default config fixed, root label missing from legend fixed
+
+### Miscellaneous
+
+- Update readme
+- Documentation
+- Documentation
+- Documentation
+- Readme update
+- Readme update
+
+### Add
+
+- Custom keybinds for graf
+- Custom keybinds for graf
+## [0.5.2] - 2026-05-03
+
+### Fixed
+
+- Default config fixed, root label missing from legend fixed
+- Default config fixed, root label missing from legend fixed
+
+### Miscellaneous
+
+- Readme update
+## [0.5.0-2] - 2026-05-03
+
+### Documentation
+
+- Update installation versions to v0.5.0-2
+- Update installation versions to v0.4.4
+
+### Miscellaneous
+
+- Update version for crates.io
+- Update version for crates.io
+- Update PKGBUILD
+- Version numbering
+
+### Add
+
+- Integrated project graf as the graph view
+## [0.4.4] - 2026-05-01
+
+### Documentation
+
+- Update installation versions to v0.3.6
+
+### Fixed
+
+- Markdown rendering is 10x faster now
+- Markdown rendering is 10x faster now
+
+### Add
+
+- More graph view features, color coding, user configs for title rendering
+- Graph view
+- Preparations for graph view with reworked encryption
+## [0.3.4-5] - 2026-04-05
+
+### Miscellaneous
+
+- Automation
+- Automation
+- Automation
+## [0.3.4-1] - 2026-04-05
+
+### Documentation
+
+- Update installation versions to v0.3.4-2
+- Update installation versions to v0.3.4-1
+- Update installation versions to v0.0.0
+## [0.3.3] - 2026-04-01
+
+### Added
+
+- Restore external editor support
+- Implement Command Palette and OCR Paste
+
+### Fixed
+
+- Zero sensitive data from memory on drop
+- Restrict encryption key file permissions
+- Sanitize user strings for terminal display
+- Validate paths to prevent directory traversal
+- Secure temp file permissions and deletion
+- Prevent shell injection in external editor
+
+### Miscellaneous
+
+- Add cargo-deny and CI security scanning
+## [0.2.1.2] - 2026-03-31
+
