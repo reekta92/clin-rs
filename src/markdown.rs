@@ -140,11 +140,12 @@ impl MarkdownRenderer {
         let mut effective_rows = 0u16;
         'scan: for r in (0..self.content_rows).rev() {
             for c in 0..cols {
-                if let Some(screen_cell) = screen.cell(r, c) {
-                    if screen_cell.has_contents() && !screen_cell.contents().trim().is_empty() {
-                        effective_rows = r + 1;
-                        break 'scan;
-                    }
+                if let Some(screen_cell) = screen.cell(r, c)
+                    && screen_cell.has_contents()
+                    && !screen_cell.contents().trim().is_empty()
+                {
+                    effective_rows = r + 1;
+                    break 'scan;
                 }
             }
         }

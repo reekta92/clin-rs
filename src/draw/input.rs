@@ -25,10 +25,10 @@ pub fn handle_event(
                 return Ok(Some(DrawEventAction::Save));
             }
             _ => {
-                if let Event::Key(k) = ev {
-                    if apply_text_shortcuts(keybinds, textarea, k) {
-                        return Ok(None);
-                    }
+                if let Event::Key(k) = ev
+                    && apply_text_shortcuts(keybinds, textarea, k)
+                {
+                    return Ok(None);
                 }
                 textarea.input(ev);
                 return Ok(None);
@@ -298,10 +298,11 @@ fn create_shape(ox: f64, oy: f64, cx: f64, cy: f64, st: DrawShapeType) -> DrawEl
 fn find_text_at(cx: f64, cy: f64, app: &DrawAppState) -> Option<usize> {
     let threshold = 5.0 / app.viewport.zoom;
     for (i, el) in app.data.elements.iter().enumerate() {
-        if let DrawElement::Text(t) = el {
-            if (t.x - cx).abs() < threshold && (t.y - cy).abs() < threshold {
-                return Some(i);
-            }
+        if let DrawElement::Text(t) = el
+            && (t.x - cx).abs() < threshold
+            && (t.y - cy).abs() < threshold
+        {
+            return Some(i);
         }
     }
     None
@@ -310,9 +311,10 @@ fn find_text_at(cx: f64, cy: f64, app: &DrawAppState) -> Option<usize> {
 fn erase_at(cx: f64, cy: f64, app: &mut DrawAppState) {
     let threshold = 5.0 / app.viewport.zoom;
     app.data.elements.retain(|el| match el {
-        DrawElement::Stroke(s) => !s.points.iter().any(|(px, py)| {
-            ((*px) - cx).powi(2) + ((*py) - cy).powi(2) < threshold.powi(2)
-        }),
+        DrawElement::Stroke(s) => !s
+            .points
+            .iter()
+            .any(|(px, py)| ((*px) - cx).powi(2) + ((*py) - cy).powi(2) < threshold.powi(2)),
         DrawElement::Shape(s) => match s {
             Shape::Rect {
                 x,

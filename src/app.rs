@@ -64,7 +64,10 @@ fn find_filter_tokens(s: &str) -> Vec<(usize, &'static str)> {
     }
 
     for &prefix in &bare {
-        if s.starts_with(prefix) && !tokens.iter().any(|&(p, _)| p == 0) && !is_escaped(s, 0, prefix.len()) {
+        if s.starts_with(prefix)
+            && !tokens.iter().any(|&(p, _)| p == 0)
+            && !is_escaped(s, 0, prefix.len())
+        {
             tokens.push((0, prefix));
         }
     }
@@ -91,9 +94,9 @@ fn strip_escape_filter(s: &str) -> String {
                     it.next();
                     it.next()
                 };
-                let is_filter = next.zip(after).is_some_and(|(ch, colon)| {
-                    filter_chars.contains(&ch) && colon == ':'
-                });
+                let is_filter = next
+                    .zip(after)
+                    .is_some_and(|(ch, colon)| filter_chars.contains(&ch) && colon == ':');
                 if is_filter {
                     continue;
                 }
@@ -861,10 +864,10 @@ impl App {
                 }
             }
 
-            if let Ok(len) = std::fs::metadata(&temp_file_path).map(|m| m.len()) {
-                if let Err(e) = std::fs::write(&temp_file_path, vec![0u8; len as usize]) {
-                    self.set_temporary_status(&format!("Failed to zero temp file: {}", e));
-                }
+            if let Ok(len) = std::fs::metadata(&temp_file_path).map(|m| m.len())
+                && let Err(e) = std::fs::write(&temp_file_path, vec![0u8; len as usize])
+            {
+                self.set_temporary_status(&format!("Failed to zero temp file: {}", e));
             }
             if let Err(e) = std::fs::remove_file(&temp_file_path) {
                 self.set_temporary_status(&format!("Failed to remove temp file: {}", e));
@@ -1468,10 +1471,10 @@ template = """
             if git_ops.has_changes().unwrap_or(false) {
                 let msg = format!("auto: {}", note_title);
                 git_ops.add_all().and_then(|_| git_ops.commit(&msg))?;
-                if config.backup.auto_push {
-                    if let Some(remote) = &config.backup.remote_name {
-                        git_ops.push(remote)?;
-                    }
+                if config.backup.auto_push
+                    && let Some(remote) = &config.backup.remote_name
+                {
+                    git_ops.push(remote)?;
                 }
             }
         }
@@ -1488,10 +1491,10 @@ template = """
             if git_ops.has_changes().unwrap_or(false) {
                 let msg = "auto: backup on quit";
                 git_ops.add_all().and_then(|_| git_ops.commit(msg))?;
-                if config.backup.auto_push {
-                    if let Some(remote) = &config.backup.remote_name {
-                        git_ops.push(remote)?;
-                    }
+                if config.backup.auto_push
+                    && let Some(remote) = &config.backup.remote_name
+                {
+                    git_ops.push(remote)?;
                 }
             }
         }
@@ -2061,23 +2064,23 @@ template = """
                 }
             }
 
-            if !note_ids.is_empty() {
-                if let Ok(folders) = self.storage.list_folders() {
-                    let mut all_folders = vec!["".to_string()];
-                    all_folders.extend(folders);
-                    let mut input = TextArea::default();
-                    input.set_cursor_line_style(ratatui::style::Style::default());
-                    input.set_placeholder_text("Search folders...");
-                    self.popups.folder_picker = Some(FolderPicker {
-                        mode: FolderPickerMode::BulkMoveNotes { note_ids },
-                        filtered_folders: all_folders.clone(),
-                        all_folders,
-                        selected: 0,
-                        input,
-                        focus: FolderPickerFocus::Search,
-                    });
-                    return;
-                }
+            if !note_ids.is_empty()
+                && let Ok(folders) = self.storage.list_folders()
+            {
+                let mut all_folders = vec!["".to_string()];
+                all_folders.extend(folders);
+                let mut input = TextArea::default();
+                input.set_cursor_line_style(ratatui::style::Style::default());
+                input.set_placeholder_text("Search folders...");
+                self.popups.folder_picker = Some(FolderPicker {
+                    mode: FolderPickerMode::BulkMoveNotes { note_ids },
+                    filtered_folders: all_folders.clone(),
+                    all_folders,
+                    selected: 0,
+                    input,
+                    focus: FolderPickerFocus::Search,
+                });
+                return;
             }
         }
 
@@ -2360,10 +2363,10 @@ template = """
                     && note.tags.contains(&tag)
                 {
                     note.tags.retain(|t| t != &tag);
-                    if self.storage.save_note(&note_id, &note).is_ok() {
-                        if let Err(e) = self.try_auto_backup(&note.title) {
-                            self.set_temporary_status(&format!("Backup failed: {e}"));
-                        }
+                    if self.storage.save_note(&note_id, &note).is_ok()
+                        && let Err(e) = self.try_auto_backup(&note.title)
+                    {
+                        self.set_temporary_status(&format!("Backup failed: {e}"));
                     }
                     count += 1;
                 }
@@ -2829,7 +2832,6 @@ template = """
         self.set_default_status();
     }
 
-
     pub fn begin_create_draw(&mut self) {
         let folder = if self.list.notes_layout == crate::config::NotesLayout::Grid {
             self.list.grid_folder.clone()
@@ -3215,38 +3217,39 @@ template = """
                 title_result_indices.push(note_idx);
             }
 
-            if !grep_query.is_empty() && matched_grep && matched_title {
-                if let Some(note_data) =
+            if !grep_query.is_empty()
+                && matched_grep
+                && matched_title
+                && let Some(note_data) =
                     content_opt.filter(|n| n.content.to_lowercase().contains(&grep_query))
-                {
-                    let match_count = note_data
-                        .content
-                        .lines()
-                        .filter(|l| l.to_lowercase().contains(&grep_query))
-                        .count();
-                    grep_results.push(format!(
-                        " {}{}{} ({})",
-                        lock_prefix, label, tags_str, match_count
-                    ));
-                    grep_result_indices.push(note_idx);
-                    grep_is_header.push(true);
+            {
+                let match_count = note_data
+                    .content
+                    .lines()
+                    .filter(|l| l.to_lowercase().contains(&grep_query))
+                    .count();
+                grep_results.push(format!(
+                    " {}{}{} ({})",
+                    lock_prefix, label, tags_str, match_count
+                ));
+                grep_result_indices.push(note_idx);
+                grep_is_header.push(true);
 
-                    for (line_no, line) in note_data
-                        .content
-                        .lines()
-                        .enumerate()
-                        .filter(|(_, line)| line.to_lowercase().contains(&grep_query))
-                    {
-                        let trimmed = line.trim();
-                        let snippet: String = if trimmed.chars().count() > 56 {
-                            trimmed.chars().take(56).collect::<String>() + "…"
-                        } else {
-                            trimmed.to_string()
-                        };
-                        grep_results.push(format!("  L{}: {}", line_no + 1, snippet));
-                        grep_result_indices.push(note_idx);
-                        grep_is_header.push(false);
-                    }
+                for (line_no, line) in note_data
+                    .content
+                    .lines()
+                    .enumerate()
+                    .filter(|(_, line)| line.to_lowercase().contains(&grep_query))
+                {
+                    let trimmed = line.trim();
+                    let snippet: String = if trimmed.chars().count() > 56 {
+                        trimmed.chars().take(56).collect::<String>() + "…"
+                    } else {
+                        trimmed.to_string()
+                    };
+                    grep_results.push(format!("  L{}: {}", line_no + 1, snippet));
+                    grep_result_indices.push(note_idx);
+                    grep_is_header.push(false);
                 }
             }
 
@@ -3304,21 +3307,14 @@ template = """
                             .get(popup.grep_selected)
                             .copied()
                             .unwrap_or(false);
-                        if !is_header {
-                            if let Some(line_str) = popup.grep_results.get(popup.grep_selected) {
-                                if let Some(l_pos) = line_str.find('L') {
-                                    if let Some(colon_pos) = line_str.find(':') {
-                                        if colon_pos > l_pos + 1 {
-                                            if let Ok(num) = line_str[l_pos + 1..colon_pos]
-                                                .trim()
-                                                .parse::<usize>()
-                                            {
-                                                target_line = Some(num);
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                        if !is_header
+                            && let Some(line_str) = popup.grep_results.get(popup.grep_selected)
+                            && let Some(l_pos) = line_str.find('L')
+                            && let Some(colon_pos) = line_str.find(':')
+                            && colon_pos > l_pos + 1
+                            && let Ok(num) = line_str[l_pos + 1..colon_pos].trim().parse::<usize>()
+                        {
+                            target_line = Some(num);
                         }
                         popup.grep_result_indices.get(popup.grep_selected).copied()
                     } else {
@@ -3629,17 +3625,22 @@ template = """
                 if is_draw {
                     let path = self.storage.note_path(id);
                     match std::fs::read_to_string(&path) {
-                        Ok(content) => match serde_json::from_str::<crate::draw::state::DrawData>(&content)
-                        {
-                            Ok(data) => {
-                                let grid = crate::snapshot::render_draw_snapshot(&data, &self.app_theme);
-                                self.list.preview_content = Some(PreviewContent::DrawGrid(grid));
+                        Ok(content) => {
+                            match serde_json::from_str::<crate::draw::state::DrawData>(&content) {
+                                Ok(data) => {
+                                    let grid = crate::snapshot::render_draw_snapshot(
+                                        &data,
+                                        &self.app_theme,
+                                    );
+                                    self.list.preview_content =
+                                        Some(PreviewContent::DrawGrid(grid));
+                                }
+                                Err(e) => {
+                                    self.list.preview_content = None;
+                                    self.status = Cow::Owned(format!("Failed to parse draw: {e}"));
+                                }
                             }
-                            Err(e) => {
-                                self.list.preview_content = None;
-                                self.status = Cow::Owned(format!("Failed to parse draw: {e}"));
-                            }
-                        },
+                        }
                         Err(_) => {
                             self.list.preview_content = None;
                         }
@@ -3652,14 +3653,20 @@ template = """
                     let path = self.storage.note_path(id);
                     match std::fs::read_to_string(&path) {
                         Ok(content) => {
-                            match serde_json::from_str::<crate::pinstar::data::CanvasData>(&content) {
+                            match serde_json::from_str::<crate::pinstar::data::CanvasData>(&content)
+                            {
                                 Ok(data) => {
-                                    let grid = crate::snapshot::render_canvas_snapshot(&data, &self.app_theme);
-                                    self.list.preview_content = Some(PreviewContent::CanvasGrid(grid));
+                                    let grid = crate::snapshot::render_canvas_snapshot(
+                                        &data,
+                                        &self.app_theme,
+                                    );
+                                    self.list.preview_content =
+                                        Some(PreviewContent::CanvasGrid(grid));
                                 }
                                 Err(e) => {
                                     self.list.preview_content = None;
-                                    self.status = Cow::Owned(format!("Failed to parse canvas: {e}"));
+                                    self.status =
+                                        Cow::Owned(format!("Failed to parse canvas: {e}"));
                                 }
                             }
                         }
@@ -3725,7 +3732,14 @@ template = """
                 let display_title = if is_pinned {
                     "Pinned Notes".to_string()
                 } else if name == ".." {
-                    format!("Parent: {}", if folder_path.is_empty() { "Vault" } else { &folder_path })
+                    format!(
+                        "Parent: {}",
+                        if folder_path.is_empty() {
+                            "Vault"
+                        } else {
+                            &folder_path
+                        }
+                    )
                 } else if folder_path.is_empty() {
                     "Vault (Root)".to_string()
                 } else {

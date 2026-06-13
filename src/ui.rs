@@ -36,12 +36,11 @@ fn split_lock_spans(text: &str, theme: &AppThemeColors) -> Vec<Span<'static>> {
     result
 }
 
-const GRID_TILE_W: u16 = 10;       // outer width incl. border
-const GRID_TILE_H: u16 = 5;        // outer height incl. border
-const GRID_GAP: u16 = 1;           // space between tiles (h and v)
-const GRID_LEFT_MARGIN: u16 = 2;   // left inset inside list_area
-const GRID_TOP_MARGIN: u16 = 3;    // top inset inside list_area
-
+const GRID_TILE_W: u16 = 10; // outer width incl. border
+const GRID_TILE_H: u16 = 5; // outer height incl. border
+const GRID_GAP: u16 = 1; // space between tiles (h and v)
+const GRID_LEFT_MARGIN: u16 = 2; // left inset inside list_area
+const GRID_TOP_MARGIN: u16 = 3; // top inset inside list_area
 
 fn styled_result_line(s: &str, theme: &AppThemeColors) -> Line<'static> {
     if let Some(tag_start) = s.find(" [") {
@@ -1324,34 +1323,56 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         draw_view_title_bar_with_tabs(frame, chunks[0], "Notes", tab_spans, &app.app_theme);
 
         // Show details of the selected note at the top right (clock/relative time + tags)
-        if let Some(crate::app::VisualItem::Note { summary_idx, .. }) = app.list.visual_list.get(app.list.visual_index) {
+        if let Some(crate::app::VisualItem::Note { summary_idx, .. }) =
+            app.list.visual_list.get(app.list.visual_index)
+        {
             let s = &app.notes[*summary_idx];
             let mut spans = Vec::new();
 
             let when = format_relative_time(s.updated_at);
-            spans.push(Span::styled(" \u{f017} ", Style::default().fg(app.app_theme.muted)));
-            spans.push(Span::styled(when.into_owned(), Style::default().fg(app.app_theme.muted)));
+            spans.push(Span::styled(
+                " \u{f017} ",
+                Style::default().fg(app.app_theme.muted),
+            ));
+            spans.push(Span::styled(
+                when.into_owned(),
+                Style::default().fg(app.app_theme.muted),
+            ));
 
             if !s.tags.is_empty() {
-                spans.push(Span::styled("  \u{f02b} ", Style::default().fg(app.app_theme.tag).add_modifier(Modifier::BOLD)));
-                spans.push(Span::styled(s.tags.join(", "), Style::default().fg(app.app_theme.fg)));
+                spans.push(Span::styled(
+                    "  \u{f02b} ",
+                    Style::default()
+                        .fg(app.app_theme.tag)
+                        .add_modifier(Modifier::BOLD),
+                ));
+                spans.push(Span::styled(
+                    s.tags.join(", "),
+                    Style::default().fg(app.app_theme.fg),
+                ));
             }
             spans.push(Span::raw(" ")); // padding right
 
-            let detail_para = Paragraph::new(Line::from(spans))
-                .alignment(Alignment::Right);
+            let detail_para = Paragraph::new(Line::from(spans)).alignment(Alignment::Right);
             frame.render_widget(detail_para, chunks[0]);
-        } else if let Some(crate::app::VisualItem::Folder { name, note_count, .. }) = app.list.visual_list.get(app.list.visual_index)
+        } else if let Some(crate::app::VisualItem::Folder {
+            name, note_count, ..
+        }) = app.list.visual_list.get(app.list.visual_index)
             && name != ".."
         {
             let mut spans = Vec::new();
             let suffix = if *note_count == 1 { "note" } else { "notes" };
-            spans.push(Span::styled(" \u{f0ca} ", Style::default().fg(app.app_theme.folder)));
-            spans.push(Span::styled(format!("{} {}", note_count, suffix), Style::default().fg(app.app_theme.fg)));
+            spans.push(Span::styled(
+                " \u{f0ca} ",
+                Style::default().fg(app.app_theme.folder),
+            ));
+            spans.push(Span::styled(
+                format!("{} {}", note_count, suffix),
+                Style::default().fg(app.app_theme.fg),
+            ));
             spans.push(Span::raw(" ")); // padding right
 
-            let detail_para = Paragraph::new(Line::from(spans))
-                .alignment(Alignment::Right);
+            let detail_para = Paragraph::new(Line::from(spans)).alignment(Alignment::Right);
             frame.render_widget(detail_para, chunks[0]);
         }
     } else {
@@ -1412,22 +1433,33 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         let is_pinned = app.list.grid_folder == crate::app::VIRTUAL_PINNED_PATH;
         let mut spans = Vec::new();
         if is_pinned {
-            spans.push(Span::styled(" \u{f4cc} Pinned", Style::default().fg(app.app_theme.heading).add_modifier(Modifier::BOLD)));
+            spans.push(Span::styled(
+                " \u{f4cc} Pinned",
+                Style::default()
+                    .fg(app.app_theme.heading)
+                    .add_modifier(Modifier::BOLD),
+            ));
         } else {
-            spans.push(Span::styled(" \u{f07b} Vault", Style::default().fg(app.app_theme.folder).add_modifier(Modifier::BOLD)));
+            spans.push(Span::styled(
+                " \u{f07b} Vault",
+                Style::default()
+                    .fg(app.app_theme.folder)
+                    .add_modifier(Modifier::BOLD),
+            ));
             if !app.list.grid_folder.is_empty() {
                 for part in app.list.grid_folder.split('/') {
-                    spans.push(Span::styled(" / ", Style::default().fg(app.app_theme.muted)));
-                    spans.push(Span::styled(part.to_string(), Style::default().fg(app.app_theme.fg)));
+                    spans.push(Span::styled(
+                        " / ",
+                        Style::default().fg(app.app_theme.muted),
+                    ));
+                    spans.push(Span::styled(
+                        part.to_string(),
+                        Style::default().fg(app.app_theme.fg),
+                    ));
                 }
             }
         }
-        let dir_rect = Rect::new(
-            list_area.x,
-            list_area.y + 1,
-            list_area.width,
-            1,
-        );
+        let dir_rect = Rect::new(list_area.x, list_area.y + 1, list_area.width, 1);
         frame.render_widget(Paragraph::new(Line::from(spans)), dir_rect);
 
         // --- columns / visible rows ---
@@ -1464,7 +1496,9 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
 
         for i in 0..count {
             let vi = start + i;
-            if vi >= len { break; }
+            if vi >= len {
+                break;
+            }
             let row = i / cols;
             let col = i % cols;
             let tile_rect = ratatui::layout::Rect::new(
@@ -1488,29 +1522,52 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     } else {
                         '\u{f07b}' // Folder ()
                     };
-                    let col = if is_pinned { app.app_theme.heading } else { app.app_theme.folder };
+                    let col = if is_pinned {
+                        app.app_theme.heading
+                    } else {
+                        app.app_theme.folder
+                    };
                     (ic, col, name.clone())
                 }
-                crate::app::VisualItem::Note { summary_idx, is_clin, is_draw, is_canvas, .. } => {
+                crate::app::VisualItem::Note {
+                    summary_idx,
+                    is_clin,
+                    is_draw,
+                    is_canvas,
+                    ..
+                } => {
                     let s = &app.notes[*summary_idx];
-                    let col = if s.pinned { app.app_theme.heading }
-                        else if *is_clin { app.app_theme.destructive }
-                        else if *is_draw { app.app_theme.success }
-                        else if *is_canvas { app.app_theme.accent }
-                        else { app.app_theme.text };
-                    let ic = if s.pinned { '\u{f4cc}' }
-                        else if *is_clin { '\u{f023}' }
-                        else if *is_draw { '\u{f1fc}' }
-                        else if *is_canvas { '\u{f005}' }
-                        else { '\u{f15c}' };
+                    let col = if s.pinned {
+                        app.app_theme.heading
+                    } else if *is_clin {
+                        app.app_theme.destructive
+                    } else if *is_draw {
+                        app.app_theme.success
+                    } else if *is_canvas {
+                        app.app_theme.accent
+                    } else {
+                        app.app_theme.text
+                    };
+                    let ic = if s.pinned {
+                        '\u{f4cc}'
+                    } else if *is_clin {
+                        '\u{f023}'
+                    } else if *is_draw {
+                        '\u{f1fc}'
+                    } else if *is_canvas {
+                        '\u{f005}'
+                    } else {
+                        '\u{f15c}'
+                    };
                     (ic, col, s.title.clone())
                 }
-                crate::app::VisualItem::CreateNew { .. } => ('\u{f067}', app.app_theme.success, "New".to_string()),
+                crate::app::VisualItem::CreateNew { .. } => {
+                    ('\u{f067}', app.app_theme.success, "New".to_string())
+                }
             };
 
             // --- tile border (plain border = "button") ---
-            let mut block = Block::default()
-                .borders(Borders::ALL);
+            let mut block = Block::default().borders(Borders::ALL);
             if is_selected {
                 block = block.border_style(Style::default().fg(app.app_theme.highlight_bg));
             } else {
@@ -1521,7 +1578,9 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
 
             // --- icon: centered on the top inner row ---
             let icon_style = if is_selected {
-                Style::default().fg(glyph_color).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(glyph_color)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(glyph_color)
             };
@@ -1542,7 +1601,9 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 let tag_x = inner.x + inner.width.saturating_sub(1);
                 if let Some(cell) = buf.cell_mut((tag_x, inner.y)) {
                     let tag_style = if is_selected {
-                        Style::default().fg(app.app_theme.tag).add_modifier(Modifier::BOLD)
+                        Style::default()
+                            .fg(app.app_theme.tag)
+                            .add_modifier(Modifier::BOLD)
                     } else {
                         Style::default().fg(app.app_theme.tag)
                     };
@@ -1553,7 +1614,10 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             // --- name: sanitize, truncate to inner width, center, write on the bottom row (row 2) ---
             let sanitized = crate::sanitize::sanitize_for_terminal(&raw_name);
             let mut chars: Vec<char> = sanitized.chars().collect();
-            if chars.len() > inner_w { chars.truncate(inner_w - 1); chars.push('…'); }
+            if chars.len() > inner_w {
+                chars.truncate(inner_w - 1);
+                chars.push('…');
+            }
             let pad = inner_w.saturating_sub(chars.len());
             let left = pad / 2;
             let name_style = if is_selected {

@@ -1,7 +1,7 @@
 use crate::actions::Action;
 use crate::app::App;
 use crate::popups::{ImportSource, ImportTarget};
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use std::borrow::Cow;
 use std::fs;
 use std::io::Cursor;
@@ -18,14 +18,20 @@ impl Action for ImportAction {
     fn id(&self) -> Cow<'static, str> {
         match (self.source, self.target) {
             (ImportSource::File, ImportTarget::NewNote) => Cow::Borrowed("insert.file_new"),
-            (ImportSource::File, ImportTarget::AppendCurrent) => Cow::Borrowed("insert.file_append"),
+            (ImportSource::File, ImportTarget::AppendCurrent) => {
+                Cow::Borrowed("insert.file_append")
+            }
             (ImportSource::Csv, ImportTarget::NewNote) => Cow::Borrowed("insert.csv_new"),
             (ImportSource::Csv, ImportTarget::AppendCurrent) => Cow::Borrowed("insert.csv_append"),
             (ImportSource::Json, ImportTarget::NewNote) => Cow::Borrowed("insert.json_new"),
-            (ImportSource::Json, ImportTarget::AppendCurrent) => Cow::Borrowed("insert.json_append"),
+            (ImportSource::Json, ImportTarget::AppendCurrent) => {
+                Cow::Borrowed("insert.json_append")
+            }
             (ImportSource::Url, ImportTarget::NewNote) => Cow::Borrowed("insert.url_new"),
             (ImportSource::Url, ImportTarget::AppendCurrent) => Cow::Borrowed("insert.url_append"),
-            (ImportSource::Clipboard, ImportTarget::NewNote) => Cow::Borrowed("insert.clipboard_new"),
+            (ImportSource::Clipboard, ImportTarget::NewNote) => {
+                Cow::Borrowed("insert.clipboard_new")
+            }
             (ImportSource::Clipboard, ImportTarget::AppendCurrent) => {
                 Cow::Borrowed("insert.clipboard_append")
             }
@@ -151,7 +157,9 @@ pub fn convert_file(path: &str) -> Result<(String, String)> {
         }
         c
     } else {
-        bail!("markitdown or pandoc is required. Install one: pip install markitdown  (or)  install pandoc");
+        bail!(
+            "markitdown or pandoc is required. Install one: pip install markitdown  (or)  install pandoc"
+        );
     };
 
     let output = cmd
@@ -248,54 +256,55 @@ pub fn convert_json(path: &str) -> Result<(String, String)> {
     let text = fs::read_to_string(path).context("Failed to read JSON file")?;
     let value: serde_json::Value = serde_json::from_str(&text).context("Invalid JSON")?;
 
-    if let Some(arr) = value.as_array() {
-        if !arr.is_empty() && arr.iter().all(|v| v.is_object()) {
-            let mut keys = Vec::new();
-            for obj in arr {
-                if let Some(map) = obj.as_object() {
-                    for key in map.keys() {
-                        if !keys.contains(key) {
-                            keys.push(key.clone());
-                        }
+    if let Some(arr) = value.as_array()
+        && !arr.is_empty()
+        && arr.iter().all(|v| v.is_object())
+    {
+        let mut keys = Vec::new();
+        for obj in arr {
+            if let Some(map) = obj.as_object() {
+                for key in map.keys() {
+                    if !keys.contains(key) {
+                        keys.push(key.clone());
                     }
                 }
             }
-
-            let mut md = String::new();
-            md.push('|');
-            for key in &keys {
-                md.push(' ');
-                md.push_str(&key.replace('|', "\\|").replace('\n', " <br>"));
-                md.push_str(" |");
-            }
-            md.push('\n');
-
-            md.push('|');
-            for _ in 0..keys.len() {
-                md.push_str(" --- |");
-            }
-            md.push('\n');
-
-            for obj in arr {
-                md.push('|');
-                if let Some(map) = obj.as_object() {
-                    for key in &keys {
-                        md.push(' ');
-                        if let Some(val) = map.get(key) {
-                            let s = match val {
-                                serde_json::Value::Null => "".to_string(),
-                                serde_json::Value::String(s) => s.clone(),
-                                _ => val.to_string(),
-                            };
-                            md.push_str(&s.replace('|', "\\|").replace('\n', " <br>"));
-                        }
-                        md.push_str(" |");
-                    }
-                }
-                md.push('\n');
-            }
-            return Ok((file_stem_title(path), md));
         }
+
+        let mut md = String::new();
+        md.push('|');
+        for key in &keys {
+            md.push(' ');
+            md.push_str(&key.replace('|', "\\|").replace('\n', " <br>"));
+            md.push_str(" |");
+        }
+        md.push('\n');
+
+        md.push('|');
+        for _ in 0..keys.len() {
+            md.push_str(" --- |");
+        }
+        md.push('\n');
+
+        for obj in arr {
+            md.push('|');
+            if let Some(map) = obj.as_object() {
+                for key in &keys {
+                    md.push(' ');
+                    if let Some(val) = map.get(key) {
+                        let s = match val {
+                            serde_json::Value::Null => "".to_string(),
+                            serde_json::Value::String(s) => s.clone(),
+                            _ => val.to_string(),
+                        };
+                        md.push_str(&s.replace('|', "\\|").replace('\n', " <br>"));
+                    }
+                    md.push_str(" |");
+                }
+            }
+            md.push('\n');
+        }
+        return Ok((file_stem_title(path), md));
     }
 
     let md = format!("```json\n{}\n```", serde_json::to_string_pretty(&value)?);
@@ -345,9 +354,12 @@ pub fn convert_url(url: &str) -> Result<(String, String)> {
             if !md.is_empty() {
                 // Still need title extraction for the note name
                 let mut title = None;
-                let temp_file = NamedTempFile::new().context("Failed to create temp file for title extraction")?;
+                let temp_file = NamedTempFile::new()
+                    .context("Failed to create temp file for title extraction")?;
                 let temp_path = temp_file.path().to_str().unwrap().to_string();
-                let _ = Command::new("curl").args(["-sL", "-o", &temp_path, url]).status();
+                let _ = Command::new("curl")
+                    .args(["-sL", "-o", &temp_path, url])
+                    .status();
                 if let Ok(html) = fs::read_to_string(&temp_path) {
                     let re = regex::Regex::new(r"(?i)<title[^>]*>(.*?)</title>").unwrap();
                     if let Some(caps) = re.captures(&html) {
@@ -355,7 +367,12 @@ pub fn convert_url(url: &str) -> Result<(String, String)> {
                     }
                 }
                 let final_title = title.unwrap_or_else(|| {
-                    url.trim_start_matches("http://").trim_start_matches("https://").split('/').next().unwrap_or("Imported URL").to_string()
+                    url.trim_start_matches("http://")
+                        .trim_start_matches("https://")
+                        .split('/')
+                        .next()
+                        .unwrap_or("Imported URL")
+                        .to_string()
                 });
                 return Ok((final_title, md));
             }
@@ -364,12 +381,12 @@ pub fn convert_url(url: &str) -> Result<(String, String)> {
 
     let (_, md) = convert_file(&temp_path)?;
     let mut title = None;
-    if ext == ".html" || ext == ".htm" {
-        if let Ok(html) = fs::read_to_string(&temp_path) {
-            let re = regex::Regex::new(r"(?i)<title[^>]*>(.*?)</title>").unwrap();
-            if let Some(caps) = re.captures(&html) {
-                title = Some(caps.get(1).unwrap().as_str().trim().to_string());
-            }
+    if (ext == ".html" || ext == ".htm")
+        && let Ok(html) = fs::read_to_string(&temp_path)
+    {
+        let re = regex::Regex::new(r"(?i)<title[^>]*>(.*?)</title>").unwrap();
+        if let Some(caps) = re.captures(&html) {
+            title = Some(caps.get(1).unwrap().as_str().trim().to_string());
         }
     }
 
@@ -387,12 +404,17 @@ pub fn convert_url(url: &str) -> Result<(String, String)> {
 
 pub fn clipboard_to_md() -> Result<(String, String)> {
     let mut clipboard = arboard::Clipboard::new().context("Failed to open clipboard")?;
-    let text = clipboard.get_text().context("Clipboard is empty or does not contain text")?;
+    let text = clipboard
+        .get_text()
+        .context("Clipboard is empty or does not contain text")?;
     if text.trim().is_empty() {
         bail!("Clipboard is empty");
     }
 
-    let title = format!("Clipboard {}", chrono::Local::now().format("%Y-%m-%d %H:%M"));
+    let title = format!(
+        "Clipboard {}",
+        chrono::Local::now().format("%Y-%m-%d %H:%M")
+    );
     Ok((title, text))
 }
 
@@ -421,7 +443,10 @@ mod tests {
     #[test]
     fn test_json_table_conversion() -> Result<()> {
         let mut tmp = NamedTempFile::new()?;
-        write!(tmp, "[{{\"a\": 1, \"b\": \"x\"}}, {{\"a\": 2, \"c\": true}}]")?;
+        write!(
+            tmp,
+            "[{{\"a\": 1, \"b\": \"x\"}}, {{\"a\": 2, \"c\": true}}]"
+        )?;
 
         let (_, md) = convert_json(tmp.path().to_str().unwrap())?;
         assert!(md.contains("| a | b | c |"));
@@ -448,4 +473,3 @@ mod tests {
         assert_eq!(file_stem_title(".hidden"), ".hidden");
     }
 }
-

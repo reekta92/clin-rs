@@ -1,19 +1,15 @@
-use crate::content_tree::state::ContentTreeState;
 use crate::app_theme::AppThemeColors;
-use crate::keybinds::{Keybinds, ContentTreeAction};
+use crate::content_tree::state::ContentTreeState;
+use crate::keybinds::{ContentTreeAction, Keybinds};
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Layout, Rect, Alignment},
+    layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
-    text::{Span, Line},
+    text::{Line, Span},
     widgets::{Block, List, ListItem, ListState, Paragraph},
 };
 
-fn get_tree_prefix(
-    state: &ContentTreeState,
-    visible: &[usize],
-    p: usize,
-) -> String {
+fn get_tree_prefix(state: &ContentTreeState, visible: &[usize], p: usize) -> String {
     let idx = visible[p];
     let node = &state.nodes[idx];
     let depth = node.depth;
@@ -120,7 +116,7 @@ pub fn draw_content_tree(
         for (p, &idx) in visible.iter().enumerate() {
             if let Some(node) = state.nodes.get(idx) {
                 let prefix = get_tree_prefix(state, &visible, p);
-                
+
                 let mut spans = Vec::new();
                 if !prefix.is_empty() {
                     spans.push(Span::styled(prefix, Style::default().fg(theme.muted)));
@@ -139,22 +135,20 @@ pub fn draw_content_tree(
                         };
                         spans.push(Span::styled(
                             arrow,
-                            Style::default().fg(theme.heading).add_modifier(Modifier::BOLD),
+                            Style::default()
+                                .fg(theme.heading)
+                                .add_modifier(Modifier::BOLD),
                         ));
                         spans.push(Span::styled(
                             title.clone(),
-                            Style::default().fg(theme.heading).add_modifier(Modifier::BOLD),
+                            Style::default()
+                                .fg(theme.heading)
+                                .add_modifier(Modifier::BOLD),
                         ));
                     }
                     crate::content_tree::parse::NodeKind::ListItem { text } => {
-                        spans.push(Span::styled(
-                            "• ",
-                            Style::default().fg(theme.accent),
-                        ));
-                        spans.push(Span::styled(
-                            text.clone(),
-                            Style::default().fg(theme.text),
-                        ));
+                        spans.push(Span::styled("• ", Style::default().fg(theme.accent)));
+                        spans.push(Span::styled(text.clone(), Style::default().fg(theme.text)));
                     }
                     crate::content_tree::parse::NodeKind::Paragraph { preview, .. } => {
                         spans.push(Span::styled(
@@ -169,7 +163,7 @@ pub fn draw_content_tree(
                         ));
                     }
                 }
-                
+
                 items.push(ListItem::new(Line::from(spans)));
             }
         }

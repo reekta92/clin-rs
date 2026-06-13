@@ -87,7 +87,6 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
-
     if let Some(mut popup) = app.popups.folder.take() {
         if key.code == KeyCode::Esc {
             app.popups.folder = None;
@@ -1689,10 +1688,8 @@ pub fn handle_edit_mouse(
                 app.editor.editor.scroll((3, 0));
             }
         }
-        MouseEventKind::ScrollUp => {
-            if *focus == EditFocus::Body {
-                app.editor.editor.scroll((-3, 0));
-            }
+        MouseEventKind::ScrollUp if *focus == EditFocus::Body => {
+            app.editor.editor.scroll((-3, 0));
         }
         _ => {}
     }

@@ -19,19 +19,19 @@ pub fn apply_text_shortcuts(
         return true;
     }
     if keybinds.matches_edit(EditAction::Cut, &key) {
-        if textarea.cut() {
-            if let Ok(mut cb) = arboard::Clipboard::new() {
-                let _ = cb.set_text(textarea.yank_text());
-            }
+        if textarea.cut()
+            && let Ok(mut cb) = arboard::Clipboard::new()
+        {
+            let _ = cb.set_text(textarea.yank_text());
         }
         return true;
     }
     if keybinds.matches_edit(EditAction::Paste, &key) {
-        if let Ok(mut cb) = arboard::Clipboard::new() {
-            if let Ok(text) = cb.get_text() {
-                textarea.insert_str(text);
-                return true;
-            }
+        if let Ok(mut cb) = arboard::Clipboard::new()
+            && let Ok(text) = cb.get_text()
+        {
+            textarea.insert_str(text);
+            return true;
         }
         let _ = textarea.paste();
         return true;

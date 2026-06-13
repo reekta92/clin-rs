@@ -68,7 +68,7 @@ impl CommandPalette {
                     });
                 }
             }
-            matched.sort_by(|a, b| b.score.cmp(&a.score));
+            matched.sort_by_key(|b| std::cmp::Reverse(b.score));
         }
 
         self.items = matched;
