@@ -113,17 +113,15 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 app.confirm_popup_select_cancel();
             } else if confirm_key.code == KeyCode::Tab {
                 app.confirm_popup_toggle_button();
-            } else if confirm_key.code == KeyCode::Enter {
-                app.confirm_popup_activate();
-            } else if confirm_key.code == KeyCode::Char('y')
+            } else if confirm_key.code == KeyCode::Enter
+                || confirm_key.code == KeyCode::Char('y')
                 || confirm_key.code == KeyCode::Char('Y')
             {
                 app.confirm_popup_activate();
             } else if confirm_key.code == KeyCode::Char('n')
                 || confirm_key.code == KeyCode::Char('N')
+                || confirm_key.code == KeyCode::Esc
             {
-                app.cancel_confirm();
-            } else if confirm_key.code == KeyCode::Esc {
                 app.cancel_confirm();
             }
             return false;

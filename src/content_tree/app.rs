@@ -40,30 +40,27 @@ pub fn run_content_tree_view(
         })?;
 
         if event::poll(Duration::from_millis(100))? {
-            match event::read()? {
-                Event::Key(key) => {
-                    // Check if key is release to avoid duplicate processing on some platforms
-                    if key.kind == crossterm::event::KeyEventKind::Release {
-                        continue;
-                    }
-                    match input::handle_input(&mut state, key, keybinds) {
-                        input::InputResult::Back => return Ok(ContentTreeResult::Back),
-                        input::InputResult::Help => return Ok(ContentTreeResult::HelpRequested),
-                        input::InputResult::Open => {
-                            if !state.load_error && state.selected < state.nodes.len() {
-                                let node = &state.nodes[state.selected];
-                                return Ok(ContentTreeResult::JumpToLine {
-                                    note_id: state.note_id.clone(),
-                                    line: node.line,
-                                });
-                            } else {
-                                return Ok(ContentTreeResult::Back);
-                            }
-                        }
-                        input::InputResult::None => {}
-                    }
+            if let Event::Key(key) = event::read()? {
+                // Check if key is release to avoid duplicate processing on some platforms
+                if key.kind == crossterm::event::KeyEventKind::Release {
+                    continue;
                 }
-                _ => {}
+                match input::handle_input(&mut state, key, keybinds) {
+                    input::InputResult::Back => return Ok(ContentTreeResult::Back),
+                    input::InputResult::Help => return Ok(ContentTreeResult::HelpRequested),
+                    input::InputResult::Open => {
+                        if !state.load_error && state.selected < state.nodes.len() {
+                            let node = &state.nodes[state.selected];
+                            return Ok(ContentTreeResult::JumpToLine {
+                                note_id: state.note_id.clone(),
+                                line: node.line,
+                            });
+                        } else {
+                            return Ok(ContentTreeResult::Back);
+                        }
+                    }
+                    input::InputResult::None => {}
+                }
             }
         }
     }

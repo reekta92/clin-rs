@@ -67,7 +67,7 @@ impl ContentTreeState {
     }
 
     pub fn is_header(&self, i: usize) -> bool {
-        self.nodes.get(i).map_or(false, |n| {
+        self.nodes.get(i).is_some_and(|n| {
             matches!(n.kind, crate::content_tree::parse::NodeKind::Header { .. })
         })
     }

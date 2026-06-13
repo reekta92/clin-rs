@@ -32,7 +32,7 @@ pub fn draw_pinstar_view(
     area: ratatui::layout::Rect,
 ) {
     let total_area = area;
-    let mut area = total_area;
+    let mut area = area;
     area.height = area.height.saturating_sub(1);
 
     let (editor_area, canvas_area) = if state.show_editor_pane {

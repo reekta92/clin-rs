@@ -105,7 +105,7 @@ pub fn parse_outline(title: &str, content: &str) -> Vec<TreeNode> {
             hash_count += 1;
         }
 
-        if hash_count >= 1 && hash_count <= 6 {
+        if (1..=6).contains(&hash_count) {
             let next_char = chars.next();
             if next_char.is_none() || next_char.unwrap().is_whitespace() {
                 close_paragraph(&mut para, &mut nodes, cur_depth(&stack));

@@ -204,7 +204,7 @@ pub fn handle_mouse(state: &mut BackupState, event: MouseEvent) -> InputResult {
             let list_width = (area.width as f32 * 0.4) as u16;
             if x >= area.x
                 && x < area.x + list_width
-                && y >= area.y + 1
+                && y > area.y
                 && y < area.y + area.height - 1
             {
                 let line_index = (y - area.y - 2) as usize;
@@ -349,10 +349,7 @@ impl BackupState {
     }
 
     fn save_settings(&mut self) {
-        let mut config = match ClinConfig::load() {
-            Ok(c) => c,
-            Err(_) => ClinConfig::default(),
-        };
+        let mut config = ClinConfig::load().unwrap_or_default();
 
         config.backup.enabled = self.settings.enabled;
         config.backup.backup_on_save = self.settings.backup_on_save;

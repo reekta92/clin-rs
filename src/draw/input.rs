@@ -311,7 +311,7 @@ fn erase_at(cx: f64, cy: f64, app: &mut DrawAppState) {
     let threshold = 5.0 / app.viewport.zoom;
     app.data.elements.retain(|el| match el {
         DrawElement::Stroke(s) => !s.points.iter().any(|(px, py)| {
-            ((*px as f64) - cx).powi(2) + ((*py as f64) - cy).powi(2) < threshold.powi(2)
+            ((*px) - cx).powi(2) + ((*py) - cy).powi(2) < threshold.powi(2)
         }),
         DrawElement::Shape(s) => match s {
             Shape::Rect {

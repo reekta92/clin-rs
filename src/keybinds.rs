@@ -48,8 +48,8 @@ impl KeyCombo {
         }
         let (modifiers_str, key_part) = if s == "+" {
             ("", "+")
-        } else if s.ends_with("++") {
-            (&s[..s.len() - 2], "+")
+        } else if let Some(stripped) = s.strip_suffix("++") {
+            (stripped, "+")
         } else {
             match s.rfind('+') {
                 Some(idx) => (&s[..idx], &s[idx + 1..]),

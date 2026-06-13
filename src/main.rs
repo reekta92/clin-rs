@@ -631,10 +631,7 @@ fn run_app(
             continue;
         }
         if app.mode == ViewMode::Backup {
-            let config = match ClinConfig::load() {
-                Ok(c) => c,
-                Err(_) => ClinConfig::default(),
-            };
+            let config = ClinConfig::load().unwrap_or_default();
             let vault_path = config
                 .effective_storage_path()
                 .unwrap_or_else(|_| PathBuf::from("."));

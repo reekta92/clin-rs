@@ -312,7 +312,7 @@ pub fn convert_url(url: &str) -> Result<(String, String)> {
         .next()
         .unwrap_or(url)
         .split('.')
-        .last()
+        .next_back()
         .filter(|e| e.len() <= 5 && e.chars().all(|c| c.is_alphanumeric()))
         .map(|e| format!(".{}", e))
         .unwrap_or_else(|| ".html".to_string());
@@ -421,7 +421,7 @@ mod tests {
     #[test]
     fn test_json_table_conversion() -> Result<()> {
         let mut tmp = NamedTempFile::new()?;
-        write!(tmp, "{}", r#"[{"a": 1, "b": "x"}, {"a": 2, "c": true}]"#)?;
+        write!(tmp, "[{{\"a\": 1, \"b\": \"x\"}}, {{\"a\": 2, \"c\": true}}]")?;
 
         let (_, md) = convert_json(tmp.path().to_str().unwrap())?;
         assert!(md.contains("| a | b | c |"));
@@ -433,7 +433,7 @@ mod tests {
     #[test]
     fn test_json_block_conversion() -> Result<()> {
         let mut tmp = NamedTempFile::new()?;
-        write!(tmp, "{}", r#"{"not": "array"}"#)?;
+        write!(tmp, "{{\"not\": \"array\"}}")?;
 
         let (_, md) = convert_json(tmp.path().to_str().unwrap())?;
         assert!(md.starts_with("```json"));

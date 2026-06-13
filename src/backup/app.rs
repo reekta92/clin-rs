@@ -46,10 +46,11 @@ pub fn run_backup_view(
                     InputResult::Refresh => state.refresh_git_info(),
                     InputResult::None => {}
                 },
-                Event::Mouse(mouse) => match input::handle_mouse(&mut state, mouse) {
-                    InputResult::Refresh => state.refresh_git_info(),
-                    _ => {}
-                },
+                Event::Mouse(mouse) => {
+                    if let InputResult::Refresh = input::handle_mouse(&mut state, mouse) {
+                        state.refresh_git_info()
+                    }
+                }
                 _ => {}
             }
         }

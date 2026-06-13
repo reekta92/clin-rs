@@ -64,10 +64,8 @@ fn find_filter_tokens(s: &str) -> Vec<(usize, &'static str)> {
     }
 
     for &prefix in &bare {
-        if s.starts_with(prefix) && !tokens.iter().any(|&(p, _)| p == 0) {
-            if !is_escaped(s, 0, prefix.len()) {
-                tokens.push((0, prefix));
-            }
+        if s.starts_with(prefix) && !tokens.iter().any(|&(p, _)| p == 0) && !is_escaped(s, 0, prefix.len()) {
+            tokens.push((0, prefix));
         }
     }
     tokens.sort_by_key(|&(pos, _)| pos);
@@ -93,7 +91,7 @@ fn strip_escape_filter(s: &str) -> String {
                     it.next();
                     it.next()
                 };
-                let is_filter = next.zip(after).map_or(false, |(ch, colon)| {
+                let is_filter = next.zip(after).is_some_and(|(ch, colon)| {
                     filter_chars.contains(&ch) && colon == ':'
                 });
                 if is_filter {
@@ -469,8 +467,8 @@ impl App {
             });
         }
 
-        let all_folders = if self.list.folder_cache.is_some() {
-            self.list.folder_cache.as_ref().unwrap()
+        let all_folders = if let Some(ref cache) = self.list.folder_cache {
+            cache
         } else {
             let folders = self.storage.list_folders().unwrap_or_default();
             self.list.folder_cache = Some(folders);
@@ -2331,7 +2329,7 @@ template = """
                         self.storage
                             .load_note(id)
                             .ok()
-                            .map_or(false, |n| n.tags.contains(&tag))
+                            .is_some_and(|n| n.tags.contains(&tag))
                     })
                     .count()
             })
@@ -3629,7 +3627,7 @@ template = """
                 }
 
                 if is_draw {
-                    let path = self.storage.note_path(&id);
+                    let path = self.storage.note_path(id);
                     match std::fs::read_to_string(&path) {
                         Ok(content) => match serde_json::from_str::<crate::draw::state::DrawData>(&content)
                         {
@@ -3651,7 +3649,7 @@ template = """
                 }
 
                 if is_canvas {
-                    let path = self.storage.note_path(&id);
+                    let path = self.storage.note_path(id);
                     match std::fs::read_to_string(&path) {
                         Ok(content) => {
                             match serde_json::from_str::<crate::pinstar::data::CanvasData>(&content) {
@@ -3673,7 +3671,7 @@ template = """
                     return;
                 }
 
-                if let Ok(note) = self.storage.load_note(&id) {
+                if let Ok(note) = self.storage.load_note(id) {
                     let width = 80u16.saturating_sub(2).max(40);
                     let mut renderer = MarkdownRenderer::new(width);
                     renderer.render(&note.content, width);
@@ -3704,7 +3702,7 @@ template = """
                             ""
                         };
                         if parent_path == folder_path {
-                            let name = f.split('/').last().unwrap_or("").to_string();
+                            let name = f.split('/').next_back().unwrap_or("").to_string();
                             subfolders.push(name);
                         }
                     }
@@ -3741,7 +3739,7 @@ template = """
                     for sub in &subfolders {
                         md.push_str(&format!("- \u{f07b} {}\n", sub));
                     }
-                    md.push_str("\n");
+                    md.push('\n');
                 }
 
                 if !notes.is_empty() {

@@ -1872,7 +1872,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         let suggestion_height = if popup.suggestions.is_empty() {
             0u16
         } else {
-            (popup.suggestions.len() as u16).min(5).max(1)
+            (popup.suggestions.len() as u16).clamp(1, 5)
         };
         let content = draw_popup_frame(
             frame,
@@ -1954,7 +1954,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             popup
                 .all_tags
                 .iter()
-                .map(|tag| ListItem::new(format!("{}", tag)))
+                .map(|tag| ListItem::new(tag.to_string()))
                 .collect()
         };
 
