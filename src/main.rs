@@ -2,27 +2,27 @@
 
 pub(crate) mod actions;
 pub(crate) mod app_theme;
+pub(crate) mod backup;
 pub(crate) mod cli;
 mod config;
 pub(crate) mod constants;
 pub(crate) mod draw;
 pub(crate) mod editor;
 pub(crate) mod frontmatter;
-pub(crate) mod graf;
 pub mod fsutil;
+pub(crate) mod graf;
 mod keybinds;
 pub(crate) mod list_view;
 pub(crate) mod markdown;
 pub(crate) mod migration;
 pub(crate) mod palette;
 pub(crate) mod pinstar;
-pub(crate) mod backup;
-pub(crate) mod preview;
 pub(crate) mod popups;
+pub(crate) mod preview;
 pub(crate) mod sanitize;
-pub(crate) mod text_edit;
 pub(crate) mod snapshot;
 mod templates;
+pub(crate) mod text_edit;
 
 use crate::config::ClinConfig;
 use crate::keybinds::{EditAction, HelpAction, Keybinds, ListAction};
@@ -634,11 +634,16 @@ fn run_app(
                 Ok(c) => c,
                 Err(_) => ClinConfig::default(),
             };
-            let vault_path = config.effective_storage_path()
+            let vault_path = config
+                .effective_storage_path()
                 .unwrap_or_else(|_| PathBuf::from("."));
 
             let _ = crate::backup::app::run_backup_view(
-                terminal, vault_path, &config, &app.keybinds, &app.app_theme,
+                terminal,
+                vault_path,
+                &config,
+                &app.keybinds,
+                &app.app_theme,
             );
 
             app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
@@ -647,7 +652,6 @@ fn run_app(
             terminal.clear()?;
             continue;
         }
-
 
         if app.mode == ViewMode::Draw {
             let note_id = app.get_selected_note_id();

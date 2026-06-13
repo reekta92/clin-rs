@@ -1,3 +1,4 @@
+#![allow(unused_imports)]
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
@@ -730,69 +731,282 @@ impl Default for Keybinds {
 
         let mut draw = HashMap::new();
         draw.insert(DrawAction::Quit, vec![KeyCombo::simple(KeyCode::Esc)]);
-        draw.insert(DrawAction::SelectDrawTool, vec![KeyCombo::simple(KeyCode::Char('d'))]);
-        draw.insert(DrawAction::ToggleShapeSelector, vec![KeyCombo::simple(KeyCode::Char('s'))]);
-        draw.insert(DrawAction::SelectTextTool, vec![KeyCombo::simple(KeyCode::Char('t'))]);
-        draw.insert(DrawAction::SelectEraseTool, vec![KeyCombo::simple(KeyCode::Char('e'))]);
-        draw.insert(DrawAction::ShapeSelectorUp, vec![KeyCombo::simple(KeyCode::Up)]);
-        draw.insert(DrawAction::ShapeSelectorDown, vec![KeyCombo::simple(KeyCode::Down)]);
-        draw.insert(DrawAction::ShapeSelectorConfirm, vec![KeyCombo::simple(KeyCode::Enter)]);
-        draw.insert(DrawAction::ShapeSelectorCancel, vec![KeyCombo::simple(KeyCode::Esc)]);
-        draw.insert(DrawAction::TextEditorConfirm, vec![KeyCombo::simple(KeyCode::Enter)]);
-        draw.insert(DrawAction::TextEditorCancel, vec![KeyCombo::simple(KeyCode::Esc)]);
+        draw.insert(
+            DrawAction::SelectDrawTool,
+            vec![KeyCombo::simple(KeyCode::Char('d'))],
+        );
+        draw.insert(
+            DrawAction::ToggleShapeSelector,
+            vec![KeyCombo::simple(KeyCode::Char('s'))],
+        );
+        draw.insert(
+            DrawAction::SelectTextTool,
+            vec![KeyCombo::simple(KeyCode::Char('t'))],
+        );
+        draw.insert(
+            DrawAction::SelectEraseTool,
+            vec![KeyCombo::simple(KeyCode::Char('e'))],
+        );
+        draw.insert(
+            DrawAction::ShapeSelectorUp,
+            vec![KeyCombo::simple(KeyCode::Up)],
+        );
+        draw.insert(
+            DrawAction::ShapeSelectorDown,
+            vec![KeyCombo::simple(KeyCode::Down)],
+        );
+        draw.insert(
+            DrawAction::ShapeSelectorConfirm,
+            vec![KeyCombo::simple(KeyCode::Enter)],
+        );
+        draw.insert(
+            DrawAction::ShapeSelectorCancel,
+            vec![KeyCombo::simple(KeyCode::Esc)],
+        );
+        draw.insert(
+            DrawAction::TextEditorConfirm,
+            vec![KeyCombo::simple(KeyCode::Enter)],
+        );
+        draw.insert(
+            DrawAction::TextEditorCancel,
+            vec![KeyCombo::simple(KeyCode::Esc)],
+        );
 
         let mut canvas = HashMap::new();
         canvas.insert(CanvasAction::Quit, vec![KeyCombo::simple(KeyCode::Esc)]);
         canvas.insert(CanvasAction::Save, vec![KeyCombo::ctrl(KeyCode::Char('s'))]);
-        canvas.insert(CanvasAction::ZoomFineIn, vec![KeyCombo::ctrl(KeyCode::Char('j'))]);
-        canvas.insert(CanvasAction::ZoomFineOut, vec![KeyCombo::ctrl(KeyCode::Char('k'))]);
-        canvas.insert(CanvasAction::ZoomIn, vec![KeyCombo::simple(KeyCode::Char('+')), KeyCombo::simple(KeyCode::Char('='))]);
-        canvas.insert(CanvasAction::ZoomOut, vec![KeyCombo::simple(KeyCode::Char('-')), KeyCombo::simple(KeyCode::Char('_'))]);
-        canvas.insert(CanvasAction::MoveLeft, vec![KeyCombo::simple(KeyCode::Left), KeyCombo::simple(KeyCode::Char('h'))]);
-        canvas.insert(CanvasAction::MoveRight, vec![KeyCombo::simple(KeyCode::Right), KeyCombo::simple(KeyCode::Char('l'))]);
-        canvas.insert(CanvasAction::MoveUp, vec![KeyCombo::simple(KeyCode::Up), KeyCombo::simple(KeyCode::Char('k'))]);
-        canvas.insert(CanvasAction::MoveDown, vec![KeyCombo::simple(KeyCode::Down), KeyCombo::simple(KeyCode::Char('j'))]);
-        canvas.insert(CanvasAction::EditOrConnect, vec![KeyCombo::simple(KeyCode::Char('i')), KeyCombo::simple(KeyCode::Enter)]);
-        canvas.insert(CanvasAction::OpenContextMenu, vec![KeyCombo::simple(KeyCode::Char('a'))]);
-        canvas.insert(CanvasAction::ToggleGrid, vec![KeyCombo::ctrl(KeyCode::Char('g'))]);
-        canvas.insert(CanvasAction::ToggleEditorPane, vec![KeyCombo::ctrl(KeyCode::Char('e'))]);
-        canvas.insert(CanvasAction::CycleFocus, vec![KeyCombo::simple(KeyCode::Tab)]);
-        canvas.insert(CanvasAction::Help, vec![KeyCombo::simple(KeyCode::Char('?'))]);
-        canvas.insert(CanvasAction::RenameConfirm, vec![KeyCombo::simple(KeyCode::Enter)]);
-        canvas.insert(CanvasAction::RenameCancel, vec![KeyCombo::simple(KeyCode::Esc)]);
-        canvas.insert(CanvasAction::MenuClose, vec![KeyCombo::simple(KeyCode::Esc)]);
-        canvas.insert(CanvasAction::MenuUp, vec![KeyCombo::simple(KeyCode::Up), KeyCombo::simple(KeyCode::Char('k'))]);
-        canvas.insert(CanvasAction::MenuDown, vec![KeyCombo::simple(KeyCode::Down), KeyCombo::simple(KeyCode::Char('j'))]);
-        canvas.insert(CanvasAction::MenuSelect, vec![KeyCombo::simple(KeyCode::Enter)]);
-        canvas.insert(CanvasAction::CloseEditor, vec![KeyCombo::simple(KeyCode::Esc)]);
-        canvas.insert(CanvasAction::CloseEditorAlt, vec![KeyCombo::ctrl(KeyCode::Enter)]);
-        canvas.insert(CanvasAction::ConfirmResize, vec![KeyCombo::simple(KeyCode::Enter)]);
-        canvas.insert(CanvasAction::CancelResize, vec![KeyCombo::simple(KeyCode::Esc)]);
-        canvas.insert(CanvasAction::ExtUnfocus, vec![KeyCombo::simple(KeyCode::Esc), KeyCombo::simple(KeyCode::Tab)]);
-        canvas.insert(CanvasAction::ExtToggle, vec![KeyCombo::simple(KeyCode::Enter), KeyCombo::simple(KeyCode::Char(' '))]);
-        canvas.insert(CanvasAction::EditorUnfocus, vec![KeyCombo::simple(KeyCode::Esc)]);
-        canvas.insert(CanvasAction::EditorFocusExt, vec![KeyCombo::simple(KeyCode::Tab)]);
-        canvas.insert(CanvasAction::EditorSyncRaw, vec![KeyCombo::ctrl(KeyCode::Char('s'))]);
+        canvas.insert(
+            CanvasAction::ZoomFineIn,
+            vec![KeyCombo::ctrl(KeyCode::Char('j'))],
+        );
+        canvas.insert(
+            CanvasAction::ZoomFineOut,
+            vec![KeyCombo::ctrl(KeyCode::Char('k'))],
+        );
+        canvas.insert(
+            CanvasAction::ZoomIn,
+            vec![
+                KeyCombo::simple(KeyCode::Char('+')),
+                KeyCombo::simple(KeyCode::Char('=')),
+            ],
+        );
+        canvas.insert(
+            CanvasAction::ZoomOut,
+            vec![
+                KeyCombo::simple(KeyCode::Char('-')),
+                KeyCombo::simple(KeyCode::Char('_')),
+            ],
+        );
+        canvas.insert(
+            CanvasAction::MoveLeft,
+            vec![
+                KeyCombo::simple(KeyCode::Left),
+                KeyCombo::simple(KeyCode::Char('h')),
+            ],
+        );
+        canvas.insert(
+            CanvasAction::MoveRight,
+            vec![
+                KeyCombo::simple(KeyCode::Right),
+                KeyCombo::simple(KeyCode::Char('l')),
+            ],
+        );
+        canvas.insert(
+            CanvasAction::MoveUp,
+            vec![
+                KeyCombo::simple(KeyCode::Up),
+                KeyCombo::simple(KeyCode::Char('k')),
+            ],
+        );
+        canvas.insert(
+            CanvasAction::MoveDown,
+            vec![
+                KeyCombo::simple(KeyCode::Down),
+                KeyCombo::simple(KeyCode::Char('j')),
+            ],
+        );
+        canvas.insert(
+            CanvasAction::EditOrConnect,
+            vec![
+                KeyCombo::simple(KeyCode::Char('i')),
+                KeyCombo::simple(KeyCode::Enter),
+            ],
+        );
+        canvas.insert(
+            CanvasAction::OpenContextMenu,
+            vec![KeyCombo::simple(KeyCode::Char('a'))],
+        );
+        canvas.insert(
+            CanvasAction::ToggleGrid,
+            vec![KeyCombo::ctrl(KeyCode::Char('g'))],
+        );
+        canvas.insert(
+            CanvasAction::ToggleEditorPane,
+            vec![KeyCombo::ctrl(KeyCode::Char('e'))],
+        );
+        canvas.insert(
+            CanvasAction::CycleFocus,
+            vec![KeyCombo::simple(KeyCode::Tab)],
+        );
+        canvas.insert(
+            CanvasAction::Help,
+            vec![KeyCombo::simple(KeyCode::Char('?'))],
+        );
+        canvas.insert(
+            CanvasAction::RenameConfirm,
+            vec![KeyCombo::simple(KeyCode::Enter)],
+        );
+        canvas.insert(
+            CanvasAction::RenameCancel,
+            vec![KeyCombo::simple(KeyCode::Esc)],
+        );
+        canvas.insert(
+            CanvasAction::MenuClose,
+            vec![KeyCombo::simple(KeyCode::Esc)],
+        );
+        canvas.insert(
+            CanvasAction::MenuUp,
+            vec![
+                KeyCombo::simple(KeyCode::Up),
+                KeyCombo::simple(KeyCode::Char('k')),
+            ],
+        );
+        canvas.insert(
+            CanvasAction::MenuDown,
+            vec![
+                KeyCombo::simple(KeyCode::Down),
+                KeyCombo::simple(KeyCode::Char('j')),
+            ],
+        );
+        canvas.insert(
+            CanvasAction::MenuSelect,
+            vec![KeyCombo::simple(KeyCode::Enter)],
+        );
+        canvas.insert(
+            CanvasAction::CloseEditor,
+            vec![KeyCombo::simple(KeyCode::Esc)],
+        );
+        canvas.insert(
+            CanvasAction::CloseEditorAlt,
+            vec![KeyCombo::ctrl(KeyCode::Enter)],
+        );
+        canvas.insert(
+            CanvasAction::ConfirmResize,
+            vec![KeyCombo::simple(KeyCode::Enter)],
+        );
+        canvas.insert(
+            CanvasAction::CancelResize,
+            vec![KeyCombo::simple(KeyCode::Esc)],
+        );
+        canvas.insert(
+            CanvasAction::ExtUnfocus,
+            vec![
+                KeyCombo::simple(KeyCode::Esc),
+                KeyCombo::simple(KeyCode::Tab),
+            ],
+        );
+        canvas.insert(
+            CanvasAction::ExtToggle,
+            vec![
+                KeyCombo::simple(KeyCode::Enter),
+                KeyCombo::simple(KeyCode::Char(' ')),
+            ],
+        );
+        canvas.insert(
+            CanvasAction::EditorUnfocus,
+            vec![KeyCombo::simple(KeyCode::Esc)],
+        );
+        canvas.insert(
+            CanvasAction::EditorFocusExt,
+            vec![KeyCombo::simple(KeyCode::Tab)],
+        );
+        canvas.insert(
+            CanvasAction::EditorSyncRaw,
+            vec![KeyCombo::ctrl(KeyCode::Char('s'))],
+        );
 
         let mut backup = HashMap::new();
         backup.insert(BackupAction::Back, vec![KeyCombo::simple(KeyCode::Esc)]);
-        backup.insert(BackupAction::MoveDown, vec![KeyCombo::simple(KeyCode::Char('j')), KeyCombo::simple(KeyCode::Down)]);
-        backup.insert(BackupAction::MoveUp, vec![KeyCombo::simple(KeyCode::Char('k')), KeyCombo::simple(KeyCode::Up)]);
-        backup.insert(BackupAction::ScrollDiffDown, vec![KeyCombo::simple(KeyCode::PageDown)]);
-        backup.insert(BackupAction::ScrollDiffUp, vec![KeyCombo::simple(KeyCode::PageUp)]);
-        backup.insert(BackupAction::Refresh, vec![KeyCombo::simple(KeyCode::Char('r'))]);
-        backup.insert(BackupAction::EnterCommit, vec![KeyCombo::simple(KeyCode::Char('s'))]);
-        backup.insert(BackupAction::Push, vec![KeyCombo::simple(KeyCode::Char('p'))]);
-        backup.insert(BackupAction::OpenSettings, vec![KeyCombo::simple(KeyCode::Char('/'))]);
-        backup.insert(BackupAction::CycleSection, vec![KeyCombo::simple(KeyCode::Tab)]);
-        backup.insert(BackupAction::CancelCommit, vec![KeyCombo::simple(KeyCode::Esc)]);
-        backup.insert(BackupAction::ConfirmCommit, vec![KeyCombo::simple(KeyCode::Enter)]);
-        backup.insert(BackupAction::CloseSettings, vec![KeyCombo::simple(KeyCode::Esc)]);
-        backup.insert(BackupAction::NextField, vec![KeyCombo::simple(KeyCode::Char('j')), KeyCombo::simple(KeyCode::Down)]);
-        backup.insert(BackupAction::PrevField, vec![KeyCombo::simple(KeyCode::Char('k')), KeyCombo::simple(KeyCode::Up)]);
-        backup.insert(BackupAction::ActivateField, vec![KeyCombo::simple(KeyCode::Enter)]);
-        backup.insert(BackupAction::CancelEditField, vec![KeyCombo::simple(KeyCode::Esc)]);
-        backup.insert(BackupAction::ConfirmEditField, vec![KeyCombo::simple(KeyCode::Enter)]);
+        backup.insert(
+            BackupAction::MoveDown,
+            vec![
+                KeyCombo::simple(KeyCode::Char('j')),
+                KeyCombo::simple(KeyCode::Down),
+            ],
+        );
+        backup.insert(
+            BackupAction::MoveUp,
+            vec![
+                KeyCombo::simple(KeyCode::Char('k')),
+                KeyCombo::simple(KeyCode::Up),
+            ],
+        );
+        backup.insert(
+            BackupAction::ScrollDiffDown,
+            vec![KeyCombo::simple(KeyCode::PageDown)],
+        );
+        backup.insert(
+            BackupAction::ScrollDiffUp,
+            vec![KeyCombo::simple(KeyCode::PageUp)],
+        );
+        backup.insert(
+            BackupAction::Refresh,
+            vec![KeyCombo::simple(KeyCode::Char('r'))],
+        );
+        backup.insert(
+            BackupAction::EnterCommit,
+            vec![KeyCombo::simple(KeyCode::Char('s'))],
+        );
+        backup.insert(
+            BackupAction::Push,
+            vec![KeyCombo::simple(KeyCode::Char('p'))],
+        );
+        backup.insert(
+            BackupAction::OpenSettings,
+            vec![KeyCombo::simple(KeyCode::Char('/'))],
+        );
+        backup.insert(
+            BackupAction::CycleSection,
+            vec![KeyCombo::simple(KeyCode::Tab)],
+        );
+        backup.insert(
+            BackupAction::CancelCommit,
+            vec![KeyCombo::simple(KeyCode::Esc)],
+        );
+        backup.insert(
+            BackupAction::ConfirmCommit,
+            vec![KeyCombo::simple(KeyCode::Enter)],
+        );
+        backup.insert(
+            BackupAction::CloseSettings,
+            vec![KeyCombo::simple(KeyCode::Esc)],
+        );
+        backup.insert(
+            BackupAction::NextField,
+            vec![
+                KeyCombo::simple(KeyCode::Char('j')),
+                KeyCombo::simple(KeyCode::Down),
+            ],
+        );
+        backup.insert(
+            BackupAction::PrevField,
+            vec![
+                KeyCombo::simple(KeyCode::Char('k')),
+                KeyCombo::simple(KeyCode::Up),
+            ],
+        );
+        backup.insert(
+            BackupAction::ActivateField,
+            vec![KeyCombo::simple(KeyCode::Enter)],
+        );
+        backup.insert(
+            BackupAction::CancelEditField,
+            vec![KeyCombo::simple(KeyCode::Esc)],
+        );
+        backup.insert(
+            BackupAction::ConfirmEditField,
+            vec![KeyCombo::simple(KeyCode::Enter)],
+        );
 
         Self {
             list,
@@ -1077,7 +1291,7 @@ impl Keybinds {
 }
 
 mod tests {
-
+    use super::*;
     #[test]
     fn test_parse_key_combo_simple() {
         let combo = KeyCombo::parse("q").unwrap();

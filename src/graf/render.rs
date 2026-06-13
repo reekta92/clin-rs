@@ -662,9 +662,19 @@ pub fn draw_graph_view(
         );
 
         let status_area = ratatui::layout::Rect::new(
-            area.x, area.y + area.height.saturating_sub(1), area.width, 1,
+            area.x,
+            area.y + area.height.saturating_sub(1),
+            area.width,
+            1,
         );
-        crate::ui::draw_status_bar(frame, status_area, app_theme, None, GRAPH_HELP_HINTS, Some(&status));
+        crate::ui::draw_status_bar(
+            frame,
+            status_area,
+            app_theme,
+            None,
+            GRAPH_HELP_HINTS,
+            Some(ratatui::text::Line::from(status.clone())),
+        );
     }
 
     if flags.show_minimap {

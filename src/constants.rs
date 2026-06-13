@@ -5,7 +5,9 @@ pub const NOTES_POPUP_LARGE_H_PCT: u16 = 60;
 pub const LIST_HELP_HINTS: &str = "j/k move · Enter open · ? help · q quit";
 pub const EDIT_HELP_HINTS: &str = "Tab focus · Esc back · Ctrl+Q quit · Ctrl+P preview";
 pub const HELP_PAGE_HINTS: &str = "← → switch tab · ↑ ↓ scroll · Esc close";
-pub const GRAPH_HELP_HINTS: &str  = "Graph View · Esc: back · +/-: zoom · L: labels · a: fit";
-pub const DRAW_HELP_HINTS: &str   = "Draw View · Esc: back · d: draw · s: shape · t: text · e: erase · Ctrl+S: save";
-pub const CANVAS_HELP_HINTS: &str = "Tab switch focus · Esc back · Arrows select · i/Enter edit · Ctrl+S save";
+pub const GRAPH_HELP_HINTS: &str = "Esc: back · +/-: zoom · L: labels · a: fit";
+pub const DRAW_HELP_HINTS: &str =
+    "Esc: back · d: draw · s: shape · t: text · e: erase · Ctrl+S: save";
+pub const CANVAS_HELP_HINTS: &str =
+    "Esc: back · Space: pin · /: filter · Backspace: delete";
 pub const BACKUP_HELP_HINTS: &str = "s: commit · p: push · r: refresh · /: settings · Esc: ←";

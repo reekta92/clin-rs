@@ -3,7 +3,6 @@ mod model;
 mod store;
 mod variables;
 
-
 pub use manager::{TemplateManager, TemplateSummary};
 #[allow(unused_imports)]
 pub use model::{ContentConfig, RenderedTemplate, Template, TitleConfig};

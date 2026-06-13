@@ -1,8 +1,8 @@
+use crate::keybinds::{CanvasAction, Keybinds};
 use crate::pinstar::state::{PinstarMenuType, PinstarState};
-use crossterm::event::{KeyEvent, MouseButton, MouseEvent, MouseEventKind};
-use crate::keybinds::{Keybinds, CanvasAction};
-use ratatui_textarea::{Input, TextArea};
 use crate::text_edit::apply_text_shortcuts;
+use crossterm::event::{KeyEvent, MouseButton, MouseEvent, MouseEventKind};
+use ratatui_textarea::{Input, TextArea};
 
 pub fn handle_pinstar_mouse(
     state: &mut PinstarState,

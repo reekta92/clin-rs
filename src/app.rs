@@ -30,10 +30,6 @@ use std::collections::{HashMap, HashSet};
 const VIRTUAL_PINNED_PATH: &str = "__clin_virtual__/pinned";
 pub const VIRTUAL_PINNED_LABEL: &str = "Pinned";
 
-
-
-
-
 #[derive(Debug, Clone, Default)]
 pub struct SearchQuery {
     pub text: String,
@@ -44,22 +40,18 @@ pub struct SearchQuery {
     pub grep_text: String,
 }
 
-
-
-
-
 fn find_filter_tokens(s: &str) -> Vec<(usize, &'static str)> {
     let spaced = [" f:", " g:", " p:", " t:"];
     let bare = ["f:", "g:", "p:", "t:"];
     let mut tokens: Vec<(usize, &'static str)> = Vec::new();
 
-    
     let is_escaped = |s: &str, pos: usize, _prefix_len: usize| -> bool {
-        if pos < 3 { return false; }
+        if pos < 3 {
+            return false;
+        }
         &s[pos - 3..pos] == "\\e\\"
     };
 
-    
     for &prefix in &spaced {
         let mut start = 0;
         while let Some(pos) = s[start..].find(prefix) {
@@ -70,10 +62,9 @@ fn find_filter_tokens(s: &str) -> Vec<(usize, &'static str)> {
             start = abs_pos + prefix.len();
         }
     }
-    
+
     for &prefix in &bare {
         if s.starts_with(prefix) && !tokens.iter().any(|&(p, _)| p == 0) {
-            
             if !is_escaped(s, 0, prefix.len()) {
                 tokens.push((0, prefix));
             }
@@ -82,7 +73,6 @@ fn find_filter_tokens(s: &str) -> Vec<(usize, &'static str)> {
     tokens.sort_by_key(|&(pos, _)| pos);
     tokens
 }
-
 
 fn strip_escape_filter(s: &str) -> String {
     if !s.contains("\\e\\") {
@@ -93,24 +83,23 @@ fn strip_escape_filter(s: &str) -> String {
     let mut chars = s.chars().collect::<Vec<_>>().into_iter().peekable();
     while let Some(c) = chars.next() {
         if c == '\\' && chars.peek() == Some(&'e') {
-            chars.next(); 
+            chars.next();
             if chars.peek() == Some(&'\\') {
-                chars.next(); 
-                
+                chars.next();
+
                 let next = chars.peek().copied();
                 let after = {
                     let mut it = chars.clone();
-                    it.next(); 
-                    it.next() 
+                    it.next();
+                    it.next()
                 };
                 let is_filter = next.zip(after).map_or(false, |(ch, colon)| {
                     filter_chars.contains(&ch) && colon == ':'
                 });
                 if is_filter {
-                    
                     continue;
                 }
-                
+
                 out.push('\\');
                 out.push('e');
                 out.push('\\');
@@ -145,7 +134,6 @@ pub fn parse_search_query(query: &str) -> SearchQuery {
         };
     }
 
-    
     let mut ranges: Vec<(usize, usize)> = Vec::with_capacity(tokens.len());
 
     for i in 0..tokens.len() {
@@ -183,7 +171,6 @@ pub fn parse_search_query(query: &str) -> SearchQuery {
         }
     }
 
-    
     let mut clean = text.clone();
     for (start, end) in ranges.into_iter().rev() {
         clean.replace_range(start..end, "");
@@ -380,7 +367,6 @@ impl App {
         }
 
         summaries.sort_by(|a, b| {
-            
             if self.pinned_on_top {
                 let pin_cmp = b.pinned.cmp(&a.pinned);
                 if pin_cmp != std::cmp::Ordering::Equal {
@@ -428,7 +414,6 @@ impl App {
             }
         }
 
-        
         visual.push(VisualItem::Folder {
             path: VIRTUAL_PINNED_PATH.to_string(),
             name: VIRTUAL_PINNED_LABEL.to_string(),
@@ -450,7 +435,6 @@ impl App {
             }
         }
 
-        
         visual.push(VisualItem::Folder {
             path: String::new(),
             name: String::from("Vault"),
@@ -578,9 +562,8 @@ impl App {
             return;
         }
         if note_id.ends_with(".clin") {
-            self.status = Cow::Borrowed(
-                "Note is encrypted. Use command palette (Ctrl+P) to decrypt.",
-            );
+            self.status =
+                Cow::Borrowed("Note is encrypted. Use command palette (Ctrl+P) to decrypt.");
             return;
         }
         if self.editor.external_editor_enabled {
@@ -612,10 +595,7 @@ impl App {
                 }
                 self.refresh_visual_list();
             }
-            VisualItem::Note {
-                summary_idx,
-                ..
-            } => {
+            VisualItem::Note { summary_idx, .. } => {
                 let note_id = self.notes.get(*summary_idx).map(|s| s.id.clone());
                 if let Some(id) = note_id {
                     self.open_note_at_line(&id, None);
@@ -1379,7 +1359,9 @@ template = """
     pub fn try_auto_backup(&self, note_title: &str) -> Result<()> {
         let config = ClinConfig::load()?;
         if config.backup.enabled && config.backup.backup_on_save {
-            let vault_path = config.effective_storage_path().unwrap_or_else(|_| PathBuf::from("."));
+            let vault_path = config
+                .effective_storage_path()
+                .unwrap_or_else(|_| PathBuf::from("."));
             let git_ops = crate::backup::git_ops::GitOps::init(&vault_path)?;
             if git_ops.has_changes().unwrap_or(false) {
                 let msg = format!("auto: {}", note_title);
@@ -1397,7 +1379,9 @@ template = """
     pub fn try_auto_backup_on_quit(&self) -> Result<()> {
         let config = ClinConfig::load()?;
         if config.backup.enabled && config.backup.backup_on_quit {
-            let vault_path = config.effective_storage_path().unwrap_or_else(|_| PathBuf::from("."));
+            let vault_path = config
+                .effective_storage_path()
+                .unwrap_or_else(|_| PathBuf::from("."));
             let git_ops = crate::backup::git_ops::GitOps::init(&vault_path)?;
             if git_ops.has_changes().unwrap_or(false) {
                 let msg = "auto: backup on quit";
@@ -2229,7 +2213,6 @@ template = """
     }
 
     pub fn begin_delete_tag_with_name(&mut self, tag: String) {
-        
         let count = self
             .storage
             .list_note_ids()
@@ -2441,7 +2424,8 @@ template = """
     }
 
     pub fn open_canvas_view(&mut self) {
-        if let Some(VisualItem::Note { summary_idx, .. }) = self.list.visual_list.get(self.list.visual_index)
+        if let Some(VisualItem::Note { summary_idx, .. }) =
+            self.list.visual_list.get(self.list.visual_index)
         {
             let path = self.storage.note_path(&self.notes[*summary_idx].id);
             if let Ok(state) = crate::pinstar::state::PinstarState::load(&path) {
@@ -2470,7 +2454,8 @@ template = """
         if let Some(id) = &self.editor.editing_id {
             return Some(id.clone());
         }
-        if let Some(VisualItem::Note { summary_idx, .. }) = self.list.visual_list.get(self.list.visual_index)
+        if let Some(VisualItem::Note { summary_idx, .. }) =
+            self.list.visual_list.get(self.list.visual_index)
         {
             Some(self.notes[*summary_idx].id.clone())
         } else {
@@ -2682,9 +2667,8 @@ template = """
     }
 
     pub fn begin_rename_note(&mut self) {
-        if let Some(VisualItem::Note {
-            summary_idx, ..
-        }) = self.list.visual_list.get(self.list.visual_index)
+        if let Some(VisualItem::Note { summary_idx, .. }) =
+            self.list.visual_list.get(self.list.visual_index)
         {
             let summary_idx = *summary_idx;
             let id = self.notes[summary_idx].id.clone();
@@ -2894,40 +2878,35 @@ template = """
         let mut grep_is_header = Vec::new();
 
         for (note_idx, note) in self.notes.iter().enumerate() {
-            
             if parsed.pinned_only && !note.pinned {
                 continue;
             }
-            
+
             if let Some(ref folder) = parsed.folder_filter {
                 let matches_folder = if folder.is_empty() {
                     note.folder.is_empty()
                 } else {
-                    note.folder == *folder
-                        || note.folder.starts_with(&format!("{folder}/"))
+                    note.folder == *folder || note.folder.starts_with(&format!("{folder}/"))
                 };
                 if !matches_folder {
                     continue;
                 }
             }
-            
+
             if let Some(ref tags) = parsed.tag_filter
                 && !tags.is_empty()
             {
-                let note_tags: Vec<String> =
-                    note.tags.iter().map(|t| t.to_lowercase()).collect();
+                let note_tags: Vec<String> = note.tags.iter().map(|t| t.to_lowercase()).collect();
                 let matches_tag = tags.iter().any(|t| note_tags.contains(t));
                 if !matches_tag {
                     continue;
                 }
             }
 
-            
             let matched_title = title_query.is_empty()
                 || note.title.to_lowercase().contains(&title_query)
                 || note.id.to_lowercase().contains(&title_query);
 
-            
             let content_opt = if !grep_query.is_empty() {
                 self.storage.load_note(&note.id).ok()
             } else {
@@ -2943,7 +2922,11 @@ template = """
             } else {
                 format!("{}/{}", note.folder, note.title)
             };
-            let lock_prefix = if note.id.ends_with(".clin") { "\u{f023} " } else { "" };
+            let lock_prefix = if note.id.ends_with(".clin") {
+                "\u{f023} "
+            } else {
+                ""
+            };
             let tags_str = if note.tags.is_empty() {
                 String::new()
             } else {
@@ -2957,28 +2940,27 @@ template = """
                 )
             };
 
-            
             if !title_query.is_empty() && matched_title {
                 title_results.push(format!("{}{}{}", lock_prefix, label, tags_str));
                 title_result_indices.push(note_idx);
             }
 
-            
             if !grep_query.is_empty() && matched_grep && matched_title {
-                if let Some(note_data) = content_opt
-                    .filter(|n| n.content.to_lowercase().contains(&grep_query))
+                if let Some(note_data) =
+                    content_opt.filter(|n| n.content.to_lowercase().contains(&grep_query))
                 {
-                    
                     let match_count = note_data
                         .content
                         .lines()
                         .filter(|l| l.to_lowercase().contains(&grep_query))
                         .count();
-                    grep_results.push(format!(" {}{}{} ({})", lock_prefix, label, tags_str, match_count));
+                    grep_results.push(format!(
+                        " {}{}{} ({})",
+                        lock_prefix, label, tags_str, match_count
+                    ));
                     grep_result_indices.push(note_idx);
                     grep_is_header.push(true);
 
-                    
                     for (line_no, line) in note_data
                         .content
                         .lines()
@@ -2986,12 +2968,11 @@ template = """
                         .filter(|(_, line)| line.to_lowercase().contains(&grep_query))
                     {
                         let trimmed = line.trim();
-                        let snippet: String =
-                            if trimmed.chars().count() > 56 {
-                                trimmed.chars().take(56).collect::<String>() + "…"
-                            } else {
-                                trimmed.to_string()
-                            };
+                        let snippet: String = if trimmed.chars().count() > 56 {
+                            trimmed.chars().take(56).collect::<String>() + "…"
+                        } else {
+                            trimmed.to_string()
+                        };
                         grep_results.push(format!("  L{}: {}", line_no + 1, snippet));
                         grep_result_indices.push(note_idx);
                         grep_is_header.push(false);
@@ -2999,7 +2980,6 @@ template = """
                 }
             }
 
-            
             if title_query.is_empty()
                 && grep_query.is_empty()
                 && (parsed.folder_filter.is_some()
@@ -3042,7 +3022,6 @@ template = """
         self.popups.search = None;
     }
 
-
     pub fn jump_to_selected_result(&mut self) {
         if let Some(popup) = &self.popups.search {
             let mut target_line = None;
@@ -3050,13 +3029,20 @@ template = """
                 crate::popups::SearchFocus::Results => {
                     let has_grep = !popup.grep_results.is_empty();
                     if has_grep {
-                        let is_header = popup.grep_is_header.get(popup.grep_selected).copied().unwrap_or(false);
+                        let is_header = popup
+                            .grep_is_header
+                            .get(popup.grep_selected)
+                            .copied()
+                            .unwrap_or(false);
                         if !is_header {
                             if let Some(line_str) = popup.grep_results.get(popup.grep_selected) {
                                 if let Some(l_pos) = line_str.find('L') {
                                     if let Some(colon_pos) = line_str.find(':') {
                                         if colon_pos > l_pos + 1 {
-                                            if let Ok(num) = line_str[l_pos + 1..colon_pos].trim().parse::<usize>() {
+                                            if let Ok(num) = line_str[l_pos + 1..colon_pos]
+                                                .trim()
+                                                .parse::<usize>()
+                                            {
                                                 target_line = Some(num);
                                             }
                                         }
@@ -3066,7 +3052,10 @@ template = """
                         }
                         popup.grep_result_indices.get(popup.grep_selected).copied()
                     } else {
-                        popup.title_result_indices.get(popup.title_selected).copied()
+                        popup
+                            .title_result_indices
+                            .get(popup.title_selected)
+                            .copied()
                     }
                 }
                 crate::popups::SearchFocus::Input => None,
@@ -3328,7 +3317,7 @@ template = """
         if !self.list.preview_enabled {
             return;
         }
-        
+
         self.list.preview_content_index = None;
         self.list.last_selection_change = Some(Instant::now());
         self.list.pending_preview_update = true;
@@ -3352,7 +3341,8 @@ template = """
             is_draw,
             is_canvas,
             ..
-        }) = self.list.visual_list.get(self.list.visual_index) else {
+        }) = self.list.visual_list.get(self.list.visual_index)
+        else {
             self.list.preview_content = None;
             self.list.preview_content_index = None;
             return;
@@ -3363,8 +3353,6 @@ template = """
         let id = &self.notes[summary_idx].id;
         let is_clin = id.ends_with(".clin");
 
-        
-        
         if self.preview_encryption && is_clin {
             self.list.preview_content = None;
             self.list.preview_content_index = Some(self.list.visual_index);

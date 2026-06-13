@@ -1,14 +1,15 @@
-use std::path::PathBuf;
 use crate::app_theme::AppThemeColors;
-use crate::backup::git_ops::{CommitInfo, FileDiff, GitStatus, GitOps};
+use crate::backup::git_ops::{CommitInfo, FileDiff, GitOps, GitStatus};
 use crate::config::BackupConfig;
 use ratatui_textarea::TextArea;
+use std::path::PathBuf;
 
 pub struct BackupState {
     pub status: Option<GitStatus>,
     pub commits: Vec<CommitInfo>,
     pub diffs: Vec<FileDiff>,
     pub scroll: u16,
+    pub history_scroll: u16,
     pub diff_scroll: u16,
     pub selected_section: BackupSection,
     pub selected_index: usize,
@@ -29,7 +30,6 @@ pub struct BackupState {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BackupSection {
     Status,
-    Changes,
     History,
 }
 
@@ -72,9 +72,28 @@ impl SettingsField {
         SettingsField::RemoteName,
         SettingsField::SaveButton,
     ];
-    pub fn next(self) -> Self { Self::ORDER.iter().cycle().skip_while(|&&f| f != self).nth(1).copied().unwrap_or(self) }
-    pub fn prev(self) -> Self { Self::ORDER.iter().rev().cycle().skip_while(|&&f| f != self).nth(1).copied().unwrap_or(self) }
-    pub fn is_text_field(self) -> bool { matches!(self, SettingsField::RemoteUrl | SettingsField::RemoteName) }
+    pub fn next(self) -> Self {
+        Self::ORDER
+            .iter()
+            .cycle()
+            .skip_while(|&&f| f != self)
+            .nth(1)
+            .copied()
+            .unwrap_or(self)
+    }
+    pub fn prev(self) -> Self {
+        Self::ORDER
+            .iter()
+            .rev()
+            .cycle()
+            .skip_while(|&&f| f != self)
+            .nth(1)
+            .copied()
+            .unwrap_or(self)
+    }
+    pub fn is_text_field(self) -> bool {
+        matches!(self, SettingsField::RemoteUrl | SettingsField::RemoteName)
+    }
 }
 
 impl BackupState {
@@ -85,7 +104,12 @@ impl BackupState {
             backup_on_quit: config.backup_on_quit,
             auto_push: config.auto_push,
             remote_url: TextArea::from(vec![config.remote_url.clone().unwrap_or_default()]),
-            remote_name: TextArea::from(vec![config.remote_name.clone().unwrap_or_else(|| "origin".to_string())]),
+            remote_name: TextArea::from(vec![
+                config
+                    .remote_name
+                    .clone()
+                    .unwrap_or_else(|| "origin".to_string()),
+            ]),
             focused_field: SettingsField::Enabled,
         };
 
@@ -94,6 +118,7 @@ impl BackupState {
             commits: Vec::new(),
             diffs: Vec::new(),
             scroll: 0,
+            history_scroll: 0,
             diff_scroll: 0,
             selected_section: BackupSection::Status,
             selected_index: 0,
@@ -133,12 +158,18 @@ impl BackupState {
             self.diffs = git_ops.diff_summary().unwrap_or_default();
             let mut files = Vec::new();
             if let Some(status) = &self.status {
-                for s in &status.staged { files.push(s.path.clone()); }
-                for s in &status.unstaged { files.push(s.path.clone()); }
-                for s in &status.untracked { files.push(s.clone()); }
+                for s in &status.staged {
+                    files.push(s.path.clone());
+                }
+                for s in &status.unstaged {
+                    files.push(s.path.clone());
+                }
+                for s in &status.untracked {
+                    files.push(s.clone());
+                }
             }
             self.selectable_files = files;
-            
+
             if self.selected_file.is_none() && !self.selectable_files.is_empty() {
                 self.selected_file = Some(self.selectable_files[0].clone());
                 self.load_selected_diff();

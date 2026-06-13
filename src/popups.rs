@@ -125,11 +125,11 @@ pub enum SearchFocus {
 pub struct SearchPopup {
     pub input: TextArea<'static>,
     pub focus: SearchFocus,
-    
+
     pub title_results: Vec<String>,
     pub title_result_indices: Vec<usize>,
     pub title_selected: usize,
-    
+
     pub grep_results: Vec<String>,
     pub grep_result_indices: Vec<usize>,
     pub grep_is_header: Vec<bool>,
@@ -162,5 +162,4 @@ pub struct PopupManager {
     pub trash_view: Option<TrashView>,
 }
 
-impl PopupManager {
-}
+impl PopupManager {}

@@ -26,7 +26,9 @@ impl Action for DecryptNoteAction {
                     .visual_list
                     .get(app.list.visual_index)
                     .and_then(|item| match item {
-                        crate::app::VisualItem::Note { summary_idx, .. } => Some(app.notes[*summary_idx].id.clone()),
+                        crate::app::VisualItem::Note { summary_idx, .. } => {
+                            Some(app.notes[*summary_idx].id.clone())
+                        }
                         _ => None,
                     })
             })

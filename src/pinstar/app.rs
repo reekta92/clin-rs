@@ -1,5 +1,5 @@
 use crate::app_theme::AppThemeColors;
-use crate::keybinds::{Keybinds, CanvasAction};
+use crate::keybinds::{CanvasAction, Keybinds};
 use crate::pinstar::input::{handle_pinstar_event, handle_pinstar_mouse};
 use crate::pinstar::render::draw_pinstar_view;
 use crate::pinstar::state::PinstarState;
@@ -114,19 +114,36 @@ pub fn run_pinstar_view(
         }
 
         terminal.draw(|frame| {
-            draw_pinstar_view(frame, &mut state, &theme);
+            let full = frame.area();
+            let outer = ratatui::layout::Layout::default()
+                .direction(ratatui::layout::Direction::Vertical)
+                .constraints([ratatui::layout::Constraint::Length(1), ratatui::layout::Constraint::Min(0)])
+                .split(full);
+            crate::ui::draw_view_title_bar(frame, outer[0], "Canvas", &theme);
+            draw_pinstar_view(frame, &mut state, &theme, outer[1]);
         })?;
 
         if event::poll(Duration::from_millis(100))? {
             let mut pending = true;
             while pending {
-                let area = terminal.size()?;
+                let term_area: ratatui::layout::Rect = terminal.size()?.into();
+                let outer = ratatui::layout::Layout::default()
+                    .direction(ratatui::layout::Direction::Vertical)
+                    .constraints([ratatui::layout::Constraint::Length(1), ratatui::layout::Constraint::Min(0)])
+                    .split(term_area);
+                let area = outer[1];
                 match event::read()? {
                     Event::Key(key) => {
-                        if !handle_pinstar_event(&mut state, key, &mut running, area.into(), keybinds) {}
+                        if !handle_pinstar_event(
+                            &mut state,
+                            key,
+                            &mut running,
+                            area,
+                            keybinds,
+                        ) {}
                     }
                     Event::Mouse(mouse) => {
-                        handle_pinstar_mouse(&mut state, mouse, area.into());
+                        handle_pinstar_mouse(&mut state, mouse, area);
                     }
                     _ => {}
                 }

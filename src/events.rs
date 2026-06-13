@@ -2,10 +2,10 @@ use crate::app::ContextMenu;
 use crate::app::{App, EditFocus, HelpTab, ListFocus};
 use crate::keybinds::*;
 use crate::list_view::ListMode;
+pub use crate::text_edit::apply_text_shortcuts;
 use crossterm::event::*;
 use ratatui::prelude::*;
 use ratatui_textarea::*;
-pub use crate::text_edit::apply_text_shortcuts;
 
 pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     if let Some(mut palette) = app.command_palette.take() {
@@ -88,7 +88,6 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     }
 
     if let Some(mut popup) = app.popups.tag.take() {
-        
         if app.popups.confirm.is_some() {
             app.popups.tag = Some(popup);
             let confirm_key = key;
@@ -100,9 +99,13 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 app.confirm_popup_toggle_button();
             } else if confirm_key.code == KeyCode::Enter {
                 app.confirm_popup_activate();
-            } else if confirm_key.code == KeyCode::Char('y') || confirm_key.code == KeyCode::Char('Y') {
+            } else if confirm_key.code == KeyCode::Char('y')
+                || confirm_key.code == KeyCode::Char('Y')
+            {
                 app.confirm_popup_activate();
-            } else if confirm_key.code == KeyCode::Char('n') || confirm_key.code == KeyCode::Char('N') {
+            } else if confirm_key.code == KeyCode::Char('n')
+                || confirm_key.code == KeyCode::Char('N')
+            {
                 app.cancel_confirm();
             } else if confirm_key.code == KeyCode::Esc {
                 app.cancel_confirm();
@@ -110,7 +113,6 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
             return false;
         }
 
-        
         if key.code == KeyCode::Char('s') && key.modifiers.contains(KeyModifiers::CONTROL) {
             let tag_text = popup.input.lines().join("");
             let tag = tag_text
@@ -140,7 +142,6 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
             }
             KeyCode::Tab => {
                 if popup.focus == crate::popups::TagPopupFocus::Input {
-                    
                     if popup.suggestions.is_empty() {
                         popup.focus = crate::popups::TagPopupFocus::AllTagsList;
                     } else {
@@ -229,12 +230,15 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         let has_grep = !popup.grep_results.is_empty();
         let has_results = has_title || has_grep;
 
-        
         let grep_prev_visible = |p: &crate::popups::SearchPopup, cur: usize| -> usize {
-            if cur == 0 { return 0; }
+            if cur == 0 {
+                return 0;
+            }
             let mut i = cur - 1;
             loop {
-                if p.grep_is_header[i] { return i; }
+                if p.grep_is_header[i] {
+                    return i;
+                }
                 let mut parent = i;
                 while parent > 0 && !p.grep_is_header[parent] {
                     parent -= 1;
@@ -242,14 +246,18 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 if p.grep_expanded.contains(&parent) {
                     return i;
                 }
-                if i == 0 { return 0; }
+                if i == 0 {
+                    return 0;
+                }
                 i -= 1;
             }
         };
         let grep_next_visible = |p: &crate::popups::SearchPopup, cur: usize| -> usize {
             let mut i = cur + 1;
             while i < p.grep_results.len() {
-                if p.grep_is_header[i] { return i; }
+                if p.grep_is_header[i] {
+                    return i;
+                }
                 let mut parent = i;
                 while parent > 0 && !p.grep_is_header[parent] {
                     parent -= 1;
@@ -294,9 +302,12 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                     app.popups.search = Some(popup);
                     app.update_search();
                 } else if has_grep
-                    && popup.grep_is_header.get(popup.grep_selected).copied().unwrap_or(false)
+                    && popup
+                        .grep_is_header
+                        .get(popup.grep_selected)
+                        .copied()
+                        .unwrap_or(false)
                 {
-                    
                     if popup.grep_expanded.contains(&popup.grep_selected) {
                         popup.grep_expanded.remove(&popup.grep_selected);
                     } else {
@@ -352,7 +363,11 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                     app.popups.search = Some(popup);
                     app.update_search();
                 } else if has_grep
-                    && popup.grep_is_header.get(popup.grep_selected).copied().unwrap_or(false)
+                    && popup
+                        .grep_is_header
+                        .get(popup.grep_selected)
+                        .copied()
+                        .unwrap_or(false)
                 {
                     popup.grep_expanded.insert(popup.grep_selected);
                     app.popups.search = Some(popup);
@@ -373,7 +388,11 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                     app.popups.search = Some(popup);
                     app.update_search();
                 } else if has_grep
-                    && popup.grep_is_header.get(popup.grep_selected).copied().unwrap_or(false)
+                    && popup
+                        .grep_is_header
+                        .get(popup.grep_selected)
+                        .copied()
+                        .unwrap_or(false)
                 {
                     popup.grep_expanded.remove(&popup.grep_selected);
                     app.popups.search = Some(popup);
@@ -688,7 +707,6 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
-
     if app.keybinds.matches_list(ListAction::Quit, &key) {
         app.initiate_quit();
         return false;
@@ -698,7 +716,6 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         .keybinds
         .matches_list(ListAction::ToggleSelectMode, &key)
     {
-        
         if app.list.tag_to_assign.is_some() {
             return false;
         }
@@ -742,42 +759,41 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         }
     }
 
-    if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) {
+    if key
+        .modifiers
+        .contains(crossterm::event::KeyModifiers::CONTROL)
+    {
         match key.code {
-            KeyCode::Char('h') => {
-                match &mut app.list.preview_content {
-                    Some(crate::list_view::PreviewContent::Markdown(renderer)) => {
-                        renderer.prev_page();
-                        return false;
-                    }
-                    Some(
-                        crate::list_view::PreviewContent::CanvasGrid(_)
-                        | crate::list_view::PreviewContent::DrawGrid(_),
-                    ) => {
-                        app.list.snapshot_scroll_offset =
-                            app.list.snapshot_scroll_offset.saturating_sub(3);
-                        return false;
-                    }
-                    _ => {}
+            KeyCode::Char('h') => match &mut app.list.preview_content {
+                Some(crate::list_view::PreviewContent::Markdown(renderer)) => {
+                    renderer.prev_page();
+                    return false;
                 }
-            }
-            KeyCode::Char('l') => {
-                match &mut app.list.preview_content {
-                    Some(crate::list_view::PreviewContent::Markdown(renderer)) => {
-                        renderer.next_page();
-                        return false;
-                    }
-                    Some(
-                        crate::list_view::PreviewContent::CanvasGrid(_)
-                        | crate::list_view::PreviewContent::DrawGrid(_),
-                    ) => {
-                        app.list.snapshot_scroll_offset =
-                            app.list.snapshot_scroll_offset.saturating_add(3);
-                        return false;
-                    }
-                    _ => {}
+                Some(
+                    crate::list_view::PreviewContent::CanvasGrid(_)
+                    | crate::list_view::PreviewContent::DrawGrid(_),
+                ) => {
+                    app.list.snapshot_scroll_offset =
+                        app.list.snapshot_scroll_offset.saturating_sub(3);
+                    return false;
                 }
-            }
+                _ => {}
+            },
+            KeyCode::Char('l') => match &mut app.list.preview_content {
+                Some(crate::list_view::PreviewContent::Markdown(renderer)) => {
+                    renderer.next_page();
+                    return false;
+                }
+                Some(
+                    crate::list_view::PreviewContent::CanvasGrid(_)
+                    | crate::list_view::PreviewContent::DrawGrid(_),
+                ) => {
+                    app.list.snapshot_scroll_offset =
+                        app.list.snapshot_scroll_offset.saturating_add(3);
+                    return false;
+                }
+                _ => {}
+            },
             _ => {}
         }
     }
@@ -972,7 +988,10 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
         return false;
     }
 
-    if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) {
+    if key
+        .modifiers
+        .contains(crossterm::event::KeyModifiers::CONTROL)
+    {
         match key.code {
             KeyCode::Char('h') => {
                 if let Some(renderer) = &mut app.editor.md_preview_renderer {
@@ -1080,8 +1099,6 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         return;
     }
 
-    
-    
     if let Some(popup) = &mut app.popups.template {
         let popup_area = crate::ui::centered_rect(
             crate::constants::NOTES_POPUP_LARGE_W_PCT,
@@ -1216,9 +1233,12 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
             && contains_cell(chunks[0], mouse_event.column, mouse_event.row)
         {
             popup.focus = crate::popups::SearchFocus::Input;
-        } else if contains_cell(chunks[results_chunk_idx], mouse_event.column, mouse_event.row)
-            && (mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
-                || mouse_event.kind == MouseEventKind::Down(MouseButton::Right))
+        } else if contains_cell(
+            chunks[results_chunk_idx],
+            mouse_event.column,
+            mouse_event.row,
+        ) && (mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
+            || mouse_event.kind == MouseEventKind::Down(MouseButton::Right))
         {
             popup.focus = crate::popups::SearchFocus::Results;
             let row = mouse_event
@@ -1612,6 +1632,7 @@ pub fn edit_view_input_areas(
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
+            Constraint::Length(1),
             Constraint::Length(3),
             Constraint::Min(8),
             Constraint::Length(1),
@@ -1619,10 +1640,10 @@ pub fn edit_view_input_areas(
         .split(area);
 
     let title_inner = Rect::new(
-        chunks[0].x + 2,
-        chunks[0].y + 1,
-        chunks[0].width.saturating_sub(4),
-        chunks[0].height.saturating_sub(2),
+        chunks[1].x + 2,
+        chunks[1].y + 1,
+        chunks[1].width.saturating_sub(4),
+        chunks[1].height.saturating_sub(2),
     );
 
     let body_area = if md_preview {
@@ -1637,12 +1658,12 @@ pub fn edit_view_input_areas(
 
         Rect::new(
             content_chunks[0].x,
-            chunks[1].y,
+            chunks[2].y,
             content_chunks[0].width,
-            chunks[1].height,
+            chunks[2].height,
         )
     } else {
-        chunks[1]
+        chunks[2]
     };
 
     let gutter_width = if show_line_numbers {
@@ -1665,6 +1686,7 @@ pub fn edit_view_md_preview_area(area: Rect) -> Option<Rect> {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
+            Constraint::Length(1),
             Constraint::Length(3),
             Constraint::Min(8),
             Constraint::Length(1),
@@ -1682,9 +1704,9 @@ pub fn edit_view_md_preview_area(area: Rect) -> Option<Rect> {
 
     let preview_area = Rect::new(
         content_chunks[2].x,
-        chunks[1].y,
+        chunks[2].y,
         content_chunks[2].width,
-        chunks[1].height,
+        chunks[2].height,
     );
 
     Some(Rect::new(
@@ -1703,7 +1725,6 @@ pub fn contains_cell(rect: Rect, col: u16, row: u16) -> bool {
         && row >= rect.y
         && row < rect.y + rect.height
 }
-
 
 pub fn make_title_editor(
     initial: &str,

@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use git2::{DiffOptions, IndexAddOption, Oid, Repository, StatusOptions};
 use std::path::Path;
 
@@ -99,7 +99,7 @@ impl GitOps {
         let tree_id = index.write_tree()?;
         let tree = self.repo.find_tree(tree_id)?;
         let sig = self.repo.signature()?;
-        
+
         let parent_commit = match self.repo.head() {
             Ok(head) => Some(head.peel_to_commit()?),
             Err(_) => None,
@@ -110,14 +110,9 @@ impl GitOps {
             None => vec![],
         };
 
-        let oid = self.repo.commit(
-            Some("HEAD"),
-            &sig,
-            &sig,
-            message,
-            &tree,
-            &parents,
-        )?;
+        let oid = self
+            .repo
+            .commit(Some("HEAD"), &sig, &sig, message, &tree, &parents)?;
         Ok(oid)
     }
 
@@ -134,13 +129,17 @@ impl GitOps {
             let path = entry.path().unwrap_or("unknown").to_string();
             let status = entry.status();
 
-            if status.is_index_new() || status.is_index_modified() || status.is_index_deleted() || status.is_index_renamed() {
+            if status.is_index_new()
+                || status.is_index_modified()
+                || status.is_index_deleted()
+                || status.is_index_renamed()
+            {
                 staged.push(FileStatus {
                     path: path.clone(),
                     status: self.map_status(status, true),
                 });
             }
-            
+
             if status.is_wt_modified() || status.is_wt_deleted() || status.is_wt_renamed() {
                 unstaged.push(FileStatus {
                     path: path.clone(),
@@ -153,7 +152,9 @@ impl GitOps {
             }
         }
 
-        let branch = self.repo.head()
+        let branch = self
+            .repo
+            .head()
             .ok()
             .and_then(|h| h.shorthand().map(|s| s.to_string()))
             .unwrap_or_else(|| "HEAD".to_string());
@@ -173,17 +174,29 @@ impl GitOps {
 
     fn map_status(&self, status: git2::Status, is_staged: bool) -> FileChangeType {
         if is_staged {
-            if status.is_index_new() { FileChangeType::Added }
-            else if status.is_index_modified() { FileChangeType::Modified }
-            else if status.is_index_deleted() { FileChangeType::Deleted }
-            else if status.is_index_renamed() { FileChangeType::Renamed }
-            else { FileChangeType::Modified }
+            if status.is_index_new() {
+                FileChangeType::Added
+            } else if status.is_index_modified() {
+                FileChangeType::Modified
+            } else if status.is_index_deleted() {
+                FileChangeType::Deleted
+            } else if status.is_index_renamed() {
+                FileChangeType::Renamed
+            } else {
+                FileChangeType::Modified
+            }
         } else {
-            if status.is_wt_new() { FileChangeType::Added }
-            else if status.is_wt_modified() { FileChangeType::Modified }
-            else if status.is_wt_deleted() { FileChangeType::Deleted }
-            else if status.is_wt_renamed() { FileChangeType::Renamed }
-            else { FileChangeType::Modified }
+            if status.is_wt_new() {
+                FileChangeType::Added
+            } else if status.is_wt_modified() {
+                FileChangeType::Modified
+            } else if status.is_wt_deleted() {
+                FileChangeType::Deleted
+            } else if status.is_wt_renamed() {
+                FileChangeType::Renamed
+            } else {
+                FileChangeType::Modified
+            }
         }
     }
 
@@ -193,12 +206,19 @@ impl GitOps {
             Err(_) => return Ok((0, 0)),
         };
         let head_oid = head.target().ok_or_else(|| anyhow!("No head target"))?;
-        
-        let upstream = match self.repo.branch_upstream_name(head.name().ok_or_else(|| anyhow!("No head name"))?) {
+
+        let upstream = match self
+            .repo
+            .branch_upstream_name(head.name().ok_or_else(|| anyhow!("No head name"))?)
+        {
             Ok(u) => u,
             Err(_) => return Ok((0, 0)),
         };
-        let upstream_obj = self.repo.revparse_single(upstream.as_str().ok_or_else(|| anyhow!("Invalid upstream name"))?)?;
+        let upstream_obj = self.repo.revparse_single(
+            upstream
+                .as_str()
+                .ok_or_else(|| anyhow!("Invalid upstream name"))?,
+        )?;
         let upstream_oid = upstream_obj.id();
 
         let (ahead, behind) = self.repo.graph_ahead_behind(head_oid, upstream_oid)?;
@@ -208,7 +228,7 @@ impl GitOps {
     pub fn log(&self, max_count: usize) -> Result<Vec<CommitInfo>> {
         let mut revwalk = self.repo.revwalk()?;
         revwalk.push_head().ok(); // Ignore error if no HEAD (empty repo)
-        
+
         let mut commits = Vec::new();
         for id in revwalk.take(max_count) {
             let id = id?;
@@ -230,7 +250,9 @@ impl GitOps {
             Err(_) => None,
         };
 
-        let diff = self.repo.diff_tree_to_workdir_with_index(head.as_ref(), Some(&mut diff_options))?;
+        let diff = self
+            .repo
+            .diff_tree_to_workdir_with_index(head.as_ref(), Some(&mut diff_options))?;
         let mut stats = Vec::new();
 
         let mut staged_paths = Vec::new();
@@ -260,13 +282,15 @@ impl GitOps {
     pub fn get_file_diff(&self, path: &str) -> Result<Vec<String>> {
         let mut diff_options = DiffOptions::new();
         diff_options.pathspec(path);
-        
+
         let head = match self.repo.head() {
             Ok(h) => Some(h.peel_to_tree()?),
             Err(_) => None,
         };
 
-        let diff = self.repo.diff_tree_to_workdir_with_index(head.as_ref(), Some(&mut diff_options))?;
+        let diff = self
+            .repo
+            .diff_tree_to_workdir_with_index(head.as_ref(), Some(&mut diff_options))?;
         let mut lines = Vec::new();
 
         diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
@@ -294,7 +318,11 @@ impl GitOps {
     }
 
     pub fn get_remote_url(&self, name: &str) -> Result<Option<String>> {
-        Ok(self.repo.find_remote(name).ok().and_then(|r| r.url().map(|u| u.to_string())))
+        Ok(self
+            .repo
+            .find_remote(name)
+            .ok()
+            .and_then(|r| r.url().map(|u| u.to_string())))
     }
 
     pub fn has_changes(&self) -> Result<bool> {
@@ -308,7 +336,7 @@ impl GitOps {
         let mut remote = self.repo.find_remote(remote_name)?;
         let head = self.repo.head()?;
         let refname = head.name().ok_or_else(|| anyhow!("No head name"))?;
-        
+
         remote.push(&[format!("{}:{}", refname, refname)], None)?;
         Ok(())
     }
@@ -317,8 +345,8 @@ impl GitOps {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
     use std::fs;
+    use tempfile::tempdir;
 
     #[test]
     fn test_gitignore_normalization() -> Result<()> {

@@ -9,8 +9,7 @@ use ratatui::text::{Line as TuiLine, Span};
 use ratatui::widgets::canvas::{Canvas, Context, Line, Rectangle};
 use ratatui::widgets::{Block, List, ListItem, Paragraph};
 
-pub fn draw_canvas(frame: &mut Frame, app: &DrawAppState) {
-    let area = frame.area();
+pub fn draw_canvas(frame: &mut Frame, app: &DrawAppState, area: Rect) {
 
     let x_bounds = [
         app.viewport.x - 100.0 / app.viewport.zoom,
@@ -61,8 +60,8 @@ pub fn draw_canvas(frame: &mut Frame, app: &DrawAppState) {
 
     let toolbar_width = 42;
     let toolbar_area = Rect::new(
-        area.width.saturating_sub(toolbar_width) / 2,
-        area.height.saturating_sub(2),
+        area.x + area.width.saturating_sub(toolbar_width) / 2,
+        area.y + area.height.saturating_sub(2),
         toolbar_width,
         1,
     );
@@ -95,7 +94,7 @@ pub fn draw_canvas(frame: &mut Frame, app: &DrawAppState) {
         toolbar_area,
     );
 
-    let status_area = Rect::new(area.x, area.height.saturating_sub(1), area.width, 1);
+    let status_area = Rect::new(area.x, area.y + area.height.saturating_sub(1), area.width, 1);
     crate::ui::draw_status_bar(frame, status_area, &app.theme, None, DRAW_HELP_HINTS, None);
 
     if app.show_shape_selector {

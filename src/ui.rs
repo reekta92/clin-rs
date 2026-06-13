@@ -24,7 +24,9 @@ fn split_lock_spans(text: &str, theme: &AppThemeColors) -> Vec<Span<'static>> {
         }
         result.push(Span::styled(
             "\u{f023}".to_string(),
-            Style::default().fg(theme.destructive).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme.destructive)
+                .add_modifier(Modifier::BOLD),
         ));
         last = i + '\u{f023}'.len_utf8();
     }
@@ -34,9 +36,7 @@ fn split_lock_spans(text: &str, theme: &AppThemeColors) -> Vec<Span<'static>> {
     result
 }
 
-
 fn styled_result_line(s: &str, theme: &AppThemeColors) -> Line<'static> {
-    
     if let Some(tag_start) = s.find(" [") {
         let after_tag = &s[tag_start..];
         if let Some(close_bracket) = after_tag.find(']') {
@@ -59,32 +59,40 @@ fn styled_result_line(s: &str, theme: &AppThemeColors) -> Line<'static> {
                 let mut spans = split_lock_spans(label_part, theme);
                 spans.push(Span::styled(
                     tag_content.to_string(),
-                    Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(theme.accent)
+                        .add_modifier(Modifier::BOLD),
                 ));
 
                 if let Some(count) = count_part {
                     spans.push(Span::styled(
                         count.to_string(),
-                        Style::default().fg(theme.heading).add_modifier(Modifier::BOLD),
+                        Style::default()
+                            .fg(theme.heading)
+                            .add_modifier(Modifier::BOLD),
                     ));
                 }
                 return Line::from(spans);
             }
         }
     }
-    
+
     if let Some(count_start) = s.find(" (") {
-        let count_part = &s[count_start + 1..]; 
+        let count_part = &s[count_start + 1..];
         if count_part.starts_with('(')
             && count_part.len() > 2
             && count_part.ends_with(')')
-            && count_part[1..count_part.len() - 1].chars().all(|c| c.is_ascii_digit())
+            && count_part[1..count_part.len() - 1]
+                .chars()
+                .all(|c| c.is_ascii_digit())
         {
             let label_part = &s[..count_start + 1];
             let mut spans = split_lock_spans(label_part, theme);
             spans.push(Span::styled(
                 count_part.to_string(),
-                Style::default().fg(theme.heading).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(theme.heading)
+                    .add_modifier(Modifier::BOLD),
             ));
             return Line::from(spans);
         }
@@ -107,7 +115,6 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         ViewMode::Canvas => {}
         ViewMode::Backup => {}
     }
-
 
     if let Some(popup) = &app.popups.theme {
         draw_theme_popup(frame, popup, frame.area(), &app.app_theme);
@@ -158,11 +165,7 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
             ));
         }
     }
-    let tab_line = Line::from(tab_spans);
-    let tab_bar = Paragraph::new(tab_line)
-        .style(app.app_theme.title_bar_bg_style())
-        .alignment(Alignment::Center);
-    frame.render_widget(tab_bar, chunks[0]);
+    draw_view_title_bar_with_tabs(frame, chunks[0], "Help", tab_spans, &app.app_theme);
 
     let help_text = app.get_help_text().clone();
     let help = Paragraph::new(help_text)
@@ -176,7 +179,14 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
         .scroll((app.help_scroll, 0));
     frame.render_widget(help, chunks[1]);
 
-    draw_status_bar(frame, chunks[2], &app.app_theme, None, HELP_PAGE_HINTS, None);
+    draw_status_bar(
+        frame,
+        chunks[2],
+        &app.app_theme,
+        None,
+        HELP_PAGE_HINTS,
+        None,
+    );
 }
 
 pub fn help_text_for_tab(
@@ -279,11 +289,7 @@ fn notes_help_text(keybinds: &Keybinds, theme: &crate::app_theme::AppThemeColors
         Some(&format!("{}/{}", list_page_up, list_page_down)),
         theme,
     ));
-    lines.extend(help_item_dyn(
-        "Toggle pin note",
-        Some(&list_pin),
-        theme,
-    ));
+    lines.extend(help_item_dyn("Toggle pin note", Some(&list_pin), theme));
     lines.extend(help_item_dyn(
         "Toggle select mode",
         Some(&list_select_mode),
@@ -345,7 +351,10 @@ fn notes_help_text(keybinds: &Keybinds, theme: &crate::app_theme::AppThemeColors
     ));
     lines.push(Line::from(""));
     lines.push(Line::from(vec![Span::styled(
-        format!(" Tag Popup ({})", keybinds.list_keys_display(ListAction::ManageTags)),
+        format!(
+            " Tag Popup ({})",
+            keybinds.list_keys_display(ListAction::ManageTags)
+        ),
         Style::default().fg(theme.heading),
     )]));
     lines.extend(help_item_dyn(
@@ -365,7 +374,10 @@ fn notes_help_text(keybinds: &Keybinds, theme: &crate::app_theme::AppThemeColors
     ));
     lines.push(Line::from(""));
     lines.push(Line::from(vec![Span::styled(
-        format!(" Template Popup ({})", keybinds.list_keys_display(ListAction::NewFromTemplate)),
+        format!(
+            " Template Popup ({})",
+            keybinds.list_keys_display(ListAction::NewFromTemplate)
+        ),
         Style::default().fg(theme.heading),
     )]));
     lines.extend(help_item_dyn(
@@ -380,7 +392,10 @@ fn notes_help_text(keybinds: &Keybinds, theme: &crate::app_theme::AppThemeColors
     ));
     lines.push(Line::from(""));
     lines.push(Line::from(vec![Span::styled(
-        format!(" Markdown Preview ({})", keybinds.list_keys_display(ListAction::TogglePreview)),
+        format!(
+            " Markdown Preview ({})",
+            keybinds.list_keys_display(ListAction::TogglePreview)
+        ),
         Style::default().fg(theme.heading),
     )]));
     lines.extend(help_item_dyn(
@@ -526,11 +541,7 @@ fn graph_help_text(keybinds: &Keybinds, theme: &crate::app_theme::AppThemeColors
         Some(&keybinds.graph_keys_display(crate::keybinds::GraphAction::ToggleSearch)),
         theme,
     ));
-    lines.extend(help_item_dyn(
-        "Open filter menu",
-        Some("f"),
-        theme,
-    ));
+    lines.extend(help_item_dyn("Open filter menu", Some("f"), theme));
     lines.push(Line::from(""));
 
     lines.push(help_heading("Display Options", theme));
@@ -555,21 +566,9 @@ fn graph_help_text(keybinds: &Keybinds, theme: &crate::app_theme::AppThemeColors
         Some(&keybinds.graph_keys_display(crate::keybinds::GraphAction::ToggleStatus)),
         theme,
     ));
-    lines.extend(help_item_dyn(
-        "Show/Hide legend",
-        Some("L"),
-        theme,
-    ));
-    lines.extend(help_item_dyn(
-        "Show/Hide minimap",
-        Some("M"),
-        theme,
-    ));
-    lines.extend(help_item_dyn(
-        "Show/Hide grid",
-        Some("G"),
-        theme,
-    ));
+    lines.extend(help_item_dyn("Show/Hide legend", Some("L"), theme));
+    lines.extend(help_item_dyn("Show/Hide minimap", Some("M"), theme));
+    lines.extend(help_item_dyn("Show/Hide grid", Some("G"), theme));
     lines.push(Line::from(""));
 
     lines.extend(help_item_dyn(
@@ -605,8 +604,16 @@ fn graph_help_text(keybinds: &Keybinds, theme: &crate::app_theme::AppThemeColors
 fn draw_help_text(keybinds: &Keybinds, theme: &crate::app_theme::AppThemeColors) -> Text<'static> {
     let mut lines = Vec::new();
     lines.push(help_heading("Tools", theme));
-    lines.extend(help_item_dyn("Draw freehand strokes", Some(&keybinds.draw_keys_display(DrawAction::SelectDrawTool)), theme));
-    lines.extend(help_item_dyn("Shape tool (opens picker)", Some(&keybinds.draw_keys_display(DrawAction::ToggleShapeSelector)), theme));
+    lines.extend(help_item_dyn(
+        "Draw freehand strokes",
+        Some(&keybinds.draw_keys_display(DrawAction::SelectDrawTool)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Shape tool (opens picker)",
+        Some(&keybinds.draw_keys_display(DrawAction::ToggleShapeSelector)),
+        theme,
+    ));
     lines.extend(help_item_dyn(
         "Place text label at click position",
         Some(&keybinds.draw_keys_display(DrawAction::SelectTextTool)),
@@ -669,11 +676,18 @@ fn draw_help_text(keybinds: &Keybinds, theme: &crate::app_theme::AppThemeColors)
     lines.push(help_heading("General", theme));
     lines.push(Line::from(""));
     lines.extend(help_item_dyn("Auto-saved on changes & quit", None, theme));
-    lines.extend(help_item_dyn("Exit canvas view", Some(&keybinds.draw_keys_display(DrawAction::Quit)), theme));
+    lines.extend(help_item_dyn(
+        "Exit canvas view",
+        Some(&keybinds.draw_keys_display(DrawAction::Quit)),
+        theme,
+    ));
     Text::from(lines)
 }
 
-fn canvas_help_text(keybinds: &Keybinds, theme: &crate::app_theme::AppThemeColors) -> Text<'static> {
+fn canvas_help_text(
+    keybinds: &Keybinds,
+    theme: &crate::app_theme::AppThemeColors,
+) -> Text<'static> {
     let mut lines = Vec::new();
     lines.push(help_heading("Navigation", theme));
     lines.push(Line::from(""));
@@ -783,7 +797,10 @@ fn canvas_help_text(keybinds: &Keybinds, theme: &crate::app_theme::AppThemeColor
     Text::from(lines)
 }
 
-fn backup_help_text(keybinds: &Keybinds, theme: &crate::app_theme::AppThemeColors) -> Text<'static> {
+fn backup_help_text(
+    keybinds: &Keybinds,
+    theme: &crate::app_theme::AppThemeColors,
+) -> Text<'static> {
     let mut lines = Vec::new();
     lines.push(help_heading("Backup View", theme));
     lines.push(Line::from(""));
@@ -1220,17 +1237,26 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(5), Constraint::Length(1)])
+        .constraints([Constraint::Length(1), Constraint::Min(5), Constraint::Length(1)])
         .split(area);
+    draw_view_title_bar(frame, chunks[0], "Notes", &app.app_theme);
     let (list_area, preview_area) = if app.list.preview_enabled {
         let (constraints, list_idx, p_idx) = match app.preview_position {
             crate::config::PreviewPosition::Left => (
-                [Constraint::Ratio(43, 100), Constraint::Length(1), Constraint::Min(0)],
+                [
+                    Constraint::Ratio(43, 100),
+                    Constraint::Length(1),
+                    Constraint::Min(0),
+                ],
                 2,
                 0,
             ),
             crate::config::PreviewPosition::Right => (
-                [Constraint::Min(0), Constraint::Length(1), Constraint::Ratio(43, 100)],
+                [
+                    Constraint::Min(0),
+                    Constraint::Length(1),
+                    Constraint::Ratio(43, 100),
+                ],
                 0,
                 2,
             ),
@@ -1238,7 +1264,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         let full_cols = Layout::default()
             .direction(Direction::Horizontal)
             .constraints(constraints)
-            .split(chunks[0]);
+            .split(chunks[1]);
         let list_area = Rect::new(
             full_cols[list_idx].x,
             full_cols[list_idx].y,
@@ -1254,7 +1280,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         (list_area, preview_area)
     } else {
         (
-            Rect::new(area.x, area.y, area.width, chunks[0].height),
+            Rect::new(area.x, area.y + 1, area.width, chunks[1].height),
             None,
         )
     };
@@ -1296,9 +1322,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 }
                 items.push(ListItem::new(Line::from(vec![Span::styled(
                     text,
-                    Style::default()
-                        .add_modifier(Modifier::BOLD)
-                        .fg(color),
+                    Style::default().add_modifier(Modifier::BOLD).fg(color),
                 )])));
             }
             crate::app::VisualItem::Note {
@@ -1466,11 +1490,14 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
 
     if let Some(preview_rect) = preview_area {
         let hide_encrypted = app.preview_encryption
-            && app.list.visual_list.get(app.list.visual_index).is_some_and(|item| {
-                matches!(item, crate::app::VisualItem::Note { is_clin: true, .. })
-            });
+            && app
+                .list
+                .visual_list
+                .get(app.list.visual_index)
+                .is_some_and(|item| {
+                    matches!(item, crate::app::VisualItem::Note { is_clin: true, .. })
+                });
 
-        
         let content_is_current = app.list.preview_content_index == Some(app.list.visual_index);
         let content = if content_is_current {
             app.list.preview_content.as_ref()
@@ -1494,21 +1521,25 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         app.list.list_focus == ListFocus::ExternalEditorToggle,
         &app.app_theme,
     ));
-    draw_status_bar(frame, chunks[1], &app.app_theme, badge, &hint, None);
-    draw_corner_watermark(frame, chunks[1], app.app_theme.muted);
+    draw_status_bar(frame, chunks[2], &app.app_theme, badge, &hint, None);
+    draw_corner_watermark(frame, chunks[2], app.app_theme.muted);
     if app.list.preview_enabled {
         let constraints = match app.preview_position {
-            crate::config::PreviewPosition::Left => {
-                [Constraint::Ratio(43, 100), Constraint::Length(1), Constraint::Min(0)]
-            }
-            crate::config::PreviewPosition::Right => {
-                [Constraint::Min(0), Constraint::Length(1), Constraint::Ratio(43, 100)]
-            }
+            crate::config::PreviewPosition::Left => [
+                Constraint::Ratio(43, 100),
+                Constraint::Length(1),
+                Constraint::Min(0),
+            ],
+            crate::config::PreviewPosition::Right => [
+                Constraint::Min(0),
+                Constraint::Length(1),
+                Constraint::Ratio(43, 100),
+            ],
         };
         let full_cols = Layout::default()
             .direction(Direction::Horizontal)
             .constraints(constraints)
-            .split(area);
+            .split(Rect::new(area.x, area.y + 1, area.width, area.height.saturating_sub(1)));
         draw_dim_vline(frame, full_cols[1], app.app_theme.muted);
     }
 
@@ -1564,7 +1595,6 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             ])
             .split(content);
 
-        
         let input_border = if popup.focus == crate::popups::TagPopupFocus::Input {
             Style::default().fg(app.app_theme.heading)
         } else {
@@ -1608,11 +1638,10 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                         .style(app.app_theme.bg_style()),
                 )
                 .highlight_style(Style::default());
-            
+
             frame.render_widget(suggestions_list, input_chunks[1]);
         }
 
-        
         let all_tags_border = if popup.focus == crate::popups::TagPopupFocus::AllTagsList {
             Style::default().fg(app.app_theme.heading)
         } else {
@@ -1638,7 +1667,11 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     .style(app.app_theme.bg_style())
                     .borders(Borders::ALL)
                     .border_style(all_tags_border)
-                    .title(if tag_empty { String::new() } else { "All Tags".to_string() }),
+                    .title(if tag_empty {
+                        String::new()
+                    } else {
+                        "All Tags".to_string()
+                    }),
             )
             .highlight_style(
                 Style::default()
@@ -1653,7 +1686,6 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             tags_state.select(Some(popup.all_tags_selected));
         }
         frame.render_stateful_widget(tags_list, chunks[1], &mut tags_state);
-
     }
 
     if let Some(picker) = &mut app.popups.folder_picker {
@@ -1915,26 +1947,26 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 Constraint::Min(3),
             ]
         } else {
-            vec![
-                Constraint::Length(3),
-                Constraint::Min(3),
-            ]
+            vec![Constraint::Length(3), Constraint::Min(3)]
         };
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints(constraints)
             .split(content);
 
-        
         if has_filter {
             let mut spans: Vec<Span<'static>> = vec![Span::raw("  ")];
             let mut first = true;
 
-            let add_sep = |spans: &mut Vec<Span<'static>>, first: &mut bool, theme: &crate::app_theme::AppThemeColors| {
+            let add_sep = |spans: &mut Vec<Span<'static>>,
+                           first: &mut bool,
+                           theme: &crate::app_theme::AppThemeColors| {
                 if !*first {
                     spans.push(Span::styled(
                         " · ",
-                        Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+                        Style::default()
+                            .fg(theme.accent)
+                            .add_modifier(Modifier::BOLD),
                     ));
                 }
                 *first = false;
@@ -1945,18 +1977,24 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 add_sep(&mut spans, &mut first, &app.app_theme);
                 spans.push(Span::styled(
                     "\u{f07c} ",
-                    Style::default().fg(app.app_theme.accent).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(app.app_theme.accent)
+                        .add_modifier(Modifier::BOLD),
                 ));
                 spans.push(Span::styled(
                     text.to_string(),
-                    Style::default().fg(app.app_theme.accent).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(app.app_theme.accent)
+                        .add_modifier(Modifier::BOLD),
                 ));
             }
             if parsed.pinned_only {
                 add_sep(&mut spans, &mut first, &app.app_theme);
                 spans.push(Span::styled(
                     "\u{f08d} Pinned",
-                    Style::default().fg(app.app_theme.accent).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(app.app_theme.accent)
+                        .add_modifier(Modifier::BOLD),
                 ));
             }
             if parsed.grep_mode {
@@ -1968,7 +2006,9 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 };
                 spans.push(Span::styled(
                     format!("\u{f002} {}", grep_display),
-                    Style::default().fg(app.app_theme.accent).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(app.app_theme.accent)
+                        .add_modifier(Modifier::BOLD),
                 ));
             }
             if let Some(ref tags) = parsed.tag_filter {
@@ -1980,17 +2020,20 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 };
                 spans.push(Span::styled(
                     "\u{f02b} ",
-                    Style::default().fg(app.app_theme.accent).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(app.app_theme.accent)
+                        .add_modifier(Modifier::BOLD),
                 ));
                 spans.push(Span::styled(
                     tag_text,
-                    Style::default().fg(app.app_theme.accent).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(app.app_theme.accent)
+                        .add_modifier(Modifier::BOLD),
                 ));
             }
 
             let filter_line = Line::from(spans);
-            let filter_para = Paragraph::new(filter_line)
-                .style(app.app_theme.bg_style());
+            let filter_para = Paragraph::new(filter_line).style(app.app_theme.bg_style());
             frame.render_widget(filter_para, chunks[1]);
         }
 
@@ -2007,7 +2050,6 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     Style::default().fg(app.app_theme.muted)
                 })
                 .title(""),
-
         );
         frame.render_widget(&popup.input, input_chunk);
 
@@ -2022,12 +2064,10 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         };
 
         let (all_items, results_title) = if has_grep {
-            
             let mut visible: Vec<(usize, String)> = Vec::new();
             let mut i = 0;
             while i < popup.grep_results.len() {
-                let is_collapsed = popup.grep_is_header[i]
-                    && !popup.grep_expanded.contains(&i);
+                let is_collapsed = popup.grep_is_header[i] && !popup.grep_expanded.contains(&i);
                 let icon = if popup.grep_is_header[i] {
                     if is_collapsed { "\u{25b6}" } else { "\u{25bc}" }
                 } else {
@@ -2041,7 +2081,8 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     }
                 }
             }
-            let items: Vec<ListItem> = visible.iter()
+            let items: Vec<ListItem> = visible
+                .iter()
                 .map(|(_, t)| ListItem::new(styled_result_line(t, &app.app_theme)))
                 .collect();
             (items, "")
@@ -2058,10 +2099,13 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             } else {
                 "No results"
             };
-            (vec![ListItem::new(Span::styled(
-                msg.to_string(),
-                Style::default().fg(app.app_theme.muted),
-            ))], "")
+            (
+                vec![ListItem::new(Span::styled(
+                    msg.to_string(),
+                    Style::default().fg(app.app_theme.muted),
+                ))],
+                "",
+            )
         };
 
         let results_list = List::new(all_items)
@@ -2081,12 +2125,10 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             .highlight_symbol("  ");
         let mut list_state = ListState::default();
         if results_focused && has_grep {
-            
             let mut vis_pos = 0;
             let mut i = 0;
             while i < popup.grep_results.len() && i <= popup.grep_selected {
-                let is_collapsed = popup.grep_is_header[i]
-                    && !popup.grep_expanded.contains(&i);
+                let is_collapsed = popup.grep_is_header[i] && !popup.grep_expanded.contains(&i);
                 if i == popup.grep_selected {
                     list_state.select(Some(vis_pos));
                     break;
@@ -2103,7 +2145,6 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             list_state.select(Some(popup.title_selected));
         }
         frame.render_stateful_widget(results_list, results_chunk, &mut list_state);
-
     }
 
     if let Some(trash) = &app.popups.trash_view {
@@ -2187,20 +2228,22 @@ pub fn draw_template_popup(
         .constraints([Constraint::Length(3), Constraint::Min(1)])
         .split(content);
 
-        let mut input = popup.input.clone();
-        input.set_style(theme.bg_style());
-        input.set_block(
-            Block::default()
-                .style(theme.bg_style())
-                .borders(Borders::ALL)
-                .border_style(if popup.focus == crate::popups::TemplatePopupFocus::Search {
+    let mut input = popup.input.clone();
+    input.set_style(theme.bg_style());
+    input.set_block(
+        Block::default()
+            .style(theme.bg_style())
+            .borders(Borders::ALL)
+            .border_style(
+                if popup.focus == crate::popups::TemplatePopupFocus::Search {
                     Style::default().fg(theme.heading)
                 } else {
                     Style::default().fg(theme.muted)
-                })
-                .title(""),
-        );
-        frame.render_widget(&input, chunks[0]);
+                },
+            )
+            .title(""),
+    );
+    frame.render_widget(&input, chunks[0]);
 
     let items: Vec<ListItem> = if popup.filtered_templates.is_empty() {
         vec![ListItem::new(Span::styled(
@@ -2251,7 +2294,6 @@ pub fn draw_template_popup(
     }
 
     frame.render_stateful_widget(list, chunks[1], &mut state);
-
 }
 
 pub fn draw_theme_popup(
@@ -2359,7 +2401,6 @@ pub fn draw_theme_popup(
         .style(theme.bg_style());
     frame.render_widget(graph_block, chunks[2]);
     frame.render_widget(graph_para, graph_inner);
-
 }
 
 pub fn get_textarea_scroll(textarea: &TextArea) -> (usize, usize) {
@@ -2423,21 +2464,30 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
 
     let outer_chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(0), Constraint::Length(1)])
+        .constraints([Constraint::Length(1), Constraint::Min(0), Constraint::Length(1)])
         .split(area);
 
-    let body_area = outer_chunks[0];
-    let hint_area = outer_chunks[1];
+    draw_view_title_bar(frame, outer_chunks[0], "Editor", &app.app_theme);
+    let body_area = outer_chunks[1];
+    let hint_area = outer_chunks[2];
 
     let (edit_area, preview_area_rect, splitter_area) = if app.editor.editor_preview_enabled {
         let (constraints, main_idx, p_idx) = match app.preview_position {
             crate::config::PreviewPosition::Left => (
-                [Constraint::Ratio(43, 100), Constraint::Length(1), Constraint::Min(0)],
+                [
+                    Constraint::Ratio(43, 100),
+                    Constraint::Length(1),
+                    Constraint::Min(0),
+                ],
                 2,
                 0,
             ),
             crate::config::PreviewPosition::Right => (
-                [Constraint::Min(0), Constraint::Length(1), Constraint::Ratio(43, 100)],
+                [
+                    Constraint::Min(0),
+                    Constraint::Length(1),
+                    Constraint::Ratio(43, 100),
+                ],
                 0,
                 2,
             ),
@@ -2562,13 +2612,12 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         match &app.editor.md_preview_renderer {
             Some(renderer) if !renderer.is_pending() && renderer.pages_built() => {
                 if let Some(page_grid) = renderer.current_page_grid() {
-                    let snapshot = crate::snapshot::RenderedSnapshot::new(page_grid)
-                        .block(
-                            Block::default()
-                                .style(app.app_theme.preview_bg_style())
-                                .borders(Borders::NONE)
-                                .padding(Padding::new(2, 2, 1, 1)),
-                        );
+                    let snapshot = crate::snapshot::RenderedSnapshot::new(page_grid).block(
+                        Block::default()
+                            .style(app.app_theme.preview_bg_style())
+                            .borders(Borders::NONE)
+                            .padding(Padding::new(2, 2, 1, 1)),
+                    );
                     frame.render_widget(snapshot, preview_area_rect);
                     if renderer.total_pages() > 1 {
                         let indicator = format!(
@@ -2725,6 +2774,63 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     }
 }
 
+/// Renders a full-width view title bar. Title is left-aligned with popup-banner
+/// styling: uppercase, bold, fg=highlight_fg, bg=heading. The rest of the row
+/// fills with title_bar_bg.
+pub fn draw_view_title_bar(
+    frame: &mut Frame,
+    area: Rect,
+    title: &str,
+    theme: &AppThemeColors,
+) {
+    let display_text = format!(" {} ", title.to_uppercase());
+    let title_span = Span::styled(
+        display_text,
+        Style::default()
+            .fg(theme.highlight_fg)
+            .bg(theme.heading)
+            .add_modifier(Modifier::BOLD),
+    );
+    let bar = Paragraph::new(Line::from(vec![title_span]))
+        .style(theme.title_bar_bg_style());
+    frame.render_widget(bar, area);
+}
+
+/// Renders a full-width bar with a left-aligned title (popup-banner style)
+/// and centered tab spans. The title occupies the left; tabs are centered
+/// in the full row width. If they overlap the title, tabs win visually
+/// (rendered second).
+pub fn draw_view_title_bar_with_tabs(
+    frame: &mut Frame,
+    area: Rect,
+    title: &str,
+    tab_spans: Vec<Span<'static>>,
+    theme: &AppThemeColors,
+) {
+    // Background fill
+    let bg = Paragraph::new("").style(theme.title_bar_bg_style());
+    frame.render_widget(bg, area);
+
+    // Tabs centered
+    let tab_line = Line::from(tab_spans);
+    let tabs = Paragraph::new(tab_line)
+        .alignment(Alignment::Center)
+        .style(theme.title_bar_bg_style());
+    frame.render_widget(tabs, area);
+
+    // Title on the left
+    let display_text = format!(" {} ", title.to_uppercase());
+    let title_span = Span::styled(
+        display_text,
+        Style::default()
+            .fg(theme.highlight_fg)
+            .bg(theme.heading)
+            .add_modifier(Modifier::BOLD),
+    );
+    let title_para = Paragraph::new(Line::from(vec![title_span]));
+    frame.render_widget(title_para, area);
+}
+
 pub fn draw_popup_banner(frame: &mut Frame, popup_area: Rect, title: &str, theme: &AppThemeColors) {
     let display_text = format!(" {} ", title.to_uppercase());
     let width = display_text.len() as u16;
@@ -2769,6 +2875,31 @@ pub fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
         vertical: 0,
         horizontal: 0,
     })
+}
+pub fn centered_rect_fixed(
+    width: u16,
+    height: u16,
+    area: ratatui::layout::Rect,
+) -> ratatui::layout::Rect {
+    let vertical = Layout::default()
+        .direction(ratatui::layout::Direction::Vertical)
+        .constraints([
+            Constraint::Min(0),
+            Constraint::Length(height),
+            Constraint::Min(0),
+        ])
+        .split(area);
+
+    let horizontal = Layout::default()
+        .direction(ratatui::layout::Direction::Horizontal)
+        .constraints([
+            Constraint::Min(0),
+            Constraint::Length(width),
+            Constraint::Min(0),
+        ])
+        .split(vertical[1]);
+
+    horizontal[1]
 }
 
 pub fn text_area_from_content(content: &str) -> TextArea<'static> {
@@ -2816,13 +2947,21 @@ pub struct StatusBarBadge {
 pub fn ext_badge(enabled: bool, focused: bool, theme: &AppThemeColors) -> StatusBarBadge {
     let label = if enabled { "ext:on" } else { "ext:off" };
     let style = if focused {
-        Style::default().fg(theme.highlight_fg).bg(theme.heading).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(theme.highlight_fg)
+            .bg(theme.heading)
+            .add_modifier(Modifier::BOLD)
     } else if enabled {
-        Style::default().fg(theme.success).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(theme.success)
+            .add_modifier(Modifier::BOLD)
     } else {
         Style::default().fg(theme.muted)
     };
-    StatusBarBadge { label: format!(" {} ", label).into(), style }
+    StatusBarBadge {
+        label: format!(" {} ", label).into(),
+        style,
+    }
 }
 
 /// The single unified status bar. Left = optional badge + hint (muted);
@@ -2835,21 +2974,35 @@ pub fn draw_status_bar(
     theme: &AppThemeColors,
     badge: Option<StatusBarBadge>,
     hint: &str,
-    right: Option<&str>,
+    right: Option<ratatui::text::Line<'static>>,
 ) {
-    let mut spans: Vec<Span> = Vec::new();
+    let mut left_spans: Vec<Span> = Vec::new();
     if let Some(b) = badge {
-        spans.push(Span::styled(b.label, b.style));
-        spans.push(Span::raw("  "));
+        left_spans.push(Span::styled(b.label, b.style));
+        left_spans.push(Span::raw("  "));
     }
-    spans.push(Span::styled(hint, Style::default().fg(theme.muted)));
-    let para = Paragraph::new(Line::from(spans)).style(theme.hint_line_bg_style());
-    frame.render_widget(para, area);
-    if let Some(right_text) = right {
-        let r = Paragraph::new(Span::styled(right_text, Style::default().fg(theme.muted)))
+    left_spans.push(Span::styled(hint, Style::default().fg(theme.muted)));
+    
+    // If there's a right side, we split the area
+    if let Some(right_line) = right {
+        let chunks = ratatui::layout::Layout::default()
+            .direction(ratatui::layout::Direction::Horizontal)
+            .constraints([
+                ratatui::layout::Constraint::Min(0),
+                ratatui::layout::Constraint::Length(right_line.width() as u16),
+            ])
+            .split(area);
+            
+        let left_para = Paragraph::new(Line::from(left_spans)).style(theme.hint_line_bg_style());
+        frame.render_widget(left_para, chunks[0]);
+        
+        let right_para = Paragraph::new(right_line)
             .alignment(Alignment::Right)
             .style(theme.hint_line_bg_style());
-        frame.render_widget(r, area);
+        frame.render_widget(right_para, chunks[1]);
+    } else {
+        let para = Paragraph::new(Line::from(left_spans)).style(theme.hint_line_bg_style());
+        frame.render_widget(para, area);
     }
 }
 
@@ -2895,6 +3048,25 @@ pub fn draw_popup_frame(
     draw_popup_footer(frame, chunks[1], theme, hints);
     chunks[0]
 }
+pub fn draw_popup_frame_fixed(
+    frame: &mut ratatui::Frame,
+    area: ratatui::layout::Rect,
+    title: &str,
+    width: u16,
+    height: u16,
+    hints: &str,
+    theme: &crate::app_theme::AppThemeColors,
+) -> ratatui::layout::Rect {
+    let popup_area = centered_rect_fixed(width, height + 2, area); // +2 for banner and footer
+    frame.render_widget(ratatui::widgets::Clear, popup_area);
+    draw_popup_banner(frame, popup_area, title, theme);
+    let chunks = Layout::default()
+        .direction(ratatui::layout::Direction::Vertical)
+        .constraints([Constraint::Min(1), Constraint::Length(1)])
+        .split(popup_area);
+    draw_popup_footer(frame, chunks[1], theme, hints);
+    chunks[0]
+}
 
 /// Renders confirmation popup chrome (clear + banner + bordered block) and returns the inner Rect.
 /// Caller renders message/detail/buttons into the returned Rect.
@@ -2930,7 +3102,8 @@ pub fn draw_confirm_popup(
     area: Rect,
     theme: &crate::app_theme::AppThemeColors,
 ) {
-    let inner = draw_confirm_popup_frame(frame, area, "CONFIRM", 50, 30, popup.is_destructive, theme);
+    let inner =
+        draw_confirm_popup_frame(frame, area, "CONFIRM", 50, 30, popup.is_destructive, theme);
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -2991,7 +3164,7 @@ pub fn draw_confirm_popup(
     frame.render_widget(buttons_para, chunks[3]);
 }
 
-fn draw_dim_vline(frame: &mut Frame, area: Rect, color: Color) {
+pub fn draw_dim_vline(frame: &mut Frame, area: Rect, color: Color) {
     let buf = frame.buffer_mut();
     for row in area.top()..area.bottom() {
         if let Some(cell) = buf.cell_mut((area.x, row)) {
@@ -3000,7 +3173,6 @@ fn draw_dim_vline(frame: &mut Frame, area: Rect, color: Color) {
         }
     }
 }
-
 
 fn draw_corner_watermark(frame: &mut Frame, area: Rect, color: Color) {
     let version = env!("CARGO_PKG_VERSION");

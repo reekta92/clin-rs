@@ -582,8 +582,6 @@ pub enum PreviewPosition {
     Right,
 }
 
-
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct FilterConfig {
     #[serde(default)]

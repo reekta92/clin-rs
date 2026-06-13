@@ -1,7 +1,7 @@
 use crate::app_theme::AppThemeColors;
+use crate::constants::*;
 use crate::pinstar::state::PinstarState;
 use ratatui::{prelude::*, widgets::*};
-use crate::constants::*;
 
 fn get_node_color(color_code: Option<&str>, theme: &AppThemeColors) -> Color {
     match color_code {
@@ -25,8 +25,8 @@ fn get_node_color(color_code: Option<&str>, theme: &AppThemeColors) -> Color {
     }
 }
 
-pub fn draw_pinstar_view(frame: &mut Frame, state: &mut PinstarState, theme: &AppThemeColors) {
-    let total_area = frame.area();
+pub fn draw_pinstar_view(frame: &mut Frame, state: &mut PinstarState, theme: &AppThemeColors, area: ratatui::layout::Rect) {
+    let total_area = area;
     let mut area = total_area;
     area.height = area.height.saturating_sub(1);
 
@@ -596,7 +596,11 @@ pub fn draw_pinstar_view(frame: &mut Frame, state: &mut PinstarState, theme: &Ap
         hint_text = "RESIZE MODE: Drag mouse to resize, Left-click to confirm".to_string();
     }
 
-    let badge = Some(crate::ui::ext_badge(state.ext_editor_enabled, state.ext_focused, theme));
+    let badge = Some(crate::ui::ext_badge(
+        state.ext_editor_enabled,
+        state.ext_focused,
+        theme,
+    ));
     let hint_area = Rect::new(
         total_area.x,
         total_area.bottom().saturating_sub(1),
@@ -609,8 +613,8 @@ pub fn draw_pinstar_view(frame: &mut Frame, state: &mut PinstarState, theme: &Ap
         let menu_width = 25;
         let menu_height = menu.items.len() as u16;
         let menu_rect = Rect::new(
-            menu.x.min(area.width.saturating_sub(menu_width)),
-            menu.y.min(area.height.saturating_sub(menu_height)),
+            area.x + menu.x.min(area.width.saturating_sub(menu_width)),
+            area.y + menu.y.min(area.height.saturating_sub(menu_height)),
             menu_width,
             menu_height,
         );

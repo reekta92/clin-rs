@@ -3,16 +3,16 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use anyhow::Result;
-use ratatui::backend::CrosstermBackend;
-use ratatui::Terminal;
 use crossterm::event::{self, Event};
+use ratatui::Terminal;
+use ratatui::backend::CrosstermBackend;
 
 use crate::app_theme::AppThemeColors;
-use crate::backup::render;
 use crate::backup::input::{self, InputResult};
+use crate::backup::render;
 use crate::backup::state::BackupState;
 use crate::config::ClinConfig;
-use crate::keybinds::{Keybinds, BackupAction};
+use crate::keybinds::{BackupAction, Keybinds};
 
 pub enum BackupResult {
     Back,
@@ -41,19 +41,15 @@ pub fn run_backup_view(
 
         if event::poll(Duration::from_millis(100))? {
             match event::read()? {
-                Event::Key(key) => {
-                    match input::handle_input(&mut state, key, keybinds) {
-                        InputResult::Back => return Ok(BackupResult::Back),
-                        InputResult::Refresh => state.refresh_git_info(),
-                        InputResult::None => {}
-                    }
-                }
-                Event::Mouse(mouse) => {
-                    match input::handle_mouse(&mut state, mouse) {
-                        InputResult::Refresh => state.refresh_git_info(),
-                        _ => {}
-                    }
-                }
+                Event::Key(key) => match input::handle_input(&mut state, key, keybinds) {
+                    InputResult::Back => return Ok(BackupResult::Back),
+                    InputResult::Refresh => state.refresh_git_info(),
+                    InputResult::None => {}
+                },
+                Event::Mouse(mouse) => match input::handle_mouse(&mut state, mouse) {
+                    InputResult::Refresh => state.refresh_git_info(),
+                    _ => {}
+                },
                 _ => {}
             }
         }

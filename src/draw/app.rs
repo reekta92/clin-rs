@@ -93,8 +93,14 @@ pub fn run_draw_view(
 
     while app_state.running {
         terminal.draw(|frame| {
-            app_state.last_area = frame.area();
-            draw_canvas(frame, &app_state);
+            let full = frame.area();
+            let outer = ratatui::layout::Layout::default()
+                .direction(ratatui::layout::Direction::Vertical)
+                .constraints([ratatui::layout::Constraint::Length(1), ratatui::layout::Constraint::Min(0)])
+                .split(full);
+            crate::ui::draw_view_title_bar(frame, outer[0], "Draw", &app_state.theme);
+            app_state.last_area = outer[1];
+            draw_canvas(frame, &app_state, outer[1]);
         })?;
 
         if crossterm::event::poll(std::time::Duration::from_millis(16))? {

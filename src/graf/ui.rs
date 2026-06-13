@@ -8,7 +8,13 @@ use crate::graf::app::GrafAppState;
 use crate::keybinds::Keybinds;
 
 pub fn draw_ui(frame: &mut Frame, state: &GrafAppState, config: &ClinConfig, _keybinds: &Keybinds) {
-    let area = frame.area();
+    let full_area = frame.area();
+    let outer = ratatui::layout::Layout::default()
+        .direction(ratatui::layout::Direction::Vertical)
+        .constraints([ratatui::layout::Constraint::Length(1), ratatui::layout::Constraint::Min(0)])
+        .split(full_area);
+    crate::ui::draw_view_title_bar(frame, outer[0], "Graph", &state.app_theme);
+    let area = outer[1];
 
     if !state.config_errors.is_empty() {
         draw_config_errors(frame, area, &state.config_errors, config);
@@ -18,12 +24,20 @@ pub fn draw_ui(frame: &mut Frame, state: &GrafAppState, config: &ClinConfig, _ke
     let (graph_area, preview_area) = if state.preview_enabled {
         let (constraints, main_idx, p_idx) = match config.preview_position {
             crate::config::PreviewPosition::Left => (
-                [Constraint::Ratio(43, 100), Constraint::Length(1), Constraint::Min(0)],
+                [
+                    Constraint::Ratio(43, 100),
+                    Constraint::Length(1),
+                    Constraint::Min(0),
+                ],
                 2,
                 0,
             ),
             crate::config::PreviewPosition::Right => (
-                [Constraint::Min(0), Constraint::Length(1), Constraint::Ratio(43, 100)],
+                [
+                    Constraint::Min(0),
+                    Constraint::Length(1),
+                    Constraint::Ratio(43, 100),
+                ],
                 0,
                 2,
             ),
@@ -47,7 +61,14 @@ pub fn draw_ui(frame: &mut Frame, state: &GrafAppState, config: &ClinConfig, _ke
             show_minimap: state.show_minimap,
             show_status_bar: state.show_status_bar,
         };
-        crate::graf::render::draw_graph_view(frame, graph_area, &guard, config, &flags, &state.app_theme);
+        crate::graf::render::draw_graph_view(
+            frame,
+            graph_area,
+            &guard,
+            config,
+            &flags,
+            &state.app_theme,
+        );
     }
 
     if let Some((p_area, sep_area)) = preview_area {
@@ -266,12 +287,7 @@ fn draw_reload_notification(
     frame.render_widget(paragraph, popup_area);
 }
 
-fn draw_preview(
-    frame: &mut Frame,
-    preview_rect: Rect,
-    state: &GrafAppState,
-    config: &ClinConfig,
-) {
+fn draw_preview(frame: &mut Frame, preview_rect: Rect, state: &GrafAppState, config: &ClinConfig) {
     let hide_encrypted = config.preview_encryption
         && state
             .preview_note_id

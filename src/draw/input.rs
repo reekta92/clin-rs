@@ -314,11 +314,27 @@ fn erase_at(cx: f64, cy: f64, app: &mut DrawAppState) {
             ((*px as f64) - cx).powi(2) + ((*py as f64) - cy).powi(2) < threshold.powi(2)
         }),
         DrawElement::Shape(s) => match s {
-            Shape::Rect { x, y, width, height, .. }
-            | Shape::Ellipse { x, y, width, height, .. }
-            | Shape::Diamond { x, y, width, height, .. } => {
-                cx < *x || cx > *x + *width || cy < *y || cy > *y + *height
+            Shape::Rect {
+                x,
+                y,
+                width,
+                height,
+                ..
             }
+            | Shape::Ellipse {
+                x,
+                y,
+                width,
+                height,
+                ..
+            }
+            | Shape::Diamond {
+                x,
+                y,
+                width,
+                height,
+                ..
+            } => cx < *x || cx > *x + *width || cy < *y || cy > *y + *height,
             Shape::Line { x1, y1, x2, y2, .. } | Shape::Arrow { x1, y1, x2, y2, .. } => {
                 let d = line_dist(*x1, *y1, *x2, *y2, cx, cy);
                 d > threshold

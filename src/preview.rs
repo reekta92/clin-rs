@@ -1,20 +1,11 @@
+use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Padding, Paragraph};
-use ratatui::Frame;
 
 use crate::app_theme::AppThemeColors;
 use crate::list_view::PreviewContent;
-
-
-
-
-
-
-
-
-
 
 pub fn draw_preview_pane(
     frame: &mut Frame,
@@ -93,9 +84,7 @@ pub fn draw_preview_pane(
                             let ind_area = Rect::new(ind_x, ind_y, ind_width, 1);
                             let ind_widget = Paragraph::new(Span::styled(
                                 indicator,
-                                Style::default()
-                                    .fg(theme.muted)
-                                    .add_modifier(Modifier::DIM),
+                                Style::default().fg(theme.muted).add_modifier(Modifier::DIM),
                             ));
                             frame.render_widget(ind_widget, ind_area);
                         }

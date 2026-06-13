@@ -34,7 +34,9 @@ fn handle_normal_input(
     match event.code {
         _ if keybinds.matches_backup(BackupAction::Back, &event) => return InputResult::Back,
         _ if keybinds.matches_backup(BackupAction::MoveDown, &event) => {
-            if !state.selectable_files.is_empty() {
+            if state.selected_section == BackupSection::History {
+                state.history_scroll = state.history_scroll.saturating_add(1);
+            } else if !state.selectable_files.is_empty() {
                 state.selected_index = (state.selected_index + 1) % state.selectable_files.len();
                 state.selected_file = Some(state.selectable_files[state.selected_index].clone());
                 state.load_selected_diff();
@@ -42,7 +44,9 @@ fn handle_normal_input(
             }
         }
         _ if keybinds.matches_backup(BackupAction::MoveUp, &event) => {
-            if !state.selectable_files.is_empty() {
+            if state.selected_section == BackupSection::History {
+                state.history_scroll = state.history_scroll.saturating_sub(1);
+            } else if !state.selectable_files.is_empty() {
                 state.selected_index = if state.selected_index == 0 {
                     state.selectable_files.len() - 1
                 } else {
@@ -75,8 +79,7 @@ fn handle_normal_input(
         }
         _ if keybinds.matches_backup(BackupAction::CycleSection, &event) => {
             state.selected_section = match state.selected_section {
-                BackupSection::Status => BackupSection::Changes,
-                BackupSection::Changes => BackupSection::History,
+                BackupSection::Status => BackupSection::History,
                 BackupSection::History => BackupSection::Status,
             };
         }
@@ -199,7 +202,11 @@ pub fn handle_mouse(state: &mut BackupState, event: MouseEvent) -> InputResult {
 
         if let Some(area) = state.last_area {
             let list_width = (area.width as f32 * 0.4) as u16;
-            if x >= area.x && x < area.x + list_width && y >= area.y + 1 && y < area.y + area.height - 1 {
+            if x >= area.x
+                && x < area.x + list_width
+                && y >= area.y + 1
+                && y < area.y + area.height - 1
+            {
                 let line_index = (y - area.y - 2) as usize;
                 if line_index < state.selectable_files.len() {
                     state.selected_index = line_index;
@@ -239,24 +246,31 @@ fn handle_settings_mouse(state: &mut BackupState, event: MouseEvent) -> InputRes
     if let MouseEventKind::Down(MouseButton::Left) = event.kind {
         let x = event.column;
         let y = event.row;
-        
+
         if let Some(area) = state.last_area {
-            let popup_area = crate::ui::centered_rect(50, 65, area);
-            let content_area = Rect {
+            let popup_area = crate::ui::centered_rect_fixed(55, 17, area);
+            let content_area = ratatui::layout::Rect {
                 x: popup_area.x,
-                y: popup_area.y + 1,
+                y: popup_area.y,
                 width: popup_area.width,
                 height: popup_area.height.saturating_sub(1),
             };
 
             for (rect, field) in settings_field_rects(content_area) {
-                if x >= rect.x && x < rect.x + rect.width && y >= rect.y && y < rect.y + rect.height {
+                if x >= rect.x && x < rect.x + rect.width && y >= rect.y && y < rect.y + rect.height
+                {
                     state.settings.focused_field = field;
                     match field {
                         SettingsField::Enabled => state.settings.enabled = !state.settings.enabled,
-                        SettingsField::BackupOnSave => state.settings.backup_on_save = !state.settings.backup_on_save,
-                        SettingsField::BackupOnQuit => state.settings.backup_on_quit = !state.settings.backup_on_quit,
-                        SettingsField::AutoPush => state.settings.auto_push = !state.settings.auto_push,
+                        SettingsField::BackupOnSave => {
+                            state.settings.backup_on_save = !state.settings.backup_on_save
+                        }
+                        SettingsField::BackupOnQuit => {
+                            state.settings.backup_on_quit = !state.settings.backup_on_quit
+                        }
+                        SettingsField::AutoPush => {
+                            state.settings.auto_push = !state.settings.auto_push
+                        }
                         SettingsField::RemoteUrl | SettingsField::RemoteName => {
                             state.input_mode = BackupInputMode::EditSettingsField;
                         }
@@ -317,9 +331,15 @@ impl BackupState {
     }
 
     fn push_to_remote(&mut self) {
-        let remote_name = self.settings.remote_name.lines().join("").trim().to_string();
+        let remote_name = self
+            .settings
+            .remote_name
+            .lines()
+            .join("")
+            .trim()
+            .to_string();
         self.status_message = Some(format!("Pushing to {}...", remote_name));
-        
+
         if let Ok(git_ops) = GitOps::init(&self.vault_path) {
             match git_ops.push(&remote_name) {
                 Ok(_) => self.status_message = Some("Push complete".to_string()),
@@ -339,15 +359,29 @@ impl BackupState {
         config.backup.backup_on_quit = self.settings.backup_on_quit;
         config.backup.auto_push = self.settings.auto_push;
         let url_text = self.settings.remote_url.lines().join("").trim().to_string();
-        let name_text = self.settings.remote_name.lines().join("").trim().to_string();
-        config.backup.remote_url = if url_text.is_empty() { None } else { Some(url_text) };
-        config.backup.remote_name = if name_text.is_empty() { Some("origin".to_string()) } else { Some(name_text.clone()) };
+        let name_text = self
+            .settings
+            .remote_name
+            .lines()
+            .join("")
+            .trim()
+            .to_string();
+        config.backup.remote_url = if url_text.is_empty() {
+            None
+        } else {
+            Some(url_text)
+        };
+        config.backup.remote_name = if name_text.is_empty() {
+            Some("origin".to_string())
+        } else {
+            Some(name_text.clone())
+        };
 
         if let Err(e) = config.save() {
             self.status_message = Some(format!("Config save failed: {}", e));
         } else {
             self.status_message = Some("Settings saved".to_string());
-            
+
             // Re-init git if enabled and not initialized
             if config.backup.enabled && !GitOps::is_initialized(&self.vault_path) {
                 if let Ok(git_ops) = GitOps::init(&self.vault_path) {
@@ -355,7 +389,9 @@ impl BackupState {
                         let _ = git_ops.set_remote(&name_text, url);
                     }
                     // Initial commit
-                    let _ = git_ops.add_all().and_then(|_| git_ops.commit("Initial backup"));
+                    let _ = git_ops
+                        .add_all()
+                        .and_then(|_| git_ops.commit("Initial backup"));
                     if config.backup.auto_push {
                         let _ = git_ops.push(&name_text);
                     }

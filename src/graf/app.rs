@@ -285,7 +285,10 @@ fn handle_event(
                 handle_search_keys(app_state, key, config);
                 return Ok(None);
             }
-            if key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) {
+            if key
+                .modifiers
+                .contains(crossterm::event::KeyModifiers::CONTROL)
+            {
                 match key.code {
                     KeyCode::Char('h') => {
                         if let Some(crate::list_view::PreviewContent::Markdown(renderer)) =
@@ -368,6 +371,11 @@ fn handle_event(
             if let Some(graph_state) = &app_state.graph_state {
                 let size = terminal.size().unwrap();
                 let full_area = ratatui::layout::Rect::new(0, 0, size.width, size.height);
+                let outer = ratatui::layout::Layout::default()
+                    .direction(ratatui::layout::Direction::Vertical)
+                    .constraints([ratatui::layout::Constraint::Length(1), ratatui::layout::Constraint::Min(0)])
+                    .split(full_area);
+                let content_area = outer[1];
                 let graph_area = if app_state.preview_enabled {
                     let (constraints, main_idx) = match config.preview_position {
                         crate::config::PreviewPosition::Left => (
@@ -390,10 +398,10 @@ fn handle_event(
                     let chunks = ratatui::layout::Layout::default()
                         .direction(ratatui::layout::Direction::Horizontal)
                         .constraints(constraints)
-                        .split(full_area);
+                        .split(content_area);
                     chunks[main_idx]
                 } else {
-                    full_area
+                    content_area
                 };
 
                 if let Some(action) = crate::graf::input::handle_graph_mouse(

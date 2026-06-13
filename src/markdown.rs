@@ -66,8 +66,6 @@ impl MarkdownRenderer {
         let estimated_rows = if content.is_empty() {
             1
         } else {
-            
-            
             (((content.lines().count() as u32 * 10) + 300).min(20000) as u16).clamp(300, 20000)
         };
 
@@ -103,12 +101,7 @@ impl MarkdownRenderer {
         match rx.try_recv() {
             Ok(Some(result)) => {
                 self.content_rows = result.content_rows;
-                self.content_empty = result
-                    .parser
-                    .screen()
-                    .contents()
-                    .trim()
-                    .is_empty();
+                self.content_empty = result.parser.screen().contents().trim().is_empty();
                 self.parser = Some(result.parser);
                 self.state = RendererState::Ready;
                 true
@@ -144,8 +137,6 @@ impl MarkdownRenderer {
         let mut all_rows: Vec<Vec<(char, Style)>> = Vec::new();
         let mut last_non_empty_row = 0usize;
 
-        
-        
         let mut effective_rows = 0u16;
         'scan: for r in (0..self.content_rows).rev() {
             for c in 0..cols {
@@ -157,7 +148,7 @@ impl MarkdownRenderer {
                 }
             }
         }
-        
+
         if effective_rows == 0 && self.content_rows > 0 {
             effective_rows = 1;
         }

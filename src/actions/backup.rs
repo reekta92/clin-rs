@@ -1,7 +1,7 @@
+use crate::actions::Action;
+use crate::app::App;
 use anyhow::Result;
 use std::borrow::Cow;
-use crate::app::App;
-use crate::actions::Action;
 
 pub struct OpenBackupAction;
 

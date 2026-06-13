@@ -88,7 +88,6 @@ fn split_frontmatter_payload(bytes: &[u8]) -> (Option<frontmatter::Frontmatter>,
     (None, bytes)
 }
 
-
 impl Storage {
     pub fn init() -> Result<Self> {
         let bootstrap = ClinConfig::load().context("failed to load config")?;
@@ -198,7 +197,8 @@ impl Storage {
 
         #[cfg(not(unix))]
         {
-            crate::fsutil::atomic_write(&key_path, self.key).context("failed to write encryption key")?;
+            crate::fsutil::atomic_write(&key_path, self.key)
+                .context("failed to write encryption key")?;
         }
 
         Ok(())
@@ -255,7 +255,8 @@ impl Storage {
         let mut final_output = fm_string.into_bytes();
         final_output.extend_from_slice(&encrypted);
 
-        crate::fsutil::atomic_write(&target_path, &final_output).context("failed to write encrypted note")?;
+        crate::fsutil::atomic_write(&target_path, &final_output)
+            .context("failed to write encrypted note")?;
 
         if old_path.exists() {
             fs::remove_file(&old_path).context("failed to remove plain note after encryption")?;
@@ -271,7 +272,6 @@ impl Storage {
 
         self.ensure_key()?;
 
-        
         let old_path = self.note_path(id);
         let clin_content = fs::read(&old_path).context("failed to read encrypted note")?;
         let (fm_opt, _) = split_frontmatter_payload(&clin_content);
@@ -303,10 +303,10 @@ impl Storage {
             fs::create_dir_all(parent).unwrap_or_default();
         }
 
-        
         let is_raw = orig_ext == "canvas" || orig_ext == "draw";
         if is_raw {
-            crate::fsutil::atomic_write(&target_path, note.content.as_bytes()).context("failed to write decrypted note")?;
+            crate::fsutil::atomic_write(&target_path, note.content.as_bytes())
+                .context("failed to write decrypted note")?;
         } else {
             let fm = frontmatter::Frontmatter {
                 title: Some(note.title.clone()),
@@ -317,7 +317,8 @@ impl Storage {
                 original_ext: None,
             };
             let final_content = frontmatter::serialize(&fm, &note.content);
-            crate::fsutil::atomic_write(&target_path, final_content.as_bytes()).context("failed to write decrypted note")?;
+            crate::fsutil::atomic_write(&target_path, final_content.as_bytes())
+                .context("failed to write decrypted note")?;
         }
 
         if old_path.exists() {
@@ -623,13 +624,15 @@ impl Storage {
             let mut final_output = fm_string.into_bytes();
             final_output.extend_from_slice(&encrypted);
 
-            crate::fsutil::atomic_write(&target_path, &final_output).context("failed to write note")?;
+            crate::fsutil::atomic_write(&target_path, &final_output)
+                .context("failed to write note")?;
         } else if target_ext == "canvas" || target_ext == "draw" {
-            
-            crate::fsutil::atomic_write(&target_path, note.content.as_bytes()).context("failed to write note")?;
+            crate::fsutil::atomic_write(&target_path, note.content.as_bytes())
+                .context("failed to write note")?;
         } else {
             let final_content = frontmatter::serialize(&fm, &note.content);
-            crate::fsutil::atomic_write(&target_path, final_content.as_bytes()).context("failed to write plain note")?;
+            crate::fsutil::atomic_write(&target_path, final_content.as_bytes())
+                .context("failed to write plain note")?;
         }
 
         if id != target_id {
@@ -731,7 +734,8 @@ impl Storage {
             let new_pinned = fm.pinned;
 
             let new_content = frontmatter::serialize(&fm, body);
-            crate::fsutil::atomic_write(&path, new_content.as_bytes()).context("failed to write note")?;
+            crate::fsutil::atomic_write(&path, new_content.as_bytes())
+                .context("failed to write note")?;
             Ok(new_pinned)
         }
     }
