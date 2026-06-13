@@ -231,7 +231,12 @@ jobs:
             --desktop-file assets/clin.desktop \
             --icon-file assets/clin.png \
             --output appimage
-          mv clin*.AppImage "clin-${VERSION}-x86_64.AppImage"
+          # Rename only if the source isn't already the target to avoid "same file" error
+          for f in clin*.AppImage; do
+            if [ "$f" != "clin-${VERSION}-x86_64.AppImage" ]; then
+              mv "$f" "clin-${VERSION}-x86_64.AppImage"
+            fi
+          done
 
       - name: Upload to GitHub Release
         env:
