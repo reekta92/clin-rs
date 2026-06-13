@@ -17,7 +17,7 @@ use std::borrow::Cow;
 use std::time::Duration;
 use std::time::Instant;
 
-use crate::keybinds::Keybinds;
+use crate::keybinds::{Keybinds, GraphAction, DrawAction, CanvasAction, BackupAction};
 use crate::storage::{Note, NoteSummary, Storage};
 use crate::templates::Template;
 use anyhow::Result;
@@ -2457,24 +2457,45 @@ template = """
         }
     }
 
-    pub fn default_status_text(&self) -> &'static str {
+    pub fn default_status_text(&self) -> Cow<'static, str> {
         match self.mode {
-            ViewMode::List => LIST_HELP_HINTS,
-            ViewMode::Edit => EDIT_HELP_HINTS,
-            ViewMode::Help => HELP_PAGE_HINTS,
-            ViewMode::Graph => "Graph View · Esc: back · +/-: zoom · L: labels · a: fit",
-            ViewMode::Draw => {
-                "Draw View · Esc: back · d: draw · s: shape · t: text · e: erase · Ctrl+S: save"
-            }
-            ViewMode::Canvas => {
-                "Canvas View · Esc: back · Arrows: pan · i/Enter: edit · Ctrl+S: save"
-            }
-            ViewMode::Backup => "Backup · Esc: back · s: commit · p: push · r: refresh · /: settings",
+            ViewMode::List => Cow::Borrowed(LIST_HELP_HINTS),
+            ViewMode::Edit => Cow::Borrowed(EDIT_HELP_HINTS),
+            ViewMode::Help => Cow::Borrowed(HELP_PAGE_HINTS),
+            ViewMode::Graph => Cow::Owned(format!(
+                "Graph View · {}: back · {}: zoom · {}: labels · {}: fit",
+                self.keybinds.graph_keys_display(GraphAction::Quit),
+                format!("{}/{}", self.keybinds.graph_keys_display(GraphAction::ZoomIn), self.keybinds.graph_keys_display(GraphAction::ZoomOut)),
+                self.keybinds.graph_keys_display(GraphAction::ToggleLegend),
+                self.keybinds.graph_keys_display(GraphAction::AutoFit),
+            )),
+            ViewMode::Draw => Cow::Owned(format!(
+                "Draw View · {}: back · {}: draw · {}: shape · {}: text · {}: erase",
+                self.keybinds.draw_keys_display(DrawAction::Quit),
+                self.keybinds.draw_keys_display(DrawAction::SelectDrawTool),
+                self.keybinds.draw_keys_display(DrawAction::ToggleShapeSelector),
+                self.keybinds.draw_keys_display(DrawAction::SelectTextTool),
+                self.keybinds.draw_keys_display(DrawAction::SelectEraseTool),
+            )),
+            ViewMode::Canvas => Cow::Owned(format!(
+                "Canvas View · {}: back · Arrows: pan · {}: edit · {}: save",
+                self.keybinds.canvas_keys_display(CanvasAction::Quit),
+                self.keybinds.canvas_keys_display(CanvasAction::EditOrConnect),
+                self.keybinds.canvas_keys_display(CanvasAction::Save),
+            )),
+            ViewMode::Backup => Cow::Owned(format!(
+                "Backup · {}: back · {}: commit · {}: push · {}: refresh · {}: settings",
+                self.keybinds.backup_keys_display(BackupAction::Back),
+                self.keybinds.backup_keys_display(BackupAction::EnterCommit),
+                self.keybinds.backup_keys_display(BackupAction::Push),
+                self.keybinds.backup_keys_display(BackupAction::Refresh),
+                self.keybinds.backup_keys_display(BackupAction::OpenSettings),
+            )),
         }
     }
 
     pub fn set_default_status(&mut self) {
-        self.status = Cow::Borrowed(self.default_status_text());
+        self.status = self.default_status_text();
         self.status_until = None;
     }
 

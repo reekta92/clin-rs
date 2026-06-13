@@ -33,6 +33,7 @@ pub struct PinstarState {
     pub mouse_selecting: bool,
     pub mouse_dragged: bool,
     pub help_requested: bool,
+    pub footer_hint: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -87,6 +88,7 @@ impl PinstarState {
             mouse_selecting: false,
             mouse_dragged: false,
             help_requested: false,
+            footer_hint: String::new(),
         })
     }
 

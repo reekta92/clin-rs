@@ -19,6 +19,7 @@ pub(crate) mod backup;
 pub(crate) mod preview;
 pub(crate) mod popups;
 pub(crate) mod sanitize;
+pub(crate) mod text_edit;
 pub(crate) mod snapshot;
 mod templates;
 

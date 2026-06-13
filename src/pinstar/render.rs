@@ -582,8 +582,7 @@ pub fn draw_pinstar_view(frame: &mut Frame, state: &mut PinstarState, theme: &Ap
         }
     }
 
-    let mut hint_text =
-        "Tab switch focus · Esc back · Arrows select · i/Enter edit · Ctrl+S save".to_string();
+    let mut hint_text = state.footer_hint.clone();
     if state.connection_source_id.is_some() {
         hint_text = "CONNECTION MODE: Select target node with mouse or Enter".to_string();
     } else if state.deleting_connection_source_id.is_some() {

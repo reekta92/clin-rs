@@ -5,6 +5,7 @@ use crate::list_view::ListMode;
 use crossterm::event::*;
 use ratatui::prelude::*;
 use ratatui_textarea::*;
+pub use crate::text_edit::apply_text_shortcuts;
 
 pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     if let Some(mut palette) = app.command_palette.take() {
@@ -33,7 +34,9 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
             app.popups.note_create = Some(popup);
             app.confirm_create_note();
         } else {
-            popup.input.input(Input::from(key));
+            if !apply_text_shortcuts(&app.keybinds, &mut popup.input, key) {
+                popup.input.input(Input::from(key));
+            }
             app.popups.note_create = Some(popup);
         }
         return false;
@@ -46,7 +49,9 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
             app.popups.draw_create = Some(popup);
             app.confirm_create_draw();
         } else {
-            popup.input.input(Input::from(key));
+            if !apply_text_shortcuts(&app.keybinds, &mut popup.input, key) {
+                popup.input.input(Input::from(key));
+            }
             app.popups.draw_create = Some(popup);
         }
         return false;
@@ -59,7 +64,9 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
             app.popups.canvas_create = Some(popup);
             app.confirm_create_canvas();
         } else {
-            popup.input.input(Input::from(key));
+            if !apply_text_shortcuts(&app.keybinds, &mut popup.input, key) {
+                popup.input.input(Input::from(key));
+            }
             app.popups.canvas_create = Some(popup);
         }
         return false;
@@ -72,7 +79,9 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
             app.popups.folder = Some(popup);
             app.confirm_folder_popup();
         } else {
-            popup.input.input(Input::from(key));
+            if !apply_text_shortcuts(&app.keybinds, &mut popup.input, key) {
+                popup.input.input(Input::from(key));
+            }
             app.popups.folder = Some(popup);
         }
         return false;
@@ -167,7 +176,9 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                             app.begin_delete_tag_with_name(tag);
                         }
                     } else {
-                        popup.input.input(Input::from(key));
+                        if !apply_text_shortcuts(&app.keybinds, &mut popup.input, key) {
+                            popup.input.input(Input::from(key));
+                        }
                         app.popups.tag = Some(popup);
                         app.update_tag_suggestions();
                     }
@@ -205,7 +216,9 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
             app.popups.note_rename = Some(popup);
             app.confirm_rename_note();
         } else {
-            popup.input.input(Input::from(key));
+            if !apply_text_shortcuts(&app.keybinds, &mut popup.input, key) {
+                popup.input.input(Input::from(key));
+            }
             app.popups.note_rename = Some(popup);
         }
         return false;
@@ -275,7 +288,9 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
             }
             KeyCode::Char('l') => {
                 if popup.focus == crate::popups::SearchFocus::Input {
-                    popup.input.input(Input::from(key));
+                    if !apply_text_shortcuts(&app.keybinds, &mut popup.input, key) {
+                        popup.input.input(Input::from(key));
+                    }
                     app.popups.search = Some(popup);
                     app.update_search();
                 } else if has_grep
@@ -299,7 +314,9 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
             }
             KeyCode::Up | KeyCode::Char('k') => {
                 if popup.focus == crate::popups::SearchFocus::Input {
-                    popup.input.input(Input::from(key));
+                    if !apply_text_shortcuts(&app.keybinds, &mut popup.input, key) {
+                        popup.input.input(Input::from(key));
+                    }
                     app.popups.search = Some(popup);
                     app.update_search();
                 } else if has_grep {
@@ -312,7 +329,9 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
             }
             KeyCode::Down | KeyCode::Char('j') => {
                 if popup.focus == crate::popups::SearchFocus::Input {
-                    popup.input.input(Input::from(key));
+                    if !apply_text_shortcuts(&app.keybinds, &mut popup.input, key) {
+                        popup.input.input(Input::from(key));
+                    }
                     app.popups.search = Some(popup);
                     app.update_search();
                 } else if has_grep {
@@ -327,7 +346,9 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
             }
             KeyCode::Right | KeyCode::Char(' ') => {
                 if popup.focus == crate::popups::SearchFocus::Input {
-                    popup.input.input(Input::from(key));
+                    if !apply_text_shortcuts(&app.keybinds, &mut popup.input, key) {
+                        popup.input.input(Input::from(key));
+                    }
                     app.popups.search = Some(popup);
                     app.update_search();
                 } else if has_grep
@@ -337,14 +358,18 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                     app.popups.search = Some(popup);
                 } else {
                     popup.focus = crate::popups::SearchFocus::Input;
-                    popup.input.input(Input::from(key));
+                    if !apply_text_shortcuts(&app.keybinds, &mut popup.input, key) {
+                        popup.input.input(Input::from(key));
+                    }
                     app.popups.search = Some(popup);
                     app.update_search();
                 }
             }
             KeyCode::Left => {
                 if popup.focus == crate::popups::SearchFocus::Input {
-                    popup.input.input(Input::from(key));
+                    if !apply_text_shortcuts(&app.keybinds, &mut popup.input, key) {
+                        popup.input.input(Input::from(key));
+                    }
                     app.popups.search = Some(popup);
                     app.update_search();
                 } else if has_grep
@@ -354,14 +379,18 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                     app.popups.search = Some(popup);
                 } else {
                     popup.focus = crate::popups::SearchFocus::Input;
-                    popup.input.input(Input::from(key));
+                    if !apply_text_shortcuts(&app.keybinds, &mut popup.input, key) {
+                        popup.input.input(Input::from(key));
+                    }
                     app.popups.search = Some(popup);
                     app.update_search();
                 }
             }
             _ => {
                 popup.focus = crate::popups::SearchFocus::Input;
-                popup.input.input(Input::from(key));
+                if !apply_text_shortcuts(&app.keybinds, &mut popup.input, key) {
+                    popup.input.input(Input::from(key));
+                }
                 app.popups.search = Some(popup);
                 app.update_search();
             }
@@ -449,7 +478,9 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 },
                 crate::app::FolderPickerFocus::Search => {
                     let old_query = picker.input.lines().join("");
-                    picker.input.input(Input::from(key));
+                    if !apply_text_shortcuts(&app.keybinds, &mut picker.input, key) {
+                        picker.input.input(Input::from(key));
+                    }
                     let new_query = picker.input.lines().join("");
                     if old_query != new_query {
                         app.popups.folder_picker = Some(picker);
@@ -487,7 +518,9 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                     app.popups.template = Some(popup);
                     app.open_help_page_with_tab(HelpTab::Templates);
                 } else {
-                    popup.input.input(Input::from(key));
+                    if !apply_text_shortcuts(&app.keybinds, &mut popup.input, key) {
+                        popup.input.input(Input::from(key));
+                    }
                     app.popups.template = Some(popup);
                     app.update_template_popup_filter();
                 }
@@ -497,7 +530,9 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                     app.popups.template = Some(popup);
                     app.create_template_from_popup();
                 } else {
-                    popup.input.input(Input::from(key));
+                    if !apply_text_shortcuts(&app.keybinds, &mut popup.input, key) {
+                        popup.input.input(Input::from(key));
+                    }
                     app.popups.template = Some(popup);
                     app.update_template_popup_filter();
                 }
@@ -539,7 +574,9 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                         app.popups.template = Some(popup);
                     }
                     _ => {
-                        popup.input.input(Input::from(key));
+                        if !apply_text_shortcuts(&app.keybinds, &mut popup.input, key) {
+                            popup.input.input(Input::from(key));
+                        }
                         app.popups.template = Some(popup);
                         app.update_template_popup_filter();
                     }
@@ -1008,8 +1045,7 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 *focus = EditFocus::Body;
                 return false;
             }
-
-            if handle_os_shortcuts(&app.keybinds, &mut app.editor.title_editor, key) {
+            if apply_text_shortcuts(&app.keybinds, &mut app.editor.title_editor, key) {
                 app.request_editor_preview_update();
                 return false;
             }
@@ -1028,7 +1064,7 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
             app.request_editor_preview_update();
         }
         EditFocus::Body => {
-            if handle_os_shortcuts(&app.keybinds, &mut app.editor.editor, key) {
+            if apply_text_shortcuts(&app.keybinds, &mut app.editor.editor, key) {
                 app.request_editor_preview_update();
                 return false;
             }
@@ -1693,54 +1729,6 @@ pub fn contains_cell(rect: Rect, col: u16, row: u16) -> bool {
         && row < rect.y + rect.height
 }
 
-pub fn handle_os_shortcuts(
-    keybinds: &Keybinds,
-    textarea: &mut TextArea<'static>,
-    key: KeyEvent,
-) -> bool {
-    if keybinds.matches_edit(EditAction::SelectAll, &key) {
-        textarea.select_all();
-        return true;
-    }
-    if keybinds.matches_edit(EditAction::Copy, &key) {
-        textarea.copy();
-        return true;
-    }
-    if keybinds.matches_edit(EditAction::Cut, &key) {
-        let _ = textarea.cut();
-        return true;
-    }
-    if keybinds.matches_edit(EditAction::Paste, &key) {
-        let _ = textarea.paste();
-        return true;
-    }
-    if keybinds.matches_edit(EditAction::Undo, &key) {
-        let _ = textarea.undo();
-        return true;
-    }
-    if keybinds.matches_edit(EditAction::Redo, &key) {
-        let _ = textarea.redo();
-        return true;
-    }
-    if keybinds.matches_edit(EditAction::DeleteWord, &key) {
-        let _ = textarea.delete_word();
-        return true;
-    }
-    if keybinds.matches_edit(EditAction::DeleteNextWord, &key) {
-        let _ = textarea.delete_next_word();
-        return true;
-    }
-    if keybinds.matches_edit(EditAction::MoveToTop, &key) {
-        textarea.move_cursor(CursorMove::Top);
-        return true;
-    }
-    if keybinds.matches_edit(EditAction::MoveToBottom, &key) {
-        textarea.move_cursor(CursorMove::Bottom);
-        return true;
-    }
-
-    false
-}
 
 pub fn make_title_editor(
     initial: &str,

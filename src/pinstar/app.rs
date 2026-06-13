@@ -1,5 +1,5 @@
 use crate::app_theme::AppThemeColors;
-use crate::keybinds::Keybinds;
+use crate::keybinds::{Keybinds, CanvasAction};
 use crate::pinstar::input::{handle_pinstar_event, handle_pinstar_mouse};
 use crate::pinstar::render::draw_pinstar_view;
 use crate::pinstar::state::PinstarState;
@@ -18,7 +18,7 @@ pub enum PinstarResult {
 pub fn run_pinstar_view(
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
     storage: Storage,
-    _keybinds: &Keybinds,
+    keybinds: &Keybinds,
     file_id: Option<String>,
     theme: AppThemeColors,
     ext_editor_enabled: bool,
@@ -33,6 +33,13 @@ pub fn run_pinstar_view(
         anyhow::bail!("No file ID provided for Pinstar view");
     };
 
+    state.footer_hint = format!(
+        "{} switch focus · {} back · Arrows select · {} edit · {} save",
+        keybinds.canvas_keys_display(CanvasAction::CycleFocus),
+        keybinds.canvas_keys_display(CanvasAction::Quit),
+        keybinds.canvas_keys_display(CanvasAction::EditOrConnect),
+        keybinds.canvas_keys_display(CanvasAction::Save),
+    );
     let mut running = true;
 
     while running {
@@ -116,7 +123,7 @@ pub fn run_pinstar_view(
                 let area = terminal.size()?;
                 match event::read()? {
                     Event::Key(key) => {
-                        if !handle_pinstar_event(&mut state, key, &mut running, area.into()) {}
+                        if !handle_pinstar_event(&mut state, key, &mut running, area.into(), keybinds) {}
                     }
                     Event::Mouse(mouse) => {
                         handle_pinstar_mouse(&mut state, mouse, area.into());

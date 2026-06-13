@@ -23,6 +23,7 @@ pub struct BackupState {
     pub selected_file: Option<String>,
     pub diff_lines: Vec<String>,
     pub last_area: Option<ratatui::layout::Rect>,
+    pub footer_hint: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -105,6 +106,7 @@ impl BackupState {
             status_message: None,
             vault_path: vault_path.clone(),
             settings_open: false,
+            footer_hint: String::new(),
             settings,
             theme,
         };

@@ -1,11 +1,11 @@
-use ratatui::layout::{Constraint, Layout, Rect};
-use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
-
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use crate::backup::state::{BackupInputMode, BackupSection, BackupState, SettingsField};
-use ratatui_textarea::TextArea;
 use crate::backup::git_ops::GitOps;
+use crate::backup::state::{BackupInputMode, BackupSection, BackupState, SettingsField};
 use crate::config::ClinConfig;
+use crate::keybinds::{BackupAction, Keybinds};
+use crate::text_edit::apply_text_shortcuts;
+use crossterm::event::{KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui_textarea::TextArea;
 
 pub enum InputResult {
     None,
@@ -13,22 +13,27 @@ pub enum InputResult {
     Refresh,
 }
 
-pub fn handle_input(state: &mut BackupState, event: KeyEvent) -> InputResult {
+pub fn handle_input(state: &mut BackupState, event: KeyEvent, keybinds: &Keybinds) -> InputResult {
     if state.input_mode == BackupInputMode::Normal {
         state.status_message = None;
     }
 
     match state.input_mode {
-        BackupInputMode::Normal => handle_normal_input(state, event),
-        BackupInputMode::EditCommitMessage => handle_commit_input(state, event),
-        BackupInputMode::EditSettings => handle_settings_input(state, event),
-        BackupInputMode::EditSettingsField => handle_settings_field_input(state, event),
+        BackupInputMode::Normal => handle_normal_input(state, event, keybinds),
+        BackupInputMode::EditCommitMessage => handle_commit_input(state, event, keybinds),
+        BackupInputMode::EditSettings => handle_settings_input(state, event, keybinds),
+        BackupInputMode::EditSettingsField => handle_settings_field_input(state, event, keybinds),
     }
 }
-fn handle_normal_input(state: &mut BackupState, event: KeyEvent) -> InputResult {
+
+fn handle_normal_input(
+    state: &mut BackupState,
+    event: KeyEvent,
+    keybinds: &Keybinds,
+) -> InputResult {
     match event.code {
-        KeyCode::Esc => return InputResult::Back,
-        KeyCode::Char('j') | KeyCode::Down => {
+        _ if keybinds.matches_backup(BackupAction::Back, &event) => return InputResult::Back,
+        _ if keybinds.matches_backup(BackupAction::MoveDown, &event) => {
             if !state.selectable_files.is_empty() {
                 state.selected_index = (state.selected_index + 1) % state.selectable_files.len();
                 state.selected_file = Some(state.selectable_files[state.selected_index].clone());
@@ -36,7 +41,7 @@ fn handle_normal_input(state: &mut BackupState, event: KeyEvent) -> InputResult 
                 state.adjust_scroll_to_selection();
             }
         }
-        KeyCode::Char('k') | KeyCode::Up => {
+        _ if keybinds.matches_backup(BackupAction::MoveUp, &event) => {
             if !state.selectable_files.is_empty() {
                 state.selected_index = if state.selected_index == 0 {
                     state.selectable_files.len() - 1
@@ -48,27 +53,27 @@ fn handle_normal_input(state: &mut BackupState, event: KeyEvent) -> InputResult 
                 state.adjust_scroll_to_selection();
             }
         }
-        KeyCode::PageDown => {
+        _ if keybinds.matches_backup(BackupAction::ScrollDiffDown, &event) => {
             state.diff_scroll = state.diff_scroll.saturating_add(10);
         }
-        KeyCode::PageUp => {
+        _ if keybinds.matches_backup(BackupAction::ScrollDiffUp, &event) => {
             state.diff_scroll = state.diff_scroll.saturating_sub(10);
         }
-        KeyCode::Char('r') => return InputResult::Refresh,
-        KeyCode::Char('s') => {
+        _ if keybinds.matches_backup(BackupAction::Refresh, &event) => return InputResult::Refresh,
+        _ if keybinds.matches_backup(BackupAction::EnterCommit, &event) => {
             if state.status.is_some() {
                 state.input_mode = BackupInputMode::EditCommitMessage;
                 state.commit_textarea = TextArea::default();
             }
         }
-        KeyCode::Char('p') => {
+        _ if keybinds.matches_backup(BackupAction::Push, &event) => {
             state.push_to_remote();
         }
-        KeyCode::Char('/') => {
+        _ if keybinds.matches_backup(BackupAction::OpenSettings, &event) => {
             state.settings_open = true;
             state.input_mode = BackupInputMode::EditSettings;
         }
-        KeyCode::Tab => {
+        _ if keybinds.matches_backup(BackupAction::CycleSection, &event) => {
             state.selected_section = match state.selected_section {
                 BackupSection::Status => BackupSection::Changes,
                 BackupSection::Changes => BackupSection::History,
@@ -79,12 +84,19 @@ fn handle_normal_input(state: &mut BackupState, event: KeyEvent) -> InputResult 
     }
     InputResult::None
 }
-fn handle_commit_input(state: &mut BackupState, event: KeyEvent) -> InputResult {
+
+fn handle_commit_input(
+    state: &mut BackupState,
+    event: KeyEvent,
+    keybinds: &Keybinds,
+) -> InputResult {
     match event.code {
-        KeyCode::Esc => {
+        _ if keybinds.matches_backup(BackupAction::CancelCommit, &event) => {
             state.input_mode = BackupInputMode::Normal;
         }
-        KeyCode::Enter if !event.modifiers.contains(KeyModifiers::CONTROL) => {
+        _ if keybinds.matches_backup(BackupAction::ConfirmCommit, &event)
+            && !event.modifiers.contains(KeyModifiers::CONTROL) =>
+        {
             let msg = state.commit_textarea.lines().join("\n").trim().to_string();
             if !msg.is_empty() {
                 state.do_commit(&msg);
@@ -94,29 +106,39 @@ fn handle_commit_input(state: &mut BackupState, event: KeyEvent) -> InputResult 
             }
         }
         _ => {
-            state.commit_textarea.input(event);
+            if !apply_text_shortcuts(keybinds, &mut state.commit_textarea, event) {
+                state.commit_textarea.input(event);
+            }
         }
     }
     InputResult::None
 }
 
-fn handle_settings_input(state: &mut BackupState, event: KeyEvent) -> InputResult {
+fn handle_settings_input(
+    state: &mut BackupState,
+    event: KeyEvent,
+    keybinds: &Keybinds,
+) -> InputResult {
     match event.code {
-        KeyCode::Esc => {
+        _ if keybinds.matches_backup(BackupAction::CloseSettings, &event) => {
             state.settings_open = false;
             state.input_mode = BackupInputMode::Normal;
         }
-        KeyCode::Char('j') | KeyCode::Down => {
+        _ if keybinds.matches_backup(BackupAction::NextField, &event) => {
             state.settings.focused_field = state.settings.focused_field.next();
         }
-        KeyCode::Char('k') | KeyCode::Up => {
+        _ if keybinds.matches_backup(BackupAction::PrevField, &event) => {
             state.settings.focused_field = state.settings.focused_field.prev();
         }
-        KeyCode::Enter => {
+        _ if keybinds.matches_backup(BackupAction::ActivateField, &event) => {
             match state.settings.focused_field {
                 SettingsField::Enabled => state.settings.enabled = !state.settings.enabled,
-                SettingsField::BackupOnSave => state.settings.backup_on_save = !state.settings.backup_on_save,
-                SettingsField::BackupOnQuit => state.settings.backup_on_quit = !state.settings.backup_on_quit,
+                SettingsField::BackupOnSave => {
+                    state.settings.backup_on_save = !state.settings.backup_on_save
+                }
+                SettingsField::BackupOnQuit => {
+                    state.settings.backup_on_quit = !state.settings.backup_on_quit
+                }
                 SettingsField::AutoPush => state.settings.auto_push = !state.settings.auto_push,
                 SettingsField::RemoteUrl | SettingsField::RemoteName => {
                     state.input_mode = BackupInputMode::EditSettingsField;
@@ -134,24 +156,38 @@ fn handle_settings_input(state: &mut BackupState, event: KeyEvent) -> InputResul
     InputResult::None
 }
 
-fn handle_settings_field_input(state: &mut BackupState, event: KeyEvent) -> InputResult {
+fn handle_settings_field_input(
+    state: &mut BackupState,
+    event: KeyEvent,
+    keybinds: &Keybinds,
+) -> InputResult {
     match event.code {
-        KeyCode::Esc => {
+        _ if keybinds.matches_backup(BackupAction::CancelEditField, &event) => {
             state.input_mode = BackupInputMode::EditSettings;
         }
-        KeyCode::Enter if !event.modifiers.contains(KeyModifiers::CONTROL) && !event.modifiers.contains(KeyModifiers::SHIFT) => {
+        _ if keybinds.matches_backup(BackupAction::ConfirmEditField, &event)
+            && !event.modifiers.contains(KeyModifiers::CONTROL)
+            && !event.modifiers.contains(KeyModifiers::SHIFT) =>
+        {
             state.input_mode = BackupInputMode::EditSettings;
         }
-        _ => {
-            match state.settings.focused_field {
-                SettingsField::RemoteUrl => { state.settings.remote_url.input(event); }
-                SettingsField::RemoteName => { state.settings.remote_name.input(event); }
-                _ => {}
+        _ => match state.settings.focused_field {
+            SettingsField::RemoteUrl => {
+                if !apply_text_shortcuts(keybinds, &mut state.settings.remote_url, event) {
+                    state.settings.remote_url.input(event);
+                }
             }
-        }
+            SettingsField::RemoteName => {
+                if !apply_text_shortcuts(keybinds, &mut state.settings.remote_name, event) {
+                    state.settings.remote_name.input(event);
+                }
+            }
+            _ => {}
+        },
     }
     InputResult::None
 }
+
 pub fn handle_mouse(state: &mut BackupState, event: MouseEvent) -> InputResult {
     if state.settings_open {
         return handle_settings_mouse(state, event);
@@ -269,7 +305,6 @@ fn settings_field_rects(content_area: Rect) -> Vec<(Rect, SettingsField)> {
         (chunks[12], SettingsField::SaveButton),
     ]
 }
-
 
 impl BackupState {
     fn do_commit(&mut self, message: &str) {

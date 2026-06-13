@@ -6,7 +6,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::symbols::Marker;
 use ratatui::text::{Line as TuiLine, Span};
 use ratatui::widgets::canvas::{Canvas, Context, Line, Rectangle};
-use ratatui::widgets::{Block, Clear, List, ListItem, Paragraph};
+use ratatui::widgets::{Block, List, ListItem, Paragraph};
 
 pub fn draw_canvas(frame: &mut Frame, app: &DrawAppState) {
     let area = frame.area();

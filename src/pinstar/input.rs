@@ -1,6 +1,8 @@
 use crate::pinstar::state::{PinstarMenuType, PinstarState};
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+use crossterm::event::{KeyEvent, MouseButton, MouseEvent, MouseEventKind};
+use crate::keybinds::{Keybinds, CanvasAction};
 use ratatui_textarea::{Input, TextArea};
+use crate::text_edit::apply_text_shortcuts;
 
 pub fn handle_pinstar_mouse(
     state: &mut PinstarState,
@@ -393,19 +395,22 @@ pub fn handle_pinstar_event(
     key: KeyEvent,
     running: &mut bool,
     area: ratatui::layout::Rect,
+    keybinds: &Keybinds,
 ) -> bool {
     if let Some(textarea) = &mut state.rename_popup {
         match key.code {
-            KeyCode::Esc => {
+            _ if keybinds.matches_canvas(CanvasAction::RenameCancel, &key) => {
                 state.rename_popup = None;
             }
-            KeyCode::Enter => {
+            _ if keybinds.matches_canvas(CanvasAction::RenameConfirm, &key) => {
                 let new_id = textarea.lines().join("");
                 state.rename_node(new_id);
                 state.rename_popup = None;
             }
             _ => {
-                textarea.input(Input::from(key));
+                if !apply_text_shortcuts(keybinds, textarea, key) {
+                    textarea.input(Input::from(key));
+                }
             }
         }
         return true;
@@ -416,18 +421,18 @@ pub fn handle_pinstar_event(
 
     if let Some(menu) = &mut state.context_menu {
         match key.code {
-            KeyCode::Esc => {
+            _ if keybinds.matches_canvas(CanvasAction::MenuClose, &key) => {
                 close_menu = true;
             }
-            KeyCode::Up | KeyCode::Char('k') => {
+            _ if keybinds.matches_canvas(CanvasAction::MenuUp, &key) => {
                 menu.selected = menu.selected.saturating_sub(1);
             }
-            KeyCode::Down | KeyCode::Char('j') => {
+            _ if keybinds.matches_canvas(CanvasAction::MenuDown, &key) => {
                 if menu.selected < menu.items.len() - 1 {
                     menu.selected += 1;
                 }
             }
-            KeyCode::Enter => {
+            _ if keybinds.matches_canvas(CanvasAction::MenuSelect, &key) => {
                 menu_action = Some((menu.selected, menu.menu_type, menu.x, menu.y));
                 close_menu = true;
             }
@@ -452,16 +457,18 @@ pub fn handle_pinstar_event(
 
     if let Some(editor) = &mut state.floating_editor {
         match key.code {
-            KeyCode::Esc => {
+            _ if keybinds.matches_canvas(CanvasAction::CloseEditor, &key) => {
                 state.toggle_editor();
                 state.sync_to_raw_editor();
             }
-            KeyCode::Enter if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            _ if keybinds.matches_canvas(CanvasAction::CloseEditorAlt, &key) => {
                 state.toggle_editor();
                 state.sync_to_raw_editor();
             }
             _ => {
-                editor.input(Input::from(key));
+                if !apply_text_shortcuts(keybinds, editor, key) {
+                    editor.input(Input::from(key));
+                }
                 if let Some(node_id) = &state.selected_node_id {
                     let text = editor.lines().join("\n");
                     for node in &mut state.data.nodes {
@@ -479,7 +486,9 @@ pub fn handle_pinstar_event(
 
     if state.resizing_node_id.is_some() {
         match key.code {
-            KeyCode::Enter | KeyCode::Esc => {
+            _ if keybinds.matches_canvas(CanvasAction::ConfirmResize, &key)
+                || keybinds.matches_canvas(CanvasAction::CancelResize, &key) =>
+            {
                 state.resizing_node_id = None;
                 let _ = state.save();
                 return true;
@@ -490,10 +499,10 @@ pub fn handle_pinstar_event(
 
     if state.ext_focused {
         match key.code {
-            KeyCode::Esc | KeyCode::Tab => {
+            _ if keybinds.matches_canvas(CanvasAction::ExtUnfocus, &key) => {
                 state.ext_focused = false;
             }
-            KeyCode::Enter | KeyCode::Char(' ') => {
+            _ if keybinds.matches_canvas(CanvasAction::ExtToggle, &key) => {
                 state.ext_editor_enabled = !state.ext_editor_enabled;
             }
             _ => {}
@@ -503,63 +512,65 @@ pub fn handle_pinstar_event(
 
     if state.editor_focus {
         match key.code {
-            KeyCode::Esc => {
+            _ if keybinds.matches_canvas(CanvasAction::EditorUnfocus, &key) => {
                 state.editor_focus = false;
             }
-            KeyCode::Tab => {
+            _ if keybinds.matches_canvas(CanvasAction::EditorFocusExt, &key) => {
                 state.editor_focus = false;
                 state.ext_focused = true;
             }
-            KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            _ if keybinds.matches_canvas(CanvasAction::EditorSyncRaw, &key) => {
                 let _ = state.sync_from_raw_editor();
             }
             _ => {
-                state.raw_editor.input(Input::from(key));
+                if !apply_text_shortcuts(keybinds, &mut state.raw_editor, key) {
+                    state.raw_editor.input(Input::from(key));
+                }
             }
         }
         return true;
     }
 
     match key.code {
-        KeyCode::Esc => {
+        _ if keybinds.matches_canvas(CanvasAction::Quit, &key) => {
             if state.connection_source_id.is_some() {
                 state.connection_source_id = None;
             } else {
                 *running = false;
             }
         }
-        KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+        _ if keybinds.matches_canvas(CanvasAction::Save, &key) => {
             let _ = state.save();
         }
-        KeyCode::Char('j') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+        _ if keybinds.matches_canvas(CanvasAction::ZoomFineIn, &key) => {
             state.zoom_in();
         }
-        KeyCode::Char('k') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+        _ if keybinds.matches_canvas(CanvasAction::ZoomFineOut, &key) => {
             state.zoom_out();
         }
-        KeyCode::Left | KeyCode::Char('h') => {
+        _ if keybinds.matches_canvas(CanvasAction::MoveLeft, &key) => {
             state.select_node_in_direction(-1.0, 0.0);
             state.center_on_selected();
         }
-        KeyCode::Right | KeyCode::Char('l') => {
+        _ if keybinds.matches_canvas(CanvasAction::MoveRight, &key) => {
             state.select_node_in_direction(1.0, 0.0);
             state.center_on_selected();
         }
-        KeyCode::Up | KeyCode::Char('k') => {
+        _ if keybinds.matches_canvas(CanvasAction::MoveUp, &key) => {
             state.select_node_in_direction(0.0, -1.0);
             state.center_on_selected();
         }
-        KeyCode::Down | KeyCode::Char('j') => {
+        _ if keybinds.matches_canvas(CanvasAction::MoveDown, &key) => {
             state.select_node_in_direction(0.0, 1.0);
             state.center_on_selected();
         }
-        KeyCode::Char('+') | KeyCode::Char('=') => {
+        _ if keybinds.matches_canvas(CanvasAction::ZoomIn, &key) => {
             state.zoom_in();
         }
-        KeyCode::Char('-') | KeyCode::Char('_') => {
+        _ if keybinds.matches_canvas(CanvasAction::ZoomOut, &key) => {
             state.zoom_out();
         }
-        KeyCode::Char('i') | KeyCode::Enter => {
+        _ if keybinds.matches_canvas(CanvasAction::EditOrConnect, &key) => {
             let target_id_opt = state.selected_node_id.clone();
             if let Some(target_id) = target_id_opt {
                 if state.connection_source_id.is_some() {
@@ -571,7 +582,7 @@ pub fn handle_pinstar_event(
                 }
             }
         }
-        KeyCode::Char('a') => {
+        _ if keybinds.matches_canvas(CanvasAction::OpenContextMenu, &key) => {
             let menu_x = (area.width / 2).saturating_sub(12);
             let menu_y = area.height;
 
@@ -586,23 +597,23 @@ pub fn handle_pinstar_event(
                 state.open_context_menu(menu_x, menu_y, cx, cy);
             }
         }
-        KeyCode::Char('g') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+        _ if keybinds.matches_canvas(CanvasAction::ToggleGrid, &key) => {
             state.show_grid = !state.show_grid;
         }
-        KeyCode::Char('e') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+        _ if keybinds.matches_canvas(CanvasAction::ToggleEditorPane, &key) => {
             state.show_editor_pane = !state.show_editor_pane;
             if !state.show_editor_pane {
                 state.editor_focus = false;
             }
         }
-        KeyCode::Tab => {
+        _ if keybinds.matches_canvas(CanvasAction::CycleFocus, &key) => {
             if state.show_editor_pane {
                 state.editor_focus = true;
             } else {
                 state.ext_focused = true;
             }
         }
-        KeyCode::Char('?') => {
+        _ if keybinds.matches_canvas(CanvasAction::Help, &key) => {
             state.help_requested = true;
             *running = false;
         }

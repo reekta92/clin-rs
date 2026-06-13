@@ -55,7 +55,7 @@ pub fn draw_dashboard(frame: &mut Frame, state: &BackupState) {
         frame,
         chunks[2],
         theme,
-        "s: commit · p: push · r: refresh · /: settings · Esc: ←",
+        &state.footer_hint,
     );
 
     if state.input_mode == BackupInputMode::EditCommitMessage {

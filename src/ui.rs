@@ -193,9 +193,9 @@ pub fn help_text_for_tab(
         crate::app::HelpTab::Notes => notes_help_text(keybinds, theme),
         crate::app::HelpTab::Editor => editor_help_text(keybinds, theme),
         crate::app::HelpTab::Graph => graph_help_text(keybinds, theme),
-        crate::app::HelpTab::Draw => draw_help_text(theme),
-        crate::app::HelpTab::Canvas => canvas_help_text(theme),
-        crate::app::HelpTab::Backup => backup_help_text(theme),
+        crate::app::HelpTab::Draw => draw_help_text(keybinds, theme),
+        crate::app::HelpTab::Canvas => canvas_help_text(keybinds, theme),
+        crate::app::HelpTab::Backup => backup_help_text(keybinds, theme),
         crate::app::HelpTab::Templates => templates_help_text(keybinds, theme),
         crate::app::HelpTab::About => about_help_text(keybinds, theme),
     }
@@ -607,23 +607,21 @@ fn graph_help_text(keybinds: &Keybinds, theme: &crate::app_theme::AppThemeColors
     Text::from(lines)
 }
 
-fn draw_help_text(theme: &crate::app_theme::AppThemeColors) -> Text<'static> {
+fn draw_help_text(keybinds: &Keybinds, theme: &crate::app_theme::AppThemeColors) -> Text<'static> {
     let mut lines = Vec::new();
     lines.push(help_heading("Tools", theme));
-    lines.push(Line::from(""));
-    lines.extend(help_item_dyn("Draw freehand strokes", Some("d"), theme));
-    lines.extend(help_item_dyn("Shape tool (opens picker)", Some("s"), theme));
+    lines.extend(help_item_dyn("Draw freehand strokes", Some(&keybinds.draw_keys_display(DrawAction::SelectDrawTool)), theme));
+    lines.extend(help_item_dyn("Shape tool (opens picker)", Some(&keybinds.draw_keys_display(DrawAction::ToggleShapeSelector)), theme));
     lines.extend(help_item_dyn(
         "Place text label at click position",
-        Some("t"),
+        Some(&keybinds.draw_keys_display(DrawAction::SelectTextTool)),
         theme,
     ));
     lines.extend(help_item_dyn(
         "Erase elements (hover + click/drag)",
-        Some("e"),
+        Some(&keybinds.draw_keys_display(DrawAction::SelectEraseTool)),
         theme,
     ));
-    lines.push(Line::from(""));
 
     lines.push(help_heading("Shapes", theme));
     lines.push(Line::from(""));
@@ -676,77 +674,163 @@ fn draw_help_text(theme: &crate::app_theme::AppThemeColors) -> Text<'static> {
     lines.push(help_heading("General", theme));
     lines.push(Line::from(""));
     lines.extend(help_item_dyn("Auto-saved on changes & quit", None, theme));
-    lines.extend(help_item_dyn("Exit canvas view", Some("Esc"), theme));
+    lines.extend(help_item_dyn("Exit canvas view", Some(&keybinds.draw_keys_display(DrawAction::Quit)), theme));
     Text::from(lines)
 }
 
-fn canvas_help_text(theme: &crate::app_theme::AppThemeColors) -> Text<'static> {
+fn canvas_help_text(keybinds: &Keybinds, theme: &crate::app_theme::AppThemeColors) -> Text<'static> {
     let mut lines = Vec::new();
     lines.push(help_heading("Navigation", theme));
     lines.push(Line::from(""));
     lines.extend(help_item_dyn(
         "Move selection",
-        Some("←/→/↑/↓ / h/l/k/j"),
+        Some(&format!(
+            "{}/{}/{}/{}",
+            keybinds.canvas_keys_display(CanvasAction::MoveLeft),
+            keybinds.canvas_keys_display(CanvasAction::MoveRight),
+            keybinds.canvas_keys_display(CanvasAction::MoveUp),
+            keybinds.canvas_keys_display(CanvasAction::MoveDown),
+        )),
         theme,
     ));
-    lines.extend(help_item_dyn("Zoom in", Some("+/="), theme));
-    lines.extend(help_item_dyn("Zoom out", Some("-/_"), theme));
-    lines.extend(help_item_dyn("Zoom in (fine)", Some("Ctrl+j"), theme));
-    lines.extend(help_item_dyn("Zoom out (fine)", Some("Ctrl+k"), theme));
+    lines.extend(help_item_dyn(
+        "Zoom in",
+        Some(&keybinds.canvas_keys_display(CanvasAction::ZoomIn)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Zoom out",
+        Some(&keybinds.canvas_keys_display(CanvasAction::ZoomOut)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Zoom in (fine)",
+        Some(&keybinds.canvas_keys_display(CanvasAction::ZoomFineIn)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Zoom out (fine)",
+        Some(&keybinds.canvas_keys_display(CanvasAction::ZoomFineOut)),
+        theme,
+    ));
     lines.push(Line::from(""));
     lines.push(help_heading("Editing", theme));
     lines.push(Line::from(""));
     lines.extend(help_item_dyn(
         "Open / edit selected node",
-        Some("i / Enter"),
+        Some(&keybinds.canvas_keys_display(CanvasAction::EditOrConnect)),
         theme,
     ));
-    lines.extend(help_item_dyn("Connect two nodes", Some("i / Enter"), theme));
-    lines.extend(help_item_dyn("Context menu", Some("a"), theme));
+    lines.extend(help_item_dyn(
+        "Connect two nodes",
+        Some(&keybinds.canvas_keys_display(CanvasAction::EditOrConnect)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Context menu",
+        Some(&keybinds.canvas_keys_display(CanvasAction::OpenContextMenu)),
+        theme,
+    ));
     lines.push(Line::from(""));
     lines.push(help_heading("Interface", theme));
     lines.push(Line::from(""));
-    lines.extend(help_item_dyn("Toggle grid", Some("Ctrl+g"), theme));
-    lines.extend(help_item_dyn("Toggle editor pane", Some("Ctrl+e"), theme));
+    lines.extend(help_item_dyn(
+        "Toggle grid",
+        Some(&keybinds.canvas_keys_display(CanvasAction::ToggleGrid)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Toggle editor pane",
+        Some(&keybinds.canvas_keys_display(CanvasAction::ToggleEditorPane)),
+        theme,
+    ));
     lines.extend(help_item_dyn(
         "Focus editor / ext toggle",
-        Some("Tab"),
+        Some(&keybinds.canvas_keys_display(CanvasAction::CycleFocus)),
         theme,
     ));
     lines.extend(help_item_dyn(
         "Toggle external editor mode",
-        Some("Space"),
+        Some(&keybinds.canvas_keys_display(CanvasAction::ExtToggle)),
         theme,
     ));
     lines.push(Line::from(""));
     lines.push(help_heading("Editor (focused)", theme));
     lines.push(Line::from(""));
-    lines.extend(help_item_dyn("Exit editor focus", Some("Esc / Tab"), theme));
+    lines.extend(help_item_dyn(
+        "Exit editor focus",
+        Some(&keybinds.canvas_keys_display(CanvasAction::EditorUnfocus)),
+        theme,
+    ));
     lines.extend(help_item_dyn(
         "Save raw editor changes",
-        Some("Ctrl+s"),
+        Some(&keybinds.canvas_keys_display(CanvasAction::EditorSyncRaw)),
         theme,
     ));
     lines.push(Line::from(""));
     lines.push(help_heading("General", theme));
     lines.push(Line::from(""));
-    lines.extend(help_item_dyn("Save canvas file", Some("Ctrl+s"), theme));
-    lines.extend(help_item_dyn("Cancel connection", Some("Esc"), theme));
-    lines.extend(help_item_dyn("Exit canvas view", Some("Esc"), theme));
+    lines.extend(help_item_dyn(
+        "Save canvas file",
+        Some(&keybinds.canvas_keys_display(CanvasAction::Save)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Cancel connection",
+        Some(&keybinds.canvas_keys_display(CanvasAction::Quit)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Exit canvas view",
+        Some(&keybinds.canvas_keys_display(CanvasAction::Quit)),
+        theme,
+    ));
     Text::from(lines)
 }
 
-fn backup_help_text(theme: &crate::app_theme::AppThemeColors) -> Text<'static> {
+fn backup_help_text(keybinds: &Keybinds, theme: &crate::app_theme::AppThemeColors) -> Text<'static> {
     let mut lines = Vec::new();
     lines.push(help_heading("Backup View", theme));
     lines.push(Line::from(""));
-    lines.extend(help_item_dyn("Scroll Up / Down", Some("k/↑ / j/↓"), theme));
-    lines.extend(help_item_dyn("Refresh status", Some("r"), theme));
-    lines.extend(help_item_dyn("Commit changes", Some("s"), theme));
-    lines.extend(help_item_dyn("Push to remote", Some("p"), theme));
-    lines.extend(help_item_dyn("Open settings", Some("/"), theme));
-    lines.extend(help_item_dyn("Cycle sections", Some("Tab"), theme));
-    lines.extend(help_item_dyn("Back to list", Some("Esc"), theme));
+    lines.extend(help_item_dyn(
+        "Scroll Up / Down",
+        Some(&format!(
+            "{}/{}",
+            keybinds.backup_keys_display(BackupAction::MoveUp),
+            keybinds.backup_keys_display(BackupAction::MoveDown)
+        )),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Refresh status",
+        Some(&keybinds.backup_keys_display(BackupAction::Refresh)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Commit changes",
+        Some(&keybinds.backup_keys_display(BackupAction::EnterCommit)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Push to remote",
+        Some(&keybinds.backup_keys_display(BackupAction::Push)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Open settings",
+        Some(&keybinds.backup_keys_display(BackupAction::OpenSettings)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Cycle sections",
+        Some(&keybinds.backup_keys_display(BackupAction::CycleSection)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Back to list",
+        Some(&keybinds.backup_keys_display(BackupAction::Back)),
+        theme,
+    ));
     Text::from(lines)
 }
 
@@ -2876,7 +2960,7 @@ fn draw_hint_line(
 ) {
     let status = app.status.as_ref();
 
-    let right_text = if status != app.default_status_text() && !status.is_empty() && status != "Ready" {
+    let right_text = if status != app.default_status_text().as_ref() && !status.is_empty() && status != "Ready" {
         crate::sanitize::sanitize_for_terminal(status)
     } else {
         Cow::Owned(hints.to_string())

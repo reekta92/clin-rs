@@ -1,26 +1,22 @@
 use crate::draw::app::{DrawAppState, DrawEventAction};
 use crate::draw::state::{DrawElement, DrawShapeType, DrawTool, Shape, Stroke, Text};
-use crate::keybinds::Keybinds;
-use crossterm::event::{Event, KeyCode, KeyEvent, MouseButton, MouseEvent, MouseEventKind};
+use crate::keybinds::{DrawAction, Keybinds};
+use crate::text_edit::apply_text_shortcuts;
+use crossterm::event::{Event, MouseButton, MouseEvent, MouseEventKind};
 use ratatui_textarea::TextArea;
 
 pub fn handle_event(
     ev: Event,
     app: &mut DrawAppState,
-    _keybinds: &Keybinds,
+    keybinds: &Keybinds,
 ) -> anyhow::Result<Option<DrawEventAction>> {
     if let Some((idx, textarea)) = &mut app.text_editor {
         match ev {
-            Event::Key(KeyEvent {
-                code: KeyCode::Esc, ..
-            }) => {
+            Event::Key(k) if keybinds.matches_draw(DrawAction::TextEditorCancel, &k) => {
                 app.text_editor = None;
                 return Ok(None);
             }
-            Event::Key(KeyEvent {
-                code: KeyCode::Enter,
-                ..
-            }) => {
+            Event::Key(k) if keybinds.matches_draw(DrawAction::TextEditorConfirm, &k) => {
                 let new_content = textarea.lines()[0].clone();
                 if let Some(DrawElement::Text(t)) = app.data.elements.get_mut(*idx) {
                     t.content = new_content;
@@ -29,6 +25,11 @@ pub fn handle_event(
                 return Ok(Some(DrawEventAction::Save));
             }
             _ => {
+                if let Event::Key(k) = ev {
+                    if apply_text_shortcuts(keybinds, textarea, k) {
+                        return Ok(None);
+                    }
+                }
                 textarea.input(ev);
                 return Ok(None);
             }
@@ -37,30 +38,20 @@ pub fn handle_event(
 
     if app.show_shape_selector {
         match ev {
-            Event::Key(KeyEvent {
-                code: KeyCode::Esc, ..
-            }) => {
+            Event::Key(k) if keybinds.matches_draw(DrawAction::ShapeSelectorCancel, &k) => {
                 app.show_shape_selector = false;
                 return Ok(None);
             }
-            Event::Key(KeyEvent {
-                code: KeyCode::Enter,
-                ..
-            }) => {
+            Event::Key(k) if keybinds.matches_draw(DrawAction::ShapeSelectorConfirm, &k) => {
                 app.show_shape_selector = false;
                 app.active_tool = DrawTool::Shape;
                 return Ok(None);
             }
-            Event::Key(KeyEvent {
-                code: KeyCode::Up, ..
-            }) => {
+            Event::Key(k) if keybinds.matches_draw(DrawAction::ShapeSelectorUp, &k) => {
                 cycle_shape_type(app, -1);
                 return Ok(None);
             }
-            Event::Key(KeyEvent {
-                code: KeyCode::Down,
-                ..
-            }) => {
+            Event::Key(k) if keybinds.matches_draw(DrawAction::ShapeSelectorDown, &k) => {
                 cycle_shape_type(app, 1);
                 return Ok(None);
             }
@@ -69,34 +60,22 @@ pub fn handle_event(
     }
 
     match ev {
-        Event::Key(KeyEvent {
-            code: KeyCode::Esc, ..
-        }) => Ok(Some(DrawEventAction::Quit)),
-        Event::Key(KeyEvent {
-            code: KeyCode::Char('d'),
-            ..
-        }) => {
+        Event::Key(k) if keybinds.matches_draw(DrawAction::Quit, &k) => {
+            Ok(Some(DrawEventAction::Quit))
+        }
+        Event::Key(k) if keybinds.matches_draw(DrawAction::SelectDrawTool, &k) => {
             app.active_tool = DrawTool::Draw;
             Ok(None)
         }
-        Event::Key(KeyEvent {
-            code: KeyCode::Char('s'),
-            ..
-        }) => {
+        Event::Key(k) if keybinds.matches_draw(DrawAction::ToggleShapeSelector, &k) => {
             app.show_shape_selector = !app.show_shape_selector;
             Ok(None)
         }
-        Event::Key(KeyEvent {
-            code: KeyCode::Char('t'),
-            ..
-        }) => {
+        Event::Key(k) if keybinds.matches_draw(DrawAction::SelectTextTool, &k) => {
             app.active_tool = DrawTool::Text;
             Ok(None)
         }
-        Event::Key(KeyEvent {
-            code: KeyCode::Char('e'),
-            ..
-        }) => {
+        Event::Key(k) if keybinds.matches_draw(DrawAction::SelectEraseTool, &k) => {
             app.active_tool = DrawTool::Erase;
             Ok(None)
         }
@@ -319,102 +298,59 @@ fn create_shape(ox: f64, oy: f64, cx: f64, cy: f64, st: DrawShapeType) -> DrawEl
 fn find_text_at(cx: f64, cy: f64, app: &DrawAppState) -> Option<usize> {
     let threshold = 5.0 / app.viewport.zoom;
     for (i, el) in app.data.elements.iter().enumerate() {
-        if let DrawElement::Text(t) = el
-            && ((t.x - cx).powi(2) + (t.y - cy).powi(2)).sqrt() < threshold * 2.0
-        {
-            return Some(i);
+        if let DrawElement::Text(t) = el {
+            if (t.x - cx).abs() < threshold && (t.y - cy).abs() < threshold {
+                return Some(i);
+            }
         }
     }
     None
 }
 
-fn panning(col: u16, row: u16, app: &mut DrawAppState) {
-    if let Some((last_col, last_row)) = app.last_mouse_pos {
-        let dx = col as f64 - last_col as f64;
-        let dy = row as f64 - last_row as f64;
-
-        let x_range = 200.0 / app.viewport.zoom;
-        let y_range = 200.0 / app.viewport.zoom;
-
-        let area = app.last_area;
-        if area.width > 0 && area.height > 0 {
-            app.viewport.x -= (dx / area.width as f64) * x_range;
-            app.viewport.y += (dy / area.height as f64) * y_range;
-        }
-
-        app.last_mouse_pos = Some((col, row));
-    }
-}
-
 fn erase_at(cx: f64, cy: f64, app: &mut DrawAppState) {
     let threshold = 5.0 / app.viewport.zoom;
     app.data.elements.retain(|el| match el {
-        DrawElement::Stroke(s) => !s
-            .points
-            .iter()
-            .any(|(px, py)| ((px - cx).powi(2) + (py - cy).powi(2)).sqrt() < threshold),
+        DrawElement::Stroke(s) => !s.points.iter().any(|(px, py)| {
+            ((*px as f64) - cx).powi(2) + ((*py as f64) - cy).powi(2) < threshold.powi(2)
+        }),
         DrawElement::Shape(s) => match s {
-            Shape::Rect {
-                x,
-                y,
-                width,
-                height,
-                ..
-            } => !(cx >= *x && cx <= x + width && cy >= *y && cy <= y + height),
-            Shape::Ellipse {
-                x,
-                y,
-                width,
-                height,
-                ..
-            } => {
-                let rx = width / 2.0;
-                let ry = height / 2.0;
-                let cx_center = x + rx;
-                let cy_center = y + ry;
-                if rx == 0.0 || ry == 0.0 {
-                    false
-                } else {
-                    ((cx - cx_center).powi(2) / rx.powi(2) + (cy - cy_center).powi(2) / ry.powi(2))
-                        > 1.0
-                }
+            Shape::Rect { x, y, width, height, .. }
+            | Shape::Ellipse { x, y, width, height, .. }
+            | Shape::Diamond { x, y, width, height, .. } => {
+                cx < *x || cx > *x + *width || cy < *y || cy > *y + *height
             }
-            Shape::Diamond {
-                x,
-                y,
-                width,
-                height,
-                ..
-            } => !(cx >= *x && cx <= x + width && cy >= *y && cy <= y + height),
-            Shape::Line { x1, y1, x2, y2, .. } => {
-                let d = ((x2 - x1) * (y1 - cy) - (x1 - cx) * (y2 - y1)).abs()
-                    / ((x2 - x1).powi(2) + (y2 - y1).powi(2)).sqrt();
-                d >= threshold
-            }
-            Shape::Arrow { x1, y1, x2, y2, .. } => {
-                let d = ((x2 - x1) * (y1 - cy) - (x1 - cx) * (y2 - y1)).abs()
-                    / ((x2 - x1).powi(2) + (y2 - y1).powi(2)).sqrt();
-                d >= threshold
+            Shape::Line { x1, y1, x2, y2, .. } | Shape::Arrow { x1, y1, x2, y2, .. } => {
+                let d = line_dist(*x1, *y1, *x2, *y2, cx, cy);
+                d > threshold
             }
         },
-        DrawElement::Text(t) => ((t.x - cx).powi(2) + (t.y - cy).powi(2)).sqrt() >= threshold * 2.0,
+        DrawElement::Text(t) => (t.x - cx).abs() > threshold || (t.y - cy).abs() > threshold,
     });
 }
 
-fn screen_to_canvas(col: u16, row: u16, app: &DrawAppState) -> (f64, f64) {
-    let area = app.last_area;
-    if area.width == 0 || area.height == 0 {
-        return (0.0, 0.0);
+fn line_dist(x1: f64, y1: f64, x2: f64, y2: f64, px: f64, py: f64) -> f64 {
+    let l2 = (x2 - x1).powi(2) + (y2 - y1).powi(2);
+    if l2 == 0.0 {
+        return ((px - x1).powi(2) + (py - y1).powi(2)).sqrt();
     }
+    let t = ((px - x1) * (x2 - x1) + (py - y1) * (y2 - y1)) / l2;
+    let t = t.clamp(0.0, 1.0);
+    ((px - (x1 + t * (x2 - x1))).powi(2) + (py - (y1 + t * (y2 - y1))).powi(2)).sqrt()
+}
 
-    let x_range = 200.0 / app.viewport.zoom;
-    let y_range = 200.0 / app.viewport.zoom;
+fn panning(x: u16, y: u16, app: &mut DrawAppState) {
+    if let Some((lx, ly)) = app.last_mouse_pos {
+        let dx = (x as i32 - lx as i32) as f64 / app.viewport.zoom;
+        let dy = (y as i32 - ly as i32) as f64 / app.viewport.zoom;
+        app.viewport.x += dx;
+        app.viewport.y += dy;
+        app.last_mouse_pos = Some((x, y));
+    }
+}
 
-    let rel_x = (col as f64 - area.x as f64) / area.width as f64;
-    let rel_y = (row as f64 - area.y as f64) / area.height as f64;
-
-    let cx = app.viewport.x + (rel_x - 0.5) * x_range;
-    let cy = app.viewport.y + (0.5 - rel_y) * y_range;
-
+fn screen_to_canvas(sx: u16, sy: u16, app: &DrawAppState) -> (f64, f64) {
+    let area = app.last_area;
+    let cx = (sx as f64 - area.width as f64 / 2.0) / app.viewport.zoom - app.viewport.x;
+    let cy = (sy as f64 - area.height as f64 / 2.0) / app.viewport.zoom - app.viewport.y;
     (cx, cy)
 }
