@@ -1,24 +1,24 @@
 use crate::app::ContextMenu;
-use crate::app::{App, EditFocus, ListFocus};
+use crate::app::{App, EditFocus, HelpTab, ListFocus};
 use crate::keybinds::*;
+use crate::list_view::ListMode;
+pub use crate::text_edit::apply_text_shortcuts;
 use crossterm::event::*;
 use ratatui::prelude::*;
-use tui_textarea::*;
+use ratatui_textarea::*;
 
 pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     if let Some(mut palette) = app.command_palette.take() {
         if palette.handle_input(key) {
-            if key.code == KeyCode::Enter {
-                if let Some(selected_idx) = palette.state.selected() {
-                    if let Some(item) = palette.items.get(selected_idx) {
-                        let action_id = item.id.clone();
-                        let note_id = palette.context_note_id.clone();
-                        if let Err(e) =
-                            crate::actions::execute_action(&action_id, app, note_id.as_deref())
-                        {
-                            app.set_temporary_status(&format!("Action failed: {}", e));
-                        }
-                    }
+            if key.code == KeyCode::Enter
+                && let Some(selected_idx) = palette.state.selected()
+                && let Some(item) = palette.items.get(selected_idx)
+            {
+                let action_id = item.id.clone();
+                let note_id = palette.context_note_id.clone();
+                if let Err(e) = crate::actions::execute_action(&action_id, app, note_id.as_deref())
+                {
+                    app.set_temporary_status(&format!("Action failed: {}", e));
                 }
             }
             return false;
@@ -27,121 +27,411 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
-    // Handle note create popup if open
-    if let Some(mut popup) = app.note_create_popup.take() {
+    if let Some(mut popup) = app.popups.note_create.take() {
         if key.code == KeyCode::Esc {
-            app.note_create_popup = None;
-        } else if key.code == KeyCode::Enter {
-            app.note_create_popup = Some(popup);
+            app.popups.note_create = None;
+        } else if app.keybinds.matches_list(ListAction::Confirm, &key) {
+            app.popups.note_create = Some(popup);
             app.confirm_create_note();
         } else {
-            popup.input.input(Input::from(key));
-            app.note_create_popup = Some(popup);
+            if !apply_text_shortcuts(&app.keybinds, &mut popup.input, key) {
+                popup.input.input(Input::from(key));
+            }
+            app.popups.note_create = Some(popup);
         }
         return false;
     }
 
-    // Handle folder popup if open
-    if let Some(mut popup) = app.folder_popup.take() {
+    if let Some(mut popup) = app.popups.draw_create.take() {
         if key.code == KeyCode::Esc {
-            app.folder_popup = None;
-        } else if key.code == KeyCode::Enter {
-            app.folder_popup = Some(popup);
+            app.popups.draw_create = None;
+        } else if app.keybinds.matches_list(ListAction::Confirm, &key) {
+            app.popups.draw_create = Some(popup);
+            app.confirm_create_draw();
+        } else {
+            if !apply_text_shortcuts(&app.keybinds, &mut popup.input, key) {
+                popup.input.input(Input::from(key));
+            }
+            app.popups.draw_create = Some(popup);
+        }
+        return false;
+    }
+
+    if let Some(mut popup) = app.popups.canvas_create.take() {
+        if key.code == KeyCode::Esc {
+            app.popups.canvas_create = None;
+        } else if app.keybinds.matches_list(ListAction::Confirm, &key) {
+            app.popups.canvas_create = Some(popup);
+            app.confirm_create_canvas();
+        } else {
+            if !apply_text_shortcuts(&app.keybinds, &mut popup.input, key) {
+                popup.input.input(Input::from(key));
+            }
+            app.popups.canvas_create = Some(popup);
+        }
+        return false;
+    }
+
+    if let Some(mut popup) = app.popups.import.take() {
+        if key.code == KeyCode::Esc {
+            app.popups.import = None;
+        } else if app.keybinds.matches_list(ListAction::Confirm, &key) {
+            app.popups.import = Some(popup);
+            app.confirm_import();
+        } else {
+            if !apply_text_shortcuts(&app.keybinds, &mut popup.input, key) {
+                popup.input.input(Input::from(key));
+            }
+            app.popups.import = Some(popup);
+        }
+        return false;
+    }
+
+
+    if let Some(mut popup) = app.popups.folder.take() {
+        if key.code == KeyCode::Esc {
+            app.popups.folder = None;
+        } else if app.keybinds.matches_list(ListAction::Confirm, &key) {
+            app.popups.folder = Some(popup);
             app.confirm_folder_popup();
         } else {
-            popup.input.input(Input::from(key));
-            app.folder_popup = Some(popup);
-        }
-        return false;
-    }
-
-    // Handle tag popup if open
-    if let Some(mut popup) = app.tag_popup.take() {
-        if key.code == KeyCode::Esc {
-            app.tag_popup = None;
-        } else if key.code == KeyCode::Enter {
-            app.tag_popup = Some(popup);
-            app.confirm_manage_tags();
-        } else if key.code == KeyCode::Char('D') && key.modifiers.contains(KeyModifiers::SHIFT) {
-            app.tag_popup = Some(popup);
-            app.begin_delete_tag();
-        } else if key.code == KeyCode::Tab {
-            app.tag_popup = Some(popup);
-            if app
-                .tag_popup
-                .as_ref()
-                .map_or(false, |p| !p.suggestions.is_empty())
-            {
-                app.accept_tag_suggestion();
-            } else {
-                app.cycle_tag_suggestion();
+            if !apply_text_shortcuts(&app.keybinds, &mut popup.input, key) {
+                popup.input.input(Input::from(key));
             }
-        } else {
-            popup.input.input(Input::from(key));
-            app.tag_popup = Some(popup);
-            app.update_tag_suggestions();
+            app.popups.folder = Some(popup);
         }
         return false;
     }
 
-    // Handle filter popup if open
-    if let Some(mut popup) = app.filter_popup.take() {
-        if key.code == KeyCode::Esc {
-            app.cancel_filter_tags();
-        } else if key.code == KeyCode::Enter {
-            app.filter_popup = Some(popup);
-            app.confirm_filter_tags();
-        } else if key.code == KeyCode::Tab {
-            app.filter_popup = Some(popup);
-            if app
-                .filter_popup
-                .as_ref()
-                .map_or(false, |p| !p.suggestions.is_empty())
+    if let Some(mut popup) = app.popups.tag.take() {
+        if app.popups.confirm.is_some() {
+            app.popups.tag = Some(popup);
+            let confirm_key = key;
+            if confirm_key.code == KeyCode::Left || confirm_key.code == KeyCode::Char('h') {
+                app.confirm_popup_select_confirm();
+            } else if confirm_key.code == KeyCode::Right || confirm_key.code == KeyCode::Char('l') {
+                app.confirm_popup_select_cancel();
+            } else if confirm_key.code == KeyCode::Tab {
+                app.confirm_popup_toggle_button();
+            } else if confirm_key.code == KeyCode::Enter
+                || confirm_key.code == KeyCode::Char('y')
+                || confirm_key.code == KeyCode::Char('Y')
             {
-                app.accept_filter_suggestion();
-            } else {
-                app.cycle_filter_suggestion();
+                app.confirm_popup_activate();
+            } else if confirm_key.code == KeyCode::Char('n')
+                || confirm_key.code == KeyCode::Char('N')
+                || confirm_key.code == KeyCode::Esc
+            {
+                app.cancel_confirm();
             }
-        } else {
-            popup.input.input(Input::from(key));
-            app.filter_popup = Some(popup);
-            app.update_filter_suggestions();
+            return false;
+        }
+
+        if key.code == KeyCode::Char('s') && key.modifiers.contains(KeyModifiers::CONTROL) {
+            let tag_text = popup.input.lines().join("");
+            let tag = tag_text
+                .split(',')
+                .next()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty());
+            if let Some(tag) = tag {
+                app.list.tag_to_assign = Some(tag);
+                app.popups.tag = None;
+                app.list.list_mode = crate::list_view::ListMode::Select;
+                app.list.selected_indices.clear();
+                app.list.selected_indices.insert(app.list.visual_index);
+                app.set_temporary_status_static(
+                    "TAG MODE: Select notes to apply tag, Enter to confirm, Esc to cancel",
+                );
+            } else {
+                app.popups.tag = None;
+                app.set_temporary_status_static("Enter a tag name first");
+            }
+            return false;
+        }
+
+        match key.code {
+            KeyCode::Esc => {
+                app.popups.tag = None;
+            }
+            KeyCode::Tab => {
+                if popup.focus == crate::popups::TagPopupFocus::Input {
+                    if popup.suggestions.is_empty() {
+                        popup.focus = crate::popups::TagPopupFocus::AllTagsList;
+                    } else {
+                        app.popups.tag = Some(popup);
+                        app.accept_tag_suggestion();
+                        return false;
+                    }
+                } else {
+                    popup.focus = crate::popups::TagPopupFocus::Input;
+                }
+                app.popups.tag = Some(popup);
+            }
+            KeyCode::BackTab => {
+                popup.focus = match popup.focus {
+                    crate::popups::TagPopupFocus::Input => {
+                        crate::popups::TagPopupFocus::AllTagsList
+                    }
+                    crate::popups::TagPopupFocus::AllTagsList => {
+                        crate::popups::TagPopupFocus::Input
+                    }
+                };
+                app.popups.tag = Some(popup);
+            }
+            _ => match popup.focus {
+                crate::popups::TagPopupFocus::Input => {
+                    if key.code == KeyCode::Enter {
+                        app.popups.tag = Some(popup);
+                        app.confirm_manage_tags();
+                    } else if key.code == KeyCode::Char('D')
+                        && key.modifiers.contains(KeyModifiers::SHIFT)
+                    {
+                        if let Some(tag) = popup.suggestions.get(popup.suggestion_index).cloned() {
+                            app.begin_delete_tag_with_name(tag);
+                        }
+                    } else {
+                        if !apply_text_shortcuts(&app.keybinds, &mut popup.input, key) {
+                            popup.input.input(Input::from(key));
+                        }
+                        app.popups.tag = Some(popup);
+                        app.update_tag_suggestions();
+                    }
+                }
+                crate::popups::TagPopupFocus::AllTagsList => match key.code {
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        popup.all_tags_selected = popup.all_tags_selected.saturating_sub(1);
+                        app.popups.tag = Some(popup);
+                    }
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        if popup.all_tags_selected + 1 < popup.all_tags.len() {
+                            popup.all_tags_selected += 1;
+                        }
+                        app.popups.tag = Some(popup);
+                    }
+                    KeyCode::Char('d') | KeyCode::Delete => {
+                        if let Some(tag) = popup.all_tags.get(popup.all_tags_selected).cloned() {
+                            app.popups.tag = Some(popup);
+                            app.begin_delete_tag_with_name(tag);
+                        }
+                    }
+                    _ => {
+                        app.popups.tag = Some(popup);
+                    }
+                },
+            },
         }
         return false;
     }
 
-    // Handle note rename popup if open
-    if let Some(mut popup) = app.note_rename_popup.take() {
+    if let Some(mut popup) = app.popups.note_rename.take() {
         if key.code == KeyCode::Esc {
-            app.note_rename_popup = None;
+            app.popups.note_rename = None;
         } else if key.code == KeyCode::Enter {
-            app.note_rename_popup = Some(popup);
+            app.popups.note_rename = Some(popup);
             app.confirm_rename_note();
         } else {
-            popup.input.input(Input::from(key));
-            app.note_rename_popup = Some(popup);
+            if !apply_text_shortcuts(&app.keybinds, &mut popup.input, key) {
+                popup.input.input(Input::from(key));
+            }
+            app.popups.note_rename = Some(popup);
         }
         return false;
     }
 
-    // Handle search popup if open
-    if let Some(mut popup) = app.search_popup.take() {
-        if key.code == KeyCode::Esc {
-            app.search_popup = Some(popup);
-            app.cancel_search();
-        } else if key.code == KeyCode::Enter {
-            app.search_popup = Some(popup);
-            app.confirm_search();
-        } else {
-            popup.input.input(Input::from(key));
-            app.search_popup = Some(popup);
-            app.update_search();
+    if let Some(mut popup) = app.popups.search.take() {
+        let has_title = !popup.title_results.is_empty();
+        let has_grep = !popup.grep_results.is_empty();
+        let has_results = has_title || has_grep;
+
+        let grep_prev_visible = |p: &crate::popups::SearchPopup, cur: usize| -> usize {
+            if cur == 0 {
+                return 0;
+            }
+            let mut i = cur - 1;
+            loop {
+                if p.grep_is_header[i] {
+                    return i;
+                }
+                let mut parent = i;
+                while parent > 0 && !p.grep_is_header[parent] {
+                    parent -= 1;
+                }
+                if p.grep_expanded.contains(&parent) {
+                    return i;
+                }
+                if i == 0 {
+                    return 0;
+                }
+                i -= 1;
+            }
+        };
+        let grep_next_visible = |p: &crate::popups::SearchPopup, cur: usize| -> usize {
+            let mut i = cur + 1;
+            while i < p.grep_results.len() {
+                if p.grep_is_header[i] {
+                    return i;
+                }
+                let mut parent = i;
+                while parent > 0 && !p.grep_is_header[parent] {
+                    parent -= 1;
+                }
+                if p.grep_expanded.contains(&parent) {
+                    return i;
+                }
+                i += 1;
+            }
+            cur
+        };
+
+        match key.code {
+            KeyCode::Esc => {
+                app.popups.search = Some(popup);
+                app.cancel_search();
+            }
+            KeyCode::Tab | KeyCode::BackTab => {
+                popup.focus = match popup.focus {
+                    crate::popups::SearchFocus::Input if has_results => {
+                        crate::popups::SearchFocus::Results
+                    }
+                    _ => crate::popups::SearchFocus::Input,
+                };
+                app.popups.search = Some(popup);
+            }
+            KeyCode::Enter => {
+                if popup.focus == crate::popups::SearchFocus::Results && has_results {
+                    app.popups.search = Some(popup);
+                    app.jump_to_selected_result();
+                    app.confirm_search();
+                } else {
+                    app.popups.search = Some(popup);
+                    app.confirm_search();
+                }
+            }
+            KeyCode::Char('l') => {
+                if popup.focus == crate::popups::SearchFocus::Input {
+                    if !apply_text_shortcuts(&app.keybinds, &mut popup.input, key) {
+                        popup.input.input(Input::from(key));
+                    }
+                    app.popups.search = Some(popup);
+                    app.update_search();
+                } else if has_grep
+                    && popup
+                        .grep_is_header
+                        .get(popup.grep_selected)
+                        .copied()
+                        .unwrap_or(false)
+                {
+                    if popup.grep_expanded.contains(&popup.grep_selected) {
+                        popup.grep_expanded.remove(&popup.grep_selected);
+                    } else {
+                        popup.grep_expanded.insert(popup.grep_selected);
+                    }
+                    app.popups.search = Some(popup);
+                } else if has_results {
+                    app.popups.search = Some(popup);
+                    app.jump_to_selected_result();
+                    app.confirm_search();
+                } else {
+                    app.popups.search = Some(popup);
+                    app.update_search();
+                }
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                if popup.focus == crate::popups::SearchFocus::Input {
+                    if !apply_text_shortcuts(&app.keybinds, &mut popup.input, key) {
+                        popup.input.input(Input::from(key));
+                    }
+                    app.popups.search = Some(popup);
+                    app.update_search();
+                } else if has_grep {
+                    popup.grep_selected = grep_prev_visible(&popup, popup.grep_selected);
+                    app.popups.search = Some(popup);
+                } else if has_title {
+                    popup.title_selected = popup.title_selected.saturating_sub(1);
+                    app.popups.search = Some(popup);
+                }
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                if popup.focus == crate::popups::SearchFocus::Input {
+                    if !apply_text_shortcuts(&app.keybinds, &mut popup.input, key) {
+                        popup.input.input(Input::from(key));
+                    }
+                    app.popups.search = Some(popup);
+                    app.update_search();
+                } else if has_grep {
+                    popup.grep_selected = grep_next_visible(&popup, popup.grep_selected);
+                    app.popups.search = Some(popup);
+                } else if has_title {
+                    if popup.title_selected + 1 < popup.title_results.len() {
+                        popup.title_selected += 1;
+                    }
+                    app.popups.search = Some(popup);
+                }
+            }
+            KeyCode::Right | KeyCode::Char(' ') => {
+                if popup.focus == crate::popups::SearchFocus::Input {
+                    if !apply_text_shortcuts(&app.keybinds, &mut popup.input, key) {
+                        popup.input.input(Input::from(key));
+                    }
+                    app.popups.search = Some(popup);
+                    app.update_search();
+                } else if has_grep
+                    && popup
+                        .grep_is_header
+                        .get(popup.grep_selected)
+                        .copied()
+                        .unwrap_or(false)
+                {
+                    popup.grep_expanded.insert(popup.grep_selected);
+                    app.popups.search = Some(popup);
+                } else {
+                    popup.focus = crate::popups::SearchFocus::Input;
+                    if !apply_text_shortcuts(&app.keybinds, &mut popup.input, key) {
+                        popup.input.input(Input::from(key));
+                    }
+                    app.popups.search = Some(popup);
+                    app.update_search();
+                }
+            }
+            KeyCode::Left => {
+                if popup.focus == crate::popups::SearchFocus::Input {
+                    if !apply_text_shortcuts(&app.keybinds, &mut popup.input, key) {
+                        popup.input.input(Input::from(key));
+                    }
+                    app.popups.search = Some(popup);
+                    app.update_search();
+                } else if has_grep
+                    && popup
+                        .grep_is_header
+                        .get(popup.grep_selected)
+                        .copied()
+                        .unwrap_or(false)
+                {
+                    popup.grep_expanded.remove(&popup.grep_selected);
+                    app.popups.search = Some(popup);
+                } else {
+                    popup.focus = crate::popups::SearchFocus::Input;
+                    if !apply_text_shortcuts(&app.keybinds, &mut popup.input, key) {
+                        popup.input.input(Input::from(key));
+                    }
+                    app.popups.search = Some(popup);
+                    app.update_search();
+                }
+            }
+            _ => {
+                popup.focus = crate::popups::SearchFocus::Input;
+                if !apply_text_shortcuts(&app.keybinds, &mut popup.input, key) {
+                    popup.input.input(Input::from(key));
+                }
+                app.popups.search = Some(popup);
+                app.update_search();
+            }
         }
         return false;
     }
 
-    // Handle confirm popup (must be before trash view since both can be open)
-    if app.confirm_popup.is_some() {
+    if app.popups.confirm.is_some() {
         if key.code == KeyCode::Left || key.code == KeyCode::Char('h') {
             app.confirm_popup_select_confirm();
         } else if key.code == KeyCode::Right || key.code == KeyCode::Char('l') {
@@ -160,8 +450,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
-    // Handle trash view if open
-    if let Some(ref mut trash) = app.trash_view {
+    if let Some(ref mut trash) = app.popups.trash_view {
         match key.code {
             KeyCode::Up | KeyCode::Char('k') => {
                 trash.selected = trash.selected.saturating_sub(1);
@@ -188,82 +477,346 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
-    // Handle folder picker if open
-    if let Some(mut picker) = app.folder_picker.take() {
+    if let Some(mut picker) = app.popups.folder_picker.take() {
         match key.code {
-            KeyCode::Up | KeyCode::Char('k') => {
-                picker.selected = picker.selected.saturating_sub(1);
-                app.folder_picker = Some(picker);
+            KeyCode::Tab => {
+                picker.focus = match picker.focus {
+                    crate::app::FolderPickerFocus::Search => crate::app::FolderPickerFocus::Results,
+                    crate::app::FolderPickerFocus::Results => crate::app::FolderPickerFocus::Search,
+                };
+                app.popups.folder_picker = Some(picker);
             }
-            KeyCode::Down | KeyCode::Char('j') => {
-                if picker.selected + 1 < picker.folders.len() {
-                    picker.selected += 1;
+            KeyCode::Esc => {
+                app.popups.folder_picker = None;
+            }
+            _ => match picker.focus {
+                crate::app::FolderPickerFocus::Results => match key.code {
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        picker.selected = picker.selected.saturating_sub(1);
+                        app.popups.folder_picker = Some(picker);
+                    }
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        if picker.selected + 1 < picker.filtered_folders.len() {
+                            picker.selected += 1;
+                        }
+                        app.popups.folder_picker = Some(picker);
+                    }
+                    KeyCode::Enter | KeyCode::Char('l') => {
+                        app.popups.folder_picker = Some(picker);
+                        app.confirm_move();
+                    }
+                    _ => {
+                        app.popups.folder_picker = Some(picker);
+                    }
+                },
+                crate::app::FolderPickerFocus::Search => {
+                    let old_query = picker.input.lines().join("");
+                    if !apply_text_shortcuts(&app.keybinds, &mut picker.input, key) {
+                        picker.input.input(Input::from(key));
+                    }
+                    let new_query = picker.input.lines().join("");
+                    if old_query != new_query {
+                        app.popups.folder_picker = Some(picker);
+                        app.update_folder_picker_filter();
+                    } else if key.code == KeyCode::Enter {
+                        picker.focus = crate::app::FolderPickerFocus::Results;
+                        app.popups.folder_picker = Some(picker);
+                    } else {
+                        app.popups.folder_picker = Some(picker);
+                    }
                 }
-                app.folder_picker = Some(picker);
-            }
-            KeyCode::Enter | KeyCode::Char('l') => {
-                app.folder_picker = Some(picker);
-                app.confirm_move();
-            }
-            KeyCode::Esc | KeyCode::Char('h') => {
-                app.folder_picker = None;
-            }
-            _ => {
-                app.folder_picker = Some(picker);
-            }
+            },
         }
         return false;
     }
 
-    // Handle template popup if open
-    if let Some(mut popup) = app.template_popup.take() {
+    if let Some(mut popup) = app.popups.template.take() {
         match key.code {
-            KeyCode::Up | KeyCode::Char('k') => {
-                popup.selected = popup.selected.saturating_sub(1);
-                app.template_popup = Some(popup);
+            KeyCode::Tab | KeyCode::BackTab => {
+                popup.focus = match popup.focus {
+                    crate::popups::TemplatePopupFocus::Search => {
+                        crate::popups::TemplatePopupFocus::Results
+                    }
+                    crate::popups::TemplatePopupFocus::Results => {
+                        crate::popups::TemplatePopupFocus::Search
+                    }
+                };
+                app.popups.template = Some(popup);
             }
-            KeyCode::Down | KeyCode::Char('j') => {
-                if popup.selected + 1 < popup.templates.len() {
-                    popup.selected += 1;
-                }
-                app.template_popup = Some(popup);
-            }
-            KeyCode::Enter | KeyCode::Char('l') => {
-                app.template_popup = Some(popup);
-                app.select_template();
-            }
-            KeyCode::Esc | KeyCode::Char('h') => {
+            _ if app.keybinds.matches_list(ListAction::Cancel, &key) => {
                 app.close_template_popup();
             }
+            KeyCode::Char('?') => {
+                if popup.focus == crate::popups::TemplatePopupFocus::Results {
+                    app.popups.template = Some(popup);
+                    app.open_help_page_with_tab(HelpTab::Templates);
+                } else {
+                    if !apply_text_shortcuts(&app.keybinds, &mut popup.input, key) {
+                        popup.input.input(Input::from(key));
+                    }
+                    app.popups.template = Some(popup);
+                    app.update_template_popup_filter();
+                }
+            }
+            KeyCode::Char('n') => {
+                if popup.focus == crate::popups::TemplatePopupFocus::Results {
+                    app.popups.template = Some(popup);
+                    app.create_template_from_popup();
+                } else {
+                    if !apply_text_shortcuts(&app.keybinds, &mut popup.input, key) {
+                        popup.input.input(Input::from(key));
+                    }
+                    app.popups.template = Some(popup);
+                    app.update_template_popup_filter();
+                }
+            }
+            _ => match popup.focus {
+                crate::popups::TemplatePopupFocus::Results => match key.code {
+                    _ if app.keybinds.matches_list(ListAction::MoveUp, &key) => {
+                        popup.selected = popup.selected.saturating_sub(1);
+                        app.popups.template = Some(popup);
+                    }
+                    _ if app.keybinds.matches_list(ListAction::MoveDown, &key) => {
+                        if popup.selected + 1 < popup.filtered_templates.len() {
+                            popup.selected += 1;
+                        }
+                        app.popups.template = Some(popup);
+                    }
+                    _ if app.keybinds.matches_list(ListAction::Confirm, &key)
+                        || app.keybinds.matches_list(ListAction::Open, &key) =>
+                    {
+                        app.popups.template = Some(popup);
+                        app.select_template();
+                    }
+                    KeyCode::Char(' ') => {
+                        app.popups.template = Some(popup);
+                        app.edit_selected_template_from_popup();
+                    }
+                    KeyCode::Char('d') => {
+                        app.popups.template = Some(popup);
+                        app.begin_delete_selected_template_from_popup();
+                    }
+                    KeyCode::Char('h') => {
+                        app.close_template_popup();
+                    }
+                    _ => {
+                        app.popups.template = Some(popup);
+                    }
+                },
+                crate::popups::TemplatePopupFocus::Search => match key.code {
+                    _ if app.keybinds.matches_list(ListAction::Confirm, &key) => {
+                        popup.focus = crate::popups::TemplatePopupFocus::Results;
+                        app.popups.template = Some(popup);
+                    }
+                    _ => {
+                        if !apply_text_shortcuts(&app.keybinds, &mut popup.input, key) {
+                            popup.input.input(Input::from(key));
+                        }
+                        app.popups.template = Some(popup);
+                        app.update_template_popup_filter();
+                    }
+                },
+            },
+        }
+        return false;
+    }
+
+    if let Some(mut popup) = app.popups.theme.take() {
+        match key.code {
+            KeyCode::Up | KeyCode::Char('k') => {
+                match popup.focus {
+                    crate::app::ThemePopupFocus::ThemeList => {
+                        popup.selected = popup.selected.saturating_sub(1);
+                        app.popups.theme = Some(popup);
+                        app.select_theme();
+                        return false;
+                    }
+                    crate::app::ThemePopupFocus::GeneralBg => {
+                        popup.focus = crate::app::ThemePopupFocus::ThemeList;
+                        popup.selected = popup.themes.len().saturating_sub(1);
+                    }
+                    crate::app::ThemePopupFocus::GraphBg => {
+                        popup.focus = crate::app::ThemePopupFocus::GeneralBg;
+                    }
+                }
+                app.popups.theme = Some(popup);
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                match popup.focus {
+                    crate::app::ThemePopupFocus::ThemeList => {
+                        if popup.selected + 1 < popup.themes.len() {
+                            popup.selected += 1;
+                            app.popups.theme = Some(popup);
+                            app.select_theme();
+                            return false;
+                        } else {
+                            popup.focus = crate::app::ThemePopupFocus::GeneralBg;
+                        }
+                    }
+                    crate::app::ThemePopupFocus::GeneralBg => {
+                        popup.focus = crate::app::ThemePopupFocus::GraphBg;
+                    }
+                    crate::app::ThemePopupFocus::GraphBg => {
+                        popup.focus = crate::app::ThemePopupFocus::ThemeList;
+                        popup.selected = 0;
+                    }
+                }
+                app.popups.theme = Some(popup);
+            }
+            KeyCode::Tab => {
+                match popup.focus {
+                    crate::app::ThemePopupFocus::ThemeList => {
+                        popup.focus = crate::app::ThemePopupFocus::GeneralBg
+                    }
+                    crate::app::ThemePopupFocus::GeneralBg => {
+                        popup.focus = crate::app::ThemePopupFocus::GraphBg
+                    }
+                    crate::app::ThemePopupFocus::GraphBg => {
+                        popup.focus = crate::app::ThemePopupFocus::ThemeList
+                    }
+                }
+                app.popups.theme = Some(popup);
+            }
+            _ if app.keybinds.matches_list(ListAction::Confirm, &key) => {
+                let is_list = matches!(popup.focus, crate::app::ThemePopupFocus::ThemeList);
+                app.popups.theme = Some(popup);
+                app.select_theme();
+                if is_list {
+                    app.close_theme_popup();
+                }
+            }
+            KeyCode::Char('l') | KeyCode::Char(' ') => {
+                app.popups.theme = Some(popup);
+                app.select_theme();
+            }
+            _ if app.keybinds.matches_list(ListAction::Cancel, &key) => {
+                app.close_theme_popup();
+            }
             _ => {
-                app.template_popup = Some(popup);
+                app.popups.theme = Some(popup);
             }
         }
         return false;
     }
 
-    // Cycle focus with Tab
+    if key.code == KeyCode::Esc {
+        app.handle_esc_press();
+    }
+
     if app.keybinds.matches_list(ListAction::CycleFocus, &key) {
-        app.list_focus = match app.list_focus {
+        // In grid layout, Tab cycles Pinned/Vault tabs instead of focus.
+        if app.list.notes_layout == crate::config::NotesLayout::Grid {
+            app.cycle_grid_tab();
+            return false;
+        }
+        app.list.list_focus = match app.list.list_focus {
             ListFocus::Notes => ListFocus::ExternalEditorToggle,
             ListFocus::ExternalEditorToggle => ListFocus::Notes,
         };
         return false;
     }
 
-    if app.list_focus == ListFocus::ExternalEditorToggle {
+    if app.list.list_focus == ListFocus::ExternalEditorToggle {
         if app.keybinds.matches_list(ListAction::ToggleButton, &key) {
             app.toggle_external_editor_mode();
         } else if app.keybinds.matches_list(ListAction::Quit, &key) {
-            return true;
+            app.initiate_quit();
+            return false;
         }
         return false;
     }
 
-    // Standard keybind handling
     if app.keybinds.matches_list(ListAction::Quit, &key) {
-        return true;
+        app.initiate_quit();
+        return false;
     }
+
+    if app
+        .keybinds
+        .matches_list(ListAction::ToggleSelectMode, &key)
+    {
+        if app.list.tag_to_assign.is_some() {
+            return false;
+        }
+        app.list.list_mode = match app.list.list_mode {
+            ListMode::Normal => {
+                app.list.selected_indices.clear();
+                app.list.selected_indices.insert(app.list.visual_index);
+                ListMode::Select
+            }
+            ListMode::Select => {
+                app.list.selected_indices.clear();
+                ListMode::Normal
+            }
+        };
+        return false;
+    }
+
+    if app.list.list_mode == ListMode::Select {
+        if app
+            .keybinds
+            .matches_list(ListAction::ToggleSelectItem, &key)
+        {
+            if app.list.selected_indices.contains(&app.list.visual_index) {
+                app.list.selected_indices.remove(&app.list.visual_index);
+            } else {
+                app.list.selected_indices.insert(app.list.visual_index);
+            }
+            return false;
+        }
+        if key.code == KeyCode::Esc {
+            app.list.tag_to_assign = None;
+            app.list.list_mode = ListMode::Normal;
+            app.list.selected_indices.clear();
+            return false;
+        }
+        if key.code == KeyCode::Enter {
+            if let Some(tag) = app.list.tag_to_assign.take() {
+                app.apply_tag_to_selected(tag);
+            }
+            return false;
+        }
+    }
+
+    if key
+        .modifiers
+        .contains(crossterm::event::KeyModifiers::CONTROL)
+    {
+        match key.code {
+            KeyCode::Char('h') => match &mut app.list.preview_content {
+                Some(crate::list_view::PreviewContent::Markdown(renderer)) => {
+                    renderer.prev_page();
+                    return false;
+                }
+                Some(
+                    crate::list_view::PreviewContent::CanvasGrid(_)
+                    | crate::list_view::PreviewContent::DrawGrid(_),
+                ) => {
+                    app.list.snapshot_scroll_offset =
+                        app.list.snapshot_scroll_offset.saturating_sub(3);
+                    return false;
+                }
+                _ => {}
+            },
+            KeyCode::Char('l') => match &mut app.list.preview_content {
+                Some(crate::list_view::PreviewContent::Markdown(renderer)) => {
+                    renderer.next_page();
+                    return false;
+                }
+                Some(
+                    crate::list_view::PreviewContent::CanvasGrid(_)
+                    | crate::list_view::PreviewContent::DrawGrid(_),
+                ) => {
+                    app.list.snapshot_scroll_offset =
+                        app.list.snapshot_scroll_offset.saturating_add(3);
+                    return false;
+                }
+                _ => {}
+            },
+            _ => {}
+        }
+    }
+
     if app.keybinds.matches_list(ListAction::Help, &key) {
         app.open_help_page();
         return false;
@@ -276,17 +829,68 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         app.begin_delete_selected();
         return false;
     }
+    let is_grid = app.list.notes_layout == crate::config::NotesLayout::Grid;
+    let cols = if is_grid {
+        app.list.grid_columns.max(1)
+    } else {
+        1
+    };
+    let len = app.list.visual_list.len();
+
+    if app.keybinds.matches_list(ListAction::MoveLeft, &key) {
+        if is_grid {
+            app.list.visual_index = app.list.visual_index.saturating_sub(1);
+            app.request_preview_update();
+        } else {
+            app.collapse_selected_folder();
+        }
+        return false;
+    }
+    if app.keybinds.matches_list(ListAction::MoveRight, &key) {
+        if is_grid {
+            if len > 0 {
+                app.list.visual_index = (app.list.visual_index + 1).min(len - 1);
+            }
+            app.request_preview_update();
+        } else {
+            app.expand_selected_folder();
+        }
+        return false;
+    }
     if app.keybinds.matches_list(ListAction::MoveDown, &key) {
-        if app.visual_index < app.visual_list.len().saturating_sub(1) {
-            app.visual_index += 1;
-            app.update_preview();
+        if is_grid {
+            let next = app.list.visual_index + cols;
+            if next < len {
+                app.list.visual_index = next;
+            } else if app.list.visual_index / cols < (len.saturating_sub(1)) / cols {
+                app.list.visual_index = len.saturating_sub(1);
+            }
+            app.request_preview_update();
+        } else {
+            if app.list.visual_index < len.saturating_sub(1) {
+                app.list.visual_index += 1;
+                app.request_preview_update();
+            }
+        }
+        if app.list.list_mode == crate::list_view::ListMode::Select {
+            app.list.last_selection_change = Some(std::time::Instant::now());
         }
         return false;
     }
     if app.keybinds.matches_list(ListAction::MoveUp, &key) {
-        if app.visual_index > 0 {
-            app.visual_index -= 1;
-            app.update_preview();
+        if is_grid {
+            if app.list.visual_index >= cols {
+                app.list.visual_index -= cols;
+            }
+            app.request_preview_update();
+        } else {
+            if app.list.visual_index > 0 {
+                app.list.visual_index -= 1;
+                app.request_preview_update();
+            }
+        }
+        if app.list.list_mode == crate::list_view::ListMode::Select {
+            app.list.last_selection_change = Some(std::time::Instant::now());
         }
         return false;
     }
@@ -317,8 +921,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     if app.keybinds.matches_list(ListAction::RenameFolder, &key)
         || app.keybinds.matches_list(ListAction::Rename, &key)
     {
-        // Context-sensitive rename: folder or note based on selection
-        if let Some(item) = app.visual_list.get(app.visual_index) {
+        if let Some(item) = app.list.visual_list.get(app.list.visual_index) {
             match item {
                 crate::app::VisualItem::Folder { .. } => app.begin_rename_folder(),
                 crate::app::VisualItem::Note { .. } => app.begin_rename_note(),
@@ -335,31 +938,24 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         app.begin_manage_tags();
         return false;
     }
-    if app.keybinds.matches_list(ListAction::FilterTags, &key) {
-        app.begin_filter_tags();
-        return false;
-    }
     if app
         .keybinds
         .matches_list(ListAction::OpenCommandPalette, &key)
     {
-        if let Some(item) = app.visual_list.get(app.visual_index) {
-            match item {
-                crate::app::VisualItem::Note { id, .. } => {
-                    app.command_palette =
-                        Some(crate::palette::CommandPalette::new(Some(id.clone())));
-                }
-                _ => {
-                    app.command_palette = Some(crate::palette::CommandPalette::new(None));
-                }
-            }
+        if let Some(crate::app::VisualItem::Note { summary_idx, .. }) =
+            app.list.visual_list.get(app.list.visual_index)
+        {
+            let id = app.notes[*summary_idx].id.clone();
+            app.command_palette = Some(crate::palette::CommandPalette::new(
+                Some(id),
+                &app.app_theme,
+            ));
         } else {
-            app.command_palette = Some(crate::palette::CommandPalette::new(None));
+            app.command_palette = Some(crate::palette::CommandPalette::new(None, &app.app_theme));
         }
         return false;
     }
 
-    // QoL feature handlers
     if app.keybinds.matches_list(ListAction::Duplicate, &key) {
         app.duplicate_note();
         return false;
@@ -377,7 +973,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
     if app.keybinds.matches_list(ListAction::JumpToTop, &key) {
-        app.jump_to_bottom(); // G jumps to bottom (vim convention)
+        app.jump_to_bottom();
         return false;
     }
     if app.keybinds.matches_list(ListAction::PageUp, &key) {
@@ -400,12 +996,13 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         app.open_graph_view();
         return false;
     }
+    if app.keybinds.matches_list(ListAction::OpenCanvas, &key) {
+        app.open_draw_view();
+        return false;
+    }
 
-    // Handle vim-style 'g' for gg (jump to top)
-    if key.code == KeyCode::Char('g') {
-        if app.handle_g_press() {
-            return false;
-        }
+    if key.code == KeyCode::Char('g') && app.handle_g_press() {
+        return false;
     }
 
     false
@@ -418,53 +1015,79 @@ pub fn handle_help_keys(app: &mut App, key: KeyEvent) {
         app.help_scroll = app.help_scroll.saturating_add(1);
     } else if app.keybinds.matches_help(HelpAction::ScrollUp, &key) {
         app.help_scroll = app.help_scroll.saturating_sub(1);
+    } else if app.keybinds.matches_help(HelpAction::NextTab, &key) {
+        app.switch_help_tab(app.help_tab.next());
+    } else if app.keybinds.matches_help(HelpAction::PrevTab, &key) {
+        app.switch_help_tab(app.help_tab.prev());
+    } else {
+        match key.code {
+            KeyCode::Char('1') => app.switch_help_tab(HelpTab::Notes),
+            KeyCode::Char('2') => app.switch_help_tab(HelpTab::Editor),
+            KeyCode::Char('3') => app.switch_help_tab(HelpTab::Graph),
+            KeyCode::Char('4') => app.switch_help_tab(HelpTab::Draw),
+            KeyCode::Char('5') => app.switch_help_tab(HelpTab::Canvas),
+            KeyCode::Char('6') => app.switch_help_tab(HelpTab::Templates),
+            _ => {}
+        }
     }
 }
 
 pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> bool {
-    // Handle context menu if open
-    if let Some(mut menu) = app.context_menu.take() {
+    if let Some(mut menu) = app.popups.context_menu.take() {
         match key.code {
             KeyCode::Up => {
                 menu.selected = menu.selected.saturating_sub(1);
-                app.context_menu = Some(menu);
+                app.popups.context_menu = Some(menu);
             }
             KeyCode::Down => {
                 if menu.selected < 3 {
                     menu.selected += 1;
                 }
-                app.context_menu = Some(menu);
+                app.popups.context_menu = Some(menu);
             }
             KeyCode::Enter => {
                 app.handle_menu_action(menu.selected, focus);
             }
             KeyCode::Esc => {
-                app.context_menu = None;
+                app.popups.context_menu = None;
             }
             _ => {
-                app.context_menu = Some(menu);
+                app.popups.context_menu = Some(menu);
             }
         }
         return false;
     }
 
-    // Quit with save
-    if app.keybinds.matches_edit(EditAction::Quit, &key) {
-        app.autosave();
-        return true;
+    if key
+        .modifiers
+        .contains(crossterm::event::KeyModifiers::CONTROL)
+    {
+        match key.code {
+            KeyCode::Char('h') => {
+                if let Some(renderer) = &mut app.editor.md_preview_renderer {
+                    renderer.prev_page();
+                    return false;
+                }
+            }
+            KeyCode::Char('l') => {
+                if let Some(renderer) = &mut app.editor.md_preview_renderer {
+                    renderer.next_page();
+                    return false;
+                }
+            }
+            _ => {}
+        }
     }
 
-    // Cycle focus
     if app.keybinds.matches_edit(EditAction::CycleFocus, &key) {
         *focus = match *focus {
             EditFocus::Title => EditFocus::Body,
-            EditFocus::Body => EditFocus::ExternalEditorToggle,
-            EditFocus::ExternalEditorToggle => EditFocus::Title,
+            EditFocus::Body => EditFocus::Title,
+            _ => EditFocus::Title,
         };
         return false;
     }
 
-    // Back to list
     if app.keybinds.matches_edit(EditAction::Back, &key) {
         app.autosave();
         app.back_to_list();
@@ -472,7 +1095,6 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
         return false;
     }
 
-    // Toggle markdown preview
     if app
         .keybinds
         .matches_edit(EditAction::ToggleMarkdownPreview, &key)
@@ -487,21 +1109,32 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 *focus = EditFocus::Body;
                 return false;
             }
-
-            if handle_os_shortcuts(&app.keybinds, &mut app.title_editor, key) {
+            if apply_text_shortcuts(&app.keybinds, &mut app.editor.title_editor, key) {
+                app.request_editor_preview_update();
                 return false;
             }
 
-            if app.title_editor.input(Input::from(key)) && app.title_editor.lines().len() > 1 {
-                let normalized = get_title_text(&app.title_editor).replace(['\r', '\n'], " ");
-                app.title_editor = make_title_editor(&normalized);
+            if app.editor.title_editor.input(Input::from(key))
+                && app.editor.title_editor.lines().len() > 1
+            {
+                let normalized =
+                    get_title_text(&app.editor.title_editor).replace(['\r', '\n'], " ");
+                app.editor.title_editor = make_title_editor(
+                    &normalized,
+                    app.app_theme.highlight_fg,
+                    app.app_theme.highlight_bg,
+                );
             }
+            app.request_editor_preview_update();
         }
         EditFocus::Body => {
-            if handle_os_shortcuts(&app.keybinds, &mut app.editor, key) {
+            if apply_text_shortcuts(&app.keybinds, &mut app.editor.editor, key) {
+                app.request_editor_preview_update();
                 return false;
             }
-            app.editor.input(Input::from(key));
+            if app.editor.editor.input(Input::from(key)) {
+                app.request_editor_preview_update();
+            }
         }
         EditFocus::ExternalEditorToggle => {
             if app.keybinds.matches_edit(EditAction::ToggleButton, &key) {
@@ -514,7 +1147,7 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
 }
 
 pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: Rect) {
-    if app.confirm_popup.is_some() {
+    if app.popups.confirm.is_some() {
         if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
             let popup_area = crate::ui::centered_rect(50, 30, terminal_area);
             let click_x = mouse_event.column;
@@ -536,54 +1169,296 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         return;
     }
 
+    if let Some(popup) = &mut app.popups.template {
+        let popup_area = crate::ui::centered_rect(
+            crate::constants::NOTES_POPUP_LARGE_W_PCT,
+            crate::constants::NOTES_POPUP_LARGE_H_PCT,
+            terminal_area,
+        );
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(3),
+                Constraint::Min(1),
+                Constraint::Length(1),
+            ])
+            .split(popup_area);
+
+        let mut open_selected = false;
+        let mut edit_selected = false;
+
+        if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
+            && contains_cell(chunks[0], mouse_event.column, mouse_event.row)
+        {
+            popup.focus = crate::app::TemplatePopupFocus::Search;
+        } else if contains_cell(chunks[1], mouse_event.column, mouse_event.row)
+            && (mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
+                || mouse_event.kind == MouseEventKind::Down(MouseButton::Right))
+        {
+            popup.focus = crate::app::TemplatePopupFocus::Results;
+            if !popup.filtered_templates.is_empty() {
+                let row = mouse_event
+                    .row
+                    .saturating_sub(chunks[1].y.saturating_add(1))
+                    as usize;
+                let clicked = row.min(popup.filtered_templates.len().saturating_sub(1));
+                if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
+                    && clicked == popup.selected
+                {
+                    open_selected = true;
+                }
+                popup.selected = clicked;
+                if mouse_event.kind == MouseEventKind::Down(MouseButton::Right) {
+                    edit_selected = true;
+                }
+            }
+        }
+        if edit_selected {
+            app.edit_selected_template_from_popup();
+            return;
+        }
+        if open_selected {
+            app.select_template();
+            return;
+        }
+
+        return;
+    }
+
+    if let Some(picker) = &mut app.popups.folder_picker {
+        let popup_area = crate::ui::centered_rect(
+            crate::constants::NOTES_POPUP_LARGE_W_PCT,
+            crate::constants::NOTES_POPUP_LARGE_H_PCT,
+            terminal_area,
+        );
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(3), Constraint::Min(1)])
+            .split(popup_area);
+
+        let mut confirm_selected = false;
+
+        if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
+            && contains_cell(chunks[0], mouse_event.column, mouse_event.row)
+        {
+            picker.focus = crate::app::FolderPickerFocus::Search;
+        } else if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
+            && contains_cell(chunks[1], mouse_event.column, mouse_event.row)
+        {
+            picker.focus = crate::app::FolderPickerFocus::Results;
+            if !picker.filtered_folders.is_empty() {
+                let row = mouse_event
+                    .row
+                    .saturating_sub(chunks[1].y.saturating_add(1))
+                    as usize;
+                let clicked = row.min(picker.filtered_folders.len().saturating_sub(1));
+                if clicked == picker.selected {
+                    confirm_selected = true;
+                }
+                picker.selected = clicked;
+            }
+        }
+
+        if confirm_selected {
+            app.confirm_move();
+            return;
+        }
+
+        return;
+    }
+
+    if let Some(popup) = &mut app.popups.search {
+        let popup_area = crate::ui::centered_rect(
+            crate::constants::NOTES_POPUP_LARGE_W_PCT,
+            crate::constants::NOTES_POPUP_LARGE_H_PCT,
+            terminal_area,
+        );
+        let has_filter = popup.focus != crate::popups::SearchFocus::Input
+            || !popup.input.lines().join("").trim().is_empty();
+        let constraints = if has_filter {
+            vec![
+                Constraint::Length(3),
+                Constraint::Length(1),
+                Constraint::Min(3),
+                Constraint::Length(1),
+            ]
+        } else {
+            vec![
+                Constraint::Length(3),
+                Constraint::Min(3),
+                Constraint::Length(1),
+            ]
+        };
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(constraints)
+            .split(popup_area);
+
+        let results_chunk_idx = if has_filter { 2 } else { 1 };
+        let has_title = !popup.title_results.is_empty();
+        let has_grep = !popup.grep_results.is_empty();
+        let mut open_selected = false;
+
+        if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
+            && contains_cell(chunks[0], mouse_event.column, mouse_event.row)
+        {
+            popup.focus = crate::popups::SearchFocus::Input;
+        } else if contains_cell(
+            chunks[results_chunk_idx],
+            mouse_event.column,
+            mouse_event.row,
+        ) && (mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
+            || mouse_event.kind == MouseEventKind::Down(MouseButton::Right))
+        {
+            popup.focus = crate::popups::SearchFocus::Results;
+            let row = mouse_event
+                .row
+                .saturating_sub(chunks[results_chunk_idx].y.saturating_add(1))
+                as usize;
+            if has_grep {
+                let clicked = row.min(popup.grep_results.len().saturating_sub(1));
+                if clicked == popup.grep_selected {
+                    open_selected = true;
+                }
+                popup.grep_selected = clicked;
+            } else if has_title {
+                let clicked = row.min(popup.title_results.len().saturating_sub(1));
+                if clicked == popup.title_selected {
+                    open_selected = true;
+                }
+                popup.title_selected = clicked;
+            }
+        }
+
+        if open_selected {
+            app.jump_to_selected_result();
+            app.confirm_search();
+            return;
+        }
+
+        return;
+    }
+
+    if let Some(trash) = &mut app.popups.trash_view {
+        let popup_area = crate::ui::centered_rect(70, 70, terminal_area);
+        let mut restore_selected = false;
+        if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
+            && contains_cell(popup_area, mouse_event.column, mouse_event.row)
+            && !trash.items.is_empty()
+        {
+            let row = mouse_event
+                .row
+                .saturating_sub(popup_area.y.saturating_add(1)) as usize;
+            let clicked = row.min(trash.items.len().saturating_sub(1));
+            if clicked == trash.selected {
+                restore_selected = true;
+            }
+            trash.selected = clicked;
+        }
+        if restore_selected {
+            app.restore_from_trash();
+            return;
+        }
+        return;
+    }
+
+    if app.popups.folder.is_some()
+        || app.popups.tag.is_some()
+        || app.popups.note_rename.is_some()
+        || app.popups.note_create.is_some()
+        || app.popups.draw_create.is_some()
+        || app.popups.canvas_create.is_some()
+        || app.popups.import.is_some()
+        || app.command_palette.is_some()
+        || app.popups.theme.is_some()
+    {
+        return;
+    }
+
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(3),
-            Constraint::Min(5),
-            Constraint::Length(3),
-        ])
+        .constraints([Constraint::Min(5), Constraint::Length(1)])
         .split(terminal_area);
 
-    let list_area = chunks[1];
-    let inner_list_area = Rect::new(
-        list_area.x.saturating_add(1),
-        list_area.y.saturating_add(1),
-        list_area.width.saturating_sub(2),
-        list_area.height.saturating_sub(2),
-    );
+    let list_area = chunks[0];
 
-    // Check if scroll is in preview pane area
-    if app.preview_enabled {
-        let main_chunks = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-            .split(chunks[1]);
-        let preview_area = main_chunks[1];
-
-        if contains_cell(preview_area, mouse_event.column, mouse_event.row) {
-            if mouse_event.kind == MouseEventKind::ScrollUp {
-                if let Some(renderer) = &mut app.preview_renderer {
-                    renderer.scroll_up(3);
-                }
-                return;
-            }
-            if mouse_event.kind == MouseEventKind::ScrollDown {
-                if let Some(renderer) = &mut app.preview_renderer {
-                    renderer.scroll_down(3, preview_area.height.saturating_sub(2));
-                }
+    if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) && chunks[1].height > 0 {
+        let hint_area = chunks[1];
+        if mouse_event.row >= hint_area.y && mouse_event.row < hint_area.y + hint_area.height {
+            let ext_label = if app.editor.external_editor_enabled {
+                "ext:on"
+            } else {
+                "ext:off"
+            };
+            let ext_width = ext_label.len() as u16 + 2;
+            let ext_area = Rect::new(hint_area.x, hint_area.y, ext_width, hint_area.height);
+            if contains_cell(ext_area, mouse_event.column, mouse_event.row) {
+                app.toggle_external_editor_mode();
+                app.list.list_focus = ListFocus::ExternalEditorToggle;
                 return;
             }
         }
     }
 
+    let inner_list_area = Rect::new(
+        list_area.x.saturating_add(2),
+        list_area.y.saturating_add(1),
+        list_area.width.saturating_sub(4),
+        list_area.height.saturating_sub(2),
+    );
+
+    if app.list.preview_enabled {
+        let main_chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Percentage(50),
+                Constraint::Length(1),
+                Constraint::Percentage(50),
+            ])
+            .split(terminal_area);
+        let preview_area = Rect::new(
+            main_chunks[2].x,
+            main_chunks[2].y,
+            main_chunks[2].width,
+            chunks[0].height,
+        );
+
+        if contains_cell(preview_area, mouse_event.column, mouse_event.row) {
+            match &mut app.list.preview_content {
+                Some(crate::list_view::PreviewContent::Markdown(renderer)) => {
+                    if mouse_event.kind == MouseEventKind::ScrollUp {
+                        renderer.prev_page();
+                        return;
+                    }
+                    if mouse_event.kind == MouseEventKind::ScrollDown {
+                        renderer.next_page();
+                        return;
+                    }
+                }
+                Some(
+                    crate::list_view::PreviewContent::CanvasGrid(_)
+                    | crate::list_view::PreviewContent::DrawGrid(_),
+                ) => {
+                    if mouse_event.kind == MouseEventKind::ScrollUp {
+                        app.list.snapshot_scroll_offset =
+                            app.list.snapshot_scroll_offset.saturating_sub(3);
+                        return;
+                    }
+                    if mouse_event.kind == MouseEventKind::ScrollDown {
+                        app.list.snapshot_scroll_offset =
+                            app.list.snapshot_scroll_offset.saturating_add(3);
+                        return;
+                    }
+                }
+                None => {}
+            }
+        }
+    }
+
     if mouse_event.kind == MouseEventKind::ScrollUp {
-        let current = app.list_state.selected().unwrap_or(0);
-        app.list_state.select(Some(current.saturating_sub(1)));
-        // Wait, list_state.select automatically scrolls if needed during render.
-        // We also want to change app.selected if it corresponds to a note, or we can just scroll the list_state?
-        // Actually, in the original TUI, scrolling the list changes the selected NOTE.
-        // Let's implement it by simulating UP/DOWN keys!
+        let current = app.list.list_state.selected().unwrap_or(0);
+        app.list.list_state.select(Some(current.saturating_sub(1)));
+
         handle_list_keys(app, KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
         return;
     }
@@ -593,20 +1468,57 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         return;
     }
 
+    if app.list.notes_layout == crate::config::NotesLayout::Grid {
+        if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
+            for tile in &app.list.grid_tiles {
+                if contains_cell(tile.rect, mouse_event.column, mouse_event.row) {
+                    let clicked = tile.visual_index;
+                    let is_select_mode = app.list.list_mode == crate::list_view::ListMode::Select
+                        || app.list.tag_to_assign.is_some();
+                    if is_select_mode {
+                        app.list.visual_index = clicked;
+                        if app.list.selected_indices.contains(&clicked) {
+                            app.list.selected_indices.remove(&clicked);
+                        } else {
+                            app.list.selected_indices.insert(clicked);
+                        }
+                    } else if app.list.visual_index == clicked {
+                        app.open_selected();
+                    } else {
+                        app.list.visual_index = clicked;
+                        app.request_preview_update();
+                    }
+                    return;
+                }
+            }
+        }
+        return; // grid never uses the row-based mapping below
+    }
+
     if !contains_cell(inner_list_area, mouse_event.column, mouse_event.row) {
         return;
     }
 
     if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
         let visual_row = mouse_event.row.saturating_sub(inner_list_area.y) as usize;
-        let clicked_visual_index = app.list_state.offset().saturating_add(visual_row);
+        let clicked_visual_index = app.list.list_state.offset().saturating_add(visual_row);
 
-        if clicked_visual_index < app.visual_list.len() {
-            if app.visual_index == clicked_visual_index {
-                // Click on already-selected item to open it
+        if clicked_visual_index < app.list.visual_list.len() {
+            let is_select_mode = app.list.list_mode == crate::list_view::ListMode::Select
+                || app.list.tag_to_assign.is_some();
+
+            if is_select_mode {
+                app.list.visual_index = clicked_visual_index;
+                if app.list.selected_indices.contains(&clicked_visual_index) {
+                    app.list.selected_indices.remove(&clicked_visual_index);
+                } else {
+                    app.list.selected_indices.insert(clicked_visual_index);
+                }
+            } else if app.list.visual_index == clicked_visual_index {
                 app.open_selected();
             } else {
-                app.visual_index = clicked_visual_index;
+                app.list.visual_index = clicked_visual_index;
+                app.request_preview_update();
             }
         }
     }
@@ -620,29 +1532,29 @@ pub fn handle_edit_mouse(
     mouse_selecting: &mut bool,
     mouse_dragged: &mut bool,
 ) {
-    if let Some(menu) = &app.context_menu {
-        let menu_rect = Rect::new(menu.x, menu.y, 14, 6);
+    if let Some(menu) = &app.popups.context_menu {
+        let menu_rect = Rect::new(menu.x, menu.y, 14, 4);
         if contains_cell(menu_rect, mouse_event.column, mouse_event.row) {
             if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
-                let clicked_idx = mouse_event.row.saturating_sub(menu.y).saturating_sub(1) as usize;
+                let clicked_idx = mouse_event.row.saturating_sub(menu.y) as usize;
                 if clicked_idx < 4 {
                     app.handle_menu_action(clicked_idx, focus);
                 }
-                app.context_menu = None;
+                app.popups.context_menu = None;
             } else if mouse_event.kind == MouseEventKind::ScrollUp {
-                let mut menu_copy = app.context_menu.take().unwrap();
+                let mut menu_copy = app.popups.context_menu.take().unwrap();
                 menu_copy.selected = menu_copy.selected.saturating_sub(1);
-                app.context_menu = Some(menu_copy);
+                app.popups.context_menu = Some(menu_copy);
             } else if mouse_event.kind == MouseEventKind::ScrollDown {
-                let mut menu_copy = app.context_menu.take().unwrap();
+                let mut menu_copy = app.popups.context_menu.take().unwrap();
                 if menu_copy.selected < 3 {
                     menu_copy.selected += 1;
                 }
-                app.context_menu = Some(menu_copy);
+                app.popups.context_menu = Some(menu_copy);
             }
             return;
         } else if matches!(mouse_event.kind, MouseEventKind::Down(_)) {
-            app.context_menu = None;
+            app.popups.context_menu = None;
             if mouse_event.kind != MouseEventKind::Down(MouseButton::Right) {
                 return;
             }
@@ -652,13 +1564,17 @@ pub fn handle_edit_mouse(
     }
 
     if mouse_event.kind == MouseEventKind::Down(MouseButton::Right) {
-        let (title_inner, body_inner) =
-            edit_view_input_areas(terminal_area, app.markdown_preview_enabled);
+        let (title_inner, body_inner) = edit_view_input_areas(
+            terminal_area,
+            app.editor.editor_preview_enabled,
+            app.editor.editor.lines().len(),
+            app.editor.show_line_numbers,
+        );
 
         if contains_cell(title_inner, mouse_event.column, mouse_event.row) {
             *focus = EditFocus::Title;
             move_textarea_cursor_to_mouse(
-                &mut app.title_editor,
+                &mut app.editor.title_editor,
                 title_inner,
                 mouse_event.column,
                 mouse_event.row,
@@ -666,7 +1582,7 @@ pub fn handle_edit_mouse(
         } else if contains_cell(body_inner, mouse_event.column, mouse_event.row) {
             *focus = EditFocus::Body;
             move_textarea_cursor_to_mouse(
-                &mut app.editor,
+                &mut app.editor.editor,
                 body_inner,
                 mouse_event.column,
                 mouse_event.row,
@@ -674,8 +1590,8 @@ pub fn handle_edit_mouse(
         }
 
         let max_x = terminal_area.width.saturating_sub(14);
-        let max_y = terminal_area.height.saturating_sub(6);
-        app.context_menu = Some(ContextMenu {
+        let max_y = terminal_area.height.saturating_sub(4);
+        app.popups.context_menu = Some(ContextMenu {
             x: mouse_event.column.min(max_x),
             y: mouse_event.row.min(max_y),
             selected: 0,
@@ -683,29 +1599,31 @@ pub fn handle_edit_mouse(
         return;
     }
 
-    let (title_inner, body_inner) =
-        edit_view_input_areas(terminal_area, app.markdown_preview_enabled);
+    let (title_inner, body_inner) = edit_view_input_areas(
+        terminal_area,
+        app.editor.editor_preview_enabled,
+        app.editor.editor.lines().len(),
+        app.editor.show_line_numbers,
+    );
 
-    // Handle scroll in markdown preview pane
-    if app.markdown_preview_enabled {
-        if let Some(md_area) = edit_view_md_preview_area(terminal_area) {
-            if contains_cell(md_area, mouse_event.column, mouse_event.row) {
-                match mouse_event.kind {
-                    MouseEventKind::ScrollUp => {
-                        if let Some(renderer) = &mut app.md_preview_renderer {
-                            renderer.scroll_up(3);
-                        }
-                        return;
-                    }
-                    MouseEventKind::ScrollDown => {
-                        if let Some(renderer) = &mut app.md_preview_renderer {
-                            renderer.scroll_down(3, md_area.height.saturating_sub(2));
-                        }
-                        return;
-                    }
-                    _ => {}
+    if app.editor.editor_preview_enabled
+        && let Some(md_area) = edit_view_md_preview_area(terminal_area)
+        && contains_cell(md_area, mouse_event.column, mouse_event.row)
+    {
+        match mouse_event.kind {
+            MouseEventKind::ScrollUp => {
+                if let Some(renderer) = &mut app.editor.md_preview_renderer {
+                    renderer.prev_page();
                 }
+                return;
             }
+            MouseEventKind::ScrollDown => {
+                if let Some(renderer) = &mut app.editor.md_preview_renderer {
+                    renderer.next_page();
+                }
+                return;
+            }
+            _ => {}
         }
     }
 
@@ -716,22 +1634,22 @@ pub fn handle_edit_mouse(
             if contains_cell(body_inner, mouse_event.column, mouse_event.row) {
                 *focus = EditFocus::Body;
                 move_textarea_cursor_to_mouse(
-                    &mut app.editor,
+                    &mut app.editor.editor,
                     body_inner,
                     mouse_event.column,
                     mouse_event.row,
                 );
-                app.editor.start_selection();
+                app.editor.editor.start_selection();
                 *mouse_selecting = true;
             } else if contains_cell(title_inner, mouse_event.column, mouse_event.row) {
                 *focus = EditFocus::Title;
                 move_textarea_cursor_to_mouse(
-                    &mut app.title_editor,
+                    &mut app.editor.title_editor,
                     title_inner,
                     mouse_event.column,
                     mouse_event.row,
                 );
-                app.title_editor.start_selection();
+                app.editor.title_editor.start_selection();
                 *mouse_selecting = true;
             }
         }
@@ -740,14 +1658,14 @@ pub fn handle_edit_mouse(
                 *mouse_dragged = true;
                 if *focus == EditFocus::Body {
                     move_textarea_cursor_to_mouse(
-                        &mut app.editor,
+                        &mut app.editor.editor,
                         body_inner,
                         mouse_event.column,
                         mouse_event.row,
                     );
                 } else {
                     move_textarea_cursor_to_mouse(
-                        &mut app.title_editor,
+                        &mut app.editor.title_editor,
                         title_inner,
                         mouse_event.column,
                         mouse_event.row,
@@ -758,9 +1676,9 @@ pub fn handle_edit_mouse(
         MouseEventKind::Up(MouseButton::Left) => {
             if *mouse_selecting && !*mouse_dragged {
                 if *focus == EditFocus::Body {
-                    app.editor.cancel_selection();
+                    app.editor.editor.cancel_selection();
                 } else {
-                    app.title_editor.cancel_selection();
+                    app.editor.title_editor.cancel_selection();
                 }
             }
             *mouse_selecting = false;
@@ -768,12 +1686,12 @@ pub fn handle_edit_mouse(
         }
         MouseEventKind::ScrollDown => {
             if *focus == EditFocus::Body {
-                app.editor.scroll((3, 0));
+                app.editor.editor.scroll((3, 0));
             }
         }
         MouseEventKind::ScrollUp => {
             if *focus == EditFocus::Body {
-                app.editor.scroll((-3, 0));
+                app.editor.editor.scroll((-3, 0));
             }
         }
         _ => {}
@@ -790,23 +1708,7 @@ pub fn move_textarea_cursor_to_mouse(
         return;
     }
 
-    let mut scroll_row = 0;
-    let mut scroll_col = 0;
-
-    // Unfortunately, tui-textarea doesn't currently expose public viewport accessors.
-    // We must rely on debug string formatting to extract the scroll offset.
-    // This allocation happens on mouse drag, but it's the only way without upstream changes.
-    let debug_str = format!("{textarea:?}");
-    if let Some(start) = debug_str.find("viewport: Viewport(") {
-        let after_start = &debug_str[start + "viewport: Viewport(".len()..];
-        if let Some(end) = after_start.find(')') {
-            let number_str = &after_start[..end];
-            if let Ok(number) = number_str.parse::<u64>() {
-                scroll_row = ((number >> 16) & 0xFFFF) as usize;
-                scroll_col = (number & 0xFFFF) as usize;
-            }
-        }
-    }
+    let (scroll_row, scroll_col) = crate::ui::get_textarea_scroll(textarea);
 
     let row = mouse_row.saturating_sub(body_inner.y) as usize + scroll_row;
     let col = mouse_col.saturating_sub(body_inner.x) as usize + scroll_col;
@@ -819,35 +1721,61 @@ pub fn move_textarea_cursor_to_mouse(
     textarea.move_cursor(CursorMove::Jump(target_row as u16, target_col as u16));
 }
 
-pub fn edit_view_input_areas(area: Rect, md_preview: bool) -> (Rect, Rect) {
+pub fn edit_view_input_areas(
+    area: Rect,
+    md_preview: bool,
+    line_count: usize,
+    show_line_numbers: bool,
+) -> (Rect, Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
+            Constraint::Length(1),
             Constraint::Length(3),
             Constraint::Min(8),
-            Constraint::Length(3),
+            Constraint::Length(1),
         ])
         .split(area);
 
-    let title_inner = chunks[0].inner(Margin {
-        vertical: 1,
-        horizontal: 1,
-    });
+    let title_inner = Rect::new(
+        chunks[1].x + 2,
+        chunks[1].y + 1,
+        chunks[1].width.saturating_sub(4),
+        chunks[1].height.saturating_sub(2),
+    );
 
     let body_area = if md_preview {
         let content_chunks = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-            .split(chunks[1]);
-        content_chunks[0]
+            .constraints([
+                Constraint::Percentage(50),
+                Constraint::Length(1),
+                Constraint::Percentage(50),
+            ])
+            .split(area);
+
+        Rect::new(
+            content_chunks[0].x,
+            chunks[2].y,
+            content_chunks[0].width,
+            chunks[2].height,
+        )
     } else {
-        chunks[1]
+        chunks[2]
     };
 
-    let body_inner = body_area.inner(Margin {
-        vertical: 1,
-        horizontal: 1,
-    });
+    let gutter_width = if show_line_numbers {
+        (line_count.max(1).to_string().len() as u16) + 1
+    } else {
+        0
+    };
+
+    let body_inner = Rect::new(
+        body_area.x + gutter_width,
+        body_area.y,
+        body_area.width.saturating_sub(gutter_width + 2),
+        body_area.height,
+    );
 
     (title_inner, body_inner)
 }
@@ -856,21 +1784,35 @@ pub fn edit_view_md_preview_area(area: Rect) -> Option<Rect> {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
+            Constraint::Length(1),
             Constraint::Length(3),
             Constraint::Min(8),
-            Constraint::Length(3),
+            Constraint::Length(1),
         ])
         .split(area);
 
     let content_chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(chunks[1]);
+        .constraints([
+            Constraint::Percentage(50),
+            Constraint::Length(1),
+            Constraint::Percentage(50),
+        ])
+        .split(area);
 
-    Some(content_chunks[1].inner(Margin {
-        vertical: 1,
-        horizontal: 1,
-    }))
+    let preview_area = Rect::new(
+        content_chunks[2].x,
+        chunks[2].y,
+        content_chunks[2].width,
+        chunks[2].height,
+    );
+
+    Some(Rect::new(
+        preview_area.x + 2,
+        preview_area.y + 1,
+        preview_area.width.saturating_sub(4),
+        preview_area.height.saturating_sub(2),
+    ))
 }
 
 pub fn contains_cell(rect: Rect, col: u16, row: u16) -> bool {
@@ -882,63 +1824,17 @@ pub fn contains_cell(rect: Rect, col: u16, row: u16) -> bool {
         && row < rect.y + rect.height
 }
 
-pub fn handle_os_shortcuts(
-    keybinds: &Keybinds,
-    textarea: &mut TextArea<'static>,
-    key: KeyEvent,
-) -> bool {
-    // Use keybinds for customizable shortcuts
-    if keybinds.matches_edit(EditAction::SelectAll, &key) {
-        textarea.select_all();
-        return true;
-    }
-    if keybinds.matches_edit(EditAction::Copy, &key) {
-        textarea.copy();
-        return true;
-    }
-    if keybinds.matches_edit(EditAction::Cut, &key) {
-        let _ = textarea.cut();
-        return true;
-    }
-    if keybinds.matches_edit(EditAction::Paste, &key) {
-        let _ = textarea.paste();
-        return true;
-    }
-    if keybinds.matches_edit(EditAction::Undo, &key) {
-        let _ = textarea.undo();
-        return true;
-    }
-    if keybinds.matches_edit(EditAction::Redo, &key) {
-        let _ = textarea.redo();
-        return true;
-    }
-    if keybinds.matches_edit(EditAction::DeleteWord, &key) {
-        let _ = textarea.delete_word();
-        return true;
-    }
-    if keybinds.matches_edit(EditAction::DeleteNextWord, &key) {
-        let _ = textarea.delete_next_word();
-        return true;
-    }
-    if keybinds.matches_edit(EditAction::MoveToTop, &key) {
-        textarea.move_cursor(CursorMove::Top);
-        return true;
-    }
-    if keybinds.matches_edit(EditAction::MoveToBottom, &key) {
-        textarea.move_cursor(CursorMove::Bottom);
-        return true;
-    }
-
-    false
-}
-
-pub fn make_title_editor(initial: &str) -> TextArea<'static> {
+pub fn make_title_editor(
+    initial: &str,
+    highlight_fg: Color,
+    highlight_bg: Color,
+) -> TextArea<'static> {
     let mut title = if initial.is_empty() {
         TextArea::default()
     } else {
         TextArea::from([initial.to_string()])
     };
-    title.set_cursor_style(Style::default().fg(Color::Black).bg(Color::Cyan));
+    title.set_cursor_style(Style::default().fg(highlight_fg).bg(highlight_bg));
     title
 }
 

@@ -15,12 +15,10 @@ fn is_wayland() -> bool {
 }
 
 fn get_clipboard_image_wayland() -> Result<DynamicImage> {
-    // Check if wl-paste is available
     if which::which("wl-paste").is_err() {
         anyhow::bail!("wl-paste is not installed. Please install wl-clipboard.");
     }
 
-    // Run wl-paste to get the raw image data (PNG usually)
     let mut child = Command::new("wl-paste")
         .arg("--type")
         .arg("image/png")
@@ -38,7 +36,6 @@ fn get_clipboard_image_wayland() -> Result<DynamicImage> {
     let status = child.wait().context("Failed to wait on wl-paste")?;
 
     if !status.success() {
-        // Attempt to read stderr for better error message
         if let Some(mut stderr) = child.stderr {
             let mut err_msg = String::new();
             let _ = stderr.read_to_string(&mut err_msg);
@@ -53,7 +50,6 @@ fn get_clipboard_image_wayland() -> Result<DynamicImage> {
         anyhow::bail!("wl-paste returned empty data.");
     }
 
-    // Decode the image
     let img = image::load_from_memory(&image_data)
         .context("Failed to decode clipboard image data (expected PNG)")?;
 
@@ -94,8 +90,6 @@ impl Action for OcrPasteAction {
 
         let dynamic_image = if is_wayland() {
             get_clipboard_image_wayland().or_else(|e| {
-                // Fallback to arboard if Wayland method fails for some reason
-                // e.g. user is on Wayland but has Xwayland primary clipboard synced
                 eprintln!("Wayland clipboard failed: {}. Falling back to arboard.", e);
                 get_clipboard_image_arboard()
             })?
@@ -106,17 +100,15 @@ impl Action for OcrPasteAction {
         let temp_file = NamedTempFile::new().context("Failed to create temporary image file")?;
         let temp_path = temp_file.path().to_owned();
 
-        // Save image to temp file in PNG format
         dynamic_image
             .save_with_format(&temp_path, image::ImageFormat::Png)
             .context("Failed to save clipboard image to temp file")?;
 
-        // Run tesseract
         let output = Command::new("tesseract")
             .arg(temp_path)
-            .arg("-") // stdout
+            .arg("-")
             .arg("-l")
-            .arg("eng") // default to english, could be configurable later
+            .arg("eng")
             .output()
             .context("Failed to execute tesseract. Make sure it is installed and in your PATH.")?;
 
@@ -131,7 +123,6 @@ impl Action for OcrPasteAction {
             anyhow::bail!("OCR extracted no text.");
         }
 
-        // Append to note
         let mut note = app.storage.load_note(note_id)?;
         note.content.push_str("\n\n---\n**OCR Extract:**\n");
         note.content.push_str(&extracted_text);

@@ -1,19 +1,12 @@
-//! Keybind configuration module
-//!
-//! This module handles customizable keyboard shortcuts for the application.
-//! Keybinds are stored in <`storage_path>/keybinds.toml` and can be customized
-//! by the user. Vim mode keybindings are NOT affected by this system.
-
+#![allow(unused_imports)]
 use std::collections::HashMap;
 use std::fs;
-use std::io::Write;
 use std::path::Path;
 
 use anyhow::{Context, Result};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use serde::{Deserialize, Serialize};
 
-/// A key combination (e.g., "Ctrl+q", "Enter", "Shift+Delete")
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct KeyCombo {
     pub code: KeyCode,
@@ -49,19 +42,26 @@ impl KeyCombo {
         }
     }
 
-    /// Parse a key combo from a string like "Ctrl+Shift+a", "Enter", "F1"
     pub fn parse(s: &str) -> Option<Self> {
-        let parts: Vec<&str> = s.split('+').collect();
-        let mut modifiers = KeyModifiers::NONE;
-        let mut key_part = "";
+        if s.is_empty() {
+            return None;
+        }
+        let (modifiers_str, key_part) = if s == "+" {
+            ("", "+")
+        } else if let Some(stripped) = s.strip_suffix("++") {
+            (stripped, "+")
+        } else {
+            match s.rfind('+') {
+                Some(idx) => (&s[..idx], &s[idx + 1..]),
+                None => ("", s),
+            }
+        };
 
-        for (i, part) in parts.iter().enumerate() {
-            let part_lower = part.to_lowercase();
-            if i == parts.len() - 1 {
-                // Last part is the key
-                key_part = part;
-            } else {
-                // Modifier
+        let mut modifiers = KeyModifiers::NONE;
+        if !modifiers_str.is_empty() {
+            let parts: Vec<&str> = modifiers_str.split('+').collect();
+            for part in parts {
+                let part_lower = part.to_lowercase();
                 match part_lower.as_str() {
                     "ctrl" | "control" => modifiers |= KeyModifiers::CONTROL,
                     "shift" => modifiers |= KeyModifiers::SHIFT,
@@ -76,7 +76,6 @@ impl KeyCombo {
         Some(Self { code, modifiers })
     }
 
-    /// Convert to a display string
     pub fn to_display_string(&self) -> String {
         let key = key_code_to_string(&self.code);
         let mut result = String::with_capacity(24);
@@ -115,7 +114,6 @@ impl KeyCombo {
         result
     }
 
-    /// Check if this combo matches a key event
     pub fn matches(&self, event: &KeyEvent) -> bool {
         self.code == event.code && self.modifiers == event.modifiers
     }
@@ -124,7 +122,6 @@ impl KeyCombo {
 fn parse_key_code(s: &str) -> Option<KeyCode> {
     let s_lower = s.to_lowercase();
     match s_lower.as_str() {
-        // Special keys
         "enter" | "return" => Some(KeyCode::Enter),
         "esc" | "escape" => Some(KeyCode::Esc),
         "backspace" | "bs" => Some(KeyCode::Backspace),
@@ -141,7 +138,6 @@ fn parse_key_code(s: &str) -> Option<KeyCode> {
         "left" => Some(KeyCode::Left),
         "right" => Some(KeyCode::Right),
 
-        // Function keys
         "f1" => Some(KeyCode::F(1)),
         "f2" => Some(KeyCode::F(2)),
         "f3" => Some(KeyCode::F(3)),
@@ -155,7 +151,6 @@ fn parse_key_code(s: &str) -> Option<KeyCode> {
         "f11" => Some(KeyCode::F(11)),
         "f12" => Some(KeyCode::F(12)),
 
-        // Single character
         _ if s.len() == 1 => {
             let c = s.chars().next()?;
             Some(KeyCode::Char(c.to_ascii_lowercase()))
@@ -190,12 +185,13 @@ fn key_code_to_string(code: &KeyCode) -> Cow<'static, str> {
     }
 }
 
-/// Actions that can be bound to keys in list view
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ListAction {
     MoveUp,
     MoveDown,
+    MoveLeft,
+    MoveRight,
     Open,
     Delete,
     Quit,
@@ -211,26 +207,28 @@ pub enum ListAction {
     RenameFolder,
     MoveNote,
     ManageTags,
-    FilterTags,
     CollapseFolder,
     ExpandFolder,
     OpenCommandPalette,
-    // QoL features
-    Rename,        // Context-sensitive rename (note or folder)
-    Duplicate,     // Duplicate note
-    TogglePin,     // Pin/unpin note
-    CycleSort,     // Cycle through sort options
-    Search,        // Quick search by title
-    JumpToTop,     // Vim-style G
-    JumpToBottom,  // Vim-style gg (handled specially)
-    PageUp,        // Half page up (Ctrl+u)
-    PageDown,      // Half page down (Ctrl+d)
-    OpenTrash,     // Open trash view
-    TogglePreview, // Toggle preview pane
-    OpenGraph,     // Open graph view
+
+    Rename,
+    Duplicate,
+    TogglePin,
+    CycleSort,
+    Search,
+    JumpToTop,
+    JumpToBottom,
+    PageUp,
+    PageDown,
+    OpenTrash,
+    TogglePreview,
+    OpenGraph,
+    OpenCanvas,
+    CreatePinstar,
+    ToggleSelectMode,
+    ToggleSelectItem,
 }
 
-/// Actions that can be bound to keys in edit view
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EditAction {
@@ -238,7 +236,7 @@ pub enum EditAction {
     Back,
     CycleFocus,
     ToggleButton,
-    // Text editing shortcuts
+
     SelectAll,
     Copy,
     Cut,
@@ -252,13 +250,14 @@ pub enum EditAction {
     ToggleMarkdownPreview,
 }
 
-/// Actions that can be bound to keys in help view
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum HelpAction {
     Close,
     ScrollUp,
     ScrollDown,
+    NextTab,
+    PrevTab,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -281,28 +280,127 @@ pub enum GraphAction {
     ToggleStatus,
     Refresh,
     ReloadConfig,
+    TogglePreview,
 }
 
-/// TOML representation of keybinds for serialization
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DrawAction {
+    Quit,
+    SelectDrawTool,
+    ToggleShapeSelector,
+    SelectTextTool,
+    SelectEraseTool,
+    ShapeSelectorUp,
+    ShapeSelectorDown,
+    ShapeSelectorConfirm,
+    ShapeSelectorCancel,
+    TextEditorConfirm,
+    TextEditorCancel,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CanvasAction {
+    Quit,
+    Save,
+    ZoomFineIn,
+    ZoomFineOut,
+    ZoomIn,
+    ZoomOut,
+    MoveLeft,
+    MoveRight,
+    MoveUp,
+    MoveDown,
+    EditOrConnect,
+    OpenContextMenu,
+    ToggleGrid,
+    ToggleEditorPane,
+    CycleFocus,
+    Help,
+    RenameConfirm,
+    RenameCancel,
+    MenuClose,
+    MenuUp,
+    MenuDown,
+    MenuSelect,
+    CloseEditor,
+    CloseEditorAlt,
+    ConfirmResize,
+    CancelResize,
+    ExtUnfocus,
+    ExtToggle,
+    EditorUnfocus,
+    EditorFocusExt,
+    EditorSyncRaw,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BackupAction {
+    Back,
+    MoveDown,
+    MoveUp,
+    ScrollDiffDown,
+    ScrollDiffUp,
+    Refresh,
+    EnterCommit,
+    Push,
+    OpenSettings,
+    CycleSection,
+    CancelCommit,
+    ConfirmCommit,
+    CloseSettings,
+    NextField,
+    PrevField,
+    ActivateField,
+    CancelEditField,
+    ConfirmEditField,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContentTreeAction {
+    MoveUp,
+    MoveDown,
+    ToggleCollapse,
+    ExpandAll,
+    CollapseAll,
+    Open,
+    Back,
+    Help,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct KeybindsToml {
     #[serde(default)]
-    pub list: HashMap<String, Vec<String>>,
+    pub list: HashMap<ListAction, Vec<String>>,
     #[serde(default)]
-    pub edit: HashMap<String, Vec<String>>,
+    pub edit: HashMap<EditAction, Vec<String>>,
     #[serde(default)]
-    pub help: HashMap<String, Vec<String>>,
+    pub help: HashMap<HelpAction, Vec<String>>,
     #[serde(default)]
-    pub graph: HashMap<String, Vec<String>>,
+    pub graph: HashMap<GraphAction, Vec<String>>,
+    #[serde(default)]
+    pub draw: HashMap<DrawAction, Vec<String>>,
+    #[serde(default)]
+    pub canvas: HashMap<CanvasAction, Vec<String>>,
+    #[serde(default)]
+    pub backup: HashMap<BackupAction, Vec<String>>,
+    #[serde(default)]
+    pub content_tree: HashMap<ContentTreeAction, Vec<String>>,
 }
 
-/// Main keybinds configuration
 #[derive(Debug, Clone)]
 pub struct Keybinds {
     pub list: HashMap<ListAction, Vec<KeyCombo>>,
     pub edit: HashMap<EditAction, Vec<KeyCombo>>,
     pub help: HashMap<HelpAction, Vec<KeyCombo>>,
     pub graph: HashMap<GraphAction, Vec<KeyCombo>>,
+    pub draw: HashMap<DrawAction, Vec<KeyCombo>>,
+    pub canvas: HashMap<CanvasAction, Vec<KeyCombo>>,
+    pub backup: HashMap<BackupAction, Vec<KeyCombo>>,
+    pub content_tree: HashMap<ContentTreeAction, Vec<KeyCombo>>,
 }
 
 impl Default for Keybinds {
@@ -320,6 +418,20 @@ impl Default for Keybinds {
             vec![
                 KeyCombo::simple(KeyCode::Down),
                 KeyCombo::simple(KeyCode::Char('j')),
+            ],
+        );
+        list.insert(
+            ListAction::MoveLeft,
+            vec![
+                KeyCombo::simple(KeyCode::Left),
+                KeyCombo::simple(KeyCode::Char('h')),
+            ],
+        );
+        list.insert(
+            ListAction::MoveRight,
+            vec![
+                KeyCombo::simple(KeyCode::Right),
+                KeyCombo::simple(KeyCode::Char('l')),
             ],
         );
         list.insert(ListAction::Open, vec![KeyCombo::simple(KeyCode::Enter)]);
@@ -340,7 +452,7 @@ impl Default for Keybinds {
         );
         list.insert(
             ListAction::OpenLocation,
-            vec![KeyCombo::simple(KeyCode::Char('f'))],
+            vec![KeyCombo::ctrl(KeyCode::Char('f'))],
         );
         list.insert(ListAction::CycleFocus, vec![KeyCombo::simple(KeyCode::Tab)]);
         list.insert(
@@ -389,30 +501,13 @@ impl Default for Keybinds {
             vec![KeyCombo::simple(KeyCode::Char('.'))],
         );
         list.insert(
-            ListAction::FilterTags,
-            vec![KeyCombo::simple(KeyCode::Char('/'))],
-        );
-        list.insert(
-            ListAction::CollapseFolder,
-            vec![KeyCombo::simple(KeyCode::Char('h'))],
-        );
-        list.insert(
-            ListAction::ExpandFolder,
-            vec![KeyCombo::simple(KeyCode::Char('l'))],
-        );
-        list.insert(
             ListAction::OpenCommandPalette,
             vec![
                 KeyCombo::ctrl(KeyCode::Char('p')),
                 KeyCombo::shift(KeyCode::Enter),
             ],
         );
-        list.insert(
-            ListAction::ExpandFolder,
-            vec![KeyCombo::simple(KeyCode::Char('l'))],
-        );
 
-        // QoL feature keybinds
         list.insert(
             ListAction::Rename,
             vec![KeyCombo::simple(KeyCode::Char('r'))],
@@ -429,7 +524,10 @@ impl Default for Keybinds {
             ListAction::CycleSort,
             vec![KeyCombo::simple(KeyCode::Char('s'))],
         );
-        list.insert(ListAction::Search, vec![KeyCombo::ctrl(KeyCode::Char('f'))]);
+        list.insert(
+            ListAction::Search,
+            vec![KeyCombo::simple(KeyCode::Char('f'))],
+        );
         list.insert(
             ListAction::JumpToTop,
             vec![KeyCombo::shift(KeyCode::Char('G'))],
@@ -451,9 +549,16 @@ impl Default for Keybinds {
             ListAction::OpenGraph,
             vec![KeyCombo::ctrl(KeyCode::Char('g'))],
         );
+        list.insert(
+            ListAction::ToggleSelectMode,
+            vec![KeyCombo::simple(KeyCode::Char('v'))],
+        );
+        list.insert(
+            ListAction::ToggleSelectItem,
+            vec![KeyCombo::simple(KeyCode::Char(' '))],
+        );
 
         let mut edit = HashMap::new();
-        edit.insert(EditAction::Quit, vec![KeyCombo::ctrl(KeyCode::Char('q'))]);
         edit.insert(EditAction::Back, vec![KeyCombo::simple(KeyCode::Esc)]);
         edit.insert(EditAction::CycleFocus, vec![KeyCombo::simple(KeyCode::Tab)]);
         edit.insert(
@@ -519,6 +624,22 @@ impl Default for Keybinds {
                 KeyCombo::simple(KeyCode::Char('q')),
                 KeyCombo::simple(KeyCode::Char('?')),
                 KeyCombo::simple(KeyCode::F(1)),
+            ],
+        );
+        help.insert(
+            HelpAction::NextTab,
+            vec![
+                KeyCombo::simple(KeyCode::Right),
+                KeyCombo::simple(KeyCode::Char('l')),
+                KeyCombo::simple(KeyCode::Tab),
+            ],
+        );
+        help.insert(
+            HelpAction::PrevTab,
+            vec![
+                KeyCombo::simple(KeyCode::Left),
+                KeyCombo::simple(KeyCode::Char('h')),
+                KeyCombo::simple(KeyCode::BackTab),
             ],
         );
         help.insert(
@@ -623,18 +744,351 @@ impl Default for Keybinds {
             GraphAction::ReloadConfig,
             vec![KeyCombo::ctrl(KeyCode::Char('r'))],
         );
+        graph.insert(
+            GraphAction::TogglePreview,
+            vec![KeyCombo::shift(KeyCode::Char('P'))],
+        );
+
+        let mut draw = HashMap::new();
+        draw.insert(DrawAction::Quit, vec![KeyCombo::simple(KeyCode::Esc)]);
+        draw.insert(
+            DrawAction::SelectDrawTool,
+            vec![KeyCombo::simple(KeyCode::Char('d'))],
+        );
+        draw.insert(
+            DrawAction::ToggleShapeSelector,
+            vec![KeyCombo::simple(KeyCode::Char('s'))],
+        );
+        draw.insert(
+            DrawAction::SelectTextTool,
+            vec![KeyCombo::simple(KeyCode::Char('t'))],
+        );
+        draw.insert(
+            DrawAction::SelectEraseTool,
+            vec![KeyCombo::simple(KeyCode::Char('e'))],
+        );
+        draw.insert(
+            DrawAction::ShapeSelectorUp,
+            vec![KeyCombo::simple(KeyCode::Up)],
+        );
+        draw.insert(
+            DrawAction::ShapeSelectorDown,
+            vec![KeyCombo::simple(KeyCode::Down)],
+        );
+        draw.insert(
+            DrawAction::ShapeSelectorConfirm,
+            vec![KeyCombo::simple(KeyCode::Enter)],
+        );
+        draw.insert(
+            DrawAction::ShapeSelectorCancel,
+            vec![KeyCombo::simple(KeyCode::Esc)],
+        );
+        draw.insert(
+            DrawAction::TextEditorConfirm,
+            vec![KeyCombo::simple(KeyCode::Enter)],
+        );
+        draw.insert(
+            DrawAction::TextEditorCancel,
+            vec![KeyCombo::simple(KeyCode::Esc)],
+        );
+
+        let mut canvas = HashMap::new();
+        canvas.insert(CanvasAction::Quit, vec![KeyCombo::simple(KeyCode::Esc)]);
+        canvas.insert(CanvasAction::Save, vec![KeyCombo::ctrl(KeyCode::Char('s'))]);
+        canvas.insert(
+            CanvasAction::ZoomFineIn,
+            vec![KeyCombo::ctrl(KeyCode::Char('j'))],
+        );
+        canvas.insert(
+            CanvasAction::ZoomFineOut,
+            vec![KeyCombo::ctrl(KeyCode::Char('k'))],
+        );
+        canvas.insert(
+            CanvasAction::ZoomIn,
+            vec![
+                KeyCombo::simple(KeyCode::Char('+')),
+                KeyCombo::simple(KeyCode::Char('=')),
+            ],
+        );
+        canvas.insert(
+            CanvasAction::ZoomOut,
+            vec![
+                KeyCombo::simple(KeyCode::Char('-')),
+                KeyCombo::simple(KeyCode::Char('_')),
+            ],
+        );
+        canvas.insert(
+            CanvasAction::MoveLeft,
+            vec![
+                KeyCombo::simple(KeyCode::Left),
+                KeyCombo::simple(KeyCode::Char('h')),
+            ],
+        );
+        canvas.insert(
+            CanvasAction::MoveRight,
+            vec![
+                KeyCombo::simple(KeyCode::Right),
+                KeyCombo::simple(KeyCode::Char('l')),
+            ],
+        );
+        canvas.insert(
+            CanvasAction::MoveUp,
+            vec![
+                KeyCombo::simple(KeyCode::Up),
+                KeyCombo::simple(KeyCode::Char('k')),
+            ],
+        );
+        canvas.insert(
+            CanvasAction::MoveDown,
+            vec![
+                KeyCombo::simple(KeyCode::Down),
+                KeyCombo::simple(KeyCode::Char('j')),
+            ],
+        );
+        canvas.insert(
+            CanvasAction::EditOrConnect,
+            vec![
+                KeyCombo::simple(KeyCode::Char('i')),
+                KeyCombo::simple(KeyCode::Enter),
+            ],
+        );
+        canvas.insert(
+            CanvasAction::OpenContextMenu,
+            vec![KeyCombo::simple(KeyCode::Char('a'))],
+        );
+        canvas.insert(
+            CanvasAction::ToggleGrid,
+            vec![KeyCombo::ctrl(KeyCode::Char('g'))],
+        );
+        canvas.insert(
+            CanvasAction::ToggleEditorPane,
+            vec![KeyCombo::ctrl(KeyCode::Char('e'))],
+        );
+        canvas.insert(
+            CanvasAction::CycleFocus,
+            vec![KeyCombo::simple(KeyCode::Tab)],
+        );
+        canvas.insert(
+            CanvasAction::Help,
+            vec![KeyCombo::simple(KeyCode::Char('?'))],
+        );
+        canvas.insert(
+            CanvasAction::RenameConfirm,
+            vec![KeyCombo::simple(KeyCode::Enter)],
+        );
+        canvas.insert(
+            CanvasAction::RenameCancel,
+            vec![KeyCombo::simple(KeyCode::Esc)],
+        );
+        canvas.insert(
+            CanvasAction::MenuClose,
+            vec![KeyCombo::simple(KeyCode::Esc)],
+        );
+        canvas.insert(
+            CanvasAction::MenuUp,
+            vec![
+                KeyCombo::simple(KeyCode::Up),
+                KeyCombo::simple(KeyCode::Char('k')),
+            ],
+        );
+        canvas.insert(
+            CanvasAction::MenuDown,
+            vec![
+                KeyCombo::simple(KeyCode::Down),
+                KeyCombo::simple(KeyCode::Char('j')),
+            ],
+        );
+        canvas.insert(
+            CanvasAction::MenuSelect,
+            vec![KeyCombo::simple(KeyCode::Enter)],
+        );
+        canvas.insert(
+            CanvasAction::CloseEditor,
+            vec![KeyCombo::simple(KeyCode::Esc)],
+        );
+        canvas.insert(
+            CanvasAction::CloseEditorAlt,
+            vec![KeyCombo::ctrl(KeyCode::Enter)],
+        );
+        canvas.insert(
+            CanvasAction::ConfirmResize,
+            vec![KeyCombo::simple(KeyCode::Enter)],
+        );
+        canvas.insert(
+            CanvasAction::CancelResize,
+            vec![KeyCombo::simple(KeyCode::Esc)],
+        );
+        canvas.insert(
+            CanvasAction::ExtUnfocus,
+            vec![
+                KeyCombo::simple(KeyCode::Esc),
+                KeyCombo::simple(KeyCode::Tab),
+            ],
+        );
+        canvas.insert(
+            CanvasAction::ExtToggle,
+            vec![
+                KeyCombo::simple(KeyCode::Enter),
+                KeyCombo::simple(KeyCode::Char(' ')),
+            ],
+        );
+        canvas.insert(
+            CanvasAction::EditorUnfocus,
+            vec![KeyCombo::simple(KeyCode::Esc)],
+        );
+        canvas.insert(
+            CanvasAction::EditorFocusExt,
+            vec![KeyCombo::simple(KeyCode::Tab)],
+        );
+        canvas.insert(
+            CanvasAction::EditorSyncRaw,
+            vec![KeyCombo::ctrl(KeyCode::Char('s'))],
+        );
+
+        let mut backup = HashMap::new();
+        backup.insert(BackupAction::Back, vec![KeyCombo::simple(KeyCode::Esc)]);
+        backup.insert(
+            BackupAction::MoveDown,
+            vec![
+                KeyCombo::simple(KeyCode::Char('j')),
+                KeyCombo::simple(KeyCode::Down),
+            ],
+        );
+        backup.insert(
+            BackupAction::MoveUp,
+            vec![
+                KeyCombo::simple(KeyCode::Char('k')),
+                KeyCombo::simple(KeyCode::Up),
+            ],
+        );
+        backup.insert(
+            BackupAction::ScrollDiffDown,
+            vec![KeyCombo::simple(KeyCode::PageDown)],
+        );
+        backup.insert(
+            BackupAction::ScrollDiffUp,
+            vec![KeyCombo::simple(KeyCode::PageUp)],
+        );
+        backup.insert(
+            BackupAction::Refresh,
+            vec![KeyCombo::simple(KeyCode::Char('r'))],
+        );
+        backup.insert(
+            BackupAction::EnterCommit,
+            vec![KeyCombo::simple(KeyCode::Char('s'))],
+        );
+        backup.insert(
+            BackupAction::Push,
+            vec![KeyCombo::simple(KeyCode::Char('p'))],
+        );
+        backup.insert(
+            BackupAction::OpenSettings,
+            vec![KeyCombo::simple(KeyCode::Char('/'))],
+        );
+        backup.insert(
+            BackupAction::CycleSection,
+            vec![KeyCombo::simple(KeyCode::Tab)],
+        );
+        backup.insert(
+            BackupAction::CancelCommit,
+            vec![KeyCombo::simple(KeyCode::Esc)],
+        );
+        backup.insert(
+            BackupAction::ConfirmCommit,
+            vec![KeyCombo::simple(KeyCode::Enter)],
+        );
+        backup.insert(
+            BackupAction::CloseSettings,
+            vec![KeyCombo::simple(KeyCode::Esc)],
+        );
+        backup.insert(
+            BackupAction::NextField,
+            vec![
+                KeyCombo::simple(KeyCode::Char('j')),
+                KeyCombo::simple(KeyCode::Down),
+            ],
+        );
+        backup.insert(
+            BackupAction::PrevField,
+            vec![
+                KeyCombo::simple(KeyCode::Char('k')),
+                KeyCombo::simple(KeyCode::Up),
+            ],
+        );
+        backup.insert(
+            BackupAction::ActivateField,
+            vec![KeyCombo::simple(KeyCode::Enter)],
+        );
+        backup.insert(
+            BackupAction::CancelEditField,
+            vec![KeyCombo::simple(KeyCode::Esc)],
+        );
+        backup.insert(
+            BackupAction::ConfirmEditField,
+            vec![KeyCombo::simple(KeyCode::Enter)],
+        );
+
+        let mut content_tree = HashMap::new();
+        content_tree.insert(
+            ContentTreeAction::MoveUp,
+            vec![
+                KeyCombo::simple(KeyCode::Char('k')),
+                KeyCombo::simple(KeyCode::Up),
+            ],
+        );
+        content_tree.insert(
+            ContentTreeAction::MoveDown,
+            vec![
+                KeyCombo::simple(KeyCode::Char('j')),
+                KeyCombo::simple(KeyCode::Down),
+            ],
+        );
+        content_tree.insert(
+            ContentTreeAction::ToggleCollapse,
+            vec![
+                KeyCombo::simple(KeyCode::Tab),
+                KeyCombo::simple(KeyCode::Left),
+                KeyCombo::simple(KeyCode::Right),
+            ],
+        );
+        content_tree.insert(
+            ContentTreeAction::ExpandAll,
+            vec![KeyCombo::simple(KeyCode::Char('e'))],
+        );
+        content_tree.insert(
+            ContentTreeAction::CollapseAll,
+            vec![KeyCombo::simple(KeyCode::Char('c'))],
+        );
+        content_tree.insert(
+            ContentTreeAction::Open,
+            vec![KeyCombo::simple(KeyCode::Enter)],
+        );
+        content_tree.insert(
+            ContentTreeAction::Back,
+            vec![KeyCombo::simple(KeyCode::Esc)],
+        );
+        content_tree.insert(
+            ContentTreeAction::Help,
+            vec![
+                KeyCombo::simple(KeyCode::Char('?')),
+                KeyCombo::simple(KeyCode::F(1)),
+            ],
+        );
 
         Self {
             list,
             edit,
             help,
             graph,
+            draw,
+            canvas,
+            backup,
+            content_tree,
         }
     }
 }
 
 impl Keybinds {
-    /// Load keybinds from file, merging with defaults
     pub fn load(path: &Path) -> Result<Self> {
         let mut keybinds = Self::default();
 
@@ -647,59 +1101,88 @@ impl Keybinds {
         let toml: KeybindsToml =
             toml::from_str(&content).context("failed to parse keybinds file")?;
 
-        // Apply overrides from TOML
-        for (action_str, combos_str) in &toml.list {
-            if let Some(action) = parse_list_action(action_str) {
-                let combos: Vec<KeyCombo> = combos_str
-                    .iter()
-                    .filter_map(|s| KeyCombo::parse(s))
-                    .collect();
-                if !combos.is_empty() {
-                    keybinds.list.insert(action, combos);
-                }
+        for (action, combos_str) in &toml.list {
+            let combos: Vec<KeyCombo> = combos_str
+                .iter()
+                .filter_map(|s| KeyCombo::parse(s))
+                .collect();
+            if !combos.is_empty() {
+                keybinds.list.insert(*action, combos);
             }
         }
 
-        for (action_str, combos_str) in &toml.edit {
-            if let Some(action) = parse_edit_action(action_str) {
-                let combos: Vec<KeyCombo> = combos_str
-                    .iter()
-                    .filter_map(|s| KeyCombo::parse(s))
-                    .collect();
-                if !combos.is_empty() {
-                    keybinds.edit.insert(action, combos);
-                }
+        for (action, combos_str) in &toml.edit {
+            let combos: Vec<KeyCombo> = combos_str
+                .iter()
+                .filter_map(|s| KeyCombo::parse(s))
+                .collect();
+            if !combos.is_empty() {
+                keybinds.edit.insert(*action, combos);
             }
         }
 
-        for (action_str, combos_str) in &toml.help {
-            if let Some(action) = parse_help_action(action_str) {
-                let combos: Vec<KeyCombo> = combos_str
-                    .iter()
-                    .filter_map(|s| KeyCombo::parse(s))
-                    .collect();
-                if !combos.is_empty() {
-                    keybinds.help.insert(action, combos);
-                }
+        for (action, combos_str) in &toml.help {
+            let combos: Vec<KeyCombo> = combos_str
+                .iter()
+                .filter_map(|s| KeyCombo::parse(s))
+                .collect();
+            if !combos.is_empty() {
+                keybinds.help.insert(*action, combos);
             }
         }
 
-        for (action_str, combos_str) in &toml.graph {
-            if let Some(action) = parse_graph_action(action_str) {
-                let combos: Vec<KeyCombo> = combos_str
-                    .iter()
-                    .filter_map(|s| KeyCombo::parse(s))
-                    .collect();
-                if !combos.is_empty() {
-                    keybinds.graph.insert(action, combos);
-                }
+        for (action, combos_str) in &toml.graph {
+            let combos: Vec<KeyCombo> = combos_str
+                .iter()
+                .filter_map(|s| KeyCombo::parse(s))
+                .collect();
+            if !combos.is_empty() {
+                keybinds.graph.insert(*action, combos);
             }
         }
 
+        for (action, combos_str) in &toml.draw {
+            let combos: Vec<KeyCombo> = combos_str
+                .iter()
+                .filter_map(|s| KeyCombo::parse(s))
+                .collect();
+            if !combos.is_empty() {
+                keybinds.draw.insert(*action, combos);
+            }
+        }
+
+        for (action, combos_str) in &toml.canvas {
+            let combos: Vec<KeyCombo> = combos_str
+                .iter()
+                .filter_map(|s| KeyCombo::parse(s))
+                .collect();
+            if !combos.is_empty() {
+                keybinds.canvas.insert(*action, combos);
+            }
+        }
+
+        for (action, combos_str) in &toml.backup {
+            let combos: Vec<KeyCombo> = combos_str
+                .iter()
+                .filter_map(|s| KeyCombo::parse(s))
+                .collect();
+            if !combos.is_empty() {
+                keybinds.backup.insert(*action, combos);
+            }
+        }
+
+        for (action, combos_str) in &toml.content_tree {
+            let combos: Vec<KeyCombo> = combos_str
+                .iter()
+                .filter_map(|s| KeyCombo::parse(s))
+                .collect();
+            if !combos.is_empty() {
+                keybinds.content_tree.insert(*action, combos);
+            }
+        }
         Ok(keybinds)
     }
 
-    /// Save keybinds to file
     pub fn save(&self, path: &Path) -> Result<()> {
         let toml = self.to_toml();
         let content = toml::to_string_pretty(&toml).context("failed to serialize keybinds")?;
@@ -708,59 +1191,67 @@ impl Keybinds {
             fs::create_dir_all(parent).context("failed to create keybinds directory")?;
         }
 
-        let mut file = fs::File::create(path).context("failed to create keybinds file")?;
-        file.write_all(content.as_bytes())
-            .context("failed to write keybinds file")?;
+        crate::fsutil::atomic_write(path, content.as_bytes())?;
 
         Ok(())
     }
 
-    /// Convert to TOML representation
     pub fn to_toml(&self) -> KeybindsToml {
         let mut toml = KeybindsToml::default();
 
         for (action, combos) in &self.list {
-            let key = list_action_to_string(*action);
             let values: Vec<String> = combos.iter().map(KeyCombo::to_display_string).collect();
-            toml.list.insert(key.to_string(), values);
+            toml.list.insert(*action, values);
         }
 
         for (action, combos) in &self.edit {
-            let key = edit_action_to_string(*action);
             let values: Vec<String> = combos.iter().map(KeyCombo::to_display_string).collect();
-            toml.edit.insert(key.to_string(), values);
+            toml.edit.insert(*action, values);
         }
 
         for (action, combos) in &self.help {
-            let key = help_action_to_string(*action);
             let values: Vec<String> = combos.iter().map(KeyCombo::to_display_string).collect();
-            toml.help.insert(key.to_string(), values);
+            toml.help.insert(*action, values);
         }
 
         for (action, combos) in &self.graph {
-            let key = graph_action_to_string(*action);
             let values: Vec<String> = combos.iter().map(KeyCombo::to_display_string).collect();
-            toml.graph.insert(key.to_string(), values);
+            toml.graph.insert(*action, values);
         }
 
+        for (action, combos) in &self.draw {
+            let values: Vec<String> = combos.iter().map(KeyCombo::to_display_string).collect();
+            toml.draw.insert(*action, values);
+        }
+
+        for (action, combos) in &self.canvas {
+            let values: Vec<String> = combos.iter().map(KeyCombo::to_display_string).collect();
+            toml.canvas.insert(*action, values);
+        }
+
+        for (action, combos) in &self.backup {
+            let values: Vec<String> = combos.iter().map(KeyCombo::to_display_string).collect();
+            toml.backup.insert(*action, values);
+        }
+
+        for (action, combos) in &self.content_tree {
+            let values: Vec<String> = combos.iter().map(KeyCombo::to_display_string).collect();
+            toml.content_tree.insert(*action, values);
+        }
         toml
     }
-
-    /// Check if a key event matches a list action
     pub fn matches_list(&self, action: ListAction, event: &KeyEvent) -> bool {
         self.list
             .get(&action)
             .is_some_and(|combos| combos.iter().any(|c| c.matches(event)))
     }
 
-    /// Check if a key event matches an edit action
     pub fn matches_edit(&self, action: EditAction, event: &KeyEvent) -> bool {
         self.edit
             .get(&action)
             .is_some_and(|combos| combos.iter().any(|c| c.matches(event)))
     }
 
-    /// Check if a key event matches a help action
     pub fn matches_help(&self, action: HelpAction, event: &KeyEvent) -> bool {
         self.help
             .get(&action)
@@ -773,7 +1264,29 @@ impl Keybinds {
             .is_some_and(|combos| combos.iter().any(|c| c.matches(event)))
     }
 
-    /// Get display string for a list action's keybinds
+    pub fn matches_draw(&self, action: DrawAction, event: &KeyEvent) -> bool {
+        self.draw
+            .get(&action)
+            .is_some_and(|combos| combos.iter().any(|c| c.matches(event)))
+    }
+
+    pub fn matches_canvas(&self, action: CanvasAction, event: &KeyEvent) -> bool {
+        self.canvas
+            .get(&action)
+            .is_some_and(|combos| combos.iter().any(|c| c.matches(event)))
+    }
+
+    pub fn matches_backup(&self, action: BackupAction, event: &KeyEvent) -> bool {
+        self.backup
+            .get(&action)
+            .is_some_and(|combos| combos.iter().any(|c| c.matches(event)))
+    }
+
+    pub fn matches_content_tree(&self, action: ContentTreeAction, event: &KeyEvent) -> bool {
+        self.content_tree
+            .get(&action)
+            .is_some_and(|combos| combos.iter().any(|c| c.matches(event)))
+    }
     pub fn list_keys_display(&self, action: ListAction) -> String {
         self.list
             .get(&action)
@@ -787,7 +1300,6 @@ impl Keybinds {
             .unwrap_or_default()
     }
 
-    /// Get display string for an edit action's keybinds
     pub fn edit_keys_display(&self, action: EditAction) -> String {
         self.edit
             .get(&action)
@@ -801,7 +1313,6 @@ impl Keybinds {
             .unwrap_or_default()
     }
 
-    /// Get display string for a help action's keybinds
     pub fn help_keys_display(&self, action: HelpAction) -> String {
         self.help
             .get(&action)
@@ -827,181 +1338,62 @@ impl Keybinds {
             })
             .unwrap_or_default()
     }
-}
 
-fn parse_list_action(s: &str) -> Option<ListAction> {
-    match s {
-        "move_up" => Some(ListAction::MoveUp),
-        "move_down" => Some(ListAction::MoveDown),
-        "open" => Some(ListAction::Open),
-        "delete" => Some(ListAction::Delete),
-        "quit" => Some(ListAction::Quit),
-        "help" => Some(ListAction::Help),
-        "open_location" => Some(ListAction::OpenLocation),
-        "cycle_focus" => Some(ListAction::CycleFocus),
-        "confirm" => Some(ListAction::Confirm),
-        "cancel" => Some(ListAction::Cancel),
-        "toggle_button" => Some(ListAction::ToggleButton),
-        "new_from_template" => Some(ListAction::NewFromTemplate),
-        "create_folder" => Some(ListAction::CreateFolder),
-        "create_note" => Some(ListAction::CreateNote),
-        "rename_folder" => Some(ListAction::RenameFolder),
-        "move_note" => Some(ListAction::MoveNote),
-        "manage_tags" => Some(ListAction::ManageTags),
-        "filter_tags" => Some(ListAction::FilterTags),
-        "collapse_folder" => Some(ListAction::CollapseFolder),
-        "expand_folder" => Some(ListAction::ExpandFolder),
-        "open_graph" => Some(ListAction::OpenGraph),
-        _ => None,
+    pub fn draw_keys_display(&self, action: DrawAction) -> String {
+        self.draw
+            .get(&action)
+            .map(|combos| {
+                combos
+                    .iter()
+                    .map(KeyCombo::to_display_string)
+                    .collect::<Vec<_>>()
+                    .join("/")
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn canvas_keys_display(&self, action: CanvasAction) -> String {
+        self.canvas
+            .get(&action)
+            .map(|combos| {
+                combos
+                    .iter()
+                    .map(KeyCombo::to_display_string)
+                    .collect::<Vec<_>>()
+                    .join("/")
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn backup_keys_display(&self, action: BackupAction) -> String {
+        self.backup
+            .get(&action)
+            .map(|combos| {
+                combos
+                    .iter()
+                    .map(KeyCombo::to_display_string)
+                    .collect::<Vec<_>>()
+                    .join("/")
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn content_tree_keys_display(&self, action: ContentTreeAction) -> String {
+        self.content_tree
+            .get(&action)
+            .map(|combos| {
+                combos
+                    .iter()
+                    .map(KeyCombo::to_display_string)
+                    .collect::<Vec<_>>()
+                    .join("/")
+            })
+            .unwrap_or_default()
     }
 }
 
-fn parse_edit_action(s: &str) -> Option<EditAction> {
-    match s {
-        "quit" => Some(EditAction::Quit),
-        "back" => Some(EditAction::Back),
-        "cycle_focus" => Some(EditAction::CycleFocus),
-        "toggle_button" => Some(EditAction::ToggleButton),
-        "select_all" => Some(EditAction::SelectAll),
-        "copy" => Some(EditAction::Copy),
-        "cut" => Some(EditAction::Cut),
-        "paste" => Some(EditAction::Paste),
-        "undo" => Some(EditAction::Undo),
-        "redo" => Some(EditAction::Redo),
-        "delete_word" => Some(EditAction::DeleteWord),
-        "delete_next_word" => Some(EditAction::DeleteNextWord),
-        "move_to_top" => Some(EditAction::MoveToTop),
-        "move_to_bottom" => Some(EditAction::MoveToBottom),
-        "toggle_markdown_preview" => Some(EditAction::ToggleMarkdownPreview),
-        _ => None,
-    }
-}
-
-fn parse_help_action(s: &str) -> Option<HelpAction> {
-    match s {
-        "close" => Some(HelpAction::Close),
-        "scroll_up" => Some(HelpAction::ScrollUp),
-        "scroll_down" => Some(HelpAction::ScrollDown),
-        _ => None,
-    }
-}
-
-fn parse_graph_action(s: &str) -> Option<GraphAction> {
-    match s {
-        "quit" => Some(GraphAction::Quit),
-        "pan_up" => Some(GraphAction::PanUp),
-        "pan_down" => Some(GraphAction::PanDown),
-        "pan_left" => Some(GraphAction::PanLeft),
-        "pan_right" => Some(GraphAction::PanRight),
-        "zoom_in" => Some(GraphAction::ZoomIn),
-        "zoom_out" => Some(GraphAction::ZoomOut),
-        "open_note" => Some(GraphAction::OpenNote),
-        "auto_fit" => Some(GraphAction::AutoFit),
-        "help" => Some(GraphAction::Help),
-        "toggle_search" => Some(GraphAction::ToggleSearch),
-        "toggle_minimap" => Some(GraphAction::ToggleMinimap),
-        "toggle_legend" => Some(GraphAction::ToggleLegend),
-        "toggle_grid" => Some(GraphAction::ToggleGrid),
-        "toggle_status" => Some(GraphAction::ToggleStatus),
-        "refresh" => Some(GraphAction::Refresh),
-        "reload_config" => Some(GraphAction::ReloadConfig),
-        _ => None,
-    }
-}
-
-fn list_action_to_string(action: ListAction) -> &'static str {
-    match action {
-        ListAction::MoveUp => "move_up",
-        ListAction::MoveDown => "move_down",
-        ListAction::Open => "open",
-        ListAction::Delete => "delete",
-        ListAction::Quit => "quit",
-        ListAction::Help => "help",
-        ListAction::OpenLocation => "open_location",
-        ListAction::CycleFocus => "cycle_focus",
-        ListAction::Confirm => "confirm",
-        ListAction::Cancel => "cancel",
-        ListAction::ToggleButton => "toggle_button",
-        ListAction::NewFromTemplate => "new_from_template",
-        ListAction::CreateFolder => "create_folder",
-        ListAction::CreateNote => "create_note",
-        ListAction::RenameFolder => "rename_folder",
-        ListAction::MoveNote => "move_note",
-        ListAction::ManageTags => "manage_tags",
-        ListAction::FilterTags => "filter_tags",
-        ListAction::CollapseFolder => "collapse_folder",
-        ListAction::ExpandFolder => "expand_folder",
-        ListAction::OpenCommandPalette => "open_command_palette",
-        // QoL features
-        ListAction::Rename => "rename",
-        ListAction::Duplicate => "duplicate",
-        ListAction::TogglePin => "toggle_pin",
-        ListAction::CycleSort => "cycle_sort",
-        ListAction::Search => "search",
-        ListAction::JumpToTop => "jump_to_top",
-        ListAction::JumpToBottom => "jump_to_bottom",
-        ListAction::PageUp => "page_up",
-        ListAction::PageDown => "page_down",
-        ListAction::OpenTrash => "open_trash",
-        ListAction::TogglePreview => "toggle_preview",
-        ListAction::OpenGraph => "open_graph",
-    }
-}
-
-fn edit_action_to_string(action: EditAction) -> &'static str {
-    match action {
-        EditAction::Quit => "quit",
-        EditAction::Back => "back",
-        EditAction::CycleFocus => "cycle_focus",
-        EditAction::ToggleButton => "toggle_button",
-        EditAction::SelectAll => "select_all",
-        EditAction::Copy => "copy",
-        EditAction::Cut => "cut",
-        EditAction::Paste => "paste",
-        EditAction::Undo => "undo",
-        EditAction::Redo => "redo",
-        EditAction::DeleteWord => "delete_word",
-        EditAction::DeleteNextWord => "delete_next_word",
-        EditAction::MoveToTop => "move_to_top",
-        EditAction::MoveToBottom => "move_to_bottom",
-        EditAction::ToggleMarkdownPreview => "toggle_markdown_preview",
-    }
-}
-
-fn help_action_to_string(action: HelpAction) -> &'static str {
-    match action {
-        HelpAction::Close => "close",
-        HelpAction::ScrollUp => "scroll_up",
-        HelpAction::ScrollDown => "scroll_down",
-    }
-}
-
-fn graph_action_to_string(action: GraphAction) -> &'static str {
-    match action {
-        GraphAction::Quit => "quit",
-        GraphAction::PanUp => "pan_up",
-        GraphAction::PanDown => "pan_down",
-        GraphAction::PanLeft => "pan_left",
-        GraphAction::PanRight => "pan_right",
-        GraphAction::ZoomIn => "zoom_in",
-        GraphAction::ZoomOut => "zoom_out",
-        GraphAction::OpenNote => "open_note",
-        GraphAction::AutoFit => "auto_fit",
-        GraphAction::Help => "help",
-        GraphAction::ToggleSearch => "toggle_search",
-        GraphAction::ToggleMinimap => "toggle_minimap",
-        GraphAction::ToggleLegend => "toggle_legend",
-        GraphAction::ToggleGrid => "toggle_grid",
-        GraphAction::ToggleStatus => "toggle_status",
-        GraphAction::Refresh => "refresh",
-        GraphAction::ReloadConfig => "reload_config",
-    }
-}
-
-#[cfg(test)]
 mod tests {
     use super::*;
-
     #[test]
     fn test_parse_key_combo_simple() {
         let combo = KeyCombo::parse("q").unwrap();
@@ -1036,7 +1428,6 @@ mod tests {
         let combo = KeyCombo::ctrl(KeyCode::Char('q'));
         let event = KeyEvent::new(KeyCode::Char('q'), KeyModifiers::CONTROL);
         assert!(combo.matches(&event));
-
         let wrong_event = KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE);
         assert!(!combo.matches(&wrong_event));
     }
@@ -1047,6 +1438,23 @@ mod tests {
         assert!(!keybinds.list.is_empty());
         assert!(!keybinds.edit.is_empty());
         assert!(!keybinds.help.is_empty());
+        assert!(!keybinds.draw.is_empty());
+        assert!(!keybinds.canvas.is_empty());
+        assert!(!keybinds.backup.is_empty());
+        assert!(!keybinds.content_tree.is_empty());
+
+        let toml = keybinds.to_toml();
+        assert!(!toml.draw.is_empty());
+        assert!(!toml.canvas.is_empty());
+        assert!(!toml.content_tree.is_empty());
+        let temp_dir = tempfile::tempdir().unwrap();
+        let path = temp_dir.path().join("keybinds.toml");
+        keybinds.save(&path).unwrap();
+        let loaded_keybinds = Keybinds::load(&path).unwrap();
+        assert_eq!(loaded_keybinds.draw, keybinds.draw);
+        assert_eq!(loaded_keybinds.canvas, keybinds.canvas);
+        assert_eq!(loaded_keybinds.backup, keybinds.backup);
+        assert_eq!(loaded_keybinds.content_tree, keybinds.content_tree);
     }
 
     #[test]
@@ -1054,5 +1462,13 @@ mod tests {
         let keybinds = Keybinds::default();
         let event = KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE);
         assert!(keybinds.matches_list(ListAction::Quit, &event));
+    }
+
+    #[test]
+    fn test_new_action_displays() {
+        let keybinds = Keybinds::default();
+        assert_eq!(keybinds.draw_keys_display(DrawAction::SelectDrawTool), "d");
+        assert_eq!(keybinds.canvas_keys_display(CanvasAction::Quit), "Esc");
+        assert_eq!(keybinds.canvas_keys_display(CanvasAction::Save), "Ctrl+s");
     }
 }

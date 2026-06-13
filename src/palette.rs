@@ -1,7 +1,7 @@
 use ratatui::style::Style;
 use ratatui::widgets::ListState;
 use ratatui::widgets::{Block, Borders};
-use tui_textarea::TextArea;
+use ratatui_textarea::TextArea;
 
 pub struct PaletteItem {
     pub id: String,
@@ -18,14 +18,16 @@ pub struct CommandPalette {
 }
 
 impl CommandPalette {
-    pub fn new(context_note_id: Option<String>) -> Self {
+    pub fn new(context_note_id: Option<String>, theme: &crate::app_theme::AppThemeColors) -> Self {
         let mut input = TextArea::default();
         input.set_cursor_line_style(Style::default());
         input.set_placeholder_text("Search commands...");
+        input.set_style(theme.bg_style());
         input.set_block(
             Block::default()
+                .style(theme.bg_style())
                 .borders(Borders::ALL)
-                .title(" Command Palette "),
+                .border_style(Style::default().fg(theme.muted)),
         );
 
         let mut p = Self {
@@ -112,8 +114,6 @@ impl CommandPalette {
                 }
             }
             KeyCode::Enter => {
-                // Return true, but we need to signal that we picked an item
-                // This is a quick way to handle it: return true and the caller checks state
                 return true;
             }
             _ => {

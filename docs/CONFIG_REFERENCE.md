@@ -1,12 +1,12 @@
 # Configuration Reference
 
-This document lists all available configuration options for `clin`.
+Full reference of all configuration options for clin-rs.
 
 ---
 
-## config.toml
+## General (`~/.config/clin/config.toml`)
 
-**Location:** `~/.config/clin/config.toml`
+### General Settings
 
 | Option | Type | Default | Description |
 |---|---|---|---|
@@ -14,15 +14,206 @@ This document lists all available configuration options for `clin`.
 | `previous_storage_path` | `PathBuf` | — | Previous storage path for migration (cleared after migration) |
 | `external_editor` | `String` | — | External editor command (e.g. `"nvim"`, `"code"`) |
 | `external_editor_enabled` | `bool` | `false` | Enable external editor mode |
-| `preview_enabled` | `bool` | `true` | Show the preview pane by default |
-| `markdown_preview_enabled` | `bool` | `false` | Show the markdown preview panel in editor by default |
-| `graph_label_mode` | `enum` | `selected` | Node label display mode in graph view: `selected`, `neighbors`, `all` |
+| `preview_enabled` | `bool` | `true` | Show the preview pane in notes list by default |
+| `graph_preview_enabled` | `bool` | `false` | Show the preview pane in graph view by default |
+| `editor_preview_enabled` | `bool` | `false` | Show markdown preview panel in editor by default |
+| `markdown_preview_enabled` | `bool` | `false` | *(deprecated — use `editor_preview_enabled`)* |
+| `show_line_numbers` | `bool` | `true` | Show line numbers in the editor |
+| `confirm_on_delete` | `bool` | `true` | Show confirmation dialog before deleting notes |
+| `default_sort_field` | `enum` | `"title"` | Default sort field: `"title"` or `"modified"` |
+| `default_sort_order` | `enum` | `"ascending"` | Default sort order: `"ascending"` or `"descending"` |
+| `default_folder` | `String` | — | Default folder for new notes (optional) |
+| `graph_label_mode` | `enum` | `"selected"` | *(moved to `[visual]`)* Node label display mode: `selected`, `neighbors`, `all` |
+
+### `[theme]`
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `theme` | `enum` | `"default"` | Color theme. See [THEME_SYSTEM.md](THEME_SYSTEM.md) for all 11 options |
+| `background` | `enum` | `"transparent"` | Background mode: `"transparent"`, `"solid"` |
+| `accent` | `String` | — | Hex color override for accent (#ff6600) |
+| `heading` | `String` | — | Hex color override for headings |
+| `success` | `String` | — | Hex color override for success indicators |
+| `destructive` | `String` | — | Hex color override for destructive actions |
+| `muted` | `String` | — | Hex color override for muted/dim text |
+| `text` | `String` | — | Hex color override for body text |
+| `border` | `String` | — | Hex color override for borders |
+| `tag` | `String` | — | Hex color override for tag labels |
+| `folder` | `String` | — | Hex color override for folder labels |
+| `background_color` | `String` | — | Hex color override for solid background |
+
+### `[visual]`
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `theme` | `enum` | `"default"` | Color theme. One of: `default`, `tokyo_night`, `catppuccin_mocha`, `onedark`, `gruvbox`, `dracula`, `nord`, `rose_pine`, `everforest`, `kanagawa`, `solarized` |
+| `background` | `enum` | `"transparent"` | Background mode: `"transparent"`, `"solid"` |
+| `node_color_mode` | `enum` | `"folder"` | How nodes are colored: `"tag"`, `"folder"`, `"link_count"`, `"uniform"` |
+| `edge_color_mode` | `enum` | `"source"` | How edges are colored: `"source"`, `"target"`, `"uniform"` |
+| `label_mode` | `enum` | `"selected"` | Label visibility: `"selected"`, `"neighbors"`, `"all"`, `"none"` |
+| `label_max_length` | `usize` | `20` | Max label character length (1–60) |
+| `node_size` | `f64` | `2.0` | Base node size (1.0–5.0) |
+| `node_size_mode` | `enum` | `"fixed"` | How node size is determined: `"fixed"`, `"link_count"` |
+| `edge_thickness` | `u16` | `1` | Edge line thickness (1–3) |
+| `show_legend` | `bool` | `true` | Show legend |
+| `show_grid` | `bool` | `false` | Show background grid |
+| `show_minimap` | `bool` | `false` | Show minimap |
+| `minimap_position` | `enum` | `"top_right"` | Minimap corner: `"top_right"`, `"top_left"`, `"bottom_right"`, `"bottom_left"` |
+| `minimap_width` | `u16` | `24` | Minimap width in cells |
+| `minimap_height` | `u16` | `12` | Minimap height in cells |
+| `canvas_marker` | `enum` | `"braille"` | Canvas rendering marker: `"braille"`, `"half_block"`, `"dot"` |
+| `minimap_marker` | `enum` | `"half_block"` | Minimap rendering marker: `"braille"`, `"half_block"`, `"dot"` |
+| `node_shape` | `enum` | `"circle"` | Node shape: `"circle"`, `"square"`, `"diamond"` |
+| `label_offset` | `f64` | `4.0` | Distance of labels from nodes |
+| `grid_divisions` | `usize` | `10` | Grid subdivision count |
+
+#### `[visual.colors]`
+
+All optional. Hex color strings like `"#ff6600"`. Override theme defaults.
+
+| Option | Type | Default |
+|---|---|---|
+| `node_color` | `String` | Theme default |
+| `edge_color` | `String` | Theme default |
+| `label_color` | `String` | Theme default |
+| `selection_ring_color` | `String` | Theme default |
+| `border_color` | `String` | Theme default |
+| `title_color` | `String` | Theme default |
+| `grid_color` | `String` | Theme default |
+| `legend_text_color` | `String` | Theme default |
+| `status_bar_color` | `String` | Theme default |
+| `background_color` | `String` | Theme default |
+
+### `[physics]`
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `ideal_distance` | `f64` | `80.0` | Target distance between connected nodes |
+| `damping` | `f32` | `0.95` | Physics damping factor per step |
+| `max_iterations` | `usize` | `800` | Maximum simulation iterations |
+| `gravity` | `f64` | `0.01` | Gravitational pull toward center |
+| `cooling` | `bool` | `true` | Enable energy cooling over time |
+| `prevent_overlapping` | `bool` | `true` | Prevent nodes from overlapping |
+| `timestep` | `f64` | `0.016` | Simulation timestep (~60fps) |
+| `thread_sleep_ms` | `u64` | `16` | Thread sleep between iterations (ms) |
+
+### `[interaction]`
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `double_click_ms` | `u64` | `300` | Double-click timeout in milliseconds |
+| `zoom_factor` | `f64` | `1.15` | Zoom multiplier per step (must be > 0) |
+| `drag_sensitivity` | `f64` | `1.0` | Pan drag sensitivity |
+| `auto_fit_padding` | `f64` | `1.4` | Padding factor for auto-fit view |
+| `drag_scale` | `f64` | `200.0` | Drag-to-pan scale factor |
+
+### `[display]`
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `show_status_bar` | `bool` | `true` | Show status bar |
+| `status_format` | `String` | — | Custom status bar format. Variables: `{files}`, `{links}`, `{selected}`, `{date}`, `{time}`, `{size}`, `{ratio}` |
+| `border_style` | `enum` | `"rounded"` | Border style: `"plain"`, `"rounded"`, `"double"`, `"none"` |
+| `border_title` | `String` | `"graf"` | Border title text. Supports `{cwd}` placeholder |
+
+### `[filter]`
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `exclude_tags` | `Vec<String>` | `[]` | Tags to exclude from graph |
+| `exclude_patterns` | `Vec<String>` | `[]` | Path patterns to exclude (e.g. `"templates/"`) |
+| `min_links` | `usize` | `0` | Minimum links for a node to appear |
+| `max_nodes` | `usize` | `500` | Maximum nodes to display |
+
+### `[legend]`
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `position` | `enum` | `"bottom_right"` | Legend corner: `"top_right"`, `"top_left"`, `"bottom_right"`, `"bottom_left"` |
+| `max_items` | `usize` | `10` | Maximum legend items |
+
+### `[search]`
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `max_results` | `usize` | `20` | Maximum search results |
+| `max_visible` | `usize` | `10` | Maximum visible results at once |
+| `popup_width` | `u16` | `50` | Search popup width in cells |
+| `popup_y` | `u16` | `3` | Search popup Y position from top |
+| `cursor_glyph` | `String` | `"▎"` | Search cursor character |
+
+### `[editor]`
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `command` | `String` | `""` | External editor command for opening notes from graf view |
 
 ---
 
-## keybinds.toml
+## Example config.toml
 
-**Location:** `~/.config/clin/keybinds.toml`
+```toml
+# General
+storage_path = "/path/to/your/vault"
+external_editor = "nvim"
+external_editor_enabled = false
+preview_enabled = true
+editor_preview_enabled = true
+show_line_numbers = true
+confirm_on_delete = true
+default_sort_field = "modified"
+default_sort_order = "descending"
+default_folder = "inbox"
+
+[theme]
+theme = "tokyo_night"
+background = "transparent"
+accent = "#ff6600"
+
+[visual]
+theme = "onedark"
+node_color_mode = "folder"
+label_mode = "selected"
+node_size = 2.0
+show_legend = true
+show_minimap = false
+
+[visual.colors]
+node_color = "#ff6600"
+border_color = "#334455"
+
+[physics]
+ideal_distance = 80.0
+damping = 0.95
+gravity = 0.01
+
+[interaction]
+zoom_factor = 1.15
+drag_sensitivity = 1.0
+
+[display]
+show_status_bar = true
+border_style = "rounded"
+
+[filter]
+min_links = 0
+max_nodes = 500
+
+[legend]
+position = "bottom_right"
+max_items = 10
+
+[search]
+max_results = 20
+popup_width = 50
+
+[editor]
+command = "nano"
+```
+
+---
+
+## Keybinds (`~/.config/clin/keybinds.toml`)
 
 Key combos are strings like `"a"`, `"Enter"`, `"Ctrl+q"`, `"Ctrl+Shift+z"`, `"Alt+x"`, `"Super+c"`. Supported modifiers: `Ctrl`/`Control`, `Shift`, `Alt`, `Super`/`Meta`/`Cmd`.
 
@@ -116,114 +307,20 @@ Key combos are strings like `"a"`, `"Enter"`, `"Ctrl+q"`, `"Ctrl+Shift+z"`, `"Al
 
 ---
 
-## graf.toml
+## Migration Note
 
-**Location:** `~/.config/clin/graf.toml`
+The old `graf.toml` file is **no longer used**. All graf options (`[visual]`, `[physics]`, `[interaction]`, `[display]`, `[filter]`, `[legend]`, `[search]`, `[editor]`) are now part of `config.toml`. The system auto-migrates settings from `graf.toml` on first read for backward compatibility.
 
-All options can also be overridden via environment variables prefixed with `GRAF_` (e.g. `GRAF_VISUAL_THEME=dracula`).
+---
 
-### `[visual]`
+## Environment Variable Overrides
 
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `theme` | enum | `default` | Color theme. One of: `default`, `tokyo_night`, `catppuccin_mocha`, `onedark`, `gruvbox`, `dracula`, `nord`, `rose_pine`, `everforest`, `kanagawa`, `solarized` |
-| `background` | enum | `transparent` | Background mode: `transparent`, `solid` |
-| `node_color_mode` | enum | `folder` | How nodes are colored: `tag`, `folder`, `link_count`, `uniform` |
-| `edge_color_mode` | enum | `source` | How edges are colored: `source`, `target`, `uniform` |
-| `label_mode` | enum | `selected` | Label visibility: `selected`, `neighbors`, `all`, `none` |
-| `label_max_length` | `usize` | `20` | Max label character length (1–60) |
-| `node_size` | `f64` | `2.0` | Base node size (1.0–5.0) |
-| `node_size_mode` | enum | `fixed` | How node size is determined: `fixed`, `link_count` |
-| `edge_thickness` | `u16` | `1` | Edge line thickness (1–3) |
-| `show_legend` | `bool` | `true` | Show legend |
-| `show_grid` | `bool` | `false` | Show background grid |
-| `show_minimap` | `bool` | `false` | Show minimap |
-| `minimap_position` | enum | `top_right` | Minimap corner: `top_right`, `top_left`, `bottom_right`, `bottom_left` |
-| `minimap_width` | `u16` | `24` | Minimap width in cells |
-| `minimap_height` | `u16` | `12` | Minimap height in cells |
-| `canvas_marker` | enum | `braille` | Canvas rendering marker: `braille`, `half_block`, `dot` |
-| `minimap_marker` | enum | `half_block` | Minimap rendering marker: `braille`, `half_block`, `dot` |
-| `node_shape` | enum | `circle` | Node shape: `circle`, `square`, `diamond` |
-| `label_offset` | `f64` | `4.0` | Distance of labels from nodes |
-| `grid_divisions` | `usize` | `10` | Grid subdivision count |
+All graf options can also be overridden via environment variables prefixed with `GRAF_` (e.g. `GRAF_VISUAL_THEME=dracula`, `GRAF_PHYSICS_GRAVITY=0.05`).
 
-### `[visual.colors]`
+---
 
-All optional. Hex color strings like `"#ff6600"`. Override theme defaults.
+## See Also
 
-| Option | Type | Default |
-|---|---|---|
-| `node_color` | `String` | Theme default |
-| `edge_color` | `String` | Theme default |
-| `label_color` | `String` | Theme default |
-| `selection_ring_color` | `String` | Theme default |
-| `border_color` | `String` | Theme default |
-| `title_color` | `String` | Theme default |
-| `grid_color` | `String` | Theme default |
-| `legend_text_color` | `String` | Theme default |
-| `status_bar_color` | `String` | Theme default |
-| `background_color` | `String` | Theme default |
-
-### `[physics]`
-
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `ideal_distance` | `f64` | `80.0` | Target distance between connected nodes |
-| `damping` | `f32` | `0.95` | Physics damping factor per step |
-| `max_iterations` | `usize` | `800` | Maximum simulation iterations |
-| `gravity` | `f64` | `0.01` | Gravitational pull toward center |
-| `cooling` | `bool` | `true` | Enable energy cooling over time |
-| `prevent_overlapping` | `bool` | `true` | Prevent nodes from overlapping |
-| `timestep` | `f64` | `0.016` | Simulation timestep (~60fps) |
-| `thread_sleep_ms` | `u64` | `16` | Thread sleep between iterations (ms) |
-
-### `[interaction]`
-
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `double_click_ms` | `u64` | `300` | Double-click timeout in milliseconds |
-| `zoom_factor` | `f64` | `1.15` | Zoom multiplier per step (must be > 0) |
-| `drag_sensitivity` | `f64` | `1.0` | Pan drag sensitivity |
-| `auto_fit_padding` | `f64` | `1.4` | Padding factor for auto-fit view |
-| `drag_scale` | `f64` | `200.0` | Drag-to-pan scale factor |
-
-### `[display]`
-
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `show_status_bar` | `bool` | `true` | Show status bar |
-| `status_format` | `String` | — | Custom status bar format. Variables: `{files}`, `{links}`, `{selected}`, `{date}`, `{time}`, `{size}`, `{ratio}` |
-| `border_style` | enum | `rounded` | Border style: `plain`, `rounded`, `double`, `none` |
-| `border_title` | `String` | `"graf"` | Border title text. Supports `{cwd}` placeholder |
-
-### `[filter]`
-
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `exclude_tags` | `Vec<String>` | `[]` | Tags to exclude from graph |
-| `exclude_patterns` | `Vec<String>` | `[]` | Path patterns to exclude (e.g. `"templates/"`) |
-| `min_links` | `usize` | `0` | Minimum links for a node to appear |
-| `max_nodes` | `usize` | `500` | Maximum nodes to display |
-
-### `[legend]`
-
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `position` | enum | `bottom_right` | Legend corner: `top_right`, `top_left`, `bottom_right`, `bottom_left` |
-| `max_items` | `usize` | `10` | Maximum legend items |
-
-### `[search]`
-
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `max_results` | `usize` | `20` | Maximum search results |
-| `max_visible` | `usize` | `10` | Maximum visible results at once |
-| `popup_width` | `u16` | `50` | Search popup width in cells |
-| `popup_y` | `u16` | `3` | Search popup Y position from top |
-| `cursor_glyph` | `String` | `"▎"` | Search cursor character |
-
-### `[editor]`
-
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `command` | `String` | `""` | External editor command for opening notes from graf view |
+- [README.md](../README.md) — Quickstart, installation, CLI commands
+- [THEME_SYSTEM.md](THEME_SYSTEM.md) — Theme system details and color reference
+- [GRAPH_VIEW.md](GRAPH_VIEW.md) — Graph view configuration context

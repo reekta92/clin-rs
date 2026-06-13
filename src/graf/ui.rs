@@ -1,35 +1,82 @@
-use ratatui::layout::Rect;
+use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::style::Color;
+
 use ratatui::Frame;
 
+use crate::config::ClinConfig;
 use crate::graf::app::GrafAppState;
-use crate::graf::config::GrafConfig;
-use crate::keybinds::{GraphAction, Keybinds};
+use crate::keybinds::Keybinds;
 
-pub fn draw_ui(frame: &mut Frame, state: &GrafAppState, config: &GrafConfig, keybinds: &Keybinds) {
-    let area = frame.area();
-
-    if state.show_help {
-        draw_help(frame, area, config, keybinds);
-        return;
-    }
+pub fn draw_ui(frame: &mut Frame, state: &GrafAppState, config: &ClinConfig, _keybinds: &Keybinds) {
+    let full_area = frame.area();
+    let outer = ratatui::layout::Layout::default()
+        .direction(ratatui::layout::Direction::Vertical)
+        .constraints([
+            ratatui::layout::Constraint::Length(1),
+            ratatui::layout::Constraint::Min(0),
+        ])
+        .split(full_area);
+    crate::ui::draw_view_title_bar(frame, outer[0], "Graph", &state.app_theme);
+    let area = outer[1];
 
     if !state.config_errors.is_empty() {
         draw_config_errors(frame, area, &state.config_errors, config);
         return;
     }
 
-    // Compute theme colors once for all drawing functions
+    let (graph_area, preview_area) = if state.preview_enabled {
+        let (constraints, main_idx, p_idx) = match config.preview_position {
+            crate::config::PreviewPosition::Left => (
+                [
+                    Constraint::Ratio(43, 100),
+                    Constraint::Length(1),
+                    Constraint::Min(0),
+                ],
+                2,
+                0,
+            ),
+            crate::config::PreviewPosition::Right => (
+                [
+                    Constraint::Min(0),
+                    Constraint::Length(1),
+                    Constraint::Ratio(43, 100),
+                ],
+                0,
+                2,
+            ),
+        };
+        let full_cols = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints(constraints)
+            .split(area);
+        (full_cols[main_idx], Some((full_cols[p_idx], full_cols[1])))
+    } else {
+        (area, None)
+    };
+
     let colors = config.theme_colors();
 
     if let Some(graph_state) = &state.graph_state {
         let guard = graph_state.read().unwrap_or_else(|e| e.into_inner());
-        let flags = crate::graph::render::FeatureFlags {
+        let flags = crate::graf::render::FeatureFlags {
             show_legend: state.show_legend,
             show_grid: state.show_grid,
             show_minimap: state.show_minimap,
             show_status_bar: state.show_status_bar,
         };
-        crate::graph::render::draw_graph_view(frame, &guard, config, &flags);
+        crate::graf::render::draw_graph_view(
+            frame,
+            graph_area,
+            &guard,
+            config,
+            &flags,
+            &state.app_theme,
+        );
+    }
+
+    if let Some((p_area, sep_area)) = preview_area {
+        draw_preview(frame, p_area, state, config);
+        draw_dim_vline(frame, sep_area, state.app_theme.muted);
     }
 
     if state.search_active {
@@ -41,8 +88,8 @@ pub fn draw_ui(frame: &mut Frame, state: &GrafAppState, config: &GrafConfig, key
     }
 }
 
-fn draw_config_errors(frame: &mut Frame, area: Rect, errors: &[String], config: &GrafConfig) {
-    let config_path = crate::graf::config::GrafConfig::config_path()
+fn draw_config_errors(frame: &mut Frame, area: Rect, errors: &[String], config: &ClinConfig) {
+    let config_path = crate::config::ClinConfig::config_path()
         .unwrap_or_default()
         .display()
         .to_string();
@@ -108,98 +155,12 @@ fn suggest_fix(err: &str) -> Option<String> {
     None
 }
 
-fn draw_help(frame: &mut Frame, area: Rect, config: &GrafConfig, keybinds: &Keybinds) {
-    let help_text: Vec<String> = vec![
-        "Keyboard".to_string(),
-        format!(
-            "  {:<12}Jump between nodes",
-            keybinds.graph_keys_display(GraphAction::PanUp)
-        ),
-        format!(
-            "  {:<12}Zoom in/out",
-            keybinds.graph_keys_display(GraphAction::ZoomIn)
-        ),
-        format!(
-            "  {:<12}Open selected file",
-            keybinds.graph_keys_display(GraphAction::OpenNote)
-        ),
-        format!(
-            "  {:<12}Auto-fit view",
-            keybinds.graph_keys_display(GraphAction::AutoFit)
-        ),
-        format!(
-            "  {:<12}Search nodes",
-            keybinds.graph_keys_display(GraphAction::ToggleSearch)
-        ),
-        format!(
-            "  {:<12}Toggle minimap",
-            keybinds.graph_keys_display(GraphAction::ToggleMinimap)
-        ),
-        format!(
-            "  {:<12}Toggle legend",
-            keybinds.graph_keys_display(GraphAction::ToggleLegend)
-        ),
-        format!(
-            "  {:<12}Toggle grid",
-            keybinds.graph_keys_display(GraphAction::ToggleGrid)
-        ),
-        format!(
-            "  {:<12}Toggle status bar",
-            keybinds.graph_keys_display(GraphAction::ToggleStatus)
-        ),
-        format!(
-            "  {:<12}Refresh simulation",
-            keybinds.graph_keys_display(GraphAction::Refresh)
-        ),
-        format!(
-            "  {:<12}Reload config",
-            keybinds.graph_keys_display(GraphAction::ReloadConfig)
-        ),
-        format!(
-            "  {:<12}Toggle help",
-            keybinds.graph_keys_display(GraphAction::Help)
-        ),
-        format!(
-            "  {:<12}Quit",
-            keybinds.graph_keys_display(GraphAction::Quit)
-        ),
-        "".to_string(),
-        "Mouse".to_string(),
-        "  Scroll    Zoom in/out".to_string(),
-        "  Drag bg   Pan view".to_string(),
-        "  Drag node Move node".to_string(),
-        "  Click     Select node".to_string(),
-        "  Dbl-click Open file".to_string(),
-    ];
-
-    let text: String = help_text.join("\n");
-    let paragraph = ratatui::widgets::Paragraph::new(text)
-        .block(
-            ratatui::widgets::Block::default()
-                .borders(ratatui::widgets::Borders::ALL)
-                .title("Help")
-                .border_type(config.display.border_style.to_border_type()),
-        )
-        .alignment(ratatui::layout::Alignment::Left);
-
-    let max_width = help_text.iter().map(|l| l.len()).max().unwrap_or(0) + 4;
-    let help_height = help_text.len() as u16 + 2;
-    let help_area = ratatui::layout::Rect {
-        x: (area.width.saturating_sub(max_width as u16)) / 2,
-        y: (area.height.saturating_sub(help_height)) / 2,
-        width: max_width.min(area.width as usize) as u16,
-        height: help_height.min(area.height),
-    };
-
-    frame.render_widget(paragraph, help_area);
-}
-
 fn draw_search(
     frame: &mut Frame,
     area: Rect,
     state: &GrafAppState,
-    config: &GrafConfig,
-    colors: &crate::graf::config::ThemeColors,
+    config: &ClinConfig,
+    colors: &crate::config::ThemeColors,
 ) {
     let max_visible = config.search.max_visible;
     let result_count = state.search_results.len();
@@ -266,8 +227,14 @@ fn draw_search(
             let is_selected = i == state.search_selected;
             let style = if is_selected {
                 ratatui::style::Style::default()
-                    .fg(ratatui::style::Color::Black)
-                    .bg(colors.label_color)
+                    .fg(colors
+                        .background_color
+                        .unwrap_or(ratatui::style::Color::Black))
+                    .bg(colors
+                        .node_colors
+                        .first()
+                        .copied()
+                        .unwrap_or(colors.label_color))
             } else {
                 ratatui::style::Style::default().fg(colors.label_color)
             };
@@ -295,7 +262,7 @@ fn draw_reload_notification(
     frame: &mut Frame,
     area: Rect,
     msg: &str,
-    colors: &crate::graf::config::ThemeColors,
+    colors: &crate::config::ThemeColors,
 ) {
     let width = (msg.len() as u16 + 4).min(area.width);
     let height = 3u16;
@@ -305,20 +272,47 @@ fn draw_reload_notification(
     let popup_area = ratatui::layout::Rect::new(x, y, width, height);
 
     let is_error = msg.starts_with("Config error");
-    let fg = if is_error {
+    let border_color = if is_error {
         ratatui::style::Color::Red
     } else {
-        colors.label_color
+        colors.border_color
     };
 
     let paragraph = ratatui::widgets::Paragraph::new(msg)
-        .style(ratatui::style::Style::default().fg(fg))
+        .style(ratatui::style::Style::default().fg(colors.label_color))
         .alignment(ratatui::layout::Alignment::Center)
         .block(
             ratatui::widgets::Block::default()
                 .borders(ratatui::widgets::Borders::ALL)
-                .border_style(ratatui::style::Style::default().fg(colors.border_color)),
+                .border_style(ratatui::style::Style::default().fg(border_color)),
         );
 
     frame.render_widget(paragraph, popup_area);
+}
+
+fn draw_preview(frame: &mut Frame, preview_rect: Rect, state: &GrafAppState, config: &ClinConfig) {
+    let hide_encrypted = config.preview_encryption
+        && state
+            .preview_note_id
+            .as_ref()
+            .is_some_and(|id| id.ends_with(".clin"));
+
+    crate::preview::draw_preview_pane(
+        frame,
+        preview_rect,
+        &state.app_theme,
+        state.preview_content.as_ref(),
+        hide_encrypted,
+        0,
+    );
+}
+
+fn draw_dim_vline(frame: &mut Frame, area: Rect, color: Color) {
+    let buf = frame.buffer_mut();
+    for row in area.top()..area.bottom() {
+        if let Some(cell) = buf.cell_mut((area.x, row)) {
+            cell.set_symbol("│");
+            cell.set_fg(color);
+        }
+    }
 }

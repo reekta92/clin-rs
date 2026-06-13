@@ -1,22 +1,131 @@
-use crate::app::{App, ConfirmPopup, EditFocus, ListFocus, TemplatePopup, ViewMode};
+use crate::app::{
+    App, ConfirmPopup, EditFocus, HelpTab, ListFocus, TemplatePopup, ThemePopup, ViewMode,
+};
+use crate::app_theme::AppThemeColors;
 use crate::constants::*;
 use crate::events::get_title_text;
 use crate::keybinds::*;
+
 use anyhow::{Context, Result};
 use ratatui::{prelude::*, widgets::*};
+use ratatui_textarea::*;
 use std::borrow::Cow;
 use std::path::Path;
 use std::process::Command;
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tui_textarea::*;
+
+fn split_lock_spans(text: &str, theme: &AppThemeColors) -> Vec<Span<'static>> {
+    let mut result = Vec::new();
+    let mut last = 0;
+    for (i, _) in text.match_indices('\u{f023}') {
+        if i > last {
+            result.push(Span::raw(text[last..i].to_string()));
+        }
+        result.push(Span::styled(
+            "\u{f023}".to_string(),
+            Style::default()
+                .fg(theme.destructive)
+                .add_modifier(Modifier::BOLD),
+        ));
+        last = i + '\u{f023}'.len_utf8();
+    }
+    if last < text.len() {
+        result.push(Span::raw(text[last..].to_string()));
+    }
+    result
+}
+
+const GRID_TILE_W: u16 = 10;       // outer width incl. border
+const GRID_TILE_H: u16 = 5;        // outer height incl. border
+const GRID_GAP: u16 = 1;           // space between tiles (h and v)
+const GRID_LEFT_MARGIN: u16 = 2;   // left inset inside list_area
+const GRID_TOP_MARGIN: u16 = 3;    // top inset inside list_area
+
+
+fn styled_result_line(s: &str, theme: &AppThemeColors) -> Line<'static> {
+    if let Some(tag_start) = s.find(" [") {
+        let after_tag = &s[tag_start..];
+        if let Some(close_bracket) = after_tag.find(']') {
+            let after_bracket = &after_tag[close_bracket + 1..];
+            let is_end_tag = after_bracket.is_empty() || after_bracket.starts_with(" (");
+            if is_end_tag {
+                let label_part = &s[..tag_start];
+                let tag_end = if let Some(count_start) = after_tag.find(" (") {
+                    count_start
+                } else {
+                    after_tag.len()
+                };
+                let tag_content = &after_tag[..tag_end];
+                let count_part = if tag_end < after_tag.len() {
+                    Some(&after_tag[tag_end..])
+                } else {
+                    None
+                };
+
+                let mut spans = split_lock_spans(label_part, theme);
+                spans.push(Span::styled(
+                    tag_content.to_string(),
+                    Style::default()
+                        .fg(theme.accent)
+                        .add_modifier(Modifier::BOLD),
+                ));
+
+                if let Some(count) = count_part {
+                    spans.push(Span::styled(
+                        count.to_string(),
+                        Style::default()
+                            .fg(theme.heading)
+                            .add_modifier(Modifier::BOLD),
+                    ));
+                }
+                return Line::from(spans);
+            }
+        }
+    }
+
+    if let Some(count_start) = s.find(" (") {
+        let count_part = &s[count_start + 1..];
+        if count_part.starts_with('(')
+            && count_part.len() > 2
+            && count_part.ends_with(')')
+            && count_part[1..count_part.len() - 1]
+                .chars()
+                .all(|c| c.is_ascii_digit())
+        {
+            let label_part = &s[..count_start + 1];
+            let mut spans = split_lock_spans(label_part, theme);
+            spans.push(Span::styled(
+                count_part.to_string(),
+                Style::default()
+                    .fg(theme.heading)
+                    .add_modifier(Modifier::BOLD),
+            ));
+            return Line::from(spans);
+        }
+    }
+    Line::from(split_lock_spans(s, theme))
+}
 
 pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
+    if let Some(_bg) = app.app_theme.bg {
+        let block = Block::default().style(app.app_theme.bg_style());
+        frame.render_widget(block, frame.area());
+    }
+
     match app.mode {
         ViewMode::List => draw_list_view(frame, app),
         ViewMode::Edit => draw_edit_view(frame, app, focus),
         ViewMode::Help => draw_help_view(frame, app),
         ViewMode::Graph => {}
+        ViewMode::Draw => {}
+        ViewMode::Canvas => {}
+        ViewMode::Backup => {}
+        ViewMode::ContentTree => {}
+    }
+
+    if let Some(popup) = &app.popups.theme {
+        draw_theme_popup(frame, popup, frame.area(), &app.app_theme);
     }
 }
 
@@ -24,23 +133,90 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(8), Constraint::Length(3)])
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Min(8),
+            Constraint::Length(1),
+        ])
         .split(area);
+
+    let tab_names = [
+        "Notes",
+        "Editor",
+        "Graph",
+        "Draw",
+        "Canvas",
+        "Backup",
+        "Templates",
+        "Content Tree",
+        "About",
+    ];
+    let mut tab_spans: Vec<Span<'static>> = Vec::new();
+    for (i, name) in tab_names.iter().enumerate() {
+        let tab = HelpTab::from_index(i);
+        if tab == app.help_tab {
+            tab_spans.push(Span::styled(
+                format!(" {} ", name),
+                Style::default()
+                    .fg(app.app_theme.accent)
+                    .add_modifier(Modifier::BOLD),
+            ));
+        } else {
+            tab_spans.push(Span::styled(
+                format!(" {} ", name),
+                Style::default().fg(app.app_theme.muted),
+            ));
+        }
+        if i < tab_names.len() - 1 {
+            tab_spans.push(Span::styled(
+                " · ",
+                Style::default().fg(app.app_theme.muted),
+            ));
+        }
+    }
+    draw_view_title_bar_with_tabs(frame, chunks[0], "Help", tab_spans, &app.app_theme);
 
     let help_text = app.get_help_text().clone();
     let help = Paragraph::new(help_text)
-        .block(Block::default().borders(Borders::ALL).title("Help"))
+        .block(
+            Block::default()
+                .style(app.app_theme.bg_style())
+                .borders(Borders::NONE)
+                .padding(Padding::new(2, 2, 1, 1)),
+        )
         .wrap(Wrap { trim: false })
         .scroll((app.help_scroll, 0));
-    frame.render_widget(help, chunks[0]);
+    frame.render_widget(help, chunks[1]);
 
-    let footer = Paragraph::new(HELP_PAGE_HINTS)
-        .block(Block::default().borders(Borders::ALL).title("Navigation"));
-    frame.render_widget(footer, chunks[1]);
+    draw_status_bar(
+        frame,
+        chunks[2],
+        &app.app_theme,
+        None,
+        HELP_PAGE_HINTS,
+        None,
+    );
 }
 
-pub fn help_page_text(keybinds: &Keybinds) -> Text<'static> {
-    // Get keybind display strings
+pub fn help_text_for_tab(
+    tab: crate::app::HelpTab,
+    keybinds: &Keybinds,
+    theme: &crate::app_theme::AppThemeColors,
+) -> Text<'static> {
+    match tab {
+        crate::app::HelpTab::Notes => notes_help_text(keybinds, theme),
+        crate::app::HelpTab::Editor => editor_help_text(keybinds, theme),
+        crate::app::HelpTab::Graph => graph_help_text(keybinds, theme),
+        crate::app::HelpTab::Draw => draw_help_text(keybinds, theme),
+        crate::app::HelpTab::Canvas => canvas_help_text(keybinds, theme),
+        crate::app::HelpTab::Backup => backup_help_text(keybinds, theme),
+        crate::app::HelpTab::Templates => templates_help_text(keybinds, theme),
+        crate::app::HelpTab::ContentTree => content_tree_help_text(keybinds, theme),
+        crate::app::HelpTab::About => about_help_text(keybinds, theme),
+    }
+}
+
+fn notes_help_text(keybinds: &Keybinds, theme: &crate::app_theme::AppThemeColors) -> Text<'static> {
     let list_move = format!(
         "{}/{}",
         keybinds.list_keys_display(ListAction::MoveUp),
@@ -54,6 +230,8 @@ pub fn help_page_text(keybinds: &Keybinds) -> Text<'static> {
     let list_open = keybinds.list_keys_display(ListAction::Open);
     let list_delete = keybinds.list_keys_display(ListAction::Delete);
     let list_location = keybinds.list_keys_display(ListAction::OpenLocation);
+    let list_page_up = keybinds.list_keys_display(ListAction::PageUp);
+    let list_page_down = keybinds.list_keys_display(ListAction::PageDown);
     let list_focus = keybinds.list_keys_display(ListAction::CycleFocus);
     let list_help = keybinds.list_keys_display(ListAction::Help);
     let list_quit = keybinds.list_keys_display(ListAction::Quit);
@@ -62,9 +240,222 @@ pub fn help_page_text(keybinds: &Keybinds) -> Text<'static> {
     let list_rename_folder = keybinds.list_keys_display(ListAction::RenameFolder);
     let list_move_note = keybinds.list_keys_display(ListAction::MoveNote);
     let list_manage_tags = keybinds.list_keys_display(ListAction::ManageTags);
-    let list_filter_tags = keybinds.list_keys_display(ListAction::FilterTags);
+    let list_pin = keybinds.list_keys_display(ListAction::TogglePin);
+    let list_select_mode = keybinds.list_keys_display(ListAction::ToggleSelectMode);
+    let list_select_item = keybinds.list_keys_display(ListAction::ToggleSelectItem);
+    let list_trash = keybinds.list_keys_display(ListAction::OpenTrash);
+    let list_search = keybinds.list_keys_display(ListAction::Search);
+    let mut lines = Vec::new();
+    lines.push(help_heading("Notes View", theme));
+    lines.push(Line::from(""));
+    lines.extend(help_item_dyn("Move selection", Some(&list_move), theme));
+    lines.extend(help_item_dyn(
+        "Expand/Collapse folder",
+        Some(&list_expand_collapse),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Open selected folder, note, or create new",
+        Some(&list_open),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Create new folder",
+        Some(&list_create_folder),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Rename folder",
+        Some(&list_rename_folder),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Move note or folder",
+        Some(&list_move_note),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Manage note tags",
+        Some(&list_manage_tags),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Delete note or folder",
+        Some(&list_delete),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Confirm / cancel delete",
+        Some("y/Enter / n/Esc"),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Open selected note file location",
+        Some(&list_location),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Scroll Up / Down half page",
+        Some(&format!("{}/{}", list_page_up, list_page_down)),
+        theme,
+    ));
+    lines.extend(help_item_dyn("Toggle pin note", Some(&list_pin), theme));
+    lines.extend(help_item_dyn(
+        "Toggle select mode",
+        Some(&list_select_mode),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Select / deselect item",
+        Some(&list_select_item),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "View / restore trash",
+        Some(&list_trash),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Change focus (notes list <-> buttons)",
+        Some(&list_focus),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Toggle Encryption from focused button",
+        Some("Enter/Space"),
+        theme,
+    ));
+    lines.extend(help_item_dyn("Open help", Some(&list_help), theme));
+    lines.extend(help_item_dyn("Quit app", Some(&list_quit), theme));
+    lines.extend(help_item_dyn(
+        "New note from template",
+        Some(&list_template),
+        theme,
+    ));
+    lines.push(Line::from(""));
+    lines.push(help_heading("Popups", theme));
+    lines.push(Line::from(""));
+    lines.push(Line::from(vec![Span::styled(
+        format!(" Search Popup ({})", list_search),
+        Style::default().fg(theme.heading),
+    )]));
+    lines.extend(help_item_dyn(
+        "Search notes / Filter by tags",
+        Some("Type query / tag"),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Full-text grep note content",
+        Some("g:  (prefix to query)"),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Filter by folder",
+        Some("f:folder_name  (e.g. \"test f:inbox\")"),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Empty folder = Vault root",
+        Some("f:  (restricts to root notes only)"),
+        theme,
+    ));
+    lines.push(Line::from(""));
+    lines.push(Line::from(vec![Span::styled(
+        format!(
+            " Tag Popup ({})",
+            keybinds.list_keys_display(ListAction::ManageTags)
+        ),
+        Style::default().fg(theme.heading),
+    )]));
+    lines.extend(help_item_dyn(
+        "Add/remove tags from selected note",
+        Some("Type tag name, Enter to add"),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Select suggestion",
+        Some("Tab  or  ↓"),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Delete a tag from all notes",
+        Some("d  on tag in All Tags list"),
+        theme,
+    ));
+    lines.push(Line::from(""));
+    lines.push(Line::from(vec![Span::styled(
+        format!(
+            " Template Popup ({})",
+            keybinds.list_keys_display(ListAction::NewFromTemplate)
+        ),
+        Style::default().fg(theme.heading),
+    )]));
+    lines.extend(help_item_dyn(
+        "Create note from saved template",
+        Some("Select template, Enter to use"),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Create new template from current note",
+        Some("n / Create button"),
+        theme,
+    ));
+    lines.push(Line::from(""));
+    lines.push(Line::from(vec![Span::styled(
+        format!(
+            " Markdown Preview ({})",
+            keybinds.list_keys_display(ListAction::TogglePreview)
+        ),
+        Style::default().fg(theme.heading),
+    )]));
+    lines.extend(help_item_dyn(
+        "Toggle preview pane in notes list",
+        None,
+        theme,
+    ));
+    lines.push(Line::from(""));
+    lines.push(Line::from(vec![Span::styled(
+        " Confirm Delete Popup",
+        Style::default().fg(theme.heading),
+    )]));
+    lines.extend(help_item_dyn(
+        "Accept (delete)",
+        Some("y / Enter / Confirm button"),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Cancel / decline",
+        Some("n / Esc / Cancel button"),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Toggle button focus",
+        Some("Tab / ← →"),
+        theme,
+    ));
+    lines.push(Line::from(""));
+    lines.push(Line::from(vec![Span::styled(
+        " Other Popups",
+        Style::default().fg(theme.heading),
+    )]));
+    lines.extend(help_item_dyn(
+        "Theme selector",
+        Some("Cycle with ↑↓, preview applies"),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Folder rename / create",
+        Some("Enter new name, confirm with Enter"),
+        theme,
+    ));
+    Text::from(lines)
+}
 
-    let edit_quit = keybinds.edit_keys_display(EditAction::Quit);
+fn editor_help_text(
+    keybinds: &Keybinds,
+    theme: &crate::app_theme::AppThemeColors,
+) -> Text<'static> {
+    let _edit_quit = keybinds.edit_keys_display(EditAction::Quit);
     let edit_back = keybinds.edit_keys_display(EditAction::Back);
     let edit_focus = keybinds.edit_keys_display(EditAction::CycleFocus);
     let edit_copy = keybinds.edit_keys_display(EditAction::Copy);
@@ -77,151 +468,779 @@ pub fn help_page_text(keybinds: &Keybinds) -> Text<'static> {
     let edit_del_next_word = keybinds.edit_keys_display(EditAction::DeleteNextWord);
     let edit_md_preview = keybinds.edit_keys_display(EditAction::ToggleMarkdownPreview);
 
-    let help_close = keybinds.help_keys_display(HelpAction::Close);
-    let help_scroll = format!(
-        "{}/{}",
-        keybinds.help_keys_display(HelpAction::ScrollUp),
-        keybinds.help_keys_display(HelpAction::ScrollDown)
-    );
-
     let mut lines = Vec::new();
-    lines.push(Line::from(vec![
-        Span::styled(
-            "󰠮 clin",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(" Help", Style::default().add_modifier(Modifier::BOLD)),
-    ]));
+    lines.push(help_heading("Editor", theme));
     lines.push(Line::from(""));
-
-    lines.push(help_heading("󰋗", "Core Features"));
-    lines.extend(help_item_dyn("Encrypted local note files (.clin)", None));
-    lines.extend(help_item_dyn(
-        "In-terminal note list, full text editor, and continual auto-save",
-        None,
-    ));
-    lines.extend(help_item_dyn(
-        "Open note file location from notes view",
-        Some(&list_location),
-    ));
-    lines.extend(help_item_dyn(
-        "Delete selected note or folder",
-        Some(&list_delete),
-    ));
-    lines.push(Line::from(""));
-
-    lines.push(help_heading("󰮋", "Notes View"));
-    lines.extend(help_item_dyn("Move selection", Some(&list_move)));
-    lines.extend(help_item_dyn(
-        "Expand/Collapse folder",
-        Some(&list_expand_collapse),
-    ));
-    lines.extend(help_item_dyn(
-        "Open selected folder, note, or create new",
-        Some(&list_open),
-    ));
-    lines.extend(help_item_dyn(
-        "Create new folder",
-        Some(&list_create_folder),
-    ));
-    lines.extend(help_item_dyn("Rename folder", Some(&list_rename_folder)));
-    lines.extend(help_item_dyn("Move note or folder", Some(&list_move_note)));
-    lines.extend(help_item_dyn("Manage note tags", Some(&list_manage_tags)));
-    lines.extend(help_item_dyn("Filter tags", Some(&list_filter_tags)));
-    lines.extend(help_item_dyn("Delete note or folder", Some(&list_delete)));
-    lines.extend(help_item_dyn(
-        "Confirm / cancel delete",
-        Some("y/Enter / n/Esc"),
-    ));
-    lines.extend(help_item_dyn(
-        "Open selected note file location",
-        Some(&list_location),
-    ));
-    lines.extend(help_item_dyn(
-        "Change focus (notes list <-> buttons)",
-        Some(&list_focus),
-    ));
-    lines.extend(help_item_dyn(
-        "Toggle Encryption from focused button",
-        Some("Enter/Space"),
-    ));
-    lines.extend(help_item_dyn("Open help", Some(&list_help)));
-    lines.extend(help_item_dyn("Quit app", Some(&list_quit)));
-    lines.extend(help_item_dyn(
-        "New note from template",
-        Some(&list_template),
-    ));
-    lines.push(Line::from(""));
-
-    lines.push(help_heading("󰷈", "Editor"));
     lines.extend(help_item_dyn(
         "Change focus (Title, Content, toggles)",
         Some(&edit_focus),
+        theme,
     ));
     lines.extend(help_item_dyn(
-        "Return to notes (continually auto-saved)",
+        "Return to notes (auto-saved on exit)",
         Some(&edit_back),
+        theme,
     ));
-    lines.extend(help_item_dyn("Save and quit", Some(&edit_quit)));
+    lines.push(Line::from(""));
     lines.extend(help_item_dyn(
         "Copy / Cut / Paste",
         Some(&format!("{edit_copy} / {edit_cut} / {edit_paste}")),
+        theme,
     ));
     lines.extend(help_item_dyn(
         "Select all / Undo / Redo",
         Some(&format!("{edit_select_all} / {edit_undo} / {edit_redo}")),
+        theme,
     ));
     lines.extend(help_item_dyn(
         "Delete prev/next word",
         Some(&format!("{edit_del_word} / {edit_del_next_word}")),
+        theme,
     ));
+    lines.push(Line::from(""));
     lines.extend(help_item_dyn(
-        "Toggle markdown preview",
+        "Toggle markdown preview panel",
         Some(&edit_md_preview),
+        theme,
     ));
-    lines.push(Line::from(""));
-
-    lines.push(help_heading("󰑃", "Templates"));
     lines.extend(help_item_dyn(
-        "New note from template (in notes view)",
-        Some(&list_template),
+        "Open external editor",
+        Some(&edit_focus),
+        theme,
     ));
-    lines.extend(help_item_dyn("Cancel template selection", Some("Esc")));
+    Text::from(lines)
+}
+
+fn graph_help_text(keybinds: &Keybinds, theme: &crate::app_theme::AppThemeColors) -> Text<'static> {
+    let mut lines = Vec::new();
+
+    lines.push(help_heading("Keyboard Controls", theme));
+    lines.push(Line::from(""));
+    lines.extend(help_item_dyn(
+        "Navigate nodes (up/down/left/right)",
+        Some(&format!(
+            "{}/{}/{}/{}",
+            keybinds.graph_keys_display(crate::keybinds::GraphAction::PanUp),
+            keybinds.graph_keys_display(crate::keybinds::GraphAction::PanDown),
+            keybinds.graph_keys_display(crate::keybinds::GraphAction::PanLeft),
+            keybinds.graph_keys_display(crate::keybinds::GraphAction::PanRight)
+        )),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Zoom in/out",
+        Some(&format!(
+            "{}/{}",
+            keybinds.graph_keys_display(crate::keybinds::GraphAction::ZoomIn),
+            keybinds.graph_keys_display(crate::keybinds::GraphAction::ZoomOut)
+        )),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Open selected note",
+        Some(&keybinds.graph_keys_display(crate::keybinds::GraphAction::OpenNote)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Auto-fit graph to viewport",
+        Some(&keybinds.graph_keys_display(crate::keybinds::GraphAction::AutoFit)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Search nodes by title",
+        Some(&keybinds.graph_keys_display(crate::keybinds::GraphAction::ToggleSearch)),
+        theme,
+    ));
+    lines.extend(help_item_dyn("Open filter menu", Some("f"), theme));
     lines.push(Line::from(""));
 
-    lines.push(help_heading("󰞋", "Help Page"));
-    lines.extend(help_item_dyn("Close help", Some(&help_close)));
-    lines.extend(help_item_dyn("Scroll", Some(&help_scroll)));
+    lines.push(help_heading("Display Options", theme));
+    lines.push(Line::from(""));
+    lines.extend(help_item_dyn(
+        "Toggle minimap",
+        Some(&keybinds.graph_keys_display(crate::keybinds::GraphAction::ToggleMinimap)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Toggle legend (node colors, link types)",
+        Some(&keybinds.graph_keys_display(crate::keybinds::GraphAction::ToggleLegend)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Toggle background grid",
+        Some(&keybinds.graph_keys_display(crate::keybinds::GraphAction::ToggleGrid)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Toggle status bar",
+        Some(&keybinds.graph_keys_display(crate::keybinds::GraphAction::ToggleStatus)),
+        theme,
+    ));
+    lines.extend(help_item_dyn("Show/Hide legend", Some("L"), theme));
+    lines.extend(help_item_dyn("Show/Hide minimap", Some("M"), theme));
+    lines.extend(help_item_dyn("Show/Hide grid", Some("G"), theme));
     lines.push(Line::from(""));
 
-    lines.push(help_heading("󰒓", "Configuration"));
+    lines.extend(help_item_dyn(
+        "Refresh physics simulation",
+        Some(&keybinds.graph_keys_display(crate::keybinds::GraphAction::Refresh)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Reload graf config file",
+        Some(&keybinds.graph_keys_display(crate::keybinds::GraphAction::ReloadConfig)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Quit graph view",
+        Some(&keybinds.graph_keys_display(crate::keybinds::GraphAction::Quit)),
+        theme,
+    ));
+    lines.push(Line::from(""));
+
+    lines.push(help_heading("Mouse Controls", theme));
+    lines.push(Line::from(""));
+    lines.extend(help_item_dyn("Scroll wheel to zoom in/out", None, theme));
+    lines.extend(help_item_dyn(
+        "Click and drag background to pan",
+        None,
+        theme,
+    ));
+    lines.extend(help_item_dyn("Click node to select", None, theme));
+    lines.extend(help_item_dyn("Double-click node to open note", None, theme));
+    Text::from(lines)
+}
+
+fn draw_help_text(keybinds: &Keybinds, theme: &crate::app_theme::AppThemeColors) -> Text<'static> {
+    let mut lines = Vec::new();
+    lines.push(help_heading("Tools", theme));
+    lines.extend(help_item_dyn(
+        "Draw freehand strokes",
+        Some(&keybinds.draw_keys_display(DrawAction::SelectDrawTool)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Shape tool (opens picker)",
+        Some(&keybinds.draw_keys_display(DrawAction::ToggleShapeSelector)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Place text label at click position",
+        Some(&keybinds.draw_keys_display(DrawAction::SelectTextTool)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Erase elements (hover + click/drag)",
+        Some(&keybinds.draw_keys_display(DrawAction::SelectEraseTool)),
+        theme,
+    ));
+
+    lines.push(help_heading("Shapes", theme));
+    lines.push(Line::from(""));
+    lines.extend(help_item_dyn(
+        "Press s, then pick type in popup (Up/Down)",
+        None,
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Shape types: Rect, Ellipse, Diamond, Line, Arrow",
+        None,
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Click + drag to place shape at desired size",
+        None,
+        theme,
+    ));
+    lines.push(Line::from(""));
+
+    lines.push(help_heading("Text Editing", theme));
+    lines.push(Line::from(""));
+    lines.extend(help_item_dyn(
+        "Right-click on existing text to edit content",
+        None,
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Edit line: Enter to confirm, Esc to cancel",
+        None,
+        theme,
+    ));
+    lines.push(Line::from(""));
+
+    lines.push(help_heading("Navigation", theme));
+    lines.push(Line::from(""));
+    lines.extend(help_item_dyn("Scroll wheel to zoom in/out", None, theme));
+    lines.extend(help_item_dyn(
+        "Right-click or middle-click drag to pan",
+        None,
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Select tool from toolbar at bottom",
+        None,
+        theme,
+    ));
+    lines.push(Line::from(""));
+
+    lines.push(help_heading("General", theme));
+    lines.push(Line::from(""));
+    lines.extend(help_item_dyn("Auto-saved on changes & quit", None, theme));
+    lines.extend(help_item_dyn(
+        "Exit canvas view",
+        Some(&keybinds.draw_keys_display(DrawAction::Quit)),
+        theme,
+    ));
+    Text::from(lines)
+}
+
+fn canvas_help_text(
+    keybinds: &Keybinds,
+    theme: &crate::app_theme::AppThemeColors,
+) -> Text<'static> {
+    let mut lines = Vec::new();
+    lines.push(help_heading("Navigation", theme));
+    lines.push(Line::from(""));
+    lines.extend(help_item_dyn(
+        "Move selection",
+        Some(&format!(
+            "{}/{}/{}/{}",
+            keybinds.canvas_keys_display(CanvasAction::MoveLeft),
+            keybinds.canvas_keys_display(CanvasAction::MoveRight),
+            keybinds.canvas_keys_display(CanvasAction::MoveUp),
+            keybinds.canvas_keys_display(CanvasAction::MoveDown),
+        )),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Zoom in",
+        Some(&keybinds.canvas_keys_display(CanvasAction::ZoomIn)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Zoom out",
+        Some(&keybinds.canvas_keys_display(CanvasAction::ZoomOut)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Zoom in (fine)",
+        Some(&keybinds.canvas_keys_display(CanvasAction::ZoomFineIn)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Zoom out (fine)",
+        Some(&keybinds.canvas_keys_display(CanvasAction::ZoomFineOut)),
+        theme,
+    ));
+    lines.push(Line::from(""));
+    lines.push(help_heading("Editing", theme));
+    lines.push(Line::from(""));
+    lines.extend(help_item_dyn(
+        "Open / edit selected node",
+        Some(&keybinds.canvas_keys_display(CanvasAction::EditOrConnect)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Connect two nodes",
+        Some(&keybinds.canvas_keys_display(CanvasAction::EditOrConnect)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Context menu",
+        Some(&keybinds.canvas_keys_display(CanvasAction::OpenContextMenu)),
+        theme,
+    ));
+    lines.push(Line::from(""));
+    lines.push(help_heading("Interface", theme));
+    lines.push(Line::from(""));
+    lines.extend(help_item_dyn(
+        "Toggle grid",
+        Some(&keybinds.canvas_keys_display(CanvasAction::ToggleGrid)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Toggle editor pane",
+        Some(&keybinds.canvas_keys_display(CanvasAction::ToggleEditorPane)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Focus editor / ext toggle",
+        Some(&keybinds.canvas_keys_display(CanvasAction::CycleFocus)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Toggle external editor mode",
+        Some(&keybinds.canvas_keys_display(CanvasAction::ExtToggle)),
+        theme,
+    ));
+    lines.push(Line::from(""));
+    lines.push(help_heading("Editor (focused)", theme));
+    lines.push(Line::from(""));
+    lines.extend(help_item_dyn(
+        "Exit editor focus",
+        Some(&keybinds.canvas_keys_display(CanvasAction::EditorUnfocus)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Save raw editor changes",
+        Some(&keybinds.canvas_keys_display(CanvasAction::EditorSyncRaw)),
+        theme,
+    ));
+    lines.push(Line::from(""));
+    lines.push(help_heading("General", theme));
+    lines.push(Line::from(""));
+    lines.extend(help_item_dyn(
+        "Save canvas file",
+        Some(&keybinds.canvas_keys_display(CanvasAction::Save)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Cancel connection",
+        Some(&keybinds.canvas_keys_display(CanvasAction::Quit)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Exit canvas view",
+        Some(&keybinds.canvas_keys_display(CanvasAction::Quit)),
+        theme,
+    ));
+    Text::from(lines)
+}
+
+fn backup_help_text(
+    keybinds: &Keybinds,
+    theme: &crate::app_theme::AppThemeColors,
+) -> Text<'static> {
+    let mut lines = Vec::new();
+    lines.push(help_heading("Backup View", theme));
+    lines.push(Line::from(""));
+    lines.extend(help_item_dyn(
+        "Scroll Up / Down",
+        Some(&format!(
+            "{}/{}",
+            keybinds.backup_keys_display(BackupAction::MoveUp),
+            keybinds.backup_keys_display(BackupAction::MoveDown)
+        )),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Refresh status",
+        Some(&keybinds.backup_keys_display(BackupAction::Refresh)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Commit changes",
+        Some(&keybinds.backup_keys_display(BackupAction::EnterCommit)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Push to remote",
+        Some(&keybinds.backup_keys_display(BackupAction::Push)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Open settings",
+        Some(&keybinds.backup_keys_display(BackupAction::OpenSettings)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Cycle sections",
+        Some(&keybinds.backup_keys_display(BackupAction::CycleSection)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Back to list",
+        Some(&keybinds.backup_keys_display(BackupAction::Back)),
+        theme,
+    ));
+    Text::from(lines)
+}
+
+fn content_tree_help_text(
+    keybinds: &Keybinds,
+    theme: &crate::app_theme::AppThemeColors,
+) -> Text<'static> {
+    use crate::keybinds::ContentTreeAction;
+    let mut lines = Vec::new();
+    lines.push(help_heading("Content Tree", theme));
+    lines.push(Line::from(""));
+    lines.extend(help_item_dyn(
+        "Move Up / Down",
+        Some(&format!(
+            "{}/{}",
+            keybinds.content_tree_keys_display(ContentTreeAction::MoveUp),
+            keybinds.content_tree_keys_display(ContentTreeAction::MoveDown)
+        )),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Toggle Collapse",
+        Some(&keybinds.content_tree_keys_display(ContentTreeAction::ToggleCollapse)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Expand All",
+        Some(&keybinds.content_tree_keys_display(ContentTreeAction::ExpandAll)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Collapse All",
+        Some(&keybinds.content_tree_keys_display(ContentTreeAction::CollapseAll)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Jump to section",
+        Some(&keybinds.content_tree_keys_display(ContentTreeAction::Open)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Back to previous view",
+        Some(&keybinds.content_tree_keys_display(ContentTreeAction::Back)),
+        theme,
+    ));
+    Text::from(lines)
+}
+
+fn templates_help_text(
+    keybinds: &Keybinds,
+    theme: &crate::app_theme::AppThemeColors,
+) -> Text<'static> {
+    let list_template = keybinds.list_keys_display(ListAction::NewFromTemplate);
+
+    let mut lines = Vec::new();
+    lines.push(help_heading("Template System", theme));
+    lines.push(Line::from(""));
+    lines.extend(help_item_dyn(
+        "Open template picker from notes view",
+        Some(&list_template),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Search templates by name (in picker)",
+        Some("Type in search bar"),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Switch search/results focus",
+        Some("Tab"),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Open this help from template picker",
+        Some("?"),
+        theme,
+    ));
+    lines.push(Line::from(""));
+
+    lines.push(help_heading("Template Location", theme));
+    lines.push(Line::from(""));
+    lines.extend(help_item_dyn(
+        "Templates directory",
+        Some("~/.config/clin/templates/"),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Default template (auto-used on new note)",
+        Some("default.toml"),
+        theme,
+    ));
+    lines.push(Line::from(""));
+
+    lines.push(help_heading("Minimal Template Skeleton", theme));
+    lines.push(Line::from(""));
+    lines.push(Line::from(vec![
+        Span::styled("  ", Style::default()),
+        Span::styled("name", Style::default().fg(theme.success)),
+        Span::raw(" = \"My Template\""),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled("  ", Style::default()),
+        Span::styled(
+            "[title]",
+            Style::default()
+                .fg(theme.accent)
+                .add_modifier(Modifier::BOLD),
+        ),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled("  ", Style::default()),
+        Span::styled("template", Style::default().fg(theme.success)),
+        Span::raw(" = \"Note - {date}\""),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled("  ", Style::default()),
+        Span::styled(
+            "[content]",
+            Style::default()
+                .fg(theme.accent)
+                .add_modifier(Modifier::BOLD),
+        ),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled("  ", Style::default()),
+        Span::styled("template", Style::default().fg(theme.success)),
+        Span::raw(" = \"# {weekday}, {date}\\n\\n\""),
+    ]));
+    lines.push(Line::from(""));
+
+    lines.push(help_heading("Supported Variables", theme));
+    lines.push(Line::from(""));
+    lines.extend(help_item_dyn(
+        "Current date (YYYY-MM-DD)",
+        Some("{date}"),
+        theme,
+    ));
+    lines.extend(help_item_dyn("Date and time", Some("{datetime}"), theme));
+    lines.extend(help_item_dyn("Current time (HH:MM)", Some("{time}"), theme));
+    lines.extend(help_item_dyn("Full weekday name", Some("{weekday}"), theme));
+    lines.extend(help_item_dyn("4-digit year", Some("{year}"), theme));
+    lines.extend(help_item_dyn("Zero-padded month", Some("{month}"), theme));
+    lines.extend(help_item_dyn("Zero-padded day", Some("{day}"), theme));
+    lines.push(Line::from(""));
+
+    lines.push(help_heading("Examples", theme));
+    lines.push(Line::from(""));
+    lines.extend(help_item_dyn(
+        "Meeting: title=\"Meeting - {date}\", content with Agenda/Action Items",
+        None,
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Todo: title=\"Tasks - {date}\", content with priority sections",
+        None,
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Journal: title=\"Journal - {date}\", content with mood/gratitude prompts",
+        None,
+        theme,
+    ));
+    lines.push(Line::from(""));
+
+    lines.push(help_heading("Tips & Troubleshooting", theme));
+    lines.push(Line::from(""));
+    lines.extend(help_item_dyn(
+        "Create examples: clin --create-example-templates",
+        None,
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "List templates: clin --list-templates",
+        None,
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Unknown {variables} are left as-is in output",
+        None,
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Use multiline strings (triple quotes \"\"\") for content",
+        None,
+        theme,
+    ));
+    Text::from(lines)
+}
+
+fn about_help_text(
+    _keybinds: &Keybinds,
+    theme: &crate::app_theme::AppThemeColors,
+) -> Text<'static> {
+    let mut lines = Vec::new();
+    lines.push(Line::from(vec![
+        Span::styled(
+            "clin",
+            Style::default()
+                .fg(theme.accent)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            format!("  v{}", env!("CARGO_PKG_VERSION")),
+            Style::default()
+                .fg(theme.accent)
+                .add_modifier(Modifier::BOLD),
+        ),
+    ]));
+    lines.push(Line::from(""));
+    lines.extend(help_item_dyn(
+        "Encrypted terminal note-taking app",
+        None,
+        theme,
+    ));
+
+    lines.push(Line::from(""));
+
+    lines.push(help_heading("Configuration", theme));
+    lines.push(Line::from(""));
     lines.extend(help_item_dyn(
         "Keybinds file: ~/.config/clin/keybinds.toml",
         None,
+        theme,
     ));
-    lines.extend(help_item_dyn("Templates dir: <storage>/templates/", None));
-    lines.extend(help_item_dyn("Run 'clin --help' for CLI commands", None));
+    lines.extend(help_item_dyn(
+        "Theme + storage:  ~/.config/clin/config.toml",
+        None,
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Templates dir: <storage>/templates/",
+        None,
+        theme,
+    ));
+    lines.push(Line::from(""));
+
+    lines.push(help_heading("CLI Usage", theme));
+    lines.push(Line::from(""));
+    lines.push(Line::from(vec![
+        Span::styled(
+            "  clin",
+            Style::default()
+                .fg(theme.success)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw("                         Launch interactive TUI"),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled(
+            "  clin -n [TITLE]",
+            Style::default()
+                .fg(theme.success)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw("                Create note + open editor"),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled(
+            "  clin -q <text> [TITLE]",
+            Style::default()
+                .fg(theme.success)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw("        Quick note without TUI"),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled(
+            "  clin -e <TITLE>",
+            Style::default()
+                .fg(theme.success)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw("                Open existing note by title"),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled(
+            "  clin -l",
+            Style::default()
+                .fg(theme.success)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw("                          List all note titles"),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled(
+            "  clin -h, --help",
+            Style::default()
+                .fg(theme.success)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw("                 Show CLI help message"),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled(
+            "  clin --storage-path",
+            Style::default()
+                .fg(theme.success)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw("           Show current storage path"),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled(
+            "  clin --set-storage-path <PATH>",
+            Style::default()
+                .fg(theme.success)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw("  Set storage directory"),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled(
+            "  clin --reset-storage-path",
+            Style::default()
+                .fg(theme.success)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw("       Reset to default storage"),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled(
+            "  clin --migrate-storage",
+            Style::default()
+                .fg(theme.success)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw("         Migrate data from old location"),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled(
+            "  clin --keybinds",
+            Style::default()
+                .fg(theme.success)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw("                Show current keybindings"),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled(
+            "  clin --export-keybinds",
+            Style::default()
+                .fg(theme.success)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw("         Export keybinds as TOML"),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled(
+            "  clin --reset-keybinds",
+            Style::default()
+                .fg(theme.success)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw("          Reset keybinds to defaults"),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled(
+            "  clin --list-templates",
+            Style::default()
+                .fg(theme.success)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw("          List available templates"),
+    ]));
+    lines.push(Line::from(vec![
+        Span::styled(
+            "  clin --create-example-templates",
+            Style::default()
+                .fg(theme.success)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw("  Create example template files"),
+    ]));
 
     Text::from(lines)
 }
 
-pub fn help_heading(icon: &'static str, title: &'static str) -> Line<'static> {
-    Line::from(vec![
-        Span::styled(
-            format!("{} ", icon),
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(
-            title,
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        ),
-    ])
+pub fn help_heading(
+    title: &'static str,
+    theme: &crate::app_theme::AppThemeColors,
+) -> Line<'static> {
+    Line::from(Span::styled(
+        format!(" {} ", title.to_uppercase()),
+        Style::default()
+            .fg(theme.highlight_fg)
+            .bg(theme.highlight_bg)
+            .add_modifier(Modifier::BOLD),
+    ))
 }
 
 fn format_keybind(key: &str) -> String {
@@ -238,7 +1257,11 @@ fn format_keybind(key: &str) -> String {
     parts.join(" / ")
 }
 
-pub fn help_item_dyn(text: &str, key: Option<&str>) -> Vec<Line<'static>> {
+pub fn help_item_dyn(
+    text: &str,
+    key: Option<&str>,
+    theme: &crate::app_theme::AppThemeColors,
+) -> Vec<Line<'static>> {
     match key {
         Some(key) => {
             let formatted_key = format_keybind(key);
@@ -248,18 +1271,18 @@ pub fn help_item_dyn(text: &str, key: Option<&str>) -> Vec<Line<'static>> {
                     Span::styled(
                         formatted_key,
                         Style::default()
-                            .fg(Color::Green)
+                            .fg(theme.success)
                             .add_modifier(Modifier::BOLD),
                     ),
                 ]),
                 Line::from(vec![
-                    Span::styled("    • ", Style::default().fg(Color::DarkGray)),
+                    Span::styled("    • ", Style::default().fg(theme.muted)),
                     Span::raw(text.to_owned()),
                 ]),
             ]
         }
         None => vec![Line::from(vec![
-            Span::styled("  • ", Style::default().fg(Color::DarkGray)),
+            Span::styled("  • ", Style::default().fg(theme.muted)),
             Span::raw(text.to_owned()),
         ])],
     }
@@ -270,353 +1293,814 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),
+            Constraint::Length(1),
             Constraint::Min(5),
-            Constraint::Length(3),
+            Constraint::Length(1),
         ])
         .split(area);
-
-    let header = Paragraph::new(Line::from(vec![
-        Span::styled(
-            "clin",
+    if app.list.notes_layout == crate::config::NotesLayout::Grid {
+        let is_pinned = app.list.grid_folder == crate::app::VIRTUAL_PINNED_PATH;
+        let pinned_style = if is_pinned {
             Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::raw("  encrypted terminal notes"),
-    ]))
-    .block(Block::default().borders(Borders::ALL).title("Notes"));
-    frame.render_widget(header, chunks[0]);
+                .fg(app.app_theme.highlight_fg)
+                .bg(app.app_theme.accent)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(app.app_theme.muted)
+        };
+        let vault_style = if !is_pinned {
+            Style::default()
+                .fg(app.app_theme.highlight_fg)
+                .bg(app.app_theme.accent)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(app.app_theme.muted)
+        };
+        let tab_spans = vec![
+            Span::styled(" \u{f07b} Vault ", vault_style),
+            Span::raw(" "),
+            Span::styled(" \u{f4cc} Pinned ", pinned_style),
+        ];
+        draw_view_title_bar_with_tabs(frame, chunks[0], "Notes", tab_spans, &app.app_theme);
 
-    // Split main area for preview if enabled
-    let (list_area, preview_area) = if app.preview_enabled {
-        let main_chunks = Layout::default()
+        // Show details of the selected note at the top right (clock/relative time + tags)
+        if let Some(crate::app::VisualItem::Note { summary_idx, .. }) = app.list.visual_list.get(app.list.visual_index) {
+            let s = &app.notes[*summary_idx];
+            let mut spans = Vec::new();
+
+            let when = format_relative_time(s.updated_at);
+            spans.push(Span::styled(" \u{f017} ", Style::default().fg(app.app_theme.muted)));
+            spans.push(Span::styled(when.into_owned(), Style::default().fg(app.app_theme.muted)));
+
+            if !s.tags.is_empty() {
+                spans.push(Span::styled("  \u{f02b} ", Style::default().fg(app.app_theme.tag).add_modifier(Modifier::BOLD)));
+                spans.push(Span::styled(s.tags.join(", "), Style::default().fg(app.app_theme.fg)));
+            }
+            spans.push(Span::raw(" ")); // padding right
+
+            let detail_para = Paragraph::new(Line::from(spans))
+                .alignment(Alignment::Right);
+            frame.render_widget(detail_para, chunks[0]);
+        } else if let Some(crate::app::VisualItem::Folder { name, note_count, .. }) = app.list.visual_list.get(app.list.visual_index)
+            && name != ".."
+        {
+            let mut spans = Vec::new();
+            let suffix = if *note_count == 1 { "note" } else { "notes" };
+            spans.push(Span::styled(" \u{f0ca} ", Style::default().fg(app.app_theme.folder)));
+            spans.push(Span::styled(format!("{} {}", note_count, suffix), Style::default().fg(app.app_theme.fg)));
+            spans.push(Span::raw(" ")); // padding right
+
+            let detail_para = Paragraph::new(Line::from(spans))
+                .alignment(Alignment::Right);
+            frame.render_widget(detail_para, chunks[0]);
+        }
+    } else {
+        draw_view_title_bar(frame, chunks[0], "Notes", &app.app_theme);
+    }
+    let (list_area, preview_area) = if app.list.preview_enabled {
+        let (constraints, list_idx, p_idx) = match app.preview_position {
+            crate::config::PreviewPosition::Left => (
+                [
+                    Constraint::Ratio(43, 100),
+                    Constraint::Length(1),
+                    Constraint::Min(0),
+                ],
+                2,
+                0,
+            ),
+            crate::config::PreviewPosition::Right => (
+                [
+                    Constraint::Min(0),
+                    Constraint::Length(1),
+                    Constraint::Ratio(43, 100),
+                ],
+                0,
+                2,
+            ),
+        };
+        let full_cols = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .constraints(constraints)
             .split(chunks[1]);
-        (main_chunks[0], Some(main_chunks[1]))
+        let list_area = Rect::new(
+            full_cols[list_idx].x,
+            full_cols[list_idx].y,
+            full_cols[list_idx].width,
+            full_cols[list_idx].height,
+        );
+        let preview_area = Some(Rect::new(
+            full_cols[p_idx].x,
+            full_cols[p_idx].y,
+            full_cols[p_idx].width,
+            full_cols[p_idx].height,
+        ));
+        (list_area, preview_area)
     } else {
-        (chunks[1], None)
-    };
-
-    let mut items: Vec<ListItem> = Vec::with_capacity(app.visual_list.len());
-
-    for item in &app.visual_list {
-        match item {
-            crate::app::VisualItem::Folder {
-                path: _,
-                name,
-                depth,
-                is_expanded,
-                note_count,
-            } => {
-                let indent = "  ".repeat(*depth);
-                let icon = if *is_expanded { " " } else { " " };
-                let sanitized_name = crate::sanitize::sanitize_for_terminal(name);
-                let text = format!("{indent}{icon} {sanitized_name} ({note_count})");
-                items.push(ListItem::new(Line::from(vec![Span::styled(
-                    text,
-                    Style::default()
-                        .add_modifier(Modifier::BOLD)
-                        .fg(Color::Blue),
-                )])));
-            }
-            crate::app::VisualItem::Note {
-                summary_idx,
-                depth,
-                is_clin,
-                ..
-            } => {
-                let summary = &app.notes[*summary_idx];
-                let indent = "  ".repeat(*depth);
-
-                let when = format_relative_time(summary.updated_at);
-                let mut text_style = Style::default();
-
-                let mut spans = Vec::new();
-                spans.push(Span::raw(indent));
-                spans.push(Span::raw("  "));
-
-                // Pinned indicator
-                if summary.pinned {
-                    spans.push(Span::styled(
-                        "* ",
-                        Style::default()
-                            .fg(Color::Yellow)
-                            .add_modifier(Modifier::BOLD),
-                    ));
-                }
-
-                if *is_clin {
-                    text_style = text_style.fg(Color::DarkGray);
-                    spans.push(Span::styled(
-                        "\u{f023} ",
-                        Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
-                    ));
-                }
-
-                let sanitized_title =
-                    crate::sanitize::sanitize_for_terminal(summary.title.as_str());
-                spans.push(Span::styled(sanitized_title, text_style));
-
-                // Tag badges
-                for tag in &summary.tags {
-                    spans.push(Span::raw(" "));
-                    let sanitized_tag = crate::sanitize::sanitize_for_terminal(tag);
-                    spans.push(Span::styled(
-                        format!("[{}]", sanitized_tag),
-                        Style::default().fg(Color::LightMagenta),
-                    ));
-                }
-
-                spans.push(Span::raw(format!("  ({when})")));
-                items.push(ListItem::new(Line::from(spans)));
-            }
-            crate::app::VisualItem::CreateNew { depth, .. } => {
-                let indent = "  ".repeat(*depth);
-                let text = format!("{indent}  Create new note");
-                items.push(ListItem::new(Line::from(vec![Span::styled(
-                    text,
-                    Style::default().fg(Color::Green),
-                )])));
-            }
-        }
-    }
-
-    let list = List::new(items)
-        .block(Block::default().borders(Borders::ALL).title("Select"))
-        .highlight_style(
-            Style::default()
-                .fg(Color::Black)
-                .bg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
+        (
+            Rect::new(area.x, area.y + 1, area.width, chunks[1].height),
+            None,
         )
-        .highlight_symbol("  > ");
+    };
 
-    app.list_state.select(Some(app.visual_index));
-    frame.render_stateful_widget(list, list_area, &mut app.list_state);
+    let is_grid = app.list.notes_layout == crate::config::NotesLayout::Grid;
+    let mut items: Vec<ListItem> = Vec::new();
 
-    // Render preview pane if enabled
-    if let Some(preview_rect) = preview_area {
-        match &app.preview_renderer {
-            Some(renderer) if !renderer.is_pending() => {
-                let widget = crate::markdown::ScrollablePseudoTerminal::new(renderer.screen())
-                    .scroll_offset(renderer.scroll_offset())
-                    .block(
-                        Block::default()
-                            .borders(Borders::ALL)
-                            .title("Preview (Shift+P to close)"),
-                    );
-                frame.render_widget(widget, preview_rect);
-            }
-            Some(_) => {
-                let loading = Paragraph::new("Rendering preview...")
-                    .style(Style::default().fg(Color::DarkGray))
-                    .block(
-                        Block::default()
-                            .borders(Borders::ALL)
-                            .title("Preview (Shift+P to close)"),
-                    );
-                frame.render_widget(loading, preview_rect);
-            }
-            None => {
-                let placeholder = Paragraph::new("Select a note to preview").block(
-                    Block::default()
-                        .borders(Borders::ALL)
-                        .title("Preview (Shift+P to close)"),
-                );
-                frame.render_widget(placeholder, preview_rect);
+    if is_grid {
+        app.list.grid_tiles.clear();
+
+        // --- render directory breadcrumbs at the top of the list area ---
+        let is_pinned = app.list.grid_folder == crate::app::VIRTUAL_PINNED_PATH;
+        let mut spans = Vec::new();
+        if is_pinned {
+            spans.push(Span::styled(" \u{f4cc} Pinned", Style::default().fg(app.app_theme.heading).add_modifier(Modifier::BOLD)));
+        } else {
+            spans.push(Span::styled(" \u{f07b} Vault", Style::default().fg(app.app_theme.folder).add_modifier(Modifier::BOLD)));
+            if !app.list.grid_folder.is_empty() {
+                for part in app.list.grid_folder.split('/') {
+                    spans.push(Span::styled(" / ", Style::default().fg(app.app_theme.muted)));
+                    spans.push(Span::styled(part.to_string(), Style::default().fg(app.app_theme.fg)));
+                }
             }
         }
-    }
+        let dir_rect = Rect::new(
+            list_area.x,
+            list_area.y + 1,
+            list_area.width,
+            1,
+        );
+        frame.render_widget(Paragraph::new(Line::from(spans)), dir_rect);
 
-    let ext_button_label = if app.external_editor_enabled {
-        "[ Ext: ON ]"
+        // --- columns / visible rows ---
+        let cols = ((list_area.width.saturating_sub(GRID_LEFT_MARGIN + GRID_GAP))
+            / (GRID_TILE_W + GRID_GAP))
+            .max(1) as usize;
+        let rows = ((list_area.height.saturating_sub(GRID_TOP_MARGIN + GRID_GAP))
+            / (GRID_TILE_H + GRID_GAP)) as usize;
+        app.list.grid_columns = cols; // events.rs grid nav reads this (Up/Down move by cols)
+
+        let len = app.list.visual_list.len();
+
+        // --- clamp grid_scroll so the selected tile stays visible, without over-scrolling ---
+        if cols > 0 && rows > 0 && len > 0 {
+            let sel_row = app.list.visual_index / cols;
+            if sel_row < app.list.grid_scroll {
+                app.list.grid_scroll = sel_row;
+            }
+            let last_visible = app.list.grid_scroll + rows.saturating_sub(1);
+            if sel_row > last_visible {
+                app.list.grid_scroll = sel_row.saturating_sub(rows.saturating_sub(1));
+            }
+            let max_scroll = (len - 1) / cols;
+            if app.list.grid_scroll > max_scroll {
+                app.list.grid_scroll = max_scroll;
+            }
+        } else {
+            app.list.grid_scroll = 0;
+        }
+
+        let start = app.list.grid_scroll * cols;
+        let count = (rows * cols).min(len.saturating_sub(start));
+        let buf = frame.buffer_mut();
+
+        for i in 0..count {
+            let vi = start + i;
+            if vi >= len { break; }
+            let row = i / cols;
+            let col = i % cols;
+            let tile_rect = ratatui::layout::Rect::new(
+                list_area.x + GRID_LEFT_MARGIN + (col as u16) * (GRID_TILE_W + GRID_GAP),
+                list_area.y + GRID_TOP_MARGIN + (row as u16) * (GRID_TILE_H + GRID_GAP),
+                GRID_TILE_W,
+                GRID_TILE_H,
+            );
+            let is_selected = vi == app.list.visual_index;
+
+            // --- resolve (icon char, glyph color, display name): SAME mapping the old code used ---
+            let item = &app.list.visual_list[vi];
+            let (icon_char, glyph_color, raw_name) = match item {
+                crate::app::VisualItem::Folder { name, .. } => {
+                    let is_pinned = name == crate::app::VIRTUAL_PINNED_LABEL;
+                    let is_parent = name == "..";
+                    let ic = if is_pinned {
+                        '\u{f4cc}'
+                    } else if is_parent {
+                        '\u{f062}' // Arrow Up ()
+                    } else {
+                        '\u{f07b}' // Folder ()
+                    };
+                    let col = if is_pinned { app.app_theme.heading } else { app.app_theme.folder };
+                    (ic, col, name.clone())
+                }
+                crate::app::VisualItem::Note { summary_idx, is_clin, is_draw, is_canvas, .. } => {
+                    let s = &app.notes[*summary_idx];
+                    let col = if s.pinned { app.app_theme.heading }
+                        else if *is_clin { app.app_theme.destructive }
+                        else if *is_draw { app.app_theme.success }
+                        else if *is_canvas { app.app_theme.accent }
+                        else { app.app_theme.text };
+                    let ic = if s.pinned { '\u{f4cc}' }
+                        else if *is_clin { '\u{f023}' }
+                        else if *is_draw { '\u{f1fc}' }
+                        else if *is_canvas { '\u{f005}' }
+                        else { '\u{f15c}' };
+                    (ic, col, s.title.clone())
+                }
+                crate::app::VisualItem::CreateNew { .. } => ('\u{f067}', app.app_theme.success, "New".to_string()),
+            };
+
+            // --- tile border (plain border = "button") ---
+            let mut block = Block::default()
+                .borders(Borders::ALL);
+            if is_selected {
+                block = block.border_style(Style::default().fg(app.app_theme.highlight_bg));
+            } else {
+                block = block.border_style(Style::default().fg(app.app_theme.border));
+            }
+            let inner = block.inner(tile_rect);
+            block.render(tile_rect, buf); // paints border
+
+            // --- icon: centered on the top inner row ---
+            let icon_style = if is_selected {
+                Style::default().fg(glyph_color).add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(glyph_color)
+            };
+            let inner_w = inner.width as usize; // GRID_TILE_W - 2 = 10
+            let icon_x = inner.x + (inner_w.saturating_sub(1) / 2) as u16; // center the 1-wide glyph
+            if let Some(cell) = buf.cell_mut((icon_x, inner.y)) {
+                cell.set_char(icon_char).set_style(icon_style);
+            }
+
+            // --- tag icon: top right corner for items that have tags ---
+            let has_tags = match item {
+                crate::app::VisualItem::Note { summary_idx, .. } => {
+                    !app.notes[*summary_idx].tags.is_empty()
+                }
+                _ => false,
+            };
+            if has_tags {
+                let tag_x = inner.x + inner.width.saturating_sub(1);
+                if let Some(cell) = buf.cell_mut((tag_x, inner.y)) {
+                    let tag_style = if is_selected {
+                        Style::default().fg(app.app_theme.tag).add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default().fg(app.app_theme.tag)
+                    };
+                    cell.set_char('\u{f02b}').set_style(tag_style);
+                }
+            }
+
+            // --- name: sanitize, truncate to inner width, center, write on the bottom row (row 2) ---
+            let sanitized = crate::sanitize::sanitize_for_terminal(&raw_name);
+            let mut chars: Vec<char> = sanitized.chars().collect();
+            if chars.len() > inner_w { chars.truncate(inner_w - 1); chars.push('…'); }
+            let pad = inner_w.saturating_sub(chars.len());
+            let left = pad / 2;
+            let name_style = if is_selected {
+                Style::default().add_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+            };
+            let mut name_string: String = " ".repeat(left);
+            name_string.extend(chars.iter());
+            let name_row = inner.y + 2; // bottom row of the 3 inner rows
+            for (k, ch) in name_string.chars().enumerate() {
+                if let Some(cell) = buf.cell_mut((inner.x + k as u16, name_row)) {
+                    cell.set_char(ch).set_style(name_style);
+                }
+            }
+
+            // --- record tile for mouse hit-testing ---
+            app.list.grid_tiles.push(crate::list_view::GridTile {
+                visual_index: vi,
+                rect: tile_rect,
+            });
+        }
+        // do NOT render a List widget here; do NOT touch list_state (tree view still uses it).
     } else {
-        "[ Ext: OFF ]"
-    };
-    let ext_button_style = if app.list_focus == ListFocus::ExternalEditorToggle {
-        Style::default()
-            .fg(Color::Black)
-            .bg(Color::Yellow)
-            .add_modifier(Modifier::BOLD)
-    } else if app.external_editor_enabled {
-        Style::default()
-            .fg(Color::Green)
-            .add_modifier(Modifier::BOLD)
-    } else {
-        Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
-    };
+        items.reserve(app.list.visual_list.len());
+        for (vi, item) in app.list.visual_list.iter().enumerate() {
+            match item {
+                crate::app::VisualItem::Folder {
+                    path: _,
+                    name,
+                    depth,
+                    is_expanded,
+                    note_count,
+                } => {
+                    let indent = "  ".repeat(*depth);
+                    let is_pinned = name == crate::app::VIRTUAL_PINNED_LABEL;
+                    let icon = if is_pinned {
+                        if *is_expanded { " " } else { " " }
+                    } else if *is_expanded {
+                        " "
+                    } else {
+                        " "
+                    };
+                    let color = if is_pinned {
+                        app.app_theme.heading
+                    } else {
+                        app.app_theme.folder
+                    };
+                    let sanitized_name = crate::sanitize::sanitize_for_terminal(name);
+                    let mut text = format!("{indent}{icon} {sanitized_name} ({note_count})");
+                    if app.list.list_mode == crate::list_view::ListMode::Select {
+                        let checkbox = if app.list.selected_indices.contains(&vi) {
+                            "[x] "
+                        } else {
+                            "[ ] "
+                        };
+                        text = format!("{indent}{checkbox}{icon} {sanitized_name} ({note_count})");
+                    }
+                    items.push(ListItem::new(Line::from(vec![Span::styled(
+                        text,
+                        Style::default().add_modifier(Modifier::BOLD).fg(color),
+                    )])));
+                }
+                crate::app::VisualItem::Note {
+                    summary_idx,
+                    depth,
+                    is_clin,
+                    is_draw,
+                    is_canvas,
+                    in_virtual_pinned_folder,
+                    ..
+                } => {
+                    let summary = &app.notes[*summary_idx];
+                    let indent = "  ".repeat(*depth);
 
-    let footer_line = Line::from(vec![
-        Span::styled(ext_button_label, ext_button_style),
-        Span::raw("   "),
-        Span::raw(crate::sanitize::sanitize_for_terminal(app.status.as_ref())),
-    ]);
+                    let when = format_relative_time(summary.updated_at);
+                    let mut text_style = Style::default();
 
-    let footer =
-        Paragraph::new(footer_line).block(Block::default().borders(Borders::ALL).title("Help"));
-    frame.render_widget(footer, chunks[2]);
+                    let mut spans = Vec::new();
+                    spans.push(Span::raw(indent));
 
-    // Draw template popup if open
-    if let Some(popup) = &app.template_popup {
-        draw_template_popup(frame, popup, area);
+                    if app.list.list_mode == crate::list_view::ListMode::Select {
+                        let checkbox = if app.list.selected_indices.contains(&vi) {
+                            "[x] "
+                        } else {
+                            "[ ] "
+                        };
+                        spans.push(Span::styled(
+                            checkbox,
+                            if app.list.selected_indices.contains(&vi) {
+                                Style::default()
+                                    .fg(app.app_theme.accent)
+                                    .add_modifier(Modifier::BOLD)
+                            } else {
+                                Style::default().fg(app.app_theme.muted)
+                            },
+                        ));
+                    }
+
+                    spans.push(Span::raw("  "));
+
+                    if summary.pinned {
+                        spans.push(Span::styled(
+                            "\u{f4cc} ",
+                            Style::default()
+                                .fg(app.app_theme.heading)
+                                .add_modifier(Modifier::BOLD),
+                        ));
+                    }
+
+                    if *is_clin {
+                        text_style = text_style.fg(app.app_theme.muted);
+                        spans.push(Span::styled(
+                            "\u{f023} ",
+                            Style::default()
+                                .fg(app.app_theme.destructive)
+                                .add_modifier(Modifier::BOLD),
+                        ));
+                    }
+
+                    if *is_draw {
+                        spans.push(Span::styled(
+                            "\u{f1fc} ",
+                            Style::default()
+                                .fg(app.app_theme.success)
+                                .add_modifier(Modifier::BOLD),
+                        ));
+                    }
+
+                    if *is_canvas {
+                        spans.push(Span::styled(
+                            "\u{f005} ",
+                            Style::default()
+                                .fg(app.app_theme.accent)
+                                .add_modifier(Modifier::BOLD),
+                        ));
+                    }
+
+                    let sanitized_title =
+                        crate::sanitize::sanitize_for_terminal(summary.title.as_str());
+                    spans.push(Span::styled(sanitized_title, text_style));
+
+                    for tag in &summary.tags {
+                        spans.push(Span::raw(" "));
+                        let sanitized_tag = crate::sanitize::sanitize_for_terminal(tag);
+                        spans.push(Span::styled(
+                            format!("[{}]", sanitized_tag),
+                            Style::default().fg(app.app_theme.tag),
+                        ));
+                    }
+
+                    if *in_virtual_pinned_folder {
+                        let source = if summary.folder.is_empty() {
+                            "Vault".to_string()
+                        } else {
+                            summary.folder.clone()
+                        };
+                        spans.push(Span::styled(
+                            format!(
+                                "  (from {})",
+                                crate::sanitize::sanitize_for_terminal(&source)
+                            ),
+                            Style::default().fg(app.app_theme.muted),
+                        ));
+                    }
+
+                    if vi == app.list.visual_index {
+                        spans.push(Span::styled(
+                            format!("  ({when})"),
+                            Style::default().fg(app.app_theme.muted),
+                        ));
+                    }
+                    items.push(ListItem::new(Line::from(spans)));
+                }
+                crate::app::VisualItem::CreateNew { depth, .. } => {
+                    let indent = "  ".repeat(*depth);
+                    let text = format!("{indent}  Create new note");
+                    items.push(ListItem::new(Line::from(vec![Span::styled(
+                        text,
+                        Style::default().fg(app.app_theme.success),
+                    )])));
+                }
+            }
+        }
+        let list = List::new(items)
+            .block(
+                Block::default()
+                    .style(app.app_theme.bg_style())
+                    .borders(Borders::NONE)
+                    .padding(Padding::new(2, 2, 1, 1)),
+            )
+            .highlight_style(
+                Style::default()
+                    .fg(app.app_theme.highlight_fg)
+                    .bg(app.app_theme.highlight_bg)
+                    .add_modifier(Modifier::BOLD),
+            );
+
+        app.list.list_state.select(Some(app.list.visual_index));
+        frame.render_stateful_widget(list, list_area, &mut app.list.list_state);
     }
 
-    if let Some(popup) = &mut app.folder_popup {
-        let popup_area = centered_rect(50, 20, area);
-        frame.render_widget(Clear, popup_area);
-        frame.render_widget(&popup.input, popup_area);
+    if app.list.list_mode == crate::list_view::ListMode::Select {
+        let mode_label = if app.list.tag_to_assign.is_some() {
+            "TAG MODE"
+        } else {
+            "SELECT MODE"
+        };
+        let select_hint = format!(
+            " {}: {} selected ",
+            mode_label,
+            app.list.selected_indices.len()
+        );
+        let select_para = Paragraph::new(Span::styled(
+            select_hint,
+            Style::default()
+                .fg(app.app_theme.highlight_fg)
+                .bg(app.app_theme.accent)
+                .add_modifier(Modifier::BOLD),
+        ));
+        let max_width = list_area.width.saturating_sub(4);
+        let select_width = 34.min(max_width);
+        let select_area = Rect::new(list_area.x + 2, list_area.y, select_width, 1);
+        frame.render_widget(select_para, select_area);
     }
 
-    if let Some(popup) = &mut app.tag_popup {
-        let popup_area = centered_rect(60, 40, area);
-        frame.render_widget(Clear, popup_area);
+    if let Some(preview_rect) = preview_area {
+        let hide_encrypted = app.preview_encryption
+            && app
+                .list
+                .visual_list
+                .get(app.list.visual_index)
+                .is_some_and(|item| {
+                    matches!(item, crate::app::VisualItem::Note { is_clin: true, .. })
+                });
+
+        let content_is_current = app.list.preview_content_index == Some(app.list.visual_index);
+        let content = if content_is_current {
+            app.list.preview_content.as_ref()
+        } else {
+            None
+        };
+
+        crate::preview::draw_preview_pane(
+            frame,
+            preview_rect,
+            &app.app_theme,
+            content,
+            hide_encrypted,
+            app.list.snapshot_scroll_offset,
+        );
+    }
+
+    let hint = resolved_status_hint(app, LIST_HELP_HINTS);
+    let badge = Some(ext_badge(
+        app.editor.external_editor_enabled,
+        app.list.list_focus == ListFocus::ExternalEditorToggle,
+        &app.app_theme,
+    ));
+    draw_status_bar(frame, chunks[2], &app.app_theme, badge, &hint, None);
+    draw_corner_watermark(frame, chunks[2], app.app_theme.muted);
+    if app.list.preview_enabled {
+        let constraints = match app.preview_position {
+            crate::config::PreviewPosition::Left => [
+                Constraint::Ratio(43, 100),
+                Constraint::Length(1),
+                Constraint::Min(0),
+            ],
+            crate::config::PreviewPosition::Right => [
+                Constraint::Min(0),
+                Constraint::Length(1),
+                Constraint::Ratio(43, 100),
+            ],
+        };
+        let full_cols = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints(constraints)
+            .split(Rect::new(
+                area.x,
+                area.y + 1,
+                area.width,
+                area.height.saturating_sub(1),
+            ));
+        draw_dim_vline(frame, full_cols[1], app.app_theme.muted);
+    }
+
+    if let Some(popup) = &app.popups.template {
+        draw_template_popup(frame, popup, area, &app.app_theme);
+    }
+
+    if let Some(popup) = &mut app.popups.folder {
+        let title = match popup.mode {
+            crate::popups::FolderPopupMode::Create { .. } => "NEW FOLDER",
+            crate::popups::FolderPopupMode::Rename { .. } => "RENAME FOLDER",
+        };
+        let content = draw_popup_frame(
+            frame,
+            area,
+            title,
+            50,
+            10,
+            "Enter confirm · Esc cancel",
+            &app.app_theme,
+        );
+
+        popup.input.set_block(
+            Block::default()
+                .style(app.app_theme.bg_style())
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(app.app_theme.heading)),
+        );
+        frame.render_widget(&popup.input, content);
+    }
+
+    if let Some(popup) = &mut app.popups.tag {
+        let suggestion_height = if popup.suggestions.is_empty() {
+            0u16
+        } else {
+            (popup.suggestions.len() as u16).clamp(1, 5)
+        };
+        let content = draw_popup_frame(
+            frame,
+            area,
+            "TAGS",
+            NOTES_POPUP_LARGE_W_PCT,
+            NOTES_POPUP_LARGE_H_PCT,
+            "Ctrl+S batch assign · Tab accept · Enter save · d delete from all · Esc cancel",
+            &app.app_theme,
+        );
 
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(3),
-                Constraint::Length(5),
-                Constraint::Min(5),
+                Constraint::Length(3u16 + suggestion_height),
+                Constraint::Min(3),
             ])
-            .split(popup_area);
+            .split(content);
+
+        let input_border = if popup.focus == crate::popups::TagPopupFocus::Input {
+            Style::default().fg(app.app_theme.heading)
+        } else {
+            Style::default().fg(app.app_theme.muted)
+        };
+        let input_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(3), Constraint::Min(0)])
+            .split(chunks[0]);
 
         let input_block = Block::default()
+            .style(app.app_theme.bg_style())
             .borders(Borders::ALL)
-            .title("Manage Tags (comma separated) - Tab: autocomplete, Enter: save, Esc: cancel");
-        let input_inner = input_block.inner(chunks[0]);
+            .border_style(input_border)
+            .title("");
+        let input_inner = input_block.inner(input_chunks[0]);
         frame.render_widget(input_block, chunks[0]);
         frame.render_widget(&popup.input, input_inner);
 
-        let suggestion_items: Vec<ListItem> = popup
-            .suggestions
-            .iter()
-            .enumerate()
-            .map(|(i, tag)| {
-                let style = if i == popup.suggestion_index {
-                    Style::default().fg(Color::Black).bg(Color::Yellow)
-                } else {
-                    Style::default()
-                };
-                ListItem::new(format!("  {}", tag)).style(style)
-            })
-            .collect();
+        if !popup.suggestions.is_empty() {
+            let suggestion_items: Vec<ListItem> = popup
+                .suggestions
+                .iter()
+                .enumerate()
+                .map(|(i, tag)| {
+                    let style = if i == popup.suggestion_index {
+                        Style::default()
+                            .fg(app.app_theme.highlight_fg)
+                            .bg(app.app_theme.heading)
+                    } else {
+                        Style::default()
+                    };
+                    ListItem::new(format!("  {}", tag)).style(style)
+                })
+                .collect();
 
-        let suggestions_list = List::new(suggestion_items).block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title("Suggestions (Tab: accept, Shift+D: delete)"),
-        );
-        frame.render_widget(suggestions_list, chunks[1]);
+            let suggestions_list = List::new(suggestion_items)
+                .block(
+                    Block::default()
+                        .borders(Borders::NONE)
+                        .style(app.app_theme.bg_style()),
+                )
+                .highlight_style(Style::default());
 
-        let tag_display = popup.all_tags.join("  •  ");
-        let tags_paragraph = Paragraph::new(tag_display).wrap(Wrap { trim: true }).block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title("All existing tags"),
-        );
-        frame.render_widget(tags_paragraph, chunks[2]);
+            frame.render_widget(suggestions_list, input_chunks[1]);
+        }
+
+        let all_tags_border = if popup.focus == crate::popups::TagPopupFocus::AllTagsList {
+            Style::default().fg(app.app_theme.heading)
+        } else {
+            Style::default().fg(app.app_theme.muted)
+        };
+        let tag_empty = popup.all_tags.is_empty();
+        let tag_items: Vec<ListItem> = if tag_empty {
+            vec![ListItem::new(Span::styled(
+                "No tags found",
+                Style::default().fg(app.app_theme.muted),
+            ))]
+        } else {
+            popup
+                .all_tags
+                .iter()
+                .map(|tag| ListItem::new(tag.to_string()))
+                .collect()
+        };
+
+        let tags_list = List::new(tag_items)
+            .block(
+                Block::default()
+                    .style(app.app_theme.bg_style())
+                    .borders(Borders::ALL)
+                    .border_style(all_tags_border)
+                    .title(if tag_empty {
+                        String::new()
+                    } else {
+                        "All Tags".to_string()
+                    }),
+            )
+            .highlight_style(
+                Style::default()
+                    .fg(app.app_theme.highlight_fg)
+                    .bg(app.app_theme.highlight_bg)
+                    .add_modifier(Modifier::BOLD),
+            )
+            .highlight_symbol("  ");
+
+        let mut tags_state = ListState::default();
+        if popup.focus == crate::popups::TagPopupFocus::AllTagsList && !popup.all_tags.is_empty() {
+            tags_state.select(Some(popup.all_tags_selected));
+        }
+        frame.render_stateful_widget(tags_list, chunks[1], &mut tags_state);
     }
 
-    if let Some(popup) = &mut app.filter_popup {
-        let popup_area = centered_rect(60, 40, area);
-        frame.render_widget(Clear, popup_area);
+    if let Some(picker) = &mut app.popups.folder_picker {
+        let title = match picker.mode {
+            crate::popups::FolderPickerMode::CopyNote { .. } => "COPY",
+            _ => "MOVE",
+        };
+        let content = draw_popup_frame(
+            frame,
+            area,
+            title,
+            NOTES_POPUP_LARGE_W_PCT,
+            NOTES_POPUP_LARGE_H_PCT,
+            "Tab switch  Enter move  Esc cancel",
+            &app.app_theme,
+        );
 
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(3),
-                Constraint::Length(5),
-                Constraint::Min(5),
-            ])
-            .split(popup_area);
+            .constraints([Constraint::Length(3), Constraint::Min(1)])
+            .split(content);
 
-        let input_block = Block::default().borders(Borders::ALL).title(
-            "Filter Tags (comma separated OR logic) - Tab: autocomplete, Enter: apply, Esc: cancel",
-        );
-        let input_inner = input_block.inner(chunks[0]);
-        frame.render_widget(input_block, chunks[0]);
-        frame.render_widget(&popup.input, input_inner);
-
-        let suggestion_items: Vec<ListItem> = popup
-            .suggestions
-            .iter()
-            .enumerate()
-            .map(|(i, tag)| {
-                let style = if i == popup.suggestion_index {
-                    Style::default().fg(Color::Black).bg(Color::Yellow)
-                } else {
-                    Style::default()
-                };
-                ListItem::new(format!("  {}", tag)).style(style)
-            })
-            .collect();
-
-        let suggestions_list = List::new(suggestion_items).block(
+        let search_border = if picker.focus == crate::app::FolderPickerFocus::Search {
+            Style::default().fg(app.app_theme.heading)
+        } else {
+            Style::default().fg(app.app_theme.muted)
+        };
+        picker.input.set_block(
             Block::default()
+                .style(app.app_theme.bg_style())
                 .borders(Borders::ALL)
-                .title("Suggestions (Tab to accept)"),
+                .border_style(search_border)
+                .title(""),
         );
-        frame.render_widget(suggestions_list, chunks[1]);
+        frame.render_widget(&picker.input, chunks[0]);
 
-        let tag_display = popup.all_tags.join("  •  ");
-        let tags_paragraph = Paragraph::new(tag_display).wrap(Wrap { trim: true }).block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title("All existing tags"),
-        );
-        frame.render_widget(tags_paragraph, chunks[2]);
-    }
+        let items: Vec<ListItem> = if picker.filtered_folders.is_empty() {
+            vec![ListItem::new(Span::styled(
+                "(no matching folders)",
+                Style::default().fg(app.app_theme.muted),
+            ))]
+        } else {
+            picker
+                .filtered_folders
+                .iter()
+                .map(|f| {
+                    let label = if f.is_empty() { "Vault (Root)" } else { f };
+                    ListItem::new(label)
+                })
+                .collect()
+        };
 
-    if let Some(picker) = &app.folder_picker {
-        let popup_area = centered_rect(40, 60, area);
-        frame.render_widget(Clear, popup_area);
-
-        let items: Vec<ListItem> = picker
-            .folders
-            .iter()
-            .map(|f| {
-                let label = if f.is_empty() { "Vault (Root)" } else { f };
-                ListItem::new(label)
-            })
-            .collect();
-
-        let title = match &picker.mode {
-            crate::app::FolderPickerMode::MoveNote { .. } => {
-                format!("Move note to folder")
-            }
+        let _title = match &picker.mode {
+            crate::app::FolderPickerMode::MoveNote { .. } => "Move note to folder".to_string(),
+            crate::app::FolderPickerMode::CopyNote { .. } => "Copy note to folder".to_string(),
             crate::app::FolderPickerMode::MoveFolder { folder_path } => {
                 let folder_name = folder_path.rsplit('/').next().unwrap_or(folder_path);
                 format!("Move '{}' folder to", folder_name)
             }
+            crate::app::FolderPickerMode::BulkMoveNotes { note_ids } => {
+                format!("Move {} selected note(s) to", note_ids.len())
+            }
         };
 
+        let results_border = if picker.focus == crate::app::FolderPickerFocus::Results {
+            Style::default().fg(app.app_theme.heading)
+        } else {
+            Style::default().fg(app.app_theme.muted)
+        };
         let list = List::new(items)
-            .block(Block::default().borders(Borders::ALL).title(title))
+            .block(
+                Block::default()
+                    .style(app.app_theme.bg_style())
+                    .borders(Borders::ALL)
+                    .border_style(results_border)
+                    .title(""),
+            )
             .highlight_style(
                 Style::default()
-                    .fg(Color::Black)
-                    .bg(Color::Cyan)
+                    .fg(app.app_theme.highlight_fg)
+                    .bg(app.app_theme.highlight_bg)
                     .add_modifier(Modifier::BOLD),
             )
-            .highlight_symbol("> ");
+            .highlight_symbol("  ");
 
         let mut state = ListState::default();
-        state.select(Some(picker.selected));
+        if picker.focus == crate::app::FolderPickerFocus::Results
+            && !picker.filtered_folders.is_empty()
+        {
+            state.select(Some(picker.selected));
+        }
 
-        frame.render_stateful_widget(list, popup_area, &mut state);
+        frame.render_stateful_widget(list, chunks[1], &mut state);
     }
 
     if let Some(palette) = &mut app.command_palette {
-        let palette_area = centered_rect(60, 60, area);
-        frame.render_widget(Clear, palette_area);
+        let content = draw_popup_frame(
+            frame,
+            area,
+            "COMMANDS",
+            NOTES_POPUP_LARGE_W_PCT,
+            NOTES_POPUP_LARGE_H_PCT,
+            "Enter run  ↑/↓ select  Esc close",
+            &app.app_theme,
+        );
 
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(3), Constraint::Min(0)])
-            .split(palette_area);
+            .split(content);
 
+        palette.input.set_block(
+            Block::default()
+                .style(app.app_theme.bg_style())
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(app.app_theme.muted))
+                .title(""),
+        );
         frame.render_widget(&palette.input, chunks[0]);
 
         let items: Vec<ListItem> = palette
@@ -630,47 +2114,378 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     )),
                     Line::from(Span::styled(
                         &item.description,
-                        Style::default().fg(Color::DarkGray),
+                        Style::default().fg(app.app_theme.muted),
                     )),
                 ])
             })
             .collect();
 
         let list = ratatui::widgets::List::new(items)
-            .block(Block::default().borders(Borders::ALL).title(" Commands "))
-            .highlight_style(Style::default().bg(Color::DarkGray).fg(Color::White))
-            .highlight_symbol(">> ");
+            .block(
+                Block::default()
+                    .style(app.app_theme.bg_style())
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(app.app_theme.muted))
+                    .title(""),
+            )
+            .highlight_style(
+                Style::default()
+                    .fg(app.app_theme.highlight_fg)
+                    .bg(app.app_theme.highlight_bg)
+                    .add_modifier(Modifier::BOLD),
+            )
+            .highlight_symbol("  ");
 
         frame.render_stateful_widget(list, chunks[1], &mut palette.state);
     }
 
-    // QoL feature popups
+    if let Some(popup) = &mut app.popups.note_rename {
+        let content = draw_popup_frame(
+            frame,
+            area,
+            "RENAME",
+            50,
+            10,
+            "Enter rename · Esc cancel",
+            &app.app_theme,
+        );
 
-    // Note rename popup
-    if let Some(popup) = &mut app.note_rename_popup {
-        let popup_area = centered_rect(50, 20, area);
-        frame.render_widget(Clear, popup_area);
-        frame.render_widget(&popup.input, popup_area);
+        popup.input.set_block(
+            Block::default()
+                .style(app.app_theme.bg_style())
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(app.app_theme.heading)),
+        );
+        frame.render_widget(&popup.input, content);
     }
 
-    // Note create popup
-    if let Some(popup) = &mut app.note_create_popup {
-        let popup_area = centered_rect(50, 20, area);
-        frame.render_widget(Clear, popup_area);
-        frame.render_widget(&popup.input, popup_area);
+    if let Some(popup) = &mut app.popups.note_create {
+        let content = draw_popup_frame(
+            frame,
+            area,
+            "NEW NOTE",
+            50,
+            10,
+            "Enter create · Esc cancel",
+            &app.app_theme,
+        );
+
+        popup.input.set_block(
+            Block::default()
+                .style(app.app_theme.bg_style())
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(app.app_theme.heading)),
+        );
+        frame.render_widget(&popup.input, content);
     }
 
-    // Search popup
-    if let Some(popup) = &mut app.search_popup {
-        let popup_area = centered_rect(50, 20, area);
-        frame.render_widget(Clear, popup_area);
-        frame.render_widget(&popup.input, popup_area);
+    if let Some(popup) = &mut app.popups.draw_create {
+        let content = draw_popup_frame(
+            frame,
+            area,
+            "NEW DRAWING",
+            50,
+            10,
+            "Enter create · Esc cancel",
+            &app.app_theme,
+        );
+
+        popup.input.set_block(
+            Block::default()
+                .style(app.app_theme.bg_style())
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(app.app_theme.heading)),
+        );
+        frame.render_widget(&popup.input, content);
     }
 
-    // Trash view popup
-    if let Some(trash) = &app.trash_view {
-        let popup_area = centered_rect(70, 70, area);
-        frame.render_widget(Clear, popup_area);
+    if let Some(popup) = &mut app.popups.canvas_create {
+        let content = draw_popup_frame(
+            frame,
+            area,
+            "NEW CANVAS",
+            50,
+            10,
+            "Enter create · Esc cancel",
+            &app.app_theme,
+        );
+
+        popup.input.set_block(
+            Block::default()
+                .style(app.app_theme.bg_style())
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(app.app_theme.heading)),
+        );
+        frame.render_widget(&popup.input, content);
+    }
+
+    if let Some(popup) = &mut app.popups.import {
+        let title = match popup.source {
+            crate::popups::ImportSource::File => "IMPORT FILE",
+            crate::popups::ImportSource::Csv => "IMPORT CSV/TSV",
+            crate::popups::ImportSource::Json => "IMPORT JSON",
+            crate::popups::ImportSource::Url => "IMPORT URL",
+            crate::popups::ImportSource::Clipboard => "IMPORT CLIPBOARD",
+        };
+        let content = draw_popup_frame(
+            frame,
+            area,
+            title,
+            60,
+            20,
+            "Enter import · Esc cancel",
+            &app.app_theme,
+        );
+        popup.input.set_block(
+            Block::default()
+                .style(app.app_theme.bg_style())
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(app.app_theme.muted)),
+        );
+        frame.render_widget(&popup.input, content);
+    }
+
+    if let Some(popup) = &mut app.popups.search {
+        let content = draw_popup_frame(
+            frame,
+            area,
+            "SEARCH",
+            NOTES_POPUP_LARGE_W_PCT,
+            NOTES_POPUP_LARGE_H_PCT,
+            "Tab switch · Enter open · Esc cancel · f:folder p:pinned t:tag g:text · \\e\\ escapes filters",
+            &app.app_theme,
+        );
+
+        let query_text = popup.input.lines().join("");
+        let parsed = crate::app::parse_search_query(&query_text);
+        let has_filter = parsed.folder_filter.is_some()
+            || parsed.pinned_only
+            || parsed.tag_filter.is_some()
+            || parsed.grep_mode;
+
+        let constraints = if has_filter {
+            vec![
+                Constraint::Length(3),
+                Constraint::Length(1),
+                Constraint::Min(3),
+            ]
+        } else {
+            vec![Constraint::Length(3), Constraint::Min(3)]
+        };
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(constraints)
+            .split(content);
+
+        if has_filter {
+            let mut spans: Vec<Span<'static>> = vec![Span::raw("  ")];
+            let mut first = true;
+
+            let add_sep = |spans: &mut Vec<Span<'static>>,
+                           first: &mut bool,
+                           theme: &crate::app_theme::AppThemeColors| {
+                if !*first {
+                    spans.push(Span::styled(
+                        " · ",
+                        Style::default()
+                            .fg(theme.accent)
+                            .add_modifier(Modifier::BOLD),
+                    ));
+                }
+                *first = false;
+            };
+
+            if let Some(ref f) = parsed.folder_filter {
+                let text = if f.is_empty() { "Vault" } else { f.as_str() };
+                add_sep(&mut spans, &mut first, &app.app_theme);
+                spans.push(Span::styled(
+                    "\u{f07c} ",
+                    Style::default()
+                        .fg(app.app_theme.accent)
+                        .add_modifier(Modifier::BOLD),
+                ));
+                spans.push(Span::styled(
+                    text.to_string(),
+                    Style::default()
+                        .fg(app.app_theme.accent)
+                        .add_modifier(Modifier::BOLD),
+                ));
+            }
+            if parsed.pinned_only {
+                add_sep(&mut spans, &mut first, &app.app_theme);
+                spans.push(Span::styled(
+                    "\u{f08d} Pinned",
+                    Style::default()
+                        .fg(app.app_theme.accent)
+                        .add_modifier(Modifier::BOLD),
+                ));
+            }
+            if parsed.grep_mode {
+                add_sep(&mut spans, &mut first, &app.app_theme);
+                let grep_display = if parsed.grep_text.is_empty() {
+                    "Grep".to_string()
+                } else {
+                    parsed.grep_text.clone()
+                };
+                spans.push(Span::styled(
+                    format!("\u{f002} {}", grep_display),
+                    Style::default()
+                        .fg(app.app_theme.accent)
+                        .add_modifier(Modifier::BOLD),
+                ));
+            }
+            if let Some(ref tags) = parsed.tag_filter {
+                add_sep(&mut spans, &mut first, &app.app_theme);
+                let tag_text = if tags.is_empty() {
+                    String::new()
+                } else {
+                    tags.join(", ")
+                };
+                spans.push(Span::styled(
+                    "\u{f02b} ",
+                    Style::default()
+                        .fg(app.app_theme.accent)
+                        .add_modifier(Modifier::BOLD),
+                ));
+                spans.push(Span::styled(
+                    tag_text,
+                    Style::default()
+                        .fg(app.app_theme.accent)
+                        .add_modifier(Modifier::BOLD),
+                ));
+            }
+
+            let filter_line = Line::from(spans);
+            let filter_para = Paragraph::new(filter_line).style(app.app_theme.bg_style());
+            frame.render_widget(filter_para, chunks[1]);
+        }
+
+        let input_chunk = chunks[0];
+        let results_chunk = if has_filter { chunks[2] } else { chunks[1] };
+
+        popup.input.set_block(
+            Block::default()
+                .style(app.app_theme.bg_style())
+                .borders(Borders::ALL)
+                .border_style(if popup.focus == crate::popups::SearchFocus::Input {
+                    Style::default().fg(app.app_theme.heading)
+                } else {
+                    Style::default().fg(app.app_theme.muted)
+                })
+                .title(""),
+        );
+        frame.render_widget(&popup.input, input_chunk);
+
+        let has_title = !popup.title_results.is_empty();
+        let has_grep = !popup.grep_results.is_empty();
+
+        let results_focused = popup.focus == crate::popups::SearchFocus::Results;
+        let results_border = if results_focused {
+            Style::default().fg(app.app_theme.heading)
+        } else {
+            Style::default().fg(app.app_theme.muted)
+        };
+
+        let (all_items, results_title) = if has_grep {
+            let mut visible: Vec<(usize, String)> = Vec::new();
+            let mut i = 0;
+            while i < popup.grep_results.len() {
+                let is_collapsed = popup.grep_is_header[i] && !popup.grep_expanded.contains(&i);
+                let icon = if popup.grep_is_header[i] {
+                    if is_collapsed { "\u{25b6}" } else { "\u{25bc}" }
+                } else {
+                    ""
+                };
+                visible.push((i, format!("{}{}", icon, popup.grep_results[i])));
+                i += 1;
+                if is_collapsed {
+                    while i < popup.grep_results.len() && !popup.grep_is_header[i] {
+                        i += 1;
+                    }
+                }
+            }
+            let items: Vec<ListItem> = visible
+                .iter()
+                .map(|(_, t)| ListItem::new(styled_result_line(t, &app.app_theme)))
+                .collect();
+            (items, "")
+        } else if has_title {
+            let items: Vec<ListItem> = popup
+                .title_results
+                .iter()
+                .map(|entry| ListItem::new(styled_result_line(entry, &app.app_theme)))
+                .collect();
+            (items, "")
+        } else {
+            let msg = if query_text.trim().is_empty() && !has_filter {
+                "Type to search notes"
+            } else {
+                "No results"
+            };
+            (
+                vec![ListItem::new(Span::styled(
+                    msg.to_string(),
+                    Style::default().fg(app.app_theme.muted),
+                ))],
+                "",
+            )
+        };
+
+        let results_list = List::new(all_items)
+            .block(
+                Block::default()
+                    .style(app.app_theme.bg_style())
+                    .borders(Borders::ALL)
+                    .border_style(results_border)
+                    .title(results_title),
+            )
+            .highlight_style(
+                Style::default()
+                    .fg(app.app_theme.highlight_fg)
+                    .bg(app.app_theme.highlight_bg)
+                    .add_modifier(Modifier::BOLD),
+            )
+            .highlight_symbol("  ");
+        let mut list_state = ListState::default();
+        if results_focused && has_grep {
+            let mut vis_pos = 0;
+            let mut i = 0;
+            while i < popup.grep_results.len() && i <= popup.grep_selected {
+                let is_collapsed = popup.grep_is_header[i] && !popup.grep_expanded.contains(&i);
+                if i == popup.grep_selected {
+                    list_state.select(Some(vis_pos));
+                    break;
+                }
+                vis_pos += 1;
+                i += 1;
+                if is_collapsed {
+                    while i < popup.grep_results.len() && !popup.grep_is_header[i] {
+                        i += 1;
+                    }
+                }
+            }
+        } else if results_focused && has_title {
+            list_state.select(Some(popup.title_selected));
+        }
+        frame.render_stateful_widget(results_list, results_chunk, &mut list_state);
+    }
+
+    if let Some(trash) = &app.popups.trash_view {
+        let content = draw_popup_frame(
+            frame,
+            area,
+            "TRASH",
+            70,
+            70,
+            "r restore · d delete · E empty · q close",
+            &app.app_theme,
+        );
+
+        let border_color = if trash.items.is_empty() {
+            app.app_theme.muted
+        } else {
+            app.app_theme.heading
+        };
 
         let items: Vec<ListItem> = trash
             .items
@@ -680,7 +2495,10 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 let when = format_relative_time(item.time_deleted as u64);
                 ListItem::new(Line::from(vec![
                     Span::raw(name.to_string()),
-                    Span::styled(format!("  ({when})"), Style::default().fg(Color::DarkGray)),
+                    Span::styled(
+                        format!("  ({when})"),
+                        Style::default().fg(app.app_theme.muted),
+                    ),
                 ]))
             })
             .collect();
@@ -688,214 +2506,578 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         let list = List::new(items)
             .block(
                 Block::default()
+                    .style(app.app_theme.bg_style())
                     .borders(Borders::ALL)
-                    .title("Trash - r:restore d:delete E:empty q:close"),
+                    .border_style(Style::default().fg(border_color))
+                    .title(""),
             )
             .highlight_style(
                 Style::default()
-                    .fg(Color::Black)
-                    .bg(Color::Cyan)
+                    .fg(app.app_theme.highlight_fg)
+                    .bg(app.app_theme.highlight_bg)
                     .add_modifier(Modifier::BOLD),
             )
-            .highlight_symbol("> ");
+            .highlight_symbol("  ");
 
         let mut state = ListState::default();
         state.select(Some(trash.selected));
 
-        frame.render_stateful_widget(list, popup_area, &mut state);
+        frame.render_stateful_widget(list, content, &mut state);
     }
 
-    // Preview pane (handled differently - see below)
-
-    if let Some(popup) = &app.confirm_popup {
-        draw_confirm_popup(frame, popup, area);
+    if let Some(popup) = &app.popups.confirm {
+        draw_confirm_popup(frame, popup, area, &app.app_theme);
     }
 }
 
-pub fn draw_template_popup(frame: &mut Frame, popup: &TemplatePopup, area: Rect) {
-    // Create popup area
-    let popup_area = centered_rect(60, 60, area);
+pub fn draw_template_popup(
+    frame: &mut Frame,
+    popup: &TemplatePopup,
+    area: Rect,
+    theme: &crate::app_theme::AppThemeColors,
+) {
+    let content = draw_popup_frame(
+        frame,
+        area,
+        "TEMPLATES",
+        NOTES_POPUP_LARGE_W_PCT,
+        NOTES_POPUP_LARGE_H_PCT,
+        "Tab switch · Enter use template · n create template · d delete · Space edit · ? help · Esc cancel",
+        theme,
+    );
 
-    // Clear the area
-    frame.render_widget(Clear, popup_area);
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(3), Constraint::Min(1)])
+        .split(content);
 
-    // Build list items
+    let mut input = popup.input.clone();
+    input.set_style(theme.bg_style());
+    input.set_block(
+        Block::default()
+            .style(theme.bg_style())
+            .borders(Borders::ALL)
+            .border_style(
+                if popup.focus == crate::popups::TemplatePopupFocus::Search {
+                    Style::default().fg(theme.heading)
+                } else {
+                    Style::default().fg(theme.muted)
+                },
+            )
+            .title(""),
+    );
+    frame.render_widget(&input, chunks[0]);
+
+    let items: Vec<ListItem> = if popup.filtered_templates.is_empty() {
+        vec![ListItem::new(Span::styled(
+            "(no matching templates)",
+            Style::default().fg(theme.muted),
+        ))]
+    } else {
+        popup
+            .filtered_templates
+            .iter()
+            .map(|t| {
+                ListItem::new(Line::from(vec![
+                    Span::styled(&t.name, Style::default().add_modifier(Modifier::BOLD)),
+                    Span::styled(
+                        format!("  ({})", t.filename),
+                        Style::default().fg(theme.muted),
+                    ),
+                ]))
+            })
+            .collect()
+    };
+
+    let results_border = if popup.focus == crate::popups::TemplatePopupFocus::Results {
+        Style::default().fg(theme.heading)
+    } else {
+        Style::default().fg(theme.muted)
+    };
+    let list = List::new(items)
+        .block(
+            Block::default()
+                .style(theme.bg_style())
+                .borders(Borders::ALL)
+                .border_style(results_border),
+        )
+        .highlight_style(
+            Style::default()
+                .fg(theme.highlight_fg)
+                .bg(theme.highlight_bg)
+                .add_modifier(Modifier::BOLD),
+        )
+        .highlight_symbol("  ");
+
+    let mut state = ListState::default();
+    if popup.focus == crate::popups::TemplatePopupFocus::Results
+        && !popup.filtered_templates.is_empty()
+    {
+        state.select(Some(popup.selected));
+    }
+
+    frame.render_stateful_widget(list, chunks[1], &mut state);
+}
+
+pub fn draw_theme_popup(
+    frame: &mut Frame,
+    popup: &ThemePopup,
+    area: Rect,
+    theme: &crate::app_theme::AppThemeColors,
+) {
+    let content = draw_popup_frame(
+        frame,
+        area,
+        "THEMES",
+        40,
+        60,
+        "Tab navigate · Enter select · Esc close",
+        theme,
+    );
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Min(0),
+            Constraint::Length(3),
+            Constraint::Length(3),
+        ])
+        .split(content);
+
     let items: Vec<ListItem> = popup
-        .templates
+        .themes
         .iter()
-        .map(|t| {
-            ListItem::new(Line::from(vec![
-                Span::styled(&t.name, Style::default().add_modifier(Modifier::BOLD)),
-                Span::styled(
-                    format!("  ({})", t.filename),
-                    Style::default().fg(Color::DarkGray),
-                ),
-            ]))
-        })
+        .map(|t| ListItem::new(Line::from(Span::raw(t))))
         .collect();
+
+    let list_style = if popup.focus == crate::app::ThemePopupFocus::ThemeList {
+        Style::default().fg(theme.heading)
+    } else {
+        Style::default().fg(theme.muted)
+    };
 
     let list = List::new(items)
         .block(
             Block::default()
+                .style(theme.bg_style())
                 .borders(Borders::ALL)
-                .title("Select Template (Enter to select, Esc to cancel)")
-                .border_style(Style::default().fg(Color::Yellow)),
+                .border_style(list_style),
         )
         .highlight_style(
             Style::default()
-                .fg(Color::Black)
-                .bg(Color::Cyan)
+                .fg(theme.highlight_fg)
+                .bg(theme.highlight_bg)
                 .add_modifier(Modifier::BOLD),
-        )
-        .highlight_symbol("> ");
+        );
 
     let mut state = ListState::default();
     state.select(Some(popup.selected));
+    frame.render_stateful_widget(list, chunks[0], &mut state);
 
-    frame.render_stateful_widget(list, popup_area, &mut state);
+    let gen_label = if popup.general_is_solid {
+        "General Background Color: ON"
+    } else {
+        "General Background Color: OFF"
+    };
+    let graph_label = if popup.graph_is_solid {
+        "Graph Background Color: ON"
+    } else {
+        "Graph Background Color: OFF"
+    };
+
+    let gen_style = if popup.general_is_solid {
+        Style::default().fg(theme.success)
+    } else {
+        Style::default().fg(theme.destructive)
+    };
+    let gen_block = Block::default()
+        .style(theme.bg_style())
+        .borders(Borders::ALL)
+        .border_style(if popup.focus == crate::app::ThemePopupFocus::GeneralBg {
+            Style::default().fg(theme.heading)
+        } else {
+            Style::default().fg(theme.muted)
+        });
+    let gen_inner = gen_block.inner(chunks[1]);
+    let gen_para = Paragraph::new(Span::styled(gen_label, gen_style))
+        .alignment(Alignment::Center)
+        .style(theme.bg_style());
+    frame.render_widget(gen_block, chunks[1]);
+    frame.render_widget(gen_para, gen_inner);
+
+    let graph_style = if popup.graph_is_solid {
+        Style::default().fg(theme.success)
+    } else {
+        Style::default().fg(theme.destructive)
+    };
+    let graph_block = Block::default()
+        .style(theme.bg_style())
+        .borders(Borders::ALL)
+        .border_style(if popup.focus == crate::app::ThemePopupFocus::GraphBg {
+            Style::default().fg(theme.heading)
+        } else {
+            Style::default().fg(theme.muted)
+        });
+    let graph_inner = graph_block.inner(chunks[2]);
+    let graph_para = Paragraph::new(Span::styled(graph_label, graph_style))
+        .alignment(Alignment::Center)
+        .style(theme.bg_style());
+    frame.render_widget(graph_block, chunks[2]);
+    frame.render_widget(graph_para, graph_inner);
+}
+
+pub fn get_textarea_scroll(textarea: &TextArea) -> (usize, usize) {
+    let mut scroll_row = 0;
+    let mut scroll_col = 0;
+
+    let debug_str = format!("{textarea:?}");
+    if let Some(start) = debug_str.find("viewport: Viewport(") {
+        let after_start = &debug_str[start + "viewport: Viewport(".len()..];
+        if let Some(end) = after_start.find(')') {
+            let number_str = &after_start[..end];
+            if let Ok(number) = number_str.parse::<u64>() {
+                scroll_row = ((number >> 16) & 0xFFFF) as usize;
+                scroll_col = (number & 0xFFFF) as usize;
+            }
+        }
+    }
+    (scroll_row, scroll_col)
+}
+
+pub fn line_number_gutter(
+    line_count: usize,
+    cursor_row: usize,
+    scroll_row: usize,
+    height: u16,
+    theme: &AppThemeColors,
+    top_padding: u16,
+) -> Paragraph<'static> {
+    let digits = line_count.max(1).to_string().len();
+    let display_lines = height as usize;
+    let mut gutter_lines: Vec<Line<'static>> = Vec::with_capacity(display_lines);
+    for i in 0..display_lines.min(line_count.saturating_sub(scroll_row)) {
+        let current_line_idx = i + scroll_row;
+        let is_current = current_line_idx == cursor_row;
+        let style = if is_current {
+            Style::default()
+                .fg(theme.accent)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(theme.muted)
+        };
+        gutter_lines.push(Line::from(vec![Span::styled(
+            format!("{:>width$} ", current_line_idx + 1, width = digits),
+            style,
+        )]));
+    }
+    for _ in gutter_lines.len()..display_lines {
+        gutter_lines.push(Line::from(Span::raw(" ")));
+    }
+    Paragraph::new(gutter_lines)
+        .style(theme.preview_bg_style())
+        .block(
+            Block::default()
+                .padding(Padding::new(0, 0, top_padding, 0))
+                .style(theme.preview_bg_style()),
+        )
 }
 
 pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     let area = frame.area();
-    let chunks = Layout::default()
+
+    let outer_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),
-            Constraint::Min(8),
-            Constraint::Length(3),
+            Constraint::Length(1),
+            Constraint::Min(0),
+            Constraint::Length(1),
         ])
         .split(area);
 
-    let title_border = if focus == EditFocus::Title {
-        Style::default().fg(Color::Yellow)
-    } else {
-        Style::default()
-    };
-    app.title_editor.set_block(
-        Block::default()
-            .borders(Borders::ALL)
-            .border_style(title_border)
-            .title("Title"),
-    );
-    frame.render_widget(&app.title_editor, chunks[0]);
+    draw_view_title_bar(frame, outer_chunks[0], "Editor", &app.app_theme);
+    let body_area = outer_chunks[1];
+    let hint_area = outer_chunks[2];
 
-    if get_title_text(&app.title_editor).is_empty() {
-        let title_inner = chunks[0].inner(Margin {
-            vertical: 1,
-            horizontal: 1,
+    let (edit_area, preview_area_rect, splitter_area) = if app.editor.editor_preview_enabled {
+        let (constraints, main_idx, p_idx) = match app.preview_position {
+            crate::config::PreviewPosition::Left => (
+                [
+                    Constraint::Ratio(43, 100),
+                    Constraint::Length(1),
+                    Constraint::Min(0),
+                ],
+                2,
+                0,
+            ),
+            crate::config::PreviewPosition::Right => (
+                [
+                    Constraint::Min(0),
+                    Constraint::Length(1),
+                    Constraint::Ratio(43, 100),
+                ],
+                0,
+                2,
+            ),
+        };
+        let cols = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints(constraints)
+            .split(body_area);
+        (cols[main_idx], Some(cols[p_idx]), Some(cols[1]))
+    } else {
+        (body_area, None, None)
+    };
+
+    let inner_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(3), Constraint::Min(0)])
+        .split(edit_area);
+
+    let title_area = inner_chunks[0];
+    let editor_container = inner_chunks[1];
+
+    app.editor
+        .title_editor
+        .set_style(app.app_theme.title_bar_bg_style().fg(app.app_theme.heading));
+    app.editor.title_editor.set_block(
+        Block::default()
+            .style(app.app_theme.title_bar_bg_style())
+            .borders(Borders::NONE)
+            .padding(Padding::new(2, 1, 1, 1)),
+    );
+    app.editor
+        .title_editor
+        .set_cursor_style(if focus == EditFocus::Title {
+            Style::default().add_modifier(Modifier::REVERSED)
+        } else {
+            Style::default()
         });
+    app.editor
+        .title_editor
+        .set_cursor_line_style(Style::default());
+    frame.render_widget(&app.editor.title_editor, title_area);
+
+    if get_title_text(&app.editor.title_editor).is_empty() {
+        let title_inner = Rect::new(
+            title_area.x + 3,
+            title_area.y + 1,
+            title_area.width.saturating_sub(4),
+            1,
+        );
         let placeholder = Paragraph::new(Line::from(Span::styled(
             "Untitled note",
-            Style::default().fg(Color::DarkGray),
+            Style::default().fg(app.app_theme.muted),
         )));
         frame.render_widget(placeholder, title_inner);
     }
 
-    if app.markdown_preview_enabled {
-        let content_chunks = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-            .split(chunks[1]);
+    if let Some(preview_area_rect) = preview_area_rect {
+        let content_area = editor_container;
 
-        let body_border = if focus == EditFocus::Body {
-            Style::default().fg(Color::Yellow)
+        let line_count = app.editor.editor.lines().len();
+        let cursor_row = app.editor.editor.cursor().0;
+        let scroll_row = get_textarea_scroll(&app.editor.editor).0;
+
+        let editor_area = if app.editor.show_line_numbers {
+            let digits = line_count.max(1).to_string().len() as u16;
+            let gutter_width = digits + 1;
+            let gutter_area = Rect::new(
+                content_area.x,
+                content_area.y,
+                gutter_width.min(content_area.width),
+                content_area.height,
+            );
+            let gutter = line_number_gutter(
+                line_count,
+                cursor_row,
+                scroll_row,
+                content_area.height,
+                &app.app_theme,
+                0,
+            );
+            frame.render_widget(gutter, gutter_area);
+            Rect::new(
+                content_area.x + gutter_area.width,
+                content_area.y,
+                content_area.width.saturating_sub(gutter_area.width),
+                content_area.height,
+            )
         } else {
-            Style::default()
+            content_area
         };
-        app.editor.set_block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(body_border)
-                .title("Content"),
-        );
-        frame.render_widget(&app.editor, content_chunks[0]);
 
-        match &app.md_preview_renderer {
-            Some(renderer) if !renderer.is_pending() => {
-                let md_widget = crate::markdown::ScrollablePseudoTerminal::new(renderer.screen())
-                    .scroll_offset(renderer.scroll_offset())
-                    .block(
+        app.editor.editor.set_block(
+            Block::default()
+                .style(app.app_theme.bg_style())
+                .borders(Borders::NONE)
+                .padding(Padding::new(0, 2, 0, 0)),
+        );
+        app.editor.editor.set_style(app.app_theme.bg_style());
+        app.editor
+            .editor
+            .set_cursor_style(if focus == EditFocus::Body {
+                Style::default().add_modifier(Modifier::REVERSED)
+            } else {
+                Style::default()
+            });
+        app.editor
+            .editor
+            .set_cursor_line_style(if focus == EditFocus::Body {
+                Style::default().bg(app.app_theme.preview_bg().unwrap_or(Color::DarkGray))
+            } else {
+                Style::default()
+            });
+        frame.render_widget(&app.editor.editor, editor_area);
+        if focus == EditFocus::Body {
+            let cursor_bg = app
+                .app_theme
+                .preview_bg()
+                .unwrap_or(app.app_theme.highlight_bg);
+            fill_cursor_line_bg(frame, &app.editor.editor, editor_area, cursor_bg);
+        }
+
+        match &app.editor.md_preview_renderer {
+            Some(renderer) if !renderer.is_pending() && renderer.pages_built() => {
+                if let Some(page_grid) = renderer.current_page_grid() {
+                    let snapshot = crate::snapshot::RenderedSnapshot::new(page_grid).block(
                         Block::default()
-                            .borders(Borders::ALL)
-                            .border_style(Style::default().fg(Color::Cyan))
-                            .title("Markdown Preview (Ctrl+P)"),
+                            .style(app.app_theme.preview_bg_style())
+                            .borders(Borders::NONE)
+                            .padding(Padding::new(2, 2, 1, 1)),
                     );
-                frame.render_widget(md_widget, content_chunks[1]);
+                    frame.render_widget(snapshot, preview_area_rect);
+                    if renderer.total_pages() > 1 {
+                        let indicator = format!(
+                            " {}/{} ",
+                            renderer.current_page() + 1,
+                            renderer.total_pages()
+                        );
+                        let ind_width = indicator.len() as u16;
+                        let ind_x = preview_area_rect.right().saturating_sub(ind_width + 2);
+                        let ind_y = preview_area_rect.bottom().saturating_sub(1);
+                        if ind_x >= preview_area_rect.x && ind_y >= preview_area_rect.y {
+                            let ind_area = Rect::new(ind_x, ind_y, ind_width, 1);
+                            let ind_widget = Paragraph::new(Span::styled(
+                                indicator,
+                                Style::default()
+                                    .fg(app.app_theme.muted)
+                                    .add_modifier(Modifier::DIM),
+                            ));
+                            frame.render_widget(ind_widget, ind_area);
+                        }
+                    }
+                }
             }
             Some(_) => {
                 let loading = Paragraph::new("Rendering preview...")
-                    .style(Style::default().fg(Color::DarkGray))
+                    .style(Style::default().fg(app.app_theme.muted))
                     .block(
                         Block::default()
-                            .borders(Borders::ALL)
-                            .border_style(Style::default().fg(Color::Cyan))
-                            .title("Markdown Preview (Ctrl+P)"),
+                            .style(app.app_theme.preview_bg_style())
+                            .borders(Borders::NONE)
+                            .padding(Padding::new(2, 2, 1, 1)),
                     );
-                frame.render_widget(loading, content_chunks[1]);
+                frame.render_widget(loading, preview_area_rect);
             }
             None => {
-                let placeholder = Paragraph::new("Press Ctrl+P to render preview").block(
-                    Block::default()
-                        .borders(Borders::ALL)
-                        .border_style(Style::default().fg(Color::Cyan))
-                        .title("Markdown Preview (Ctrl+P)"),
-                );
-                frame.render_widget(placeholder, content_chunks[1]);
+                let placeholder = Paragraph::new("Press Ctrl+P to render preview")
+                    .style(app.app_theme.preview_bg_style())
+                    .block(
+                        Block::default()
+                            .style(app.app_theme.preview_bg_style())
+                            .borders(Borders::NONE)
+                            .padding(Padding::new(2, 2, 1, 1)),
+                    );
+                frame.render_widget(placeholder, preview_area_rect);
             }
         }
     } else {
-        let body_border = if focus == EditFocus::Body {
-            Style::default().fg(Color::Yellow)
+        let line_count = app.editor.editor.lines().len();
+        let cursor_row = app.editor.editor.cursor().0;
+        let scroll_row = get_textarea_scroll(&app.editor.editor).0;
+        let content_area = editor_container;
+
+        let editor_area = if app.editor.show_line_numbers {
+            let digits = line_count.max(1).to_string().len() as u16;
+            let gutter_width = digits + 1;
+            let gutter_area = Rect::new(
+                content_area.x,
+                content_area.y,
+                gutter_width.min(content_area.width),
+                content_area.height,
+            );
+            let gutter = line_number_gutter(
+                line_count,
+                cursor_row,
+                scroll_row,
+                content_area.height,
+                &app.app_theme,
+                0,
+            );
+            frame.render_widget(gutter, gutter_area);
+            Rect::new(
+                content_area.x + gutter_area.width,
+                content_area.y,
+                content_area.width.saturating_sub(gutter_area.width),
+                content_area.height,
+            )
         } else {
-            Style::default()
+            content_area
         };
-        app.editor.set_block(
+
+        app.editor.editor.set_block(
             Block::default()
-                .borders(Borders::ALL)
-                .border_style(body_border)
-                .title("Content"),
+                .style(app.app_theme.bg_style())
+                .borders(Borders::NONE)
+                .padding(Padding::new(0, 2, 0, 0)),
         );
-        frame.render_widget(&app.editor, chunks[1]);
+        app.editor.editor.set_style(app.app_theme.bg_style());
+        app.editor
+            .editor
+            .set_cursor_style(if focus == EditFocus::Body {
+                Style::default().add_modifier(Modifier::REVERSED)
+            } else {
+                Style::default()
+            });
+        app.editor
+            .editor
+            .set_cursor_line_style(if focus == EditFocus::Body {
+                Style::default().bg(app.app_theme.preview_bg().unwrap_or(Color::DarkGray))
+            } else {
+                Style::default()
+            });
+        frame.render_widget(&app.editor.editor, editor_area);
+        if focus == EditFocus::Body {
+            let cursor_bg = app
+                .app_theme
+                .preview_bg()
+                .unwrap_or(app.app_theme.highlight_bg);
+            fill_cursor_line_bg(frame, &app.editor.editor, editor_area, cursor_bg);
+        }
     }
 
-    let ext_button_label = if app.external_editor_enabled {
-        "[ Ext: ON ]"
-    } else {
-        "[ Ext: OFF ]"
-    };
-    let ext_button_style = if focus == EditFocus::ExternalEditorToggle {
-        Style::default()
-            .fg(Color::Black)
-            .bg(Color::Yellow)
-            .add_modifier(Modifier::BOLD)
-    } else if app.external_editor_enabled {
-        Style::default()
-            .fg(Color::Green)
-            .add_modifier(Modifier::BOLD)
-    } else {
-        Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
-    };
-
-    let status_line = Line::from(vec![
-        Span::styled(ext_button_label, ext_button_style),
-        Span::raw("   "),
-        Span::raw(crate::sanitize::sanitize_for_terminal(app.status.as_ref())),
-    ]);
-
-    let status =
-        Paragraph::new(status_line).block(Block::default().borders(Borders::ALL).title("Help"));
-    frame.render_widget(status, chunks[2]);
+    let hint = resolved_status_hint(app, EDIT_HELP_HINTS);
+    draw_status_bar(frame, hint_area, &app.app_theme, None, &hint, None);
+    draw_corner_watermark(frame, hint_area, app.app_theme.muted);
+    if let Some(splitter_area) = splitter_area {
+        draw_dim_vline(frame, splitter_area, app.app_theme.muted);
+    }
 
     if app.status.starts_with("Save failed") || app.status.starts_with("Could not open") {
         let popup = centered_rect(75, 20, area);
         frame.render_widget(Clear, popup);
         let text = Paragraph::new(app.status.as_ref())
-            .block(Block::default().borders(Borders::ALL).title("Error"))
+            .block(
+                Block::default()
+                    .style(app.app_theme.bg_style())
+                    .borders(Borders::ALL)
+                    .title("Error"),
+            )
             .wrap(Wrap { trim: true });
         frame.render_widget(text, popup);
     }
 
-    if let Some(menu) = &app.context_menu {
+    if let Some(menu) = &app.popups.context_menu {
         let items = vec![
             ListItem::new(" Copy       "),
             ListItem::new(" Cut        "),
@@ -903,16 +3085,94 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             ListItem::new(" Select All "),
         ];
         let list = List::new(items)
-            .block(Block::default().borders(Borders::ALL))
+            .block(
+                Block::default()
+                    .style(app.app_theme.preview_bg_style())
+                    .borders(Borders::NONE),
+            )
             .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
 
-        let menu_area = Rect::new(menu.x, menu.y, 14, 6);
+        let menu_area = Rect::new(menu.x, menu.y, 14, 4);
         let mut state = ListState::default();
         state.select(Some(menu.selected));
 
         frame.render_widget(Clear, menu_area);
         frame.render_stateful_widget(list, menu_area, &mut state);
     }
+}
+
+/// Renders a full-width view title bar. Title is left-aligned with popup-banner
+/// styling: uppercase, bold, fg=highlight_fg, bg=heading. The rest of the row
+/// fills with title_bar_bg.
+pub fn draw_view_title_bar(frame: &mut Frame, area: Rect, title: &str, theme: &AppThemeColors) {
+    let display_text = format!(" {} ", title.to_uppercase());
+    let title_span = Span::styled(
+        display_text,
+        Style::default()
+            .fg(theme.highlight_fg)
+            .bg(theme.heading)
+            .add_modifier(Modifier::BOLD),
+    );
+    let bar = Paragraph::new(Line::from(vec![title_span])).style(theme.title_bar_bg_style());
+    frame.render_widget(bar, area);
+}
+
+/// Renders a full-width bar with a left-aligned title (popup-banner style)
+/// and centered tab spans. The title occupies the left; tabs are centered
+/// in the full row width. If they overlap the title, tabs win visually
+/// (rendered second).
+pub fn draw_view_title_bar_with_tabs(
+    frame: &mut Frame,
+    area: Rect,
+    title: &str,
+    tab_spans: Vec<Span<'static>>,
+    theme: &AppThemeColors,
+) {
+    // Background fill
+    let bg = Paragraph::new("").style(theme.title_bar_bg_style());
+    frame.render_widget(bg, area);
+
+    // Tabs centered
+    let tab_line = Line::from(tab_spans);
+    let tabs = Paragraph::new(tab_line)
+        .alignment(Alignment::Center)
+        .style(theme.title_bar_bg_style());
+    frame.render_widget(tabs, area);
+
+    // Title on the left
+    let display_text = format!(" {} ", title.to_uppercase());
+    let title_span = Span::styled(
+        display_text,
+        Style::default()
+            .fg(theme.highlight_fg)
+            .bg(theme.heading)
+            .add_modifier(Modifier::BOLD),
+    );
+    let title_para = Paragraph::new(Line::from(vec![title_span]));
+    frame.render_widget(title_para, area);
+}
+
+pub fn draw_popup_banner(frame: &mut Frame, popup_area: Rect, title: &str, theme: &AppThemeColors) {
+    let display_text = format!(" {} ", title.to_uppercase());
+    let width = display_text.len() as u16;
+    if popup_area.y == 0 {
+        return;
+    }
+    let banner_area = Rect::new(
+        popup_area.x + (popup_area.width.saturating_sub(width)) / 2,
+        popup_area.y - 1,
+        width.min(popup_area.width),
+        1,
+    );
+    frame.render_widget(Clear, banner_area);
+    let p = Paragraph::new(Line::from(vec![Span::styled(
+        display_text,
+        Style::default()
+            .fg(theme.highlight_fg)
+            .bg(theme.heading)
+            .add_modifier(Modifier::BOLD),
+    )]));
+    frame.render_widget(p, banner_area);
 }
 
 pub fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
@@ -936,6 +3196,31 @@ pub fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
         vertical: 0,
         horizontal: 0,
     })
+}
+pub fn centered_rect_fixed(
+    width: u16,
+    height: u16,
+    area: ratatui::layout::Rect,
+) -> ratatui::layout::Rect {
+    let vertical = Layout::default()
+        .direction(ratatui::layout::Direction::Vertical)
+        .constraints([
+            Constraint::Min(0),
+            Constraint::Length(height),
+            Constraint::Min(0),
+        ])
+        .split(area);
+
+    let horizontal = Layout::default()
+        .direction(ratatui::layout::Direction::Horizontal)
+        .constraints([
+            Constraint::Min(0),
+            Constraint::Length(width),
+            Constraint::Min(0),
+        ])
+        .split(vertical[1]);
+
+    horizontal[1]
 }
 
 pub fn text_area_from_content(content: &str) -> TextArea<'static> {
@@ -973,23 +3258,173 @@ pub fn format_relative_time(unix_ts: u64) -> Cow<'static, str> {
     Cow::Owned(dt.format("%Y-%m-%d %H:%M").to_string())
 }
 
-pub fn draw_confirm_popup(frame: &mut Frame, popup: &ConfirmPopup, area: Rect) {
-    let popup_area = centered_rect(50, 30, area);
-    frame.render_widget(Clear, popup_area);
+pub struct StatusBarBadge {
+    pub label: Cow<'static, str>,
+    pub style: Style,
+}
 
-    let border_color = if popup.is_destructive {
-        Color::Red
+/// Build the `ext:on`/`ext:off` badge. Identical logic currently duplicated in
+/// draw_status_bar and inlined in pinstar/render.rs:596.
+pub fn ext_badge(enabled: bool, focused: bool, theme: &AppThemeColors) -> StatusBarBadge {
+    let label = if enabled { "ext:on" } else { "ext:off" };
+    let style = if focused {
+        Style::default()
+            .fg(theme.highlight_fg)
+            .bg(theme.heading)
+            .add_modifier(Modifier::BOLD)
+    } else if enabled {
+        Style::default()
+            .fg(theme.success)
+            .add_modifier(Modifier::BOLD)
     } else {
-        Color::Yellow
+        Style::default().fg(theme.muted)
     };
+    StatusBarBadge {
+        label: format!(" {} ", label).into(),
+        style,
+    }
+}
 
+/// The single unified status bar. Left = optional badge + hint (muted);
+/// right = optional right-aligned muted text (e.g. graf stats). Bg is always
+/// theme.hint_line_bg_style(). Two Paragraphs on the same area (left Line +
+/// right-aligned) do not collide because they occupy different cells.
+pub fn draw_status_bar(
+    frame: &mut Frame,
+    area: Rect,
+    theme: &AppThemeColors,
+    badge: Option<StatusBarBadge>,
+    hint: &str,
+    right: Option<ratatui::text::Line<'static>>,
+) {
+    let mut left_spans: Vec<Span> = Vec::new();
+    if let Some(b) = badge {
+        left_spans.push(Span::styled(b.label, b.style));
+        left_spans.push(Span::raw("  "));
+    }
+    left_spans.push(Span::styled(hint, Style::default().fg(theme.muted)));
+
+    // If there's a right side, we split the area
+    if let Some(right_line) = right {
+        let chunks = ratatui::layout::Layout::default()
+            .direction(ratatui::layout::Direction::Horizontal)
+            .constraints([
+                ratatui::layout::Constraint::Min(0),
+                ratatui::layout::Constraint::Length(right_line.width() as u16),
+            ])
+            .split(area);
+
+        let left_para = Paragraph::new(Line::from(left_spans)).style(theme.hint_line_bg_style());
+        frame.render_widget(left_para, chunks[0]);
+
+        let right_para = Paragraph::new(right_line)
+            .alignment(Alignment::Right)
+            .style(theme.hint_line_bg_style());
+        frame.render_widget(right_para, chunks[1]);
+    } else {
+        let para = Paragraph::new(Line::from(left_spans)).style(theme.hint_line_bg_style());
+        frame.render_widget(para, area);
+    }
+}
+
+fn resolved_status_hint<'a>(app: &'a App, default: &'static str) -> Cow<'a, str> {
+    let status = app.status.as_ref();
+    if status != app.default_status_text() && !status.is_empty() && status != "Ready" {
+        crate::sanitize::sanitize_for_terminal(status)
+    } else {
+        Cow::Borrowed(default)
+    }
+}
+
+pub fn draw_popup_footer(
+    frame: &mut Frame,
+    area: Rect,
+    theme: &crate::app_theme::AppThemeColors,
+    hints: &str,
+) {
+    let footer = Paragraph::new(Span::styled(hints, Style::default().fg(theme.muted)))
+        .alignment(Alignment::Center)
+        .style(theme.hint_line_bg_style());
+    frame.render_widget(footer, area);
+}
+
+/// Renders standard popup chrome (clear + banner + footer) and returns the content Rect.
+/// Caller splits and renders content into the returned Rect.
+pub fn draw_popup_frame(
+    frame: &mut Frame,
+    area: Rect,
+    title: &str,
+    width_pct: u16,
+    height_pct: u16,
+    hints: &str,
+    theme: &crate::app_theme::AppThemeColors,
+) -> Rect {
+    let popup_area = centered_rect(width_pct, height_pct, area);
+    frame.render_widget(Clear, popup_area);
+    draw_popup_banner(frame, popup_area, title, theme);
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(1), Constraint::Length(1)])
+        .split(popup_area);
+    draw_popup_footer(frame, chunks[1], theme, hints);
+    chunks[0]
+}
+pub fn draw_popup_frame_fixed(
+    frame: &mut ratatui::Frame,
+    area: ratatui::layout::Rect,
+    title: &str,
+    width: u16,
+    height: u16,
+    hints: &str,
+    theme: &crate::app_theme::AppThemeColors,
+) -> ratatui::layout::Rect {
+    let popup_area = centered_rect_fixed(width, height + 2, area); // +2 for banner and footer
+    frame.render_widget(ratatui::widgets::Clear, popup_area);
+    draw_popup_banner(frame, popup_area, title, theme);
+    let chunks = Layout::default()
+        .direction(ratatui::layout::Direction::Vertical)
+        .constraints([Constraint::Min(1), Constraint::Length(1)])
+        .split(popup_area);
+    draw_popup_footer(frame, chunks[1], theme, hints);
+    chunks[0]
+}
+
+/// Renders confirmation popup chrome (clear + banner + bordered block) and returns the inner Rect.
+/// Caller renders message/detail/buttons into the returned Rect.
+pub fn draw_confirm_popup_frame(
+    frame: &mut Frame,
+    area: Rect,
+    title: &str,
+    width_pct: u16,
+    height_pct: u16,
+    is_destructive: bool,
+    theme: &crate::app_theme::AppThemeColors,
+) -> Rect {
+    let popup_area = centered_rect(width_pct, height_pct, area);
+    frame.render_widget(Clear, popup_area);
+    draw_popup_banner(frame, popup_area, title, theme);
+    let border_color = if is_destructive {
+        theme.destructive
+    } else {
+        theme.heading
+    };
     let block = Block::default()
+        .style(theme.bg_style())
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(border_color))
-        .title(popup.title.as_str());
-
+        .border_style(Style::default().fg(border_color));
     let inner = block.inner(popup_area);
     frame.render_widget(block, popup_area);
+    inner
+}
+
+pub fn draw_confirm_popup(
+    frame: &mut Frame,
+    popup: &ConfirmPopup,
+    area: Rect,
+    theme: &crate::app_theme::AppThemeColors,
+) {
+    let inner =
+        draw_confirm_popup_frame(frame, area, "CONFIRM", 50, 30, popup.is_destructive, theme);
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -1007,36 +3442,36 @@ pub fn draw_confirm_popup(frame: &mut Frame, popup: &ConfirmPopup, area: Rect) {
 
     if let Some(detail) = &popup.detail {
         let detail_para = Paragraph::new(detail.as_str())
-            .style(Style::default().fg(Color::DarkGray))
+            .style(Style::default().fg(theme.muted))
             .alignment(Alignment::Center);
         frame.render_widget(detail_para, chunks[1]);
     }
 
     let (confirm_style, cancel_style) = if popup.selected_button == 0 {
-        // Confirm is selected
         let confirm = if popup.is_destructive {
             Style::default()
-                .fg(Color::White)
-                .bg(Color::Red)
+                .fg(theme.highlight_fg)
+                .bg(theme.destructive)
                 .add_modifier(Modifier::BOLD)
         } else {
             Style::default()
-                .fg(Color::Black)
-                .bg(Color::Green)
+                .fg(theme.highlight_fg)
+                .bg(theme.success)
                 .add_modifier(Modifier::BOLD)
         };
-        let cancel = Style::default().fg(Color::DarkGray).bg(Color::Black);
+        let cancel = Style::default().fg(theme.muted).patch(theme.bg_style());
         (confirm, cancel)
     } else {
-        // Cancel is selected
         let confirm = if popup.is_destructive {
-            Style::default().fg(Color::Red).bg(Color::Black)
+            Style::default()
+                .fg(theme.destructive)
+                .patch(theme.bg_style())
         } else {
-            Style::default().fg(Color::Green).bg(Color::Black)
+            Style::default().fg(theme.success).patch(theme.bg_style())
         };
         let cancel = Style::default()
-            .fg(Color::White)
-            .bg(Color::DarkGray)
+            .fg(theme.highlight_fg)
+            .bg(theme.highlight_bg)
             .add_modifier(Modifier::BOLD);
         (confirm, cancel)
     };
@@ -1048,6 +3483,48 @@ pub fn draw_confirm_popup(frame: &mut Frame, popup: &ConfirmPopup, area: Rect) {
     ]);
     let buttons_para = Paragraph::new(buttons).alignment(Alignment::Center);
     frame.render_widget(buttons_para, chunks[3]);
+}
+
+pub fn draw_dim_vline(frame: &mut Frame, area: Rect, color: Color) {
+    let buf = frame.buffer_mut();
+    for row in area.top()..area.bottom() {
+        if let Some(cell) = buf.cell_mut((area.x, row)) {
+            cell.set_symbol("│");
+            cell.set_fg(color);
+        }
+    }
+}
+
+fn draw_corner_watermark(frame: &mut Frame, area: Rect, color: Color) {
+    let version = env!("CARGO_PKG_VERSION");
+    let text = format!("clin v{}", version);
+    let width = text.len() as u16;
+    if area.width < width + 2 || area.height < 1 {
+        return;
+    }
+    let wm_area = Rect::new(area.x + area.width - width - 1, area.y, width, 1);
+    let para = Paragraph::new(text).style(Style::default().fg(color));
+    frame.render_widget(para, wm_area);
+}
+
+pub fn fill_cursor_line_bg(frame: &mut Frame, editor: &TextArea, area: Rect, bg: Color) {
+    if editor.selection_range().is_some() {
+        return;
+    }
+    let (scroll_row, _) = get_textarea_scroll(editor);
+    let cursor_row = editor.cursor().0;
+    let screen_row = cursor_row.saturating_sub(scroll_row) as u16;
+    let inner_y = editor.block().map(|b| b.inner(area).y).unwrap_or(area.y);
+    let y = inner_y + screen_row;
+    if y < area.y || y >= area.bottom() {
+        return;
+    }
+    let buf = frame.buffer_mut();
+    for x in area.left()..area.right() {
+        if let Some(cell) = buf.cell_mut((x, y)) {
+            cell.set_bg(bg);
+        }
+    }
 }
 
 pub fn open_in_file_manager(path: &Path) -> Result<()> {
@@ -1063,7 +3540,6 @@ pub fn open_in_file_manager(path: &Path) -> Result<()> {
         anyhow::bail!("opening file manager is not supported on this platform")
     };
 
-    // Suppress stdio to prevent corrupting the TUI terminal state
     Command::new(command)
         .arg(path)
         .stdin(Stdio::null())
@@ -1072,4 +3548,63 @@ pub fn open_in_file_manager(path: &Path) -> Result<()> {
         .spawn()
         .with_context(|| format!("failed to launch {command}"))?;
     Ok(())
+}
+
+pub fn pick_file(filter_name: &str, filter_ext: &str) -> Result<Option<String>> {
+    if cfg!(target_os = "linux") {
+        if which::which("zenity").is_ok() {
+            let output = Command::new("zenity")
+                .arg("--file-selection")
+                .arg(format!("--file-filter={} | *{}", filter_name, filter_ext))
+                .output()?;
+            if output.status.success() {
+                return Ok(Some(
+                    String::from_utf8_lossy(&output.stdout).trim().to_string(),
+                ));
+            }
+        } else if which::which("kdialog").is_ok() {
+            let output = Command::new("kdialog")
+                .arg("--getopenfilename")
+                .arg(".")
+                .arg(format!("*{}", filter_ext))
+                .output()?;
+            if output.status.success() {
+                return Ok(Some(
+                    String::from_utf8_lossy(&output.stdout).trim().to_string(),
+                ));
+            }
+        }
+    } else if cfg!(target_os = "macos") {
+        let posix_script = format!(
+            "POSIX path of (choose file with prompt \"Select a {} file\" of type {{\"{}\"}})",
+            filter_name,
+            filter_ext.trim_start_matches('.')
+        );
+        let output = Command::new("osascript")
+            .arg("-e")
+            .arg(posix_script)
+            .output()?;
+        if output.status.success() {
+            return Ok(Some(
+                String::from_utf8_lossy(&output.stdout).trim().to_string(),
+            ));
+        }
+    } else if cfg!(target_os = "windows") {
+        let ps_script = format!(
+            "Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.OpenFileDialog; $f.Filter = '{} (*{})|*{}'; $f.ShowDialog() | Out-Null; $f.FileName",
+            filter_name, filter_ext, filter_ext
+        );
+        let output = Command::new("powershell")
+            .arg("-Command")
+            .arg(ps_script)
+            .output()?;
+        if output.status.success() {
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !path.is_empty() {
+                return Ok(Some(path));
+            }
+        }
+    }
+
+    Ok(None)
 }

@@ -123,9 +123,9 @@
                         <Component Id='binary0' Guid='*'>
                             <File
                                 Id='exe0'
-                                Name='clin-rs.exe'
+                                Name='clin.exe'
                                 DiskId='1'
-                                Source='$(var.CargoTargetBinDir)\clin-rs.exe'
+                                Source='$(var.CargoTargetBinDir)\clin.exe'
                                 KeyPath='yes'/>
                         </Component>
                     </Directory>

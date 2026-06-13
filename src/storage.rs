@@ -1,4 +1,4 @@
-use crate::config::BootstrapConfig;
+use crate::config::ClinConfig;
 use crate::constants::*;
 use crate::frontmatter;
 use crate::keybinds::Keybinds;
@@ -6,9 +6,10 @@ use crate::templates::TemplateManager;
 use anyhow::{Context, Result, anyhow};
 use chacha20poly1305::aead::{Aead, KeyInit};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
+use once_cell::sync::Lazy;
 use rand::RngCore;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::borrow::Cow;
 
 use std::fs;
 use std::path::PathBuf;
@@ -23,18 +24,6 @@ pub struct Note {
     pub tags: Vec<String>,
 }
 
-#[derive(Debug, bincode::BorrowDecode)]
-pub struct NoteBorrowed<'a> {
-    pub title: Cow<'a, str>,
-    #[allow(dead_code)]
-    pub content: Cow<'a, str>,
-    pub updated_at: u64,
-    // Add default deserialization logic if tags aren't present (for bincode backwards compatibility)
-    // Actually, bincode doesn't handle schema changes easily without a specific setup.
-    // BUT we decided that tags will be stored in FRONTMATTER, not in the bincode blob!
-    // So the bincode blob remains identical.
-}
-
 #[derive(Debug, Clone)]
 pub struct NoteSummary {
     pub id: String,
@@ -43,6 +32,17 @@ pub struct NoteSummary {
     pub folder: String,
     pub tags: Vec<String>,
     pub pinned: bool,
+    pub links: Vec<String>,
+}
+
+static WIKILINK_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]").unwrap());
+
+pub fn extract_wikilinks(content: &str) -> Vec<String> {
+    WIKILINK_RE
+        .captures_iter(content)
+        .filter_map(|c| c.get(1).map(|m| m.as_str().trim().to_string()))
+        .collect()
 }
 
 #[derive(Clone, Debug, zeroize::Zeroize, zeroize::ZeroizeOnDrop)]
@@ -58,25 +58,39 @@ pub struct Storage {
     pub key: [u8; 32],
 }
 
-fn extract_frontmatter_from_bytes(bytes: &[u8]) -> Option<frontmatter::Frontmatter> {
-    if bytes.starts_with(b"---\n") || bytes.starts_with(b"---\r\n") {
-        let end_marker = b"\n---";
-        if let Some(end_idx) = bytes[3..]
-            .windows(end_marker.len())
-            .position(|w| w == end_marker)
-            && let Ok(fm_str) = std::str::from_utf8(&bytes[3..3 + end_idx])
-            && let Ok(fm) = serde_yml::from_str::<frontmatter::Frontmatter>(fm_str)
-        {
-            return Some(fm);
+fn split_frontmatter_payload(bytes: &[u8]) -> (Option<frontmatter::Frontmatter>, &[u8]) {
+    if !bytes.starts_with(b"---\n") && !bytes.starts_with(b"---\r\n") {
+        return (None, bytes);
+    }
+
+    let end_marker = b"\n---";
+    if let Some(end_idx) = bytes[3..]
+        .windows(end_marker.len())
+        .position(|w| w == end_marker)
+    {
+        let fm_bytes = &bytes[3..3 + end_idx];
+        let remaining_start = 3 + end_idx + end_marker.len();
+        let mut content_start = remaining_start;
+
+        if bytes[remaining_start..].starts_with(b"\r\n") {
+            content_start += 2;
+        } else if bytes[remaining_start..].starts_with(b"\n") {
+            content_start += 1;
+        }
+
+        if let Ok(fm_str) = std::str::from_utf8(fm_bytes) {
+            if let Ok(fm) = serde_yml::from_str::<frontmatter::Frontmatter>(fm_str) {
+                return (Some(fm), &bytes[content_start..]);
+            }
         }
     }
-    None
+
+    (None, bytes)
 }
 
 impl Storage {
     pub fn init() -> Result<Self> {
-        // Load bootstrap config to get storage path
-        let bootstrap = BootstrapConfig::load().context("failed to load bootstrap config")?;
+        let bootstrap = ClinConfig::load().context("failed to load config")?;
         let data_dir = bootstrap
             .effective_storage_path()
             .context("failed to determine storage path")?;
@@ -90,7 +104,28 @@ impl Storage {
         fs::create_dir_all(&notes_dir).context("failed to create notes directory")?;
         fs::create_dir_all(&templates_dir).context("failed to create templates directory")?;
 
-        let key_path = data_dir.join("key.bin");
+        let old_key_path = data_dir.join("key.bin");
+        let key_path = config_dir.join("key.bin");
+
+        // Migration: move key from data_dir to config_dir if it exists in old location and not in new
+        if !key_path.exists() && old_key_path.exists() {
+            if let Ok(raw) = fs::read(&old_key_path) {
+                if raw.len() == 32 {
+                    let _ = crate::fsutil::atomic_write(&key_path, &raw);
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::fs::PermissionsExt;
+                        if let Ok(metadata) = fs::metadata(&key_path) {
+                            let mut perms = metadata.permissions();
+                            perms.set_mode(0o400);
+                            let _ = fs::set_permissions(&key_path, perms);
+                        }
+                    }
+                    let _ = fs::remove_file(&old_key_path);
+                }
+            }
+        }
+
         let key = if key_path.exists() {
             #[cfg(unix)]
             {
@@ -125,7 +160,7 @@ impl Storage {
     }
 
     fn key_path(&self) -> PathBuf {
-        self.data_dir.join("key.bin")
+        self.config_dir.join("key.bin")
     }
 
     pub fn ensure_key(&mut self) -> Result<()> {
@@ -144,7 +179,7 @@ impl Storage {
         }
 
         rand::rngs::OsRng.fill_bytes(&mut self.key);
-        fs::create_dir_all(&self.data_dir).context("failed to create app data directory")?;
+        fs::create_dir_all(&self.config_dir).context("failed to create config directory")?;
 
         #[cfg(unix)]
         {
@@ -162,7 +197,8 @@ impl Storage {
 
         #[cfg(not(unix))]
         {
-            fs::write(&key_path, self.key).context("failed to write encryption key")?;
+            crate::fsutil::atomic_write(&key_path, self.key)
+                .context("failed to write encryption key")?;
         }
 
         Ok(())
@@ -200,9 +236,17 @@ impl Storage {
             fs::create_dir_all(parent).unwrap_or_default();
         }
 
+        let original_ext = old_path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.to_string());
         let fm = frontmatter::Frontmatter {
+            title: Some(note.title.clone()),
+            updated_at: Some(note.updated_at),
             tags: note.tags.clone(),
             pinned: false,
+            links: Some(extract_wikilinks(&note.content)),
+            original_ext,
         };
         let bytes = bincode::serde::encode_to_vec(&note, bincode::config::standard())
             .context("failed to encode note")?;
@@ -211,7 +255,8 @@ impl Storage {
         let mut final_output = fm_string.into_bytes();
         final_output.extend_from_slice(&encrypted);
 
-        fs::write(&target_path, final_output).context("failed to write encrypted note")?;
+        crate::fsutil::atomic_write(&target_path, &final_output)
+            .context("failed to write encrypted note")?;
 
         if old_path.exists() {
             fs::remove_file(&old_path).context("failed to remove plain note after encryption")?;
@@ -227,8 +272,14 @@ impl Storage {
 
         self.ensure_key()?;
 
-        let note = self.load_note(id)?;
         let old_path = self.note_path(id);
+        let clin_content = fs::read(&old_path).context("failed to read encrypted note")?;
+        let (fm_opt, _) = split_frontmatter_payload(&clin_content);
+        let orig_ext = fm_opt
+            .and_then(|fm| fm.original_ext)
+            .unwrap_or_else(|| "md".to_string());
+
+        let note = self.load_note(id)?;
 
         let folder = if let Some(idx) = id.rfind('/') {
             &id[..idx]
@@ -240,24 +291,35 @@ impl Storage {
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("Untitled note");
-        let md_id = if folder.is_empty() {
-            format!("{}.md", stem)
+        let target_id = if folder.is_empty() {
+            format!("{}.{}", stem, orig_ext)
         } else {
-            format!("{}/{}.md", folder, stem)
+            format!("{}/{}.{}", folder, stem, orig_ext)
         };
-        let target_id = self.unique_note_id(stem, "md", &md_id);
+        let target_id = self.unique_note_id(stem, &orig_ext, &target_id);
         let target_path = self.note_path(&target_id);
 
         if let Some(parent) = target_path.parent() {
             fs::create_dir_all(parent).unwrap_or_default();
         }
 
-        let fm = frontmatter::Frontmatter {
-            tags: note.tags.clone(),
-            pinned: false,
-        };
-        let final_content = frontmatter::serialize(&fm, &note.content);
-        fs::write(&target_path, final_content).context("failed to write decrypted note")?;
+        let is_raw = orig_ext == "canvas" || orig_ext == "draw";
+        if is_raw {
+            crate::fsutil::atomic_write(&target_path, note.content.as_bytes())
+                .context("failed to write decrypted note")?;
+        } else {
+            let fm = frontmatter::Frontmatter {
+                title: Some(note.title.clone()),
+                updated_at: Some(note.updated_at),
+                tags: note.tags.clone(),
+                pinned: false,
+                links: Some(extract_wikilinks(&note.content)),
+                original_ext: None,
+            };
+            let final_content = frontmatter::serialize(&fm, &note.content);
+            crate::fsutil::atomic_write(&target_path, final_content.as_bytes())
+                .context("failed to write decrypted note")?;
+        }
 
         if old_path.exists() {
             fs::remove_file(&old_path)
@@ -309,6 +371,8 @@ impl Storage {
     }
 
     pub fn list_note_ids(&self) -> Result<Vec<String>> {
+        self.migrate_extensions();
+
         let mut ids = Vec::new();
         let mut dirs_to_visit = vec![self.notes_dir.clone()];
 
@@ -320,7 +384,11 @@ impl Storage {
                 if path.is_dir() {
                     dirs_to_visit.push(path);
                 } else if let Some(ext) = path.extension().and_then(|e| e.to_str())
-                    && (ext == "clin" || ext == "md" || ext == "txt")
+                    && (ext == "clin"
+                        || ext == "md"
+                        || ext == "txt"
+                        || ext == "draw"
+                        || ext == "canvas")
                     && let Ok(rel_path) = path.strip_prefix(&self.notes_dir)
                     && let Some(rel_str) = rel_path.to_str()
                 {
@@ -331,6 +399,47 @@ impl Storage {
         Ok(ids)
     }
 
+    fn migrate_extensions(&self) {
+        let mut dirs_to_visit = vec![self.notes_dir.clone()];
+
+        while let Some(dir) = dirs_to_visit.pop() {
+            if let Ok(entries) = fs::read_dir(&dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+
+                    if path.is_dir() {
+                        dirs_to_visit.push(path);
+                    } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                        match ext {
+                            "pinstar" => {
+                                let new_path = path.with_extension("canvas");
+                                if !new_path.exists() {
+                                    let _ = fs::rename(&path, &new_path);
+                                }
+                            }
+                            "canvas" => {
+                                if let Ok(content) = fs::read_to_string(&path) {
+                                    let trimmed = content.trim();
+                                    let is_draw_format = trimmed.starts_with(
+                                        "{\
+  \"elements\"",
+                                    ) || trimmed.starts_with("{\"elements\"");
+                                    let is_new_draw = trimmed.contains("\"version\"");
+                                    if is_draw_format || is_new_draw {
+                                        let new_path = path.with_extension("draw");
+                                        if !new_path.exists() {
+                                            let _ = fs::rename(&path, &new_path);
+                                        }
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+    }
     pub fn load_note_summary(&self, id: &str) -> Result<NoteSummary> {
         let path = self.note_path(id);
         let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
@@ -343,39 +452,65 @@ impl Storage {
 
         if ext == "clin" {
             let file_content = fs::read(&path).context("failed to read note")?;
-            let mut tags = Vec::new();
-            let mut pinned = false;
-            if let Some(fm) = extract_frontmatter_from_bytes(&file_content) {
-                tags = fm.tags;
-                pinned = fm.pinned;
+            let (fm, payload) = split_frontmatter_payload(&file_content);
+
+            if let Some(ref fm_val) = fm
+                && let (Some(title), Some(updated_at)) = (fm_val.title.clone(), fm_val.updated_at)
+            {
+                return Ok(NoteSummary {
+                    id: id.to_string(),
+                    title,
+                    updated_at,
+                    folder,
+                    tags: fm_val.tags.clone(),
+                    pinned: fm_val.pinned,
+                    links: fm_val.links.clone().unwrap_or_default(),
+                });
             }
 
-            let plain = self.decrypt(&file_content)?;
-            let (note, _): (NoteBorrowed, usize) =
-                bincode::borrow_decode_from_slice(&plain, bincode::config::standard())
+            let plain = self.decrypt(payload)?;
+            let (note, _): (Note, usize) =
+                bincode::serde::decode_from_slice(&plain, bincode::config::standard())
                     .context("failed to decode note")?;
+
+            let (tags, pinned, links) = fm
+                .map(|f| (f.tags, f.pinned, f.links.unwrap_or_default()))
+                .unwrap_or_else(|| (note.tags.clone(), false, extract_wikilinks(&note.content)));
+
             Ok(NoteSummary {
                 id: id.to_string(),
-                title: note.title.into_owned(),
+                title: note.title,
                 updated_at: note.updated_at,
                 folder,
                 tags,
                 pinned,
+                links,
             })
         } else {
             let content = fs::read_to_string(&path).unwrap_or_default();
-            let (fm, _) = frontmatter::parse(&content);
+            let (fm, plain_content) = frontmatter::parse(&content);
 
-            let title = path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("Untitled note")
-                .to_string();
-            let updated_at = fs::metadata(&path)
-                .and_then(|m| m.modified())
-                .ok()
-                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                .map_or(0, |d| d.as_secs());
+            let title = if let Some(t) = fm.title {
+                t
+            } else {
+                path.file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("Untitled note")
+                    .to_string()
+            };
+
+            let updated_at = if let Some(ua) = fm.updated_at {
+                ua
+            } else {
+                fs::metadata(&path)
+                    .and_then(|m| m.modified())
+                    .ok()
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map_or(0, |d| d.as_secs())
+            };
+
+            let links = fm.links.unwrap_or_else(|| extract_wikilinks(plain_content));
+
             Ok(NoteSummary {
                 id: id.to_string(),
                 title,
@@ -383,6 +518,7 @@ impl Storage {
                 folder,
                 tags: fm.tags,
                 pinned: fm.pinned,
+                links,
             })
         }
     }
@@ -393,31 +529,46 @@ impl Storage {
 
         if ext == "clin" {
             let file_content = fs::read(&path).context("failed to read note")?;
-            let mut tags = Vec::new();
-            if let Some(fm) = extract_frontmatter_from_bytes(&file_content) {
-                tags = fm.tags;
-            }
+            let (fm, payload) = split_frontmatter_payload(&file_content);
 
-            let plain = self.decrypt(&file_content)?;
+            let plain = self.decrypt(payload)?;
             let (mut note, _) =
                 bincode::serde::decode_from_slice::<Note, _>(&plain, bincode::config::standard())
                     .context("failed to decode note")?;
-            note.tags = tags;
+
+            if let Some(fm) = fm {
+                note.tags = fm.tags;
+                if let Some(t) = fm.title {
+                    note.title = t;
+                }
+                if let Some(ua) = fm.updated_at {
+                    note.updated_at = ua;
+                }
+            }
             Ok(note)
         } else {
             let file_content = fs::read_to_string(&path).context("failed to read plain note")?;
             let (fm, plain_content) = frontmatter::parse(&file_content);
 
-            let title = path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("Untitled note")
-                .to_string();
-            let updated_at = fs::metadata(&path)
-                .and_then(|m| m.modified())
-                .ok()
-                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                .map_or(0, |d| d.as_secs());
+            let title = if let Some(t) = fm.title {
+                t
+            } else {
+                path.file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("Untitled note")
+                    .to_string()
+            };
+
+            let updated_at = if let Some(ua) = fm.updated_at {
+                ua
+            } else {
+                fs::metadata(&path)
+                    .and_then(|m| m.modified())
+                    .ok()
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map_or(0, |d| d.as_secs())
+            };
+
             Ok(Note {
                 title,
                 content: plain_content.to_string(),
@@ -433,16 +584,30 @@ impl Storage {
         let old_path = self.note_path(id);
         let old_ext = old_path.extension().and_then(|e| e.to_str()).unwrap_or("");
 
-        let target_ext = if old_ext == "clin" || old_ext == "txt" || old_ext == "md" {
+        let target_ext = if old_ext == "clin"
+            || old_ext == "txt"
+            || old_ext == "md"
+            || old_ext == "canvas"
+            || old_ext == "draw"
+        {
             old_ext
         } else {
             "md"
         };
 
         let target_id = self.unique_note_id(&preferred_stem, target_ext, id);
+        let existing_pinned = self
+            .load_note_summary(id)
+            .map(|s| s.pinned)
+            .unwrap_or(false);
+        let links = extract_wikilinks(&note.content);
         let fm = frontmatter::Frontmatter {
+            title: Some(note.title.clone()),
+            updated_at: Some(note.updated_at),
             tags: note.tags.clone(),
-            pinned: false,
+            pinned: existing_pinned,
+            links: Some(links),
+            original_ext: None,
         };
 
         let target_path = self.note_path(&target_id);
@@ -455,15 +620,19 @@ impl Storage {
                 .context("failed to encode note")?;
             let encrypted = self.encrypt(&bytes)?;
 
-            // Serialize frontmatter and prepend to encrypted bytes
             let fm_string = frontmatter::serialize(&fm, "");
             let mut final_output = fm_string.into_bytes();
             final_output.extend_from_slice(&encrypted);
 
-            fs::write(target_path, final_output).context("failed to write note")?;
+            crate::fsutil::atomic_write(&target_path, &final_output)
+                .context("failed to write note")?;
+        } else if target_ext == "canvas" || target_ext == "draw" {
+            crate::fsutil::atomic_write(&target_path, note.content.as_bytes())
+                .context("failed to write note")?;
         } else {
             let final_content = frontmatter::serialize(&fm, &note.content);
-            fs::write(target_path, final_content).context("failed to write plain note")?;
+            crate::fsutil::atomic_write(&target_path, final_content.as_bytes())
+                .context("failed to write plain note")?;
         }
 
         if id != target_id {
@@ -476,53 +645,30 @@ impl Storage {
         Ok(target_id)
     }
 
-    pub fn delete_note(&self, id: &str) -> Result<()> {
-        fs::remove_file(self.note_path(id)).context("failed to delete note")?;
-        Ok(())
-    }
-
-    /// Rename a note by updating its title (which changes the filename)
     pub fn rename_note(&self, id: &str, new_title: &str) -> Result<String> {
         let mut note = self.load_note(id)?;
         note.title = new_title.to_string();
-        note.updated_at = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+        note.updated_at = crate::ui::now_unix_secs();
 
-        let _is_encrypted = id.ends_with(".clin");
         self.save_note(id, &note)
     }
 
-    /// Duplicate a note with a new title
-    pub fn duplicate_note(&self, id: &str) -> Result<String> {
+    pub fn duplicate_note(&self, id: &str, target_folder: &str) -> Result<String> {
         let note = self.load_note(id)?;
         let new_title = format!("{} (Copy)", note.title);
         let mut new_note = note;
         new_note.title = new_title;
-        new_note.updated_at = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+        new_note.updated_at = crate::ui::now_unix_secs();
 
-        // Generate a new unique ID for the duplicate
         let new_id = self.new_note_id();
         let is_encrypted = id.ends_with(".clin");
 
-        // Determine the folder from the original note
-        let folder = if let Some(idx) = id.rfind('/') {
-            &id[..idx]
-        } else {
-            ""
-        };
-
-        // Create initial ID with folder prefix
-        let initial_id = if folder.is_empty() {
+        let initial_id = if target_folder.is_empty() {
             format!("{}.{}", new_id, if is_encrypted { "clin" } else { "md" })
         } else {
             format!(
                 "{}/{}.{}",
-                folder,
+                target_folder,
                 new_id,
                 if is_encrypted { "clin" } else { "md" }
             )
@@ -561,38 +707,35 @@ impl Storage {
         Ok(())
     }
 
-    /// Toggle the pinned status of a note
     pub fn toggle_pin(&self, id: &str) -> Result<bool> {
         let path = self.note_path(id);
         let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
 
         if ext == "clin" {
-            // For encrypted notes, we need to update frontmatter
             let file_content = fs::read(&path).context("failed to read note")?;
-            let mut fm = extract_frontmatter_from_bytes(&file_content).unwrap_or_default();
+            let (fm_opt, payload) = split_frontmatter_payload(&file_content);
+            let mut fm = fm_opt.unwrap_or_default();
             fm.pinned = !fm.pinned;
             let new_pinned = fm.pinned;
 
-            // Decrypt, update frontmatter, and re-encrypt
-            let plain = self.decrypt(&file_content)?;
+            let plain = self.decrypt(payload)?;
             let fm_string = frontmatter::serialize(&fm, "");
             let mut final_output = fm_string.into_bytes();
 
-            // Re-encrypt the original decrypted content
             let encrypted = self.encrypt(&plain)?;
             final_output.extend_from_slice(&encrypted);
 
-            fs::write(&path, final_output).context("failed to write note")?;
+            crate::fsutil::atomic_write(&path, &final_output).context("failed to write note")?;
             Ok(new_pinned)
         } else {
-            // For plain notes, parse and update frontmatter
             let content = fs::read_to_string(&path).context("failed to read note")?;
             let (mut fm, body) = frontmatter::parse(&content);
             fm.pinned = !fm.pinned;
             let new_pinned = fm.pinned;
 
             let new_content = frontmatter::serialize(&fm, body);
-            fs::write(&path, new_content).context("failed to write note")?;
+            crate::fsutil::atomic_write(&path, new_content.as_bytes())
+                .context("failed to write note")?;
             Ok(new_pinned)
         }
     }
@@ -606,13 +749,6 @@ impl Storage {
             .validate_path_within_notes_dir(path)
             .ok_or_else(|| anyhow::anyhow!("Invalid folder path"))?;
         fs::create_dir_all(full_path).context("failed to create folder")
-    }
-
-    pub fn delete_folder(&self, path: &str) -> Result<()> {
-        let full_path = self
-            .validate_path_within_notes_dir(path)
-            .ok_or_else(|| anyhow::anyhow!("Invalid folder path"))?;
-        fs::remove_dir_all(full_path).context("failed to delete folder")
     }
 
     pub fn trash_folder(&self, path: &str) -> Result<()> {
@@ -665,7 +801,7 @@ impl Storage {
         };
 
         if id == target_id {
-            return Ok(id.to_string()); // No change
+            return Ok(id.to_string());
         }
 
         let new_path = self.note_path(&target_id);
@@ -702,25 +838,6 @@ impl Storage {
         }
         folders.sort();
         Ok(folders)
-    }
-
-    pub fn load_tag_cache(&self) -> Vec<String> {
-        let path = self.data_dir.join("tags.json");
-        if let Ok(data) = fs::read_to_string(path)
-            && let Ok(tags) = serde_json::from_str::<Vec<String>>(&data)
-        {
-            return tags;
-        }
-        Vec::new()
-    }
-
-    pub fn save_tag_cache(&self, tags: &[String]) -> Result<()> {
-        let path = self.data_dir.join("tags.json");
-        let mut unique_tags = tags.to_vec();
-        unique_tags.sort();
-        unique_tags.dedup();
-        let json = serde_json::to_string_pretty(&unique_tags)?;
-        fs::write(path, json).context("failed to save tag cache")
     }
 
     pub fn note_file_stem_from_title(&self, title: &str) -> String {
@@ -796,26 +913,70 @@ impl Storage {
         Ok(output)
     }
 
-    pub fn decrypt(&self, file_content: &[u8]) -> Result<Vec<u8>> {
-        let magic_pos = file_content
-            .windows(FILE_MAGIC.len())
-            .position(|w| w == FILE_MAGIC);
-
-        let start = magic_pos.ok_or_else(|| anyhow!("invalid note header, missing CLIN"))?;
-        let encrypted = &file_content[start..];
-
-        if encrypted.len() <= FILE_MAGIC.len() + NONCE_LEN {
-            anyhow::bail!("note file is too short")
+    pub fn decrypt(&self, payload: &[u8]) -> Result<Vec<u8>> {
+        if !payload.starts_with(FILE_MAGIC) {
+            anyhow::bail!("invalid note header, missing CLIN");
         }
-        let nonce_start = FILE_MAGIC.len();
-        let nonce_end = nonce_start + NONCE_LEN;
-        let nonce = &encrypted[nonce_start..nonce_end];
-        let ciphertext = &encrypted[nonce_end..];
+
+        let nonce = &payload[FILE_MAGIC.len()..FILE_MAGIC.len() + NONCE_LEN];
+        let ciphertext = &payload[FILE_MAGIC.len() + NONCE_LEN..];
 
         let cipher = ChaCha20Poly1305::new(Key::from_slice(&self.key));
-        let plain = cipher
+        cipher
             .decrypt(Nonce::from_slice(nonce), ciphertext)
-            .map_err(|_| anyhow!("failed to decrypt note file"))?;
-        Ok(plain)
+            .map_err(|_| anyhow!("note decryption failed"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_split_frontmatter_payload() {
+        let content = b"---\ntitle: Hello\n---\nPayload data";
+        let (fm, payload) = split_frontmatter_payload(content);
+        assert!(fm.is_some());
+        assert_eq!(fm.unwrap().title.unwrap(), "Hello");
+        assert_eq!(payload, b"Payload data");
+
+        let no_fm = b"Just payload";
+        let (fm, payload) = split_frontmatter_payload(no_fm);
+        assert!(fm.is_none());
+        assert_eq!(payload, b"Just payload");
+
+        let magic_in_fm = b"---\ntitle: CLIN1 magic\n---\nReal payload";
+        let (fm, payload) = split_frontmatter_payload(magic_in_fm);
+        assert!(fm.is_some());
+        assert_eq!(fm.unwrap().title.unwrap(), "CLIN1 magic");
+        assert_eq!(payload, b"Real payload");
+    }
+
+    #[test]
+    fn test_decrypt_logic() -> Result<()> {
+        let key = [1u8; 32];
+        let storage = Storage {
+            data_dir: PathBuf::new(),
+            config_dir: PathBuf::new(),
+            notes_dir: PathBuf::new(),
+            templates_dir: PathBuf::new(),
+            key,
+        };
+
+        let plaintext = b"Secret Message";
+        let encrypted = storage.encrypt(plaintext)?;
+        let decrypted = storage.decrypt(&encrypted)?;
+        assert_eq!(decrypted, plaintext);
+
+        // Test with frontmatter
+        let mut file_content = b"---\ntitle: CLIN1 in title\n---\n".to_vec();
+        file_content.extend_from_slice(&encrypted);
+
+        let (fm, payload) = split_frontmatter_payload(&file_content);
+        assert!(fm.is_some());
+        let decrypted = storage.decrypt(payload)?;
+        assert_eq!(decrypted, plaintext);
+
+        Ok(())
     }
 }

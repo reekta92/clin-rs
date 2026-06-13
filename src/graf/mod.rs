@@ -1,4 +1,9 @@
 pub mod app;
-pub mod config;
 pub mod ui;
 pub mod util;
+
+pub mod graph;
+pub mod input;
+pub mod physics;
+pub mod render;
+pub mod viewport;

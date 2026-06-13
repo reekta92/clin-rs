@@ -1,25 +1,31 @@
 [package]
 name = "clin-rs"
-version = "0.5.2-1"
+version = "0.8.6"
 edition = "2024"
-description = "Encrypted terminal note-taking app"
-authors = ["reekta92 mdag.92988@protonmail.com"]
+rust-version = "1.85.0"
+description = "Encrypted terminal note-taking app inspired by Obsidian"
+authors = ["reekta92 <mdag.92988@protonmail.com>"]
 repository = "https://github.com/reekta92/clin-rs"
+homepage = "https://github.com/reekta92/clin-rs"
 license = "GPL-3.0"
+readme = "README.md"
+keywords = ["tui", "notes", "obsidian", "encryption", "terminal"]
+categories = ["command-line-utilities", "text-editors"]
+exclude = ["assets/*", "docs/*", "examples/*", "wix/*", "dev_scripts/*", "PKGBUILD", "clin.ico", ".github/*"]
 
 [[bin]]
-name = "clin-rs"
+name = "clin"
 path = "src/main.rs"
 
 [package.metadata.deb]
 name = "clin-rs"
 maintainer = "reekta <reekta@localhost>"
 copyright = "2026, reekta"
-depends = "libc6 (>= 2.31)"
+depends = "libc6 (>= 2.31), libssl3 | libssl1.1"
 section = "utils"
 priority = "optional"
 assets = [
-	["target/release/clin-rs", "usr/bin/clin-rs", "755"],
+	["target/release/clin", "usr/bin/clin", "755"],
 	["clin.ico", "usr/share/pixmaps/clin.ico", "644"],
 ]
 extended-description = "clin-rs is a terminal-first encrypted note app with in-app editing and mouse support."
@@ -27,12 +33,12 @@ extended-description = "clin-rs is a terminal-first encrypted note app with in-a
 [package.metadata.generate-rpm]
 name = "clin-rs"
 assets = [
-	{ source = "target/release/clin-rs", dest = "/usr/bin/clin-rs", mode = "0755" },
+	{ source = "target/release/clin", dest = "/usr/bin/clin", mode = "0755" },
 	{ source = "clin.ico", dest = "/usr/share/pixmaps/clin.ico", mode = "0644" },
 ]
 
 [package.metadata.wix]
-upgrade-guid = "D50B8203-1B47-4DF1-AAFA-13F768A95CC2"
+upgrade-guid = "D50.8.6-03-1B47-4DF1-AAFA-13F768A95CC2"
 path-guid = "5B92891F-ADFC-494A-8FA5-0F2BA2B3A786"
 license = false
 eula = false
@@ -43,27 +49,29 @@ arboard = "3.6.1"
 bincode = { version = "2.0", features = ["serde"] }
 chacha20poly1305 = "0.10"
 chrono = "0.4"
-crossterm = "0.28"
+csv = "1.3"
+crossterm = "0.29"
 directories = "5.0"
 fuzzy-matcher = "0.3.7"
 image = "0.25.10"
  once_cell = "1.21.4"
  rand = "0.8"
-ratatui = "0.29"
+ratatui = "0.30"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yml = "0.0.12"
 tempfile = "3.27.0"
 toml = "0.8"
 trash = "5"
-tui-term = "0.2"
-tui-textarea = { version = "0.7", features = ["crossterm"] }
+tui-term = "0.3"
+ratatui-textarea = "0.9"
 uuid = { version = "1.8", features = ["v4"] }
 fdg-sim = "0.9"
 regex = "1"
 which = "8.0.2"
 zeroize = { version = "1.8.2", features = ["derive"] }
 portable-pty = "0.8"
+git2 = "0.20"
 
 [profile.release]
 lto = "thin"
