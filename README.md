@@ -78,6 +78,18 @@ cd clin-rs
 makepkg -si
 ```
 
+### Arch Linux (AUR)
+```bash
+yay -S clin-rs-bin
+```
+
+### AppImage
+Download the latest `.AppImage` from the [Releases](https://github.com/reekta92/clin-rs/releases) page.
+```bash
+chmod +x clin-*-x86_64.AppImage
+./clin-*-x86_64.AppImage
+```
+
 ### Other
 Download the latest `.tar.gz` from the [Releases](https://github.com/reekta92/clin-rs/releases) page.
 ```bash

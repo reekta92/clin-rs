@@ -9,6 +9,27 @@ Thank you for considering contributing to clin! Here's how to get started.
 3. Build: `cargo build`
 4. Run: `cargo run`
 
+## Releasing
+
+Releases are fully automated via **Actions → Dispatch Release → Run workflow**.
+
+1. Select bump type: `patch`, `minor`, `major`, or `pre-patch`
+2. Click **Run workflow**
+
+This produces:
+- **All platforms:** Linux x86_64 + aarch64, macOS x86_64 + aarch64, Windows x86_64 (via cargo-dist)
+- **Linux packages:** `.deb` (Debian/Ubuntu), `.rpm` (Fedora/RHEL/openSUSE), AppImage, AUR
+- **Registries:** crates.io, AUR (`clin-rs-bin`)
+- **Artifacts:** changelog, shell/powershell installers, MSI
+
+### Required repository secrets
+
+| Secret | Source | Used by |
+|---|---|---|
+| `CARGO_REGISTRY_TOKEN` | [crates.io/settings/tokens](https://crates.io/settings/tokens) — publish scope | crates.io publish |
+| `AUR_SSH_PRIVATE_KEY` | SSH keypair registered at [aur.archlinux.org](https://aur.archlinux.org/account) | AUR package push |
+
+
 ## Development
 
 - **Code style**: Run `cargo fmt` before committing

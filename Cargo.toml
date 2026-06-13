@@ -1,6 +1,6 @@
 [package]
 name = "clin-rs"
-version = "0.8.6-0"
+version = "0.8.6"
 edition = "2024"
 rust-version = "1.85.0"
 description = "Encrypted terminal note-taking app inspired by Obsidian"
@@ -21,7 +21,7 @@ path = "src/main.rs"
 name = "clin-rs"
 maintainer = "reekta <reekta@localhost>"
 copyright = "2026, reekta"
-depends = "libc6 (>= 2.31)"
+depends = "libc6 (>= 2.31), libssl3 | libssl1.1"
 section = "utils"
 priority = "optional"
 assets = [

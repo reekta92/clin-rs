@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=clin
+Comment=Encrypted terminal note-taking app
+Exec=clin
+Icon=clin
+Terminal=true
+Type=Application
+Categories=Utility;TextEditor;ConsoleOnly;
