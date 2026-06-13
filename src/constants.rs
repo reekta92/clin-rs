@@ -8,6 +8,5 @@ pub const HELP_PAGE_HINTS: &str = "← → switch tab · ↑ ↓ scroll · Esc c
 pub const GRAPH_HELP_HINTS: &str = "Esc: back · +/-: zoom · L: labels · a: fit";
 pub const DRAW_HELP_HINTS: &str =
     "Esc: back · d: draw · s: shape · t: text · e: erase · Ctrl+S: save";
-pub const CANVAS_HELP_HINTS: &str =
-    "Esc: back · Space: pin · /: filter · Backspace: delete";
+pub const CANVAS_HELP_HINTS: &str = "Esc: back · Space: pin · /: filter · Backspace: delete";
 pub const BACKUP_HELP_HINTS: &str = "s: commit · p: push · r: refresh · /: settings · Esc: ←";

@@ -117,7 +117,10 @@ pub fn run_pinstar_view(
             let full = frame.area();
             let outer = ratatui::layout::Layout::default()
                 .direction(ratatui::layout::Direction::Vertical)
-                .constraints([ratatui::layout::Constraint::Length(1), ratatui::layout::Constraint::Min(0)])
+                .constraints([
+                    ratatui::layout::Constraint::Length(1),
+                    ratatui::layout::Constraint::Min(0),
+                ])
                 .split(full);
             crate::ui::draw_view_title_bar(frame, outer[0], "Canvas", &theme);
             draw_pinstar_view(frame, &mut state, &theme, outer[1]);
@@ -129,18 +132,15 @@ pub fn run_pinstar_view(
                 let term_area: ratatui::layout::Rect = terminal.size()?.into();
                 let outer = ratatui::layout::Layout::default()
                     .direction(ratatui::layout::Direction::Vertical)
-                    .constraints([ratatui::layout::Constraint::Length(1), ratatui::layout::Constraint::Min(0)])
+                    .constraints([
+                        ratatui::layout::Constraint::Length(1),
+                        ratatui::layout::Constraint::Min(0),
+                    ])
                     .split(term_area);
                 let area = outer[1];
                 match event::read()? {
                     Event::Key(key) => {
-                        if !handle_pinstar_event(
-                            &mut state,
-                            key,
-                            &mut running,
-                            area,
-                            keybinds,
-                        ) {}
+                        if !handle_pinstar_event(&mut state, key, &mut running, area, keybinds) {}
                     }
                     Event::Mouse(mouse) => {
                         handle_pinstar_mouse(&mut state, mouse, area);

@@ -25,7 +25,12 @@ fn get_node_color(color_code: Option<&str>, theme: &AppThemeColors) -> Color {
     }
 }
 
-pub fn draw_pinstar_view(frame: &mut Frame, state: &mut PinstarState, theme: &AppThemeColors, area: ratatui::layout::Rect) {
+pub fn draw_pinstar_view(
+    frame: &mut Frame,
+    state: &mut PinstarState,
+    theme: &AppThemeColors,
+    area: ratatui::layout::Rect,
+) {
     let total_area = area;
     let mut area = total_area;
     area.height = area.height.saturating_sub(1);

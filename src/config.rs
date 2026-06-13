@@ -10,6 +10,13 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 #[path = "graf/themes.rs"]
 pub mod themes;
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum NotesLayout {
+    Tree,
+    #[default]
+    Grid,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -425,6 +432,8 @@ impl<'de> serde::Deserialize<'de> for ColorOverrides {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VisualConfig {
     #[serde(default)]
+    pub notes_layout: NotesLayout,
+    #[serde(default)]
     pub graph_background: Background,
     #[serde(default)]
     pub node_color_mode: NodeColorMode,
@@ -467,6 +476,7 @@ pub struct VisualConfig {
 impl Default for VisualConfig {
     fn default() -> Self {
         Self {
+            notes_layout: NotesLayout::default(),
             graph_background: Background::Solid,
             node_color_mode: NodeColorMode::Folder,
             edge_color_mode: EdgeColorMode::Uniform,

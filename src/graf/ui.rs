@@ -11,7 +11,10 @@ pub fn draw_ui(frame: &mut Frame, state: &GrafAppState, config: &ClinConfig, _ke
     let full_area = frame.area();
     let outer = ratatui::layout::Layout::default()
         .direction(ratatui::layout::Direction::Vertical)
-        .constraints([ratatui::layout::Constraint::Length(1), ratatui::layout::Constraint::Min(0)])
+        .constraints([
+            ratatui::layout::Constraint::Length(1),
+            ratatui::layout::Constraint::Min(0),
+        ])
         .split(full_area);
     crate::ui::draw_view_title_bar(frame, outer[0], "Graph", &state.app_theme);
     let area = outer[1];

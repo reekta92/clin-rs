@@ -27,7 +27,7 @@ use crossterm::terminal::{
 use ratatui_textarea::TextArea;
 use std::collections::{HashMap, HashSet};
 
-const VIRTUAL_PINNED_PATH: &str = "__clin_virtual__/pinned";
+pub const VIRTUAL_PINNED_PATH: &str = "__clin_virtual__/pinned";
 pub const VIRTUAL_PINNED_LABEL: &str = "Pinned";
 
 #[derive(Debug, Clone, Default)]
@@ -320,6 +320,7 @@ impl App {
             .unwrap_or(SortOrder::Ascending);
         list.preview_enabled = bootstrap_config.preview_enabled;
         list.page_size = 10;
+        list.notes_layout = bootstrap_config.visual.notes_layout.clone();
 
         let mut app = Self {
             storage,
@@ -423,9 +424,9 @@ impl App {
         });
 
         if self.list.folder_expanded.contains(VIRTUAL_PINNED_PATH) {
-            for (idx, note) in pinned_notes {
+            for (idx, note) in &pinned_notes {
                 visual.push(VisualItem::Note {
-                    summary_idx: idx,
+                    summary_idx: *idx,
                     depth: 1,
                     is_clin: note.id.ends_with(".clin"),
                     is_draw: note.id.ends_with(".draw"),
@@ -469,6 +470,80 @@ impl App {
             self.list.folder_cache = Some(folders);
             self.list.folder_cache.as_ref().unwrap()
         };
+
+        if self.list.notes_layout == crate::config::NotesLayout::Grid {
+            // Discard the tree-view items (Pinned/Vault folders) built above.
+            visual.clear();
+            let gf = &self.list.grid_folder;
+            if gf == VIRTUAL_PINNED_PATH {
+                // Pinned tab: show only pinned notes, no folders, no CreateNew, no ".."
+                for (idx, note) in &pinned_notes {
+                    visual.push(VisualItem::Note {
+                        summary_idx: *idx,
+                        depth: 0,
+                        is_clin: note.id.ends_with(".clin"),
+                        is_draw: note.id.ends_with(".draw"),
+                        is_canvas: note.id.ends_with(".canvas"),
+                        in_virtual_pinned_folder: true,
+                    });
+                }
+            } else {
+                // Vault tab or a subfolder: show only the contents of this folder.
+                // ".." only appears when inside a subfolder (not at Vault root "").
+                if !gf.is_empty() {
+                    let parent_path = if let Some(slash) = gf.rfind('/') {
+                        &gf[..slash]
+                    } else {
+                        ""
+                    };
+                    visual.push(VisualItem::Folder {
+                        path: parent_path.to_string(),
+                        name: "..".to_string(),
+                        depth: 0,
+                        is_expanded: false,
+                        note_count: 0,
+                    });
+                }
+
+                // Direct subfolders of the current folder
+                for folder in all_folders {
+                    let parent_path = if let Some(slash) = folder.rfind('/') {
+                        &folder[..slash]
+                    } else {
+                        ""
+                    };
+                    if parent_path == gf {
+                        let parts: Vec<&str> = folder.split('/').collect();
+                        let name = parts.last().unwrap_or(&"").to_string();
+                        visual.push(VisualItem::Folder {
+                            path: folder.clone(),
+                            name,
+                            depth: 0,
+                            is_expanded: false,
+                            note_count: by_folder.get(folder.as_str()).map_or(0, |v| v.len()),
+                        });
+                    }
+                }
+
+                // Direct notes of the current folder
+                if let Some(notes) = by_folder.get(gf.as_str()) {
+                    for (idx, note) in notes {
+                        visual.push(VisualItem::Note {
+                            summary_idx: *idx,
+                            depth: 0,
+                            is_clin: note.id.ends_with(".clin"),
+                            is_draw: note.id.ends_with(".draw"),
+                            is_canvas: note.id.ends_with(".canvas"),
+                            in_virtual_pinned_folder: false,
+                        });
+                    }
+                }
+                // No CreateNew in grid view — create via keybind 'n'
+            }
+
+            self.list.visual_list = visual;
+            return;
+        }
 
         for folder in all_folders {
             let parts: Vec<&str> = folder.split('/').collect();
@@ -588,10 +663,15 @@ impl App {
             }
             VisualItem::Folder { path, .. } => {
                 let p = path.clone();
-                if self.list.folder_expanded.contains(&p) {
-                    self.list.folder_expanded.remove(&p);
+                if self.list.notes_layout == crate::config::NotesLayout::Grid {
+                    self.list.grid_folder = p;
+                    self.list.visual_index = 0;
                 } else {
-                    self.list.folder_expanded.insert(p);
+                    if self.list.folder_expanded.contains(&p) {
+                        self.list.folder_expanded.remove(&p);
+                    } else {
+                        self.list.folder_expanded.insert(p);
+                    }
                 }
                 self.refresh_visual_list();
             }
@@ -602,6 +682,20 @@ impl App {
                 }
             }
         }
+    }
+
+    /// In grid layout, cycle between Pinned and Vault tabs.
+    pub fn cycle_grid_tab(&mut self) {
+        if self.list.notes_layout != crate::config::NotesLayout::Grid {
+            return;
+        }
+        self.list.grid_folder = if self.list.grid_folder == VIRTUAL_PINNED_PATH {
+            String::new()
+        } else {
+            VIRTUAL_PINNED_PATH.to_string()
+        };
+        self.list.visual_index = 0;
+        self.refresh_visual_list();
     }
 
     pub fn load_and_open_note(&mut self, note_id: &str, line_number: Option<usize>) {
@@ -1111,7 +1205,11 @@ impl App {
     }
 
     pub fn select_template(&mut self) {
-        let folder = self.get_current_folder_context();
+        let folder = if self.list.notes_layout == crate::config::NotesLayout::Grid {
+            self.list.grid_folder.clone()
+        } else {
+            self.get_current_folder_context()
+        };
         if let Some(popup) = self.popups.template.take()
             && let Some(summary) = popup.filtered_templates.get(popup.selected)
         {
@@ -1747,7 +1845,11 @@ template = """
     }
 
     pub fn begin_create_folder(&mut self) {
-        let parent_path = self.get_current_folder_context();
+        let parent_path = if self.list.notes_layout == crate::config::NotesLayout::Grid {
+            self.list.grid_folder.clone()
+        } else {
+            self.get_current_folder_context()
+        };
         if Self::is_virtual_pinned_path(&parent_path) {
             self.set_temporary_status_static("Cannot create folder inside virtual Pinned");
             return;
@@ -2536,7 +2638,11 @@ template = """
     }
 
     pub fn begin_create_note(&mut self) {
-        let folder = self.get_current_folder_context();
+        let folder = if self.list.notes_layout == crate::config::NotesLayout::Grid {
+            self.list.grid_folder.clone()
+        } else {
+            self.get_current_folder_context()
+        };
         self.begin_create_note_in_folder(folder);
     }
 
@@ -2569,7 +2675,11 @@ template = """
     }
 
     pub fn begin_create_draw(&mut self) {
-        let folder = self.get_current_folder_context();
+        let folder = if self.list.notes_layout == crate::config::NotesLayout::Grid {
+            self.list.grid_folder.clone()
+        } else {
+            self.get_current_folder_context()
+        };
         if Self::is_virtual_pinned_path(&folder) {
             self.set_temporary_status_static("Cannot create drawing inside virtual Pinned");
             return;
@@ -2608,7 +2718,11 @@ template = """
     }
 
     pub fn begin_create_canvas(&mut self) {
-        let folder = self.get_current_folder_context();
+        let folder = if self.list.notes_layout == crate::config::NotesLayout::Grid {
+            self.list.grid_folder.clone()
+        } else {
+            self.get_current_folder_context()
+        };
         if Self::is_virtual_pinned_path(&folder) {
             self.set_temporary_status_static("Cannot create canvas inside virtual Pinned");
             return;
@@ -3336,84 +3450,162 @@ template = """
             return;
         }
 
-        let Some(VisualItem::Note {
-            summary_idx,
-            is_draw,
-            is_canvas,
-            ..
-        }) = self.list.visual_list.get(self.list.visual_index)
-        else {
-            self.list.preview_content = None;
-            self.list.preview_content_index = None;
-            return;
-        };
-        let summary_idx = *summary_idx;
-        let is_draw = *is_draw;
-        let is_canvas = *is_canvas;
-        let id = &self.notes[summary_idx].id;
-        let is_clin = id.ends_with(".clin");
+        let item = self.list.visual_list.get(self.list.visual_index);
+        match item {
+            Some(VisualItem::Note {
+                summary_idx,
+                is_draw,
+                is_canvas,
+                ..
+            }) => {
+                let summary_idx = *summary_idx;
+                let is_draw = *is_draw;
+                let is_canvas = *is_canvas;
+                let id = &self.notes[summary_idx].id;
+                let is_clin = id.ends_with(".clin");
 
-        if self.preview_encryption && is_clin {
-            self.list.preview_content = None;
-            self.list.preview_content_index = Some(self.list.visual_index);
-            return;
-        }
-
-        if is_draw {
-            let path = self.storage.note_path(&id);
-            match std::fs::read_to_string(&path) {
-                Ok(content) => match serde_json::from_str::<crate::draw::state::DrawData>(&content)
-                {
-                    Ok(data) => {
-                        let grid = crate::snapshot::render_draw_snapshot(&data, &self.app_theme);
-                        self.list.preview_content = Some(PreviewContent::DrawGrid(grid));
-                    }
-                    Err(e) => {
-                        self.list.preview_content = None;
-                        self.status = Cow::Owned(format!("Failed to parse draw: {e}"));
-                    }
-                },
-                Err(_) => {
+                if self.preview_encryption && is_clin {
                     self.list.preview_content = None;
+                    self.list.preview_content_index = Some(self.list.visual_index);
+                    return;
                 }
-            }
-            self.list.preview_content_index = Some(self.list.visual_index);
-            return;
-        }
 
-        if is_canvas {
-            let path = self.storage.note_path(&id);
-            match std::fs::read_to_string(&path) {
-                Ok(content) => {
-                    match serde_json::from_str::<crate::pinstar::data::CanvasData>(&content) {
-                        Ok(data) => {
-                            let grid =
-                                crate::snapshot::render_canvas_snapshot(&data, &self.app_theme);
-                            self.list.preview_content = Some(PreviewContent::CanvasGrid(grid));
-                        }
-                        Err(e) => {
+                if is_draw {
+                    let path = self.storage.note_path(&id);
+                    match std::fs::read_to_string(&path) {
+                        Ok(content) => match serde_json::from_str::<crate::draw::state::DrawData>(&content)
+                        {
+                            Ok(data) => {
+                                let grid = crate::snapshot::render_draw_snapshot(&data, &self.app_theme);
+                                self.list.preview_content = Some(PreviewContent::DrawGrid(grid));
+                            }
+                            Err(e) => {
+                                self.list.preview_content = None;
+                                self.status = Cow::Owned(format!("Failed to parse draw: {e}"));
+                            }
+                        },
+                        Err(_) => {
                             self.list.preview_content = None;
-                            self.status = Cow::Owned(format!("Failed to parse canvas: {e}"));
                         }
                     }
+                    self.list.preview_content_index = Some(self.list.visual_index);
+                    return;
                 }
-                Err(_) => {
+
+                if is_canvas {
+                    let path = self.storage.note_path(&id);
+                    match std::fs::read_to_string(&path) {
+                        Ok(content) => {
+                            match serde_json::from_str::<crate::pinstar::data::CanvasData>(&content) {
+                                Ok(data) => {
+                                    let grid = crate::snapshot::render_canvas_snapshot(&data, &self.app_theme);
+                                    self.list.preview_content = Some(PreviewContent::CanvasGrid(grid));
+                                }
+                                Err(e) => {
+                                    self.list.preview_content = None;
+                                    self.status = Cow::Owned(format!("Failed to parse canvas: {e}"));
+                                }
+                            }
+                        }
+                        Err(_) => {
+                            self.list.preview_content = None;
+                        }
+                    }
+                    self.list.preview_content_index = Some(self.list.visual_index);
+                    return;
+                }
+
+                if let Ok(note) = self.storage.load_note(&id) {
+                    let width = 80u16.saturating_sub(2).max(40);
+                    let mut renderer = MarkdownRenderer::new(width);
+                    renderer.render(&note.content, width);
+                    self.list.preview_content = Some(PreviewContent::Markdown(Box::new(renderer)));
+                } else {
                     self.list.preview_content = None;
                 }
+                self.list.preview_content_index = Some(self.list.visual_index);
             }
-            self.list.preview_content_index = Some(self.list.visual_index);
-            return;
-        }
+            Some(VisualItem::Folder { path, name, .. }) => {
+                let folder_path = path.clone();
+                let is_pinned = folder_path == crate::app::VIRTUAL_PINNED_PATH;
 
-        if let Ok(note) = self.storage.load_note(&id) {
-            let width = 80u16.saturating_sub(2).max(40);
-            let mut renderer = MarkdownRenderer::new(width);
-            renderer.render(&note.content, width);
-            self.list.preview_content = Some(PreviewContent::Markdown(Box::new(renderer)));
-        } else {
-            self.list.preview_content = None;
+                let all_folders = if let Some(ref cache) = self.list.folder_cache {
+                    cache.clone()
+                } else {
+                    let folders = self.storage.list_folders().unwrap_or_default();
+                    self.list.folder_cache = Some(folders.clone());
+                    folders
+                };
+
+                let mut subfolders = Vec::new();
+                if !is_pinned {
+                    for f in &all_folders {
+                        let parent_path = if let Some(slash) = f.rfind('/') {
+                            &f[..slash]
+                        } else {
+                            ""
+                        };
+                        if parent_path == folder_path {
+                            let name = f.split('/').last().unwrap_or("").to_string();
+                            subfolders.push(name);
+                        }
+                    }
+                    subfolders.sort();
+                }
+
+                let mut notes = Vec::new();
+                for note in &self.notes {
+                    let matches = if is_pinned {
+                        note.pinned
+                    } else {
+                        note.folder == folder_path
+                    };
+                    if matches {
+                        notes.push(note.title.clone());
+                    }
+                }
+                notes.sort();
+
+                let display_title = if is_pinned {
+                    "Pinned Notes".to_string()
+                } else if name == ".." {
+                    format!("Parent: {}", if folder_path.is_empty() { "Vault" } else { &folder_path })
+                } else if folder_path.is_empty() {
+                    "Vault (Root)".to_string()
+                } else {
+                    name.clone()
+                };
+
+                let mut md = format!("# {}\n\n", display_title);
+
+                if !subfolders.is_empty() {
+                    md.push_str("## Folders\n");
+                    for sub in &subfolders {
+                        md.push_str(&format!("- \u{f07b} {}\n", sub));
+                    }
+                    md.push_str("\n");
+                }
+
+                if !notes.is_empty() {
+                    md.push_str("## Notes\n");
+                    for note in &notes {
+                        md.push_str(&format!("- \u{f15c} {}\n", note));
+                    }
+                } else if subfolders.is_empty() {
+                    md.push_str("*This folder is empty.*\n");
+                }
+
+                let width = 80u16.saturating_sub(2).max(40);
+                let mut renderer = MarkdownRenderer::new(width);
+                renderer.render(&md, width);
+                self.list.preview_content = Some(PreviewContent::Markdown(Box::new(renderer)));
+                self.list.preview_content_index = Some(self.list.visual_index);
+            }
+            _ => {
+                self.list.preview_content = None;
+                self.list.preview_content_index = None;
+            }
         }
-        self.list.preview_content_index = Some(self.list.visual_index);
     }
 
     pub fn update_editor_markdown_preview(&mut self) {

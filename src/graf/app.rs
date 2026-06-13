@@ -373,7 +373,10 @@ fn handle_event(
                 let full_area = ratatui::layout::Rect::new(0, 0, size.width, size.height);
                 let outer = ratatui::layout::Layout::default()
                     .direction(ratatui::layout::Direction::Vertical)
-                    .constraints([ratatui::layout::Constraint::Length(1), ratatui::layout::Constraint::Min(0)])
+                    .constraints([
+                        ratatui::layout::Constraint::Length(1),
+                        ratatui::layout::Constraint::Min(0),
+                    ])
                     .split(full_area);
                 let content_area = outer[1];
                 let graph_area = if app_state.preview_enabled {

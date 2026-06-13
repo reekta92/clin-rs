@@ -190,6 +190,8 @@ fn key_code_to_string(code: &KeyCode) -> Cow<'static, str> {
 pub enum ListAction {
     MoveUp,
     MoveDown,
+    MoveLeft,
+    MoveRight,
     Open,
     Delete,
     Quit,
@@ -402,6 +404,20 @@ impl Default for Keybinds {
                 KeyCombo::simple(KeyCode::Char('j')),
             ],
         );
+        list.insert(
+            ListAction::MoveLeft,
+            vec![
+                KeyCombo::simple(KeyCode::Left),
+                KeyCombo::simple(KeyCode::Char('h')),
+            ],
+        );
+        list.insert(
+            ListAction::MoveRight,
+            vec![
+                KeyCombo::simple(KeyCode::Right),
+                KeyCombo::simple(KeyCode::Char('l')),
+            ],
+        );
         list.insert(ListAction::Open, vec![KeyCombo::simple(KeyCode::Enter)]);
         list.insert(
             ListAction::Delete,
@@ -469,23 +485,11 @@ impl Default for Keybinds {
             vec![KeyCombo::simple(KeyCode::Char('.'))],
         );
         list.insert(
-            ListAction::CollapseFolder,
-            vec![KeyCombo::simple(KeyCode::Char('h'))],
-        );
-        list.insert(
-            ListAction::ExpandFolder,
-            vec![KeyCombo::simple(KeyCode::Char('l'))],
-        );
-        list.insert(
             ListAction::OpenCommandPalette,
             vec![
                 KeyCombo::ctrl(KeyCode::Char('p')),
                 KeyCombo::shift(KeyCode::Enter),
             ],
-        );
-        list.insert(
-            ListAction::ExpandFolder,
-            vec![KeyCombo::simple(KeyCode::Char('l'))],
         );
 
         list.insert(

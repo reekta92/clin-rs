@@ -690,6 +690,11 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     }
 
     if app.keybinds.matches_list(ListAction::CycleFocus, &key) {
+        // In grid layout, Tab cycles Pinned/Vault tabs instead of focus.
+        if app.list.notes_layout == crate::config::NotesLayout::Grid {
+            app.cycle_grid_tab();
+            return false;
+        }
         app.list.list_focus = match app.list.list_focus {
             ListFocus::Notes => ListFocus::ExternalEditorToggle,
             ListFocus::ExternalEditorToggle => ListFocus::Notes,
@@ -810,17 +815,68 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         app.begin_delete_selected();
         return false;
     }
-    if app.keybinds.matches_list(ListAction::MoveDown, &key) {
-        if app.list.visual_index < app.list.visual_list.len().saturating_sub(1) {
-            app.list.visual_index += 1;
+    let is_grid = app.list.notes_layout == crate::config::NotesLayout::Grid;
+    let cols = if is_grid {
+        app.list.grid_columns.max(1)
+    } else {
+        1
+    };
+    let len = app.list.visual_list.len();
+
+    if app.keybinds.matches_list(ListAction::MoveLeft, &key) {
+        if is_grid {
+            app.list.visual_index = app.list.visual_index.saturating_sub(1);
             app.request_preview_update();
+        } else {
+            app.collapse_selected_folder();
+        }
+        return false;
+    }
+    if app.keybinds.matches_list(ListAction::MoveRight, &key) {
+        if is_grid {
+            if len > 0 {
+                app.list.visual_index = (app.list.visual_index + 1).min(len - 1);
+            }
+            app.request_preview_update();
+        } else {
+            app.expand_selected_folder();
+        }
+        return false;
+    }
+    if app.keybinds.matches_list(ListAction::MoveDown, &key) {
+        if is_grid {
+            let next = app.list.visual_index + cols;
+            if next < len {
+                app.list.visual_index = next;
+            } else if app.list.visual_index / cols < (len.saturating_sub(1)) / cols {
+                app.list.visual_index = len.saturating_sub(1);
+            }
+            app.request_preview_update();
+        } else {
+            if app.list.visual_index < len.saturating_sub(1) {
+                app.list.visual_index += 1;
+                app.request_preview_update();
+            }
+        }
+        if app.list.list_mode == crate::list_view::ListMode::Select {
+            app.list.last_selection_change = Some(std::time::Instant::now());
         }
         return false;
     }
     if app.keybinds.matches_list(ListAction::MoveUp, &key) {
-        if app.list.visual_index > 0 {
-            app.list.visual_index -= 1;
+        if is_grid {
+            if app.list.visual_index >= cols {
+                app.list.visual_index -= cols;
+            }
             app.request_preview_update();
+        } else {
+            if app.list.visual_index > 0 {
+                app.list.visual_index -= 1;
+                app.request_preview_update();
+            }
+        }
+        if app.list.list_mode == crate::list_view::ListMode::Select {
+            app.list.last_selection_change = Some(std::time::Instant::now());
         }
         return false;
     }
@@ -1395,6 +1451,33 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
     if mouse_event.kind == MouseEventKind::ScrollDown {
         handle_list_keys(app, KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
         return;
+    }
+
+    if app.list.notes_layout == crate::config::NotesLayout::Grid {
+        if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
+            for tile in &app.list.grid_tiles {
+                if contains_cell(tile.rect, mouse_event.column, mouse_event.row) {
+                    let clicked = tile.visual_index;
+                    let is_select_mode = app.list.list_mode == crate::list_view::ListMode::Select
+                        || app.list.tag_to_assign.is_some();
+                    if is_select_mode {
+                        app.list.visual_index = clicked;
+                        if app.list.selected_indices.contains(&clicked) {
+                            app.list.selected_indices.remove(&clicked);
+                        } else {
+                            app.list.selected_indices.insert(clicked);
+                        }
+                    } else if app.list.visual_index == clicked {
+                        app.open_selected();
+                    } else {
+                        app.list.visual_index = clicked;
+                        app.request_preview_update();
+                    }
+                    return;
+                }
+            }
+        }
+        return; // grid never uses the row-based mapping below
     }
 
     if !contains_cell(inner_list_area, mouse_event.column, mouse_event.row) {

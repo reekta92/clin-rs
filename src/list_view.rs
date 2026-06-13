@@ -53,11 +53,19 @@ pub enum VisualItem {
     },
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct GridTile {
+    pub visual_index: usize,
+    pub rect: ratatui::layout::Rect,
+}
+
 pub struct ListView {
     pub visual_list: Vec<VisualItem>,
     pub visual_index: usize,
     pub list_focus: ListFocus,
     pub list_state: ListState,
+    pub grid_scroll: usize,
+    pub grid_tiles: Vec<GridTile>,
     pub folder_expanded: HashSet<String>,
     pub folder_cache: Option<Vec<String>>,
     pub preview_enabled: bool,
@@ -73,6 +81,9 @@ pub struct ListView {
     pub selected_indices: HashSet<usize>,
     pub help_text_cache: Option<Text<'static>>,
     pub tag_to_assign: Option<String>,
+    pub grid_folder: String,
+    pub grid_columns: usize,
+    pub notes_layout: crate::config::NotesLayout,
 }
 
 impl Default for ListView {
@@ -82,6 +93,8 @@ impl Default for ListView {
             visual_index: 0,
             list_focus: ListFocus::Notes,
             list_state: ListState::default(),
+            grid_scroll: 0,
+            grid_tiles: Vec::new(),
             folder_expanded: HashSet::new(),
             folder_cache: None,
             preview_enabled: false,
@@ -97,6 +110,9 @@ impl Default for ListView {
             selected_indices: HashSet::new(),
             help_text_cache: None,
             tag_to_assign: None,
+            grid_folder: String::new(),
+            grid_columns: 1,
+            notes_layout: crate::config::NotesLayout::default(),
         }
     }
 }

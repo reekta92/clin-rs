@@ -42,7 +42,7 @@ pub fn draw_dashboard(frame: &mut ratatui::Frame, state: &crate::backup::state::
 
     let content_area = chunks[1];
     let footer_area = chunks[2];
-    
+
     if state.selected_section == crate::backup::state::BackupSection::Status {
         // Content area split into list and diff if a file is selected and has diffs
         if state.selected_file.is_some() && !state.diff_lines.is_empty() {
@@ -81,7 +81,8 @@ pub fn draw_dashboard(frame: &mut ratatui::Frame, state: &crate::backup::state::
         ));
         right_spans.push(Span::styled(" · ", Style::default().fg(theme.muted)));
 
-        if !status.staged.is_empty() || !status.unstaged.is_empty() || !status.untracked.is_empty() {
+        if !status.staged.is_empty() || !status.unstaged.is_empty() || !status.untracked.is_empty()
+        {
             right_spans.push(Span::styled("modified", Style::default().fg(theme.warning)));
         } else {
             right_spans.push(Span::styled("clean", Style::default().fg(theme.success)));
@@ -95,7 +96,14 @@ pub fn draw_dashboard(frame: &mut ratatui::Frame, state: &crate::backup::state::
         Some(Line::from(right_spans))
     };
 
-    crate::ui::draw_status_bar(frame, footer_area, theme, None, BACKUP_HELP_HINTS, right_line);
+    crate::ui::draw_status_bar(
+        frame,
+        footer_area,
+        theme,
+        None,
+        BACKUP_HELP_HINTS,
+        right_line,
+    );
 
     if state.input_mode == BackupInputMode::EditCommitMessage {
         draw_commit_popup(frame, area, state);
@@ -112,21 +120,24 @@ fn draw_header(frame: &mut Frame, area: Rect, state: &BackupState) {
 
     let sections = ["Status", "History"];
     for (i, name) in sections.iter().enumerate() {
-        let is_active = (i == 0 && state.selected_section == crate::backup::state::BackupSection::Status)
+        let is_active = (i == 0
+            && state.selected_section == crate::backup::state::BackupSection::Status)
             || (i == 1 && state.selected_section == crate::backup::state::BackupSection::History);
-        
+
         if is_active {
             spans.push(Span::styled(
                 format!(" {} ", name),
-                Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD),
             ));
         } else {
             spans.push(Span::styled(
                 format!(" {} ", name),
-                Style::default().fg(theme.muted)
+                Style::default().fg(theme.muted),
             ));
         }
-        
+
         if i < sections.len() - 1 {
             spans.push(Span::styled(" · ", Style::default().fg(theme.muted)));
         }
@@ -342,7 +353,8 @@ fn draw_content(frame: &mut Frame, area: Rect, state: &BackupState) {
             width: area.width.saturating_sub(4),
             height: 1,
         };
-        let style = if msg.to_lowercase().contains("error") || msg.to_lowercase().contains("failed") {
+        let style = if msg.to_lowercase().contains("error") || msg.to_lowercase().contains("failed")
+        {
             Style::default().fg(theme.destructive)
         } else {
             Style::default().fg(theme.success)
@@ -363,7 +375,12 @@ fn draw_diff_pane(frame: &mut Frame, area: Rect, state: &BackupState) {
         let mut lines = Vec::new();
         lines.push(Line::from(vec![
             Span::styled("File: ", Style::default().fg(theme.muted)),
-            Span::styled(file, Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                file,
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD),
+            ),
         ]));
         lines.push(Line::from(""));
 
@@ -429,7 +446,10 @@ fn draw_settings_popup(frame: &mut Frame, area: Rect, state: &BackupState) {
         "j/k navigate · Enter toggle/edit · Esc cancel",
         theme,
     );
-    frame.render_widget(ratatui::widgets::Block::default().style(theme.bg_style()), content);
+    frame.render_widget(
+        ratatui::widgets::Block::default().style(theme.bg_style()),
+        content,
+    );
 
     let chunks = Layout::default()
         .constraints([
@@ -444,10 +464,26 @@ fn draw_settings_popup(frame: &mut Frame, area: Rect, state: &BackupState) {
 
     // Toggles list
     let toggles = [
-        (SettingsField::Enabled, "Backup System Enabled", state.settings.enabled),
-        (SettingsField::BackupOnSave, "Backup on every note save", state.settings.backup_on_save),
-        (SettingsField::BackupOnQuit, "Backup on app exit", state.settings.backup_on_quit),
-        (SettingsField::AutoPush, "Auto-push after backup", state.settings.auto_push),
+        (
+            SettingsField::Enabled,
+            "Backup System Enabled",
+            state.settings.enabled,
+        ),
+        (
+            SettingsField::BackupOnSave,
+            "Backup on every note save",
+            state.settings.backup_on_save,
+        ),
+        (
+            SettingsField::BackupOnQuit,
+            "Backup on app exit",
+            state.settings.backup_on_quit,
+        ),
+        (
+            SettingsField::AutoPush,
+            "Auto-push after backup",
+            state.settings.auto_push,
+        ),
     ];
 
     let mut list_items = Vec::new();
@@ -459,7 +495,7 @@ fn draw_settings_popup(frame: &mut Frame, area: Rect, state: &BackupState) {
         }
         let checkbox = if *value { "[X]" } else { "[ ]" };
         let color = if *value { theme.success } else { theme.muted };
-        
+
         let line = Line::from(vec![
             Span::styled(format!("{} ", checkbox), Style::default().fg(color)),
             Span::raw(*label),
@@ -468,7 +504,11 @@ fn draw_settings_popup(frame: &mut Frame, area: Rect, state: &BackupState) {
     }
 
     let is_toggle_focused = selected_toggle_idx.is_some();
-    let toggles_border = if is_toggle_focused { theme.heading } else { theme.muted };
+    let toggles_border = if is_toggle_focused {
+        theme.heading
+    } else {
+        theme.muted
+    };
 
     let list = ratatui::widgets::List::new(list_items)
         .block(
@@ -494,16 +534,31 @@ fn draw_settings_popup(frame: &mut Frame, area: Rect, state: &BackupState) {
 
     // TextAreas
     let text_fields = [
-        (chunks[1], SettingsField::RemoteUrl, " Remote URL ", &state.settings.remote_url),
-        (chunks[2], SettingsField::RemoteName, " Remote Name ", &state.settings.remote_name),
+        (
+            chunks[1],
+            SettingsField::RemoteUrl,
+            " Remote URL ",
+            &state.settings.remote_url,
+        ),
+        (
+            chunks[2],
+            SettingsField::RemoteName,
+            " Remote Name ",
+            &state.settings.remote_name,
+        ),
     ];
 
     for (area, field, title, textarea) in text_fields {
-        let border_color = if state.settings.focused_field == field { theme.heading } else { theme.muted };
+        let border_color = if state.settings.focused_field == field {
+            theme.heading
+        } else {
+            theme.muted
+        };
         let mut cloned = textarea.clone();
-        
-        let is_editing = state.input_mode == BackupInputMode::EditSettingsField && state.settings.focused_field == field;
-        
+
+        let is_editing = state.input_mode == BackupInputMode::EditSettingsField
+            && state.settings.focused_field == field;
+
         if is_editing {
             cloned.set_cursor_style(Style::default().add_modifier(Modifier::REVERSED));
         } else {
