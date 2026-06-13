@@ -107,46 +107,62 @@ jobs:
             --prerelease=${{ contains(steps.bump.outputs.new_version, '-') }}
 
   # ────────────────────────────────────────────
-  # 2. Build cross-platform binaries with cargo-dist
+  # 2. Build Linux x86_64 binary
   # ────────────────────────────────────────────
-  dist:
+  linux-x86_64:
     needs: prepare
-    strategy:
-      matrix:
-        include:
-          - runner: ubuntu-latest
-          - runner: macos-latest
-          - runner: windows-latest
-    runs-on: ${{ matrix.runner }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: "v${{ needs.prepare.outputs.new_version }}"
-
       - uses: dtolnay/rust-toolchain@stable
-
-      - name: Install dist
-        shell: bash
-        run: "curl --proto '=https' --tlsv1.2 -LsSf https://github.com/axodotdev/cargo-dist/releases/download/v0.31.0/cargo-dist-installer.sh | sh"
-
-      - name: Build with dist
-        shell: bash
+      - name: Install build deps
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
+      - name: Build
+        run: cargo build --release --locked
+      - name: Package
         run: |
-          # Add dist to PATH
-          export PATH="$HOME/.cargo/bin:$PATH"
-          dist build --tag "v${{ needs.prepare.outputs.new_version }}" --artifacts all
-
-      - name: Upload to GitHub Release
-        shell: bash
+          VERSION="${{ needs.prepare.outputs.new_version }}"
+          mkdir -p dist
+          cp target/release/clin .
+          tar -cJf "dist/clin-rs-x86_64-unknown-linux-gnu.tar.xz" clin LICENSE README.md
+          tar -czf "dist/clin-rs-x86_64-unknown-linux-gnu.tar.gz" clin LICENSE README.md
+      - name: Upload
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: "v${{ needs.prepare.outputs.new_version }}"
-        run: |
-          # dist puts artifacts in target/dist/
-          gh release upload "$TAG" target/dist/* --clobber
+        run: gh release upload "$TAG" dist/* --clobber
 
   # ────────────────────────────────────────────
-  # 3. Build .deb and .rpm
+  # 3. Build Windows x86_64 binary
+  # ────────────────────────────────────────────
+  windows-x86_64:
+    needs: prepare
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: "v${{ needs.prepare.outputs.new_version }}"
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build
+        run: cargo build --release --locked
+      - name: Package
+        shell: bash
+        run: |
+          VERSION="${{ needs.prepare.outputs.new_version }}"
+          mkdir -p dist
+          cp target/release/clin.exe .
+          7z a "dist/clin-rs-x86_64-pc-windows-msvc.zip" clin.exe LICENSE README.md
+      - name: Upload
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: "v${{ needs.prepare.outputs.new_version }}"
+        shell: bash
+        run: gh release upload "$TAG" dist/* --clobber
+
+  # ────────────────────────────────────────────
+  # 4. Build .deb and .rpm
   # ────────────────────────────────────────────
   linux-packages:
     needs: prepare
@@ -182,7 +198,7 @@ jobs:
           gh release upload "$TAG" target/debian/*.deb target/generate-rpm/*.rpm --clobber
 
   # ────────────────────────────────────────────
-  # 4. Build AppImage
+  # 5. Build AppImage
   # ────────────────────────────────────────────
   appimage:
     needs: prepare
@@ -225,10 +241,10 @@ jobs:
           gh release upload "$TAG" clin-*-x86_64.AppImage --clobber
 
   # ────────────────────────────────────────────
-  # 5. Publish AUR package
+  # 6. Publish AUR package
   # ────────────────────────────────────────────
   aur:
-    needs: [prepare, linux-packages, dist]
+    needs: [prepare, linux-packages, linux-x86_64]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -276,7 +292,7 @@ jobs:
           commit_message: "Update to ${{ needs.prepare.outputs.new_version }}"
 
   # ────────────────────────────────────────────
-  # 6. Publish to crates.io
+  # 7. Publish to crates.io
   # ────────────────────────────────────────────
   crates-io:
     needs: prepare
@@ -297,10 +313,10 @@ jobs:
         run: cargo publish --locked
 
   # ────────────────────────────────────────────
-  # 7. Update README + PKGBUILD in main
+  # 8. Update README + PKGBUILD in main
   # ────────────────────────────────────────────
   post-release:
-    needs: [prepare, linux-packages, appimage, dist]
+    needs: [prepare, linux-packages, appimage, linux-x86_64]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -318,7 +334,7 @@ jobs:
           while [ $ELAPSED -lt $TIMEOUT ]; do
             DEB_FILE=$(gh release view "$TAG" --json assets --jq '.assets[].name | select(endswith("_amd64.deb"))')
             RPM_FILE=$(gh release view "$TAG" --json assets --jq '.assets[].name | select(endswith(".x86_64.rpm"))')
-            TAR_FILE=$(gh release view "$TAG" --json assets --jq '.assets[].name | select(startswith("clin-rs") and endswith("-x86_64.tar.gz"))')
+            TAR_FILE=$(gh release view "$TAG" --json assets --jq '.assets[].name | select(startswith("clin-rs") and contains("x86_64-unknown-linux-gnu") and endswith(".tar.gz"))')
             [ -n "$DEB_FILE" ] && [ -n "$RPM_FILE" ] && [ -n "$TAR_FILE" ] && break
             sleep 15; ELAPSED=$((ELAPSED + 15))
           done
@@ -330,7 +346,7 @@ jobs:
             sed -i -E "s/clin-rs-[0-9a-zA-Z._-]+\.x86_64\.rpm/$RPM_FILE/g" README.md
           fi
           if [ -n "$TAR_FILE" ]; then
-            sed -i -E "s/clin-rs-[0-9a-zA-Z._-]+-x86_64\.tar\.gz/$TAR_FILE/g" README.md
+            sed -i -E "s/clin-rs-.*-x86_64.*\.tar\.gz/$TAR_FILE/g" README.md
           fi
 
           # Update PKGBUILD version in main

@@ -17,10 +17,10 @@ Releases are fully automated via **Actions → Dispatch Release → Run workflow
 2. Click **Run workflow**
 
 This produces:
-- **All platforms:** Linux x86_64 + aarch64, macOS x86_64 + aarch64, Windows x86_64 (via cargo-dist)
+- **Platforms:** Linux x86_64, Windows x86_64
 - **Linux packages:** `.deb` (Debian/Ubuntu), `.rpm` (Fedora/RHEL/openSUSE), AppImage, AUR
 - **Registries:** crates.io, AUR (`clin-rs-bin`)
-- **Artifacts:** changelog, shell/powershell installers, MSI
+- **Artifacts:** changelog, .tar.xz, .zip
 
 ### Required repository secrets
 
