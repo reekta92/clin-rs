@@ -84,7 +84,7 @@ jobs:
           echo "tag=v$NEW" >> "$GITHUB_OUTPUT"
 
       - name: Generate changelog
-        run: git cliff --tag "v${{ steps.bump.outputs.new_version }}" -o CHANGELOG.md
+        run: git cliff --tag "v${{ steps.bump.outputs.new_version }}" --latest -o CHANGELOG.md
 
       - name: Commit, tag, push
         run: |
