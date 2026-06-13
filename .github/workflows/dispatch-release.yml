@@ -22,7 +22,7 @@ env:
 
 jobs:
   # ────────────────────────────────────────────
-  # 1. Bump version, changelog, tag, push
+  # 1. Bump version, changelog, tag, push, create release
   # ────────────────────────────────────────────
   prepare:
     runs-on: ubuntu-latest
@@ -95,8 +95,58 @@ jobs:
           git tag "v${{ steps.bump.outputs.new_version }}"
           git push origin HEAD:main --tags
 
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: "v${{ steps.bump.outputs.new_version }}"
+        run: |
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --notes-file CHANGELOG.md \
+            --draft=false \
+            --prerelease=${{ contains(steps.bump.outputs.new_version, '-') }}
+
   # ────────────────────────────────────────────
-  # 2. Build .deb and .rpm
+  # 2. Build cross-platform binaries with cargo-dist
+  # ────────────────────────────────────────────
+  dist:
+    needs: prepare
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-latest
+          - runner: macos-latest
+          - runner: windows-latest
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: "v${{ needs.prepare.outputs.new_version }}"
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install dist
+        shell: bash
+        run: "curl --proto '=https' --tlsv1.2 -LsSf https://github.com/axodotdev/cargo-dist/releases/download/v0.31.0/cargo-dist-installer.sh | sh"
+
+      - name: Build with dist
+        shell: bash
+        run: |
+          # Add dist to PATH
+          export PATH="$HOME/.cargo/bin:$PATH"
+          dist build --tag "v${{ needs.prepare.outputs.new_version }}" --artifacts all
+
+      - name: Upload to GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: "v${{ needs.prepare.outputs.new_version }}"
+        run: |
+          # dist puts artifacts in target/dist/
+          gh release upload "$TAG" target/dist/* --clobber
+
+  # ────────────────────────────────────────────
+  # 3. Build .deb and .rpm
   # ────────────────────────────────────────────
   linux-packages:
     needs: prepare
@@ -129,18 +179,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: "v${{ needs.prepare.outputs.new_version }}"
         run: |
-          TIMEOUT=600; ELAPSED=0
-          while [ $ELAPSED -lt $TIMEOUT ]; do
-            gh release view "$TAG" >/dev/null 2>&1 && break
-            sleep 15; ELAPSED=$((ELAPSED + 15))
-          done
-          if ! gh release view "$TAG" >/dev/null 2>&1; then
-            echo "::error::Release $TAG not found after ${TIMEOUT}s"; exit 1
-          fi
           gh release upload "$TAG" target/debian/*.deb target/generate-rpm/*.rpm --clobber
 
   # ────────────────────────────────────────────
-  # 3. Build AppImage
+  # 4. Build AppImage
   # ────────────────────────────────────────────
   appimage:
     needs: prepare
@@ -173,7 +215,6 @@ jobs:
             --desktop-file assets/clin.desktop \
             --icon-file assets/clin.png \
             --output appimage
-          # linuxdeploy names it clin-$VERSION-x86_64.AppImage or similar
           mv clin*.AppImage "clin-${VERSION}-x86_64.AppImage"
 
       - name: Upload to GitHub Release
@@ -181,18 +222,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: "v${{ needs.prepare.outputs.new_version }}"
         run: |
-          TIMEOUT=600; ELAPSED=0
-          while [ $ELAPSED -lt $TIMEOUT ]; do
-            gh release view "$TAG" >/dev/null 2>&1 && break
-            sleep 15; ELAPSED=$((ELAPSED + 15))
-          done
           gh release upload "$TAG" clin-*-x86_64.AppImage --clobber
 
   # ────────────────────────────────────────────
-  # 4. Publish AUR package
+  # 5. Publish AUR package
   # ────────────────────────────────────────────
   aur:
-    needs: [prepare, linux-packages]
+    needs: [prepare, linux-packages, dist]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -223,14 +259,10 @@ jobs:
           PKGVER=$(echo "$VERSION" | sed 's/-/_/g')
           sed -i "s/^pkgver=.*/pkgver=$PKGVER/" PKGBUILD
 
-          # Download tarball and compute sha256
-          TARBALL_URL=$(gh release view "$TAG" --json assets --jq '.assets[] | select(.name | contains("x86_64-unknown-linux-gnu") and endswith(".tar.xz")) | .url')
           TARBALL_NAME=$(gh release view "$TAG" --json assets --jq '.assets[] | select(.name | contains("x86_64-unknown-linux-gnu") and endswith(".tar.xz")) | .name')
           wget -q "https://github.com/reekta92/clin-rs/releases/download/$TAG/$TARBALL_NAME" -O tarball.tar.xz
           SHA=$(sha256sum tarball.tar.xz | cut -d' ' -f1)
           sed -i "s/^sha256sums=.*/sha256sums=(\"$SHA\")/" PKGBUILD
-
-          # Update source URL to match actual tarball name
           sed -i "s|^source=.*|source=(\"https://github.com/reekta92/clin-rs/releases/download/v\${pkgver}/$TARBALL_NAME\")|" PKGBUILD
 
       - name: Publish to AUR
@@ -244,7 +276,7 @@ jobs:
           commit_message: "Update to ${{ needs.prepare.outputs.new_version }}"
 
   # ────────────────────────────────────────────
-  # 5. Publish to crates.io
+  # 6. Publish to crates.io
   # ────────────────────────────────────────────
   crates-io:
     needs: prepare
@@ -265,10 +297,10 @@ jobs:
         run: cargo publish --locked
 
   # ────────────────────────────────────────────
-  # 6. Update README + PKGBUILD in main
+  # 7. Update README + PKGBUILD in main
   # ────────────────────────────────────────────
   post-release:
-    needs: [prepare, linux-packages, appimage]
+    needs: [prepare, linux-packages, appimage, dist]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
