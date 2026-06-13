@@ -88,13 +88,16 @@ jobs:
 
       - name: Commit, tag, push
         run: |
+          TAG="v${{ steps.bump.outputs.new_version }}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add Cargo.toml Cargo.lock CHANGELOG.md
-          git commit -m "release: v${{ steps.bump.outputs.new_version }}"
-          git tag "v${{ steps.bump.outputs.new_version }}"
-          git push origin HEAD:main --tags
-
+          if ! git diff --staged --quiet; then
+            git commit -m "release: $TAG"
+          fi
+          git tag -f "$TAG"
+          git push origin HEAD:main
+          git push origin "$TAG" --force
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -247,8 +250,8 @@ jobs:
 
   # ────────────────────────────────────────────
   # 6. Publish AUR package
-  # ────────────────────────────────────────────
   aur:
+    if: "${{ secrets.AUR_SSH_PRIVATE_KEY != '' }}"
     needs: [prepare, linux-packages, linux-x86_64]
     runs-on: ubuntu-latest
     steps:
@@ -300,6 +303,7 @@ jobs:
   # 7. Publish to crates.io
   # ────────────────────────────────────────────
   crates-io:
+    if: "${{ secrets.CARGO_REGISTRY_TOKEN != '' }}"
     needs: prepare
     runs-on: ubuntu-latest
     steps:
