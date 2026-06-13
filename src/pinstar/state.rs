@@ -142,10 +142,8 @@ impl PinstarState {
     }
 
     pub fn screen_to_canvas(&self, sx: u16, sy: u16, area: ratatui::layout::Rect) -> (f64, f64) {
-        let cx =
-            (sx as f64 - (area.x as f64 + area.width as f64 / 2.0)) / self.zoom + self.viewport_x;
-        let cy =
-            (sy as f64 - (area.y as f64 + area.height as f64 / 2.0)) / self.zoom + self.viewport_y;
+        let cx = ((sx as f64 + 0.5) - (area.x as f64 + area.width as f64 / 2.0)) / self.zoom + self.viewport_x;
+        let cy = ((sy as f64 + 0.5) - (area.y as f64 + area.height as f64 / 2.0)) / self.zoom + self.viewport_y;
         (cx, cy)
     }
 

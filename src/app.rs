@@ -17,7 +17,7 @@ use std::borrow::Cow;
 use std::time::Duration;
 use std::time::Instant;
 
-use crate::keybinds::{Keybinds, GraphAction, DrawAction, CanvasAction, BackupAction};
+use crate::keybinds::Keybinds;
 use crate::storage::{Note, NoteSummary, Storage};
 use crate::templates::Template;
 use anyhow::Result;
@@ -440,7 +440,6 @@ impl App {
         if self.list.folder_expanded.contains(VIRTUAL_PINNED_PATH) {
             for (idx, note) in pinned_notes {
                 visual.push(VisualItem::Note {
-                    id: note.id.clone(),
                     summary_idx: idx,
                     depth: 1,
                     is_clin: note.id.ends_with(".clin"),
@@ -464,7 +463,6 @@ impl App {
             if let Some(notes) = by_folder.get("") {
                 for (idx, note) in notes {
                     visual.push(VisualItem::Note {
-                        id: note.id.clone(),
                         summary_idx: *idx,
                         depth: 1,
                         is_clin: note.id.ends_with(".clin"),
@@ -480,12 +478,12 @@ impl App {
             });
         }
 
-        let all_folders = if let Some(ref cached) = self.list.folder_cache {
-            cached.clone()
+        let all_folders = if self.list.folder_cache.is_some() {
+            self.list.folder_cache.as_ref().unwrap()
         } else {
             let folders = self.storage.list_folders().unwrap_or_default();
-            self.list.folder_cache = Some(folders.clone());
-            folders
+            self.list.folder_cache = Some(folders);
+            self.list.folder_cache.as_ref().unwrap()
         };
 
         for folder in all_folders {
@@ -493,23 +491,23 @@ impl App {
             let depth = parts.len();
             let name = parts.last().unwrap_or(&"").to_string();
 
-            let parent_path = if parts.len() > 1 {
-                parts[..parts.len() - 1].join("/")
+            let parent_path = if let Some(slash) = folder.rfind('/') {
+                &folder[..slash]
             } else {
-                String::new()
+                ""
             };
 
             let mut is_visible = true;
-            let mut current_parent = parent_path.clone();
+            let mut current_parent = parent_path;
             while !current_parent.is_empty() {
-                if !self.list.folder_expanded.contains(&current_parent) {
+                if !self.list.folder_expanded.contains(current_parent) {
                     is_visible = false;
                     break;
                 }
                 if let Some(slash) = current_parent.rfind('/') {
-                    current_parent = current_parent[..slash].to_string();
+                    current_parent = &current_parent[..slash];
                 } else {
-                    current_parent = String::new();
+                    current_parent = "";
                 }
             }
 
@@ -518,7 +516,7 @@ impl App {
             }
 
             if is_visible {
-                let is_expanded = self.list.folder_expanded.contains(&folder);
+                let is_expanded = self.list.folder_expanded.contains(folder.as_str());
                 visual.push(VisualItem::Folder {
                     path: folder.clone(),
                     name,
@@ -531,7 +529,6 @@ impl App {
                     if let Some(notes) = by_folder.get(folder.as_str()) {
                         for (idx, note) in notes {
                             visual.push(VisualItem::Note {
-                                id: note.id.clone(),
                                 summary_idx: *idx,
                                 depth: depth + 1,
                                 is_clin: note.id.ends_with(".clin"),
@@ -693,13 +690,17 @@ impl App {
                 }
             }
 
-            let _ = disable_raw_mode();
-            let _ = crossterm::execute!(
+            if let Err(e) = disable_raw_mode() {
+                eprintln!("Failed to disable raw mode: {}", e);
+            }
+            if let Err(e) = crossterm::execute!(
                 std::io::stdout(),
                 LeaveAlternateScreen,
                 crossterm::event::DisableMouseCapture,
                 crossterm::event::DisableBracketedPaste
-            );
+            ) {
+                eprintln!("Failed to reset terminal: {}", e);
+            }
 
             let editor_prog = self
                 .editor
@@ -725,14 +726,18 @@ impl App {
             command.arg(&temp_file_path);
             let result = command.status();
 
-            let _ = enable_raw_mode();
-            let _ = crossterm::execute!(
+            if let Err(e) = enable_raw_mode() {
+                eprintln!("Failed to enable raw mode: {}", e);
+            }
+            if let Err(e) = crossterm::execute!(
                 std::io::stdout(),
                 EnterAlternateScreen,
                 crossterm::event::EnableMouseCapture,
                 crossterm::event::EnableBracketedPaste,
                 crossterm::terminal::Clear(crossterm::terminal::ClearType::All)
-            );
+            ) {
+                eprintln!("Failed to restore terminal: {}", e);
+            }
             self.needs_full_redraw = true;
 
             match result {
@@ -748,7 +753,9 @@ impl App {
                             if let Err(e) = self.storage.save_note(note_id, &updated_note) {
                                 self.set_temporary_status(&format!("Failed to save note: {}", e));
                             } else {
-                                self.try_auto_backup(&updated_note.title);
+                                if let Err(e) = self.try_auto_backup(&updated_note.title) {
+                                    self.set_temporary_status(&format!("Backup failed: {e}"));
+                                }
                                 self.set_temporary_status_static("Note saved");
                                 self.list.folder_cache = None;
                                 if let Err(e) = self.refresh_notes() {
@@ -777,9 +784,13 @@ impl App {
             }
 
             if let Ok(len) = std::fs::metadata(&temp_file_path).map(|m| m.len()) {
-                let _ = std::fs::write(&temp_file_path, vec![0u8; len as usize]);
+                if let Err(e) = std::fs::write(&temp_file_path, vec![0u8; len as usize]) {
+                    self.set_temporary_status(&format!("Failed to zero temp file: {}", e));
+                }
             }
-            let _ = std::fs::remove_file(&temp_file_path);
+            if let Err(e) = std::fs::remove_file(&temp_file_path) {
+                self.set_temporary_status(&format!("Failed to remove temp file: {}", e));
+            }
         } else {
             self.set_temporary_status_static("Failed to load note for external editor!");
         }
@@ -924,7 +935,9 @@ impl App {
                 tags: Vec::new(),
             };
             if self.storage.save_note(&new_id, &new_note).is_ok() {
-                self.try_auto_backup(&new_note.title);
+                if let Err(e) = self.try_auto_backup(&new_note.title) {
+                    self.set_temporary_status(&format!("Backup failed: {e}"));
+                }
                 if let Err(e) = self.refresh_notes() {
                     self.set_temporary_status(&format!("Refresh failed: {e}"));
                 }
@@ -961,7 +974,9 @@ impl App {
                 tags: Vec::new(),
             };
             if self.storage.save_note(&new_id, &new_note).is_ok() {
-                self.try_auto_backup(&new_note.title);
+                if let Err(e) = self.try_auto_backup(&new_note.title) {
+                    self.set_temporary_status(&format!("Backup failed: {e}"));
+                }
                 if let Err(e) = self.refresh_notes() {
                     self.set_temporary_status(&format!("Refresh failed: {e}"));
                 }
@@ -1006,7 +1021,9 @@ impl App {
                 tags: Vec::new(),
             };
             if self.storage.save_note(&new_id, &new_note).is_ok() {
-                self.try_auto_backup(&new_note.title);
+                if let Err(e) = self.try_auto_backup(&new_note.title) {
+                    self.set_temporary_status(&format!("Backup failed: {e}"));
+                }
                 if let Err(e) = self.refresh_notes() {
                     self.set_temporary_status(&format!("Refresh failed: {e}"));
                 }
@@ -1056,7 +1073,9 @@ impl App {
                 tags: Vec::new(),
             };
             if self.storage.save_note(&new_id, &new_note).is_ok() {
-                self.try_auto_backup(&new_note.title);
+                if let Err(e) = self.try_auto_backup(&new_note.title) {
+                    self.set_temporary_status(&format!("Backup failed: {e}"));
+                }
                 if let Err(e) = self.refresh_notes() {
                     self.set_temporary_status(&format!("Refresh failed: {e}"));
                 }
@@ -1291,13 +1310,17 @@ template = """
     }
 
     fn open_path_in_external_editor(&mut self, path: &std::path::Path) {
-        let _ = disable_raw_mode();
-        let _ = crossterm::execute!(
+        if let Err(e) = disable_raw_mode() {
+            eprintln!("Failed to disable raw mode: {}", e);
+        }
+        if let Err(e) = crossterm::execute!(
             std::io::stdout(),
             LeaveAlternateScreen,
             crossterm::event::DisableMouseCapture,
             crossterm::event::DisableBracketedPaste
-        );
+        ) {
+            eprintln!("Failed to reset terminal: {}", e);
+        }
 
         let editor_prog = self
             .editor
@@ -1320,14 +1343,18 @@ template = """
         command.arg(path);
         let result = command.status();
 
-        let _ = enable_raw_mode();
-        let _ = crossterm::execute!(
+        if let Err(e) = enable_raw_mode() {
+            eprintln!("Failed to enable raw mode: {}", e);
+        }
+        if let Err(e) = crossterm::execute!(
             std::io::stdout(),
             EnterAlternateScreen,
             crossterm::event::EnableMouseCapture,
             crossterm::event::EnableBracketedPaste,
             crossterm::terminal::Clear(crossterm::terminal::ClearType::All)
-        );
+        ) {
+            eprintln!("Failed to restore terminal: {}", e);
+        }
         self.needs_full_redraw = true;
 
         match result {
@@ -1349,42 +1376,40 @@ template = """
         }
     }
 
-    pub fn try_auto_backup(&self, note_title: &str) {
-        if let Ok(config) = ClinConfig::load() {
-            if config.backup.enabled && config.backup.backup_on_save {
-                let vault_path = config.effective_storage_path().unwrap_or_else(|_| PathBuf::from("."));
-                if let Ok(git_ops) = crate::backup::git_ops::GitOps::init(&vault_path) {
-                    if git_ops.has_changes().unwrap_or(false) {
-                        let msg = format!("auto: {}", note_title);
-                        let _ = git_ops.add_all().and_then(|_| git_ops.commit(&msg));
-                        if config.backup.auto_push {
-                            if let Some(remote) = &config.backup.remote_name {
-                                let _ = git_ops.push(remote);
-                            }
-                        }
+    pub fn try_auto_backup(&self, note_title: &str) -> Result<()> {
+        let config = ClinConfig::load()?;
+        if config.backup.enabled && config.backup.backup_on_save {
+            let vault_path = config.effective_storage_path().unwrap_or_else(|_| PathBuf::from("."));
+            let git_ops = crate::backup::git_ops::GitOps::init(&vault_path)?;
+            if git_ops.has_changes().unwrap_or(false) {
+                let msg = format!("auto: {}", note_title);
+                git_ops.add_all().and_then(|_| git_ops.commit(&msg))?;
+                if config.backup.auto_push {
+                    if let Some(remote) = &config.backup.remote_name {
+                        git_ops.push(remote)?;
                     }
                 }
             }
         }
+        Ok(())
     }
 
-    pub fn try_auto_backup_on_quit(&self) {
-        if let Ok(config) = ClinConfig::load() {
-            if config.backup.enabled && config.backup.backup_on_quit {
-                let vault_path = config.effective_storage_path().unwrap_or_else(|_| PathBuf::from("."));
-                if let Ok(git_ops) = crate::backup::git_ops::GitOps::init(&vault_path) {
-                    if git_ops.has_changes().unwrap_or(false) {
-                        let msg = "auto: backup on quit";
-                        let _ = git_ops.add_all().and_then(|_| git_ops.commit(msg));
-                        if config.backup.auto_push {
-                            if let Some(remote) = &config.backup.remote_name {
-                                let _ = git_ops.push(remote);
-                            }
-                        }
+    pub fn try_auto_backup_on_quit(&self) -> Result<()> {
+        let config = ClinConfig::load()?;
+        if config.backup.enabled && config.backup.backup_on_quit {
+            let vault_path = config.effective_storage_path().unwrap_or_else(|_| PathBuf::from("."));
+            let git_ops = crate::backup::git_ops::GitOps::init(&vault_path)?;
+            if git_ops.has_changes().unwrap_or(false) {
+                let msg = "auto: backup on quit";
+                git_ops.add_all().and_then(|_| git_ops.commit(msg))?;
+                if config.backup.auto_push {
+                    if let Some(remote) = &config.backup.remote_name {
+                        git_ops.push(remote)?;
                     }
                 }
             }
         }
+        Ok(())
     }
 
     pub fn autosave(&mut self) {
@@ -1426,7 +1451,9 @@ template = """
         };
         if let Ok(saved_id) = self.storage.save_note(&id, &note) {
             self.editor.editing_id = Some(saved_id);
-            self.try_auto_backup(&note.title);
+            if let Err(e) = self.try_auto_backup(&note.title) {
+                self.set_temporary_status(&format!("Backup failed: {e}"));
+            }
         }
     }
 
@@ -1504,8 +1531,8 @@ template = """
         if !self.list.selected_indices.is_empty() {
             let mut note_ids = Vec::new();
             for &idx in &self.list.selected_indices {
-                if let Some(VisualItem::Note { id, .. }) = self.list.visual_list.get(idx) {
-                    note_ids.push(id.clone());
+                if let Some(VisualItem::Note { summary_idx, .. }) = self.list.visual_list.get(idx) {
+                    note_ids.push(self.notes[*summary_idx].id.clone());
                 }
             }
 
@@ -1939,8 +1966,8 @@ template = """
         if !self.list.selected_indices.is_empty() {
             let mut note_ids = Vec::new();
             for &idx in &self.list.selected_indices {
-                if let Some(VisualItem::Note { id, .. }) = self.list.visual_list.get(idx) {
-                    note_ids.push(id.clone());
+                if let Some(VisualItem::Note { summary_idx, .. }) = self.list.visual_list.get(idx) {
+                    note_ids.push(self.notes[*summary_idx].id.clone());
                 }
             }
 
@@ -2123,7 +2150,9 @@ template = """
                 if let Err(e) = self.storage.save_note(&popup.note_id, &note) {
                     self.set_temporary_status(&format!("Failed to save tags: {e}"));
                 } else {
-                    self.try_auto_backup(&note.title);
+                    if let Err(e) = self.try_auto_backup(&note.title) {
+                        self.set_temporary_status(&format!("Backup failed: {e}"));
+                    }
                     if let Err(e) = self.refresh_notes() {
                         self.set_temporary_status(&format!("Refresh failed: {e}"));
                     }
@@ -2243,7 +2272,9 @@ template = """
                 {
                     note.tags.retain(|t| t != &tag);
                     if self.storage.save_note(&note_id, &note).is_ok() {
-                        self.try_auto_backup(&note.title);
+                        if let Err(e) = self.try_auto_backup(&note.title) {
+                            self.set_temporary_status(&format!("Backup failed: {e}"));
+                        }
                     }
                     count += 1;
                 }
@@ -2300,7 +2331,9 @@ template = """
                         loaded.tags.push(tag.clone());
                     }
                     if self.storage.save_note(&note_id, &loaded).is_ok() {
-                        self.try_auto_backup(&loaded.title);
+                        if let Err(e) = self.try_auto_backup(&loaded.title) {
+                            self.set_temporary_status(&format!("Backup failed: {e}"));
+                        }
                         count += 1;
                     }
                 }
@@ -2354,7 +2387,9 @@ template = """
         self.set_default_status();
         if let Ok(mut config) = crate::config::ClinConfig::load() {
             config.external_editor_enabled = self.editor.external_editor_enabled;
-            let _ = config.save();
+            if let Err(e) = config.save() {
+                self.set_temporary_status(&format!("Failed to save config: {}", e));
+            }
         }
     }
 
@@ -2406,14 +2441,14 @@ template = """
     }
 
     pub fn open_canvas_view(&mut self) {
-        if let Some(VisualItem::Note { id, .. }) = self.list.visual_list.get(self.list.visual_index)
+        if let Some(VisualItem::Note { summary_idx, .. }) = self.list.visual_list.get(self.list.visual_index)
         {
-            let path = self.storage.note_path(id);
+            let path = self.storage.note_path(&self.notes[*summary_idx].id);
             if let Ok(state) = crate::pinstar::state::PinstarState::load(&path) {
                 self.canvas_state = Some(state);
                 self.return_mode = Some(self.mode);
                 self.mode = ViewMode::Canvas;
-                self.editor.editing_id = Some(id.clone());
+                self.editor.editing_id = Some(self.notes[*summary_idx].id.clone());
                 self.set_default_status();
             } else {
                 self.set_temporary_status_static("Failed to load .canvas file!");
@@ -2435,9 +2470,9 @@ template = """
         if let Some(id) = &self.editor.editing_id {
             return Some(id.clone());
         }
-        if let Some(VisualItem::Note { id, .. }) = self.list.visual_list.get(self.list.visual_index)
+        if let Some(VisualItem::Note { summary_idx, .. }) = self.list.visual_list.get(self.list.visual_index)
         {
-            Some(id.clone())
+            Some(self.notes[*summary_idx].id.clone())
         } else {
             None
         }
@@ -2462,35 +2497,10 @@ template = """
             ViewMode::List => Cow::Borrowed(LIST_HELP_HINTS),
             ViewMode::Edit => Cow::Borrowed(EDIT_HELP_HINTS),
             ViewMode::Help => Cow::Borrowed(HELP_PAGE_HINTS),
-            ViewMode::Graph => Cow::Owned(format!(
-                "Graph View · {}: back · {}: zoom · {}: labels · {}: fit",
-                self.keybinds.graph_keys_display(GraphAction::Quit),
-                format!("{}/{}", self.keybinds.graph_keys_display(GraphAction::ZoomIn), self.keybinds.graph_keys_display(GraphAction::ZoomOut)),
-                self.keybinds.graph_keys_display(GraphAction::ToggleLegend),
-                self.keybinds.graph_keys_display(GraphAction::AutoFit),
-            )),
-            ViewMode::Draw => Cow::Owned(format!(
-                "Draw View · {}: back · {}: draw · {}: shape · {}: text · {}: erase",
-                self.keybinds.draw_keys_display(DrawAction::Quit),
-                self.keybinds.draw_keys_display(DrawAction::SelectDrawTool),
-                self.keybinds.draw_keys_display(DrawAction::ToggleShapeSelector),
-                self.keybinds.draw_keys_display(DrawAction::SelectTextTool),
-                self.keybinds.draw_keys_display(DrawAction::SelectEraseTool),
-            )),
-            ViewMode::Canvas => Cow::Owned(format!(
-                "Canvas View · {}: back · Arrows: pan · {}: edit · {}: save",
-                self.keybinds.canvas_keys_display(CanvasAction::Quit),
-                self.keybinds.canvas_keys_display(CanvasAction::EditOrConnect),
-                self.keybinds.canvas_keys_display(CanvasAction::Save),
-            )),
-            ViewMode::Backup => Cow::Owned(format!(
-                "Backup · {}: back · {}: commit · {}: push · {}: refresh · {}: settings",
-                self.keybinds.backup_keys_display(BackupAction::Back),
-                self.keybinds.backup_keys_display(BackupAction::EnterCommit),
-                self.keybinds.backup_keys_display(BackupAction::Push),
-                self.keybinds.backup_keys_display(BackupAction::Refresh),
-                self.keybinds.backup_keys_display(BackupAction::OpenSettings),
-            )),
+            ViewMode::Graph => Cow::Borrowed(GRAPH_HELP_HINTS),
+            ViewMode::Draw => Cow::Borrowed(DRAW_HELP_HINTS),
+            ViewMode::Canvas => Cow::Borrowed(CANVAS_HELP_HINTS),
+            ViewMode::Backup => Cow::Borrowed(BACKUP_HELP_HINTS),
         }
     }
 
@@ -2673,9 +2683,11 @@ template = """
 
     pub fn begin_rename_note(&mut self) {
         if let Some(VisualItem::Note {
-            summary_idx, id, ..
-        }) = self.list.visual_list.get(self.list.visual_index).cloned()
+            summary_idx, ..
+        }) = self.list.visual_list.get(self.list.visual_index)
         {
+            let summary_idx = *summary_idx;
+            let id = self.notes[summary_idx].id.clone();
             let note = &self.notes[summary_idx];
             let mut input = TextArea::default();
             input.set_cursor_line_style(ratatui::style::Style::default());
@@ -2716,9 +2728,10 @@ template = """
     }
 
     pub fn duplicate_note(&mut self) {
-        if let Some(VisualItem::Note { id, .. }) =
-            self.list.visual_list.get(self.list.visual_index).cloned()
+        if let Some(VisualItem::Note { summary_idx, .. }) =
+            self.list.visual_list.get(self.list.visual_index)
         {
+            let id = self.notes[*summary_idx].id.clone();
             if let Ok(folders) = self.storage.list_folders() {
                 let mut all_folders = vec!["".to_string()];
                 all_folders.extend(folders);
@@ -2742,9 +2755,10 @@ template = """
     }
 
     pub fn toggle_pin(&mut self) {
-        if let Some(VisualItem::Note { id, .. }) =
-            self.list.visual_list.get(self.list.visual_index).cloned()
+        if let Some(VisualItem::Note { summary_idx, .. }) =
+            self.list.visual_list.get(self.list.visual_index)
         {
+            let id = self.notes[*summary_idx].id.clone();
             match self.storage.toggle_pin(&id) {
                 Ok(pinned) => {
                     if let Err(e) = self.refresh_notes() {
@@ -3260,7 +3274,9 @@ template = """
         }
         if let Ok(mut config) = crate::config::ClinConfig::load() {
             config.preview_enabled = self.list.preview_enabled;
-            let _ = config.save();
+            if let Err(e) = config.save() {
+                self.set_temporary_status(&format!("Failed to save config: {}", e));
+            }
         }
     }
 
@@ -3332,17 +3348,20 @@ template = """
         }
 
         let Some(VisualItem::Note {
-            id,
+            summary_idx,
             is_draw,
             is_canvas,
-            is_clin,
             ..
-        }) = self.list.visual_list.get(self.list.visual_index).cloned()
-        else {
+        }) = self.list.visual_list.get(self.list.visual_index) else {
             self.list.preview_content = None;
             self.list.preview_content_index = None;
             return;
         };
+        let summary_idx = *summary_idx;
+        let is_draw = *is_draw;
+        let is_canvas = *is_canvas;
+        let id = &self.notes[summary_idx].id;
+        let is_clin = id.ends_with(".clin");
 
         
         
@@ -3432,7 +3451,9 @@ template = """
         }
         if let Ok(mut config) = crate::config::ClinConfig::load() {
             config.editor_preview_enabled = self.editor.editor_preview_enabled;
-            let _ = config.save();
+            if let Err(e) = config.save() {
+                self.set_temporary_status(&format!("Failed to save config: {}", e));
+            }
         }
     }
 

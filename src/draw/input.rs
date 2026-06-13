@@ -340,17 +340,26 @@ fn line_dist(x1: f64, y1: f64, x2: f64, y2: f64, px: f64, py: f64) -> f64 {
 
 fn panning(x: u16, y: u16, app: &mut DrawAppState) {
     if let Some((lx, ly)) = app.last_mouse_pos {
-        let dx = (x as i32 - lx as i32) as f64 / app.viewport.zoom;
-        let dy = (y as i32 - ly as i32) as f64 / app.viewport.zoom;
-        app.viewport.x += dx;
-        app.viewport.y += dy;
+        let area = app.last_area;
+        if area.width > 0 && area.height > 0 {
+            let dx = (lx as f64 - x as f64) * 200.0 / (area.width as f64 * app.viewport.zoom);
+            let dy = (y as f64 - ly as f64) * 200.0 / (area.height as f64 * app.viewport.zoom);
+            app.viewport.x += dx;
+            app.viewport.y += dy;
+        }
         app.last_mouse_pos = Some((x, y));
     }
 }
 
 fn screen_to_canvas(sx: u16, sy: u16, app: &DrawAppState) -> (f64, f64) {
     let area = app.last_area;
-    let cx = (sx as f64 - area.width as f64 / 2.0) / app.viewport.zoom - app.viewport.x;
-    let cy = (sy as f64 - area.height as f64 / 2.0) / app.viewport.zoom - app.viewport.y;
+    if area.width == 0 || area.height == 0 {
+        return (0.0, 0.0);
+    }
+    let col_frac = (sx as f64 - area.x as f64 + 0.5) / area.width as f64;
+    let row_frac = (sy as f64 - area.y as f64 + 0.5) / area.height as f64;
+
+    let cx = app.viewport.x + (col_frac * 2.0 - 1.0) * 100.0 / app.viewport.zoom;
+    let cy = app.viewport.y + (1.0 - row_frac * 2.0) * 100.0 / app.viewport.zoom;
     (cx, cy)
 }

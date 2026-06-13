@@ -176,12 +176,7 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
         .scroll((app.help_scroll, 0));
     frame.render_widget(help, chunks[1]);
 
-    let hint = Paragraph::new(Span::styled(
-        HELP_PAGE_HINTS,
-        Style::default().fg(app.app_theme.muted),
-    ))
-    .style(app.app_theme.hint_line_bg_style());
-    frame.render_widget(hint, chunks[2]);
+    draw_status_bar(frame, chunks[2], &app.app_theme, None, HELP_PAGE_HINTS, None);
 }
 
 pub fn help_text_for_tab(
@@ -1493,14 +1488,13 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         );
     }
 
-    draw_hint_line(
-        frame,
-        chunks[1],
-        app,
-        LIST_HELP_HINTS,
+    let hint = resolved_status_hint(app, LIST_HELP_HINTS);
+    let badge = Some(ext_badge(
+        app.editor.external_editor_enabled,
         app.list.list_focus == ListFocus::ExternalEditorToggle,
-        true,
-    );
+        &app.app_theme,
+    ));
+    draw_status_bar(frame, chunks[1], &app.app_theme, badge, &hint, None);
     draw_corner_watermark(frame, chunks[1], app.app_theme.muted);
     if app.list.preview_enabled {
         let constraints = match app.preview_position {
@@ -2686,7 +2680,8 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         }
     }
 
-    draw_hint_line(frame, hint_area, app, EDIT_HELP_HINTS, false, false);
+    let hint = resolved_status_hint(app, EDIT_HELP_HINTS);
+    draw_status_bar(frame, hint_area, &app.app_theme, None, &hint, None);
     draw_corner_watermark(frame, hint_area, app.app_theme.muted);
     if let Some(splitter_area) = splitter_area {
         draw_dim_vline(frame, splitter_area, app.app_theme.muted);
@@ -2809,6 +2804,62 @@ pub fn format_relative_time(unix_ts: u64) -> Cow<'static, str> {
     let secs = UNIX_EPOCH + Duration::from_secs(unix_ts);
     let dt: chrono::DateTime<chrono::Local> = secs.into();
     Cow::Owned(dt.format("%Y-%m-%d %H:%M").to_string())
+}
+
+pub struct StatusBarBadge {
+    pub label: Cow<'static, str>,
+    pub style: Style,
+}
+
+/// Build the `ext:on`/`ext:off` badge. Identical logic currently duplicated in
+/// draw_status_bar and inlined in pinstar/render.rs:596.
+pub fn ext_badge(enabled: bool, focused: bool, theme: &AppThemeColors) -> StatusBarBadge {
+    let label = if enabled { "ext:on" } else { "ext:off" };
+    let style = if focused {
+        Style::default().fg(theme.highlight_fg).bg(theme.heading).add_modifier(Modifier::BOLD)
+    } else if enabled {
+        Style::default().fg(theme.success).add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(theme.muted)
+    };
+    StatusBarBadge { label: format!(" {} ", label).into(), style }
+}
+
+/// The single unified status bar. Left = optional badge + hint (muted);
+/// right = optional right-aligned muted text (e.g. graf stats). Bg is always
+/// theme.hint_line_bg_style(). Two Paragraphs on the same area (left Line +
+/// right-aligned) do not collide because they occupy different cells.
+pub fn draw_status_bar(
+    frame: &mut Frame,
+    area: Rect,
+    theme: &AppThemeColors,
+    badge: Option<StatusBarBadge>,
+    hint: &str,
+    right: Option<&str>,
+) {
+    let mut spans: Vec<Span> = Vec::new();
+    if let Some(b) = badge {
+        spans.push(Span::styled(b.label, b.style));
+        spans.push(Span::raw("  "));
+    }
+    spans.push(Span::styled(hint, Style::default().fg(theme.muted)));
+    let para = Paragraph::new(Line::from(spans)).style(theme.hint_line_bg_style());
+    frame.render_widget(para, area);
+    if let Some(right_text) = right {
+        let r = Paragraph::new(Span::styled(right_text, Style::default().fg(theme.muted)))
+            .alignment(Alignment::Right)
+            .style(theme.hint_line_bg_style());
+        frame.render_widget(r, area);
+    }
+}
+
+fn resolved_status_hint<'a>(app: &'a App, default: &'static str) -> Cow<'a, str> {
+    let status = app.status.as_ref();
+    if status != app.default_status_text() && !status.is_empty() && status != "Ready" {
+        crate::sanitize::sanitize_for_terminal(status)
+    } else {
+        Cow::Borrowed(default)
+    }
 }
 
 pub fn draw_popup_footer(
@@ -2950,55 +3001,6 @@ fn draw_dim_vline(frame: &mut Frame, area: Rect, color: Color) {
     }
 }
 
-fn draw_hint_line(
-    frame: &mut Frame,
-    area: Rect,
-    app: &App,
-    hints: &str,
-    ext_focused: bool,
-    show_ext: bool,
-) {
-    let status = app.status.as_ref();
-
-    let right_text = if status != app.default_status_text().as_ref() && !status.is_empty() && status != "Ready" {
-        crate::sanitize::sanitize_for_terminal(status)
-    } else {
-        Cow::Owned(hints.to_string())
-    };
-
-    let mut spans: Vec<Span> = Vec::new();
-
-    if show_ext {
-        let ext_label = if app.editor.external_editor_enabled {
-            "ext:on"
-        } else {
-            "ext:off"
-        };
-        let ext_style = if ext_focused {
-            Style::default()
-                .fg(app.app_theme.highlight_fg)
-                .bg(app.app_theme.heading)
-                .add_modifier(Modifier::BOLD)
-        } else if app.editor.external_editor_enabled {
-            Style::default()
-                .fg(app.app_theme.success)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(app.app_theme.muted)
-        };
-        spans.push(Span::styled(format!(" {} ", ext_label), ext_style));
-        spans.push(Span::raw("  "));
-    }
-
-    spans.push(Span::styled(
-        right_text,
-        Style::default().fg(app.app_theme.muted),
-    ));
-
-    let line = Line::from(spans);
-    let para = Paragraph::new(line).style(app.app_theme.hint_line_bg_style());
-    frame.render_widget(para, area);
-}
 
 fn draw_corner_watermark(frame: &mut Frame, area: Rect, color: Color) {
     let version = env!("CARGO_PKG_VERSION");

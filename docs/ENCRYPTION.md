@@ -1,12 +1,12 @@
 # Encryption
 
-Technical docs for the zero-knowledge encryption system — encrypt/decrypt individual notes on demand using ChaCha20-Poly1305 AEAD.
+Technical docs for the on-demand encryption system — encrypt/decrypt individual notes on demand using ChaCha20-Poly1305 AEAD.
 
 ---
 
 ## Overview
 
-clin provides on-demand encryption for individual notes. Encrypted notes use the `.clin` extension and are decrypted back to `.md` on demand. The encryption is zero-knowledge: the key never leaves the user's machine and is stored only in the config directory.
+clin provides on-demand encryption for individual notes. Encrypted notes use the `.clin` extension and are decrypted back to `.md` on demand. The key never leaves the user's machine and is stored in the config directory, outside the versioned vault.
 
 **Source:** `src/storage.rs` (encrypt/decrypt methods) + `src/actions/encrypt.rs`, `src/actions/decrypt.rs`
 
@@ -14,7 +14,7 @@ clin provides on-demand encryption for individual notes. Encrypted notes use the
 
 ## Algorithm
 
-**ChaCha20-Poly1305** (XChaCha20Poly1305 via the `chacha20poly1305` crate).
+**ChaCha20-Poly1305** (via the `chacha20poly1305` crate).
 
 - Symmetric stream cipher (ChaCha20) + authentication tag (Poly1305)
 - AEAD (Authenticated Encryption with Associated Data) — tamper-proof
@@ -28,7 +28,7 @@ clin provides on-demand encryption for individual notes. Encrypted notes use the
 ### Location
 
 ```
-~/.local/share/clin/key.bin
+~/.config/clin/key.bin
 ```
 
 ### Key Generation
@@ -155,7 +155,7 @@ load_note_summary(id):
 load_note(id):
   1. Read .clin file
   2. Extract frontmatter (plaintext YAML)
-  3. Scan for CLIN1 magic → encrypted payload
+  3. Payload begins at the frontmatter boundary → validate CLIN1 magic at offset 0
   4. decrypt(payload):
      a. Parse magic, nonce, ciphertext
      b. ChaCha20Poly1305::decrypt(nonce, ciphertext) → bytes
@@ -181,7 +181,7 @@ impl Storage {
     pub fn encrypt_note(&mut self, id: &str) -> Result<String>;
     pub fn decrypt_note(&mut self, id: &str) -> Result<String>;
     fn encrypt(&self, plaintext: &[u8]) -> Result<Vec<u8>>;
-    fn decrypt(&self, file_content: &[u8]) -> Result<Vec<u8>>;
+    pub fn decrypt(&self, payload: &[u8]) -> Result<Vec<u8>>;
 }
 ```
 

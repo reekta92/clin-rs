@@ -40,7 +40,6 @@ pub enum VisualItem {
         note_count: usize,
     },
     Note {
-        id: String,
         summary_idx: usize,
         depth: usize,
         is_clin: bool,

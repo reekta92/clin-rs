@@ -1,3 +1,4 @@
+use crate::constants::DRAW_HELP_HINTS;
 use crate::draw::app::DrawAppState;
 use crate::draw::state::{DrawElement, DrawShapeType, DrawTool, Shape, Stroke};
 use ratatui::Frame;
@@ -61,7 +62,7 @@ pub fn draw_canvas(frame: &mut Frame, app: &DrawAppState) {
     let toolbar_width = 42;
     let toolbar_area = Rect::new(
         area.width.saturating_sub(toolbar_width) / 2,
-        area.height.saturating_sub(1),
+        area.height.saturating_sub(2),
         toolbar_width,
         1,
     );
@@ -93,6 +94,9 @@ pub fn draw_canvas(frame: &mut Frame, app: &DrawAppState) {
         Paragraph::new(TuiLine::from(spans)).alignment(Alignment::Center),
         toolbar_area,
     );
+
+    let status_area = Rect::new(area.x, area.height.saturating_sub(1), area.width, 1);
+    crate::ui::draw_status_bar(frame, status_area, &app.theme, None, DRAW_HELP_HINTS, None);
 
     if app.show_shape_selector {
         let content = crate::ui::draw_popup_frame(

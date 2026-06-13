@@ -1032,9 +1032,7 @@ drag_sensitivity = 1.0
             fs::create_dir_all(parent).context("failed to create config directory")?;
         }
         let content = toml::to_string_pretty(self).context("failed to serialize config")?;
-        let mut file = fs::File::create(&config_path).context("failed to create config file")?;
-        file.write_all(content.as_bytes())
-            .context("failed to write config file")?;
+        crate::fsutil::atomic_write(&config_path, content.as_bytes())?;
         Ok(())
     }
 

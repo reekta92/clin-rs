@@ -1,6 +1,7 @@
 use crate::app_theme::AppThemeColors;
 use crate::pinstar::state::PinstarState;
 use ratatui::{prelude::*, widgets::*};
+use crate::constants::*;
 
 fn get_node_color(color_code: Option<&str>, theme: &AppThemeColors) -> Color {
     match color_code {
@@ -582,7 +583,11 @@ pub fn draw_pinstar_view(frame: &mut Frame, state: &mut PinstarState, theme: &Ap
         }
     }
 
-    let mut hint_text = state.footer_hint.clone();
+    let mut hint_text = if state.footer_hint.is_empty() {
+        CANVAS_HELP_HINTS.to_string()
+    } else {
+        state.footer_hint.clone()
+    };
     if state.connection_source_id.is_some() {
         hint_text = "CONNECTION MODE: Select target node with mouse or Enter".to_string();
     } else if state.deleting_connection_source_id.is_some() {
@@ -591,37 +596,14 @@ pub fn draw_pinstar_view(frame: &mut Frame, state: &mut PinstarState, theme: &Ap
         hint_text = "RESIZE MODE: Drag mouse to resize, Left-click to confirm".to_string();
     }
 
-    let mut spans = Vec::new();
-    let ext_label = if state.ext_editor_enabled {
-        "ext:on"
-    } else {
-        "ext:off"
-    };
-    let ext_style = if state.ext_focused {
-        Style::default()
-            .fg(theme.highlight_fg)
-            .bg(theme.heading)
-            .add_modifier(Modifier::BOLD)
-    } else if state.ext_editor_enabled {
-        Style::default()
-            .fg(theme.success)
-            .add_modifier(Modifier::BOLD)
-    } else {
-        Style::default().fg(theme.muted)
-    };
-    spans.push(Span::styled(format!(" {} ", ext_label), ext_style));
-    spans.push(Span::raw("  "));
-    spans.push(Span::styled(hint_text, Style::default().fg(theme.muted)));
-
-    let hint = Paragraph::new(Line::from(spans)).style(theme.hint_line_bg_style());
-
+    let badge = Some(crate::ui::ext_badge(state.ext_editor_enabled, state.ext_focused, theme));
     let hint_area = Rect::new(
         total_area.x,
         total_area.bottom().saturating_sub(1),
         total_area.width,
         1,
     );
-    frame.render_widget(hint, hint_area);
+    crate::ui::draw_status_bar(frame, hint_area, theme, badge, &hint_text, None);
 
     if let Some(menu) = &state.context_menu {
         let menu_width = 25;
@@ -681,26 +663,6 @@ pub fn draw_pinstar_view(frame: &mut Frame, state: &mut PinstarState, theme: &Ap
 
         frame.render_widget(&*textarea, content);
     }
-}
-
-fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
-    let popup_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage((100 - percent_y) / 2),
-            Constraint::Percentage(percent_y),
-            Constraint::Percentage((100 - percent_y) / 2),
-        ])
-        .split(r);
-
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage((100 - percent_x) / 2),
-            Constraint::Percentage(percent_x),
-            Constraint::Percentage((100 - percent_x) / 2),
-        ])
-        .split(popup_layout[1])[1]
 }
 
 fn is_generated_id(id: &str) -> bool {

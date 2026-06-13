@@ -1,3 +1,4 @@
+use crate::constants::BACKUP_HELP_HINTS;
 fn format_relative_time(unix_secs: u64) -> String {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -51,11 +52,13 @@ pub fn draw_dashboard(frame: &mut Frame, state: &BackupState) {
         draw_content(frame, chunks[1], state);
     }
     
-    crate::ui::draw_popup_footer(
+    crate::ui::draw_status_bar(
         frame,
         chunks[2],
         theme,
-        &state.footer_hint,
+        None,
+        BACKUP_HELP_HINTS,
+        None,
     );
 
     if state.input_mode == BackupInputMode::EditCommitMessage {

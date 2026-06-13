@@ -9,6 +9,7 @@ pub(crate) mod draw;
 pub(crate) mod editor;
 pub(crate) mod frontmatter;
 pub(crate) mod graf;
+pub mod fsutil;
 mod keybinds;
 pub(crate) mod list_view;
 pub(crate) mod markdown;
@@ -239,18 +240,6 @@ fn main() -> Result<()> {
             let mut migrated_count = 0;
             let mut skipped_count = 0;
             let mut conflict_action: Option<migration::ConflictAction> = None;
-
-            let (m, s, action) = migration::migrate_file_with_conflict(
-                &from.join("key.bin"),
-                &to.join("key.bin"),
-                "key.bin",
-                conflict_action,
-            )?;
-            migrated_count += m;
-            skipped_count += s;
-            if action.is_some() {
-                conflict_action = action;
-            }
 
             let notes_src = from.join("notes");
             let notes_dst = to.join("notes");
@@ -633,7 +622,9 @@ fn run_app(
                 }
             }
 
-            let _ = config.save();
+            if let Err(e) = config.save() {
+                app.set_temporary_status(&format!("Failed to save config: {}", e));
+            }
             app.needs_full_redraw = true;
             terminal.clear()?;
             continue;
@@ -838,7 +829,9 @@ fn run_app(
         }
     }
 
-    app.try_auto_backup_on_quit();
+    if let Err(e) = app.try_auto_backup_on_quit() {
+        eprintln!("clin: backup on quit failed: {e}");
+    }
     Ok(())
 }
 

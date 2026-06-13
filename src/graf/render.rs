@@ -1,3 +1,4 @@
+use crate::constants::GRAPH_HELP_HINTS;
 use std::collections::{HashMap, HashSet};
 
 use fdg_sim::petgraph::graph::NodeIndex;
@@ -509,6 +510,7 @@ pub fn draw_graph_view(
     state: &GraphState,
     config: &ClinConfig,
     flags: &FeatureFlags,
+    app_theme: &crate::app_theme::AppThemeColors,
 ) {
     let aspect = area.width as f64 / area.height as f64;
     let viewport = &state.viewport;
@@ -659,15 +661,10 @@ pub fn draw_graph_view(
             Some(viewport_ratio),
         );
 
-        let status_bar = ratatui::widgets::Paragraph::new(status)
-            .style(ratatui::style::Style::default().fg(colors.status_bar_color));
         let status_area = ratatui::layout::Rect::new(
-            area.x,
-            area.y + area.height.saturating_sub(1),
-            area.width,
-            1,
+            area.x, area.y + area.height.saturating_sub(1), area.width, 1,
         );
-        frame.render_widget(status_bar, status_area);
+        crate::ui::draw_status_bar(frame, status_area, app_theme, None, GRAPH_HELP_HINTS, Some(&status));
     }
 
     if flags.show_minimap {

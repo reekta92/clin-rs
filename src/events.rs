@@ -28,9 +28,9 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     }
 
     if let Some(mut popup) = app.popups.note_create.take() {
-        if key.code == KeyCode::Esc {
+        if app.keybinds.matches_list(ListAction::Cancel, &key) {
             app.popups.note_create = None;
-        } else if key.code == KeyCode::Enter {
+        } else if app.keybinds.matches_list(ListAction::Confirm, &key) {
             app.popups.note_create = Some(popup);
             app.confirm_create_note();
         } else {
@@ -43,9 +43,9 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     }
 
     if let Some(mut popup) = app.popups.draw_create.take() {
-        if key.code == KeyCode::Esc {
+        if app.keybinds.matches_list(ListAction::Cancel, &key) {
             app.popups.draw_create = None;
-        } else if key.code == KeyCode::Enter {
+        } else if app.keybinds.matches_list(ListAction::Confirm, &key) {
             app.popups.draw_create = Some(popup);
             app.confirm_create_draw();
         } else {
@@ -58,9 +58,9 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     }
 
     if let Some(mut popup) = app.popups.canvas_create.take() {
-        if key.code == KeyCode::Esc {
+        if app.keybinds.matches_list(ListAction::Cancel, &key) {
             app.popups.canvas_create = None;
-        } else if key.code == KeyCode::Enter {
+        } else if app.keybinds.matches_list(ListAction::Confirm, &key) {
             app.popups.canvas_create = Some(popup);
             app.confirm_create_canvas();
         } else {
@@ -73,9 +73,9 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     }
 
     if let Some(mut popup) = app.popups.folder.take() {
-        if key.code == KeyCode::Esc {
+        if app.keybinds.matches_list(ListAction::Cancel, &key) {
             app.popups.folder = None;
-        } else if key.code == KeyCode::Enter {
+        } else if app.keybinds.matches_list(ListAction::Confirm, &key) {
             app.popups.folder = Some(popup);
             app.confirm_folder_popup();
         } else {
@@ -510,7 +510,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 };
                 app.popups.template = Some(popup);
             }
-            KeyCode::Esc => {
+            _ if app.keybinds.matches_list(ListAction::Cancel, &key) => {
                 app.close_template_popup();
             }
             KeyCode::Char('?') => {
@@ -539,17 +539,19 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
             }
             _ => match popup.focus {
                 crate::popups::TemplatePopupFocus::Results => match key.code {
-                    KeyCode::Up | KeyCode::Char('k') => {
+                    _ if app.keybinds.matches_list(ListAction::MoveUp, &key) => {
                         popup.selected = popup.selected.saturating_sub(1);
                         app.popups.template = Some(popup);
                     }
-                    KeyCode::Down | KeyCode::Char('j') => {
+                    _ if app.keybinds.matches_list(ListAction::MoveDown, &key) => {
                         if popup.selected + 1 < popup.filtered_templates.len() {
                             popup.selected += 1;
                         }
                         app.popups.template = Some(popup);
                     }
-                    KeyCode::Enter | KeyCode::Char('l') => {
+                    _ if app.keybinds.matches_list(ListAction::Confirm, &key)
+                        || app.keybinds.matches_list(ListAction::Open, &key) =>
+                    {
                         app.popups.template = Some(popup);
                         app.select_template();
                     }
@@ -569,7 +571,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                     }
                 },
                 crate::popups::TemplatePopupFocus::Search => match key.code {
-                    KeyCode::Enter => {
+                    _ if app.keybinds.matches_list(ListAction::Confirm, &key) => {
                         popup.focus = crate::popups::TemplatePopupFocus::Results;
                         app.popups.template = Some(popup);
                     }
@@ -642,7 +644,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 }
                 app.popups.theme = Some(popup);
             }
-            KeyCode::Enter => {
+            _ if app.keybinds.matches_list(ListAction::Confirm, &key) => {
                 let is_list = matches!(popup.focus, crate::app::ThemePopupFocus::ThemeList);
                 app.popups.theme = Some(popup);
                 app.select_theme();
@@ -654,7 +656,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 app.popups.theme = Some(popup);
                 app.select_theme();
             }
-            KeyCode::Esc | KeyCode::Char('h') => {
+            _ if app.keybinds.matches_list(ListAction::Cancel, &key) => {
                 app.close_theme_popup();
             }
             _ => {
@@ -854,11 +856,12 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         .keybinds
         .matches_list(ListAction::OpenCommandPalette, &key)
     {
-        if let Some(crate::app::VisualItem::Note { id, .. }) =
+        if let Some(crate::app::VisualItem::Note { summary_idx, .. }) =
             app.list.visual_list.get(app.list.visual_index)
         {
+            let id = app.notes[*summary_idx].id.clone();
             app.command_palette = Some(crate::palette::CommandPalette::new(
-                Some(id.clone()),
+                Some(id),
                 &app.app_theme,
             ));
         } else {
@@ -926,40 +929,12 @@ pub fn handle_help_keys(app: &mut App, key: KeyEvent) {
         app.help_scroll = app.help_scroll.saturating_add(1);
     } else if app.keybinds.matches_help(HelpAction::ScrollUp, &key) {
         app.help_scroll = app.help_scroll.saturating_sub(1);
-    } else if key.code == KeyCode::Char('u')
-        && key
-            .modifiers
-            .contains(crossterm::event::KeyModifiers::CONTROL)
-    {
-        app.help_scroll = app.help_scroll.saturating_sub(5);
-    } else if key.code == KeyCode::Char('d')
-        && key
-            .modifiers
-            .contains(crossterm::event::KeyModifiers::CONTROL)
-    {
-        app.help_scroll = app.help_scroll.saturating_add(5);
+    } else if app.keybinds.matches_help(HelpAction::NextTab, &key) {
+        app.switch_help_tab(app.help_tab.next());
+    } else if app.keybinds.matches_help(HelpAction::PrevTab, &key) {
+        app.switch_help_tab(app.help_tab.prev());
     } else {
         match key.code {
-            KeyCode::Right | KeyCode::Char('l') => {
-                app.switch_help_tab(app.help_tab.next());
-            }
-            KeyCode::Left | KeyCode::Char('h') => {
-                app.switch_help_tab(app.help_tab.prev());
-            }
-            KeyCode::Tab
-                if !key
-                    .modifiers
-                    .contains(crossterm::event::KeyModifiers::SHIFT) =>
-            {
-                app.switch_help_tab(app.help_tab.next());
-            }
-            KeyCode::BackTab | KeyCode::Tab
-                if key
-                    .modifiers
-                    .contains(crossterm::event::KeyModifiers::SHIFT) =>
-            {
-                app.switch_help_tab(app.help_tab.prev());
-            }
             KeyCode::Char('1') => app.switch_help_tab(HelpTab::Notes),
             KeyCode::Char('2') => app.switch_help_tab(HelpTab::Editor),
             KeyCode::Char('3') => app.switch_help_tab(HelpTab::Graph),

@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::fs;
-use std::io::Write;
 use std::path::Path;
 
 use anyhow::{Context, Result};
@@ -254,6 +253,8 @@ pub enum HelpAction {
     Close,
     ScrollUp,
     ScrollDown,
+    NextTab,
+    PrevTab,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -357,19 +358,19 @@ pub enum BackupAction {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct KeybindsToml {
     #[serde(default)]
-    pub list: HashMap<String, Vec<String>>,
+    pub list: HashMap<ListAction, Vec<String>>,
     #[serde(default)]
-    pub edit: HashMap<String, Vec<String>>,
+    pub edit: HashMap<EditAction, Vec<String>>,
     #[serde(default)]
-    pub help: HashMap<String, Vec<String>>,
+    pub help: HashMap<HelpAction, Vec<String>>,
     #[serde(default)]
-    pub graph: HashMap<String, Vec<String>>,
+    pub graph: HashMap<GraphAction, Vec<String>>,
     #[serde(default)]
-    pub draw: HashMap<String, Vec<String>>,
+    pub draw: HashMap<DrawAction, Vec<String>>,
     #[serde(default)]
-    pub canvas: HashMap<String, Vec<String>>,
+    pub canvas: HashMap<CanvasAction, Vec<String>>,
     #[serde(default)]
-    pub backup: HashMap<String, Vec<String>>,
+    pub backup: HashMap<BackupAction, Vec<String>>,
 }
 
 #[derive(Debug, Clone)]
@@ -605,6 +606,22 @@ impl Default for Keybinds {
             ],
         );
         help.insert(
+            HelpAction::NextTab,
+            vec![
+                KeyCombo::simple(KeyCode::Right),
+                KeyCombo::simple(KeyCode::Char('l')),
+                KeyCombo::simple(KeyCode::Tab),
+            ],
+        );
+        help.insert(
+            HelpAction::PrevTab,
+            vec![
+                KeyCombo::simple(KeyCode::Left),
+                KeyCombo::simple(KeyCode::Char('h')),
+                KeyCombo::simple(KeyCode::BackTab),
+            ],
+        );
+        help.insert(
             HelpAction::ScrollUp,
             vec![
                 KeyCombo::simple(KeyCode::Up),
@@ -802,87 +819,73 @@ impl Keybinds {
         let toml: KeybindsToml =
             toml::from_str(&content).context("failed to parse keybinds file")?;
 
-        for (action_str, combos_str) in &toml.list {
-            if let Some(action) = parse_list_action(action_str) {
-                let combos: Vec<KeyCombo> = combos_str
-                    .iter()
-                    .filter_map(|s| KeyCombo::parse(s))
-                    .collect();
-                if !combos.is_empty() {
-                    keybinds.list.insert(action, combos);
-                }
+        for (action, combos_str) in &toml.list {
+            let combos: Vec<KeyCombo> = combos_str
+                .iter()
+                .filter_map(|s| KeyCombo::parse(s))
+                .collect();
+            if !combos.is_empty() {
+                keybinds.list.insert(*action, combos);
             }
         }
 
-        for (action_str, combos_str) in &toml.edit {
-            if let Some(action) = parse_edit_action(action_str) {
-                let combos: Vec<KeyCombo> = combos_str
-                    .iter()
-                    .filter_map(|s| KeyCombo::parse(s))
-                    .collect();
-                if !combos.is_empty() {
-                    keybinds.edit.insert(action, combos);
-                }
+        for (action, combos_str) in &toml.edit {
+            let combos: Vec<KeyCombo> = combos_str
+                .iter()
+                .filter_map(|s| KeyCombo::parse(s))
+                .collect();
+            if !combos.is_empty() {
+                keybinds.edit.insert(*action, combos);
             }
         }
 
-        for (action_str, combos_str) in &toml.help {
-            if let Some(action) = parse_help_action(action_str) {
-                let combos: Vec<KeyCombo> = combos_str
-                    .iter()
-                    .filter_map(|s| KeyCombo::parse(s))
-                    .collect();
-                if !combos.is_empty() {
-                    keybinds.help.insert(action, combos);
-                }
+        for (action, combos_str) in &toml.help {
+            let combos: Vec<KeyCombo> = combos_str
+                .iter()
+                .filter_map(|s| KeyCombo::parse(s))
+                .collect();
+            if !combos.is_empty() {
+                keybinds.help.insert(*action, combos);
             }
         }
 
-        for (action_str, combos_str) in &toml.graph {
-            if let Some(action) = parse_graph_action(action_str) {
-                let combos: Vec<KeyCombo> = combos_str
-                    .iter()
-                    .filter_map(|s| KeyCombo::parse(s))
-                    .collect();
-                if !combos.is_empty() {
-                    keybinds.graph.insert(action, combos);
-                }
+        for (action, combos_str) in &toml.graph {
+            let combos: Vec<KeyCombo> = combos_str
+                .iter()
+                .filter_map(|s| KeyCombo::parse(s))
+                .collect();
+            if !combos.is_empty() {
+                keybinds.graph.insert(*action, combos);
             }
         }
 
-        for (action_str, combos_str) in &toml.draw {
-            if let Some(action) = parse_draw_action(action_str) {
-                let combos: Vec<KeyCombo> = combos_str
-                    .iter()
-                    .filter_map(|s| KeyCombo::parse(s))
-                    .collect();
-                if !combos.is_empty() {
-                    keybinds.draw.insert(action, combos);
-                }
+        for (action, combos_str) in &toml.draw {
+            let combos: Vec<KeyCombo> = combos_str
+                .iter()
+                .filter_map(|s| KeyCombo::parse(s))
+                .collect();
+            if !combos.is_empty() {
+                keybinds.draw.insert(*action, combos);
             }
         }
 
-        for (action_str, combos_str) in &toml.canvas {
-            if let Some(action) = parse_canvas_action(action_str) {
-                let combos: Vec<KeyCombo> = combos_str
-                    .iter()
-                    .filter_map(|s| KeyCombo::parse(s))
-                    .collect();
-                if !combos.is_empty() {
-                    keybinds.canvas.insert(action, combos);
-                }
+        for (action, combos_str) in &toml.canvas {
+            let combos: Vec<KeyCombo> = combos_str
+                .iter()
+                .filter_map(|s| KeyCombo::parse(s))
+                .collect();
+            if !combos.is_empty() {
+                keybinds.canvas.insert(*action, combos);
             }
         }
 
-        for (action_str, combos_str) in &toml.backup {
-            if let Some(action) = parse_backup_action(action_str) {
-                let combos: Vec<KeyCombo> = combos_str
-                    .iter()
-                    .filter_map(|s| KeyCombo::parse(s))
-                    .collect();
-                if !combos.is_empty() {
-                    keybinds.backup.insert(action, combos);
-                }
+        for (action, combos_str) in &toml.backup {
+            let combos: Vec<KeyCombo> = combos_str
+                .iter()
+                .filter_map(|s| KeyCombo::parse(s))
+                .collect();
+            if !combos.is_empty() {
+                keybinds.backup.insert(*action, combos);
             }
         }
         Ok(keybinds)
@@ -896,9 +899,7 @@ impl Keybinds {
             fs::create_dir_all(parent).context("failed to create keybinds directory")?;
         }
 
-        let mut file = fs::File::create(path).context("failed to create keybinds file")?;
-        file.write_all(content.as_bytes())
-            .context("failed to write keybinds file")?;
+        crate::fsutil::atomic_write(path, content.as_bytes())?;
 
         Ok(())
     }
@@ -907,49 +908,41 @@ impl Keybinds {
         let mut toml = KeybindsToml::default();
 
         for (action, combos) in &self.list {
-            let key = list_action_to_string(*action);
             let values: Vec<String> = combos.iter().map(KeyCombo::to_display_string).collect();
-            toml.list.insert(key.to_string(), values);
+            toml.list.insert(*action, values);
         }
 
         for (action, combos) in &self.edit {
-            let key = edit_action_to_string(*action);
             let values: Vec<String> = combos.iter().map(KeyCombo::to_display_string).collect();
-            toml.edit.insert(key.to_string(), values);
+            toml.edit.insert(*action, values);
         }
 
         for (action, combos) in &self.help {
-            let key = help_action_to_string(*action);
             let values: Vec<String> = combos.iter().map(KeyCombo::to_display_string).collect();
-            toml.help.insert(key.to_string(), values);
+            toml.help.insert(*action, values);
         }
 
         for (action, combos) in &self.graph {
-            let key = graph_action_to_string(*action);
             let values: Vec<String> = combos.iter().map(KeyCombo::to_display_string).collect();
-            toml.graph.insert(key.to_string(), values);
+            toml.graph.insert(*action, values);
         }
 
         for (action, combos) in &self.draw {
-            let key = draw_action_to_string(*action);
             let values: Vec<String> = combos.iter().map(KeyCombo::to_display_string).collect();
-            toml.draw.insert(key.to_string(), values);
+            toml.draw.insert(*action, values);
         }
 
         for (action, combos) in &self.canvas {
-            let key = canvas_action_to_string(*action);
             let values: Vec<String> = combos.iter().map(KeyCombo::to_display_string).collect();
-            toml.canvas.insert(key.to_string(), values);
+            toml.canvas.insert(*action, values);
         }
 
         for (action, combos) in &self.backup {
-            let key = backup_action_to_string(*action);
             let values: Vec<String> = combos.iter().map(KeyCombo::to_display_string).collect();
-            toml.backup.insert(key.to_string(), values);
+            toml.backup.insert(*action, values);
         }
         toml
     }
-
     pub fn matches_list(&self, action: ListAction, event: &KeyEvent) -> bool {
         self.list
             .get(&action)
@@ -1083,265 +1076,7 @@ impl Keybinds {
     }
 }
 
-fn parse_list_action(s: &str) -> Option<ListAction> {
-    match s {
-        "move_up" => Some(ListAction::MoveUp),
-        "move_down" => Some(ListAction::MoveDown),
-        "open" => Some(ListAction::Open),
-        "delete" => Some(ListAction::Delete),
-        "quit" => Some(ListAction::Quit),
-        "help" => Some(ListAction::Help),
-        "open_location" => Some(ListAction::OpenLocation),
-        "cycle_focus" => Some(ListAction::CycleFocus),
-        "confirm" => Some(ListAction::Confirm),
-        "cancel" => Some(ListAction::Cancel),
-        "toggle_button" => Some(ListAction::ToggleButton),
-        "new_from_template" => Some(ListAction::NewFromTemplate),
-        "create_folder" => Some(ListAction::CreateFolder),
-        "create_note" => Some(ListAction::CreateNote),
-        "rename_folder" => Some(ListAction::RenameFolder),
-        "move_note" => Some(ListAction::MoveNote),
-        "manage_tags" => Some(ListAction::ManageTags),
-
-        "collapse_folder" => Some(ListAction::CollapseFolder),
-        "expand_folder" => Some(ListAction::ExpandFolder),
-        "open_graph" => Some(ListAction::OpenGraph),
-        "open_canvas" => Some(ListAction::OpenCanvas),
-        "create_pinstar" => Some(ListAction::CreatePinstar),
-        "toggle_select_mode" => Some(ListAction::ToggleSelectMode),
-        "toggle_select_item" => Some(ListAction::ToggleSelectItem),
-        _ => None,
-    }
-}
-
-fn parse_edit_action(s: &str) -> Option<EditAction> {
-    match s {
-        "quit" => Some(EditAction::Quit),
-        "back" => Some(EditAction::Back),
-        "cycle_focus" => Some(EditAction::CycleFocus),
-        "toggle_button" => Some(EditAction::ToggleButton),
-        "select_all" => Some(EditAction::SelectAll),
-        "copy" => Some(EditAction::Copy),
-        "cut" => Some(EditAction::Cut),
-        "paste" => Some(EditAction::Paste),
-        "undo" => Some(EditAction::Undo),
-        "redo" => Some(EditAction::Redo),
-        "delete_word" => Some(EditAction::DeleteWord),
-        "delete_next_word" => Some(EditAction::DeleteNextWord),
-        "move_to_top" => Some(EditAction::MoveToTop),
-        "move_to_bottom" => Some(EditAction::MoveToBottom),
-        "toggle_markdown_preview" => Some(EditAction::ToggleMarkdownPreview),
-        _ => None,
-    }
-}
-
-fn parse_help_action(s: &str) -> Option<HelpAction> {
-    match s {
-        "close" => Some(HelpAction::Close),
-        "scroll_up" => Some(HelpAction::ScrollUp),
-        "scroll_down" => Some(HelpAction::ScrollDown),
-        _ => None,
-    }
-}
-
-fn parse_graph_action(s: &str) -> Option<GraphAction> {
-    match s {
-        "quit" => Some(GraphAction::Quit),
-        "pan_up" => Some(GraphAction::PanUp),
-        "pan_down" => Some(GraphAction::PanDown),
-        "pan_left" => Some(GraphAction::PanLeft),
-        "pan_right" => Some(GraphAction::PanRight),
-        "zoom_in" => Some(GraphAction::ZoomIn),
-        "zoom_out" => Some(GraphAction::ZoomOut),
-        "open_note" => Some(GraphAction::OpenNote),
-        "auto_fit" => Some(GraphAction::AutoFit),
-        "help" => Some(GraphAction::Help),
-        "toggle_search" => Some(GraphAction::ToggleSearch),
-        "toggle_minimap" => Some(GraphAction::ToggleMinimap),
-        "toggle_legend" => Some(GraphAction::ToggleLegend),
-        "toggle_grid" => Some(GraphAction::ToggleGrid),
-        "toggle_status" => Some(GraphAction::ToggleStatus),
-        "refresh" => Some(GraphAction::Refresh),
-        "reload_config" => Some(GraphAction::ReloadConfig),
-        "toggle_preview" => Some(GraphAction::TogglePreview),
-        _ => None,
-    }
-}
-
-fn parse_draw_action(s: &str) -> Option<DrawAction> {
-    match s {
-        "quit" => Some(DrawAction::Quit),
-        "select_draw_tool" => Some(DrawAction::SelectDrawTool),
-        "toggle_shape_selector" => Some(DrawAction::ToggleShapeSelector),
-        "select_text_tool" => Some(DrawAction::SelectTextTool),
-        "select_erase_tool" => Some(DrawAction::SelectEraseTool),
-        "shape_selector_up" => Some(DrawAction::ShapeSelectorUp),
-        "shape_selector_down" => Some(DrawAction::ShapeSelectorDown),
-        "shape_selector_confirm" => Some(DrawAction::ShapeSelectorConfirm),
-        "shape_selector_cancel" => Some(DrawAction::ShapeSelectorCancel),
-        "text_editor_confirm" => Some(DrawAction::TextEditorConfirm),
-        "text_editor_cancel" => Some(DrawAction::TextEditorCancel),
-        _ => None,
-    }
-}
-
-fn parse_canvas_action(s: &str) -> Option<CanvasAction> {
-    match s {
-        "quit" => Some(CanvasAction::Quit),
-        "save" => Some(CanvasAction::Save),
-        "zoom_fine_in" => Some(CanvasAction::ZoomFineIn),
-        "zoom_fine_out" => Some(CanvasAction::ZoomFineOut),
-        "zoom_in" => Some(CanvasAction::ZoomIn),
-        "zoom_out" => Some(CanvasAction::ZoomOut),
-        "move_left" => Some(CanvasAction::MoveLeft),
-        "move_right" => Some(CanvasAction::MoveRight),
-        "move_up" => Some(CanvasAction::MoveUp),
-        "move_down" => Some(CanvasAction::MoveDown),
-        "edit_or_connect" => Some(CanvasAction::EditOrConnect),
-        "open_context_menu" => Some(CanvasAction::OpenContextMenu),
-        "toggle_grid" => Some(CanvasAction::ToggleGrid),
-        "toggle_editor_pane" => Some(CanvasAction::ToggleEditorPane),
-        "cycle_focus" => Some(CanvasAction::CycleFocus),
-        "help" => Some(CanvasAction::Help),
-        "rename_confirm" => Some(CanvasAction::RenameConfirm),
-        "rename_cancel" => Some(CanvasAction::RenameCancel),
-        "menu_close" => Some(CanvasAction::MenuClose),
-        "menu_up" => Some(CanvasAction::MenuUp),
-        "menu_down" => Some(CanvasAction::MenuDown),
-        "menu_select" => Some(CanvasAction::MenuSelect),
-        "close_editor" => Some(CanvasAction::CloseEditor),
-        "close_editor_alt" => Some(CanvasAction::CloseEditorAlt),
-        "confirm_resize" => Some(CanvasAction::ConfirmResize),
-        "cancel_resize" => Some(CanvasAction::CancelResize),
-        "ext_unfocus" => Some(CanvasAction::ExtUnfocus),
-        "ext_toggle" => Some(CanvasAction::ExtToggle),
-        "editor_unfocus" => Some(CanvasAction::EditorUnfocus),
-        "editor_focus_ext" => Some(CanvasAction::EditorFocusExt),
-        "editor_sync_raw" => Some(CanvasAction::EditorSyncRaw),
-        _ => None,
-    }
-}
-
-fn parse_backup_action(s: &str) -> Option<BackupAction> {
-    match s {
-        "back" => Some(BackupAction::Back),
-        "move_down" => Some(BackupAction::MoveDown),
-        "move_up" => Some(BackupAction::MoveUp),
-        "scroll_diff_down" => Some(BackupAction::ScrollDiffDown),
-        "scroll_diff_up" => Some(BackupAction::ScrollDiffUp),
-        "refresh" => Some(BackupAction::Refresh),
-        "enter_commit" => Some(BackupAction::EnterCommit),
-        "push" => Some(BackupAction::Push),
-        "open_settings" => Some(BackupAction::OpenSettings),
-        "cycle_section" => Some(BackupAction::CycleSection),
-        "cancel_commit" => Some(BackupAction::CancelCommit),
-        "confirm_commit" => Some(BackupAction::ConfirmCommit),
-        "close_settings" => Some(BackupAction::CloseSettings),
-        "next_field" => Some(BackupAction::NextField),
-        "prev_field" => Some(BackupAction::PrevField),
-        "activate_field" => Some(BackupAction::ActivateField),
-        "cancel_edit_field" => Some(BackupAction::CancelEditField),
-        "confirm_edit_field" => Some(BackupAction::ConfirmEditField),
-        _ => None,
-    }
-}
-
-fn list_action_to_string(action: ListAction) -> &'static str {
-    match action {
-        ListAction::MoveUp => "move_up",
-        ListAction::MoveDown => "move_down",
-        ListAction::Open => "open",
-        ListAction::Delete => "delete",
-        ListAction::Quit => "quit",
-        ListAction::Help => "help",
-        ListAction::OpenLocation => "open_location",
-        ListAction::CycleFocus => "cycle_focus",
-        ListAction::Confirm => "confirm",
-        ListAction::Cancel => "cancel",
-        ListAction::ToggleButton => "toggle_button",
-        ListAction::NewFromTemplate => "new_from_template",
-        ListAction::CreateFolder => "create_folder",
-        ListAction::CreateNote => "create_note",
-        ListAction::RenameFolder => "rename_folder",
-        ListAction::MoveNote => "move_note",
-        ListAction::ManageTags => "manage_tags",
-
-        ListAction::CollapseFolder => "collapse_folder",
-        ListAction::ExpandFolder => "expand_folder",
-        ListAction::OpenCommandPalette => "open_command_palette",
-
-        ListAction::Rename => "rename",
-        ListAction::Duplicate => "duplicate",
-        ListAction::TogglePin => "toggle_pin",
-        ListAction::CycleSort => "cycle_sort",
-        ListAction::Search => "search",
-        ListAction::JumpToTop => "jump_to_top",
-        ListAction::JumpToBottom => "jump_to_bottom",
-        ListAction::PageUp => "page_up",
-        ListAction::PageDown => "page_down",
-        ListAction::OpenTrash => "open_trash",
-        ListAction::TogglePreview => "toggle_preview",
-        ListAction::OpenGraph => "open_graph",
-        ListAction::OpenCanvas => "open_canvas",
-        ListAction::CreatePinstar => "create_pinstar",
-        ListAction::ToggleSelectMode => "toggle_select_mode",
-        ListAction::ToggleSelectItem => "toggle_select_item",
-    }
-}
-fn edit_action_to_string(action: EditAction) -> &'static str {
-    match action {
-        EditAction::Quit => "quit",
-        EditAction::Back => "back",
-        EditAction::CycleFocus => "cycle_focus",
-        EditAction::ToggleButton => "toggle_button",
-        EditAction::SelectAll => "select_all",
-        EditAction::Copy => "copy",
-        EditAction::Cut => "cut",
-        EditAction::Paste => "paste",
-        EditAction::Undo => "undo",
-        EditAction::Redo => "redo",
-        EditAction::DeleteWord => "delete_word",
-        EditAction::DeleteNextWord => "delete_next_word",
-        EditAction::MoveToTop => "move_to_top",
-        EditAction::MoveToBottom => "move_to_bottom",
-        EditAction::ToggleMarkdownPreview => "toggle_markdown_preview",
-    }
-}
-
-fn help_action_to_string(action: HelpAction) -> &'static str {
-    match action {
-        HelpAction::Close => "close",
-        HelpAction::ScrollUp => "scroll_up",
-        HelpAction::ScrollDown => "scroll_down",
-    }
-}
-
-fn graph_action_to_string(action: GraphAction) -> &'static str {
-    match action {
-        GraphAction::Quit => "quit",
-        GraphAction::PanUp => "pan_up",
-        GraphAction::PanDown => "pan_down",
-        GraphAction::PanLeft => "pan_left",
-        GraphAction::PanRight => "pan_right",
-        GraphAction::ZoomIn => "zoom_in",
-        GraphAction::ZoomOut => "zoom_out",
-        GraphAction::OpenNote => "open_note",
-        GraphAction::AutoFit => "auto_fit",
-        GraphAction::Help => "help",
-        GraphAction::ToggleSearch => "toggle_search",
-        GraphAction::ToggleMinimap => "toggle_minimap",
-        GraphAction::ToggleLegend => "toggle_legend",
-        GraphAction::ToggleGrid => "toggle_grid",
-        GraphAction::ToggleStatus => "toggle_status",
-        GraphAction::Refresh => "refresh",
-        GraphAction::ReloadConfig => "reload_config",
-        GraphAction::TogglePreview => "toggle_preview",
-    }
-}
-
-#[cfg(test)]
 mod tests {
-    use super::*;
 
     #[test]
     fn test_parse_key_combo_simple() {
@@ -1416,79 +1151,5 @@ mod tests {
         assert_eq!(keybinds.draw_keys_display(DrawAction::SelectDrawTool), "d");
         assert_eq!(keybinds.canvas_keys_display(CanvasAction::Quit), "Esc");
         assert_eq!(keybinds.canvas_keys_display(CanvasAction::Save), "Ctrl+s");
-    }
-}
-fn draw_action_to_string(action: DrawAction) -> &'static str {
-    match action {
-        DrawAction::Quit => "quit",
-        DrawAction::SelectDrawTool => "select_draw_tool",
-        DrawAction::ToggleShapeSelector => "toggle_shape_selector",
-        DrawAction::SelectTextTool => "select_text_tool",
-        DrawAction::SelectEraseTool => "select_erase_tool",
-        DrawAction::ShapeSelectorUp => "shape_selector_up",
-        DrawAction::ShapeSelectorDown => "shape_selector_down",
-        DrawAction::ShapeSelectorConfirm => "shape_selector_confirm",
-        DrawAction::ShapeSelectorCancel => "shape_selector_cancel",
-        DrawAction::TextEditorConfirm => "text_editor_confirm",
-        DrawAction::TextEditorCancel => "text_editor_cancel",
-    }
-}
-
-fn canvas_action_to_string(action: CanvasAction) -> &'static str {
-    match action {
-        CanvasAction::Quit => "quit",
-        CanvasAction::Save => "save",
-        CanvasAction::ZoomFineIn => "zoom_fine_in",
-        CanvasAction::ZoomFineOut => "zoom_fine_out",
-        CanvasAction::ZoomIn => "zoom_in",
-        CanvasAction::ZoomOut => "zoom_out",
-        CanvasAction::MoveLeft => "move_left",
-        CanvasAction::MoveRight => "move_right",
-        CanvasAction::MoveUp => "move_up",
-        CanvasAction::MoveDown => "move_down",
-        CanvasAction::EditOrConnect => "edit_or_connect",
-        CanvasAction::OpenContextMenu => "open_context_menu",
-        CanvasAction::ToggleGrid => "toggle_grid",
-        CanvasAction::ToggleEditorPane => "toggle_editor_pane",
-        CanvasAction::CycleFocus => "cycle_focus",
-        CanvasAction::Help => "help",
-        CanvasAction::RenameConfirm => "rename_confirm",
-        CanvasAction::RenameCancel => "rename_cancel",
-        CanvasAction::MenuClose => "menu_close",
-        CanvasAction::MenuUp => "menu_up",
-        CanvasAction::MenuDown => "menu_down",
-        CanvasAction::MenuSelect => "menu_select",
-        CanvasAction::CloseEditor => "close_editor",
-        CanvasAction::CloseEditorAlt => "close_editor_alt",
-        CanvasAction::ConfirmResize => "confirm_resize",
-        CanvasAction::CancelResize => "cancel_resize",
-        CanvasAction::ExtUnfocus => "ext_unfocus",
-        CanvasAction::ExtToggle => "ext_toggle",
-        CanvasAction::EditorUnfocus => "editor_unfocus",
-        CanvasAction::EditorFocusExt => "editor_focus_ext",
-        CanvasAction::EditorSyncRaw => "editor_sync_raw",
-    }
-}
-
-fn backup_action_to_string(action: BackupAction) -> &'static str {
-    match action {
-        BackupAction::Back => "back",
-        BackupAction::MoveDown => "move_down",
-        BackupAction::MoveUp => "move_up",
-        BackupAction::ScrollDiffDown => "scroll_diff_down",
-        BackupAction::ScrollDiffUp => "scroll_diff_up",
-        BackupAction::Refresh => "refresh",
-        BackupAction::EnterCommit => "enter_commit",
-        BackupAction::Push => "push",
-        BackupAction::OpenSettings => "open_settings",
-        BackupAction::CycleSection => "cycle_section",
-        BackupAction::CancelCommit => "cancel_commit",
-        BackupAction::ConfirmCommit => "confirm_commit",
-        BackupAction::CloseSettings => "close_settings",
-        BackupAction::NextField => "next_field",
-        BackupAction::PrevField => "prev_field",
-        BackupAction::ActivateField => "activate_field",
-        BackupAction::CancelEditField => "cancel_edit_field",
-        BackupAction::ConfirmEditField => "confirm_edit_field",
     }
 }

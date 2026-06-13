@@ -47,7 +47,7 @@ pub fn draw_ui(frame: &mut Frame, state: &GrafAppState, config: &ClinConfig, _ke
             show_minimap: state.show_minimap,
             show_status_bar: state.show_status_bar,
         };
-        crate::graf::render::draw_graph_view(frame, graph_area, &guard, config, &flags);
+        crate::graf::render::draw_graph_view(frame, graph_area, &guard, config, &flags, &state.app_theme);
     }
 
     if let Some((p_area, sep_area)) = preview_area {
