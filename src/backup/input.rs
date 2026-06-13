@@ -180,10 +180,10 @@ fn handle_settings_field_input(
                     state.settings.remote_url.input(event);
                 }
             }
-            SettingsField::RemoteName => {
-                if !apply_text_shortcuts(keybinds, &mut state.settings.remote_name, event) {
-                    state.settings.remote_name.input(event);
-                }
+            SettingsField::RemoteName
+                if !apply_text_shortcuts(keybinds, &mut state.settings.remote_name, event) =>
+            {
+                state.settings.remote_name.input(event);
             }
             _ => {}
         },
@@ -202,10 +202,7 @@ pub fn handle_mouse(state: &mut BackupState, event: MouseEvent) -> InputResult {
 
         if let Some(area) = state.last_area {
             let list_width = (area.width as f32 * 0.4) as u16;
-            if x >= area.x
-                && x < area.x + list_width
-                && y > area.y
-                && y < area.y + area.height - 1
+            if x >= area.x && x < area.x + list_width && y > area.y && y < area.y + area.height - 1
             {
                 let line_index = (y - area.y - 2) as usize;
                 if line_index < state.selectable_files.len() {

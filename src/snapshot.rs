@@ -273,10 +273,10 @@ fn fill_buf_bg(buf: &mut Buffer, area: Rect, bg: Option<Color>) {
     let Some(bg) = bg else { return };
     for y in area.top()..area.bottom() {
         for x in area.left()..area.right() {
-            if let Some(cell) = buf.cell_mut((x, y)) {
-                if !cell.skip {
-                    cell.set_style(Style::default().bg(bg));
-                }
+            if let Some(cell) = buf.cell_mut((x, y))
+                && !cell.skip
+            {
+                cell.set_style(Style::default().bg(bg));
             }
         }
     }

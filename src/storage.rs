@@ -78,10 +78,10 @@ fn split_frontmatter_payload(bytes: &[u8]) -> (Option<frontmatter::Frontmatter>,
             content_start += 1;
         }
 
-        if let Ok(fm_str) = std::str::from_utf8(fm_bytes) {
-            if let Ok(fm) = serde_yml::from_str::<frontmatter::Frontmatter>(fm_str) {
-                return (Some(fm), &bytes[content_start..]);
-            }
+        if let Ok(fm_str) = std::str::from_utf8(fm_bytes)
+            && let Ok(fm) = serde_yml::from_str::<frontmatter::Frontmatter>(fm_str)
+        {
+            return (Some(fm), &bytes[content_start..]);
         }
     }
 
@@ -108,22 +108,22 @@ impl Storage {
         let key_path = config_dir.join("key.bin");
 
         // Migration: move key from data_dir to config_dir if it exists in old location and not in new
-        if !key_path.exists() && old_key_path.exists() {
-            if let Ok(raw) = fs::read(&old_key_path) {
-                if raw.len() == 32 {
-                    let _ = crate::fsutil::atomic_write(&key_path, &raw);
-                    #[cfg(unix)]
-                    {
-                        use std::os::unix::fs::PermissionsExt;
-                        if let Ok(metadata) = fs::metadata(&key_path) {
-                            let mut perms = metadata.permissions();
-                            perms.set_mode(0o400);
-                            let _ = fs::set_permissions(&key_path, perms);
-                        }
-                    }
-                    let _ = fs::remove_file(&old_key_path);
+        if !key_path.exists()
+            && old_key_path.exists()
+            && let Ok(raw) = fs::read(&old_key_path)
+            && raw.len() == 32
+        {
+            let _ = crate::fsutil::atomic_write(&key_path, &raw);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                if let Ok(metadata) = fs::metadata(&key_path) {
+                    let mut perms = metadata.permissions();
+                    perms.set_mode(0o400);
+                    let _ = fs::set_permissions(&key_path, perms);
                 }
             }
+            let _ = fs::remove_file(&old_key_path);
         }
 
         let key = if key_path.exists() {

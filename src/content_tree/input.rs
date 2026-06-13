@@ -1,5 +1,5 @@
 use crate::content_tree::state::ContentTreeState;
-use crate::keybinds::{Keybinds, ContentTreeAction};
+use crate::keybinds::{ContentTreeAction, Keybinds};
 use crossterm::event::KeyEvent;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

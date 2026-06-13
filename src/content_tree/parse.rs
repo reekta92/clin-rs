@@ -45,22 +45,21 @@ pub fn parse_outline(title: &str, content: &str) -> Vec<TreeNode> {
     let mut current_code_block: Option<(usize, String, String)> = None; // (start_line, lang, code)
     let mut para: Option<(usize, String)> = None; // (start_line, full_text)
 
-    let cur_depth = |stack: &[(u8, usize)]| -> usize {
-        stack.last().map(|(_, d)| *d).unwrap_or(0)
-    };
+    let cur_depth = |stack: &[(u8, usize)]| -> usize { stack.last().map(|(_, d)| *d).unwrap_or(0) };
 
-    let close_paragraph = |para: &mut Option<(usize, String)>, nodes: &mut Vec<TreeNode>, current_depth: usize| {
-        if let Some((line, full_text)) = para.take() {
-            let first_line = full_text.lines().next().unwrap_or("").to_string();
-            let preview = truncate(&first_line);
-            nodes.push(TreeNode {
-                kind: NodeKind::Paragraph { preview, full_text },
-                depth: current_depth + 1,
-                line,
-                has_children: false,
-            });
-        }
-    };
+    let close_paragraph =
+        |para: &mut Option<(usize, String)>, nodes: &mut Vec<TreeNode>, current_depth: usize| {
+            if let Some((line, full_text)) = para.take() {
+                let first_line = full_text.lines().next().unwrap_or("").to_string();
+                let preview = truncate(&first_line);
+                nodes.push(TreeNode {
+                    kind: NodeKind::Paragraph { preview, full_text },
+                    depth: current_depth + 1,
+                    line,
+                    has_children: false,
+                });
+            }
+        };
 
     for (idx, line_raw) in content.lines().enumerate() {
         let line_no = idx + 1;
@@ -137,8 +136,18 @@ pub fn parse_outline(title: &str, content: &str) -> Vec<TreeNode> {
         }
 
         // List item
-        let is_list = if t.starts_with("- ") || t.starts_with("* ") || t.starts_with("+ ") || t == "-" || t == "*" || t == "+" {
-            Some(if t.len() >= 2 { t[2..].trim().to_string() } else { String::new() })
+        let is_list = if t.starts_with("- ")
+            || t.starts_with("* ")
+            || t.starts_with("+ ")
+            || t == "-"
+            || t == "*"
+            || t == "+"
+        {
+            Some(if t.len() >= 2 {
+                t[2..].trim().to_string()
+            } else {
+                String::new()
+            })
         } else {
             let mut chs = t.chars().peekable();
             let mut digits = String::new();
@@ -233,10 +242,22 @@ fn x() {}
 ```
 ";
         let nodes = parse_outline("Title", content);
-        assert_eq!(nodes[0].kind, NodeKind::Header { level: 0, title: "Title".to_string() });
+        assert_eq!(
+            nodes[0].kind,
+            NodeKind::Header {
+                level: 0,
+                title: "Title".to_string()
+            }
+        );
         assert_eq!(nodes[0].depth, 0);
 
-        assert_eq!(nodes[1].kind, NodeKind::Header { level: 1, title: "Project".to_string() });
+        assert_eq!(
+            nodes[1].kind,
+            NodeKind::Header {
+                level: 1,
+                title: "Project".to_string()
+            }
+        );
         assert_eq!(nodes[1].depth, 1);
         assert!(nodes[1].has_children);
 
@@ -249,16 +270,38 @@ fn x() {}
         );
         assert_eq!(nodes[2].depth, 2);
 
-        assert_eq!(nodes[3].kind, NodeKind::Header { level: 2, title: "Tasks".to_string() });
+        assert_eq!(
+            nodes[3].kind,
+            NodeKind::Header {
+                level: 2,
+                title: "Tasks".to_string()
+            }
+        );
         assert_eq!(nodes[3].depth, 2);
         assert!(nodes[3].has_children);
 
-        assert_eq!(nodes[4].kind, NodeKind::ListItem { text: "Fix bug".to_string() });
+        assert_eq!(
+            nodes[4].kind,
+            NodeKind::ListItem {
+                text: "Fix bug".to_string()
+            }
+        );
         assert_eq!(nodes[4].depth, 3);
-        assert_eq!(nodes[5].kind, NodeKind::ListItem { text: "Add tests".to_string() });
+        assert_eq!(
+            nodes[5].kind,
+            NodeKind::ListItem {
+                text: "Add tests".to_string()
+            }
+        );
         assert_eq!(nodes[5].depth, 3);
 
-        assert_eq!(nodes[6].kind, NodeKind::Header { level: 3, title: "Stretch".to_string() });
+        assert_eq!(
+            nodes[6].kind,
+            NodeKind::Header {
+                level: 3,
+                title: "Stretch".to_string()
+            }
+        );
         assert_eq!(nodes[6].depth, 3);
         assert!(nodes[6].has_children);
 

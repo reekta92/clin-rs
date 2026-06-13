@@ -1,12 +1,12 @@
-use std::collections::HashSet;
 use crate::content_tree::parse::TreeNode;
+use std::collections::HashSet;
 
 pub struct ContentTreeState {
     pub note_id: String,
     pub note_title: String,
     pub nodes: Vec<TreeNode>,
-    pub selected: usize,              // index into `nodes`
-    pub expanded: HashSet<usize>,     // header node-indices that are expanded
+    pub selected: usize,          // index into `nodes`
+    pub expanded: HashSet<usize>, // header node-indices that are expanded
     pub load_error: bool,
 }
 
@@ -67,9 +67,9 @@ impl ContentTreeState {
     }
 
     pub fn is_header(&self, i: usize) -> bool {
-        self.nodes.get(i).is_some_and(|n| {
-            matches!(n.kind, crate::content_tree::parse::NodeKind::Header { .. })
-        })
+        self.nodes
+            .get(i)
+            .is_some_and(|n| matches!(n.kind, crate::content_tree::parse::NodeKind::Header { .. }))
     }
 
     pub fn move_up(&mut self) {
@@ -77,9 +77,16 @@ impl ContentTreeState {
         if visible.is_empty() {
             return;
         }
-        let pos = visible.iter().position(|&x| x == self.selected).unwrap_or_else(|| {
-            visible.iter().position(|&x| x > self.selected).unwrap_or(visible.len()).saturating_sub(1)
-        });
+        let pos = visible
+            .iter()
+            .position(|&x| x == self.selected)
+            .unwrap_or_else(|| {
+                visible
+                    .iter()
+                    .position(|&x| x > self.selected)
+                    .unwrap_or(visible.len())
+                    .saturating_sub(1)
+            });
         if pos > 0 {
             self.selected = visible[pos - 1];
         } else {
@@ -92,9 +99,16 @@ impl ContentTreeState {
         if visible.is_empty() {
             return;
         }
-        let pos = visible.iter().position(|&x| x == self.selected).unwrap_or_else(|| {
-            visible.iter().position(|&x| x > self.selected).unwrap_or(visible.len()).saturating_sub(1)
-        });
+        let pos = visible
+            .iter()
+            .position(|&x| x == self.selected)
+            .unwrap_or_else(|| {
+                visible
+                    .iter()
+                    .position(|&x| x > self.selected)
+                    .unwrap_or(visible.len())
+                    .saturating_sub(1)
+            });
         if pos + 1 < visible.len() {
             self.selected = visible[pos + 1];
         } else {
