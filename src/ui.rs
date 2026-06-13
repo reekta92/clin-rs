@@ -121,6 +121,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         ViewMode::Draw => {}
         ViewMode::Canvas => {}
         ViewMode::Backup => {}
+        ViewMode::ContentTree => {}
     }
 
     if let Some(popup) = &app.popups.theme {
@@ -147,6 +148,7 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
         "Canvas",
         "Backup",
         "Templates",
+        "Content Tree",
         "About",
     ];
     let mut tab_spans: Vec<Span<'static>> = Vec::new();
@@ -209,6 +211,7 @@ pub fn help_text_for_tab(
         crate::app::HelpTab::Canvas => canvas_help_text(keybinds, theme),
         crate::app::HelpTab::Backup => backup_help_text(keybinds, theme),
         crate::app::HelpTab::Templates => templates_help_text(keybinds, theme),
+        crate::app::HelpTab::ContentTree => content_tree_help_text(keybinds, theme),
         crate::app::HelpTab::About => about_help_text(keybinds, theme),
     }
 }
@@ -853,6 +856,51 @@ fn backup_help_text(
     Text::from(lines)
 }
 
+fn content_tree_help_text(
+    keybinds: &Keybinds,
+    theme: &crate::app_theme::AppThemeColors,
+) -> Text<'static> {
+    use crate::keybinds::ContentTreeAction;
+    let mut lines = Vec::new();
+    lines.push(help_heading("Content Tree", theme));
+    lines.push(Line::from(""));
+    lines.extend(help_item_dyn(
+        "Move Up / Down",
+        Some(&format!(
+            "{}/{}",
+            keybinds.content_tree_keys_display(ContentTreeAction::MoveUp),
+            keybinds.content_tree_keys_display(ContentTreeAction::MoveDown)
+        )),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Toggle Collapse",
+        Some(&keybinds.content_tree_keys_display(ContentTreeAction::ToggleCollapse)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Expand All",
+        Some(&keybinds.content_tree_keys_display(ContentTreeAction::ExpandAll)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Collapse All",
+        Some(&keybinds.content_tree_keys_display(ContentTreeAction::CollapseAll)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Jump to section",
+        Some(&keybinds.content_tree_keys_display(ContentTreeAction::Open)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Back to previous view",
+        Some(&keybinds.content_tree_keys_display(ContentTreeAction::Back)),
+        theme,
+    ));
+    Text::from(lines)
+}
+
 fn templates_help_text(
     keybinds: &Keybinds,
     theme: &crate::app_theme::AppThemeColors,
@@ -1449,7 +1497,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                         else if *is_clin { app.app_theme.destructive }
                         else if *is_draw { app.app_theme.success }
                         else if *is_canvas { app.app_theme.accent }
-                        else { app.app_theme.folder };
+                        else { app.app_theme.text };
                     let ic = if s.pinned { '\u{f4cc}' }
                         else if *is_clin { '\u{f023}' }
                         else if *is_draw { '\u{f1fc}' }
@@ -1509,9 +1557,9 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             let pad = inner_w.saturating_sub(chars.len());
             let left = pad / 2;
             let name_style = if is_selected {
-                Style::default().fg(app.app_theme.fg).add_modifier(Modifier::BOLD)
+                Style::default().add_modifier(Modifier::BOLD)
             } else {
-                Style::default().fg(app.app_theme.fg)
+                Style::default()
             };
             let mut name_string: String = " ".repeat(left);
             name_string.extend(chars.iter());

@@ -42,9 +42,9 @@ pub static ACTIONS: Lazy<Vec<Box<dyn Action>>> = Lazy::new(|| {
         Box::new(encrypt::EncryptNoteAction),
         Box::new(decrypt::DecryptNoteAction),
         Box::new(graph::OpenGraphAction),
+        Box::new(content_tree::OpenContentTreeAction),
         Box::new(draw::CreateDrawAction),
         Box::new(pinstar::CreateCanvasAction),
-        Box::new(ocr::OcrPasteAction),
         Box::new(theme::SwitchThemeAction),
     ]
 });
@@ -71,10 +71,10 @@ pub static ACTION_INFOS: Lazy<Vec<ActionInfo>> = Lazy::new(|| {
 | `note.encrypt` | Encrypt Note | Encrypt the selected note (.md → .clin) |
 | `note.decrypt` | Decrypt Note | Decrypt the selected note (.clin → .md) |
 | `graph.open` | Open Graph | Switch to the force-directed graph view |
+| `content_tree.open` | Content Tree | Show the selected note's headers and content as a navigable tree |
 | `draw.create` | New Draw | Create a new drawing file and open it |
 | `canvas.create` | New Canvas | Create a new Obsidian-compatible canvas |
 | `ocr.paste` | OCR Paste | OCR clipboard image into the current note |
-| `theme.switch` | Switch Theme | Open theme switcher popup |
 
 ---
 

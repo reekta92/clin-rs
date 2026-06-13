@@ -358,6 +358,19 @@ pub enum BackupAction {
     ConfirmEditField,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContentTreeAction {
+    MoveUp,
+    MoveDown,
+    ToggleCollapse,
+    ExpandAll,
+    CollapseAll,
+    Open,
+    Back,
+    Help,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct KeybindsToml {
     #[serde(default)]
@@ -374,6 +387,8 @@ pub struct KeybindsToml {
     pub canvas: HashMap<CanvasAction, Vec<String>>,
     #[serde(default)]
     pub backup: HashMap<BackupAction, Vec<String>>,
+    #[serde(default)]
+    pub content_tree: HashMap<ContentTreeAction, Vec<String>>,
 }
 
 #[derive(Debug, Clone)]
@@ -385,6 +400,7 @@ pub struct Keybinds {
     pub draw: HashMap<DrawAction, Vec<KeyCombo>>,
     pub canvas: HashMap<CanvasAction, Vec<KeyCombo>>,
     pub backup: HashMap<BackupAction, Vec<KeyCombo>>,
+    pub content_tree: HashMap<ContentTreeAction, Vec<KeyCombo>>,
 }
 
 impl Default for Keybinds {
@@ -1012,6 +1028,53 @@ impl Default for Keybinds {
             vec![KeyCombo::simple(KeyCode::Enter)],
         );
 
+        let mut content_tree = HashMap::new();
+        content_tree.insert(
+            ContentTreeAction::MoveUp,
+            vec![
+                KeyCombo::simple(KeyCode::Char('k')),
+                KeyCombo::simple(KeyCode::Up),
+            ],
+        );
+        content_tree.insert(
+            ContentTreeAction::MoveDown,
+            vec![
+                KeyCombo::simple(KeyCode::Char('j')),
+                KeyCombo::simple(KeyCode::Down),
+            ],
+        );
+        content_tree.insert(
+            ContentTreeAction::ToggleCollapse,
+            vec![
+                KeyCombo::simple(KeyCode::Tab),
+                KeyCombo::simple(KeyCode::Left),
+                KeyCombo::simple(KeyCode::Right),
+            ],
+        );
+        content_tree.insert(
+            ContentTreeAction::ExpandAll,
+            vec![KeyCombo::simple(KeyCode::Char('e'))],
+        );
+        content_tree.insert(
+            ContentTreeAction::CollapseAll,
+            vec![KeyCombo::simple(KeyCode::Char('c'))],
+        );
+        content_tree.insert(
+            ContentTreeAction::Open,
+            vec![KeyCombo::simple(KeyCode::Enter)],
+        );
+        content_tree.insert(
+            ContentTreeAction::Back,
+            vec![KeyCombo::simple(KeyCode::Esc)],
+        );
+        content_tree.insert(
+            ContentTreeAction::Help,
+            vec![
+                KeyCombo::simple(KeyCode::Char('?')),
+                KeyCombo::simple(KeyCode::F(1)),
+            ],
+        );
+
         Self {
             list,
             edit,
@@ -1020,6 +1083,7 @@ impl Default for Keybinds {
             draw,
             canvas,
             backup,
+            content_tree,
         }
     }
 }
@@ -1106,6 +1170,16 @@ impl Keybinds {
                 keybinds.backup.insert(*action, combos);
             }
         }
+
+        for (action, combos_str) in &toml.content_tree {
+            let combos: Vec<KeyCombo> = combos_str
+                .iter()
+                .filter_map(|s| KeyCombo::parse(s))
+                .collect();
+            if !combos.is_empty() {
+                keybinds.content_tree.insert(*action, combos);
+            }
+        }
         Ok(keybinds)
     }
 
@@ -1159,6 +1233,11 @@ impl Keybinds {
             let values: Vec<String> = combos.iter().map(KeyCombo::to_display_string).collect();
             toml.backup.insert(*action, values);
         }
+
+        for (action, combos) in &self.content_tree {
+            let values: Vec<String> = combos.iter().map(KeyCombo::to_display_string).collect();
+            toml.content_tree.insert(*action, values);
+        }
         toml
     }
     pub fn matches_list(&self, action: ListAction, event: &KeyEvent) -> bool {
@@ -1199,6 +1278,12 @@ impl Keybinds {
 
     pub fn matches_backup(&self, action: BackupAction, event: &KeyEvent) -> bool {
         self.backup
+            .get(&action)
+            .is_some_and(|combos| combos.iter().any(|c| c.matches(event)))
+    }
+
+    pub fn matches_content_tree(&self, action: ContentTreeAction, event: &KeyEvent) -> bool {
+        self.content_tree
             .get(&action)
             .is_some_and(|combos| combos.iter().any(|c| c.matches(event)))
     }
@@ -1292,6 +1377,19 @@ impl Keybinds {
             })
             .unwrap_or_default()
     }
+
+    pub fn content_tree_keys_display(&self, action: ContentTreeAction) -> String {
+        self.content_tree
+            .get(&action)
+            .map(|combos| {
+                combos
+                    .iter()
+                    .map(KeyCombo::to_display_string)
+                    .collect::<Vec<_>>()
+                    .join("/")
+            })
+            .unwrap_or_default()
+    }
 }
 
 mod tests {
@@ -1343,10 +1441,12 @@ mod tests {
         assert!(!keybinds.draw.is_empty());
         assert!(!keybinds.canvas.is_empty());
         assert!(!keybinds.backup.is_empty());
+        assert!(!keybinds.content_tree.is_empty());
 
         let toml = keybinds.to_toml();
         assert!(!toml.draw.is_empty());
         assert!(!toml.canvas.is_empty());
+        assert!(!toml.content_tree.is_empty());
         let temp_dir = tempfile::tempdir().unwrap();
         let path = temp_dir.path().join("keybinds.toml");
         keybinds.save(&path).unwrap();
@@ -1354,6 +1454,7 @@ mod tests {
         assert_eq!(loaded_keybinds.draw, keybinds.draw);
         assert_eq!(loaded_keybinds.canvas, keybinds.canvas);
         assert_eq!(loaded_keybinds.backup, keybinds.backup);
+        assert_eq!(loaded_keybinds.content_tree, keybinds.content_tree);
     }
 
     #[test]

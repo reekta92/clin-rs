@@ -15,6 +15,7 @@ For installation, quickstart, and general project info, see the [README.md](../R
 - [GRAPH_VIEW.md](GRAPH_VIEW.md) — Force-directed graph view (graf): node/edge construction, physics simulation, rendering, interaction, viewport, search
 - [CANVAS.md](CANVAS.md) — Obsidian-compatible canvas view (pinstar): `.canvas` JSON schema, node types, interaction model, key types
 - [DRAW.md](DRAW.md) — Freehand drawing canvas: `.draw` format, tool set, shape types, interaction
+- [CONTENT_TREE.md](CONTENT_TREE.md) — Content Tree view: nested outline parsing, collapsible subtrees, jump-to-section editor navigation
 
 ## Features
 
@@ -39,6 +40,7 @@ docs/
 ├── GRAPH_VIEW.md         Force-directed graph
 ├── CANVAS.md             Obsidian-compatible canvas
 ├── DRAW.md               Freehand drawing
+├── CONTENT_TREE.md       Content tree outline
 ├── ENCRYPTION.md         Zero-knowledge encryption
 ├── THEME_SYSTEM.md       Theme and color system
 ├── COMMAND_PALETTE.md    Command palette + Action trait

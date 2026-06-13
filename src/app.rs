@@ -197,6 +197,7 @@ pub enum ViewMode {
     Draw,
     Canvas,
     Backup,
+    ContentTree,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -208,6 +209,7 @@ pub enum HelpTab {
     Canvas,
     Backup,
     Templates,
+    ContentTree,
     About,
 }
 
@@ -221,7 +223,8 @@ impl HelpTab {
             HelpTab::Canvas => HelpTab::Draw,
             HelpTab::Backup => HelpTab::Canvas,
             HelpTab::Templates => HelpTab::Backup,
-            HelpTab::About => HelpTab::Templates,
+            HelpTab::ContentTree => HelpTab::Templates,
+            HelpTab::About => HelpTab::ContentTree,
         }
     }
 
@@ -233,7 +236,8 @@ impl HelpTab {
             HelpTab::Draw => HelpTab::Canvas,
             HelpTab::Canvas => HelpTab::Backup,
             HelpTab::Backup => HelpTab::Templates,
-            HelpTab::Templates => HelpTab::About,
+            HelpTab::Templates => HelpTab::ContentTree,
+            HelpTab::ContentTree => HelpTab::About,
             HelpTab::About => HelpTab::Notes,
         }
     }
@@ -247,6 +251,7 @@ impl HelpTab {
             HelpTab::Canvas => "Pinstar",
             HelpTab::Backup => "Backup",
             HelpTab::Templates => "Templates",
+            HelpTab::ContentTree => "Content Tree",
             HelpTab::About => "About",
         }
     }
@@ -260,12 +265,13 @@ impl HelpTab {
             4 => HelpTab::Canvas,
             5 => HelpTab::Backup,
             6 => HelpTab::Templates,
+            7 => HelpTab::ContentTree,
             _ => HelpTab::About,
         }
     }
 
     pub fn count() -> usize {
-        8
+        9
     }
 }
 
@@ -2506,6 +2512,11 @@ template = """
         self.mode = ViewMode::Graph;
     }
 
+    pub fn open_content_tree_view(&mut self) {
+        self.return_mode = Some(self.mode);
+        self.mode = ViewMode::ContentTree;
+    }
+
     pub fn open_backup_view(&mut self) {
         self.return_mode = Some(self.mode);
         self.mode = ViewMode::Backup;
@@ -2588,6 +2599,7 @@ template = """
             ViewMode::Draw => Cow::Borrowed(DRAW_HELP_HINTS),
             ViewMode::Canvas => Cow::Borrowed(CANVAS_HELP_HINTS),
             ViewMode::Backup => Cow::Borrowed(BACKUP_HELP_HINTS),
+            ViewMode::ContentTree => Cow::Borrowed(crate::constants::CONTENT_TREE_HELP_HINTS),
         }
     }
 

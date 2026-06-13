@@ -6,6 +6,7 @@ pub(crate) mod backup;
 pub(crate) mod cli;
 mod config;
 pub(crate) mod constants;
+pub(crate) mod content_tree;
 pub(crate) mod draw;
 pub(crate) mod editor;
 pub(crate) mod frontmatter;
@@ -652,6 +653,43 @@ fn run_app(
             terminal.clear()?;
             continue;
         }
+        if app.mode == ViewMode::ContentTree {
+            let note_id = app.get_selected_note_id();
+            match crate::content_tree::app::run_content_tree_view(
+                terminal,
+                app.storage.clone(),
+                note_id,
+                &app.keybinds,
+                app.app_theme.clone(),
+            ) {
+                Ok(crate::content_tree::app::ContentTreeResult::Back) => {
+                    app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
+                    app.reload_theme();
+                    app.needs_full_redraw = true;
+                    terminal.clear()?;
+                }
+                Ok(crate::content_tree::app::ContentTreeResult::JumpToLine { note_id, line }) => {
+                    app.reload_theme();
+                    app.open_note_at_line(&note_id, Some(line)); // sets mode = Edit
+                    app.needs_full_redraw = true;
+                    terminal.clear()?;
+                }
+                Ok(crate::content_tree::app::ContentTreeResult::HelpRequested) => {
+                    app.reload_theme();
+                    app.return_mode = Some(ViewMode::ContentTree);
+                    app.open_help_page_with_tab(crate::app::HelpTab::ContentTree);
+                    app.needs_full_redraw = true;
+                    terminal.clear()?;
+                }
+                Err(_) => {
+                    app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
+                    app.reload_theme();
+                    app.needs_full_redraw = true;
+                    terminal.clear()?;
+                }
+            }
+            continue;
+        }
 
         if app.mode == ViewMode::Draw {
             let note_id = app.get_selected_note_id();
@@ -739,6 +777,7 @@ fn run_app(
                     ViewMode::Draw => {}
                     ViewMode::Canvas => {}
                     ViewMode::Backup => {}
+                    ViewMode::ContentTree => {}
                 },
                 Event::Mouse(mouse_event) if app.mode == ViewMode::List => {
                     let size = terminal.size().context("failed to get terminal size")?;
