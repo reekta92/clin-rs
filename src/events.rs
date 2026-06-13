@@ -28,7 +28,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     }
 
     if let Some(mut popup) = app.popups.note_create.take() {
-        if app.keybinds.matches_list(ListAction::Cancel, &key) {
+        if key.code == KeyCode::Esc {
             app.popups.note_create = None;
         } else if app.keybinds.matches_list(ListAction::Confirm, &key) {
             app.popups.note_create = Some(popup);
@@ -43,7 +43,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     }
 
     if let Some(mut popup) = app.popups.draw_create.take() {
-        if app.keybinds.matches_list(ListAction::Cancel, &key) {
+        if key.code == KeyCode::Esc {
             app.popups.draw_create = None;
         } else if app.keybinds.matches_list(ListAction::Confirm, &key) {
             app.popups.draw_create = Some(popup);
@@ -58,7 +58,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     }
 
     if let Some(mut popup) = app.popups.canvas_create.take() {
-        if app.keybinds.matches_list(ListAction::Cancel, &key) {
+        if key.code == KeyCode::Esc {
             app.popups.canvas_create = None;
         } else if app.keybinds.matches_list(ListAction::Confirm, &key) {
             app.popups.canvas_create = Some(popup);
@@ -72,8 +72,24 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
+    if let Some(mut popup) = app.popups.import.take() {
+        if key.code == KeyCode::Esc {
+            app.popups.import = None;
+        } else if app.keybinds.matches_list(ListAction::Confirm, &key) {
+            app.popups.import = Some(popup);
+            app.confirm_import();
+        } else {
+            if !apply_text_shortcuts(&app.keybinds, &mut popup.input, key) {
+                popup.input.input(Input::from(key));
+            }
+            app.popups.import = Some(popup);
+        }
+        return false;
+    }
+
+
     if let Some(mut popup) = app.popups.folder.take() {
-        if app.keybinds.matches_list(ListAction::Cancel, &key) {
+        if key.code == KeyCode::Esc {
             app.popups.folder = None;
         } else if app.keybinds.matches_list(ListAction::Confirm, &key) {
             app.popups.folder = Some(popup);
@@ -1354,6 +1370,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         || app.popups.note_create.is_some()
         || app.popups.draw_create.is_some()
         || app.popups.canvas_create.is_some()
+        || app.popups.import.is_some()
         || app.command_palette.is_some()
         || app.popups.theme.is_some()
     {

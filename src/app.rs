@@ -20,7 +20,7 @@ use std::time::Instant;
 use crate::keybinds::Keybinds;
 use crate::storage::{Note, NoteSummary, Storage};
 use crate::templates::Template;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
@@ -2685,6 +2685,152 @@ template = """
             self.start_new_note_with_title(popup.folder, title);
         }
     }
+    pub fn begin_import(
+        &mut self,
+        source: ImportSource,
+        target: ImportTarget,
+        folder: String,
+        note_id: Option<String>,
+    ) {
+        if target == ImportTarget::NewNote && Self::is_virtual_pinned_path(&folder) {
+            self.set_temporary_status_static("Cannot create note inside virtual Pinned");
+            return;
+        }
+
+        let prompt = match source {
+            ImportSource::File => "File path - Esc cancel, Enter import",
+            ImportSource::Csv => "CSV/TSV file path - Esc cancel, Enter import",
+            ImportSource::Json => "JSON file path - Esc cancel, Enter import",
+            ImportSource::Url => "URL - Esc cancel, Enter import",
+            ImportSource::Clipboard => "Clipboard - Esc cancel, Enter import",
+        };
+
+        let mut input = TextArea::default();
+        input.set_cursor_line_style(ratatui::style::Style::default());
+        input.set_style(self.app_theme.bg_style());
+        input.set_block(
+            ratatui::widgets::Block::default()
+                .style(self.app_theme.bg_style())
+                .borders(ratatui::widgets::Borders::ALL)
+                .title(prompt),
+        );
+
+        self.popups.import = Some(ImportPopup {
+            source,
+            target,
+            folder,
+            note_id,
+            input,
+        });
+    }
+
+    pub fn confirm_import(&mut self) {
+        let Some(popup) = self.popups.import.take() else {
+            return;
+        };
+        let input = popup.input.lines().join("").trim().to_string();
+        if input.is_empty() {
+            self.set_temporary_status_static("No path/URL entered");
+            return;
+        }
+
+        use crate::actions::import::*;
+        let result = match popup.source {
+            ImportSource::File => convert_file(&input),
+            ImportSource::Csv => convert_csv(&input),
+            ImportSource::Json => convert_json(&input),
+            ImportSource::Url => convert_url(&input),
+            ImportSource::Clipboard => unreachable!(),
+        };
+
+        match result {
+            Ok((title, md)) => {
+                if let Err(e) =
+                    self.insert_content(popup.target, popup.note_id.as_deref(), title, md)
+                {
+                    self.set_temporary_status(&format!("Import failed: {e:#}"));
+                }
+            }
+            Err(e) => {
+                self.set_temporary_status(&format!("Import failed: {e:#}"));
+            }
+        }
+    }
+
+    pub fn insert_content(
+        &mut self,
+        target: ImportTarget,
+        note_id: Option<&str>,
+        title: String,
+        content: String,
+    ) -> Result<()> {
+        match target {
+            ImportTarget::NewNote => {
+                let folder = self.get_current_folder_context();
+                self.start_note_with_content(folder, title, content);
+            }
+            ImportTarget::AppendCurrent => {
+                let id = note_id.context("No note selected")?;
+                let mut note = self.storage.load_note(id)?;
+                note.content.push_str("\n\n");
+                note.content.push_str(&content);
+                note.updated_at = now_unix_secs();
+                self.storage.save_note(id, &note)?;
+                self.try_auto_backup(&note.title)?;
+                self.refresh_notes()?;
+                self.set_temporary_status_static("Content appended");
+            }
+        }
+        Ok(())
+    }
+
+    pub fn start_note_with_content(&mut self, folder: String, title: String, content: String) {
+        if Self::is_virtual_pinned_path(&folder) {
+            self.set_temporary_status_static("Cannot create note inside virtual Pinned");
+            return;
+        }
+
+        let mut new_id = self.storage.new_note_id();
+        if !folder.is_empty() {
+            new_id = format!("{}/{}", folder, new_id);
+        }
+
+        if self.editor.external_editor_enabled {
+            let note = Note {
+                title,
+                content,
+                updated_at: now_unix_secs(),
+                tags: vec![],
+            };
+            if self.storage.save_note(&new_id, &note).is_ok() {
+                if let Err(e) = self.try_auto_backup(&note.title) {
+                    self.set_temporary_status(&format!("Backup failed: {e}"));
+                }
+                if let Err(e) = self.refresh_notes() {
+                    self.set_temporary_status(&format!("Refresh failed: {e}"));
+                }
+                self.open_note_in_external_editor(&new_id, None);
+            }
+            return;
+        }
+
+        self.mode = ViewMode::Edit;
+        self.editor.editing_id = Some(new_id);
+        self.editor.title_editor = make_title_editor(
+            &title,
+            self.app_theme.highlight_fg,
+            self.app_theme.highlight_bg,
+        );
+        self.editor.editor = text_area_from_content(&content);
+        self.editor.editor.set_cursor_style(
+            Style::default()
+                .fg(self.app_theme.highlight_fg)
+                .bg(self.app_theme.highlight_bg),
+        );
+        self.editor.editor.set_cursor_line_style(Style::default());
+        self.set_default_status();
+    }
+
 
     pub fn begin_create_draw(&mut self) {
         let folder = if self.list.notes_layout == crate::config::NotesLayout::Grid {

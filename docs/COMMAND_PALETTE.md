@@ -75,7 +75,18 @@ pub static ACTION_INFOS: Lazy<Vec<ActionInfo>> = Lazy::new(|| {
 | `draw.create` | New Draw | Create a new drawing file and open it |
 | `canvas.create` | New Canvas | Create a new Obsidian-compatible canvas |
 | `ocr.paste` | OCR Paste | OCR clipboard image into the current note |
+| `insert.file_new` | Insert File as Note | Convert a file (PDF, DOCX, HTML…) to markdown and create a note |
+| `insert.file_append` | Append File to Note | Convert a file (PDF, DOCX, HTML…) to markdown and append to current note |
+| `insert.csv_new` | Insert CSV as Note | Convert a CSV/TSV file to a markdown table and create a note |
+| `insert.csv_append` | Append CSV to Note | Convert a CSV/TSV file to a markdown table and append to current note |
+| `insert.json_new` | Insert JSON as Note | Convert a JSON file to markdown (table or code block) and create a note |
+| `insert.json_append` | Append JSON to Note | Convert a JSON file to markdown (table or code block) and append to current note |
+| `insert.url_new` | Insert URL as Note | Fetch a URL, convert to markdown, and create a note |
+| `insert.url_append` | Append URL to Note | Fetch a URL, convert to markdown, and append to current note |
+| `insert.clipboard_new` | Insert Clipboard as Note | Create a new note from clipboard text |
+| `insert.clipboard_append` | Append Clipboard to Note | Append clipboard text to the current note |
 
+**Note:** `insert.file_*` and `insert.url_*` require `markitdown` (pip install markitdown) or `pandoc` installed. `insert.url_*` also requires `curl`. CSV and JSON conversions are pure-Rust and always available.
 ---
 
 ## Execution

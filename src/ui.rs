@@ -2219,6 +2219,32 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         frame.render_widget(&popup.input, content);
     }
 
+    if let Some(popup) = &mut app.popups.import {
+        let title = match popup.source {
+            crate::popups::ImportSource::File => "IMPORT FILE",
+            crate::popups::ImportSource::Csv => "IMPORT CSV/TSV",
+            crate::popups::ImportSource::Json => "IMPORT JSON",
+            crate::popups::ImportSource::Url => "IMPORT URL",
+            crate::popups::ImportSource::Clipboard => "IMPORT CLIPBOARD",
+        };
+        let content = draw_popup_frame(
+            frame,
+            area,
+            title,
+            60,
+            20,
+            "Enter import · Esc cancel",
+            &app.app_theme,
+        );
+        popup.input.set_block(
+            Block::default()
+                .style(app.app_theme.bg_style())
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(app.app_theme.muted)),
+        );
+        frame.render_widget(&popup.input, content);
+    }
+
     if let Some(popup) = &mut app.popups.search {
         let content = draw_popup_frame(
             frame,

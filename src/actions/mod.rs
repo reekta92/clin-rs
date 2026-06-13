@@ -8,6 +8,8 @@ pub mod layout;
 pub mod ocr;
 pub mod pinstar;
 pub mod theme;
+pub mod import;
+
 
 use crate::app::App;
 use anyhow::Result;
@@ -39,6 +41,16 @@ pub static ACTIONS: Lazy<Vec<Box<dyn Action>>> = Lazy::new(|| {
         Box::new(ocr::OcrPasteAction),
         Box::new(theme::SwitchThemeAction),
         Box::new(layout::ToggleLayoutAction),
+        Box::new(import::ImportAction { source: crate::popups::ImportSource::File,       target: crate::popups::ImportTarget::NewNote }),
+        Box::new(import::ImportAction { source: crate::popups::ImportSource::File,       target: crate::popups::ImportTarget::AppendCurrent }),
+        Box::new(import::ImportAction { source: crate::popups::ImportSource::Csv,        target: crate::popups::ImportTarget::NewNote }),
+        Box::new(import::ImportAction { source: crate::popups::ImportSource::Csv,        target: crate::popups::ImportTarget::AppendCurrent }),
+        Box::new(import::ImportAction { source: crate::popups::ImportSource::Json,       target: crate::popups::ImportTarget::NewNote }),
+        Box::new(import::ImportAction { source: crate::popups::ImportSource::Json,       target: crate::popups::ImportTarget::AppendCurrent }),
+        Box::new(import::ImportAction { source: crate::popups::ImportSource::Url,        target: crate::popups::ImportTarget::NewNote }),
+        Box::new(import::ImportAction { source: crate::popups::ImportSource::Url,        target: crate::popups::ImportTarget::AppendCurrent }),
+        Box::new(import::ImportAction { source: crate::popups::ImportSource::Clipboard,  target: crate::popups::ImportTarget::NewNote }),
+        Box::new(import::ImportAction { source: crate::popups::ImportSource::Clipboard,  target: crate::popups::ImportTarget::AppendCurrent }),
     ]
 });
 

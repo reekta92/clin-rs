@@ -116,6 +116,29 @@ pub struct NoteCreatePopup {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ImportSource {
+    File,
+    Csv,
+    Json,
+    Url,
+    Clipboard,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ImportTarget {
+    NewNote,
+    AppendCurrent,
+}
+
+pub struct ImportPopup {
+    pub source: ImportSource,
+    pub target: ImportTarget,
+    pub folder: String,
+    pub note_id: Option<String>,
+    pub input: TextArea<'static>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SearchFocus {
     Input,
     Results,
@@ -156,6 +179,7 @@ pub struct PopupManager {
     pub note_create: Option<NoteCreatePopup>,
     pub draw_create: Option<NoteCreatePopup>,
     pub canvas_create: Option<NoteCreatePopup>,
+    pub import: Option<ImportPopup>,
 
     pub search: Option<SearchPopup>,
     pub context_menu: Option<ContextMenu>,
