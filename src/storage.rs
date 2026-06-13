@@ -197,7 +197,7 @@ impl Storage {
 
         #[cfg(not(unix))]
         {
-            crate::fsutil::atomic_write(&key_path, self.key)
+            crate::fsutil::atomic_write(&key_path, &self.key)
                 .context("failed to write encryption key")?;
         }
 
@@ -686,6 +686,15 @@ impl Storage {
         Ok(())
     }
 
+    #[cfg(any(
+        target_os = "windows",
+        all(
+            unix,
+            not(target_os = "macos"),
+            not(target_os = "ios"),
+            not(target_os = "android")
+        )
+    ))]
     pub fn list_trash(&self) -> Result<Vec<trash::TrashItem>> {
         let items =
             trash::os_limited::list().map_err(|e| anyhow::anyhow!("failed to list trash: {e}"))?;
@@ -696,15 +705,72 @@ impl Storage {
         Ok(vault_items)
     }
 
+    #[cfg(not(any(
+        target_os = "windows",
+        all(
+            unix,
+            not(target_os = "macos"),
+            not(target_os = "ios"),
+            not(target_os = "android")
+        )
+    )))]
+    pub fn list_trash(&self) -> Result<Vec<trash::TrashItem>> {
+        anyhow::bail!("Trash management is not supported on this platform")
+    }
+
+    #[cfg(any(
+        target_os = "windows",
+        all(
+            unix,
+            not(target_os = "macos"),
+            not(target_os = "ios"),
+            not(target_os = "android")
+        )
+    ))]
     pub fn restore_trash_items(&self, items: Vec<trash::TrashItem>) -> Result<()> {
         trash::os_limited::restore_all(items)
             .map_err(|e| anyhow::anyhow!("failed to restore: {e}"))?;
         Ok(())
     }
 
+    #[cfg(not(any(
+        target_os = "windows",
+        all(
+            unix,
+            not(target_os = "macos"),
+            not(target_os = "ios"),
+            not(target_os = "android")
+        )
+    )))]
+    pub fn restore_trash_items(&self, _items: Vec<trash::TrashItem>) -> Result<()> {
+        anyhow::bail!("Trash management is not supported on this platform")
+    }
+
+    #[cfg(any(
+        target_os = "windows",
+        all(
+            unix,
+            not(target_os = "macos"),
+            not(target_os = "ios"),
+            not(target_os = "android")
+        )
+    ))]
     pub fn purge_trash_items(&self, items: Vec<trash::TrashItem>) -> Result<()> {
         trash::os_limited::purge_all(items).map_err(|e| anyhow::anyhow!("failed to purge: {e}"))?;
         Ok(())
+    }
+
+    #[cfg(not(any(
+        target_os = "windows",
+        all(
+            unix,
+            not(target_os = "macos"),
+            not(target_os = "ios"),
+            not(target_os = "android")
+        )
+    )))]
+    pub fn purge_trash_items(&self, _items: Vec<trash::TrashItem>) -> Result<()> {
+        anyhow::bail!("Trash management is not supported on this platform")
     }
 
     pub fn toggle_pin(&self, id: &str) -> Result<bool> {
