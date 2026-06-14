@@ -1,9 +1,5 @@
 # Roadmap
 
-Tracking planned features and improvements for clin.
-
-✅ = Completed | 🚧 = In Progress | ⬜ = Planned
-
 ## Completed
 
 - [X] **Theme system** — 11 built-in themes, backgrounds, per-color overrides, theme switcher
@@ -22,14 +18,21 @@ Tracking planned features and improvements for clin.
 - [X] **Sorting & pinning** — sort by title/modified, pin notes to top
 - [X] **Custom keybinds** — fully rebindable via keybinds.toml
 - [X] **Graph view full integration (graf)** — `graf` is no longer external; physics, minimap, legend, search, config
+- [X] **Tree outline** — note hierarchy from headers
+- [X] **Text search** — search note content via `grep`/`ripgrep`
+- [X] **Batch tagging** — tag multiple notes at once
+- [X] **Link objects** — connect objects with lines
+- [X] **Grouping** — merge objects into groups
+- [X] **PDF import/export** — convert PDFs to/from markdown
+- [X] **CSV to markdown** — import CSV tables
+- [X] **URL import** — fetch article content as formatted markdown
+- [X] **Git integration** — vault versioning and backup
 
 ## Planned
 
 #### Notes View
-- [ ] **Text search** — search note content via `grep`/`ripgrep`
 - [ ] **Smart folders** — auto-move tagged notes to specific folders
 - [ ] **Word & character metrics** — writing statistics and goals
-- [ ] **Batch tagging** — tag multiple notes at once
 
 #### Editor
 - [ ] **Rework as side panel** — replace editor view with a feature-rich side panel
@@ -42,26 +45,18 @@ Tracking planned features and improvements for clin.
 - [ ] **Right-click menu** — context actions on nodes
 
 #### Canvas
-- [ ] **Link objects** — connect objects with lines
-- [ ] **Grouping** — merge objects into groups
 - [ ] **Insert note links** — embed note references as objects
 
 #### Command Palette
-- [ ] **PDF import/export** — convert PDFs to/from markdown
-- [ ] **CSV to markdown** — import CSV tables
-- [ ] **URL import** — fetch article content as formatted markdown
 - [ ] **Sub-notes** — virtual encrypted notes attached to physical notes
 - [ ] **Merge/split notes** — combine or divide notes
 - [ ] **Advanced clipboard** — multi-selection copy/paste
-- [ ] **Dynamic variables** — insert realtime values
 - [ ] **Word frequency** — show most used words
-- [ ] **Git integration** — vault versioning and backup
 
 #### Configuration
 - [ ] **Status line customization** — `status_format = "{title} | {word_count} words"`
 - [ ] **Plugin support** — Lua scripting
 
 #### Other
-- [ ] **Tree outline** — note hierarchy from headers
 - [ ] **Calendar/time tools** — date calculator, timezone converter
 - [ ] **AOD pinning** — overlay note on screen
