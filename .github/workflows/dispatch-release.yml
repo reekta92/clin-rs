@@ -100,7 +100,7 @@ jobs:
           fi
 
       - name: Generate changelog
-        run: git cliff --tag "v${{ steps.bump.outputs.new_version }}" -o CHANGELOG.md
+        run: git cliff --tag "v${{ steps.bump.outputs.new_version }}" --latest -o CHANGELOG.md
 
       - name: Commit, tag, push
         run: |
@@ -263,6 +263,8 @@ jobs:
   aur:
     needs: [prepare, linux-packages, linux-x86_64]
     runs-on: ubuntu-latest
+    env:
+      AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -295,14 +297,14 @@ jobs:
           sed -i "s/^sha256sums=.*/sha256sums=(\"$SHA\")/" PKGBUILD
           sed -i "s|^source=.*|source=(\"${{ github.server_url }}/${{ github.repository }}/releases/download/v\${pkgver}/$TARBALL_NAME\")|" PKGBUILD
       - name: Publish to AUR
-        if: ${{ secrets.AUR_SSH_PRIVATE_KEY != '' }}
+        if: ${{ env.AUR_SSH_PRIVATE_KEY != '' }}
         uses: KSXGitHub/github-actions-deploy-aur@v3.0.1
         with:
           pkgname: clin-rs-bin
           pkgbuild: ./PKGBUILD
           commit_username: "reekta92"
           commit_email: "mdag.92988@protonmail.com"
-          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          ssh_private_key: ${{ env.AUR_SSH_PRIVATE_KEY }}
           commit_message: "Update to ${{ needs.prepare.outputs.new_version }}"
 
   # ────────────────────────────────────────────
@@ -311,6 +313,8 @@ jobs:
   crates-io:
     needs: prepare
     runs-on: ubuntu-latest
+    env:
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -321,8 +325,6 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
       - name: Publish
         if: ${{ env.CARGO_REGISTRY_TOKEN != '' }}
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: cargo publish --locked
 
   # ────────────────────────────────────────────
