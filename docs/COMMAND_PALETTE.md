@@ -7,7 +7,6 @@ Technical docs for the command palette and Action trait — an extensible action
 ## Overview
 
 The command palette provides a searchable list of actions. Users can invoke any registered action without navigating menus. The palette is modeless — it opens over any view and closes after executing or canceling.
-
 **Source:** `src/actions/mod.rs` (Action trait + registry), `src/palette.rs` (popup widget)
 
 ---
@@ -19,6 +18,12 @@ pub trait Action: Send + Sync {
     fn id(&self) -> Cow<'static, str>;
     fn name(&self) -> Cow<'static, str>;
     fn description(&self) -> Cow<'static, str>;
+    fn category(&self) -> ActionCategory {
+        ActionCategory::General
+    }
+    fn glyph(&self) -> &'static str {
+        ""
+    }
     fn execute(&self, app: &mut App, context_note_id: Option<&str>) -> Result<()>;
 }
 ```
@@ -28,6 +33,7 @@ pub trait Action: Send + Sync {
 | `id()` | Unique identifier string (e.g. `"note.encrypt"`) |
 | `name()` | Human-readable name for the palette |
 | `description()` | Short help text shown in palette |
+| `category()` | Grouping (Notes, Import, Append, Views, Settings) |
 | `execute()` | Perform the action, mutating `App` state |
 
 ---
@@ -58,6 +64,8 @@ pub static ACTION_INFOS: Lazy<Vec<ActionInfo>> = Lazy::new(|| {
         id: a.id().into_owned(),
         name: a.name().into_owned(),
         description: a.description().into_owned(),
+        category: a.category(),
+        glyph: a.glyph().to_string(),
     }).collect()
 });
 ```
@@ -66,26 +74,29 @@ pub static ACTION_INFOS: Lazy<Vec<ActionInfo>> = Lazy::new(|| {
 
 ## Available Actions
 
-| ID | Name | Description |
-|---|---|---|
-| `note.encrypt` | Encrypt Note | Encrypt the selected note (.md → .clin) |
-| `note.decrypt` | Decrypt Note | Decrypt the selected note (.clin → .md) |
-| `graph.open` | Open Graph | Switch to the force-directed graph view |
-| `content_tree.open` | Content Tree | Show the selected note's headers and content as a navigable tree |
-| `draw.create` | New Draw | Create a new drawing file and open it |
-| `canvas.create` | New Canvas | Create a new Obsidian-compatible canvas |
-| `ocr.paste` | OCR Paste | OCR clipboard image into the current note |
-| `insert.file_new` | Insert File as Note | Convert a file (PDF, DOCX, HTML…) to markdown and create a note |
-| `insert.file_append` | Append File to Note | Convert a file (PDF, DOCX, HTML…) to markdown and append to current note |
-| `insert.csv_new` | Insert CSV as Note | Convert a CSV/TSV file to a markdown table and create a note |
-| `insert.csv_append` | Append CSV to Note | Convert a CSV/TSV file to a markdown table and append to current note |
-| `insert.json_new` | Insert JSON as Note | Convert a JSON file to markdown (table or code block) and create a note |
-| `insert.json_append` | Append JSON to Note | Convert a JSON file to markdown (table or code block) and append to current note |
-| `insert.url_new` | Insert URL as Note | Fetch a URL, convert to markdown, and create a note |
-| `insert.url_append` | Append URL to Note | Fetch a URL, convert to markdown, and append to current note |
-| `insert.clipboard_new` | Insert Clipboard as Note | Create a new note from clipboard text |
-| `insert.clipboard_append` | Append Clipboard to Note | Append clipboard text to the current note |
-
+| ID | Name | Description | Category | Glyph |
+|---|---|---|---|---|
+| `note.encrypt` | Encrypt Note | Encrypt the selected note (.md → .clin) | Notes | `\u{f023}` |
+| `note.decrypt` | Decrypt Note | Decrypt the selected note (.clin → .md) | Notes | `\u{f3c1}` |
+| `content_tree.open` | Content Tree | Headers and content tree | Notes | `\u{f1bb}` |
+| `graph.open` | Open Graph | Switch to graph view | Views | `\u{f0e8}` |
+| `draw.create` | New Draw | Create a new drawing | Views | `\u{f1fc}` |
+| `canvas.create` | New Canvas | Create a canvas map | Views | `\u{f005}` |
+| `backup.open` | Open Backup | View backup dashboard | Views | `\u{f1d3}` |
+| `ocr.paste` | OCR Paste | OCR clipboard image | Append | `\u{f03e}` |
+| `switch_theme` | Switch Theme | Cycle themes | Settings | `\u{f042}` |
+| `toggle_notes_layout` | Toggle Layout | Tree/Grid layout | Settings | `\u{f0c9}` |
+| `external_editor.toggle`| Toggle Editor | Use $EDITOR | Settings | `\u{f120}` |
+| `insert.file_new` | Import File | Convert file as note | Import | `\u{f15b}` |
+| `insert.file_append` | Append File | Convert file to note | Append | `\u{f15b}` |
+| `insert.csv_new` | Import CSV | Convert CSV as note | Import | `\u{f0ce}` |
+| `insert.csv_append` | Append CSV | Convert CSV to note | Append | `\u{f0ce}` |
+| `insert.json_new` | Import JSON | Convert JSON as note | Import | `\u{f121}` |
+| `insert.json_append` | Append JSON | Convert JSON to note | Append | `\u{f121}` |
+| `insert.url_new` | Import URL | Convert URL as note | Import | `\u{f0ac}` |
+| `insert.url_append` | Append URL | Convert URL to note | Append | `\u{f0ac}` |
+| `insert.clipboard_new` | Import Clipboard | Clipboard as note | Import | `\u{f0ea}` |
+| `insert.clipboard_append`| Append Clipboard | Clipboard to note | Append | `\u{f0ea}` |
 **Note:** `insert.file_*` and `insert.url_*` require `markitdown` (pip install markitdown) or `pandoc` installed. `insert.url_*` also requires `curl`. CSV and JSON conversions are pure-Rust and always available.
 ---
 
@@ -101,8 +112,6 @@ pub fn execute_action(
         if action.id() == action_id {
             return action.execute(app, context_note_id);
         }
-    }
-    anyhow::bail!("Action not found: {}", action_id)
 }
 ```
 
@@ -115,19 +124,19 @@ The context note ID is the currently selected note (from `App::list.visual_index
 The command palette is rendered by `CommandPalette` widget in `src/palette.rs`:
 
 ```
-┌─────────────────────────────────────┐
-│  > search_query                     │
-├─────────────────────────────────────┤
-│  Encrypt Note            Encrypt.. │
-│  Decrypt Note            Decrypt.. │
-│  Open Graph              Switch..  │
-│  New Draw                Create..  │
-│  New Canvas              Create..  │
-│  OCR Paste               OCR cl..  │
-│  Switch Theme            Open th.. │
-└─────────────────────────────────────┘
+┌───────────────────────────────────────────────┐
+│  > search_query                               │
+├───────────────────────────────────────────────┤
+│      All · Notes · Import · Append · Views · Settings  │
+├───────────────────────────────────────────────┤
+│   Encrypt Note               Encrypt..       │
+│   Decrypt Note               Decrypt..       │
+│   Content Tree               Headers..       │
+│   Open Graph View            Switch..        │
+│  🎨 Create Drawing             Create..        │
+│  ⭐ Create Canvas Map          Create..        │
+└───────────────────────────────────────────────┘
 ```
-
 ### Search Behavior
 
 - Real-time filtering by action `name` and `description`
@@ -140,6 +149,8 @@ The command palette is rendered by `CommandPalette` widget in `src/palette.rs`:
 | Key | Action |
 |---|---|
 | Type | Filter results |
+| `Tab` | Next category |
+| `Shift+Tab` | Previous category |
 | `Up` / `Down` | Navigate list |
 | `Enter` | Execute selected action |
 | `Esc` | Close palette (cancel) |
@@ -169,7 +180,7 @@ The palette is modeless-modal: it's rendered as a centered popup over the curren
 1. Create a new file in `src/actions/` (e.g., `src/actions/my_action.rs`)
 2. Implement the `Action` trait:
    ```rust
-   use super::Action;
+   use super::{Action, ActionCategory};
    use crate::app::App;
    use anyhow::Result;
    use std::borrow::Cow;
@@ -186,12 +197,20 @@ The palette is modeless-modal: it's rendered as a centered popup over the curren
        fn description(&self) -> Cow<'static, str> {
            Cow::Borrowed("Description of what it does")
        }
+       fn category(&self) -> ActionCategory {
+           ActionCategory::General
+       }
+       fn glyph(&self) -> &'static str {
+           "\u{f059}" // question-circle
+       }
        fn execute(&self, app: &mut App, context_note_id: Option<&str>) -> Result<()> {
            // your logic here
            Ok(())
        }
    }
    ```
+
+**Note:** Glyphs use Nerd Font icons. The terminal must use a Nerd Font for these to render correctly.
 3. Register in `src/actions/mod.rs`:
    - Add `pub mod my_action;`
    - Add `Box::new(my_action::MyAction),` to the `ACTIONS` vec

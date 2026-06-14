@@ -17,6 +17,13 @@ impl Action for OpenContentTreeAction {
     fn description(&self) -> Cow<'static, str> {
         Cow::Borrowed("Show the selected note's headers and content as a navigable tree")
     }
+    fn category(&self) -> super::ActionCategory {
+        super::ActionCategory::Notes
+    }
+
+    fn glyph(&self) -> &'static str {
+        "\u{f1bb}"
+    }
 
     fn execute(&self, app: &mut App, _context_note_id: Option<&str>) -> Result<()> {
         if app.get_selected_note_id().is_none() {

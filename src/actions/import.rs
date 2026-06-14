@@ -47,7 +47,7 @@ impl Action for ImportAction {
             ImportSource::Clipboard => "Clipboard",
         };
         let action = match self.target {
-            ImportTarget::NewNote => "Insert",
+            ImportTarget::NewNote => "Import",
             ImportTarget::AppendCurrent => "Append",
         };
         let suffix = match self.target {
@@ -70,6 +70,22 @@ impl Action for ImportAction {
             ImportTarget::AppendCurrent => "append to the current note",
         };
         Cow::Owned(format!("Convert {} and {}", source_desc, target_desc))
+    }
+    fn category(&self) -> crate::actions::ActionCategory {
+        match self.target {
+            ImportTarget::NewNote => crate::actions::ActionCategory::Import,
+            ImportTarget::AppendCurrent => crate::actions::ActionCategory::Append,
+        }
+    }
+
+    fn glyph(&self) -> &'static str {
+        match self.source {
+            ImportSource::File => "\u{f15b}",
+            ImportSource::Csv => "\u{f0ce}",
+            ImportSource::Json => "\u{f121}",
+            ImportSource::Url => "\u{f0ac}",
+            ImportSource::Clipboard => "\u{f0ea}",
+        }
     }
 
     fn execute(&self, app: &mut App, context_note_id: Option<&str>) -> Result<()> {

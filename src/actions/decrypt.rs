@@ -17,6 +17,13 @@ impl Action for DecryptNoteAction {
     fn description(&self) -> Cow<'static, str> {
         Cow::Borrowed("Decrypt the selected note (.clin \u{2192} .md)")
     }
+    fn category(&self) -> super::ActionCategory {
+        super::ActionCategory::Notes
+    }
+
+    fn glyph(&self) -> &'static str {
+        "\u{f3c1}"
+    }
 
     fn execute(&self, app: &mut App, context_note_id: Option<&str>) -> Result<()> {
         let note_id = context_note_id

@@ -84,6 +84,13 @@ impl Action for OcrPasteAction {
     fn description(&self) -> Cow<'static, str> {
         Cow::Borrowed("Extract text from image in clipboard using Tesseract and append to note")
     }
+    fn category(&self) -> super::ActionCategory {
+        super::ActionCategory::Append
+    }
+
+    fn glyph(&self) -> &'static str {
+        "\u{f03e}"
+    }
 
     fn execute(&self, app: &mut App, context_note_id: Option<&str>) -> Result<()> {
         let note_id = context_note_id.context("No note selected for OCR Paste")?;

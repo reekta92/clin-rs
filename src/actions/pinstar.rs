@@ -17,6 +17,13 @@ impl Action for CreateCanvasAction {
     fn description(&self) -> Cow<'static, str> {
         Cow::Borrowed("Create a new .canvas map file (Obsidian-compatible)")
     }
+    fn category(&self) -> crate::actions::ActionCategory {
+        crate::actions::ActionCategory::Views
+    }
+
+    fn glyph(&self) -> &'static str {
+        "\u{f005}"
+    }
 
     fn execute(&self, app: &mut App, _context_note_id: Option<&str>) -> Result<()> {
         app.begin_create_canvas();

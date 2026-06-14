@@ -15,6 +15,13 @@ impl Action for OpenBackupAction {
     fn description(&self) -> Cow<'static, str> {
         Cow::Borrowed("View git backup status, commit history, and push to remote")
     }
+    fn category(&self) -> crate::actions::ActionCategory {
+        crate::actions::ActionCategory::Views
+    }
+
+    fn glyph(&self) -> &'static str {
+        "\u{f1d3}"
+    }
     fn execute(&self, app: &mut App, _context_note_id: Option<&str>) -> Result<()> {
         app.open_backup_view();
         Ok(())

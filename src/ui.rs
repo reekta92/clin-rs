@@ -2134,13 +2134,17 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             "COMMANDS",
             NOTES_POPUP_LARGE_W_PCT,
             NOTES_POPUP_LARGE_H_PCT,
-            "Enter run  ↑/↓ select  Esc close",
+            "Tab category · Enter run · ↑/↓ select · Esc close",
             &app.app_theme,
         );
 
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Length(3), Constraint::Min(0)])
+            .constraints([
+                Constraint::Length(3),  // search input
+                Constraint::Length(1),  // tab bar
+                Constraint::Min(0),     // results list
+            ])
             .split(content);
 
         palette.input.set_block(
@@ -2152,15 +2156,42 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         );
         frame.render_widget(&palette.input, chunks[0]);
 
+        let mut tab_spans: Vec<Span<'_>> = Vec::new();
+        for (i, (label, glyph, _)) in crate::palette::PALETTE_TABS.iter().enumerate() {
+            let style = if i == palette.active_tab {
+                Style::default()
+                    .fg(app.app_theme.accent)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(app.app_theme.muted)
+            };
+            if i > 0 {
+                tab_spans.push(Span::styled(
+                    " · ",
+                    Style::default().fg(app.app_theme.muted),
+                ));
+            }
+            tab_spans.push(Span::styled(format!(" {} {} ", glyph, label), style));
+        }
+        let tabs = Paragraph::new(Line::from(tab_spans))
+            .alignment(Alignment::Center)
+            .style(app.app_theme.hint_line_bg_style());
+        frame.render_widget(tabs, chunks[1]);
+
         let items: Vec<ListItem> = palette
             .items
             .iter()
             .map(|item| {
                 ListItem::new(vec![
-                    Line::from(Span::styled(
-                        &item.name,
-                        Style::default().add_modifier(Modifier::BOLD),
-                    )),
+                    Line::from(vec![
+                        Span::styled(
+                            format!("{} ", &item.glyph),
+                            Style::default()
+                                .fg(app.app_theme.accent)
+                                .add_modifier(Modifier::BOLD),
+                        ),
+                        Span::styled(&item.name, Style::default().add_modifier(Modifier::BOLD)),
+                    ]),
                     Line::from(Span::styled(
                         &item.description,
                         Style::default().fg(app.app_theme.muted),
@@ -2185,7 +2216,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             )
             .highlight_symbol("  ");
 
-        frame.render_stateful_widget(list, chunks[1], &mut palette.state);
+        frame.render_stateful_widget(list, chunks[2], &mut palette.state);
     }
 
     if let Some(popup) = &mut app.popups.note_rename {

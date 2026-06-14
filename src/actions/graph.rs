@@ -17,6 +17,13 @@ impl Action for OpenGraphAction {
     fn description(&self) -> Cow<'static, str> {
         Cow::Borrowed("Visualize note connections as a force-directed graph")
     }
+    fn category(&self) -> super::ActionCategory {
+        super::ActionCategory::Views
+    }
+
+    fn glyph(&self) -> &'static str {
+        "\u{f0e8}"
+    }
 
     fn execute(&self, app: &mut App, _context_note_id: Option<&str>) -> Result<()> {
         app.open_graph_view();

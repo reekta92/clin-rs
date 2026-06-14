@@ -17,6 +17,13 @@ impl Action for CreateDrawAction {
     fn description(&self) -> Cow<'static, str> {
         Cow::Borrowed("Create a new drawing file")
     }
+    fn category(&self) -> super::ActionCategory {
+        super::ActionCategory::Views
+    }
+
+    fn glyph(&self) -> &'static str {
+        "\u{f1fc}"
+    }
 
     fn execute(&self, app: &mut App, _context_note_id: Option<&str>) -> Result<()> {
         app.begin_create_draw();

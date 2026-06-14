@@ -3,10 +3,21 @@ use ratatui::widgets::ListState;
 use ratatui::widgets::{Block, Borders};
 use ratatui_textarea::TextArea;
 
+/// (label, glyph, category-to-filter). Tab 0 = All (no filter).
+pub const PALETTE_TABS: &[(&str, &str, Option<crate::actions::ActionCategory>)] = &[
+    ("All",      "\u{f0ca}", None),
+    ("Notes",    "\u{f15c}", Some(crate::actions::ActionCategory::Notes)),
+    ("Import",   "\u{f019}", Some(crate::actions::ActionCategory::Import)),
+    ("Append",   "\u{f067}", Some(crate::actions::ActionCategory::Append)),
+    ("Views",    "\u{f06e}", Some(crate::actions::ActionCategory::Views)),
+    ("Settings", "\u{f013}", Some(crate::actions::ActionCategory::Settings)),
+];
+
 pub struct PaletteItem {
     pub id: String,
     pub name: String,
     pub description: String,
+    pub glyph: String,
     pub score: i64,
 }
 
@@ -15,6 +26,7 @@ pub struct CommandPalette {
     pub items: Vec<PaletteItem>,
     pub state: ListState,
     pub context_note_id: Option<String>,
+    pub active_tab: usize,
 }
 
 impl CommandPalette {
@@ -35,6 +47,7 @@ impl CommandPalette {
             items: Vec::new(),
             state: ListState::default(),
             context_note_id,
+            active_tab: 0,
         };
         p.refresh_items();
         p
@@ -45,12 +58,18 @@ impl CommandPalette {
         let actions = crate::actions::get_cached_action_infos();
         let mut matched = Vec::with_capacity(actions.len());
 
+        let category_filter = PALETTE_TABS[self.active_tab].2;
+
         if query.is_empty() {
             for action in actions {
+                if category_filter.is_some_and(|cat| action.category != cat) {
+                    continue;
+                }
                 matched.push(PaletteItem {
                     id: action.id.clone(),
                     name: action.name.clone(),
                     description: action.description.clone(),
+                    glyph: action.glyph.clone(),
                     score: 0,
                 });
             }
@@ -59,11 +78,15 @@ impl CommandPalette {
             use fuzzy_matcher::skim::SkimMatcherV2;
             let matcher = SkimMatcherV2::default();
             for action in actions {
+                if category_filter.is_some_and(|cat| action.category != cat) {
+                    continue;
+                }
                 if let Some(score) = matcher.fuzzy_match(&action.name, query) {
                     matched.push(PaletteItem {
                         id: action.id.clone(),
                         name: action.name.clone(),
                         description: action.description.clone(),
+                        glyph: action.glyph.clone(),
                         score,
                     });
                 }
@@ -83,6 +106,18 @@ impl CommandPalette {
         use crossterm::event::KeyCode;
         match key.code {
             KeyCode::Esc => return true,
+            KeyCode::Tab => {
+                self.active_tab = (self.active_tab + 1) % PALETTE_TABS.len();
+                self.refresh_items();
+            }
+            KeyCode::BackTab => {
+                if self.active_tab == 0 {
+                    self.active_tab = PALETTE_TABS.len() - 1;
+                } else {
+                    self.active_tab -= 1;
+                }
+                self.refresh_items();
+            }
             KeyCode::Down => {
                 let i = match self.state.selected() {
                     Some(i) => {

@@ -17,6 +17,13 @@ impl Action for EncryptNoteAction {
     fn description(&self) -> Cow<'static, str> {
         Cow::Borrowed("Encrypt the selected note (.md \u{2192} .clin)")
     }
+    fn category(&self) -> super::ActionCategory {
+        super::ActionCategory::Notes
+    }
+
+    fn glyph(&self) -> &'static str {
+        "\u{f023}"
+    }
 
     fn execute(&self, app: &mut App, context_note_id: Option<&str>) -> Result<()> {
         let note_id = context_note_id

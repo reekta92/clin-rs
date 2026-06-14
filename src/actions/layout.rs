@@ -18,6 +18,13 @@ impl Action for ToggleLayoutAction {
     fn description(&self) -> Cow<'static, str> {
         Cow::Borrowed("Switch between Tree and Grid layout for the notes view")
     }
+    fn category(&self) -> crate::actions::ActionCategory {
+        crate::actions::ActionCategory::Settings
+    }
+
+    fn glyph(&self) -> &'static str {
+        "\u{f0c9}"
+    }
 
     fn execute(&self, app: &mut App, _context_note_id: Option<&str>) -> Result<()> {
         app.list.notes_layout = match app.list.notes_layout {

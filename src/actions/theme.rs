@@ -17,6 +17,13 @@ impl Action for SwitchThemeAction {
     fn description(&self) -> Cow<'static, str> {
         "Cycle through available color themes".into()
     }
+    fn category(&self) -> crate::actions::ActionCategory {
+        crate::actions::ActionCategory::Settings
+    }
+
+    fn glyph(&self) -> &'static str {
+        "\u{f042}"
+    }
 
     fn execute(&self, app: &mut App, _context: Option<&str>) -> Result<()> {
         app.begin_theme_selection();
