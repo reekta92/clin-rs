@@ -114,33 +114,9 @@ pub fn draw_dashboard(frame: &mut ratatui::Frame, state: &crate::backup::state::
 
 fn draw_header(frame: &mut Frame, area: Rect, state: &BackupState) {
     let theme = &state.theme;
-    let mut spans = Vec::new();
-
-    let sections = ["Status", "History"];
-    for (i, name) in sections.iter().enumerate() {
-        let is_active = (i == 0
-            && state.selected_section == crate::backup::state::BackupSection::Status)
-            || (i == 1 && state.selected_section == crate::backup::state::BackupSection::History);
-
-        if is_active {
-            spans.push(Span::styled(
-                format!(" {} ", name),
-                Style::default()
-                    .fg(theme.accent)
-                    .add_modifier(Modifier::BOLD),
-            ));
-        } else {
-            spans.push(Span::styled(
-                format!(" {} ", name),
-                Style::default().fg(theme.muted),
-            ));
-        }
-
-        if i < sections.len() - 1 {
-            spans.push(Span::styled(" · ", Style::default().fg(theme.muted)));
-        }
-    }
-
+    let tabs = [("Status", None), ("History", None)];
+    let active = if state.selected_section == crate::backup::state::BackupSection::History { 1 } else { 0 };
+    let spans = crate::ui::build_tab_spans(&tabs, active, theme);
     crate::ui::draw_view_title_bar_with_tabs(frame, area, "Backup", spans, theme);
 }
 

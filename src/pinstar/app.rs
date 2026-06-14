@@ -24,8 +24,7 @@ pub fn run_pinstar_view(
 ) -> anyhow::Result<PinstarResult> {
     let mut state = if let Some(id) = file_id {
         let path = storage.note_path(&id);
-        let s = PinstarState::load(&path)?;
-        s
+        PinstarState::load(&path)?
     } else {
         anyhow::bail!("No file ID provided for Pinstar view");
     };

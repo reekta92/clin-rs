@@ -201,6 +201,17 @@ pub fn handle_mouse(state: &mut BackupState, event: MouseEvent) -> InputResult {
         let y = event.row;
 
         if let Some(area) = state.last_area {
+            if y == area.y {
+                let tabs = [("Status", None), ("History", None)];
+                if let Some(i) = crate::ui::hit_test_tabs(&tabs, area.x, area.width, x) {
+                    state.selected_section = match i {
+                        1 => BackupSection::History,
+                        _ => BackupSection::Status,
+                    };
+                }
+                return InputResult::None;
+            }
+
             let list_width = (area.width as f32 * 0.4) as u16;
             if x >= area.x && x < area.x + list_width && y > area.y && y < area.y + area.height - 1
             {

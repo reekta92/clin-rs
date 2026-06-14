@@ -1,5 +1,5 @@
 use crate::app::{
-    App, ConfirmPopup, EditFocus, HelpTab, TemplatePopup, ThemePopup, ViewMode,
+    App, ConfirmPopup, EditFocus, TemplatePopup, ThemePopup, ViewMode,
 };
 use crate::app_theme::AppThemeColors;
 use crate::constants::*;
@@ -123,10 +123,10 @@ fn style_palette_name(name: &str, theme: &AppThemeColors) -> Vec<Span<'static>> 
             Span::styled(base.to_string(), Style::default().add_modifier(Modifier::BOLD)),
             Span::styled(state.to_string(), state_style),
         ]
-    } else if name.starts_with("Sort Order: ") {
+    } else if let Some(stripped) = name.strip_prefix("Sort Order: ") {
         vec![
             Span::styled("Sort Order: ".to_string(), Style::default().add_modifier(Modifier::BOLD)),
-            Span::styled(name[12..].to_string(), Style::default().fg(theme.heading).add_modifier(Modifier::BOLD)),
+            Span::styled(stripped.to_string(), Style::default().fg(theme.heading).add_modifier(Modifier::BOLD)),
         ]
     } else {
         vec![Span::styled(name.to_string(), Style::default().add_modifier(Modifier::BOLD))]
@@ -158,6 +158,13 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     }
 }
 
+/// Help-view tab labels, in HelpTab order. Shared by `draw_help_view` (render)
+/// and the help-tab mouse hit-test so they never drift.
+pub const HELP_TAB_NAMES: &[&str] = &[
+    "Notes", "Editor", "Graph", "Draw", "Canvas",
+    "Backup", "Templates", "Content Tree", "About",
+];
+
 pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
     let chunks = Layout::default()
@@ -169,40 +176,8 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
         ])
         .split(area);
 
-    let tab_names = [
-        "Notes",
-        "Editor",
-        "Graph",
-        "Draw",
-        "Canvas",
-        "Backup",
-        "Templates",
-        "Content Tree",
-        "About",
-    ];
-    let mut tab_spans: Vec<Span<'static>> = Vec::new();
-    for (i, name) in tab_names.iter().enumerate() {
-        let tab = HelpTab::from_index(i);
-        if tab == app.help_tab {
-            tab_spans.push(Span::styled(
-                format!(" {} ", name),
-                Style::default()
-                    .fg(app.app_theme.accent)
-                    .add_modifier(Modifier::BOLD),
-            ));
-        } else {
-            tab_spans.push(Span::styled(
-                format!(" {} ", name),
-                Style::default().fg(app.app_theme.muted),
-            ));
-        }
-        if i < tab_names.len() - 1 {
-            tab_spans.push(Span::styled(
-                " · ",
-                Style::default().fg(app.app_theme.muted),
-            ));
-        }
-    }
+    let tabs: Vec<(&str, Option<&str>)> = HELP_TAB_NAMES.iter().map(|&n| (n, None)).collect();
+    let tab_spans = build_tab_spans(&tabs, app.help_tab.index(), &app.app_theme);
     draw_view_title_bar_with_tabs(frame, chunks[0], "Help", tab_spans, &app.app_theme);
 
     let help_text = app.get_help_text().clone();
@@ -1317,28 +1292,9 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         ])
         .split(area);
     if app.list.notes_layout == crate::config::NotesLayout::Grid {
+        let tabs = [("Vault", Some("\u{f07b}")), ("Pinned", Some("\u{f4cc}"))];
         let is_pinned = app.list.grid_folder == crate::app::VIRTUAL_PINNED_PATH;
-        let pinned_style = if is_pinned {
-            Style::default()
-                .fg(app.app_theme.highlight_fg)
-                .bg(app.app_theme.accent)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(app.app_theme.muted)
-        };
-        let vault_style = if !is_pinned {
-            Style::default()
-                .fg(app.app_theme.highlight_fg)
-                .bg(app.app_theme.accent)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(app.app_theme.muted)
-        };
-        let tab_spans = vec![
-            Span::styled(" \u{f07b} Vault ", vault_style),
-            Span::raw(" "),
-            Span::styled(" \u{f4cc} Pinned ", pinned_style),
-        ];
+        let tab_spans = build_tab_spans(&tabs, if is_pinned { 1 } else { 0 }, &app.app_theme);
         draw_view_title_bar_with_tabs(frame, chunks[0], "Notes", tab_spans, &app.app_theme);
 
         // Show details of the selected note at the top right (clock/relative time + tags)
@@ -2186,27 +2142,13 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         );
         frame.render_widget(&palette.input, chunks[0]);
 
-        let mut tab_spans: Vec<Span<'_>> = Vec::new();
-        for (i, (label, glyph, _)) in crate::palette::PALETTE_TABS.iter().enumerate() {
-            let style = if i == palette.active_tab {
-                Style::default()
-                    .fg(app.app_theme.accent)
-                    .add_modifier(Modifier::BOLD)
-            } else {
-                Style::default().fg(app.app_theme.muted)
-            };
-            if i > 0 {
-                tab_spans.push(Span::styled(
-                    " · ",
-                    Style::default().fg(app.app_theme.muted),
-                ));
-            }
-            tab_spans.push(Span::styled(format!(" {} {} ", glyph, label), style));
-        }
-        let tabs = Paragraph::new(Line::from(tab_spans))
+        let tabs: Vec<(&str, Option<&str>)> = crate::palette::PALETTE_TABS
+            .iter().map(|(l, g, _)| (*l, Some(*g))).collect();
+        let tab_spans = build_tab_spans(&tabs, palette.active_tab, &app.app_theme);
+        let tabs_w = Paragraph::new(Line::from(tab_spans))
             .alignment(Alignment::Center)
             .style(app.app_theme.hint_line_bg_style());
-        frame.render_widget(tabs, chunks[1]);
+        frame.render_widget(tabs_w, chunks[1]);
 
         let items: Vec<ListItem> = palette
             .items
@@ -2853,7 +2795,7 @@ pub fn draw_sort_popup(
         theme,
     );
 
-    let options = vec![
+    let options = [
         "Title (A-Z)",
         "Title (Z-A)",
         "Modified (newest)",
@@ -3306,6 +3248,82 @@ pub fn draw_view_title_bar_with_tabs(
     );
     let title_para = Paragraph::new(Line::from(vec![title_span]));
     frame.render_widget(title_para, area);
+}
+
+/// Display text for one tab. Glyph (Nerd Font codepoint) precedes the label.
+/// Private — keep width in sync with `tab_display_width`.
+fn tab_display_text(label: &str, glyph: Option<&str>) -> String {
+    match glyph {
+        Some(g) => format!(" {} {} ", g, label),
+        None => format!(" {} ", label),
+    }
+}
+
+/// Cell width of one tab's text. Must equal `tab_display_text(...).chars().count()`.
+fn tab_display_width(label: &str, glyph: Option<&str>) -> u16 {
+    let label_w = label.chars().count() as u16;
+    match glyph {
+        Some(g) => 3 + g.chars().count() as u16 + label_w, // " g label "
+        None => 2 + label_w,                                // " label "
+    }
+}
+
+/// Build tab spans in the unified Vault/Pinned style: the active tab is a filled
+/// pill (highlight_fg on accent, bold), inactive tabs are muted, each pair of
+/// tabs separated by a single space. Pass the result to the title bar (or any
+/// centered Paragraph) and to `hit_test_tabs` unchanged.
+pub fn build_tab_spans(
+    tabs: &[(&str, Option<&str>)],
+    active: usize,
+    theme: &AppThemeColors,
+) -> Vec<Span<'static>> {
+    let active_style = Style::default()
+        .fg(theme.highlight_fg)
+        .bg(theme.accent)
+        .add_modifier(Modifier::BOLD);
+    let inactive_style = Style::default().fg(theme.muted);
+    let mut spans = Vec::with_capacity(tabs.len() * 2);
+    for (i, (label, glyph)) in tabs.iter().enumerate() {
+        if i > 0 {
+            spans.push(Span::raw(" "));
+        }
+        let style = if i == active { active_style } else { inactive_style };
+        spans.push(Span::styled(tab_display_text(label, *glyph), style));
+    }
+    spans
+}
+
+/// Given the SAME `tabs` slice passed to `build_tab_spans`, the left edge and
+/// width of the centered region the tabs render in, and a click column, return
+/// the index of the clicked tab or `None` if the click is outside the tab row.
+/// A click on a single-space gap counts as the tab to its right (matches the
+/// existing Vault/Pinned behavior).
+pub fn hit_test_tabs(
+    tabs: &[(&str, Option<&str>)],
+    region_x: u16,
+    region_width: u16,
+    click_x: u16,
+) -> Option<usize> {
+    let widths: Vec<u16> = tabs.iter().map(|(l, g)| tab_display_width(l, *g)).collect();
+    let mut total: u16 = 0;
+    for (i, w) in widths.iter().enumerate() {
+        total = total.saturating_add(*w);
+        if i + 1 < tabs.len() {
+            total = total.saturating_add(1); // single-space separator
+        }
+    }
+    let start_x = region_x + region_width.saturating_sub(total) / 2;
+    if click_x < start_x || click_x >= start_x.saturating_add(total) {
+        return None;
+    }
+    let mut offset = start_x;
+    for (i, w) in widths.iter().enumerate() {
+        if click_x < offset.saturating_add(*w) {
+            return Some(i);
+        }
+        offset = offset.saturating_add(*w).saturating_add(1);
+    }
+    None
 }
 
 pub fn draw_popup_banner(frame: &mut Frame, popup_area: Rect, title: &str, theme: &AppThemeColors) {

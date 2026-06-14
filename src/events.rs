@@ -4,6 +4,7 @@ use crate::keybinds::*;
 use crate::list_view::ListMode;
 pub use crate::text_edit::apply_text_shortcuts;
 use crossterm::event::*;
+use ratatui::layout::Margin;
 use ratatui::prelude::*;
 use ratatui_textarea::*;
 
@@ -1178,6 +1179,318 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         }
         return;
     }
+    if let Some(mut popup) = app.popups.note_rename.take() {
+        let area = crate::ui::centered_rect(50, 10, terminal_area);
+        if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
+            && contains_cell(area, mouse_event.column, mouse_event.row)
+        {
+            let inner = area.inner(Margin {
+                vertical: 1,
+                horizontal: 1,
+            });
+            move_textarea_cursor_to_mouse(
+                &mut popup.input,
+                inner,
+                mouse_event.column,
+                mouse_event.row,
+            );
+        }
+        app.popups.note_rename = Some(popup);
+        return;
+    }
+
+    if let Some(mut popup) = app.popups.note_create.take() {
+        let area = crate::ui::centered_rect(50, 10, terminal_area);
+        if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
+            && contains_cell(area, mouse_event.column, mouse_event.row)
+        {
+            let inner = area.inner(Margin {
+                vertical: 1,
+                horizontal: 1,
+            });
+            move_textarea_cursor_to_mouse(
+                &mut popup.input,
+                inner,
+                mouse_event.column,
+                mouse_event.row,
+            );
+        }
+        app.popups.note_create = Some(popup);
+        return;
+    }
+
+    if let Some(mut popup) = app.popups.draw_create.take() {
+        let area = crate::ui::centered_rect(50, 10, terminal_area);
+        if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
+            && contains_cell(area, mouse_event.column, mouse_event.row)
+        {
+            let inner = area.inner(Margin {
+                vertical: 1,
+                horizontal: 1,
+            });
+            move_textarea_cursor_to_mouse(
+                &mut popup.input,
+                inner,
+                mouse_event.column,
+                mouse_event.row,
+            );
+        }
+        app.popups.draw_create = Some(popup);
+        return;
+    }
+
+    if let Some(mut popup) = app.popups.canvas_create.take() {
+        let area = crate::ui::centered_rect(50, 10, terminal_area);
+        if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
+            && contains_cell(area, mouse_event.column, mouse_event.row)
+        {
+            let inner = area.inner(Margin {
+                vertical: 1,
+                horizontal: 1,
+            });
+            move_textarea_cursor_to_mouse(
+                &mut popup.input,
+                inner,
+                mouse_event.column,
+                mouse_event.row,
+            );
+        }
+        app.popups.canvas_create = Some(popup);
+        return;
+    }
+
+    if let Some(mut popup) = app.popups.import.take() {
+        let area = crate::ui::centered_rect(60, 20, terminal_area);
+        if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
+            && contains_cell(area, mouse_event.column, mouse_event.row)
+        {
+            let inner = area.inner(Margin {
+                vertical: 1,
+                horizontal: 1,
+            });
+            move_textarea_cursor_to_mouse(
+                &mut popup.input,
+                inner,
+                mouse_event.column,
+                mouse_event.row,
+            );
+        }
+        app.popups.import = Some(popup);
+        return;
+    }
+
+    if let Some(mut popup) = app.popups.folder.take() {
+        let area = crate::ui::centered_rect(50, 10, terminal_area);
+        if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
+            && contains_cell(area, mouse_event.column, mouse_event.row)
+        {
+            let inner = area.inner(Margin {
+                vertical: 1,
+                horizontal: 1,
+            });
+            move_textarea_cursor_to_mouse(
+                &mut popup.input,
+                inner,
+                mouse_event.column,
+                mouse_event.row,
+            );
+        }
+        app.popups.folder = Some(popup);
+        return;
+    }
+
+    if let Some(mut popup) = app.popups.tag.take() {
+        let suggestion_height = if popup.suggestions.is_empty() {
+            0
+        } else {
+            (popup.suggestions.len() as u16).clamp(1, 5)
+        };
+        let popup_area = crate::ui::centered_rect(
+            crate::constants::NOTES_POPUP_LARGE_W_PCT,
+            crate::constants::NOTES_POPUP_LARGE_H_PCT,
+            terminal_area,
+        );
+        let content = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(1), Constraint::Length(1)])
+            .split(popup_area)[0];
+
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(3 + suggestion_height),
+                Constraint::Min(3),
+            ])
+            .split(content);
+
+        let input_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(3), Constraint::Min(0)])
+            .split(chunks[0]);
+
+        if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
+            if contains_cell(chunks[1], mouse_event.column, mouse_event.row) {
+                if !popup.all_tags.is_empty() {
+                    let row = mouse_event
+                        .row
+                        .saturating_sub(chunks[1].y)
+                        .saturating_sub(1) as usize;
+                    popup.all_tags_selected = row.min(popup.all_tags.len() - 1);
+                    popup.focus = crate::popups::TagPopupFocus::AllTagsList;
+                }
+            } else if !popup.suggestions.is_empty()
+                && contains_cell(input_chunks[1], mouse_event.column, mouse_event.row)
+            {
+                let row = mouse_event.row.saturating_sub(input_chunks[1].y) as usize;
+                popup.suggestion_index = row.min(popup.suggestions.len() - 1);
+                app.popups.tag = Some(popup);
+                app.accept_tag_suggestion();
+                return;
+            } else if contains_cell(input_chunks[0], mouse_event.column, mouse_event.row) {
+                popup.focus = crate::popups::TagPopupFocus::Input;
+                move_textarea_cursor_to_mouse(
+                    &mut popup.input,
+                    input_chunks[0],
+                    mouse_event.column,
+                    mouse_event.row,
+                );
+            }
+        }
+        app.popups.tag = Some(popup);
+        return;
+    }
+
+    if let Some(mut popup) = app.popups.theme.take() {
+        let popup_area = crate::ui::centered_rect(40, 60, terminal_area);
+        let content = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(1), Constraint::Length(1)])
+            .split(popup_area)[0];
+
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Min(0),
+                Constraint::Length(3),
+                Constraint::Length(3),
+            ])
+            .split(content);
+
+        if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
+            if contains_cell(chunks[0], mouse_event.column, mouse_event.row) {
+                let row = mouse_event
+                    .row
+                    .saturating_sub(chunks[0].y)
+                    .saturating_sub(1) as usize;
+                if !popup.themes.is_empty() {
+                    let clicked = row.min(popup.themes.len() - 1);
+                    let was_selected = popup.selected == clicked
+                        && matches!(popup.focus, crate::app::ThemePopupFocus::ThemeList);
+                    popup.selected = clicked;
+                    popup.focus = crate::app::ThemePopupFocus::ThemeList;
+                    app.popups.theme = Some(popup);
+                    app.select_theme();
+                    if was_selected {
+                        app.close_theme_popup();
+                    }
+                    return;
+                }
+            } else if contains_cell(chunks[1], mouse_event.column, mouse_event.row) {
+                popup.focus = crate::app::ThemePopupFocus::GeneralBg;
+                app.popups.theme = Some(popup);
+                app.select_theme();
+                return;
+            } else if contains_cell(chunks[2], mouse_event.column, mouse_event.row) {
+                popup.focus = crate::app::ThemePopupFocus::GraphBg;
+                app.popups.theme = Some(popup);
+                app.select_theme();
+                return;
+            }
+        }
+        app.popups.theme = Some(popup);
+        return;
+    }
+
+    if let Some(mut palette) = app.command_palette.take() {
+        let popup_area = crate::ui::centered_rect(
+            crate::constants::NOTES_POPUP_LARGE_W_PCT,
+            crate::constants::NOTES_POPUP_LARGE_H_PCT,
+            terminal_area,
+        );
+        let content = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(1), Constraint::Length(1)])
+            .split(popup_area)[0];
+
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(3), // search input
+                Constraint::Length(1), // tab bar
+                Constraint::Min(0),    // results list
+            ])
+            .split(content);
+        if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
+            if contains_cell(chunks[0], mouse_event.column, mouse_event.row) {
+                let inner = chunks[0].inner(Margin {
+                    vertical: 1,
+                    horizontal: 1,
+                });
+                move_textarea_cursor_to_mouse(
+                    &mut palette.input,
+                    inner,
+                    mouse_event.column,
+                    mouse_event.row,
+                );
+            } else if mouse_event.row == chunks[1].y {
+                let tabs: Vec<(&str, Option<&str>)> = crate::palette::PALETTE_TABS
+                    .iter().map(|(l, g, _)| (*l, Some(*g))).collect();
+                if let Some(i) = crate::ui::hit_test_tabs(&tabs, chunks[1].x, chunks[1].width, mouse_event.column) {
+                    palette.active_tab = i;
+                    palette.refresh_items(app);
+                    palette.state.select(Some(0));
+                }
+            } else if contains_cell(chunks[2], mouse_event.column, mouse_event.row) {
+                let row = mouse_event
+                    .row
+                    .saturating_sub(chunks[2].y)
+                    .saturating_sub(1) as usize;
+                // Palette items are 2 lines each (title + description)
+                let clicked = row / 2;
+                if clicked < palette.items.len() {
+                    if Some(clicked) == palette.state.selected() {
+                        let item = &palette.items[clicked];
+                        let action_id = item.id.clone();
+                        let note_id = palette.context_note_id.clone();
+                        if let Err(e) =
+                            crate::actions::execute_action(&action_id, app, note_id.as_deref())
+                        {
+                            app.set_temporary_status(&format!("Action failed: {}", e));
+                        }
+                        app.command_palette = None;
+                        return;
+                    } else {
+                        palette.state.select(Some(clicked));
+                    }
+                }
+            }
+        } else if mouse_event.kind == MouseEventKind::ScrollUp {
+            if contains_cell(popup_area, mouse_event.column, mouse_event.row) && !palette.items.is_empty() {
+                let current = palette.state.selected().unwrap_or(0);
+                palette.state.select(Some(current.saturating_sub(1)));
+            }
+        } else if mouse_event.kind == MouseEventKind::ScrollDown
+            && contains_cell(popup_area, mouse_event.column, mouse_event.row)
+            && !palette.items.is_empty()
+        {
+            let current = palette.state.selected().unwrap_or(0);
+            let next = (current + 1).min(palette.items.len().saturating_sub(1));
+            palette.state.select(Some(next));
+        }
+        app.command_palette = Some(palette);
+        return;
+    }
+
 
     if let Some(popup) = &mut app.popups.template {
         let popup_area = crate::ui::centered_rect(
@@ -1252,6 +1565,16 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
             && contains_cell(chunks[0], mouse_event.column, mouse_event.row)
         {
             picker.focus = crate::app::FolderPickerFocus::Search;
+            let inner = chunks[0].inner(Margin {
+                vertical: 1,
+                horizontal: 1,
+            });
+            move_textarea_cursor_to_mouse(
+                &mut picker.input,
+                inner,
+                mouse_event.column,
+                mouse_event.row,
+            );
         } else if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
             && contains_cell(chunks[1], mouse_event.column, mouse_event.row)
         {
@@ -1372,18 +1695,6 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         return;
     }
 
-    if app.popups.folder.is_some()
-        || app.popups.tag.is_some()
-        || app.popups.note_rename.is_some()
-        || app.popups.note_create.is_some()
-        || app.popups.draw_create.is_some()
-        || app.popups.canvas_create.is_some()
-        || app.popups.import.is_some()
-        || app.command_palette.is_some()
-        || app.popups.theme.is_some()
-    {
-        return;
-    }
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -1462,6 +1773,59 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
     }
 
     if app.list.notes_layout == crate::config::NotesLayout::Grid {
+        if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
+            // Vault/Pinned tabs
+            if mouse_event.row == terminal_area.y {
+                let tabs = [("Vault", Some("\u{f07b}")), ("Pinned", Some("\u{f4cc}"))];
+                if let Some(i) = crate::ui::hit_test_tabs(&tabs, terminal_area.x, terminal_area.width, mouse_event.column) {
+                    app.list.grid_folder = if i == 1 {
+                        crate::app::VIRTUAL_PINNED_PATH.to_string()
+                    } else {
+                        String::new()
+                    };
+                    app.list.visual_index = 0;
+                    app.refresh_visual_list();
+                    return;
+                }
+            }
+
+            // Breadcrumbs
+            if mouse_event.row == list_area.y + 1
+                && app.list.grid_folder != crate::app::VIRTUAL_PINNED_PATH
+            {
+                let mut offset = list_area.x;
+                let vault_text = " \u{f07b} Vault";
+                let vault_w = vault_text.chars().count() as u16;
+                if mouse_event.column >= offset && mouse_event.column < offset + vault_w {
+                    app.list.grid_folder = String::new();
+                    app.list.visual_index = 0;
+                    app.refresh_visual_list();
+                    return;
+                }
+                offset += vault_w;
+                if !app.list.grid_folder.is_empty() {
+                    let parts: Vec<&str> = app.list.grid_folder.split('/').collect();
+                    let mut current_path = String::new();
+                    for part in parts {
+                        // " / "
+                        offset += 3;
+                        let part_w = part.chars().count() as u16;
+                        if !current_path.is_empty() {
+                            current_path.push('/');
+                        }
+                        current_path.push_str(part);
+                        if mouse_event.column >= offset && mouse_event.column < offset + part_w {
+                            app.list.grid_folder = current_path;
+                            app.list.visual_index = 0;
+                            app.refresh_visual_list();
+                            return;
+                        }
+                        offset += part_w;
+                    }
+                }
+            }
+        }
+
         if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
             for tile in &app.list.grid_tiles {
                 if contains_cell(tile.rect, mouse_event.column, mouse_event.row) {
