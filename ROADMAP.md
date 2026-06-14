@@ -27,8 +27,12 @@
 - [X] **CSV to markdown** — import CSV tables
 - [X] **URL import** — fetch article content as formatted markdown
 - [X] **Git integration** — vault versioning and backup
+- [X] **Grid view notes** — file manager like grid/icon view in notes list
 
 ## Planned
+
+#### General
+- [ ] **Consistent UI/UX** — literally hardest part of making a TUI, the UI/UX must be consistent accross the app
 
 #### Notes View
 - [ ] **Smart folders** — auto-move tagged notes to specific folders
@@ -46,6 +50,12 @@
 
 #### Canvas
 - [ ] **Insert note links** — embed note references as objects
+- [ ] **QOL** — UI improvements for telling the state of the node, text alignment options for nodes
+- [ ] **Orthagonal connections** — arrow like connections between nodes, toggleable
+- [ ] **Group titlebar** — add clickable titlebar for group nodes for easier navigation
+- [ ] **Connection properties** — more properties for connections between nodes; color, type, text etc.
+- [ ] **Node properties** — more properties for nodes like shapes(as tags), border type etc.
+- [ ] **New node types** — more node types like link nodes, image nodes etc.
 
 #### Command Palette
 - [ ] **Sub-notes** — virtual encrypted notes attached to physical notes
