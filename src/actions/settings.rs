@@ -85,7 +85,7 @@ impl Action for ToggleConfirmDeleteAction {
         ActionCategory::Settings
     }
     fn glyph(&self) -> &'static str {
-        "\u{f3ed}"
+        "\u{f1f8}"
     }
     fn execute(&self, app: &mut App, _context_note_id: Option<&str>) -> Result<()> {
         app.toggle_confirm_on_delete();

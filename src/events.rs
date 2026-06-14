@@ -1492,8 +1492,11 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                     .row
                     .saturating_sub(chunks[2].y)
                     .saturating_sub(1) as usize;
-                // Palette items are 2 lines each (title + description)
-                let clicked = row / 2;
+                // Palette items are 2 lines each (title + description).
+                // Add the list's scroll offset so clicking after a scroll
+                // hits the correct item.
+                let scroll_offset = palette.state.offset();
+                let clicked = scroll_offset + row / 2;
                 if clicked < palette.items.len() {
                     if Some(clicked) == palette.state.selected() {
                         let item = &palette.items[clicked];
@@ -1502,7 +1505,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                         if let Err(e) =
                             crate::actions::execute_action(&action_id, app, note_id.as_deref())
                         {
-                            app.set_temporary_status(&format!("Action failed: {e}"));
+                            app.set_temporary_status(&format!("Action failed: {}", e));
                         }
                         app.command_palette = None;
                         return;
