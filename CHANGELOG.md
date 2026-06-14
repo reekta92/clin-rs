@@ -2,6 +2,20 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.8.9] - 2026-06-14
+
+### Documentation
+
+- Align MSRV references
+- Update versions to v0.8.8
+
+### Fixed
+
+- Mouse clicking not on point in backup view
+
+### Miscellaneous
+
+- Clippy and formatting
 ## [0.8.8] - 2026-06-14
 
 ### Added
@@ -37,6 +51,10 @@ All notable changes to clin are documented in this file.
 ### Testing
 
 - Fix markdown test failure when glow is not installed
+
+### Release
+
+- V0.8.8
 ## [0.8.7] - 2026-06-14
 
 ### Miscellaneous
