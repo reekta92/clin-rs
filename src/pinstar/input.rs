@@ -495,7 +495,6 @@ pub fn handle_pinstar_event(
         }
     }
 
-
     if state.editor_focus {
         match key.code {
             _ if keybinds.matches_canvas(CanvasAction::EditorUnfocus, &key) => {

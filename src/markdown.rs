@@ -374,7 +374,8 @@ mod tests {
     #[test]
     fn test_render_in_thread() {
         let cancel_token = Arc::new(AtomicBool::new(false));
-        let folder_md = "# Vault (Root)\n\n## Folders\n- \u{f07b} Documents\n\n## Notes\n- \u{f15c} hello\n";
+        let folder_md =
+            "# Vault (Root)\n\n## Folders\n- \u{f07b} Documents\n\n## Notes\n- \u{f15c} hello\n";
         let result = render_in_thread(folder_md, 80, 300, cancel_token);
         let res = result.unwrap();
         let contents = res.parser.screen().contents();

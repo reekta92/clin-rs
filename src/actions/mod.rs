@@ -3,14 +3,14 @@ pub mod content_tree;
 pub mod decrypt;
 pub mod draw;
 pub mod encrypt;
+pub mod external_editor;
 pub mod graph;
 pub mod import;
 pub mod layout;
 pub mod ocr;
 pub mod pinstar;
-pub mod theme;
-pub mod external_editor;
 pub mod settings;
+pub mod theme;
 
 use crate::app::App;
 use anyhow::Result;
@@ -130,7 +130,6 @@ pub fn get_all_action_infos(app: &App) -> Vec<ActionInfo> {
         })
         .collect()
 }
-
 
 pub fn get_all_actions() -> &'static [Box<dyn Action>] {
     &ACTIONS

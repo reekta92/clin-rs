@@ -166,7 +166,6 @@ pub struct SortPopup {
     pub selected: usize,
 }
 
-
 pub struct TrashView {
     pub items: Vec<trash::TrashItem>,
     pub selected: usize,

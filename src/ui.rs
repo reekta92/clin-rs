@@ -1,6 +1,4 @@
-use crate::app::{
-    App, ConfirmPopup, EditFocus, TemplatePopup, ThemePopup, ViewMode,
-};
+use crate::app::{App, ConfirmPopup, EditFocus, TemplatePopup, ThemePopup, ViewMode};
 use crate::app_theme::AppThemeColors;
 use crate::constants::*;
 use crate::events::get_title_text;
@@ -112,24 +110,44 @@ fn style_palette_name(name: &str, theme: &AppThemeColors) -> Vec<Span<'static>> 
         let state = &name[pos..];
 
         let state_style = if state.contains("[On]") {
-            Style::default().fg(theme.success).add_modifier(Modifier::BOLD)
+            Style::default()
+                .fg(theme.success)
+                .add_modifier(Modifier::BOLD)
         } else if state.contains("[Off]") {
-            Style::default().fg(theme.destructive).add_modifier(Modifier::BOLD)
+            Style::default()
+                .fg(theme.destructive)
+                .add_modifier(Modifier::BOLD)
         } else {
-            Style::default().fg(theme.heading).add_modifier(Modifier::BOLD)
+            Style::default()
+                .fg(theme.heading)
+                .add_modifier(Modifier::BOLD)
         };
 
         vec![
-            Span::styled(base.to_string(), Style::default().add_modifier(Modifier::BOLD)),
+            Span::styled(
+                base.to_string(),
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
             Span::styled(state.to_string(), state_style),
         ]
     } else if let Some(stripped) = name.strip_prefix("Sort Order: ") {
         vec![
-            Span::styled("Sort Order: ".to_string(), Style::default().add_modifier(Modifier::BOLD)),
-            Span::styled(stripped.to_string(), Style::default().fg(theme.heading).add_modifier(Modifier::BOLD)),
+            Span::styled(
+                "Sort Order: ".to_string(),
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                stripped.to_string(),
+                Style::default()
+                    .fg(theme.heading)
+                    .add_modifier(Modifier::BOLD),
+            ),
         ]
     } else {
-        vec![Span::styled(name.to_string(), Style::default().add_modifier(Modifier::BOLD))]
+        vec![Span::styled(
+            name.to_string(),
+            Style::default().add_modifier(Modifier::BOLD),
+        )]
     }
 }
 
@@ -161,8 +179,15 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
 /// Help-view tab labels, in HelpTab order. Shared by `draw_help_view` (render)
 /// and the help-tab mouse hit-test so they never drift.
 pub const HELP_TAB_NAMES: &[&str] = &[
-    "Notes", "Editor", "Graph", "Draw", "Canvas",
-    "Backup", "Templates", "Content Tree", "About",
+    "Notes",
+    "Editor",
+    "Graph",
+    "Draw",
+    "Canvas",
+    "Backup",
+    "Templates",
+    "Content Tree",
+    "About",
 ];
 
 pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
@@ -1847,7 +1872,10 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     }
 
     let hint = resolved_status_hint(app, LIST_HELP_HINTS);
-    let badge = Some(ext_badge(app.editor.external_editor_enabled, &app.app_theme));
+    let badge = Some(ext_badge(
+        app.editor.external_editor_enabled,
+        &app.app_theme,
+    ));
     draw_status_bar(frame, chunks[2], &app.app_theme, badge, &hint, None);
     draw_corner_watermark(frame, chunks[2], app.app_theme.muted);
     if app.list.preview_enabled {
@@ -2127,9 +2155,9 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(3),  // search input
-                Constraint::Length(1),  // tab bar
-                Constraint::Min(0),     // results list
+                Constraint::Length(3), // search input
+                Constraint::Length(1), // tab bar
+                Constraint::Min(0),    // results list
             ])
             .split(content);
 
@@ -2143,7 +2171,9 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         frame.render_widget(&palette.input, chunks[0]);
 
         let tabs: Vec<(&str, Option<&str>)> = crate::palette::PALETTE_TABS
-            .iter().map(|(l, g, _)| (*l, Some(*g))).collect();
+            .iter()
+            .map(|(l, g, _)| (*l, Some(*g)))
+            .collect();
         let tab_spans = build_tab_spans(&tabs, palette.active_tab, &app.app_theme);
         let tabs_w = Paragraph::new(Line::from(tab_spans))
             .alignment(Alignment::Center)
@@ -2154,14 +2184,12 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             .items
             .iter()
             .map(|item| {
-                let mut spans = vec![
-                    Span::styled(
-                        format!("{} ", &item.glyph),
-                        Style::default()
-                            .fg(app.app_theme.accent)
-                            .add_modifier(Modifier::BOLD),
-                    ),
-                ];
+                let mut spans = vec![Span::styled(
+                    format!("{} ", &item.glyph),
+                    Style::default()
+                        .fg(app.app_theme.accent)
+                        .add_modifier(Modifier::BOLD),
+                )];
                 spans.extend(style_palette_name(&item.name, &app.app_theme));
                 ListItem::new(vec![
                     Line::from(spans),
@@ -3264,7 +3292,7 @@ fn tab_display_width(label: &str, glyph: Option<&str>) -> u16 {
     let label_w = label.chars().count() as u16;
     match glyph {
         Some(g) => 3 + g.chars().count() as u16 + label_w, // " g label "
-        None => 2 + label_w,                                // " label "
+        None => 2 + label_w,                               // " label "
     }
 }
 
@@ -3287,7 +3315,11 @@ pub fn build_tab_spans(
         if i > 0 {
             spans.push(Span::raw(" "));
         }
-        let style = if i == active { active_style } else { inactive_style };
+        let style = if i == active {
+            active_style
+        } else {
+            inactive_style
+        };
         spans.push(Span::styled(tab_display_text(label, *glyph), style));
     }
     spans
@@ -3441,7 +3473,9 @@ pub struct StatusBarBadge {
 pub fn ext_badge(enabled: bool, theme: &AppThemeColors) -> StatusBarBadge {
     let label = if enabled { "ext:on" } else { "ext:off" };
     let style = if enabled {
-        Style::default().fg(theme.success).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(theme.success)
+            .add_modifier(Modifier::BOLD)
     } else {
         Style::default().fg(theme.muted)
     };

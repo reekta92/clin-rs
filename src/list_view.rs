@@ -10,7 +10,6 @@ pub enum ListMode {
     Select,
 }
 
-
 #[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SortField {

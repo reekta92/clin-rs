@@ -5,12 +5,32 @@ use ratatui_textarea::TextArea;
 
 /// (label, glyph, category-to-filter). Tab 0 = All (no filter).
 pub const PALETTE_TABS: &[(&str, &str, Option<crate::actions::ActionCategory>)] = &[
-    ("All",      "\u{f0ca}", None),
-    ("Notes",    "\u{f15c}", Some(crate::actions::ActionCategory::Notes)),
-    ("Import",   "\u{f019}", Some(crate::actions::ActionCategory::Import)),
-    ("Append",   "\u{f067}", Some(crate::actions::ActionCategory::Append)),
-    ("Views",    "\u{f06e}", Some(crate::actions::ActionCategory::Views)),
-    ("Settings", "\u{f013}", Some(crate::actions::ActionCategory::Settings)),
+    ("All", "\u{f0ca}", None),
+    (
+        "Notes",
+        "\u{f15c}",
+        Some(crate::actions::ActionCategory::Notes),
+    ),
+    (
+        "Import",
+        "\u{f019}",
+        Some(crate::actions::ActionCategory::Import),
+    ),
+    (
+        "Append",
+        "\u{f067}",
+        Some(crate::actions::ActionCategory::Append),
+    ),
+    (
+        "Views",
+        "\u{f06e}",
+        Some(crate::actions::ActionCategory::Views),
+    ),
+    (
+        "Settings",
+        "\u{f013}",
+        Some(crate::actions::ActionCategory::Settings),
+    ),
 ];
 
 pub struct PaletteItem {

@@ -27,7 +27,11 @@ impl Action for TogglePreviewPaneAction {
     }
 
     fn name_dynamic(&self, app: &App) -> String {
-        let state = if app.list.preview_enabled { "On" } else { "Off" };
+        let state = if app.list.preview_enabled {
+            "On"
+        } else {
+            "Off"
+        };
         format!("Toggle Preview Pane [{}]", state)
     }
 }
@@ -56,7 +60,11 @@ impl Action for ToggleLineNumbersAction {
     }
 
     fn name_dynamic(&self, app: &App) -> String {
-        let state = if app.editor.show_line_numbers { "On" } else { "Off" };
+        let state = if app.editor.show_line_numbers {
+            "On"
+        } else {
+            "Off"
+        };
         format!("Toggle Line Numbers [{}]", state)
     }
 }

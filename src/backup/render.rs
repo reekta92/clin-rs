@@ -115,7 +115,11 @@ pub fn draw_dashboard(frame: &mut ratatui::Frame, state: &crate::backup::state::
 fn draw_header(frame: &mut Frame, area: Rect, state: &BackupState) {
     let theme = &state.theme;
     let tabs = [("Status", None), ("History", None)];
-    let active = if state.selected_section == crate::backup::state::BackupSection::History { 1 } else { 0 };
+    let active = if state.selected_section == crate::backup::state::BackupSection::History {
+        1
+    } else {
+        0
+    };
     let spans = crate::ui::build_tab_spans(&tabs, active, theme);
     crate::ui::draw_view_title_bar_with_tabs(frame, area, "Backup", spans, theme);
 }
@@ -443,37 +447,66 @@ fn draw_settings_popup(frame: &mut Frame, area: Rect, state: &BackupState) {
         .split(inner_content);
 
     // Helper for rendering toggles
-    let render_toggle = |frame: &mut Frame, area: Rect, label: &str, value: bool, field: SettingsField| {
-        let state_text = if value { "ON" } else { "OFF" };
-        let style = if value { theme.success } else { theme.destructive };
-        let border_color = if state.settings.focused_field == field {
-            theme.heading
-        } else {
-            theme.muted
-        };
+    let render_toggle =
+        |frame: &mut Frame, area: Rect, label: &str, value: bool, field: SettingsField| {
+            let state_text = if value { "ON" } else { "OFF" };
+            let style = if value {
+                theme.success
+            } else {
+                theme.destructive
+            };
+            let border_color = if state.settings.focused_field == field {
+                theme.heading
+            } else {
+                theme.muted
+            };
 
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(border_color))
+            let block = Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(border_color))
+                .style(theme.bg_style());
+
+            let inner = block.inner(area);
+            let text = format!("{}: {}", label, state_text);
+            let para = Paragraph::new(Span::styled(
+                text,
+                Style::default().fg(style).add_modifier(Modifier::BOLD),
+            ))
+            .alignment(Alignment::Center)
             .style(theme.bg_style());
 
-        let inner = block.inner(area);
-        let text = format!("{}: {}", label, state_text);
-        let para = Paragraph::new(Span::styled(
-            text,
-            Style::default().fg(style).add_modifier(Modifier::BOLD),
-        ))
-        .alignment(Alignment::Center)
-        .style(theme.bg_style());
+            frame.render_widget(block, area);
+            frame.render_widget(para, inner);
+        };
 
-        frame.render_widget(block, area);
-        frame.render_widget(para, inner);
-    };
-
-    render_toggle(frame, chunks[0], "Backup System Enabled", state.settings.enabled, SettingsField::Enabled);
-    render_toggle(frame, chunks[1], "Backup on every note save", state.settings.backup_on_save, SettingsField::BackupOnSave);
-    render_toggle(frame, chunks[2], "Backup on app exit", state.settings.backup_on_quit, SettingsField::BackupOnQuit);
-    render_toggle(frame, chunks[3], "Auto-push after backup", state.settings.auto_push, SettingsField::AutoPush);
+    render_toggle(
+        frame,
+        chunks[0],
+        "Backup System Enabled",
+        state.settings.enabled,
+        SettingsField::Enabled,
+    );
+    render_toggle(
+        frame,
+        chunks[1],
+        "Backup on every note save",
+        state.settings.backup_on_save,
+        SettingsField::BackupOnSave,
+    );
+    render_toggle(
+        frame,
+        chunks[2],
+        "Backup on app exit",
+        state.settings.backup_on_quit,
+        SettingsField::BackupOnQuit,
+    );
+    render_toggle(
+        frame,
+        chunks[3],
+        "Auto-push after backup",
+        state.settings.auto_push,
+        SettingsField::AutoPush,
+    );
 
     // TextAreas
     let text_fields = [
@@ -501,7 +534,11 @@ fn draw_settings_popup(frame: &mut Frame, area: Rect, state: &BackupState) {
         };
         let mut cloned = textarea.clone();
         cloned.set_placeholder_text(placeholder);
-        cloned.set_placeholder_style(Style::default().fg(theme.muted).add_modifier(Modifier::ITALIC));
+        cloned.set_placeholder_style(
+            Style::default()
+                .fg(theme.muted)
+                .add_modifier(Modifier::ITALIC),
+        );
 
         let is_editing = state.input_mode == BackupInputMode::EditSettingsField
             && state.settings.focused_field == field;
@@ -536,16 +573,24 @@ fn draw_settings_popup(frame: &mut Frame, area: Rect, state: &BackupState) {
             .fg(theme.accent)
             .add_modifier(Modifier::BOLD)
     };
-    
+
     let save_block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(if is_save_focused { theme.heading } else { theme.muted }))
-        .style(if is_save_focused { Style::default().bg(theme.accent) } else { theme.bg_style() });
+        .border_style(Style::default().fg(if is_save_focused {
+            theme.heading
+        } else {
+            theme.muted
+        }))
+        .style(if is_save_focused {
+            Style::default().bg(theme.accent)
+        } else {
+            theme.bg_style()
+        });
 
     let save_button = Paragraph::new("SAVE SETTINGS")
         .alignment(Alignment::Center)
         .style(save_style)
         .block(save_block);
-        
+
     frame.render_widget(save_button, chunks[7]);
 }

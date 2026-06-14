@@ -3911,7 +3911,6 @@ template = """
         }
     }
 
-
     pub fn reload_theme(&mut self) {
         let config = crate::config::ClinConfig::load().unwrap_or_default();
         self.app_theme = crate::app_theme::AppThemeColors::from_config(&config.theme);
@@ -4005,7 +4004,6 @@ template = """
     pub fn close_sort_popup(&mut self) {
         self.popups.sort = None;
     }
-
 
     pub fn select_theme(&mut self) {
         if let Some(mut popup) = self.popups.theme.take() {

@@ -39,7 +39,6 @@ pub fn run_pinstar_view(
     let mut running = true;
 
     while running {
-
         terminal.draw(|frame| {
             let full = frame.area();
             let outer = ratatui::layout::Layout::default()

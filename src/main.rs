@@ -803,8 +803,12 @@ fn run_app(
                         && mouse_event.row == tab_bar_y
                     {
                         let tabs: Vec<(&str, Option<&str>)> = crate::ui::HELP_TAB_NAMES
-                            .iter().map(|&n| (n, None)).collect();
-                        if let Some(i) = crate::ui::hit_test_tabs(&tabs, area.x, area.width, mouse_event.column) {
+                            .iter()
+                            .map(|&n| (n, None))
+                            .collect();
+                        if let Some(i) =
+                            crate::ui::hit_test_tabs(&tabs, area.x, area.width, mouse_event.column)
+                        {
                             app.switch_help_tab(crate::app::HelpTab::from_index(i));
                         }
                     } else if mouse_event.kind

@@ -736,13 +736,15 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
-
     if app.keybinds.matches_list(ListAction::Quit, &key) {
         app.initiate_quit();
         return false;
     }
 
-    if app.keybinds.matches_list(ListAction::ToggleExternalEditor, &key) {
+    if app
+        .keybinds
+        .matches_list(ListAction::ToggleExternalEditor, &key)
+    {
         app.toggle_external_editor_mode();
         return false;
     }
@@ -962,10 +964,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
             app.list.visual_list.get(app.list.visual_index)
         {
             let id = app.notes[*summary_idx].id.clone();
-            app.command_palette = Some(crate::palette::CommandPalette::new(
-                Some(id),
-                app,
-            ));
+            app.command_palette = Some(crate::palette::CommandPalette::new(Some(id), app));
         } else {
             app.command_palette = Some(crate::palette::CommandPalette::new(None, app));
         }
@@ -1118,7 +1117,6 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
         return false;
     }
 
-
     match *focus {
         EditFocus::Title => {
             if key.code == KeyCode::Enter {
@@ -1189,7 +1187,10 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
             return;
         }
         if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
-            let inner = area.inner(Margin { vertical: 1, horizontal: 1 });
+            let inner = area.inner(Margin {
+                vertical: 1,
+                horizontal: 1,
+            });
             move_textarea_cursor_to_mouse(
                 &mut popup.input,
                 inner,
@@ -1209,7 +1210,10 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
             return;
         }
         if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
-            let inner = area.inner(Margin { vertical: 1, horizontal: 1 });
+            let inner = area.inner(Margin {
+                vertical: 1,
+                horizontal: 1,
+            });
             move_textarea_cursor_to_mouse(
                 &mut popup.input,
                 inner,
@@ -1229,7 +1233,10 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
             return;
         }
         if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
-            let inner = area.inner(Margin { vertical: 1, horizontal: 1 });
+            let inner = area.inner(Margin {
+                vertical: 1,
+                horizontal: 1,
+            });
             move_textarea_cursor_to_mouse(
                 &mut popup.input,
                 inner,
@@ -1249,7 +1256,10 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
             return;
         }
         if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
-            let inner = area.inner(Margin { vertical: 1, horizontal: 1 });
+            let inner = area.inner(Margin {
+                vertical: 1,
+                horizontal: 1,
+            });
             move_textarea_cursor_to_mouse(
                 &mut popup.input,
                 inner,
@@ -1269,7 +1279,10 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
             return;
         }
         if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
-            let inner = area.inner(Margin { vertical: 1, horizontal: 1 });
+            let inner = area.inner(Margin {
+                vertical: 1,
+                horizontal: 1,
+            });
             move_textarea_cursor_to_mouse(
                 &mut popup.input,
                 inner,
@@ -1289,7 +1302,10 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
             return;
         }
         if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
-            let inner = area.inner(Margin { vertical: 1, horizontal: 1 });
+            let inner = area.inner(Margin {
+                vertical: 1,
+                horizontal: 1,
+            });
             move_textarea_cursor_to_mouse(
                 &mut popup.input,
                 inner,
@@ -1462,8 +1478,15 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                 );
             } else if mouse_event.row == chunks[1].y {
                 let tabs: Vec<(&str, Option<&str>)> = crate::palette::PALETTE_TABS
-                    .iter().map(|(l, g, _)| (*l, Some(*g))).collect();
-                if let Some(i) = crate::ui::hit_test_tabs(&tabs, chunks[1].x, chunks[1].width, mouse_event.column) {
+                    .iter()
+                    .map(|(l, g, _)| (*l, Some(*g)))
+                    .collect();
+                if let Some(i) = crate::ui::hit_test_tabs(
+                    &tabs,
+                    chunks[1].x,
+                    chunks[1].width,
+                    mouse_event.column,
+                ) {
                     palette.active_tab = i;
                     palette.refresh_items(app);
                     palette.state.select(Some(0));
@@ -1493,7 +1516,9 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                 }
             }
         } else if mouse_event.kind == MouseEventKind::ScrollUp {
-            if contains_cell(popup_area, mouse_event.column, mouse_event.row) && !palette.items.is_empty() {
+            if contains_cell(popup_area, mouse_event.column, mouse_event.row)
+                && !palette.items.is_empty()
+            {
                 let current = palette.state.selected().unwrap_or(0);
                 palette.state.select(Some(current.saturating_sub(1)));
             }
@@ -1508,7 +1533,6 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         app.command_palette = Some(palette);
         return;
     }
-
 
     if app.popups.template.is_some() {
         let popup_area = crate::ui::centered_rect(
@@ -1765,7 +1789,6 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         return;
     }
 
-
     let vertical_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -1807,7 +1830,12 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         (list_area, preview_area)
     } else {
         (
-            Rect::new(terminal_area.x, terminal_area.y + 1, terminal_area.width, main_area.height),
+            Rect::new(
+                terminal_area.x,
+                terminal_area.y + 1,
+                terminal_area.width,
+                main_area.height,
+            ),
             None,
         )
     };
@@ -1819,38 +1847,37 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         list_area.height.saturating_sub(2),
     );
 
-    if app.list.preview_enabled {
-        if let Some(p_area) = preview_area {
-            if contains_cell(p_area, mouse_event.column, mouse_event.row) {
-                match &mut app.list.preview_content {
-                    Some(crate::list_view::PreviewContent::Markdown(renderer)) => {
-                        if mouse_event.kind == MouseEventKind::ScrollUp {
-                            renderer.prev_page();
-                            return;
-                        }
-                        if mouse_event.kind == MouseEventKind::ScrollDown {
-                            renderer.next_page();
-                            return;
-                        }
-                    }
-                    Some(
-                        crate::list_view::PreviewContent::CanvasGrid(_)
-                        | crate::list_view::PreviewContent::DrawGrid(_),
-                    ) => {
-                        if mouse_event.kind == MouseEventKind::ScrollUp {
-                            app.list.snapshot_scroll_offset =
-                                app.list.snapshot_scroll_offset.saturating_sub(3);
-                            return;
-                        }
-                        if mouse_event.kind == MouseEventKind::ScrollDown {
-                            app.list.snapshot_scroll_offset =
-                                app.list.snapshot_scroll_offset.saturating_add(3);
-                            return;
-                        }
-                    }
-                    None => {}
+    if app.list.preview_enabled
+        && let Some(p_area) = preview_area
+        && contains_cell(p_area, mouse_event.column, mouse_event.row)
+    {
+        match &mut app.list.preview_content {
+            Some(crate::list_view::PreviewContent::Markdown(renderer)) => {
+                if mouse_event.kind == MouseEventKind::ScrollUp {
+                    renderer.prev_page();
+                    return;
+                }
+                if mouse_event.kind == MouseEventKind::ScrollDown {
+                    renderer.next_page();
+                    return;
                 }
             }
+            Some(
+                crate::list_view::PreviewContent::CanvasGrid(_)
+                | crate::list_view::PreviewContent::DrawGrid(_),
+            ) => {
+                if mouse_event.kind == MouseEventKind::ScrollUp {
+                    app.list.snapshot_scroll_offset =
+                        app.list.snapshot_scroll_offset.saturating_sub(3);
+                    return;
+                }
+                if mouse_event.kind == MouseEventKind::ScrollDown {
+                    app.list.snapshot_scroll_offset =
+                        app.list.snapshot_scroll_offset.saturating_add(3);
+                    return;
+                }
+            }
+            None => {}
         }
     }
 
@@ -1872,7 +1899,12 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
             // Vault/Pinned tabs
             if mouse_event.row == terminal_area.y {
                 let tabs = [("Vault", Some("\u{f07b}")), ("Pinned", Some("\u{f4cc}"))];
-                if let Some(i) = crate::ui::hit_test_tabs(&tabs, terminal_area.x, terminal_area.width, mouse_event.column) {
+                if let Some(i) = crate::ui::hit_test_tabs(
+                    &tabs,
+                    terminal_area.x,
+                    terminal_area.width,
+                    mouse_event.column,
+                ) {
                     app.list.grid_folder = if i == 1 {
                         crate::app::VIRTUAL_PINNED_PATH.to_string()
                     } else {
