@@ -60,7 +60,7 @@ pub fn serialize(frontmatter: &Frontmatter, content: &str) -> String {
             let yaml = yaml.trim();
             let yaml = yaml.to_string();
 
-            format!("---\n{}\n---\n{}", yaml, content)
+            format!("---\n{yaml}\n---\n{content}")
         }
         Err(_) => content.to_string(),
     }

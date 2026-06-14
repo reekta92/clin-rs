@@ -189,7 +189,7 @@ fn key_code_to_string(code: &KeyCode) -> Cow<'static, str> {
         KeyCode::Down => Cow::Borrowed("Down"),
         KeyCode::Left => Cow::Borrowed("Left"),
         KeyCode::Right => Cow::Borrowed("Right"),
-        KeyCode::F(n) => Cow::Owned(format!("F{}", n)),
+        KeyCode::F(n) => Cow::Owned(format!("F{n}")),
         KeyCode::Char(' ') => Cow::Borrowed("Space"),
         KeyCode::Char(c) => Cow::Owned(c.to_string()),
         _ => Cow::Borrowed("?"),

@@ -32,7 +32,7 @@ impl Action for TogglePreviewPaneAction {
         } else {
             "Off"
         };
-        format!("Toggle Preview Pane [{}]", state)
+        format!("Toggle Preview Pane [{state}]")
     }
 }
 
@@ -65,7 +65,7 @@ impl Action for ToggleLineNumbersAction {
         } else {
             "Off"
         };
-        format!("Toggle Line Numbers [{}]", state)
+        format!("Toggle Line Numbers [{state}]")
     }
 }
 
@@ -94,7 +94,7 @@ impl Action for ToggleConfirmDeleteAction {
 
     fn name_dynamic(&self, app: &App) -> String {
         let state = if app.confirm_on_delete { "On" } else { "Off" };
-        format!("Toggle Delete Confirmation [{}]", state)
+        format!("Toggle Delete Confirmation [{state}]")
     }
 }
 
@@ -123,7 +123,7 @@ impl Action for TogglePinnedOnTopAction {
 
     fn name_dynamic(&self, app: &App) -> String {
         let state = if app.pinned_on_top { "On" } else { "Off" };
-        format!("Toggle Pinned on Top [{}]", state)
+        format!("Toggle Pinned on Top [{state}]")
     }
 }
 
@@ -152,7 +152,7 @@ impl Action for ToggleConfirmQuitAction {
 
     fn name_dynamic(&self, app: &App) -> String {
         let state = if app.confirm_on_quit { "On" } else { "Off" };
-        format!("Toggle Quit Confirmation [{}]", state)
+        format!("Toggle Quit Confirmation [{state}]")
     }
 }
 
@@ -181,7 +181,7 @@ impl Action for TogglePreviewEncryptionAction {
 
     fn name_dynamic(&self, app: &App) -> String {
         let state = if app.preview_encryption { "On" } else { "Off" };
-        format!("Toggle Encrypted Note Preview [{}]", state)
+        format!("Toggle Encrypted Note Preview [{state}]")
     }
 }
 
@@ -216,6 +216,6 @@ impl Action for CycleSortAction {
             (SortField::Title, SortOrder::Ascending) => "Title (A-Z)",
             (SortField::Title, SortOrder::Descending) => "Title (Z-A)",
         };
-        format!("Sort Order: {}", sort_desc)
+        format!("Sort Order: {sort_desc}")
     }
 }

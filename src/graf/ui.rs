@@ -95,13 +95,13 @@ fn draw_config_errors(frame: &mut Frame, area: Rect, errors: &[String], config: 
         .to_string();
     let mut lines = vec!["Config Errors".to_string(), "".to_string()];
     for err in errors {
-        lines.push(format!("  - {}", err));
+        lines.push(format!("  - {err}"));
         if let Some(suggestion) = suggest_fix(err) {
-            lines.push(format!("    -> {}", suggestion));
+            lines.push(format!("    -> {suggestion}"));
         }
     }
     lines.push("".to_string());
-    lines.push(format!("Fix: {}", config_path));
+    lines.push(format!("Fix: {config_path}"));
     lines.push("Press any key to close".to_string());
 
     let text = lines.join("\n");
@@ -242,7 +242,7 @@ fn draw_search(
             let display =
                 crate::graf::util::truncate(title, (popup_width as usize).saturating_sub(6));
             lines.push(ratatui::text::Line::styled(
-                format!("{}{}", prefix, display),
+                format!("{prefix}{display}"),
                 style,
             ));
         }

@@ -185,18 +185,16 @@ impl GitOps {
             } else {
                 FileChangeType::Modified
             }
+        } else if status.is_wt_new() {
+            FileChangeType::Added
+        } else if status.is_wt_modified() {
+            FileChangeType::Modified
+        } else if status.is_wt_deleted() {
+            FileChangeType::Deleted
+        } else if status.is_wt_renamed() {
+            FileChangeType::Renamed
         } else {
-            if status.is_wt_new() {
-                FileChangeType::Added
-            } else if status.is_wt_modified() {
-                FileChangeType::Modified
-            } else if status.is_wt_deleted() {
-                FileChangeType::Deleted
-            } else if status.is_wt_renamed() {
-                FileChangeType::Renamed
-            } else {
-                FileChangeType::Modified
-            }
+            FileChangeType::Modified
         }
     }
 
@@ -337,7 +335,7 @@ impl GitOps {
         let head = self.repo.head()?;
         let refname = head.name().ok_or_else(|| anyhow!("No head name"))?;
 
-        remote.push(&[format!("{}:{}", refname, refname)], None)?;
+        remote.push(&[format!("{refname}:{refname}")], None)?;
         Ok(())
     }
 }

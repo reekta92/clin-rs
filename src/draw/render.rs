@@ -130,7 +130,7 @@ pub fn draw_canvas(frame: &mut Frame, app: &DrawAppState, area: Rect) {
                 } else {
                     Style::default().fg(app.theme.fg)
                 };
-                ListItem::new(format!("  {}", name)).style(style)
+                ListItem::new(format!("  {name}")).style(style)
             })
             .collect();
 

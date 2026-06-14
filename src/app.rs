@@ -689,12 +689,10 @@ impl App {
                 if self.list.notes_layout == crate::config::NotesLayout::Grid {
                     self.list.grid_folder = p;
                     self.list.visual_index = 0;
+                } else if self.list.folder_expanded.contains(&p) {
+                    self.list.folder_expanded.remove(&p);
                 } else {
-                    if self.list.folder_expanded.contains(&p) {
-                        self.list.folder_expanded.remove(&p);
-                    } else {
-                        self.list.folder_expanded.insert(p);
-                    }
+                    self.list.folder_expanded.insert(p);
                 }
                 self.refresh_visual_list();
             }
@@ -758,7 +756,7 @@ impl App {
         extra_args: &[String],
     ) -> (std::io::Result<std::process::ExitStatus>, String) {
         if let Err(e) = disable_raw_mode() {
-            eprintln!("Failed to disable raw mode: {}", e);
+            eprintln!("Failed to disable raw mode: {e}");
         }
         if let Err(e) = crossterm::execute!(
             std::io::stdout(),
@@ -766,7 +764,7 @@ impl App {
             crossterm::event::DisableMouseCapture,
             crossterm::event::DisableBracketedPaste
         ) {
-            eprintln!("Failed to reset terminal: {}", e);
+            eprintln!("Failed to reset terminal: {e}");
         }
 
         let editor_prog = self
@@ -792,7 +790,7 @@ impl App {
         let result = command.status();
 
         if let Err(e) = enable_raw_mode() {
-            eprintln!("Failed to enable raw mode: {}", e);
+            eprintln!("Failed to enable raw mode: {e}");
         }
         if let Err(e) = crossterm::execute!(
             std::io::stdout(),
@@ -801,7 +799,7 @@ impl App {
             crossterm::event::EnableBracketedPaste,
             crossterm::terminal::Clear(crossterm::terminal::ClearType::All)
         ) {
-            eprintln!("Failed to restore terminal: {}", e);
+            eprintln!("Failed to restore terminal: {e}");
         }
         self.needs_full_redraw = true;
 
@@ -812,7 +810,7 @@ impl App {
         if let Ok(note) = self.storage.load_note(note_id) {
             let temp_dir = std::env::temp_dir();
             let temp_id = uuid::Uuid::new_v4().to_string();
-            let temp_file_path = temp_dir.join(format!("clin_{}.md", temp_id));
+            let temp_file_path = temp_dir.join(format!("clin_{temp_id}.md"));
 
             #[cfg(unix)]
             {
@@ -827,12 +825,12 @@ impl App {
                     Ok(mut f) => {
                         use std::io::Write;
                         if let Err(e) = f.write_all(note.content.as_bytes()) {
-                            self.set_temporary_status(&format!("Failed to write temp file: {}", e));
+                            self.set_temporary_status(&format!("Failed to write temp file: {e}"));
                             return;
                         }
                     }
                     Err(e) => {
-                        self.set_temporary_status(&format!("Failed to create temp file: {}", e));
+                        self.set_temporary_status(&format!("Failed to create temp file: {e}"));
                         return;
                     }
                 }
@@ -861,7 +859,7 @@ impl App {
 
             let mut args: Vec<String> = Vec::new();
             if let Some(l) = line_number {
-                args.push(format!("+{}", l));
+                args.push(format!("+{l}"));
             }
             args.push(temp_file_path.to_string_lossy().into_owned());
             let (result, editor_prog) = self.run_in_external_editor(&args);
@@ -877,7 +875,7 @@ impl App {
                                 tags: note.tags,
                             };
                             if let Err(e) = self.storage.save_note(note_id, &updated_note) {
-                                self.set_temporary_status(&format!("Failed to save note: {}", e));
+                                self.set_temporary_status(&format!("Failed to save note: {e}"));
                             } else {
                                 if let Err(e) = self.try_auto_backup(&updated_note.title) {
                                     self.set_temporary_status(&format!("Backup failed: {e}"));
@@ -897,14 +895,12 @@ impl App {
                 }
                 Ok(status) => {
                     self.set_temporary_status(&format!(
-                        "Editor '{}' exited with status: {}",
-                        editor_prog, status
+                        "Editor '{editor_prog}' exited with status: {status}"
                     ));
                 }
                 Err(e) => {
                     self.set_temporary_status(&format!(
-                        "Failed to launch editor '{}': {}",
-                        editor_prog, e
+                        "Failed to launch editor '{editor_prog}': {e}"
                     ));
                 }
             }
@@ -912,10 +908,10 @@ impl App {
             if let Ok(len) = std::fs::metadata(&temp_file_path).map(|m| m.len())
                 && let Err(e) = std::fs::write(&temp_file_path, vec![0u8; len as usize])
             {
-                self.set_temporary_status(&format!("Failed to zero temp file: {}", e));
+                self.set_temporary_status(&format!("Failed to zero temp file: {e}"));
             }
             if let Err(e) = std::fs::remove_file(&temp_file_path) {
-                self.set_temporary_status(&format!("Failed to remove temp file: {}", e));
+                self.set_temporary_status(&format!("Failed to remove temp file: {e}"));
             }
         } else {
             self.set_temporary_status_static("Failed to load note for external editor!");
@@ -938,23 +934,21 @@ impl App {
                 if *is_expanded {
                     self.list.folder_expanded.remove(path);
                     self.refresh_visual_list();
-                } else {
-                    if !path.is_empty() {
-                        let parent_path = if let Some(slash) = path.rfind('/') {
-                            &path[..slash]
-                        } else {
-                            ""
-                        };
+                } else if !path.is_empty() {
+                    let parent_path = if let Some(slash) = path.rfind('/') {
+                        &path[..slash]
+                    } else {
+                        ""
+                    };
 
-                        if let Some(idx) = self.list.visual_list.iter().position(|v| {
-                            if let VisualItem::Folder { path: p, .. } = v {
-                                p == parent_path
-                            } else {
-                                false
-                            }
-                        }) {
-                            self.list.visual_index = idx;
+                    if let Some(idx) = self.list.visual_list.iter().position(|v| {
+                        if let VisualItem::Folder { path: p, .. } = v {
+                            p == parent_path
+                        } else {
+                            false
                         }
+                    }) {
+                        self.list.visual_index = idx;
                     }
                 }
             }
@@ -994,10 +988,8 @@ impl App {
                 if !is_expanded {
                     self.list.folder_expanded.insert(path.clone());
                     self.refresh_visual_list();
-                } else {
-                    if self.list.visual_index + 1 < self.list.visual_list.len() {
-                        self.list.visual_index += 1;
-                    }
+                } else if self.list.visual_index + 1 < self.list.visual_list.len() {
+                    self.list.visual_index += 1;
                 }
             }
             VisualItem::Note { .. } | VisualItem::CreateNew { .. } => {
@@ -1050,7 +1042,7 @@ impl App {
     pub fn start_blank_note(&mut self, folder: String) {
         let mut new_id = self.storage.new_note_id();
         if !folder.is_empty() {
-            new_id = format!("{}/{}", folder, new_id);
+            new_id = format!("{folder}/{new_id}");
         }
 
         if self.editor.external_editor_enabled {
@@ -1089,7 +1081,7 @@ impl App {
     pub fn start_blank_note_with_title(&mut self, folder: String, title: String) {
         let mut new_id = self.storage.new_note_id();
         if !folder.is_empty() {
-            new_id = format!("{}/{}", folder, new_id);
+            new_id = format!("{folder}/{new_id}");
         }
 
         if self.editor.external_editor_enabled {
@@ -1133,7 +1125,7 @@ impl App {
 
         let mut new_id = self.storage.new_note_id();
         if !folder.is_empty() {
-            new_id = format!("{}/{}", folder, new_id);
+            new_id = format!("{folder}/{new_id}");
         }
 
         if self.editor.external_editor_enabled {
@@ -1188,7 +1180,7 @@ impl App {
 
         let mut new_id = self.storage.new_note_id();
         if !folder.is_empty() {
-            new_id = format!("{}/{}", folder, new_id);
+            new_id = format!("{folder}/{new_id}");
         }
 
         if self.editor.external_editor_enabled {
@@ -1449,15 +1441,11 @@ template = """
             }
             Ok(status) => {
                 self.set_temporary_status(&format!(
-                    "Editor '{}' exited with status: {}",
-                    editor_prog, status
+                    "Editor '{editor_prog}' exited with status: {status}"
                 ));
             }
             Err(e) => {
-                self.set_temporary_status(&format!(
-                    "Failed to launch editor '{}': {}",
-                    editor_prog, e
-                ));
+                self.set_temporary_status(&format!("Failed to launch editor '{editor_prog}': {e}"));
             }
         }
     }
@@ -1470,7 +1458,7 @@ template = """
                 .unwrap_or_else(|_| PathBuf::from("."));
             let git_ops = crate::backup::git_ops::GitOps::init(&vault_path)?;
             if git_ops.has_changes().unwrap_or(false) {
-                let msg = format!("auto: {}", note_title);
+                let msg = format!("auto: {note_title}");
                 git_ops.add_all().and_then(|_| git_ops.commit(&msg))?;
                 if config.backup.auto_push
                     && let Some(remote) = &config.backup.remote_name
@@ -1674,28 +1662,28 @@ template = """
         let (title, message, detail, confirm_label, is_destructive) = match &action {
             ConfirmAction::DeleteNote { title, .. } => (
                 "Move to Trash".into(),
-                format!("Move \"{}\" to trash?", title),
+                format!("Move \"{title}\" to trash?"),
                 Some("Use Shift+T to view/restore trashed notes.".into()),
                 "Trash".into(),
                 false,
             ),
             ConfirmAction::DeleteFolder { path } => (
                 "Move Folder to Trash".into(),
-                format!("Move folder \"{}\" and all contents to trash?", path),
+                format!("Move folder \"{path}\" and all contents to trash?"),
                 Some("Use Shift+T to view/restore trashed notes.".into()),
                 "Trash".into(),
                 false,
             ),
             ConfirmAction::DeleteTag { tag } => (
                 "Confirm Delete Tag".into(),
-                format!("Delete tag \"{}\"?", tag),
+                format!("Delete tag \"{tag}\"?"),
                 Some("This will remove the tag from all notes.".into()),
                 "Delete".into(),
                 true,
             ),
             ConfirmAction::DeleteTemplate { name, .. } => (
                 "Delete Template".into(),
-                format!("Delete template \"{}\"?", name),
+                format!("Delete template \"{name}\"?"),
                 Some("This removes template file permanently.".into()),
                 "Delete".into(),
                 true,
@@ -1862,10 +1850,7 @@ template = """
         let title = if parent_path.is_empty() {
             "Create Folder - Esc to cancel, Enter to save".to_string()
         } else {
-            format!(
-                "Create Folder in '{}' - Esc to cancel, Enter to save",
-                parent_path
-            )
+            format!("Create Folder in '{parent_path}' - Esc to cancel, Enter to save")
         };
         input.set_style(self.app_theme.bg_style());
         input.set_block(
@@ -1933,7 +1918,7 @@ template = """
                     let full_path = if parent_path.is_empty() {
                         text.to_string()
                     } else {
-                        format!("{}/{}", parent_path, text)
+                        format!("{parent_path}/{text}")
                     };
                     if let Err(e) = self.storage.create_folder(&full_path) {
                         self.set_temporary_status(&format!("Failed to create folder: {e}"));
@@ -1980,7 +1965,7 @@ template = """
         self.list.list_mode = ListMode::Normal;
 
         if failed > 0 {
-            self.set_temporary_status(&format!("Failed to trash {} note(s)", failed));
+            self.set_temporary_status(&format!("Failed to trash {failed} note(s)"));
         } else {
             self.set_temporary_status_static("Selected notes moved to trash");
         }
@@ -2028,7 +2013,7 @@ template = """
                 let mut all_folders = vec!["".to_string()];
                 all_folders.extend(
                     folders.into_iter().filter(|f| {
-                        f != &folder_path && !f.starts_with(&format!("{}/", folder_path))
+                        f != &folder_path && !f.starts_with(&format!("{folder_path}/"))
                     }),
                 );
 
@@ -2119,7 +2104,7 @@ template = """
                     let new_path = if target_folder.is_empty() {
                         folder_name.to_string()
                     } else {
-                        format!("{}/{}", target_folder, folder_name)
+                        format!("{target_folder}/{folder_name}")
                     };
 
                     if folder_path == new_path {
@@ -2156,7 +2141,7 @@ template = """
                     self.list.list_mode = ListMode::Normal;
 
                     if failed > 0 {
-                        self.set_temporary_status(&format!("Failed to move {} note(s)", failed));
+                        self.set_temporary_status(&format!("Failed to move {failed} note(s)"));
                     } else {
                         self.set_temporary_status_static("Selected notes moved");
                     }
@@ -2301,7 +2286,7 @@ template = """
 
             if let Some(last_comma) = text.rfind(',') {
                 let prefix = &text[..=last_comma];
-                let new_text = format!("{} {}, ", prefix, suggestion);
+                let new_text = format!("{prefix} {suggestion}, ");
 
                 popup.input.select_all();
                 popup.input.cut();
@@ -2309,7 +2294,7 @@ template = """
             } else {
                 popup.input.select_all();
                 popup.input.cut();
-                popup.input.insert_str(format!("{}, ", suggestion));
+                popup.input.insert_str(format!("{suggestion}, "));
             }
 
             popup.suggestions.clear();
@@ -2337,13 +2322,13 @@ template = """
         let detail = if count == 1 {
             "Will remove tag from 1 note.".to_string()
         } else {
-            format!("Will remove tag from {} notes.", count)
+            format!("Will remove tag from {count} notes.")
         };
 
         self.popups.confirm = Some(ConfirmPopup {
             action: ConfirmAction::DeleteTag { tag: tag.clone() },
             title: "Confirm Delete Tag".into(),
-            message: format!("Delete tag \"{}\"?", tag),
+            message: format!("Delete tag \"{tag}\"?"),
             detail: Some(detail),
             confirm_label: "Delete".into(),
             is_destructive: true,
@@ -2369,7 +2354,7 @@ template = """
             }
         }
 
-        self.set_temporary_status(&format!("Deleted '{}' from {} note(s)", tag, count));
+        self.set_temporary_status(&format!("Deleted '{tag}' from {count} note(s)"));
         if let Err(e) = self.refresh_notes() {
             self.set_temporary_status(&format!("Refresh failed: {e}"));
         }
@@ -2436,7 +2421,7 @@ template = """
             return;
         }
 
-        self.set_temporary_status(&format!("Tag '{}' applied to {} note(s)", tag, count));
+        self.set_temporary_status(&format!("Tag '{tag}' applied to {count} note(s)"));
     }
 
     pub fn open_selected_note_location(&mut self) {
@@ -2481,7 +2466,7 @@ template = """
         if let Ok(mut config) = crate::config::ClinConfig::load() {
             config.external_editor_enabled = self.editor.external_editor_enabled;
             if let Err(e) = config.save() {
-                self.set_temporary_status(&format!("Failed to save config: {}", e));
+                self.set_temporary_status(&format!("Failed to save config: {e}"));
             }
         }
     }
@@ -2794,7 +2779,7 @@ template = """
 
         let mut new_id = self.storage.new_note_id();
         if !folder.is_empty() {
-            new_id = format!("{}/{}", folder, new_id);
+            new_id = format!("{folder}/{new_id}");
         }
 
         if self.editor.external_editor_enabled {
@@ -2864,7 +2849,7 @@ template = """
             }
 
             let canvas_id = if popup.folder.is_empty() {
-                format!("{}.draw", title)
+                format!("{title}.draw")
             } else {
                 format!("{}/{}.draw", popup.folder, title)
             };
@@ -2907,7 +2892,7 @@ template = """
             }
 
             let canvas_id = if popup.folder.is_empty() {
-                format!("{}.canvas", title)
+                format!("{title}.canvas")
             } else {
                 format!("{}/{}.canvas", popup.folder, title)
             };
@@ -2924,7 +2909,7 @@ template = """
                 if let Ok(content) = serde_json::to_string_pretty(&data)
                     && let Err(e) = std::fs::write(&path, content)
                 {
-                    self.set_temporary_status(&format!("Failed to write canvas file: {}", e));
+                    self.set_temporary_status(&format!("Failed to write canvas file: {e}"));
                     return;
                 }
             }
@@ -3069,7 +3054,7 @@ template = """
             config.default_sort_field = Some(self.list.sort_field);
             config.default_sort_order = Some(self.list.sort_order);
             if let Err(e) = config.save() {
-                self.set_temporary_status(&format!("Failed to save config: {}", e));
+                self.set_temporary_status(&format!("Failed to save config: {e}"));
             }
         }
     }
@@ -3221,7 +3206,7 @@ template = """
             };
 
             if !title_query.is_empty() && matched_title {
-                title_results.push(format!("{}{}{}", lock_prefix, label, tags_str));
+                title_results.push(format!("{lock_prefix}{label}{tags_str}"));
                 title_result_indices.push(note_idx);
             }
 
@@ -3236,10 +3221,7 @@ template = """
                     .lines()
                     .filter(|l| l.to_lowercase().contains(&grep_query))
                     .count();
-                grep_results.push(format!(
-                    " {}{}{} ({})",
-                    lock_prefix, label, tags_str, match_count
-                ));
+                grep_results.push(format!(" {lock_prefix}{label}{tags_str} ({match_count})"));
                 grep_result_indices.push(note_idx);
                 grep_is_header.push(true);
 
@@ -3279,7 +3261,7 @@ template = """
                             .join(" ")
                     )
                 };
-                title_results.push(format!("{}{}{}", lock_prefix, label, tags_str));
+                title_results.push(format!("{lock_prefix}{label}{tags_str}"));
                 title_result_indices.push(note_idx);
             }
         }
@@ -3518,7 +3500,7 @@ template = """
         match self.storage.purge_trash_items(items) {
             Ok(()) => {
                 self.popups.trash_view = None;
-                self.set_temporary_status(&format!("Deleted {} notes from trash", count));
+                self.set_temporary_status(&format!("Deleted {count} notes from trash"));
             }
             Err(e) => {
                 self.set_temporary_status(&format!("Failed to empty trash: {e}"));
@@ -3538,7 +3520,7 @@ template = """
         if let Ok(mut config) = crate::config::ClinConfig::load() {
             config.preview_enabled = self.list.preview_enabled;
             if let Err(e) = config.save() {
-                self.set_temporary_status(&format!("Failed to save config: {}", e));
+                self.set_temporary_status(&format!("Failed to save config: {e}"));
             }
         }
     }
@@ -3764,12 +3746,12 @@ template = """
                     name.clone()
                 };
 
-                let mut md = format!("# {}\n\n", display_title);
+                let mut md = format!("# {display_title}\n\n");
 
                 if !subfolders.is_empty() {
                     md.push_str("## Folders\n");
                     for sub in &subfolders {
-                        md.push_str(&format!("- \u{f07b} {}\n", sub));
+                        md.push_str(&format!("- \u{f07b} {sub}\n"));
                     }
                     md.push('\n');
                 }
@@ -3777,7 +3759,7 @@ template = """
                 if !notes.is_empty() {
                     md.push_str("## Notes\n");
                     for note in &notes {
-                        md.push_str(&format!("- \u{f15c} {}\n", note));
+                        md.push_str(&format!("- \u{f15c} {note}\n"));
                     }
                 } else if subfolders.is_empty() {
                     md.push_str("*This folder is empty.*\n");
@@ -3820,7 +3802,7 @@ template = """
         if let Ok(mut config) = crate::config::ClinConfig::load() {
             config.editor_preview_enabled = self.editor.editor_preview_enabled;
             if let Err(e) = config.save() {
-                self.set_temporary_status(&format!("Failed to save config: {}", e));
+                self.set_temporary_status(&format!("Failed to save config: {e}"));
             }
         }
     }
@@ -3836,7 +3818,7 @@ template = """
         if let Ok(mut config) = crate::config::ClinConfig::load() {
             config.show_line_numbers = self.editor.show_line_numbers;
             if let Err(e) = config.save() {
-                self.set_temporary_status(&format!("Failed to save config: {}", e));
+                self.set_temporary_status(&format!("Failed to save config: {e}"));
             }
         }
     }
@@ -3852,7 +3834,7 @@ template = """
         if let Ok(mut config) = crate::config::ClinConfig::load() {
             config.confirm_on_delete = self.confirm_on_delete;
             if let Err(e) = config.save() {
-                self.set_temporary_status(&format!("Failed to save config: {}", e));
+                self.set_temporary_status(&format!("Failed to save config: {e}"));
             }
         }
     }
@@ -3868,7 +3850,7 @@ template = """
         if let Ok(mut config) = crate::config::ClinConfig::load() {
             config.confirm_on_quit = self.confirm_on_quit;
             if let Err(e) = config.save() {
-                self.set_temporary_status(&format!("Failed to save config: {}", e));
+                self.set_temporary_status(&format!("Failed to save config: {e}"));
             }
         }
     }
@@ -3887,7 +3869,7 @@ template = """
         if let Ok(mut config) = crate::config::ClinConfig::load() {
             config.preview_encryption = self.preview_encryption;
             if let Err(e) = config.save() {
-                self.set_temporary_status(&format!("Failed to save config: {}", e));
+                self.set_temporary_status(&format!("Failed to save config: {e}"));
             }
         }
     }
@@ -3906,7 +3888,7 @@ template = """
         if let Ok(mut config) = crate::config::ClinConfig::load() {
             config.pinned_on_top = self.pinned_on_top;
             if let Err(e) = config.save() {
-                self.set_temporary_status(&format!("Failed to save config: {}", e));
+                self.set_temporary_status(&format!("Failed to save config: {e}"));
             }
         }
     }
@@ -3995,7 +3977,7 @@ template = """
                 config.default_sort_field = Some(self.list.sort_field);
                 config.default_sort_order = Some(self.list.sort_order);
                 if let Err(e) = config.save() {
-                    self.set_temporary_status(&format!("Failed to save config: {}", e));
+                    self.set_temporary_status(&format!("Failed to save config: {e}"));
                 }
             }
         }
@@ -4013,11 +3995,11 @@ template = """
                     let mut config = crate::config::ClinConfig::load().unwrap_or_default();
                     config.theme.theme = next_theme.parse().unwrap_or_default();
                     if let Err(e) = config.save() {
-                        self.set_temporary_status(&format!("Failed to save theme: {}", e));
+                        self.set_temporary_status(&format!("Failed to save theme: {e}"));
                         return;
                     }
                     self.reload_theme();
-                    self.set_temporary_status(&format!("Theme set to: {}", next_theme));
+                    self.set_temporary_status(&format!("Theme set to: {next_theme}"));
                     self.popups.theme = Some(popup);
                 }
                 ThemePopupFocus::GeneralBg => {
@@ -4029,7 +4011,7 @@ template = """
                         crate::config::Background::Transparent
                     };
                     if let Err(e) = config.save() {
-                        self.set_temporary_status(&format!("Failed to save bg: {}", e));
+                        self.set_temporary_status(&format!("Failed to save bg: {e}"));
                     }
                     self.reload_theme();
                     self.popups.theme = Some(popup);
@@ -4043,7 +4025,7 @@ template = """
                         crate::config::Background::Transparent
                     };
                     if let Err(e) = config.save() {
-                        self.set_temporary_status(&format!("Failed to save graph bg: {}", e));
+                        self.set_temporary_status(&format!("Failed to save graph bg: {e}"));
                     }
                     self.popups.theme = Some(popup);
                 }

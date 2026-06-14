@@ -435,7 +435,7 @@ impl PinstarState {
         if let Some(source_id) = self.connection_source_id.take()
             && source_id != target_id
         {
-            let edge_id = format!("edge_{}_{}", source_id, target_id);
+            let edge_id = format!("edge_{source_id}_{target_id}");
             if !self
                 .data
                 .edges

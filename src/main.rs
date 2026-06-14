@@ -89,7 +89,7 @@ fn main() -> Result<()> {
 
             let _saved_id = storage.save_note(&id, &note)?;
 
-            println!("Created note: {}", final_title);
+            println!("Created note: {final_title}");
 
             Ok(())
         }
@@ -274,9 +274,9 @@ fn main() -> Result<()> {
 
             println!();
             println!("Migration complete!");
-            println!("  Migrated: {} items", migrated_count);
+            println!("  Migrated: {migrated_count} items");
             if skipped_count > 0 {
-                println!("  Skipped:  {} items", skipped_count);
+                println!("  Skipped:  {skipped_count} items");
             }
             println!();
             println!("Your old data remains at: {}", from.display());
@@ -596,7 +596,7 @@ fn run_app(
             let mut config = match ClinConfig::load() {
                 Ok(c) => c,
                 Err(e) => {
-                    app.set_temporary_status(&format!("Config error: {}", e));
+                    app.set_temporary_status(&format!("Config error: {e}"));
                     ClinConfig::default()
                 }
             };
@@ -624,7 +624,7 @@ fn run_app(
             }
 
             if let Err(e) = config.save() {
-                app.set_temporary_status(&format!("Failed to save config: {}", e));
+                app.set_temporary_status(&format!("Failed to save config: {e}"));
             }
             app.needs_full_redraw = true;
             terminal.clear()?;

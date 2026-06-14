@@ -54,7 +54,7 @@ impl Action for ImportAction {
             ImportTarget::NewNote => "as Note",
             ImportTarget::AppendCurrent => "to Note",
         };
-        Cow::Owned(format!("{} {} {}", action, name, suffix))
+        Cow::Owned(format!("{action} {name} {suffix}"))
     }
 
     fn description(&self) -> Cow<'static, str> {
@@ -69,7 +69,7 @@ impl Action for ImportAction {
             ImportTarget::NewNote => "create a note",
             ImportTarget::AppendCurrent => "append to the current note",
         };
-        Cow::Owned(format!("Convert {} and {}", source_desc, target_desc))
+        Cow::Owned(format!("Convert {source_desc} and {target_desc}"))
     }
     fn category(&self) -> crate::actions::ActionCategory {
         match self.target {
@@ -186,7 +186,7 @@ pub fn convert_file(path: &str) -> Result<(String, String)> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        bail!("Conversion failed: {}", stderr);
+        bail!("Conversion failed: {stderr}");
     }
 
     let md = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -339,7 +339,7 @@ pub fn convert_url(url: &str) -> Result<(String, String)> {
         .split('.')
         .next_back()
         .filter(|e| e.len() <= 5 && e.chars().all(|c| c.is_alphanumeric()))
-        .map(|e| format!(".{}", e))
+        .map(|e| format!(".{e}"))
         .unwrap_or_else(|| ".html".to_string());
 
     let temp_file = NamedTempFile::with_suffix(&ext).context("Failed to create temp file")?;
@@ -353,7 +353,7 @@ pub fn convert_url(url: &str) -> Result<(String, String)> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        bail!("curl failed: {}", stderr);
+        bail!("curl failed: {stderr}");
     }
 
     // If markitdown is available, let it handle the URL directly for better results
@@ -448,7 +448,7 @@ mod tests {
 
         let (title, md) = convert_csv(tmp.path().to_str().unwrap())?;
         assert!(title.contains("tmp"));
-        println!("MD: {:?}", md);
+        println!("MD: {md:?}");
         assert!(md.contains("| a | b | c |") || md.contains("| a | b | c |"));
         assert!(md.contains("| --- | --- | --- |"));
         assert!(md.contains("| 1 | 2 | 3 |"));

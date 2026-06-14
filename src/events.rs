@@ -19,7 +19,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 let note_id = palette.context_note_id.clone();
                 if let Err(e) = crate::actions::execute_action(&action_id, app, note_id.as_deref())
                 {
-                    app.set_temporary_status(&format!("Action failed: {}", e));
+                    app.set_temporary_status(&format!("Action failed: {e}"));
                 }
             }
             return false;
@@ -884,11 +884,9 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 app.list.visual_index = len.saturating_sub(1);
             }
             app.request_preview_update();
-        } else {
-            if app.list.visual_index < len.saturating_sub(1) {
-                app.list.visual_index += 1;
-                app.request_preview_update();
-            }
+        } else if app.list.visual_index < len.saturating_sub(1) {
+            app.list.visual_index += 1;
+            app.request_preview_update();
         }
         if app.list.list_mode == crate::list_view::ListMode::Select {
             app.list.last_selection_change = Some(std::time::Instant::now());
@@ -901,11 +899,9 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 app.list.visual_index -= cols;
             }
             app.request_preview_update();
-        } else {
-            if app.list.visual_index > 0 {
-                app.list.visual_index -= 1;
-                app.request_preview_update();
-            }
+        } else if app.list.visual_index > 0 {
+            app.list.visual_index -= 1;
+            app.request_preview_update();
         }
         if app.list.list_mode == crate::list_view::ListMode::Select {
             app.list.last_selection_change = Some(std::time::Instant::now());
@@ -1506,7 +1502,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                         if let Err(e) =
                             crate::actions::execute_action(&action_id, app, note_id.as_deref())
                         {
-                            app.set_temporary_status(&format!("Action failed: {}", e));
+                            app.set_temporary_status(&format!("Action failed: {e}"));
                         }
                         app.command_palette = None;
                         return;

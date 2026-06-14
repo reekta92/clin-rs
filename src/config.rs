@@ -50,7 +50,7 @@ impl FromStr for Theme {
             "everforest" => Ok(Theme::Everforest),
             "kanagawa" => Ok(Theme::Kanagawa),
             "solarized" | "solarized_dark" | "solarizeddark" => Ok(Theme::Solarized),
-            _ => Err(format!("Unknown theme: {}", s)),
+            _ => Err(format!("Unknown theme: {s}")),
         }
     }
 }
@@ -87,7 +87,7 @@ impl FromStr for Background {
         match s.to_lowercase().as_str() {
             "transparent" => Ok(Background::Transparent),
             "solid" => Ok(Background::Solid),
-            _ => Err(format!("Unknown background: {}", s)),
+            _ => Err(format!("Unknown background: {s}")),
         }
     }
 }
@@ -119,7 +119,7 @@ impl FromStr for NodeColorMode {
             "folder" => Ok(NodeColorMode::Folder),
             "link_count" | "linkcount" => Ok(NodeColorMode::LinkCount),
             "uniform" => Ok(NodeColorMode::Uniform),
-            _ => Err(format!("Unknown node_color_mode: {}", s)),
+            _ => Err(format!("Unknown node_color_mode: {s}")),
         }
     }
 }
@@ -140,7 +140,7 @@ impl FromStr for EdgeColorMode {
             "source" => Ok(EdgeColorMode::Source),
             "target" => Ok(EdgeColorMode::Target),
             "uniform" => Ok(EdgeColorMode::Uniform),
-            _ => Err(format!("Unknown edge_color_mode: {}", s)),
+            _ => Err(format!("Unknown edge_color_mode: {s}")),
         }
     }
 }
@@ -163,7 +163,7 @@ impl FromStr for LabelMode {
             "neighbors" => Ok(LabelMode::Neighbors),
             "all" => Ok(LabelMode::All),
             "none" => Ok(LabelMode::None),
-            _ => Err(format!("Unknown label_mode: {}", s)),
+            _ => Err(format!("Unknown label_mode: {s}")),
         }
     }
 }
@@ -182,7 +182,7 @@ impl FromStr for NodeSizeMode {
         match s.to_lowercase().as_str() {
             "fixed" => Ok(NodeSizeMode::Fixed),
             "link_count" | "linkcount" => Ok(NodeSizeMode::LinkCount),
-            _ => Err(format!("Unknown node_size_mode: {}", s)),
+            _ => Err(format!("Unknown node_size_mode: {s}")),
         }
     }
 }
@@ -203,7 +203,7 @@ impl FromStr for CanvasMarker {
             "braille" => Ok(CanvasMarker::Braille),
             "half_block" | "halfblock" => Ok(CanvasMarker::HalfBlock),
             "dot" => Ok(CanvasMarker::Dot),
-            _ => Err(format!("Unknown canvas_marker: {}", s)),
+            _ => Err(format!("Unknown canvas_marker: {s}")),
         }
     }
 }
@@ -234,7 +234,7 @@ impl FromStr for NodeShape {
             "circle" => Ok(NodeShape::Circle),
             "square" => Ok(NodeShape::Square),
             "diamond" => Ok(NodeShape::Diamond),
-            _ => Err(format!("Unknown node_shape: {}", s)),
+            _ => Err(format!("Unknown node_shape: {s}")),
         }
     }
 }
@@ -269,7 +269,7 @@ impl FromStr for BorderStyle {
             "rounded" => Ok(BorderStyle::Rounded),
             "double" => Ok(BorderStyle::Double),
             "none" => Ok(BorderStyle::None),
-            _ => Err(format!("Unknown border_style: {}", s)),
+            _ => Err(format!("Unknown border_style: {s}")),
         }
     }
 }
@@ -293,7 +293,7 @@ impl FromStr for LegendPosition {
             "top_left" | "topleft" => Ok(LegendPosition::TopLeft),
             "bottom_right" | "bottomright" => Ok(LegendPosition::BottomRight),
             "bottom_left" | "bottomleft" => Ok(LegendPosition::BottomLeft),
-            _ => Err(format!("Unknown legend position: {}", s)),
+            _ => Err(format!("Unknown legend position: {s}")),
         }
     }
 }
@@ -319,7 +319,7 @@ where
         None => Ok(None),
         Some(s) => parse_hex_color(&s)
             .map(Some)
-            .ok_or_else(|| serde::de::Error::custom(format!("invalid hex color: {}", s))),
+            .ok_or_else(|| serde::de::Error::custom(format!("invalid hex color: {s}"))),
     }
 }
 
@@ -346,9 +346,9 @@ impl serde::Serialize for ColorOverrides {
         let mut s = serializer.serialize_struct("ColorOverrides", 10)?;
         fn fmt_color(c: &Color) -> String {
             if let Color::Rgb(r, g, b) = c {
-                format!("#{:02x}{:02x}{:02x}", r, g, b)
+                format!("#{r:02x}{g:02x}{b:02x}")
             } else {
-                format!("{:?}", c)
+                format!("{c:?}")
             }
         }
         if let Some(ref v) = self.node_color {

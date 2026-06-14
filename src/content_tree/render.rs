@@ -158,7 +158,7 @@ pub fn draw_content_tree(
                     }
                     crate::content_tree::parse::NodeKind::CodeBlock { lang, .. } => {
                         spans.push(Span::styled(
-                            format!("```{}", lang),
+                            format!("```{lang}"),
                             Style::default().fg(theme.muted),
                         ));
                     }
@@ -247,10 +247,7 @@ pub fn draw_content_tree(
         keybinds.content_tree_keys_display(ContentTreeAction::Help)
     );
 
-    let hint = format!(
-        "{} · {} · {} · {} · {}",
-        move_keys, fold_keys, jump_keys, back_keys, help_keys
-    );
+    let hint = format!("{move_keys} · {fold_keys} · {jump_keys} · {back_keys} · {help_keys}");
 
     crate::ui::draw_status_bar(frame, hint_area, theme, None, &hint, None);
 }

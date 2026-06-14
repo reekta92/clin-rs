@@ -324,7 +324,7 @@ fn notes_help_text(keybinds: &Keybinds, theme: &crate::app_theme::AppThemeColors
     ));
     lines.extend(help_item_dyn(
         "Scroll Up / Down half page",
-        Some(&format!("{}/{}", list_page_up, list_page_down)),
+        Some(&format!("{list_page_up}/{list_page_down}")),
         theme,
     ));
     lines.extend(help_item_dyn("Toggle pin note", Some(&list_pin), theme));
@@ -364,7 +364,7 @@ fn notes_help_text(keybinds: &Keybinds, theme: &crate::app_theme::AppThemeColors
     lines.push(help_heading("Popups", theme));
     lines.push(Line::from(""));
     lines.push(Line::from(vec![Span::styled(
-        format!(" Search Popup ({})", list_search),
+        format!(" Search Popup ({list_search})"),
         Style::default().fg(theme.heading),
     )]));
     lines.extend(help_item_dyn(
@@ -1267,7 +1267,7 @@ fn format_keybind(key: &str) -> String {
         .map(|group| {
             group
                 .split('/')
-                .map(|k| format!("<{}>", k))
+                .map(|k| format!("<{k}>"))
                 .collect::<Vec<_>>()
                 .join("/")
         })
@@ -1367,7 +1367,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 Style::default().fg(app.app_theme.folder),
             ));
             spans.push(Span::styled(
-                format!("{} {}", note_count, suffix),
+                format!("{note_count} {suffix}"),
                 Style::default().fg(app.app_theme.fg),
             ));
             spans.push(Span::raw(" ")); // padding right
@@ -1764,7 +1764,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                         spans.push(Span::raw(" "));
                         let sanitized_tag = crate::sanitize::sanitize_for_terminal(tag);
                         spans.push(Span::styled(
-                            format!("[{}]", sanitized_tag),
+                            format!("[{sanitized_tag}]"),
                             Style::default().fg(app.app_theme.tag),
                         ));
                     }
@@ -1987,7 +1987,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     } else {
                         Style::default()
                     };
-                    ListItem::new(format!("  {}", tag)).style(style)
+                    ListItem::new(format!("  {tag}")).style(style)
                 })
                 .collect();
 
@@ -2103,7 +2103,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             crate::app::FolderPickerMode::CopyNote { .. } => "Copy note to folder".to_string(),
             crate::app::FolderPickerMode::MoveFolder { folder_path } => {
                 let folder_name = folder_path.rsplit('/').next().unwrap_or(folder_path);
-                format!("Move '{}' folder to", folder_name)
+                format!("Move '{folder_name}' folder to")
             }
             crate::app::FolderPickerMode::BulkMoveNotes { note_ids } => {
                 format!("Move {} selected note(s) to", note_ids.len())
@@ -2409,7 +2409,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     parsed.grep_text.clone()
                 };
                 spans.push(Span::styled(
-                    format!("\u{f002} {}", grep_display),
+                    format!("\u{f002} {grep_display}"),
                     Style::default()
                         .fg(app.app_theme.accent)
                         .add_modifier(Modifier::BOLD),
@@ -3282,8 +3282,8 @@ pub fn draw_view_title_bar_with_tabs(
 /// Private — keep width in sync with `tab_display_width`.
 fn tab_display_text(label: &str, glyph: Option<&str>) -> String {
     match glyph {
-        Some(g) => format!(" {} {} ", g, label),
-        None => format!(" {} ", label),
+        Some(g) => format!(" {g} {label} "),
+        None => format!(" {label} "),
     }
 }
 
@@ -3480,7 +3480,7 @@ pub fn ext_badge(enabled: bool, theme: &AppThemeColors) -> StatusBarBadge {
         Style::default().fg(theme.muted)
     };
     StatusBarBadge {
-        label: format!(" {} ", label).into(),
+        label: format!(" {label} ").into(),
         style,
     }
 }
@@ -3697,7 +3697,7 @@ pub fn draw_dim_vline(frame: &mut Frame, area: Rect, color: Color) {
 
 fn draw_corner_watermark(frame: &mut Frame, area: Rect, color: Color) {
     let version = env!("CARGO_PKG_VERSION");
-    let text = format!("clin v{}", version);
+    let text = format!("clin v{version}");
     let width = text.len() as u16;
     if area.width < width + 2 || area.height < 1 {
         return;
@@ -3755,7 +3755,7 @@ pub fn pick_file(filter_name: &str, filter_ext: &str) -> Result<Option<String>> 
         if which::which("zenity").is_ok() {
             let output = Command::new("zenity")
                 .arg("--file-selection")
-                .arg(format!("--file-filter={} | *{}", filter_name, filter_ext))
+                .arg(format!("--file-filter={filter_name} | *{filter_ext}"))
                 .output()?;
             if output.status.success() {
                 return Ok(Some(
@@ -3766,7 +3766,7 @@ pub fn pick_file(filter_name: &str, filter_ext: &str) -> Result<Option<String>> 
             let output = Command::new("kdialog")
                 .arg("--getopenfilename")
                 .arg(".")
-                .arg(format!("*{}", filter_ext))
+                .arg(format!("*{filter_ext}"))
                 .output()?;
             if output.status.success() {
                 return Ok(Some(
@@ -3791,8 +3791,7 @@ pub fn pick_file(filter_name: &str, filter_ext: &str) -> Result<Option<String>> 
         }
     } else if cfg!(target_os = "windows") {
         let ps_script = format!(
-            "Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.OpenFileDialog; $f.Filter = '{} (*{})|*{}'; $f.ShowDialog() | Out-Null; $f.FileName",
-            filter_name, filter_ext, filter_ext
+            "Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.OpenFileDialog; $f.Filter = '{filter_name} (*{filter_ext})|*{filter_ext}'; $f.ShowDialog() | Out-Null; $f.FileName"
         );
         let output = Command::new("powershell")
             .arg("-Command")

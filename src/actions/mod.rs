@@ -140,5 +140,5 @@ pub fn execute_action(action_id: &str, app: &mut App, context_note_id: Option<&s
             return action.execute(app, context_note_id);
         }
     }
-    anyhow::bail!("Action not found: {}", action_id)
+    anyhow::bail!("Action not found: {action_id}")
 }

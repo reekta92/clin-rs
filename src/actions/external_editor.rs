@@ -33,6 +33,6 @@ impl Action for ToggleExternalEditorAction {
         } else {
             "Off"
         };
-        format!("Toggle External Editor Mode [{}]", state)
+        format!("Toggle External Editor Mode [{state}]")
     }
 }

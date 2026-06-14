@@ -12,7 +12,7 @@ pub enum ConflictAction {
 }
 
 fn prompt_conflict_action(file_name: &str) -> Result<ConflictAction> {
-    println!("  Conflict: '{}' already exists at destination.", file_name);
+    println!("  Conflict: '{file_name}' already exists at destination.");
     print!("  Action? [s]kip, skip [a]ll, [o]verwrite, overwrite a[l]l: ");
     io::stdout().flush()?;
 
@@ -50,7 +50,7 @@ pub fn migrate_file_with_conflict(
 
         match action {
             ConflictAction::Skip | ConflictAction::SkipAll => {
-                println!("  Skipped: {}", display_name);
+                println!("  Skipped: {display_name}");
                 let new_action = if matches!(action, ConflictAction::SkipAll) {
                     Some(ConflictAction::SkipAll)
                 } else {
@@ -60,7 +60,7 @@ pub fn migrate_file_with_conflict(
             }
             ConflictAction::Overwrite | ConflictAction::OverwriteAll => {
                 fs::copy(src, dst).with_context(|| format!("failed to copy {}", src.display()))?;
-                println!("  Overwritten: {}", display_name);
+                println!("  Overwritten: {display_name}");
                 let new_action = if matches!(action, ConflictAction::OverwriteAll) {
                     Some(ConflictAction::OverwriteAll)
                 } else {
@@ -71,7 +71,7 @@ pub fn migrate_file_with_conflict(
         }
     } else {
         fs::copy(src, dst).with_context(|| format!("failed to copy {}", src.display()))?;
-        println!("  Migrated: {}", display_name);
+        println!("  Migrated: {display_name}");
         Ok((1, 0, current_action))
     }
 }

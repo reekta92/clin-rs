@@ -225,9 +225,9 @@ impl Storage {
             .and_then(|s| s.to_str())
             .unwrap_or("Untitled note");
         let clin_id = if folder.is_empty() {
-            format!("{}.clin", stem)
+            format!("{stem}.clin")
         } else {
-            format!("{}/{}.clin", folder, stem)
+            format!("{folder}/{stem}.clin")
         };
         let target_id = self.unique_note_id(stem, "clin", &clin_id);
         let target_path = self.note_path(&target_id);
@@ -292,9 +292,9 @@ impl Storage {
             .and_then(|s| s.to_str())
             .unwrap_or("Untitled note");
         let target_id = if folder.is_empty() {
-            format!("{}.{}", stem, orig_ext)
+            format!("{stem}.{orig_ext}")
         } else {
-            format!("{}/{}.{}", folder, stem, orig_ext)
+            format!("{folder}/{stem}.{orig_ext}")
         };
         let target_id = self.unique_note_id(stem, &orig_ext, &target_id);
         let target_path = self.note_path(&target_id);

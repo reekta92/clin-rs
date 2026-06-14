@@ -35,6 +35,6 @@ impl Action for SwitchThemeAction {
         let current = crate::config::ClinConfig::load()
             .map(|c| c.theme.theme.to_string())
             .unwrap_or_else(|_| "default".to_string());
-        format!("Switch Theme [{}]", current)
+        format!("Switch Theme [{current}]")
     }
 }

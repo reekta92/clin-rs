@@ -97,7 +97,7 @@ impl Action for OcrPasteAction {
 
         let dynamic_image = if is_wayland() {
             get_clipboard_image_wayland().or_else(|e| {
-                eprintln!("Wayland clipboard failed: {}. Falling back to arboard.", e);
+                eprintln!("Wayland clipboard failed: {e}. Falling back to arboard.");
                 get_clipboard_image_arboard()
             })?
         } else {
@@ -121,7 +121,7 @@ impl Action for OcrPasteAction {
 
         if !output.status.success() {
             let err = String::from_utf8_lossy(&output.stderr);
-            anyhow::bail!("Tesseract failed: {}", err);
+            anyhow::bail!("Tesseract failed: {err}");
         }
 
         let extracted_text = String::from_utf8_lossy(&output.stdout).trim().to_string();

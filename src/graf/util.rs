@@ -20,7 +20,7 @@ pub fn truncate(s: &str, max_len: usize) -> String {
         return s
             .chars()
             .next()
-            .map(|c| format!("{}…", c))
+            .map(|c| format!("{c}…"))
             .unwrap_or_default();
     }
     format!("{}…", &s[..end])

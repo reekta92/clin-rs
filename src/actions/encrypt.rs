@@ -50,7 +50,7 @@ impl Action for EncryptNoteAction {
             Ok(new_id) => {
                 app.list.folder_cache = None;
                 let _ = app.refresh_notes();
-                app.set_temporary_status(&format!("Note encrypted: {}", new_id));
+                app.set_temporary_status(&format!("Note encrypted: {new_id}"));
             }
             Err(e) => {
                 app.set_temporary_status(&format!("Failed to encrypt: {e:#}"));

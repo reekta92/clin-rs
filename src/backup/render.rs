@@ -202,7 +202,7 @@ fn draw_content(frame: &mut Frame, area: Rect, state: &BackupState) {
 
                 lines.push(
                     Line::from(vec![
-                        Span::styled(format!("  {} ", sym), style),
+                        Span::styled(format!("  {sym} "), style),
                         Span::styled(&s.path, Style::default().fg(theme.text)),
                     ])
                     .style(line_style),
@@ -245,7 +245,7 @@ fn draw_content(frame: &mut Frame, area: Rect, state: &BackupState) {
 
                 lines.push(
                     Line::from(vec![
-                        Span::styled(format!("  {} ", sym), style),
+                        Span::styled(format!("  {sym} "), style),
                         Span::styled(&s.path, Style::default().fg(theme.text)),
                     ])
                     .style(line_style),
@@ -467,7 +467,7 @@ fn draw_settings_popup(frame: &mut Frame, area: Rect, state: &BackupState) {
                 .style(theme.bg_style());
 
             let inner = block.inner(area);
-            let text = format!("{}: {}", label, state_text);
+            let text = format!("{label}: {state_text}");
             let para = Paragraph::new(Span::styled(
                 text,
                 Style::default().fg(style).add_modifier(Modifier::BOLD),

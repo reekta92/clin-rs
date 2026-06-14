@@ -43,6 +43,6 @@ impl Action for ToggleLayoutAction {
             NotesLayout::Tree => "Tree",
             NotesLayout::Grid => "Grid",
         };
-        format!("Toggle Notes Layout [{}]", state)
+        format!("Toggle Notes Layout [{state}]")
     }
 }

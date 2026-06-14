@@ -379,7 +379,7 @@ mod tests {
         let result = render_in_thread(folder_md, 80, 300, cancel_token);
         let res = result.unwrap();
         let contents = res.parser.screen().contents();
-        eprintln!("Contents: {:?}", contents);
+        eprintln!("Contents: {contents:?}");
         assert!(!contents.contains("Install 'glow'"));
     }
 }

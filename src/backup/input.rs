@@ -333,7 +333,7 @@ impl BackupState {
         if let Ok(git_ops) = GitOps::init(&self.vault_path) {
             match git_ops.add_all().and_then(|_| git_ops.commit(message)) {
                 Ok(_) => self.status_message = Some("Commit successful".to_string()),
-                Err(e) => self.status_message = Some(format!("Error: {}", e)),
+                Err(e) => self.status_message = Some(format!("Error: {e}")),
             }
         }
     }
@@ -346,12 +346,12 @@ impl BackupState {
             .join("")
             .trim()
             .to_string();
-        self.status_message = Some(format!("Pushing to {}...", remote_name));
+        self.status_message = Some(format!("Pushing to {remote_name}..."));
 
         if let Ok(git_ops) = GitOps::init(&self.vault_path) {
             match git_ops.push(&remote_name) {
                 Ok(_) => self.status_message = Some("Push complete".to_string()),
-                Err(e) => self.status_message = Some(format!("Push failed: {}", e)),
+                Err(e) => self.status_message = Some(format!("Push failed: {e}")),
             }
         }
     }
@@ -383,7 +383,7 @@ impl BackupState {
         };
 
         if let Err(e) = config.save() {
-            self.status_message = Some(format!("Config save failed: {}", e));
+            self.status_message = Some(format!("Config save failed: {e}"));
         } else {
             self.status_message = Some("Settings saved".to_string());
 

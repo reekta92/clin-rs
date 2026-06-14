@@ -210,7 +210,7 @@ pub fn draw_pinstar_view(
 
             let mut label = g.label.as_deref().unwrap_or("Group").to_string();
             if is_editing {
-                label = format!("[EDITING] {}", label);
+                label = format!("[EDITING] {label}");
             }
 
             let mut block = Block::default()
@@ -314,14 +314,18 @@ pub fn draw_pinstar_view(
 
             let (ax, ay) = if dx.abs() > dy.abs() {
                 if dx > 0.0 { (fx + fw, scy) } else { (fx, scy) }
+            } else if dy > 0.0 {
+                (scx, fy + fh)
             } else {
-                if dy > 0.0 { (scx, fy + fh) } else { (scx, fy) }
+                (scx, fy)
             };
 
             let (bx, by) = if dx.abs() > dy.abs() {
                 if dx > 0.0 { (tx, tcy) } else { (tx + tw, tcy) }
+            } else if dy > 0.0 {
+                (tcx, ty)
             } else {
-                if dy > 0.0 { (tcx, ty) } else { (tcx, ty + th) }
+                (tcx, ty + th)
             };
 
             let sfx = ((ax - state.viewport_x) * state.zoom)
@@ -465,7 +469,7 @@ pub fn draw_pinstar_view(
         };
 
         if is_editing {
-            node_title = format!("[EDITING] {}", node_title);
+            node_title = format!("[EDITING] {node_title}");
         }
 
         let mut block = Block::default()
@@ -634,7 +638,7 @@ pub fn draw_pinstar_view(
                 } else {
                     Style::default().fg(theme.text)
                 };
-                ListItem::new(format!("  {}", item)).style(style)
+                ListItem::new(format!("  {item}")).style(style)
             })
             .collect();
 
