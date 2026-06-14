@@ -72,6 +72,10 @@ pub fn run_pinstar_view(
                     Event::Mouse(mouse) => {
                         handle_pinstar_mouse(&mut state, mouse, area);
                     }
+                    Event::Resize(_, _) => {
+                        terminal.autoresize()?;
+                        let _ = terminal.clear();
+                    }
                     _ => {}
                 }
                 pending = event::poll(Duration::ZERO)?;

@@ -1830,7 +1830,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 });
 
         let content_is_current = app.list.preview_content_index == Some(app.list.visual_index);
-        let content = if content_is_current {
+        let content = if content_is_current || app.list.pending_preview_update {
             app.list.preview_content.as_ref()
         } else {
             None

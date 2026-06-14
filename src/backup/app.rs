@@ -51,6 +51,10 @@ pub fn run_backup_view(
                         state.refresh_git_info()
                     }
                 }
+                Event::Resize(_, _) => {
+                    terminal.autoresize()?;
+                    let _ = terminal.clear();
+                }
                 _ => {}
             }
         }

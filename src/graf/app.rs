@@ -242,6 +242,10 @@ pub fn run_graf_view(
         if crossterm::event::poll(std::time::Duration::from_millis(16))? {
             loop {
                 let ev = crossterm::event::read()?;
+                if let crossterm::event::Event::Resize(_, _) = ev {
+                    terminal.autoresize()?;
+                    let _ = terminal.clear();
+                }
                 if let Some(action) = handle_event(ev, &mut app_state, config, keybinds, terminal)?
                 {
                     match action {

@@ -836,6 +836,10 @@ fn run_app(
                         app.request_editor_preview_update();
                     }
                 },
+                Event::Resize(_, _) => {
+                    terminal.autoresize()?;
+                    app.needs_full_redraw = true;
+                }
                 _ => {}
             }
         }

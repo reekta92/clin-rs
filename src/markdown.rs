@@ -288,6 +288,8 @@ fn render_in_thread(
     cmd.arg("dark");
     cmd.arg(&temp_path);
     cmd.env("TERM", "dumb");
+    cmd.env("PAGER", "cat");
+    cmd.env("GLOW_PAGER", "cat");
 
     let mut child = pair.slave.spawn_command(cmd).ok()?;
     drop(pair.slave);
@@ -362,5 +364,21 @@ fn convert_color(value: vt100::Color) -> Color {
         vt100::Color::Idx(15) => Color::White,
         vt100::Color::Idx(i) => Color::Indexed(i),
         vt100::Color::Rgb(r, g, b) => Color::Rgb(r, g, b),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::AtomicBool;
+    #[test]
+    fn test_render_in_thread() {
+        let cancel_token = Arc::new(AtomicBool::new(false));
+        let folder_md = "# Vault (Root)\n\n## Folders\n- \u{f07b} Documents\n\n## Notes\n- \u{f15c} hello\n";
+        let result = render_in_thread(folder_md, 80, 300, cancel_token);
+        let res = result.unwrap();
+        let contents = res.parser.screen().contents();
+        eprintln!("Contents: {:?}", contents);
+        assert!(!contents.contains("Install 'glow'"));
     }
 }

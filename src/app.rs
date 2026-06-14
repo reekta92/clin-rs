@@ -563,6 +563,7 @@ impl App {
             }
 
             self.list.visual_list = visual;
+            self.request_preview_update_immediate();
             return;
         }
 
@@ -627,6 +628,7 @@ impl App {
         }
 
         self.list.visual_list = visual;
+        self.request_preview_update_immediate();
     }
 
     pub fn get_current_folder_context(&self) -> String {
@@ -3595,6 +3597,16 @@ template = """
         self.list.pending_preview_update = true;
     }
 
+    pub fn request_preview_update_immediate(&mut self) {
+        if !self.list.preview_enabled {
+            return;
+        }
+
+        self.update_preview();
+        self.list.pending_preview_update = false;
+        self.list.last_selection_change = None;
+    }
+
     pub fn request_editor_preview_update(&mut self) {
         if !self.editor.editor_preview_enabled {
             return;
@@ -4048,5 +4060,49 @@ template = """
     pub fn app_theme_name(&self) -> String {
         let config = crate::config::ClinConfig::load().unwrap_or_default();
         config.theme.theme.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::storage::Storage;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_refresh_visual_list_requests_preview_update() {
+        let temp_dir = tempdir().unwrap();
+        let data_dir = temp_dir.path().join("data");
+        let config_dir = temp_dir.path().join("config");
+        let notes_dir = temp_dir.path().join("notes");
+        let templates_dir = temp_dir.path().join("templates");
+        std::fs::create_dir_all(&data_dir).unwrap();
+        std::fs::create_dir_all(&config_dir).unwrap();
+        std::fs::create_dir_all(&notes_dir).unwrap();
+        std::fs::create_dir_all(&templates_dir).unwrap();
+
+        let storage = Storage {
+            data_dir,
+            config_dir,
+            notes_dir,
+            templates_dir,
+            key: [0u8; 32],
+        };
+        let mut app = App::new(storage).unwrap();
+        app.list.preview_enabled = true;
+
+        // Test Grid layout (visual list is empty -> preview_content_index is None)
+        app.list.notes_layout = crate::config::NotesLayout::Grid;
+        app.list.preview_content_index = Some(999);
+        app.refresh_visual_list();
+        assert!(!app.list.pending_preview_update);
+        assert_eq!(app.list.preview_content_index, None);
+
+        // Test Tree layout (visual list contains folders -> preview_content_index is Some(0))
+        app.list.notes_layout = crate::config::NotesLayout::Tree;
+        app.list.preview_content_index = Some(999);
+        app.refresh_visual_list();
+        assert!(!app.list.pending_preview_update);
+        assert_eq!(app.list.preview_content_index, Some(0));
     }
 }

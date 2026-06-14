@@ -81,6 +81,10 @@ pub fn run_content_tree_view(
                         input::InputResult::None => {}
                     }
                 }
+                Event::Resize(_, _) => {
+                    terminal.autoresize()?;
+                    let _ = terminal.clear();
+                }
                 _ => {}
             }
         }
