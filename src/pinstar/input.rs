@@ -69,12 +69,6 @@ pub fn handle_pinstar_mouse(
             }
         }
         MouseEventKind::Down(MouseButton::Left) => {
-            if mouse.row == area.bottom().saturating_sub(1) && mouse.column < 10 {
-                state.ext_editor_enabled = !state.ext_editor_enabled;
-                state.ext_focused = true;
-                return true;
-            }
-            state.ext_focused = false;
             let mut menu_action = None;
             let mut close_menu = false;
 
@@ -497,27 +491,11 @@ pub fn handle_pinstar_event(
         }
     }
 
-    if state.ext_focused {
-        match key.code {
-            _ if keybinds.matches_canvas(CanvasAction::ExtUnfocus, &key) => {
-                state.ext_focused = false;
-            }
-            _ if keybinds.matches_canvas(CanvasAction::ExtToggle, &key) => {
-                state.ext_editor_enabled = !state.ext_editor_enabled;
-            }
-            _ => {}
-        }
-        return true;
-    }
 
     if state.editor_focus {
         match key.code {
             _ if keybinds.matches_canvas(CanvasAction::EditorUnfocus, &key) => {
                 state.editor_focus = false;
-            }
-            _ if keybinds.matches_canvas(CanvasAction::EditorFocusExt, &key) => {
-                state.editor_focus = false;
-                state.ext_focused = true;
             }
             _ if keybinds.matches_canvas(CanvasAction::EditorSyncRaw, &key) => {
                 let _ = state.sync_from_raw_editor();
@@ -575,8 +553,6 @@ pub fn handle_pinstar_event(
             if let Some(target_id) = target_id_opt {
                 if state.connection_source_id.is_some() {
                     state.finish_connection(&target_id);
-                } else if state.ext_editor_enabled {
-                    state.trigger_ext_editor = true;
                 } else {
                     state.toggle_editor();
                 }
@@ -609,8 +585,6 @@ pub fn handle_pinstar_event(
         _ if keybinds.matches_canvas(CanvasAction::CycleFocus, &key) => {
             if state.show_editor_pane {
                 state.editor_focus = true;
-            } else {
-                state.ext_focused = true;
             }
         }
         _ if keybinds.matches_canvas(CanvasAction::Help, &key) => {

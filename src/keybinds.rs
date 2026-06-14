@@ -200,7 +200,7 @@ pub enum ListAction {
     CycleFocus,
     Confirm,
     Cancel,
-    ToggleButton,
+    ToggleExternalEditor,
     NewFromTemplate,
     CreateFolder,
     CreateNote,
@@ -235,7 +235,6 @@ pub enum EditAction {
     Quit,
     Back,
     CycleFocus,
-    ToggleButton,
 
     SelectAll,
     Copy,
@@ -328,10 +327,7 @@ pub enum CanvasAction {
     CloseEditorAlt,
     ConfirmResize,
     CancelResize,
-    ExtUnfocus,
-    ExtToggle,
     EditorUnfocus,
-    EditorFocusExt,
     EditorSyncRaw,
 }
 
@@ -470,11 +466,8 @@ impl Default for Keybinds {
             ],
         );
         list.insert(
-            ListAction::ToggleButton,
-            vec![
-                KeyCombo::simple(KeyCode::Enter),
-                KeyCombo::simple(KeyCode::Char(' ')),
-            ],
+            ListAction::ToggleExternalEditor,
+            vec![KeyCombo::simple(KeyCode::Char('e'))],
         );
         list.insert(
             ListAction::NewFromTemplate,
@@ -561,13 +554,6 @@ impl Default for Keybinds {
         let mut edit = HashMap::new();
         edit.insert(EditAction::Back, vec![KeyCombo::simple(KeyCode::Esc)]);
         edit.insert(EditAction::CycleFocus, vec![KeyCombo::simple(KeyCode::Tab)]);
-        edit.insert(
-            EditAction::ToggleButton,
-            vec![
-                KeyCombo::simple(KeyCode::Enter),
-                KeyCombo::simple(KeyCode::Char(' ')),
-            ],
-        );
         edit.insert(
             EditAction::SelectAll,
             vec![KeyCombo::ctrl(KeyCode::Char('a'))],
@@ -919,26 +905,8 @@ impl Default for Keybinds {
             vec![KeyCombo::simple(KeyCode::Esc)],
         );
         canvas.insert(
-            CanvasAction::ExtUnfocus,
-            vec![
-                KeyCombo::simple(KeyCode::Esc),
-                KeyCombo::simple(KeyCode::Tab),
-            ],
-        );
-        canvas.insert(
-            CanvasAction::ExtToggle,
-            vec![
-                KeyCombo::simple(KeyCode::Enter),
-                KeyCombo::simple(KeyCode::Char(' ')),
-            ],
-        );
-        canvas.insert(
             CanvasAction::EditorUnfocus,
             vec![KeyCombo::simple(KeyCode::Esc)],
-        );
-        canvas.insert(
-            CanvasAction::EditorFocusExt,
-            vec![KeyCombo::simple(KeyCode::Tab)],
         );
         canvas.insert(
             CanvasAction::EditorSyncRaw,

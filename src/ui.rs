@@ -1,5 +1,5 @@
 use crate::app::{
-    App, ConfirmPopup, EditFocus, HelpTab, ListFocus, TemplatePopup, ThemePopup, ViewMode,
+    App, ConfirmPopup, EditFocus, HelpTab, TemplatePopup, ThemePopup, ViewMode,
 };
 use crate::app_theme::AppThemeColors;
 use crate::constants::*;
@@ -231,7 +231,6 @@ fn notes_help_text(keybinds: &Keybinds, theme: &crate::app_theme::AppThemeColors
     let list_location = keybinds.list_keys_display(ListAction::OpenLocation);
     let list_page_up = keybinds.list_keys_display(ListAction::PageUp);
     let list_page_down = keybinds.list_keys_display(ListAction::PageDown);
-    let list_focus = keybinds.list_keys_display(ListAction::CycleFocus);
     let list_help = keybinds.list_keys_display(ListAction::Help);
     let list_quit = keybinds.list_keys_display(ListAction::Quit);
     let list_template = keybinds.list_keys_display(ListAction::NewFromTemplate);
@@ -315,8 +314,8 @@ fn notes_help_text(keybinds: &Keybinds, theme: &crate::app_theme::AppThemeColors
         theme,
     ));
     lines.extend(help_item_dyn(
-        "Change focus (notes list <-> buttons)",
-        Some(&list_focus),
+        "Toggle external editor mode",
+        Some(&keybinds.list_keys_display(ListAction::ToggleExternalEditor)),
         theme,
     ));
     lines.extend(help_item_dyn(
@@ -471,7 +470,7 @@ fn editor_help_text(
     lines.push(help_heading("Editor", theme));
     lines.push(Line::from(""));
     lines.extend(help_item_dyn(
-        "Change focus (Title, Content, toggles)",
+        "Change focus (Title, Content)",
         Some(&edit_focus),
         theme,
     ));
@@ -500,11 +499,6 @@ fn editor_help_text(
     lines.extend(help_item_dyn(
         "Toggle markdown preview panel",
         Some(&edit_md_preview),
-        theme,
-    ));
-    lines.extend(help_item_dyn(
-        "Open external editor",
-        Some(&edit_focus),
         theme,
     ));
     Text::from(lines)
@@ -763,13 +757,8 @@ fn canvas_help_text(
         theme,
     ));
     lines.extend(help_item_dyn(
-        "Focus editor / ext toggle",
+        "Focus editor pane",
         Some(&keybinds.canvas_keys_display(CanvasAction::CycleFocus)),
-        theme,
-    ));
-    lines.extend(help_item_dyn(
-        "Toggle external editor mode",
-        Some(&keybinds.canvas_keys_display(CanvasAction::ExtToggle)),
         theme,
     ));
     lines.push(Line::from(""));
@@ -1872,11 +1861,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     }
 
     let hint = resolved_status_hint(app, LIST_HELP_HINTS);
-    let badge = Some(ext_badge(
-        app.editor.external_editor_enabled,
-        app.list.list_focus == ListFocus::ExternalEditorToggle,
-        &app.app_theme,
-    ));
+    let badge = Some(ext_badge(app.editor.external_editor_enabled, &app.app_theme));
     draw_status_bar(frame, chunks[2], &app.app_theme, badge, &hint, None);
     draw_corner_watermark(frame, chunks[2], app.app_theme.muted);
     if app.list.preview_enabled {
@@ -3327,19 +3312,11 @@ pub struct StatusBarBadge {
     pub style: Style,
 }
 
-/// Build the `ext:on`/`ext:off` badge. Identical logic currently duplicated in
-/// draw_status_bar and inlined in pinstar/render.rs:596.
-pub fn ext_badge(enabled: bool, focused: bool, theme: &AppThemeColors) -> StatusBarBadge {
+/// Build the `ext:on`/`ext:off` badge.
+pub fn ext_badge(enabled: bool, theme: &AppThemeColors) -> StatusBarBadge {
     let label = if enabled { "ext:on" } else { "ext:off" };
-    let style = if focused {
-        Style::default()
-            .fg(theme.highlight_fg)
-            .bg(theme.heading)
-            .add_modifier(Modifier::BOLD)
-    } else if enabled {
-        Style::default()
-            .fg(theme.success)
-            .add_modifier(Modifier::BOLD)
+    let style = if enabled {
+        Style::default().fg(theme.success).add_modifier(Modifier::BOLD)
     } else {
         Style::default().fg(theme.muted)
     };

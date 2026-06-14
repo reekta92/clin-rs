@@ -9,6 +9,7 @@ pub mod layout;
 pub mod ocr;
 pub mod pinstar;
 pub mod theme;
+pub mod external_editor;
 
 use crate::app::App;
 use anyhow::Result;
@@ -39,6 +40,7 @@ pub static ACTIONS: Lazy<Vec<Box<dyn Action>>> = Lazy::new(|| {
         Box::new(pinstar::CreateCanvasAction),
         Box::new(ocr::OcrPasteAction),
         Box::new(theme::SwitchThemeAction),
+        Box::new(external_editor::ToggleExternalEditorAction),
         Box::new(layout::ToggleLayoutAction),
         Box::new(import::ImportAction {
             source: crate::popups::ImportSource::File,

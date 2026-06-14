@@ -7,7 +7,6 @@ use std::time::Instant;
 pub enum EditFocus {
     Title,
     Body,
-    ExternalEditorToggle,
 }
 
 #[derive(Default)]

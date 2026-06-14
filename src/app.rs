@@ -733,6 +733,65 @@ impl App {
         }
     }
 
+    /// Suspend the TUI, launch the configured external editor with `extra_args`
+    /// appended after the program's own args, wait for it to exit, then resume
+    /// the TUI. Returns the editor's exit status (or launch error) and the
+    /// resolved program string (for diagnostics).
+    fn run_in_external_editor(
+        &mut self,
+        extra_args: &[String],
+    ) -> (std::io::Result<std::process::ExitStatus>, String) {
+        if let Err(e) = disable_raw_mode() {
+            eprintln!("Failed to disable raw mode: {}", e);
+        }
+        if let Err(e) = crossterm::execute!(
+            std::io::stdout(),
+            LeaveAlternateScreen,
+            crossterm::event::DisableMouseCapture,
+            crossterm::event::DisableBracketedPaste
+        ) {
+            eprintln!("Failed to reset terminal: {}", e);
+        }
+
+        let editor_prog = self
+            .editor
+            .external_editor
+            .clone()
+            .or_else(|| std::env::var("VISUAL").ok())
+            .or_else(|| std::env::var("EDITOR").ok())
+            .unwrap_or_else(|| "vi".to_string());
+
+        let parts: Vec<&str> = editor_prog.split_whitespace().collect();
+        let (program, editor_args) = parts
+            .split_first()
+            .map(|(p, a)| (*p, a.to_vec()))
+            .unwrap_or(("vi", vec![]));
+        let mut command = std::process::Command::new(program);
+        for arg in editor_args {
+            command.arg(arg);
+        }
+        for arg in extra_args {
+            command.arg(arg);
+        }
+        let result = command.status();
+
+        if let Err(e) = enable_raw_mode() {
+            eprintln!("Failed to enable raw mode: {}", e);
+        }
+        if let Err(e) = crossterm::execute!(
+            std::io::stdout(),
+            EnterAlternateScreen,
+            crossterm::event::EnableMouseCapture,
+            crossterm::event::EnableBracketedPaste,
+            crossterm::terminal::Clear(crossterm::terminal::ClearType::All)
+        ) {
+            eprintln!("Failed to restore terminal: {}", e);
+        }
+        self.needs_full_redraw = true;
+
+        (result, editor_prog)
+    }
+
     pub fn open_note_in_external_editor(&mut self, note_id: &str, line_number: Option<usize>) {
         if let Ok(note) = self.storage.load_note(note_id) {
             let temp_dir = std::env::temp_dir();
@@ -765,61 +824,31 @@ impl App {
 
             #[cfg(not(unix))]
             {
-                if let Err(e) = std::fs::write(&temp_file_path, &note.content) {
-                    self.set_temporary_status(&format!("Failed to write temp file: {}", e));
-                    return;
+                use std::io::Write;
+                match std::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(&temp_file_path)
+                {
+                    Ok(mut f) => {
+                        if let Err(e) = f.write_all(note.content.as_bytes()) {
+                            self.set_temporary_status(&format!("Failed to write temp file: {}", e));
+                            return;
+                        }
+                    }
+                    Err(e) => {
+                        self.set_temporary_status(&format!("Failed to create temp file: {}", e));
+                        return;
+                    }
                 }
             }
 
-            if let Err(e) = disable_raw_mode() {
-                eprintln!("Failed to disable raw mode: {}", e);
-            }
-            if let Err(e) = crossterm::execute!(
-                std::io::stdout(),
-                LeaveAlternateScreen,
-                crossterm::event::DisableMouseCapture,
-                crossterm::event::DisableBracketedPaste
-            ) {
-                eprintln!("Failed to reset terminal: {}", e);
-            }
-
-            let editor_prog = self
-                .editor
-                .external_editor
-                .clone()
-                .or_else(|| std::env::var("VISUAL").ok())
-                .or_else(|| std::env::var("EDITOR").ok())
-                .unwrap_or_else(|| "vi".to_string());
-
-            let parts: Vec<&str> = editor_prog.split_whitespace().collect();
-            let (program, editor_args) = parts
-                .split_first()
-                .map(|(p, a)| (*p, a.to_vec()))
-                .unwrap_or(("vi", vec![]));
-
-            let mut command = std::process::Command::new(program);
-            for arg in editor_args {
-                command.arg(arg);
-            }
+            let mut args: Vec<String> = Vec::new();
             if let Some(l) = line_number {
-                command.arg(format!("+{}", l));
+                args.push(format!("+{}", l));
             }
-            command.arg(&temp_file_path);
-            let result = command.status();
-
-            if let Err(e) = enable_raw_mode() {
-                eprintln!("Failed to enable raw mode: {}", e);
-            }
-            if let Err(e) = crossterm::execute!(
-                std::io::stdout(),
-                EnterAlternateScreen,
-                crossterm::event::EnableMouseCapture,
-                crossterm::event::EnableBracketedPaste,
-                crossterm::terminal::Clear(crossterm::terminal::ClearType::All)
-            ) {
-                eprintln!("Failed to restore terminal: {}", e);
-            }
-            self.needs_full_redraw = true;
+            args.push(temp_file_path.to_string_lossy().into_owned());
+            let (result, editor_prog) = self.run_in_external_editor(&args);
 
             match result {
                 Ok(status) if status.success() => {
@@ -1395,52 +1424,8 @@ template = """
     }
 
     fn open_path_in_external_editor(&mut self, path: &std::path::Path) {
-        if let Err(e) = disable_raw_mode() {
-            eprintln!("Failed to disable raw mode: {}", e);
-        }
-        if let Err(e) = crossterm::execute!(
-            std::io::stdout(),
-            LeaveAlternateScreen,
-            crossterm::event::DisableMouseCapture,
-            crossterm::event::DisableBracketedPaste
-        ) {
-            eprintln!("Failed to reset terminal: {}", e);
-        }
-
-        let editor_prog = self
-            .editor
-            .external_editor
-            .clone()
-            .or_else(|| std::env::var("VISUAL").ok())
-            .or_else(|| std::env::var("EDITOR").ok())
-            .unwrap_or_else(|| "vi".to_string());
-
-        let parts: Vec<&str> = editor_prog.split_whitespace().collect();
-        let (program, editor_args) = parts
-            .split_first()
-            .map(|(p, a)| (*p, a.to_vec()))
-            .unwrap_or(("vi", vec![]));
-
-        let mut command = std::process::Command::new(program);
-        for arg in editor_args {
-            command.arg(arg);
-        }
-        command.arg(path);
-        let result = command.status();
-
-        if let Err(e) = enable_raw_mode() {
-            eprintln!("Failed to enable raw mode: {}", e);
-        }
-        if let Err(e) = crossterm::execute!(
-            std::io::stdout(),
-            EnterAlternateScreen,
-            crossterm::event::EnableMouseCapture,
-            crossterm::event::EnableBracketedPaste,
-            crossterm::terminal::Clear(crossterm::terminal::ClearType::All)
-        ) {
-            eprintln!("Failed to restore terminal: {}", e);
-        }
-        self.needs_full_redraw = true;
+        let (result, editor_prog) =
+            self.run_in_external_editor(&[path.to_string_lossy().into_owned()]);
 
         match result {
             Ok(status) if status.success() => {
@@ -1562,7 +1547,6 @@ template = """
         self.mode = ViewMode::List;
         self.editor.editing_id = None;
         self.editor.template_edit_path = None;
-        self.list.list_focus = ListFocus::Notes;
         self.editor.title_editor =
             make_title_editor("", self.app_theme.highlight_fg, self.app_theme.highlight_bg);
         self.editor.editor = TextArea::default();
@@ -1583,7 +1567,6 @@ template = """
                 EditFocus::Body => {
                     self.editor.editor.copy();
                 }
-                _ => {}
             },
             1 => match focus {
                 EditFocus::Title => {
@@ -1592,7 +1575,6 @@ template = """
                 EditFocus::Body => {
                     self.editor.editor.cut();
                 }
-                _ => {}
             },
             2 => match focus {
                 EditFocus::Title => {
@@ -1601,7 +1583,6 @@ template = """
                 EditFocus::Body => {
                     self.editor.editor.paste();
                 }
-                _ => {}
             },
             3 => match focus {
                 EditFocus::Title => {
@@ -1610,7 +1591,6 @@ template = """
                 EditFocus::Body => {
                     self.editor.editor.select_all();
                 }
-                _ => {}
             },
             _ => {}
         }
@@ -2476,7 +2456,12 @@ template = """
 
     pub fn toggle_external_editor_mode(&mut self) {
         self.editor.external_editor_enabled = !self.editor.external_editor_enabled;
-        self.set_default_status();
+        let msg = if self.editor.external_editor_enabled {
+            "External editor mode enabled"
+        } else {
+            "External editor mode disabled"
+        };
+        self.set_temporary_status(msg);
         if let Ok(mut config) = crate::config::ClinConfig::load() {
             config.external_editor_enabled = self.editor.external_editor_enabled;
             if let Err(e) = config.save() {

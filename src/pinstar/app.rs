@@ -21,13 +21,10 @@ pub fn run_pinstar_view(
     keybinds: &Keybinds,
     file_id: Option<String>,
     theme: AppThemeColors,
-    ext_editor_enabled: bool,
-    external_editor: Option<String>,
 ) -> anyhow::Result<PinstarResult> {
     let mut state = if let Some(id) = file_id {
         let path = storage.note_path(&id);
-        let mut s = PinstarState::load(&path)?;
-        s.ext_editor_enabled = ext_editor_enabled;
+        let s = PinstarState::load(&path)?;
         s
     } else {
         anyhow::bail!("No file ID provided for Pinstar view");
@@ -43,75 +40,6 @@ pub fn run_pinstar_view(
     let mut running = true;
 
     while running {
-        if state.trigger_ext_editor {
-            state.trigger_ext_editor = false;
-            if let Some(node_id) = &state.selected_node_id {
-                let node_text = state
-                    .data
-                    .nodes
-                    .iter()
-                    .find(|n| n.id() == node_id)
-                    .map(|n| n.text().to_string())
-                    .unwrap_or_default();
-
-                let temp_dir = std::env::temp_dir();
-                let temp_id = uuid::Uuid::new_v4().to_string();
-                let temp_file_path = temp_dir.join(format!("clin_pinstar_{}.md", temp_id));
-                std::fs::write(&temp_file_path, &node_text)?;
-
-                use crossterm::terminal::{
-                    EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
-                };
-                let _ = disable_raw_mode();
-                let _ = crossterm::execute!(
-                    std::io::stdout(),
-                    LeaveAlternateScreen,
-                    crossterm::event::DisableMouseCapture,
-                );
-
-                let editor = external_editor
-                    .clone()
-                    .or_else(|| std::env::var("VISUAL").ok())
-                    .or_else(|| std::env::var("EDITOR").ok())
-                    .unwrap_or_else(|| "vi".to_string());
-
-                let parts: Vec<&str> = editor.split_whitespace().collect();
-                let (program, editor_args) = parts
-                    .split_first()
-                    .map(|(p, a)| (*p, a.to_vec()))
-                    .unwrap_or(("vi", vec![]));
-
-                let mut command = std::process::Command::new(program);
-                for arg in editor_args {
-                    command.arg(arg);
-                }
-                command.arg(&temp_file_path);
-                let _ = command.status();
-
-                let _ = enable_raw_mode();
-                let _ = crossterm::execute!(
-                    std::io::stdout(),
-                    EnterAlternateScreen,
-                    crossterm::event::EnableMouseCapture,
-                    crossterm::terminal::Clear(crossterm::terminal::ClearType::All)
-                );
-                terminal.clear()?;
-
-                if let Ok(new_text) = std::fs::read_to_string(&temp_file_path)
-                    && new_text != node_text
-                {
-                    for node in &mut state.data.nodes {
-                        if node.id() == node_id {
-                            node.set_text(new_text);
-                            break;
-                        }
-                    }
-                    let _ = state.save();
-                    state.sync_to_raw_editor();
-                }
-                let _ = std::fs::remove_file(&temp_file_path);
-            }
-        }
 
         terminal.draw(|frame| {
             let full = frame.area();

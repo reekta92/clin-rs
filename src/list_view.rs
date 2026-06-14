@@ -10,11 +10,6 @@ pub enum ListMode {
     Select,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ListFocus {
-    Notes,
-    ExternalEditorToggle,
-}
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -62,7 +57,6 @@ pub struct GridTile {
 pub struct ListView {
     pub visual_list: Vec<VisualItem>,
     pub visual_index: usize,
-    pub list_focus: ListFocus,
     pub list_state: ListState,
     pub grid_scroll: usize,
     pub grid_tiles: Vec<GridTile>,
@@ -91,7 +85,6 @@ impl Default for ListView {
         Self {
             visual_list: Vec::new(),
             visual_index: 0,
-            list_focus: ListFocus::Notes,
             list_state: ListState::default(),
             grid_scroll: 0,
             grid_tiles: Vec::new(),

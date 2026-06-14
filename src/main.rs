@@ -712,8 +712,6 @@ fn run_app(
                 &app.keybinds,
                 note_id,
                 app.app_theme.clone(),
-                app.editor.external_editor_enabled,
-                app.editor.external_editor.clone(),
             ) {
                 Ok(crate::pinstar::app::PinstarResult::HelpRequested) => {
                     app.reload_theme();
@@ -862,7 +860,6 @@ fn run_app(
                         app.status = Cow::Borrowed("Pasted body text");
                         app.request_editor_preview_update();
                     }
-                    EditFocus::ExternalEditorToggle => {}
                 },
                 _ => {}
             }

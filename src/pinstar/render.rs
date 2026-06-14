@@ -601,18 +601,13 @@ pub fn draw_pinstar_view(
         hint_text = "RESIZE MODE: Drag mouse to resize, Left-click to confirm".to_string();
     }
 
-    let badge = Some(crate::ui::ext_badge(
-        state.ext_editor_enabled,
-        state.ext_focused,
-        theme,
-    ));
     let hint_area = Rect::new(
         total_area.x,
         total_area.bottom().saturating_sub(1),
         total_area.width,
         1,
     );
-    crate::ui::draw_status_bar(frame, hint_area, theme, badge, &hint_text, None);
+    crate::ui::draw_status_bar(frame, hint_area, theme, None, &hint_text, None);
 
     if let Some(menu) = &state.context_menu {
         let menu_width = 25;

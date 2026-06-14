@@ -1,5 +1,5 @@
 use crate::app::ContextMenu;
-use crate::app::{App, EditFocus, HelpTab, ListFocus};
+use crate::app::{App, EditFocus, HelpTab};
 use crate::keybinds::*;
 use crate::list_view::ListMode;
 pub use crate::text_edit::apply_text_shortcuts;
@@ -703,30 +703,20 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     }
 
     if app.keybinds.matches_list(ListAction::CycleFocus, &key) {
-        // In grid layout, Tab cycles Pinned/Vault tabs instead of focus.
         if app.list.notes_layout == crate::config::NotesLayout::Grid {
             app.cycle_grid_tab();
-            return false;
         }
-        app.list.list_focus = match app.list.list_focus {
-            ListFocus::Notes => ListFocus::ExternalEditorToggle,
-            ListFocus::ExternalEditorToggle => ListFocus::Notes,
-        };
         return false;
     }
 
-    if app.list.list_focus == ListFocus::ExternalEditorToggle {
-        if app.keybinds.matches_list(ListAction::ToggleButton, &key) {
-            app.toggle_external_editor_mode();
-        } else if app.keybinds.matches_list(ListAction::Quit, &key) {
-            app.initiate_quit();
-            return false;
-        }
-        return false;
-    }
 
     if app.keybinds.matches_list(ListAction::Quit, &key) {
         app.initiate_quit();
+        return false;
+    }
+
+    if app.keybinds.matches_list(ListAction::ToggleExternalEditor, &key) {
+        app.toggle_external_editor_mode();
         return false;
     }
 
@@ -1082,7 +1072,6 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
         *focus = match *focus {
             EditFocus::Title => EditFocus::Body,
             EditFocus::Body => EditFocus::Title,
-            _ => EditFocus::Title,
         };
         return false;
     }
@@ -1101,6 +1090,7 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
         app.toggle_markdown_preview();
         return false;
     }
+
 
     match *focus {
         EditFocus::Title => {
@@ -1133,11 +1123,6 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
             }
             if app.editor.editor.input(Input::from(key)) {
                 app.request_editor_preview_update();
-            }
-        }
-        EditFocus::ExternalEditorToggle => {
-            if app.keybinds.matches_edit(EditAction::ToggleButton, &key) {
-                app.toggle_external_editor_mode();
             }
         }
     }
@@ -1381,23 +1366,6 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
 
     let list_area = chunks[0];
 
-    if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) && chunks[1].height > 0 {
-        let hint_area = chunks[1];
-        if mouse_event.row >= hint_area.y && mouse_event.row < hint_area.y + hint_area.height {
-            let ext_label = if app.editor.external_editor_enabled {
-                "ext:on"
-            } else {
-                "ext:off"
-            };
-            let ext_width = ext_label.len() as u16 + 2;
-            let ext_area = Rect::new(hint_area.x, hint_area.y, ext_width, hint_area.height);
-            if contains_cell(ext_area, mouse_event.column, mouse_event.row) {
-                app.toggle_external_editor_mode();
-                app.list.list_focus = ListFocus::ExternalEditorToggle;
-                return;
-            }
-        }
-    }
 
     let inner_list_area = Rect::new(
         list_area.x.saturating_add(2),
