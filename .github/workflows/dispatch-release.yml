@@ -17,6 +17,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -36,6 +40,9 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
 
       - name: Install tools
         run: |
@@ -78,13 +85,22 @@ jobs:
           esac
 
           cargo set-version "$NEW"
-          cargo check --quiet 2>/dev/null || true
+          cargo generate-lockfile
 
           echo "new_version=$NEW" >> "$GITHUB_OUTPUT"
           echo "tag=v$NEW" >> "$GITHUB_OUTPUT"
 
+      - name: Validate version
+        run: |
+          EXPECTED="${{ steps.bump.outputs.new_version }}"
+          ACTUAL=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
+          if [ "$EXPECTED" != "$ACTUAL" ]; then
+            echo "::error::Version mismatch: expected $EXPECTED, got $ACTUAL"
+            exit 1
+          fi
+
       - name: Generate changelog
-        run: git cliff --tag "v${{ steps.bump.outputs.new_version }}" --latest -o CHANGELOG.md
+        run: git cliff --tag "v${{ steps.bump.outputs.new_version }}" -o CHANGELOG.md
 
       - name: Commit, tag, push
         run: |
@@ -95,38 +111,45 @@ jobs:
           if ! git diff --staged --quiet; then
             git commit -m "release: $TAG"
           fi
-          git tag -f "$TAG"
-          git push origin HEAD:main
-          git push origin "$TAG" --force
+          git tag "$TAG"
+          git push --force-with-lease origin HEAD:main
+          git push origin "$TAG"
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: "v${{ steps.bump.outputs.new_version }}"
         run: |
-          gh release create "$TAG" \
-            --title "$TAG" \
-            --notes-file CHANGELOG.md \
-            --draft=false \
-            --prerelease=${{ contains(steps.bump.outputs.new_version, '-') }}
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --notes-file CHANGELOG.md --title "$TAG"
+          else
+            gh release create "$TAG" \
+              --title "$TAG" \
+              --notes-file CHANGELOG.md \
+              --draft=false \
+              --prerelease=${{ contains(steps.bump.outputs.new_version, '-') }}
+          fi
 
   # ────────────────────────────────────────────
   # 2. Build Linux x86_64 binary
   # ────────────────────────────────────────────
   linux-x86_64:
     needs: prepare
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
         with:
           ref: "v${{ needs.prepare.outputs.new_version }}"
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - name: Install build deps
         run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
       - name: Build
         run: cargo build --release --locked
+      - name: Smoke test
+        run: ./target/release/clin -h
       - name: Package
         run: |
-          VERSION="${{ needs.prepare.outputs.new_version }}"
           mkdir -p dist
           cp target/release/clin .
           tar -cJf "dist/clin-rs-x86_64-unknown-linux-gnu.tar.xz" clin LICENSE README.md
@@ -148,12 +171,15 @@ jobs:
         with:
           ref: "v${{ needs.prepare.outputs.new_version }}"
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - name: Build
         run: cargo build --release --locked
+      - name: Smoke test
+        shell: bash
+        run: ./target/release/clin.exe -h
       - name: Package
         shell: bash
         run: |
-          VERSION="${{ needs.prepare.outputs.new_version }}"
           mkdir -p dist
           cp target/release/clin.exe .
           7z a "dist/clin-rs-x86_64-pc-windows-msvc.zip" clin.exe LICENSE README.md
@@ -169,36 +195,28 @@ jobs:
   # ────────────────────────────────────────────
   linux-packages:
     needs: prepare
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
         with:
           ref: "v${{ needs.prepare.outputs.new_version }}"
-
       - uses: dtolnay/rust-toolchain@stable
-
+      - uses: Swatinem/rust-cache@v2
       - name: Install build deps
         run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
-
       - name: Build release binary
         run: cargo build --release --locked
-
-      - name: Build .deb
+      - name: Build packages
         run: |
           cargo install cargo-deb --locked
           cargo deb --no-build
-
-      - name: Build .rpm
-        run: |
           cargo install cargo-generate-rpm --locked
           cargo generate-rpm
-
-      - name: Upload to GitHub Release
+      - name: Upload
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: "v${{ needs.prepare.outputs.new_version }}"
-        run: |
-          gh release upload "$TAG" target/debian/*.deb target/generate-rpm/*.rpm --clobber
+        run: gh release upload "$TAG" target/debian/*.deb target/generate-rpm/*.rpm --clobber
 
   # ────────────────────────────────────────────
   # 5. Build AppImage
@@ -210,20 +228,16 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: "v${{ needs.prepare.outputs.new_version }}"
-
       - uses: dtolnay/rust-toolchain@stable
-
+      - uses: Swatinem/rust-cache@v2
       - name: Install build deps
         run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config libfuse2
-
       - name: Build release binary
         run: cargo build --release --locked
-
       - name: Download linuxdeploy
         run: |
           wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
           chmod +x linuxdeploy-x86_64.AppImage
-
       - name: Build AppImage
         run: |
           VERSION="${{ needs.prepare.outputs.new_version }}"
@@ -234,31 +248,25 @@ jobs:
             --desktop-file assets/clin.desktop \
             --icon-file assets/clin.png \
             --output appimage
-          # Rename only if the source isn't already the target to avoid "same file" error
           for f in clin*.AppImage; do
-            if [ "$f" != "clin-${VERSION}-x86_64.AppImage" ]; then
-              mv "$f" "clin-${VERSION}-x86_64.AppImage"
-            fi
+            [ "$f" = "clin-${VERSION}-x86_64.AppImage" ] || mv "$f" "clin-${VERSION}-x86_64.AppImage"
           done
-
-      - name: Upload to GitHub Release
+      - name: Upload
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: "v${{ needs.prepare.outputs.new_version }}"
-        run: |
-          gh release upload "$TAG" clin-*-x86_64.AppImage --clobber
+        run: gh release upload "$TAG" clin-*-x86_64.AppImage --clobber
 
   # ────────────────────────────────────────────
   # 6. Publish AUR package
+  # ────────────────────────────────────────────
   aur:
-    if: "${{ secrets.AUR_SSH_PRIVATE_KEY != '' }}"
     needs: [prepare, linux-packages, linux-x86_64]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: "v${{ needs.prepare.outputs.new_version }}"
-
       - name: Wait for release assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -266,14 +274,13 @@ jobs:
         run: |
           TIMEOUT=600; ELAPSED=0
           while [ $ELAPSED -lt $TIMEOUT ]; do
-            TARBALL=$(gh release view "$TAG" --json assets --jq '.assets[].name | select(contains("x86_64-unknown-linux-gnu") and endswith(".tar.xz"))')
+            TARBALL=$(gh release view "$TAG" --json assets --jq '[.assets[].name | select(contains("x86_64-unknown-linux-gnu") and endswith(".tar.xz"))][0]')
             [ -n "$TARBALL" ] && break
             sleep 15; ELAPSED=$((ELAPSED + 15))
           done
           if [ -z "$TARBALL" ]; then
             echo "::error::Linux tarball not found in release after ${TIMEOUT}s"; exit 1
           fi
-
       - name: Update PKGBUILD
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -282,14 +289,13 @@ jobs:
         run: |
           PKGVER=$(echo "$VERSION" | sed 's/-/_/g')
           sed -i "s/^pkgver=.*/pkgver=$PKGVER/" PKGBUILD
-
-          TARBALL_NAME=$(gh release view "$TAG" --json assets --jq '.assets[] | select(.name | contains("x86_64-unknown-linux-gnu") and endswith(".tar.xz")) | .name')
-          wget -q "https://github.com/reekta92/clin-rs/releases/download/$TAG/$TARBALL_NAME" -O tarball.tar.xz
+          TARBALL_NAME=$(gh release view "$TAG" --json assets --jq '[.assets[].name | select(contains("x86_64-unknown-linux-gnu") and endswith(".tar.xz"))][0]')
+          wget -q "${{ github.server_url }}/${{ github.repository }}/releases/download/$TAG/$TARBALL_NAME" -O tarball.tar.xz
           SHA=$(sha256sum tarball.tar.xz | cut -d' ' -f1)
           sed -i "s/^sha256sums=.*/sha256sums=(\"$SHA\")/" PKGBUILD
-          sed -i "s|^source=.*|source=(\"https://github.com/reekta92/clin-rs/releases/download/v\${pkgver}/$TARBALL_NAME\")|" PKGBUILD
-
+          sed -i "s|^source=.*|source=(\"${{ github.server_url }}/${{ github.repository }}/releases/download/v\${pkgver}/$TARBALL_NAME\")|" PKGBUILD
       - name: Publish to AUR
+        if: ${{ secrets.AUR_SSH_PRIVATE_KEY != '' }}
         uses: KSXGitHub/github-actions-deploy-aur@v3.0.1
         with:
           pkgname: clin-rs-bin
@@ -303,20 +309,18 @@ jobs:
   # 7. Publish to crates.io
   # ────────────────────────────────────────────
   crates-io:
-    if: "${{ secrets.CARGO_REGISTRY_TOKEN != '' }}"
     needs: prepare
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: "v${{ needs.prepare.outputs.new_version }}"
-
       - uses: dtolnay/rust-toolchain@stable
-
+      - uses: Swatinem/rust-cache@v2
       - name: Install build deps
         run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
-
       - name: Publish
+        if: ${{ env.CARGO_REGISTRY_TOKEN != '' }}
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: cargo publish --locked
@@ -332,7 +336,6 @@ jobs:
         with:
           ref: main
           token: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Update artifact references
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -341,27 +344,30 @@ jobs:
         run: |
           TIMEOUT=300; ELAPSED=0
           while [ $ELAPSED -lt $TIMEOUT ]; do
-            DEB_FILE=$(gh release view "$TAG" --json assets --jq '.assets[].name | select(endswith("_amd64.deb"))')
-            RPM_FILE=$(gh release view "$TAG" --json assets --jq '.assets[].name | select(endswith(".x86_64.rpm"))')
-            TAR_FILE=$(gh release view "$TAG" --json assets --jq '.assets[].name | select(startswith("clin-rs") and contains("x86_64-unknown-linux-gnu") and endswith(".tar.gz"))')
+            DEB_FILE=$(gh release view "$TAG" --json assets --jq '[.assets[].name | select(endswith("_amd64.deb"))][0]')
+            RPM_FILE=$(gh release view "$TAG" --json assets --jq '[.assets[].name | select(endswith(".x86_64.rpm"))][0]')
+            TAR_FILE=$(gh release view "$TAG" --json assets --jq '[.assets[].name | select(startswith("clin-rs") and contains("x86_64-unknown-linux-gnu") and endswith(".tar.gz"))][0]')
             [ -n "$DEB_FILE" ] && [ -n "$RPM_FILE" ] && [ -n "$TAR_FILE" ] && break
             sleep 15; ELAPSED=$((ELAPSED + 15))
           done
-
           if [ -n "$DEB_FILE" ]; then
-            sed -i -E "s/clin-rs_[0-9a-zA-Z._-]+_amd64\.deb/$DEB_FILE/g" README.md
+            sed -i -E "s/clin-rs_[0-9a-zA-Z._-]*_amd64\.deb/$DEB_FILE/g" README.md
           fi
           if [ -n "$RPM_FILE" ]; then
-            sed -i -E "s/clin-rs-[0-9a-zA-Z._-]+\.x86_64\.rpm/$RPM_FILE/g" README.md
+            sed -i -E "s/clin-rs-[0-9a-zA-Z._-]*\.x86_64\.rpm/$RPM_FILE/g" README.md
           fi
           if [ -n "$TAR_FILE" ]; then
-            sed -i -E "s/clin-rs-.*-x86_64.*\.tar\.gz/$TAR_FILE/g" README.md
+            sed -i -E "s/clin-rs-[0-9a-zA-Z._-]*x86_64[0-9a-zA-Z._-]*\.tar\.gz/$TAR_FILE/g" README.md
           fi
-
-          # Update PKGBUILD version in main
           PKGVER=$(echo "$VERSION" | sed 's/-/_/g')
           sed -i "s/^pkgver=.*/pkgver=$PKGVER/" PKGBUILD
-
+          TARBALL_NAME=$(gh release view "$TAG" --json assets --jq '[.assets[].name | select(contains("x86_64-unknown-linux-gnu") and endswith(".tar.xz"))][0]')
+          if [ -n "$TARBALL_NAME" ]; then
+            wget -q "${{ github.server_url }}/${{ github.repository }}/releases/download/$TAG/$TARBALL_NAME" -O tarball.tar.xz
+            SHA=$(sha256sum tarball.tar.xz | cut -d' ' -f1)
+            sed -i "s/^sha256sums=.*/sha256sums=(\"$SHA\")/" PKGBUILD
+            sed -i "s|^source=.*|source=(\"${{ github.server_url }}/${{ github.repository }}/releases/download/v\${pkgver}/$TARBALL_NAME\")|" PKGBUILD
+          fi
       - name: Commit and push
         run: |
           git config user.name "github-actions[bot]"
