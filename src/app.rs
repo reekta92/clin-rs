@@ -271,6 +271,20 @@ impl HelpTab {
         }
     }
 
+    pub fn index(self) -> usize {
+        match self {
+            HelpTab::Notes => 0,
+            HelpTab::Editor => 1,
+            HelpTab::Graph => 2,
+            HelpTab::Draw => 3,
+            HelpTab::Canvas => 4,
+            HelpTab::Backup => 5,
+            HelpTab::Templates => 6,
+            HelpTab::ContentTree => 7,
+            HelpTab::About => 8,
+        }
+    }
+
     pub fn count() -> usize {
         9
     }

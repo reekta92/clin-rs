@@ -802,37 +802,10 @@ fn run_app(
                         )
                         && mouse_event.row == tab_bar_y
                     {
-                        let tab_names = [
-                            "Notes",
-                            "Editor",
-                            "Graph",
-                            "Draw",
-                            "Canvas",
-                            "Backup",
-                            "Templates",
-                            "Content Tree",
-                            "About",
-                        ];
-                        let mut tab_widths: [u16; 9] = [0; 9];
-                        let mut total_width: u16 = 0;
-                        for (i, name) in tab_names.iter().enumerate() {
-                            tab_widths[i] = name.len() as u16 + 2;
-                            total_width += tab_widths[i];
-                            if i < tab_names.len() - 1 {
-                                total_width += 3;
-                            }
-                        }
-                        let start_x = area.x + (area.width.saturating_sub(total_width)) / 2;
-                        let click_x = mouse_event.column;
-                        if click_x >= start_x && click_x < start_x + total_width {
-                            let mut offset = start_x;
-                            for (i, tw) in tab_widths.iter().enumerate() {
-                                if click_x < offset + tw {
-                                    app.switch_help_tab(crate::app::HelpTab::from_index(i));
-                                    break;
-                                }
-                                offset += tw + 3;
-                            }
+                        let tabs: Vec<(&str, Option<&str>)> = crate::ui::HELP_TAB_NAMES
+                            .iter().map(|&n| (n, None)).collect();
+                        if let Some(i) = crate::ui::hit_test_tabs(&tabs, area.x, area.width, mouse_event.column) {
+                            app.switch_help_tab(crate::app::HelpTab::from_index(i));
                         }
                     } else if mouse_event.kind
                         == ratatui::crossterm::event::MouseEventKind::ScrollUp

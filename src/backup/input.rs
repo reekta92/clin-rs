@@ -202,22 +202,12 @@ pub fn handle_mouse(state: &mut BackupState, event: MouseEvent) -> InputResult {
 
         if let Some(area) = state.last_area {
             if y == area.y {
-                let tab_names = [" Status ", " History "];
-                let mut tab_widths: [u16; 2] = [0; 2];
-                let mut total_width: u16 = 0;
-                for (i, name) in tab_names.iter().enumerate() {
-                    tab_widths[i] = name.len() as u16;
-                    total_width += tab_widths[i];
-                }
-                total_width += 3; // separator " · " is 3 chars
-
-                let start_x = area.x + (area.width.saturating_sub(total_width)) / 2;
-                if x >= start_x && x < start_x + total_width {
-                    if x < start_x + tab_widths[0] {
-                        state.selected_section = BackupSection::Status;
-                    } else if x >= start_x + tab_widths[0] + 3 {
-                        state.selected_section = BackupSection::History;
-                    }
+                let tabs = [("Status", None), ("History", None)];
+                if let Some(i) = crate::ui::hit_test_tabs(&tabs, area.x, area.width, x) {
+                    state.selected_section = match i {
+                        1 => BackupSection::History,
+                        _ => BackupSection::Status,
+                    };
                 }
                 return InputResult::None;
             }

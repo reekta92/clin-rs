@@ -1443,30 +1443,12 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                     mouse_event.row,
                 );
             } else if mouse_event.row == chunks[1].y {
-                let mut tab_widths = Vec::new();
-                let mut total_width: u16 = 0;
-                for (i, (label, glyph, _)) in crate::palette::PALETTE_TABS.iter().enumerate() {
-                    // " {} {} " -> 3 spaces + chars
-                    let tw = (label.chars().count() + glyph.chars().count() + 3) as u16;
-                    tab_widths.push(tw);
-                    total_width += tw;
-                    if i < crate::palette::PALETTE_TABS.len() - 1 {
-                        total_width += 3; // " · "
-                    }
-                }
-                let start_x = chunks[1].x + (chunks[1].width.saturating_sub(total_width)) / 2;
-                let click_x = mouse_event.column;
-                if click_x >= start_x && click_x < start_x + total_width {
-                    let mut offset = start_x;
-                    for (i, tw) in tab_widths.iter().enumerate() {
-                        if click_x < offset + *tw {
-                            palette.active_tab = i;
-                            palette.refresh_items(app);
-                            palette.state.select(Some(0));
-                            break;
-                        }
-                        offset += *tw + 3;
-                    }
+                let tabs: Vec<(&str, Option<&str>)> = crate::palette::PALETTE_TABS
+                    .iter().map(|(l, g, _)| (*l, Some(*g))).collect();
+                if let Some(i) = crate::ui::hit_test_tabs(&tabs, chunks[1].x, chunks[1].width, mouse_event.column) {
+                    palette.active_tab = i;
+                    palette.refresh_items(app);
+                    palette.state.select(Some(0));
                 }
             } else if contains_cell(chunks[2], mouse_event.column, mouse_event.row) {
                 let row = mouse_event
@@ -1793,28 +1775,16 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
             // Vault/Pinned tabs
             if mouse_event.row == terminal_area.y {
-                let tab_names = [" \u{f07b} Vault ", " \u{f4cc} Pinned "];
-                let mut tab_widths: [u16; 2] = [0; 2];
-                let mut total_width: u16 = 0;
-                for (i, name) in tab_names.iter().enumerate() {
-                    tab_widths[i] = name.chars().count() as u16;
-                    total_width += tab_widths[i];
-                }
-                total_width += 1; // one space between
-                let start_x = terminal_area.x + (terminal_area.width.saturating_sub(total_width)) / 2;
-                let click_x = mouse_event.column;
-                if click_x >= start_x && click_x < start_x + total_width {
-                    if click_x < start_x + tab_widths[0] {
-                        app.list.grid_folder = String::new();
-                        app.list.visual_index = 0;
-                        app.refresh_visual_list();
-                        return;
-                    } else if click_x > start_x + tab_widths[0] {
-                        app.list.grid_folder = crate::app::VIRTUAL_PINNED_PATH.to_string();
-                        app.list.visual_index = 0;
-                        app.refresh_visual_list();
-                        return;
-                    }
+                let tabs = [("Vault", Some("\u{f07b}")), ("Pinned", Some("\u{f4cc}"))];
+                if let Some(i) = crate::ui::hit_test_tabs(&tabs, terminal_area.x, terminal_area.width, mouse_event.column) {
+                    app.list.grid_folder = if i == 1 {
+                        crate::app::VIRTUAL_PINNED_PATH.to_string()
+                    } else {
+                        String::new()
+                    };
+                    app.list.visual_index = 0;
+                    app.refresh_visual_list();
+                    return;
                 }
             }
 

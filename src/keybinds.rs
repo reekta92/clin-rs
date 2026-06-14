@@ -115,7 +115,16 @@ impl KeyCombo {
     }
 
     pub fn matches(&self, event: &KeyEvent) -> bool {
-        self.code == event.code && self.modifiers == event.modifiers
+        if self.code != event.code {
+            return false;
+        }
+        if self.code == KeyCode::BackTab {
+            let self_mods = self.modifiers & !KeyModifiers::SHIFT;
+            let event_mods = event.modifiers & !KeyModifiers::SHIFT;
+            self_mods == event_mods
+        } else {
+            self.modifiers == event.modifiers
+        }
     }
 }
 
@@ -126,6 +135,7 @@ fn parse_key_code(s: &str) -> Option<KeyCode> {
         "esc" | "escape" => Some(KeyCode::Esc),
         "backspace" | "bs" => Some(KeyCode::Backspace),
         "tab" => Some(KeyCode::Tab),
+        "backtab" => Some(KeyCode::BackTab),
         "space" | " " => Some(KeyCode::Char(' ')),
         "delete" | "del" => Some(KeyCode::Delete),
         "insert" | "ins" => Some(KeyCode::Insert),
@@ -168,6 +178,7 @@ fn key_code_to_string(code: &KeyCode) -> Cow<'static, str> {
         KeyCode::Esc => Cow::Borrowed("Esc"),
         KeyCode::Backspace => Cow::Borrowed("Backspace"),
         KeyCode::Tab => Cow::Borrowed("Tab"),
+        KeyCode::BackTab => Cow::Borrowed("BackTab"),
         KeyCode::Delete => Cow::Borrowed("Delete"),
         KeyCode::Insert => Cow::Borrowed("Insert"),
         KeyCode::Home => Cow::Borrowed("Home"),
@@ -450,7 +461,13 @@ impl Default for Keybinds {
             ListAction::OpenLocation,
             vec![KeyCombo::ctrl(KeyCode::Char('f'))],
         );
-        list.insert(ListAction::CycleFocus, vec![KeyCombo::simple(KeyCode::Tab)]);
+        list.insert(
+            ListAction::CycleFocus,
+            vec![
+                KeyCombo::simple(KeyCode::Tab),
+                KeyCombo::simple(KeyCode::BackTab),
+            ],
+        );
         list.insert(
             ListAction::Confirm,
             vec![
@@ -553,7 +570,13 @@ impl Default for Keybinds {
 
         let mut edit = HashMap::new();
         edit.insert(EditAction::Back, vec![KeyCombo::simple(KeyCode::Esc)]);
-        edit.insert(EditAction::CycleFocus, vec![KeyCombo::simple(KeyCode::Tab)]);
+        edit.insert(
+            EditAction::CycleFocus,
+            vec![
+                KeyCombo::simple(KeyCode::Tab),
+                KeyCombo::simple(KeyCode::BackTab),
+            ],
+        );
         edit.insert(
             EditAction::SelectAll,
             vec![KeyCombo::ctrl(KeyCode::Char('a'))],
@@ -852,7 +875,10 @@ impl Default for Keybinds {
         );
         canvas.insert(
             CanvasAction::CycleFocus,
-            vec![KeyCombo::simple(KeyCode::Tab)],
+            vec![
+                KeyCombo::simple(KeyCode::Tab),
+                KeyCombo::simple(KeyCode::BackTab),
+            ],
         );
         canvas.insert(
             CanvasAction::Help,
@@ -955,7 +981,10 @@ impl Default for Keybinds {
         );
         backup.insert(
             BackupAction::CycleSection,
-            vec![KeyCombo::simple(KeyCode::Tab)],
+            vec![
+                KeyCombo::simple(KeyCode::Tab),
+                KeyCombo::simple(KeyCode::BackTab),
+            ],
         );
         backup.insert(
             BackupAction::CancelCommit,
@@ -1398,6 +1427,20 @@ mod tests {
         assert!(combo.matches(&event));
         let wrong_event = KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE);
         assert!(!combo.matches(&wrong_event));
+
+        // BackTab matching should ignore the SHIFT modifier
+        let bt_combo1 = KeyCombo::simple(KeyCode::BackTab);
+        let bt_combo2 = KeyCombo::shift(KeyCode::BackTab);
+        let bt_event1 = KeyEvent::new(KeyCode::BackTab, KeyModifiers::NONE);
+        let bt_event2 = KeyEvent::new(KeyCode::BackTab, KeyModifiers::SHIFT);
+        assert!(bt_combo1.matches(&bt_event1));
+        assert!(bt_combo1.matches(&bt_event2));
+        assert!(bt_combo2.matches(&bt_event1));
+        assert!(bt_combo2.matches(&bt_event2));
+
+        // Other modifiers like CONTROL should still distinguish them
+        let bt_ctrl_event = KeyEvent::new(KeyCode::BackTab, KeyModifiers::CONTROL);
+        assert!(!bt_combo1.matches(&bt_ctrl_event));
     }
 
     #[test]
