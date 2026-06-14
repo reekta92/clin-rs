@@ -61,13 +61,13 @@ cargo install clin-rs
 ### Debian/Ubuntu (.deb)
 Download the latest `.deb` from the [Releases](https://github.com/reekta92/clin-rs/releases) page.
 ```bash
-sudo dpkg -i clin-rs_0.8.7-1_amd64.deb
+sudo dpkg -i clin-rs_0.8.8-1_amd64.deb
 ```
 
 ### Fedora/RHEL (.rpm)
 Download the latest `.rpm` from the [Releases](https://github.com/reekta92/clin-rs/releases) page.
 ```bash
-sudo rpm -i clin-rs-0.8.7-1.x86_64.rpm
+sudo rpm -i clin-rs-0.8.8-1.x86_64.rpm
 ```
 
 ### Arch Linux (PKGBUILD)
