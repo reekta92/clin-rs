@@ -269,6 +269,7 @@ impl Widget for RenderedSnapshot<'_> {
     }
 }
 
+#[allow(deprecated)]
 fn fill_buf_bg(buf: &mut Buffer, area: Rect, bg: Option<Color>) {
     let Some(bg) = bg else { return };
     for y in area.top()..area.bottom() {
