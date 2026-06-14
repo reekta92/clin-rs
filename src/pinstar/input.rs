@@ -9,6 +9,8 @@ pub fn handle_pinstar_mouse(
     mouse: MouseEvent,
     area: ratatui::layout::Rect,
 ) -> bool {
+    let mut area = area;
+    area.height = area.height.saturating_sub(1);
     if state.rename_popup.is_some() {
         return true;
     }
@@ -76,13 +78,15 @@ pub fn handle_pinstar_mouse(
                 close_menu = true;
                 let menu_width = 25;
                 let menu_height = menu.items.len() as u16;
+                let menu_x = area.x + menu.x.min(area.width.saturating_sub(menu_width));
+                let menu_y = area.y + menu.y.min(area.height.saturating_sub(menu_height));
 
-                if mouse.column >= menu.x
-                    && mouse.column < menu.x + menu_width
-                    && mouse.row >= menu.y
-                    && mouse.row < menu.y + menu_height
+                if mouse.column >= menu_x
+                    && mouse.column < menu_x + menu_width
+                    && mouse.row >= menu_y
+                    && mouse.row < menu_y + menu_height
                 {
-                    let selected = (mouse.row - menu.y) as usize;
+                    let selected = (mouse.row - menu_y) as usize;
                     if selected < menu.items.len() {
                         menu_action = Some((selected, menu.menu_type, menu.x, menu.y));
                     }

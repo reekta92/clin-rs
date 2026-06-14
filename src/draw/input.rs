@@ -3,6 +3,7 @@ use crate::draw::state::{DrawElement, DrawShapeType, DrawTool, Shape, Stroke, Te
 use crate::keybinds::{DrawAction, Keybinds};
 use crate::text_edit::apply_text_shortcuts;
 use crossterm::event::{Event, MouseButton, MouseEvent, MouseEventKind};
+use ratatui::layout::{Constraint, Direction, Layout, Margin};
 use ratatui_textarea::TextArea;
 
 pub fn handle_event(
@@ -104,30 +105,33 @@ fn handle_mouse(ev: MouseEvent, app: &mut DrawAppState) -> anyhow::Result<Option
     let area = app.last_area;
 
     if app.show_shape_selector {
-        let popup_width = 20;
-        let popup_height = 7;
-        let px = (area.width.saturating_sub(popup_width)) / 2;
-        let py = (area.height.saturating_sub(popup_height)) / 2;
+        let popup_area = crate::ui::centered_rect(30, 40, area);
+        let content = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(1), Constraint::Length(1)])
+            .split(popup_area)[0];
 
         if ev.kind == MouseEventKind::Down(MouseButton::Left) {
-            if ev.column >= px
-                && ev.column < px + popup_width
-                && ev.row > py
-                && ev.row < py + popup_height
-            {
-                let row_rel = (ev.row - py - 1) as usize;
-                let shapes = [
-                    DrawShapeType::Rect,
-                    DrawShapeType::Ellipse,
-                    DrawShapeType::Diamond,
-                    DrawShapeType::Line,
-                    DrawShapeType::Arrow,
-                ];
-                if let Some(&st) = shapes.get(row_rel) {
-                    app.active_shape_type = st;
-                    app.active_tool = DrawTool::Shape;
-                    app.show_shape_selector = false;
-                    return Ok(None);
+            if crate::events::contains_cell(content, ev.column, ev.row) {
+                let inner = content.inner(Margin {
+                    vertical: 1,
+                    horizontal: 1,
+                });
+                if crate::events::contains_cell(inner, ev.column, ev.row) {
+                    let row_rel = (ev.row - inner.y) as usize;
+                    let shapes = [
+                        DrawShapeType::Rect,
+                        DrawShapeType::Ellipse,
+                        DrawShapeType::Diamond,
+                        DrawShapeType::Line,
+                        DrawShapeType::Arrow,
+                    ];
+                    if let Some(&st) = shapes.get(row_rel) {
+                        app.active_shape_type = st;
+                        app.active_tool = DrawTool::Shape;
+                        app.show_shape_selector = false;
+                        return Ok(None);
+                    }
                 }
             } else {
                 app.show_shape_selector = false;
