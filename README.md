@@ -25,7 +25,7 @@
      - Editor view with markdown preview
      Place images in assets/ and reference as assets/screenshot-list.png -->
 
-> 📸 *Screenshots coming soon — see [Highlights](#highlights) for feature descriptions.*
+> *Screenshots coming soon — see [Highlights](#highlights) for feature descriptions.*
 
 ---
 
