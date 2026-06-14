@@ -380,6 +380,10 @@ mod tests {
         let res = result.unwrap();
         let contents = res.parser.screen().contents();
         eprintln!("Contents: {contents:?}");
-        assert!(!contents.contains("Install 'glow'"));
+        if glow_available() {
+            assert!(!contents.contains("Install 'glow'"));
+        } else {
+            assert!(contents.contains("Install 'glow'"));
+        }
     }
 }
