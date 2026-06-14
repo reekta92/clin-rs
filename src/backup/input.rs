@@ -212,21 +212,41 @@ pub fn handle_mouse(state: &mut BackupState, event: MouseEvent) -> InputResult {
                 return InputResult::None;
             }
 
-            let list_width = (area.width as f32 * 0.4) as u16;
+            let has_diff = state.selected_section == BackupSection::Status && state.selected_file.is_some() && !state.diff_lines.is_empty();
+            let list_width = if has_diff {
+                (area.width as f32 * 0.43) as u16
+            } else {
+                area.width
+            };
+
             if x >= area.x && x < area.x + list_width && y > area.y && y < area.y + area.height - 1
             {
-                let line_index = (y - area.y - 2) as usize;
-                if line_index < state.selectable_files.len() {
-                    state.selected_index = line_index;
-                    state.selected_file = Some(state.selectable_files[line_index].clone());
+                let scroll = if state.selected_section == BackupSection::Status {
+                    state.scroll
+                } else {
+                    state.history_scroll
+                };
+
+                let line_idx = (y.saturating_sub(area.y).saturating_sub(2)).saturating_add(scroll) as usize;
+                if let Some(file_idx) = state.file_index_at_rendered_line(line_idx) {
+                    state.selected_index = file_idx;
+                    state.selected_file = Some(state.selectable_files[file_idx].clone());
                     state.load_selected_diff();
                 }
             }
         }
     } else if let MouseEventKind::ScrollDown = event.kind {
         if let Some(area) = state.last_area {
-            let list_width = (area.width as f32 * 0.4) as u16;
-            if state.selected_file.is_some() && event.column < area.x + list_width {
+            let is_history = state.selected_section == BackupSection::History;
+            let has_diff = state.selected_section == BackupSection::Status && state.selected_file.is_some() && !state.diff_lines.is_empty();
+            let list_width = if has_diff {
+                (area.width as f32 * 0.43) as u16
+            } else {
+                area.width
+            };
+            if is_history {
+                state.history_scroll = state.history_scroll.saturating_add(3);
+            } else if !has_diff || event.column < area.x + list_width {
                 state.scroll = state.scroll.saturating_add(3);
             } else {
                 state.diff_scroll = state.diff_scroll.saturating_add(3);
@@ -236,8 +256,16 @@ pub fn handle_mouse(state: &mut BackupState, event: MouseEvent) -> InputResult {
         }
     } else if let MouseEventKind::ScrollUp = event.kind {
         if let Some(area) = state.last_area {
-            let list_width = (area.width as f32 * 0.4) as u16;
-            if state.selected_file.is_some() && event.column < area.x + list_width {
+            let is_history = state.selected_section == BackupSection::History;
+            let has_diff = state.selected_section == BackupSection::Status && state.selected_file.is_some() && !state.diff_lines.is_empty();
+            let list_width = if has_diff {
+                (area.width as f32 * 0.43) as u16
+            } else {
+                area.width
+            };
+            if is_history {
+                state.history_scroll = state.history_scroll.saturating_sub(3);
+            } else if !has_diff || event.column < area.x + list_width {
                 state.scroll = state.scroll.saturating_sub(3);
             } else {
                 state.diff_scroll = state.diff_scroll.saturating_sub(3);

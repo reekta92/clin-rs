@@ -185,4 +185,58 @@ impl BackupState {
             self.scroll = (self.selected_index + 1).saturating_sub(visible_lines) as u16;
         }
     }
+
+    pub fn file_index_at_rendered_line(&self, line_idx: usize) -> Option<usize> {
+        if self.selected_section != BackupSection::Status {
+            return None;
+        }
+
+        let status = self.status.as_ref()?;
+        let mut current_line = 0;
+        let mut current_file_idx = 0;
+
+        // Staged
+        if current_line == line_idx { return None; }
+        current_line += 1; // Header
+        if status.staged.is_empty() {
+            if current_line == line_idx { return None; }
+            current_line += 1; // "No staged changes"
+        } else {
+            for _ in &status.staged {
+                if current_line == line_idx {
+                    return Some(current_file_idx);
+                }
+                current_line += 1;
+                current_file_idx += 1;
+            }
+        }
+        
+        if current_line == line_idx { return None; }
+        current_line += 1; // Empty line
+
+        // Unstaged
+        if current_line == line_idx { return None; }
+        current_line += 1; // Header
+        if status.unstaged.is_empty() && status.untracked.is_empty() {
+            if current_line == line_idx { return None; }
+            current_line += 1; // "No unstaged changes"
+        } else {
+            for _ in &status.unstaged {
+                if current_line == line_idx {
+                    return Some(current_file_idx);
+                }
+                current_line += 1;
+                current_file_idx += 1;
+            }
+            for _ in &status.untracked {
+                if current_line == line_idx {
+                    return Some(current_file_idx);
+                }
+                current_line += 1;
+                current_file_idx += 1;
+            }
+        }
+
+        None
+    }
 }
