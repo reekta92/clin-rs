@@ -807,11 +807,13 @@ fn run_app(
                             "Editor",
                             "Graph",
                             "Draw",
-                            "Pinstar",
+                            "Canvas",
+                            "Backup",
                             "Templates",
+                            "Content Tree",
                             "About",
                         ];
-                        let mut tab_widths: [u16; 7] = [0; 7];
+                        let mut tab_widths: [u16; 9] = [0; 9];
                         let mut total_width: u16 = 0;
                         for (i, name) in tab_names.iter().enumerate() {
                             tab_widths[i] = name.len() as u16 + 2;
@@ -824,7 +826,7 @@ fn run_app(
                         let click_x = mouse_event.column;
                         if click_x >= start_x && click_x < start_x + total_width {
                             let mut offset = start_x;
-                            for (i, tw) in tab_widths.iter().enumerate().take(tab_names.len()) {
+                            for (i, tw) in tab_widths.iter().enumerate() {
                                 if click_x < offset + tw {
                                     app.switch_help_tab(crate::app::HelpTab::from_index(i));
                                     break;

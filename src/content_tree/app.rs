@@ -39,28 +39,49 @@ pub fn run_content_tree_view(
             render::draw_content_tree(f, area, &state, &theme, keybinds);
         })?;
 
-        if event::poll(Duration::from_millis(100))?
-            && let Event::Key(key) = event::read()?
-        {
-            // Check if key is release to avoid duplicate processing on some platforms
-            if key.kind == crossterm::event::KeyEventKind::Release {
-                continue;
-            }
-            match input::handle_input(&mut state, key, keybinds) {
-                input::InputResult::Back => return Ok(ContentTreeResult::Back),
-                input::InputResult::Help => return Ok(ContentTreeResult::HelpRequested),
-                input::InputResult::Open => {
-                    if !state.load_error && state.selected < state.nodes.len() {
-                        let node = &state.nodes[state.selected];
-                        return Ok(ContentTreeResult::JumpToLine {
-                            note_id: state.note_id.clone(),
-                            line: node.line,
-                        });
-                    } else {
-                        return Ok(ContentTreeResult::Back);
+        if event::poll(Duration::from_millis(100))? {
+            match event::read()? {
+                Event::Key(key) => {
+                    if key.kind == crossterm::event::KeyEventKind::Release {
+                        continue;
+                    }
+                    match input::handle_input(&mut state, key, keybinds) {
+                        input::InputResult::Back => return Ok(ContentTreeResult::Back),
+                        input::InputResult::Help => return Ok(ContentTreeResult::HelpRequested),
+                        input::InputResult::Open => {
+                            if !state.load_error && state.selected < state.nodes.len() {
+                                let node = &state.nodes[state.selected];
+                                return Ok(ContentTreeResult::JumpToLine {
+                                    note_id: state.note_id.clone(),
+                                    line: node.line,
+                                });
+                            } else {
+                                return Ok(ContentTreeResult::Back);
+                            }
+                        }
+                        input::InputResult::None => {}
                     }
                 }
-                input::InputResult::None => {}
+                Event::Mouse(mouse) => {
+                    let area = terminal.size()?;
+                    match input::handle_content_tree_mouse(&mut state, mouse, area.into()) {
+                        input::InputResult::Back => return Ok(ContentTreeResult::Back),
+                        input::InputResult::Help => return Ok(ContentTreeResult::HelpRequested),
+                        input::InputResult::Open => {
+                            if !state.load_error && state.selected < state.nodes.len() {
+                                let node = &state.nodes[state.selected];
+                                return Ok(ContentTreeResult::JumpToLine {
+                                    note_id: state.note_id.clone(),
+                                    line: node.line,
+                                });
+                            } else {
+                                return Ok(ContentTreeResult::Back);
+                            }
+                        }
+                        input::InputResult::None => {}
+                    }
+                }
+                _ => {}
             }
         }
     }
