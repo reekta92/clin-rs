@@ -26,4 +26,9 @@ impl Action for ToggleExternalEditorAction {
         app.toggle_external_editor_mode();
         Ok(())
     }
+
+    fn name_dynamic(&self, app: &App) -> String {
+        let state = if app.editor.external_editor_enabled { "On" } else { "Off" };
+        format!("Toggle External Editor Mode [{}]", state)
+    }
 }

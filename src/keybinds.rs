@@ -951,7 +951,7 @@ impl Default for Keybinds {
         );
         backup.insert(
             BackupAction::OpenSettings,
-            vec![KeyCombo::simple(KeyCode::Char('/'))],
+            vec![KeyCombo::ctrl(KeyCode::Char('p'))],
         );
         backup.insert(
             BackupAction::CycleSection,

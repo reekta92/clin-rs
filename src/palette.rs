@@ -28,18 +28,17 @@ pub struct CommandPalette {
     pub context_note_id: Option<String>,
     pub active_tab: usize,
 }
-
 impl CommandPalette {
-    pub fn new(context_note_id: Option<String>, theme: &crate::app_theme::AppThemeColors) -> Self {
+    pub fn new(context_note_id: Option<String>, app: &crate::app::App) -> Self {
         let mut input = TextArea::default();
         input.set_cursor_line_style(Style::default());
         input.set_placeholder_text("Search commands...");
-        input.set_style(theme.bg_style());
+        input.set_style(app.app_theme.bg_style());
         input.set_block(
             Block::default()
-                .style(theme.bg_style())
+                .style(app.app_theme.bg_style())
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(theme.muted)),
+                .border_style(Style::default().fg(app.app_theme.muted)),
         );
 
         let mut p = Self {
@@ -49,13 +48,13 @@ impl CommandPalette {
             context_note_id,
             active_tab: 0,
         };
-        p.refresh_items();
+        p.refresh_items(app);
         p
     }
 
-    pub fn refresh_items(&mut self) {
+    pub fn refresh_items(&mut self, app: &crate::app::App) {
         let query = self.input.lines()[0].as_str();
-        let actions = crate::actions::get_cached_action_infos();
+        let actions = crate::actions::get_all_action_infos(app);
         let mut matched = Vec::with_capacity(actions.len());
 
         let category_filter = PALETTE_TABS[self.active_tab].2;
@@ -102,13 +101,13 @@ impl CommandPalette {
         }
     }
 
-    pub fn handle_input(&mut self, key: crossterm::event::KeyEvent) -> bool {
+    pub fn handle_input(&mut self, key: crossterm::event::KeyEvent, app: &crate::app::App) -> bool {
         use crossterm::event::KeyCode;
         match key.code {
             KeyCode::Esc => return true,
             KeyCode::Tab => {
                 self.active_tab = (self.active_tab + 1) % PALETTE_TABS.len();
-                self.refresh_items();
+                self.refresh_items(app);
             }
             KeyCode::BackTab => {
                 if self.active_tab == 0 {
@@ -116,7 +115,7 @@ impl CommandPalette {
                 } else {
                     self.active_tab -= 1;
                 }
-                self.refresh_items();
+                self.refresh_items(app);
             }
             KeyCode::Down => {
                 let i = match self.state.selected() {
@@ -153,7 +152,7 @@ impl CommandPalette {
             }
             _ => {
                 self.input.input(key);
-                self.refresh_items();
+                self.refresh_items(app);
             }
         }
         false

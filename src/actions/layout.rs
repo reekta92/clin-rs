@@ -37,4 +37,12 @@ impl Action for ToggleLayoutAction {
         app.refresh_visual_list();
         Ok(())
     }
+
+    fn name_dynamic(&self, app: &App) -> String {
+        let state = match app.list.notes_layout {
+            NotesLayout::Tree => "Tree",
+            NotesLayout::Grid => "Grid",
+        };
+        format!("Toggle Notes Layout [{}]", state)
+    }
 }
