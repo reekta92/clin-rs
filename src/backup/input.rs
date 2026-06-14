@@ -4,7 +4,7 @@ use crate::config::ClinConfig;
 use crate::keybinds::{BackupAction, Keybinds};
 use crate::text_edit::apply_text_shortcuts;
 use crossterm::event::{KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
-use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::layout::{Constraint, Layout};
 use ratatui_textarea::TextArea;
 
 pub enum InputResult {
@@ -320,9 +320,7 @@ fn handle_settings_mouse(state: &mut BackupState, event: MouseEvent) -> InputRes
                 SettingsField::BackupOnQuit => {
                     state.settings.backup_on_quit = !state.settings.backup_on_quit
                 }
-                SettingsField::AutoPush => {
-                    state.settings.auto_push = !state.settings.auto_push
-                }
+                SettingsField::AutoPush => state.settings.auto_push = !state.settings.auto_push,
                 SettingsField::RemoteUrl | SettingsField::RemoteName => {
                     state.input_mode = BackupInputMode::EditSettingsField;
                 }
