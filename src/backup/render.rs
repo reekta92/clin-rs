@@ -1,4 +1,3 @@
-use crate::constants::BACKUP_HELP_HINTS;
 fn format_relative_time(unix_secs: u64) -> String {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -101,10 +100,9 @@ pub fn draw_dashboard(frame: &mut ratatui::Frame, state: &crate::backup::state::
         footer_area,
         theme,
         None,
-        BACKUP_HELP_HINTS,
+        state.footer_hint.as_str(),
         right_line,
     );
-
     if state.input_mode == BackupInputMode::EditCommitMessage {
         draw_commit_popup(frame, area, state);
     }
@@ -169,7 +167,7 @@ fn draw_content(frame: &mut Frame, area: Rect, state: &BackupState) {
                     .add_modifier(Modifier::ITALIC),
             )),
             Line::from(Span::styled(
-                "Press / to open settings.",
+                "Press Ctrl+P to open settings.",
                 Style::default()
                     .fg(theme.muted)
                     .add_modifier(Modifier::ITALIC),
@@ -437,124 +435,97 @@ fn draw_commit_popup(frame: &mut Frame, area: Rect, state: &BackupState) {
 
 fn draw_settings_popup(frame: &mut Frame, area: Rect, state: &BackupState) {
     let theme = &state.theme;
-    let content = crate::ui::draw_popup_frame_fixed(
+    let content = crate::ui::draw_popup_frame(
         frame,
         area,
         "BACKUP SETTINGS",
-        55,
-        15,
+        60,
+        60,
         "j/k navigate · Enter toggle/edit · Esc cancel",
         theme,
     );
-    frame.render_widget(
-        ratatui::widgets::Block::default().style(theme.bg_style()),
-        content,
-    );
+
+    let outer_block = Block::default()
+        .style(theme.bg_style())
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(theme.heading));
+    let inner_content = outer_block.inner(content);
+    frame.render_widget(outer_block, content);
 
     let chunks = Layout::default()
         .constraints([
-            Constraint::Length(6), // Toggles block (4 items + borders)
+            Constraint::Length(3), // Enabled
+            Constraint::Length(3), // Backup on Save
+            Constraint::Length(3), // Backup on Quit
+            Constraint::Length(3), // Auto Push
             Constraint::Length(3), // Remote URL
             Constraint::Length(3), // Remote Name
             Constraint::Length(1), // Spacer
             Constraint::Length(3), // Save button
             Constraint::Min(0),
         ])
-        .split(content);
+        .split(inner_content);
 
-    // Toggles list
-    let toggles = [
-        (
-            SettingsField::Enabled,
-            "Backup System Enabled",
-            state.settings.enabled,
-        ),
-        (
-            SettingsField::BackupOnSave,
-            "Backup on every note save",
-            state.settings.backup_on_save,
-        ),
-        (
-            SettingsField::BackupOnQuit,
-            "Backup on app exit",
-            state.settings.backup_on_quit,
-        ),
-        (
-            SettingsField::AutoPush,
-            "Auto-push after backup",
-            state.settings.auto_push,
-        ),
-    ];
+    // Helper for rendering toggles
+    let render_toggle = |frame: &mut Frame, area: Rect, label: &str, value: bool, field: SettingsField| {
+        let state_text = if value { "ON" } else { "OFF" };
+        let style = if value { theme.success } else { theme.destructive };
+        let border_color = if state.settings.focused_field == field {
+            theme.heading
+        } else {
+            theme.muted
+        };
 
-    let mut list_items = Vec::new();
-    let mut selected_toggle_idx = None;
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(border_color))
+            .style(theme.bg_style());
 
-    for (i, (field, label, value)) in toggles.iter().enumerate() {
-        if state.settings.focused_field == *field {
-            selected_toggle_idx = Some(i);
-        }
-        let checkbox = if *value { "[X]" } else { "[ ]" };
-        let color = if *value { theme.success } else { theme.muted };
+        let inner = block.inner(area);
+        let text = format!("{}: {}", label, state_text);
+        let para = Paragraph::new(Span::styled(
+            text,
+            Style::default().fg(style).add_modifier(Modifier::BOLD),
+        ))
+        .alignment(Alignment::Center)
+        .style(theme.bg_style());
 
-        let line = Line::from(vec![
-            Span::styled(format!("{} ", checkbox), Style::default().fg(color)),
-            Span::raw(*label),
-        ]);
-        list_items.push(ratatui::widgets::ListItem::new(line));
-    }
-
-    let is_toggle_focused = selected_toggle_idx.is_some();
-    let toggles_border = if is_toggle_focused {
-        theme.heading
-    } else {
-        theme.muted
+        frame.render_widget(block, area);
+        frame.render_widget(para, inner);
     };
 
-    let list = ratatui::widgets::List::new(list_items)
-        .block(
-            Block::default()
-                .style(theme.bg_style())
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(toggles_border))
-                .title(" General & Auto-Backup "),
-        )
-        .highlight_style(
-            Style::default()
-                .fg(theme.highlight_fg)
-                .bg(theme.highlight_bg)
-                .add_modifier(Modifier::BOLD),
-        )
-        .highlight_symbol("  ");
-
-    let mut list_state = ratatui::widgets::ListState::default();
-    if let Some(idx) = selected_toggle_idx {
-        list_state.select(Some(idx));
-    }
-    frame.render_stateful_widget(list, chunks[0], &mut list_state);
+    render_toggle(frame, chunks[0], "Backup System Enabled", state.settings.enabled, SettingsField::Enabled);
+    render_toggle(frame, chunks[1], "Backup on every note save", state.settings.backup_on_save, SettingsField::BackupOnSave);
+    render_toggle(frame, chunks[2], "Backup on app exit", state.settings.backup_on_quit, SettingsField::BackupOnQuit);
+    render_toggle(frame, chunks[3], "Auto-push after backup", state.settings.auto_push, SettingsField::AutoPush);
 
     // TextAreas
     let text_fields = [
         (
-            chunks[1],
+            chunks[4],
             SettingsField::RemoteUrl,
             " Remote URL ",
+            "Remote URL...",
             &state.settings.remote_url,
         ),
         (
-            chunks[2],
+            chunks[5],
             SettingsField::RemoteName,
             " Remote Name ",
+            "Remote Name...",
             &state.settings.remote_name,
         ),
     ];
 
-    for (area, field, title, textarea) in text_fields {
+    for (area, field, title, placeholder, textarea) in text_fields {
         let border_color = if state.settings.focused_field == field {
             theme.heading
         } else {
             theme.muted
         };
         let mut cloned = textarea.clone();
+        cloned.set_placeholder_text(placeholder);
+        cloned.set_placeholder_style(Style::default().fg(theme.muted).add_modifier(Modifier::ITALIC));
 
         let is_editing = state.input_mode == BackupInputMode::EditSettingsField
             && state.settings.focused_field == field;
@@ -578,23 +549,27 @@ fn draw_settings_popup(frame: &mut Frame, area: Rect, state: &BackupState) {
     }
 
     // Save Button
-    let save_border = if state.settings.focused_field == SettingsField::SaveButton {
-        theme.heading
+    let is_save_focused = state.settings.focused_field == SettingsField::SaveButton;
+    let save_style = if is_save_focused {
+        Style::default()
+            .fg(theme.highlight_fg)
+            .bg(theme.accent)
+            .add_modifier(Modifier::BOLD)
     } else {
-        theme.muted
+        Style::default()
+            .fg(theme.accent)
+            .add_modifier(Modifier::BOLD)
     };
-    let save_button = Paragraph::new("SAVE")
+    
+    let save_block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(if is_save_focused { theme.heading } else { theme.muted }))
+        .style(if is_save_focused { Style::default().bg(theme.accent) } else { theme.bg_style() });
+
+    let save_button = Paragraph::new("SAVE SETTINGS")
         .alignment(Alignment::Center)
-        .style(
-            Style::default()
-                .fg(theme.accent)
-                .add_modifier(Modifier::BOLD),
-        )
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(save_border))
-                .style(theme.bg_style()),
-        );
-    frame.render_widget(save_button, chunks[4]);
+        .style(save_style)
+        .block(save_block);
+        
+    frame.render_widget(save_button, chunks[7]);
 }

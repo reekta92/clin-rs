@@ -157,10 +157,15 @@ pub struct SearchPopup {
     pub grep_result_indices: Vec<usize>,
     pub grep_is_header: Vec<bool>,
     pub grep_expanded: std::collections::HashSet<usize>,
+
     pub grep_selected: usize,
     pub original_index: usize,
     pub original_folder_expanded: std::collections::HashSet<String>,
 }
+pub struct SortPopup {
+    pub selected: usize,
+}
+
 
 pub struct TrashView {
     pub items: Vec<trash::TrashItem>,
@@ -173,6 +178,7 @@ pub struct PopupManager {
     pub template: Option<TemplatePopup>,
     pub theme: Option<ThemePopup>,
     pub tag: Option<TagPopup>,
+    pub sort: Option<SortPopup>,
     pub folder: Option<FolderPopup>,
     pub folder_picker: Option<FolderPicker>,
     pub note_rename: Option<NoteRenamePopup>,

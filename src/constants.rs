@@ -9,5 +9,5 @@ pub const GRAPH_HELP_HINTS: &str = "Esc: back · +/-: zoom · L: labels · a: fi
 pub const DRAW_HELP_HINTS: &str =
     "Esc: back · d: draw · s: shape · t: text · e: erase · Ctrl+S: save";
 pub const CANVAS_HELP_HINTS: &str = "Esc: back · Space: pin · /: filter · Backspace: delete";
-pub const BACKUP_HELP_HINTS: &str = "s: commit · p: push · r: refresh · /: settings · Esc: ←";
+pub const BACKUP_HELP_HINTS: &str = "s: commit · p: push · r: refresh · Ctrl+P: settings · Esc: ←";
 pub const CONTENT_TREE_HELP_HINTS: &str = "j/k move · Tab fold · Enter jump · Esc back · ? help";

@@ -13,16 +13,19 @@ Full reference of all configuration options for clin-rs.
 | `storage_path` | `PathBuf` | `~/.local/share/clin` | Custom vault storage path |
 | `previous_storage_path` | `PathBuf` | — | Previous storage path for migration (cleared after migration) |
 | `external_editor` | `String` | — | External editor command (e.g. `"nvim"`, `"code"`) |
-| `external_editor_enabled` | `bool` | `false` | Enable external editor mode |
-| `preview_enabled` | `bool` | `true` | Show the preview pane in notes list by default |
+| `external_editor_enabled` | `bool` | `false` | Enable external editor mode (Toggleable via Command Palette) |
+| `preview_enabled` | `bool` | `true` | Show the preview pane in notes list by default (Toggleable via Command Palette) |
 | `graph_preview_enabled` | `bool` | `false` | Show the preview pane in graph view by default |
 | `editor_preview_enabled` | `bool` | `false` | Show markdown preview panel in editor by default |
 | `markdown_preview_enabled` | `bool` | `false` | *(deprecated — use `editor_preview_enabled`)* |
-| `show_line_numbers` | `bool` | `true` | Show line numbers in the editor |
-| `confirm_on_delete` | `bool` | `true` | Show confirmation dialog before deleting notes |
-| `default_sort_field` | `enum` | `"title"` | Default sort field: `"title"` or `"modified"` |
-| `default_sort_order` | `enum` | `"ascending"` | Default sort order: `"ascending"` or `"descending"` |
+| `show_line_numbers` | `bool` | `true` | Show line numbers in the editor (Toggleable via Command Palette) |
+| `confirm_on_delete` | `bool` | `true` | Show confirmation dialog before deleting notes (Toggleable via Command Palette) |
+| `default_sort_field` | `enum` | `"title"` | Default sort field: `"title"` or `"modified"` (Toggleable via Command Palette) |
+| `default_sort_order` | `enum` | `"ascending"` | Default sort order: `"ascending"` or `"descending"` (Toggleable via Command Palette) |
 | `default_folder` | `String` | — | Default folder for new notes (optional) |
+| `confirm_on_quit` | `bool` | `false` | Ask for confirmation before quitting (Toggleable via Command Palette) |
+| `preview_encryption` | `bool` | `false` | Show previews of encrypted notes (Toggleable via Command Palette) |
+| `pinned_on_top` | `bool` | `false` | Keep pinned notes at the top of the list (Toggleable via Command Palette) |
 | `graph_label_mode` | `enum` | `"selected"` | *(moved to `[visual]`)* Node label display mode: `selected`, `neighbors`, `all` |
 
 ### `[theme]`

@@ -10,6 +10,7 @@ pub mod ocr;
 pub mod pinstar;
 pub mod theme;
 pub mod external_editor;
+pub mod settings;
 
 use crate::app::App;
 use anyhow::Result;
@@ -37,6 +38,13 @@ pub trait Action: Send + Sync {
         ""
     }
     fn execute(&self, app: &mut App, context_note_id: Option<&str>) -> Result<()>;
+
+    fn name_dynamic(&self, _app: &App) -> String {
+        self.name().to_string()
+    }
+    fn description_dynamic(&self, _app: &App) -> String {
+        self.description().to_string()
+    }
 }
 
 pub struct ActionInfo {
@@ -60,6 +68,13 @@ pub static ACTIONS: Lazy<Vec<Box<dyn Action>>> = Lazy::new(|| {
         Box::new(theme::SwitchThemeAction),
         Box::new(external_editor::ToggleExternalEditorAction),
         Box::new(layout::ToggleLayoutAction),
+        Box::new(settings::TogglePreviewPaneAction),
+        Box::new(settings::ToggleLineNumbersAction),
+        Box::new(settings::ToggleConfirmDeleteAction),
+        Box::new(settings::TogglePinnedOnTopAction),
+        Box::new(settings::ToggleConfirmQuitAction),
+        Box::new(settings::TogglePreviewEncryptionAction),
+        Box::new(settings::CycleSortAction),
         Box::new(import::ImportAction {
             source: crate::popups::ImportSource::File,
             target: crate::popups::ImportTarget::NewNote,
@@ -103,27 +118,23 @@ pub static ACTIONS: Lazy<Vec<Box<dyn Action>>> = Lazy::new(|| {
     ]
 });
 
-pub static ACTION_INFOS: Lazy<Vec<ActionInfo>> = Lazy::new(|| {
+pub fn get_all_action_infos(app: &App) -> Vec<ActionInfo> {
     ACTIONS
         .iter()
         .map(|a| ActionInfo {
             id: a.id().to_string(),
-            name: a.name().to_string(),
-            description: a.description().to_string(),
+            name: a.name_dynamic(app),
+            description: a.description_dynamic(app),
             category: a.category(),
             glyph: a.glyph().to_string(),
         })
         .collect()
-});
+}
+
 
 pub fn get_all_actions() -> &'static [Box<dyn Action>] {
     &ACTIONS
 }
-
-pub fn get_cached_action_infos() -> &'static [ActionInfo] {
-    &ACTION_INFOS
-}
-
 pub fn execute_action(action_id: &str, app: &mut App, context_note_id: Option<&str>) -> Result<()> {
     for action in get_all_actions() {
         if action.id() == action_id {

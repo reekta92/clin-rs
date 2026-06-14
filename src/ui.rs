@@ -106,6 +106,33 @@ fn styled_result_line(s: &str, theme: &AppThemeColors) -> Line<'static> {
     Line::from(split_lock_spans(s, theme))
 }
 
+fn style_palette_name(name: &str, theme: &AppThemeColors) -> Vec<Span<'static>> {
+    if let Some(pos) = name.find(" [") {
+        let base = &name[..pos];
+        let state = &name[pos..];
+
+        let state_style = if state.contains("[On]") {
+            Style::default().fg(theme.success).add_modifier(Modifier::BOLD)
+        } else if state.contains("[Off]") {
+            Style::default().fg(theme.destructive).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(theme.heading).add_modifier(Modifier::BOLD)
+        };
+
+        vec![
+            Span::styled(base.to_string(), Style::default().add_modifier(Modifier::BOLD)),
+            Span::styled(state.to_string(), state_style),
+        ]
+    } else if name.starts_with("Sort Order: ") {
+        vec![
+            Span::styled("Sort Order: ".to_string(), Style::default().add_modifier(Modifier::BOLD)),
+            Span::styled(name[12..].to_string(), Style::default().fg(theme.heading).add_modifier(Modifier::BOLD)),
+        ]
+    } else {
+        vec![Span::styled(name.to_string(), Style::default().add_modifier(Modifier::BOLD))]
+    }
+}
+
 pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     if let Some(_bg) = app.app_theme.bg {
         let block = Block::default().style(app.app_theme.bg_style());
@@ -125,6 +152,9 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
 
     if let Some(popup) = &app.popups.theme {
         draw_theme_popup(frame, popup, frame.area(), &app.app_theme);
+    }
+    if let Some(popup) = &app.popups.sort {
+        draw_sort_popup(frame, popup, frame.area(), &app.app_theme);
     }
 }
 
@@ -2182,16 +2212,17 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             .items
             .iter()
             .map(|item| {
+                let mut spans = vec![
+                    Span::styled(
+                        format!("{} ", &item.glyph),
+                        Style::default()
+                            .fg(app.app_theme.accent)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                ];
+                spans.extend(style_palette_name(&item.name, &app.app_theme));
                 ListItem::new(vec![
-                    Line::from(vec![
-                        Span::styled(
-                            format!("{} ", &item.glyph),
-                            Style::default()
-                                .fg(app.app_theme.accent)
-                                .add_modifier(Modifier::BOLD),
-                        ),
-                        Span::styled(&item.name, Style::default().add_modifier(Modifier::BOLD)),
-                    ]),
+                    Line::from(spans),
                     Line::from(Span::styled(
                         &item.description,
                         Style::default().fg(app.app_theme.muted),
@@ -2806,6 +2837,52 @@ pub fn draw_theme_popup(
     frame.render_widget(graph_para, graph_inner);
 }
 
+pub fn draw_sort_popup(
+    frame: &mut Frame,
+    popup: &crate::popups::SortPopup,
+    area: Rect,
+    theme: &crate::app_theme::AppThemeColors,
+) {
+    let content_area = draw_popup_frame(
+        frame,
+        area,
+        "SORT BY",
+        40,
+        40,
+        "↑↓: Navigate • Enter: Select • Esc: Cancel",
+        theme,
+    );
+
+    let options = vec![
+        "Title (A-Z)",
+        "Title (Z-A)",
+        "Modified (newest)",
+        "Modified (oldest)",
+    ];
+    let items: Vec<ListItem> = options
+        .iter()
+        .map(|&opt| ListItem::new(Line::from(Span::raw(opt))))
+        .collect();
+
+    let list = List::new(items)
+        .block(
+            Block::default()
+                .style(theme.bg_style())
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(theme.heading)),
+        )
+        .highlight_style(
+            Style::default()
+                .fg(theme.highlight_fg)
+                .bg(theme.highlight_bg)
+                .add_modifier(Modifier::BOLD),
+        );
+
+    let mut state = ListState::default();
+    state.select(Some(popup.selected));
+    frame.render_stateful_widget(list, content_area, &mut state);
+}
+
 pub fn get_textarea_scroll(textarea: &TextArea) -> (usize, usize) {
     let mut scroll_row = 0;
     let mut scroll_col = 0;
@@ -2861,7 +2938,6 @@ pub fn line_number_gutter(
                 .style(theme.preview_bg_style()),
         )
 }
-
 pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     let area = frame.area();
 

@@ -3049,6 +3049,13 @@ template = """
             (SortField::Title, SortOrder::Descending) => "Sort: Title (Z-A)",
         };
         self.set_temporary_status_static(sort_desc);
+        if let Ok(mut config) = crate::config::ClinConfig::load() {
+            config.default_sort_field = Some(self.list.sort_field);
+            config.default_sort_order = Some(self.list.sort_order);
+            if let Err(e) = config.save() {
+                self.set_temporary_status(&format!("Failed to save config: {}", e));
+            }
+        }
     }
 
     pub fn begin_search(&mut self) {
@@ -3294,8 +3301,8 @@ template = """
                             .unwrap_or(false);
                         if !is_header
                             && let Some(line_str) = popup.grep_results.get(popup.grep_selected)
-                            && let Some(l_pos) = line_str.find('L')
-                            && let Some(colon_pos) = line_str.find(':')
+                            && let Some(l_pos) = line_str.as_str().find('L')
+                            && let Some(colon_pos) = line_str.as_str().find(':')
                             && colon_pos > l_pos + 1
                             && let Ok(num) = line_str[l_pos + 1..colon_pos].trim().parse::<usize>()
                         {
@@ -3792,6 +3799,93 @@ template = """
         }
     }
 
+    pub fn toggle_show_line_numbers(&mut self) {
+        self.editor.show_line_numbers = !self.editor.show_line_numbers;
+        let msg: &'static str = if self.editor.show_line_numbers {
+            "Line numbers enabled"
+        } else {
+            "Line numbers disabled"
+        };
+        self.set_temporary_status_static(msg);
+        if let Ok(mut config) = crate::config::ClinConfig::load() {
+            config.show_line_numbers = self.editor.show_line_numbers;
+            if let Err(e) = config.save() {
+                self.set_temporary_status(&format!("Failed to save config: {}", e));
+            }
+        }
+    }
+
+    pub fn toggle_confirm_on_delete(&mut self) {
+        self.confirm_on_delete = !self.confirm_on_delete;
+        let msg: &'static str = if self.confirm_on_delete {
+            "Delete confirmation enabled"
+        } else {
+            "Delete confirmation disabled"
+        };
+        self.set_temporary_status_static(msg);
+        if let Ok(mut config) = crate::config::ClinConfig::load() {
+            config.confirm_on_delete = self.confirm_on_delete;
+            if let Err(e) = config.save() {
+                self.set_temporary_status(&format!("Failed to save config: {}", e));
+            }
+        }
+    }
+
+    pub fn toggle_confirm_on_quit(&mut self) {
+        self.confirm_on_quit = !self.confirm_on_quit;
+        let msg: &'static str = if self.confirm_on_quit {
+            "Quit confirmation enabled"
+        } else {
+            "Quit confirmation disabled"
+        };
+        self.set_temporary_status_static(msg);
+        if let Ok(mut config) = crate::config::ClinConfig::load() {
+            config.confirm_on_quit = self.confirm_on_quit;
+            if let Err(e) = config.save() {
+                self.set_temporary_status(&format!("Failed to save config: {}", e));
+            }
+        }
+    }
+
+    pub fn toggle_preview_encryption(&mut self) {
+        self.preview_encryption = !self.preview_encryption;
+        let msg: &'static str = if self.preview_encryption {
+            "Encrypted note previews enabled"
+        } else {
+            "Encrypted note previews hidden"
+        };
+        self.set_temporary_status_static(msg);
+        if self.list.preview_enabled {
+            self.update_preview();
+        }
+        if let Ok(mut config) = crate::config::ClinConfig::load() {
+            config.preview_encryption = self.preview_encryption;
+            if let Err(e) = config.save() {
+                self.set_temporary_status(&format!("Failed to save config: {}", e));
+            }
+        }
+    }
+
+    pub fn toggle_pinned_on_top(&mut self) {
+        self.pinned_on_top = !self.pinned_on_top;
+        if let Err(e) = self.refresh_notes() {
+            self.set_temporary_status(&format!("Refresh failed: {e}"));
+        }
+        let msg: &'static str = if self.pinned_on_top {
+            "Pinned notes shown on top"
+        } else {
+            "Pinned notes in natural order"
+        };
+        self.set_temporary_status_static(msg);
+        if let Ok(mut config) = crate::config::ClinConfig::load() {
+            config.pinned_on_top = self.pinned_on_top;
+            if let Err(e) = config.save() {
+                self.set_temporary_status(&format!("Failed to save config: {}", e));
+            }
+        }
+    }
+
+
     pub fn reload_theme(&mut self) {
         let config = crate::config::ClinConfig::load().unwrap_or_default();
         self.app_theme = crate::app_theme::AppThemeColors::from_config(&config.theme);
@@ -3832,6 +3926,60 @@ template = """
             graph_is_solid,
         });
     }
+
+    pub fn begin_sort_selection(&mut self) {
+        use crate::list_view::{SortField, SortOrder};
+        let current_idx = match (self.list.sort_field, self.list.sort_order) {
+            (SortField::Title, SortOrder::Ascending) => 0,
+            (SortField::Title, SortOrder::Descending) => 1,
+            (SortField::Modified, SortOrder::Descending) => 2,
+            (SortField::Modified, SortOrder::Ascending) => 3,
+        };
+        self.popups.sort = Some(crate::popups::SortPopup {
+            selected: current_idx,
+        });
+    }
+
+    pub fn select_sort(&mut self) {
+        if let Some(popup) = self.popups.sort.take() {
+            use crate::list_view::{SortField, SortOrder};
+            match popup.selected {
+                0 => {
+                    self.list.sort_field = SortField::Title;
+                    self.list.sort_order = SortOrder::Ascending;
+                }
+                1 => {
+                    self.list.sort_field = SortField::Title;
+                    self.list.sort_order = SortOrder::Descending;
+                }
+                2 => {
+                    self.list.sort_field = SortField::Modified;
+                    self.list.sort_order = SortOrder::Descending;
+                }
+                3 => {
+                    self.list.sort_field = SortField::Modified;
+                    self.list.sort_order = SortOrder::Ascending;
+                }
+                _ => {}
+            }
+            if let Err(e) = self.refresh_notes() {
+                self.set_temporary_status(&format!("Refresh failed: {e}"));
+            }
+            // Persist
+            if let Ok(mut config) = crate::config::ClinConfig::load() {
+                config.default_sort_field = Some(self.list.sort_field);
+                config.default_sort_order = Some(self.list.sort_order);
+                if let Err(e) = config.save() {
+                    self.set_temporary_status(&format!("Failed to save config: {}", e));
+                }
+            }
+        }
+    }
+
+    pub fn close_sort_popup(&mut self) {
+        self.popups.sort = None;
+    }
+
 
     pub fn select_theme(&mut self) {
         if let Some(mut popup) = self.popups.theme.take() {

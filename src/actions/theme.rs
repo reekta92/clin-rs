@@ -15,8 +15,9 @@ impl Action for SwitchThemeAction {
     }
 
     fn description(&self) -> Cow<'static, str> {
-        "Cycle through available color themes".into()
+        "Select from available color themes".into()
     }
+
     fn category(&self) -> crate::actions::ActionCategory {
         crate::actions::ActionCategory::Settings
     }
@@ -28,5 +29,12 @@ impl Action for SwitchThemeAction {
     fn execute(&self, app: &mut App, _context: Option<&str>) -> Result<()> {
         app.begin_theme_selection();
         Ok(())
+    }
+
+    fn name_dynamic(&self, _app: &App) -> String {
+        let current = crate::config::ClinConfig::load()
+            .map(|c| c.theme.theme.to_string())
+            .unwrap_or_else(|_| "default".to_string());
+        format!("Switch Theme [{}]", current)
     }
 }

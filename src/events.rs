@@ -9,7 +9,7 @@ use ratatui_textarea::*;
 
 pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     if let Some(mut palette) = app.command_palette.take() {
-        if palette.handle_input(key) {
+        if palette.handle_input(key, app) {
             if key.code == KeyCode::Enter
                 && let Some(selected_idx) = palette.state.selected()
                 && let Some(item) = palette.items.get(selected_idx)
@@ -698,6 +698,32 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
+    if let Some(mut popup) = app.popups.sort.take() {
+        match key.code {
+            KeyCode::Up | KeyCode::Char('k') => {
+                popup.selected = popup.selected.saturating_sub(1);
+                app.popups.sort = Some(popup);
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                if popup.selected < 3 {
+                    popup.selected += 1;
+                }
+                app.popups.sort = Some(popup);
+            }
+            _ if app.keybinds.matches_list(ListAction::Confirm, &key) => {
+                app.popups.sort = Some(popup);
+                app.select_sort();
+            }
+            _ if app.keybinds.matches_list(ListAction::Cancel, &key) => {
+                app.close_sort_popup();
+            }
+            _ => {
+                app.popups.sort = Some(popup);
+            }
+        }
+        return false;
+    }
+
     if key.code == KeyCode::Esc {
         app.handle_esc_press();
     }
@@ -937,10 +963,10 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
             let id = app.notes[*summary_idx].id.clone();
             app.command_palette = Some(crate::palette::CommandPalette::new(
                 Some(id),
-                &app.app_theme,
+                app,
             ));
         } else {
-            app.command_palette = Some(crate::palette::CommandPalette::new(None, &app.app_theme));
+            app.command_palette = Some(crate::palette::CommandPalette::new(None, app));
         }
         return false;
     }
