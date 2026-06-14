@@ -196,10 +196,14 @@ impl BackupState {
         let mut current_file_idx = 0;
 
         // Staged
-        if current_line == line_idx { return None; }
+        if current_line == line_idx {
+            return None;
+        }
         current_line += 1; // Header
         if status.staged.is_empty() {
-            if current_line == line_idx { return None; }
+            if current_line == line_idx {
+                return None;
+            }
             current_line += 1; // "No staged changes"
         } else {
             for _ in &status.staged {
@@ -210,16 +214,23 @@ impl BackupState {
                 current_file_idx += 1;
             }
         }
-        
-        if current_line == line_idx { return None; }
+
+        if current_line == line_idx {
+            return None;
+        }
         current_line += 1; // Empty line
 
         // Unstaged
-        if current_line == line_idx { return None; }
+        if current_line == line_idx {
+            return None;
+        }
         current_line += 1; // Header
         if status.unstaged.is_empty() && status.untracked.is_empty() {
-            if current_line == line_idx { return None; }
-            current_line += 1; // "No unstaged changes"
+            if current_line == line_idx {
+                return None;
+            }
+            current_line += 1;
+            let _ = current_line; // Represents "No unstaged changes" line
         } else {
             for _ in &status.unstaged {
                 if current_line == line_idx {

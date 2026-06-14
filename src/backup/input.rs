@@ -212,7 +212,9 @@ pub fn handle_mouse(state: &mut BackupState, event: MouseEvent) -> InputResult {
                 return InputResult::None;
             }
 
-            let has_diff = state.selected_section == BackupSection::Status && state.selected_file.is_some() && !state.diff_lines.is_empty();
+            let has_diff = state.selected_section == BackupSection::Status
+                && state.selected_file.is_some()
+                && !state.diff_lines.is_empty();
             let list_width = if has_diff {
                 (area.width as f32 * 0.43) as u16
             } else {
@@ -227,7 +229,8 @@ pub fn handle_mouse(state: &mut BackupState, event: MouseEvent) -> InputResult {
                     state.history_scroll
                 };
 
-                let line_idx = (y.saturating_sub(area.y).saturating_sub(2)).saturating_add(scroll) as usize;
+                let line_idx =
+                    (y.saturating_sub(area.y).saturating_sub(2)).saturating_add(scroll) as usize;
                 if let Some(file_idx) = state.file_index_at_rendered_line(line_idx) {
                     state.selected_index = file_idx;
                     state.selected_file = Some(state.selectable_files[file_idx].clone());
@@ -238,7 +241,9 @@ pub fn handle_mouse(state: &mut BackupState, event: MouseEvent) -> InputResult {
     } else if let MouseEventKind::ScrollDown = event.kind {
         if let Some(area) = state.last_area {
             let is_history = state.selected_section == BackupSection::History;
-            let has_diff = state.selected_section == BackupSection::Status && state.selected_file.is_some() && !state.diff_lines.is_empty();
+            let has_diff = state.selected_section == BackupSection::Status
+                && state.selected_file.is_some()
+                && !state.diff_lines.is_empty();
             let list_width = if has_diff {
                 (area.width as f32 * 0.43) as u16
             } else {
@@ -257,7 +262,9 @@ pub fn handle_mouse(state: &mut BackupState, event: MouseEvent) -> InputResult {
     } else if let MouseEventKind::ScrollUp = event.kind {
         if let Some(area) = state.last_area {
             let is_history = state.selected_section == BackupSection::History;
-            let has_diff = state.selected_section == BackupSection::Status && state.selected_file.is_some() && !state.diff_lines.is_empty();
+            let has_diff = state.selected_section == BackupSection::Status
+                && state.selected_file.is_some()
+                && !state.diff_lines.is_empty();
             let list_width = if has_diff {
                 (area.width as f32 * 0.43) as u16
             } else {
