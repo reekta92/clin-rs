@@ -123,10 +123,10 @@ fn style_palette_name(name: &str, theme: &AppThemeColors) -> Vec<Span<'static>> 
             Span::styled(base.to_string(), Style::default().add_modifier(Modifier::BOLD)),
             Span::styled(state.to_string(), state_style),
         ]
-    } else if name.starts_with("Sort Order: ") {
+    } else if let Some(stripped) = name.strip_prefix("Sort Order: ") {
         vec![
             Span::styled("Sort Order: ".to_string(), Style::default().add_modifier(Modifier::BOLD)),
-            Span::styled(name[12..].to_string(), Style::default().fg(theme.heading).add_modifier(Modifier::BOLD)),
+            Span::styled(stripped.to_string(), Style::default().fg(theme.heading).add_modifier(Modifier::BOLD)),
         ]
     } else {
         vec![Span::styled(name.to_string(), Style::default().add_modifier(Modifier::BOLD))]
@@ -2795,7 +2795,7 @@ pub fn draw_sort_popup(
         theme,
     );
 
-    let options = vec![
+    let options = [
         "Title (A-Z)",
         "Title (Z-A)",
         "Modified (newest)",

@@ -1479,12 +1479,13 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                 let current = palette.state.selected().unwrap_or(0);
                 palette.state.select(Some(current.saturating_sub(1)));
             }
-        } else if mouse_event.kind == MouseEventKind::ScrollDown {
-            if contains_cell(popup_area, mouse_event.column, mouse_event.row) && !palette.items.is_empty() {
-                let current = palette.state.selected().unwrap_or(0);
-                let next = (current + 1).min(palette.items.len().saturating_sub(1));
-                palette.state.select(Some(next));
-            }
+        } else if mouse_event.kind == MouseEventKind::ScrollDown
+            && contains_cell(popup_area, mouse_event.column, mouse_event.row)
+            && !palette.items.is_empty()
+        {
+            let current = palette.state.selected().unwrap_or(0);
+            let next = (current + 1).min(palette.items.len().saturating_sub(1));
+            palette.state.select(Some(next));
         }
         app.command_palette = Some(palette);
         return;
