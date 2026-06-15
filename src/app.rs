@@ -682,7 +682,7 @@ impl App {
 
         match &self.list.visual_list[self.list.visual_index] {
             VisualItem::CreateNew { path, .. } => {
-                self.begin_create_note_in_folder(path.clone());
+                self.begin_create_select_format_in_folder(path.clone());
             }
             VisualItem::Folder { path, .. } => {
                 let p = path.clone();

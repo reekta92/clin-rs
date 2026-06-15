@@ -1797,7 +1797,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 }
                 crate::app::VisualItem::CreateNew { depth, .. } => {
                     let indent = "  ".repeat(*depth);
-                    let text = format!("{indent}  Create new note");
+                    let text = format!("{indent}  Create new...");
                     items.push(ListItem::new(Line::from(vec![Span::styled(
                         text,
                         Style::default().fg(app.app_theme.success),
