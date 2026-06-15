@@ -2,11 +2,21 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.8.13] - 2026-06-15
+
+### Miscellaneous
+
+- Readme update about nix support
+- Nix support and automation via dispatch release
 ## [0.8.12] - 2026-06-15
 
 ### Miscellaneous
 
 - Cliff.toml changes
+
+### Release
+
+- V0.8.12
 ## [0.8.11] - 2026-06-15
 
 ### Fixed
