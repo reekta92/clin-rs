@@ -63,6 +63,8 @@ fn handle_normal_input(
         }
         _ if keybinds.matches_backup(BackupAction::ScrollDiffDown, &event) => {
             state.diff_scroll = state.diff_scroll.saturating_add(10);
+            let max = state.diff_lines.len().saturating_sub(state.last_diff_height as usize);
+            state.diff_scroll = state.diff_scroll.min(max as u16);
         }
         _ if keybinds.matches_backup(BackupAction::ScrollDiffUp, &event) => {
             state.diff_scroll = state.diff_scroll.saturating_sub(10);
