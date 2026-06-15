@@ -85,6 +85,9 @@ jobs:
           esac
 
           cargo set-version "$NEW"
+          if [ -f flake.nix ]; then
+            sed -i "s/version = \".*\"; # This will be updated by the release workflow/version = \"$NEW\"; # This will be updated by the release workflow/" flake.nix
+          fi
           cargo generate-lockfile
 
           echo "new_version=$NEW" >> "$GITHUB_OUTPUT"
@@ -110,7 +113,7 @@ jobs:
           TAG="v${{ steps.bump.outputs.new_version }}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Cargo.toml Cargo.lock CHANGELOG.md
+          git add Cargo.toml Cargo.lock CHANGELOG.md flake.nix
           if ! git diff --staged --quiet; then
             git commit -m "release: $TAG"
           fi
@@ -260,8 +263,25 @@ jobs:
           TAG: "v${{ needs.prepare.outputs.new_version }}"
         run: gh release upload "$TAG" clin-*-x86_64.AppImage --clobber
 
+
   # ────────────────────────────────────────────
-  # 6. Publish AUR package
+  # 6. Build Nix package
+  # ────────────────────────────────────────────
+  nix:
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: "v${{ needs.prepare.outputs.new_version }}"
+      - uses: cachix/install-nix-action@v27
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+      - name: Build
+        run: nix build .#default
+
+  # ────────────────────────────────────────────
+  # 7. Publish AUR package
   # ────────────────────────────────────────────
   aur:
     needs: [prepare, linux-packages, linux-x86_64]
@@ -310,8 +330,9 @@ jobs:
           ssh_private_key: ${{ env.AUR_SSH_PRIVATE_KEY }}
           commit_message: "Update to ${{ needs.prepare.outputs.new_version }}"
 
+
   # ────────────────────────────────────────────
-  # 7. Publish to crates.io
+  # 8. Publish to crates.io
   # ────────────────────────────────────────────
   crates-io:
     needs: prepare
@@ -330,11 +351,12 @@ jobs:
         if: ${{ env.CARGO_REGISTRY_TOKEN != '' }}
         run: cargo publish --locked
 
+
   # ────────────────────────────────────────────
-  # 8. Update README + PKGBUILD in main
+  # 9. Update README + PKGBUILD in main
   # ────────────────────────────────────────────
   post-release:
-    needs: [prepare, linux-packages, appimage, linux-x86_64]
+    needs: [prepare, linux-packages, appimage, linux-x86_64, nix]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -377,7 +399,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add README.md PKGBUILD
+          git add README.md PKGBUILD flake.nix
           if ! git diff --staged --quiet; then
             git commit -m "release: update versions to v${{ needs.prepare.outputs.new_version }}"
             git push origin HEAD:main

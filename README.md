@@ -134,6 +134,23 @@ makepkg -si
 yay -S clin-rs-bin
 ```
 
+### Nix (Flakes)
+Run directly:
+```bash
+nix run github:reekta92/clin-rs
+```
+Install to profile:
+```bash
+nix profile install github:reekta92/clin-rs
+```
+Add to your flake `inputs`:
+```nix
+{
+  inputs.clin.url = "github:reekta92/clin-rs";
+}
+```
+Then include `inputs.clin.packages.${system}.default` in your `environment.systemPackages` or `home.packages`.
+
 ### AppImage
 Download the latest `.AppImage` from the [Releases](https://github.com/reekta92/clin-rs/releases) page.
 ```bash
