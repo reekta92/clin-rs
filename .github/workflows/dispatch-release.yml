@@ -101,8 +101,9 @@ jobs:
 
       - name: Generate changelog
         run: |
+          PREV_TAG=$(git describe --tags --abbrev=0)
           git cliff --tag "v${{ steps.bump.outputs.new_version }}" -o CHANGELOG.md
-          git cliff --tag "v${{ steps.bump.outputs.new_version }}" --latest -o RELEASE_NOTES.md
+          git cliff "${PREV_TAG}..HEAD" --tag "v${{ steps.bump.outputs.new_version }}" -o RELEASE_NOTES.md
 
       - name: Commit, tag, push
         run: |
