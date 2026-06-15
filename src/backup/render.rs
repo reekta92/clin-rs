@@ -513,20 +513,18 @@ fn draw_settings_popup(frame: &mut Frame, area: Rect, state: &BackupState) {
         (
             chunks[4],
             SettingsField::RemoteUrl,
-            " Remote URL ",
             "Remote URL...",
             &state.settings.remote_url,
         ),
         (
             chunks[5],
             SettingsField::RemoteName,
-            " Remote Name ",
             "Remote Name...",
             &state.settings.remote_name,
         ),
     ];
 
-    for (area, field, title, placeholder, textarea) in text_fields {
+    for (area, field, placeholder, textarea) in text_fields {
         let border_color = if state.settings.focused_field == field {
             theme.heading
         } else {
@@ -553,7 +551,6 @@ fn draw_settings_popup(frame: &mut Frame, area: Rect, state: &BackupState) {
         cloned.set_block(
             Block::default()
                 .borders(Borders::ALL)
-                .title(title)
                 .border_style(Style::default().fg(border_color))
                 .style(theme.bg_style()),
         );
