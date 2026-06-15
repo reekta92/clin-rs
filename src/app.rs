@@ -559,7 +559,10 @@ impl App {
                         });
                     }
                 }
-                visual.push(VisualItem::CreateNew { path: gf.clone(), depth: 0 });
+                visual.push(VisualItem::CreateNew {
+                    path: gf.clone(),
+                    depth: 0,
+                });
             }
 
             self.list.visual_list = visual;
@@ -1122,7 +1125,6 @@ impl App {
         self.editor.editor.set_cursor_line_style(Style::default());
         self.set_default_status();
     }
-
 
     pub fn start_note_from_template(&mut self, template: &Template, folder: String) {
         let rendered = template.render();
@@ -2649,20 +2651,25 @@ template = """
         self.begin_create_select_format_in_folder(folder);
     }
     pub fn begin_create_select_format_in_folder(&mut self, folder: String) {
-        self.popups.create_format = Some(crate::popups::CreateFormatPopup { folder, selected: 0 });
+        self.popups.create_format = Some(crate::popups::CreateFormatPopup {
+            folder,
+            selected: 0,
+        });
     }
     pub fn confirm_create_format(&mut self) {
         if let Some(popup) = self.popups.create_format.take() {
             match popup.selected {
-                0 => self.begin_create_note_in_folder(popup.folder),          // .md
-                1 => self.begin_create_text_in_folder(popup.folder),          // .txt (new)
-                2 => self.begin_create_draw_in_folder(popup.folder),          // .draw
-                3 => self.begin_create_canvas_in_folder(popup.folder),        // .canvas
+                0 => self.begin_create_note_in_folder(popup.folder), // .md
+                1 => self.begin_create_text_in_folder(popup.folder), // .txt (new)
+                2 => self.begin_create_draw_in_folder(popup.folder), // .draw
+                3 => self.begin_create_canvas_in_folder(popup.folder), // .canvas
                 _ => {}
             }
         }
     }
-    pub fn close_create_format_popup(&mut self) { self.popups.create_format = None; }
+    pub fn close_create_format_popup(&mut self) {
+        self.popups.create_format = None;
+    }
 
     pub fn begin_create_text(&mut self) {
         let folder = if self.list.notes_layout == crate::config::NotesLayout::Grid {
@@ -2914,7 +2921,6 @@ template = """
         self.popups.draw_create = Some(crate::popups::NoteCreatePopup { folder, input });
     }
 
-
     pub fn confirm_create_draw(&mut self) {
         if let Some(popup) = self.popups.draw_create.take() {
             let mut title = popup.input.lines().join("");
@@ -2961,7 +2967,6 @@ template = """
         );
         self.popups.canvas_create = Some(crate::popups::NoteCreatePopup { folder, input });
     }
-
 
     pub fn confirm_create_canvas(&mut self) {
         if let Some(popup) = self.popups.canvas_create.take() {

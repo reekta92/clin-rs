@@ -243,7 +243,17 @@ fn draw_content(frame: &mut Frame, area: Rect, state: &mut BackupState) {
 
                 lines.push(
                     Line::from(vec![
-                        Span::styled(format!("  [{}] {sym} ", if state.selected_for_commit.contains(&s.path) { 'x' } else { ' ' }), style),
+                        Span::styled(
+                            format!(
+                                "  [{}] {sym} ",
+                                if state.selected_for_commit.contains(&s.path) {
+                                    'x'
+                                } else {
+                                    ' '
+                                }
+                            ),
+                            style,
+                        ),
                         Span::styled(&s.path, Style::default().fg(theme.text)),
                     ])
                     .style(line_style),
@@ -262,7 +272,17 @@ fn draw_content(frame: &mut Frame, area: Rect, state: &mut BackupState) {
 
                 lines.push(
                     Line::from(vec![
-                        Span::styled(format!("  [{}] ? ", if state.selected_for_commit.contains(path) { 'x' } else { ' ' }), Style::default().fg(theme.muted)),
+                        Span::styled(
+                            format!(
+                                "  [{}] ? ",
+                                if state.selected_for_commit.contains(path) {
+                                    'x'
+                                } else {
+                                    ' '
+                                }
+                            ),
+                            Style::default().fg(theme.muted),
+                        ),
                         Span::styled(path, Style::default().fg(theme.text)),
                     ])
                     .style(line_style),

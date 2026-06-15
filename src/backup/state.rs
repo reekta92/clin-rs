@@ -1,8 +1,8 @@
-use std::collections::HashSet;
 use crate::app_theme::AppThemeColors;
 use crate::backup::git_ops::{CommitInfo, FileDiff, GitOps, GitStatus};
 use crate::config::BackupConfig;
 use ratatui_textarea::TextArea;
+use std::collections::HashSet;
 use std::path::PathBuf;
 
 pub struct BackupState {
@@ -176,11 +176,17 @@ impl BackupState {
                 }
             }
             self.selectable_files = files;
-            self.selected_for_commit = self.status.as_ref().map(|s| {
-                s.unstaged.iter().map(|f| f.path.clone())
-                    .chain(s.untracked.iter().cloned())
-                    .collect()
-            }).unwrap_or_default();
+            self.selected_for_commit = self
+                .status
+                .as_ref()
+                .map(|s| {
+                    s.unstaged
+                        .iter()
+                        .map(|f| f.path.clone())
+                        .chain(s.untracked.iter().cloned())
+                        .collect()
+                })
+                .unwrap_or_default();
 
             if self.selected_file.is_none() && !self.selectable_files.is_empty() {
                 self.selected_file = Some(self.selectable_files[0].clone());

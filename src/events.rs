@@ -756,7 +756,9 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 app.popups.create_format = Some(popup);
                 app.confirm_create_format();
             }
-            _ if app.keybinds.matches_list(ListAction::Cancel, &key) || key.code == KeyCode::Esc => {
+            _ if app.keybinds.matches_list(ListAction::Cancel, &key)
+                || key.code == KeyCode::Esc =>
+            {
                 app.close_create_format_popup();
             }
             _ => {
