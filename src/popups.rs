@@ -166,6 +166,11 @@ pub struct SortPopup {
     pub selected: usize,
 }
 
+pub struct CreateFormatPopup {
+    pub folder: String,
+    pub selected: usize,
+}
+
 pub struct TrashView {
     pub items: Vec<trash::TrashItem>,
     pub selected: usize,
@@ -185,6 +190,8 @@ pub struct PopupManager {
     pub draw_create: Option<NoteCreatePopup>,
     pub canvas_create: Option<NoteCreatePopup>,
     pub import: Option<ImportPopup>,
+    pub create_format: Option<CreateFormatPopup>,
+    pub text_create: Option<NoteCreatePopup>,
 
     pub search: Option<SearchPopup>,
     pub context_menu: Option<ContextMenu>,

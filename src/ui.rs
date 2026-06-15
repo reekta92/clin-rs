@@ -174,6 +174,9 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     if let Some(popup) = &app.popups.sort {
         draw_sort_popup(frame, popup, frame.area(), &app.app_theme);
     }
+    if let Some(popup) = &app.popups.create_format {
+        draw_create_format_popup(frame, popup, frame.area(), &app.app_theme);
+    }
 }
 
 /// Help-view tab labels, in HelpTab order. Shared by `draw_help_view` (render)
@@ -2300,6 +2303,26 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         frame.render_widget(&popup.input, content);
     }
 
+    if let Some(popup) = &mut app.popups.text_create {
+        let content = draw_popup_frame(
+            frame,
+            area,
+            "NEW TEXT FILE",
+            50,
+            10,
+            "Enter create · Esc cancel",
+            &app.app_theme,
+        );
+
+        popup.input.set_block(
+            Block::default()
+                .style(app.app_theme.bg_style())
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(app.app_theme.heading)),
+        );
+        frame.render_widget(&popup.input, content);
+    }
+
     if let Some(popup) = &mut app.popups.import {
         let title = match popup.source {
             crate::popups::ImportSource::File => "IMPORT FILE",
@@ -2828,6 +2851,52 @@ pub fn draw_sort_popup(
         "Title (Z-A)",
         "Modified (newest)",
         "Modified (oldest)",
+    ];
+    let items: Vec<ListItem> = options
+        .iter()
+        .map(|&opt| ListItem::new(Line::from(Span::raw(opt))))
+        .collect();
+
+    let list = List::new(items)
+        .block(
+            Block::default()
+                .style(theme.bg_style())
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(theme.heading)),
+        )
+        .highlight_style(
+            Style::default()
+                .fg(theme.highlight_fg)
+                .bg(theme.highlight_bg)
+                .add_modifier(Modifier::BOLD),
+        );
+
+    let mut state = ListState::default();
+    state.select(Some(popup.selected));
+    frame.render_stateful_widget(list, content_area, &mut state);
+}
+
+pub fn draw_create_format_popup(
+    frame: &mut Frame,
+    popup: &crate::popups::CreateFormatPopup,
+    area: Rect,
+    theme: &crate::app_theme::AppThemeColors,
+) {
+    let content_area = draw_popup_frame(
+        frame,
+        area,
+        "CREATE NEW",
+        40,
+        40,
+        "↑↓: Navigate • Enter: Select • Esc: Cancel",
+        theme,
+    );
+
+    let options = [
+        "Markdown Note (.md)",
+        "Plain Text (.txt)",
+        "Drawing (.draw)",
+        "Canvas (.canvas)",
     ];
     let items: Vec<ListItem> = options
         .iter()

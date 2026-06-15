@@ -1083,34 +1083,37 @@ impl App {
         if !folder.is_empty() {
             new_id = format!("{folder}/{new_id}");
         }
+        self.enter_edit_mode(new_id, title, String::new());
+    }
 
+    fn enter_edit_mode(&mut self, id: String, title: String, content: String) {
         if self.editor.external_editor_enabled {
             let new_note = Note {
                 title,
-                content: String::new(),
+                content,
                 updated_at: now_unix_secs(),
                 tags: Vec::new(),
             };
-            if self.storage.save_note(&new_id, &new_note).is_ok() {
+            if self.storage.save_note(&id, &new_note).is_ok() {
                 if let Err(e) = self.try_auto_backup(&new_note.title) {
                     self.set_temporary_status(&format!("Backup failed: {e}"));
                 }
                 if let Err(e) = self.refresh_notes() {
                     self.set_temporary_status(&format!("Refresh failed: {e}"));
                 }
-                self.open_note_in_external_editor(&new_id, None);
+                self.open_note_in_external_editor(&id, None);
             }
             return;
         }
 
         self.mode = ViewMode::Edit;
-        self.editor.editing_id = Some(new_id);
+        self.editor.editing_id = Some(id);
         self.editor.title_editor = make_title_editor(
             &title,
             self.app_theme.highlight_fg,
             self.app_theme.highlight_bg,
         );
-        self.editor.editor = TextArea::default();
+        self.editor.editor = TextArea::from(content.lines());
         self.editor.editor.set_cursor_style(
             Style::default()
                 .fg(self.app_theme.highlight_fg)
@@ -1119,6 +1122,7 @@ impl App {
         self.editor.editor.set_cursor_line_style(Style::default());
         self.set_default_status();
     }
+
 
     pub fn start_note_from_template(&mut self, template: &Template, folder: String) {
         let rendered = template.render();
@@ -2636,6 +2640,72 @@ template = """
         self.list.help_text_cache.as_ref().unwrap()
     }
 
+    pub fn begin_create_select_format(&mut self) {
+        let folder = if self.list.notes_layout == crate::config::NotesLayout::Grid {
+            self.list.grid_folder.clone()
+        } else {
+            self.get_current_folder_context()
+        };
+        self.begin_create_select_format_in_folder(folder);
+    }
+    pub fn begin_create_select_format_in_folder(&mut self, folder: String) {
+        self.popups.create_format = Some(crate::popups::CreateFormatPopup { folder, selected: 0 });
+    }
+    pub fn confirm_create_format(&mut self) {
+        if let Some(popup) = self.popups.create_format.take() {
+            match popup.selected {
+                0 => self.begin_create_note_in_folder(popup.folder),          // .md
+                1 => self.begin_create_text_in_folder(popup.folder),          // .txt (new)
+                2 => self.begin_create_draw_in_folder(popup.folder),          // .draw
+                3 => self.begin_create_canvas_in_folder(popup.folder),        // .canvas
+                _ => {}
+            }
+        }
+    }
+    pub fn close_create_format_popup(&mut self) { self.popups.create_format = None; }
+
+    pub fn begin_create_text(&mut self) {
+        let folder = if self.list.notes_layout == crate::config::NotesLayout::Grid {
+            self.list.grid_folder.clone()
+        } else {
+            self.get_current_folder_context()
+        };
+        self.begin_create_text_in_folder(folder);
+    }
+    pub fn begin_create_text_in_folder(&mut self, folder: String) {
+        if Self::is_virtual_pinned_path(&folder) {
+            self.set_temporary_status_static("Cannot create text file inside virtual Pinned");
+            return;
+        }
+        let mut input = TextArea::default();
+        input.set_cursor_line_style(ratatui::style::Style::default());
+        input.set_style(self.app_theme.bg_style());
+        input.set_block(
+            ratatui::widgets::Block::default()
+                .style(self.app_theme.bg_style())
+                .borders(ratatui::widgets::Borders::ALL)
+                .title("New Text File Name - Esc to cancel, Enter to create"),
+        );
+        self.popups.text_create = Some(crate::popups::NoteCreatePopup { folder, input });
+    }
+    pub fn confirm_create_text(&mut self) {
+        if let Some(popup) = self.popups.text_create.take() {
+            let mut title = popup.input.lines().join("");
+            title = title.trim().to_string();
+            if title.is_empty() {
+                title = String::from("Untitled text");
+            }
+            let mut id = self.storage.new_note_id();
+            id.push_str(".txt");
+            let full_id = if popup.folder.is_empty() {
+                id
+            } else {
+                format!("{}/{}", popup.folder, id)
+            };
+            self.enter_edit_mode(full_id, title, String::new());
+        }
+    }
+
     pub fn begin_create_note(&mut self) {
         let folder = if self.list.notes_layout == crate::config::NotesLayout::Grid {
             self.list.grid_folder.clone()
@@ -2824,6 +2894,10 @@ template = """
         } else {
             self.get_current_folder_context()
         };
+        self.begin_create_draw_in_folder(folder);
+    }
+
+    pub fn begin_create_draw_in_folder(&mut self, folder: String) {
         if Self::is_virtual_pinned_path(&folder) {
             self.set_temporary_status_static("Cannot create drawing inside virtual Pinned");
             return;
@@ -2837,8 +2911,9 @@ template = """
                 .borders(ratatui::widgets::Borders::ALL)
                 .title("New Drawing Name - Esc to cancel, Enter to create"),
         );
-        self.popups.draw_create = Some(NoteCreatePopup { folder, input });
+        self.popups.draw_create = Some(crate::popups::NoteCreatePopup { folder, input });
     }
+
 
     pub fn confirm_create_draw(&mut self) {
         if let Some(popup) = self.popups.draw_create.take() {
@@ -2867,6 +2942,10 @@ template = """
         } else {
             self.get_current_folder_context()
         };
+        self.begin_create_canvas_in_folder(folder);
+    }
+
+    pub fn begin_create_canvas_in_folder(&mut self, folder: String) {
         if Self::is_virtual_pinned_path(&folder) {
             self.set_temporary_status_static("Cannot create canvas inside virtual Pinned");
             return;
@@ -2880,8 +2959,9 @@ template = """
                 .borders(ratatui::widgets::Borders::ALL)
                 .title("New Canvas Name - Esc to cancel, Enter to create"),
         );
-        self.popups.canvas_create = Some(NoteCreatePopup { folder, input });
+        self.popups.canvas_create = Some(crate::popups::NoteCreatePopup { folder, input });
     }
+
 
     pub fn confirm_create_canvas(&mut self) {
         if let Some(popup) = self.popups.canvas_create.take() {

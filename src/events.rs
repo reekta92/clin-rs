@@ -43,6 +43,21 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
+    if let Some(mut popup) = app.popups.text_create.take() {
+        if key.code == KeyCode::Esc {
+            app.popups.text_create = None;
+        } else if app.keybinds.matches_list(ListAction::Confirm, &key) {
+            app.popups.text_create = Some(popup);
+            app.confirm_create_text();
+        } else {
+            if !apply_text_shortcuts(&app.keybinds, &mut popup.input, key) {
+                popup.input.input(Input::from(key));
+            }
+            app.popups.text_create = Some(popup);
+        }
+        return false;
+    }
+
     if let Some(mut popup) = app.popups.draw_create.take() {
         if key.code == KeyCode::Esc {
             app.popups.draw_create = None;
@@ -725,6 +740,32 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
+    if let Some(mut popup) = app.popups.create_format.take() {
+        match key.code {
+            KeyCode::Up | KeyCode::Char('k') => {
+                popup.selected = popup.selected.saturating_sub(1);
+                app.popups.create_format = Some(popup);
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                if popup.selected < 3 {
+                    popup.selected += 1;
+                }
+                app.popups.create_format = Some(popup);
+            }
+            _ if app.keybinds.matches_list(ListAction::Confirm, &key) => {
+                app.popups.create_format = Some(popup);
+                app.confirm_create_format();
+            }
+            _ if app.keybinds.matches_list(ListAction::Cancel, &key) || key.code == KeyCode::Esc => {
+                app.close_create_format_popup();
+            }
+            _ => {
+                app.popups.create_format = Some(popup);
+            }
+        }
+        return false;
+    }
+
     if key.code == KeyCode::Esc {
         app.handle_esc_press();
     }
@@ -929,7 +970,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
     if app.keybinds.matches_list(ListAction::CreateNote, &key) {
-        app.begin_create_note();
+        app.begin_create_select_format();
         return false;
     }
     if app.keybinds.matches_list(ListAction::RenameFolder, &key)
