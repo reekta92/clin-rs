@@ -27,14 +27,7 @@ impl Action for ToggleLayoutAction {
     }
 
     fn execute(&self, app: &mut App, _context_note_id: Option<&str>) -> Result<()> {
-        app.list.notes_layout = match app.list.notes_layout {
-            NotesLayout::Tree => NotesLayout::Grid,
-            NotesLayout::Grid => NotesLayout::Tree,
-        };
-        // Ensure folder logic starts fresh when flipping layout
-        app.list.visual_index = 0;
-        app.list.grid_folder = app.get_current_folder_context();
-        app.refresh_visual_list();
+        app.toggle_notes_layout();
         Ok(())
     }
 
