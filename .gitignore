@@ -4,3 +4,7 @@
 /dev_scripts/
 /info/
 /graphify-out/
+
+# Nix build results
+/result
+/result-*

@@ -134,6 +134,46 @@ makepkg -si
 yay -S clin-rs-bin
 ```
 
+### Nix
+
+#### Try it without installing
+```bash
+nix run github:reekta92/clin-rs
+```
+
+#### Build from source
+```bash
+git clone https://github.com/reekta92/clin-rs.git
+cd clin-rs
+nix build
+./result/bin/clin
+```
+
+#### NixOS / home-manager (flakes)
+
+Add this repo as a flake input:
+
+```nix
+{
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    clin.url = "github:reekta92/clin-rs";
+  };
+
+  outputs = { self, nixpkgs, clin, ... }: {
+    # ... your existing outputs
+  };
+}
+```
+
+Then add the package to your system, e.g.:
+
+```nix
+environment.systemPackages = [
+  clin.packages.${pkgs.stdenv.hostPlatform.system;}.default
+];
+```
+
 ### AppImage
 Download the latest `.AppImage` from the [Releases](https://github.com/reekta92/clin-rs/releases) page.
 ```bash
