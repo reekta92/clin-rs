@@ -2,12 +2,36 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.8.14] - 2026-06-15
+
+### Added
+
+- Commit only the selected unstaged changes
+- Add "Create new…" tile to grid layout
+- Route list "Create new" item through format chooser
+- Format chooser popup for new md/txt/draw/canvas
+- Persist notes layout (tree/grid) to config
+
+### Fixed
+
+- Drop redundant remote URL/name border titles
+- Stop diff pane scrolling past content
+- Stop status/history lists scrolling past content
+- Always land on Vault tab when toggling to grid
+
+### Miscellaneous
+
+- Fixed clippy warnings
 ## [0.8.13] - 2026-06-15
 
 ### Miscellaneous
 
 - Readme update about nix support
 - Nix support and automation via dispatch release
+
+### Release
+
+- V0.8.13
 ## [0.8.12] - 2026-06-15
 
 ### Miscellaneous

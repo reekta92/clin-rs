@@ -1,6 +1,6 @@
 [package]
 name = "clin-rs"
-version = "0.8.13"
+version = "0.8.14"
 edition = "2024"
 rust-version = "1.88.0"
 description = "Encrypted terminal note-taking app inspired by Obsidian"
