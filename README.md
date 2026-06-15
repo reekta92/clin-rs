@@ -135,9 +135,11 @@ yay -S clin-rs-bin
 ```
 
 ### Nix (Flakes)
+*Note: Requires `nix-command` and `flakes` experimental features enabled.*
+
 Run directly:
 ```bash
-nix run github:reekta92/clin-rs
+nix run github:reekta92/clin-rs --extra-experimental-features "nix-command flakes"
 ```
 Install to profile:
 ```bash
