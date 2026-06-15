@@ -95,9 +95,6 @@ impl SettingsField {
             .copied()
             .unwrap_or(self)
     }
-    pub fn is_text_field(self) -> bool {
-        matches!(self, SettingsField::RemoteUrl | SettingsField::RemoteName)
-    }
 }
 
 impl BackupState {

@@ -141,10 +141,6 @@ impl AppThemeColors {
         derive_color(self.bg, -8)
     }
 
-    pub fn pane_bg(&self) -> Option<Color> {
-        self.bg
-    }
-
     pub fn preview_bg_style(&self) -> Style {
         match self.preview_bg() {
             Some(c) => Style::default().bg(c),

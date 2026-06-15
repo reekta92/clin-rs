@@ -39,7 +39,9 @@ impl TemplateVariables {
                         closed = true;
                         break;
                     }
-                    var_name.push(chars.next().unwrap());
+                    if let Some(c) = chars.next() {
+                        var_name.push(c);
+                    }
                 }
 
                 if closed {

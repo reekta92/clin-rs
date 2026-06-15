@@ -14,7 +14,6 @@ pub enum ConfirmAction {
 
 pub struct ConfirmPopup {
     pub action: ConfirmAction,
-    pub title: String,
     pub message: String,
     pub detail: Option<String>,
     pub confirm_label: String,
@@ -133,7 +132,6 @@ pub enum ImportTarget {
 pub struct ImportPopup {
     pub source: ImportSource,
     pub target: ImportTarget,
-    pub folder: String,
     pub note_id: Option<String>,
     pub input: TextArea<'static>,
 }

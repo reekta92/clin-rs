@@ -36,8 +36,9 @@ pub struct NoteSummary {
     pub size_bytes: u64,
 }
 
-static WIKILINK_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]").unwrap());
+static WIKILINK_RE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]").expect("static regex literal is valid")
+});
 
 pub fn extract_wikilinks(content: &str) -> Vec<String> {
     WIKILINK_RE

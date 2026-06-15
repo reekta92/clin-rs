@@ -266,7 +266,7 @@ pub enum BorderStyle {
 }
 
 impl BorderStyle {
-    pub fn to_border_type(&self) -> ratatui::widgets::BorderType {
+    pub fn to_border_type(self) -> ratatui::widgets::BorderType {
         match self {
             BorderStyle::Plain => ratatui::widgets::BorderType::Plain,
             BorderStyle::Rounded => ratatui::widgets::BorderType::Rounded,
@@ -581,7 +581,6 @@ pub struct FilterConfig {
     pub min_links: usize,
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SearchConfig {
     #[serde(default = "default_search_max_results")]
@@ -869,8 +868,10 @@ impl ClinConfig {
             let proj_dirs = ProjectDirs::from("com", "clin", "clin")
                 .ok_or_else(|| anyhow::anyhow!("no home dir"))?;
             let graf_path = proj_dirs.config_dir().join("graf.toml");
-            let mut config = Self::default();
-            config.graf = GrafConfig::default();
+            let mut config = Self {
+                graf: GrafConfig::default(),
+                ..Default::default()
+            };
 
             if graf_path.exists() {
                 if let Ok(content) = fs::read_to_string(&graf_path)
@@ -1017,18 +1018,17 @@ drag_sensitivity = 1.0
         let content = fs::read_to_string(&config_path).context("failed to read config")?;
 
         // Phase E: Migration (visual.notes_layout -> default_view, and flat graf/list/editor keys to nested namespaces)
-        let mut value: toml::Value = toml::from_str(&content).context("failed to parse config for migration")?;
+        let mut value: toml::Value =
+            toml::from_str(&content).context("failed to parse config for migration")?;
         let mut changed = false;
 
-        if let Some(visual) = value.get_mut("visual").and_then(|v| v.as_table_mut()) {
-            if let Some(notes_layout) = visual.remove("notes_layout") {
-                if value.get("default_view").is_none() {
-                    if let Some(root) = value.as_table_mut() {
-                        root.insert("default_view".to_string(), notes_layout);
-                        changed = true;
-                    }
-                }
-            }
+        if let Some(visual) = value.get_mut("visual").and_then(|v| v.as_table_mut())
+            && let Some(notes_layout) = visual.remove("notes_layout")
+            && value.get("default_view").is_none()
+            && let Some(root) = value.as_table_mut()
+        {
+            root.insert("default_view".to_string(), notes_layout);
+            changed = true;
         }
 
         let mut editor_table = toml::value::Table::new();
@@ -1050,16 +1050,17 @@ drag_sensitivity = 1.0
                 changed = true;
             }
         }
-        if !editor_table.is_empty() {
-            if let Some(root) = value.as_table_mut() {
-                if let Some(existing_editor) = root.get_mut("editor").and_then(|e| e.as_table_mut()) {
-                    for (k, v) in editor_table {
-                        existing_editor.insert(k, v);
-                    }
-                } else {
-                    root.insert("editor".to_string(), toml::Value::Table(editor_table));
+        if !editor_table.is_empty()
+            && let Some(root) = value.as_table_mut()
+        {
+            if let Some(existing_editor) = root.get_mut("editor").and_then(|e| e.as_table_mut()) {
+                for (k, v) in editor_table {
+                    existing_editor.insert(k, v);
                 }
+            } else {
+                root.insert("editor".to_string(), toml::Value::Table(editor_table));
             }
+            changed = true;
         }
 
         let mut list_table = toml::value::Table::new();
@@ -1084,15 +1085,15 @@ drag_sensitivity = 1.0
                 }
             }
         }
-        if !list_table.is_empty() {
-            if let Some(root) = value.as_table_mut() {
-                if let Some(existing_list) = root.get_mut("list").and_then(|l| l.as_table_mut()) {
-                    for (k, v) in list_table {
-                        existing_list.insert(k, v);
-                    }
-                } else {
-                    root.insert("list".to_string(), toml::Value::Table(list_table));
+        if !list_table.is_empty()
+            && let Some(root) = value.as_table_mut()
+        {
+            if let Some(existing_list) = root.get_mut("list").and_then(|l| l.as_table_mut()) {
+                for (k, v) in list_table {
+                    existing_list.insert(k, v);
                 }
+            } else {
+                root.insert("list".to_string(), toml::Value::Table(list_table));
             }
         }
 
@@ -1107,7 +1108,7 @@ drag_sensitivity = 1.0
                 changed = true;
             }
         }
-        
+
         let graf_keys = ["visual", "physics", "interaction", "filter"];
         for key in &graf_keys {
             if let Some(val) = value.as_table_mut().and_then(|t| t.remove(*key)) {
@@ -1115,21 +1116,22 @@ drag_sensitivity = 1.0
                 changed = true;
             }
         }
-        if !graf_addons.is_empty() {
-            if let Some(root) = value.as_table_mut() {
-                if let Some(existing_graf) = root.get_mut("graf").and_then(|g| g.as_table_mut()) {
-                    for (k, v) in graf_addons {
-                        existing_graf.insert(k, v);
-                    }
-                } else {
-                    root.insert("graf".to_string(), toml::Value::Table(graf_addons));
+        if !graf_addons.is_empty()
+            && let Some(root) = value.as_table_mut()
+        {
+            if let Some(existing_graf) = root.get_mut("graf").and_then(|g| g.as_table_mut()) {
+                for (k, v) in graf_addons {
+                    existing_graf.insert(k, v);
                 }
+            } else {
+                root.insert("graf".to_string(), toml::Value::Table(graf_addons));
             }
         }
         if changed {
-            let migrated_content = toml::to_string_pretty(&value).context("failed to serialize migrated config")?;
+            let migrated_content =
+                toml::to_string_pretty(&value).context("failed to serialize migrated config")?;
             let _ = crate::fsutil::atomic_write(&config_path, migrated_content.as_bytes());
-            return Ok(toml::from_str(&migrated_content).context("failed to parse migrated config")?);
+            return toml::from_str(&migrated_content).context("failed to parse migrated config");
         }
 
         let config: ClinConfig = toml::from_str(&content).context("failed to parse config")?;
@@ -1214,16 +1216,6 @@ drag_sensitivity = 1.0
         colors
     }
 
-    pub fn expand_border_title(&self) -> String {
-        let mut title = self.display.border_title.clone();
-        let cwd = std::env::current_dir()
-            .ok()
-            .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string()))
-            .unwrap_or_default();
-        title = title.replace("{cwd}", &cwd);
-        title
-    }
-
     pub fn expand_status(
         &self,
         files: usize,
@@ -1284,7 +1276,10 @@ drag_sensitivity = 1.0
         if self.graf.visual.show_legend && self.graf.visual.show_minimap {
             // Legend position is now hardcoded to BottomRight. Minimap position is still configurable.
             if self.graf.visual.minimap_position == LegendPosition::BottomRight {
-                errs.push("graf.visual.minimap_position cannot be bottom_right when show_legend is true".to_string());
+                errs.push(
+                    "graf.visual.minimap_position cannot be bottom_right when show_legend is true"
+                        .to_string(),
+                );
             }
         }
         errs
@@ -1352,7 +1347,7 @@ mod tests {
 # all fields omitted
 "#;
         let config: ClinConfig = toml::from_str(toml_str).unwrap();
-        assert_eq!(config.graf.visual.show_minimap, false);
+        assert!(!config.graf.visual.show_minimap);
         assert_eq!(config.graf.visual.node_color_mode, NodeColorMode::Folder);
         assert_eq!(config.graf.visual.edge_color_mode, EdgeColorMode::Uniform);
         assert_eq!(config.graf.visual.graph_background, Background::Solid);
@@ -1371,8 +1366,10 @@ unknown_field = "ignore me"
 
     #[test]
     fn test_new_fields_roundtrip() {
-        let mut config = ClinConfig::default();
-        config.mouse_enabled = false;
+        let mut config = ClinConfig {
+            mouse_enabled: false,
+            ..Default::default()
+        };
         config.list.date_format = "%d/%m/%Y".to_string();
         config.list.density = ListDensity::Compact;
         config.list.show_file_size = true;
@@ -1383,11 +1380,11 @@ unknown_field = "ignore me"
         let toml_str = toml::to_string_pretty(&config).unwrap();
         let parsed: ClinConfig = toml::from_str(&toml_str).unwrap();
 
-        assert_eq!(parsed.mouse_enabled, false);
+        assert!(!parsed.mouse_enabled);
         assert_eq!(parsed.list.date_format, "%d/%m/%Y");
         assert_eq!(parsed.list.density, ListDensity::Compact);
-        assert_eq!(parsed.list.show_file_size, true);
-        assert_eq!(parsed.list.show_date_in_list, false);
+        assert!(parsed.list.show_file_size);
+        assert!(!parsed.list.show_date_in_list);
         assert_eq!(parsed.list.default_view, NotesLayout::Tree);
         assert_eq!(parsed.backup.auto_backup_interval, Some(60));
     }
@@ -1407,32 +1404,30 @@ ideal_distance = 120.0
         let mut value: toml::Value = toml::from_str(toml_str).unwrap();
 
         // 1. Move notes_layout to default_view
-        if let Some(visual) = value.get_mut("visual").and_then(|v| v.as_table_mut()) {
-            if let Some(notes_layout) = visual.remove("notes_layout") {
-                if value.get("default_view").is_none() {
-                    if let Some(root) = value.as_table_mut() {
-                        root.insert("default_view".to_string(), notes_layout);
-                    }
-                }
-            }
+        if let Some(visual) = value.get_mut("visual").and_then(|v| v.as_table_mut())
+            && let Some(notes_layout) = visual.remove("notes_layout")
+            && value.get("default_view").is_none()
+            && let Some(root) = value.as_table_mut()
+        {
+            root.insert("default_view".to_string(), notes_layout);
         }
 
         // 2. Map legacy editor keys to editor namespace
         let mut editor_table = toml::value::Table::new();
-        if let Some(root) = value.as_table_mut() {
-            if let Some(v) = root.remove("external_editor") {
-                editor_table.insert("external_command".to_string(), v);
-            }
+        if let Some(root) = value.as_table_mut()
+            && let Some(v) = root.remove("external_editor")
+        {
+            editor_table.insert("external_command".to_string(), v);
         }
-        if !editor_table.is_empty() {
-            if let Some(root) = value.as_table_mut() {
-                if let Some(existing_editor) = root.get_mut("editor").and_then(|e| e.as_table_mut()) {
-                    for (k, v) in editor_table {
-                        existing_editor.insert(k, v);
-                    }
-                } else {
-                    root.insert("editor".to_string(), toml::Value::Table(editor_table));
+        if !editor_table.is_empty()
+            && let Some(root) = value.as_table_mut()
+        {
+            if let Some(existing_editor) = root.get_mut("editor").and_then(|e| e.as_table_mut()) {
+                for (k, v) in editor_table {
+                    existing_editor.insert(k, v);
                 }
+            } else {
+                root.insert("editor".to_string(), toml::Value::Table(editor_table));
             }
         }
 
@@ -1449,15 +1444,15 @@ ideal_distance = 120.0
                 }
             }
         }
-        if !list_table.is_empty() {
-            if let Some(root) = value.as_table_mut() {
-                if let Some(existing_list) = root.get_mut("list").and_then(|l| l.as_table_mut()) {
-                    for (k, v) in list_table {
-                        existing_list.insert(k, v);
-                    }
-                } else {
-                    root.insert("list".to_string(), toml::Value::Table(list_table));
+        if !list_table.is_empty()
+            && let Some(root) = value.as_table_mut()
+        {
+            if let Some(existing_list) = root.get_mut("list").and_then(|l| l.as_table_mut()) {
+                for (k, v) in list_table {
+                    existing_list.insert(k, v);
                 }
+            } else {
+                root.insert("list".to_string(), toml::Value::Table(list_table));
             }
         }
 
@@ -1469,15 +1464,15 @@ ideal_distance = 120.0
                 graf_addons.insert(key.to_string(), val);
             }
         }
-        if !graf_addons.is_empty() {
-            if let Some(root) = value.as_table_mut() {
-                if let Some(existing_graf) = root.get_mut("graf").and_then(|g| g.as_table_mut()) {
-                    for (k, v) in graf_addons {
-                        existing_graf.insert(k, v);
-                    }
-                } else {
-                    root.insert("graf".to_string(), toml::Value::Table(graf_addons));
+        if !graf_addons.is_empty()
+            && let Some(root) = value.as_table_mut()
+        {
+            if let Some(existing_graf) = root.get_mut("graf").and_then(|g| g.as_table_mut()) {
+                for (k, v) in graf_addons {
+                    existing_graf.insert(k, v);
                 }
+            } else {
+                root.insert("graf".to_string(), toml::Value::Table(graf_addons));
             }
         }
 

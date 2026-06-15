@@ -2,6 +2,7 @@ use crate::actions::Action;
 use crate::app::App;
 use crate::popups::{ImportSource, ImportTarget};
 use anyhow::{Context, Result, bail};
+use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::fs;
 use std::io::Cursor;
@@ -144,6 +145,27 @@ impl Action for ImportAction {
     }
 }
 
+static TITLE_RE: Lazy<regex::Regex> =
+    Lazy::new(|| regex::Regex::new(r"(?i)<title[^>]*>(.*?)</title>").expect("static regex"));
+
+fn extract_html_title(html: &str) -> Option<String> {
+    TITLE_RE.captures(html).map(|caps| {
+        caps.get(1)
+            .expect("title group captured")
+            .as_str()
+            .trim()
+            .to_string()
+    })
+}
+
+fn url_fallback_title(url: &str) -> String {
+    url.trim_start_matches("http://")
+        .trim_start_matches("https://")
+        .split('/')
+        .next()
+        .unwrap_or("Imported URL")
+        .to_string()
+}
 pub fn file_stem_title(path: &str) -> String {
     Path::new(path)
         .file_stem()
@@ -343,7 +365,11 @@ pub fn convert_url(url: &str) -> Result<(String, String)> {
         .unwrap_or_else(|| ".html".to_string());
 
     let temp_file = NamedTempFile::with_suffix(&ext).context("Failed to create temp file")?;
-    let temp_path = temp_file.path().to_str().unwrap().to_string();
+    let temp_path = temp_file
+        .path()
+        .to_str()
+        .expect("temp path is UTF-8")
+        .to_string();
 
     let output = Command::new("curl")
         .args(["-sL", "-o", &temp_path, url])
@@ -372,24 +398,18 @@ pub fn convert_url(url: &str) -> Result<(String, String)> {
                 let mut title = None;
                 let temp_file = NamedTempFile::new()
                     .context("Failed to create temp file for title extraction")?;
-                let temp_path = temp_file.path().to_str().unwrap().to_string();
+                let temp_path = temp_file
+                    .path()
+                    .to_str()
+                    .expect("temp path is UTF-8")
+                    .to_string();
                 let _ = Command::new("curl")
                     .args(["-sL", "-o", &temp_path, url])
                     .status();
                 if let Ok(html) = fs::read_to_string(&temp_path) {
-                    let re = regex::Regex::new(r"(?i)<title[^>]*>(.*?)</title>").unwrap();
-                    if let Some(caps) = re.captures(&html) {
-                        title = Some(caps.get(1).unwrap().as_str().trim().to_string());
-                    }
+                    title = extract_html_title(&html);
                 }
-                let final_title = title.unwrap_or_else(|| {
-                    url.trim_start_matches("http://")
-                        .trim_start_matches("https://")
-                        .split('/')
-                        .next()
-                        .unwrap_or("Imported URL")
-                        .to_string()
-                });
+                let final_title = title.unwrap_or_else(|| url_fallback_title(url));
                 return Ok((final_title, md));
             }
         }
@@ -400,20 +420,10 @@ pub fn convert_url(url: &str) -> Result<(String, String)> {
     if (ext == ".html" || ext == ".htm")
         && let Ok(html) = fs::read_to_string(&temp_path)
     {
-        let re = regex::Regex::new(r"(?i)<title[^>]*>(.*?)</title>").unwrap();
-        if let Some(caps) = re.captures(&html) {
-            title = Some(caps.get(1).unwrap().as_str().trim().to_string());
-        }
+        title = extract_html_title(&html);
     }
 
-    let title = title.unwrap_or_else(|| {
-        url.trim_start_matches("http://")
-            .trim_start_matches("https://")
-            .split('/')
-            .next()
-            .unwrap_or("Imported URL")
-            .to_string()
-    });
+    let title = title.unwrap_or_else(|| url_fallback_title(url));
 
     Ok((title, md))
 }

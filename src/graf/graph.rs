@@ -10,7 +10,6 @@ use crate::storage::Storage;
 pub struct GraphNodeData {
     pub note_id: String,
     pub title: String,
-    pub is_encrypted: bool,
     pub tags: Vec<String>,
     pub link_count: usize,
     pub folder: String,
@@ -64,11 +63,9 @@ pub fn build_graph(
             continue;
         }
 
-        let is_encrypted = summary.id.ends_with(".clin");
         let data = GraphNodeData {
             note_id: summary.id.clone(),
             title: summary.title.clone(),
-            is_encrypted,
             tags: summary.tags.clone(),
             link_count: lc,
             folder: summary.folder.clone(),
@@ -108,17 +105,8 @@ pub fn create_simulation(
     graph: ForceGraph<GraphNodeData, ()>,
     config: &ClinConfig,
 ) -> Simulation<GraphNodeData, ()> {
-    let force = fdg_sim::force::handy(
-        config.graf.physics.ideal_distance as f32,
-        0.95,
-        true,
-        true,
-    );
-    let params = SimulationParameters::new(
-        800.0,
-        fdg_sim::Dimensions::Two,
-        force,
-    );
+    let force = fdg_sim::force::handy(config.graf.physics.ideal_distance as f32, 0.95, true, true);
+    let params = SimulationParameters::new(800.0, fdg_sim::Dimensions::Two, force);
     Simulation::from_graph(graph, params)
 }
 
@@ -136,10 +124,9 @@ impl GraphState {
             graph_bounds: (0.0, 0.0, 0.0, 0.0),
             render_cache: Mutex::new(super::render::RenderCache::new()),
         };
-        state.viewport = state.viewport.auto_fit_from_graph(
-            state.simulation.get_graph(),
-            1.4,
-        );
+        state.viewport = state
+            .viewport
+            .auto_fit_from_graph(state.simulation.get_graph(), 1.4);
         state.graph_bounds = super::render::compute_graph_bounds(state.simulation.get_graph());
         Ok(state)
     }

@@ -3,9 +3,8 @@ use std::sync::LazyLock;
 
 use crossterm::style::{Attribute, Color, Stylize};
 
-static ENABLED: LazyLock<bool> = LazyLock::new(|| {
-    std::env::var_os("NO_COLOR").is_none() && std::io::stdout().is_terminal()
-});
+static ENABLED: LazyLock<bool> =
+    LazyLock::new(|| std::env::var_os("NO_COLOR").is_none() && std::io::stdout().is_terminal());
 
 /// True if colors should be emitted: NO_COLOR unset AND stdout is a TTY.
 fn enabled() -> bool {
@@ -23,11 +22,21 @@ fn paint(text: &str, color: Color) -> String {
     }
 }
 
-pub fn green(s: &str) -> String  { paint(s, Color::Green) }
-pub fn red(s: &str) -> String    { paint(s, Color::Red) }
-pub fn yellow(s: &str) -> String { paint(s, Color::Yellow) }
-pub fn cyan(s: &str) -> String   { paint(s, Color::Cyan) }
-pub fn blue(s: &str) -> String   { paint(s, Color::Blue) }
+pub fn green(s: &str) -> String {
+    paint(s, Color::Green)
+}
+pub fn red(s: &str) -> String {
+    paint(s, Color::Red)
+}
+pub fn yellow(s: &str) -> String {
+    paint(s, Color::Yellow)
+}
+pub fn cyan(s: &str) -> String {
+    paint(s, Color::Cyan)
+}
+pub fn blue(s: &str) -> String {
+    paint(s, Color::Blue)
+}
 
 /// Dim/gray text for secondary info, metadata, hints.
 pub fn dim(s: &str) -> String {

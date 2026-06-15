@@ -163,7 +163,10 @@ fn draw_content(frame: &mut Frame, area: Rect, state: &mut BackupState) {
     }
 
     let mut lines = Vec::new();
-    let status = state.status.as_ref().unwrap();
+    let status = state
+        .status
+        .as_ref()
+        .expect("status populated before render");
     if state.selected_section == crate::backup::state::BackupSection::Status {
         // Staged Changes
         lines.push(Line::from(Span::styled(

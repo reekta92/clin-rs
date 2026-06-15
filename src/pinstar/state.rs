@@ -231,9 +231,9 @@ impl PinstarState {
     }
 
     pub fn toggle_editor(&mut self) {
-        if self.floating_editor.is_some() {
+        if let Some(editor) = &self.floating_editor {
             if let Some(node_id) = &self.selected_node_id {
-                let text = self.floating_editor.as_ref().unwrap().lines().join("\n");
+                let text = editor.lines().join("\n");
                 for node in &mut self.data.nodes {
                     if node.id() == node_id {
                         node.set_text(text);

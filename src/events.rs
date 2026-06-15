@@ -2104,11 +2104,19 @@ pub fn handle_edit_mouse(
                 }
                 app.popups.context_menu = None;
             } else if mouse_event.kind == MouseEventKind::ScrollUp {
-                let mut menu_copy = app.popups.context_menu.take().unwrap();
+                let mut menu_copy = app
+                    .popups
+                    .context_menu
+                    .take()
+                    .expect("context_menu Some — guarded by enclosing if-let");
                 menu_copy.selected = menu_copy.selected.saturating_sub(1);
                 app.popups.context_menu = Some(menu_copy);
             } else if mouse_event.kind == MouseEventKind::ScrollDown {
-                let mut menu_copy = app.popups.context_menu.take().unwrap();
+                let mut menu_copy = app
+                    .popups
+                    .context_menu
+                    .take()
+                    .expect("context_menu Some — guarded by enclosing if-let");
                 if menu_copy.selected < 3 {
                     menu_copy.selected += 1;
                 }

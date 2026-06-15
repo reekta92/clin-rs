@@ -55,10 +55,10 @@ pub fn handle_graph_keys(
             return Some(GraphInputAction::OpenFile(node.data.note_id.clone()));
         }
     } else if keybinds.matches_graph(GraphAction::AutoFit, &key) {
-        let vp = guard.viewport.clone().auto_fit_from_graph(
-            guard.simulation.get_graph(),
-            1.4,
-        );
+        let vp = guard
+            .viewport
+            .clone()
+            .auto_fit_from_graph(guard.simulation.get_graph(), 1.4);
         guard.viewport = vp;
     } else if keybinds.matches_graph(GraphAction::Help, &key) {
         return Some(GraphInputAction::ToggleHelp);
@@ -163,9 +163,9 @@ pub fn handle_graph_mouse(
                     guard.viewport.hit_test(wx, wy, &guard)
                 };
 
-                let is_double_click = mouse_state.last_click_time.is_some_and(|t| {
-                    t.elapsed().as_millis() < 300
-                });
+                let is_double_click = mouse_state
+                    .last_click_time
+                    .is_some_and(|t| t.elapsed().as_millis() < 300);
 
                 if let Some(node_idx) = hit {
                     let mut guard = state.write().unwrap_or_else(|e| e.into_inner());
@@ -214,11 +214,9 @@ pub fn handle_graph_mouse(
                 let dx_col = -(mouse_event.column as f64 - orig_col as f64);
                 let dy_row = mouse_event.row as f64 - orig_row as f64;
                 let vp = &guard.viewport;
-                let world_dx = dx_col * 200.0
-                    / (vp.zoom * area.width as f64)
+                let world_dx = dx_col * 200.0 / (vp.zoom * area.width as f64)
                     * config.graf.interaction.drag_sensitivity;
-                let world_dy = dy_row * 200.0 * CELL_ASPECT
-                    / (vp.zoom * area.height as f64)
+                let world_dy = dy_row * 200.0 * CELL_ASPECT / (vp.zoom * area.height as f64)
                     * config.graf.interaction.drag_sensitivity;
                 guard.viewport.center_x += world_dx;
                 guard.viewport.center_y += world_dy;
@@ -275,9 +273,11 @@ fn select_in_direction(guard: &mut GraphState, dx: f64, dy: f64) {
         return;
     }
 
+    let Some(idx) = guard.selected_node else {
+        return;
+    };
     let (ox, oy) = {
         let graph = guard.simulation.get_graph();
-        let idx = guard.selected_node.unwrap();
         let node = &graph[idx];
         (node.location.x as f64, node.location.y as f64)
     };

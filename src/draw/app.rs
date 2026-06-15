@@ -14,7 +14,6 @@ pub enum DrawEventAction {
 use ratatui::layout::Rect;
 
 use ratatui_textarea::TextArea;
-use std::time::Instant;
 
 pub struct DrawAppState {
     pub data: DrawData,
@@ -27,7 +26,6 @@ pub struct DrawAppState {
     pub last_area: Rect,
     pub last_mouse_pos: Option<(u16, u16)>,
     pub text_editor: Option<(usize, TextArea<'static>)>,
-    pub last_click: Option<(u16, u16, Instant)>,
     pub theme: crate::app_theme::AppThemeColors,
     pub active_shape_type: crate::draw::state::DrawShapeType,
     pub show_shape_selector: bool,
@@ -63,7 +61,6 @@ impl DrawAppState {
             last_area: Rect::default(),
             last_mouse_pos: None,
             text_editor: None,
-            last_click: None,
             theme,
             active_shape_type: crate::draw::state::DrawShapeType::Rect,
             show_shape_selector: false,

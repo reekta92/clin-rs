@@ -1,3 +1,4 @@
+use anyhow::Context;
 use std::sync::Arc;
 use std::sync::RwLock;
 
@@ -373,7 +374,7 @@ fn handle_event(
                 return Ok(None);
             }
             if let Some(graph_state) = &app_state.graph_state {
-                let size = terminal.size().unwrap();
+                let size = terminal.size().context("failed to get terminal size")?;
                 let full_area = ratatui::layout::Rect::new(0, 0, size.width, size.height);
                 let outer = ratatui::layout::Layout::default()
                     .direction(ratatui::layout::Direction::Vertical)

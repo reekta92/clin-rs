@@ -498,7 +498,10 @@ impl RenderCache {
             self.labels.push(LabelData {
                 x: node.location.x as f64,
                 y: node.location.y as f64 + radius + config.graf.visual.label_offset,
-                text: crate::graf::util::truncate(&node.data.title, config.graf.visual.label_max_length),
+                text: crate::graf::util::truncate(
+                    &node.data.title,
+                    config.graf.visual.label_max_length,
+                ),
             });
         }
     }
@@ -552,7 +555,7 @@ pub fn draw_graph_view(
         .y_bounds(y_bounds)
         .block(block)
         .marker(ratatui::symbols::Marker::from(
-            config.graf.visual.canvas_marker.clone(),
+            config.graf.visual.canvas_marker,
         ))
         .paint(move |ctx| {
             if flags.show_grid {

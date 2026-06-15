@@ -28,26 +28,4 @@ impl NoteEditor {
     pub fn new() -> Self {
         Self::default()
     }
-
-    pub fn is_editing(&self) -> bool {
-        self.editing_id.is_some()
-    }
-
-    pub fn editor_content(&self) -> String {
-        self.editor.lines().join("\n")
-    }
-
-    pub fn title_text(&self) -> String {
-        self.title_editor.lines().join("")
-    }
-
-    pub fn reset(&mut self) {
-        self.editing_id = None;
-        self.template_edit_path = None;
-        self.title_editor = TextArea::default();
-        self.editor = TextArea::default();
-        self.md_preview_renderer = None;
-        self.pending_editor_preview_update = false;
-        self.last_editor_change = None;
-    }
 }

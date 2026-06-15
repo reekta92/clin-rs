@@ -242,20 +242,6 @@ impl HelpTab {
         }
     }
 
-    pub fn label(self) -> &'static str {
-        match self {
-            HelpTab::Notes => "Notes",
-            HelpTab::Editor => "Editor",
-            HelpTab::Graph => "Graph",
-            HelpTab::Draw => "Draw",
-            HelpTab::Canvas => "Pinstar",
-            HelpTab::Backup => "Backup",
-            HelpTab::Templates => "Templates",
-            HelpTab::ContentTree => "Content Tree",
-            HelpTab::About => "About",
-        }
-    }
-
     pub fn from_index(i: usize) -> Self {
         match i {
             0 => HelpTab::Notes,
@@ -282,10 +268,6 @@ impl HelpTab {
             HelpTab::ContentTree => 7,
             HelpTab::About => 8,
         }
-    }
-
-    pub fn count() -> usize {
-        9
     }
 }
 
@@ -502,7 +484,10 @@ impl App {
         } else {
             let folders = self.storage.list_folders().unwrap_or_default();
             self.list.folder_cache = Some(folders);
-            self.list.folder_cache.as_ref().unwrap()
+            self.list
+                .folder_cache
+                .as_ref()
+                .expect("folder_cache populated above")
         };
 
         if self.list.notes_layout == crate::config::NotesLayout::Grid {
@@ -1037,15 +1022,6 @@ impl App {
         false
     }
 
-    pub fn start_new_note(&mut self, folder: String) {
-        let template_manager = self.storage.template_manager();
-        if let Some(default_template) = template_manager.load_default() {
-            self.start_note_from_template(&default_template, folder);
-        } else {
-            self.start_blank_note(folder);
-        }
-    }
-
     pub fn start_new_note_with_title(&mut self, folder: String, title: String) {
         let template_manager = self.storage.template_manager();
         if let Some(default_template) = template_manager.load_default() {
@@ -1053,45 +1029,6 @@ impl App {
         } else {
             self.start_blank_note_with_title(folder, title);
         }
-    }
-
-    pub fn start_blank_note(&mut self, folder: String) {
-        let mut new_id = self.storage.new_note_id();
-        if !folder.is_empty() {
-            new_id = format!("{folder}/{new_id}");
-        }
-
-        if self.editor.external_editor_enabled {
-            let new_note = Note {
-                title: String::from("Untitled note"),
-                content: String::new(),
-                updated_at: now_unix_secs(),
-                tags: Vec::new(),
-            };
-            if self.storage.save_note(&new_id, &new_note).is_ok() {
-                if let Err(e) = self.try_auto_backup(&new_note.title) {
-                    self.set_temporary_status(&format!("Backup failed: {e}"));
-                }
-                if let Err(e) = self.refresh_notes() {
-                    self.set_temporary_status(&format!("Refresh failed: {e}"));
-                }
-                self.open_note_in_external_editor(&new_id, None);
-            }
-            return;
-        }
-
-        self.mode = ViewMode::Edit;
-        self.editor.editing_id = Some(new_id);
-        self.editor.title_editor =
-            make_title_editor("", self.app_theme.highlight_fg, self.app_theme.highlight_bg);
-        self.editor.editor = TextArea::default();
-        self.editor.editor.set_cursor_style(
-            Style::default()
-                .fg(self.app_theme.highlight_fg)
-                .bg(self.app_theme.highlight_bg),
-        );
-        self.editor.editor.set_cursor_line_style(Style::default());
-        self.set_default_status();
     }
 
     pub fn start_blank_note_with_title(&mut self, folder: String, title: String) {
@@ -1478,10 +1415,10 @@ template = """
             let git_ops = crate::backup::git_ops::GitOps::init(&vault_path)?;
             if git_ops.has_changes().unwrap_or(false) {
                 git_ops.add_all().and_then(|_| git_ops.commit(message))?;
-                if config.backup.auto_push {
-                    if let Some(remote) = &config.backup.remote_name {
-                        git_ops.push(remote)?;
-                    }
+                if config.backup.auto_push
+                    && let Some(remote) = &config.backup.remote_name
+                {
+                    git_ops.push(remote)?;
                 }
             }
         }
@@ -1673,58 +1610,50 @@ template = """
     }
 
     pub fn show_confirm(&mut self, action: ConfirmAction) {
-        let (title, message, detail, confirm_label, is_destructive) = match &action {
+        let (message, detail, confirm_label, is_destructive) = match &action {
             ConfirmAction::DeleteNote { title, .. } => (
-                "Move to Trash".into(),
                 format!("Move \"{title}\" to trash?"),
                 Some("Use Shift+T to view/restore trashed notes.".into()),
                 "Trash".into(),
                 false,
             ),
             ConfirmAction::DeleteFolder { path } => (
-                "Move Folder to Trash".into(),
                 format!("Move folder \"{path}\" and all contents to trash?"),
                 Some("Use Shift+T to view/restore trashed notes.".into()),
                 "Trash".into(),
                 false,
             ),
             ConfirmAction::DeleteTag { tag } => (
-                "Confirm Delete Tag".into(),
                 format!("Delete tag \"{tag}\"?"),
                 Some("This will remove the tag from all notes.".into()),
                 "Delete".into(),
                 true,
             ),
             ConfirmAction::DeleteTemplate { name, .. } => (
-                "Delete Template".into(),
                 format!("Delete template \"{name}\"?"),
                 Some("This removes template file permanently.".into()),
                 "Delete".into(),
                 true,
             ),
             ConfirmAction::DeleteFromTrash { item } => (
-                "Confirm Permanent Delete".into(),
                 format!("Permanently delete \"{}\"?", item.name.to_string_lossy()),
                 Some("This action cannot be undone.".into()),
                 "Delete Forever".into(),
                 true,
             ),
             ConfirmAction::EmptyTrash { items } => (
-                "Confirm Empty Trash".into(),
                 format!("Permanently delete {} note(s)?", items.len()),
                 Some("This action cannot be undone.".into()),
                 "Empty Trash".into(),
                 true,
             ),
             ConfirmAction::BulkDeleteNotes { note_ids } => (
-                "Move to Trash".into(),
                 format!("Move {} selected note(s) to trash?", note_ids.len()),
                 Some("Use Shift+T to view/restore trashed notes.".into()),
                 "Trash".into(),
                 false,
             ),
             ConfirmAction::QuitApp => (
-                "Exit Application".into(),
                 "Are you sure you want to quit?".into(),
                 None,
                 "Quit".into(),
@@ -1734,7 +1663,6 @@ template = """
 
         self.popups.confirm = Some(ConfirmPopup {
             action,
-            title,
             message,
             detail,
             confirm_label,
@@ -2284,14 +2212,6 @@ template = """
         }
     }
 
-    pub fn cycle_tag_suggestion(&mut self) {
-        if let Some(popup) = &mut self.popups.tag
-            && !popup.suggestions.is_empty()
-        {
-            popup.suggestion_index = (popup.suggestion_index + 1) % popup.suggestions.len();
-        }
-    }
-
     pub fn accept_tag_suggestion(&mut self) {
         if let Some(popup) = &mut self.popups.tag
             && let Some(suggestion) = popup.suggestions.get(popup.suggestion_index).cloned()
@@ -2341,7 +2261,6 @@ template = """
 
         self.popups.confirm = Some(ConfirmPopup {
             action: ConfirmAction::DeleteTag { tag: tag.clone() },
-            title: "Confirm Delete Tag".into(),
             message: format!("Delete tag \"{tag}\"?"),
             detail: Some(detail),
             confirm_label: "Delete".into(),
@@ -2647,7 +2566,10 @@ template = """
                 &self.app_theme,
             ));
         }
-        self.list.help_text_cache.as_ref().unwrap()
+        self.list
+            .help_text_cache
+            .as_ref()
+            .expect("help_text_cache populated above")
     }
 
     pub fn begin_create_select_format(&mut self) {
@@ -2679,14 +2601,6 @@ template = """
         self.popups.create_format = None;
     }
 
-    pub fn begin_create_text(&mut self) {
-        let folder = if self.list.notes_layout == crate::config::NotesLayout::Grid {
-            self.list.grid_folder.clone()
-        } else {
-            self.get_current_folder_context()
-        };
-        self.begin_create_text_in_folder(folder);
-    }
     pub fn begin_create_text_in_folder(&mut self, folder: String) {
         if Self::is_virtual_pinned_path(&folder) {
             self.set_temporary_status_static("Cannot create text file inside virtual Pinned");
@@ -2719,15 +2633,6 @@ template = """
             };
             self.enter_edit_mode(full_id, title, String::new());
         }
-    }
-
-    pub fn begin_create_note(&mut self) {
-        let folder = if self.list.notes_layout == crate::config::NotesLayout::Grid {
-            self.list.grid_folder.clone()
-        } else {
-            self.get_current_folder_context()
-        };
-        self.begin_create_note_in_folder(folder);
     }
 
     pub fn begin_create_note_in_folder(&mut self, folder: String) {
@@ -2790,7 +2695,6 @@ template = """
         self.popups.import = Some(ImportPopup {
             source,
             target,
-            folder,
             note_id,
             input,
         });
@@ -4146,11 +4050,6 @@ template = """
 
     pub fn close_theme_popup(&mut self) {
         self.popups.theme = None;
-    }
-
-    pub fn app_theme_name(&self) -> String {
-        let config = crate::config::ClinConfig::load().unwrap_or_default();
-        config.theme.theme.to_string()
     }
 }
 

@@ -1796,7 +1796,8 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     }
 
                     if app.list.show_date_in_list {
-                        let secs = std::time::UNIX_EPOCH + std::time::Duration::from_secs(summary.updated_at);
+                        let secs = std::time::UNIX_EPOCH
+                            + std::time::Duration::from_secs(summary.updated_at);
                         let dt: chrono::DateTime<chrono::Local> = secs.into();
                         let formatted = dt.format(&app.date_format).to_string();
                         spans.push(Span::raw(" "));
@@ -3491,31 +3492,6 @@ pub fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
         horizontal: 0,
     })
 }
-pub fn centered_rect_fixed(
-    width: u16,
-    height: u16,
-    area: ratatui::layout::Rect,
-) -> ratatui::layout::Rect {
-    let vertical = Layout::default()
-        .direction(ratatui::layout::Direction::Vertical)
-        .constraints([
-            Constraint::Min(0),
-            Constraint::Length(height),
-            Constraint::Min(0),
-        ])
-        .split(area);
-
-    let horizontal = Layout::default()
-        .direction(ratatui::layout::Direction::Horizontal)
-        .constraints([
-            Constraint::Min(0),
-            Constraint::Length(width),
-            Constraint::Min(0),
-        ])
-        .split(vertical[1]);
-
-    horizontal[1]
-}
 
 pub fn text_area_from_content(content: &str) -> TextArea<'static> {
     if content.is_empty() {
@@ -3668,25 +3644,6 @@ pub fn draw_popup_frame(
     draw_popup_banner(frame, popup_area, title, theme);
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(1), Constraint::Length(1)])
-        .split(popup_area);
-    draw_popup_footer(frame, chunks[1], theme, hints);
-    chunks[0]
-}
-pub fn draw_popup_frame_fixed(
-    frame: &mut ratatui::Frame,
-    area: ratatui::layout::Rect,
-    title: &str,
-    width: u16,
-    height: u16,
-    hints: &str,
-    theme: &crate::app_theme::AppThemeColors,
-) -> ratatui::layout::Rect {
-    let popup_area = centered_rect_fixed(width, height + 2, area); // +2 for banner and footer
-    frame.render_widget(ratatui::widgets::Clear, popup_area);
-    draw_popup_banner(frame, popup_area, title, theme);
-    let chunks = Layout::default()
-        .direction(ratatui::layout::Direction::Vertical)
         .constraints([Constraint::Min(1), Constraint::Length(1)])
         .split(popup_area);
     draw_popup_footer(frame, chunks[1], theme, hints);

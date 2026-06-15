@@ -1,4 +1,3 @@
-#![allow(unused_imports)]
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
@@ -1394,6 +1393,7 @@ impl Keybinds {
     }
 }
 
+#[cfg(test)]
 mod tests {
     use super::*;
     #[test]
