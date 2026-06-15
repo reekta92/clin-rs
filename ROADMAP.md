@@ -34,10 +34,13 @@
 #### General
 - [ ] **Consistent UI/UX** — literally hardest part of making a TUI, the UI/UX must be consistent accross the app
 - [ ] **More filtypes** — more text filetypes(`org-mode`, `.gv`, `.puml`, `.md` mermaid, `.dot`) support to edit/view
+- [ ] **Image rendering** — image rendering logic throught the app using `sixel` or `kitty image protocol`
+- [ ] **Daily goals** — daily word count goal and learning process progress bars, toggleable
 
 #### Notes View
 - [ ] **Smart folders** — auto-move tagged notes to specific folders
 - [ ] **Word & character metrics** — writing statistics and goals
+- [ ] **Calendar** — just for the visual, a calendar at the notes view
 
 #### Editor
 - [ ] **Rework as side panel** — replace editor view with a feature-rich side panel
@@ -68,6 +71,16 @@
 - [ ] **Merge/split notes** — combine or divide notes
 - [ ] **Advanced clipboard** — multi-selection copy/paste
 - [ ] **Word frequency** — show most used words
+- [ ] **Date calculator** — date/time calculator for doing operations like "today + 3 months" or "today <> 12/12/2026"(diff operation) etc.
+
+#### To-Do
+- [ ] **To-do view** — a new view for specifically managing to-dos
+- [ ] **Scrum table support** — support for creating interactive scrum tables like to-do, doing, done etc.
+- [ ] **Tasks** — longterm to-dos basically, can remind the user with a notification
+- [ ] **todo.txt** — todo.txt standardization support
+
+#### Databases
+- [ ] **Database view** — database feature similar to Obsidian's databases
 
 #### Configuration
 - [ ] **Status line customization** — `status_format = "{title} | {word_count} words"`
