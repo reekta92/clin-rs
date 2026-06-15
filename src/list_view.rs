@@ -77,6 +77,9 @@ pub struct ListView {
     pub grid_folder: String,
     pub grid_columns: usize,
     pub notes_layout: crate::config::NotesLayout,
+    pub list_density: crate::config::ListDensity,
+    pub show_file_size: bool,
+    pub show_date_in_list: bool,
 }
 
 impl Default for ListView {
@@ -102,9 +105,12 @@ impl Default for ListView {
             selected_indices: HashSet::new(),
             help_text_cache: None,
             tag_to_assign: None,
-            grid_folder: String::new(),
-            grid_columns: 1,
             notes_layout: crate::config::NotesLayout::default(),
+            list_density: crate::config::ListDensity::Comfortable,
+            show_file_size: false,
+            show_date_in_list: true,
+            grid_folder: String::new(),
+            grid_columns: 4,
         }
     }
 }

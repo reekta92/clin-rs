@@ -11,22 +11,36 @@ Full reference of all configuration options for clin-rs.
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `storage_path` | `PathBuf` | `~/.local/share/clin` | Custom vault storage path |
-| `previous_storage_path` | `PathBuf` | — | Previous storage path for migration (cleared after migration) |
-| `external_editor` | `String` | — | External editor command (e.g. `"nvim"`, `"code"`) |
-| `external_editor_enabled` | `bool` | `false` | Enable external editor mode (Toggleable via Command Palette) |
-| `preview_enabled` | `bool` | `true` | Show the preview pane in notes list by default (Toggleable via Command Palette) |
-| `graph_preview_enabled` | `bool` | `false` | Show the preview pane in graph view by default |
-| `editor_preview_enabled` | `bool` | `false` | Show markdown preview panel in editor by default |
-| `markdown_preview_enabled` | `bool` | `false` | *(deprecated — use `editor_preview_enabled`)* |
-| `show_line_numbers` | `bool` | `true` | Show line numbers in the editor (Toggleable via Command Palette) |
-| `confirm_on_delete` | `bool` | `true` | Show confirmation dialog before deleting notes (Toggleable via Command Palette) |
-| `default_sort_field` | `enum` | `"title"` | Default sort field: `"title"` or `"modified"` (Toggleable via Command Palette) |
-| `default_sort_order` | `enum` | `"ascending"` | Default sort order: `"ascending"` or `"descending"` (Toggleable via Command Palette) |
+| `previous_storage_path` | `PathBuf` | — | Previous storage path for migration |
+| `mouse_enabled` | `bool` | `true` | Enable mouse support (clicking, scrolling, panning) |
+| `confirm_on_delete` | `bool` | `true` | Show confirmation dialog before deleting notes |
 | `default_folder` | `String` | — | Default folder for new notes (optional) |
-| `confirm_on_quit` | `bool` | `false` | Ask for confirmation before quitting (Toggleable via Command Palette) |
-| `preview_encryption` | `bool` | `false` | Show previews of encrypted notes (Toggleable via Command Palette) |
-| `pinned_on_top` | `bool` | `false` | Keep pinned notes at the top of the list (Toggleable via Command Palette) |
-| `graph_label_mode` | `enum` | `"selected"` | *(moved to `[visual]`)* Node label display mode: `selected`, `neighbors`, `all` |
+| `confirm_on_quit` | `bool` | `false` | Ask for confirmation before quitting |
+
+### `[list]`
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `preview_enabled` | `bool` | `true` | Show the preview pane in notes list by default |
+| `preview_position` | `enum` | `"right"` | Preview pane position: `"left"`, `"right"`, `"top"`, `"bottom"` |
+| `preview_encryption` | `bool` | `false` | Show previews of encrypted notes |
+| `show_date_in_list` | `bool` | `true` | Show modification date in the notes list |
+| `show_file_size` | `bool` | `false` | Show file size in the notes list |
+| `date_format` | `String` | `"%Y-%m-%d"` | Date format for the notes list (chrono format) |
+| `density` | `enum` | `"comfortable"` | Density of the notes list: `"comfortable"` or `"compact"` |
+| `default_view` | `enum` | `"grid"` | Default view mode for the notes list: `"grid"` or `"tree"` |
+| `default_sort_field` | `enum` | `"title"` | Default sort field: `"title"` or `"modified"` |
+| `default_sort_order` | `enum` | `"ascending"` | Default sort order: `"ascending"` or `"descending"` |
+| `pinned_on_top` | `bool` | `false` | Keep pinned notes at the top of the list |
+
+### `[editor]`
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `external_command` | `String` | — | External editor command (e.g. `"nvim"`, `"code"`) |
+| `external_enabled` | `bool` | `false` | Enable external editor mode |
+| `preview_enabled` | `bool` | `false` | Show markdown preview panel in editor by default |
+| `show_line_numbers` | `bool` | `true` | Show line numbers in the editor |
 
 ### `[theme]`
 
@@ -45,14 +59,13 @@ Full reference of all configuration options for clin-rs.
 | `folder` | `String` | — | Hex color override for folder labels |
 | `background_color` | `String` | — | Hex color override for solid background |
 
-### `[visual]`
+### `[graf.visual]`
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `theme` | `enum` | `"default"` | Color theme. One of: `default`, `tokyo_night`, `catppuccin_mocha`, `onedark`, `gruvbox`, `dracula`, `nord`, `rose_pine`, `everforest`, `kanagawa`, `solarized` |
-| `background` | `enum` | `"transparent"` | Background mode: `"transparent"`, `"solid"` |
+| `graph_background` | `enum` | `"solid"` | Background mode: `"transparent"`, `"solid"` |
 | `node_color_mode` | `enum` | `"folder"` | How nodes are colored: `"tag"`, `"folder"`, `"link_count"`, `"uniform"` |
-| `edge_color_mode` | `enum` | `"source"` | How edges are colored: `"source"`, `"target"`, `"uniform"` |
+| `edge_color_mode` | `enum` | `"uniform"` | How edges are colored: `"source"`, `"target"`, `"uniform"` |
 | `label_mode` | `enum` | `"selected"` | Label visibility: `"selected"`, `"neighbors"`, `"all"`, `"none"` |
 | `label_max_length` | `usize` | `20` | Max label character length (1–60) |
 | `node_size` | `f64` | `2.0` | Base node size (1.0–5.0) |
@@ -65,12 +78,10 @@ Full reference of all configuration options for clin-rs.
 | `minimap_width` | `u16` | `24` | Minimap width in cells |
 | `minimap_height` | `u16` | `12` | Minimap height in cells |
 | `canvas_marker` | `enum` | `"braille"` | Canvas rendering marker: `"braille"`, `"half_block"`, `"dot"` |
-| `minimap_marker` | `enum` | `"half_block"` | Minimap rendering marker: `"braille"`, `"half_block"`, `"dot"` |
 | `node_shape` | `enum` | `"circle"` | Node shape: `"circle"`, `"square"`, `"diamond"` |
 | `label_offset` | `f64` | `4.0` | Distance of labels from nodes |
 | `grid_divisions` | `usize` | `10` | Grid subdivision count |
-
-#### `[visual.colors]`
+#### `[graf.visual.colors]`
 
 All optional. Hex color strings like `"#ff6600"`. Override theme defaults.
 
@@ -87,28 +98,18 @@ All optional. Hex color strings like `"#ff6600"`. Override theme defaults.
 | `status_bar_color` | `String` | Theme default |
 | `background_color` | `String` | Theme default |
 
-### `[physics]`
+### `[graf.physics]`
 
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `ideal_distance` | `f64` | `80.0` | Target distance between connected nodes |
-| `damping` | `f32` | `0.95` | Physics damping factor per step |
-| `max_iterations` | `usize` | `800` | Maximum simulation iterations |
-| `gravity` | `f64` | `0.01` | Gravitational pull toward center |
-| `cooling` | `bool` | `true` | Enable energy cooling over time |
-| `prevent_overlapping` | `bool` | `true` | Prevent nodes from overlapping |
-| `timestep` | `f64` | `0.016` | Simulation timestep (~60fps) |
-| `thread_sleep_ms` | `u64` | `16` | Thread sleep between iterations (ms) |
 
-### `[interaction]`
+### `[graf.interaction]`
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `double_click_ms` | `u64` | `300` | Double-click timeout in milliseconds |
 | `zoom_factor` | `f64` | `1.15` | Zoom multiplier per step (must be > 0) |
 | `drag_sensitivity` | `f64` | `1.0` | Pan drag sensitivity |
-| `auto_fit_padding` | `f64` | `1.4` | Padding factor for auto-fit view |
-| `drag_scale` | `f64` | `200.0` | Drag-to-pan scale factor |
 
 ### `[display]`
 
@@ -117,9 +118,8 @@ All optional. Hex color strings like `"#ff6600"`. Override theme defaults.
 | `show_status_bar` | `bool` | `true` | Show status bar |
 | `status_format` | `String` | — | Custom status bar format. Variables: `{files}`, `{links}`, `{selected}`, `{date}`, `{time}`, `{size}`, `{ratio}` |
 | `border_style` | `enum` | `"rounded"` | Border style: `"plain"`, `"rounded"`, `"double"`, `"none"` |
-| `border_title` | `String` | `"graf"` | Border title text. Supports `{cwd}` placeholder |
 
-### `[filter]`
+### `[graf.filter]`
 
 | Option | Type | Default | Description |
 |---|---|---|---|
@@ -128,29 +128,20 @@ All optional. Hex color strings like `"#ff6600"`. Override theme defaults.
 | `min_links` | `usize` | `0` | Minimum links for a node to appear |
 | `max_nodes` | `usize` | `500` | Maximum nodes to display |
 
-### `[legend]`
-
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `position` | `enum` | `"bottom_right"` | Legend corner: `"top_right"`, `"top_left"`, `"bottom_right"`, `"bottom_left"` |
-| `max_items` | `usize` | `10` | Maximum legend items |
-
-### `[search]`
+### `[graf.search]`
 
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `max_results` | `usize` | `20` | Maximum search results |
 | `max_visible` | `usize` | `10` | Maximum visible results at once |
-| `popup_width` | `u16` | `50` | Search popup width in cells |
-| `popup_y` | `u16` | `3` | Search popup Y position from top |
-| `cursor_glyph` | `String` | `"▎"` | Search cursor character |
-
-### `[editor]`
+### `[backup]`
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `command` | `String` | `""` | External editor command for opening notes from graf view |
-
+| `enabled` | `bool` | `true` | Enable auto-backups via git |
+| `backup_on_save` | `bool` | `true` | Perform a backup commit whenever a note is saved |
+| `backup_on_quit` | `bool` | `true` | Perform a backup commit when the app exits |
+| `auto_backup_interval` | `u64` | — | Interval in minutes for automatic background backups |
 ---
 
 ## Example config.toml
@@ -158,60 +149,66 @@ All optional. Hex color strings like `"#ff6600"`. Override theme defaults.
 ```toml
 # General
 storage_path = "/path/to/your/vault"
-external_editor = "nvim"
-external_editor_enabled = false
-preview_enabled = true
-editor_preview_enabled = true
-show_line_numbers = true
+mouse_enabled = true
 confirm_on_delete = true
+
+[list]
+preview_enabled = true
+preview_position = "right"
+preview_encryption = false
+show_date_in_list = true
+show_file_size = false
+date_format = "%Y-%m-%d"
+density = "comfortable"
+default_view = "grid"
 default_sort_field = "modified"
 default_sort_order = "descending"
-default_folder = "inbox"
+pinned_on_top = true
+
+[editor]
+external_command = "nvim"
+external_enabled = false
+preview_enabled = true
+show_line_numbers = true
+
+[backup]
+enabled = true
+backup_on_save = true
+backup_on_quit = true
+auto_backup_interval = 30
 
 [theme]
 theme = "tokyo_night"
 background = "transparent"
 accent = "#ff6600"
 
-[visual]
-theme = "onedark"
+[graf.visual]
 node_color_mode = "folder"
 label_mode = "selected"
 node_size = 2.0
 show_legend = true
 show_minimap = false
 
-[visual.colors]
+[graf.visual.colors]
 node_color = "#ff6600"
 border_color = "#334455"
 
-[physics]
+[graf.physics]
 ideal_distance = 80.0
-damping = 0.95
-gravity = 0.01
 
-[interaction]
-zoom_factor = 1.15
+[graf.interaction]
 drag_sensitivity = 1.0
 
 [display]
 show_status_bar = true
 border_style = "rounded"
 
-[filter]
-min_links = 0
+[graf.filter]
 max_nodes = 500
 
-[legend]
-position = "bottom_right"
-max_items = 10
-
-[search]
+[graf.search]
 max_results = 20
-popup_width = 50
-
-[editor]
-command = "nano"
+max_visible = 10
 ```
 
 ---
@@ -316,9 +313,6 @@ The old `graf.toml` file is **no longer used**. All graf options (`[visual]`, `[
 
 ---
 
-## Environment Variable Overrides
-
-All graf options can also be overridden via environment variables prefixed with `GRAF_` (e.g. `GRAF_VISUAL_THEME=dracula`, `GRAF_PHYSICS_GRAVITY=0.05`).
 
 ---
 

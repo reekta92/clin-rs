@@ -3,6 +3,13 @@
 All notable changes to clin are documented in this file.
 
 ## [0.8.13] - 2026-06-15
+### Changed
+
+- Reworked CLI arguments to use a clean, subcommand-based interface with `clap`. Removed old flag forms (`-n`, `-q`, `-e`, `-l`, `--storage-path`, `--keybinds`, etc.) in favor of unified `notes`, `storage`, `keybinds`, `templates`, and `config` subcommands.
+- Added `--version` and `--config <PATH>` global flags.
+ - Added new subcommands: `config show`, `config path`, `config edit`, `config reset`, and `notes search <query>`.
+- CLI output beautification: semantic colors (green success, red error, cyan paths, dim metadata), Unicode status symbols (✓ ✗ • →), themed clap help/error output, and `NO_COLOR` / non-TTY detection.
+
 
 ### Miscellaneous
 

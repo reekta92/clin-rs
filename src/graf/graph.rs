@@ -47,7 +47,7 @@ pub fn build_graph(
         }
     }
 
-    let min_links = config.filter.min_links;
+    let min_links = config.graf.filter.min_links;
 
     for summary in &summaries {
         let lc = link_counts.get(&summary.id).copied().unwrap_or(0);
@@ -55,11 +55,11 @@ pub fn build_graph(
             continue;
         }
 
-        if !config.filter.exclude_tags.is_empty()
+        if !config.graf.filter.exclude_tags.is_empty()
             && summary
                 .tags
                 .iter()
-                .any(|t| config.filter.exclude_tags.contains(t))
+                .any(|t| config.graf.filter.exclude_tags.contains(t))
         {
             continue;
         }
@@ -109,13 +109,13 @@ pub fn create_simulation(
     config: &ClinConfig,
 ) -> Simulation<GraphNodeData, ()> {
     let force = fdg_sim::force::handy(
-        config.physics.ideal_distance as f32,
-        config.physics.damping,
-        config.physics.cooling,
-        config.physics.prevent_overlapping,
+        config.graf.physics.ideal_distance as f32,
+        0.95,
+        true,
+        true,
     );
     let params = SimulationParameters::new(
-        config.physics.max_iterations as f32,
+        800.0,
         fdg_sim::Dimensions::Two,
         force,
     );
@@ -138,7 +138,7 @@ impl GraphState {
         };
         state.viewport = state.viewport.auto_fit_from_graph(
             state.simulation.get_graph(),
-            config.interaction.auto_fit_padding,
+            1.4,
         );
         state.graph_bounds = super::render::compute_graph_bounds(state.simulation.get_graph());
         Ok(state)

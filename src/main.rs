@@ -5,6 +5,7 @@ pub(crate) mod app_theme;
 pub(crate) mod backup;
 pub(crate) mod cli;
 mod config;
+pub mod console;
 pub(crate) mod constants;
 pub(crate) mod content_tree;
 pub(crate) mod draw;
@@ -27,13 +28,15 @@ pub(crate) mod text_edit;
 
 use crate::config::ClinConfig;
 use crate::keybinds::{EditAction, HelpAction, Keybinds, ListAction};
+use clap::{CommandFactory, FromArgMatches};
+use crate::cli::{Cli, Command, NotesCmd, StorageCmd, KeybindsCmd, TemplatesCmd, ConfigCmd};
 
 use std::borrow::Cow;
 use std::fs;
 use std::io::{self, Stdout, Write};
 use std::path::PathBuf;
 use std::time::Duration;
-use std::{env, process};
+use std::process;
 use uuid::Uuid;
 
 use anyhow::{Context, Result};
@@ -57,43 +60,49 @@ use events::*;
 use storage::*;
 use ui::*;
 fn main() -> Result<()> {
-    let cli = parse_cli_command()?;
+    let matches = Cli::command()
+        .styles(crate::console::CLAP_STYLES)
+        .get_matches();
+    let cli = Cli::from_arg_matches(&matches).unwrap_or_else(|e| e.exit());
 
-    match cli {
-        CliCommand::Help => {
-            print_cli_help();
-            Ok(())
+    if let Some(path) = &cli.config {
+        crate::config::set_config_path_override(path.clone());
+    }
+
+    match cli.command {
+        None => launch_tui(None),
+        Some(Command::Notes { action }) => run_notes(action),
+        Some(Command::Storage { action }) => run_storage(action),
+        Some(Command::Keybinds { action }) => run_keybinds(action),
+        Some(Command::Templates { action }) => run_templates(action),
+        Some(Command::Config { action }) => run_config(action),
+    }
+}
+
+fn launch_tui(open_title: Option<String>) -> Result<()> {
+    let storage = Storage::init()?;
+    let mut app = App::new(storage)?;
+    if let Some(title) = open_title {
+        if !app.open_note_by_title(&title) {
+            eprintln!("{}", console::error(&format!("No note found with title: {title}")));
+            process::exit(1);
         }
-        CliCommand::ListNoteTitles => {
+    }
+    run_tui_session(&mut app)
+}
+
+fn run_notes(action: NotesCmd) -> Result<()> {
+    match action {
+        NotesCmd::List => {
             let storage = Storage::init()?;
             let mut app = App::new(storage)?;
             app.refresh_notes()?;
             for (index, note) in app.notes.iter().enumerate() {
-                println!("{}. {}", index + 1, note.title);
+                println!("{} {}", console::dim(&format!("{}.", index + 1)), note.title);
             }
             Ok(())
         }
-        CliCommand::QuickNote { content, title } => {
-            let storage = Storage::init()?;
-
-            let id = Uuid::new_v4().simple().to_string();
-            let final_title = title.unwrap_or_else(|| "Quick Note".to_string());
-            let note = Note {
-                title: final_title.clone(),
-                content,
-                updated_at: std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)?
-                    .as_secs(),
-                tags: Vec::new(),
-            };
-
-            let _saved_id = storage.save_note(&id, &note)?;
-
-            println!("Created note: {final_title}");
-
-            Ok(())
-        }
-        CliCommand::NewAndOpen { title, template } => {
+        NotesCmd::New { template, title } => {
             let storage = Storage::init()?;
             let mut app = App::new(storage)?;
 
@@ -109,11 +118,11 @@ fn main() -> Result<()> {
                         {
                             (template_data.content.template.clone(), Vec::new())
                         } else {
-                            eprintln!("Failed to load template data: {tmpl_name}");
+                            eprintln!("{}", console::error(&format!("Failed to load template data: {tmpl_name}")));
                             process::exit(1);
                         }
                     } else {
-                        eprintln!("Template not found: {tmpl_name}");
+                        eprintln!("{}", console::error(&format!("Template not found: {tmpl_name}")));
                         process::exit(1);
                     }
                 } else {
@@ -140,32 +149,83 @@ fn main() -> Result<()> {
             app.load_and_open_note(&saved_id, None);
             run_tui_session(&mut app)
         }
-        CliCommand::Run { edit_title } => {
+        NotesCmd::Open { title } => {
+            launch_tui(Some(title))
+        }
+        NotesCmd::Quick { content, title } => {
+            let storage = Storage::init()?;
+
+            let id = Uuid::new_v4().simple().to_string();
+            let final_title = title.unwrap_or_else(|| "Quick Note".to_string());
+            let note = Note {
+                title: final_title.clone(),
+                content,
+                updated_at: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)?
+                    .as_secs(),
+                tags: Vec::new(),
+            };
+
+            let _saved_id = storage.save_note(&id, &note)?;
+
+            println!("{}", console::success(&format!("Created note: {}", console::bold(&final_title))));
+
+            Ok(())
+        }
+        NotesCmd::Search { query } => {
+            use fuzzy_matcher::FuzzyMatcher;
+            use fuzzy_matcher::skim::SkimMatcherV2;
+
             let storage = Storage::init()?;
             let mut app = App::new(storage)?;
-
-            if let Some(title) = edit_title
-                && !app.open_note_by_title(&title)
-            {
-                eprintln!("No note found with title: {title}");
-                process::exit(1);
+            app.refresh_notes()?;
+            let matcher = SkimMatcherV2::default();
+            let mut hits: Vec<(i64, String, String)> = Vec::new(); // (score, title, folder)
+            for note in &app.notes {
+                let mut best: Option<i64> = matcher.fuzzy_match(&note.title, &query);
+                // content match (substring) as a fallback when the title does not match
+                if best.is_none() {
+                    if let Ok(full) = app.storage.load_note(&note.id) {
+                        if full.content.contains(&query) {
+                            best = Some(0); // content hit, low rank
+                        }
+                    }
+                }
+                if let Some(score) = best {
+                    hits.push((score, note.title.clone(), note.folder.clone()));
+                }
             }
-
-            run_tui_session(&mut app)
-        }
-
-        CliCommand::ShowStoragePath => {
-            let bootstrap = ClinConfig::load()?;
-            let effective = bootstrap.effective_storage_path()?;
-            println!("Storage path: {}", effective.display());
-            if bootstrap.has_custom_storage_path() {
-                println!("(custom path)");
+            hits.sort_by(|a, b| b.0.cmp(&a.0));
+            if hits.is_empty() {
+                println!("{}", console::info(&format!("No notes matched \"{query}\".")));
             } else {
-                println!("(default path)");
+                for (_, title, folder) in hits {
+                    if folder.is_empty() {
+                        println!("{}", console::bold(&title));
+                    } else {
+                        println!("{}  {}", console::bold(&title), console::dim(&format!("[{folder}]")));
+                    }
+                }
             }
             Ok(())
         }
-        CliCommand::SetStoragePath { path } => {
+    }
+}
+
+fn run_storage(action: StorageCmd) -> Result<()> {
+    match action {
+        StorageCmd::Show => {
+            let bootstrap = ClinConfig::load()?;
+            let effective = bootstrap.effective_storage_path()?;
+            println!("{} {}", console::bold("Storage path:"), console::path(&effective));
+            if bootstrap.has_custom_storage_path() {
+                println!("{}", console::yellow("(custom path)"));
+            } else {
+                println!("{}", console::dim("(default path)"));
+            }
+            Ok(())
+        }
+        StorageCmd::Set { path } => {
             let mut bootstrap = ClinConfig::load()?;
             let old_path = bootstrap.effective_storage_path()?;
 
@@ -183,23 +243,24 @@ fn main() -> Result<()> {
             bootstrap.set_storage_path(path.clone());
             bootstrap.save()?;
 
-            println!("Storage path set to: {}", path.display());
+            println!("{}", console::success(&format!("Storage path set to: {}", console::path(&path))));
 
             if bootstrap.previous_storage_path.is_some() {
-                println!("\nRun 'clin --migrate-storage' to migrate your existing data.");
+                println!();
+                println!("{}", console::hint("Run 'clin storage migrate' to migrate your existing data."));
             }
 
             Ok(())
         }
-        CliCommand::ResetStoragePath => {
+        StorageCmd::Reset => {
             let mut bootstrap = ClinConfig::load()?;
             bootstrap.reset_storage_path();
             bootstrap.save()?;
             let default = ClinConfig::default_storage_path()?;
-            println!("Storage path reset to default: {}", default.display());
+            println!("{}", console::success(&format!("Storage path reset to default: {}", console::path(&default))));
             Ok(())
         }
-        CliCommand::MigrateStorage => {
+        StorageCmd::Migrate => {
             let mut bootstrap = ClinConfig::load()?;
             let to = bootstrap.effective_storage_path()?;
 
@@ -208,15 +269,15 @@ fn main() -> Result<()> {
                 _ => {
                     let default = ClinConfig::default_storage_path()?;
                     if default.exists() && default.is_dir() && default != to {
-                        println!("No previous storage path recorded.");
-                        println!("Found data at default location: {}", default.display());
-                        print!("Migrate from there? [y/N]: ");
+                        println!("{}", console::info("No previous storage path recorded."));
+                        println!("Found data at default location: {}", console::path(&default));
+                        print!("{}", console::warning("Migrate from there? [y/N]: "));
                         io::stdout().flush()?;
 
                         let mut input = String::new();
                         io::stdin().read_line(&mut input)?;
                         if !input.trim().eq_ignore_ascii_case("y") {
-                            println!("Migration cancelled.");
+                            println!("{}", console::warning("Migration cancelled."));
                             return Ok(());
                         }
                         default
@@ -230,9 +291,9 @@ fn main() -> Result<()> {
                 anyhow::bail!("Source and destination are the same. Nothing to migrate.");
             }
 
-            println!("Migrating data:");
-            println!("  From: {}", from.display());
-            println!("  To:   {}", to.display());
+            println!("{}", console::bold("Migrating data:"));
+            println!("  {} {}", console::dim("From:"), console::path(&from));
+            println!("  {} {}", console::dim("To:"), console::path(&to));
             println!();
 
             fs::create_dir_all(&to)
@@ -273,113 +334,54 @@ fn main() -> Result<()> {
             bootstrap.save()?;
 
             println!();
-            println!("Migration complete!");
-            println!("  Migrated: {migrated_count} items");
+            println!("{}", console::success("Migration complete!"));
+            println!("  {} {}", console::dim("Migrated:"), console::bold(&format!("{migrated_count} items")));
             if skipped_count > 0 {
-                println!("  Skipped:  {skipped_count} items");
+                println!("  {} {}", console::dim("Skipped:"), console::yellow(&format!("{skipped_count} items")));
             }
             println!();
-            println!("Your old data remains at: {}", from.display());
-            println!("You may delete it manually after verifying everything works.");
+            println!("Your old data remains at: {}", console::path(&from));
+            println!("{}", console::dim("You may delete it manually after verifying everything works."));
 
             Ok(())
         }
+    }
+}
 
-        CliCommand::ShowKeybinds => {
+fn run_keybinds(action: KeybindsCmd) -> Result<()> {
+    match action {
+        KeybindsCmd::Show => {
             let storage = Storage::init()?;
             let keybinds = storage.load_keybinds();
-            println!("Current keybinds:\n");
-            println!("[List View]");
-            println!(
-                "  Move up:        {}",
-                keybinds.list_keys_display(ListAction::MoveUp)
-            );
-            println!(
-                "  Move down:      {}",
-                keybinds.list_keys_display(ListAction::MoveDown)
-            );
-            println!(
-                "  Open:           {}",
-                keybinds.list_keys_display(ListAction::Open)
-            );
-            println!(
-                "  Delete:         {}",
-                keybinds.list_keys_display(ListAction::Delete)
-            );
-            println!(
-                "  Quit:           {}",
-                keybinds.list_keys_display(ListAction::Quit)
-            );
-            println!(
-                "  Help:           {}",
-                keybinds.list_keys_display(ListAction::Help)
-            );
-            println!(
-                "  Open location:  {}",
-                keybinds.list_keys_display(ListAction::OpenLocation)
-            );
-            println!(
-                "  Cycle focus:    {}",
-                keybinds.list_keys_display(ListAction::CycleFocus)
-            );
-            println!(
-                "  New from template: {}",
-                keybinds.list_keys_display(ListAction::NewFromTemplate)
-            );
-            println!("\n[Edit View]");
-            println!(
-                "  Quit:           {}",
-                keybinds.edit_keys_display(EditAction::Quit)
-            );
-            println!(
-                "  Back:           {}",
-                keybinds.edit_keys_display(EditAction::Back)
-            );
-            println!(
-                "  Cycle focus:    {}",
-                keybinds.edit_keys_display(EditAction::CycleFocus)
-            );
-            println!(
-                "  Select all:     {}",
-                keybinds.edit_keys_display(EditAction::SelectAll)
-            );
-            println!(
-                "  Copy:           {}",
-                keybinds.edit_keys_display(EditAction::Copy)
-            );
-            println!(
-                "  Cut:            {}",
-                keybinds.edit_keys_display(EditAction::Cut)
-            );
-            println!(
-                "  Paste:          {}",
-                keybinds.edit_keys_display(EditAction::Paste)
-            );
-            println!(
-                "  Undo:           {}",
-                keybinds.edit_keys_display(EditAction::Undo)
-            );
-            println!(
-                "  Redo:           {}",
-                keybinds.edit_keys_display(EditAction::Redo)
-            );
-            println!("\n[Help View]");
-            println!(
-                "  Close:          {}",
-                keybinds.help_keys_display(HelpAction::Close)
-            );
-            println!(
-                "  Scroll up:      {}",
-                keybinds.help_keys_display(HelpAction::ScrollUp)
-            );
-            println!(
-                "  Scroll down:    {}",
-                keybinds.help_keys_display(HelpAction::ScrollDown)
-            );
-            println!("\nKeybinds file: {}", storage.keybinds_path().display());
+            println!("{}\n", console::bold("Current keybinds"));
+            println!("{}", console::section("List View"));
+            println!("  {:<18} {}", "Move up:", console::cyan(&keybinds.list_keys_display(ListAction::MoveUp)));
+            println!("  {:<18} {}", "Move down:", console::cyan(&keybinds.list_keys_display(ListAction::MoveDown)));
+            println!("  {:<18} {}", "Open:", console::cyan(&keybinds.list_keys_display(ListAction::Open)));
+            println!("  {:<18} {}", "Delete:", console::cyan(&keybinds.list_keys_display(ListAction::Delete)));
+            println!("  {:<18} {}", "Quit:", console::cyan(&keybinds.list_keys_display(ListAction::Quit)));
+            println!("  {:<18} {}", "Help:", console::cyan(&keybinds.list_keys_display(ListAction::Help)));
+            println!("  {:<18} {}", "Open location:", console::cyan(&keybinds.list_keys_display(ListAction::OpenLocation)));
+            println!("  {:<18} {}", "Cycle focus:", console::cyan(&keybinds.list_keys_display(ListAction::CycleFocus)));
+            println!("  {:<18} {}", "New from template:", console::cyan(&keybinds.list_keys_display(ListAction::NewFromTemplate)));
+            println!("\n{}", console::section("Edit View"));
+            println!("  {:<18} {}", "Quit:", console::cyan(&keybinds.edit_keys_display(EditAction::Quit)));
+            println!("  {:<18} {}", "Back:", console::cyan(&keybinds.edit_keys_display(EditAction::Back)));
+            println!("  {:<18} {}", "Cycle focus:", console::cyan(&keybinds.edit_keys_display(EditAction::CycleFocus)));
+            println!("  {:<18} {}", "Select all:", console::cyan(&keybinds.edit_keys_display(EditAction::SelectAll)));
+            println!("  {:<18} {}", "Copy:", console::cyan(&keybinds.edit_keys_display(EditAction::Copy)));
+            println!("  {:<18} {}", "Cut:", console::cyan(&keybinds.edit_keys_display(EditAction::Cut)));
+            println!("  {:<18} {}", "Paste:", console::cyan(&keybinds.edit_keys_display(EditAction::Paste)));
+            println!("  {:<18} {}", "Undo:", console::cyan(&keybinds.edit_keys_display(EditAction::Undo)));
+            println!("  {:<18} {}", "Redo:", console::cyan(&keybinds.edit_keys_display(EditAction::Redo)));
+            println!("\n{}", console::section("Help View"));
+            println!("  {:<18} {}", "Close:", console::cyan(&keybinds.help_keys_display(HelpAction::Close)));
+            println!("  {:<18} {}", "Scroll up:", console::cyan(&keybinds.help_keys_display(HelpAction::ScrollUp)));
+            println!("  {:<18} {}", "Scroll down:", console::cyan(&keybinds.help_keys_display(HelpAction::ScrollDown)));
+            println!("\n  {} {}", console::dim("Keybinds file:"), console::path(storage.keybinds_path()));
             Ok(())
         }
-        CliCommand::ExportKeybinds => {
+        KeybindsCmd::Export => {
             let storage = Storage::init()?;
             let keybinds = storage.load_keybinds();
             let toml = keybinds.to_toml();
@@ -387,170 +389,108 @@ fn main() -> Result<()> {
             println!("{content}");
             Ok(())
         }
-        CliCommand::ResetKeybinds => {
+        KeybindsCmd::Reset => {
             let storage = Storage::init()?;
             let keybinds = Keybinds::default();
             storage.save_keybinds(&keybinds)?;
-            println!("Keybinds reset to defaults");
-            println!("Keybinds file: {}", storage.keybinds_path().display());
+            println!("{}", console::success("Keybinds reset to defaults"));
+            println!("{} {}", console::dim("Keybinds file:"), console::path(storage.keybinds_path()));
             Ok(())
         }
+    }
+}
 
-        CliCommand::ListTemplates => {
+fn run_templates(action: TemplatesCmd) -> Result<()> {
+    match action {
+        TemplatesCmd::List => {
             let storage = Storage::init()?;
             let template_manager = storage.template_manager();
             let templates = template_manager.list()?;
 
             if templates.is_empty() {
-                println!("No templates found.");
-                println!("Templates directory: {}", storage.templates_dir.display());
-                println!("\nRun 'clin --create-example-templates' to create example templates.");
+                println!("{}", console::info("No templates found."));
+                println!("Templates directory: {}", console::path(&storage.templates_dir));
+                println!();
+                println!("{}", console::hint("Run 'clin templates init' to create example templates."));
             } else {
-                println!("Available templates:\n");
+                println!("{}\n", console::bold("Available templates:"));
                 for (i, t) in templates.iter().enumerate() {
-                    println!("  {}. {} ({})", i + 1, t.name, t.filename);
+                    println!("  {} {} {}", console::dim(&format!("{}.", i + 1)), console::bold(&t.name), console::dim(&format!("({})", t.filename)));
                 }
-                println!("\nTemplates directory: {}", storage.templates_dir.display());
+                println!("\nTemplates directory: {}", console::path(&storage.templates_dir));
             }
             Ok(())
         }
-        CliCommand::CreateExampleTemplates => {
+        TemplatesCmd::Init => {
             let storage = Storage::init()?;
             let template_manager = storage.template_manager();
             template_manager.create_examples()?;
-            println!(
-                "Example templates created in: {}",
-                storage.templates_dir.display()
-            );
+            println!("{}", console::success(&format!("Example templates created in: {}", console::path(&storage.templates_dir))));
 
             let templates = template_manager.list()?;
             for t in templates {
-                println!("  - {} ({})", t.name, t.filename);
+                println!("  {} {} {}", console::dim("-"), console::bold(&t.name), console::dim(&format!("({})", t.filename)));
             }
             Ok(())
         }
     }
 }
 
-fn parse_cli_command() -> Result<CliCommand> {
-    let args: Vec<String> = env::args().skip(1).collect();
-
-    if args.is_empty() {
-        return Ok(CliCommand::Run { edit_title: None });
-    }
-
-    match args[0].as_str() {
-        "-h" | "--help" => Ok(CliCommand::Help),
-        "-l" => Ok(CliCommand::ListNoteTitles),
-        "-n" => {
-            let mut title = None;
-            let mut template = None;
-            let mut i = 1;
-            while i < args.len() {
-                if args[i] == "--template" || args[i] == "-t" {
-                    if i + 1 < args.len() {
-                        template = Some(args[i + 1].clone());
-                        i += 2;
-                    } else {
-                        anyhow::bail!("--template requires a template name");
-                    }
-                } else if title.is_none() {
-                    title = Some(args[i..].join(" "));
-                    break;
-                } else {
-                    i += 1;
-                }
-            }
-            Ok(CliCommand::NewAndOpen { title, template })
+fn run_config(action: ConfigCmd) -> Result<()> {
+    match action {
+        ConfigCmd::Show => {
+            let config = ClinConfig::load()?;
+            println!("{}", toml::to_string_pretty(&config)?);
+            Ok(())
         }
-        "-q" => {
-            if args.len() < 2 {
-                anyhow::bail!("-q requires note content. Try: clin -q \"content\" [title]");
-            }
-            let content = args[1].clone();
-            let title = if args.len() > 2 {
-                Some(args[2..].join(" "))
-            } else {
-                None
-            };
-            Ok(CliCommand::QuickNote { content, title })
+        ConfigCmd::Path => {
+            let path = ClinConfig::config_path()?;
+            println!("{}", console::path(&path));
+            Ok(())
         }
-        "-e" => {
-            if args.len() < 2 {
-                anyhow::bail!("-e requires a note title. Try: clin -e \"My Note\"");
-            }
-            Ok(CliCommand::Run {
-                edit_title: Some(args[1..].join(" ")),
-            })
+        ConfigCmd::Edit => {
+            let path = ClinConfig::config_path()?;
+            let editor = std::env::var("VISUAL")
+                .or_else(|_| std::env::var("EDITOR"))
+                .map_err(|_| anyhow::anyhow!(
+                    "no editor set; define $VISUAL or $EDITOR (e.g. export EDITOR=nvim)"
+                ))?;
+            std::process::Command::new(&editor)
+                .arg(&path)
+                .status()
+                .with_context(|| format!("failed to launch editor: {editor}"))?;
+            Ok(())
         }
-
-        "--storage-path" => Ok(CliCommand::ShowStoragePath),
-        "--set-storage-path" => {
-            if args.len() < 2 {
-                anyhow::bail!("--set-storage-path requires a path");
+        ConfigCmd::Reset => {
+            let path = ClinConfig::config_path()?;
+            if path.exists() {
+                fs::remove_file(&path).context("failed to remove configuration file")?;
             }
-            Ok(CliCommand::SetStoragePath {
-                path: PathBuf::from(&args[1]),
-            })
+            let _ = ClinConfig::load()?;
+            println!("{}", console::success("Configuration reset to default values."));
+            Ok(())
         }
-        "--reset-storage-path" => Ok(CliCommand::ResetStoragePath),
-        "--migrate-storage" => Ok(CliCommand::MigrateStorage),
-
-        "--keybinds" => Ok(CliCommand::ShowKeybinds),
-        "--export-keybinds" => Ok(CliCommand::ExportKeybinds),
-        "--reset-keybinds" => Ok(CliCommand::ResetKeybinds),
-
-        "--list-templates" => Ok(CliCommand::ListTemplates),
-        "--create-example-templates" => Ok(CliCommand::CreateExampleTemplates),
-        unknown => anyhow::bail!("unknown argument: {unknown}. Use clin -h for help."),
     }
 }
-
-fn print_cli_help() {
-    println!(
-        "\x1b[1;32mclin\x1b[0m - Encrypted terminal note-taking app
-
-\x1b[1;33mUSAGE:\x1b[0m
-  clin [OPTIONS]
-
-\x1b[1;33mNOTE OPERATIONS:\x1b[0m
-  clin                        Launch interactive app
-  \x1b[32m-n\x1b[0m \x1b[36m[TITLE]\x1b[0m                Create a new note and open it
-  \x1b[32m-n\x1b[0m \x1b[32m-t, --template\x1b[0m \x1b[36m<NAME>\x1b[0m \x1b[36m[TITLE]\x1b[0m
-                              Create a new note from a template
-  \x1b[32m-q\x1b[0m \x1b[36m<CONTENT>\x1b[0m \x1b[36m[TITLE]\x1b[0m      Create a quick note and exit
-  \x1b[32m-e\x1b[0m \x1b[36m<TITLE>\x1b[0m                Open a specific note by title
-  \x1b[32m-l\x1b[0m                        List note titles
-  \x1b[32m-h, --help\x1b[0m                Show this help message
-
-\x1b[1;33mCONFIGURATION:\x1b[0m
-  \x1b[32m--storage-path\x1b[0m            Show current storage path
-  \x1b[32m--set-storage-path\x1b[0m \x1b[36m<PATH>\x1b[0m Set custom storage path
-  \x1b[32m--reset-storage-path\x1b[0m      Reset to default storage path
-  \x1b[32m--migrate-storage\x1b[0m         Migrate data from previous storage location
-
-\x1b[1;33mKEYBINDS:\x1b[0m
-  \x1b[32m--keybinds\x1b[0m                Show current keybindings
-  \x1b[32m--export-keybinds\x1b[0m         Export keybinds as TOML
-  \x1b[32m--reset-keybinds\x1b[0m          Reset keybinds to defaults
-
-\x1b[1;33mTEMPLATES:\x1b[0m
-  \x1b[32m--list-templates\x1b[0m          List available templates
-  \x1b[32m--create-example-templates\x1b[0m Create example templates
-"
-    );
-}
-
 fn run_tui_session(app: &mut App) -> Result<()> {
     enable_raw_mode().context("failed to enable raw mode")?;
     let mut stdout = io::stdout();
-    execute!(
-        stdout,
-        EnterAlternateScreen,
-        EnableMouseCapture,
-        EnableBracketedPaste
-    )
-    .context("failed to enter alternate screen")?;
+    if app.mouse_enabled {
+        execute!(
+            stdout,
+            EnterAlternateScreen,
+            EnableMouseCapture,
+            EnableBracketedPaste
+        )
+        .context("failed to enter alternate screen")?;
+    } else {
+        execute!(
+            stdout,
+            EnterAlternateScreen,
+            EnableBracketedPaste
+        )
+        .context("failed to enter alternate screen")?;
+    }
 
     let backend = ratatui::backend::CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend).context("failed to create terminal")?;
@@ -751,6 +691,22 @@ fn run_app(
         };
 
         let need_redraw = app.poll_renderers();
+
+        // Auto-backup check
+        let config_for_backup = ClinConfig::load().unwrap_or_default();
+        if let Some(interval_mins) = config_for_backup.backup.auto_backup_interval {
+            let now = std::time::Instant::now();
+            let should_backup = match app.last_auto_backup {
+                Some(last) => now.duration_since(last).as_secs() >= interval_mins * 60,
+                None => true,
+            };
+            if should_backup {
+                if let Err(e) = app.try_auto_backup_raw("auto: scheduled backup") {
+                    app.set_temporary_status(&format!("Auto-backup failed: {e}"));
+                }
+                app.last_auto_backup = Some(now);
+            }
+        }
 
         if need_redraw {
             terminal.draw(|frame| draw_ui(frame, app, focus))?;

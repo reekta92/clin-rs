@@ -1,7 +1,6 @@
 use crate::config::ClinConfig;
 use std::path::PathBuf;
 
-pub use crate::cli::CliCommand;
 use crate::constants::*;
 pub use crate::editor::*;
 use crate::events::get_title_text;
@@ -312,6 +311,9 @@ pub struct App {
     pub preview_position: crate::config::PreviewPosition,
     pub pinned_on_top: bool,
     pub default_folder: Option<String>,
+    pub mouse_enabled: bool,
+    pub date_format: String,
+    pub last_auto_backup: Option<std::time::Instant>,
     pub last_g_press: Option<Instant>,
     pub last_esc_press: Option<Instant>,
     pub return_mode: Option<ViewMode>,
@@ -323,25 +325,33 @@ impl App {
     pub fn new(storage: Storage) -> Result<Self> {
         let keybinds = storage.load_keybinds();
         let bootstrap_config = crate::config::ClinConfig::load().unwrap_or_default();
+        for w in bootstrap_config.validate() {
+            eprintln!("[clin] config warning: {w}");
+        }
         let app_theme = crate::app_theme::AppThemeColors::from_config(&bootstrap_config.theme);
 
         let mut editor = NoteEditor::new();
-        editor.external_editor_enabled = bootstrap_config.external_editor_enabled;
-        editor.external_editor = bootstrap_config.external_editor;
-        editor.editor_preview_enabled = bootstrap_config.editor_preview_enabled;
-        editor.show_line_numbers = bootstrap_config.show_line_numbers;
+        editor.external_editor_enabled = bootstrap_config.editor.external_enabled;
+        editor.external_editor = bootstrap_config.editor.external_command.clone();
+        editor.editor_preview_enabled = bootstrap_config.editor.preview_enabled;
+        editor.show_line_numbers = bootstrap_config.editor.show_line_numbers;
         editor.title_editor = make_title_editor("", Color::Black, Color::Cyan);
 
         let mut list = ListView::new();
         list.sort_field = bootstrap_config
+            .list
             .default_sort_field
             .unwrap_or(SortField::Title);
         list.sort_order = bootstrap_config
+            .list
             .default_sort_order
             .unwrap_or(SortOrder::Ascending);
-        list.preview_enabled = bootstrap_config.preview_enabled;
+        list.preview_enabled = bootstrap_config.list.preview_enabled;
         list.page_size = 10;
-        list.notes_layout = bootstrap_config.visual.notes_layout.clone();
+        list.notes_layout = bootstrap_config.list.default_view.clone();
+        list.list_density = bootstrap_config.list.density.clone();
+        list.show_file_size = bootstrap_config.list.show_file_size;
+        list.show_date_in_list = bootstrap_config.list.show_date_in_list;
 
         let mut app = Self {
             storage,
@@ -361,9 +371,12 @@ impl App {
             confirm_on_delete: bootstrap_config.confirm_on_delete,
             confirm_on_quit: bootstrap_config.confirm_on_quit,
             should_quit: false,
-            preview_encryption: bootstrap_config.preview_encryption,
-            preview_position: bootstrap_config.preview_position,
-            pinned_on_top: bootstrap_config.pinned_on_top,
+            preview_encryption: bootstrap_config.list.preview_encryption,
+            mouse_enabled: bootstrap_config.mouse_enabled,
+            date_format: bootstrap_config.list.date_format.clone(),
+            last_auto_backup: None,
+            preview_position: bootstrap_config.list.preview_position,
+            pinned_on_top: bootstrap_config.list.pinned_on_top,
             default_folder: bootstrap_config.default_folder.clone(),
             last_g_press: None,
             last_esc_press: None,
@@ -1456,22 +1469,29 @@ template = """
         }
     }
 
-    pub fn try_auto_backup(&self, note_title: &str) -> Result<()> {
+    pub fn try_auto_backup_raw(&self, message: &str) -> Result<()> {
         let config = ClinConfig::load()?;
-        if config.backup.enabled && config.backup.backup_on_save {
+        if config.backup.enabled {
             let vault_path = config
                 .effective_storage_path()
                 .unwrap_or_else(|_| PathBuf::from("."));
             let git_ops = crate::backup::git_ops::GitOps::init(&vault_path)?;
             if git_ops.has_changes().unwrap_or(false) {
-                let msg = format!("auto: {note_title}");
-                git_ops.add_all().and_then(|_| git_ops.commit(&msg))?;
-                if config.backup.auto_push
-                    && let Some(remote) = &config.backup.remote_name
-                {
-                    git_ops.push(remote)?;
+                git_ops.add_all().and_then(|_| git_ops.commit(message))?;
+                if config.backup.auto_push {
+                    if let Some(remote) = &config.backup.remote_name {
+                        git_ops.push(remote)?;
+                    }
                 }
             }
+        }
+        Ok(())
+    }
+
+    pub fn try_auto_backup(&self, note_title: &str) -> Result<()> {
+        let config = ClinConfig::load()?;
+        if config.backup.enabled && config.backup.backup_on_save {
+            self.try_auto_backup_raw(&format!("auto: {note_title}"))?;
         }
         Ok(())
     }
@@ -1479,19 +1499,7 @@ template = """
     pub fn try_auto_backup_on_quit(&self) -> Result<()> {
         let config = ClinConfig::load()?;
         if config.backup.enabled && config.backup.backup_on_quit {
-            let vault_path = config
-                .effective_storage_path()
-                .unwrap_or_else(|_| PathBuf::from("."));
-            let git_ops = crate::backup::git_ops::GitOps::init(&vault_path)?;
-            if git_ops.has_changes().unwrap_or(false) {
-                let msg = "auto: backup on quit";
-                git_ops.add_all().and_then(|_| git_ops.commit(msg))?;
-                if config.backup.auto_push
-                    && let Some(remote) = &config.backup.remote_name
-                {
-                    git_ops.push(remote)?;
-                }
-            }
+            self.try_auto_backup_raw("auto: backup on quit")?;
         }
         Ok(())
     }
@@ -2470,7 +2478,7 @@ template = """
         };
         self.set_temporary_status(msg);
         if let Ok(mut config) = crate::config::ClinConfig::load() {
-            config.external_editor_enabled = self.editor.external_editor_enabled;
+            config.editor.external_enabled = self.editor.external_editor_enabled;
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
             }
@@ -3136,8 +3144,8 @@ template = """
         };
         self.set_temporary_status_static(sort_desc);
         if let Ok(mut config) = crate::config::ClinConfig::load() {
-            config.default_sort_field = Some(self.list.sort_field);
-            config.default_sort_order = Some(self.list.sort_order);
+            config.list.default_sort_field = Some(self.list.sort_field);
+            config.list.default_sort_order = Some(self.list.sort_order);
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
             }
@@ -3603,7 +3611,7 @@ template = """
             self.set_temporary_status_static("Preview disabled");
         }
         if let Ok(mut config) = crate::config::ClinConfig::load() {
-            config.preview_enabled = self.list.preview_enabled;
+            config.list.preview_enabled = self.list.preview_enabled;
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
             }
@@ -3885,7 +3893,7 @@ template = """
             self.set_temporary_status_static("Markdown preview disabled");
         }
         if let Ok(mut config) = crate::config::ClinConfig::load() {
-            config.editor_preview_enabled = self.editor.editor_preview_enabled;
+            config.editor.preview_enabled = self.editor.editor_preview_enabled;
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
             }
@@ -3901,7 +3909,7 @@ template = """
         };
         self.set_temporary_status_static(msg);
         if let Ok(mut config) = crate::config::ClinConfig::load() {
-            config.show_line_numbers = self.editor.show_line_numbers;
+            config.editor.show_line_numbers = self.editor.show_line_numbers;
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
             }
@@ -3952,7 +3960,7 @@ template = """
             self.update_preview();
         }
         if let Ok(mut config) = crate::config::ClinConfig::load() {
-            config.preview_encryption = self.preview_encryption;
+            config.list.preview_encryption = self.preview_encryption;
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
             }
@@ -3971,7 +3979,7 @@ template = """
         };
         self.set_temporary_status_static(msg);
         if let Ok(mut config) = crate::config::ClinConfig::load() {
-            config.pinned_on_top = self.pinned_on_top;
+            config.list.pinned_on_top = self.pinned_on_top;
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
             }
@@ -3989,7 +3997,7 @@ template = """
         self.refresh_visual_list();
         // #2: persist
         if let Ok(mut config) = crate::config::ClinConfig::load() {
-            config.visual.notes_layout = self.list.notes_layout.clone();
+            config.list.default_view = self.list.notes_layout.clone();
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
             }
@@ -4024,7 +4032,7 @@ template = """
         let selected = themes.iter().position(|t| t == &current).unwrap_or(0);
         let general_is_solid = matches!(config.theme.background, crate::config::Background::Solid);
         let graph_is_solid = matches!(
-            config.visual.graph_background,
+            config.graf.visual.graph_background,
             crate::config::Background::Solid
         );
 
@@ -4077,8 +4085,8 @@ template = """
             }
             // Persist
             if let Ok(mut config) = crate::config::ClinConfig::load() {
-                config.default_sort_field = Some(self.list.sort_field);
-                config.default_sort_order = Some(self.list.sort_order);
+                config.list.default_sort_field = Some(self.list.sort_field);
+                config.list.default_sort_order = Some(self.list.sort_order);
                 if let Err(e) = config.save() {
                     self.set_temporary_status(&format!("Failed to save config: {e}"));
                 }
@@ -4122,7 +4130,7 @@ template = """
                 ThemePopupFocus::GraphBg => {
                     popup.graph_is_solid = !popup.graph_is_solid;
                     let mut config = crate::config::ClinConfig::load().unwrap_or_default();
-                    config.visual.graph_background = if popup.graph_is_solid {
+                    config.graf.visual.graph_background = if popup.graph_is_solid {
                         crate::config::Background::Solid
                     } else {
                         crate::config::Background::Transparent

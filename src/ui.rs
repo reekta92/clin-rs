@@ -1786,8 +1786,27 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                             Style::default().fg(app.app_theme.muted),
                         ));
                     }
+                    if app.list.show_file_size {
+                        let size = format_size(summary.size_bytes);
+                        spans.push(Span::raw(" "));
+                        spans.push(Span::styled(
+                            format!("[{size}]"),
+                            Style::default().fg(app.app_theme.muted),
+                        ));
+                    }
 
-                    if vi == app.list.visual_index {
+                    if app.list.show_date_in_list {
+                        let secs = std::time::UNIX_EPOCH + std::time::Duration::from_secs(summary.updated_at);
+                        let dt: chrono::DateTime<chrono::Local> = secs.into();
+                        let formatted = dt.format(&app.date_format).to_string();
+                        spans.push(Span::raw(" "));
+                        spans.push(Span::styled(
+                            format!("({formatted})"),
+                            Style::default().fg(app.app_theme.muted),
+                        ));
+                    }
+
+                    if vi == app.list.visual_index && !app.list.show_date_in_list {
                         spans.push(Span::styled(
                             format!("  ({when})"),
                             Style::default().fg(app.app_theme.muted),
@@ -3531,6 +3550,22 @@ pub fn format_relative_time(unix_ts: u64) -> Cow<'static, str> {
     let secs = UNIX_EPOCH + Duration::from_secs(unix_ts);
     let dt: chrono::DateTime<chrono::Local> = secs.into();
     Cow::Owned(dt.format("%Y-%m-%d %H:%M").to_string())
+}
+
+pub fn format_size(bytes: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = KB * 1024;
+    const GB: u64 = MB * 1024;
+
+    if bytes < KB {
+        format!("{bytes} B")
+    } else if bytes < MB {
+        format!("{:.1} KB", bytes as f64 / KB as f64)
+    } else if bytes < GB {
+        format!("{:.1} MB", bytes as f64 / MB as f64)
+    } else {
+        format!("{:.1} GB", bytes as f64 / GB as f64)
+    }
 }
 
 pub struct StatusBarBadge {

@@ -180,13 +180,13 @@ mv clin ~/.local/bin/
 clin
 
 # Create a quick note
-clin -q "Meeting notes from today" "standup-2026-06-13"
+clin notes quick "Meeting notes from today" "standup-2026-06-13"
 
 # Create a note from a template
-clin -n --template diary
+clin notes new --template diary
 
 # Open a specific note
-clin -e "my-note"
+clin notes open "my-note"
 ```
 
 Once inside the TUI: navigate with `j`/`k`, open notes with `Enter`, open the command palette with `Ctrl+P`, and view the graph with `Ctrl+G`. Press `?` for the full keybind reference.
@@ -224,37 +224,38 @@ See the [full configuration reference](docs/CONFIG_REFERENCE.md) for all availab
 ### config.toml example
 
 ```toml
-# Custom vault storage path (default: ~/.local/share/clin)
+# General settings
 storage_path = "/path/to/your/vault"
-
-# External editor command (e.g. "nvim", "code", "nano")
-external_editor = "nvim"
-external_editor_enabled = false
-
-# Show the preview pane by default
-preview_enabled = true
-
-# Show markdown preview in editor by default
-editor_preview_enabled = false
-
-# Show line numbers
-show_line_numbers = true
-
-# Confirm before deleting
+mouse_enabled = true
 confirm_on_delete = true
+confirm_on_quit = false
 
-# Default sort
-# default_sort_field = "title"   # "title" or "modified"
-# default_sort_order = "ascending"  # "ascending" or "descending"
+[list]
+preview_enabled = true
+preview_position = "right"
+preview_encryption = false
+show_date_in_list = true
+show_file_size = false
+date_format = "%Y-%m-%d"
+density = "comfortable"
+default_view = "grid"
+default_sort_field = "title"
+default_sort_order = "ascending"
+pinned_on_top = true
+
+[editor]
+external_command = "nvim"
+external_enabled = false
+preview_enabled = false
+show_line_numbers = true
 
 [theme]
 theme = "tokyo_night"
 background = "transparent"
 # accent = "#ff6600"
-# background_color = "#1a1a2e"
 ```
 
-See [THEME_SYSTEM.md](docs/THEME_SYSTEM.md) for theme options and [CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md) for all graf sections.
+See [THEME_SYSTEM.md](docs/THEME_SYSTEM.md) for theme options and [CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md) for all options and sections.
 
 ### keybinds.toml example
 
@@ -288,31 +289,34 @@ pan_up = ["Up", "k"]
 ## CLI Commands
 
 ```
-NOTE OPERATIONS:
-  clin                        Launch interactive app
-  -n [TITLE]                Create a new note and open it
-  -n -t, --template <NAME> [TITLE]
-                              Create a new note from a template
-  -q <CONTENT> [TITLE]      Create a quick note and exit
-  -e <TITLE>                Open a specific note by title
-  -l                        List note titles
-  -h, --help                Show this help message
+clin                              Launch interactive TUI (default)
+clin notes list                   List note titles
+clin notes new [-t,--template N] [TITLE]   Create a note and open it
+clin notes open <TITLE>           Open a note by title
+clin notes quick <CONTENT> [TITLE] Quick note, then exit
+clin notes search <QUERY>         Search notes by title and content
 
-CONFIGURATION:
-  --storage-path            Show current storage path
-  --set-storage-path <PATH> Set custom storage path
-  --reset-storage-path      Reset to default storage path
-  --migrate-storage         Migrate data from previous storage location
+clin storage show                 Show storage path
+clin storage set <PATH>           Set a custom (absolute) storage path
+clin storage reset                Reset to default storage path
+clin storage migrate              Migrate data from a previous location
 
-KEYBINDS:
-  --keybinds                Show current keybindings
-  --export-keybinds         Export keybinds as TOML
-  --reset-keybinds          Reset keybinds to defaults
+clin keybinds show                Show keybindings
+clin keybinds export              Export keybinds as TOML
+clin keybinds reset               Reset keybinds to defaults
 
-TEMPLATES:
-  --list-templates          List available templates
-  --create-example-templates Create example templates
+clin templates list               List templates
+clin templates init               Create example templates
 
+clin config show                  Print effective config (TOML)
+clin config path                  Print config file path
+clin config edit                  Open config in $EDITOR
+clin config reset                 Reset config to default values
+
+clin completion <SHELL>           Generate shell completions
+clin --version                    Print version
+clin --config <PATH>              Override config file (global)
+clin --help                       Show help
 ```
 
 ---

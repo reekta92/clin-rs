@@ -25,7 +25,7 @@ pub fn draw_ui(frame: &mut Frame, state: &GrafAppState, config: &ClinConfig, _ke
     }
 
     let (graph_area, preview_area) = if state.preview_enabled {
-        let (constraints, main_idx, p_idx) = match config.preview_position {
+        let (constraints, main_idx, p_idx) = match config.list.preview_position {
             crate::config::PreviewPosition::Left => (
                 [
                     Constraint::Ratio(43, 100),
@@ -162,14 +162,14 @@ fn draw_search(
     config: &ClinConfig,
     colors: &crate::config::ThemeColors,
 ) {
-    let max_visible = config.search.max_visible;
+    let max_visible = config.graf.search.max_visible;
     let result_count = state.search_results.len();
     let visible_count = result_count.min(max_visible);
-    let popup_width = config.search.popup_width.min(area.width.saturating_sub(4));
+    let popup_width = (50u16).min(area.width.saturating_sub(4));
     let popup_height = (visible_count + 3).min(area.height.saturating_sub(4) as usize) as u16;
 
     let popup_x = (area.width.saturating_sub(popup_width)) / 2;
-    let popup_y = config.search.popup_y;
+    let popup_y = 3;
 
     let popup_area = ratatui::layout::Rect::new(popup_x, popup_y, popup_width, popup_height);
 
@@ -291,7 +291,7 @@ fn draw_reload_notification(
 }
 
 fn draw_preview(frame: &mut Frame, preview_rect: Rect, state: &GrafAppState, config: &ClinConfig) {
-    let hide_encrypted = config.preview_encryption
+    let hide_encrypted = config.list.preview_encryption
         && state
             .preview_note_id
             .as_ref()

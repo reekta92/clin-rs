@@ -58,13 +58,13 @@ impl GrafAppState {
             search_results: Vec::new(),
             search_selected: 0,
             search_cursor: 0,
-            show_minimap: config.visual.show_minimap,
-            show_legend: config.visual.show_legend,
-            show_grid: config.visual.show_grid,
+            show_minimap: config.graf.visual.show_minimap,
+            show_legend: config.graf.visual.show_legend,
+            show_grid: config.graf.visual.show_grid,
             show_status_bar: config.display.show_status_bar,
             config_reload_msg: None,
 
-            preview_enabled: config.graph_preview_enabled,
+            preview_enabled: config.graf.preview_enabled,
             preview_content: None,
             preview_note_id: None,
             app_theme: crate::app_theme::AppThemeColors::from_config(&config.theme),
@@ -149,7 +149,7 @@ impl GrafAppState {
         let is_canvas = id.ends_with(".canvas");
         let is_clin = id.ends_with(".clin");
 
-        if config.preview_encryption && is_clin {
+        if config.list.preview_encryption && is_clin {
             self.preview_content = None;
             return;
         }
@@ -384,7 +384,7 @@ fn handle_event(
                     .split(full_area);
                 let content_area = outer[1];
                 let graph_area = if app_state.preview_enabled {
-                    let (constraints, main_idx) = match config.preview_position {
+                    let (constraints, main_idx) = match config.list.preview_position {
                         crate::config::PreviewPosition::Left => (
                             [
                                 ratatui::layout::Constraint::Ratio(43, 100),
@@ -603,7 +603,7 @@ fn run_search(app_state: &mut GrafAppState, config: &crate::config::ClinConfig) 
         app_state.search_results = crate::graf::graph::search_nodes(
             &guard.simulation,
             &app_state.search_query,
-            config.search.max_results,
+            config.graf.search.max_results,
         );
     }
     app_state.search_selected = 0;

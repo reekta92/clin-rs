@@ -5,12 +5,12 @@ use crate::config::ClinConfig;
 
 pub fn start_physics(
     state: Arc<RwLock<GraphState>>,
-    config: &ClinConfig,
+    _config: &ClinConfig,
     kill_rx: mpsc::Receiver<()>,
 ) {
-    let gravity = config.physics.gravity;
-    let timestep = config.physics.timestep;
-    let sleep_ms = config.physics.thread_sleep_ms;
+    let gravity = 0.01;
+    let timestep = 0.016;
+    let sleep_ms = 16;
 
     std::thread::spawn(move || {
         loop {

@@ -33,6 +33,7 @@ pub struct NoteSummary {
     pub tags: Vec<String>,
     pub pinned: bool,
     pub links: Vec<String>,
+    pub size_bytes: u64,
 }
 
 static WIKILINK_RE: Lazy<Regex> =
@@ -465,6 +466,7 @@ impl Storage {
                     tags: fm_val.tags.clone(),
                     pinned: fm_val.pinned,
                     links: fm_val.links.clone().unwrap_or_default(),
+                    size_bytes: path.metadata().map(|m| m.len()).unwrap_or(0),
                 });
             }
 
@@ -485,6 +487,7 @@ impl Storage {
                 tags,
                 pinned,
                 links,
+                size_bytes: path.metadata().map(|m| m.len()).unwrap_or(0),
             })
         } else {
             let content = fs::read_to_string(&path).unwrap_or_default();
@@ -519,6 +522,7 @@ impl Storage {
                 tags: fm.tags,
                 pinned: fm.pinned,
                 links,
+                size_bytes: path.metadata().map(|m| m.len()).unwrap_or(0),
             })
         }
     }

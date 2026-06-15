@@ -45,9 +45,9 @@ pub fn handle_graph_keys(
     } else if keybinds.matches_graph(GraphAction::PanRight, &key) {
         select_in_direction(&mut guard, 1.0, 0.0);
     } else if keybinds.matches_graph(GraphAction::ZoomIn, &key) {
-        guard.viewport.zoom_in(config.interaction.zoom_factor);
+        guard.viewport.zoom_in(config.graf.interaction.zoom_factor);
     } else if keybinds.matches_graph(GraphAction::ZoomOut, &key) {
-        guard.viewport.zoom_out(config.interaction.zoom_factor);
+        guard.viewport.zoom_out(config.graf.interaction.zoom_factor);
     } else if keybinds.matches_graph(GraphAction::OpenNote, &key) {
         if let Some(idx) = guard.selected_node
             && let Some(node) = guard.simulation.get_graph().node_weight(idx)
@@ -57,7 +57,7 @@ pub fn handle_graph_keys(
     } else if keybinds.matches_graph(GraphAction::AutoFit, &key) {
         let vp = guard.viewport.clone().auto_fit_from_graph(
             guard.simulation.get_graph(),
-            config.interaction.auto_fit_padding,
+            1.4,
         );
         guard.viewport = vp;
     } else if keybinds.matches_graph(GraphAction::Help, &key) {
@@ -99,7 +99,7 @@ pub fn handle_graph_mouse(
     mouse_state: &mut GraphMouseState,
     config: &ClinConfig,
 ) -> Option<GraphInputAction> {
-    let minimap_area = if config.visual.show_minimap {
+    let minimap_area = if config.graf.visual.show_minimap {
         Some(super::render::compute_minimap_area(area, config))
     } else {
         None
@@ -123,14 +123,14 @@ pub fn handle_graph_mouse(
                 return None;
             }
             let mut guard = state.write().unwrap_or_else(|e| e.into_inner());
-            guard.viewport.zoom_in(config.interaction.zoom_factor);
+            guard.viewport.zoom_in(config.graf.interaction.zoom_factor);
         }
         MouseEventKind::ScrollDown => {
             if !inside_area {
                 return None;
             }
             let mut guard = state.write().unwrap_or_else(|e| e.into_inner());
-            guard.viewport.zoom_out(config.interaction.zoom_factor);
+            guard.viewport.zoom_out(config.graf.interaction.zoom_factor);
         }
         MouseEventKind::Down(MouseButton::Left) => {
             if !inside_area {
@@ -164,7 +164,7 @@ pub fn handle_graph_mouse(
                 };
 
                 let is_double_click = mouse_state.last_click_time.is_some_and(|t| {
-                    t.elapsed().as_millis() < config.interaction.double_click_ms as u128
+                    t.elapsed().as_millis() < 300
                 });
 
                 if let Some(node_idx) = hit {
@@ -214,12 +214,12 @@ pub fn handle_graph_mouse(
                 let dx_col = -(mouse_event.column as f64 - orig_col as f64);
                 let dy_row = mouse_event.row as f64 - orig_row as f64;
                 let vp = &guard.viewport;
-                let world_dx = dx_col * config.interaction.drag_scale
+                let world_dx = dx_col * 200.0
                     / (vp.zoom * area.width as f64)
-                    * config.interaction.drag_sensitivity;
-                let world_dy = dy_row * config.interaction.drag_scale * CELL_ASPECT
+                    * config.graf.interaction.drag_sensitivity;
+                let world_dy = dy_row * 200.0 * CELL_ASPECT
                     / (vp.zoom * area.height as f64)
-                    * config.interaction.drag_sensitivity;
+                    * config.graf.interaction.drag_sensitivity;
                 guard.viewport.center_x += world_dx;
                 guard.viewport.center_y += world_dy;
                 mouse_state.drag_origin = Some((mouse_event.column, mouse_event.row));
