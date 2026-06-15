@@ -33,6 +33,7 @@
 
 #### General
 - [ ] **Consistent UI/UX** — literally hardest part of making a TUI, the UI/UX must be consistent accross the app
+- [ ] **More filtypes** — more text filetypes(`org-mode`, `.gv`, `.puml`, `.md` mermaid, `.dot`) support to edit/view
 
 #### Notes View
 - [ ] **Smart folders** — auto-move tagged notes to specific folders
@@ -56,6 +57,11 @@
 - [ ] **Connection properties** — more properties for connections between nodes; color, type, text etc.
 - [ ] **Node properties** — more properties for nodes like shapes(as tags), border type etc.
 - [ ] **New node types** — more node types like link nodes, image nodes etc.
+
+#### Draw
+- [ ] **Text size** — changable text size
+- [ ] **UI indicators** — indicators like how big is the canvas, the scale etc.
+- [ ] **Draw smoothing** — experimental draw smoothing using a algorithm to redraw the last drawed section
 
 #### Command Palette
 - [ ] **Sub-notes** — virtual encrypted notes attached to physical notes
