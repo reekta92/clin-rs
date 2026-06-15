@@ -25,9 +25,8 @@ use ratatui::{
     widgets::{Block, Borders, Padding, Paragraph, Wrap},
 };
 
-pub fn draw_dashboard(frame: &mut ratatui::Frame, state: &crate::backup::state::BackupState) {
+pub fn draw_dashboard(frame: &mut ratatui::Frame, state: &mut crate::backup::state::BackupState) {
     let area = frame.area();
-    let theme = &state.theme;
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -49,14 +48,12 @@ pub fn draw_dashboard(frame: &mut ratatui::Frame, state: &crate::backup::state::
                 .direction(Direction::Horizontal)
                 .constraints([
                     Constraint::Ratio(43, 100), // File list
-                    Constraint::Length(1),      // Separator
                     Constraint::Min(0),         // Diff pane
                 ])
                 .split(content_area);
 
             draw_content(frame, content_chunks[0], state);
-            crate::ui::draw_dim_vline(frame, content_chunks[1], theme.muted);
-            draw_diff_pane(frame, content_chunks[2], state);
+            draw_diff_pane(frame, content_chunks[1], state);
         } else {
             draw_content(frame, content_area, state);
         }
@@ -66,6 +63,7 @@ pub fn draw_dashboard(frame: &mut ratatui::Frame, state: &crate::backup::state::
     }
 
     let mut right_spans = Vec::new();
+    let theme = &state.theme;
     if let Some(status) = &state.status {
         right_spans.push(Span::styled(
             status.branch.clone(),
@@ -124,7 +122,7 @@ fn draw_header(frame: &mut Frame, area: Rect, state: &BackupState) {
     crate::ui::draw_view_title_bar_with_tabs(frame, area, "Backup", spans, theme);
 }
 
-fn draw_content(frame: &mut Frame, area: Rect, state: &BackupState) {
+fn draw_content(frame: &mut Frame, area: Rect, state: &mut BackupState) {
     let theme = &state.theme;
 
     if !state.settings.enabled || state.status.is_none() {
@@ -339,9 +337,10 @@ fn draw_content(frame: &mut Frame, area: Rect, state: &BackupState) {
         };
         frame.render_widget(Paragraph::new(msg.as_str()).style(style), flash_area);
     }
+    state.last_content_height = area.height;
 }
 
-fn draw_diff_pane(frame: &mut Frame, area: Rect, state: &BackupState) {
+fn draw_diff_pane(frame: &mut Frame, area: Rect, state: &mut BackupState) {
     let theme = &state.theme;
     let block = Block::default()
         .title(" Diff ")
@@ -379,6 +378,7 @@ fn draw_diff_pane(frame: &mut Frame, area: Rect, state: &BackupState) {
             .scroll((state.diff_scroll, 0));
         frame.render_widget(paragraph, area);
     }
+    state.last_diff_height = area.height;
 }
 
 fn draw_commit_popup(frame: &mut Frame, area: Rect, state: &BackupState) {

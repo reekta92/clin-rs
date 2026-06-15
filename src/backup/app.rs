@@ -37,7 +37,7 @@ pub fn run_backup_view(
 
     loop {
         state.last_area = Some(terminal.size()?.into());
-        terminal.draw(|frame| render::draw_dashboard(frame, &state))?;
+        terminal.draw(|frame| render::draw_dashboard(frame, &mut state))?;
 
         if event::poll(Duration::from_millis(100))? {
             match event::read()? {

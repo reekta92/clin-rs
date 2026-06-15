@@ -36,6 +36,10 @@ fn handle_normal_input(
         _ if keybinds.matches_backup(BackupAction::MoveDown, &event) => {
             if state.selected_section == BackupSection::History {
                 state.history_scroll = state.history_scroll.saturating_add(1);
+                let visible = state.last_content_height.saturating_sub(2).max(1) as usize;
+                let total = state.commits.len() + 1;
+                let max = total.saturating_sub(visible);
+                state.history_scroll = state.history_scroll.min(max as u16);
             } else if !state.selectable_files.is_empty() {
                 state.selected_index = (state.selected_index + 1) % state.selectable_files.len();
                 state.selected_file = Some(state.selectable_files[state.selected_index].clone());
