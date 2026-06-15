@@ -2,20 +2,21 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.8.12] - 2026-06-15
+
+### Miscellaneous
+
+- Cliff.toml changes
 ## [0.8.11] - 2026-06-15
-
-### Documentation
-
-- Update versions to v0.8.10
 
 ### Fixed
 
 - Dispatch-release appending wrong version number
+
+### Release
+
+- V0.8.11
 ## [0.8.10] - 2026-06-15
-
-### Documentation
-
-- Update versions to v0.8.9
 
 ### Fixed
 
@@ -29,7 +30,6 @@ All notable changes to clin are documented in this file.
 ### Documentation
 
 - Align MSRV references
-- Update versions to v0.8.8
 
 ### Fixed
 
@@ -48,10 +48,6 @@ All notable changes to clin are documented in this file.
 
 - Added toggle settings to the command palette
 - Improved the UI of the command pallette, added glyphs and categories
-
-### Documentation
-
-- Update versions to v0.8.7
 
 ### Fixed
 
