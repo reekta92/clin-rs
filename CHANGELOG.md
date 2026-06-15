@@ -2,6 +2,15 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.8.11] - 2026-06-15
+
+### Documentation
+
+- Update versions to v0.8.10
+
+### Fixed
+
+- Dispatch-release appending wrong version number
 ## [0.8.10] - 2026-06-15
 
 ### Documentation
@@ -11,6 +20,10 @@ All notable changes to clin are documented in this file.
 ### Fixed
 
 - Dispatch-release fix for appending wrong changelog
+
+### Release
+
+- V0.8.10
 ## [0.8.9] - 2026-06-14
 
 ### Documentation
