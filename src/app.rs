@@ -559,7 +559,7 @@ impl App {
                         });
                     }
                 }
-                // No CreateNew in grid view — create via keybind 'n'
+                visual.push(VisualItem::CreateNew { path: gf.clone(), depth: 0 });
             }
 
             self.list.visual_list = visual;

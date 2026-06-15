@@ -1565,7 +1565,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     (ic, col, s.title.clone())
                 }
                 crate::app::VisualItem::CreateNew { .. } => {
-                    ('\u{f067}', app.app_theme.success, "New".to_string())
+                    ('\u{f067}', app.app_theme.success, "Create...".to_string())
                 }
             };
 
