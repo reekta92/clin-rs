@@ -2,6 +2,15 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.8.10] - 2026-06-15
+
+### Documentation
+
+- Update versions to v0.8.9
+
+### Fixed
+
+- Dispatch-release fix for appending wrong changelog
 ## [0.8.9] - 2026-06-14
 
 ### Documentation
@@ -16,6 +25,10 @@ All notable changes to clin are documented in this file.
 ### Miscellaneous
 
 - Clippy and formatting
+
+### Release
+
+- V0.8.9
 ## [0.8.8] - 2026-06-14
 
 ### Added
