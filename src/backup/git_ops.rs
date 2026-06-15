@@ -94,6 +94,15 @@ impl GitOps {
         Ok(())
     }
 
+    pub fn add_paths(&self, paths: &[String]) -> Result<()> {
+        let mut index = self.repo.index()?;
+        for p in paths {
+            index.add_path(std::path::Path::new(p))?;
+        }
+        index.write()?;
+        Ok(())
+    }
+
     pub fn commit(&self, message: &str) -> Result<Oid> {
         let mut index = self.repo.index()?;
         let tree_id = index.write_tree()?;

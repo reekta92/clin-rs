@@ -358,6 +358,7 @@ pub enum BackupAction {
     CancelCommit,
     ConfirmCommit,
     CloseSettings,
+    ToggleFileSelect,
     NextField,
     PrevField,
     ActivateField,
@@ -978,6 +979,10 @@ impl Default for Keybinds {
         backup.insert(
             BackupAction::OpenSettings,
             vec![KeyCombo::ctrl(KeyCode::Char('p'))],
+        );
+        backup.insert(
+            BackupAction::ToggleFileSelect,
+            vec![KeyCombo::simple(KeyCode::Char(' '))],
         );
         backup.insert(
             BackupAction::CycleSection,

@@ -83,6 +83,21 @@ fn handle_normal_input(
                 BackupSection::History => BackupSection::Status,
             };
         }
+        _ if keybinds.matches_backup(BackupAction::ToggleFileSelect, &event) => {
+            if state.selected_section == BackupSection::Status {
+                if let Some(file) = state.selected_file.clone() {
+                    // only meaningful for unstaged/untracked files
+                    let is_unstaged = state.status.as_ref().map_or(false, |s| {
+                        s.unstaged.iter().any(|f| f.path == file) || s.untracked.iter().any(|p| *p == file)
+                    });
+                    if is_unstaged {
+                        if !state.selected_for_commit.remove(&file) {
+                            state.selected_for_commit.insert(file);
+                        }
+                    }
+                }
+            }
+        }
         _ => {}
     }
     InputResult::None
@@ -376,7 +391,13 @@ fn handle_settings_mouse(state: &mut BackupState, event: MouseEvent) -> InputRes
 impl BackupState {
     fn do_commit(&mut self, message: &str) {
         if let Ok(git_ops) = GitOps::init(&self.vault_path) {
-            match git_ops.add_all().and_then(|_| git_ops.commit(message)) {
+            let paths: Vec<String> = self.selected_for_commit.iter().cloned().collect();
+            let res = if paths.is_empty() {
+                git_ops.commit(message)            // commit already-staged only
+            } else {
+                git_ops.add_paths(&paths).and_then(|_| git_ops.commit(message))
+            };
+            match res {
                 Ok(_) => self.status_message = Some("Commit successful".to_string()),
                 Err(e) => self.status_message = Some(format!("Error: {e}")),
             }

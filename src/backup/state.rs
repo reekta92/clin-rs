@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use crate::app_theme::AppThemeColors;
 use crate::backup::git_ops::{CommitInfo, FileDiff, GitOps, GitStatus};
 use crate::config::BackupConfig;
@@ -20,6 +21,7 @@ pub struct BackupState {
     pub settings_open: bool,
     pub settings: BackupSettingsState,
     pub selectable_files: Vec<String>,
+    pub selected_for_commit: HashSet<String>,
     pub theme: AppThemeColors,
     pub selected_file: Option<String>,
     pub diff_lines: Vec<String>,
@@ -134,6 +136,7 @@ impl BackupState {
             footer_hint: String::new(),
             settings,
             theme,
+            selected_for_commit: HashSet::new(),
         };
 
         state.refresh_git_info();
@@ -169,6 +172,11 @@ impl BackupState {
                 }
             }
             self.selectable_files = files;
+            self.selected_for_commit = self.status.as_ref().map(|s| {
+                s.unstaged.iter().map(|f| f.path.clone())
+                    .chain(s.untracked.iter().cloned())
+                    .collect()
+            }).unwrap_or_default();
 
             if self.selected_file.is_none() && !self.selectable_files.is_empty() {
                 self.selected_file = Some(self.selectable_files[0].clone());
