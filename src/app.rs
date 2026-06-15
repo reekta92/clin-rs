@@ -3902,6 +3902,13 @@ template = """
         // #1: entering grid always opens the Vault tab (grid_folder == "")
         self.list.grid_folder = String::new();
         self.refresh_visual_list();
+        // #2: persist
+        if let Ok(mut config) = crate::config::ClinConfig::load() {
+            config.visual.notes_layout = self.list.notes_layout.clone();
+            if let Err(e) = config.save() {
+                self.set_temporary_status(&format!("Failed to save config: {e}"));
+            }
+        }
     }
 
     pub fn reload_theme(&mut self) {
