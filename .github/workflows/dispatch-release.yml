@@ -197,7 +197,37 @@ jobs:
         run: gh release upload "$TAG" dist/* --clobber
 
   # ────────────────────────────────────────────
-  # 4. Build .deb and .rpm
+  # 4. Build macOS ARM (Apple Silicon) binary
+  # ────────────────────────────────────────────
+  macos-arm:
+    needs: prepare
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: "v${{ needs.prepare.outputs.new_version }}"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --release --locked --target aarch64-apple-darwin
+      - name: Smoke test
+        run: ./target/aarch64-apple-darwin/release/clin -h
+      - name: Package
+        run: |
+          mkdir -p dist
+          cp target/aarch64-apple-darwin/release/clin .
+          tar -cJf "dist/clin-rs-aarch64-apple-darwin.tar.xz" clin LICENSE README.md
+          tar -czf "dist/clin-rs-aarch64-apple-darwin.tar.gz" clin LICENSE README.md
+      - name: Upload
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: "v${{ needs.prepare.outputs.new_version }}"
+        run: gh release upload "$TAG" dist/* --clobber
+
+  # ────────────────────────────────────────────
+  # 5. Build .deb and .rpm
   # ────────────────────────────────────────────
   linux-packages:
     needs: prepare
@@ -225,7 +255,7 @@ jobs:
         run: gh release upload "$TAG" target/debian/*.deb target/generate-rpm/*.rpm --clobber
 
   # ────────────────────────────────────────────
-  # 5. Build AppImage
+  # 6. Build AppImage
   # ────────────────────────────────────────────
   appimage:
     needs: prepare
@@ -265,7 +295,7 @@ jobs:
 
 
   # ────────────────────────────────────────────
-  # 6. Build Nix package
+  # 7. Build Nix package
   # ────────────────────────────────────────────
   nix:
     needs: prepare
@@ -281,7 +311,7 @@ jobs:
         run: nix build .#default
 
   # ────────────────────────────────────────────
-  # 7. Publish AUR package
+  # 8. Publish AUR package
   # ────────────────────────────────────────────
   aur:
     needs: [prepare, linux-packages, linux-x86_64]
@@ -332,7 +362,7 @@ jobs:
 
 
   # ────────────────────────────────────────────
-  # 8. Publish to crates.io
+  # 9. Publish to crates.io
   # ────────────────────────────────────────────
   crates-io:
     needs: prepare
@@ -353,7 +383,7 @@ jobs:
 
 
   # ────────────────────────────────────────────
-  # 9. Update README + PKGBUILD in main
+  # 10. Update README + PKGBUILD in main
   # ────────────────────────────────────────────
   post-release:
     needs: [prepare, linux-packages, appimage, linux-x86_64, nix]
