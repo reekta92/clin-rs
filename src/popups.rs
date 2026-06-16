@@ -247,4 +247,3 @@ impl PopupManager {
         self.trash_view = None;
     }
 }
-

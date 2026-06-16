@@ -1282,10 +1282,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         } else {
             (popup.suggestions.len() as u16).clamp(1, 5)
         };
-        let popup_area = crate::ui::centered_rect(
-            crate::ui::PopupSize::Large,
-            terminal_area,
-        );
+        let popup_area = crate::ui::centered_rect(crate::ui::PopupSize::Large, terminal_area);
         if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
             && !contains_cell(popup_area, mouse_event.column, mouse_event.row)
         {
@@ -1399,10 +1396,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
     }
 
     if let Some(mut palette) = app.command_palette.take() {
-        let popup_area = crate::ui::centered_rect(
-            crate::ui::PopupSize::Large,
-            terminal_area,
-        );
+        let popup_area = crate::ui::centered_rect(crate::ui::PopupSize::Large, terminal_area);
         let content = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Min(1), Constraint::Length(1)])
@@ -1495,10 +1489,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
     }
 
     if app.popups.template.is_some() {
-        let popup_area = crate::ui::centered_rect(
-            crate::ui::PopupSize::Large,
-            terminal_area,
-        );
+        let popup_area = crate::ui::centered_rect(crate::ui::PopupSize::Large, terminal_area);
         if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
             && !contains_cell(popup_area, mouse_event.column, mouse_event.row)
         {
@@ -1508,10 +1499,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
     }
 
     if let Some(popup) = &mut app.popups.template {
-        let popup_area = crate::ui::centered_rect(
-            crate::ui::PopupSize::Large,
-            terminal_area,
-        );
+        let popup_area = crate::ui::centered_rect(crate::ui::PopupSize::Large, terminal_area);
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -1563,10 +1551,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
     }
 
     if app.popups.folder_picker.is_some() {
-        let popup_area = crate::ui::centered_rect(
-            crate::ui::PopupSize::Large,
-            terminal_area,
-        );
+        let popup_area = crate::ui::centered_rect(crate::ui::PopupSize::Large, terminal_area);
         if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
             && !contains_cell(popup_area, mouse_event.column, mouse_event.row)
         {
@@ -1576,10 +1561,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
     }
 
     if let Some(picker) = &mut app.popups.folder_picker {
-        let popup_area = crate::ui::centered_rect(
-            crate::ui::PopupSize::Large,
-            terminal_area,
-        );
+        let popup_area = crate::ui::centered_rect(crate::ui::PopupSize::Large, terminal_area);
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(3), Constraint::Min(1)])
@@ -1627,10 +1609,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
     }
 
     if app.popups.search.is_some() {
-        let popup_area = crate::ui::centered_rect(
-            crate::ui::PopupSize::Large,
-            terminal_area,
-        );
+        let popup_area = crate::ui::centered_rect(crate::ui::PopupSize::Large, terminal_area);
         if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
             && !contains_cell(popup_area, mouse_event.column, mouse_event.row)
         {
@@ -1640,10 +1619,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
     }
 
     if let Some(popup) = &mut app.popups.search {
-        let popup_area = crate::ui::centered_rect(
-            crate::ui::PopupSize::Large,
-            terminal_area,
-        );
+        let popup_area = crate::ui::centered_rect(crate::ui::PopupSize::Large, terminal_area);
         let has_filter = popup.focus != crate::popups::SearchFocus::Input
             || !popup.input.lines().join("").trim().is_empty();
         let constraints = if has_filter {

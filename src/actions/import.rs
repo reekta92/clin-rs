@@ -144,7 +144,6 @@ impl Action for ImportAction {
     }
 }
 
-
 fn extract_html_title(html: &str) -> Option<String> {
     let mut cursor = 0;
     while let Some(start_bracket) = html[cursor..].find('<') {
@@ -153,7 +152,8 @@ fn extract_html_title(html: &str) -> Option<String> {
 
         if rest.len() >= 6 && rest[..6].eq_ignore_ascii_case("<title") {
             let next_char = rest.as_bytes().get(6);
-            if (next_char.is_none() || matches!(next_char, Some(b' ' | b'>' | b'\t' | b'\r' | b'\n')))
+            if (next_char.is_none()
+                || matches!(next_char, Some(b' ' | b'>' | b'\t' | b'\r' | b'\n')))
                 && let Some(tag_end_offset) = rest.find('>')
             {
                 let after_tag_start = absolute_start + tag_end_offset + 1;

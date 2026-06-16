@@ -21,7 +21,6 @@ pub enum PopupSize {
     Confirm, // 50% width. Fixed 12 height. Max bounds: 80 cols wide
 }
 
-
 fn split_lock_spans(text: &str, theme: &AppThemeColors) -> Vec<Span<'static>> {
     let mut result = Vec::new();
     let mut last = 0;
@@ -2056,7 +2055,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 Block::default()
                     .style(app.app_theme.bg_style())
                     .borders(Borders::ALL)
-                    .border_style(all_tags_border)
+                    .border_style(all_tags_border),
             )
             .highlight_style(
                 Style::default()
@@ -3639,8 +3638,14 @@ pub fn draw_confirm_popup(
     area: Rect,
     theme: &crate::app_theme::AppThemeColors,
 ) {
-    let inner =
-        draw_confirm_popup_frame(frame, area, "CONFIRM", PopupSize::Confirm, popup.is_destructive, theme);
+    let inner = draw_confirm_popup_frame(
+        frame,
+        area,
+        "CONFIRM",
+        PopupSize::Confirm,
+        popup.is_destructive,
+        theme,
+    );
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -3700,7 +3705,6 @@ pub fn draw_confirm_popup(
     let buttons_para = Paragraph::new(buttons).alignment(Alignment::Center);
     frame.render_widget(buttons_para, chunks[3]);
 }
-
 
 pub fn draw_dim_vline(frame: &mut Frame, area: Rect, color: Color) {
     let buf = frame.buffer_mut();

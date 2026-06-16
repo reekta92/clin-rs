@@ -2162,7 +2162,9 @@ template = """
                 .unwrap_or("");
 
             if ext != "md" && ext != "txt" && ext != "clin" {
-                self.set_temporary_status_static("Tagging is only supported for .md, .txt, and .clin files");
+                self.set_temporary_status_static(
+                    "Tagging is only supported for .md, .txt, and .clin files",
+                );
                 return;
             }
 
@@ -2205,12 +2207,13 @@ template = """
                 .unwrap_or("");
 
             if ext != "md" && ext != "txt" && ext != "clin" {
-                self.set_temporary_status_static("Tagging is only supported for .md, .txt, and .clin files");
+                self.set_temporary_status_static(
+                    "Tagging is only supported for .md, .txt, and .clin files",
+                );
                 return;
             }
 
             if let Ok(mut note) = self.storage.load_note(&popup.note_id) {
-
                 note.tags = tags;
                 if let Err(e) = self.storage.save_note(&popup.note_id, &note) {
                     self.set_temporary_status(&format!("Failed to save tags: {e}"));
@@ -2395,7 +2398,6 @@ template = """
                 }
 
                 if let Ok(mut loaded) = self.storage.load_note(&note_id) {
-
                     if !loaded.tags.contains(&tag) {
                         loaded.tags.push(tag.clone());
                     }
@@ -2408,7 +2410,6 @@ template = """
                 }
             }
         }
-
 
         self.list.selected_indices.clear();
         self.list.list_mode = crate::list_view::ListMode::Normal;

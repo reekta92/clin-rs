@@ -34,7 +34,6 @@ pub struct NoteSummary {
     pub size_bytes: u64,
 }
 
-
 pub fn extract_wikilinks(content: &str) -> Vec<String> {
     let mut links = Vec::new();
     let mut cursor = 0;
