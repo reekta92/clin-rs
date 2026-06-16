@@ -1,0 +1,33 @@
+name: Manual macOS DMG Upload
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to attach DMG to (e.g. v0.8.15)"
+        required: true
+
+jobs:
+  macos-dmg:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --release --locked --target aarch64-apple-darwin
+      - name: Package
+        run: |
+          mkdir -p dist dmg_root
+          cp target/aarch64-apple-darwin/release/clin dmg_root/
+          cp LICENSE README.md dmg_root/
+          hdiutil create -volname "clin" -srcfolder dmg_root -ov -format UDZO "dist/clin-rs-aarch64-apple-darwin.dmg"
+      - name: Upload
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
+        run: gh release upload "$TAG" dist/clin-rs-aarch64-apple-darwin.dmg --clobber
