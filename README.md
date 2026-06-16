@@ -9,7 +9,6 @@
 [![Release](https://github.com/reekta92/clin-rs/actions/workflows/dispatch-release.yml/badge.svg)](https://github.com/reekta92/clin-rs/actions/workflows/dispatch-release.yml)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
 [![MSRV: 1.88.0](https://img.shields.io/badge/MSRV-1.88.0-orange.svg)](https://blog.rust-lang.org/2025/06/26/Rust-1.88.0/)
-<a href="https://terminaltrove.com/" title="This tool is Tool of The Week on Terminal Trove, The $HOME of all things in the terminal"><img src="https://cdn.terminaltrove.com/media/badges/tool_of_the_week/svg/terminal_trove_tool_of_the_week_green_on_dark_grey_bg.svg" alt="Terminal Trove Tool of The Week" height="20" /></a>
 
 <a href="https://terminaltrove.com/clin" title="This tool is Tool of The Week on Terminal Trove, The $HOME of all things in the terminal"><img src="https://cdn.terminaltrove.com/media/badges/tool_of_the_week/svg/terminal_trove_tool_of_the_week_green_on_dark_grey_bg.svg" alt="Terminal Trove Tool of The Week" height="60" /></a>
 
