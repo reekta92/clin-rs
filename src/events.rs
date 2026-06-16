@@ -1184,7 +1184,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         return;
     }
     if let Some(mut popup) = app.popups.note_rename.take() {
-        let area = crate::ui::centered_rect(50, 10, terminal_area);
+        let area = crate::ui::centered_rect(50, 12, terminal_area);
         if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
             && !contains_cell(area, mouse_event.column, mouse_event.row)
         {
@@ -1207,7 +1207,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
     }
 
     if let Some((mut popup, format)) = app.popups.create_note.take() {
-        let area = crate::ui::centered_rect(50, 10, terminal_area);
+        let area = crate::ui::centered_rect(50, 12, terminal_area);
         if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
             && !contains_cell(area, mouse_event.column, mouse_event.row)
         {

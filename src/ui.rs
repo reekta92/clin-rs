@@ -2249,7 +2249,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             area,
             "RENAME",
             50,
-            10,
+            12,
             "Enter rename · Esc cancel",
             &app.app_theme,
         );
@@ -2275,7 +2275,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             area,
             title,
             50,
-            10,
+            12,
             "Enter create · Esc cancel",
             &app.app_theme,
         );
