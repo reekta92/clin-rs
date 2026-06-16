@@ -34,6 +34,7 @@ pub struct GrafAppState {
     pub preview_content: Option<PreviewContent>,
     pub preview_note_id: Option<String>,
     pub app_theme: crate::app_theme::AppThemeColors,
+    pub keybinds: Keybinds,
 }
 
 impl Drop for GrafAppState {
@@ -47,6 +48,7 @@ impl GrafAppState {
         config: &ClinConfig,
         storage: Storage,
         config_errors: Vec<String>,
+        keybinds: Keybinds,
     ) -> anyhow::Result<Self> {
         let graph_state = crate::graf::graph::GraphState::new(&storage, config)?;
         let state = Arc::new(RwLock::new(graph_state));
@@ -75,6 +77,7 @@ impl GrafAppState {
             preview_content: None,
             preview_note_id: None,
             app_theme: crate::app_theme::AppThemeColors::from_config(&config.theme),
+            keybinds,
         })
     }
 
@@ -228,59 +231,68 @@ pub enum GrafResult {
     OpenHelp,
 }
 
+impl crate::overlay::OverlayView<GrafResult> for GrafAppState {
+    fn update(&mut self, config: &mut crate::config::ClinConfig) {
+        self.sync_preview(config);
+        let _ = self.poll_renderers();
+    }
+
+    fn render(
+        &mut self,
+        frame: &mut ratatui::Frame,
+        area: ratatui::layout::Rect,
+        _theme: &crate::app_theme::AppThemeColors,
+        config: &crate::config::ClinConfig,
+    ) {
+        crate::graf::ui::draw_ui(frame, self, config, area);
+    }
+
+    fn handle_event(
+        &mut self,
+        event: crossterm::event::Event,
+        terminal: &ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
+        config: &mut crate::config::ClinConfig,
+    ) -> anyhow::Result<Option<GrafResult>> {
+        let keybinds = self.keybinds.clone();
+        if let Some(action) = handle_event(event, self, config, &keybinds, terminal)? {
+            match action {
+                EventAction::Quit => {
+                    self.shutdown();
+                    return Ok(Some(GrafResult::Quit));
+                }
+                EventAction::OpenFile(id) => {
+                    self.shutdown();
+                    return Ok(Some(GrafResult::NoteOpened(id)));
+                }
+                EventAction::OpenHelp => {
+                    self.shutdown();
+                    return Ok(Some(GrafResult::OpenHelp));
+                }
+            }
+        }
+        Ok(None)
+    }
+
+    fn title(&self) -> String {
+        "Graph".to_string()
+    }
+}
+
 pub fn run_graf_view(
     terminal: &mut ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
     storage: crate::storage::Storage,
     config: &mut crate::config::ClinConfig,
     keybinds: &Keybinds,
 ) -> anyhow::Result<GrafResult> {
-    let mut app_state = GrafAppState::new(config, storage, vec![])?;
-    let mut running = true;
-    let mut result = GrafResult::Quit;
-
-    while running {
-        app_state.sync_preview(config);
-        let _ = app_state.poll_renderers();
-
-        terminal.draw(|frame| {
-            crate::graf::ui::draw_ui(frame, &app_state, config, keybinds);
-        })?;
-
-        if crossterm::event::poll(std::time::Duration::from_millis(16))? {
-            loop {
-                let ev = crossterm::event::read()?;
-                if let crossterm::event::Event::Resize(_, _) = ev {
-                    terminal.autoresize()?;
-                    let _ = terminal.clear();
-                }
-                if let Some(action) = handle_event(ev, &mut app_state, config, keybinds, terminal)?
-                {
-                    match action {
-                        EventAction::Quit => {
-                            app_state.shutdown();
-                            result = GrafResult::Quit;
-                            running = false;
-                        }
-                        EventAction::OpenFile(id) => {
-                            app_state.shutdown();
-                            result = GrafResult::NoteOpened(id);
-                            running = false;
-                        }
-                        EventAction::OpenHelp => {
-                            app_state.shutdown();
-                            result = GrafResult::OpenHelp;
-                            running = false;
-                        }
-                    }
-                }
-
-                if !running || !crossterm::event::poll(std::time::Duration::from_millis(0))? {
-                    break;
-                }
-            }
-        }
-    }
-    Ok(result)
+    let mut app_state = GrafAppState::new(config, storage, vec![], keybinds.clone())?;
+    let theme = crate::app_theme::AppThemeColors::from_config(&config.theme);
+    crate::overlay::run_overlay(
+        terminal,
+        &mut app_state,
+        config,
+        &theme,
+        std::time::Duration::from_millis(16),
+    )
 }
 
 fn handle_event(

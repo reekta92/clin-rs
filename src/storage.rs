@@ -384,7 +384,6 @@ impl Storage {
     }
 
     pub fn list_note_ids(&self) -> Result<Vec<String>> {
-
         let mut ids = Vec::new();
         let mut dirs_to_visit = vec![self.notes_dir.clone()];
 
@@ -1092,13 +1091,29 @@ mod tests {
             key: [0u8; 32],
         };
 
-        let id = storage.save_note("test_note.clin", &Note { title: "T1".to_string(), content: "Content 1".to_string(), updated_at: 1, tags: vec![] })?;
+        let id = storage.save_note(
+            "test_note.clin",
+            &Note {
+                title: "T1".to_string(),
+                content: "Content 1".to_string(),
+                updated_at: 1,
+                tags: vec![],
+            },
+        )?;
         let mt1 = storage.note_mtime_millis(&id);
         assert!(mt1 > 0);
 
         std::thread::sleep(std::time::Duration::from_millis(20));
 
-        let id = storage.save_note(&id, &Note { title: "T1".to_string(), content: "Content 2".to_string(), updated_at: 2, tags: vec![] })?;
+        let id = storage.save_note(
+            &id,
+            &Note {
+                title: "T1".to_string(),
+                content: "Content 2".to_string(),
+                updated_at: 2,
+                tags: vec![],
+            },
+        )?;
         let mt2 = storage.note_mtime_millis(&id);
         assert!(mt2 > mt1);
 

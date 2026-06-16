@@ -381,7 +381,6 @@ impl App {
         self.config = crate::config::ClinConfig::load().unwrap_or_default();
     }
 
-
     fn is_virtual_pinned_path(path: &str) -> bool {
         path == VIRTUAL_PINNED_PATH
     }
@@ -392,7 +391,9 @@ impl App {
 
         for id in &ids {
             let mt = self.storage.note_mtime_millis(id);
-            if self.summary_mtime.get(id) == Some(&mt) && let Some(s) = self.summary_cache.get(id) {
+            if self.summary_mtime.get(id) == Some(&mt)
+                && let Some(s) = self.summary_cache.get(id)
+            {
                 summaries.push(s.clone());
                 continue;
             }
@@ -1785,7 +1786,8 @@ template = """
         match self.storage.trash_folder(&path) {
             Ok(()) => {
                 self.list.folder_cache = None;
-                self.list.folder_expanded
+                self.list
+                    .folder_expanded
                     .retain(|p| p != &path && !p.starts_with(&format!("{path}/")));
                 if let Err(e) = self.refresh_notes() {
                     self.set_temporary_status(&format!("Refresh failed: {e}"));
@@ -2487,7 +2489,9 @@ template = """
             self.list.visual_list.get(self.list.visual_index)
         {
             let path = self.storage.note_path(&self.notes[*summary_idx].id);
-            if let Ok(state) = crate::pinstar::state::PinstarState::load(&path) {
+            if let Ok(state) =
+                crate::pinstar::state::PinstarState::load(&path, self.keybinds.clone())
+            {
                 self.canvas_state = Some(state);
                 self.return_mode = Some(self.mode);
                 self.mode = ViewMode::Canvas;
@@ -2641,24 +2645,10 @@ template = """
                 .borders(ratatui::widgets::Borders::ALL)
                 .title("New Text File Name - Esc to cancel, Enter to create"),
         );
-        self.popups.text_create = Some(crate::popups::NoteCreatePopup { folder, input });
-    }
-    pub fn confirm_create_text(&mut self) {
-        if let Some(popup) = self.popups.text_create.take() {
-            let mut title = popup.input.lines().join("");
-            title = title.trim().to_string();
-            if title.is_empty() {
-                title = String::from("Untitled text");
-            }
-            let mut id = self.storage.new_note_id();
-            id.push_str(".txt");
-            let full_id = if popup.folder.is_empty() {
-                id
-            } else {
-                format!("{}/{}", popup.folder, id)
-            };
-            self.enter_edit_mode(full_id, title, String::new());
-        }
+        self.popups.create_note = Some((
+            crate::popups::NoteCreatePopup { folder, input },
+            crate::popups::NoteFormat::PlainText,
+        ));
     }
 
     pub fn begin_create_note_in_folder(&mut self, folder: String) {
@@ -2675,17 +2665,85 @@ template = """
                 .borders(ratatui::widgets::Borders::ALL)
                 .title("New Note Name - Esc to cancel, Enter to create"),
         );
-        self.popups.note_create = Some(NoteCreatePopup { folder, input });
+        self.popups.create_note = Some((
+            NoteCreatePopup { folder, input },
+            crate::popups::NoteFormat::Markdown,
+        ));
     }
 
     pub fn confirm_create_note(&mut self) {
-        if let Some(popup) = self.popups.note_create.take() {
+        if let Some((popup, format)) = self.popups.create_note.take() {
             let mut title = popup.input.lines().join("");
             title = title.trim().to_string();
-            if title.is_empty() {
-                title = String::from("Untitled note");
+            match format {
+                crate::popups::NoteFormat::Markdown => {
+                    if title.is_empty() {
+                        title = String::from("Untitled note");
+                    }
+                    self.start_new_note_with_title(popup.folder, title);
+                }
+                crate::popups::NoteFormat::PlainText => {
+                    if title.is_empty() {
+                        title = String::from("Untitled text");
+                    }
+                    let mut id = self.storage.new_note_id();
+                    id.push_str(".txt");
+                    let full_id = if popup.folder.is_empty() {
+                        id
+                    } else {
+                        format!("{}/{}", popup.folder, id)
+                    };
+                    self.enter_edit_mode(full_id, title, String::new());
+                }
+                crate::popups::NoteFormat::Draw => {
+                    if title.is_empty() {
+                        title = String::from("Untitled drawing");
+                    }
+                    let canvas_id = if popup.folder.is_empty() {
+                        format!("{title}.draw")
+                    } else {
+                        format!("{}/{}.draw", popup.folder, title)
+                    };
+                    self.return_mode = Some(self.mode);
+                    self.mode = ViewMode::Draw;
+                    self.editor.editing_id = Some(canvas_id);
+                }
+                crate::popups::NoteFormat::Canvas => {
+                    if title.is_empty() {
+                        title = String::from("Untitled canvas");
+                    }
+                    let canvas_id = if popup.folder.is_empty() {
+                        format!("{title}.canvas")
+                    } else {
+                        format!("{}/{}.canvas", popup.folder, title)
+                    };
+                    let path = self.storage.note_path(&canvas_id);
+                    if !path.exists() {
+                        if let Some(parent) = path.parent() {
+                            let _ = std::fs::create_dir_all(parent);
+                        }
+                        let data = crate::pinstar::data::CanvasData {
+                            nodes: vec![],
+                            edges: vec![],
+                        };
+                        if let Ok(content) = serde_json::to_string_pretty(&data)
+                            && let Err(e) = std::fs::write(&path, content)
+                        {
+                            self.set_temporary_status(&format!("Failed to write canvas file: {e}"));
+                            return;
+                        }
+                    }
+                    self.return_mode = Some(self.mode);
+                    self.mode = ViewMode::Canvas;
+                    self.editor.editing_id = Some(canvas_id);
+                    if let Ok(state) =
+                        crate::pinstar::state::PinstarState::load(&path, self.keybinds.clone())
+                    {
+                        self.canvas_state = Some(state);
+                    }
+                    self.set_default_status();
+                }
             }
-            self.start_new_note_with_title(popup.folder, title);
         }
     }
     pub fn begin_import(
@@ -2856,28 +2914,10 @@ template = """
                 .borders(ratatui::widgets::Borders::ALL)
                 .title("New Drawing Name - Esc to cancel, Enter to create"),
         );
-        self.popups.draw_create = Some(crate::popups::NoteCreatePopup { folder, input });
-    }
-
-    pub fn confirm_create_draw(&mut self) {
-        if let Some(popup) = self.popups.draw_create.take() {
-            let mut title = popup.input.lines().join("");
-            title = title.trim().to_string();
-            if title.is_empty() {
-                title = String::from("Untitled drawing");
-            }
-
-            let canvas_id = if popup.folder.is_empty() {
-                format!("{title}.draw")
-            } else {
-                format!("{}/{}.draw", popup.folder, title)
-            };
-
-            self.return_mode = Some(self.mode);
-            self.mode = ViewMode::Draw;
-
-            self.editor.editing_id = Some(canvas_id);
-        }
+        self.popups.create_note = Some((
+            crate::popups::NoteCreatePopup { folder, input },
+            crate::popups::NoteFormat::Draw,
+        ));
     }
 
     pub fn begin_create_canvas(&mut self) {
@@ -2903,50 +2943,11 @@ template = """
                 .borders(ratatui::widgets::Borders::ALL)
                 .title("New Canvas Name - Esc to cancel, Enter to create"),
         );
-        self.popups.canvas_create = Some(crate::popups::NoteCreatePopup { folder, input });
+        self.popups.create_note = Some((
+            crate::popups::NoteCreatePopup { folder, input },
+            crate::popups::NoteFormat::Canvas,
+        ));
     }
-
-    pub fn confirm_create_canvas(&mut self) {
-        if let Some(popup) = self.popups.canvas_create.take() {
-            let mut title = popup.input.lines().join("");
-            title = title.trim().to_string();
-            if title.is_empty() {
-                title = String::from("Untitled canvas");
-            }
-
-            let canvas_id = if popup.folder.is_empty() {
-                format!("{title}.canvas")
-            } else {
-                format!("{}/{}.canvas", popup.folder, title)
-            };
-
-            let path = self.storage.note_path(&canvas_id);
-            if !path.exists() {
-                if let Some(parent) = path.parent() {
-                    let _ = std::fs::create_dir_all(parent);
-                }
-                let data = crate::pinstar::data::CanvasData {
-                    nodes: vec![],
-                    edges: vec![],
-                };
-                if let Ok(content) = serde_json::to_string_pretty(&data)
-                    && let Err(e) = std::fs::write(&path, content)
-                {
-                    self.set_temporary_status(&format!("Failed to write canvas file: {e}"));
-                    return;
-                }
-            }
-
-            self.return_mode = Some(self.mode);
-            self.mode = ViewMode::Canvas;
-            self.editor.editing_id = Some(canvas_id);
-            if let Ok(state) = crate::pinstar::state::PinstarState::load(&path) {
-                self.canvas_state = Some(state);
-            }
-            self.set_default_status();
-        }
-    }
-
     pub fn begin_rename_note(&mut self) {
         if let Some(VisualItem::Note { summary_idx, .. }) =
             self.list.visual_list.get(self.list.visual_index)

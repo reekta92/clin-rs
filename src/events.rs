@@ -8,6 +8,17 @@ use ratatui::layout::Margin;
 use ratatui::prelude::*;
 use ratatui_textarea::*;
 
+pub fn handle_popup_text_input(
+    key: KeyEvent,
+    input: &mut TextArea<'static>,
+    keybinds: &Keybinds,
+) -> bool {
+    if !apply_text_shortcuts(keybinds, input, key) {
+        input.input(Input::from(key));
+    }
+    true
+}
+
 pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     if let Some(mut palette) = app.command_palette.take() {
         if palette.handle_input(key, app) {
@@ -28,62 +39,20 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
-    if let Some(mut popup) = app.popups.note_create.take() {
+    if app.popups.has_any() && key.code == KeyCode::Esc {
+        app.popups.clear_all();
+        return false;
+    }
+
+    if let Some((mut popup, format)) = app.popups.create_note.take() {
         if key.code == KeyCode::Esc {
-            app.popups.note_create = None;
+            app.popups.create_note = None;
         } else if app.keybinds.matches_list(ListAction::Confirm, &key) {
-            app.popups.note_create = Some(popup);
+            app.popups.create_note = Some((popup, format));
             app.confirm_create_note();
         } else {
-            if !apply_text_shortcuts(&app.keybinds, &mut popup.input, key) {
-                popup.input.input(Input::from(key));
-            }
-            app.popups.note_create = Some(popup);
-        }
-        return false;
-    }
-
-    if let Some(mut popup) = app.popups.text_create.take() {
-        if key.code == KeyCode::Esc {
-            app.popups.text_create = None;
-        } else if app.keybinds.matches_list(ListAction::Confirm, &key) {
-            app.popups.text_create = Some(popup);
-            app.confirm_create_text();
-        } else {
-            if !apply_text_shortcuts(&app.keybinds, &mut popup.input, key) {
-                popup.input.input(Input::from(key));
-            }
-            app.popups.text_create = Some(popup);
-        }
-        return false;
-    }
-
-    if let Some(mut popup) = app.popups.draw_create.take() {
-        if key.code == KeyCode::Esc {
-            app.popups.draw_create = None;
-        } else if app.keybinds.matches_list(ListAction::Confirm, &key) {
-            app.popups.draw_create = Some(popup);
-            app.confirm_create_draw();
-        } else {
-            if !apply_text_shortcuts(&app.keybinds, &mut popup.input, key) {
-                popup.input.input(Input::from(key));
-            }
-            app.popups.draw_create = Some(popup);
-        }
-        return false;
-    }
-
-    if let Some(mut popup) = app.popups.canvas_create.take() {
-        if key.code == KeyCode::Esc {
-            app.popups.canvas_create = None;
-        } else if app.keybinds.matches_list(ListAction::Confirm, &key) {
-            app.popups.canvas_create = Some(popup);
-            app.confirm_create_canvas();
-        } else {
-            if !apply_text_shortcuts(&app.keybinds, &mut popup.input, key) {
-                popup.input.input(Input::from(key));
-            }
-            app.popups.canvas_create = Some(popup);
+            handle_popup_text_input(key, &mut popup.input, &app.keybinds);
+            app.popups.create_note = Some((popup, format));
         }
         return false;
     }
@@ -95,9 +64,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
             app.popups.import = Some(popup);
             app.confirm_import();
         } else {
-            if !apply_text_shortcuts(&app.keybinds, &mut popup.input, key) {
-                popup.input.input(Input::from(key));
-            }
+            handle_popup_text_input(key, &mut popup.input, &app.keybinds);
             app.popups.import = Some(popup);
         }
         return false;
@@ -110,9 +77,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
             app.popups.folder = Some(popup);
             app.confirm_folder_popup();
         } else {
-            if !apply_text_shortcuts(&app.keybinds, &mut popup.input, key) {
-                popup.input.input(Input::from(key));
-            }
+            handle_popup_text_input(key, &mut popup.input, &app.keybinds);
             app.popups.folder = Some(popup);
         }
         return false;
@@ -1241,7 +1206,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         return;
     }
 
-    if let Some(mut popup) = app.popups.note_create.take() {
+    if let Some((mut popup, format)) = app.popups.create_note.take() {
         let area = crate::ui::centered_rect(50, 10, terminal_area);
         if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
             && !contains_cell(area, mouse_event.column, mouse_event.row)
@@ -1260,53 +1225,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                 mouse_event.row,
             );
         }
-        app.popups.note_create = Some(popup);
-        return;
-    }
-
-    if let Some(mut popup) = app.popups.draw_create.take() {
-        let area = crate::ui::centered_rect(50, 10, terminal_area);
-        if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
-            && !contains_cell(area, mouse_event.column, mouse_event.row)
-        {
-            return;
-        }
-        if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
-            let inner = area.inner(Margin {
-                vertical: 1,
-                horizontal: 1,
-            });
-            move_textarea_cursor_to_mouse(
-                &mut popup.input,
-                inner,
-                mouse_event.column,
-                mouse_event.row,
-            );
-        }
-        app.popups.draw_create = Some(popup);
-        return;
-    }
-
-    if let Some(mut popup) = app.popups.canvas_create.take() {
-        let area = crate::ui::centered_rect(50, 10, terminal_area);
-        if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
-            && !contains_cell(area, mouse_event.column, mouse_event.row)
-        {
-            return;
-        }
-        if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
-            let inner = area.inner(Margin {
-                vertical: 1,
-                horizontal: 1,
-            });
-            move_textarea_cursor_to_mouse(
-                &mut popup.input,
-                inner,
-                mouse_event.column,
-                mouse_event.row,
-            );
-        }
-        app.popups.canvas_create = Some(popup);
+        app.popups.create_note = Some((popup, format));
         return;
     }
 

@@ -71,23 +71,13 @@ pub fn draw_content_tree(
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1), // Title bar
             Constraint::Min(0),    // Tree + Side Pane
             Constraint::Length(1), // Hint line
         ])
         .split(area);
 
-    let title_area = chunks[0];
-    let main_area = chunks[1];
-    let hint_area = chunks[2];
-
-    // 1. Draw Title Bar
-    crate::ui::draw_view_title_bar(
-        frame,
-        title_area,
-        &format!("CONTENT TREE — {}", state.note_title),
-        theme,
-    );
+    let main_area = chunks[0];
+    let hint_area = chunks[1];
 
     // 2. Draw Tree and Side Pane Content
     if state.load_error {

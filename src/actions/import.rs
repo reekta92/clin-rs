@@ -349,7 +349,7 @@ pub fn convert_json(path: &str) -> Result<(String, String)> {
             }
             md.push('\n');
         }
-    return Ok(sanitized(file_stem_title(path), md));
+        return Ok(sanitized(file_stem_title(path), md));
     }
 
     let md = format!("```json\n{}\n```", serde_json::to_string_pretty(&value)?);

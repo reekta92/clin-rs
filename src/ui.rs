@@ -2044,7 +2044,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 .collect()
         };
 
-        let tags_list = List::new(tag_items)
+        let tags_list = build_list_widget(tag_items, &app.app_theme)
             .block(
                 Block::default()
                     .style(app.app_theme.bg_style())
@@ -2263,83 +2263,23 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         frame.render_widget(&popup.input, content);
     }
 
-    if let Some(popup) = &mut app.popups.note_create {
+    if let Some((popup, format)) = &mut app.popups.create_note {
+        let title = match format {
+            crate::popups::NoteFormat::Markdown => "NEW NOTE",
+            crate::popups::NoteFormat::Draw => "NEW DRAWING",
+            crate::popups::NoteFormat::Canvas => "NEW CANVAS",
+            crate::popups::NoteFormat::PlainText => "NEW TEXT FILE",
+        };
         let content = draw_popup_frame(
             frame,
             area,
-            "NEW NOTE",
+            title,
             50,
             10,
             "Enter create · Esc cancel",
             &app.app_theme,
         );
-
-        popup.input.set_block(
-            Block::default()
-                .style(app.app_theme.bg_style())
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(app.app_theme.heading)),
-        );
-        frame.render_widget(&popup.input, content);
-    }
-
-    if let Some(popup) = &mut app.popups.draw_create {
-        let content = draw_popup_frame(
-            frame,
-            area,
-            "NEW DRAWING",
-            50,
-            10,
-            "Enter create · Esc cancel",
-            &app.app_theme,
-        );
-
-        popup.input.set_block(
-            Block::default()
-                .style(app.app_theme.bg_style())
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(app.app_theme.heading)),
-        );
-        frame.render_widget(&popup.input, content);
-    }
-
-    if let Some(popup) = &mut app.popups.canvas_create {
-        let content = draw_popup_frame(
-            frame,
-            area,
-            "NEW CANVAS",
-            50,
-            10,
-            "Enter create · Esc cancel",
-            &app.app_theme,
-        );
-
-        popup.input.set_block(
-            Block::default()
-                .style(app.app_theme.bg_style())
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(app.app_theme.heading)),
-        );
-        frame.render_widget(&popup.input, content);
-    }
-
-    if let Some(popup) = &mut app.popups.text_create {
-        let content = draw_popup_frame(
-            frame,
-            area,
-            "NEW TEXT FILE",
-            50,
-            10,
-            "Enter create · Esc cancel",
-            &app.app_theme,
-        );
-
-        popup.input.set_block(
-            Block::default()
-                .style(app.app_theme.bg_style())
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(app.app_theme.heading)),
-        );
+        popup.input.set_block(popup_block("", &app.app_theme));
         frame.render_widget(&popup.input, content);
     }
 
@@ -3491,6 +3431,28 @@ pub fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
         vertical: 0,
         horizontal: 0,
     })
+}
+
+pub fn popup_block<'a>(title: &'a str, theme: &AppThemeColors) -> ratatui::widgets::Block<'a> {
+    let mut block = ratatui::widgets::Block::default()
+        .style(theme.bg_style())
+        .borders(ratatui::widgets::Borders::ALL)
+        .border_style(ratatui::style::Style::default().fg(theme.heading));
+    if !title.is_empty() {
+        block = block.title(title);
+    }
+    block
+}
+
+pub fn build_list_widget<'a>(
+    items: impl IntoIterator<Item = ratatui::widgets::ListItem<'a>>,
+    theme: &AppThemeColors,
+) -> ratatui::widgets::List<'a> {
+    ratatui::widgets::List::new(items).highlight_style(
+        ratatui::style::Style::default()
+            .bg(theme.highlight_bg)
+            .fg(theme.highlight_fg),
+    )
 }
 
 pub fn text_area_from_content(content: &str) -> TextArea<'static> {

@@ -31,6 +31,8 @@ pub struct PinstarState {
     pub mouse_dragged: bool,
     pub help_requested: bool,
     pub footer_hint: String,
+    pub keybinds: crate::keybinds::Keybinds,
+    pub last_area: ratatui::layout::Rect,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -49,7 +51,7 @@ pub struct PinstarContextMenu {
 }
 
 impl PinstarState {
-    pub fn load(path: &Path) -> Result<Self> {
+    pub fn load(path: &Path, keybinds: crate::keybinds::Keybinds) -> Result<Self> {
         let content = std::fs::read_to_string(path)?;
         let data: CanvasData = serde_json::from_str(&content)?;
         let mut raw_editor = TextArea::from(content.lines().map(String::from).collect::<Vec<_>>());
@@ -83,6 +85,8 @@ impl PinstarState {
             mouse_dragged: false,
             help_requested: false,
             footer_hint: String::new(),
+            keybinds,
+            last_area: ratatui::layout::Rect::default(),
         })
     }
 

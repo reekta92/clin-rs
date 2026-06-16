@@ -16,6 +16,7 @@ mod keybinds;
 pub(crate) mod list_view;
 pub(crate) mod markdown;
 pub(crate) mod migration;
+pub(crate) mod overlay;
 pub(crate) mod palette;
 pub(crate) mod pinstar;
 pub(crate) mod popups;

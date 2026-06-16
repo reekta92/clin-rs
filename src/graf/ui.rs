@@ -5,20 +5,8 @@ use ratatui::Frame;
 
 use crate::config::ClinConfig;
 use crate::graf::app::GrafAppState;
-use crate::keybinds::Keybinds;
 
-pub fn draw_ui(frame: &mut Frame, state: &GrafAppState, config: &ClinConfig, _keybinds: &Keybinds) {
-    let full_area = frame.area();
-    let outer = ratatui::layout::Layout::default()
-        .direction(ratatui::layout::Direction::Vertical)
-        .constraints([
-            ratatui::layout::Constraint::Length(1),
-            ratatui::layout::Constraint::Min(0),
-        ])
-        .split(full_area);
-    crate::ui::draw_view_title_bar(frame, outer[0], "Graph", &state.app_theme);
-    let area = outer[1];
-
+pub fn draw_ui(frame: &mut Frame, state: &GrafAppState, config: &ClinConfig, area: Rect) {
     if !state.config_errors.is_empty() {
         draw_config_errors(frame, area, &state.config_errors, config);
         return;
