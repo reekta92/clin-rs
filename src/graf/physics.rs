@@ -14,8 +14,9 @@ pub fn start_physics(
 
     std::thread::spawn(move || {
         loop {
-            if kill_rx.try_recv().is_ok() {
-                break;
+            match kill_rx.try_recv() {
+                Ok(_) | Err(mpsc::TryRecvError::Disconnected) => break,
+                Err(mpsc::TryRecvError::Empty) => {}
             }
 
             let should_update = {
@@ -69,4 +70,19 @@ pub fn start_physics(
             std::thread::sleep(std::time::Duration::from_millis(sleep_ms));
         }
     });
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn should_stop(res: Result<(), mpsc::TryRecvError>) -> bool {
+        matches!(res, Ok(_) | Err(mpsc::TryRecvError::Disconnected))
+    }
+
+    #[test]
+    fn test_physics_stop_condition() {
+        assert!(should_stop(Ok(())));
+        assert!(!should_stop(Err(mpsc::TryRecvError::Empty)));
+        assert!(should_stop(Err(mpsc::TryRecvError::Disconnected)));
+    }
 }

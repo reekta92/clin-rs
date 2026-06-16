@@ -41,13 +41,13 @@ pub struct EdgeData {
     pub thickness: u16,
 }
 
-struct GraphEdgesShape {
-    edges: Vec<EdgeData>,
+struct GraphEdgesShape<'a> {
+    edges: &'a [EdgeData],
 }
 
-impl Shape for GraphEdgesShape {
+impl Shape for GraphEdgesShape<'_> {
     fn draw(&self, painter: &mut Painter) {
-        for edge in &self.edges {
+        for edge in self.edges {
             if edge.thickness <= 1 {
                 Line {
                     x1: edge.x1,
@@ -92,8 +92,8 @@ pub struct NodeRenderData {
     pub shape: NodeShape,
 }
 
-struct GraphNodesShape {
-    nodes: Vec<NodeRenderData>,
+struct GraphNodesShape<'a> {
+    nodes: &'a [NodeRenderData],
 }
 
 fn draw_outlined_shape(
@@ -191,9 +191,9 @@ fn draw_outlined_shape(
     }
 }
 
-impl Shape for GraphNodesShape {
+impl Shape for GraphNodesShape<'_> {
     fn draw(&self, painter: &mut Painter) {
-        for node in &self.nodes {
+        for node in self.nodes {
             draw_outlined_shape(painter, node.x, node.y, node.radius, node.shape, node.color);
 
             let indicator_radius = 1.2;
@@ -567,13 +567,9 @@ pub fn draw_graph_view(
                     config.graf.visual.grid_divisions,
                 );
             }
-            ctx.draw(&GraphEdgesShape {
-                edges: edges.clone(),
-            });
+            ctx.draw(&GraphEdgesShape { edges: &edges });
             ctx.layer();
-            ctx.draw(&GraphNodesShape {
-                nodes: nodes.clone(),
-            });
+            ctx.draw(&GraphNodesShape { nodes: &nodes });
             ctx.layer();
             for label in &labels {
                 let span = ratatui::text::Span::styled(

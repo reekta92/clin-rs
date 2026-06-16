@@ -56,6 +56,15 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --locked
 
+  deny:
+    name: Deny
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
+
   msrv:
     name: MSRV (1.88.0)
     runs-on: ubuntu-latest

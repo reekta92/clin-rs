@@ -180,6 +180,13 @@ pub fn file_stem_title(path: &str) -> String {
         .unwrap_or_else(|| "Imported Note".to_string())
 }
 
+fn sanitized(title: String, content: String) -> (String, String) {
+    (
+        crate::sanitize::sanitize_for_terminal(&title).into_owned(),
+        crate::sanitize::sanitize_for_terminal(&content).into_owned(),
+    )
+}
+
 pub fn convert_file(path: &str) -> Result<(String, String)> {
     let mut cmd = if which::which("markitdown").is_ok() {
         let mut c = Command::new("markitdown");
@@ -216,7 +223,7 @@ pub fn convert_file(path: &str) -> Result<(String, String)> {
         bail!("Conversion produced no content");
     }
 
-    Ok((file_stem_title(path), md))
+    Ok(sanitized(file_stem_title(path), md))
 }
 
 fn detect_delimiter(first_line: &str) -> u8 {
@@ -287,7 +294,7 @@ pub fn convert_csv(path: &str) -> Result<(String, String)> {
         md.push('\n');
     }
 
-    Ok((file_stem_title(path), md))
+    Ok(sanitized(file_stem_title(path), md))
 }
 
 pub fn convert_json(path: &str) -> Result<(String, String)> {
@@ -342,11 +349,11 @@ pub fn convert_json(path: &str) -> Result<(String, String)> {
             }
             md.push('\n');
         }
-        return Ok((file_stem_title(path), md));
+    return Ok(sanitized(file_stem_title(path), md));
     }
 
     let md = format!("```json\n{}\n```", serde_json::to_string_pretty(&value)?);
-    Ok((file_stem_title(path), md))
+    Ok(sanitized(file_stem_title(path), md))
 }
 
 pub fn convert_url(url: &str) -> Result<(String, String)> {
@@ -410,7 +417,7 @@ pub fn convert_url(url: &str) -> Result<(String, String)> {
                     title = extract_html_title(&html);
                 }
                 let final_title = title.unwrap_or_else(|| url_fallback_title(url));
-                return Ok((final_title, md));
+                return Ok(sanitized(final_title, md));
             }
         }
     }
@@ -425,7 +432,7 @@ pub fn convert_url(url: &str) -> Result<(String, String)> {
 
     let title = title.unwrap_or_else(|| url_fallback_title(url));
 
-    Ok((title, md))
+    Ok(sanitized(title, md))
 }
 
 pub fn clipboard_to_md() -> Result<(String, String)> {
@@ -441,7 +448,7 @@ pub fn clipboard_to_md() -> Result<(String, String)> {
         "Clipboard {}",
         chrono::Local::now().format("%Y-%m-%d %H:%M")
     );
-    Ok((title, text))
+    Ok(sanitized(title, text))
 }
 
 #[cfg(test)]

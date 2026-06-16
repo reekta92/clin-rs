@@ -36,6 +36,12 @@ pub struct GrafAppState {
     pub app_theme: crate::app_theme::AppThemeColors,
 }
 
+impl Drop for GrafAppState {
+    fn drop(&mut self) {
+        self.shutdown();
+    }
+}
+
 impl GrafAppState {
     pub fn new(
         config: &ClinConfig,

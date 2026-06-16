@@ -645,51 +645,58 @@ fn run_config(action: ConfigCmd) -> Result<()> {
         }
     }
 }
-fn run_tui_session(app: &mut App) -> Result<()> {
-    enable_raw_mode().context("failed to enable raw mode")?;
-    let mut stdout = io::stdout();
-    if app.mouse_enabled {
-        execute!(
-            stdout,
-            EnterAlternateScreen,
-            EnableMouseCapture,
-            EnableBracketedPaste
-        )
-        .context("failed to enter alternate screen")?;
-    } else {
-        execute!(stdout, EnterAlternateScreen, EnableBracketedPaste)
-            .context("failed to enter alternate screen")?;
-    }
+struct TerminalGuard;
 
-    let backend = ratatui::backend::CrosstermBackend::new(stdout);
+impl TerminalGuard {
+    fn enter(mouse_enabled: bool) -> Result<Self> {
+        enable_raw_mode().context("failed to enable raw mode")?;
+        let mut stdout = io::stdout();
+        let entered = if mouse_enabled {
+            execute!(
+                stdout,
+                EnterAlternateScreen,
+                EnableMouseCapture,
+                EnableBracketedPaste
+            )
+        } else {
+            execute!(stdout, EnterAlternateScreen, EnableBracketedPaste)
+        };
+        if let Err(e) = entered {
+            disable_raw_mode().ok(); // guard won't be built; clean up raw mode ourselves
+            return Err(e).context("failed to enter alternate screen");
+        }
+        Ok(TerminalGuard)
+    }
+}
+
+impl Drop for TerminalGuard {
+    fn drop(&mut self) {
+        disable_raw_mode().ok();
+        let _ = execute!(
+            io::stdout(),
+            LeaveAlternateScreen,
+            DisableMouseCapture,
+            DisableBracketedPaste,
+            crossterm::cursor::Show,
+        );
+    }
+}
+
+fn run_tui_session(app: &mut App) -> Result<()> {
+    let _guard = TerminalGuard::enter(app.mouse_enabled)?;
+    let backend = ratatui::backend::CrosstermBackend::new(io::stdout());
     let mut terminal = Terminal::new(backend).context("failed to create terminal")?;
 
-    let run_result = {
-        let mut terminal_safe = std::panic::AssertUnwindSafe(&mut terminal);
-        let mut app_safe = std::panic::AssertUnwindSafe(&mut *app);
-        let res = std::panic::catch_unwind(move || run_app(*terminal_safe, *app_safe));
-
-        if app.mode == ViewMode::Edit {
-            app.autosave();
-        }
-
-        match res {
-            Ok(r) => r,
-            Err(err) => std::panic::resume_unwind(err),
-        }
-    };
-
-    disable_raw_mode().ok();
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        DisableMouseCapture,
-        DisableBracketedPaste
-    )
-    .ok();
-    terminal.show_cursor().ok();
-
-    run_result
+    let mut terminal_safe = std::panic::AssertUnwindSafe(&mut terminal);
+    let mut app_safe = std::panic::AssertUnwindSafe(&mut *app);
+    let res = std::panic::catch_unwind(move || run_app(*terminal_safe, *app_safe));
+    if app.mode == ViewMode::Edit {
+        app.autosave();
+    }
+    match res {
+        Ok(r) => r,
+        Err(err) => std::panic::resume_unwind(err),
+    }
 }
 
 fn run_app(
@@ -735,12 +742,13 @@ fn run_app(
             if let Err(e) = config.save() {
                 app.set_temporary_status(&format!("Failed to save config: {e}"));
             }
+            app.config = config;
             app.needs_full_redraw = true;
             terminal.clear()?;
             continue;
         }
         if app.mode == ViewMode::Backup {
-            let config = ClinConfig::load().unwrap_or_default();
+            let config = app.config.clone();
             let vault_path = config
                 .effective_storage_path()
                 .unwrap_or_else(|_| PathBuf::from("."));
@@ -757,6 +765,7 @@ fn run_app(
             app.reload_theme();
             app.needs_full_redraw = true;
             terminal.clear()?;
+            app.reload_config();
             continue;
         }
         if app.mode == ViewMode::ContentTree {
@@ -862,8 +871,7 @@ fn run_app(
         let need_redraw = app.poll_renderers();
 
         // Auto-backup check
-        let config_for_backup = ClinConfig::load().unwrap_or_default();
-        if let Some(interval_mins) = config_for_backup.backup.auto_backup_interval {
+        if let Some(interval_mins) = app.config.backup.auto_backup_interval {
             let now = std::time::Instant::now();
             let should_backup = match app.last_auto_backup {
                 Some(last) => now.duration_since(last).as_secs() >= interval_mins * 60,

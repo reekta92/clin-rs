@@ -301,6 +301,9 @@ pub struct App {
     pub return_mode: Option<ViewMode>,
     pub app_theme: crate::app_theme::AppThemeColors,
     pub canvas_state: Option<crate::pinstar::state::PinstarState>,
+    pub config: crate::config::ClinConfig,
+    pub summary_cache: HashMap<String, NoteSummary>,
+    pub summary_mtime: HashMap<String, u64>,
 }
 
 impl App {
@@ -365,23 +368,44 @@ impl App {
             return_mode: None,
             app_theme,
             canvas_state: None,
+            config: bootstrap_config,
+            summary_cache: HashMap::new(),
+            summary_mtime: HashMap::new(),
         };
         app.list.folder_expanded.insert(String::new());
         app.refresh_notes()?;
         Ok(app)
     }
 
+    pub fn reload_config(&mut self) {
+        self.config = crate::config::ClinConfig::load().unwrap_or_default();
+    }
+
+
     fn is_virtual_pinned_path(path: &str) -> bool {
         path == VIRTUAL_PINNED_PATH
     }
 
     pub fn refresh_notes(&mut self) -> Result<()> {
+        let ids = self.storage.list_note_ids()?;
         let mut summaries = Vec::new();
-        for id in self.storage.list_note_ids()? {
-            if let Ok(summary) = self.storage.load_note_summary(&id) {
+
+        for id in &ids {
+            let mt = self.storage.note_mtime_millis(id);
+            if self.summary_mtime.get(id) == Some(&mt) && let Some(s) = self.summary_cache.get(id) {
+                summaries.push(s.clone());
+                continue;
+            }
+            if let Ok(summary) = self.storage.load_note_summary(id) {
+                self.summary_cache.insert(id.clone(), summary.clone());
+                self.summary_mtime.insert(id.clone(), mt);
                 summaries.push(summary);
             }
         }
+
+        let id_set: HashSet<&String> = ids.iter().collect();
+        self.summary_cache.retain(|k, _| id_set.contains(k));
+        self.summary_mtime.retain(|k, _| id_set.contains(k));
 
         summaries.sort_by(|a, b| {
             if self.pinned_on_top {
@@ -1761,6 +1785,8 @@ template = """
         match self.storage.trash_folder(&path) {
             Ok(()) => {
                 self.list.folder_cache = None;
+                self.list.folder_expanded
+                    .retain(|p| p != &path && !p.starts_with(&format!("{path}/")));
                 if let Err(e) = self.refresh_notes() {
                     self.set_temporary_status(&format!("Refresh failed: {e}"));
                 }
