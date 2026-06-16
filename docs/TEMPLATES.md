@@ -28,7 +28,7 @@ Templates allow users to create notes from predefined structures. They are TOML 
 └── ... (any .toml file)
 ```
 
-Users can create templates at this path manually or via `clin --create-example-templates`.
+Users can create templates at this path manually or via `clin templates init`.
 
 ---
 
@@ -137,9 +137,9 @@ If a template file named `default.toml` exists in the templates directory, it is
 
 | Command | Description |
 |---|---|
-| `clin --list-templates` | List all available templates |
-| `clin --create-example-templates` | Create meeting, todo, and journal example templates |
-| `clin -n -t <name> [title]` | Create a new note from a specific template |
+| `clin templates list` | List all available templates |
+| `clin templates init` | Create meeting, todo, and journal example templates |
+| `clin notes new -t <name> [title]` | Create a new note from a specific template |
 
 ---
 
@@ -159,10 +159,10 @@ If a template file named `default.toml` exists in the templates directory, it is
 
 ```bash
 # Create a note from "meeting" template
-clin -n -t meeting "Weekly Standup"
+clin notes new -t meeting "Weekly Standup"
 
 # Create with default template
-clin -n "My Note"
+clin notes new "My Note"
 ```
 
 ---

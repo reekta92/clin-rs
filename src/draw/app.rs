@@ -2,6 +2,7 @@ use crate::draw::input::handle_event;
 use crate::draw::render::draw_canvas;
 use crate::draw::state::{DrawData, Viewport};
 use crate::keybinds::Keybinds;
+use crate::overlay::OverlayView;
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use std::io::Stdout;
@@ -12,9 +13,7 @@ pub enum DrawEventAction {
 }
 
 use ratatui::layout::Rect;
-
 use ratatui_textarea::TextArea;
-use std::time::Instant;
 
 pub struct DrawAppState {
     pub data: DrawData,
@@ -27,12 +26,12 @@ pub struct DrawAppState {
     pub last_area: Rect,
     pub last_mouse_pos: Option<(u16, u16)>,
     pub text_editor: Option<(usize, TextArea<'static>)>,
-    pub last_click: Option<(u16, u16, Instant)>,
     pub theme: crate::app_theme::AppThemeColors,
     pub active_shape_type: crate::draw::state::DrawShapeType,
     pub show_shape_selector: bool,
     pub creation_origin: Option<(f64, f64)>,
     pub preview_element: Option<crate::draw::state::DrawElement>,
+    pub keybinds: Keybinds,
 }
 
 impl DrawAppState {
@@ -40,6 +39,7 @@ impl DrawAppState {
         storage: crate::storage::Storage,
         file_id: Option<String>,
         theme: crate::app_theme::AppThemeColors,
+        keybinds: Keybinds,
     ) -> Self {
         let mut data = DrawData::default();
         if let Some(id) = &file_id {
@@ -63,12 +63,12 @@ impl DrawAppState {
             last_area: Rect::default(),
             last_mouse_pos: None,
             text_editor: None,
-            last_click: None,
             theme,
             active_shape_type: crate::draw::state::DrawShapeType::Rect,
             show_shape_selector: false,
             creation_origin: None,
             preview_element: None,
+            keybinds,
         }
     }
 
@@ -82,6 +82,45 @@ impl DrawAppState {
     }
 }
 
+impl OverlayView<()> for DrawAppState {
+    fn render(
+        &mut self,
+        frame: &mut ratatui::Frame,
+        area: ratatui::layout::Rect,
+        _theme: &crate::app_theme::AppThemeColors,
+        _config: &crate::config::ClinConfig,
+    ) {
+        self.last_area = area;
+        draw_canvas(frame, self, area);
+    }
+
+    fn handle_event(
+        &mut self,
+        event: crossterm::event::Event,
+        _terminal: &ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
+        _config: &mut crate::config::ClinConfig,
+    ) -> anyhow::Result<Option<()>> {
+        let keybinds = self.keybinds.clone();
+        if let Some(action) = handle_event(event, self, &keybinds)? {
+            match action {
+                DrawEventAction::Quit => {
+                    self.running = false;
+                    self.save_draw()?;
+                    return Ok(Some(()));
+                }
+                DrawEventAction::Save => {
+                    self.save_draw()?;
+                }
+            }
+        }
+        Ok(None)
+    }
+
+    fn title(&self) -> String {
+        "Draw".to_string()
+    }
+}
+
 pub fn run_draw_view(
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
     storage: crate::storage::Storage,
@@ -89,50 +128,15 @@ pub fn run_draw_view(
     file_id: Option<String>,
     theme: crate::app_theme::AppThemeColors,
 ) -> anyhow::Result<Option<String>> {
-    let mut app_state = DrawAppState::new(storage, file_id, theme);
-
-    while app_state.running {
-        terminal.draw(|frame| {
-            let full = frame.area();
-            let outer = ratatui::layout::Layout::default()
-                .direction(ratatui::layout::Direction::Vertical)
-                .constraints([
-                    ratatui::layout::Constraint::Length(1),
-                    ratatui::layout::Constraint::Min(0),
-                ])
-                .split(full);
-            crate::ui::draw_view_title_bar(frame, outer[0], "Draw", &app_state.theme);
-            app_state.last_area = outer[1];
-            draw_canvas(frame, &app_state, outer[1]);
-        })?;
-
-        if crossterm::event::poll(std::time::Duration::from_millis(16))? {
-            loop {
-                let ev = crossterm::event::read()?;
-                if let crossterm::event::Event::Resize(_, _) = ev {
-                    terminal.autoresize()?;
-                    let _ = terminal.clear();
-                }
-                if let Some(action) = handle_event(ev, &mut app_state, keybinds)? {
-                    match action {
-                        DrawEventAction::Quit => {
-                            app_state.running = false;
-                        }
-                        DrawEventAction::Save => {
-                            app_state.save_draw()?;
-                        }
-                    }
-                }
-
-                if !app_state.running
-                    || !crossterm::event::poll(std::time::Duration::from_millis(0))?
-                {
-                    break;
-                }
-            }
-        }
-    }
-
-    app_state.save_draw()?;
+    let mut app_state = DrawAppState::new(storage, file_id, theme, keybinds.clone());
+    let mut config = crate::config::ClinConfig::default();
+    let theme_clone = app_state.theme.clone();
+    crate::overlay::run_overlay(
+        terminal,
+        &mut app_state,
+        &mut config,
+        &theme_clone,
+        std::time::Duration::from_millis(16),
+    )?;
     Ok(None)
 }

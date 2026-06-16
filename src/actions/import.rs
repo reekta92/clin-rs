@@ -144,6 +144,48 @@ impl Action for ImportAction {
     }
 }
 
+fn extract_html_title(html: &str) -> Option<String> {
+    let mut cursor = 0;
+    while let Some(start_bracket) = html[cursor..].find('<') {
+        let absolute_start = cursor + start_bracket;
+        let rest = &html[absolute_start..];
+
+        if rest.len() >= 6 && rest[..6].eq_ignore_ascii_case("<title") {
+            let next_char = rest.as_bytes().get(6);
+            if (next_char.is_none()
+                || matches!(next_char, Some(b' ' | b'>' | b'\t' | b'\r' | b'\n')))
+                && let Some(tag_end_offset) = rest.find('>')
+            {
+                let after_tag_start = absolute_start + tag_end_offset + 1;
+                let after_tag = &html[after_tag_start..];
+
+                let mut close_cursor = 0;
+                while let Some(close_bracket_offset) = after_tag[close_cursor..].find('<') {
+                    let absolute_close_start = close_cursor + close_bracket_offset;
+                    let close_rest = &after_tag[absolute_close_start..];
+                    if close_rest.len() >= 8 && close_rest[..8].eq_ignore_ascii_case("</title>") {
+                        let inner_text = &after_tag[..absolute_close_start];
+                        return Some(inner_text.trim().to_string());
+                    }
+                    close_cursor = absolute_close_start + 1;
+                }
+                cursor = after_tag_start;
+                continue;
+            }
+        }
+        cursor = absolute_start + 1;
+    }
+    None
+}
+
+fn url_fallback_title(url: &str) -> String {
+    url.trim_start_matches("http://")
+        .trim_start_matches("https://")
+        .split('/')
+        .next()
+        .unwrap_or("Imported URL")
+        .to_string()
+}
 pub fn file_stem_title(path: &str) -> String {
     Path::new(path)
         .file_stem()
@@ -156,6 +198,13 @@ pub fn file_stem_title(path: &str) -> String {
             title
         })
         .unwrap_or_else(|| "Imported Note".to_string())
+}
+
+fn sanitized(title: String, content: String) -> (String, String) {
+    (
+        crate::sanitize::sanitize_for_terminal(&title).into_owned(),
+        crate::sanitize::sanitize_for_terminal(&content).into_owned(),
+    )
 }
 
 pub fn convert_file(path: &str) -> Result<(String, String)> {
@@ -194,7 +243,7 @@ pub fn convert_file(path: &str) -> Result<(String, String)> {
         bail!("Conversion produced no content");
     }
 
-    Ok((file_stem_title(path), md))
+    Ok(sanitized(file_stem_title(path), md))
 }
 
 fn detect_delimiter(first_line: &str) -> u8 {
@@ -265,7 +314,7 @@ pub fn convert_csv(path: &str) -> Result<(String, String)> {
         md.push('\n');
     }
 
-    Ok((file_stem_title(path), md))
+    Ok(sanitized(file_stem_title(path), md))
 }
 
 pub fn convert_json(path: &str) -> Result<(String, String)> {
@@ -320,11 +369,11 @@ pub fn convert_json(path: &str) -> Result<(String, String)> {
             }
             md.push('\n');
         }
-        return Ok((file_stem_title(path), md));
+        return Ok(sanitized(file_stem_title(path), md));
     }
 
     let md = format!("```json\n{}\n```", serde_json::to_string_pretty(&value)?);
-    Ok((file_stem_title(path), md))
+    Ok(sanitized(file_stem_title(path), md))
 }
 
 pub fn convert_url(url: &str) -> Result<(String, String)> {
@@ -343,7 +392,11 @@ pub fn convert_url(url: &str) -> Result<(String, String)> {
         .unwrap_or_else(|| ".html".to_string());
 
     let temp_file = NamedTempFile::with_suffix(&ext).context("Failed to create temp file")?;
-    let temp_path = temp_file.path().to_str().unwrap().to_string();
+    let temp_path = temp_file
+        .path()
+        .to_str()
+        .expect("temp path is UTF-8")
+        .to_string();
 
     let output = Command::new("curl")
         .args(["-sL", "-o", &temp_path, url])
@@ -372,25 +425,19 @@ pub fn convert_url(url: &str) -> Result<(String, String)> {
                 let mut title = None;
                 let temp_file = NamedTempFile::new()
                     .context("Failed to create temp file for title extraction")?;
-                let temp_path = temp_file.path().to_str().unwrap().to_string();
+                let temp_path = temp_file
+                    .path()
+                    .to_str()
+                    .expect("temp path is UTF-8")
+                    .to_string();
                 let _ = Command::new("curl")
                     .args(["-sL", "-o", &temp_path, url])
                     .status();
                 if let Ok(html) = fs::read_to_string(&temp_path) {
-                    let re = regex::Regex::new(r"(?i)<title[^>]*>(.*?)</title>").unwrap();
-                    if let Some(caps) = re.captures(&html) {
-                        title = Some(caps.get(1).unwrap().as_str().trim().to_string());
-                    }
+                    title = extract_html_title(&html);
                 }
-                let final_title = title.unwrap_or_else(|| {
-                    url.trim_start_matches("http://")
-                        .trim_start_matches("https://")
-                        .split('/')
-                        .next()
-                        .unwrap_or("Imported URL")
-                        .to_string()
-                });
-                return Ok((final_title, md));
+                let final_title = title.unwrap_or_else(|| url_fallback_title(url));
+                return Ok(sanitized(final_title, md));
             }
         }
     }
@@ -400,22 +447,12 @@ pub fn convert_url(url: &str) -> Result<(String, String)> {
     if (ext == ".html" || ext == ".htm")
         && let Ok(html) = fs::read_to_string(&temp_path)
     {
-        let re = regex::Regex::new(r"(?i)<title[^>]*>(.*?)</title>").unwrap();
-        if let Some(caps) = re.captures(&html) {
-            title = Some(caps.get(1).unwrap().as_str().trim().to_string());
-        }
+        title = extract_html_title(&html);
     }
 
-    let title = title.unwrap_or_else(|| {
-        url.trim_start_matches("http://")
-            .trim_start_matches("https://")
-            .split('/')
-            .next()
-            .unwrap_or("Imported URL")
-            .to_string()
-    });
+    let title = title.unwrap_or_else(|| url_fallback_title(url));
 
-    Ok((title, md))
+    Ok(sanitized(title, md))
 }
 
 pub fn clipboard_to_md() -> Result<(String, String)> {
@@ -431,7 +468,7 @@ pub fn clipboard_to_md() -> Result<(String, String)> {
         "Clipboard {}",
         chrono::Local::now().format("%Y-%m-%d %H:%M")
     );
-    Ok((title, text))
+    Ok(sanitized(title, text))
 }
 
 #[cfg(test)]

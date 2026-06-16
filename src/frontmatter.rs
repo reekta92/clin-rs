@@ -36,7 +36,7 @@ pub fn parse(content: &str) -> (Frontmatter, &str) {
 
         let remaining_content = &content[content_start..];
 
-        if let Ok(frontmatter) = serde_yml::from_str::<Frontmatter>(frontmatter_str) {
+        if let Ok(frontmatter) = serde_yaml_ng::from_str::<Frontmatter>(frontmatter_str) {
             return (frontmatter, remaining_content);
         }
     }
@@ -55,7 +55,7 @@ pub fn serialize(frontmatter: &Frontmatter, content: &str) -> String {
         return content.to_string();
     }
 
-    match serde_yml::to_string(frontmatter) {
+    match serde_yaml_ng::to_string(frontmatter) {
         Ok(yaml) => {
             let yaml = yaml.trim();
             let yaml = yaml.to_string();

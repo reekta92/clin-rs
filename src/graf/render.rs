@@ -41,13 +41,13 @@ pub struct EdgeData {
     pub thickness: u16,
 }
 
-struct GraphEdgesShape {
-    edges: Vec<EdgeData>,
+struct GraphEdgesShape<'a> {
+    edges: &'a [EdgeData],
 }
 
-impl Shape for GraphEdgesShape {
+impl Shape for GraphEdgesShape<'_> {
     fn draw(&self, painter: &mut Painter) {
-        for edge in &self.edges {
+        for edge in self.edges {
             if edge.thickness <= 1 {
                 Line {
                     x1: edge.x1,
@@ -92,8 +92,8 @@ pub struct NodeRenderData {
     pub shape: NodeShape,
 }
 
-struct GraphNodesShape {
-    nodes: Vec<NodeRenderData>,
+struct GraphNodesShape<'a> {
+    nodes: &'a [NodeRenderData],
 }
 
 fn draw_outlined_shape(
@@ -191,9 +191,9 @@ fn draw_outlined_shape(
     }
 }
 
-impl Shape for GraphNodesShape {
+impl Shape for GraphNodesShape<'_> {
     fn draw(&self, painter: &mut Painter) {
-        for node in &self.nodes {
+        for node in self.nodes {
             draw_outlined_shape(painter, node.x, node.y, node.radius, node.shape, node.color);
 
             let indicator_radius = 1.2;
@@ -334,7 +334,7 @@ impl RenderCache {
         self.node_own_color.clear();
         for idx in graph.node_indices() {
             let node = &graph[idx];
-            let color = match config.visual.node_color_mode {
+            let color = match config.graf.visual.node_color_mode {
                 NodeColorMode::Tag => {
                     if let Some(tag) = node.data.tags.first() {
                         self.tag_colors.get(tag).copied().unwrap_or(Color::Gray)
@@ -360,7 +360,7 @@ impl RenderCache {
         }
 
         self.legend_data = if show_legend {
-            let items = match config.visual.node_color_mode {
+            let items = match config.graf.visual.node_color_mode {
                 NodeColorMode::Folder => &self.folder_colors,
                 _ => &self.tag_colors,
             };
@@ -369,7 +369,7 @@ impl RenderCache {
             } else {
                 let mut sorted: Vec<_> = items.iter().collect();
                 sorted.sort_by_key(|(t, _)| t.as_str());
-                sorted.truncate(config.legend.max_items);
+                sorted.truncate(10);
                 Some(sorted.into_iter().map(|(t, c)| (t.clone(), *c)).collect())
             }
         } else {
@@ -389,7 +389,7 @@ impl RenderCache {
         for edge in graph.edge_references() {
             let src = &graph[edge.source()];
             let tgt = &graph[edge.target()];
-            let color = match config.visual.edge_color_mode {
+            let color = match config.graf.visual.edge_color_mode {
                 EdgeColorMode::Source => *self
                     .node_own_color
                     .get(&edge.source())
@@ -406,7 +406,7 @@ impl RenderCache {
                 x2: tgt.location.x as f64,
                 y2: tgt.location.y as f64,
                 color,
-                thickness: config.visual.edge_thickness,
+                thickness: config.graf.visual.edge_thickness,
             });
         }
     }
@@ -426,13 +426,13 @@ impl RenderCache {
                 .get(&idx)
                 .copied()
                 .unwrap_or(Color::Gray);
-            let radius = match config.visual.node_size_mode {
-                NodeSizeMode::Fixed => config.visual.node_size,
+            let radius = match config.graf.visual.node_size_mode {
+                NodeSizeMode::Fixed => config.graf.visual.node_size,
                 NodeSizeMode::LinkCount => {
                     if self.max_link_count == 0 {
-                        config.visual.node_size
+                        config.graf.visual.node_size
                     } else {
-                        config.visual.node_size
+                        config.graf.visual.node_size
                             * (1.0
                                 + (node.data.link_count as f64 / self.max_link_count as f64) * 1.5)
                     }
@@ -456,7 +456,7 @@ impl RenderCache {
                 extra_tag_colors,
                 is_selected: selected_node == Some(idx),
                 selection_ring_color,
-                shape: config.visual.node_shape,
+                shape: config.graf.visual.node_shape,
             });
         }
     }
@@ -469,7 +469,7 @@ impl RenderCache {
     ) {
         self.labels.clear();
         let should_show = |idx: NodeIndex| -> bool {
-            match config.visual.label_mode {
+            match config.graf.visual.label_mode {
                 LabelMode::Selected => selected_node == Some(idx),
                 LabelMode::Neighbors => {
                     if selected_node == Some(idx) {
@@ -497,8 +497,11 @@ impl RenderCache {
             let radius = self.nodes.get(idx.index()).map(|n| n.radius).unwrap_or(2.0);
             self.labels.push(LabelData {
                 x: node.location.x as f64,
-                y: node.location.y as f64 + radius + config.visual.label_offset,
-                text: crate::graf::util::truncate(&node.data.title, config.visual.label_max_length),
+                y: node.location.y as f64 + radius + config.graf.visual.label_offset,
+                text: crate::graf::util::truncate(
+                    &node.data.title,
+                    config.graf.visual.label_max_length,
+                ),
             });
         }
     }
@@ -552,7 +555,7 @@ pub fn draw_graph_view(
         .y_bounds(y_bounds)
         .block(block)
         .marker(ratatui::symbols::Marker::from(
-            config.visual.canvas_marker.clone(),
+            config.graf.visual.canvas_marker,
         ))
         .paint(move |ctx| {
             if flags.show_grid {
@@ -561,16 +564,12 @@ pub fn draw_graph_view(
                     x_bounds,
                     y_bounds,
                     colors.grid_color,
-                    config.visual.grid_divisions,
+                    config.graf.visual.grid_divisions,
                 );
             }
-            ctx.draw(&GraphEdgesShape {
-                edges: edges.clone(),
-            });
+            ctx.draw(&GraphEdgesShape { edges: &edges });
             ctx.layer();
-            ctx.draw(&GraphNodesShape {
-                nodes: nodes.clone(),
-            });
+            ctx.draw(&GraphNodesShape { nodes: &nodes });
             ctx.layer();
             for label in &labels {
                 let span = ratatui::text::Span::styled(
@@ -592,8 +591,8 @@ pub fn draw_graph_view(
             .max()
             .unwrap_or(0);
         let legend_width = (max_len + 4) as u16;
-        let legend_height = (items.len() as u16).min(config.legend.max_items as u16) + 2;
-        let (legend_x, legend_y) = match config.legend.position {
+        let legend_height = (items.len() as u16).min(10) + 2;
+        let (legend_x, legend_y) = match LegendPosition::BottomRight {
             LegendPosition::TopLeft => (area.x, area.y),
             LegendPosition::TopRight => (area.x + area.width.saturating_sub(legend_width), area.y),
             LegendPosition::BottomLeft => (
@@ -731,9 +730,9 @@ fn draw_grid(
 }
 
 pub fn compute_minimap_area(frame_area: Rect, config: &ClinConfig) -> Rect {
-    let w = config.visual.minimap_width;
-    let h = config.visual.minimap_height;
-    let (x, y) = match config.visual.minimap_position {
+    let w = config.graf.visual.minimap_width;
+    let h = config.graf.visual.minimap_height;
+    let (x, y) = match config.graf.visual.minimap_position {
         LegendPosition::TopLeft => (frame_area.x, frame_area.y),
         LegendPosition::TopRight => (
             frame_area.x + frame_area.width.saturating_sub(w),

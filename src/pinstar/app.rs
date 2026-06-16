@@ -1,18 +1,66 @@
 use crate::app_theme::AppThemeColors;
 use crate::keybinds::{CanvasAction, Keybinds};
+use crate::overlay::OverlayView;
 use crate::pinstar::input::{handle_pinstar_event, handle_pinstar_mouse};
 use crate::pinstar::render::draw_pinstar_view;
 use crate::pinstar::state::PinstarState;
 use crate::storage::Storage;
-use crossterm::event::{self, Event};
+use crossterm::event::Event;
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use std::io::Stdout;
 use std::time::Duration;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PinstarResult {
     Normal,
     HelpRequested,
+}
+
+impl OverlayView<PinstarResult> for PinstarState {
+    fn render(
+        &mut self,
+        frame: &mut ratatui::Frame,
+        area: ratatui::layout::Rect,
+        theme: &crate::app_theme::AppThemeColors,
+        _config: &crate::config::ClinConfig,
+    ) {
+        self.last_area = area;
+        draw_pinstar_view(frame, self, theme, area);
+    }
+
+    fn handle_event(
+        &mut self,
+        event: crossterm::event::Event,
+        _terminal: &ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
+        _config: &mut crate::config::ClinConfig,
+    ) -> anyhow::Result<Option<PinstarResult>> {
+        let area = self.last_area;
+        let keybinds = self.keybinds.clone();
+        let mut running = true;
+        match event {
+            Event::Key(key) => {
+                let _ = handle_pinstar_event(self, key, &mut running, area, &keybinds);
+            }
+            Event::Mouse(mouse) => {
+                handle_pinstar_mouse(self, mouse, area);
+            }
+            _ => {}
+        }
+        if !running {
+            let res = if self.help_requested {
+                PinstarResult::HelpRequested
+            } else {
+                PinstarResult::Normal
+            };
+            return Ok(Some(res));
+        }
+        Ok(None)
+    }
+
+    fn title(&self) -> String {
+        "Canvas".to_string()
+    }
 }
 
 pub fn run_pinstar_view(
@@ -24,7 +72,7 @@ pub fn run_pinstar_view(
 ) -> anyhow::Result<PinstarResult> {
     let mut state = if let Some(id) = file_id {
         let path = storage.note_path(&id);
-        PinstarState::load(&path)?
+        PinstarState::load(&path, keybinds.clone())?
     } else {
         anyhow::bail!("No file ID provided for Pinstar view");
     };
@@ -36,55 +84,13 @@ pub fn run_pinstar_view(
         keybinds.canvas_keys_display(CanvasAction::EditOrConnect),
         keybinds.canvas_keys_display(CanvasAction::Save),
     );
-    let mut running = true;
 
-    while running {
-        terminal.draw(|frame| {
-            let full = frame.area();
-            let outer = ratatui::layout::Layout::default()
-                .direction(ratatui::layout::Direction::Vertical)
-                .constraints([
-                    ratatui::layout::Constraint::Length(1),
-                    ratatui::layout::Constraint::Min(0),
-                ])
-                .split(full);
-            crate::ui::draw_view_title_bar(frame, outer[0], "Canvas", &theme);
-            draw_pinstar_view(frame, &mut state, &theme, outer[1]);
-        })?;
-
-        if event::poll(Duration::from_millis(100))? {
-            let mut pending = true;
-            while pending {
-                let term_area: ratatui::layout::Rect = terminal.size()?.into();
-                let outer = ratatui::layout::Layout::default()
-                    .direction(ratatui::layout::Direction::Vertical)
-                    .constraints([
-                        ratatui::layout::Constraint::Length(1),
-                        ratatui::layout::Constraint::Min(0),
-                    ])
-                    .split(term_area);
-                let area = outer[1];
-                match event::read()? {
-                    Event::Key(key) => {
-                        if !handle_pinstar_event(&mut state, key, &mut running, area, keybinds) {}
-                    }
-                    Event::Mouse(mouse) => {
-                        handle_pinstar_mouse(&mut state, mouse, area);
-                    }
-                    Event::Resize(_, _) => {
-                        terminal.autoresize()?;
-                        let _ = terminal.clear();
-                    }
-                    _ => {}
-                }
-                pending = event::poll(Duration::ZERO)?;
-            }
-        }
-    }
-
-    if state.help_requested {
-        Ok(PinstarResult::HelpRequested)
-    } else {
-        Ok(PinstarResult::Normal)
-    }
+    let mut config = crate::config::ClinConfig::default();
+    crate::overlay::run_overlay(
+        terminal,
+        &mut state,
+        &mut config,
+        &theme,
+        Duration::from_millis(100),
+    )
 }

@@ -35,11 +35,7 @@ pub struct CommitInfo {
     pub author: String,
 }
 
-pub struct FileDiff {
-    pub path: String,
-    pub additions: usize,
-    pub deletions: usize,
-}
+pub struct FileDiff {}
 
 impl GitOps {
     pub fn init(vault_path: &Path) -> Result<Self> {
@@ -275,12 +271,8 @@ impl GitOps {
             None,
         )?;
 
-        for path in staged_paths {
-            stats.push(FileDiff {
-                path,
-                additions: 0,
-                deletions: 0,
-            });
+        for _path in staged_paths {
+            stats.push(FileDiff {});
         }
 
         Ok(stats)
@@ -322,14 +314,6 @@ impl GitOps {
             self.repo.remote(name, url)?;
         }
         Ok(())
-    }
-
-    pub fn get_remote_url(&self, name: &str) -> Result<Option<String>> {
-        Ok(self
-            .repo
-            .find_remote(name)
-            .ok()
-            .and_then(|r| r.url().map(|u| u.to_string())))
     }
 
     pub fn has_changes(&self) -> Result<bool> {

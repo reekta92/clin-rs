@@ -10,7 +10,6 @@ use crate::storage::Storage;
 pub struct GraphNodeData {
     pub note_id: String,
     pub title: String,
-    pub is_encrypted: bool,
     pub tags: Vec<String>,
     pub link_count: usize,
     pub folder: String,
@@ -47,7 +46,7 @@ pub fn build_graph(
         }
     }
 
-    let min_links = config.filter.min_links;
+    let min_links = config.graf.filter.min_links;
 
     for summary in &summaries {
         let lc = link_counts.get(&summary.id).copied().unwrap_or(0);
@@ -55,20 +54,18 @@ pub fn build_graph(
             continue;
         }
 
-        if !config.filter.exclude_tags.is_empty()
+        if !config.graf.filter.exclude_tags.is_empty()
             && summary
                 .tags
                 .iter()
-                .any(|t| config.filter.exclude_tags.contains(t))
+                .any(|t| config.graf.filter.exclude_tags.contains(t))
         {
             continue;
         }
 
-        let is_encrypted = summary.id.ends_with(".clin");
         let data = GraphNodeData {
             note_id: summary.id.clone(),
             title: summary.title.clone(),
-            is_encrypted,
             tags: summary.tags.clone(),
             link_count: lc,
             folder: summary.folder.clone(),
@@ -108,17 +105,8 @@ pub fn create_simulation(
     graph: ForceGraph<GraphNodeData, ()>,
     config: &ClinConfig,
 ) -> Simulation<GraphNodeData, ()> {
-    let force = fdg_sim::force::handy(
-        config.physics.ideal_distance as f32,
-        config.physics.damping,
-        config.physics.cooling,
-        config.physics.prevent_overlapping,
-    );
-    let params = SimulationParameters::new(
-        config.physics.max_iterations as f32,
-        fdg_sim::Dimensions::Two,
-        force,
-    );
+    let force = fdg_sim::force::handy(config.graf.physics.ideal_distance as f32, 0.95, true, true);
+    let params = SimulationParameters::new(800.0, fdg_sim::Dimensions::Two, force);
     Simulation::from_graph(graph, params)
 }
 
@@ -136,10 +124,9 @@ impl GraphState {
             graph_bounds: (0.0, 0.0, 0.0, 0.0),
             render_cache: Mutex::new(super::render::RenderCache::new()),
         };
-        state.viewport = state.viewport.auto_fit_from_graph(
-            state.simulation.get_graph(),
-            config.interaction.auto_fit_padding,
-        );
+        state.viewport = state
+            .viewport
+            .auto_fit_from_graph(state.simulation.get_graph(), 1.4);
         state.graph_bounds = super::render::compute_graph_bounds(state.simulation.get_graph());
         Ok(state)
     }

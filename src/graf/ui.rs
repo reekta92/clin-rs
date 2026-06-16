@@ -5,27 +5,15 @@ use ratatui::Frame;
 
 use crate::config::ClinConfig;
 use crate::graf::app::GrafAppState;
-use crate::keybinds::Keybinds;
 
-pub fn draw_ui(frame: &mut Frame, state: &GrafAppState, config: &ClinConfig, _keybinds: &Keybinds) {
-    let full_area = frame.area();
-    let outer = ratatui::layout::Layout::default()
-        .direction(ratatui::layout::Direction::Vertical)
-        .constraints([
-            ratatui::layout::Constraint::Length(1),
-            ratatui::layout::Constraint::Min(0),
-        ])
-        .split(full_area);
-    crate::ui::draw_view_title_bar(frame, outer[0], "Graph", &state.app_theme);
-    let area = outer[1];
-
+pub fn draw_ui(frame: &mut Frame, state: &GrafAppState, config: &ClinConfig, area: Rect) {
     if !state.config_errors.is_empty() {
         draw_config_errors(frame, area, &state.config_errors, config);
         return;
     }
 
     let (graph_area, preview_area) = if state.preview_enabled {
-        let (constraints, main_idx, p_idx) = match config.preview_position {
+        let (constraints, main_idx, p_idx) = match config.list.preview_position {
             crate::config::PreviewPosition::Left => (
                 [
                     Constraint::Ratio(43, 100),
@@ -162,14 +150,14 @@ fn draw_search(
     config: &ClinConfig,
     colors: &crate::config::ThemeColors,
 ) {
-    let max_visible = config.search.max_visible;
+    let max_visible = config.graf.search.max_visible;
     let result_count = state.search_results.len();
     let visible_count = result_count.min(max_visible);
-    let popup_width = config.search.popup_width.min(area.width.saturating_sub(4));
+    let popup_width = (50u16).min(area.width.saturating_sub(4));
     let popup_height = (visible_count + 3).min(area.height.saturating_sub(4) as usize) as u16;
 
     let popup_x = (area.width.saturating_sub(popup_width)) / 2;
-    let popup_y = config.search.popup_y;
+    let popup_y = 3;
 
     let popup_area = ratatui::layout::Rect::new(popup_x, popup_y, popup_width, popup_height);
 
@@ -291,7 +279,7 @@ fn draw_reload_notification(
 }
 
 fn draw_preview(frame: &mut Frame, preview_rect: Rect, state: &GrafAppState, config: &ClinConfig) {
-    let hide_encrypted = config.preview_encryption
+    let hide_encrypted = config.list.preview_encryption
         && state
             .preview_note_id
             .as_ref()

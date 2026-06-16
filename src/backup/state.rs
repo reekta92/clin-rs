@@ -5,6 +5,8 @@ use ratatui_textarea::TextArea;
 use std::collections::HashSet;
 use std::path::PathBuf;
 
+use crate::keybinds::Keybinds;
+
 pub struct BackupState {
     pub status: Option<GitStatus>,
     pub commits: Vec<CommitInfo>,
@@ -29,6 +31,7 @@ pub struct BackupState {
     pub diff_lines: Vec<String>,
     pub last_area: Option<ratatui::layout::Rect>,
     pub footer_hint: String,
+    pub keybinds: Keybinds,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -95,13 +98,15 @@ impl SettingsField {
             .copied()
             .unwrap_or(self)
     }
-    pub fn is_text_field(self) -> bool {
-        matches!(self, SettingsField::RemoteUrl | SettingsField::RemoteName)
-    }
 }
 
 impl BackupState {
-    pub fn new(vault_path: PathBuf, config: &BackupConfig, theme: AppThemeColors) -> Self {
+    pub fn new(
+        vault_path: PathBuf,
+        config: &BackupConfig,
+        theme: AppThemeColors,
+        keybinds: Keybinds,
+    ) -> Self {
         let settings = BackupSettingsState {
             enabled: config.enabled,
             backup_on_save: config.backup_on_save,
@@ -141,6 +146,7 @@ impl BackupState {
             settings,
             theme,
             selected_for_commit: HashSet::new(),
+            keybinds,
         };
 
         state.refresh_git_info();

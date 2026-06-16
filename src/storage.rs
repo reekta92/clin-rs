@@ -6,9 +6,7 @@ use crate::templates::TemplateManager;
 use anyhow::{Context, Result, anyhow};
 use chacha20poly1305::aead::{Aead, KeyInit};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
-use once_cell::sync::Lazy;
 use rand::RngCore;
-use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 use std::fs;
@@ -33,16 +31,33 @@ pub struct NoteSummary {
     pub tags: Vec<String>,
     pub pinned: bool,
     pub links: Vec<String>,
+    pub size_bytes: u64,
 }
 
-static WIKILINK_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]").unwrap());
-
 pub fn extract_wikilinks(content: &str) -> Vec<String> {
-    WIKILINK_RE
-        .captures_iter(content)
-        .filter_map(|c| c.get(1).map(|m| m.as_str().trim().to_string()))
-        .collect()
+    let mut links = Vec::new();
+    let mut cursor = 0;
+    while let Some(start_offset) = content[cursor..].find("[[") {
+        let absolute_start = cursor + start_offset;
+        let inner_start = absolute_start + 2;
+        if let Some(end_offset) = content[inner_start..].find("]]") {
+            let absolute_end = inner_start + end_offset;
+            let inner_text = &content[inner_start..absolute_end];
+
+            let link_part = match inner_text.find('|') {
+                Some(pipe_idx) => &inner_text[..pipe_idx],
+                None => inner_text,
+            };
+
+            if !link_part.is_empty() && !link_part.contains(']') {
+                links.push(link_part.trim().to_string());
+            }
+            cursor = absolute_end + 2;
+        } else {
+            break;
+        }
+    }
+    links
 }
 
 #[derive(Clone, Debug, zeroize::Zeroize, zeroize::ZeroizeOnDrop)]
@@ -79,7 +94,7 @@ fn split_frontmatter_payload(bytes: &[u8]) -> (Option<frontmatter::Frontmatter>,
         }
 
         if let Ok(fm_str) = std::str::from_utf8(fm_bytes)
-            && let Ok(fm) = serde_yml::from_str::<frontmatter::Frontmatter>(fm_str)
+            && let Ok(fm) = serde_yaml_ng::from_str::<frontmatter::Frontmatter>(fm_str)
         {
             return (Some(fm), &bytes[content_start..]);
         }
@@ -113,15 +128,13 @@ impl Storage {
             && let Ok(raw) = fs::read(&old_key_path)
             && raw.len() == 32
         {
-            let _ = crate::fsutil::atomic_write(&key_path, &raw);
             #[cfg(unix)]
             {
-                use std::os::unix::fs::PermissionsExt;
-                if let Ok(metadata) = fs::metadata(&key_path) {
-                    let mut perms = metadata.permissions();
-                    perms.set_mode(0o400);
-                    let _ = fs::set_permissions(&key_path, perms);
-                }
+                let _ = crate::fsutil::atomic_write_with_mode(&key_path, &raw, 0o400);
+            }
+            #[cfg(not(unix))]
+            {
+                let _ = crate::fsutil::atomic_write(&key_path, &raw);
             }
             let _ = fs::remove_file(&old_key_path);
         }
@@ -150,13 +163,15 @@ impl Storage {
             [0_u8; 32]
         };
 
-        Ok(Self {
+        let storage = Self {
             data_dir,
             config_dir,
             notes_dir,
             templates_dir,
             key,
-        })
+        };
+        storage.migrate_extensions();
+        Ok(storage)
     }
 
     fn key_path(&self) -> PathBuf {
@@ -350,6 +365,17 @@ impl Storage {
             .unwrap_or_else(|| self.notes_dir.join("invalid"))
     }
 
+    pub fn note_mtime_millis(&self, id: &str) -> u64 {
+        fs::metadata(self.note_path(id))
+            .and_then(|m| m.modified())
+            .and_then(|t| {
+                t.duration_since(std::time::UNIX_EPOCH)
+                    .map_err(std::io::Error::other)
+            })
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0)
+    }
+
     fn validate_path_within_notes_dir(&self, rel_path: &str) -> Option<PathBuf> {
         let path = std::path::Path::new(rel_path);
         let mut normalized = PathBuf::new();
@@ -371,8 +397,6 @@ impl Storage {
     }
 
     pub fn list_note_ids(&self) -> Result<Vec<String>> {
-        self.migrate_extensions();
-
         let mut ids = Vec::new();
         let mut dirs_to_visit = vec![self.notes_dir.clone()];
 
@@ -465,6 +489,7 @@ impl Storage {
                     tags: fm_val.tags.clone(),
                     pinned: fm_val.pinned,
                     links: fm_val.links.clone().unwrap_or_default(),
+                    size_bytes: path.metadata().map(|m| m.len()).unwrap_or(0),
                 });
             }
 
@@ -485,6 +510,7 @@ impl Storage {
                 tags,
                 pinned,
                 links,
+                size_bytes: path.metadata().map(|m| m.len()).unwrap_or(0),
             })
         } else {
             let content = fs::read_to_string(&path).unwrap_or_default();
@@ -519,6 +545,7 @@ impl Storage {
                 tags: fm.tags,
                 pinned: fm.pinned,
                 links,
+                size_bytes: path.metadata().map(|m| m.len()).unwrap_or(0),
             })
         }
     }
@@ -980,12 +1007,16 @@ impl Storage {
     }
 
     pub fn decrypt(&self, payload: &[u8]) -> Result<Vec<u8>> {
+        let header_len = FILE_MAGIC.len() + NONCE_LEN;
+        if payload.len() < header_len {
+            anyhow::bail!("invalid note header, payload too short");
+        }
         if !payload.starts_with(FILE_MAGIC) {
             anyhow::bail!("invalid note header, missing CLIN");
         }
 
-        let nonce = &payload[FILE_MAGIC.len()..FILE_MAGIC.len() + NONCE_LEN];
-        let ciphertext = &payload[FILE_MAGIC.len() + NONCE_LEN..];
+        let nonce = &payload[FILE_MAGIC.len()..header_len];
+        let ciphertext = &payload[header_len..];
 
         let cipher = ChaCha20Poly1305::new(Key::from_slice(&self.key));
         cipher
@@ -1042,6 +1073,62 @@ mod tests {
         assert!(fm.is_some());
         let decrypted = storage.decrypt(payload)?;
         assert_eq!(decrypted, plaintext);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_decrypt_truncated_payload() {
+        let storage = Storage {
+            data_dir: PathBuf::new(),
+            config_dir: PathBuf::new(),
+            notes_dir: PathBuf::new(),
+            templates_dir: PathBuf::new(),
+            key: [0u8; 32],
+        };
+        // Truncated payload: valid magic but no nonce/ciphertext
+        let truncated = b"CLIN1";
+        let result = storage.decrypt(truncated);
+        assert!(result.is_err(), "truncated payload must error, not panic");
+    }
+
+    #[test]
+    fn test_mtime_updates_on_save() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let notes_dir = temp.path().to_path_buf();
+        let storage = Storage {
+            data_dir: PathBuf::new(),
+            config_dir: PathBuf::new(),
+            notes_dir: notes_dir.clone(),
+            templates_dir: PathBuf::new(),
+            key: [0u8; 32],
+        };
+
+        let id = storage.save_note(
+            "test_note.clin",
+            &Note {
+                title: "T1".to_string(),
+                content: "Content 1".to_string(),
+                updated_at: 1,
+                tags: vec![],
+            },
+        )?;
+        let mt1 = storage.note_mtime_millis(&id);
+        assert!(mt1 > 0);
+
+        std::thread::sleep(std::time::Duration::from_millis(20));
+
+        let id = storage.save_note(
+            &id,
+            &Note {
+                title: "T1".to_string(),
+                content: "Content 2".to_string(),
+                updated_at: 2,
+                tags: vec![],
+            },
+        )?;
+        let mt2 = storage.note_mtime_millis(&id);
+        assert!(mt2 > mt1);
 
         Ok(())
     }

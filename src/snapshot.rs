@@ -204,22 +204,15 @@ pub fn render_draw_snapshot(data: &DrawData, theme: &AppThemeColors) -> Vec<Vec<
 }
 
 pub struct RenderedSnapshot<'a> {
-    grid: Vec<(char, Style)>,
-    cols: u16,
-    rows: u16,
+    grid: &'a [Vec<(char, Style)>],
     scroll_offset: u16,
     block: Option<Block<'a>>,
 }
 
 impl<'a> RenderedSnapshot<'a> {
-    pub fn new(grid: &[Vec<(char, Style)>]) -> Self {
-        let rows = grid.len() as u16;
-        let cols = grid.first().map(|r| r.len() as u16).unwrap_or(0);
-        let flat: Vec<(char, Style)> = grid.iter().flat_map(|r| r.iter().copied()).collect();
+    pub fn new(grid: &'a [Vec<(char, Style)>]) -> Self {
         Self {
-            grid: flat,
-            cols,
-            rows,
+            grid,
             scroll_offset: 0,
             block: None,
         }
@@ -246,21 +239,20 @@ impl Widget for RenderedSnapshot<'_> {
             area
         };
 
+        let rows = self.grid.len();
+
         let scroll = self.scroll_offset as usize;
         for (row_idx, buf_y) in (area.top()..area.bottom()).enumerate() {
             let src_row = scroll + row_idx;
-            if src_row >= self.rows as usize {
+            if src_row >= rows {
                 break;
             }
+            let row = &self.grid[src_row];
             for (col_idx, buf_x) in (area.left()..area.right()).enumerate() {
-                if col_idx >= self.cols as usize {
+                if col_idx >= row.len() {
                     break;
                 }
-                let idx = src_row * self.cols as usize + col_idx;
-                if idx >= self.grid.len() {
-                    break;
-                }
-                let (ch, style) = self.grid[idx];
+                let (ch, style) = row[col_idx];
                 if let Some(cell) = buf.cell_mut((buf_x, buf_y)) {
                     cell.set_char(ch).set_style(style);
                 }

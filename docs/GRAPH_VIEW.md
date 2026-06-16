@@ -131,6 +131,12 @@ The simulation is considered "settled" when total kinetic energy drops below `0.
 ---
 
 ## Interaction Model
+### Preview Pane
+
+The Graph view supports a preview pane identically to the List view. When enabled, it renders the contents of the currently selected node.
++ **Positioning**: The preview pane respects the `list.preview_position` setting (right, bottom, etc.).
++ **Toggling**: Can be toggled on/off independently of the List view's preview state.
+
 
 ### Keyboard
 
@@ -145,6 +151,7 @@ The simulation is considered "settled" when total kinetic energy drops below `0.
 | `Shift+M` | Toggle minimap |
 | `Shift+L` | Toggle legend |
 | `Shift+G` | Toggle grid |
+| `Shift+P` | Toggle preview pane |
 | `Shift+S` | Toggle status bar |
 | `r` | Refresh simulation |
 | `Ctrl+R` | Reload config |
@@ -197,6 +204,7 @@ All graf options are stored in the main `config.toml` under sections:
 
 | Section | Purpose |
 |---|---|
+| `[graf]` | Global graph settings: preview_enabled |
 | `[visual]` | Colors, node/edge style, labels, minimap, legend, grid |
 | `[visual.colors]` | Per-color overrides (hex values) |
 | `[physics]` | Force simulation parameters |
@@ -206,9 +214,6 @@ All graf options are stored in the main `config.toml` under sections:
 | `[legend]` | Legend position, max items |
 | `[search]` | Search popup behavior |
 | `[editor]` | External editor command for graf |
-
-The old `graf.toml` file is auto-merged into `config.toml` on read for backward compatibility.
-
 See [CONFIG_REFERENCE.md](CONFIG_REFERENCE.md) for full option documentation.
 
 ---

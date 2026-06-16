@@ -1,7 +1,6 @@
 use crate::config::ClinConfig;
 use std::path::PathBuf;
 
-pub use crate::cli::CliCommand;
 use crate::constants::*;
 pub use crate::editor::*;
 use crate::events::get_title_text;
@@ -243,20 +242,6 @@ impl HelpTab {
         }
     }
 
-    pub fn label(self) -> &'static str {
-        match self {
-            HelpTab::Notes => "Notes",
-            HelpTab::Editor => "Editor",
-            HelpTab::Graph => "Graph",
-            HelpTab::Draw => "Draw",
-            HelpTab::Canvas => "Pinstar",
-            HelpTab::Backup => "Backup",
-            HelpTab::Templates => "Templates",
-            HelpTab::ContentTree => "Content Tree",
-            HelpTab::About => "About",
-        }
-    }
-
     pub fn from_index(i: usize) -> Self {
         match i {
             0 => HelpTab::Notes,
@@ -284,10 +269,6 @@ impl HelpTab {
             HelpTab::About => 8,
         }
     }
-
-    pub fn count() -> usize {
-        9
-    }
 }
 
 pub struct App {
@@ -312,36 +293,50 @@ pub struct App {
     pub preview_position: crate::config::PreviewPosition,
     pub pinned_on_top: bool,
     pub default_folder: Option<String>,
+    pub mouse_enabled: bool,
+    pub date_format: String,
+    pub last_auto_backup: Option<std::time::Instant>,
     pub last_g_press: Option<Instant>,
     pub last_esc_press: Option<Instant>,
     pub return_mode: Option<ViewMode>,
     pub app_theme: crate::app_theme::AppThemeColors,
     pub canvas_state: Option<crate::pinstar::state::PinstarState>,
+    pub config: crate::config::ClinConfig,
+    pub summary_cache: HashMap<String, NoteSummary>,
+    pub summary_mtime: HashMap<String, u64>,
 }
 
 impl App {
     pub fn new(storage: Storage) -> Result<Self> {
         let keybinds = storage.load_keybinds();
         let bootstrap_config = crate::config::ClinConfig::load().unwrap_or_default();
+        for w in bootstrap_config.validate() {
+            eprintln!("[clin] config warning: {w}");
+        }
         let app_theme = crate::app_theme::AppThemeColors::from_config(&bootstrap_config.theme);
 
         let mut editor = NoteEditor::new();
-        editor.external_editor_enabled = bootstrap_config.external_editor_enabled;
-        editor.external_editor = bootstrap_config.external_editor;
-        editor.editor_preview_enabled = bootstrap_config.editor_preview_enabled;
-        editor.show_line_numbers = bootstrap_config.show_line_numbers;
+        editor.external_editor_enabled = bootstrap_config.editor.external_enabled;
+        editor.external_editor = bootstrap_config.editor.external_command.clone();
+        editor.editor_preview_enabled = bootstrap_config.editor.preview_enabled;
+        editor.show_line_numbers = bootstrap_config.editor.show_line_numbers;
         editor.title_editor = make_title_editor("", Color::Black, Color::Cyan);
 
         let mut list = ListView::new();
         list.sort_field = bootstrap_config
+            .list
             .default_sort_field
             .unwrap_or(SortField::Title);
         list.sort_order = bootstrap_config
+            .list
             .default_sort_order
             .unwrap_or(SortOrder::Ascending);
-        list.preview_enabled = bootstrap_config.preview_enabled;
+        list.preview_enabled = bootstrap_config.list.preview_enabled;
         list.page_size = 10;
-        list.notes_layout = bootstrap_config.visual.notes_layout.clone();
+        list.notes_layout = bootstrap_config.list.default_view.clone();
+        list.list_density = bootstrap_config.list.density.clone();
+        list.show_file_size = bootstrap_config.list.show_file_size;
+        list.show_date_in_list = bootstrap_config.list.show_date_in_list;
 
         let mut app = Self {
             storage,
@@ -361,19 +356,29 @@ impl App {
             confirm_on_delete: bootstrap_config.confirm_on_delete,
             confirm_on_quit: bootstrap_config.confirm_on_quit,
             should_quit: false,
-            preview_encryption: bootstrap_config.preview_encryption,
-            preview_position: bootstrap_config.preview_position,
-            pinned_on_top: bootstrap_config.pinned_on_top,
+            preview_encryption: bootstrap_config.list.preview_encryption,
+            mouse_enabled: bootstrap_config.mouse_enabled,
+            date_format: bootstrap_config.list.date_format.clone(),
+            last_auto_backup: None,
+            preview_position: bootstrap_config.list.preview_position,
+            pinned_on_top: bootstrap_config.list.pinned_on_top,
             default_folder: bootstrap_config.default_folder.clone(),
             last_g_press: None,
             last_esc_press: None,
             return_mode: None,
             app_theme,
             canvas_state: None,
+            config: bootstrap_config,
+            summary_cache: HashMap::new(),
+            summary_mtime: HashMap::new(),
         };
         app.list.folder_expanded.insert(String::new());
         app.refresh_notes()?;
         Ok(app)
+    }
+
+    pub fn reload_config(&mut self) {
+        self.config = crate::config::ClinConfig::load().unwrap_or_default();
     }
 
     fn is_virtual_pinned_path(path: &str) -> bool {
@@ -381,12 +386,27 @@ impl App {
     }
 
     pub fn refresh_notes(&mut self) -> Result<()> {
+        let ids = self.storage.list_note_ids()?;
         let mut summaries = Vec::new();
-        for id in self.storage.list_note_ids()? {
-            if let Ok(summary) = self.storage.load_note_summary(&id) {
+
+        for id in &ids {
+            let mt = self.storage.note_mtime_millis(id);
+            if self.summary_mtime.get(id) == Some(&mt)
+                && let Some(s) = self.summary_cache.get(id)
+            {
+                summaries.push(s.clone());
+                continue;
+            }
+            if let Ok(summary) = self.storage.load_note_summary(id) {
+                self.summary_cache.insert(id.clone(), summary.clone());
+                self.summary_mtime.insert(id.clone(), mt);
                 summaries.push(summary);
             }
         }
+
+        let id_set: HashSet<&String> = ids.iter().collect();
+        self.summary_cache.retain(|k, _| id_set.contains(k));
+        self.summary_mtime.retain(|k, _| id_set.contains(k));
 
         summaries.sort_by(|a, b| {
             if self.pinned_on_top {
@@ -489,7 +509,10 @@ impl App {
         } else {
             let folders = self.storage.list_folders().unwrap_or_default();
             self.list.folder_cache = Some(folders);
-            self.list.folder_cache.as_ref().unwrap()
+            self.list
+                .folder_cache
+                .as_ref()
+                .expect("folder_cache populated above")
         };
 
         if self.list.notes_layout == crate::config::NotesLayout::Grid {
@@ -1024,15 +1047,6 @@ impl App {
         false
     }
 
-    pub fn start_new_note(&mut self, folder: String) {
-        let template_manager = self.storage.template_manager();
-        if let Some(default_template) = template_manager.load_default() {
-            self.start_note_from_template(&default_template, folder);
-        } else {
-            self.start_blank_note(folder);
-        }
-    }
-
     pub fn start_new_note_with_title(&mut self, folder: String, title: String) {
         let template_manager = self.storage.template_manager();
         if let Some(default_template) = template_manager.load_default() {
@@ -1040,45 +1054,6 @@ impl App {
         } else {
             self.start_blank_note_with_title(folder, title);
         }
-    }
-
-    pub fn start_blank_note(&mut self, folder: String) {
-        let mut new_id = self.storage.new_note_id();
-        if !folder.is_empty() {
-            new_id = format!("{folder}/{new_id}");
-        }
-
-        if self.editor.external_editor_enabled {
-            let new_note = Note {
-                title: String::from("Untitled note"),
-                content: String::new(),
-                updated_at: now_unix_secs(),
-                tags: Vec::new(),
-            };
-            if self.storage.save_note(&new_id, &new_note).is_ok() {
-                if let Err(e) = self.try_auto_backup(&new_note.title) {
-                    self.set_temporary_status(&format!("Backup failed: {e}"));
-                }
-                if let Err(e) = self.refresh_notes() {
-                    self.set_temporary_status(&format!("Refresh failed: {e}"));
-                }
-                self.open_note_in_external_editor(&new_id, None);
-            }
-            return;
-        }
-
-        self.mode = ViewMode::Edit;
-        self.editor.editing_id = Some(new_id);
-        self.editor.title_editor =
-            make_title_editor("", self.app_theme.highlight_fg, self.app_theme.highlight_bg);
-        self.editor.editor = TextArea::default();
-        self.editor.editor.set_cursor_style(
-            Style::default()
-                .fg(self.app_theme.highlight_fg)
-                .bg(self.app_theme.highlight_bg),
-        );
-        self.editor.editor.set_cursor_line_style(Style::default());
-        self.set_default_status();
     }
 
     pub fn start_blank_note_with_title(&mut self, folder: String, title: String) {
@@ -1456,16 +1431,15 @@ template = """
         }
     }
 
-    pub fn try_auto_backup(&self, note_title: &str) -> Result<()> {
+    pub fn try_auto_backup_raw(&self, message: &str) -> Result<()> {
         let config = ClinConfig::load()?;
-        if config.backup.enabled && config.backup.backup_on_save {
+        if config.backup.enabled {
             let vault_path = config
                 .effective_storage_path()
                 .unwrap_or_else(|_| PathBuf::from("."));
             let git_ops = crate::backup::git_ops::GitOps::init(&vault_path)?;
             if git_ops.has_changes().unwrap_or(false) {
-                let msg = format!("auto: {note_title}");
-                git_ops.add_all().and_then(|_| git_ops.commit(&msg))?;
+                git_ops.add_all().and_then(|_| git_ops.commit(message))?;
                 if config.backup.auto_push
                     && let Some(remote) = &config.backup.remote_name
                 {
@@ -1476,22 +1450,18 @@ template = """
         Ok(())
     }
 
+    pub fn try_auto_backup(&self, note_title: &str) -> Result<()> {
+        let config = ClinConfig::load()?;
+        if config.backup.enabled && config.backup.backup_on_save {
+            self.try_auto_backup_raw(&format!("auto: {note_title}"))?;
+        }
+        Ok(())
+    }
+
     pub fn try_auto_backup_on_quit(&self) -> Result<()> {
         let config = ClinConfig::load()?;
         if config.backup.enabled && config.backup.backup_on_quit {
-            let vault_path = config
-                .effective_storage_path()
-                .unwrap_or_else(|_| PathBuf::from("."));
-            let git_ops = crate::backup::git_ops::GitOps::init(&vault_path)?;
-            if git_ops.has_changes().unwrap_or(false) {
-                let msg = "auto: backup on quit";
-                git_ops.add_all().and_then(|_| git_ops.commit(msg))?;
-                if config.backup.auto_push
-                    && let Some(remote) = &config.backup.remote_name
-                {
-                    git_ops.push(remote)?;
-                }
-            }
+            self.try_auto_backup_raw("auto: backup on quit")?;
         }
         Ok(())
     }
@@ -1665,58 +1635,50 @@ template = """
     }
 
     pub fn show_confirm(&mut self, action: ConfirmAction) {
-        let (title, message, detail, confirm_label, is_destructive) = match &action {
+        let (message, detail, confirm_label, is_destructive) = match &action {
             ConfirmAction::DeleteNote { title, .. } => (
-                "Move to Trash".into(),
                 format!("Move \"{title}\" to trash?"),
                 Some("Use Shift+T to view/restore trashed notes.".into()),
                 "Trash".into(),
                 false,
             ),
             ConfirmAction::DeleteFolder { path } => (
-                "Move Folder to Trash".into(),
                 format!("Move folder \"{path}\" and all contents to trash?"),
                 Some("Use Shift+T to view/restore trashed notes.".into()),
                 "Trash".into(),
                 false,
             ),
             ConfirmAction::DeleteTag { tag } => (
-                "Confirm Delete Tag".into(),
                 format!("Delete tag \"{tag}\"?"),
                 Some("This will remove the tag from all notes.".into()),
                 "Delete".into(),
                 true,
             ),
             ConfirmAction::DeleteTemplate { name, .. } => (
-                "Delete Template".into(),
                 format!("Delete template \"{name}\"?"),
                 Some("This removes template file permanently.".into()),
                 "Delete".into(),
                 true,
             ),
             ConfirmAction::DeleteFromTrash { item } => (
-                "Confirm Permanent Delete".into(),
                 format!("Permanently delete \"{}\"?", item.name.to_string_lossy()),
                 Some("This action cannot be undone.".into()),
                 "Delete Forever".into(),
                 true,
             ),
             ConfirmAction::EmptyTrash { items } => (
-                "Confirm Empty Trash".into(),
                 format!("Permanently delete {} note(s)?", items.len()),
                 Some("This action cannot be undone.".into()),
                 "Empty Trash".into(),
                 true,
             ),
             ConfirmAction::BulkDeleteNotes { note_ids } => (
-                "Move to Trash".into(),
                 format!("Move {} selected note(s) to trash?", note_ids.len()),
                 Some("Use Shift+T to view/restore trashed notes.".into()),
                 "Trash".into(),
                 false,
             ),
             ConfirmAction::QuitApp => (
-                "Exit Application".into(),
                 "Are you sure you want to quit?".into(),
                 None,
                 "Quit".into(),
@@ -1726,7 +1688,6 @@ template = """
 
         self.popups.confirm = Some(ConfirmPopup {
             action,
-            title,
             message,
             detail,
             confirm_label,
@@ -1825,6 +1786,9 @@ template = """
         match self.storage.trash_folder(&path) {
             Ok(()) => {
                 self.list.folder_cache = None;
+                self.list
+                    .folder_expanded
+                    .retain(|p| p != &path && !p.starts_with(&format!("{path}/")));
                 if let Err(e) = self.refresh_notes() {
                     self.set_temporary_status(&format!("Refresh failed: {e}"));
                 }
@@ -2192,6 +2156,18 @@ template = """
             self.list.visual_list.get(self.list.visual_index)
         {
             let note = &self.notes[*summary_idx];
+            let ext = std::path::Path::new(&note.id)
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("");
+
+            if ext != "md" && ext != "txt" && ext != "clin" {
+                self.set_temporary_status_static(
+                    "Tagging is only supported for .md, .txt, and .clin files",
+                );
+                return;
+            }
+
             let current_tags = note.tags.clone();
             let all_tags = self.collect_live_tags();
 
@@ -2224,6 +2200,18 @@ template = """
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty())
                 .collect();
+
+            let ext = std::path::Path::new(&popup.note_id)
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("");
+
+            if ext != "md" && ext != "txt" && ext != "clin" {
+                self.set_temporary_status_static(
+                    "Tagging is only supported for .md, .txt, and .clin files",
+                );
+                return;
+            }
 
             if let Ok(mut note) = self.storage.load_note(&popup.note_id) {
                 note.tags = tags;
@@ -2276,14 +2264,6 @@ template = """
         }
     }
 
-    pub fn cycle_tag_suggestion(&mut self) {
-        if let Some(popup) = &mut self.popups.tag
-            && !popup.suggestions.is_empty()
-        {
-            popup.suggestion_index = (popup.suggestion_index + 1) % popup.suggestions.len();
-        }
-    }
-
     pub fn accept_tag_suggestion(&mut self) {
         if let Some(popup) = &mut self.popups.tag
             && let Some(suggestion) = popup.suggestions.get(popup.suggestion_index).cloned()
@@ -2333,7 +2313,6 @@ template = """
 
         self.popups.confirm = Some(ConfirmPopup {
             action: ConfirmAction::DeleteTag { tag: tag.clone() },
-            title: "Confirm Delete Tag".into(),
             message: format!("Delete tag \"{tag}\"?"),
             detail: Some(detail),
             confirm_label: "Delete".into(),
@@ -2346,6 +2325,15 @@ template = """
         let mut count = 0;
         if let Ok(note_ids) = self.storage.list_note_ids() {
             for note_id in note_ids {
+                let ext = std::path::Path::new(&note_id)
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .unwrap_or("");
+
+                if ext != "md" && ext != "txt" && ext != "clin" {
+                    continue;
+                }
+
                 if let Ok(mut note) = self.storage.load_note(&note_id)
                     && note.tags.contains(&tag)
                 {
@@ -2394,23 +2382,27 @@ template = """
         let indices: Vec<usize> = self.list.selected_indices.iter().copied().collect();
 
         for &idx in &indices {
-            if let crate::list_view::VisualItem::Note { summary_idx, .. } = self
-                .list
-                .visual_list
-                .get(idx)
-                .unwrap_or(&crate::list_view::VisualItem::CreateNew {
-                    path: String::new(),
-                    depth: 0,
-                })
+            if let Some(crate::list_view::VisualItem::Note { summary_idx, .. }) =
+                self.list.visual_list.get(idx)
             {
                 let note = &self.notes[*summary_idx];
                 let note_id = note.id.clone();
+                let note_title = note.title.clone();
+                let ext = std::path::Path::new(&note_id)
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .unwrap_or("");
+
+                if ext != "md" && ext != "txt" && ext != "clin" {
+                    continue;
+                }
+
                 if let Ok(mut loaded) = self.storage.load_note(&note_id) {
                     if !loaded.tags.contains(&tag) {
                         loaded.tags.push(tag.clone());
                     }
                     if self.storage.save_note(&note_id, &loaded).is_ok() {
-                        if let Err(e) = self.try_auto_backup(&loaded.title) {
+                        if let Err(e) = self.try_auto_backup(&note_title) {
                             self.set_temporary_status(&format!("Backup failed: {e}"));
                         }
                         count += 1;
@@ -2470,7 +2462,7 @@ template = """
         };
         self.set_temporary_status(msg);
         if let Ok(mut config) = crate::config::ClinConfig::load() {
-            config.external_editor_enabled = self.editor.external_editor_enabled;
+            config.editor.external_enabled = self.editor.external_editor_enabled;
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
             }
@@ -2534,7 +2526,9 @@ template = """
             self.list.visual_list.get(self.list.visual_index)
         {
             let path = self.storage.note_path(&self.notes[*summary_idx].id);
-            if let Ok(state) = crate::pinstar::state::PinstarState::load(&path) {
+            if let Ok(state) =
+                crate::pinstar::state::PinstarState::load(&path, self.keybinds.clone())
+            {
                 self.canvas_state = Some(state);
                 self.return_mode = Some(self.mode);
                 self.mode = ViewMode::Canvas;
@@ -2639,7 +2633,10 @@ template = """
                 &self.app_theme,
             ));
         }
-        self.list.help_text_cache.as_ref().unwrap()
+        self.list
+            .help_text_cache
+            .as_ref()
+            .expect("help_text_cache populated above")
     }
 
     pub fn begin_create_select_format(&mut self) {
@@ -2671,14 +2668,6 @@ template = """
         self.popups.create_format = None;
     }
 
-    pub fn begin_create_text(&mut self) {
-        let folder = if self.list.notes_layout == crate::config::NotesLayout::Grid {
-            self.list.grid_folder.clone()
-        } else {
-            self.get_current_folder_context()
-        };
-        self.begin_create_text_in_folder(folder);
-    }
     pub fn begin_create_text_in_folder(&mut self, folder: String) {
         if Self::is_virtual_pinned_path(&folder) {
             self.set_temporary_status_static("Cannot create text file inside virtual Pinned");
@@ -2693,33 +2682,10 @@ template = """
                 .borders(ratatui::widgets::Borders::ALL)
                 .title("New Text File Name - Esc to cancel, Enter to create"),
         );
-        self.popups.text_create = Some(crate::popups::NoteCreatePopup { folder, input });
-    }
-    pub fn confirm_create_text(&mut self) {
-        if let Some(popup) = self.popups.text_create.take() {
-            let mut title = popup.input.lines().join("");
-            title = title.trim().to_string();
-            if title.is_empty() {
-                title = String::from("Untitled text");
-            }
-            let mut id = self.storage.new_note_id();
-            id.push_str(".txt");
-            let full_id = if popup.folder.is_empty() {
-                id
-            } else {
-                format!("{}/{}", popup.folder, id)
-            };
-            self.enter_edit_mode(full_id, title, String::new());
-        }
-    }
-
-    pub fn begin_create_note(&mut self) {
-        let folder = if self.list.notes_layout == crate::config::NotesLayout::Grid {
-            self.list.grid_folder.clone()
-        } else {
-            self.get_current_folder_context()
-        };
-        self.begin_create_note_in_folder(folder);
+        self.popups.create_note = Some((
+            crate::popups::NoteCreatePopup { folder, input },
+            crate::popups::NoteFormat::PlainText,
+        ));
     }
 
     pub fn begin_create_note_in_folder(&mut self, folder: String) {
@@ -2736,17 +2702,85 @@ template = """
                 .borders(ratatui::widgets::Borders::ALL)
                 .title("New Note Name - Esc to cancel, Enter to create"),
         );
-        self.popups.note_create = Some(NoteCreatePopup { folder, input });
+        self.popups.create_note = Some((
+            NoteCreatePopup { folder, input },
+            crate::popups::NoteFormat::Markdown,
+        ));
     }
 
     pub fn confirm_create_note(&mut self) {
-        if let Some(popup) = self.popups.note_create.take() {
+        if let Some((popup, format)) = self.popups.create_note.take() {
             let mut title = popup.input.lines().join("");
             title = title.trim().to_string();
-            if title.is_empty() {
-                title = String::from("Untitled note");
+            match format {
+                crate::popups::NoteFormat::Markdown => {
+                    if title.is_empty() {
+                        title = String::from("Untitled note");
+                    }
+                    self.start_new_note_with_title(popup.folder, title);
+                }
+                crate::popups::NoteFormat::PlainText => {
+                    if title.is_empty() {
+                        title = String::from("Untitled text");
+                    }
+                    let mut id = self.storage.new_note_id();
+                    id.push_str(".txt");
+                    let full_id = if popup.folder.is_empty() {
+                        id
+                    } else {
+                        format!("{}/{}", popup.folder, id)
+                    };
+                    self.enter_edit_mode(full_id, title, String::new());
+                }
+                crate::popups::NoteFormat::Draw => {
+                    if title.is_empty() {
+                        title = String::from("Untitled drawing");
+                    }
+                    let canvas_id = if popup.folder.is_empty() {
+                        format!("{title}.draw")
+                    } else {
+                        format!("{}/{}.draw", popup.folder, title)
+                    };
+                    self.return_mode = Some(self.mode);
+                    self.mode = ViewMode::Draw;
+                    self.editor.editing_id = Some(canvas_id);
+                }
+                crate::popups::NoteFormat::Canvas => {
+                    if title.is_empty() {
+                        title = String::from("Untitled canvas");
+                    }
+                    let canvas_id = if popup.folder.is_empty() {
+                        format!("{title}.canvas")
+                    } else {
+                        format!("{}/{}.canvas", popup.folder, title)
+                    };
+                    let path = self.storage.note_path(&canvas_id);
+                    if !path.exists() {
+                        if let Some(parent) = path.parent() {
+                            let _ = std::fs::create_dir_all(parent);
+                        }
+                        let data = crate::pinstar::data::CanvasData {
+                            nodes: vec![],
+                            edges: vec![],
+                        };
+                        if let Ok(content) = serde_json::to_string_pretty(&data)
+                            && let Err(e) = std::fs::write(&path, content)
+                        {
+                            self.set_temporary_status(&format!("Failed to write canvas file: {e}"));
+                            return;
+                        }
+                    }
+                    self.return_mode = Some(self.mode);
+                    self.mode = ViewMode::Canvas;
+                    self.editor.editing_id = Some(canvas_id);
+                    if let Ok(state) =
+                        crate::pinstar::state::PinstarState::load(&path, self.keybinds.clone())
+                    {
+                        self.canvas_state = Some(state);
+                    }
+                    self.set_default_status();
+                }
             }
-            self.start_new_note_with_title(popup.folder, title);
         }
     }
     pub fn begin_import(
@@ -2782,7 +2816,6 @@ template = """
         self.popups.import = Some(ImportPopup {
             source,
             target,
-            folder,
             note_id,
             input,
         });
@@ -2918,28 +2951,10 @@ template = """
                 .borders(ratatui::widgets::Borders::ALL)
                 .title("New Drawing Name - Esc to cancel, Enter to create"),
         );
-        self.popups.draw_create = Some(crate::popups::NoteCreatePopup { folder, input });
-    }
-
-    pub fn confirm_create_draw(&mut self) {
-        if let Some(popup) = self.popups.draw_create.take() {
-            let mut title = popup.input.lines().join("");
-            title = title.trim().to_string();
-            if title.is_empty() {
-                title = String::from("Untitled drawing");
-            }
-
-            let canvas_id = if popup.folder.is_empty() {
-                format!("{title}.draw")
-            } else {
-                format!("{}/{}.draw", popup.folder, title)
-            };
-
-            self.return_mode = Some(self.mode);
-            self.mode = ViewMode::Draw;
-
-            self.editor.editing_id = Some(canvas_id);
-        }
+        self.popups.create_note = Some((
+            crate::popups::NoteCreatePopup { folder, input },
+            crate::popups::NoteFormat::Draw,
+        ));
     }
 
     pub fn begin_create_canvas(&mut self) {
@@ -2965,50 +2980,11 @@ template = """
                 .borders(ratatui::widgets::Borders::ALL)
                 .title("New Canvas Name - Esc to cancel, Enter to create"),
         );
-        self.popups.canvas_create = Some(crate::popups::NoteCreatePopup { folder, input });
+        self.popups.create_note = Some((
+            crate::popups::NoteCreatePopup { folder, input },
+            crate::popups::NoteFormat::Canvas,
+        ));
     }
-
-    pub fn confirm_create_canvas(&mut self) {
-        if let Some(popup) = self.popups.canvas_create.take() {
-            let mut title = popup.input.lines().join("");
-            title = title.trim().to_string();
-            if title.is_empty() {
-                title = String::from("Untitled canvas");
-            }
-
-            let canvas_id = if popup.folder.is_empty() {
-                format!("{title}.canvas")
-            } else {
-                format!("{}/{}.canvas", popup.folder, title)
-            };
-
-            let path = self.storage.note_path(&canvas_id);
-            if !path.exists() {
-                if let Some(parent) = path.parent() {
-                    let _ = std::fs::create_dir_all(parent);
-                }
-                let data = crate::pinstar::data::CanvasData {
-                    nodes: vec![],
-                    edges: vec![],
-                };
-                if let Ok(content) = serde_json::to_string_pretty(&data)
-                    && let Err(e) = std::fs::write(&path, content)
-                {
-                    self.set_temporary_status(&format!("Failed to write canvas file: {e}"));
-                    return;
-                }
-            }
-
-            self.return_mode = Some(self.mode);
-            self.mode = ViewMode::Canvas;
-            self.editor.editing_id = Some(canvas_id);
-            if let Ok(state) = crate::pinstar::state::PinstarState::load(&path) {
-                self.canvas_state = Some(state);
-            }
-            self.set_default_status();
-        }
-    }
-
     pub fn begin_rename_note(&mut self) {
         if let Some(VisualItem::Note { summary_idx, .. }) =
             self.list.visual_list.get(self.list.visual_index)
@@ -3136,8 +3112,8 @@ template = """
         };
         self.set_temporary_status_static(sort_desc);
         if let Ok(mut config) = crate::config::ClinConfig::load() {
-            config.default_sort_field = Some(self.list.sort_field);
-            config.default_sort_order = Some(self.list.sort_order);
+            config.list.default_sort_field = Some(self.list.sort_field);
+            config.list.default_sort_order = Some(self.list.sort_order);
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
             }
@@ -3603,7 +3579,7 @@ template = """
             self.set_temporary_status_static("Preview disabled");
         }
         if let Ok(mut config) = crate::config::ClinConfig::load() {
-            config.preview_enabled = self.list.preview_enabled;
+            config.list.preview_enabled = self.list.preview_enabled;
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
             }
@@ -3885,7 +3861,7 @@ template = """
             self.set_temporary_status_static("Markdown preview disabled");
         }
         if let Ok(mut config) = crate::config::ClinConfig::load() {
-            config.editor_preview_enabled = self.editor.editor_preview_enabled;
+            config.editor.preview_enabled = self.editor.editor_preview_enabled;
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
             }
@@ -3901,7 +3877,7 @@ template = """
         };
         self.set_temporary_status_static(msg);
         if let Ok(mut config) = crate::config::ClinConfig::load() {
-            config.show_line_numbers = self.editor.show_line_numbers;
+            config.editor.show_line_numbers = self.editor.show_line_numbers;
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
             }
@@ -3952,7 +3928,7 @@ template = """
             self.update_preview();
         }
         if let Ok(mut config) = crate::config::ClinConfig::load() {
-            config.preview_encryption = self.preview_encryption;
+            config.list.preview_encryption = self.preview_encryption;
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
             }
@@ -3971,7 +3947,7 @@ template = """
         };
         self.set_temporary_status_static(msg);
         if let Ok(mut config) = crate::config::ClinConfig::load() {
-            config.pinned_on_top = self.pinned_on_top;
+            config.list.pinned_on_top = self.pinned_on_top;
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
             }
@@ -3989,7 +3965,7 @@ template = """
         self.refresh_visual_list();
         // #2: persist
         if let Ok(mut config) = crate::config::ClinConfig::load() {
-            config.visual.notes_layout = self.list.notes_layout.clone();
+            config.list.default_view = self.list.notes_layout.clone();
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
             }
@@ -4024,7 +4000,7 @@ template = """
         let selected = themes.iter().position(|t| t == &current).unwrap_or(0);
         let general_is_solid = matches!(config.theme.background, crate::config::Background::Solid);
         let graph_is_solid = matches!(
-            config.visual.graph_background,
+            config.graf.visual.graph_background,
             crate::config::Background::Solid
         );
 
@@ -4077,8 +4053,8 @@ template = """
             }
             // Persist
             if let Ok(mut config) = crate::config::ClinConfig::load() {
-                config.default_sort_field = Some(self.list.sort_field);
-                config.default_sort_order = Some(self.list.sort_order);
+                config.list.default_sort_field = Some(self.list.sort_field);
+                config.list.default_sort_order = Some(self.list.sort_order);
                 if let Err(e) = config.save() {
                     self.set_temporary_status(&format!("Failed to save config: {e}"));
                 }
@@ -4122,7 +4098,7 @@ template = """
                 ThemePopupFocus::GraphBg => {
                     popup.graph_is_solid = !popup.graph_is_solid;
                     let mut config = crate::config::ClinConfig::load().unwrap_or_default();
-                    config.visual.graph_background = if popup.graph_is_solid {
+                    config.graf.visual.graph_background = if popup.graph_is_solid {
                         crate::config::Background::Solid
                     } else {
                         crate::config::Background::Transparent
@@ -4138,11 +4114,6 @@ template = """
 
     pub fn close_theme_popup(&mut self) {
         self.popups.theme = None;
-    }
-
-    pub fn app_theme_name(&self) -> String {
-        let config = crate::config::ClinConfig::load().unwrap_or_default();
-        config.theme.theme.to_string()
     }
 }
 

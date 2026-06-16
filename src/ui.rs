@@ -12,6 +12,14 @@ use std::path::Path;
 use std::process::Command;
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum PopupSize {
+    Small,   // 40% width, 40% height. Max bounds: 60 cols x 20 rows
+    Medium,  // 50% width, 50% height. Max bounds: 80 cols x 30 rows
+    Large,   // 60% width, 60% height. Max bounds: 100 cols x 40 rows
+    Prompt,  // 50% width. Fixed 5 height. Max bounds: 80 cols wide
+    Confirm, // 50% width. Fixed 12 height. Max bounds: 80 cols wide
+}
 
 fn split_lock_spans(text: &str, theme: &AppThemeColors) -> Vec<Span<'static>> {
     let mut result = Vec::new();
@@ -1786,8 +1794,28 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                             Style::default().fg(app.app_theme.muted),
                         ));
                     }
+                    if app.list.show_file_size {
+                        let size = format_size(summary.size_bytes);
+                        spans.push(Span::raw(" "));
+                        spans.push(Span::styled(
+                            format!("[{size}]"),
+                            Style::default().fg(app.app_theme.muted),
+                        ));
+                    }
 
-                    if vi == app.list.visual_index {
+                    if app.list.show_date_in_list {
+                        let secs = std::time::UNIX_EPOCH
+                            + std::time::Duration::from_secs(summary.updated_at);
+                        let dt: chrono::DateTime<chrono::Local> = secs.into();
+                        let formatted = dt.format(&app.date_format).to_string();
+                        spans.push(Span::raw(" "));
+                        spans.push(Span::styled(
+                            format!("({formatted})"),
+                            Style::default().fg(app.app_theme.muted),
+                        ));
+                    }
+
+                    if vi == app.list.visual_index && !app.list.show_date_in_list {
                         spans.push(Span::styled(
                             format!("  ({when})"),
                             Style::default().fg(app.app_theme.muted),
@@ -1919,8 +1947,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             frame,
             area,
             title,
-            50,
-            10,
+            PopupSize::Prompt,
             "Enter confirm · Esc cancel",
             &app.app_theme,
         );
@@ -1944,8 +1971,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             frame,
             area,
             "TAGS",
-            NOTES_POPUP_LARGE_W_PCT,
-            NOTES_POPUP_LARGE_H_PCT,
+            PopupSize::Large,
             "Ctrl+S batch assign · Tab accept · Enter save · d delete from all · Esc cancel",
             &app.app_theme,
         );
@@ -2024,17 +2050,12 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 .collect()
         };
 
-        let tags_list = List::new(tag_items)
+        let tags_list = build_list_widget(tag_items, &app.app_theme)
             .block(
                 Block::default()
                     .style(app.app_theme.bg_style())
                     .borders(Borders::ALL)
-                    .border_style(all_tags_border)
-                    .title(if tag_empty {
-                        String::new()
-                    } else {
-                        "All Tags".to_string()
-                    }),
+                    .border_style(all_tags_border),
             )
             .highlight_style(
                 Style::default()
@@ -2060,8 +2081,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             frame,
             area,
             title,
-            NOTES_POPUP_LARGE_W_PCT,
-            NOTES_POPUP_LARGE_H_PCT,
+            PopupSize::Large,
             "Tab switch  Enter move  Esc cancel",
             &app.app_theme,
         );
@@ -2149,8 +2169,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             frame,
             area,
             "COMMANDS",
-            NOTES_POPUP_LARGE_W_PCT,
-            NOTES_POPUP_LARGE_H_PCT,
+            PopupSize::Large,
             "Tab category · Enter run · ↑/↓ select · Esc close",
             &app.app_theme,
         );
@@ -2228,8 +2247,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             frame,
             area,
             "RENAME",
-            50,
-            10,
+            PopupSize::Prompt,
             "Enter rename · Esc cancel",
             &app.app_theme,
         );
@@ -2243,83 +2261,22 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         frame.render_widget(&popup.input, content);
     }
 
-    if let Some(popup) = &mut app.popups.note_create {
+    if let Some((popup, format)) = &mut app.popups.create_note {
+        let title = match format {
+            crate::popups::NoteFormat::Markdown => "NEW NOTE",
+            crate::popups::NoteFormat::Draw => "NEW DRAWING",
+            crate::popups::NoteFormat::Canvas => "NEW CANVAS",
+            crate::popups::NoteFormat::PlainText => "NEW TEXT FILE",
+        };
         let content = draw_popup_frame(
             frame,
             area,
-            "NEW NOTE",
-            50,
-            10,
+            title,
+            PopupSize::Prompt,
             "Enter create · Esc cancel",
             &app.app_theme,
         );
-
-        popup.input.set_block(
-            Block::default()
-                .style(app.app_theme.bg_style())
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(app.app_theme.heading)),
-        );
-        frame.render_widget(&popup.input, content);
-    }
-
-    if let Some(popup) = &mut app.popups.draw_create {
-        let content = draw_popup_frame(
-            frame,
-            area,
-            "NEW DRAWING",
-            50,
-            10,
-            "Enter create · Esc cancel",
-            &app.app_theme,
-        );
-
-        popup.input.set_block(
-            Block::default()
-                .style(app.app_theme.bg_style())
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(app.app_theme.heading)),
-        );
-        frame.render_widget(&popup.input, content);
-    }
-
-    if let Some(popup) = &mut app.popups.canvas_create {
-        let content = draw_popup_frame(
-            frame,
-            area,
-            "NEW CANVAS",
-            50,
-            10,
-            "Enter create · Esc cancel",
-            &app.app_theme,
-        );
-
-        popup.input.set_block(
-            Block::default()
-                .style(app.app_theme.bg_style())
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(app.app_theme.heading)),
-        );
-        frame.render_widget(&popup.input, content);
-    }
-
-    if let Some(popup) = &mut app.popups.text_create {
-        let content = draw_popup_frame(
-            frame,
-            area,
-            "NEW TEXT FILE",
-            50,
-            10,
-            "Enter create · Esc cancel",
-            &app.app_theme,
-        );
-
-        popup.input.set_block(
-            Block::default()
-                .style(app.app_theme.bg_style())
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(app.app_theme.heading)),
-        );
+        popup.input.set_block(popup_block("", &app.app_theme));
         frame.render_widget(&popup.input, content);
     }
 
@@ -2335,8 +2292,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             frame,
             area,
             title,
-            60,
-            20,
+            PopupSize::Large,
             "Enter import · Esc cancel",
             &app.app_theme,
         );
@@ -2354,8 +2310,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             frame,
             area,
             "SEARCH",
-            NOTES_POPUP_LARGE_W_PCT,
-            NOTES_POPUP_LARGE_H_PCT,
+            PopupSize::Large,
             "Tab switch · Enter open · Esc cancel · f:folder p:pinned t:tag g:text · \\e\\ escapes filters",
             &app.app_theme,
         );
@@ -2579,8 +2534,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             frame,
             area,
             "TRASH",
-            70,
-            70,
+            PopupSize::Large,
             "r restore · d delete · E empty · q close",
             &app.app_theme,
         );
@@ -2644,8 +2598,7 @@ pub fn draw_template_popup(
         frame,
         area,
         "TEMPLATES",
-        NOTES_POPUP_LARGE_W_PCT,
-        NOTES_POPUP_LARGE_H_PCT,
+        PopupSize::Large,
         "Tab switch · Enter use template · n create template · d delete · Space edit · ? help · Esc cancel",
         theme,
     );
@@ -2733,8 +2686,7 @@ pub fn draw_theme_popup(
         frame,
         area,
         "THEMES",
-        40,
-        60,
+        PopupSize::Medium,
         "Tab navigate · Enter select · Esc close",
         theme,
     );
@@ -2840,8 +2792,7 @@ pub fn draw_sort_popup(
         frame,
         area,
         "SORT BY",
-        40,
-        40,
+        PopupSize::Medium,
         "↑↓: Navigate • Enter: Select • Esc: Cancel",
         theme,
     );
@@ -2886,8 +2837,7 @@ pub fn draw_create_format_popup(
         frame,
         area,
         "CREATE NEW",
-        40,
-        40,
+        PopupSize::Medium,
         "↑↓: Navigate • Enter: Select • Esc: Cancel",
         theme,
     );
@@ -3259,7 +3209,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     }
 
     if app.status.starts_with("Save failed") || app.status.starts_with("Could not open") {
-        let popup = centered_rect(75, 20, area);
+        let popup = centered_rect(PopupSize::Small, area);
         frame.render_widget(Clear, popup);
         let text = Paragraph::new(app.status.as_ref())
             .block(
@@ -3273,12 +3223,11 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     }
 
     if let Some(menu) = &app.popups.context_menu {
-        let items = vec![
-            ListItem::new(" Copy       "),
-            ListItem::new(" Cut        "),
-            ListItem::new(" Paste      "),
-            ListItem::new(" Select All "),
-        ];
+        let labels = [" Copy ", " Cut ", " Paste ", " Select All "];
+        let items: Vec<ListItem> = labels.iter().map(|l| ListItem::new(*l)).collect();
+        let menu_width = labels.iter().map(|l| l.len() as u16).max().unwrap_or(0);
+        let menu_height = labels.len() as u16;
+
         let list = List::new(items)
             .block(
                 Block::default()
@@ -3287,7 +3236,10 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             )
             .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
 
-        let menu_area = Rect::new(menu.x, menu.y, 14, 4);
+        let x = menu.x.min(area.width.saturating_sub(menu_width));
+        let y = menu.y.min(area.height.saturating_sub(menu_height));
+        let menu_area = Rect::new(x, y, menu_width, menu_height);
+
         let mut state = ListState::default();
         state.select(Some(menu.selected));
 
@@ -3450,52 +3402,51 @@ pub fn draw_popup_banner(frame: &mut Frame, popup_area: Rect, title: &str, theme
     frame.render_widget(p, banner_area);
 }
 
-pub fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
-    let vertical = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage((100 - percent_y) / 2),
-            Constraint::Percentage(percent_y),
-            Constraint::Percentage((100 - percent_y) / 2),
-        ])
-        .split(area);
-    let horizontal = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage((100 - percent_x) / 2),
-            Constraint::Percentage(percent_x),
-            Constraint::Percentage((100 - percent_x) / 2),
-        ])
-        .split(vertical[1]);
-    horizontal[1].inner(Margin {
-        vertical: 0,
-        horizontal: 0,
-    })
+pub fn centered_rect(size: PopupSize, area: Rect) -> Rect {
+    let (width_pct, height_pct, max_w, max_h, fixed_h) = match size {
+        PopupSize::Small => (40, 40, 60, 20, None),
+        PopupSize::Medium => (50, 50, 80, 30, None),
+        PopupSize::Large => (60, 60, 100, 40, None),
+        PopupSize::Prompt => (50, 0, 80, 0, Some(5)),
+        PopupSize::Confirm => (50, 0, 80, 0, Some(12)),
+    };
+
+    let width = (area.width * width_pct / 100).clamp(30.min(area.width), max_w.min(area.width));
+
+    let height = if let Some(h) = fixed_h {
+        h.min(area.height)
+    } else {
+        (area.height * height_pct / 100).clamp(5.min(area.height), max_h.min(area.height))
+    };
+
+    Rect {
+        x: area.x + (area.width - width) / 2,
+        y: area.y + (area.height - height) / 2,
+        width,
+        height,
+    }
 }
-pub fn centered_rect_fixed(
-    width: u16,
-    height: u16,
-    area: ratatui::layout::Rect,
-) -> ratatui::layout::Rect {
-    let vertical = Layout::default()
-        .direction(ratatui::layout::Direction::Vertical)
-        .constraints([
-            Constraint::Min(0),
-            Constraint::Length(height),
-            Constraint::Min(0),
-        ])
-        .split(area);
 
-    let horizontal = Layout::default()
-        .direction(ratatui::layout::Direction::Horizontal)
-        .constraints([
-            Constraint::Min(0),
-            Constraint::Length(width),
-            Constraint::Min(0),
-        ])
-        .split(vertical[1]);
+pub fn popup_block<'a>(title: &'a str, theme: &AppThemeColors) -> ratatui::widgets::Block<'a> {
+    let mut block = ratatui::widgets::Block::default()
+        .style(theme.bg_style())
+        .borders(ratatui::widgets::Borders::ALL)
+        .border_style(ratatui::style::Style::default().fg(theme.heading));
+    if !title.is_empty() {
+        block = block.title(title);
+    }
+    block
+}
 
-    horizontal[1]
+pub fn build_list_widget<'a>(
+    items: impl IntoIterator<Item = ratatui::widgets::ListItem<'a>>,
+    theme: &AppThemeColors,
+) -> ratatui::widgets::List<'a> {
+    ratatui::widgets::List::new(items).highlight_style(
+        ratatui::style::Style::default()
+            .bg(theme.highlight_bg)
+            .fg(theme.highlight_fg),
+    )
 }
 
 pub fn text_area_from_content(content: &str) -> TextArea<'static> {
@@ -3531,6 +3482,22 @@ pub fn format_relative_time(unix_ts: u64) -> Cow<'static, str> {
     let secs = UNIX_EPOCH + Duration::from_secs(unix_ts);
     let dt: chrono::DateTime<chrono::Local> = secs.into();
     Cow::Owned(dt.format("%Y-%m-%d %H:%M").to_string())
+}
+
+pub fn format_size(bytes: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = KB * 1024;
+    const GB: u64 = MB * 1024;
+
+    if bytes < KB {
+        format!("{bytes} B")
+    } else if bytes < MB {
+        format!("{:.1} KB", bytes as f64 / KB as f64)
+    } else if bytes < GB {
+        format!("{:.1} MB", bytes as f64 / MB as f64)
+    } else {
+        format!("{:.1} GB", bytes as f64 / GB as f64)
+    }
 }
 
 pub struct StatusBarBadge {
@@ -3623,35 +3590,15 @@ pub fn draw_popup_frame(
     frame: &mut Frame,
     area: Rect,
     title: &str,
-    width_pct: u16,
-    height_pct: u16,
+    size: PopupSize,
     hints: &str,
     theme: &crate::app_theme::AppThemeColors,
 ) -> Rect {
-    let popup_area = centered_rect(width_pct, height_pct, area);
+    let popup_area = centered_rect(size, area);
     frame.render_widget(Clear, popup_area);
     draw_popup_banner(frame, popup_area, title, theme);
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(1), Constraint::Length(1)])
-        .split(popup_area);
-    draw_popup_footer(frame, chunks[1], theme, hints);
-    chunks[0]
-}
-pub fn draw_popup_frame_fixed(
-    frame: &mut ratatui::Frame,
-    area: ratatui::layout::Rect,
-    title: &str,
-    width: u16,
-    height: u16,
-    hints: &str,
-    theme: &crate::app_theme::AppThemeColors,
-) -> ratatui::layout::Rect {
-    let popup_area = centered_rect_fixed(width, height + 2, area); // +2 for banner and footer
-    frame.render_widget(ratatui::widgets::Clear, popup_area);
-    draw_popup_banner(frame, popup_area, title, theme);
-    let chunks = Layout::default()
-        .direction(ratatui::layout::Direction::Vertical)
         .constraints([Constraint::Min(1), Constraint::Length(1)])
         .split(popup_area);
     draw_popup_footer(frame, chunks[1], theme, hints);
@@ -3664,12 +3611,11 @@ pub fn draw_confirm_popup_frame(
     frame: &mut Frame,
     area: Rect,
     title: &str,
-    width_pct: u16,
-    height_pct: u16,
+    size: PopupSize,
     is_destructive: bool,
     theme: &crate::app_theme::AppThemeColors,
 ) -> Rect {
-    let popup_area = centered_rect(width_pct, height_pct, area);
+    let popup_area = centered_rect(size, area);
     frame.render_widget(Clear, popup_area);
     draw_popup_banner(frame, popup_area, title, theme);
     let border_color = if is_destructive {
@@ -3692,8 +3638,14 @@ pub fn draw_confirm_popup(
     area: Rect,
     theme: &crate::app_theme::AppThemeColors,
 ) {
-    let inner =
-        draw_confirm_popup_frame(frame, area, "CONFIRM", 50, 30, popup.is_destructive, theme);
+    let inner = draw_confirm_popup_frame(
+        frame,
+        area,
+        "CONFIRM",
+        PopupSize::Confirm,
+        popup.is_destructive,
+        theme,
+    );
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)

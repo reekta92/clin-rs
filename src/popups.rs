@@ -14,7 +14,6 @@ pub enum ConfirmAction {
 
 pub struct ConfirmPopup {
     pub action: ConfirmAction,
-    pub title: String,
     pub message: String,
     pub detail: Option<String>,
     pub confirm_label: String,
@@ -133,7 +132,6 @@ pub enum ImportTarget {
 pub struct ImportPopup {
     pub source: ImportSource,
     pub target: ImportTarget,
-    pub folder: String,
     pub note_id: Option<String>,
     pub input: TextArea<'static>,
 }
@@ -166,6 +164,14 @@ pub struct SortPopup {
     pub selected: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NoteFormat {
+    Markdown,
+    Draw,
+    Canvas,
+    PlainText,
+}
+
 pub struct CreateFormatPopup {
     pub folder: String,
     pub selected: usize,
@@ -186,16 +192,58 @@ pub struct PopupManager {
     pub folder: Option<FolderPopup>,
     pub folder_picker: Option<FolderPicker>,
     pub note_rename: Option<NoteRenamePopup>,
-    pub note_create: Option<NoteCreatePopup>,
-    pub draw_create: Option<NoteCreatePopup>,
-    pub canvas_create: Option<NoteCreatePopup>,
+    pub create_note: Option<(NoteCreatePopup, NoteFormat)>,
     pub import: Option<ImportPopup>,
     pub create_format: Option<CreateFormatPopup>,
-    pub text_create: Option<NoteCreatePopup>,
 
     pub search: Option<SearchPopup>,
     pub context_menu: Option<ContextMenu>,
     pub trash_view: Option<TrashView>,
 }
 
-impl PopupManager {}
+impl PopupManager {
+    pub fn has_any(&self) -> bool {
+        self.confirm.is_some()
+            || self.template.is_some()
+            || self.theme.is_some()
+            || self.tag.is_some()
+            || self.sort.is_some()
+            || self.folder.is_some()
+            || self.folder_picker.is_some()
+            || self.note_rename.is_some()
+            || self.create_note.is_some()
+            || self.import.is_some()
+            || self.create_format.is_some()
+            || self.search.is_some()
+            || self.context_menu.is_some()
+            || self.trash_view.is_some()
+    }
+
+    pub fn has_text_input(&self) -> bool {
+        self.create_note.is_some()
+            || self.import.is_some()
+            || self.folder.is_some()
+            || self.folder_picker.is_some()
+            || self.note_rename.is_some()
+            || self.search.is_some()
+            || self.template.is_some()
+            || self.tag.is_some()
+    }
+
+    pub fn clear_all(&mut self) {
+        self.confirm = None;
+        self.template = None;
+        self.theme = None;
+        self.tag = None;
+        self.sort = None;
+        self.folder = None;
+        self.folder_picker = None;
+        self.note_rename = None;
+        self.create_note = None;
+        self.import = None;
+        self.create_format = None;
+        self.search = None;
+        self.context_menu = None;
+        self.trash_view = None;
+    }
+}

@@ -25,22 +25,21 @@ use ratatui::{
     widgets::{Block, Borders, Padding, Paragraph, Wrap},
 };
 
-pub fn draw_dashboard(frame: &mut ratatui::Frame, state: &mut crate::backup::state::BackupState) {
-    let area = frame.area();
+pub fn draw_dashboard(
+    frame: &mut ratatui::Frame,
+    state: &mut crate::backup::state::BackupState,
+    area: Rect,
+) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1), // Header
             Constraint::Min(0),    // Content
             Constraint::Length(1), // Footer
         ])
         .split(area);
 
-    draw_header(frame, chunks[0], state);
-
-    let content_area = chunks[1];
-    let footer_area = chunks[2];
-
+    let content_area = chunks[0];
+    let footer_area = chunks[1];
     if state.selected_section == crate::backup::state::BackupSection::Status {
         // Content area split into list and diff if a file is selected and has diffs
         if state.selected_file.is_some() && !state.diff_lines.is_empty() {
@@ -110,7 +109,7 @@ pub fn draw_dashboard(frame: &mut ratatui::Frame, state: &mut crate::backup::sta
     }
 }
 
-fn draw_header(frame: &mut Frame, area: Rect, state: &BackupState) {
+pub fn draw_header(frame: &mut Frame, area: Rect, state: &BackupState) {
     let theme = &state.theme;
     let tabs = [("Status", None), ("History", None)];
     let active = if state.selected_section == crate::backup::state::BackupSection::History {
@@ -157,13 +156,16 @@ fn draw_content(frame: &mut Frame, area: Rect, state: &mut BackupState) {
             .block(block)
             .wrap(Wrap { trim: true });
 
-        let centered_area = crate::ui::centered_rect(60, 20, area);
+        let centered_area = crate::ui::centered_rect(crate::ui::PopupSize::Large, area);
         frame.render_widget(paragraph, centered_area);
         return;
     }
 
     let mut lines = Vec::new();
-    let status = state.status.as_ref().unwrap();
+    let status = state
+        .status
+        .as_ref()
+        .expect("status populated before render");
     if state.selected_section == crate::backup::state::BackupSection::Status {
         // Staged Changes
         lines.push(Line::from(Span::styled(
@@ -407,8 +409,7 @@ fn draw_commit_popup(frame: &mut Frame, area: Rect, state: &BackupState) {
         frame,
         area,
         "COMMIT",
-        60,
-        15,
+        crate::ui::PopupSize::Prompt,
         "Enter confirm · Esc cancel",
         theme,
     );
@@ -439,8 +440,7 @@ fn draw_settings_popup(frame: &mut Frame, area: Rect, state: &BackupState) {
         frame,
         area,
         "BACKUP SETTINGS",
-        60,
-        60,
+        crate::ui::PopupSize::Large,
         "j/k navigate · Enter toggle/edit · Esc cancel",
         theme,
     );

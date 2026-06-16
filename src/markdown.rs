@@ -4,14 +4,13 @@ use std::sync::mpsc;
 use portable_pty::{CommandBuilder, NativePtySystem, PtySize, PtySystem};
 use ratatui::style::{Color, Modifier, Style};
 
-use once_cell::sync::Lazy;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use tui_term::vt100;
 
-static GLOW_AVAILABLE: Lazy<AtomicBool> =
-    Lazy::new(|| AtomicBool::new(which::which("glow").is_ok()));
+static GLOW_AVAILABLE: std::sync::LazyLock<AtomicBool> =
+    std::sync::LazyLock::new(|| AtomicBool::new(which::which("glow").is_ok()));
 
 pub fn glow_available() -> bool {
     GLOW_AVAILABLE.load(Ordering::Relaxed)

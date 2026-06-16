@@ -218,6 +218,17 @@ pub fn handle_mouse(state: &mut BackupState, event: MouseEvent) -> InputResult {
         return handle_settings_mouse(state, event);
     }
 
+    if state.input_mode == BackupInputMode::EditCommitMessage
+        && let MouseEventKind::Down(MouseButton::Left) = event.kind
+        && let Some(area) = state.last_area
+    {
+        let popup_area = crate::ui::centered_rect(crate::ui::PopupSize::Prompt, area);
+        if !crate::events::contains_cell(popup_area, event.column, event.row) {
+            state.input_mode = BackupInputMode::Normal;
+            return InputResult::None;
+        }
+    }
+
     if let MouseEventKind::Down(MouseButton::Left) = event.kind {
         let x = event.column;
         let y = event.row;
@@ -313,7 +324,7 @@ fn handle_settings_mouse(state: &mut BackupState, event: MouseEvent) -> InputRes
     };
 
     // Mirror draw_popup_frame(60, 60): popup_area → strip footer → bordered block inner
-    let popup_area = crate::ui::centered_rect(60, 60, area);
+    let popup_area = crate::ui::centered_rect(crate::ui::PopupSize::Large, area);
 
     // Outside left-click → close settings
     if event.kind == MouseEventKind::Down(MouseButton::Left)

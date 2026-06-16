@@ -7,9 +7,25 @@ use anyhow::{Context, Result};
 use directories::ProjectDirs;
 use ratatui::style::Color;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::sync::OnceLock;
+
+static CONFIG_PATH_OVERRIDE: OnceLock<Option<PathBuf>> = OnceLock::new();
+
+/// Set once at startup from the parsed `--config` value. Panics-free: later calls are no-ops.
+pub fn set_config_path_override(path: PathBuf) {
+    let _ = CONFIG_PATH_OVERRIDE.set(Some(path));
+}
 
 #[path = "graf/themes.rs"]
 pub mod themes;
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ListDensity {
+    Compact,
+    #[default]
+    Comfortable,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum NotesLayout {
@@ -18,7 +34,7 @@ pub enum NotesLayout {
     Grid,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum Theme {
     #[default]
@@ -73,7 +89,7 @@ impl std::fmt::Display for Theme {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum Background {
     #[default]
@@ -101,11 +117,11 @@ impl std::fmt::Display for Background {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum NodeColorMode {
-    #[default]
     Tag,
+    #[default]
     Folder,
     LinkCount,
     Uniform,
@@ -124,12 +140,12 @@ impl FromStr for NodeColorMode {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum EdgeColorMode {
-    #[default]
     Source,
     Target,
+    #[default]
     Uniform,
 }
 
@@ -145,7 +161,7 @@ impl FromStr for EdgeColorMode {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum LabelMode {
     #[default]
@@ -168,7 +184,7 @@ impl FromStr for LabelMode {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum NodeSizeMode {
     #[default]
@@ -187,7 +203,7 @@ impl FromStr for NodeSizeMode {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum CanvasMarker {
     #[default]
@@ -218,7 +234,7 @@ impl From<CanvasMarker> for ratatui::symbols::Marker {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum NodeShape {
     #[default]
@@ -239,9 +255,8 @@ impl FromStr for NodeShape {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
-#[derive(Default)]
 pub enum BorderStyle {
     Plain,
     #[default]
@@ -251,7 +266,7 @@ pub enum BorderStyle {
 }
 
 impl BorderStyle {
-    pub fn to_border_type(&self) -> ratatui::widgets::BorderType {
+    pub fn to_border_type(self) -> ratatui::widgets::BorderType {
         match self {
             BorderStyle::Plain => ratatui::widgets::BorderType::Plain,
             BorderStyle::Rounded => ratatui::widgets::BorderType::Rounded,
@@ -274,9 +289,8 @@ impl FromStr for BorderStyle {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-#[derive(Default)]
 pub enum LegendPosition {
     #[default]
     TopRight,
@@ -323,7 +337,7 @@ where
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct ColorOverrides {
     pub node_color: Option<Color>,
     pub edge_color: Option<Color>,
@@ -429,11 +443,9 @@ impl<'de> serde::Deserialize<'de> for ColorOverrides {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct VisualConfig {
-    #[serde(default)]
-    pub notes_layout: NotesLayout,
-    #[serde(default)]
+    #[serde(default = "default_graph_background")]
     pub graph_background: Background,
     #[serde(default)]
     pub node_color_mode: NodeColorMode,
@@ -453,7 +465,7 @@ pub struct VisualConfig {
     pub show_legend: bool,
     #[serde(default)]
     pub show_grid: bool,
-    #[serde(default = "default_true")]
+    #[serde(default)]
     pub show_minimap: bool,
     #[serde(default)]
     pub minimap_position: LegendPosition,
@@ -476,7 +488,6 @@ pub struct VisualConfig {
 impl Default for VisualConfig {
     fn default() -> Self {
         Self {
-            notes_layout: NotesLayout::default(),
             graph_background: Background::Solid,
             node_color_mode: NodeColorMode::Folder,
             edge_color_mode: EdgeColorMode::Uniform,
@@ -504,64 +515,34 @@ impl Default for VisualConfig {
 pub struct PhysicsConfig {
     #[serde(default = "default_ideal_distance")]
     pub ideal_distance: f64,
-    #[serde(default = "default_damping")]
-    pub damping: f32,
-    #[serde(default = "default_max_iterations")]
-    pub max_iterations: usize,
-    #[serde(default = "default_gravity")]
-    pub gravity: f64,
-    #[serde(default = "default_true")]
-    pub cooling: bool,
-    #[serde(default = "default_true")]
-    pub prevent_overlapping: bool,
-    #[serde(default = "default_timestep")]
-    pub timestep: f64,
-    #[serde(default = "default_thread_sleep_ms")]
-    pub thread_sleep_ms: u64,
 }
 
 impl Default for PhysicsConfig {
     fn default() -> Self {
         Self {
             ideal_distance: default_ideal_distance(),
-            damping: default_damping(),
-            max_iterations: default_max_iterations(),
-            gravity: default_gravity(),
-            cooling: default_true(),
-            prevent_overlapping: default_true(),
-            timestep: default_timestep(),
-            thread_sleep_ms: default_thread_sleep_ms(),
         }
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct InteractionConfig {
-    #[serde(default = "default_double_click")]
-    pub double_click_ms: u64,
     #[serde(default = "default_zoom_factor")]
     pub zoom_factor: f64,
     #[serde(default = "default_drag_sensitivity")]
     pub drag_sensitivity: f64,
-    #[serde(default = "default_auto_fit_padding")]
-    pub auto_fit_padding: f64,
-    #[serde(default = "default_drag_scale")]
-    pub drag_scale: f64,
 }
 
 impl Default for InteractionConfig {
     fn default() -> Self {
         Self {
-            double_click_ms: default_double_click(),
             zoom_factor: default_zoom_factor(),
             drag_sensitivity: default_drag_sensitivity(),
-            auto_fit_padding: default_auto_fit_padding(),
-            drag_scale: default_drag_scale(),
         }
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct DisplayConfig {
     #[serde(default = "default_true")]
     pub show_status_bar: bool,
@@ -600,33 +581,12 @@ pub struct FilterConfig {
     pub min_links: usize,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LegendConfig {
-    #[serde(default)]
-    pub position: LegendPosition,
-    #[serde(default = "default_max_legend_items")]
-    pub max_items: usize,
-}
-
-impl Default for LegendConfig {
-    fn default() -> Self {
-        Self {
-            position: LegendPosition::BottomRight,
-            max_items: 10,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SearchConfig {
     #[serde(default = "default_search_max_results")]
     pub max_results: usize,
     #[serde(default = "default_search_max_visible")]
     pub max_visible: usize,
-    #[serde(default = "default_search_popup_width")]
-    pub popup_width: u16,
-    #[serde(default = "default_search_popup_y")]
-    pub popup_y: u16,
 }
 
 impl Default for SearchConfig {
@@ -634,31 +594,11 @@ impl Default for SearchConfig {
         Self {
             max_results: default_search_max_results(),
             max_visible: default_search_max_visible(),
-            popup_width: default_search_popup_width(),
-            popup_y: default_search_popup_y(),
         }
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct BackupConfig {
-    #[serde(default)]
-    pub enabled: bool,
-    #[serde(default)]
-    pub backup_on_save: bool,
-    #[serde(default)]
-    pub backup_on_quit: bool,
-    #[serde(default)]
-    pub auto_push: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub remote_url: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub remote_name: Option<String>,
-    #[serde(default)]
-    pub commit_message_template: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct ThemeConfig {
     #[serde(
         default = "default_theme",
@@ -693,63 +633,66 @@ pub struct ThemeConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub background_color: Option<String>,
 }
-
-impl Default for ThemeConfig {
-    fn default() -> Self {
-        Self {
-            theme: Theme::Default,
-            background: Background::Transparent,
-            accent: None,
-            heading: None,
-            success: None,
-            destructive: None,
-            muted: None,
-            text: None,
-            border: None,
-            tag: None,
-            folder: None,
-            background_color: None,
-        }
-    }
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+pub struct BackupConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default = "default_true")]
+    pub backup_on_save: bool,
+    #[serde(default = "default_true")]
+    pub backup_on_quit: bool,
+    #[serde(default)]
+    pub auto_push: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub remote_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub remote_name: Option<String>,
+    #[serde(default)]
+    pub commit_message_template: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auto_backup_interval: Option<u64>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct ClinConfig {
-    pub storage_path: Option<PathBuf>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub previous_storage_path: Option<PathBuf>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub external_editor: Option<String>,
-    #[serde(default)]
-    pub external_editor_enabled: bool,
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+pub struct ListConfig {
     #[serde(default = "default_preview_enabled")]
     pub preview_enabled: bool,
     #[serde(default)]
-    pub graph_preview_enabled: bool,
-    #[serde(default)]
     pub preview_position: PreviewPosition,
     #[serde(default)]
-    pub editor_preview_enabled: bool,
-    #[serde(default)]
     pub preview_encryption: bool,
+    #[serde(default = "default_true")]
+    pub show_date_in_list: bool,
     #[serde(default)]
-    pub theme: ThemeConfig,
-
+    pub show_file_size: bool,
+    #[serde(default = "default_date_format")]
+    pub date_format: String,
+    #[serde(default)]
+    pub density: ListDensity,
+    #[serde(default)]
+    pub default_view: NotesLayout,
     #[serde(default)]
     pub default_sort_field: Option<crate::app::SortField>,
     #[serde(default)]
     pub default_sort_order: Option<crate::app::SortOrder>,
     #[serde(default)]
-    pub default_folder: Option<String>,
-    #[serde(default = "default_true")]
-    pub confirm_on_delete: bool,
+    pub pinned_on_top: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+pub struct EditorConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub external_command: Option<String>,
     #[serde(default)]
-    pub confirm_on_quit: bool,
+    pub external_enabled: bool,
+    #[serde(default)]
+    pub preview_enabled: bool,
     #[serde(default = "default_true")]
     pub show_line_numbers: bool,
-    #[serde(default)]
-    pub pinned_on_top: bool,
+}
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+pub struct GrafConfig {
     #[serde(default)]
     pub visual: VisualConfig,
     #[serde(default)]
@@ -757,19 +700,47 @@ pub struct ClinConfig {
     #[serde(default)]
     pub interaction: InteractionConfig,
     #[serde(default)]
-    pub display: DisplayConfig,
-    #[serde(default)]
     pub filter: FilterConfig,
-    #[serde(default)]
-    pub legend: LegendConfig,
     #[serde(default)]
     pub search: SearchConfig,
     #[serde(default)]
+    pub preview_enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+pub struct ClinConfig {
+    pub storage_path: Option<PathBuf>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub previous_storage_path: Option<PathBuf>,
+    #[serde(default = "default_true")]
+    pub mouse_enabled: bool,
+    #[serde(default)]
+    pub default_folder: Option<String>,
+    #[serde(default = "default_true")]
+    pub confirm_on_delete: bool,
+    #[serde(default)]
+    pub confirm_on_quit: bool,
+
+    #[serde(default)]
+    pub theme: ThemeConfig,
+    #[serde(default)]
+    pub display: DisplayConfig,
+    #[serde(default)]
     pub backup: BackupConfig,
+
+    #[serde(default)]
+    pub list: ListConfig,
+    #[serde(default)]
+    pub editor: EditorConfig,
+    #[serde(default)]
+    pub graf: GrafConfig,
 }
 
 fn default_preview_enabled() -> bool {
     true
+}
+fn default_border_title() -> String {
+    "graf".to_string()
 }
 fn default_label_max() -> usize {
     20
@@ -786,29 +757,11 @@ fn default_true() -> bool {
 fn default_ideal_distance() -> f64 {
     80.0
 }
-fn default_damping() -> f32 {
-    0.95
-}
-fn default_max_iterations() -> usize {
-    800
-}
-fn default_gravity() -> f64 {
-    0.01
-}
-fn default_double_click() -> u64 {
-    300
-}
 fn default_zoom_factor() -> f64 {
     1.15
 }
 fn default_drag_sensitivity() -> f64 {
     1.0
-}
-fn default_border_title() -> String {
-    "graf".to_string()
-}
-fn default_max_legend_items() -> usize {
-    10
 }
 fn default_minimap_width() -> u16 {
     24
@@ -822,33 +775,23 @@ fn default_label_offset() -> f64 {
 fn default_grid_divisions() -> usize {
     10
 }
-fn default_timestep() -> f64 {
-    0.016
-}
-fn default_thread_sleep_ms() -> u64 {
-    16
-}
-fn default_auto_fit_padding() -> f64 {
-    1.4
-}
-fn default_drag_scale() -> f64 {
-    200.0
-}
 fn default_search_max_results() -> usize {
     20
 }
 fn default_search_max_visible() -> usize {
     10
 }
-fn default_search_popup_width() -> u16 {
-    50
-}
-fn default_search_popup_y() -> u16 {
-    3
+
+fn default_graph_background() -> Background {
+    Background::Solid
 }
 
 fn default_theme() -> Theme {
     Theme::Default
+}
+
+fn default_date_format() -> String {
+    "%Y-%m-%d".to_string()
 }
 
 fn serialize_theme<S>(theme: &Theme, serializer: S) -> Result<S::Ok, S::Error>
@@ -900,6 +843,9 @@ pub struct ThemeColors {
 
 impl ClinConfig {
     pub fn config_path() -> Result<PathBuf> {
+        if let Some(p) = CONFIG_PATH_OVERRIDE.get().and_then(|opt| opt.as_ref()) {
+            return Ok(p.clone());
+        }
         let proj_dirs = ProjectDirs::from("com", "clin", "clin")
             .context("could not determine config directory")?;
         Ok(proj_dirs.config_dir().join("config.toml"))
@@ -922,52 +868,69 @@ impl ClinConfig {
             let proj_dirs = ProjectDirs::from("com", "clin", "clin")
                 .ok_or_else(|| anyhow::anyhow!("no home dir"))?;
             let graf_path = proj_dirs.config_dir().join("graf.toml");
-            let mut config = Self::default();
+            let mut config = Self {
+                graf: GrafConfig::default(),
+                ..Default::default()
+            };
 
             if graf_path.exists() {
                 if let Ok(content) = fs::read_to_string(&graf_path)
                     && let Ok(graf_config) = toml::from_str::<GrafConfigOnly>(&content)
                 {
-                    config.visual = graf_config.visual;
-                    config.physics = graf_config.physics;
-                    config.interaction = graf_config.interaction;
+                    config.graf.visual = graf_config.visual;
+                    config.graf.physics = graf_config.physics;
+                    config.graf.interaction = graf_config.interaction;
                     config.display = graf_config.display;
-                    config.filter = graf_config.filter;
-                    config.legend = graf_config.legend;
-                    config.search = graf_config.search;
+                    config.graf.filter = graf_config.filter;
+                    config.graf.search = graf_config.search;
                 }
                 let _ = fs::rename(&graf_path, graf_path.with_extension("toml.migrated"));
             }
 
             let content = r#"# Clin Configuration File
 
-# ── Storage & Editor ──────────────────────────────────────────────────────────
-
 # Custom path for notes storage (e.g., "/home/user/vault").
 # If not set, defaults to the standard data directory for your OS.
 # storage_path = "/path/to/your/notes"
 
-# External editor command (e.g., "nvim", "code", "nano").
-# external_editor = "nvim"
+# Enable mouse support (clicking, scrolling, panning).
+mouse_enabled = true
 
-# Enable external editor mode by default.
-external_editor_enabled = false
-
-# ── General UI ────────────────────────────────────────────────────────────────
-
-# Show the preview pane in the notes list by default.
-preview_enabled = true
-
-# Show the markdown preview in the editor view by default.
-editor_preview_enabled = false
-
-# Show line numbers in the editor.
-show_line_numbers = true
+# Default folder for new notes (relative to vault root).
+# default_folder = "inbox"
 
 # Confirm before moving a note or folder to the trash.
 confirm_on_delete = true
 
-# ── Default Sorting & Organization ──────────────────────────────────────────
+# Confirm before quitting.
+confirm_on_quit = false
+
+# ── List View ─────────────────────────────────────────────────────────────────
+
+[list]
+# Show the preview pane in the notes list by default.
+preview_enabled = true
+
+# Preview position ("left", "right", "top", "bottom").
+preview_position = "right"
+
+# Hide previews of encrypted notes.
+preview_encryption = false
+
+# Show modification date in the notes list.
+show_date_in_list = true
+
+# Show file size in the notes list.
+show_file_size = false
+
+# Date format for the notes list (chrono format, e.g., "%Y-%m-%d").
+date_format = "%Y-%m-%d"
+
+# Density of the notes list ("comfortable" or "compact").
+density = "comfortable"
+
+# Default view mode for the notes list ("grid" or "tree").
+default_view = "grid"
 
 # Default sorting field for the notes list ("title" or "modified").
 default_sort_field = "title"
@@ -975,8 +938,34 @@ default_sort_field = "title"
 # Default sorting order ("ascending" or "descending").
 default_sort_order = "ascending"
 
-# Default folder for new notes (relative to vault root).
-# default_folder = "inbox"
+# Keep pinned notes at the top of the list.
+pinned_on_top = true
+
+# ── Editor ────────────────────────────────────────────────────────────────────
+
+[editor]
+# External editor command (e.g., "nvim", "code", "nano").
+# external_command = "nvim"
+
+# Enable external editor mode by default.
+external_enabled = false
+
+# Show the markdown preview in the editor view by default.
+preview_enabled = false
+
+# Show line numbers in the editor.
+show_line_numbers = true
+# ── Backup ────────────────────────────────────────────────────────────────────
+
+[backup]
+# Enable auto-backups via git.
+enabled = true
+# Perform a backup commit whenever a note is saved.
+backup_on_save = true
+# Perform a backup commit when the app exits.
+backup_on_quit = true
+# Interval in minutes for automatic background backups.
+# auto_backup_interval = 30
 
 # ── Theme ─────────────────────────────────────────────────────────────────────
 
@@ -986,9 +975,10 @@ theme = "default"
 # Background style ("transparent" or "solid")
 background = "transparent"
 
+
 # ── Graph View (Graf) ─────────────────────────────────────────────────────────
 
-[visual]
+[graf.visual]
 # Graph background style ("solid", "transparent")
 graph_background = "solid"
 # Node color mode ("folder", "tag", "uniform")
@@ -1002,15 +992,11 @@ show_legend = true
 # Show minimap in graph view
 show_minimap = false
 
-[physics]
+[graf.physics]
 # Ideal distance between nodes
 ideal_distance = 80.0
-# Damping factor for simulation
-damping = 0.95
-# Enable simulation cooling (stops movement after a while)
-cooling = true
 
-[interaction]
+[graf.interaction]
 # Zoom sensitivity factor
 zoom_factor = 1.15
 # Drag sensitivity factor
@@ -1030,6 +1016,124 @@ drag_sensitivity = 1.0
         }
 
         let content = fs::read_to_string(&config_path).context("failed to read config")?;
+
+        // Phase E: Migration (visual.notes_layout -> default_view, and flat graf/list/editor keys to nested namespaces)
+        let mut value: toml::Value =
+            toml::from_str(&content).context("failed to parse config for migration")?;
+        let mut changed = false;
+
+        if let Some(visual) = value.get_mut("visual").and_then(|v| v.as_table_mut())
+            && let Some(notes_layout) = visual.remove("notes_layout")
+            && value.get("default_view").is_none()
+            && let Some(root) = value.as_table_mut()
+        {
+            root.insert("default_view".to_string(), notes_layout);
+            changed = true;
+        }
+
+        let mut editor_table = toml::value::Table::new();
+        if let Some(root) = value.as_table_mut() {
+            if let Some(v) = root.remove("external_editor") {
+                editor_table.insert("external_command".to_string(), v);
+                changed = true;
+            }
+            if let Some(v) = root.remove("external_editor_enabled") {
+                editor_table.insert("external_enabled".to_string(), v);
+                changed = true;
+            }
+            if let Some(v) = root.remove("editor_preview_enabled") {
+                editor_table.insert("preview_enabled".to_string(), v);
+                changed = true;
+            }
+            if let Some(v) = root.remove("show_line_numbers") {
+                editor_table.insert("show_line_numbers".to_string(), v);
+                changed = true;
+            }
+        }
+        if !editor_table.is_empty()
+            && let Some(root) = value.as_table_mut()
+        {
+            if let Some(existing_editor) = root.get_mut("editor").and_then(|e| e.as_table_mut()) {
+                for (k, v) in editor_table {
+                    existing_editor.insert(k, v);
+                }
+            } else {
+                root.insert("editor".to_string(), toml::Value::Table(editor_table));
+            }
+            changed = true;
+        }
+
+        let mut list_table = toml::value::Table::new();
+        let list_legacy_keys = [
+            ("preview_enabled", "preview_enabled"),
+            ("preview_position", "preview_position"),
+            ("preview_encryption", "preview_encryption"),
+            ("date_format", "date_format"),
+            ("list_density", "density"),
+            ("show_file_size", "show_file_size"),
+            ("show_date_in_list", "show_date_in_list"),
+            ("default_view", "default_view"),
+            ("default_sort_field", "default_sort_field"),
+            ("default_sort_order", "default_sort_order"),
+            ("pinned_on_top", "pinned_on_top"),
+        ];
+        if let Some(root) = value.as_table_mut() {
+            for (old_key, new_key) in &list_legacy_keys {
+                if let Some(v) = root.remove(*old_key) {
+                    list_table.insert(new_key.to_string(), v);
+                    changed = true;
+                }
+            }
+        }
+        if !list_table.is_empty()
+            && let Some(root) = value.as_table_mut()
+        {
+            if let Some(existing_list) = root.get_mut("list").and_then(|l| l.as_table_mut()) {
+                for (k, v) in list_table {
+                    existing_list.insert(k, v);
+                }
+            } else {
+                root.insert("list".to_string(), toml::Value::Table(list_table));
+            }
+        }
+
+        let mut graf_addons = toml::value::Table::new();
+        if let Some(root) = value.as_table_mut() {
+            if let Some(v) = root.remove("search") {
+                graf_addons.insert("search".to_string(), v);
+                changed = true;
+            }
+            if let Some(v) = root.remove("graph_preview_enabled") {
+                graf_addons.insert("preview_enabled".to_string(), v);
+                changed = true;
+            }
+        }
+
+        let graf_keys = ["visual", "physics", "interaction", "filter"];
+        for key in &graf_keys {
+            if let Some(val) = value.as_table_mut().and_then(|t| t.remove(*key)) {
+                graf_addons.insert(key.to_string(), val);
+                changed = true;
+            }
+        }
+        if !graf_addons.is_empty()
+            && let Some(root) = value.as_table_mut()
+        {
+            if let Some(existing_graf) = root.get_mut("graf").and_then(|g| g.as_table_mut()) {
+                for (k, v) in graf_addons {
+                    existing_graf.insert(k, v);
+                }
+            } else {
+                root.insert("graf".to_string(), toml::Value::Table(graf_addons));
+            }
+        }
+        if changed {
+            let migrated_content =
+                toml::to_string_pretty(&value).context("failed to serialize migrated config")?;
+            let _ = crate::fsutil::atomic_write(&config_path, migrated_content.as_bytes());
+            return toml::from_str(&migrated_content).context("failed to parse migrated config");
+        }
+
         let config: ClinConfig = toml::from_str(&content).context("failed to parse config")?;
         Ok(config)
     }
@@ -1073,53 +1177,43 @@ drag_sensitivity = 1.0
 
     pub fn theme_colors(&self) -> ThemeColors {
         let mut colors =
-            themes::theme_colors(&self.theme.theme, self.visual.graph_background.clone());
+            themes::theme_colors(&self.theme.theme, self.graf.visual.graph_background.clone());
 
-        if let Some(ref c) = self.visual.colors.node_color {
+        if let Some(ref c) = self.graf.visual.colors.node_color {
             colors.node_colors = vec![*c];
         }
-        if let Some(c) = self.visual.colors.edge_color {
+        if let Some(c) = self.graf.visual.colors.edge_color {
             colors.edge_color = c;
         }
-        if let Some(c) = self.visual.colors.label_color {
+        if let Some(c) = self.graf.visual.colors.label_color {
             colors.label_color = c;
         }
-        if let Some(c) = self.visual.colors.selection_ring_color {
+        if let Some(c) = self.graf.visual.colors.selection_ring_color {
             colors.selected_indicator_color = c;
         }
-        if let Some(c) = self.visual.colors.border_color {
+        if let Some(c) = self.graf.visual.colors.border_color {
             colors.border_color = c;
             colors.legend_border_color = c;
             colors.minimap_border_color = c;
         }
-        if let Some(c) = self.visual.colors.title_color {
+        if let Some(c) = self.graf.visual.colors.title_color {
             colors.title_color = c;
         }
-        if let Some(c) = self.visual.colors.grid_color {
+        if let Some(c) = self.graf.visual.colors.grid_color {
             colors.grid_color = c;
         }
-        if let Some(c) = self.visual.colors.legend_text_color {
+        if let Some(c) = self.graf.visual.colors.legend_text_color {
             colors.legend_text_color = c;
         }
-        if let Some(c) = self.visual.colors.status_bar_color {
+        if let Some(c) = self.graf.visual.colors.status_bar_color {
             colors.status_bar_color = c;
         }
-        if let Some(c) = self.visual.colors.background_color {
+        if let Some(c) = self.graf.visual.colors.background_color {
             colors.background_color = Some(c);
             colors.minimap_bg_color = Some(c);
         }
 
         colors
-    }
-
-    pub fn expand_border_title(&self) -> String {
-        let mut title = self.display.border_title.clone();
-        let cwd = std::env::current_dir()
-            .ok()
-            .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string()))
-            .unwrap_or_default();
-        title = title.replace("{cwd}", &cwd);
-        title
     }
 
     pub fn expand_status(
@@ -1155,41 +1249,36 @@ drag_sensitivity = 1.0
 
     pub fn validate(&self) -> Vec<String> {
         let mut errs = Vec::new();
-        if self.visual.label_max_length < 1 || self.visual.label_max_length > 60 {
+        if self.graf.visual.label_max_length < 1 || self.graf.visual.label_max_length > 60 {
             errs.push(format!(
-                "visual.label_max_length must be 1-60, got {}",
-                self.visual.label_max_length
+                "graf.visual.label_max_length must be 1-60, got {}",
+                self.graf.visual.label_max_length
             ));
         }
-        if self.visual.node_size < 1.0 || self.visual.node_size > 5.0 {
+        if self.graf.visual.node_size < 1.0 || self.graf.visual.node_size > 5.0 {
             errs.push(format!(
-                "visual.node_size must be 1.0-5.0, got {}",
-                self.visual.node_size
+                "graf.visual.node_size must be 1.0-5.0, got {}",
+                self.graf.visual.node_size
             ));
         }
-        if self.visual.edge_thickness < 1 || self.visual.edge_thickness > 3 {
+        if self.graf.visual.edge_thickness < 1 || self.graf.visual.edge_thickness > 3 {
             errs.push(format!(
-                "visual.edge_thickness must be 1-3, got {}",
-                self.visual.edge_thickness
+                "graf.visual.edge_thickness must be 1-3, got {}",
+                self.graf.visual.edge_thickness
             ));
         }
-        if self.interaction.zoom_factor <= 0.0 {
+        if self.graf.interaction.zoom_factor <= 0.0 {
             errs.push(format!(
-                "interaction.zoom_factor must be > 0, got {}",
-                self.interaction.zoom_factor
+                "graf.interaction.zoom_factor must be > 0, got {}",
+                self.graf.interaction.zoom_factor
             ));
         }
-        if self.visual.show_legend && self.visual.show_minimap {
-            let same_corner = matches!(
-                (&self.legend.position, &self.visual.minimap_position),
-                (LegendPosition::TopRight, LegendPosition::TopRight)
-                    | (LegendPosition::TopLeft, LegendPosition::TopLeft)
-                    | (LegendPosition::BottomRight, LegendPosition::BottomRight)
-                    | (LegendPosition::BottomLeft, LegendPosition::BottomLeft)
-            );
-            if same_corner {
+        if self.graf.visual.show_legend && self.graf.visual.show_minimap {
+            // Legend position is now hardcoded to BottomRight. Minimap position is still configurable.
+            if self.graf.visual.minimap_position == LegendPosition::BottomRight {
                 errs.push(
-                    "legend.position and visual.minimap_position are in the same corner — they will overlap".to_string()
+                    "graf.visual.minimap_position cannot be bottom_right when show_legend is true"
+                        .to_string(),
                 );
             }
         }
@@ -1209,8 +1298,6 @@ struct GrafConfigOnly {
     display: DisplayConfig,
     #[serde(default)]
     filter: FilterConfig,
-    #[serde(default)]
-    legend: LegendConfig,
     #[serde(default)]
     search: SearchConfig,
 }
@@ -1251,5 +1338,149 @@ mod tests {
         let parsed: ClinConfig = toml::from_str(&toml_str).unwrap();
 
         assert_eq!(config.storage_path, parsed.storage_path);
+    }
+
+    #[test]
+    fn test_serde_defaults() {
+        let toml_str = r#"
+[graf.visual]
+# all fields omitted
+"#;
+        let config: ClinConfig = toml::from_str(toml_str).unwrap();
+        assert!(!config.graf.visual.show_minimap);
+        assert_eq!(config.graf.visual.node_color_mode, NodeColorMode::Folder);
+        assert_eq!(config.graf.visual.edge_color_mode, EdgeColorMode::Uniform);
+        assert_eq!(config.graf.visual.graph_background, Background::Solid);
+    }
+
+    #[test]
+    fn test_unknown_field_tolerance() {
+        let toml_str = r#"
+[graf.physics]
+damping = 0.5
+unknown_field = "ignore me"
+"#;
+        let config: ClinConfig = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.graf.physics.ideal_distance, 80.0);
+    }
+
+    #[test]
+    fn test_new_fields_roundtrip() {
+        let mut config = ClinConfig {
+            mouse_enabled: false,
+            ..Default::default()
+        };
+        config.list.date_format = "%d/%m/%Y".to_string();
+        config.list.density = ListDensity::Compact;
+        config.list.show_file_size = true;
+        config.list.show_date_in_list = false;
+        config.list.default_view = NotesLayout::Tree;
+        config.backup.auto_backup_interval = Some(60);
+
+        let toml_str = toml::to_string_pretty(&config).unwrap();
+        let parsed: ClinConfig = toml::from_str(&toml_str).unwrap();
+
+        assert!(!parsed.mouse_enabled);
+        assert_eq!(parsed.list.date_format, "%d/%m/%Y");
+        assert_eq!(parsed.list.density, ListDensity::Compact);
+        assert!(parsed.list.show_file_size);
+        assert!(!parsed.list.show_date_in_list);
+        assert_eq!(parsed.list.default_view, NotesLayout::Tree);
+        assert_eq!(parsed.backup.auto_backup_interval, Some(60));
+    }
+
+    #[test]
+    fn test_migration_logic() {
+        let toml_str = r#"
+external_editor = "nvim"
+preview_position = "left"
+
+[visual]
+notes_layout = "tree"
+
+[physics]
+ideal_distance = 120.0
+"#;
+        let mut value: toml::Value = toml::from_str(toml_str).unwrap();
+
+        // 1. Move notes_layout to default_view
+        if let Some(visual) = value.get_mut("visual").and_then(|v| v.as_table_mut())
+            && let Some(notes_layout) = visual.remove("notes_layout")
+            && value.get("default_view").is_none()
+            && let Some(root) = value.as_table_mut()
+        {
+            root.insert("default_view".to_string(), notes_layout);
+        }
+
+        // 2. Map legacy editor keys to editor namespace
+        let mut editor_table = toml::value::Table::new();
+        if let Some(root) = value.as_table_mut()
+            && let Some(v) = root.remove("external_editor")
+        {
+            editor_table.insert("external_command".to_string(), v);
+        }
+        if !editor_table.is_empty()
+            && let Some(root) = value.as_table_mut()
+        {
+            if let Some(existing_editor) = root.get_mut("editor").and_then(|e| e.as_table_mut()) {
+                for (k, v) in editor_table {
+                    existing_editor.insert(k, v);
+                }
+            } else {
+                root.insert("editor".to_string(), toml::Value::Table(editor_table));
+            }
+        }
+
+        // 3. Map legacy list keys to list namespace
+        let mut list_table = toml::value::Table::new();
+        let list_legacy_keys = [
+            ("preview_position", "preview_position"),
+            ("default_view", "default_view"),
+        ];
+        if let Some(root) = value.as_table_mut() {
+            for (old_key, new_key) in &list_legacy_keys {
+                if let Some(v) = root.remove(*old_key) {
+                    list_table.insert(new_key.to_string(), v);
+                }
+            }
+        }
+        if !list_table.is_empty()
+            && let Some(root) = value.as_table_mut()
+        {
+            if let Some(existing_list) = root.get_mut("list").and_then(|l| l.as_table_mut()) {
+                for (k, v) in list_table {
+                    existing_list.insert(k, v);
+                }
+            } else {
+                root.insert("list".to_string(), toml::Value::Table(list_table));
+            }
+        }
+
+        // 5. Nest visual, physics, interaction, filter under graf
+        let mut graf_addons = toml::value::Table::new();
+        let graf_keys = ["visual", "physics", "interaction", "filter"];
+        for key in &graf_keys {
+            if let Some(val) = value.as_table_mut().and_then(|t| t.remove(*key)) {
+                graf_addons.insert(key.to_string(), val);
+            }
+        }
+        if !graf_addons.is_empty()
+            && let Some(root) = value.as_table_mut()
+        {
+            if let Some(existing_graf) = root.get_mut("graf").and_then(|g| g.as_table_mut()) {
+                for (k, v) in graf_addons {
+                    existing_graf.insert(k, v);
+                }
+            } else {
+                root.insert("graf".to_string(), toml::Value::Table(graf_addons));
+            }
+        }
+
+        let migrated_toml = toml::to_string(&value).unwrap();
+        let config: ClinConfig = toml::from_str(&migrated_toml).unwrap();
+        assert_eq!(config.list.default_view, NotesLayout::Tree);
+        assert_eq!(config.graf.physics.ideal_distance, 120.0);
+        assert_eq!(config.editor.external_command, Some("nvim".to_string()));
+        assert_eq!(config.list.preview_position, PreviewPosition::Left);
     }
 }

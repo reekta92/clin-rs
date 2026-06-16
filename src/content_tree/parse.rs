@@ -106,7 +106,7 @@ pub fn parse_outline(title: &str, content: &str) -> Vec<TreeNode> {
 
         if (1..=6).contains(&hash_count) {
             let next_char = chars.next();
-            if next_char.is_none() || next_char.unwrap().is_whitespace() {
+            if next_char.is_none_or(|c| c.is_whitespace()) {
                 close_paragraph(&mut para, &mut nodes, cur_depth(&stack));
                 let header_title = chars.collect::<String>().trim().to_string();
 
@@ -163,7 +163,7 @@ pub fn parse_outline(title: &str, content: &str) -> Vec<TreeNode> {
                 let next_char = chs.next();
                 if next_char == Some('.') || next_char == Some(')') {
                     let after_char = chs.next();
-                    if after_char.is_none() || after_char.unwrap().is_whitespace() {
+                    if after_char.is_none_or(|c| c.is_whitespace()) {
                         let rest = chs.collect::<String>();
                         Some(rest.trim().to_string())
                     } else {
