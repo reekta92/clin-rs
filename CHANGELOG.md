@@ -2,6 +2,37 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.8.15] - 2026-06-16
+
+### Added
+
+- Add macOS ARM (aarch64-apple-darwin) build to release workflow
+- Add 'q' as universal back/exit key
+- Added more CLI options and fixed config bugs
+
+### Changed
+
+- Migrate to std::sync::LazyLock and remove regex dependency
+- Use Prompt size for commit popup
+- Unify popup sizing with tiers and constraints
+- Unify sub-app run-loops and popups
+- Config and CLI code refactor
+
+### Documentation
+
+- Sync documentation with current application state
+
+### Fixed
+
+- Restrict tagging to .md, .txt, and .clin files
+- Restore note creation and rename popup heights to 12
+
+### Miscellaneous
+
+- Fix unnecessary_sort_by clippy warning
+- Run cargo fmt
+- Fix clippy warnings and remove dead code
+- Code quality and dead code removal
 ## [0.8.14] - 2026-06-15
 
 ### Added
@@ -22,14 +53,11 @@ All notable changes to clin are documented in this file.
 ### Miscellaneous
 
 - Fixed clippy warnings
+
+### Release
+
+- V0.8.14
 ## [0.8.13] - 2026-06-15
-### Changed
-
-- Reworked CLI arguments to use a clean, subcommand-based interface with `clap`. Removed old flag forms (`-n`, `-q`, `-e`, `-l`, `--storage-path`, `--keybinds`, etc.) in favor of unified `notes`, `storage`, `keybinds`, `templates`, and `config` subcommands.
-- Added `--version` and `--config <PATH>` global flags.
- - Added new subcommands: `config show`, `config path`, `config edit`, `config reset`, and `notes search <query>`.
-- CLI output beautification: semantic colors (green success, red error, cyan paths, dim metadata), Unicode status symbols (✓ ✗ • →), themed clap help/error output, and `NO_COLOR` / non-TTY detection.
-
 
 ### Miscellaneous
 
