@@ -2156,6 +2156,16 @@ template = """
             self.list.visual_list.get(self.list.visual_index)
         {
             let note = &self.notes[*summary_idx];
+            let ext = std::path::Path::new(&note.id)
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("");
+
+            if ext != "md" && ext != "txt" && ext != "clin" {
+                self.set_temporary_status_static("Tagging is only supported for .md, .txt, and .clin files");
+                return;
+            }
+
             let current_tags = note.tags.clone();
             let all_tags = self.collect_live_tags();
 
@@ -2189,7 +2199,18 @@ template = """
                 .filter(|s| !s.is_empty())
                 .collect();
 
+            let ext = std::path::Path::new(&popup.note_id)
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("");
+
+            if ext != "md" && ext != "txt" && ext != "clin" {
+                self.set_temporary_status_static("Tagging is only supported for .md, .txt, and .clin files");
+                return;
+            }
+
             if let Ok(mut note) = self.storage.load_note(&popup.note_id) {
+
                 note.tags = tags;
                 if let Err(e) = self.storage.save_note(&popup.note_id, &note) {
                     self.set_temporary_status(&format!("Failed to save tags: {e}"));
@@ -2301,6 +2322,15 @@ template = """
         let mut count = 0;
         if let Ok(note_ids) = self.storage.list_note_ids() {
             for note_id in note_ids {
+                let ext = std::path::Path::new(&note_id)
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .unwrap_or("");
+
+                if ext != "md" && ext != "txt" && ext != "clin" {
+                    continue;
+                }
+
                 if let Ok(mut note) = self.storage.load_note(&note_id)
                     && note.tags.contains(&tag)
                 {
@@ -2349,23 +2379,28 @@ template = """
         let indices: Vec<usize> = self.list.selected_indices.iter().copied().collect();
 
         for &idx in &indices {
-            if let crate::list_view::VisualItem::Note { summary_idx, .. } = self
-                .list
-                .visual_list
-                .get(idx)
-                .unwrap_or(&crate::list_view::VisualItem::CreateNew {
-                    path: String::new(),
-                    depth: 0,
-                })
+            if let Some(crate::list_view::VisualItem::Note { summary_idx, .. }) =
+                self.list.visual_list.get(idx)
             {
                 let note = &self.notes[*summary_idx];
                 let note_id = note.id.clone();
+                let note_title = note.title.clone();
+                let ext = std::path::Path::new(&note_id)
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .unwrap_or("");
+
+                if ext != "md" && ext != "txt" && ext != "clin" {
+                    continue;
+                }
+
                 if let Ok(mut loaded) = self.storage.load_note(&note_id) {
+
                     if !loaded.tags.contains(&tag) {
                         loaded.tags.push(tag.clone());
                     }
                     if self.storage.save_note(&note_id, &loaded).is_ok() {
-                        if let Err(e) = self.try_auto_backup(&loaded.title) {
+                        if let Err(e) = self.try_auto_backup(&note_title) {
                             self.set_temporary_status(&format!("Backup failed: {e}"));
                         }
                         count += 1;
@@ -2373,6 +2408,7 @@ template = """
                 }
             }
         }
+
 
         self.list.selected_indices.clear();
         self.list.list_mode = crate::list_view::ListMode::Normal;
