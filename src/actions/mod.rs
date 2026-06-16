@@ -14,7 +14,6 @@ pub mod theme;
 
 use crate::app::App;
 use anyhow::Result;
-use once_cell::sync::Lazy;
 use std::borrow::Cow;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -55,7 +54,7 @@ pub struct ActionInfo {
     pub glyph: String,
 }
 
-pub static ACTIONS: Lazy<Vec<Box<dyn Action>>> = Lazy::new(|| {
+pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyLock::new(|| {
     vec![
         Box::new(encrypt::EncryptNoteAction),
         Box::new(decrypt::DecryptNoteAction),

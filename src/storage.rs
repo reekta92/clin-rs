@@ -6,9 +6,7 @@ use crate::templates::TemplateManager;
 use anyhow::{Context, Result, anyhow};
 use chacha20poly1305::aead::{Aead, KeyInit};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
-use once_cell::sync::Lazy;
 use rand::RngCore;
-use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 use std::fs;
@@ -36,15 +34,31 @@ pub struct NoteSummary {
     pub size_bytes: u64,
 }
 
-static WIKILINK_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]").expect("static regex literal is valid")
-});
 
 pub fn extract_wikilinks(content: &str) -> Vec<String> {
-    WIKILINK_RE
-        .captures_iter(content)
-        .filter_map(|c| c.get(1).map(|m| m.as_str().trim().to_string()))
-        .collect()
+    let mut links = Vec::new();
+    let mut cursor = 0;
+    while let Some(start_offset) = content[cursor..].find("[[") {
+        let absolute_start = cursor + start_offset;
+        let inner_start = absolute_start + 2;
+        if let Some(end_offset) = content[inner_start..].find("]]") {
+            let absolute_end = inner_start + end_offset;
+            let inner_text = &content[inner_start..absolute_end];
+
+            let link_part = match inner_text.find('|') {
+                Some(pipe_idx) => &inner_text[..pipe_idx],
+                None => inner_text,
+            };
+
+            if !link_part.is_empty() && !link_part.contains(']') {
+                links.push(link_part.trim().to_string());
+            }
+            cursor = absolute_end + 2;
+        } else {
+            break;
+        }
+    }
+    links
 }
 
 #[derive(Clone, Debug, zeroize::Zeroize, zeroize::ZeroizeOnDrop)]
