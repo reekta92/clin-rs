@@ -210,7 +210,7 @@ fn run_notes(action: NotesCmd) -> Result<()> {
                     hits.push((score, note.title.clone(), note.folder.clone()));
                 }
             }
-            hits.sort_by(|a, b| b.0.cmp(&a.0));
+            hits.sort_by_key(|b| std::cmp::Reverse(b.0));
             if hits.is_empty() {
                 println!(
                     "{}",
