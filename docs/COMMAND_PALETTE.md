@@ -1,4 +1,4 @@
-# Command Palette
+ # Command Palette
 
 Technical docs for the command palette and Action trait — an extensible action system accessible via Ctrl+P or Shift+Enter.
 
@@ -6,7 +6,7 @@ Technical docs for the command palette and Action trait — an extensible action
 
 ## Overview
 
-The command palette provides a searchable list of actions. Users can invoke any registered action without navigating menus. The palette is modeless — it opens over any view and closes after executing or canceling.
+The command palette provides a searchable list of actions. Users can invoke any registered action without navigating menus. The palette is modeless — it opens over view and closes after executing or canceling.
 **Source:** `src/actions/mod.rs` (Action trait + registry), `src/palette.rs` (popup widget)
 
 ---
