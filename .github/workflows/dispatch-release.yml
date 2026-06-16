@@ -220,6 +220,11 @@ jobs:
           cp target/aarch64-apple-darwin/release/clin .
           tar -cJf "dist/clin-rs-aarch64-apple-darwin.tar.xz" clin LICENSE README.md
           tar -czf "dist/clin-rs-aarch64-apple-darwin.tar.gz" clin LICENSE README.md
+
+          # Create DMG
+          mkdir -p dmg_root
+          cp clin LICENSE README.md dmg_root/
+          hdiutil create -volname "clin" -srcfolder dmg_root -ov -format UDZO "dist/clin-rs-aarch64-apple-darwin.dmg"
       - name: Upload
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
