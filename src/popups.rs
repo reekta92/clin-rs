@@ -219,6 +219,17 @@ impl PopupManager {
             || self.trash_view.is_some()
     }
 
+    pub fn has_text_input(&self) -> bool {
+        self.create_note.is_some()
+            || self.import.is_some()
+            || self.folder.is_some()
+            || self.folder_picker.is_some()
+            || self.note_rename.is_some()
+            || self.search.is_some()
+            || self.template.is_some()
+            || self.tag.is_some()
+    }
+
     pub fn clear_all(&mut self) {
         self.confirm = None;
         self.template = None;

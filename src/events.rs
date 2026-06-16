@@ -39,7 +39,8 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
-    if app.popups.has_any() && key.code == KeyCode::Esc {
+    let q_exit = key.code == KeyCode::Char('q') && !app.popups.has_text_input();
+    if app.popups.has_any() && (key.code == KeyCode::Esc || q_exit) {
         app.popups.clear_all();
         return false;
     }
@@ -744,7 +745,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
-    if app.keybinds.matches_list(ListAction::Quit, &key) {
+    if app.keybinds.matches_list(ListAction::Quit, &key) && app.list.list_mode != ListMode::Select {
         app.initiate_quit();
         return false;
     }
@@ -790,7 +791,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
             }
             return false;
         }
-        if key.code == KeyCode::Esc {
+        if key.code == KeyCode::Esc || key.code == KeyCode::Char('q') {
             app.list.tag_to_assign = None;
             app.list.list_mode = ListMode::Normal;
             app.list.selected_indices.clear();
@@ -1067,7 +1068,7 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
             KeyCode::Enter => {
                 app.handle_menu_action(menu.selected, focus);
             }
-            KeyCode::Esc => {
+            KeyCode::Esc | KeyCode::Char('q') => {
                 app.popups.context_menu = None;
             }
             _ => {

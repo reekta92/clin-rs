@@ -667,7 +667,13 @@ impl Default for Keybinds {
         );
 
         let mut graph = HashMap::new();
-        graph.insert(GraphAction::Quit, vec![KeyCombo::simple(KeyCode::Esc)]);
+        graph.insert(
+            GraphAction::Quit,
+            vec![
+                KeyCombo::simple(KeyCode::Esc),
+                KeyCombo::simple(KeyCode::Char('q')),
+            ],
+        );
         graph.insert(
             GraphAction::PanUp,
             vec![
@@ -759,7 +765,13 @@ impl Default for Keybinds {
         );
 
         let mut draw = HashMap::new();
-        draw.insert(DrawAction::Quit, vec![KeyCombo::simple(KeyCode::Esc)]);
+        draw.insert(
+            DrawAction::Quit,
+            vec![
+                KeyCombo::simple(KeyCode::Esc),
+                KeyCombo::simple(KeyCode::Char('q')),
+            ],
+        );
         draw.insert(
             DrawAction::SelectDrawTool,
             vec![KeyCombo::simple(KeyCode::Char('d'))],
@@ -790,7 +802,10 @@ impl Default for Keybinds {
         );
         draw.insert(
             DrawAction::ShapeSelectorCancel,
-            vec![KeyCombo::simple(KeyCode::Esc)],
+            vec![
+                KeyCombo::simple(KeyCode::Esc),
+                KeyCombo::simple(KeyCode::Char('q')),
+            ],
         );
         draw.insert(
             DrawAction::TextEditorConfirm,
@@ -802,7 +817,13 @@ impl Default for Keybinds {
         );
 
         let mut canvas = HashMap::new();
-        canvas.insert(CanvasAction::Quit, vec![KeyCombo::simple(KeyCode::Esc)]);
+        canvas.insert(
+            CanvasAction::Quit,
+            vec![
+                KeyCombo::simple(KeyCode::Esc),
+                KeyCombo::simple(KeyCode::Char('q')),
+            ],
+        );
         canvas.insert(CanvasAction::Save, vec![KeyCombo::ctrl(KeyCode::Char('s'))]);
         canvas.insert(
             CanvasAction::ZoomFineIn,
@@ -894,7 +915,10 @@ impl Default for Keybinds {
         );
         canvas.insert(
             CanvasAction::MenuClose,
-            vec![KeyCombo::simple(KeyCode::Esc)],
+            vec![
+                KeyCombo::simple(KeyCode::Esc),
+                KeyCombo::simple(KeyCode::Char('q')),
+            ],
         );
         canvas.insert(
             CanvasAction::MenuUp,
@@ -928,7 +952,10 @@ impl Default for Keybinds {
         );
         canvas.insert(
             CanvasAction::CancelResize,
-            vec![KeyCombo::simple(KeyCode::Esc)],
+            vec![
+                KeyCombo::simple(KeyCode::Esc),
+                KeyCombo::simple(KeyCode::Char('q')),
+            ],
         );
         canvas.insert(
             CanvasAction::EditorUnfocus,
@@ -940,7 +967,13 @@ impl Default for Keybinds {
         );
 
         let mut backup = HashMap::new();
-        backup.insert(BackupAction::Back, vec![KeyCombo::simple(KeyCode::Esc)]);
+        backup.insert(
+            BackupAction::Back,
+            vec![
+                KeyCombo::simple(KeyCode::Esc),
+                KeyCombo::simple(KeyCode::Char('q')),
+            ],
+        );
         backup.insert(
             BackupAction::MoveDown,
             vec![
@@ -1000,7 +1033,10 @@ impl Default for Keybinds {
         );
         backup.insert(
             BackupAction::CloseSettings,
-            vec![KeyCombo::simple(KeyCode::Esc)],
+            vec![
+                KeyCombo::simple(KeyCode::Esc),
+                KeyCombo::simple(KeyCode::Char('q')),
+            ],
         );
         backup.insert(
             BackupAction::NextField,
@@ -1066,7 +1102,10 @@ impl Default for Keybinds {
         );
         content_tree.insert(
             ContentTreeAction::Back,
-            vec![KeyCombo::simple(KeyCode::Esc)],
+            vec![
+                KeyCombo::simple(KeyCode::Esc),
+                KeyCombo::simple(KeyCode::Char('q')),
+            ],
         );
         content_tree.insert(
             ContentTreeAction::Help,
@@ -1484,7 +1523,7 @@ mod tests {
     fn test_new_action_displays() {
         let keybinds = Keybinds::default();
         assert_eq!(keybinds.draw_keys_display(DrawAction::SelectDrawTool), "d");
-        assert_eq!(keybinds.canvas_keys_display(CanvasAction::Quit), "Esc");
+        assert_eq!(keybinds.canvas_keys_display(CanvasAction::Quit), "Esc/q");
         assert_eq!(keybinds.canvas_keys_display(CanvasAction::Save), "Ctrl+s");
     }
 }
