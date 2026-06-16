@@ -218,15 +218,14 @@ pub fn handle_mouse(state: &mut BackupState, event: MouseEvent) -> InputResult {
         return handle_settings_mouse(state, event);
     }
 
-    if state.input_mode == BackupInputMode::EditCommitMessage {
-        if let MouseEventKind::Down(MouseButton::Left) = event.kind {
-            if let Some(area) = state.last_area {
-                let popup_area = crate::ui::centered_rect(crate::ui::PopupSize::Prompt, area);
-                if !crate::events::contains_cell(popup_area, event.column, event.row) {
-                    state.input_mode = BackupInputMode::Normal;
-                    return InputResult::None;
-                }
-            }
+    if state.input_mode == BackupInputMode::EditCommitMessage
+        && let MouseEventKind::Down(MouseButton::Left) = event.kind
+        && let Some(area) = state.last_area
+    {
+        let popup_area = crate::ui::centered_rect(crate::ui::PopupSize::Prompt, area);
+        if !crate::events::contains_cell(popup_area, event.column, event.row) {
+            state.input_mode = BackupInputMode::Normal;
+            return InputResult::None;
         }
     }
 

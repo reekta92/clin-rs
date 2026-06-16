@@ -237,25 +237,3 @@ impl PopupManager {
     }
 }
 
-pub struct InputPopup {
-    pub input: TextArea<'static>,
-}
-
-pub struct ListPopup<T> {
-    pub items: Vec<T>,
-    pub selected: usize,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PopupFocus {
-    Input,
-    List,
-}
-
-pub struct FilteredListPopup<T> {
-    pub all_items: Vec<T>,
-    pub filtered_items: Vec<T>,
-    pub input: TextArea<'static>,
-    pub selected: usize,
-    pub focus: PopupFocus,
-}

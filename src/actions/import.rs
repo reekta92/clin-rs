@@ -153,24 +153,24 @@ fn extract_html_title(html: &str) -> Option<String> {
 
         if rest.len() >= 6 && rest[..6].eq_ignore_ascii_case("<title") {
             let next_char = rest.as_bytes().get(6);
-            if next_char.is_none() || matches!(next_char, Some(b' ' | b'>' | b'\t' | b'\r' | b'\n')) {
-                if let Some(tag_end_offset) = rest.find('>') {
-                    let after_tag_start = absolute_start + tag_end_offset + 1;
-                    let after_tag = &html[after_tag_start..];
+            if (next_char.is_none() || matches!(next_char, Some(b' ' | b'>' | b'\t' | b'\r' | b'\n')))
+                && let Some(tag_end_offset) = rest.find('>')
+            {
+                let after_tag_start = absolute_start + tag_end_offset + 1;
+                let after_tag = &html[after_tag_start..];
 
-                    let mut close_cursor = 0;
-                    while let Some(close_bracket_offset) = after_tag[close_cursor..].find('<') {
-                        let absolute_close_start = close_cursor + close_bracket_offset;
-                        let close_rest = &after_tag[absolute_close_start..];
-                        if close_rest.len() >= 8 && close_rest[..8].eq_ignore_ascii_case("</title>") {
-                            let inner_text = &after_tag[..absolute_close_start];
-                            return Some(inner_text.trim().to_string());
-                        }
-                        close_cursor = absolute_close_start + 1;
+                let mut close_cursor = 0;
+                while let Some(close_bracket_offset) = after_tag[close_cursor..].find('<') {
+                    let absolute_close_start = close_cursor + close_bracket_offset;
+                    let close_rest = &after_tag[absolute_close_start..];
+                    if close_rest.len() >= 8 && close_rest[..8].eq_ignore_ascii_case("</title>") {
+                        let inner_text = &after_tag[..absolute_close_start];
+                        return Some(inner_text.trim().to_string());
                     }
-                    cursor = after_tag_start;
-                    continue;
+                    close_cursor = absolute_close_start + 1;
                 }
+                cursor = after_tag_start;
+                continue;
             }
         }
         cursor = absolute_start + 1;

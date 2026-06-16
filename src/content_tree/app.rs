@@ -62,7 +62,7 @@ impl OverlayView<ContentTreeResult> for ContentTreeState {
             }
             Event::Mouse(mouse) => {
                 let term_area = self.last_area;
-                match input::handle_content_tree_mouse(self, mouse, term_area.into()) {
+                match input::handle_content_tree_mouse(self, mouse, term_area) {
                     input::InputResult::Back => return Ok(Some(ContentTreeResult::Back)),
                     input::InputResult::Help => return Ok(Some(ContentTreeResult::HelpRequested)),
                     input::InputResult::Open => {
