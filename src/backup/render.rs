@@ -409,7 +409,7 @@ fn draw_commit_popup(frame: &mut Frame, area: Rect, state: &BackupState) {
         frame,
         area,
         "COMMIT",
-        crate::ui::PopupSize::Large,
+        crate::ui::PopupSize::Prompt,
         "Enter confirm · Esc cancel",
         theme,
     );
