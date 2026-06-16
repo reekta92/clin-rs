@@ -105,7 +105,7 @@ fn handle_mouse(ev: MouseEvent, app: &mut DrawAppState) -> anyhow::Result<Option
     let area = app.last_area;
 
     if app.show_shape_selector {
-        let popup_area = crate::ui::centered_rect(30, 40, area);
+        let popup_area = crate::ui::centered_rect(crate::ui::PopupSize::Small, area);
         let content = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Min(1), Constraint::Length(1)])

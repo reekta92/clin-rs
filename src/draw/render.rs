@@ -106,8 +106,7 @@ pub fn draw_canvas(frame: &mut Frame, app: &DrawAppState, area: Rect) {
             frame,
             area,
             "SELECT SHAPE",
-            30,
-            40,
+            crate::ui::PopupSize::Small,
             "Enter select · Esc cancel",
             &app.theme,
         );
@@ -148,8 +147,7 @@ pub fn draw_canvas(frame: &mut Frame, app: &DrawAppState, area: Rect) {
             frame,
             area,
             "EDIT TEXT",
-            50,
-            10,
+            crate::ui::PopupSize::Prompt,
             "Enter save · Esc cancel",
             &app.theme,
         );

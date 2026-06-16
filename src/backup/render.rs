@@ -156,7 +156,7 @@ fn draw_content(frame: &mut Frame, area: Rect, state: &mut BackupState) {
             .block(block)
             .wrap(Wrap { trim: true });
 
-        let centered_area = crate::ui::centered_rect(60, 20, area);
+        let centered_area = crate::ui::centered_rect(crate::ui::PopupSize::Large, area);
         frame.render_widget(paragraph, centered_area);
         return;
     }
@@ -409,8 +409,7 @@ fn draw_commit_popup(frame: &mut Frame, area: Rect, state: &BackupState) {
         frame,
         area,
         "COMMIT",
-        60,
-        15,
+        crate::ui::PopupSize::Large,
         "Enter confirm · Esc cancel",
         theme,
     );
@@ -441,8 +440,7 @@ fn draw_settings_popup(frame: &mut Frame, area: Rect, state: &BackupState) {
         frame,
         area,
         "BACKUP SETTINGS",
-        60,
-        60,
+        crate::ui::PopupSize::Large,
         "j/k navigate · Enter toggle/edit · Esc cancel",
         theme,
     );

@@ -614,7 +614,7 @@ pub fn draw_pinstar_view(
     crate::ui::draw_status_bar(frame, hint_area, theme, None, &hint_text, None);
 
     if let Some(menu) = &state.context_menu {
-        let menu_width = 25;
+        let menu_width = menu.items.iter().map(|s| s.len() as u16 + 4).max().unwrap_or(25);
         let menu_height = menu.items.len() as u16;
         let menu_rect = Rect::new(
             area.x + menu.x.min(area.width.saturating_sub(menu_width)),
@@ -622,6 +622,7 @@ pub fn draw_pinstar_view(
             menu_width,
             menu_height,
         );
+
 
         frame.render_widget(Clear, menu_rect);
 
@@ -638,7 +639,7 @@ pub fn draw_pinstar_view(
                 } else {
                     Style::default().fg(theme.text)
                 };
-                ListItem::new(format!("  {item}")).style(style)
+                ListItem::new(format!("  {item}  ")).style(style)
             })
             .collect();
 
@@ -655,8 +656,7 @@ pub fn draw_pinstar_view(
             frame,
             area,
             "RENAME NODE",
-            60,
-            20,
+            crate::ui::PopupSize::Prompt,
             "Enter confirm · Esc cancel",
             theme,
         );

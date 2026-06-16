@@ -1162,7 +1162,7 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
 pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: Rect) {
     if app.popups.confirm.is_some() {
         if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
-            let popup_area = crate::ui::centered_rect(50, 30, terminal_area);
+            let popup_area = crate::ui::centered_rect(crate::ui::PopupSize::Confirm, terminal_area);
             let click_x = mouse_event.column;
             let click_y = mouse_event.row;
 
@@ -1184,7 +1184,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         return;
     }
     if let Some(mut popup) = app.popups.note_rename.take() {
-        let area = crate::ui::centered_rect(50, 12, terminal_area);
+        let area = crate::ui::centered_rect(crate::ui::PopupSize::Prompt, terminal_area);
         if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
             && !contains_cell(area, mouse_event.column, mouse_event.row)
         {
@@ -1207,7 +1207,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
     }
 
     if let Some((mut popup, format)) = app.popups.create_note.take() {
-        let area = crate::ui::centered_rect(50, 12, terminal_area);
+        let area = crate::ui::centered_rect(crate::ui::PopupSize::Prompt, terminal_area);
         if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
             && !contains_cell(area, mouse_event.column, mouse_event.row)
         {
@@ -1230,7 +1230,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
     }
 
     if let Some(mut popup) = app.popups.import.take() {
-        let area = crate::ui::centered_rect(60, 20, terminal_area);
+        let area = crate::ui::centered_rect(crate::ui::PopupSize::Large, terminal_area);
         if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
             && !contains_cell(area, mouse_event.column, mouse_event.row)
         {
@@ -1253,7 +1253,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
     }
 
     if let Some(mut popup) = app.popups.folder.take() {
-        let area = crate::ui::centered_rect(50, 10, terminal_area);
+        let area = crate::ui::centered_rect(crate::ui::PopupSize::Prompt, terminal_area);
         if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
             && !contains_cell(area, mouse_event.column, mouse_event.row)
         {
@@ -1282,8 +1282,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
             (popup.suggestions.len() as u16).clamp(1, 5)
         };
         let popup_area = crate::ui::centered_rect(
-            crate::constants::NOTES_POPUP_LARGE_W_PCT,
-            crate::constants::NOTES_POPUP_LARGE_H_PCT,
+            crate::ui::PopupSize::Large,
             terminal_area,
         );
         if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
@@ -1342,7 +1341,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
     }
 
     if let Some(mut popup) = app.popups.theme.take() {
-        let popup_area = crate::ui::centered_rect(40, 60, terminal_area);
+        let popup_area = crate::ui::centered_rect(crate::ui::PopupSize::Medium, terminal_area);
         let content = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Min(1), Constraint::Length(1)])
@@ -1400,8 +1399,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
 
     if let Some(mut palette) = app.command_palette.take() {
         let popup_area = crate::ui::centered_rect(
-            crate::constants::NOTES_POPUP_LARGE_W_PCT,
-            crate::constants::NOTES_POPUP_LARGE_H_PCT,
+            crate::ui::PopupSize::Large,
             terminal_area,
         );
         let content = Layout::default()
@@ -1497,8 +1495,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
 
     if app.popups.template.is_some() {
         let popup_area = crate::ui::centered_rect(
-            crate::constants::NOTES_POPUP_LARGE_W_PCT,
-            crate::constants::NOTES_POPUP_LARGE_H_PCT,
+            crate::ui::PopupSize::Large,
             terminal_area,
         );
         if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
@@ -1511,8 +1508,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
 
     if let Some(popup) = &mut app.popups.template {
         let popup_area = crate::ui::centered_rect(
-            crate::constants::NOTES_POPUP_LARGE_W_PCT,
-            crate::constants::NOTES_POPUP_LARGE_H_PCT,
+            crate::ui::PopupSize::Large,
             terminal_area,
         );
         let chunks = Layout::default()
@@ -1567,8 +1563,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
 
     if app.popups.folder_picker.is_some() {
         let popup_area = crate::ui::centered_rect(
-            crate::constants::NOTES_POPUP_LARGE_W_PCT,
-            crate::constants::NOTES_POPUP_LARGE_H_PCT,
+            crate::ui::PopupSize::Large,
             terminal_area,
         );
         if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
@@ -1581,8 +1576,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
 
     if let Some(picker) = &mut app.popups.folder_picker {
         let popup_area = crate::ui::centered_rect(
-            crate::constants::NOTES_POPUP_LARGE_W_PCT,
-            crate::constants::NOTES_POPUP_LARGE_H_PCT,
+            crate::ui::PopupSize::Large,
             terminal_area,
         );
         let chunks = Layout::default()
@@ -1633,8 +1627,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
 
     if app.popups.search.is_some() {
         let popup_area = crate::ui::centered_rect(
-            crate::constants::NOTES_POPUP_LARGE_W_PCT,
-            crate::constants::NOTES_POPUP_LARGE_H_PCT,
+            crate::ui::PopupSize::Large,
             terminal_area,
         );
         if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
@@ -1647,8 +1640,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
 
     if let Some(popup) = &mut app.popups.search {
         let popup_area = crate::ui::centered_rect(
-            crate::constants::NOTES_POPUP_LARGE_W_PCT,
-            crate::constants::NOTES_POPUP_LARGE_H_PCT,
+            crate::ui::PopupSize::Large,
             terminal_area,
         );
         let has_filter = popup.focus != crate::popups::SearchFocus::Input
@@ -1718,7 +1710,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
     }
 
     if app.popups.trash_view.is_some() {
-        let popup_area = crate::ui::centered_rect(70, 70, terminal_area);
+        let popup_area = crate::ui::centered_rect(crate::ui::PopupSize::Large, terminal_area);
         if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
             && !contains_cell(popup_area, mouse_event.column, mouse_event.row)
         {
@@ -1728,7 +1720,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
     }
 
     if let Some(trash) = &mut app.popups.trash_view {
-        let popup_area = crate::ui::centered_rect(70, 70, terminal_area);
+        let popup_area = crate::ui::centered_rect(crate::ui::PopupSize::Large, terminal_area);
         let mut restore_selected = false;
         if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
             && contains_cell(popup_area, mouse_event.column, mouse_event.row)

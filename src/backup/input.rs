@@ -313,7 +313,7 @@ fn handle_settings_mouse(state: &mut BackupState, event: MouseEvent) -> InputRes
     };
 
     // Mirror draw_popup_frame(60, 60): popup_area → strip footer → bordered block inner
-    let popup_area = crate::ui::centered_rect(60, 60, area);
+    let popup_area = crate::ui::centered_rect(crate::ui::PopupSize::Large, area);
 
     // Outside left-click → close settings
     if event.kind == MouseEventKind::Down(MouseButton::Left)

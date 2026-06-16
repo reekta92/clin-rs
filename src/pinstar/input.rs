@@ -76,7 +76,7 @@ pub fn handle_pinstar_mouse(
 
             if let Some(menu) = &state.context_menu {
                 close_menu = true;
-                let menu_width = 25;
+                let menu_width = menu.items.iter().map(|s| s.len() as u16 + 4).max().unwrap_or(25);
                 let menu_height = menu.items.len() as u16;
                 let menu_x = area.x + menu.x.min(area.width.saturating_sub(menu_width));
                 let menu_y = area.y + menu.y.min(area.height.saturating_sub(menu_height));
