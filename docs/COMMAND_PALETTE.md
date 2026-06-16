@@ -131,18 +131,18 @@ The context note ID is the currently selected note (from `App::list.visual_index
 The command palette is rendered by `CommandPalette` widget in `src/palette.rs`:
 
 ```
-┌───────────────────────────────────────────────┐
-│  > search_query                               │
-├───────────────────────────────────────────────┤
-│      All · Notes · Import · Append · Views · Settings  │
-├───────────────────────────────────────────────┤
-│   Encrypt Note               Encrypt..       │
-│   Decrypt Note               Decrypt..       │
-│   Content Tree               Headers..       │
-│   Open Graph View            Switch..        │
-│  🎨 Create Drawing             Create..        │
-│  ⭐ Create Canvas Map          Create..        │
-└───────────────────────────────────────────────┘
+┌─────────────────────────────────────────────┐
+│  > search_query                             │
+├─────────────────────────────────────────────┤
+│ All · Notes · Import · Append · Views · Set │
+├─────────────────────────────────────────────┤
+│   Encrypt Note               Encrypt..      │
+│   Decrypt Note               Decrypt..      │
+│   Content Tree               Headers..      │
+│   Open Graph View            Switch..       │
+│   Create Drawing             Create..       │
+│   Create Canvas Map          Create..       │
+└─────────────────────────────────────────────┘
 ```
 ### Search Behavior
 
