@@ -9,6 +9,7 @@
 [![Release](https://github.com/reekta92/clin-rs/actions/workflows/dispatch-release.yml/badge.svg)](https://github.com/reekta92/clin-rs/actions/workflows/dispatch-release.yml)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
 [![MSRV: 1.88.0](https://img.shields.io/badge/MSRV-1.88.0-orange.svg)](https://blog.rust-lang.org/2025/06/26/Rust-1.88.0/)
+<a href="https://terminaltrove.com/" title="This tool is Tool of The Week on Terminal Trove, The $HOME of all things in the terminal"><img src="https://cdn.terminaltrove.com/media/badges/tool_of_the_week/svg/terminal_trove_tool_of_the_week_green_on_dark_grey_bg.svg" alt="Terminal Trove Tool of The Week" height="20" /></a>
 
 </div>
 
@@ -197,11 +198,13 @@ Once inside the TUI: navigate with `j`/`k`, open notes with `Enter`, open the co
 
 | View | Purpose | Key Actions |
 |---|---|---|
-| **List / Notes** | Browse, search, filter, manage notes | Folders, tags, sort, pin, glow preview, search, trash, copy/move/delete |
+| **List / Notes** | Browse, search, filter, manage notes | Grid/Tree layout, format chooser, folders, tags, sort, pin, glow preview, search, trash, copy/move/delete |
 | **Editor** | Write and edit notes | Title + body, undo/redo, mouse support, line numbers, markdown preview pane, external editor |
-| **Graph** | Visualize note connections | Force-directed layout, [[wikilinks]] edges, physics, minimap, legend, search, grid, configurable colors |
+| **Graph** | Visualize note connections | Force-directed layout, [[wikilinks]] edges, physics, preview pane, minimap, legend, search, grid, configurable colors |
+| **Backup** | Git-based vault versioning | Status (staged/unstaged), commit history, diff preview, auto-push, remote sync |
 | **Canvas** | Obsidian-compatible node/edge canvas | Text/file/link/group nodes, edges, drag/resize, context menu, raw JSON editor |
 | **Draw** | Freehand drawing and shapes | Stroke, rect/ellipse/diamond/line/arrow, text, eraser, pan/zoom |
+| **Content Tree** | Note outline and navigation | Header-based tree parsing, collapsible sections, jump-to-section |
 
 | Feature | Description |
 |---|---|

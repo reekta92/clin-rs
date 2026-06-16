@@ -59,6 +59,12 @@ Full reference of all configuration options for clin-rs.
 | `folder` | `String` | — | Hex color override for folder labels |
 | `background_color` | `String` | — | Hex color override for solid background |
 
+### `[graf]`
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `preview_enabled` | `bool` | `false` | Enable the preview pane in Graph view |
+
 ### `[graf.visual]`
 
 | Option | Type | Default | Description |
@@ -124,9 +130,7 @@ All optional. Hex color strings like `"#ff6600"`. Override theme defaults.
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `exclude_tags` | `Vec<String>` | `[]` | Tags to exclude from graph |
-| `exclude_patterns` | `Vec<String>` | `[]` | Path patterns to exclude (e.g. `"templates/"`) |
 | `min_links` | `usize` | `0` | Minimum links for a node to appear |
-| `max_nodes` | `usize` | `500` | Maximum nodes to display |
 
 ### `[graf.search]`
 
@@ -142,6 +146,9 @@ All optional. Hex color strings like `"#ff6600"`. Override theme defaults.
 | `backup_on_save` | `bool` | `true` | Perform a backup commit whenever a note is saved |
 | `backup_on_quit` | `bool` | `true` | Perform a backup commit when the app exits |
 | `auto_backup_interval` | `u64` | — | Interval in minutes for automatic background backups |
+| `auto_push` | `bool` | `false` | Automatically push commits to remote |
+| `remote_url` | `String` | — | Remote git repository URL |
+| `remote_name` | `String` | `"origin"` | Name of the git remote |
 ---
 
 ## Example config.toml
@@ -176,11 +183,17 @@ enabled = true
 backup_on_save = true
 backup_on_quit = true
 auto_backup_interval = 30
+auto_push = false
+remote_url = "https://github.com/user/my-notes.git"
+remote_name = "origin"
 
 [theme]
 theme = "tokyo_night"
 background = "transparent"
 accent = "#ff6600"
+
+[graf]
+preview_enabled = false
 
 [graf.visual]
 node_color_mode = "folder"
@@ -202,9 +215,6 @@ drag_sensitivity = 1.0
 [display]
 show_status_bar = true
 border_style = "rounded"
-
-[graf.filter]
-max_nodes = 500
 
 [graf.search]
 max_results = 20

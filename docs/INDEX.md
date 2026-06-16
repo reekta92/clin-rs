@@ -12,7 +12,9 @@ For installation, quickstart, and general project info, see the [README.md](../R
 
 ## Views
 
+- [LIST_VIEW.md](LIST_VIEW.md) — Notes list view: Grid/Tree layout, note format chooser, preview pane
 - [GRAPH_VIEW.md](GRAPH_VIEW.md) — Force-directed graph view (graf): node/edge construction, physics simulation, rendering, interaction, viewport, search
+- [BACKUP.md](BACKUP.md) — Git-based backup dashboard: vault state (staged/unstaged/untracked), history, diff preview, automation settings
 - [CANVAS.md](CANVAS.md) — Obsidian-compatible canvas view (pinstar): `.canvas` JSON schema, node types, interaction model, key types
 - [DRAW.md](DRAW.md) — Freehand drawing canvas: `.draw` format, tool set, shape types, interaction
 - [CONTENT_TREE.md](CONTENT_TREE.md) — Content Tree view: nested outline parsing, collapsible subtrees, jump-to-section editor navigation
@@ -37,7 +39,9 @@ For installation, quickstart, and general project info, see the [README.md](../R
 docs/
 ├── INDEX.md              ← You are here
 ├── ARCHITECTURE.md       System overview
+├── LIST_VIEW.md          Notes list view
 ├── GRAPH_VIEW.md         Force-directed graph
+├── BACKUP.md             Git-based backup dashboard
 ├── CANVAS.md             Obsidian-compatible canvas
 ├── DRAW.md               Freehand drawing
 ├── CONTENT_TREE.md       Content tree outline
