@@ -1,6 +1,6 @@
 # Maintainer: reekta92 mdag.92988@protonmail.com
 pkgname=clin-rs-bin
-pkgver=0.8.15
+pkgver=0.8.16
 pkgrel=1
 pkgdesc="Encrypted terminal note-taking app"
 url="https://github.com/reekta92/clin-rs"
@@ -10,7 +10,7 @@ provides=("clin-rs" "clin")
 conflicts=("clin-rs")
 depends=("openssl" "gcc-libs")
 source=("https://github.com/reekta92/clin-rs/releases/download/v${pkgver}/clin-rs-x86_64-unknown-linux-gnu.tar.xz")
-sha256sums=("5b5ea8d51e42649632ffebdac25ab08550d4d220b16a413beacc3421cb6f0ef7")
+sha256sums=("114e82731197dc70daf2231b0f4f3528869cb74556c13df84c3dabed6fe4ba5a")
 
 package() {
     install -Dm755 "clin" -t "$pkgdir/usr/bin"
