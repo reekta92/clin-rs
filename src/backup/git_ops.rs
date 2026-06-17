@@ -161,7 +161,7 @@ impl GitOps {
             .repo
             .head()
             .ok()
-            .and_then(|h| h.shorthand().map(|s| s.to_string()))
+            .and_then(|h| h.shorthand().ok().map(|s| s.to_string()))
             .unwrap_or_else(|| "HEAD".to_string());
 
         // Ahead/behind
@@ -210,18 +210,11 @@ impl GitOps {
         };
         let head_oid = head.target().ok_or_else(|| anyhow!("No head target"))?;
 
-        let upstream = match self
-            .repo
-            .branch_upstream_name(head.name().ok_or_else(|| anyhow!("No head name"))?)
-        {
+        let upstream = match self.repo.branch_upstream_name(head.name()?) {
             Ok(u) => u,
             Err(_) => return Ok((0, 0)),
         };
-        let upstream_obj = self.repo.revparse_single(
-            upstream
-                .as_str()
-                .ok_or_else(|| anyhow!("Invalid upstream name"))?,
-        )?;
+        let upstream_obj = self.repo.revparse_single(upstream.as_str()?)?;
         let upstream_oid = upstream_obj.id();
 
         let (ahead, behind) = self.repo.graph_ahead_behind(head_oid, upstream_oid)?;
@@ -326,7 +319,7 @@ impl GitOps {
     pub fn push(&self, remote_name: &str) -> Result<()> {
         let mut remote = self.repo.find_remote(remote_name)?;
         let head = self.repo.head()?;
-        let refname = head.name().ok_or_else(|| anyhow!("No head name"))?;
+        let refname = head.name()?;
 
         remote.push(&[format!("{refname}:{refname}")], None)?;
         Ok(())

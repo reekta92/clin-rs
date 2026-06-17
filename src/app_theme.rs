@@ -1,4 +1,4 @@
-use crate::config::ThemeConfig;
+use crate::config::UiConfig;
 use crate::config::themes::theme_colors;
 use crate::config::{Background, Theme};
 use ratatui::style::{Color, Style};
@@ -23,7 +23,7 @@ pub struct AppThemeColors {
 
 impl Default for AppThemeColors {
     fn default() -> Self {
-        Self::from_config(&ThemeConfig::default())
+        Self::from_config(&UiConfig::default())
     }
 }
 
@@ -39,7 +39,7 @@ impl AppThemeColors {
         Some(Color::Rgb(r, g, b))
     }
 
-    pub fn from_config(config: &ThemeConfig) -> Self {
+    pub fn from_config(config: &UiConfig) -> Self {
         let theme_enum = config.theme.clone();
         let bg_enum = config.background.clone();
 

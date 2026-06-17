@@ -313,7 +313,7 @@ impl App {
         for w in bootstrap_config.validate() {
             eprintln!("[clin] config warning: {w}");
         }
-        let app_theme = crate::app_theme::AppThemeColors::from_config(&bootstrap_config.theme);
+        let app_theme = crate::app_theme::AppThemeColors::from_config(&bootstrap_config.ui);
 
         let mut editor = NoteEditor::new();
         editor.external_editor_enabled = bootstrap_config.editor.external_enabled;
@@ -353,16 +353,16 @@ impl App {
             command_palette: None,
             popups: crate::popups::PopupManager::default(),
             needs_full_redraw: false,
-            confirm_on_delete: bootstrap_config.confirm_on_delete,
-            confirm_on_quit: bootstrap_config.confirm_on_quit,
+            confirm_on_delete: bootstrap_config.core.confirm_on_delete,
+            confirm_on_quit: bootstrap_config.core.confirm_on_quit,
             should_quit: false,
             preview_encryption: bootstrap_config.list.preview_encryption,
-            mouse_enabled: bootstrap_config.mouse_enabled,
+            mouse_enabled: bootstrap_config.core.mouse_enabled,
             date_format: bootstrap_config.list.date_format.clone(),
             last_auto_backup: None,
             preview_position: bootstrap_config.list.preview_position,
             pinned_on_top: bootstrap_config.list.pinned_on_top,
-            default_folder: bootstrap_config.default_folder.clone(),
+            default_folder: bootstrap_config.core.default_folder.clone(),
             last_g_press: None,
             last_esc_press: None,
             return_mode: None,
@@ -3893,7 +3893,7 @@ template = """
         };
         self.set_temporary_status_static(msg);
         if let Ok(mut config) = crate::config::ClinConfig::load() {
-            config.confirm_on_delete = self.confirm_on_delete;
+            config.core.confirm_on_delete = self.confirm_on_delete;
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
             }
@@ -3909,7 +3909,7 @@ template = """
         };
         self.set_temporary_status_static(msg);
         if let Ok(mut config) = crate::config::ClinConfig::load() {
-            config.confirm_on_quit = self.confirm_on_quit;
+            config.core.confirm_on_quit = self.confirm_on_quit;
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
             }
@@ -3974,7 +3974,7 @@ template = """
 
     pub fn reload_theme(&mut self) {
         let config = crate::config::ClinConfig::load().unwrap_or_default();
-        self.app_theme = crate::app_theme::AppThemeColors::from_config(&config.theme);
+        self.app_theme = crate::app_theme::AppThemeColors::from_config(&config.ui);
         if self.mode == ViewMode::Help {
             self.list.help_text_cache = None;
         }
@@ -3996,9 +3996,9 @@ template = """
         ];
 
         let config = crate::config::ClinConfig::load().unwrap_or_default();
-        let current = config.theme.theme.to_string();
+        let current = config.ui.theme.to_string();
         let selected = themes.iter().position(|t| t == &current).unwrap_or(0);
-        let general_is_solid = matches!(config.theme.background, crate::config::Background::Solid);
+        let general_is_solid = matches!(config.ui.background, crate::config::Background::Solid);
         let graph_is_solid = matches!(
             config.graf.visual.graph_background,
             crate::config::Background::Solid
@@ -4072,7 +4072,7 @@ template = """
                 ThemePopupFocus::ThemeList => {
                     let next_theme = popup.themes[popup.selected].clone();
                     let mut config = crate::config::ClinConfig::load().unwrap_or_default();
-                    config.theme.theme = next_theme.parse().unwrap_or_default();
+                    config.ui.theme = next_theme.parse().unwrap_or_default();
                     if let Err(e) = config.save() {
                         self.set_temporary_status(&format!("Failed to save theme: {e}"));
                         return;
@@ -4084,7 +4084,7 @@ template = """
                 ThemePopupFocus::GeneralBg => {
                     popup.general_is_solid = !popup.general_is_solid;
                     let mut config = crate::config::ClinConfig::load().unwrap_or_default();
-                    config.theme.background = if popup.general_is_solid {
+                    config.ui.background = if popup.general_is_solid {
                         crate::config::Background::Solid
                     } else {
                         crate::config::Background::Transparent
