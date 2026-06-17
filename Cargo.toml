@@ -116,7 +116,7 @@ fdg-sim = "0.9"
 which = "8.0.2"
 zeroize = { version = "1.8.2", features = ["derive"] }
 portable-pty = "0.8"
-git2 = "0.20"
+git2 = "0.21"
 
 [profile.release]
 lto = "thin"

@@ -255,7 +255,6 @@ impl FromStr for NodeShape {
     }
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum LegendPosition {
@@ -1067,18 +1066,23 @@ impl ClinConfig {
 
         let mut doc = if config_path.exists() {
             let content = fs::read_to_string(&config_path)?;
-            content.parse::<toml_edit::DocumentMut>().context("failed to parse existing config")?
+            content
+                .parse::<toml_edit::DocumentMut>()
+                .context("failed to parse existing config")?
         } else {
-            default_config_content().parse::<toml_edit::DocumentMut>().unwrap()
+            default_config_content()
+                .parse::<toml_edit::DocumentMut>()
+                .expect("default config must be valid TOML")
         };
 
         let self_toml_str = toml::to_string(self).context("failed to serialize config")?;
-        let self_value: toml::Value = toml::from_str(&self_toml_str).unwrap();
+        let self_value: toml::Value =
+            toml::from_str(&self_toml_str).expect("serialized config must be valid TOML");
 
         if let toml::Value::Table(toml_tbl) = self_value {
             for (k, v) in toml_tbl {
                 if doc.contains_key(&k) {
-                    merge_toml_value(doc.get_mut(&k).unwrap(), &v);
+                    merge_toml_value(doc.get_mut(&k).expect("key presence already checked"), &v);
                 } else {
                     doc.insert(&k, toml_value_to_item(&v));
                 }
@@ -1157,7 +1161,6 @@ impl ClinConfig {
         colors
     }
 
-
     pub fn validate(&self) -> Vec<String> {
         let mut errs = Vec::new();
         if self.graf.visual.label_max_length < 1 || self.graf.visual.label_max_length > 60 {
@@ -1208,8 +1211,8 @@ fn merge_toml_value(edit_item: &mut toml_edit::Item, toml_val: &toml::Value) {
                 }
 
                 for (k, v) in toml_tbl {
-                    if edit_tbl.contains_key(k) {
-                        merge_toml_value(edit_tbl.get_mut(k).unwrap(), v);
+                    if let Some(edit_item) = edit_tbl.get_mut(k) {
+                        merge_toml_value(edit_item, v);
                     } else {
                         let new_item = toml_value_to_item(v);
                         edit_tbl.insert(k, new_item);
@@ -1246,7 +1249,12 @@ fn toml_value_to_item(v: &toml::Value) -> toml_edit::Item {
         toml::Value::Array(arr) => {
             let mut edit_arr = toml_edit::Array::new();
             for val in arr {
-                edit_arr.push(toml_value_to_item(val).as_value().unwrap().clone());
+                edit_arr.push(
+                    toml_value_to_item(val)
+                        .as_value()
+                        .expect("toml_value_to_item for non-table/non-array returns value")
+                        .clone(),
+                );
             }
             toml_edit::Item::Value(toml_edit::Value::Array(edit_arr))
         }
@@ -1260,61 +1268,61 @@ fn toml_value_to_item(v: &toml::Value) -> toml_edit::Item {
     }
 }
 
-    #[test]
-    fn test_merge_toml_value_preserves_comments() {
-        let initial_toml = default_config_content();
+#[test]
+fn test_merge_toml_value_preserves_comments() {
+    let initial_toml = default_config_content();
 
-        let mut doc = initial_toml.parse::<toml_edit::DocumentMut>().unwrap();
+    let mut doc = initial_toml.parse::<toml_edit::DocumentMut>().unwrap();
 
-        let mut config = ClinConfig::default();
-        config.core.mouse_enabled = false;
-        config.ui.show_status_bar = false;
-        config.list.preview_enabled = false;
-        config.graf.visual.show_grid = true;
+    let mut config = ClinConfig::default();
+    config.core.mouse_enabled = false;
+    config.ui.show_status_bar = false;
+    config.list.preview_enabled = false;
+    config.graf.visual.show_grid = true;
 
-        let self_toml_str = toml::to_string(&config).unwrap();
-        let self_value: toml::Value = toml::from_str(&self_toml_str).unwrap();
+    let self_toml_str = toml::to_string(&config).unwrap();
+    let self_value: toml::Value = toml::from_str(&self_toml_str).unwrap();
 
-        if let toml::Value::Table(toml_tbl) = self_value {
-            for (k, v) in toml_tbl {
-                if doc.contains_key(&k) {
-                    merge_toml_value(doc.get_mut(&k).unwrap(), &v);
-                }
+    if let toml::Value::Table(toml_tbl) = self_value {
+        for (k, v) in toml_tbl {
+            if doc.contains_key(&k) {
+                merge_toml_value(doc.get_mut(&k).unwrap(), &v);
             }
         }
-
-        let merged_str = doc.to_string();
-        assert!(merged_str.contains("# Clin Configuration File"));
-        assert!(merged_str.contains("# Enable mouse support (clicking, scrolling, panning)."));
-        assert!(merged_str.contains("# Show the status bar at the bottom of the screen."));
-        assert!(merged_str.contains("# Show background grid."));
-        assert!(merged_str.contains("mouse_enabled = false"));
-        assert!(merged_str.contains("show_status_bar = false"));
-        assert!(merged_str.contains("preview_enabled = false"));
-        assert!(merged_str.contains("show_grid = true"));
     }
 
-    #[test]
-    fn test_actual_save_preserves_comments() {
-        let temp_dir = tempfile::tempdir().unwrap();
-        let config_file_path = temp_dir.path().join("config.toml");
+    let merged_str = doc.to_string();
+    assert!(merged_str.contains("# Clin Configuration File"));
+    assert!(merged_str.contains("# Enable mouse support (clicking, scrolling, panning)."));
+    assert!(merged_str.contains("# Show the status bar at the bottom of the screen."));
+    assert!(merged_str.contains("# Show background grid."));
+    assert!(merged_str.contains("mouse_enabled = false"));
+    assert!(merged_str.contains("show_status_bar = false"));
+    assert!(merged_str.contains("preview_enabled = false"));
+    assert!(merged_str.contains("show_grid = true"));
+}
 
-        set_config_path_override(config_file_path.clone());
+#[test]
+fn test_actual_save_preserves_comments() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let config_file_path = temp_dir.path().join("config.toml");
 
-        let mut config = ClinConfig::load().unwrap();
-        assert!(config_file_path.exists());
+    set_config_path_override(config_file_path.clone());
 
-        let initial_content = fs::read_to_string(&config_file_path).unwrap();
-        assert!(initial_content.contains("# Enable mouse support (clicking, scrolling, panning)."));
-        assert!(initial_content.contains("mouse_enabled = true"));
+    let mut config = ClinConfig::load().unwrap();
+    assert!(config_file_path.exists());
 
-        config.core.mouse_enabled = false;
-        config.save().unwrap();
+    let initial_content = fs::read_to_string(&config_file_path).unwrap();
+    assert!(initial_content.contains("# Enable mouse support (clicking, scrolling, panning)."));
+    assert!(initial_content.contains("mouse_enabled = true"));
 
-        let saved_content = fs::read_to_string(&config_file_path).unwrap();
-        assert!(saved_content.contains("# Enable mouse support (clicking, scrolling, panning)."));
-        assert!(saved_content.contains("mouse_enabled = false"));
-    }
+    config.core.mouse_enabled = false;
+    config.save().unwrap();
+
+    let saved_content = fs::read_to_string(&config_file_path).unwrap();
+    assert!(saved_content.contains("# Enable mouse support (clicking, scrolling, panning)."));
+    assert!(saved_content.contains("mouse_enabled = false"));
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct GrafConfigOnly {
@@ -1563,7 +1571,10 @@ mod tests {
         let mut config = ClinConfig::default();
         config.set_storage_path(PathBuf::from("/custom/path"));
         assert!(config.has_custom_storage_path());
-        assert_eq!(config.core.storage_path, Some(PathBuf::from("/custom/path")));
+        assert_eq!(
+            config.core.storage_path,
+            Some(PathBuf::from("/custom/path"))
+        );
     }
 
     #[test]
@@ -1665,10 +1676,10 @@ show_status_bar = false
 
         // 2. Map legacy editor keys to editor namespace
         let mut editor_table = toml::value::Table::new();
-        if let Some(root) = value.as_table_mut() {
-            if let Some(v) = root.remove("external_editor") {
-                editor_table.insert("external_command".to_string(), v);
-            }
+        if let Some(root) = value.as_table_mut()
+            && let Some(v) = root.remove("external_editor")
+        {
+            editor_table.insert("external_command".to_string(), v);
         }
         if !editor_table.is_empty()
             && let Some(root) = value.as_table_mut()
@@ -1759,18 +1770,18 @@ show_status_bar = false
         // 6. Map legacy theme and display tables to ui namespace
         let mut ui_table = toml::value::Table::new();
         if let Some(root) = value.as_table_mut() {
-            if let Some(theme) = root.remove("theme") {
-                if let Some(t) = theme.as_table() {
-                    for (k, v) in t {
-                        ui_table.insert(k.clone(), v.clone());
-                    }
+            if let Some(theme) = root.remove("theme")
+                && let Some(t) = theme.as_table()
+            {
+                for (k, v) in t {
+                    ui_table.insert(k.clone(), v.clone());
                 }
             }
-            if let Some(display) = root.remove("display") {
-                if let Some(d) = display.as_table() {
-                    for (k, v) in d {
-                        ui_table.insert(k.clone(), v.clone());
-                    }
+            if let Some(display) = root.remove("display")
+                && let Some(d) = display.as_table()
+            {
+                for (k, v) in d {
+                    ui_table.insert(k.clone(), v.clone());
                 }
             }
         }
@@ -1797,5 +1808,4 @@ show_status_bar = false
         assert_eq!(config.ui.theme, Theme::TokyoNight);
         assert!(!config.ui.show_status_bar);
     }
-
 }
