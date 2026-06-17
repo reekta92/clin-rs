@@ -106,7 +106,7 @@ impl Default for ListView {
             help_text_cache: None,
             tag_to_assign: None,
             notes_layout: crate::config::NotesLayout::default(),
-            list_density: crate::config::ListDensity::Comfortable,
+            list_density: crate::config::ListDensity::Compact,
             show_file_size: false,
             show_date_in_list: true,
             grid_folder: String::new(),

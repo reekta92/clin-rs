@@ -1687,10 +1687,14 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                         };
                         text = format!("{indent}{checkbox}{icon} {sanitized_name} ({note_count})");
                     }
-                    items.push(ListItem::new(Line::from(vec![Span::styled(
+                    let mut lines = vec![Line::from(vec![Span::styled(
                         text,
                         Style::default().add_modifier(Modifier::BOLD).fg(color),
-                    )])));
+                    )])];
+                    if app.list.list_density == crate::config::ListDensity::Comfortable {
+                        lines.push(Line::from(""));
+                    }
+                    items.push(ListItem::new(lines));
                 }
                 crate::app::VisualItem::Note {
                     summary_idx,
@@ -1729,7 +1733,6 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     }
 
                     spans.push(Span::raw("  "));
-
                     if summary.pinned {
                         spans.push(Span::styled(
                             "\u{f4cc} ",
@@ -1821,15 +1824,23 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                             Style::default().fg(app.app_theme.muted),
                         ));
                     }
-                    items.push(ListItem::new(Line::from(spans)));
+                    let mut lines = vec![Line::from(spans)];
+                    if app.list.list_density == crate::config::ListDensity::Comfortable {
+                        lines.push(Line::from(""));
+                    }
+                    items.push(ListItem::new(lines));
                 }
                 crate::app::VisualItem::CreateNew { depth, .. } => {
                     let indent = "  ".repeat(*depth);
                     let text = format!("{indent}  Create new...");
-                    items.push(ListItem::new(Line::from(vec![Span::styled(
+                    let mut lines = vec![Line::from(vec![Span::styled(
                         text,
                         Style::default().fg(app.app_theme.success),
-                    )])));
+                    )])];
+                    if app.list.list_density == crate::config::ListDensity::Comfortable {
+                        lines.push(Line::from(""));
+                    }
+                    items.push(ListItem::new(lines));
                 }
             }
         }

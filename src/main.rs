@@ -274,7 +274,7 @@ fn run_storage(action: StorageCmd) -> Result<()> {
                 console::success(&format!("Storage path set to: {}", console::path(&path)))
             );
 
-            if bootstrap.previous_storage_path.is_some() {
+            if bootstrap.core.previous_storage_path.is_some() {
                 println!();
                 println!(
                     "{}",
@@ -302,7 +302,7 @@ fn run_storage(action: StorageCmd) -> Result<()> {
             let mut bootstrap = ClinConfig::load()?;
             let to = bootstrap.effective_storage_path()?;
 
-            let from = match bootstrap.previous_storage_path.clone() {
+            let from = match bootstrap.core.previous_storage_path.clone() {
                 Some(path) if path.exists() && path.is_dir() => path,
                 _ => {
                     let default = ClinConfig::default_storage_path()?;

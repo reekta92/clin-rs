@@ -70,13 +70,13 @@ impl GrafAppState {
             show_minimap: config.graf.visual.show_minimap,
             show_legend: config.graf.visual.show_legend,
             show_grid: config.graf.visual.show_grid,
-            show_status_bar: config.display.show_status_bar,
+            show_status_bar: config.ui.show_status_bar,
             config_reload_msg: None,
 
             preview_enabled: config.graf.preview_enabled,
             preview_content: None,
             preview_note_id: None,
-            app_theme: crate::app_theme::AppThemeColors::from_config(&config.theme),
+            app_theme: crate::app_theme::AppThemeColors::from_config(&config.ui),
             keybinds,
         })
     }
@@ -285,7 +285,7 @@ pub fn run_graf_view(
     keybinds: &Keybinds,
 ) -> anyhow::Result<GrafResult> {
     let mut app_state = GrafAppState::new(config, storage, vec![], keybinds.clone())?;
-    let theme = crate::app_theme::AppThemeColors::from_config(&config.theme);
+    let theme = crate::app_theme::AppThemeColors::from_config(&config.ui);
     crate::overlay::run_overlay(
         terminal,
         &mut app_state,

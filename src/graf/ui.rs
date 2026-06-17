@@ -76,7 +76,7 @@ pub fn draw_ui(frame: &mut Frame, state: &GrafAppState, config: &ClinConfig, are
     }
 }
 
-fn draw_config_errors(frame: &mut Frame, area: Rect, errors: &[String], config: &ClinConfig) {
+fn draw_config_errors(frame: &mut Frame, area: Rect, errors: &[String], _config: &ClinConfig) {
     let config_path = crate::config::ClinConfig::config_path()
         .unwrap_or_default()
         .display()
@@ -98,7 +98,7 @@ fn draw_config_errors(frame: &mut Frame, area: Rect, errors: &[String], config: 
             ratatui::widgets::Block::default()
                 .borders(ratatui::widgets::Borders::ALL)
                 .title("Config Error")
-                .border_type(config.display.border_style.to_border_type()),
+                .border_type(ratatui::widgets::BorderType::Rounded),
         )
         .alignment(ratatui::layout::Alignment::Left);
 
@@ -133,9 +133,6 @@ fn suggest_fix(err: &str) -> Option<String> {
     }
     if err_lower.contains("node_size_mode") {
         return Some("Valid modes: fixed, linkcount".to_string());
-    }
-    if err_lower.contains("border_style") {
-        return Some("Valid styles: plain, rounded, double, none".to_string());
     }
     if err_lower.contains("legend_position") {
         return Some("Valid positions: topright, topleft, bottomright, bottomleft".to_string());
@@ -239,7 +236,7 @@ fn draw_search(
     let block = ratatui::widgets::Block::default()
         .borders(ratatui::widgets::Borders::ALL)
         .title("Search")
-        .border_type(config.display.border_style.to_border_type())
+        .border_type(ratatui::widgets::BorderType::Rounded)
         .border_style(ratatui::style::Style::default().fg(colors.border_color));
 
     let paragraph = ratatui::widgets::Paragraph::new(lines).block(block);

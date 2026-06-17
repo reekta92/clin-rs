@@ -501,6 +501,7 @@ dependencies = [
  "serde_yaml_ng",
  "tempfile",
  "toml",
+ "toml_edit",
  "trash",
  "tui-term",
  "uuid",

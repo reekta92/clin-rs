@@ -33,7 +33,7 @@ impl Action for SwitchThemeAction {
 
     fn name_dynamic(&self, _app: &App) -> String {
         let current = crate::config::ClinConfig::load()
-            .map(|c| c.theme.theme.to_string())
+            .map(|c| c.ui.theme.to_string())
             .unwrap_or_else(|_| "default".to_string());
         format!("Switch Theme [{current}]")
     }

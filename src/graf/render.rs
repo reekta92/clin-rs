@@ -652,12 +652,13 @@ pub fn draw_graph_view(
             (size_pct, ratio)
         };
 
-        let status = config.expand_status(
+        let status = format!(
+            "Nodes: {} | Edges: {} | Selected: {} | Size: {:.0}% | Ratio: {:.1}x",
             node_count,
             edge_count,
-            selected_info.as_deref(),
-            Some(viewport_size_pct),
-            Some(viewport_ratio),
+            selected_info.as_deref().unwrap_or("none"),
+            viewport_size_pct.clamp(0.0, 100.0),
+            viewport_ratio
         );
 
         let status_area = ratatui::layout::Rect::new(
