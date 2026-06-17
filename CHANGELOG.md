@@ -2,6 +2,17 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.8.16] - 2026-06-17
+
+### CI
+
+- Add manual macOS DMG upload workflow
+- Add macOS DMG creation to release workflow
+
+### Changed
+
+- Fix CI failures and upgrade git2
+- Remove dead and broken options
 ## [0.8.15] - 2026-06-16
 
 ### Added
@@ -33,6 +44,10 @@ All notable changes to clin are documented in this file.
 - Run cargo fmt
 - Fix clippy warnings and remove dead code
 - Code quality and dead code removal
+
+### Release
+
+- V0.8.15
 ## [0.8.14] - 2026-06-15
 
 ### Added
