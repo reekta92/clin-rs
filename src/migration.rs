@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
+use std::path::PathBuf;
 
 #[derive(Clone, Copy)]
 pub enum ConflictAction {
@@ -105,6 +106,63 @@ pub fn migrate_directory_with_conflict(
             migrated += m;
             skipped += s;
             current_action = action;
+        }
+    }
+
+    Ok((migrated, skipped, current_action))
+}
+
+/// Copy note files from `src` to `dst`, preserving relative paths.
+/// Skips hidden directories and `notes/`, `templates/`, `.clin/` subdirectories.
+/// Only copies files with note extensions (.md, .txt, .clin, .draw, .canvas).
+pub fn migrate_note_files_with_conflict(
+    src: &Path,
+    dst: &Path,
+    current_action: Option<ConflictAction>,
+) -> Result<(usize, usize, Option<ConflictAction>)> {
+    let note_exts = ["md", "txt", "clin", "draw", "canvas"];
+    let mut migrated = 0;
+    let mut skipped = 0;
+    let mut current_action = current_action;
+    let mut dirs_to_visit = vec![PathBuf::new()];
+
+    while let Some(rel) = dirs_to_visit.pop() {
+        let abs = src.join(&rel);
+        let Ok(entries) = fs::read_dir(&abs) else { continue };
+        for entry in entries.flatten() {
+            let file_name = entry.file_name();
+            let abs_path = entry.path();
+            let rel_path = rel.join(&file_name);
+
+            if abs_path.is_dir() {
+                // Skip hidden dirs and clin internal dirs
+                if let Some(name) = file_name.to_str() {
+                    if name.starts_with('.') || name == "notes" || name == "templates" {
+                        continue;
+                    }
+                }
+                dirs_to_visit.push(rel_path);
+            } else if abs_path.is_file() {
+                if let Some(ext) = abs_path.extension().and_then(|e| e.to_str()) {
+                    if note_exts.contains(&ext) {
+                        let dst_path = dst.join(&rel_path);
+                        if let Some(parent) = dst_path.parent() {
+                            fs::create_dir_all(parent)
+                                .with_context(|| format!("failed to create {}", parent.display()))?;
+                        }
+                        let display_name = rel_path.to_string_lossy().to_string();
+                        let (m, s, action) = migrate_file_with_conflict(
+                            &abs_path,
+                            &dst_path,
+                            &display_name,
+                            current_action,
+                        )?;
+                        migrated += m;
+                        skipped += s;
+                        current_action = action;
+                    }
+                }
+            }
         }
     }
 

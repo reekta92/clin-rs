@@ -344,22 +344,57 @@ fn run_storage(action: StorageCmd) -> Result<()> {
             let mut skipped_count = 0;
             let mut conflict_action: Option<migration::ConflictAction> = None;
 
-            let notes_src = from.join("notes");
-            let notes_dst = to.join("notes");
+            let source_is_vault = from.join(".clin").is_dir();
+            let target_is_vault = is_existing_vault(&to);
+
+            // Determine effective source dirs (vault mode: notes at root, .clin/templates/)
+            let notes_src = if source_is_vault {
+                from.clone()
+            } else {
+                from.join("notes")
+            };
+            let templates_src = if source_is_vault {
+                from.join(".clin").join("templates")
+            } else {
+                from.join("templates")
+            };
+
+            // Determine effective target dirs
+            let notes_dst = if target_is_vault {
+                to.clone()
+            } else {
+                to.join("notes")
+            };
+            let templates_dst = if target_is_vault {
+                to.join(".clin").join("templates")
+            } else {
+                to.join("templates")
+            };
+
+            // Migrate notes
             if notes_src.exists() && notes_src.is_dir() {
                 fs::create_dir_all(&notes_dst)?;
-                let (m, s, action) = migration::migrate_directory_with_conflict(
-                    &notes_src,
-                    &notes_dst,
-                    conflict_action,
-                )?;
+                let (m, s, action) = if source_is_vault {
+                    // Vault-mode source: only copy note files, skip hidden/clin dirs
+                    migration::migrate_note_files_with_conflict(
+                        &notes_src,
+                        &notes_dst,
+                        conflict_action,
+                    )?
+                } else {
+                    // Clin-native source: full directory copy
+                    migration::migrate_directory_with_conflict(
+                        &notes_src,
+                        &notes_dst,
+                        conflict_action,
+                    )?
+                };
                 migrated_count += m;
                 skipped_count += s;
                 conflict_action = action;
             }
 
-            let templates_src = from.join("templates");
-            let templates_dst = to.join("templates");
+            // Migrate templates
             if templates_src.exists() && templates_src.is_dir() {
                 fs::create_dir_all(&templates_dst)?;
                 let (m, s, _) = migration::migrate_directory_with_conflict(
