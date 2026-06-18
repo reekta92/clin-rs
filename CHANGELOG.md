@@ -2,6 +2,13 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.8.17] - 2026-06-18
+
+### Added
+
+- Add toggle to show hidden files/folders
+- Handle vault-mode source and target paths
+- Detect existing vaults as notes root
 ## [0.8.16] - 2026-06-17
 
 ### CI
@@ -13,6 +20,10 @@ All notable changes to clin are documented in this file.
 
 - Fix CI failures and upgrade git2
 - Remove dead and broken options
+
+### Release
+
+- V0.8.16
 ## [0.8.15] - 2026-06-16
 
 ### Added
