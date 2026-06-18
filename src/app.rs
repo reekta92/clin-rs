@@ -673,6 +673,12 @@ impl App {
             None => String::new(),
         };
 
+        let current = if Self::is_virtual_pinned_path(&current) {
+            String::new()
+        } else {
+            current
+        };
+
         if current.is_empty() {
             self.default_folder.clone().unwrap_or_default()
         } else {
@@ -1062,7 +1068,7 @@ impl App {
 
     pub fn start_blank_note_with_title(&mut self, folder: String, title: String) {
         let mut new_id = self.storage.new_note_id();
-        if !folder.is_empty() {
+        if !folder.is_empty() && !Self::is_virtual_pinned_path(&folder) {
             new_id = format!("{folder}/{new_id}");
         }
         self.enter_edit_mode(new_id, title, String::new());
@@ -1109,7 +1115,7 @@ impl App {
         let rendered = template.render();
 
         let mut new_id = self.storage.new_note_id();
-        if !folder.is_empty() {
+        if !folder.is_empty() && !Self::is_virtual_pinned_path(&folder) {
             new_id = format!("{folder}/{new_id}");
         }
 
@@ -1164,7 +1170,7 @@ impl App {
         let rendered = template.render();
 
         let mut new_id = self.storage.new_note_id();
-        if !folder.is_empty() {
+        if !folder.is_empty() && !Self::is_virtual_pinned_path(&folder) {
             new_id = format!("{folder}/{new_id}");
         }
 
@@ -1235,7 +1241,11 @@ impl App {
 
     pub fn select_template(&mut self) {
         let folder = if self.list.notes_layout == crate::config::NotesLayout::Grid {
-            self.list.grid_folder.clone()
+            if Self::is_virtual_pinned_path(&self.list.grid_folder) {
+                String::new()
+            } else {
+                self.list.grid_folder.clone()
+            }
         } else {
             self.get_current_folder_context()
         };
@@ -1270,6 +1280,8 @@ impl App {
     fn open_template_path_in_editor(&mut self, path: &std::path::Path) {
         if self.editor.external_editor_enabled {
             self.open_path_in_external_editor(path);
+            self.sync_template_filename(path);
+            self.refresh_template_popup();
             return;
         }
 
@@ -1302,6 +1314,33 @@ impl App {
         );
         self.editor.editor.set_cursor_line_style(Style::default());
         self.set_temporary_status_static("Editing template (Esc to save and return)");
+    }
+
+    fn sync_template_filename(&mut self, path: &std::path::Path) -> std::path::PathBuf {
+        let template = match Template::load(path) {
+            Ok(t) => t,
+            Err(_) => return path.to_path_buf(),
+        };
+
+        let new_path = self
+            .storage
+            .template_manager()
+            .template_path(&template.name);
+
+        if new_path == path {
+            return path.to_path_buf();
+        }
+
+        if new_path.exists() {
+            return path.to_path_buf();
+        }
+
+        if let Err(e) = std::fs::rename(path, &new_path) {
+            self.set_temporary_status(&format!("Failed to rename template: {e}"));
+            return path.to_path_buf();
+        }
+
+        new_path
     }
 
     pub fn update_template_popup_filter(&mut self) {
@@ -1339,35 +1378,37 @@ impl App {
         self.show_confirm(ConfirmAction::DeleteTemplate { filename, name });
     }
 
+    pub fn refresh_template_popup(&mut self) {
+        let template_manager = self.storage.template_manager();
+        if let Some(popup) = &mut self.popups.template {
+            let selected = popup.selected;
+            let focus = popup.focus;
+            match template_manager.list() {
+                Ok(all_templates) => {
+                    popup.all_templates = all_templates;
+                    popup.focus = focus;
+                    self.update_template_popup_filter();
+                    if let Some(popup) = &mut self.popups.template {
+                        if popup.filtered_templates.is_empty() {
+                            popup.selected = 0;
+                        } else {
+                            popup.selected = selected.min(popup.filtered_templates.len() - 1);
+                        }
+                    }
+                }
+                Err(e) => {
+                    self.set_temporary_status(&format!("Failed to refresh templates: {e}"));
+                }
+            }
+        }
+    }
+
     pub fn confirm_delete_template(&mut self, filename: String) {
         let template_manager = self.storage.template_manager();
         match template_manager.delete(&filename) {
             Ok(()) => {
-                if let Some(popup) = &mut self.popups.template {
-                    let selected = popup.selected;
-                    let focus = popup.focus;
-                    match template_manager.list() {
-                        Ok(all_templates) => {
-                            popup.all_templates = all_templates;
-                            popup.focus = focus;
-                            self.update_template_popup_filter();
-                            if let Some(popup) = &mut self.popups.template {
-                                if popup.filtered_templates.is_empty() {
-                                    popup.selected = 0;
-                                } else {
-                                    popup.selected =
-                                        selected.min(popup.filtered_templates.len() - 1);
-                                }
-                            }
-                            self.set_temporary_status_static("Template deleted");
-                        }
-                        Err(e) => {
-                            self.set_temporary_status(&format!(
-                                "Template deleted but refresh failed: {e}"
-                            ));
-                        }
-                    }
-                }
+                self.refresh_template_popup();
+                self.set_temporary_status_static("Template deleted");
             }
             Err(e) => {
                 self.set_temporary_status(&format!("Failed to delete template: {e}"));
@@ -1412,7 +1453,7 @@ template = """
             return;
         }
 
-        self.popups.template = None;
+        self.refresh_template_popup();
         self.open_template_path_in_editor(&path);
     }
 
@@ -1476,7 +1517,23 @@ template = """
         if let Some(path) = &self.editor.template_edit_path
             && self.editor.editing_id.is_none()
         {
-            if let Err(e) = std::fs::write(path, content) {
+            let mut path_to_write = path.clone();
+            if let Ok(template) = toml::from_str::<Template>(&content) {
+                let new_path = self
+                    .storage
+                    .template_manager()
+                    .template_path(&template.name);
+                if new_path != *path && !new_path.exists() {
+                    if let Err(e) = std::fs::rename(path, &new_path) {
+                        self.set_temporary_status(&format!("Failed to rename template: {e}"));
+                    } else {
+                        path_to_write = new_path;
+                        self.editor.template_edit_path = Some(path_to_write.clone());
+                    }
+                }
+            }
+
+            if let Err(e) = std::fs::write(&path_to_write, content) {
                 self.set_temporary_status(&format!("Template save failed: {e}"));
             }
             return;
@@ -1518,6 +1575,9 @@ template = """
     pub fn back_to_list(&mut self) {
         if let Some(return_to) = self.return_mode.take() {
             self.editor.editing_id = None;
+            if self.editor.template_edit_path.is_some() {
+                self.refresh_template_popup();
+            }
             self.editor.template_edit_path = None;
             self.editor.title_editor =
                 make_title_editor("", self.app_theme.highlight_fg, self.app_theme.highlight_bg);
@@ -1530,6 +1590,9 @@ template = """
         }
         self.mode = ViewMode::List;
         self.editor.editing_id = None;
+        if self.editor.template_edit_path.is_some() {
+            self.refresh_template_popup();
+        }
         self.editor.template_edit_path = None;
         self.editor.title_editor =
             make_title_editor("", self.app_theme.highlight_fg, self.app_theme.highlight_bg);
@@ -2645,7 +2708,11 @@ template = """
 
     pub fn begin_create_select_format(&mut self) {
         let folder = if self.list.notes_layout == crate::config::NotesLayout::Grid {
-            self.list.grid_folder.clone()
+            if Self::is_virtual_pinned_path(&self.list.grid_folder) {
+                String::new()
+            } else {
+                self.list.grid_folder.clone()
+            }
         } else {
             self.get_current_folder_context()
         };
@@ -2668,15 +2735,17 @@ template = """
             }
         }
     }
+
     pub fn close_create_format_popup(&mut self) {
         self.popups.create_format = None;
     }
 
     pub fn begin_create_text_in_folder(&mut self, folder: String) {
-        if Self::is_virtual_pinned_path(&folder) {
-            self.set_temporary_status_static("Cannot create text file inside virtual Pinned");
-            return;
-        }
+        let folder = if Self::is_virtual_pinned_path(&folder) {
+            String::new()
+        } else {
+            folder
+        };
         let mut input = TextArea::default();
         input.set_cursor_line_style(ratatui::style::Style::default());
         input.set_style(self.app_theme.bg_style());
@@ -2693,10 +2762,11 @@ template = """
     }
 
     pub fn begin_create_note_in_folder(&mut self, folder: String) {
-        if Self::is_virtual_pinned_path(&folder) {
-            self.set_temporary_status_static("Cannot create note inside virtual Pinned");
-            return;
-        }
+        let folder = if Self::is_virtual_pinned_path(&folder) {
+            String::new()
+        } else {
+            folder
+        };
         let mut input = TextArea::default();
         input.set_cursor_line_style(ratatui::style::Style::default());
         input.set_style(self.app_theme.bg_style());
@@ -2886,10 +2956,11 @@ template = """
     }
 
     pub fn start_note_with_content(&mut self, folder: String, title: String, content: String) {
-        if Self::is_virtual_pinned_path(&folder) {
-            self.set_temporary_status_static("Cannot create note inside virtual Pinned");
-            return;
-        }
+        let folder = if Self::is_virtual_pinned_path(&folder) {
+            String::new()
+        } else {
+            folder
+        };
 
         let mut new_id = self.storage.new_note_id();
         if !folder.is_empty() {
@@ -2942,10 +3013,11 @@ template = """
     }
 
     pub fn begin_create_draw_in_folder(&mut self, folder: String) {
-        if Self::is_virtual_pinned_path(&folder) {
-            self.set_temporary_status_static("Cannot create drawing inside virtual Pinned");
-            return;
-        }
+        let folder = if Self::is_virtual_pinned_path(&folder) {
+            String::new()
+        } else {
+            folder
+        };
         let mut input = TextArea::default();
         input.set_cursor_line_style(ratatui::style::Style::default());
         input.set_style(self.app_theme.bg_style());
@@ -2971,10 +3043,11 @@ template = """
     }
 
     pub fn begin_create_canvas_in_folder(&mut self, folder: String) {
-        if Self::is_virtual_pinned_path(&folder) {
-            self.set_temporary_status_static("Cannot create canvas inside virtual Pinned");
-            return;
-        }
+        let folder = if Self::is_virtual_pinned_path(&folder) {
+            String::new()
+        } else {
+            folder
+        };
         let mut input = TextArea::default();
         input.set_cursor_line_style(ratatui::style::Style::default());
         input.set_style(self.app_theme.bg_style());

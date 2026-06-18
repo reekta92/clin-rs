@@ -344,8 +344,8 @@ fn run_storage(action: StorageCmd) -> Result<()> {
             let mut skipped_count = 0;
             let mut conflict_action: Option<migration::ConflictAction> = None;
 
-            let source_is_vault = from.join(".clin").is_dir();
-            let target_is_vault = is_existing_vault(&to);
+            let source_is_vault = is_existing_vault(&from);
+            let target_is_vault = bootstrap.has_custom_storage_path();
 
             // Determine effective source dirs (vault mode: notes at root, .clin/templates/)
             let notes_src = if source_is_vault {
