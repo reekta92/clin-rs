@@ -2,6 +2,15 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.8.18] - 2026-06-18
+
+### Fixed
+
+- Vault detection logic changed to fix an issue
+
+### Miscellaneous
+
+- Fixed fmt CI failing
 ## [0.8.17] - 2026-06-18
 
 ### Added
@@ -9,6 +18,10 @@ All notable changes to clin are documented in this file.
 - Add toggle to show hidden files/folders
 - Handle vault-mode source and target paths
 - Detect existing vaults as notes root
+
+### Release
+
+- V0.8.17
 ## [0.8.16] - 2026-06-17
 
 ### CI
