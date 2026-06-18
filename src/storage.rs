@@ -103,75 +103,31 @@ fn split_frontmatter_payload(bytes: &[u8]) -> (Option<frontmatter::Frontmatter>,
     (None, bytes)
 }
 
-/// Check if `dir` is an existing vault (has notes outside clin subdirectories).
-/// If `.clin/` sentinel exists, it's definitely a vault.
-/// Otherwise, scan for note files outside `notes/` and `templates/`.
+/// Check if `dir` is an existing vault (has user content outside clin-managed subdirectories).
 pub(crate) fn is_existing_vault(dir: &Path) -> bool {
-    // Sentinel directory: if .clin/ exists, this is definitely a vault
-    if dir.join(".clin").is_dir() {
-        return true;
+    if !dir.exists() {
+        return false;
     }
-
-    // If notes/ exists with content, this is clin-native mode — don't treat as vault
-    let notes_dir = dir.join("notes");
-    if notes_dir.exists() {
-        let has_notes = has_note_files_recursive(&notes_dir);
-        if has_notes {
-            return false; // clin-native layout, keep backward compat
-        }
-    }
-
-    // Scan for note files at root or in subdirectories (excluding notes/, templates/)
-    has_note_files_outside_clin_dirs(dir)
-}
-
-fn has_note_files_outside_clin_dirs(dir: &Path) -> bool {
-    let note_exts = ["md", "txt", "clin", "draw", "canvas"];
-    let mut dirs = vec![dir.to_path_buf()];
-    while let Some(path) = dirs.pop() {
-        if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
-            // Skip clin internal dirs, hidden dirs, but not the root vault dir itself
-            if path.as_path() != dir
-                && (name == "notes" || name == "templates" || name.starts_with('.'))
-            {
-                continue;
-            }
-        }
-        if let Ok(entries) = fs::read_dir(&path) {
+    match dir.read_dir() {
+        Ok(entries) => {
             for entry in entries.flatten() {
-                let p = entry.path();
-                if p.is_dir() {
-                    dirs.push(p);
-                } else if let Some(ext) = p.extension().and_then(|e| e.to_str())
-                    && note_exts.contains(&ext)
-                {
-                    return true;
+                let fname = entry.file_name();
+                let name = match fname.to_str() {
+                    Some(n) => n,
+                    None => continue,
+                };
+                // Ignore clin-managed subdirectories and all hidden entries
+                if name == "notes" || name == "templates" || name.starts_with('.') {
+                    continue;
                 }
+                return true; // Any other content → vault
             }
+            false
         }
+        Err(_) => false,
     }
-    false
 }
 
-fn has_note_files_recursive(dir: &Path) -> bool {
-    let note_exts = ["md", "txt", "clin", "draw", "canvas"];
-    let mut dirs = vec![dir.to_path_buf()];
-    while let Some(path) = dirs.pop() {
-        if let Ok(entries) = fs::read_dir(&path) {
-            for entry in entries.flatten() {
-                let p = entry.path();
-                if p.is_dir() {
-                    dirs.push(p);
-                } else if let Some(ext) = p.extension().and_then(|e| e.to_str())
-                    && note_exts.contains(&ext)
-                {
-                    return true;
-                }
-            }
-        }
-    }
-    false
-}
 impl Storage {
     pub fn init() -> Result<Self> {
         let bootstrap = ClinConfig::load().context("failed to load config")?;
@@ -183,7 +139,7 @@ impl Storage {
             .context("could not determine config directory")?;
         let config_dir = proj_dirs.config_dir().to_path_buf();
 
-        let vault_mode = is_existing_vault(&data_dir);
+        let vault_mode = bootstrap.has_custom_storage_path();
 
         let notes_dir = if vault_mode {
             data_dir.clone()

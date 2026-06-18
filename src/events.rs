@@ -524,9 +524,6 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 };
                 app.popups.template = Some(popup);
             }
-            _ if app.keybinds.matches_list(ListAction::Cancel, &key) => {
-                app.close_template_popup();
-            }
             KeyCode::Char('?') => {
                 if popup.focus == crate::popups::TemplatePopupFocus::Results {
                     app.popups.template = Some(popup);
@@ -550,6 +547,9 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                     app.popups.template = Some(popup);
                     app.update_template_popup_filter();
                 }
+            }
+            _ if app.keybinds.matches_list(ListAction::Cancel, &key) => {
+                app.close_template_popup();
             }
             _ => match popup.focus {
                 crate::popups::TemplatePopupFocus::Results => match key.code {
