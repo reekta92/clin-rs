@@ -642,6 +642,8 @@ pub struct ListConfig {
     pub default_sort_order: Option<crate::app::SortOrder>,
     #[serde(default)]
     pub pinned_on_top: bool,
+    #[serde(default)]
+    pub show_hidden_files: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
@@ -1421,6 +1423,9 @@ default_view = "grid"
 
 # Keep pinned notes at the top of the list.
 pinned_on_top = true
+
+# Show hidden files and folders (starting with ".") in the notes list.
+show_hidden_files = false
 
 # ── Editor ────────────────────────────────────────────────────────────────────
 

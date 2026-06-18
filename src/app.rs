@@ -337,6 +337,7 @@ impl App {
         list.list_density = bootstrap_config.list.density.clone();
         list.show_file_size = bootstrap_config.list.show_file_size;
         list.show_date_in_list = bootstrap_config.list.show_date_in_list;
+        list.show_hidden_files = bootstrap_config.list.show_hidden_files;
 
         let mut app = Self {
             storage,
@@ -386,7 +387,7 @@ impl App {
     }
 
     pub fn refresh_notes(&mut self) -> Result<()> {
-        let ids = self.storage.list_note_ids()?;
+        let ids = self.storage.list_note_ids(self.list.show_hidden_files)?;
         let mut summaries = Vec::new();
 
         for id in &ids {
@@ -507,7 +508,7 @@ impl App {
         let all_folders = if let Some(ref cache) = self.list.folder_cache {
             cache
         } else {
-            let folders = self.storage.list_folders().unwrap_or_default();
+            let folders = self.storage.list_folders(self.list.show_hidden_files).unwrap_or_default();
             self.list.folder_cache = Some(folders);
             self.list
                 .folder_cache
@@ -1946,7 +1947,7 @@ template = """
             self.list.visual_list.get(self.list.visual_index)
         {
             let note = &self.notes[*summary_idx];
-            if let Ok(folders) = self.storage.list_folders() {
+            if let Ok(folders) = self.storage.list_folders(self.list.show_hidden_files) {
                 let mut all_folders = vec!["".to_string()];
                 all_folders.extend(folders);
                 let mut input = TextArea::default();
@@ -1979,7 +1980,7 @@ template = """
                 return;
             }
             let folder_path = path.clone();
-            if let Ok(folders) = self.storage.list_folders() {
+            if let Ok(folders) = self.storage.list_folders(self.list.show_hidden_files) {
                 let mut all_folders = vec!["".to_string()];
                 all_folders.extend(
                     folders.into_iter().filter(|f| {
@@ -2016,7 +2017,7 @@ template = """
             }
 
             if !note_ids.is_empty()
-                && let Ok(folders) = self.storage.list_folders()
+                && let Ok(folders) = self.storage.list_folders(self.list.show_hidden_files)
             {
                 let mut all_folders = vec!["".to_string()];
                 all_folders.extend(folders);
@@ -2291,7 +2292,7 @@ template = """
     pub fn begin_delete_tag_with_name(&mut self, tag: String) {
         let count = self
             .storage
-            .list_note_ids()
+            .list_note_ids(self.list.show_hidden_files)
             .ok()
             .map(|ids| {
                 ids.iter()
@@ -2323,7 +2324,7 @@ template = """
 
     pub fn confirm_delete_tag(&mut self, tag: String) {
         let mut count = 0;
-        if let Ok(note_ids) = self.storage.list_note_ids() {
+        if let Ok(note_ids) = self.storage.list_note_ids(self.list.show_hidden_files) {
             for note_id in note_ids {
                 let ext = std::path::Path::new(&note_id)
                     .extension()
@@ -3035,7 +3036,7 @@ template = """
             self.list.visual_list.get(self.list.visual_index)
         {
             let id = self.notes[*summary_idx].id.clone();
-            if let Ok(folders) = self.storage.list_folders() {
+            if let Ok(folders) = self.storage.list_folders(self.list.show_hidden_files) {
                 let mut all_folders = vec!["".to_string()];
                 all_folders.extend(folders);
                 let mut input = ratatui_textarea::TextArea::default();
@@ -3756,7 +3757,7 @@ template = """
                 let all_folders = if let Some(ref cache) = self.list.folder_cache {
                     cache.clone()
                 } else {
-                    let folders = self.storage.list_folders().unwrap_or_default();
+                    let folders = self.storage.list_folders(self.list.show_hidden_files).unwrap_or_default();
                     self.list.folder_cache = Some(folders.clone());
                     folders
                 };
@@ -3948,6 +3949,26 @@ template = """
         self.set_temporary_status_static(msg);
         if let Ok(mut config) = crate::config::ClinConfig::load() {
             config.list.pinned_on_top = self.pinned_on_top;
+            if let Err(e) = config.save() {
+                self.set_temporary_status(&format!("Failed to save config: {e}"));
+            }
+        }
+    }
+
+    pub fn toggle_show_hidden_files(&mut self) {
+        self.list.show_hidden_files = !self.list.show_hidden_files;
+        self.list.folder_cache = None; // invalidate cached folder list
+        if let Err(e) = self.refresh_notes() {
+            self.set_temporary_status(&format!("Refresh failed: {e}"));
+        }
+        let msg: &'static str = if self.list.show_hidden_files {
+            "Hidden files shown"
+        } else {
+            "Hidden files hidden"
+        };
+        self.set_temporary_status_static(msg);
+        if let Ok(mut config) = crate::config::ClinConfig::load() {
+            config.list.show_hidden_files = self.list.show_hidden_files;
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
             }

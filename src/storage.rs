@@ -482,7 +482,7 @@ impl Storage {
         Some(self.notes_dir.join(normalized))
     }
 
-    pub fn list_note_ids(&self) -> Result<Vec<String>> {
+    pub fn list_note_ids(&self, include_hidden: bool) -> Result<Vec<String>> {
         let mut ids = Vec::new();
         let mut dirs_to_visit = vec![self.notes_dir.clone()];
 
@@ -492,7 +492,7 @@ impl Storage {
                 let path = entry.path();
 
                 if path.is_dir()
-                    && path.file_name().and_then(|s| s.to_str()).is_some_and(|n| !n.starts_with('.'))
+                    && path.file_name().and_then(|s| s.to_str()).is_some_and(|n| include_hidden || !n.starts_with('.'))
                 {
                     dirs_to_visit.push(path);
                 } else if let Some(ext) = path.extension().and_then(|e| e.to_str())
@@ -998,7 +998,7 @@ impl Storage {
         Ok(target_id)
     }
 
-    pub fn list_folders(&self) -> Result<Vec<String>> {
+    pub fn list_folders(&self, include_hidden: bool) -> Result<Vec<String>> {
         let mut folders = Vec::new();
         let mut dirs_to_visit = vec![self.notes_dir.clone()];
 
@@ -1007,7 +1007,7 @@ impl Storage {
                 for entry in entries.flatten() {
                     let path = entry.path();
                     if path.is_dir()
-                        && path.file_name().and_then(|s| s.to_str()).is_some_and(|n| !n.starts_with('.'))
+                        && path.file_name().and_then(|s| s.to_str()).is_some_and(|n| include_hidden || !n.starts_with('.'))
                     {
                         dirs_to_visit.push(path.clone());
                         if let Ok(rel_path) = path.strip_prefix(&self.notes_dir)
