@@ -243,7 +243,11 @@ impl Action for ToggleShowHiddenFilesAction {
         Ok(())
     }
     fn name_dynamic(&self, app: &App) -> String {
-        let state = if app.list.show_hidden_files { "On" } else { "Off" };
+        let state = if app.list.show_hidden_files {
+            "On"
+        } else {
+            "Off"
+        };
         format!("Show Hidden Files [{state}]")
     }
 }

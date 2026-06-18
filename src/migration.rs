@@ -128,7 +128,9 @@ pub fn migrate_note_files_with_conflict(
 
     while let Some(rel) = dirs_to_visit.pop() {
         let abs = src.join(&rel);
-        let Ok(entries) = fs::read_dir(&abs) else { continue };
+        let Ok(entries) = fs::read_dir(&abs) else {
+            continue;
+        };
         for entry in entries.flatten() {
             let file_name = entry.file_name();
             let abs_path = entry.path();
@@ -136,32 +138,31 @@ pub fn migrate_note_files_with_conflict(
 
             if abs_path.is_dir() {
                 // Skip hidden dirs and clin internal dirs
-                if let Some(name) = file_name.to_str() {
-                    if name.starts_with('.') || name == "notes" || name == "templates" {
-                        continue;
-                    }
+                if let Some(name) = file_name.to_str()
+                    && (name.starts_with('.') || name == "notes" || name == "templates")
+                {
+                    continue;
                 }
                 dirs_to_visit.push(rel_path);
-            } else if abs_path.is_file() {
-                if let Some(ext) = abs_path.extension().and_then(|e| e.to_str()) {
-                    if note_exts.contains(&ext) {
-                        let dst_path = dst.join(&rel_path);
-                        if let Some(parent) = dst_path.parent() {
-                            fs::create_dir_all(parent)
-                                .with_context(|| format!("failed to create {}", parent.display()))?;
-                        }
-                        let display_name = rel_path.to_string_lossy().to_string();
-                        let (m, s, action) = migrate_file_with_conflict(
-                            &abs_path,
-                            &dst_path,
-                            &display_name,
-                            current_action,
-                        )?;
-                        migrated += m;
-                        skipped += s;
-                        current_action = action;
-                    }
+            } else if abs_path.is_file()
+                && let Some(ext) = abs_path.extension().and_then(|e| e.to_str())
+                && note_exts.contains(&ext)
+            {
+                let dst_path = dst.join(&rel_path);
+                if let Some(parent) = dst_path.parent() {
+                    fs::create_dir_all(parent)
+                        .with_context(|| format!("failed to create {}", parent.display()))?;
                 }
+                let display_name = rel_path.to_string_lossy().to_string();
+                let (m, s, action) = migrate_file_with_conflict(
+                    &abs_path,
+                    &dst_path,
+                    &display_name,
+                    current_action,
+                )?;
+                migrated += m;
+                skipped += s;
+                current_action = action;
             }
         }
     }

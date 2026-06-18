@@ -131,7 +131,9 @@ fn has_note_files_outside_clin_dirs(dir: &Path) -> bool {
     while let Some(path) = dirs.pop() {
         if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
             // Skip clin internal dirs, hidden dirs, but not the root vault dir itself
-            if path.as_path() != dir && (name == "notes" || name == "templates" || name.starts_with('.')) {
+            if path.as_path() != dir
+                && (name == "notes" || name == "templates" || name.starts_with('.'))
+            {
                 continue;
             }
         }
@@ -140,10 +142,10 @@ fn has_note_files_outside_clin_dirs(dir: &Path) -> bool {
                 let p = entry.path();
                 if p.is_dir() {
                     dirs.push(p);
-                } else if let Some(ext) = p.extension().and_then(|e| e.to_str()) {
-                    if note_exts.contains(&ext) {
-                        return true;
-                    }
+                } else if let Some(ext) = p.extension().and_then(|e| e.to_str())
+                    && note_exts.contains(&ext)
+                {
+                    return true;
                 }
             }
         }
@@ -160,10 +162,10 @@ fn has_note_files_recursive(dir: &Path) -> bool {
                 let p = entry.path();
                 if p.is_dir() {
                     dirs.push(p);
-                } else if let Some(ext) = p.extension().and_then(|e| e.to_str()) {
-                    if note_exts.contains(&ext) {
-                        return true;
-                    }
+                } else if let Some(ext) = p.extension().and_then(|e| e.to_str())
+                    && note_exts.contains(&ext)
+                {
+                    return true;
                 }
             }
         }
@@ -196,7 +198,7 @@ impl Storage {
         };
 
         if vault_mode {
-            fs::create_dir_all(&data_dir.join(".clin").join("templates"))
+            fs::create_dir_all(data_dir.join(".clin").join("templates"))
                 .context("failed to create .clin/templates directory")?;
         } else {
             fs::create_dir_all(&notes_dir).context("failed to create notes directory")?;
@@ -492,7 +494,10 @@ impl Storage {
                 let path = entry.path();
 
                 if path.is_dir()
-                    && path.file_name().and_then(|s| s.to_str()).is_some_and(|n| include_hidden || !n.starts_with('.'))
+                    && path
+                        .file_name()
+                        .and_then(|s| s.to_str())
+                        .is_some_and(|n| include_hidden || !n.starts_with('.'))
                 {
                     dirs_to_visit.push(path);
                 } else if let Some(ext) = path.extension().and_then(|e| e.to_str())
@@ -1007,7 +1012,10 @@ impl Storage {
                 for entry in entries.flatten() {
                     let path = entry.path();
                     if path.is_dir()
-                        && path.file_name().and_then(|s| s.to_str()).is_some_and(|n| include_hidden || !n.starts_with('.'))
+                        && path
+                            .file_name()
+                            .and_then(|s| s.to_str())
+                            .is_some_and(|n| include_hidden || !n.starts_with('.'))
                     {
                         dirs_to_visit.push(path.clone());
                         if let Ok(rel_path) = path.strip_prefix(&self.notes_dir)

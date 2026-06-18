@@ -508,7 +508,10 @@ impl App {
         let all_folders = if let Some(ref cache) = self.list.folder_cache {
             cache
         } else {
-            let folders = self.storage.list_folders(self.list.show_hidden_files).unwrap_or_default();
+            let folders = self
+                .storage
+                .list_folders(self.list.show_hidden_files)
+                .unwrap_or_default();
             self.list.folder_cache = Some(folders);
             self.list
                 .folder_cache
@@ -3757,7 +3760,10 @@ template = """
                 let all_folders = if let Some(ref cache) = self.list.folder_cache {
                     cache.clone()
                 } else {
-                    let folders = self.storage.list_folders(self.list.show_hidden_files).unwrap_or_default();
+                    let folders = self
+                        .storage
+                        .list_folders(self.list.show_hidden_files)
+                        .unwrap_or_default();
                     self.list.folder_cache = Some(folders.clone());
                     folders
                 };
