@@ -1322,7 +1322,10 @@ impl App {
             Err(_) => return path.to_path_buf(),
         };
 
-        let new_path = self.storage.template_manager().template_path(&template.name);
+        let new_path = self
+            .storage
+            .template_manager()
+            .template_path(&template.name);
 
         if new_path == path {
             return path.to_path_buf();
@@ -1516,7 +1519,10 @@ template = """
         {
             let mut path_to_write = path.clone();
             if let Ok(template) = toml::from_str::<Template>(&content) {
-                let new_path = self.storage.template_manager().template_path(&template.name);
+                let new_path = self
+                    .storage
+                    .template_manager()
+                    .template_path(&template.name);
                 if new_path != *path && !new_path.exists() {
                     if let Err(e) = std::fs::rename(path, &new_path) {
                         self.set_temporary_status(&format!("Failed to rename template: {e}"));
