@@ -3,7 +3,7 @@
 
 # clin
 
-**A TUI reimagination of Obsidian — feature-packed note management in your terminal.**
+**A TUI reimagination of [Obsidian](https://obsidian.md/) — feature-packed note management in your terminal.**
 
 [![CI](https://github.com/reekta92/clin-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/reekta92/clin-rs/actions/workflows/ci.yml)
 [![Release](https://github.com/reekta92/clin-rs/actions/workflows/dispatch-release.yml/badge.svg)](https://github.com/reekta92/clin-rs/actions/workflows/dispatch-release.yml)
