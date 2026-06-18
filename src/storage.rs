@@ -10,7 +10,7 @@ use rand::RngCore;
 use serde::{Deserialize, Serialize};
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -103,6 +103,75 @@ fn split_frontmatter_payload(bytes: &[u8]) -> (Option<frontmatter::Frontmatter>,
     (None, bytes)
 }
 
+/// Check if `dir` is an existing vault (has notes outside clin subdirectories).
+/// If `.clin/` sentinel exists, it's definitely a vault.
+/// Otherwise, scan for note files outside `notes/` and `templates/`.
+pub(crate) fn is_existing_vault(dir: &Path) -> bool {
+    // Sentinel directory: if .clin/ exists, this is definitely a vault
+    if dir.join(".clin").is_dir() {
+        return true;
+    }
+
+    // If notes/ exists with content, this is clin-native mode — don't treat as vault
+    let notes_dir = dir.join("notes");
+    if notes_dir.exists() {
+        let has_notes = has_note_files_recursive(&notes_dir);
+        if has_notes {
+            return false; // clin-native layout, keep backward compat
+        }
+    }
+
+    // Scan for note files at root or in subdirectories (excluding notes/, templates/)
+    has_note_files_outside_clin_dirs(dir)
+}
+
+fn has_note_files_outside_clin_dirs(dir: &Path) -> bool {
+    let note_exts = ["md", "txt", "clin", "draw", "canvas"];
+    let mut dirs = vec![dir.to_path_buf()];
+    while let Some(path) = dirs.pop() {
+        if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
+            // Skip clin internal dirs, hidden dirs, but not the root vault dir itself
+            if path.as_path() != dir
+                && (name == "notes" || name == "templates" || name.starts_with('.'))
+            {
+                continue;
+            }
+        }
+        if let Ok(entries) = fs::read_dir(&path) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.is_dir() {
+                    dirs.push(p);
+                } else if let Some(ext) = p.extension().and_then(|e| e.to_str())
+                    && note_exts.contains(&ext)
+                {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+fn has_note_files_recursive(dir: &Path) -> bool {
+    let note_exts = ["md", "txt", "clin", "draw", "canvas"];
+    let mut dirs = vec![dir.to_path_buf()];
+    while let Some(path) = dirs.pop() {
+        if let Ok(entries) = fs::read_dir(&path) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.is_dir() {
+                    dirs.push(p);
+                } else if let Some(ext) = p.extension().and_then(|e| e.to_str())
+                    && note_exts.contains(&ext)
+                {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
 impl Storage {
     pub fn init() -> Result<Self> {
         let bootstrap = ClinConfig::load().context("failed to load config")?;
@@ -114,10 +183,27 @@ impl Storage {
             .context("could not determine config directory")?;
         let config_dir = proj_dirs.config_dir().to_path_buf();
 
-        let notes_dir = data_dir.join("notes");
-        let templates_dir = data_dir.join("templates");
-        fs::create_dir_all(&notes_dir).context("failed to create notes directory")?;
-        fs::create_dir_all(&templates_dir).context("failed to create templates directory")?;
+        let vault_mode = is_existing_vault(&data_dir);
+
+        let notes_dir = if vault_mode {
+            data_dir.clone()
+        } else {
+            data_dir.join("notes")
+        };
+
+        let templates_dir = if vault_mode {
+            data_dir.join(".clin").join("templates")
+        } else {
+            data_dir.join("templates")
+        };
+
+        if vault_mode {
+            fs::create_dir_all(data_dir.join(".clin").join("templates"))
+                .context("failed to create .clin/templates directory")?;
+        } else {
+            fs::create_dir_all(&notes_dir).context("failed to create notes directory")?;
+            fs::create_dir_all(&templates_dir).context("failed to create templates directory")?;
+        }
 
         let old_key_path = data_dir.join("key.bin");
         let key_path = config_dir.join("key.bin");
@@ -170,7 +256,9 @@ impl Storage {
             templates_dir,
             key,
         };
-        storage.migrate_extensions();
+        if !vault_mode {
+            storage.migrate_extensions();
+        }
         Ok(storage)
     }
 
@@ -396,7 +484,7 @@ impl Storage {
         Some(self.notes_dir.join(normalized))
     }
 
-    pub fn list_note_ids(&self) -> Result<Vec<String>> {
+    pub fn list_note_ids(&self, include_hidden: bool) -> Result<Vec<String>> {
         let mut ids = Vec::new();
         let mut dirs_to_visit = vec![self.notes_dir.clone()];
 
@@ -405,7 +493,12 @@ impl Storage {
                 let entry = entry.context("failed to read entry")?;
                 let path = entry.path();
 
-                if path.is_dir() {
+                if path.is_dir()
+                    && path
+                        .file_name()
+                        .and_then(|s| s.to_str())
+                        .is_some_and(|n| include_hidden || !n.starts_with('.'))
+                {
                     dirs_to_visit.push(path);
                 } else if let Some(ext) = path.extension().and_then(|e| e.to_str())
                     && (ext == "clin"
@@ -910,7 +1003,7 @@ impl Storage {
         Ok(target_id)
     }
 
-    pub fn list_folders(&self) -> Result<Vec<String>> {
+    pub fn list_folders(&self, include_hidden: bool) -> Result<Vec<String>> {
         let mut folders = Vec::new();
         let mut dirs_to_visit = vec![self.notes_dir.clone()];
 
@@ -918,7 +1011,12 @@ impl Storage {
             if let Ok(entries) = fs::read_dir(&dir) {
                 for entry in entries.flatten() {
                     let path = entry.path();
-                    if path.is_dir() {
+                    if path.is_dir()
+                        && path
+                            .file_name()
+                            .and_then(|s| s.to_str())
+                            .is_some_and(|n| include_hidden || !n.starts_with('.'))
+                    {
                         dirs_to_visit.push(path.clone());
                         if let Ok(rel_path) = path.strip_prefix(&self.notes_dir)
                             && let Some(rel_str) = rel_path.to_str()

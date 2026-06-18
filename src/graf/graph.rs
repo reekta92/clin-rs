@@ -30,7 +30,7 @@ pub fn build_graph(
     storage: &Storage,
     config: &ClinConfig,
 ) -> anyhow::Result<ForceGraph<GraphNodeData, ()>> {
-    let note_ids = storage.list_note_ids()?;
+    let note_ids = storage.list_note_ids(!config.list.show_hidden_files)?;
     let mut graph: ForceGraph<GraphNodeData, ()> = ForceGraph::default();
     let mut title_to_index: HashMap<String, NodeIndex> = HashMap::new();
 

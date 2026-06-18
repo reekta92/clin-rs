@@ -219,3 +219,35 @@ impl Action for CycleSortAction {
         format!("Sort Order: {sort_desc}")
     }
 }
+
+pub struct ToggleShowHiddenFilesAction;
+
+impl Action for ToggleShowHiddenFilesAction {
+    fn id(&self) -> Cow<'static, str> {
+        Cow::Borrowed("settings.show_hidden_files")
+    }
+    fn name(&self) -> Cow<'static, str> {
+        Cow::Borrowed("Show Hidden Files")
+    }
+    fn description(&self) -> Cow<'static, str> {
+        Cow::Borrowed("Show files and directories starting with '.' in the notes list")
+    }
+    fn category(&self) -> ActionCategory {
+        ActionCategory::Settings
+    }
+    fn glyph(&self) -> &'static str {
+        "\u{f06e}" // fa-eye (Nerd Fonts)
+    }
+    fn execute(&self, app: &mut App, _context_note_id: Option<&str>) -> Result<()> {
+        app.toggle_show_hidden_files();
+        Ok(())
+    }
+    fn name_dynamic(&self, app: &App) -> String {
+        let state = if app.list.show_hidden_files {
+            "On"
+        } else {
+            "Off"
+        };
+        format!("Show Hidden Files [{state}]")
+    }
+}

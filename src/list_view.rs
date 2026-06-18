@@ -80,6 +80,7 @@ pub struct ListView {
     pub list_density: crate::config::ListDensity,
     pub show_file_size: bool,
     pub show_date_in_list: bool,
+    pub show_hidden_files: bool,
 }
 
 impl Default for ListView {
@@ -108,6 +109,7 @@ impl Default for ListView {
             notes_layout: crate::config::NotesLayout::default(),
             list_density: crate::config::ListDensity::Compact,
             show_file_size: false,
+            show_hidden_files: false,
             show_date_in_list: true,
             grid_folder: String::new(),
             grid_columns: 4,
