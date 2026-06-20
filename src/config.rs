@@ -545,6 +545,10 @@ pub struct UiConfig {
 
     #[serde(default = "default_true")]
     pub show_status_bar: bool,
+
+    /// Show only Nerd Font icons (no text label) on tab bars.
+    #[serde(default)]
+    pub tab_icons_only: bool,
 }
 
 impl Default for UiConfig {
@@ -563,6 +567,7 @@ impl Default for UiConfig {
             folder: None,
             background_color: None,
             show_status_bar: default_true(),
+            tab_icons_only: false,
         }
     }
 }
@@ -1375,6 +1380,10 @@ background = "transparent"
 
 # Show the status bar at the bottom of the screen.
 show_status_bar = true
+
+# Show only Nerd Font icons (no text) on tab bars (Help, Notes, Backup, Palette).
+tab_icons_only = false
+
 
 # Color overrides (hex strings like "#ffffff").
 # accent = "#ff0000"

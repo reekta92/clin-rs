@@ -82,6 +82,7 @@ pub fn run_backup_view(
         &config.backup,
         app_theme.clone(),
         keybinds.clone(),
+        config.ui.tab_icons_only,
     );
     state.footer_hint = format!(
         "{}: commit · {}: push · {}: refresh · {}: settings · {}: ←",

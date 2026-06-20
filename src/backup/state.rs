@@ -32,6 +32,7 @@ pub struct BackupState {
     pub last_area: Option<ratatui::layout::Rect>,
     pub footer_hint: String,
     pub keybinds: Keybinds,
+    pub tab_icons_only: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -106,6 +107,7 @@ impl BackupState {
         config: &BackupConfig,
         theme: AppThemeColors,
         keybinds: Keybinds,
+        tab_icons_only: bool,
     ) -> Self {
         let settings = BackupSettingsState {
             enabled: config.enabled,
@@ -147,6 +149,7 @@ impl BackupState {
             theme,
             selected_for_commit: HashSet::new(),
             keybinds,
+            tab_icons_only,
         };
 
         state.refresh_git_info();

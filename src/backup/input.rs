@@ -235,8 +235,14 @@ pub fn handle_mouse(state: &mut BackupState, event: MouseEvent) -> InputResult {
 
         if let Some(area) = state.last_area {
             if y == area.y {
-                let tabs = [("Status", None), ("History", None)];
-                if let Some(i) = crate::ui::hit_test_tabs(&tabs, area.x, area.width, x) {
+                let tabs: Vec<(&str, Option<&str>)> = crate::backup::render::BACKUP_TABS
+                    .iter()
+                    .map(|&(l, g)| (l, Some(g)))
+                    .collect();
+                let region = crate::ui::title_bar_tabs_region(area, "Backup");
+                if let Some(i) =
+                    crate::ui::hit_test_tabs(&tabs, region.x, region.width, x, state.tab_icons_only)
+                {
                     state.selected_section = match i {
                         1 => BackupSection::History,
                         _ => BackupSection::Status,

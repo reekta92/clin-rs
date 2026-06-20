@@ -1455,6 +1455,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                     chunks[1].x,
                     chunks[1].width,
                     mouse_event.column,
+                    app.config.ui.tab_icons_only,
                 ) {
                     palette.active_tab = i;
                     palette.refresh_items(app);
@@ -1847,11 +1848,13 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
             // Vault/Pinned tabs
             if mouse_event.row == terminal_area.y {
                 let tabs = [("Vault", Some("\u{f07b}")), ("Pinned", Some("\u{f4cc}"))];
+                let region = crate::ui::title_bar_tabs_region(terminal_area, "Notes");
                 if let Some(i) = crate::ui::hit_test_tabs(
                     &tabs,
-                    terminal_area.x,
-                    terminal_area.width,
+                    region.x,
+                    region.width,
                     mouse_event.column,
+                    app.config.ui.tab_icons_only,
                 ) {
                     app.list.grid_folder = if i == 1 {
                         crate::app::VIRTUAL_PINNED_PATH.to_string()
