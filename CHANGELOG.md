@@ -2,11 +2,21 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.8.24] - 2026-06-20
+
+### Added
+
+- Add Toggle Preview Word Wrap action
+- Add word-wrap and fullscreen toggles
 ## [0.8.23] - 2026-06-20
 
 ### Fixed
 
 - Guard SIGHUP/SIGQUIT with #[cfg(unix)]
+
+### Release
+
+- V0.8.23
 ## [0.8.22] - 2026-06-20
 
 ### Added
