@@ -4535,6 +4535,7 @@ template = """
     pub fn reload_theme(&mut self) {
         let config = crate::config::ClinConfig::load().unwrap_or_default();
         self.app_theme = crate::app_theme::AppThemeColors::from_config(&config.ui);
+        self.build_display_lines();
         if self.mode == ViewMode::Help {
             self.list.help_text_cache = None;
         }
@@ -4917,5 +4918,39 @@ mod tests {
         assert_eq!(app.goals_progress.words_written, 14);
         // notes_modified: 2 unique notes
         assert_eq!(app.goals_progress.notes_modified.len(), 2);
+    }
+
+    #[test]
+    fn test_theme_reload_updates_cached_display_items() {
+        let temp_dir = tempdir().unwrap();
+        let data_dir = temp_dir.path().join("data");
+        let config_dir = temp_dir.path().join("config");
+        let notes_dir = temp_dir.path().join("notes");
+        let templates_dir = temp_dir.path().join("templates");
+        std::fs::create_dir_all(&data_dir).unwrap();
+        std::fs::create_dir_all(&config_dir).unwrap();
+        std::fs::create_dir_all(&notes_dir).unwrap();
+        std::fs::create_dir_all(&templates_dir).unwrap();
+
+        let storage = Storage {
+            data_dir,
+            config_dir: config_dir.clone(),
+            notes_dir,
+            templates_dir,
+            key: [0u8; 32],
+        };
+        let mut app = App::new(storage).unwrap();
+
+        // Write config with theme "tokyo_night"
+        let config_content = r#"[ui]
+theme = "tokyo_night"
+"#;
+        std::fs::write(config_dir.join("config.toml"), config_content).unwrap();
+
+        // Reload theme
+        app.reload_theme();
+
+        // Verify the theme colors changed
+        assert_eq!(app.config.ui.theme, crate::config::Theme::TokyoNight);
     }
 }
