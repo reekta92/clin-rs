@@ -2195,6 +2195,26 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         frame.render_widget(&popup.input, content);
     }
 
+    if let Some(popup) = &mut app.popups.goals {
+        let (title, sub) = match popup.mode {
+            crate::popups::GoalsPopupMode::WordGoal => {
+                ("DAILY WORD GOAL", "Enter word count · Esc cancel")
+            }
+            crate::popups::GoalsPopupMode::NoteGoal => {
+                ("DAILY NOTE GOAL", "Enter note count · Esc cancel")
+            }
+        };
+        let content = draw_popup_frame(frame, area, title, PopupSize::Prompt, sub, &app.app_theme);
+
+        popup.input.set_block(
+            Block::default()
+                .style(app.app_theme.bg_style())
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(app.app_theme.heading)),
+        );
+        frame.render_widget(&popup.input, content);
+    }
+
     if let Some((popup, format)) = &mut app.popups.create_note {
         let title = match format {
             crate::popups::NoteFormat::Markdown => "NEW NOTE",
@@ -3489,7 +3509,7 @@ pub fn title_bar_tabs_region(area: Rect, title: &str) -> Rect {
 /// Private — keep width in sync with `tab_display_width`.
 fn tab_display_text(label: &str, glyph: Option<&str>, icons_only: bool) -> String {
     match (icons_only, glyph) {
-        (true, Some(g)) => format!("  {g}  "),
+        (true, Some(g)) => format!(" {g} "),
         (true, None) => format!(" {label} "),
         (false, Some(g)) => format!(" {g} {label} "),
         (false, None) => format!(" {label} "),
@@ -3500,7 +3520,7 @@ fn tab_display_text(label: &str, glyph: Option<&str>, icons_only: bool) -> Strin
 fn tab_display_width(label: &str, glyph: Option<&str>, icons_only: bool) -> u16 {
     let label_w = label.chars().count() as u16;
     match (icons_only, glyph) {
-        (true, Some(g)) => 4 + g.chars().count() as u16, // "  g  "
+        (true, Some(g)) => 2 + g.chars().count() as u16, // " g "
         (true, None) => 2 + label_w,                     // " label "
         (false, Some(g)) => 3 + g.chars().count() as u16 + label_w, // " g label "
         (false, None) => 2 + label_w,                    // " label "

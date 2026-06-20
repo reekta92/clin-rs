@@ -211,6 +211,19 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
+    if let Some(mut popup) = app.popups.goals.take() {
+        if key.code == KeyCode::Esc {
+            app.popups.goals = None;
+        } else if key.code == KeyCode::Enter {
+            app.popups.goals = Some(popup);
+            app.confirm_goals_popup();
+        } else {
+            handle_popup_text_input(key, &mut popup.input, &app.keybinds);
+            app.popups.goals = Some(popup);
+        }
+        return false;
+    }
+
     if let Some(mut popup) = app.popups.note_rename.take() {
         if key.code == KeyCode::Esc {
             app.popups.note_rename = None;
@@ -1244,6 +1257,29 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         }
         return;
     }
+    if let Some(mut popup) = app.popups.goals.take() {
+        let area = crate::ui::centered_rect(crate::ui::PopupSize::Prompt, terminal_area);
+        if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
+            && !contains_cell(area, mouse_event.column, mouse_event.row)
+        {
+            return;
+        }
+        if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
+            let inner = area.inner(Margin {
+                vertical: 1,
+                horizontal: 1,
+            });
+            move_textarea_cursor_to_mouse(
+                &mut popup.input,
+                inner,
+                mouse_event.column,
+                mouse_event.row,
+            );
+        }
+        app.popups.goals = Some(popup);
+        return;
+    }
+
     if let Some(mut popup) = app.popups.note_rename.take() {
         let area = crate::ui::centered_rect(crate::ui::PopupSize::Prompt, terminal_area);
         if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)

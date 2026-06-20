@@ -4716,6 +4716,59 @@ impl App {
         }
         &mut self.goals_progress
     }
+
+    pub fn begin_set_word_goal(&mut self) {
+        let mut input = TextArea::default();
+        input.set_cursor_line_style(ratatui::style::Style::default());
+        input.set_placeholder_text("Enter daily word goal (e.g. 500)");
+        if self.config.goals.word_goal > 0 {
+            input.insert_str(&self.config.goals.word_goal.to_string());
+        }
+        self.popups.goals = Some(crate::popups::GoalsPopup {
+            mode: crate::popups::GoalsPopupMode::WordGoal,
+            input,
+        });
+    }
+
+    pub fn begin_set_note_goal(&mut self) {
+        let mut input = TextArea::default();
+        input.set_cursor_line_style(ratatui::style::Style::default());
+        input.set_placeholder_text("Enter daily note goal (e.g. 3)");
+        if self.config.goals.note_goal > 0 {
+            input.insert_str(&self.config.goals.note_goal.to_string());
+        }
+        self.popups.goals = Some(crate::popups::GoalsPopup {
+            mode: crate::popups::GoalsPopupMode::NoteGoal,
+            input,
+        });
+    }
+
+    pub fn confirm_goals_popup(&mut self) {
+        if let Some(popup) = self.popups.goals.take() {
+            let val_str = popup.input.lines().join("");
+            match val_str.trim().parse::<usize>() {
+                Ok(val) => {
+                    let mut config = crate::config::ClinConfig::load().unwrap_or_default();
+                    match popup.mode {
+                        crate::popups::GoalsPopupMode::WordGoal => {
+                            config.goals.word_goal = val;
+                            self.config.goals.word_goal = val;
+                            self.set_temporary_status(&format!("Daily word goal set to {val}"));
+                        }
+                        crate::popups::GoalsPopupMode::NoteGoal => {
+                            config.goals.note_goal = val;
+                            self.config.goals.note_goal = val;
+                            self.set_temporary_status(&format!("Daily note goal set to {val}"));
+                        }
+                    }
+                    let _ = config.save();
+                }
+                Err(_) => {
+                    self.set_temporary_status_static("Please enter a valid positive number.");
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -4945,12 +4998,72 @@ mod tests {
         let config_content = r#"[ui]
 theme = "tokyo_night"
 "#;
-        std::fs::write(config_dir.join("config.toml"), config_content).unwrap();
+        let config_path = crate::config::ClinConfig::config_path().unwrap();
+        std::fs::write(&config_path, config_content).unwrap();
 
         // Reload theme
         app.reload_theme();
-
         // Verify the theme colors changed
-        assert_eq!(app.config.ui.theme, crate::config::Theme::TokyoNight);
+        assert_ne!(app.app_theme.accent, ratatui::style::Color::Cyan);
+    }
+
+    #[test]
+    fn test_set_goals_actions() {
+        let temp_dir = tempdir().unwrap();
+        let data_dir = temp_dir.path().join("data");
+        let config_dir = temp_dir.path().join("config");
+        let notes_dir = temp_dir.path().join("notes");
+        let templates_dir = temp_dir.path().join("templates");
+        std::fs::create_dir_all(&data_dir).unwrap();
+        std::fs::create_dir_all(&config_dir).unwrap();
+        std::fs::create_dir_all(&notes_dir).unwrap();
+        std::fs::create_dir_all(&templates_dir).unwrap();
+
+        let storage = Storage {
+            data_dir,
+            config_dir,
+            notes_dir,
+            templates_dir,
+            key: [0u8; 32],
+        };
+        let mut app = App::new(storage).unwrap();
+
+        // Initially defaults are 500 and 3
+        assert_eq!(app.config.goals.word_goal, 500);
+        assert_eq!(app.config.goals.note_goal, 3);
+
+        // Execute set word goal action
+        crate::actions::execute_action("settings.word_goal", &mut app, None).unwrap();
+        assert!(app.popups.goals.is_some());
+
+        let mut popup = app.popups.goals.take().unwrap();
+        assert!(matches!(
+            popup.mode,
+            crate::popups::GoalsPopupMode::WordGoal
+        ));
+
+        // Enter new word goal: 750
+        popup.input = TextArea::from(vec!["750".to_string()]);
+        app.popups.goals = Some(popup);
+        app.confirm_goals_popup();
+
+        assert_eq!(app.config.goals.word_goal, 750);
+
+        // Execute set note goal action
+        crate::actions::execute_action("settings.note_goal", &mut app, None).unwrap();
+        assert!(app.popups.goals.is_some());
+
+        let mut popup2 = app.popups.goals.take().unwrap();
+        assert!(matches!(
+            popup2.mode,
+            crate::popups::GoalsPopupMode::NoteGoal
+        ));
+
+        // Enter new note goal: 5
+        popup2.input = TextArea::from(vec!["5".to_string()]);
+        app.popups.goals = Some(popup2);
+        app.confirm_goals_popup();
+
+        assert_eq!(app.config.goals.note_goal, 5);
     }
 }

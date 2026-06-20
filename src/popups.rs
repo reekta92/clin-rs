@@ -177,6 +177,17 @@ pub struct CreateFormatPopup {
     pub selected: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GoalsPopupMode {
+    WordGoal,
+    NoteGoal,
+}
+
+pub struct GoalsPopup {
+    pub mode: GoalsPopupMode,
+    pub input: TextArea<'static>,
+}
+
 pub struct TrashView {
     pub items: Vec<trash::TrashItem>,
     pub selected: usize,
@@ -199,6 +210,7 @@ pub struct PopupManager {
     pub search: Option<SearchPopup>,
     pub context_menu: Option<ContextMenu>,
     pub trash_view: Option<TrashView>,
+    pub goals: Option<GoalsPopup>,
 }
 
 impl PopupManager {
@@ -217,6 +229,7 @@ impl PopupManager {
             || self.search.is_some()
             || self.context_menu.is_some()
             || self.trash_view.is_some()
+            || self.goals.is_some()
     }
 
     pub fn has_text_input(&self) -> bool {
@@ -228,6 +241,7 @@ impl PopupManager {
             || self.search.is_some()
             || self.template.is_some()
             || self.tag.is_some()
+            || self.goals.is_some()
     }
 
     pub fn clear_all(&mut self) {
@@ -245,5 +259,6 @@ impl PopupManager {
         self.search = None;
         self.context_menu = None;
         self.trash_view = None;
+        self.goals = None;
     }
 }

@@ -343,3 +343,59 @@ impl Action for ToggleTabIconsOnlyAction {
         format!("Tab Icons Only [{state}]")
     }
 }
+
+pub struct SetWordGoalAction;
+
+impl Action for SetWordGoalAction {
+    fn id(&self) -> Cow<'static, str> {
+        Cow::Borrowed("settings.word_goal")
+    }
+    fn name(&self) -> Cow<'static, str> {
+        Cow::Borrowed("Set Daily Word Goal")
+    }
+    fn description(&self) -> Cow<'static, str> {
+        Cow::Borrowed("Set target number of words to write daily")
+    }
+    fn category(&self) -> ActionCategory {
+        ActionCategory::Settings
+    }
+    fn glyph(&self) -> &'static str {
+        "\u{f044}"
+    }
+    fn execute(&self, app: &mut App, _context_note_id: Option<&str>) -> Result<()> {
+        app.begin_set_word_goal();
+        Ok(())
+    }
+    fn name_dynamic(&self, app: &App) -> String {
+        let current = app.config.goals.word_goal;
+        format!("Set Daily Word Goal [{current}]")
+    }
+}
+
+pub struct SetNoteGoalAction;
+
+impl Action for SetNoteGoalAction {
+    fn id(&self) -> Cow<'static, str> {
+        Cow::Borrowed("settings.note_goal")
+    }
+    fn name(&self) -> Cow<'static, str> {
+        Cow::Borrowed("Set Daily Note Goal")
+    }
+    fn description(&self) -> Cow<'static, str> {
+        Cow::Borrowed("Set target number of notes to edit daily")
+    }
+    fn category(&self) -> ActionCategory {
+        ActionCategory::Settings
+    }
+    fn glyph(&self) -> &'static str {
+        "\u{f044}"
+    }
+    fn execute(&self, app: &mut App, _context_note_id: Option<&str>) -> Result<()> {
+        app.begin_set_note_goal();
+        Ok(())
+    }
+    fn name_dynamic(&self, app: &App) -> String {
+        let current = app.config.goals.note_goal;
+        format!("Set Daily Note Goal [{current}]")
+    }
+}
