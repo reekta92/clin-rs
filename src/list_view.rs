@@ -84,6 +84,7 @@ pub struct ListView {
     pub show_hidden_files: bool,
     pub last_preview_pane_width: u16,
     pub preview_content_width: Option<u16>,
+    pub calendar_enabled: bool,
 }
 
 impl Default for ListView {
@@ -114,6 +115,7 @@ impl Default for ListView {
             list_density: crate::config::ListDensity::Compact,
             show_file_size: false,
             show_hidden_files: false,
+            calendar_enabled: true,
             show_date_in_list: true,
             grid_folder: String::new(),
             grid_columns: 4,

@@ -468,6 +468,18 @@ fn notes_help_text(keybinds: &Keybinds, theme: &crate::app_theme::AppThemeColors
         Some(&keybinds.list_keys_display(ListAction::TogglePreviewWrap)),
         theme,
     ));
+    lines.push(Line::from(vec![Span::styled(
+        format!(
+            " Calendar ({})",
+            keybinds.list_keys_display(ListAction::ToggleCalendar)
+        ),
+        Style::default().fg(theme.heading),
+    )]));
+    lines.extend(help_item_dyn(
+        "Toggle month calendar (note activity) in notes list",
+        None,
+        theme,
+    ));
     lines.push(Line::from(""));
     lines.push(Line::from(vec![Span::styled(
         " Confirm Delete Popup",
@@ -1345,6 +1357,81 @@ pub fn help_item_dyn(
     }
 }
 
+/// Compute the list / preview / calendar layout rectangles for the notes view.
+///
+/// Returns `(list_area, preview_area, calendar_area)`. The optional month
+/// calendar always sits at the bottom of the **list** column only; the preview
+/// column keeps the full content height, so the calendar never cuts through or
+/// under the preview pane.
+pub(crate) fn list_view_layout(
+    area: Rect,
+    preview_enabled: bool,
+    preview_position: crate::config::PreviewPosition,
+    calendar_enabled: bool,
+    preview_fullscreen: bool,
+) -> (Rect, Option<Rect>, Option<Rect>) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Min(5),
+            Constraint::Length(1),
+        ])
+        .split(area);
+
+    if preview_fullscreen {
+        return (chunks[1], Some(chunks[1]), None);
+    }
+
+    // Horizontal split into list + preview columns. The preview column keeps
+    // the full content height regardless of the calendar.
+    let (list_column, preview_area) = if preview_enabled {
+        let (constraints, list_idx, p_idx) = match preview_position {
+            crate::config::PreviewPosition::Left => (
+                [
+                    Constraint::Ratio(43, 100),
+                    Constraint::Length(1),
+                    Constraint::Min(0),
+                ],
+                2,
+                0,
+            ),
+            crate::config::PreviewPosition::Right => (
+                [
+                    Constraint::Min(0),
+                    Constraint::Length(1),
+                    Constraint::Ratio(43, 100),
+                ],
+                0,
+                2,
+            ),
+        };
+        let full_cols = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints(constraints)
+            .split(chunks[1]);
+        (full_cols[list_idx], Some(full_cols[p_idx]))
+    } else {
+        (
+            Rect::new(area.x, area.y + 1, area.width, chunks[1].height),
+            None,
+        )
+    };
+
+    // The optional month calendar sits at the bottom of the LIST column only.
+    let (list_area, calendar_area) = if calendar_enabled {
+        let sp = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(5), Constraint::Length(9)])
+            .split(list_column);
+        (sp[0], Some(sp[1]))
+    } else {
+        (list_column, None)
+    };
+
+    (list_area, preview_area, calendar_area)
+}
+
 pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
     let chunks = Layout::default()
@@ -1422,54 +1509,16 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     } else {
         draw_view_title_bar(frame, chunks[0], "Notes", &app.app_theme);
     }
-    let (list_area, preview_area) = if app.preview_fullscreen {
-        app.list.last_preview_pane_width = chunks[1].width;
-        (chunks[1], Some(chunks[1]))
-    } else if app.list.preview_enabled {
-        let (constraints, list_idx, p_idx) = match app.preview_position {
-            crate::config::PreviewPosition::Left => (
-                [
-                    Constraint::Ratio(43, 100),
-                    Constraint::Length(1),
-                    Constraint::Min(0),
-                ],
-                2,
-                0,
-            ),
-            crate::config::PreviewPosition::Right => (
-                [
-                    Constraint::Min(0),
-                    Constraint::Length(1),
-                    Constraint::Ratio(43, 100),
-                ],
-                0,
-                2,
-            ),
-        };
-        let full_cols = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints(constraints)
-            .split(chunks[1]);
-        let list_area = Rect::new(
-            full_cols[list_idx].x,
-            full_cols[list_idx].y,
-            full_cols[list_idx].width,
-            full_cols[list_idx].height,
-        );
-        let preview_rect = Rect::new(
-            full_cols[p_idx].x,
-            full_cols[p_idx].y,
-            full_cols[p_idx].width,
-            full_cols[p_idx].height,
-        );
-        app.list.last_preview_pane_width = preview_rect.width;
-        (list_area, Some(preview_rect))
-    } else {
-        (
-            Rect::new(area.x, area.y + 1, area.width, chunks[1].height),
-            None,
-        )
-    };
+    let (list_area, preview_area, calendar_area) = list_view_layout(
+        area,
+        app.list.preview_enabled,
+        app.preview_position,
+        app.list.calendar_enabled,
+        app.preview_fullscreen,
+    );
+    if let Some(p) = preview_area {
+        app.list.last_preview_pane_width = p.width;
+    }
 
     if !app.preview_fullscreen {
         let is_grid = app.list.notes_layout == crate::config::NotesLayout::Grid;
@@ -1763,6 +1812,9 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             app.list.snapshot_scroll_offset,
         );
     }
+    if let Some(cal_rect) = calendar_area {
+        crate::calendar::draw_calendar(frame, cal_rect, &app.app_theme, &app.notes);
+    }
 
     let hint = resolved_status_hint(app, LIST_HELP_HINTS);
     let badge = Some(ext_badge(
@@ -1787,12 +1839,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         let full_cols = Layout::default()
             .direction(Direction::Horizontal)
             .constraints(constraints)
-            .split(Rect::new(
-                area.x,
-                area.y + 1,
-                area.width,
-                area.height.saturating_sub(1),
-            ));
+            .split(chunks[1]);
         draw_dim_vline(frame, full_cols[1], app.app_theme.muted);
     }
 
@@ -3740,4 +3787,75 @@ pub fn pick_file(filter_name: &str, filter_ext: &str) -> Result<Option<String>> 
     }
 
     Ok(None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::PreviewPosition;
+    use ratatui::layout::Rect;
+
+    /// The month calendar must sit at the bottom of the LIST column only and
+    /// never overlap the preview pane (preview keeps full content height).
+    #[test]
+    fn calendar_never_overlaps_preview_and_stays_in_list_column() {
+        let area = Rect::new(0, 0, 100, 24);
+        // Content region (between title bar and status bar) height.
+        let content_h = 22;
+
+        for &position in &[PreviewPosition::Left, PreviewPosition::Right] {
+            let (list_area, preview_area, calendar_area) = list_view_layout(
+                area,
+                true, // preview enabled
+                position,
+                true, // calendar enabled
+                false, // preview_fullscreen
+            );
+
+            let preview = preview_area.expect("preview area present when enabled");
+            let cal = calendar_area.expect("calendar area present when enabled");
+
+            // Preview keeps the full content height (calendar does not steal rows).
+            assert_eq!(preview.height, content_h, "preview full height @ {position:?}");
+
+            // Calendar spans the list column width exactly (not the preview's).
+            assert_eq!(cal.x, list_area.x, "calendar left == list left @ {position:?}");
+            assert_eq!(
+                cal.width, list_area.width,
+                "calendar width == list width @ {position:?}"
+            );
+
+            // Calendar sits directly below the list area.
+            assert_eq!(cal.y, list_area.y + list_area.height, "calendar below list @ {position:?}");
+            assert_eq!(cal.height, 9, "calendar height @ {position:?}");
+
+            // Calendar and preview are disjoint (separated in x since y overlaps).
+            let disjoint = cal.right() <= preview.x || preview.right() <= cal.x;
+            assert!(disjoint, "calendar must not overlap preview @ {position:?}");
+        }
+    }
+
+    /// With preview off the calendar spans the full content width at the bottom.
+    #[test]
+    fn calendar_full_width_when_no_preview() {
+        let area = Rect::new(0, 0, 80, 24);
+        let (list_area, preview_area, calendar_area) =
+            list_view_layout(area, false, PreviewPosition::Right, true, false);
+
+        assert!(preview_area.is_none());
+        let cal = calendar_area.expect("calendar enabled");
+        assert_eq!(cal.width, list_area.width);
+        assert_eq!(cal.y, list_area.y + list_area.height);
+        assert_eq!(cal.height, 9);
+    }
+
+    /// With the calendar disabled there is no calendar area and list is full.
+    #[test]
+    fn no_calendar_area_when_disabled() {
+        let area = Rect::new(0, 0, 80, 24);
+        let (_, preview_area, calendar_area) =
+            list_view_layout(area, true, PreviewPosition::Right, false, false);
+        assert!(calendar_area.is_none());
+        assert!(preview_area.is_some());
+    }
 }

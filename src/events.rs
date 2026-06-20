@@ -1024,6 +1024,10 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 app.toggle_preview_wrap();
                 return false;
             }
+            ListAction::ToggleCalendar => {
+                app.toggle_calendar();
+                return false;
+            }
             ListAction::OpenGraph => {
                 app.open_graph_view();
                 return false;

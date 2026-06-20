@@ -2,6 +2,7 @@
 pub(crate) mod actions;
 pub(crate) mod app_theme;
 pub(crate) mod backup;
+pub(crate) mod calendar;
 pub(crate) mod cli;
 mod config;
 pub mod console;

@@ -377,6 +377,7 @@ impl App {
         list.show_file_size = bootstrap_config.list.show_file_size;
         list.show_date_in_list = bootstrap_config.list.show_date_in_list;
         list.show_hidden_files = bootstrap_config.list.show_hidden_files;
+        list.calendar_enabled = bootstrap_config.list.calendar_enabled;
 
         let preview_wrap = bootstrap_config.core.preview_wrap;
         let mut app = Self {
@@ -456,6 +457,7 @@ impl App {
         list.show_file_size = bootstrap_config.list.show_file_size;
         list.show_date_in_list = bootstrap_config.list.show_date_in_list;
         list.show_hidden_files = bootstrap_config.list.show_hidden_files;
+        list.calendar_enabled = bootstrap_config.list.calendar_enabled;
 
         let preview_wrap = bootstrap_config.core.preview_wrap;
         let mut app = Self {
@@ -4008,6 +4010,21 @@ template = """
         }
         if let Ok(mut config) = crate::config::ClinConfig::load() {
             config.list.preview_enabled = self.list.preview_enabled;
+            if let Err(e) = config.save() {
+                self.set_temporary_status(&format!("Failed to save config: {e}"));
+            }
+        }
+    }
+
+    pub fn toggle_calendar(&mut self) {
+        self.list.calendar_enabled = !self.list.calendar_enabled;
+        if self.list.calendar_enabled {
+            self.set_temporary_status_static("Calendar enabled");
+        } else {
+            self.set_temporary_status_static("Calendar disabled");
+        }
+        if let Ok(mut config) = crate::config::ClinConfig::load() {
+            config.list.calendar_enabled = self.list.calendar_enabled;
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
             }

@@ -35,6 +35,7 @@ Full reference of all configuration options for clin-rs.
 | `default_sort_field` | `enum` | `"title"` | Default sort field: `"title"` or `"modified"` |
 | `default_sort_order` | `enum` | `"ascending"` | Default sort order: `"ascending"` or `"descending"` |
 | `pinned_on_top` | `bool` | `false` | Keep pinned notes at the top of the list |
+| `calendar_enabled` | `bool` | `true` | Show a month calendar with note activity at the bottom of the notes list |
 
 ### `[editor]`
 
@@ -174,6 +175,7 @@ density = "comfortable"
 default_view = "grid"
 default_sort_field = "modified"
 default_sort_order = "descending"
+calendar_enabled = true
 pinned_on_top = true
 
 [editor]
@@ -265,6 +267,7 @@ Key combos are strings like `"a"`, `"Enter"`, `"Ctrl+q"`, `"Ctrl+Shift+z"`, `"Al
 | `jump_to_bottom` | — | Jump to bottom of list |
 | `page_up` | `Ctrl+u` | Half page up |
 | `page_down` | `Ctrl+d` | Half page down |
+| `toggle_calendar` | `Shift+C` | Toggle month calendar |
 | `open_trash` | `Shift+T` | Open trash view |
 | `toggle_preview` | `Shift+P` | Toggle preview pane |
 | `toggle_preview_fullscreen` | `Ctrl+e` | Expand preview to full width (hide notes list) |

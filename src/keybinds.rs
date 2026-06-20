@@ -305,6 +305,7 @@ pub enum ListAction {
     TogglePreview,
     TogglePreviewFullscreen,
     TogglePreviewWrap,
+    ToggleCalendar,
     OpenGraph,
     OpenCanvas,
     CreatePinstar,
@@ -641,6 +642,10 @@ impl Default for Keybinds {
         list.insert(
             ListAction::TogglePreviewWrap,
             vec![KeyCombo::ctrl(KeyCode::Char('w'))],
+        );
+        list.insert(
+            ListAction::ToggleCalendar,
+            vec![KeyCombo::shift(KeyCode::Char('C'))],
         );
         list.insert(
             ListAction::OpenGraph,
@@ -1898,10 +1903,6 @@ impl Keybinds {
             .unwrap_or_default()
     }
 
-    // -- Binding map accessors (used by KeyMatcher::resolve) --
-    pub fn bindings_for_list(&self) -> &HashMap<ListAction, Vec<KeyCombo>> {
-        &self.list
-    }
     pub fn bindings_for_edit(&self) -> &HashMap<EditAction, Vec<KeyCombo>> {
         &self.edit
     }
@@ -1931,7 +1932,10 @@ impl Keybinds {
         event: KeyEvent,
         seq: bool,
     ) -> MatchOutcome<ListAction> {
-        m.resolve(event, self.bindings_for_list(), seq)
+        let mut filtered = self.list.clone();
+        filtered.remove(&ListAction::Confirm);
+        filtered.remove(&ListAction::Cancel);
+        m.resolve(event, &filtered, seq)
     }
     pub fn resolve_edit(
         &self,
@@ -2252,6 +2256,27 @@ mod tests {
         assert!(kb.list.get(&ListAction::Quit).unwrap().iter().any(|c| c.to_display_string() == "Ctrl+x Ctrl+c"));
         // Ctrl+d → Delete
         assert!(kb.list.get(&ListAction::Delete).unwrap().iter().any(|c| c.to_display_string() == "Ctrl+d"));
+    }
+
+    #[test]
+    fn test_enter_key_resolves_to_open_not_confirm() {
+        let kb = KeybindPreset::Default.base_keybinds();
+        let mut matcher = KeyMatcher::new();
+        let enter_event = crossterm::event::KeyEvent::new(
+            crossterm::event::KeyCode::Enter,
+            crossterm::event::KeyModifiers::NONE,
+        );
+        let outcome = kb.resolve_list(&mut matcher, enter_event, false);
+        assert_eq!(outcome, MatchOutcome::Matched(ListAction::Open));
+
+        // Also verify y and n do not resolve to Confirm/Cancel in list view
+        let mut matcher_y = KeyMatcher::new();
+        let y_event = crossterm::event::KeyEvent::new(
+            crossterm::event::KeyCode::Char('y'),
+            crossterm::event::KeyModifiers::NONE,
+        );
+        let outcome_y = kb.resolve_list(&mut matcher_y, y_event, false);
+        assert_eq!(outcome_y, MatchOutcome::Matched(ListAction::Duplicate));
     }
 
 }

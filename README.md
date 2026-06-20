@@ -246,6 +246,7 @@ default_view = "grid"
 default_sort_field = "title"
 default_sort_order = "ascending"
 pinned_on_top = true
+calendar_enabled = true
 
 [editor]
 external_command = "nvim"

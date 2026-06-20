@@ -684,6 +684,8 @@ pub struct ListConfig {
     pub pinned_on_top: bool,
     #[serde(default)]
     pub show_hidden_files: bool,
+    #[serde(default = "default_true")]
+    pub calendar_enabled: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
@@ -1486,6 +1488,9 @@ pinned_on_top = true
 # Show hidden files and folders (starting with ".") in the notes list.
 show_hidden_files = false
 
+# Show a month calendar (with note activity) at the bottom of the notes view.
+calendar_enabled = true
+
 # ── Editor ────────────────────────────────────────────────────────────────────
 
 [editor]
@@ -1693,6 +1698,7 @@ unknown_field = "ignore me"
         config.list.show_file_size = true;
         config.list.show_date_in_list = false;
         config.list.default_view = NotesLayout::Tree;
+        config.list.calendar_enabled = false;
         config.backup.auto_backup_interval = Some(60);
 
         let toml_str = toml::to_string_pretty(&config).unwrap();
@@ -1704,7 +1710,23 @@ unknown_field = "ignore me"
         assert!(parsed.list.show_file_size);
         assert!(!parsed.list.show_date_in_list);
         assert_eq!(parsed.list.default_view, NotesLayout::Tree);
+        assert!(!parsed.list.calendar_enabled);
         assert_eq!(parsed.backup.auto_backup_interval, Some(60));
+    }
+
+    #[test]
+    fn calendar_defaults_enabled_when_key_omitted() {
+        // A [list] section that omits calendar_enabled must deserialize to true
+        // (visible by default), matching #[serde(default = "default_true")].
+        // (Like preview_enabled/show_date_in_list, ListConfig's derived Default
+        // yields false for bools — the on-disk/serde path is what users hit.)
+        let cfg: ClinConfig = toml::from_str("[list]\npreview_enabled = false\n").unwrap();
+        assert!(cfg.list.calendar_enabled);
+
+        // Explicitly setting it false also survives a round-trip.
+        let cfg2: ClinConfig =
+            toml::from_str("[list]\ncalendar_enabled = false\n").unwrap();
+        assert!(!cfg2.list.calendar_enabled);
     }
 
     #[test]
@@ -1880,5 +1902,15 @@ show_status_bar = false
         assert!(config.core.confirm_on_quit);
         assert_eq!(config.ui.theme, Theme::TokyoNight);
         assert!(!config.ui.show_status_bar);
+    }
+
+    #[test]
+    fn default_config_template_parses_and_calendar_visible_by_default() {
+        // The embedded default template is what a first-run user gets. It must
+        // be valid ClinConfig TOML and ship with the calendar visible.
+        let config: ClinConfig = toml::from_str(default_config_content()).unwrap();
+        assert!(config.list.calendar_enabled);
+        // Sanity: a few other shipped defaults still hold.
+        assert!(config.list.preview_enabled);
     }
 }

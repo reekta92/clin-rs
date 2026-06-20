@@ -2,6 +2,12 @@
 
 All notable changes to clin are documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- Month calendar widget (note activity) at the bottom of the notes list, toggleable via `Shift+C`, the command palette, and `calendar_enabled` in `[list]`
+
 ## [0.8.24] - 2026-06-20
 
 ### Added

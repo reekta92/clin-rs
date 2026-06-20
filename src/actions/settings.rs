@@ -63,6 +63,39 @@ impl Action for TogglePreviewWrapAction {
     }
 }
 
+pub struct ToggleCalendarAction;
+
+impl Action for ToggleCalendarAction {
+    fn id(&self) -> Cow<'static, str> {
+        Cow::Borrowed("settings.calendar")
+    }
+    fn name(&self) -> Cow<'static, str> {
+        Cow::Borrowed("Toggle Calendar")
+    }
+    fn description(&self) -> Cow<'static, str> {
+        Cow::Borrowed("Show or hide the month calendar in the notes list")
+    }
+    fn category(&self) -> ActionCategory {
+        ActionCategory::Settings
+    }
+    fn glyph(&self) -> &'static str {
+        "\u{f073}"
+    }
+    fn execute(&self, app: &mut App, _context_note_id: Option<&str>) -> Result<()> {
+        app.toggle_calendar();
+        Ok(())
+    }
+
+    fn name_dynamic(&self, app: &App) -> String {
+        let state = if app.list.calendar_enabled {
+            "On"
+        } else {
+            "Off"
+        };
+        format!("Toggle Calendar [{state}]")
+    }
+}
+
 pub struct ToggleLineNumbersAction;
 
 impl Action for ToggleLineNumbersAction {

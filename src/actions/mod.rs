@@ -69,6 +69,7 @@ pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyL
         Box::new(layout::ToggleLayoutAction),
         Box::new(settings::TogglePreviewPaneAction),
         Box::new(settings::TogglePreviewWrapAction),
+        Box::new(settings::ToggleCalendarAction),
         Box::new(settings::ToggleLineNumbersAction),
         Box::new(settings::ToggleConfirmDeleteAction),
         Box::new(settings::TogglePinnedOnTopAction),
