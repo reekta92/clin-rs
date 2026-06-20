@@ -2,6 +2,11 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.8.23] - 2026-06-20
+
+### Fixed
+
+- Guard SIGHUP/SIGQUIT with #[cfg(unix)]
 ## [0.8.22] - 2026-06-20
 
 ### Added
@@ -12,6 +17,10 @@ All notable changes to clin are documented in this file.
 
 - Set git user config in perform_creates_commit test
 - Disable git backups by default
+
+### Release
+
+- V0.8.22
 ## [0.8.21] - 2026-06-20
 
 ### Added
