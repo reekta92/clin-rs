@@ -20,6 +20,12 @@ pub fn handle_popup_text_input(
 }
 
 pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
+    // Ctrl+C → quit (interactive path, raw mode delivers Ctrl+C as key event)
+    if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
+        app.initiate_quit();
+        return false;
+    }
+
     if let Some(mut palette) = app.command_palette.take() {
         if palette.handle_input(key, app) {
             if key.code == KeyCode::Enter
@@ -1029,6 +1035,12 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
 }
 
 pub fn handle_help_keys(app: &mut App, key: KeyEvent) {
+    // Ctrl+C → quit (interactive path, raw mode delivers Ctrl+C as key event)
+    if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
+        app.initiate_quit();
+        return;
+    }
+
     if app.keybinds.matches_help(HelpAction::Close, &key) {
         app.close_help_page();
     } else if app.keybinds.matches_help(HelpAction::ScrollDown, &key) {
@@ -1053,6 +1065,12 @@ pub fn handle_help_keys(app: &mut App, key: KeyEvent) {
 }
 
 pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> bool {
+    // Ctrl+C → quit (interactive path, raw mode delivers Ctrl+C as key event)
+    if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
+        app.initiate_quit();
+        return false;
+    }
+
     if let Some(mut menu) = app.popups.context_menu.take() {
         match key.code {
             KeyCode::Up => {
