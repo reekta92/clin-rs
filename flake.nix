@@ -30,8 +30,8 @@
             openssl
             zlib
             libgit2
-            xorg.libX11
-            xorg.libxcb
+            libx11
+            libxcb
           ];
 
           meta = with pkgs.lib; {
@@ -52,8 +52,8 @@
             openssl
             zlib
             libgit2
-            xorg.libX11
-            xorg.libxcb
+            libx11
+            libxcb
           ];
         };
       }
