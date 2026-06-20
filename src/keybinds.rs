@@ -2067,7 +2067,10 @@ impl Keybinds {
         event: KeyEvent,
         seq: bool,
     ) -> MatchOutcome<ListAction> {
-        m.resolve(event, self.bindings_for_list(), seq)
+        let mut bindings = self.bindings_for_list().clone();
+        bindings.remove(&ListAction::Confirm);
+        bindings.remove(&ListAction::Cancel);
+        m.resolve(event, &bindings, seq)
     }
     pub fn resolve_edit(
         &self,
@@ -2267,6 +2270,14 @@ mod tests {
         let keybinds = Keybinds::default();
         let event = KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE);
         assert!(keybinds.matches_list(ListAction::Quit, &event));
+    }
+    #[test]
+    fn test_resolve_list_removes_popup_actions() {
+        let keybinds = Keybinds::default();
+        let mut matcher = KeyMatcher::new();
+        let enter_event = KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);
+        let result = keybinds.resolve_list(&mut matcher, enter_event, false);
+        assert_eq!(result, MatchOutcome::Matched(ListAction::Open));
     }
 
     #[test]
