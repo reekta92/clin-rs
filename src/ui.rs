@@ -458,6 +458,16 @@ fn notes_help_text(keybinds: &Keybinds, theme: &crate::app_theme::AppThemeColors
         None,
         theme,
     ));
+    lines.extend(help_item_dyn(
+        "Expand preview to full width / restore",
+        Some(&keybinds.list_keys_display(ListAction::TogglePreviewFullscreen)),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Toggle word-wrap in preview",
+        Some(&keybinds.list_keys_display(ListAction::TogglePreviewWrap)),
+        theme,
+    ));
     lines.push(Line::from(""));
     lines.push(Line::from(vec![Span::styled(
         " Confirm Delete Popup",
@@ -512,6 +522,8 @@ fn editor_help_text(
     let edit_del_word = keybinds.edit_keys_display(EditAction::DeleteWord);
     let edit_del_next_word = keybinds.edit_keys_display(EditAction::DeleteNextWord);
     let edit_md_preview = keybinds.edit_keys_display(EditAction::ToggleMarkdownPreview);
+    let edit_fullscreen = keybinds.edit_keys_display(EditAction::TogglePreviewFullscreen);
+    let edit_wrap = keybinds.edit_keys_display(EditAction::TogglePreviewWrap);
 
     let mut lines = Vec::new();
     lines.push(help_heading("Editor", theme));
@@ -546,6 +558,16 @@ fn editor_help_text(
     lines.extend(help_item_dyn(
         "Toggle markdown preview panel",
         Some(&edit_md_preview),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Expand preview to full width / restore",
+        Some(&edit_fullscreen),
+        theme,
+    ));
+    lines.extend(help_item_dyn(
+        "Toggle word-wrap in preview",
+        Some(&edit_wrap),
         theme,
     ));
     Text::from(lines)
@@ -1400,7 +1422,10 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     } else {
         draw_view_title_bar(frame, chunks[0], "Notes", &app.app_theme);
     }
-    let (list_area, preview_area) = if app.list.preview_enabled {
+    let (list_area, preview_area) = if app.preview_fullscreen {
+        app.list.last_preview_pane_width = chunks[1].width;
+        (chunks[1], Some(chunks[1]))
+    } else if app.list.preview_enabled {
         let (constraints, list_idx, p_idx) = match app.preview_position {
             crate::config::PreviewPosition::Left => (
                 [
@@ -1431,13 +1456,14 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             full_cols[list_idx].width,
             full_cols[list_idx].height,
         );
-        let preview_area = Some(Rect::new(
+        let preview_rect = Rect::new(
             full_cols[p_idx].x,
             full_cols[p_idx].y,
             full_cols[p_idx].width,
             full_cols[p_idx].height,
-        ));
-        (list_area, preview_area)
+        );
+        app.list.last_preview_pane_width = preview_rect.width;
+        (list_area, Some(preview_rect))
     } else {
         (
             Rect::new(area.x, area.y + 1, area.width, chunks[1].height),
@@ -1445,271 +1471,272 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         )
     };
 
-    let is_grid = app.list.notes_layout == crate::config::NotesLayout::Grid;
-    let mut items: Vec<ListItem> = Vec::new();
+    if !app.preview_fullscreen {
+        let is_grid = app.list.notes_layout == crate::config::NotesLayout::Grid;
+        let mut items: Vec<ListItem> = Vec::new();
 
-    if is_grid {
-        app.list.grid_tiles.clear();
+        if is_grid {
+            app.list.grid_tiles.clear();
 
-        // --- render directory breadcrumbs at the top of the list area ---
-        let is_pinned = app.list.grid_folder == crate::app::VIRTUAL_PINNED_PATH;
-        let mut spans = Vec::new();
-        if is_pinned {
-            spans.push(Span::styled(
-                " \u{f4cc} Pinned",
-                Style::default()
-                    .fg(app.app_theme.heading)
-                    .add_modifier(Modifier::BOLD),
-            ));
-        } else {
-            spans.push(Span::styled(
-                " \u{f07b} Vault",
-                Style::default()
-                    .fg(app.app_theme.folder)
-                    .add_modifier(Modifier::BOLD),
-            ));
-            if !app.list.grid_folder.is_empty() {
-                for part in app.list.grid_folder.split('/') {
-                    spans.push(Span::styled(
-                        " / ",
-                        Style::default().fg(app.app_theme.muted),
-                    ));
-                    spans.push(Span::styled(
-                        part.to_string(),
-                        Style::default().fg(app.app_theme.fg),
-                    ));
+            // --- render directory breadcrumbs at the top of the list area ---
+            let is_pinned = app.list.grid_folder == crate::app::VIRTUAL_PINNED_PATH;
+            let mut spans = Vec::new();
+            if is_pinned {
+                spans.push(Span::styled(
+                    " \u{f4cc} Pinned",
+                    Style::default()
+                        .fg(app.app_theme.heading)
+                        .add_modifier(Modifier::BOLD),
+                ));
+            } else {
+                spans.push(Span::styled(
+                    " \u{f07b} Vault",
+                    Style::default()
+                        .fg(app.app_theme.folder)
+                        .add_modifier(Modifier::BOLD),
+                ));
+                if !app.list.grid_folder.is_empty() {
+                    for part in app.list.grid_folder.split('/') {
+                        spans.push(Span::styled(
+                            " / ",
+                            Style::default().fg(app.app_theme.muted),
+                        ));
+                        spans.push(Span::styled(
+                            part.to_string(),
+                            Style::default().fg(app.app_theme.fg),
+                        ));
+                    }
                 }
             }
-        }
-        let dir_rect = Rect::new(list_area.x, list_area.y + 1, list_area.width, 1);
-        frame.render_widget(Paragraph::new(Line::from(spans)), dir_rect);
+            let dir_rect = Rect::new(list_area.x, list_area.y + 1, list_area.width, 1);
+            frame.render_widget(Paragraph::new(Line::from(spans)), dir_rect);
 
-        // --- columns / visible rows ---
-        let cols = ((list_area.width.saturating_sub(GRID_LEFT_MARGIN + GRID_GAP))
-            / (GRID_TILE_W + GRID_GAP))
-            .max(1) as usize;
-        let rows = ((list_area.height.saturating_sub(GRID_TOP_MARGIN + GRID_GAP))
-            / (GRID_TILE_H + GRID_GAP)) as usize;
-        app.list.grid_columns = cols; // events.rs grid nav reads this (Up/Down move by cols)
+            // --- columns / visible rows ---
+            let cols = ((list_area.width.saturating_sub(GRID_LEFT_MARGIN + GRID_GAP))
+                / (GRID_TILE_W + GRID_GAP))
+                .max(1) as usize;
+            let rows = ((list_area.height.saturating_sub(GRID_TOP_MARGIN + GRID_GAP))
+                / (GRID_TILE_H + GRID_GAP)) as usize;
+            app.list.grid_columns = cols; // events.rs grid nav reads this (Up/Down move by cols)
 
-        let len = app.list.visual_list.len();
+            let len = app.list.visual_list.len();
 
-        // --- clamp grid_scroll so the selected tile stays visible, without over-scrolling ---
-        if cols > 0 && rows > 0 && len > 0 {
-            let sel_row = app.list.visual_index / cols;
-            if sel_row < app.list.grid_scroll {
-                app.list.grid_scroll = sel_row;
+            // --- clamp grid_scroll so the selected tile stays visible, without over-scrolling ---
+            if cols > 0 && rows > 0 && len > 0 {
+                let sel_row = app.list.visual_index / cols;
+                if sel_row < app.list.grid_scroll {
+                    app.list.grid_scroll = sel_row;
+                }
+                let last_visible = app.list.grid_scroll + rows.saturating_sub(1);
+                if sel_row > last_visible {
+                    app.list.grid_scroll = sel_row.saturating_sub(rows.saturating_sub(1));
+                }
+                let max_scroll = (len - 1) / cols;
+                if app.list.grid_scroll > max_scroll {
+                    app.list.grid_scroll = max_scroll;
+                }
+            } else {
+                app.list.grid_scroll = 0;
             }
-            let last_visible = app.list.grid_scroll + rows.saturating_sub(1);
-            if sel_row > last_visible {
-                app.list.grid_scroll = sel_row.saturating_sub(rows.saturating_sub(1));
+
+            let start = app.list.grid_scroll * cols;
+            let count = (rows * cols).min(len.saturating_sub(start));
+            let buf = frame.buffer_mut();
+
+            for i in 0..count {
+                let vi = start + i;
+                if vi >= len {
+                    break;
+                }
+                let row = i / cols;
+                let col = i % cols;
+                let tile_rect = ratatui::layout::Rect::new(
+                    list_area.x + GRID_LEFT_MARGIN + (col as u16) * (GRID_TILE_W + GRID_GAP),
+                    list_area.y + GRID_TOP_MARGIN + (row as u16) * (GRID_TILE_H + GRID_GAP),
+                    GRID_TILE_W,
+                    GRID_TILE_H,
+                );
+                let is_selected = vi == app.list.visual_index;
+
+                // --- resolve (icon char, glyph color, display name): SAME mapping the old code used ---
+                let item = &app.list.visual_list[vi];
+                let (icon_char, glyph_color, raw_name) = match item {
+                    crate::app::VisualItem::Folder { name, .. } => {
+                        let is_pinned = name == crate::app::VIRTUAL_PINNED_LABEL;
+                        let is_parent = name == "..";
+                        let ic = if is_pinned {
+                            '\u{f4cc}'
+                        } else if is_parent {
+                            '\u{f062}' // Arrow Up ()
+                        } else {
+                            '\u{f07b}' // Folder ()
+                        };
+                        let col = if is_pinned {
+                            app.app_theme.heading
+                        } else {
+                            app.app_theme.folder
+                        };
+                        (ic, col, name.clone())
+                    }
+                    crate::app::VisualItem::Note {
+                        summary_idx,
+                        is_clin,
+                        is_draw,
+                        is_canvas,
+                        ..
+                    } => {
+                        let s = &app.notes[*summary_idx];
+                        let col = if s.pinned {
+                            app.app_theme.heading
+                        } else if *is_clin {
+                            app.app_theme.destructive
+                        } else if *is_draw {
+                            app.app_theme.success
+                        } else if *is_canvas {
+                            app.app_theme.accent
+                        } else {
+                            app.app_theme.text
+                        };
+                        let ic = if s.pinned {
+                            '\u{f4cc}'
+                        } else if *is_clin {
+                            '\u{f023}'
+                        } else if *is_draw {
+                            '\u{f1fc}'
+                        } else if *is_canvas {
+                            '\u{f005}'
+                        } else {
+                            '\u{f15c}'
+                        };
+                        (ic, col, s.title.clone())
+                    }
+                    crate::app::VisualItem::CreateNew { .. } => {
+                        ('\u{f067}', app.app_theme.success, "Create...".to_string())
+                    }
+                };
+
+                // --- tile border (plain border = "button") ---
+                let mut block = Block::default().borders(Borders::ALL);
+                if is_selected {
+                    block = block.border_style(Style::default().fg(app.app_theme.highlight_bg));
+                } else {
+                    block = block.border_style(Style::default().fg(app.app_theme.border));
+                }
+                let inner = block.inner(tile_rect);
+                block.render(tile_rect, buf); // paints border
+
+                // --- icon: centered on the top inner row ---
+                let icon_style = if is_selected {
+                    Style::default()
+                        .fg(glyph_color)
+                        .add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(glyph_color)
+                };
+                let inner_w = inner.width as usize; // GRID_TILE_W - 2 = 10
+                let icon_x = inner.x + (inner_w.saturating_sub(1) / 2) as u16; // center the 1-wide glyph
+                if let Some(cell) = buf.cell_mut((icon_x, inner.y)) {
+                    cell.set_char(icon_char).set_style(icon_style);
+                }
+
+                // --- tag icon: top right corner for items that have tags ---
+                let has_tags = match item {
+                    crate::app::VisualItem::Note { summary_idx, .. } => {
+                        !app.notes[*summary_idx].tags.is_empty()
+                    }
+                    _ => false,
+                };
+                if has_tags {
+                    let tag_x = inner.x + inner.width.saturating_sub(1);
+                    if let Some(cell) = buf.cell_mut((tag_x, inner.y)) {
+                        let tag_style = if is_selected {
+                            Style::default()
+                                .fg(app.app_theme.tag)
+                                .add_modifier(Modifier::BOLD)
+                        } else {
+                            Style::default().fg(app.app_theme.tag)
+                        };
+                        cell.set_char('\u{f02b}').set_style(tag_style);
+                    }
+                }
+
+                // --- name: sanitize, truncate to inner width, center, write on the bottom row (row 2) ---
+                let sanitized = crate::sanitize::sanitize_for_terminal(&raw_name);
+                let mut chars: Vec<char> = sanitized.chars().collect();
+                if chars.len() > inner_w {
+                    chars.truncate(inner_w - 1);
+                    chars.push('…');
+                }
+                let pad = inner_w.saturating_sub(chars.len());
+                let left = pad / 2;
+                let name_style = if is_selected {
+                    Style::default().add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default()
+                };
+                let mut name_string: String = " ".repeat(left);
+                name_string.extend(chars.iter());
+                let name_row = inner.y + 2; // bottom row of the 3 inner rows
+                for (k, ch) in name_string.chars().enumerate() {
+                    if let Some(cell) = buf.cell_mut((inner.x + k as u16, name_row)) {
+                        cell.set_char(ch).set_style(name_style);
+                    }
+                }
+
+                // --- record tile for mouse hit-testing ---
+                app.list.grid_tiles.push(crate::list_view::GridTile {
+                    visual_index: vi,
+                    rect: tile_rect,
+                });
             }
-            let max_scroll = (len - 1) / cols;
-            if app.list.grid_scroll > max_scroll {
-                app.list.grid_scroll = max_scroll;
-            }
+            // do NOT render a List widget here; do NOT touch list_state (tree view still uses it).
         } else {
-            app.list.grid_scroll = 0;
+            items.reserve(app.list.display_items.len());
+            for item in &app.list.display_items {
+                items.push(item.clone());
+            }
+            let list = List::new(items)
+                .block(
+                    Block::default()
+                        .style(app.app_theme.bg_style())
+                        .borders(Borders::NONE)
+                        .padding(Padding::new(2, 2, 1, 1)),
+                )
+                .highlight_style(
+                    Style::default()
+                        .fg(app.app_theme.highlight_fg)
+                        .bg(app.app_theme.highlight_bg)
+                        .add_modifier(Modifier::BOLD),
+                );
+
+            app.list.list_state.select(Some(app.list.visual_index));
+            frame.render_stateful_widget(list, list_area, &mut app.list.list_state);
         }
 
-        let start = app.list.grid_scroll * cols;
-        let count = (rows * cols).min(len.saturating_sub(start));
-        let buf = frame.buffer_mut();
-
-        for i in 0..count {
-            let vi = start + i;
-            if vi >= len {
-                break;
-            }
-            let row = i / cols;
-            let col = i % cols;
-            let tile_rect = ratatui::layout::Rect::new(
-                list_area.x + GRID_LEFT_MARGIN + (col as u16) * (GRID_TILE_W + GRID_GAP),
-                list_area.y + GRID_TOP_MARGIN + (row as u16) * (GRID_TILE_H + GRID_GAP),
-                GRID_TILE_W,
-                GRID_TILE_H,
+        if app.list.list_mode == crate::list_view::ListMode::Select {
+            let mode_label = if app.list.tag_to_assign.is_some() {
+                "TAG MODE"
+            } else {
+                "SELECT MODE"
+            };
+            let select_hint = format!(
+                " {}: {} selected ",
+                mode_label,
+                app.list.selected_indices.len()
             );
-            let is_selected = vi == app.list.visual_index;
-
-            // --- resolve (icon char, glyph color, display name): SAME mapping the old code used ---
-            let item = &app.list.visual_list[vi];
-            let (icon_char, glyph_color, raw_name) = match item {
-                crate::app::VisualItem::Folder { name, .. } => {
-                    let is_pinned = name == crate::app::VIRTUAL_PINNED_LABEL;
-                    let is_parent = name == "..";
-                    let ic = if is_pinned {
-                        '\u{f4cc}'
-                    } else if is_parent {
-                        '\u{f062}' // Arrow Up ()
-                    } else {
-                        '\u{f07b}' // Folder ()
-                    };
-                    let col = if is_pinned {
-                        app.app_theme.heading
-                    } else {
-                        app.app_theme.folder
-                    };
-                    (ic, col, name.clone())
-                }
-                crate::app::VisualItem::Note {
-                    summary_idx,
-                    is_clin,
-                    is_draw,
-                    is_canvas,
-                    ..
-                } => {
-                    let s = &app.notes[*summary_idx];
-                    let col = if s.pinned {
-                        app.app_theme.heading
-                    } else if *is_clin {
-                        app.app_theme.destructive
-                    } else if *is_draw {
-                        app.app_theme.success
-                    } else if *is_canvas {
-                        app.app_theme.accent
-                    } else {
-                        app.app_theme.text
-                    };
-                    let ic = if s.pinned {
-                        '\u{f4cc}'
-                    } else if *is_clin {
-                        '\u{f023}'
-                    } else if *is_draw {
-                        '\u{f1fc}'
-                    } else if *is_canvas {
-                        '\u{f005}'
-                    } else {
-                        '\u{f15c}'
-                    };
-                    (ic, col, s.title.clone())
-                }
-                crate::app::VisualItem::CreateNew { .. } => {
-                    ('\u{f067}', app.app_theme.success, "Create...".to_string())
-                }
-            };
-
-            // --- tile border (plain border = "button") ---
-            let mut block = Block::default().borders(Borders::ALL);
-            if is_selected {
-                block = block.border_style(Style::default().fg(app.app_theme.highlight_bg));
-            } else {
-                block = block.border_style(Style::default().fg(app.app_theme.border));
-            }
-            let inner = block.inner(tile_rect);
-            block.render(tile_rect, buf); // paints border
-
-            // --- icon: centered on the top inner row ---
-            let icon_style = if is_selected {
-                Style::default()
-                    .fg(glyph_color)
-                    .add_modifier(Modifier::BOLD)
-            } else {
-                Style::default().fg(glyph_color)
-            };
-            let inner_w = inner.width as usize; // GRID_TILE_W - 2 = 10
-            let icon_x = inner.x + (inner_w.saturating_sub(1) / 2) as u16; // center the 1-wide glyph
-            if let Some(cell) = buf.cell_mut((icon_x, inner.y)) {
-                cell.set_char(icon_char).set_style(icon_style);
-            }
-
-            // --- tag icon: top right corner for items that have tags ---
-            let has_tags = match item {
-                crate::app::VisualItem::Note { summary_idx, .. } => {
-                    !app.notes[*summary_idx].tags.is_empty()
-                }
-                _ => false,
-            };
-            if has_tags {
-                let tag_x = inner.x + inner.width.saturating_sub(1);
-                if let Some(cell) = buf.cell_mut((tag_x, inner.y)) {
-                    let tag_style = if is_selected {
-                        Style::default()
-                            .fg(app.app_theme.tag)
-                            .add_modifier(Modifier::BOLD)
-                    } else {
-                        Style::default().fg(app.app_theme.tag)
-                    };
-                    cell.set_char('\u{f02b}').set_style(tag_style);
-                }
-            }
-
-            // --- name: sanitize, truncate to inner width, center, write on the bottom row (row 2) ---
-            let sanitized = crate::sanitize::sanitize_for_terminal(&raw_name);
-            let mut chars: Vec<char> = sanitized.chars().collect();
-            if chars.len() > inner_w {
-                chars.truncate(inner_w - 1);
-                chars.push('…');
-            }
-            let pad = inner_w.saturating_sub(chars.len());
-            let left = pad / 2;
-            let name_style = if is_selected {
-                Style::default().add_modifier(Modifier::BOLD)
-            } else {
-                Style::default()
-            };
-            let mut name_string: String = " ".repeat(left);
-            name_string.extend(chars.iter());
-            let name_row = inner.y + 2; // bottom row of the 3 inner rows
-            for (k, ch) in name_string.chars().enumerate() {
-                if let Some(cell) = buf.cell_mut((inner.x + k as u16, name_row)) {
-                    cell.set_char(ch).set_style(name_style);
-                }
-            }
-
-            // --- record tile for mouse hit-testing ---
-            app.list.grid_tiles.push(crate::list_view::GridTile {
-                visual_index: vi,
-                rect: tile_rect,
-            });
-        }
-        // do NOT render a List widget here; do NOT touch list_state (tree view still uses it).
-    } else {
-        items.reserve(app.list.display_items.len());
-        for item in &app.list.display_items {
-            items.push(item.clone());
-        }
-        let list = List::new(items)
-            .block(
-                Block::default()
-                    .style(app.app_theme.bg_style())
-                    .borders(Borders::NONE)
-                    .padding(Padding::new(2, 2, 1, 1)),
-            )
-            .highlight_style(
+            let select_para = Paragraph::new(Span::styled(
+                select_hint,
                 Style::default()
                     .fg(app.app_theme.highlight_fg)
-                    .bg(app.app_theme.highlight_bg)
+                    .bg(app.app_theme.accent)
                     .add_modifier(Modifier::BOLD),
-            );
-
-        app.list.list_state.select(Some(app.list.visual_index));
-        frame.render_stateful_widget(list, list_area, &mut app.list.list_state);
+            ));
+            let max_width = list_area.width.saturating_sub(4);
+            let select_width = 34.min(max_width);
+            let select_area = Rect::new(list_area.x + 2, list_area.y, select_width, 1);
+            frame.render_widget(select_para, select_area);
+        }
     }
-
-    if app.list.list_mode == crate::list_view::ListMode::Select {
-        let mode_label = if app.list.tag_to_assign.is_some() {
-            "TAG MODE"
-        } else {
-            "SELECT MODE"
-        };
-        let select_hint = format!(
-            " {}: {} selected ",
-            mode_label,
-            app.list.selected_indices.len()
-        );
-        let select_para = Paragraph::new(Span::styled(
-            select_hint,
-            Style::default()
-                .fg(app.app_theme.highlight_fg)
-                .bg(app.app_theme.accent)
-                .add_modifier(Modifier::BOLD),
-        ));
-        let max_width = list_area.width.saturating_sub(4);
-        let select_width = 34.min(max_width);
-        let select_area = Rect::new(list_area.x + 2, list_area.y, select_width, 1);
-        frame.render_widget(select_para, select_area);
-    }
-
     if let Some(preview_rect) = preview_area {
         let hide_encrypted = app.preview_encryption
             && app
@@ -1744,7 +1771,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     ));
     draw_status_bar(frame, chunks[2], &app.app_theme, badge, &hint, None);
     draw_corner_watermark(frame, chunks[2], app.app_theme.muted);
-    if app.list.preview_enabled {
+    if app.list.preview_enabled && !app.preview_fullscreen {
         let constraints = match app.preview_position {
             crate::config::PreviewPosition::Left => [
                 Constraint::Ratio(43, 100),
@@ -2783,7 +2810,10 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     let body_area = outer_chunks[1];
     let hint_area = outer_chunks[2];
 
-    let (edit_area, preview_area_rect, splitter_area) = if app.editor.editor_preview_enabled {
+    let (edit_area, preview_area_rect, splitter_area) = if app.preview_fullscreen {
+        app.editor.last_preview_pane_width = body_area.width;
+        (body_area, Some(body_area), None)
+    } else if app.editor.editor_preview_enabled {
         let (constraints, main_idx, p_idx) = match app.preview_position {
             crate::config::PreviewPosition::Left => (
                 [
@@ -2808,6 +2838,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             .direction(Direction::Horizontal)
             .constraints(constraints)
             .split(body_area);
+        app.editor.last_preview_pane_width = cols[p_idx].width;
         (cols[main_idx], Some(cols[p_idx]), Some(cols[1]))
     } else {
         (body_area, None, None)
@@ -2821,104 +2852,108 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     let title_area = inner_chunks[0];
     let editor_container = inner_chunks[1];
 
-    app.editor
-        .title_editor
-        .set_style(app.app_theme.title_bar_bg_style().fg(app.app_theme.heading));
-    app.editor.title_editor.set_block(
-        Block::default()
-            .style(app.app_theme.title_bar_bg_style())
-            .borders(Borders::NONE)
-            .padding(Padding::new(2, 1, 1, 1)),
-    );
-    app.editor
-        .title_editor
-        .set_cursor_style(if focus == EditFocus::Title {
-            Style::default().add_modifier(Modifier::REVERSED)
-        } else {
-            Style::default()
-        });
-    app.editor
-        .title_editor
-        .set_cursor_line_style(Style::default());
-    frame.render_widget(&app.editor.title_editor, title_area);
-
-    if get_title_text(&app.editor.title_editor).is_empty() {
-        let title_inner = Rect::new(
-            title_area.x + 3,
-            title_area.y + 1,
-            title_area.width.saturating_sub(4),
-            1,
-        );
-        let placeholder = Paragraph::new(Line::from(Span::styled(
-            "Untitled note",
-            Style::default().fg(app.app_theme.muted),
-        )));
-        frame.render_widget(placeholder, title_inner);
-    }
-
-    if let Some(preview_area_rect) = preview_area_rect {
-        let content_area = editor_container;
-
-        let line_count = app.editor.editor.lines().len();
-        let cursor_row = app.editor.editor.cursor().0;
-        let scroll_row = get_textarea_scroll(&app.editor.editor).0;
-
-        let editor_area = if app.editor.show_line_numbers {
-            let digits = line_count.max(1).to_string().len() as u16;
-            let gutter_width = digits + 1;
-            let gutter_area = Rect::new(
-                content_area.x,
-                content_area.y,
-                gutter_width.min(content_area.width),
-                content_area.height,
-            );
-            let gutter = line_number_gutter(
-                line_count,
-                cursor_row,
-                scroll_row,
-                content_area.height,
-                &app.app_theme,
-                0,
-            );
-            frame.render_widget(gutter, gutter_area);
-            Rect::new(
-                content_area.x + gutter_area.width,
-                content_area.y,
-                content_area.width.saturating_sub(gutter_area.width),
-                content_area.height,
-            )
-        } else {
-            content_area
-        };
-
-        app.editor.editor.set_block(
-            Block::default()
-                .style(app.app_theme.bg_style())
-                .borders(Borders::NONE)
-                .padding(Padding::new(0, 2, 0, 0)),
-        );
-        app.editor.editor.set_style(app.app_theme.bg_style());
+    if !app.preview_fullscreen {
         app.editor
-            .editor
-            .set_cursor_style(if focus == EditFocus::Body {
+            .title_editor
+            .set_style(app.app_theme.title_bar_bg_style().fg(app.app_theme.heading));
+        app.editor.title_editor.set_block(
+            Block::default()
+                .style(app.app_theme.title_bar_bg_style())
+                .borders(Borders::NONE)
+                .padding(Padding::new(2, 1, 1, 1)),
+        );
+        app.editor
+            .title_editor
+            .set_cursor_style(if focus == EditFocus::Title {
                 Style::default().add_modifier(Modifier::REVERSED)
             } else {
                 Style::default()
             });
         app.editor
-            .editor
-            .set_cursor_line_style(if focus == EditFocus::Body {
-                Style::default().bg(app.app_theme.preview_bg().unwrap_or(Color::DarkGray))
+            .title_editor
+            .set_cursor_line_style(Style::default());
+        frame.render_widget(&app.editor.title_editor, title_area);
+
+        if get_title_text(&app.editor.title_editor).is_empty() {
+            let title_inner = Rect::new(
+                title_area.x + 3,
+                title_area.y + 1,
+                title_area.width.saturating_sub(4),
+                1,
+            );
+            let placeholder = Paragraph::new(Line::from(Span::styled(
+                "Untitled note",
+                Style::default().fg(app.app_theme.muted),
+            )));
+            frame.render_widget(placeholder, title_inner);
+        }
+    }
+
+    if let Some(preview_area_rect) = preview_area_rect {
+        let content_area = editor_container;
+
+        if !app.preview_fullscreen {
+            let line_count = app.editor.editor.lines().len();
+            let cursor_row = app.editor.editor.cursor().0;
+            let scroll_row = get_textarea_scroll(&app.editor.editor).0;
+
+            let editor_area = if app.editor.show_line_numbers {
+                let digits = line_count.max(1).to_string().len() as u16;
+                let gutter_width = digits + 1;
+                let gutter_area = Rect::new(
+                    content_area.x,
+                    content_area.y,
+                    gutter_width.min(content_area.width),
+                    content_area.height,
+                );
+                let gutter = line_number_gutter(
+                    line_count,
+                    cursor_row,
+                    scroll_row,
+                    content_area.height,
+                    &app.app_theme,
+                    0,
+                );
+                frame.render_widget(gutter, gutter_area);
+                Rect::new(
+                    content_area.x + gutter_area.width,
+                    content_area.y,
+                    content_area.width.saturating_sub(gutter_area.width),
+                    content_area.height,
+                )
             } else {
-                Style::default()
-            });
-        frame.render_widget(&app.editor.editor, editor_area);
-        if focus == EditFocus::Body {
-            let cursor_bg = app
-                .app_theme
-                .preview_bg()
-                .unwrap_or(app.app_theme.highlight_bg);
-            fill_cursor_line_bg(frame, &app.editor.editor, editor_area, cursor_bg);
+                content_area
+            };
+
+            app.editor.editor.set_block(
+                Block::default()
+                    .style(app.app_theme.bg_style())
+                    .borders(Borders::NONE)
+                    .padding(Padding::new(0, 2, 0, 0)),
+            );
+            app.editor.editor.set_style(app.app_theme.bg_style());
+            app.editor
+                .editor
+                .set_cursor_style(if focus == EditFocus::Body {
+                    Style::default().add_modifier(Modifier::REVERSED)
+                } else {
+                    Style::default()
+                });
+            app.editor
+                .editor
+                .set_cursor_line_style(if focus == EditFocus::Body {
+                    Style::default().bg(app.app_theme.preview_bg().unwrap_or(Color::DarkGray))
+                } else {
+                    Style::default()
+                });
+            frame.render_widget(&app.editor.editor, editor_area);
+            if focus == EditFocus::Body {
+                let cursor_bg = app
+                    .app_theme
+                    .preview_bg()
+                    .unwrap_or(app.app_theme.highlight_bg);
+                fill_cursor_line_bg(frame, &app.editor.editor, editor_area, cursor_bg);
+            }
         }
 
         match &app.editor.md_preview_renderer {

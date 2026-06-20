@@ -16,6 +16,7 @@ Full reference of all configuration options for clin-rs.
 | `confirm_on_delete` | `bool` | `true` | Show confirmation dialog before deleting notes |
 | `default_folder` | `String` | — | Default folder for new notes (optional) |
 | `confirm_on_quit` | `bool` | `false` | Ask for confirmation before quitting |
+| `preview_wrap` | `bool` | `true` | Wrap markdown preview to pane width (toggle at runtime with Ctrl+w) |
 
 ### `[list]`
 
@@ -264,6 +265,8 @@ Key combos are strings like `"a"`, `"Enter"`, `"Ctrl+q"`, `"Ctrl+Shift+z"`, `"Al
 | `page_down` | `Ctrl+d` | Half page down |
 | `open_trash` | `Shift+T` | Open trash view |
 | `toggle_preview` | `Shift+P` | Toggle preview pane |
+| `toggle_preview_fullscreen` | `Ctrl+e` | Expand preview to full width (hide notes list) |
+| `toggle_preview_wrap` | `Ctrl+w` | Toggle word-wrap in preview |
 | `open_graph` | `Ctrl+g` | Open graph view |
 
 ### Edit Actions (`[edit]`)
@@ -285,6 +288,8 @@ Key combos are strings like `"a"`, `"Enter"`, `"Ctrl+q"`, `"Ctrl+Shift+z"`, `"Al
 | `move_to_top` | `Ctrl+Home` | Move cursor to top |
 | `move_to_bottom` | `Ctrl+End` | Move cursor to bottom |
 | `toggle_markdown_preview` | `Ctrl+p` | Toggle markdown preview |
+| `toggle_preview_fullscreen` | `Ctrl+e` | Expand preview to full width (hide editor) |
+| `toggle_preview_wrap` | `Ctrl+w` | Toggle word-wrap in preview |
 
 ### Help Actions (`[help]`)
 
