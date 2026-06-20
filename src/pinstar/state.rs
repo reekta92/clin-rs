@@ -52,7 +52,11 @@ pub struct PinstarContextMenu {
 }
 
 impl PinstarState {
-    pub fn load(path: &Path, keybinds: crate::keybinds::Keybinds, seq_matcher: crate::keybinds::KeyMatcher) -> Result<Self> {
+    pub fn load(
+        path: &Path,
+        keybinds: crate::keybinds::Keybinds,
+        seq_matcher: crate::keybinds::KeyMatcher,
+    ) -> Result<Self> {
         let content = std::fs::read_to_string(path)?;
         let data: CanvasData = serde_json::from_str(&content)?;
         let mut raw_editor = TextArea::from(content.lines().map(String::from).collect::<Vec<_>>());

@@ -12,6 +12,7 @@ pub(crate) mod draw;
 pub(crate) mod editor;
 pub(crate) mod frontmatter;
 pub mod fsutil;
+pub(crate) mod goals;
 pub(crate) mod graf;
 mod keybinds;
 pub(crate) mod list_view;

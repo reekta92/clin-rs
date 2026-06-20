@@ -1442,7 +1442,10 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             Constraint::Length(1),
         ])
         .split(area);
-    if app.list.notes_layout == crate::config::NotesLayout::Grid {
+    if app.preview_fullscreen {
+        let preview_info = get_preview_info(app);
+        draw_view_title_bar(frame, chunks[0], "Notes", &app.app_theme, preview_info);
+    } else if app.list.notes_layout == crate::config::NotesLayout::Grid {
         let tabs = [("Vault", Some("\u{f07b}")), ("Pinned", Some("\u{f4cc}"))];
         let is_pinned = app.list.grid_folder == crate::app::VIRTUAL_PINNED_PATH;
         let tab_spans = build_tab_spans(
@@ -1507,8 +1510,9 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             frame.render_widget(detail_para, chunks[0]);
         }
     } else {
-        draw_view_title_bar(frame, chunks[0], "Notes", &app.app_theme);
+        draw_view_title_bar(frame, chunks[0], "Notes", &app.app_theme, None);
     }
+
     let (list_area, preview_area, calendar_area) = list_view_layout(
         area,
         app.list.preview_enabled,
@@ -1813,7 +1817,23 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         );
     }
     if let Some(cal_rect) = calendar_area {
-        crate::calendar::draw_calendar(frame, cal_rect, &app.app_theme, &app.notes);
+        if app.config.goals.enabled && cal_rect.width >= 42 {
+            let layout_chunks = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Length(25), Constraint::Min(0)])
+                .split(cal_rect);
+            crate::calendar::draw_calendar(frame, layout_chunks[0], &app.app_theme, &app.notes);
+            let _ = app.get_current_goals_progress();
+            crate::goals::draw_goals_progress(
+                frame,
+                layout_chunks[1],
+                &app.app_theme,
+                &app.goals_progress,
+                &app.config.goals,
+            );
+        } else {
+            crate::calendar::draw_calendar(frame, cal_rect, &app.app_theme, &app.notes);
+        }
     }
 
     let hint = resolved_status_hint(app, LIST_HELP_HINTS);
@@ -2853,7 +2873,14 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         ])
         .split(area);
 
-    draw_view_title_bar(frame, outer_chunks[0], "Editor", &app.app_theme);
+    let preview_info = get_preview_info(app);
+    draw_view_title_bar(
+        frame,
+        outer_chunks[0],
+        "Editor",
+        &app.app_theme,
+        preview_info,
+    );
     let body_area = outer_chunks[1];
     let hint_area = outer_chunks[2];
 
@@ -3170,10 +3197,183 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct PreviewHeaderInfo {
+    pub path: String,
+    pub item_name: String,
+    pub prev_name: Option<String>,
+    pub next_name: Option<String>,
+}
+
+fn get_item_name(app: &App, idx: usize) -> Option<String> {
+    if let Some(item) = app.list.visual_list.get(idx) {
+        match item {
+            crate::list_view::VisualItem::Folder { name, .. } => Some(name.clone()),
+            crate::list_view::VisualItem::Note { summary_idx, .. } => {
+                app.notes.get(*summary_idx).map(|n| n.title.clone())
+            }
+            crate::list_view::VisualItem::CreateNew { .. } => Some("Create...".to_string()),
+        }
+    } else {
+        None
+    }
+}
+
+fn get_preview_info(app: &App) -> Option<PreviewHeaderInfo> {
+    if !app.preview_fullscreen {
+        return None;
+    }
+
+    let current_index = if app.mode == ViewMode::Edit {
+        if let Some(id) = &app.editor.editing_id {
+            if let Some(note_pos) = app.notes.iter().position(|n| &n.id == id) {
+                app.list.visual_list.iter().position(|item| {
+                    if let crate::list_view::VisualItem::Note { summary_idx, .. } = item {
+                        *summary_idx == note_pos
+                    } else {
+                        false
+                    }
+                })
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    } else {
+        Some(app.list.visual_index)
+    };
+
+    if app.mode == ViewMode::Edit {
+        if let Some(id) = &app.editor.editing_id {
+            if let Some(note) = app.notes.iter().find(|n| &n.id == id) {
+                let folder = if note.folder.is_empty() {
+                    "Vault".to_string()
+                } else {
+                    format!("Vault/{}", note.folder)
+                };
+                let title = get_title_text(&app.editor.title_editor).into_owned();
+                let title = if title.is_empty() {
+                    "Untitled note".to_string()
+                } else {
+                    title
+                };
+                let (prev_name, next_name) = if let Some(idx) = current_index {
+                    let prev = if idx > 0 {
+                        get_item_name(app, idx - 1)
+                    } else {
+                        None
+                    };
+                    let next = if idx + 1 < app.list.visual_list.len() {
+                        get_item_name(app, idx + 1)
+                    } else {
+                        None
+                    };
+                    (prev, next)
+                } else {
+                    (None, None)
+                };
+                return Some(PreviewHeaderInfo {
+                    path: folder,
+                    item_name: title,
+                    prev_name,
+                    next_name,
+                });
+            }
+        } else if let Some(path) = &app.editor.template_edit_path {
+            let parent = path
+                .parent()
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let filename = path
+                .file_name()
+                .map(|f| f.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let folder = if parent.is_empty() {
+                "Templates".to_string()
+            } else {
+                format!("Templates/{}", parent)
+            };
+            return Some(PreviewHeaderInfo {
+                path: folder,
+                item_name: filename,
+                prev_name: None,
+                next_name: None,
+            });
+        }
+    }
+
+    if let Some(item) = app.list.visual_list.get(app.list.visual_index) {
+        let (path, item_name) = match item {
+            crate::list_view::VisualItem::Folder { path, name, .. } => {
+                if path.is_empty() {
+                    ("Vault".to_string(), "Vault".to_string())
+                } else if path == crate::app::VIRTUAL_PINNED_PATH {
+                    ("Pinned".to_string(), "Pinned".to_string())
+                } else {
+                    if let Some(slash_idx) = path.rfind('/') {
+                        let parent = &path[..slash_idx];
+                        (format!("Vault/{}", parent), name.clone())
+                    } else {
+                        ("Vault".to_string(), name.clone())
+                    }
+                }
+            }
+            crate::list_view::VisualItem::Note { summary_idx, .. } => {
+                if let Some(note) = app.notes.get(*summary_idx) {
+                    let folder = if note.folder.is_empty() {
+                        "Vault".to_string()
+                    } else {
+                        format!("Vault/{}", note.folder)
+                    };
+                    (folder, note.title.clone())
+                } else {
+                    return None;
+                }
+            }
+            crate::list_view::VisualItem::CreateNew { path, .. } => {
+                let folder = if path.is_empty() {
+                    "Vault".to_string()
+                } else {
+                    format!("Vault/{}", path)
+                };
+                (folder, "Create...".to_string())
+            }
+        };
+
+        let idx = app.list.visual_index;
+        let prev_name = if idx > 0 {
+            get_item_name(app, idx - 1)
+        } else {
+            None
+        };
+        let next_name = if idx + 1 < app.list.visual_list.len() {
+            get_item_name(app, idx + 1)
+        } else {
+            None
+        };
+
+        Some(PreviewHeaderInfo {
+            path,
+            item_name,
+            prev_name,
+            next_name,
+        })
+    } else {
+        None
+    }
+}
+
 /// Renders a full-width view title bar. Title is left-aligned with popup-banner
 /// styling: uppercase, bold, fg=highlight_fg, bg=heading. The rest of the row
 /// fills with title_bar_bg.
-pub fn draw_view_title_bar(frame: &mut Frame, area: Rect, title: &str, theme: &AppThemeColors) {
+pub fn draw_view_title_bar(
+    frame: &mut Frame,
+    area: Rect,
+    title: &str,
+    theme: &AppThemeColors,
+    preview_info: Option<PreviewHeaderInfo>,
+) {
     let display_text = format!(" {} ", title.to_uppercase());
     let title_span = Span::styled(
         display_text,
@@ -3182,7 +3382,46 @@ pub fn draw_view_title_bar(frame: &mut Frame, area: Rect, title: &str, theme: &A
             .bg(theme.heading)
             .add_modifier(Modifier::BOLD),
     );
-    let bar = Paragraph::new(Line::from(vec![title_span])).style(theme.title_bar_bg_style());
+    let mut spans = vec![title_span];
+    if let Some(info) = preview_info {
+        spans.push(Span::styled("  ", Style::default()));
+        let parts: Vec<&str> = info.path.split('/').collect();
+        for (i, part) in parts.iter().enumerate() {
+            if i > 0 {
+                spans.push(Span::styled(" / ", Style::default().fg(theme.fg)));
+            }
+            spans.push(Span::styled(
+                part.to_string(),
+                Style::default().fg(theme.fg).add_modifier(Modifier::BOLD),
+            ));
+        }
+        spans.push(Span::styled(" ❯ ", Style::default().fg(theme.accent)));
+        spans.push(Span::styled(
+            info.item_name,
+            Style::default()
+                .fg(theme.accent)
+                .add_modifier(Modifier::BOLD),
+        ));
+
+        if info.prev_name.is_some() || info.next_name.is_some() {
+            spans.push(Span::styled("  (", Style::default().fg(theme.fg)));
+            let mut added = false;
+            if let Some(prev) = info.prev_name {
+                spans.push(Span::styled("prev: ", Style::default().fg(theme.fg)));
+                spans.push(Span::styled(prev, Style::default().fg(theme.heading)));
+                added = true;
+            }
+            if let Some(next) = info.next_name {
+                if added {
+                    spans.push(Span::styled(" · ", Style::default().fg(theme.fg)));
+                }
+                spans.push(Span::styled("next: ", Style::default().fg(theme.fg)));
+                spans.push(Span::styled(next, Style::default().fg(theme.heading)));
+            }
+            spans.push(Span::styled(")", Style::default().fg(theme.fg)));
+        }
+    }
+    let bar = Paragraph::new(Line::from(spans)).style(theme.title_bar_bg_style());
     frame.render_widget(bar, area);
 }
 
@@ -3805,10 +4044,8 @@ mod tests {
 
         for &position in &[PreviewPosition::Left, PreviewPosition::Right] {
             let (list_area, preview_area, calendar_area) = list_view_layout(
-                area,
-                true, // preview enabled
-                position,
-                true, // calendar enabled
+                area, true, // preview enabled
+                position, true,  // calendar enabled
                 false, // preview_fullscreen
             );
 
@@ -3816,17 +4053,27 @@ mod tests {
             let cal = calendar_area.expect("calendar area present when enabled");
 
             // Preview keeps the full content height (calendar does not steal rows).
-            assert_eq!(preview.height, content_h, "preview full height @ {position:?}");
+            assert_eq!(
+                preview.height, content_h,
+                "preview full height @ {position:?}"
+            );
 
             // Calendar spans the list column width exactly (not the preview's).
-            assert_eq!(cal.x, list_area.x, "calendar left == list left @ {position:?}");
+            assert_eq!(
+                cal.x, list_area.x,
+                "calendar left == list left @ {position:?}"
+            );
             assert_eq!(
                 cal.width, list_area.width,
                 "calendar width == list width @ {position:?}"
             );
 
             // Calendar sits directly below the list area.
-            assert_eq!(cal.y, list_area.y + list_area.height, "calendar below list @ {position:?}");
+            assert_eq!(
+                cal.y,
+                list_area.y + list_area.height,
+                "calendar below list @ {position:?}"
+            );
             assert_eq!(cal.height, 9, "calendar height @ {position:?}");
 
             // Calendar and preview are disjoint (separated in x since y overlaps).
@@ -3857,5 +4104,122 @@ mod tests {
             list_view_layout(area, true, PreviewPosition::Right, false, false);
         assert!(calendar_area.is_none());
         assert!(preview_area.is_some());
+    }
+
+    #[test]
+    fn test_get_preview_info() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let data_dir = temp_dir.path().join("data");
+        let config_dir = temp_dir.path().join("config");
+        let notes_dir = temp_dir.path().join("notes");
+        let templates_dir = temp_dir.path().join("templates");
+        std::fs::create_dir_all(&data_dir).unwrap();
+        std::fs::create_dir_all(&config_dir).unwrap();
+        std::fs::create_dir_all(&notes_dir).unwrap();
+        std::fs::create_dir_all(&templates_dir).unwrap();
+
+        let storage = crate::storage::Storage {
+            data_dir,
+            config_dir,
+            notes_dir,
+            templates_dir,
+            key: [0u8; 32],
+        };
+        let mut app = App::new(storage).unwrap();
+
+        // 1. preview_fullscreen is false
+        app.preview_fullscreen = false;
+        assert!(get_preview_info(&app).is_none());
+
+        app.preview_fullscreen = true;
+
+        // 2. ViewMode::List, empty list
+        app.mode = ViewMode::List;
+        app.list.visual_list.clear();
+        assert!(get_preview_info(&app).is_none());
+
+        // 3. ViewMode::List, selected folder
+        app.list.visual_list = vec![crate::list_view::VisualItem::Folder {
+            path: "work/projects".to_string(),
+            name: "projects".to_string(),
+            depth: 1,
+            is_expanded: false,
+            note_count: 0,
+        }];
+        app.list.visual_index = 0;
+        assert_eq!(
+            get_preview_info(&app),
+            Some(PreviewHeaderInfo {
+                path: "Vault/work".to_string(),
+                item_name: "projects".to_string(),
+                prev_name: None,
+                next_name: None,
+            })
+        );
+
+        // 4. ViewMode::List, selected note with prev and next
+        let note = crate::storage::NoteSummary {
+            id: "note1".to_string(),
+            title: "My Note".to_string(),
+            updated_at: 0,
+            folder: "work/projects".to_string(),
+            tags: vec![],
+            pinned: false,
+            links: vec![],
+            size_bytes: 0,
+        };
+        app.notes = vec![note];
+        app.list.visual_list = vec![
+            crate::list_view::VisualItem::Folder {
+                path: "work/projects".to_string(),
+                name: "projects".to_string(),
+                depth: 1,
+                is_expanded: true,
+                note_count: 1,
+            },
+            crate::list_view::VisualItem::Note {
+                summary_idx: 0,
+                depth: 2,
+                is_clin: false,
+                is_draw: false,
+                is_canvas: false,
+                in_virtual_pinned_folder: false,
+            },
+            crate::list_view::VisualItem::Folder {
+                path: "other".to_string(),
+                name: "other".to_string(),
+                depth: 1,
+                is_expanded: false,
+                note_count: 0,
+            },
+        ];
+        app.list.visual_index = 1;
+        assert_eq!(
+            get_preview_info(&app),
+            Some(PreviewHeaderInfo {
+                path: "Vault/work/projects".to_string(),
+                item_name: "My Note".to_string(),
+                prev_name: Some("projects".to_string()),
+                next_name: Some("other".to_string()),
+            })
+        );
+
+        // 5. ViewMode::Edit, editing a note
+        app.mode = ViewMode::Edit;
+        app.editor.editing_id = Some("note1".to_string());
+        app.editor.title_editor = crate::events::make_title_editor(
+            "Unsaved Title Change",
+            app.app_theme.highlight_fg,
+            app.app_theme.highlight_bg,
+        );
+        assert_eq!(
+            get_preview_info(&app),
+            Some(PreviewHeaderInfo {
+                path: "Vault/work/projects".to_string(),
+                item_name: "Unsaved Title Change".to_string(),
+                prev_name: Some("projects".to_string()),
+                next_name: Some("other".to_string()),
+            })
+        );
     }
 }

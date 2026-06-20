@@ -151,7 +151,6 @@ impl std::fmt::Display for KeybindPreset {
     }
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum NodeColorMode {
@@ -752,6 +751,33 @@ impl Default for CoreConfig {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct GoalsConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default = "default_word_goal")]
+    pub word_goal: usize,
+    #[serde(default = "default_note_goal")]
+    pub note_goal: usize,
+}
+
+impl Default for GoalsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            word_goal: 500,
+            note_goal: 3,
+        }
+    }
+}
+
+fn default_word_goal() -> usize {
+    500
+}
+fn default_note_goal() -> usize {
+    3
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct ClinConfig {
     #[serde(default)]
@@ -767,6 +793,8 @@ pub struct ClinConfig {
     pub editor: EditorConfig,
     #[serde(default)]
     pub graf: GrafConfig,
+    #[serde(default)]
+    pub goals: GoalsConfig,
 }
 
 fn default_preview_enabled() -> bool {
@@ -1623,6 +1651,18 @@ max_results = 20
 
 # Maximum visible search results.
 max_visible = 10
+
+# ── Goals System ──────────────────────────────────────────────────────────────
+
+[goals]
+# Enable the daily word/note goals system.
+enabled = true
+
+# Daily target word count (incremental additions). Set to 0 to disable.
+word_goal = 500
+
+# Daily target note count (edited or created). Set to 0 to disable.
+note_goal = 3
 "###
 }
 #[cfg(test)]
@@ -1724,8 +1764,7 @@ unknown_field = "ignore me"
         assert!(cfg.list.calendar_enabled);
 
         // Explicitly setting it false also survives a round-trip.
-        let cfg2: ClinConfig =
-            toml::from_str("[list]\ncalendar_enabled = false\n").unwrap();
+        let cfg2: ClinConfig = toml::from_str("[list]\ncalendar_enabled = false\n").unwrap();
         assert!(!cfg2.list.calendar_enabled);
     }
 
@@ -1912,5 +1951,18 @@ show_status_bar = false
         assert!(config.list.calendar_enabled);
         // Sanity: a few other shipped defaults still hold.
         assert!(config.list.preview_enabled);
+    }
+
+    #[test]
+    fn test_goals_config_deserialization() {
+        let config: ClinConfig = toml::from_str(default_config_content()).unwrap();
+        assert!(config.goals.enabled);
+        assert_eq!(config.goals.word_goal, 500);
+        assert_eq!(config.goals.note_goal, 3);
+
+        let empty_config: ClinConfig = toml::from_str("").unwrap();
+        assert!(empty_config.goals.enabled);
+        assert_eq!(empty_config.goals.word_goal, 500);
+        assert_eq!(empty_config.goals.note_goal, 3);
     }
 }

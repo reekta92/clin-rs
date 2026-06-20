@@ -747,7 +747,6 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
-
     if app.list.list_mode == ListMode::Select {
         if key.code == KeyCode::Esc || key.code == KeyCode::Char('q') {
             app.list.tag_to_assign = None;
@@ -1076,17 +1075,15 @@ pub fn handle_help_keys(app: &mut App, key: KeyEvent) {
             }
         },
         crate::keybinds::MatchOutcome::Pending => {}
-        crate::keybinds::MatchOutcome::NoMatch => {
-            match key.code {
-                KeyCode::Char('1') => app.switch_help_tab(HelpTab::Notes),
-                KeyCode::Char('2') => app.switch_help_tab(HelpTab::Editor),
-                KeyCode::Char('3') => app.switch_help_tab(HelpTab::Graph),
-                KeyCode::Char('4') => app.switch_help_tab(HelpTab::Draw),
-                KeyCode::Char('5') => app.switch_help_tab(HelpTab::Canvas),
-                KeyCode::Char('6') => app.switch_help_tab(HelpTab::Templates),
-                _ => {}
-            }
-        }
+        crate::keybinds::MatchOutcome::NoMatch => match key.code {
+            KeyCode::Char('1') => app.switch_help_tab(HelpTab::Notes),
+            KeyCode::Char('2') => app.switch_help_tab(HelpTab::Editor),
+            KeyCode::Char('3') => app.switch_help_tab(HelpTab::Graph),
+            KeyCode::Char('4') => app.switch_help_tab(HelpTab::Draw),
+            KeyCode::Char('5') => app.switch_help_tab(HelpTab::Canvas),
+            KeyCode::Char('6') => app.switch_help_tab(HelpTab::Templates),
+            _ => {}
+        },
     }
 }
 

@@ -15,7 +15,11 @@ pub struct ContentTreeState {
 
 impl ContentTreeState {
     /// `load_error=true` variant for unloadable notes.
-    pub fn error(note_id: String, keybinds: crate::keybinds::Keybinds, seq_matcher: crate::keybinds::KeyMatcher) -> Self {
+    pub fn error(
+        note_id: String,
+        keybinds: crate::keybinds::Keybinds,
+        seq_matcher: crate::keybinds::KeyMatcher,
+    ) -> Self {
         Self {
             note_id,
             note_title: String::new(),

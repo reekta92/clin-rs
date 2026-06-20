@@ -99,7 +99,13 @@ pub fn run_content_tree_view(
 ) -> Result<ContentTreeResult> {
     let mut state = if let Some(id) = note_id {
         match storage.load_note(&id) {
-            Ok(note) => ContentTreeState::new(id, &note.title, &note.content, keybinds.clone(), seq_matcher.clone()),
+            Ok(note) => ContentTreeState::new(
+                id,
+                &note.title,
+                &note.content,
+                keybinds.clone(),
+                seq_matcher.clone(),
+            ),
             Err(_) => ContentTreeState::error(id, keybinds.clone(), seq_matcher.clone()),
         }
     } else {

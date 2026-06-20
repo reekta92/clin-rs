@@ -2,11 +2,11 @@ use std::collections::HashMap;
 use std::time::{Duration, UNIX_EPOCH};
 
 use chrono::Datelike;
+use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Padding, Paragraph};
-use ratatui::Frame;
 
 use crate::app_theme::AppThemeColors;
 use crate::storage::NoteSummary;
@@ -104,8 +104,6 @@ pub fn draw_calendar(frame: &mut Frame, rect: Rect, theme: &AppThemeColors, note
         .borders(Borders::TOP)
         .border_style(Style::default().fg(theme.muted))
         .padding(Padding::new(2, 2, 0, 0));
-    let paragraph = Paragraph::new(lines)
-        .style(theme.bg_style())
-        .block(block);
+    let paragraph = Paragraph::new(lines).style(theme.bg_style()).block(block);
     frame.render_widget(paragraph, rect);
 }

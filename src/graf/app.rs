@@ -288,7 +288,13 @@ pub fn run_graf_view(
     keybinds: &Keybinds,
     seq_matcher: &mut crate::keybinds::KeyMatcher,
 ) -> anyhow::Result<GrafResult> {
-    let mut app_state = GrafAppState::new(config, storage, vec![], keybinds.clone(), seq_matcher.clone())?;
+    let mut app_state = GrafAppState::new(
+        config,
+        storage,
+        vec![],
+        keybinds.clone(),
+        seq_matcher.clone(),
+    )?;
     let theme = crate::app_theme::AppThemeColors::from_config(&config.ui);
     crate::overlay::run_overlay(
         terminal,
@@ -339,8 +345,13 @@ fn handle_event(
             }
 
             if let Some(graph_state) = &app_state.graph_state
-                && let Some(action) =
-                    crate::graf::input::handle_graph_keys(graph_state, key, keybinds, config, &mut app_state.seq_matcher)
+                && let Some(action) = crate::graf::input::handle_graph_keys(
+                    graph_state,
+                    key,
+                    keybinds,
+                    config,
+                    &mut app_state.seq_matcher,
+                )
             {
                 use crate::graf::input::GraphInputAction;
                 match action {

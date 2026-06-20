@@ -318,6 +318,7 @@ pub struct App {
     pub backup_tx: Option<mpsc::Sender<crate::backup::worker::BackupJob>>,
     pub git_lock: Arc<Mutex<()>>,
     pub backup_status: Arc<Mutex<Option<String>>>,
+    pub goals_progress: crate::goals::DailyProgress,
     pub preview_wrap: bool,
     pub preview_fullscreen: bool,
 }
@@ -418,9 +419,11 @@ impl App {
             backup_tx: None,
             git_lock: Arc::new(Mutex::new(())),
             backup_status: Arc::new(Mutex::new(None)),
+            goals_progress: crate::goals::DailyProgress::default(),
             preview_wrap,
             preview_fullscreen: false,
         };
+        app.goals_progress = app.load_goals_progress();
         app.list.folder_expanded.insert(String::new());
         app.refresh_notes()?;
         Ok(app)
@@ -498,9 +501,11 @@ impl App {
             backup_tx: None,
             git_lock: Arc::new(Mutex::new(())),
             backup_status: Arc::new(Mutex::new(None)),
+            goals_progress: crate::goals::DailyProgress::default(),
             preview_wrap,
             preview_fullscreen: false,
         };
+        app.goals_progress = app.load_goals_progress();
         app.list.folder_expanded.insert(String::new());
         Ok(app)
     }
@@ -1181,6 +1186,7 @@ impl App {
     pub fn load_and_open_note(&mut self, note_id: &str, line_number: Option<usize>) {
         if let Ok(note) = self.storage.load_note(note_id) {
             self.editor.editing_id = Some(note_id.to_string());
+            self.editor.initial_word_count = crate::goals::count_words(&note.content);
             self.editor.title_editor = make_title_editor(
                 &note.title,
                 self.app_theme.highlight_fg,
@@ -1327,6 +1333,13 @@ impl App {
                 Ok(status) if status.success() => {
                     if let Ok(new_content) = std::fs::read_to_string(&temp_file_path) {
                         if new_content != note.content {
+                            let before_words = crate::goals::count_words(&note.content);
+                            let after_words = crate::goals::count_words(&new_content);
+                            let mut diff = 0;
+                            if after_words > before_words {
+                                diff = after_words - before_words;
+                            }
+
                             let updated_note = Note {
                                 title: note.title,
                                 content: new_content,
@@ -1342,6 +1355,12 @@ impl App {
                                 if let Err(e) = self.refresh_notes() {
                                     self.set_temporary_status(&format!("Refresh failed: {e}"));
                                 }
+
+                                let progress = self.get_current_goals_progress();
+                                progress.words_written += diff;
+                                progress.notes_modified.insert(note_id.to_string());
+                                let progress_clone = progress.clone();
+                                self.save_goals_progress(&progress_clone);
                             }
                         } else {
                             self.set_temporary_status_static("No changes made in external editor.");
@@ -1515,6 +1534,7 @@ impl App {
 
         self.mode = ViewMode::Edit;
         self.editor.editing_id = Some(id);
+        self.editor.initial_word_count = crate::goals::count_words(&content);
         self.editor.title_editor = make_title_editor(
             &title,
             self.app_theme.highlight_fg,
@@ -1560,6 +1580,7 @@ impl App {
 
         self.mode = ViewMode::Edit;
         self.editor.editing_id = Some(new_id);
+        self.editor.initial_word_count = crate::goals::count_words(&rendered.content);
 
         self.editor.title_editor = make_title_editor(
             rendered.title.as_deref().unwrap_or(""),
@@ -1610,6 +1631,7 @@ impl App {
 
         self.mode = ViewMode::Edit;
         self.editor.editing_id = Some(new_id);
+        self.editor.initial_word_count = crate::goals::count_words(&rendered.content);
 
         self.editor.title_editor = make_title_editor(
             &title,
@@ -1951,8 +1973,21 @@ template = """
             tags,
         };
         if let Ok(saved_id) = self.storage.save_note(&id, &note) {
-            self.editor.editing_id = Some(saved_id);
+            self.editor.editing_id = Some(saved_id.clone());
             self.enqueue_backup(format!("auto: {}", &note.title));
+
+            let current_words = crate::goals::count_words(&note.content);
+            let mut diff = 0;
+            if current_words > self.editor.initial_word_count {
+                diff = current_words - self.editor.initial_word_count;
+            }
+            self.editor.initial_word_count = current_words;
+
+            let progress = self.get_current_goals_progress();
+            progress.words_written += diff;
+            progress.notes_modified.insert(saved_id);
+            let progress_clone = progress.clone();
+            self.save_goals_progress(&progress_clone);
         }
     }
 
@@ -2971,9 +3006,11 @@ template = """
             self.list.visual_list.get(self.list.visual_index)
         {
             let path = self.storage.note_path(&self.notes[*summary_idx].id);
-            if let Ok(state) =
-                crate::pinstar::state::PinstarState::load(&path, self.keybinds.clone(), self.seq_matcher.clone())
-            {
+            if let Ok(state) = crate::pinstar::state::PinstarState::load(
+                &path,
+                self.keybinds.clone(),
+                self.seq_matcher.clone(),
+            ) {
                 self.canvas_state = Some(state);
                 self.return_mode = Some(self.mode);
                 self.mode = ViewMode::Canvas;
@@ -3225,9 +3262,11 @@ template = """
                     self.return_mode = Some(self.mode);
                     self.mode = ViewMode::Canvas;
                     self.editor.editing_id = Some(canvas_id);
-                    if let Ok(state) =
-                        crate::pinstar::state::PinstarState::load(&path, self.keybinds.clone(), self.seq_matcher.clone())
-                    {
+                    if let Ok(state) = crate::pinstar::state::PinstarState::load(
+                        &path,
+                        self.keybinds.clone(),
+                        self.seq_matcher.clone(),
+                    ) {
                         self.canvas_state = Some(state);
                     }
                     self.set_default_status();
@@ -3364,6 +3403,7 @@ template = """
 
         self.mode = ViewMode::Edit;
         self.editor.editing_id = Some(new_id);
+        self.editor.initial_word_count = crate::goals::count_words(&content);
         self.editor.title_editor = make_title_editor(
             &title,
             self.app_theme.highlight_fg,
@@ -3876,7 +3916,6 @@ template = """
         self.request_preview_update();
     }
 
-
     pub fn initiate_quit(&mut self) {
         if self.confirm_on_quit {
             self.show_confirm(ConfirmAction::QuitApp);
@@ -3884,7 +3923,6 @@ template = """
             self.should_quit = true;
         }
     }
-
 
     pub fn collapse_all_folders(&mut self) {
         self.list.folder_expanded.clear();
@@ -4639,6 +4677,46 @@ template = """
     }
 }
 
+impl App {
+    pub fn load_goals_progress(&self) -> crate::goals::DailyProgress {
+        let path = self.storage.config_dir.join("goals_progress.json");
+        let today = chrono::Local::now().date_naive().to_string();
+        if path.exists() {
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                if let Ok(progress) = serde_json::from_str::<crate::goals::DailyProgress>(&content)
+                {
+                    if progress.date == today {
+                        return progress;
+                    }
+                }
+            }
+        }
+        crate::goals::DailyProgress {
+            date: today,
+            words_written: 0,
+            notes_modified: std::collections::HashSet::new(),
+        }
+    }
+
+    pub fn save_goals_progress(&self, progress: &crate::goals::DailyProgress) {
+        let path = self.storage.config_dir.join("goals_progress.json");
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        if let Ok(content) = serde_json::to_string(progress) {
+            let _ = std::fs::write(&path, content);
+        }
+    }
+
+    pub fn get_current_goals_progress(&mut self) -> &mut crate::goals::DailyProgress {
+        let today = chrono::Local::now().date_naive().to_string();
+        if self.goals_progress.date != today {
+            self.goals_progress = self.load_goals_progress();
+        }
+        &mut self.goals_progress
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -4769,5 +4847,75 @@ mod tests {
             !status.contains("Failed to load note"),
             "status should not say 'Failed to load note': {status}"
         );
+    }
+
+    #[test]
+    fn test_goals_progress_tracking_autosave() {
+        let temp_dir = tempdir().unwrap();
+        let data_dir = temp_dir.path().join("data");
+        let config_dir = temp_dir.path().join("config");
+        let notes_dir = temp_dir.path().join("notes");
+        let templates_dir = temp_dir.path().join("templates");
+        std::fs::create_dir_all(&data_dir).unwrap();
+        std::fs::create_dir_all(&config_dir).unwrap();
+        std::fs::create_dir_all(&notes_dir).unwrap();
+        std::fs::create_dir_all(&templates_dir).unwrap();
+
+        let storage = Storage {
+            data_dir,
+            config_dir,
+            notes_dir,
+            templates_dir,
+            key: [0u8; 32],
+        };
+        let mut app = App::new(storage).unwrap();
+
+        // Initially no words written and no notes modified
+        assert_eq!(app.goals_progress.words_written, 0);
+        assert!(app.goals_progress.notes_modified.is_empty());
+
+        // Create a new blank note and edit it
+        app.start_blank_note_with_title(String::new(), "Test Note".to_string());
+
+        // Editor starts with 0 words
+        assert_eq!(app.editor.initial_word_count, 0);
+
+        // Edit body: type 10 words
+        let body_content = "one two three four five six seven eight nine ten";
+        app.editor.editor = TextArea::from(body_content.lines());
+
+        // Call autosave
+        app.autosave();
+
+        // Verify words_written is 10 and note ID is in notes_modified
+        assert_eq!(app.goals_progress.words_written, 10);
+        assert_eq!(app.goals_progress.notes_modified.len(), 1);
+
+        // Edit note again: delete 3 words, and add 5 words (net new +2 words)
+        let body_content_2 = "one two three four five six seven eight nine ten eleven twelve";
+        app.editor.editor = TextArea::from(body_content_2.lines());
+        app.autosave();
+
+        // 10 + 2 = 12 words total
+        assert_eq!(app.goals_progress.words_written, 12);
+
+        // Edit note again: remove words (e.g. to 3 words)
+        let body_content_3 = "one two three";
+        app.editor.editor = TextArea::from(body_content_3.lines());
+        app.autosave();
+
+        // Should not decrease words_written (should remain 12)
+        assert_eq!(app.goals_progress.words_written, 12);
+
+        // Now create a second note
+        app.start_blank_note_with_title(String::new(), "Second Note".to_string());
+        assert_eq!(app.editor.initial_word_count, 0);
+        app.editor.editor = TextArea::from(vec!["hello world"].into_iter().map(String::from));
+        app.autosave();
+
+        // words_written: 12 + 2 = 14
+        assert_eq!(app.goals_progress.words_written, 14);
+        // notes_modified: 2 unique notes
+        assert_eq!(app.goals_progress.notes_modified.len(), 2);
     }
 }

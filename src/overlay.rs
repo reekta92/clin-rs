@@ -20,7 +20,7 @@ pub trait OverlayView<R> {
         area: ratatui::layout::Rect,
         theme: &crate::app_theme::AppThemeColors,
     ) {
-        crate::ui::draw_view_title_bar(frame, area, &self.title(), theme);
+        crate::ui::draw_view_title_bar(frame, area, &self.title(), theme, None);
     }
 }
 

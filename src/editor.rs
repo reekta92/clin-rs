@@ -12,6 +12,7 @@ pub enum EditFocus {
 #[derive(Default)]
 pub struct NoteEditor {
     pub editing_id: Option<String>,
+    pub initial_word_count: usize,
     pub template_edit_path: Option<PathBuf>,
     pub title_editor: TextArea<'static>,
     pub editor: TextArea<'static>,
