@@ -1,4 +1,3 @@
-
 use crate::constants::*;
 pub use crate::editor::*;
 use crate::events::get_title_text;
@@ -22,10 +21,10 @@ use anyhow::{Context, Result};
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
+use parking_lot::Mutex;
 use ratatui_textarea::TextArea;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use parking_lot::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 

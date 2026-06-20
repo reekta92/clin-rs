@@ -1,11 +1,11 @@
 use crate::app_theme::AppThemeColors;
 use crate::backup::git_ops::{CommitInfo, FileDiff, GitOps, GitStatus};
 use crate::config::BackupConfig;
+use crate::keybinds::Keybinds;
 use ratatui_textarea::TextArea;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
-use crate::keybinds::Keybinds;
 
 pub struct BackupState {
     pub status: Option<GitStatus>,

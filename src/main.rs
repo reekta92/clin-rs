@@ -746,7 +746,8 @@ fn run_tui_session(app: &mut App) -> Result<()> {
     let _ = signal_hook::flag::register(signal_hook::consts::SIGQUIT, Arc::clone(&SHOULD_EXIT));
 
     // Spawn the background backup worker before entering the terminal.
-    let (tx, done_rx) = crate::backup::worker::spawn(app.git_lock.clone(), app.backup_status.clone());
+    let (tx, done_rx) =
+        crate::backup::worker::spawn(app.git_lock.clone(), app.backup_status.clone());
     app.backup_tx = Some(tx);
 
     // Run the TUI inside an inner block so `TerminalGuard` (raw mode + alt
@@ -775,10 +776,11 @@ fn run_tui_session(app: &mut App) -> Result<()> {
         drop(app.backup_tx.take());
     } else if app.config.backup.enabled && app.config.backup.backup_on_quit {
         println!("Backing up…");
-        let _ = app
-            .backup_tx
-            .as_ref()
-            .map(|tx| tx.send(crate::backup::worker::BackupJob::Flush("auto: backup on quit".into())));
+        let _ = app.backup_tx.as_ref().map(|tx| {
+            tx.send(crate::backup::worker::BackupJob::Flush(
+                "auto: backup on quit".into(),
+            ))
+        });
         drop(app.backup_tx.take());
         match done_rx.recv_timeout(crate::backup::worker::FLUSH_BOUND) {
             Ok(()) => println!("Done."),

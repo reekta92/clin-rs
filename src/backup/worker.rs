@@ -6,8 +6,8 @@
 //! runtime changes made in the Backup view's settings are picked up.
 
 use std::path::Path;
-use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Arc;
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::{Duration, Instant};
 
 use parking_lot::Mutex;
@@ -112,11 +112,7 @@ fn worker_loop(
 /// Worker's per-job helper: resolve the live config, then delegate to
 /// `perform`. Config is read per job (not cached) so runtime changes made in
 /// the Backup view's settings are picked up.
-fn run_backup(
-    git_lock: &Arc<Mutex<()>>,
-    status: &Arc<Mutex<Option<String>>>,
-    message: &str,
-) {
+fn run_backup(git_lock: &Arc<Mutex<()>>, status: &Arc<Mutex<Option<String>>>, message: &str) {
     let config = ClinConfig::load().unwrap_or_default();
     let vault_path = config
         .effective_storage_path()
@@ -161,17 +157,24 @@ mod tests {
     use tempfile::tempdir;
 
     fn locks() -> (Arc<Mutex<()>>, Arc<Mutex<Option<String>>>) {
-        (
-            Arc::new(Mutex::new(())),
-            Arc::new(Mutex::new(None)),
-        )
+        (Arc::new(Mutex::new(())), Arc::new(Mutex::new(None)))
     }
 
     #[test]
     fn perform_creates_commit() {
+        // Configure git user name/email in the local repo so
+        // git2::Signature::default() succeeds in CI where there is
+        // no global git config.
         let tmp = tempdir().expect("tempdir");
         let vault = tmp.path();
         GitOps::init(vault).expect("init");
+        {
+            let repo = git2::Repository::open(vault).expect("open repo");
+            let mut cfg = repo.config().expect("config");
+            cfg.set_str("user.name", "test").expect("set user.name");
+            cfg.set_str("user.email", "test@test.com")
+                .expect("set user.email");
+        }
         fs::write(vault.join("note.md"), "hello").expect("write");
 
         let (git_lock, status) = locks();
@@ -249,15 +252,16 @@ mod tests {
         let (git_lock, status) = locks();
         let (tx, done_rx) = spawn(git_lock, status);
 
-        tx.send(BackupJob::Auto("a".into()))
-            .expect("send 1");
-        tx.send(BackupJob::Auto("b".into()))
-            .expect("send 2");
+        tx.send(BackupJob::Auto("a".into())).expect("send 1");
+        tx.send(BackupJob::Auto("b".into())).expect("send 2");
         drop(tx);
 
         // Worker drains coalesced message, runs it (a no-op with the default
         // disabled config), and signals done.
         let received = done_rx.recv_timeout(FLUSH_BOUND);
-        assert!(received.is_ok(), "worker should signal shutdown: {received:?}");
+        assert!(
+            received.is_ok(),
+            "worker should signal shutdown: {received:?}"
+        );
     }
 }

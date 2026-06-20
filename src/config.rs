@@ -1660,10 +1660,7 @@ unknown_field = "ignore me"
     #[test]
     fn backup_defaults_disabled_when_keys_omitted() {
         // A [backup] section that omits the enable flags must default to off.
-        let cfg: ClinConfig = toml::from_str(
-            "[backup]\nauto_push = false\n",
-        )
-        .unwrap();
+        let cfg: ClinConfig = toml::from_str("[backup]\nauto_push = false\n").unwrap();
         assert!(!cfg.backup.enabled);
         assert!(!cfg.backup.backup_on_save);
         assert!(!cfg.backup.backup_on_quit);
