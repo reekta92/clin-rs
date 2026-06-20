@@ -35,6 +35,33 @@ impl Action for TogglePreviewPaneAction {
         format!("Toggle Preview Pane [{state}]")
     }
 }
+pub struct TogglePreviewWrapAction;
+
+impl Action for TogglePreviewWrapAction {
+    fn id(&self) -> Cow<'static, str> {
+        Cow::Borrowed("settings.preview_wrap")
+    }
+    fn name(&self) -> Cow<'static, str> {
+        Cow::Borrowed("Toggle Preview Word Wrap")
+    }
+    fn description(&self) -> Cow<'static, str> {
+        Cow::Borrowed("Wrap long preview lines to the pane width")
+    }
+    fn category(&self) -> ActionCategory {
+        ActionCategory::Settings
+    }
+    fn glyph(&self) -> &'static str {
+        "\u{f036}" // fa-align-right — wrap/align feel
+    }
+    fn execute(&self, app: &mut App, _context_note_id: Option<&str>) -> Result<()> {
+        app.toggle_preview_wrap();
+        Ok(())
+    }
+    fn name_dynamic(&self, app: &App) -> String {
+        let state = if app.preview_wrap { "On" } else { "Off" };
+        format!("Toggle Preview Word Wrap [{state}]")
+    }
+}
 
 pub struct ToggleLineNumbersAction;
 

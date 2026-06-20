@@ -88,6 +88,7 @@ pub static ACTION_INFOS: Lazy<Vec<ActionInfo>> = Lazy::new(|| {
 | `toggle_notes_layout` | Toggle Layout | Tree/Grid layout | Settings | `\u{f0c9}` |
 | `external_editor.toggle`| Toggle Editor | Use $EDITOR | Settings | `\u{f120}` |
 | `settings.preview_pane` | Toggle Preview Pane | Show or hide the preview pane in the notes list | Settings | `\u{f0db}` |
+| `settings.preview_wrap` | Toggle Preview Word Wrap | Wrap long preview lines to the pane width | Settings | `\u{f036}` |
 | `settings.line_numbers` | Toggle Line Numbers | Show or hide line numbers in the note editor | Settings | `\u{f03a}` |
 | `settings.confirm_delete` | Toggle Delete Confirmation | Ask for confirmation before moving notes to trash | Settings | `\u{f3ed}` |
 | `settings.pinned_on_top` | Toggle Pinned on Top | Keep pinned notes above others in the list | Settings | `\u{f08d}` |
