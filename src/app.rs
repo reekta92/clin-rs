@@ -10,8 +10,9 @@ use crate::markdown::MarkdownRenderer;
 pub use crate::popups::*;
 use crate::ui::text_area_from_content;
 use crate::ui::{now_unix_secs, open_in_file_manager};
-use ratatui::style::{Color, Style};
-use ratatui::text::Text;
+use ratatui::style::{Color, Style, Modifier};
+use ratatui::text::{Line, Span, Text};
+use ratatui::widgets::ListItem;
 use std::borrow::Cow;
 use std::time::Duration;
 use std::time::Instant;
@@ -25,6 +26,9 @@ use crossterm::terminal::{
 };
 use ratatui_textarea::TextArea;
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc;
 
 pub const VIRTUAL_PINNED_PATH: &str = "__clin_virtual__/pinned";
 pub const VIRTUAL_PINNED_LABEL: &str = "Pinned";
@@ -37,6 +41,13 @@ pub struct SearchQuery {
     pub tag_filter: Option<Vec<String>>,
     pub grep_mode: bool,
     pub grep_text: String,
+}
+
+#[derive(Debug)]
+pub enum LoadBatch {
+    Started(usize),
+    Items(Vec<(String, NoteSummary, u64)>),
+    Done(usize),
 }
 
 fn find_filter_tokens(s: &str) -> Vec<(usize, &'static str)> {
@@ -304,6 +315,9 @@ pub struct App {
     pub config: crate::config::ClinConfig,
     pub summary_cache: HashMap<String, NoteSummary>,
     pub summary_mtime: HashMap<String, u64>,
+    pub initial_load_done: bool,
+    pub load_cancel: Arc<AtomicBool>,
+    pub loading_total: usize,
 }
 
 impl App {
@@ -372,9 +386,85 @@ impl App {
             config: bootstrap_config,
             summary_cache: HashMap::new(),
             summary_mtime: HashMap::new(),
+            initial_load_done: true,
+            load_cancel: Arc::new(AtomicBool::new(false)),
+            loading_total: 0,
         };
         app.list.folder_expanded.insert(String::new());
         app.refresh_notes()?;
+        Ok(app)
+    }
+
+    pub fn new_deferred(storage: Storage) -> Result<Self> {
+        let keybinds = storage.load_keybinds();
+        let bootstrap_config = crate::config::ClinConfig::load().unwrap_or_default();
+        for w in bootstrap_config.validate() {
+            eprintln!("[clin] config warning: {w}");
+        }
+        let app_theme = crate::app_theme::AppThemeColors::from_config(&bootstrap_config.ui);
+
+        let mut editor = NoteEditor::new();
+        editor.external_editor_enabled = bootstrap_config.editor.external_enabled;
+        editor.external_editor = bootstrap_config.editor.external_command.clone();
+        editor.editor_preview_enabled = bootstrap_config.editor.preview_enabled;
+        editor.show_line_numbers = bootstrap_config.editor.show_line_numbers;
+        editor.title_editor = make_title_editor("", Color::Black, Color::Cyan);
+
+        let mut list = ListView::new();
+        list.sort_field = bootstrap_config
+            .list
+            .default_sort_field
+            .unwrap_or(SortField::Title);
+        list.sort_order = bootstrap_config
+            .list
+            .default_sort_order
+            .unwrap_or(SortOrder::Ascending);
+        list.preview_enabled = bootstrap_config.list.preview_enabled;
+        list.page_size = 10;
+        list.notes_layout = bootstrap_config.list.default_view.clone();
+        list.list_density = bootstrap_config.list.density.clone();
+        list.show_file_size = bootstrap_config.list.show_file_size;
+        list.show_date_in_list = bootstrap_config.list.show_date_in_list;
+        list.show_hidden_files = bootstrap_config.list.show_hidden_files;
+
+        let mut app = Self {
+            storage,
+            keybinds,
+            notes: Vec::new(),
+            editor,
+            list,
+            mode: ViewMode::List,
+            status: Cow::Borrowed(LIST_HELP_HINTS),
+            status_until: None,
+            help_scroll: 0,
+            help_tab: HelpTab::Notes,
+            help_tab_scroll: HashMap::new(),
+            command_palette: None,
+            popups: crate::popups::PopupManager::default(),
+            needs_full_redraw: false,
+            confirm_on_delete: bootstrap_config.core.confirm_on_delete,
+            confirm_on_quit: bootstrap_config.core.confirm_on_quit,
+            should_quit: false,
+            preview_encryption: bootstrap_config.list.preview_encryption,
+            mouse_enabled: bootstrap_config.core.mouse_enabled,
+            date_format: bootstrap_config.list.date_format.clone(),
+            last_auto_backup: None,
+            preview_position: bootstrap_config.list.preview_position,
+            pinned_on_top: bootstrap_config.list.pinned_on_top,
+            default_folder: bootstrap_config.core.default_folder.clone(),
+            last_g_press: None,
+            last_esc_press: None,
+            return_mode: None,
+            app_theme,
+            canvas_state: None,
+            config: bootstrap_config,
+            summary_cache: HashMap::new(),
+            summary_mtime: HashMap::new(),
+            initial_load_done: false,
+            load_cancel: Arc::new(AtomicBool::new(false)),
+            loading_total: 0,
+        };
+        app.list.folder_expanded.insert(String::new());
         Ok(app)
     }
 
@@ -387,6 +477,8 @@ impl App {
     }
 
     pub fn refresh_notes(&mut self) -> Result<()> {
+        self.load_cancel.store(true, Ordering::Release);
+
         let ids = self.storage.list_note_ids(self.list.show_hidden_files)?;
         let mut summaries = Vec::new();
 
@@ -409,7 +501,14 @@ impl App {
         self.summary_cache.retain(|k, _| id_set.contains(k));
         self.summary_mtime.retain(|k, _| id_set.contains(k));
 
-        summaries.sort_by(|a, b| {
+        self.notes = summaries;
+        self.sort_notes();
+        self.refresh_visual_list();
+        Ok(())
+    }
+
+    fn sort_notes(&mut self) {
+        self.notes.sort_by(|a, b| {
             if self.pinned_on_top {
                 let pin_cmp = b.pinned.cmp(&a.pinned);
                 if pin_cmp != std::cmp::Ordering::Equal {
@@ -435,11 +534,292 @@ impl App {
                 },
             }
         });
+    }
 
-        self.notes = summaries;
 
-        self.refresh_visual_list();
-        Ok(())
+    /// Rebuild cached display lines from the current visual_list.
+    /// Mirrors the formatting logic from draw_list_view so per-frame work is O(1).
+    fn build_display_lines(&mut self) {
+        let mut items = Vec::with_capacity(self.list.visual_list.len());
+        let visual = &self.list.visual_list.clone();
+        for (vi, item) in visual.iter().enumerate() {
+            match item {
+                VisualItem::Folder {
+                    path: _,
+                    name,
+                    depth,
+                    is_expanded,
+                    note_count,
+                } => {
+                    let indent = "  ".repeat(*depth);
+                    let is_pinned = name == crate::app::VIRTUAL_PINNED_LABEL;
+                    let icon = if is_pinned {
+                        if *is_expanded { "\u{f078} \u{f08d}" } else { "\u{f054} \u{f08d}" }
+                    } else if *is_expanded {
+                        "\u{f078} \u{f114}"
+                    } else {
+                        "\u{f054} \u{f114}"
+                    };
+                    let color = if is_pinned {
+                        self.app_theme.heading
+                    } else {
+                        self.app_theme.folder
+                    };
+                    let sanitized_name = crate::sanitize::sanitize_for_terminal(name);
+                    let mut text = format!("{indent}{icon} {sanitized_name} ({note_count})");
+                    if self.list.list_mode == crate::list_view::ListMode::Select {
+                        let checkbox = if self.list.selected_indices.contains(&vi) {
+                            "[x] "
+                        } else {
+                            "[ ] "
+                        };
+                        text = format!("{indent}{checkbox}{icon} {sanitized_name} ({note_count})");
+                    }
+                    let mut lines = vec![Line::from(vec![Span::styled(
+                        text,
+                        Style::default().add_modifier(Modifier::BOLD).fg(color),
+                    )])];
+                    if self.list.list_density == crate::config::ListDensity::Comfortable {
+                        lines.push(Line::from(""));
+                    }
+                    items.push(ListItem::new(lines));
+                }
+                VisualItem::Note {
+                    summary_idx,
+                    depth,
+                    is_clin,
+                    is_draw,
+                    is_canvas,
+                    in_virtual_pinned_folder,
+                    ..
+                } => {
+                    let summary = &self.notes[*summary_idx];
+                    let indent = "  ".repeat(*depth);
+
+                    let when = crate::ui::format_relative_time(summary.updated_at);
+                    let mut text_style = Style::default();
+
+                    let mut spans = Vec::new();
+                    spans.push(Span::raw(indent));
+
+                    if self.list.list_mode == crate::list_view::ListMode::Select {
+                        let checkbox = if self.list.selected_indices.contains(&vi) {
+                            "[x] "
+                        } else {
+                            "[ ] "
+                        };
+                        spans.push(Span::styled(
+                            checkbox,
+                            if self.list.selected_indices.contains(&vi) {
+                                Style::default()
+                                    .fg(self.app_theme.accent)
+                                    .add_modifier(Modifier::BOLD)
+                            } else {
+                                Style::default().fg(self.app_theme.muted)
+                            },
+                        ));
+                    }
+
+                    spans.push(Span::raw("  "));
+                    if summary.pinned {
+                        spans.push(Span::styled(
+                            "\u{f4cc} ",
+                            Style::default()
+                                .fg(self.app_theme.heading)
+                                .add_modifier(Modifier::BOLD),
+                        ));
+                    }
+
+                    if *is_clin {
+                        text_style = text_style.fg(self.app_theme.muted);
+                        spans.push(Span::styled(
+                            "\u{f023} ",
+                            Style::default()
+                                .fg(self.app_theme.destructive)
+                                .add_modifier(Modifier::BOLD),
+                        ));
+                    }
+
+                    if *is_draw {
+                        spans.push(Span::styled(
+                            "\u{f1fc} ",
+                            Style::default()
+                                .fg(self.app_theme.success)
+                                .add_modifier(Modifier::BOLD),
+                        ));
+                    }
+
+                    if *is_canvas {
+                        spans.push(Span::styled(
+                            "\u{f005} ",
+                            Style::default()
+                                .fg(self.app_theme.accent)
+                                .add_modifier(Modifier::BOLD),
+                        ));
+                    }
+
+                    let sanitized_title =
+                        crate::sanitize::sanitize_for_terminal(summary.title.as_str()).into_owned();
+                    spans.push(Span::styled(sanitized_title, text_style));
+
+                    for tag in &summary.tags {
+                        spans.push(Span::raw(" "));
+                        let sanitized_tag = crate::sanitize::sanitize_for_terminal(tag);
+                        spans.push(Span::styled(
+                            format!("[{sanitized_tag}]"),
+                            Style::default().fg(self.app_theme.tag),
+                        ));
+                    }
+
+                    if *in_virtual_pinned_folder {
+                        let source = if summary.folder.is_empty() {
+                            "Vault".to_string()
+                        } else {
+                            summary.folder.clone()
+                        };
+                        spans.push(Span::styled(
+                            format!(
+                                "  (from {})",
+                                crate::sanitize::sanitize_for_terminal(&source)
+                            ),
+                            Style::default().fg(self.app_theme.muted),
+                        ));
+                    }
+                    if self.list.show_file_size {
+                        let size = crate::ui::format_size(summary.size_bytes);
+                        spans.push(Span::raw(" "));
+                        spans.push(Span::styled(
+                            format!("[{size}]"),
+                            Style::default().fg(self.app_theme.muted),
+                        ));
+                    }
+
+                    if self.list.show_date_in_list {
+                        let secs = std::time::UNIX_EPOCH
+                            + std::time::Duration::from_secs(summary.updated_at);
+                        let dt: chrono::DateTime<chrono::Local> = secs.into();
+                        let formatted = dt.format(&self.date_format).to_string();
+                        spans.push(Span::raw(" "));
+                        spans.push(Span::styled(
+                            format!("({formatted})"),
+                            Style::default().fg(self.app_theme.muted),
+                        ));
+                    }
+
+                    if vi == self.list.visual_index && !self.list.show_date_in_list {
+                        spans.push(Span::styled(
+                            format!("  ({when})"),
+                            Style::default().fg(self.app_theme.muted),
+                        ));
+                    }
+                    let mut lines = vec![Line::from(spans)];
+                    if self.list.list_density == crate::config::ListDensity::Comfortable {
+                        lines.push(Line::from(""));
+                    }
+                    items.push(ListItem::new(lines));
+                }
+                VisualItem::CreateNew { depth, .. } => {
+                    let indent = "  ".repeat(*depth);
+                    let text = format!("{indent} \u{f067} Create new...");
+                    let mut lines = vec![Line::from(vec![Span::styled(
+                        text,
+                        Style::default().fg(self.app_theme.success),
+                    )])];
+                    if self.list.list_density == crate::config::ListDensity::Comfortable {
+                        lines.push(Line::from(""));
+                    }
+                    items.push(ListItem::new(lines));
+                }
+            }
+        }
+        self.list.display_items = items;
+    }
+
+    /// Spawns a background thread that streams note summaries in batches.
+    /// Caller must drain the receiver in the main loop via merge_loaded.
+    pub fn start_background_load(&self) -> mpsc::Receiver<LoadBatch> {
+        let (tx, rx) = mpsc::channel();
+        let storage = self.storage.clone();
+        let show_hidden = self.list.show_hidden_files;
+        let cancel = Arc::clone(&self.load_cancel);
+        std::thread::spawn(move || {
+            let ids = match storage.list_note_ids(show_hidden) {
+                Ok(ids) => ids,
+                Err(_) => {
+                    let _ = tx.send(LoadBatch::Done(0));
+                    return;
+                }
+            };
+            let total = ids.len();
+            if tx.send(LoadBatch::Started(total)).is_err() {
+                return;
+            }
+
+            // Reset cancel flag at start of new load
+            cancel.store(false, Ordering::Release);
+
+            let mut loaded = 0usize;
+            let mut batch: Vec<(String, NoteSummary, u64)> = Vec::new();
+            let batch_size = 250usize;
+
+            for id in &ids {
+                if cancel.load(Ordering::Acquire) {
+                    let _ = tx.send(LoadBatch::Done(loaded));
+                    return;
+                }
+                let mt = storage.note_mtime_millis(id);
+                if let Ok(summary) = storage.load_note_summary(id) {
+                    batch.push((id.clone(), summary, mt));
+                    loaded += 1;
+                    if batch.len() >= batch_size || loaded == total {
+                        let to_send = std::mem::take(&mut batch);
+                        if tx.send(LoadBatch::Items(to_send)).is_err() {
+                            return;
+                        }
+                    }
+                }
+            }
+            if !batch.is_empty() {
+                let _ = tx.send(LoadBatch::Items(batch));
+            }
+            let _ = tx.send(LoadBatch::Done(loaded));
+        });
+
+        rx
+    }
+
+    /// Merge a batch from the background loader into the app state.
+    /// Returns `true` if the UI should redraw.
+    pub fn merge_loaded(&mut self, batch: LoadBatch) -> bool {
+        match batch {
+            LoadBatch::Started(total) => {
+                self.loading_total = total;
+                self.status = Cow::Owned(format!("Loading notes\u{2026} 0/{total}"));
+                true
+            }
+            LoadBatch::Items(items) => {
+                for (id, summary, mtime) in items {
+                    self.summary_cache.insert(id.clone(), summary.clone());
+                    self.summary_mtime.entry(id.clone()).or_insert(mtime);
+                    self.notes.push(summary);
+                }
+                self.sort_notes();
+                self.refresh_visual_list();
+                let total = self.loading_total.max(self.notes.len());
+                self.status = Cow::Owned(format!(
+                    "Loading notes\u{2026} {}/{}",
+                    self.notes.len(),
+                    total
+                ));
+                true
+            }
+            LoadBatch::Done(_n) => {
+                self.initial_load_done = true;
+                self.loading_total = 0;
+                self.status = Cow::Borrowed(LIST_HELP_HINTS);
+                true
+            }
+        }
     }
 
     pub fn refresh_visual_list(&mut self) {
@@ -593,6 +973,7 @@ impl App {
             }
 
             self.list.visual_list = visual;
+            self.build_display_lines();
             self.request_preview_update_immediate();
             return;
         }
@@ -658,6 +1039,7 @@ impl App {
         }
 
         self.list.visual_list = visual;
+        self.build_display_lines();
         self.request_preview_update_immediate();
     }
 

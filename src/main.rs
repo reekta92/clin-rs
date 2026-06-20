@@ -38,6 +38,11 @@ use std::path::PathBuf;
 use std::process;
 use std::time::Duration;
 use uuid::Uuid;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::LazyLock;
+
+static SHOULD_EXIT: LazyLock<Arc<AtomicBool>> = LazyLock::new(|| Arc::new(AtomicBool::new(false)));
 
 use anyhow::{Context, Result};
 use crossterm::event::{
@@ -60,6 +65,20 @@ use events::*;
 use storage::*;
 use ui::*;
 fn main() -> Result<()> {
+    // Panic hook: restore terminal before abort
+    let prev = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |panic_info| {
+        disable_raw_mode().ok();
+        let _ = execute!(
+            io::stdout(),
+            LeaveAlternateScreen,
+            DisableMouseCapture,
+            DisableBracketedPaste,
+            crossterm::cursor::Show,
+        );
+        prev(panic_info);
+    }));
+
     let matches = Cli::command()
         .styles(crate::console::CLAP_STYLES)
         .get_matches();
@@ -78,10 +97,9 @@ fn main() -> Result<()> {
         Some(Command::Config { action }) => run_config(action),
     }
 }
-
 fn launch_tui(open_title: Option<String>) -> Result<()> {
     let storage = Storage::init()?;
-    let mut app = App::new(storage)?;
+    let mut app = App::new_deferred(storage)?;
     if let Some(title) = open_title
         && !app.open_note_by_title(&title)
     {
@@ -719,6 +737,10 @@ impl Drop for TerminalGuard {
 }
 
 fn run_tui_session(app: &mut App) -> Result<()> {
+    // Register signal handlers before entering raw mode
+    let _ = signal_hook::flag::register(signal_hook::consts::SIGINT, Arc::clone(&SHOULD_EXIT));
+    let _ = signal_hook::flag::register(signal_hook::consts::SIGTERM, Arc::clone(&SHOULD_EXIT));
+
     let _guard = TerminalGuard::enter(app.mouse_enabled)?;
     let backend = ratatui::backend::CrosstermBackend::new(io::stdout());
     let mut terminal = Terminal::new(backend).context("failed to create terminal")?;
@@ -743,7 +765,34 @@ fn run_app(
     let mut mouse_selecting = false;
     let mut mouse_dragged = false;
 
+    // Start background note load for deferred startup
+    let load_rx = if !app.initial_load_done && app.notes.is_empty() {
+        Some(app.start_background_load())
+    } else {
+        None
+    };
+
     while !app.should_quit {
+        // Check for external SIGINT/SIGTERM
+        if SHOULD_EXIT.load(Ordering::Acquire) {
+            app.should_quit = true;
+            break;
+        }
+
+        // Drain background load batches (non-blocking)
+        if let Some(ref rx) = load_rx {
+            if !app.initial_load_done {
+                let mut did_work = false;
+                while let Ok(batch) = rx.try_recv() {
+                    did_work = true;
+                    app.merge_loaded(batch);
+                }
+                if did_work {
+                    app.needs_full_redraw = true;
+                }
+            }
+        }
+
         if app.mode == ViewMode::Graph {
             let mut config = match ClinConfig::load() {
                 Ok(c) => c,
@@ -1019,7 +1068,7 @@ fn run_app(
     }
 
     if let Err(e) = app.try_auto_backup_on_quit() {
-        eprintln!("clin: backup on quit failed: {e}");
+        return Err(e).context("backup on quit failed");
     }
     Ok(())
 }

@@ -499,6 +499,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml_ng",
+ "signal-hook",
  "tempfile",
  "toml",
  "toml_edit",
