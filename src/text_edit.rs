@@ -1,6 +1,12 @@
+use std::cell::RefCell;
 use crate::keybinds::{EditAction, Keybinds};
 use crossterm::event::KeyEvent;
 use ratatui_textarea::{CursorMove, TextArea};
+
+thread_local! {
+    static CLIPBOARD: RefCell<Option<arboard::Clipboard>> = RefCell::new(None);
+}
+
 
 pub fn apply_text_shortcuts(
     keybinds: &Keybinds,
@@ -13,27 +19,65 @@ pub fn apply_text_shortcuts(
     }
     if keybinds.matches_edit(EditAction::Copy, &key) {
         textarea.copy();
-        if let Ok(mut cb) = arboard::Clipboard::new() {
-            let _ = cb.set_text(textarea.yank_text());
-        }
+        CLIPBOARD.with(|cb_cell| {
+            let mut cb = cb_cell.borrow_mut();
+            if cb.is_none() {
+                *cb = arboard::Clipboard::new().ok();
+            }
+            if let Some(clipboard) = cb.as_mut() {
+                let _ = clipboard.set_text(textarea.yank_text());
+            }
+        });
         return true;
     }
     if keybinds.matches_edit(EditAction::Cut, &key) {
-        if textarea.cut()
-            && let Ok(mut cb) = arboard::Clipboard::new()
-        {
-            let _ = cb.set_text(textarea.yank_text());
+        if textarea.cut() {
+            let mut wrote = false;
+            CLIPBOARD.with(|cb_cell| {
+                let mut cb = cb_cell.borrow_mut();
+                if cb.is_none() {
+                    *cb = arboard::Clipboard::new().ok();
+                }
+                if let Some(clipboard) = cb.as_mut() {
+                    let _ = clipboard.set_text(textarea.yank_text());
+                    wrote = true;
+                }
+            });
+            if !wrote {
+                // fallback: try ephemeral clipboard
+                if let Ok(mut cb) = arboard::Clipboard::new() {
+                    let _ = cb.set_text(textarea.yank_text());
+                }
+            }
         }
         return true;
     }
     if keybinds.matches_edit(EditAction::Paste, &key) {
-        if let Ok(mut cb) = arboard::Clipboard::new()
-            && let Ok(text) = cb.get_text()
-        {
-            textarea.insert_str(text);
-            return true;
+        let mut pasted = false;
+        CLIPBOARD.with(|cb_cell| {
+            let mut cb = cb_cell.borrow_mut();
+            if cb.is_none() {
+                *cb = arboard::Clipboard::new().ok();
+            }
+            if let Some(clipboard) = cb.as_mut() {
+                if let Ok(text) = clipboard.get_text() {
+                    textarea.insert_str(text);
+                    pasted = true;
+                }
+            }
+        });
+        if !pasted {
+            // fallback: try ephemeral clipboard
+            if let Ok(mut cb) = arboard::Clipboard::new()
+                && let Ok(text) = cb.get_text()
+            {
+                textarea.insert_str(text);
+                pasted = true;
+            }
         }
-        let _ = textarea.paste();
+        if !pasted {
+            let _ = textarea.paste();
+        }
         return true;
     }
     if keybinds.matches_edit(EditAction::Undo, &key) {
