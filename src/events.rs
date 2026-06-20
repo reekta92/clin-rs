@@ -48,7 +48,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     if let Some((mut popup, format)) = app.popups.create_note.take() {
         if key.code == KeyCode::Esc {
             app.popups.create_note = None;
-        } else if app.keybinds.matches_list(ListAction::Confirm, &key) {
+        } else if key.code == KeyCode::Enter {
             app.popups.create_note = Some((popup, format));
             app.confirm_create_note();
         } else {
@@ -61,7 +61,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     if let Some(mut popup) = app.popups.import.take() {
         if key.code == KeyCode::Esc {
             app.popups.import = None;
-        } else if app.keybinds.matches_list(ListAction::Confirm, &key) {
+        } else if key.code == KeyCode::Enter {
             app.popups.import = Some(popup);
             app.confirm_import();
         } else {
@@ -74,7 +74,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     if let Some(mut popup) = app.popups.folder.take() {
         if key.code == KeyCode::Esc {
             app.popups.folder = None;
-        } else if app.keybinds.matches_list(ListAction::Confirm, &key) {
+        } else if key.code == KeyCode::Enter {
             app.popups.folder = Some(popup);
             app.confirm_folder_popup();
         } else {
@@ -585,7 +585,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                     }
                 },
                 crate::popups::TemplatePopupFocus::Search => match key.code {
-                    _ if app.keybinds.matches_list(ListAction::Confirm, &key) => {
+                    _ if key.code == KeyCode::Enter => {
                         popup.focus = crate::popups::TemplatePopupFocus::Results;
                         app.popups.template = Some(popup);
                     }
