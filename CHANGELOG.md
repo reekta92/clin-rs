@@ -2,6 +2,27 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.8.19] - 2026-06-20
+
+### Fixed
+
+- Restore terminal on SIGINT/SIGTERM and panic
+- Use slugified note id from save_note for external editor
+- Confirm text-input popups on Enter only
+- Replace deprecated xorg.libX11/xorg.libxcb with libx11/libxcb
+
+### Miscellaneous
+
+- Fixed fmt CI failing
+
+### Performance
+
+- Cache per-item list display formatting
+- Defer initial note load to background thread
+
+### Styling
+
+- Fix formatting in test code
 ## [0.8.18] - 2026-06-18
 
 ### Fixed
@@ -11,6 +32,10 @@ All notable changes to clin are documented in this file.
 ### Miscellaneous
 
 - Fixed fmt CI failing
+
+### Release
+
+- V0.8.18
 ## [0.8.17] - 2026-06-18
 
 ### Added
