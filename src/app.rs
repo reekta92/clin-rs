@@ -4051,7 +4051,6 @@ template = """
     pub fn poll_renderers(&mut self) -> bool {
         let mut updated = false;
 
-
         if let Some(last) = self.editor.last_editor_change
             && last.elapsed() > Duration::from_millis(150)
             && self.editor.pending_editor_preview_update
