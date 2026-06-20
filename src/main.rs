@@ -738,12 +738,15 @@ impl Drop for TerminalGuard {
 
 fn run_tui_session(app: &mut App) -> Result<()> {
     // Register signal handlers before entering raw mode. SIGHUP/SIGQUIT are
-    // included so the terminal is restored deterministically (their default
-    // disposition would kill the process before Drop runs).
+    // included on Unix so the terminal is restored deterministically (their
+    // default disposition would kill the process before Drop runs).
     let _ = signal_hook::flag::register(signal_hook::consts::SIGINT, Arc::clone(&SHOULD_EXIT));
     let _ = signal_hook::flag::register(signal_hook::consts::SIGTERM, Arc::clone(&SHOULD_EXIT));
-    let _ = signal_hook::flag::register(signal_hook::consts::SIGHUP, Arc::clone(&SHOULD_EXIT));
-    let _ = signal_hook::flag::register(signal_hook::consts::SIGQUIT, Arc::clone(&SHOULD_EXIT));
+    #[cfg(unix)]
+    {
+        let _ = signal_hook::flag::register(signal_hook::consts::SIGHUP, Arc::clone(&SHOULD_EXIT));
+        let _ = signal_hook::flag::register(signal_hook::consts::SIGQUIT, Arc::clone(&SHOULD_EXIT));
+    }
 
     // Spawn the background backup worker before entering the terminal.
     let (tx, done_rx) =
