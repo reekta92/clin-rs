@@ -1012,6 +1012,20 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         app.toggle_preview();
         return false;
     }
+    if app
+        .keybinds
+        .matches_list(ListAction::TogglePreviewFullscreen, &key)
+    {
+        app.toggle_preview_fullscreen();
+        return false;
+    }
+    if app
+        .keybinds
+        .matches_list(ListAction::TogglePreviewWrap, &key)
+    {
+        app.toggle_preview_wrap();
+        return false;
+    }
     if app.keybinds.matches_list(ListAction::OpenGraph, &key) {
         app.open_graph_view();
         return false;
@@ -1131,6 +1145,20 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
         .matches_edit(EditAction::ToggleMarkdownPreview, &key)
     {
         app.toggle_markdown_preview();
+        return false;
+    }
+    if app
+        .keybinds
+        .matches_edit(EditAction::TogglePreviewFullscreen, &key)
+    {
+        app.toggle_preview_fullscreen();
+        return false;
+    }
+    if app
+        .keybinds
+        .matches_edit(EditAction::TogglePreviewWrap, &key)
+    {
+        app.toggle_preview_wrap();
         return false;
     }
 
@@ -1743,7 +1771,9 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
 
     let main_area = vertical_chunks[1];
 
-    let (list_area, preview_area) = if app.list.preview_enabled {
+    let (list_area, preview_area) = if app.preview_fullscreen {
+        (main_area, Some(main_area))
+    } else if app.list.preview_enabled {
         let (constraints, list_idx, p_idx) = match app.preview_position {
             crate::config::PreviewPosition::Left => (
                 [
@@ -1790,7 +1820,8 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         list_area.height.saturating_sub(2),
     );
 
-    if app.list.preview_enabled
+    let preview_active = app.list.preview_enabled || app.preview_fullscreen;
+    if preview_active
         && let Some(p_area) = preview_area
         && contains_cell(p_area, mouse_event.column, mouse_event.row)
     {
@@ -1822,6 +1853,9 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
             }
             None => {}
         }
+    }
+    if app.preview_fullscreen {
+        return;
     }
 
     if mouse_event.kind == MouseEventKind::ScrollUp {
@@ -2079,8 +2113,23 @@ pub fn handle_edit_mouse(
         app.editor.show_line_numbers,
     );
 
-    if app.editor.editor_preview_enabled
-        && let Some(md_area) = edit_view_md_preview_area(terminal_area)
+    let md_area = if app.preview_fullscreen {
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(1),
+                Constraint::Min(0),
+                Constraint::Length(1),
+            ])
+            .split(terminal_area);
+        Some(chunks[1])
+    } else if app.editor.editor_preview_enabled {
+        edit_view_md_preview_area(terminal_area)
+    } else {
+        None
+    };
+
+    if let Some(md_area) = md_area
         && contains_cell(md_area, mouse_event.column, mouse_event.row)
     {
         match mouse_event.kind {
@@ -2098,6 +2147,10 @@ pub fn handle_edit_mouse(
             }
             _ => {}
         }
+    }
+
+    if app.preview_fullscreen {
+        return;
     }
 
     match mouse_event.kind {

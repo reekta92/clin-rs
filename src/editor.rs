@@ -22,6 +22,8 @@ pub struct NoteEditor {
     pub show_line_numbers: bool,
     pub pending_editor_preview_update: bool,
     pub last_editor_change: Option<Instant>,
+    pub last_preview_pane_width: u16,
+    pub preview_content_width: Option<u16>,
 }
 
 impl NoteEditor {

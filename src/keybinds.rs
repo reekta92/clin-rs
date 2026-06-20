@@ -232,6 +232,8 @@ pub enum ListAction {
     PageDown,
     OpenTrash,
     TogglePreview,
+    TogglePreviewFullscreen,
+    TogglePreviewWrap,
     OpenGraph,
     OpenCanvas,
     CreatePinstar,
@@ -257,6 +259,8 @@ pub enum EditAction {
     MoveToTop,
     MoveToBottom,
     ToggleMarkdownPreview,
+    TogglePreviewFullscreen,
+    TogglePreviewWrap,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -556,6 +560,14 @@ impl Default for Keybinds {
             vec![KeyCombo::shift(KeyCode::Char('P'))],
         );
         list.insert(
+            ListAction::TogglePreviewFullscreen,
+            vec![KeyCombo::ctrl(KeyCode::Char('e'))],
+        );
+        list.insert(
+            ListAction::TogglePreviewWrap,
+            vec![KeyCombo::ctrl(KeyCode::Char('w'))],
+        );
+        list.insert(
             ListAction::OpenGraph,
             vec![KeyCombo::ctrl(KeyCode::Char('g'))],
         );
@@ -623,6 +635,14 @@ impl Default for Keybinds {
         edit.insert(
             EditAction::ToggleMarkdownPreview,
             vec![KeyCombo::ctrl(KeyCode::Char('p'))],
+        );
+        edit.insert(
+            EditAction::TogglePreviewFullscreen,
+            vec![KeyCombo::ctrl(KeyCode::Char('e'))],
+        );
+        edit.insert(
+            EditAction::TogglePreviewWrap,
+            vec![KeyCombo::ctrl(KeyCode::Char('w'))],
         );
 
         let mut help = HashMap::new();

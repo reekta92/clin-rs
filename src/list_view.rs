@@ -82,6 +82,8 @@ pub struct ListView {
     pub show_file_size: bool,
     pub show_date_in_list: bool,
     pub show_hidden_files: bool,
+    pub last_preview_pane_width: u16,
+    pub preview_content_width: Option<u16>,
 }
 
 impl Default for ListView {
@@ -115,6 +117,8 @@ impl Default for ListView {
             show_date_in_list: true,
             grid_folder: String::new(),
             grid_columns: 4,
+            last_preview_pane_width: 0,
+            preview_content_width: None,
         }
     }
 }

@@ -692,6 +692,8 @@ pub struct CoreConfig {
     pub confirm_on_delete: bool,
     #[serde(default)]
     pub confirm_on_quit: bool,
+    #[serde(default = "default_true")]
+    pub preview_wrap: bool,
 }
 
 impl Default for CoreConfig {
@@ -703,6 +705,7 @@ impl Default for CoreConfig {
             default_folder: None,
             confirm_on_delete: default_true(),
             confirm_on_quit: false,
+            preview_wrap: default_true(),
         }
     }
 }
