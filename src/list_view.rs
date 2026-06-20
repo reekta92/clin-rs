@@ -1,7 +1,7 @@
 use crate::markdown::MarkdownRenderer;
 use ratatui::style::Style;
 use ratatui::text::Text;
-use ratatui::widgets::{ListState, ListItem};
+use ratatui::widgets::{ListItem, ListState};
 use std::collections::HashSet;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

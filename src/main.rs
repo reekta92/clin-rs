@@ -36,11 +36,11 @@ use std::fs;
 use std::io::{self, Stdout, Write};
 use std::path::PathBuf;
 use std::process;
+use std::sync::Arc;
+use std::sync::LazyLock;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use uuid::Uuid;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::LazyLock;
 
 static SHOULD_EXIT: LazyLock<Arc<AtomicBool>> = LazyLock::new(|| Arc::new(AtomicBool::new(false)));
 
@@ -780,16 +780,16 @@ fn run_app(
         }
 
         // Drain background load batches (non-blocking)
-        if let Some(ref rx) = load_rx {
-            if !app.initial_load_done {
-                let mut did_work = false;
-                while let Ok(batch) = rx.try_recv() {
-                    did_work = true;
-                    app.merge_loaded(batch);
-                }
-                if did_work {
-                    app.needs_full_redraw = true;
-                }
+        if let Some(ref rx) = load_rx
+            && !app.initial_load_done
+        {
+            let mut did_work = false;
+            while let Ok(batch) = rx.try_recv() {
+                did_work = true;
+                app.merge_loaded(batch);
+            }
+            if did_work {
+                app.needs_full_redraw = true;
             }
         }
 
