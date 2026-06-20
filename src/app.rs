@@ -4148,8 +4148,8 @@ template = """
 mod tests {
     use super::*;
     use crate::storage::Storage;
-    use tempfile::tempdir;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use tempfile::tempdir;
 
     #[test]
     fn test_refresh_visual_list_requests_preview_update() {
@@ -4211,13 +4211,22 @@ mod tests {
 
         // Open the create-note popup
         app.begin_create_note_in_folder(String::new());
-        assert!(app.popups.create_note.is_some(), "create_note popup should be open");
+        assert!(
+            app.popups.create_note.is_some(),
+            "create_note popup should be open"
+        );
 
         // Dispatch 'y' key — must insert, not confirm
-        crate::events::handle_list_keys(&mut app, KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE));
+        crate::events::handle_list_keys(
+            &mut app,
+            KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE),
+        );
 
         // Popup must still be open
-        assert!(app.popups.create_note.is_some(), "popup should remain open after y");
+        assert!(
+            app.popups.create_note.is_some(),
+            "popup should remain open after y"
+        );
 
         // Input must contain "y"
         let (popup, _) = app.popups.create_note.as_ref().unwrap();
@@ -4259,4 +4268,3 @@ mod tests {
         );
     }
 }
-
