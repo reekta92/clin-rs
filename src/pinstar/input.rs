@@ -399,8 +399,10 @@ pub fn handle_pinstar_event(
     running: &mut bool,
     area: ratatui::layout::Rect,
     keybinds: &Keybinds,
+    config: &crate::config::ClinConfig,
 ) -> bool {
     if let Some(textarea) = &mut state.rename_popup {
+        state.seq_matcher.clear();
         match key.code {
             _ if keybinds.matches_canvas(CanvasAction::RenameCancel, &key) => {
                 state.rename_popup = None;
@@ -423,6 +425,7 @@ pub fn handle_pinstar_event(
     let mut close_menu = false;
 
     if let Some(menu) = &mut state.context_menu {
+        state.seq_matcher.clear();
         match key.code {
             _ if keybinds.matches_canvas(CanvasAction::MenuClose, &key) => {
                 close_menu = true;
@@ -459,6 +462,7 @@ pub fn handle_pinstar_event(
     }
 
     if let Some(editor) = &mut state.floating_editor {
+        state.seq_matcher.clear();
         match key.code {
             _ if keybinds.matches_canvas(CanvasAction::CloseEditor, &key) => {
                 state.toggle_editor();
@@ -488,6 +492,7 @@ pub fn handle_pinstar_event(
     }
 
     if state.resizing_node_id.is_some() {
+        state.seq_matcher.clear();
         match key.code {
             _ if keybinds.matches_canvas(CanvasAction::ConfirmResize, &key)
                 || keybinds.matches_canvas(CanvasAction::CancelResize, &key) =>
@@ -501,6 +506,7 @@ pub fn handle_pinstar_event(
     }
 
     if state.editor_focus {
+        state.seq_matcher.clear();
         match key.code {
             _ if keybinds.matches_canvas(CanvasAction::EditorUnfocus, &key) => {
                 state.editor_focus = false;
@@ -517,89 +523,94 @@ pub fn handle_pinstar_event(
         return true;
     }
 
-    match key.code {
-        _ if keybinds.matches_canvas(CanvasAction::Quit, &key) => {
-            if state.connection_source_id.is_some() {
-                state.connection_source_id = None;
-            } else {
-                *running = false;
-            }
-        }
-        _ if keybinds.matches_canvas(CanvasAction::Save, &key) => {
-            let _ = state.save();
-        }
-        _ if keybinds.matches_canvas(CanvasAction::ZoomFineIn, &key) => {
-            state.zoom_in();
-        }
-        _ if keybinds.matches_canvas(CanvasAction::ZoomFineOut, &key) => {
-            state.zoom_out();
-        }
-        _ if keybinds.matches_canvas(CanvasAction::MoveLeft, &key) => {
-            state.select_node_in_direction(-1.0, 0.0);
-            state.center_on_selected();
-        }
-        _ if keybinds.matches_canvas(CanvasAction::MoveRight, &key) => {
-            state.select_node_in_direction(1.0, 0.0);
-            state.center_on_selected();
-        }
-        _ if keybinds.matches_canvas(CanvasAction::MoveUp, &key) => {
-            state.select_node_in_direction(0.0, -1.0);
-            state.center_on_selected();
-        }
-        _ if keybinds.matches_canvas(CanvasAction::MoveDown, &key) => {
-            state.select_node_in_direction(0.0, 1.0);
-            state.center_on_selected();
-        }
-        _ if keybinds.matches_canvas(CanvasAction::ZoomIn, &key) => {
-            state.zoom_in();
-        }
-        _ if keybinds.matches_canvas(CanvasAction::ZoomOut, &key) => {
-            state.zoom_out();
-        }
-        _ if keybinds.matches_canvas(CanvasAction::EditOrConnect, &key) => {
-            let target_id_opt = state.selected_node_id.clone();
-            if let Some(target_id) = target_id_opt {
+    let seq = config.core.enable_key_sequences;
+    match keybinds.resolve_canvas(&mut state.seq_matcher, key, seq) {
+        crate::keybinds::MatchOutcome::Matched(action) => match action {
+            CanvasAction::Quit => {
                 if state.connection_source_id.is_some() {
-                    state.finish_connection(&target_id);
+                    state.connection_source_id = None;
                 } else {
-                    state.toggle_editor();
+                    *running = false;
                 }
             }
-        }
-        _ if keybinds.matches_canvas(CanvasAction::OpenContextMenu, &key) => {
-            let menu_x = (area.width / 2).saturating_sub(12);
-            let menu_y = area.height;
+            CanvasAction::Save => {
+                let _ = state.save();
+            }
+            CanvasAction::ZoomFineIn => {
+                state.zoom_in();
+            }
+            CanvasAction::ZoomFineOut => {
+                state.zoom_out();
+            }
+            CanvasAction::MoveLeft => {
+                state.select_node_in_direction(-1.0, 0.0);
+                state.center_on_selected();
+            }
+            CanvasAction::MoveRight => {
+                state.select_node_in_direction(1.0, 0.0);
+                state.center_on_selected();
+            }
+            CanvasAction::MoveUp => {
+                state.select_node_in_direction(0.0, -1.0);
+                state.center_on_selected();
+            }
+            CanvasAction::MoveDown => {
+                state.select_node_in_direction(0.0, 1.0);
+                state.center_on_selected();
+            }
+            CanvasAction::ZoomIn => {
+                state.zoom_in();
+            }
+            CanvasAction::ZoomOut => {
+                state.zoom_out();
+            }
+            CanvasAction::EditOrConnect => {
+                let target_id_opt = state.selected_node_id.clone();
+                if let Some(target_id) = target_id_opt {
+                    if state.connection_source_id.is_some() {
+                        state.finish_connection(&target_id);
+                    } else {
+                        state.toggle_editor();
+                    }
+                }
+            }
+            CanvasAction::OpenContextMenu => {
+                let menu_x = (area.width / 2).saturating_sub(12);
+                let menu_y = area.height;
 
-            let cx = state.viewport_x;
-            let cy = state.viewport_y;
+                let cx = state.viewport_x;
+                let cy = state.viewport_y;
 
-            if let Some(id) = &state.selected_node_id {
-                if state.data.nodes.iter().any(|n| n.id() == id) {
+                if let Some(id) = &state.selected_node_id {
+                    if state.data.nodes.iter().any(|n| n.id() == id) {
+                        state.open_context_menu(menu_x, menu_y, cx, cy);
+                    }
+                } else {
                     state.open_context_menu(menu_x, menu_y, cx, cy);
                 }
-            } else {
-                state.open_context_menu(menu_x, menu_y, cx, cy);
             }
-        }
-        _ if keybinds.matches_canvas(CanvasAction::ToggleGrid, &key) => {
-            state.show_grid = !state.show_grid;
-        }
-        _ if keybinds.matches_canvas(CanvasAction::ToggleEditorPane, &key) => {
-            state.show_editor_pane = !state.show_editor_pane;
-            if !state.show_editor_pane {
-                state.editor_focus = false;
+            CanvasAction::ToggleGrid => {
+                state.show_grid = !state.show_grid;
             }
-        }
-        _ if keybinds.matches_canvas(CanvasAction::CycleFocus, &key) => {
-            if state.show_editor_pane {
-                state.editor_focus = true;
+            CanvasAction::ToggleEditorPane => {
+                state.show_editor_pane = !state.show_editor_pane;
+                if !state.show_editor_pane {
+                    state.editor_focus = false;
+                }
             }
-        }
-        _ if keybinds.matches_canvas(CanvasAction::Help, &key) => {
-            state.help_requested = true;
-            *running = false;
-        }
-        _ => return false,
+            CanvasAction::CycleFocus => {
+                if state.show_editor_pane {
+                    state.editor_focus = true;
+                }
+            }
+            CanvasAction::Help => {
+                state.help_requested = true;
+                *running = false;
+            }
+            _ => {}
+        },
+        crate::keybinds::MatchOutcome::Pending => return true,
+        crate::keybinds::MatchOutcome::NoMatch => return false,
     }
 
     true

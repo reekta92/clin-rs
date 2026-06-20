@@ -35,6 +35,7 @@ pub struct GrafAppState {
     pub preview_note_id: Option<String>,
     pub app_theme: crate::app_theme::AppThemeColors,
     pub keybinds: Keybinds,
+    pub seq_matcher: crate::keybinds::KeyMatcher,
 }
 
 impl Drop for GrafAppState {
@@ -49,6 +50,7 @@ impl GrafAppState {
         storage: Storage,
         config_errors: Vec<String>,
         keybinds: Keybinds,
+        seq_matcher: crate::keybinds::KeyMatcher,
     ) -> anyhow::Result<Self> {
         let graph_state = crate::graf::graph::GraphState::new(&storage, config)?;
         let state = Arc::new(RwLock::new(graph_state));
@@ -78,6 +80,7 @@ impl GrafAppState {
             preview_note_id: None,
             app_theme: crate::app_theme::AppThemeColors::from_config(&config.ui),
             keybinds,
+            seq_matcher,
         })
     }
 
@@ -283,8 +286,9 @@ pub fn run_graf_view(
     storage: crate::storage::Storage,
     config: &mut crate::config::ClinConfig,
     keybinds: &Keybinds,
+    seq_matcher: &mut crate::keybinds::KeyMatcher,
 ) -> anyhow::Result<GrafResult> {
-    let mut app_state = GrafAppState::new(config, storage, vec![], keybinds.clone())?;
+    let mut app_state = GrafAppState::new(config, storage, vec![], keybinds.clone(), seq_matcher.clone())?;
     let theme = crate::app_theme::AppThemeColors::from_config(&config.ui);
     crate::overlay::run_overlay(
         terminal,
@@ -305,6 +309,7 @@ fn handle_event(
     match ev {
         crossterm::event::Event::Key(key) => {
             if app_state.search_active {
+                app_state.seq_matcher.clear();
                 handle_search_keys(app_state, key, config);
                 return Ok(None);
             }
@@ -335,7 +340,7 @@ fn handle_event(
 
             if let Some(graph_state) = &app_state.graph_state
                 && let Some(action) =
-                    crate::graf::input::handle_graph_keys(graph_state, key, keybinds, config)
+                    crate::graf::input::handle_graph_keys(graph_state, key, keybinds, config, &mut app_state.seq_matcher)
             {
                 use crate::graf::input::GraphInputAction;
                 match action {

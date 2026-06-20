@@ -213,7 +213,7 @@ Once inside the TUI: navigate with `j`/`k`, open notes with `Enter`, open the co
 | **Encryption** | Per-note ChaCha20-Poly1305, `.clin` files, on-demand encrypt/decrypt, zero-knowledge |
 | **Templates** | TOML-based with `{date}`, `{time}`, `{weekday}` variables |
 | **Themes** | 11 built-in themes, transparent/solid backgrounds, per-color overrides |
-| **Keybinds** | Fully customizable via keybinds.toml |
+| **Keybinds** | Fully customizable via keybinds.toml, with Helix/Vim/Emacs presets |
 | **OCR** | Clipboard image to text via `tesseract` (optional dependency) |
 
 ---
@@ -223,7 +223,7 @@ Once inside the TUI: navigate with `j`/`k`, open notes with `Enter`, open the co
 `~/.config/clin/config.toml` -> main configuration file (includes theme, graf settings, etc.)
 `~/.config/clin/keybinds.toml` -> keybind configuration file
 
-See the [full configuration reference](docs/CONFIG_REFERENCE.md) for all available options.
+See the [full configuration reference](docs/CONFIG_REFERENCE.md) for all available options and [keybind presets](docs/KEYBIND_PRESETS.md) for editor-style presets.
 
 ### config.toml example
 
@@ -331,6 +331,7 @@ Full technical documentation lives in [`docs/`](docs/INDEX.md):
 
 - [Architecture](docs/ARCHITECTURE.md) — system overview, event loop, threading model
 - [Configuration Reference](docs/CONFIG_REFERENCE.md) — all config.toml and keybinds.toml options
+- [Keybind Presets](docs/KEYBIND_PRESETS.md) — Helix, Vim, and Emacs presets and sequence syntax
 - [Graph View](docs/GRAPH_VIEW.md) — force-directed graph visualization
 - [Canvas](docs/CANVAS.md) — Obsidian-compatible canvas view
 - [Draw](docs/DRAW.md) — freehand drawing canvas

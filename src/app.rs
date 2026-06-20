@@ -284,6 +284,7 @@ pub struct App {
     pub popups: crate::popups::PopupManager,
     pub storage: Storage,
     pub keybinds: Keybinds,
+    pub seq_matcher: crate::keybinds::KeyMatcher,
     pub notes: Vec<NoteSummary>,
     pub editor: NoteEditor,
     pub list: ListView,
@@ -305,8 +306,6 @@ pub struct App {
     pub mouse_enabled: bool,
     pub date_format: String,
     pub last_auto_backup: Option<std::time::Instant>,
-    pub last_g_press: Option<Instant>,
-    pub last_esc_press: Option<Instant>,
     pub return_mode: Option<ViewMode>,
     pub app_theme: crate::app_theme::AppThemeColors,
     pub canvas_state: Option<crate::pinstar::state::PinstarState>,
@@ -348,11 +347,11 @@ impl App {
 
 impl App {
     pub fn new(storage: Storage) -> Result<Self> {
-        let keybinds = storage.load_keybinds();
         let bootstrap_config = crate::config::ClinConfig::load().unwrap_or_default();
         for w in bootstrap_config.validate() {
             eprintln!("[clin] config warning: {w}");
         }
+        let keybinds = storage.load_keybinds_with_preset(bootstrap_config.core.keybind_preset);
         let app_theme = crate::app_theme::AppThemeColors::from_config(&bootstrap_config.ui);
 
         let mut editor = NoteEditor::new();
@@ -383,6 +382,7 @@ impl App {
         let mut app = Self {
             storage,
             keybinds,
+            seq_matcher: crate::keybinds::KeyMatcher::new(),
             notes: Vec::new(),
             editor,
             list,
@@ -405,8 +405,6 @@ impl App {
             preview_position: bootstrap_config.list.preview_position,
             pinned_on_top: bootstrap_config.list.pinned_on_top,
             default_folder: bootstrap_config.core.default_folder.clone(),
-            last_g_press: None,
-            last_esc_press: None,
             return_mode: None,
             app_theme,
             canvas_state: None,
@@ -428,11 +426,11 @@ impl App {
     }
 
     pub fn new_deferred(storage: Storage) -> Result<Self> {
-        let keybinds = storage.load_keybinds();
         let bootstrap_config = crate::config::ClinConfig::load().unwrap_or_default();
         for w in bootstrap_config.validate() {
             eprintln!("[clin] config warning: {w}");
         }
+        let keybinds = storage.load_keybinds_with_preset(bootstrap_config.core.keybind_preset);
         let app_theme = crate::app_theme::AppThemeColors::from_config(&bootstrap_config.ui);
 
         let mut editor = NoteEditor::new();
@@ -463,6 +461,7 @@ impl App {
         let mut app = Self {
             storage,
             keybinds,
+            seq_matcher: crate::keybinds::KeyMatcher::new(),
             notes: Vec::new(),
             editor,
             list,
@@ -485,8 +484,6 @@ impl App {
             preview_position: bootstrap_config.list.preview_position,
             pinned_on_top: bootstrap_config.list.pinned_on_top,
             default_folder: bootstrap_config.core.default_folder.clone(),
-            last_g_press: None,
-            last_esc_press: None,
             return_mode: None,
             app_theme,
             canvas_state: None,
@@ -2973,7 +2970,7 @@ template = """
         {
             let path = self.storage.note_path(&self.notes[*summary_idx].id);
             if let Ok(state) =
-                crate::pinstar::state::PinstarState::load(&path, self.keybinds.clone())
+                crate::pinstar::state::PinstarState::load(&path, self.keybinds.clone(), self.seq_matcher.clone())
             {
                 self.canvas_state = Some(state);
                 self.return_mode = Some(self.mode);
@@ -3227,7 +3224,7 @@ template = """
                     self.mode = ViewMode::Canvas;
                     self.editor.editing_id = Some(canvas_id);
                     if let Ok(state) =
-                        crate::pinstar::state::PinstarState::load(&path, self.keybinds.clone())
+                        crate::pinstar::state::PinstarState::load(&path, self.keybinds.clone(), self.seq_matcher.clone())
                     {
                         self.canvas_state = Some(state);
                     }
@@ -3877,18 +3874,6 @@ template = """
         self.request_preview_update();
     }
 
-    pub fn handle_g_press(&mut self) -> bool {
-        let now = Instant::now();
-        if let Some(last) = self.last_g_press
-            && now.duration_since(last) < Duration::from_millis(500)
-        {
-            self.last_g_press = None;
-            self.jump_to_top();
-            return true;
-        }
-        self.last_g_press = Some(now);
-        false
-    }
 
     pub fn initiate_quit(&mut self) {
         if self.confirm_on_quit {
@@ -3898,17 +3883,6 @@ template = """
         }
     }
 
-    pub fn handle_esc_press(&mut self) {
-        let now = Instant::now();
-        if let Some(last) = self.last_esc_press
-            && now.duration_since(last) < Duration::from_millis(500)
-        {
-            self.last_esc_press = None;
-            self.collapse_all_folders();
-            return;
-        }
-        self.last_esc_press = Some(now);
-    }
 
     pub fn collapse_all_folders(&mut self) {
         self.list.folder_expanded.clear();

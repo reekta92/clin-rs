@@ -5,43 +5,80 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use serde::{Deserialize, Serialize};
+use crate::config::KeybindPreset;
 
+/// A single keystroke — one key code with optional modifiers.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct KeyCombo {
+pub struct KeyStroke {
     pub code: KeyCode,
     pub modifiers: KeyModifiers,
 }
 
+/// A key combination, possibly a multi-key sequence like `"g g"` or `"Ctrl+x Ctrl+s"`.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct KeyCombo {
+    pub keys: Vec<KeyStroke>,
+}
+
+impl KeyStroke {
+    /// Returns true if this single keystroke matches the given event.
+    pub fn matches_event(&self, event: &KeyEvent) -> bool {
+        if self.code != event.code {
+            return false;
+        }
+        if self.code == KeyCode::BackTab {
+            let self_mods = self.modifiers & !KeyModifiers::SHIFT;
+            let event_mods = event.modifiers & !KeyModifiers::SHIFT;
+            self_mods == event_mods
+        } else {
+            self.modifiers == event.modifiers
+        }
+    }
+}
+
 impl KeyCombo {
+    /// Build a single-key combo with no modifiers.
     pub fn simple(code: KeyCode) -> Self {
         Self {
-            code,
-            modifiers: KeyModifiers::NONE,
+            keys: vec![KeyStroke {
+                code,
+                modifiers: KeyModifiers::NONE,
+            }],
         }
     }
 
+    /// Build a single-key combo with CONTROL modifier.
     pub fn ctrl(code: KeyCode) -> Self {
         Self {
-            code,
-            modifiers: KeyModifiers::CONTROL,
+            keys: vec![KeyStroke {
+                code,
+                modifiers: KeyModifiers::CONTROL,
+            }],
         }
     }
 
+    /// Build a single-key combo with SHIFT modifier.
     pub fn shift(code: KeyCode) -> Self {
         Self {
-            code,
-            modifiers: KeyModifiers::SHIFT,
+            keys: vec![KeyStroke {
+                code,
+                modifiers: KeyModifiers::SHIFT,
+            }],
         }
     }
 
+    /// Build a single-key combo with CONTROL|SHIFT modifiers.
     pub fn ctrl_shift(code: KeyCode) -> Self {
         Self {
-            code,
-            modifiers: KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+            keys: vec![KeyStroke {
+                code,
+                modifiers: KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+            }],
         }
     }
 
-    pub fn parse(s: &str) -> Option<Self> {
+    /// Parse a single keystroke token (e.g. `"Ctrl+q"`, `"g"`, `"Enter"`).
+    fn parse_single_stroke(s: &str) -> Option<KeyStroke> {
         if s.is_empty() {
             return None;
         }
@@ -72,33 +109,51 @@ impl KeyCombo {
         }
 
         let code = parse_key_code(key_part)?;
-        Some(Self { code, modifiers })
+        Some(KeyStroke { code, modifiers })
     }
 
-    pub fn to_display_string(&self) -> String {
-        let key = key_code_to_string(&self.code);
+    /// Parse a key-combo string, possibly a multi-key sequence.
+    /// Whitespace separates keys: `"g g"`, `"Space f"`, `"Ctrl+x Ctrl+s"`.
+    pub fn parse(s: &str) -> Option<Self> {
+        if s.is_empty() {
+            return None;
+        }
+        let tokens: Vec<&str> = s.split_ascii_whitespace().collect();
+        if tokens.is_empty() {
+            return None;
+        }
+        let mut keys = Vec::with_capacity(tokens.len());
+        for token in tokens {
+            keys.push(Self::parse_single_stroke(token)?);
+        }
+        Some(Self { keys })
+    }
+
+    /// Format a single keystroke for display (e.g. `"Ctrl+q"`, `"g"`, `"Enter"`).
+    fn stroke_to_string(s: &KeyStroke) -> String {
+        let key = key_code_to_string(&s.code);
         let mut result = String::with_capacity(24);
 
         let mut need_sep = false;
-        if self.modifiers.contains(KeyModifiers::CONTROL) {
+        if s.modifiers.contains(KeyModifiers::CONTROL) {
             result.push_str("Ctrl");
             need_sep = true;
         }
-        if self.modifiers.contains(KeyModifiers::SHIFT) {
+        if s.modifiers.contains(KeyModifiers::SHIFT) {
             if need_sep {
                 result.push('+');
             }
             result.push_str("Shift");
             need_sep = true;
         }
-        if self.modifiers.contains(KeyModifiers::ALT) {
+        if s.modifiers.contains(KeyModifiers::ALT) {
             if need_sep {
                 result.push('+');
             }
             result.push_str("Alt");
             need_sep = true;
         }
-        if self.modifiers.contains(KeyModifiers::SUPER) {
+        if s.modifiers.contains(KeyModifiers::SUPER) {
             if need_sep {
                 result.push('+');
             }
@@ -113,17 +168,33 @@ impl KeyCombo {
         result
     }
 
-    pub fn matches(&self, event: &KeyEvent) -> bool {
-        if self.code != event.code {
-            return false;
-        }
-        if self.code == KeyCode::BackTab {
-            let self_mods = self.modifiers & !KeyModifiers::SHIFT;
-            let event_mods = event.modifiers & !KeyModifiers::SHIFT;
-            self_mods == event_mods
+    /// Display string for this combo.
+    /// Joins with no separator when every key is a single ASCII letter/digit (`gg`, `dd`),
+    /// otherwise with a space (`g G`, `Space f`, `Ctrl+x Ctrl+s`).
+    pub fn to_display_string(&self) -> String {
+        let parts: Vec<String> = self.keys.iter().map(Self::stroke_to_string).collect();
+
+        let all_simple = self.keys.iter().all(|s| {
+            s.modifiers == KeyModifiers::NONE
+                && if let KeyCode::Char(c) = s.code {
+                    c.is_ascii_alphanumeric()
+                } else {
+                    false
+                }
+        });
+
+        if all_simple {
+            parts.join("")
         } else {
-            self.modifiers == event.modifiers
+            parts.join(" ")
         }
+    }
+
+    /// Legacy single-key fast-path match.
+    /// Returns `true` if this is a length-1 combo whose key matches the event.
+    /// Multi-key combos always return `false` here; use `KeyMatcher::resolve` for sequences.
+    pub fn matches(&self, event: &KeyEvent) -> bool {
+        self.keys.len() == 1 && self.keys[0].matches_event(event)
     }
 }
 
@@ -239,6 +310,7 @@ pub enum ListAction {
     CreatePinstar,
     ToggleSelectMode,
     ToggleSelectItem,
+    CollapseAll,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -544,7 +616,10 @@ impl Default for Keybinds {
         );
         list.insert(
             ListAction::JumpToTop,
-            vec![KeyCombo::shift(KeyCode::Char('G'))],
+            vec![
+                KeyCombo::parse("g g").unwrap(),
+                KeyCombo::shift(KeyCode::Char('G')),
+            ],
         );
         list.insert(ListAction::PageUp, vec![KeyCombo::ctrl(KeyCode::Char('u'))]);
         list.insert(
@@ -578,6 +653,10 @@ impl Default for Keybinds {
         list.insert(
             ListAction::ToggleSelectItem,
             vec![KeyCombo::simple(KeyCode::Char(' '))],
+        );
+        list.insert(
+            ListAction::CollapseAll,
+            vec![KeyCombo::parse("Esc Esc").unwrap()],
         );
 
         let mut edit = HashMap::new();
@@ -1148,9 +1227,394 @@ impl Default for Keybinds {
     }
 }
 
+/// The result of trying to match a key event against a set of bindings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MatchOutcome<A> {
+    /// The event (possibly combined with previous buffered events) matched an action.
+    Matched(A),
+    /// The event started a multi-key sequence but hasn't completed one yet; the event was consumed.
+    Pending,
+    /// No binding matched the event; fall through to hardcoded handling.
+    NoMatch,
+}
+
+/// Per-view key-sequence matcher with timeout.
+/// Buffers recent events and checks them against multi-key combos.
+#[derive(Debug, Clone)]
+pub struct KeyMatcher {
+    pending: Vec<KeyEvent>,
+    last_event_at: Option<std::time::Instant>,
+    timeout: std::time::Duration,
+}
+
+impl KeyMatcher {
+    pub fn new() -> Self {
+        Self {
+            pending: Vec::new(),
+            last_event_at: None,
+            timeout: std::time::Duration::from_millis(500),
+        }
+    }
+
+    pub fn clear(&mut self) {
+        self.pending.clear();
+        self.last_event_at = None;
+    }
+
+    /// Resolve a key event against a binding map.
+    ///
+    /// When `sequences_enabled` is false, this is a simple length-1 match against all bindings.
+    /// When true, it buffers events and tries to match multi-key sequences with a 500 ms timeout.
+    pub fn resolve<A: Copy + Eq + std::hash::Hash>(
+        &mut self,
+        event: KeyEvent,
+        bindings: &HashMap<A, Vec<KeyCombo>>,
+        sequences_enabled: bool,
+    ) -> MatchOutcome<A> {
+        if !sequences_enabled {
+            for (action, combos) in bindings {
+                for combo in combos {
+                    if combo.matches(&event) {
+                        return MatchOutcome::Matched(*action);
+                    }
+                }
+            }
+            return MatchOutcome::NoMatch;
+        }
+
+        // Check timeout: if too long since last event, clear pending
+        if let Some(last) = self.last_event_at
+            && last.elapsed() > self.timeout
+        {
+            self.pending.clear();
+        }
+
+        // Push current event
+        self.pending.push(event);
+        self.last_event_at = Some(std::time::Instant::now());
+
+        let mut pending_prefix = false;
+        let mut full_match: Option<A> = None;
+
+        'outer: for (action, combos) in bindings {
+            for combo in combos {
+                let keys = &combo.keys;
+                let pending_len = self.pending.len();
+                if keys.len() < pending_len {
+                    continue;
+                }
+                let pending_slice = &self.pending[..pending_len.min(keys.len())];
+
+                // Check if pending[..] matches keys[..pending_len]
+                let all_match = keys
+                    .iter()
+                    .zip(pending_slice.iter())
+                    .all(|(k, ev)| k.matches_event(ev));
+
+                if all_match {
+                    if keys.len() == self.pending.len() {
+                        // Exact match
+                        full_match = Some(*action);
+                        break 'outer;
+                    }
+                    // Strict prefix match
+                    pending_prefix = true;
+                }
+            }
+        }
+
+        if let Some(action) = full_match {
+            self.pending.clear();
+            self.last_event_at = None;
+            return MatchOutcome::Matched(action);
+        }
+
+        if pending_prefix {
+            return MatchOutcome::Pending;
+        }
+
+        // No prefix match — pop the last event and re-check as a single key
+        self.pending.pop(); // remove last pushed event
+        let last_event = self.pending.pop().unwrap_or(event); // use last buffered or the original
+        self.pending.clear();
+        self.last_event_at = None;
+
+        // Re-check as length-1
+        for (action, combos) in bindings {
+            for combo in combos {
+                if combo.matches(&last_event) {
+                    return MatchOutcome::Matched(*action);
+                }
+            }
+        }
+
+        MatchOutcome::NoMatch
+    }
+}
+
+impl KeybindPreset {
+    /// Return the base bindings for this preset.
+    /// The `edit` map is always `Keybinds::default().edit` (presets never affect text editing).
+    pub fn base_keybinds(&self) -> Keybinds {
+        let default_kb = Keybinds::default();
+        match self {
+            KeybindPreset::Default => default_kb,
+            KeybindPreset::Helix => {
+                let mut kb = default_kb;
+                // List view
+                kb.list.insert(ListAction::MoveUp, vec![
+                    KeyCombo::simple(KeyCode::Char('k')),
+                    KeyCombo::simple(KeyCode::Up),
+                ]);
+                kb.list.insert(ListAction::MoveDown, vec![
+                    KeyCombo::simple(KeyCode::Char('j')),
+                    KeyCombo::simple(KeyCode::Down),
+                ]);
+                kb.list.insert(ListAction::MoveLeft, vec![
+                    KeyCombo::simple(KeyCode::Char('h')),
+                    KeyCombo::simple(KeyCode::Left),
+                ]);
+                kb.list.insert(ListAction::MoveRight, vec![
+                    KeyCombo::simple(KeyCode::Char('l')),
+                    KeyCombo::simple(KeyCode::Right),
+                ]);
+                kb.list.insert(ListAction::Quit, vec![
+                    KeyCombo::ctrl(KeyCode::Char('c')),
+                    KeyCombo::simple(KeyCode::Char('q')),
+                ]);
+                kb.list.insert(ListAction::Search, vec![
+                    KeyCombo::simple(KeyCode::Char('/')),
+                ]);
+                kb.list.insert(ListAction::JumpToTop, vec![
+                    KeyCombo::parse("g g").unwrap(),
+                    KeyCombo::shift(KeyCode::Char('G')),
+                ]);
+                kb.list.insert(ListAction::PageUp, vec![
+                    KeyCombo::ctrl(KeyCode::Char('b')),
+                ]);
+                kb.list.insert(ListAction::PageDown, vec![
+                    KeyCombo::ctrl(KeyCode::Char('f')),
+                ]);
+                kb.list.insert(ListAction::OpenCommandPalette, vec![
+                    KeyCombo::parse("Space Space").unwrap(),
+                ]);
+                kb.list.insert(ListAction::NewFromTemplate, vec![
+                    KeyCombo::parse("Space t").unwrap(),
+                ]);
+                kb.list.insert(ListAction::CreateNote, vec![
+                    KeyCombo::parse("Space n").unwrap(),
+                ]);
+                kb.list.insert(ListAction::CreateFolder, vec![
+                    KeyCombo::parse("Space N").unwrap(),
+                ]);
+                kb.list.insert(ListAction::TogglePin, vec![
+                    KeyCombo::parse("Space p").unwrap(),
+                ]);
+                kb.list.insert(ListAction::OpenGraph, vec![
+                    KeyCombo::parse("Space g").unwrap(),
+                ]);
+                kb.list.insert(ListAction::TogglePreview, vec![
+                    KeyCombo::parse("Space P").unwrap(),
+                ]);
+                kb.list.insert(ListAction::OpenTrash, vec![
+                    KeyCombo::parse("Space T").unwrap(),
+                ]);
+                kb.list.insert(ListAction::CycleSort, vec![
+                    KeyCombo::parse("Space s").unwrap(),
+                ]);
+                kb.list.insert(ListAction::ManageTags, vec![
+                    KeyCombo::parse("Space .").unwrap(),
+                ]);
+                kb.list.insert(ListAction::CollapseAll, vec![
+                    KeyCombo::parse("Esc Esc").unwrap(),
+                ]);
+                // Graph view
+                kb.graph.insert(GraphAction::PanUp, vec![
+                    KeyCombo::simple(KeyCode::Char('k')),
+                    KeyCombo::simple(KeyCode::Up),
+                ]);
+                kb.graph.insert(GraphAction::PanDown, vec![
+                    KeyCombo::simple(KeyCode::Char('j')),
+                    KeyCombo::simple(KeyCode::Down),
+                ]);
+                kb.graph.insert(GraphAction::PanLeft, vec![
+                    KeyCombo::simple(KeyCode::Char('h')),
+                    KeyCombo::simple(KeyCode::Left),
+                ]);
+                kb.graph.insert(GraphAction::PanRight, vec![
+                    KeyCombo::simple(KeyCode::Char('l')),
+                    KeyCombo::simple(KeyCode::Right),
+                ]);
+                kb.graph.insert(GraphAction::Quit, vec![KeyCombo::simple(KeyCode::Char('q'))]);
+                kb.graph.insert(GraphAction::ToggleSearch, vec![KeyCombo::simple(KeyCode::Char('/'))]);
+                kb.graph.insert(GraphAction::ZoomIn, vec![KeyCombo::simple(KeyCode::Char('='))]);
+                kb.graph.insert(GraphAction::ZoomOut, vec![KeyCombo::simple(KeyCode::Char('-'))]);
+                kb.graph.insert(GraphAction::AutoFit, vec![
+                    KeyCombo::parse("Space a").unwrap(),
+                ]);
+                kb.graph.insert(GraphAction::Refresh, vec![
+                    KeyCombo::parse("Space r").unwrap(),
+                ]);
+                kb.graph.insert(GraphAction::ToggleMinimap, vec![
+                    KeyCombo::parse("Space m").unwrap(),
+                ]);
+                kb.edit = Keybinds::default().edit;
+                kb
+            }
+            KeybindPreset::Vim => {
+                let mut kb = default_kb;
+                // List view
+                kb.list.insert(ListAction::MoveUp, vec![
+                    KeyCombo::simple(KeyCode::Char('k')),
+                    KeyCombo::simple(KeyCode::Up),
+                ]);
+                kb.list.insert(ListAction::MoveDown, vec![
+                    KeyCombo::simple(KeyCode::Char('j')),
+                    KeyCombo::simple(KeyCode::Down),
+                ]);
+                kb.list.insert(ListAction::MoveLeft, vec![
+                    KeyCombo::simple(KeyCode::Char('h')),
+                    KeyCombo::simple(KeyCode::Left),
+                ]);
+                kb.list.insert(ListAction::MoveRight, vec![
+                    KeyCombo::simple(KeyCode::Char('l')),
+                    KeyCombo::simple(KeyCode::Right),
+                ]);
+                kb.list.insert(ListAction::Delete, vec![
+                    KeyCombo::parse("d d").unwrap(),
+                    KeyCombo::simple(KeyCode::Char('d')),
+                    KeyCombo::simple(KeyCode::Delete),
+                ]);
+                kb.list.insert(ListAction::Quit, vec![
+                    KeyCombo::parse(": q").unwrap(),
+                    KeyCombo::simple(KeyCode::Char('q')),
+                ]);
+                kb.list.insert(ListAction::Search, vec![
+                    KeyCombo::simple(KeyCode::Char('/')),
+                ]);
+                kb.list.insert(ListAction::JumpToTop, vec![
+                    KeyCombo::parse("g g").unwrap(),
+                    KeyCombo::shift(KeyCode::Char('G')),
+                ]);
+                kb.list.insert(ListAction::JumpToBottom, vec![
+                    KeyCombo::shift(KeyCode::Char('G')),
+                ]);
+                kb.list.insert(ListAction::PageUp, vec![
+                    KeyCombo::ctrl(KeyCode::Char('b')),
+                ]);
+                kb.list.insert(ListAction::PageDown, vec![
+                    KeyCombo::ctrl(KeyCode::Char('f')),
+                ]);
+                kb.list.insert(ListAction::OpenCommandPalette, vec![
+                    KeyCombo::parse(": ").unwrap(),
+                ]);
+                kb.list.insert(ListAction::CollapseAll, vec![
+                    KeyCombo::parse("Esc Esc").unwrap(),
+                ]);
+                // Graph view — vim-style nav
+                kb.graph.insert(GraphAction::PanUp, vec![
+                    KeyCombo::simple(KeyCode::Char('k')),
+                    KeyCombo::simple(KeyCode::Up),
+                ]);
+                kb.graph.insert(GraphAction::PanDown, vec![
+                    KeyCombo::simple(KeyCode::Char('j')),
+                    KeyCombo::simple(KeyCode::Down),
+                ]);
+                kb.graph.insert(GraphAction::PanLeft, vec![
+                    KeyCombo::simple(KeyCode::Char('h')),
+                    KeyCombo::simple(KeyCode::Left),
+                ]);
+                kb.graph.insert(GraphAction::PanRight, vec![
+                    KeyCombo::simple(KeyCode::Char('l')),
+                    KeyCombo::simple(KeyCode::Right),
+                ]);
+                kb.graph.insert(GraphAction::Quit, vec![
+                    KeyCombo::parse(": q").unwrap(),
+                    KeyCombo::simple(KeyCode::Char('q')),
+                ]);
+                kb.edit = Keybinds::default().edit;
+                kb
+            }
+            KeybindPreset::Emacs => {
+                let mut kb = default_kb;
+                // List view
+                kb.list.insert(ListAction::MoveUp, vec![
+                    KeyCombo::ctrl(KeyCode::Char('p')),
+                    KeyCombo::simple(KeyCode::Up),
+                ]);
+                kb.list.insert(ListAction::MoveDown, vec![
+                    KeyCombo::ctrl(KeyCode::Char('n')),
+                    KeyCombo::simple(KeyCode::Down),
+                ]);
+                kb.list.insert(ListAction::MoveLeft, vec![
+                    KeyCombo::ctrl(KeyCode::Char('b')),
+                    KeyCombo::simple(KeyCode::Left),
+                ]);
+                kb.list.insert(ListAction::MoveRight, vec![
+                    KeyCombo::ctrl(KeyCode::Char('f')),
+                    KeyCombo::simple(KeyCode::Right),
+                ]);
+                kb.list.insert(ListAction::Quit, vec![
+                    KeyCombo::parse("Ctrl+x Ctrl+c").unwrap(),
+                    KeyCombo::simple(KeyCode::Char('q')),
+                ]);
+                kb.list.insert(ListAction::Help, vec![
+                    KeyCombo::ctrl(KeyCode::Char('h')),
+                    KeyCombo::simple(KeyCode::F(1)),
+                ]);
+                kb.list.insert(ListAction::Search, vec![
+                    KeyCombo::ctrl(KeyCode::Char('s')),
+                ]);
+                kb.list.insert(ListAction::PageUp, vec![
+                    KeyCombo::ctrl(KeyCode::Char('v')),
+                    KeyCombo::simple(KeyCode::PageUp),
+                ]);
+                kb.list.insert(ListAction::OpenCommandPalette, vec![
+                    KeyCombo::parse("Ctrl+x Ctrl+p").unwrap(),
+                ]);
+                kb.list.insert(ListAction::Delete, vec![
+                    KeyCombo::ctrl(KeyCode::Char('d')),
+                    KeyCombo::simple(KeyCode::Delete),
+                ]);
+                kb.list.insert(ListAction::CollapseAll, vec![
+                    KeyCombo::parse("Esc Esc").unwrap(),
+                ]);
+                // Graph view — Emacs nav
+                kb.graph.insert(GraphAction::PanUp, vec![
+                    KeyCombo::ctrl(KeyCode::Char('p')),
+                    KeyCombo::simple(KeyCode::Up),
+                ]);
+                kb.graph.insert(GraphAction::PanDown, vec![
+                    KeyCombo::ctrl(KeyCode::Char('n')),
+                    KeyCombo::simple(KeyCode::Down),
+                ]);
+                kb.graph.insert(GraphAction::PanLeft, vec![
+                    KeyCombo::ctrl(KeyCode::Char('b')),
+                    KeyCombo::simple(KeyCode::Left),
+                ]);
+                kb.graph.insert(GraphAction::PanRight, vec![
+                    KeyCombo::ctrl(KeyCode::Char('f')),
+                    KeyCombo::simple(KeyCode::Right),
+                ]);
+                kb.graph.insert(GraphAction::Quit, vec![
+                    KeyCombo::parse("Ctrl+x Ctrl+c").unwrap(),
+                    KeyCombo::simple(KeyCode::Char('q')),
+                ]);
+                kb.edit = Keybinds::default().edit;
+                kb
+            }
+        }
+    }
+}
+
+
 impl Keybinds {
     pub fn load(path: &Path) -> Result<Self> {
-        let mut keybinds = Self::default();
+        Self::load_layered(path, Self::default())
+    }
+
+    pub fn load_layered(path: &Path, base: Keybinds) -> Result<Self> {
+        let mut keybinds = base;
 
         if !path.exists() {
             return Ok(keybinds);
@@ -1312,18 +1776,6 @@ impl Keybinds {
             .is_some_and(|combos| combos.iter().any(|c| c.matches(event)))
     }
 
-    pub fn matches_help(&self, action: HelpAction, event: &KeyEvent) -> bool {
-        self.help
-            .get(&action)
-            .is_some_and(|combos| combos.iter().any(|c| c.matches(event)))
-    }
-
-    pub fn matches_graph(&self, action: GraphAction, event: &KeyEvent) -> bool {
-        self.graph
-            .get(&action)
-            .is_some_and(|combos| combos.iter().any(|c| c.matches(event)))
-    }
-
     pub fn matches_draw(&self, action: DrawAction, event: &KeyEvent) -> bool {
         self.draw
             .get(&action)
@@ -1342,11 +1794,6 @@ impl Keybinds {
             .is_some_and(|combos| combos.iter().any(|c| c.matches(event)))
     }
 
-    pub fn matches_content_tree(&self, action: ContentTreeAction, event: &KeyEvent) -> bool {
-        self.content_tree
-            .get(&action)
-            .is_some_and(|combos| combos.iter().any(|c| c.matches(event)))
-    }
     pub fn list_keys_display(&self, action: ListAction) -> String {
         self.list
             .get(&action)
@@ -1450,6 +1897,98 @@ impl Keybinds {
             })
             .unwrap_or_default()
     }
+
+    // -- Binding map accessors (used by KeyMatcher::resolve) --
+    pub fn bindings_for_list(&self) -> &HashMap<ListAction, Vec<KeyCombo>> {
+        &self.list
+    }
+    pub fn bindings_for_edit(&self) -> &HashMap<EditAction, Vec<KeyCombo>> {
+        &self.edit
+    }
+    pub fn bindings_for_help(&self) -> &HashMap<HelpAction, Vec<KeyCombo>> {
+        &self.help
+    }
+    pub fn bindings_for_graph(&self) -> &HashMap<GraphAction, Vec<KeyCombo>> {
+        &self.graph
+    }
+    pub fn bindings_for_draw(&self) -> &HashMap<DrawAction, Vec<KeyCombo>> {
+        &self.draw
+    }
+    pub fn bindings_for_canvas(&self) -> &HashMap<CanvasAction, Vec<KeyCombo>> {
+        &self.canvas
+    }
+    pub fn bindings_for_backup(&self) -> &HashMap<BackupAction, Vec<KeyCombo>> {
+        &self.backup
+    }
+    pub fn bindings_for_content_tree(&self) -> &HashMap<ContentTreeAction, Vec<KeyCombo>> {
+        &self.content_tree
+    }
+
+    // -- Resolve wrappers (delegate to KeyMatcher::resolve) --
+    pub fn resolve_list(
+        &self,
+        m: &mut KeyMatcher,
+        event: KeyEvent,
+        seq: bool,
+    ) -> MatchOutcome<ListAction> {
+        m.resolve(event, self.bindings_for_list(), seq)
+    }
+    pub fn resolve_edit(
+        &self,
+        m: &mut KeyMatcher,
+        event: KeyEvent,
+        seq: bool,
+    ) -> MatchOutcome<EditAction> {
+        m.resolve(event, self.bindings_for_edit(), seq)
+    }
+    pub fn resolve_help(
+        &self,
+        m: &mut KeyMatcher,
+        event: KeyEvent,
+        seq: bool,
+    ) -> MatchOutcome<HelpAction> {
+        m.resolve(event, self.bindings_for_help(), seq)
+    }
+    pub fn resolve_graph(
+        &self,
+        m: &mut KeyMatcher,
+        event: KeyEvent,
+        seq: bool,
+    ) -> MatchOutcome<GraphAction> {
+        m.resolve(event, self.bindings_for_graph(), seq)
+    }
+    pub fn resolve_draw(
+        &self,
+        m: &mut KeyMatcher,
+        event: KeyEvent,
+        seq: bool,
+    ) -> MatchOutcome<DrawAction> {
+        m.resolve(event, self.bindings_for_draw(), seq)
+    }
+    pub fn resolve_canvas(
+        &self,
+        m: &mut KeyMatcher,
+        event: KeyEvent,
+        seq: bool,
+    ) -> MatchOutcome<CanvasAction> {
+        m.resolve(event, self.bindings_for_canvas(), seq)
+    }
+    pub fn resolve_backup(
+        &self,
+        m: &mut KeyMatcher,
+        event: KeyEvent,
+        seq: bool,
+    ) -> MatchOutcome<BackupAction> {
+        m.resolve(event, self.bindings_for_backup(), seq)
+    }
+    pub fn resolve_content_tree(
+        &self,
+        m: &mut KeyMatcher,
+        event: KeyEvent,
+        seq: bool,
+    ) -> MatchOutcome<ContentTreeAction> {
+        m.resolve(event, self.bindings_for_content_tree(), seq)
+    }
 }
 
 #[cfg(test)]
@@ -1458,30 +1997,55 @@ mod tests {
     #[test]
     fn test_parse_key_combo_simple() {
         let combo = KeyCombo::parse("q").unwrap();
-        assert_eq!(combo.code, KeyCode::Char('q'));
-        assert_eq!(combo.modifiers, KeyModifiers::NONE);
+        assert_eq!(combo.keys.len(), 1);
+        assert_eq!(combo.keys[0].code, KeyCode::Char('q'));
+        assert_eq!(combo.keys[0].modifiers, KeyModifiers::NONE);
     }
 
     #[test]
     fn test_parse_key_combo_ctrl() {
         let combo = KeyCombo::parse("Ctrl+q").unwrap();
-        assert_eq!(combo.code, KeyCode::Char('q'));
-        assert_eq!(combo.modifiers, KeyModifiers::CONTROL);
+        assert_eq!(combo.keys.len(), 1);
+        assert_eq!(combo.keys[0].code, KeyCode::Char('q'));
+        assert_eq!(combo.keys[0].modifiers, KeyModifiers::CONTROL);
     }
 
     #[test]
     fn test_parse_key_combo_ctrl_shift() {
         let combo = KeyCombo::parse("Ctrl+Shift+z").unwrap();
-        assert_eq!(combo.code, KeyCode::Char('z'));
-        assert_eq!(combo.modifiers, KeyModifiers::CONTROL | KeyModifiers::SHIFT);
+        assert_eq!(combo.keys.len(), 1);
+        assert_eq!(combo.keys[0].code, KeyCode::Char('z'));
+        assert_eq!(combo.keys[0].modifiers, KeyModifiers::CONTROL | KeyModifiers::SHIFT);
     }
 
     #[test]
     fn test_parse_special_keys() {
-        assert_eq!(KeyCombo::parse("Enter").unwrap().code, KeyCode::Enter);
-        assert_eq!(KeyCombo::parse("Esc").unwrap().code, KeyCode::Esc);
-        assert_eq!(KeyCombo::parse("F1").unwrap().code, KeyCode::F(1));
-        assert_eq!(KeyCombo::parse("Delete").unwrap().code, KeyCode::Delete);
+        assert_eq!(KeyCombo::parse("Enter").unwrap().keys[0].code, KeyCode::Enter);
+        assert_eq!(KeyCombo::parse("Esc").unwrap().keys[0].code, KeyCode::Esc);
+        assert_eq!(KeyCombo::parse("F1").unwrap().keys[0].code, KeyCode::F(1));
+        assert_eq!(KeyCombo::parse("Delete").unwrap().keys[0].code, KeyCode::Delete);
+    }
+
+    #[test]
+    fn test_parse_sequence() {
+        let combo = KeyCombo::parse("g g").unwrap();
+        assert_eq!(combo.keys.len(), 2);
+        assert_eq!(combo.keys[0].code, KeyCode::Char('g'));
+        assert_eq!(combo.keys[0].modifiers, KeyModifiers::NONE);
+        assert_eq!(combo.keys[1].code, KeyCode::Char('g'));
+        assert_eq!(combo.keys[1].modifiers, KeyModifiers::NONE);
+
+        let ctrl_combo = KeyCombo::parse("Ctrl+x Ctrl+s").unwrap();
+        assert_eq!(ctrl_combo.keys.len(), 2);
+        assert_eq!(ctrl_combo.keys[0].code, KeyCode::Char('x'));
+        assert!(ctrl_combo.keys[0].modifiers.contains(KeyModifiers::CONTROL));
+        assert_eq!(ctrl_combo.keys[1].code, KeyCode::Char('s'));
+        assert!(ctrl_combo.keys[1].modifiers.contains(KeyModifiers::CONTROL));
+
+        // single-key backward compat
+        let single = KeyCombo::parse("q").unwrap();
+        assert_eq!(single.keys.len(), 1);
+        assert_eq!(single.keys[0].code, KeyCode::Char('q'));
     }
 
     #[test]
@@ -1505,6 +2069,27 @@ mod tests {
         // Other modifiers like CONTROL should still distinguish them
         let bt_ctrl_event = KeyEvent::new(KeyCode::BackTab, KeyModifiers::CONTROL);
         assert!(!bt_combo1.matches(&bt_ctrl_event));
+    }
+
+    #[test]
+    fn test_display_single_and_multi() {
+        let single = KeyCombo::simple(KeyCode::Char('q'));
+        assert_eq!(single.to_display_string(), "q");
+
+        let ctrl_single = KeyCombo::ctrl(KeyCode::Char('s'));
+        assert_eq!(ctrl_single.to_display_string(), "Ctrl+s");
+
+        // Multi-key simple (all ascii letters) joins without separator
+        let gg = KeyCombo::parse("g g").unwrap();
+        assert_eq!(gg.to_display_string(), "gg");
+
+        // Multi-key with modifier uses space
+        let ctrl_seq = KeyCombo::parse("Ctrl+x Ctrl+s").unwrap();
+        assert_eq!(ctrl_seq.to_display_string(), "Ctrl+x Ctrl+s");
+
+        // Space key in sequence
+        let space_seq = KeyCombo::parse("Space f").unwrap();
+        assert_eq!(space_seq.to_display_string(), "Space f");
     }
 
     #[test]
@@ -1546,4 +2131,127 @@ mod tests {
         assert_eq!(keybinds.canvas_keys_display(CanvasAction::Quit), "Esc/q");
         assert_eq!(keybinds.canvas_keys_display(CanvasAction::Save), "Ctrl+s");
     }
+
+    #[test]
+    fn test_matcher_sequences_disabled() {
+        let mut matcher = KeyMatcher::new();
+        let mut bindings: HashMap<ListAction, Vec<KeyCombo>> = HashMap::new();
+        bindings.insert(ListAction::JumpToTop, vec![
+            KeyCombo::parse("g g").unwrap(),
+        ]);
+        // With sequences disabled, "g" alone should not match JumpToTop
+        let event = KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE);
+        let result = matcher.resolve(event, &bindings, false);
+        assert_eq!(result, MatchOutcome::NoMatch);
+    }
+
+    #[test]
+    fn test_matcher_full_match() {
+        let mut matcher = KeyMatcher::new();
+        let mut bindings: HashMap<ListAction, Vec<KeyCombo>> = HashMap::new();
+        bindings.insert(ListAction::JumpToTop, vec![
+            KeyCombo::parse("g g").unwrap(),
+        ]);
+
+        // First 'g' should be Pending
+        let e1 = KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE);
+        let r1 = matcher.resolve(e1, &bindings, true);
+        assert_eq!(r1, MatchOutcome::Pending);
+
+        // Second 'g' within timeout should match
+        let e2 = KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE);
+        let r2 = matcher.resolve(e2, &bindings, true);
+        assert_eq!(r2, MatchOutcome::Matched(ListAction::JumpToTop));
+    }
+
+    #[test]
+    fn test_matcher_timeout() {
+        let mut matcher = KeyMatcher {
+            pending: Vec::new(),
+            last_event_at: None,
+            timeout: std::time::Duration::from_millis(1), // very short
+        };
+        let mut bindings: HashMap<ListAction, Vec<KeyCombo>> = HashMap::new();
+        bindings.insert(ListAction::JumpToTop, vec![
+            KeyCombo::parse("g g").unwrap(),
+        ]);
+
+        // First 'g' -> Pending
+        let e1 = KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE);
+        let r1 = matcher.resolve(e1, &bindings, true);
+        assert_eq!(r1, MatchOutcome::Pending);
+
+        // Wait longer than timeout
+        std::thread::sleep(std::time::Duration::from_millis(5));
+
+        // Second 'g' after timeout should NOT match (pending cleared)
+        let e2 = KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE);
+        let r2 = matcher.resolve(e2, &bindings, true);
+        // Should re-start sequence
+        assert_eq!(r2, MatchOutcome::Pending);
+    }
+
+    #[test]
+    fn test_matcher_single_key_still_works() {
+        let mut matcher = KeyMatcher::new();
+        let mut bindings: HashMap<ListAction, Vec<KeyCombo>> = HashMap::new();
+        bindings.insert(ListAction::Quit, vec![KeyCombo::simple(KeyCode::Char('q'))]);
+        bindings.insert(ListAction::JumpToTop, vec![
+            KeyCombo::parse("g g").unwrap(),
+        ]);
+
+        // 'q' alone should still match Quit (length-1)
+        let event = KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE);
+        let result = matcher.resolve(event, &bindings, true);
+        assert_eq!(result, MatchOutcome::Matched(ListAction::Quit));
+    }
+
+    #[test]
+    fn test_preset_edit_unchanged() {
+        let default_edit = &Keybinds::default().edit;
+        for preset in &[KeybindPreset::Default, KeybindPreset::Helix, KeybindPreset::Vim, KeybindPreset::Emacs] {
+            assert_eq!(&preset.base_keybinds().edit, default_edit, "preset {preset} must not change edit bindings");
+        }
+    }
+
+    #[test]
+    fn test_helix_preset_bindings() {
+        let kb = KeybindPreset::Helix.base_keybinds();
+        // gg → JumpToTop
+        assert!(kb.list.get(&ListAction::JumpToTop).unwrap().iter().any(|c| c.to_display_string() == "gg"));
+        // Space Space → OpenCommandPalette
+        assert!(kb.list.get(&ListAction::OpenCommandPalette).unwrap().iter().any(|c| c.to_display_string() == "Space Space"));
+        // Space t → NewFromTemplate
+        assert!(kb.list.get(&ListAction::NewFromTemplate).unwrap().iter().any(|c| c.to_display_string() == "Space t"));
+        // k → MoveUp (with arrow fallback)
+        assert!(kb.list.get(&ListAction::MoveUp).unwrap().iter().any(|c| c.to_display_string() == "k"));
+        assert!(kb.list.get(&ListAction::MoveUp).unwrap().iter().any(|c| c.to_display_string() == "Up"));
+    }
+
+    #[test]
+    fn test_vim_preset_bindings() {
+        let kb = KeybindPreset::Vim.base_keybinds();
+        // : q → Quit
+        assert!(kb.list.get(&ListAction::Quit).unwrap().iter().any(|c| c.to_display_string() == ": q"));
+        // d d → Delete
+        assert!(kb.list.get(&ListAction::Delete).unwrap().iter().any(|c| c.to_display_string() == "dd"));
+        // gg → JumpToTop
+        assert!(kb.list.get(&ListAction::JumpToTop).unwrap().iter().any(|c| c.to_display_string() == "gg"));
+        // Shift+G → JumpToBottom
+        assert!(kb.list.get(&ListAction::JumpToBottom).unwrap().iter().any(|c| c.to_display_string() == "Shift+G"));
+    }
+
+    #[test]
+    fn test_emacs_preset_bindings() {
+        let kb = KeybindPreset::Emacs.base_keybinds();
+        // Ctrl+p → MoveUp
+        assert!(kb.list.get(&ListAction::MoveUp).unwrap().iter().any(|c| c.to_display_string() == "Ctrl+p"));
+        // Ctrl+h → Help
+        assert!(kb.list.get(&ListAction::Help).unwrap().iter().any(|c| c.to_display_string() == "Ctrl+h"));
+        // Ctrl+x Ctrl+c → Quit
+        assert!(kb.list.get(&ListAction::Quit).unwrap().iter().any(|c| c.to_display_string() == "Ctrl+x Ctrl+c"));
+        // Ctrl+d → Delete
+        assert!(kb.list.get(&ListAction::Delete).unwrap().iter().any(|c| c.to_display_string() == "Ctrl+d"));
+    }
+
 }

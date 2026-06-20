@@ -10,8 +10,10 @@ pub fn handle_event(
     ev: Event,
     app: &mut DrawAppState,
     keybinds: &Keybinds,
+    config: &crate::config::ClinConfig,
 ) -> anyhow::Result<Option<DrawEventAction>> {
     if let Some((idx, textarea)) = &mut app.text_editor {
+        app.seq_matcher.clear();
         match ev {
             Event::Key(k) if keybinds.matches_draw(DrawAction::TextEditorCancel, &k) => {
                 app.text_editor = None;
@@ -38,6 +40,7 @@ pub fn handle_event(
     }
 
     if app.show_shape_selector {
+        app.seq_matcher.clear();
         match ev {
             Event::Key(k) if keybinds.matches_draw(DrawAction::ShapeSelectorCancel, &k) => {
                 app.show_shape_selector = false;
@@ -60,26 +63,37 @@ pub fn handle_event(
         }
     }
 
+    if let Event::Key(k) = ev {
+        let seq = config.core.enable_key_sequences;
+        match keybinds.resolve_draw(&mut app.seq_matcher, k, seq) {
+            crate::keybinds::MatchOutcome::Matched(action) => match action {
+                DrawAction::Quit => {
+                    return Ok(Some(DrawEventAction::Quit));
+                }
+                DrawAction::SelectDrawTool => {
+                    app.active_tool = DrawTool::Draw;
+                    return Ok(None);
+                }
+                DrawAction::ToggleShapeSelector => {
+                    app.show_shape_selector = !app.show_shape_selector;
+                    return Ok(None);
+                }
+                DrawAction::SelectTextTool => {
+                    app.active_tool = DrawTool::Text;
+                    return Ok(None);
+                }
+                DrawAction::SelectEraseTool => {
+                    app.active_tool = DrawTool::Erase;
+                    return Ok(None);
+                }
+                _ => {}
+            },
+            crate::keybinds::MatchOutcome::Pending => return Ok(None),
+            crate::keybinds::MatchOutcome::NoMatch => {}
+        }
+    }
+
     match ev {
-        Event::Key(k) if keybinds.matches_draw(DrawAction::Quit, &k) => {
-            Ok(Some(DrawEventAction::Quit))
-        }
-        Event::Key(k) if keybinds.matches_draw(DrawAction::SelectDrawTool, &k) => {
-            app.active_tool = DrawTool::Draw;
-            Ok(None)
-        }
-        Event::Key(k) if keybinds.matches_draw(DrawAction::ToggleShapeSelector, &k) => {
-            app.show_shape_selector = !app.show_shape_selector;
-            Ok(None)
-        }
-        Event::Key(k) if keybinds.matches_draw(DrawAction::SelectTextTool, &k) => {
-            app.active_tool = DrawTool::Text;
-            Ok(None)
-        }
-        Event::Key(k) if keybinds.matches_draw(DrawAction::SelectEraseTool, &k) => {
-            app.active_tool = DrawTool::Erase;
-            Ok(None)
-        }
         Event::Mouse(mouse_event) => handle_mouse(mouse_event, app),
         _ => Ok(None),
     }

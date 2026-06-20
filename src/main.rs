@@ -28,7 +28,7 @@ pub(crate) mod text_edit;
 
 use crate::cli::{Cli, Command, ConfigCmd, KeybindsCmd, NotesCmd, StorageCmd, TemplatesCmd};
 use crate::config::ClinConfig;
-use crate::keybinds::{EditAction, HelpAction, Keybinds, ListAction};
+use crate::keybinds::{EditAction, HelpAction, ListAction};
 use clap::{CommandFactory, FromArgMatches};
 
 use std::borrow::Cow;
@@ -457,8 +457,13 @@ fn run_keybinds(action: KeybindsCmd) -> Result<()> {
     match action {
         KeybindsCmd::Show => {
             let storage = Storage::init()?;
-            let keybinds = storage.load_keybinds();
-            println!("{}\n", console::bold("Current keybinds"));
+            let config = crate::config::ClinConfig::load().unwrap_or_default();
+            let keybinds = storage.load_keybinds_with_preset(config.core.keybind_preset);
+            println!(
+                "{} (preset: {})\n",
+                console::bold("Current keybinds"),
+                console::cyan(&config.core.keybind_preset.to_string())
+            );
             println!("{}", console::section("List View"));
             println!(
                 "  {:<18} {}",
@@ -584,7 +589,8 @@ fn run_keybinds(action: KeybindsCmd) -> Result<()> {
         }
         KeybindsCmd::Reset => {
             let storage = Storage::init()?;
-            let keybinds = Keybinds::default();
+            let config = crate::config::ClinConfig::load().unwrap_or_default();
+            let keybinds = config.core.keybind_preset.base_keybinds();
             storage.save_keybinds(&keybinds)?;
             println!("{}", console::success("Keybinds reset to defaults"));
             println!(
@@ -853,6 +859,7 @@ fn run_app(
                 app.storage.clone(),
                 &mut config,
                 &app.keybinds,
+                &mut app.seq_matcher,
             ) {
                 Ok(crate::graf::app::GrafResult::NoteOpened(note_id)) => {
                     app.mode = ViewMode::List;
@@ -891,6 +898,7 @@ fn run_app(
                 &app.keybinds,
                 &app.app_theme,
                 app.git_lock.clone(),
+                &mut app.seq_matcher,
             );
 
             app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
@@ -908,6 +916,7 @@ fn run_app(
                 note_id,
                 &app.keybinds,
                 app.app_theme.clone(),
+                &mut app.seq_matcher,
             ) {
                 Ok(crate::content_tree::app::ContentTreeResult::Back) => {
                     app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
@@ -947,6 +956,7 @@ fn run_app(
                 &app.keybinds,
                 note_id,
                 app.app_theme.clone(),
+                &mut app.seq_matcher,
             );
             app.close_draw_view();
             app.needs_full_redraw = true;
@@ -962,6 +972,7 @@ fn run_app(
                 &app.keybinds,
                 note_id,
                 app.app_theme.clone(),
+                &mut app.seq_matcher,
             ) {
                 Ok(crate::pinstar::app::PinstarResult::HelpRequested) => {
                     app.reload_theme();

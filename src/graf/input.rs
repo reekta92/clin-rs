@@ -29,55 +29,76 @@ pub fn handle_graph_keys(
     key: KeyEvent,
     keybinds: &Keybinds,
     config: &ClinConfig,
+    seq_matcher: &mut crate::keybinds::KeyMatcher,
 ) -> Option<GraphInputAction> {
     let mut guard = state.write().unwrap_or_else(|e| e.into_inner());
 
-    if keybinds.matches_graph(GraphAction::Quit, &key) {
-        return Some(GraphInputAction::Quit);
-    }
-
-    if keybinds.matches_graph(GraphAction::PanUp, &key) {
-        select_in_direction(&mut guard, 0.0, 1.0);
-    } else if keybinds.matches_graph(GraphAction::PanDown, &key) {
-        select_in_direction(&mut guard, 0.0, -1.0);
-    } else if keybinds.matches_graph(GraphAction::PanLeft, &key) {
-        select_in_direction(&mut guard, -1.0, 0.0);
-    } else if keybinds.matches_graph(GraphAction::PanRight, &key) {
-        select_in_direction(&mut guard, 1.0, 0.0);
-    } else if keybinds.matches_graph(GraphAction::ZoomIn, &key) {
-        guard.viewport.zoom_in(config.graf.interaction.zoom_factor);
-    } else if keybinds.matches_graph(GraphAction::ZoomOut, &key) {
-        guard.viewport.zoom_out(config.graf.interaction.zoom_factor);
-    } else if keybinds.matches_graph(GraphAction::OpenNote, &key) {
-        if let Some(idx) = guard.selected_node
-            && let Some(node) = guard.simulation.get_graph().node_weight(idx)
-        {
-            return Some(GraphInputAction::OpenFile(node.data.note_id.clone()));
-        }
-    } else if keybinds.matches_graph(GraphAction::AutoFit, &key) {
-        let vp = guard
-            .viewport
-            .clone()
-            .auto_fit_from_graph(guard.simulation.get_graph(), 1.4);
-        guard.viewport = vp;
-    } else if keybinds.matches_graph(GraphAction::Help, &key) {
-        return Some(GraphInputAction::ToggleHelp);
-    } else if keybinds.matches_graph(GraphAction::ToggleSearch, &key) {
-        return Some(GraphInputAction::ToggleSearch);
-    } else if keybinds.matches_graph(GraphAction::ToggleMinimap, &key) {
-        return Some(GraphInputAction::ToggleMinimap);
-    } else if keybinds.matches_graph(GraphAction::ToggleLegend, &key) {
-        return Some(GraphInputAction::ToggleLegend);
-    } else if keybinds.matches_graph(GraphAction::ToggleGrid, &key) {
-        return Some(GraphInputAction::ToggleGrid);
-    } else if keybinds.matches_graph(GraphAction::ToggleStatus, &key) {
-        return Some(GraphInputAction::ToggleStatus);
-    } else if keybinds.matches_graph(GraphAction::Refresh, &key) {
-        return Some(GraphInputAction::Refresh);
-    } else if keybinds.matches_graph(GraphAction::ReloadConfig, &key) {
-        return Some(GraphInputAction::ReloadConfig);
-    } else if keybinds.matches_graph(GraphAction::TogglePreview, &key) {
-        return Some(GraphInputAction::TogglePreview);
+    let seq = config.core.enable_key_sequences;
+    match keybinds.resolve_graph(seq_matcher, key, seq) {
+        crate::keybinds::MatchOutcome::Matched(action) => match action {
+            GraphAction::Quit => return Some(GraphInputAction::Quit),
+            GraphAction::PanUp => {
+                select_in_direction(&mut guard, 0.0, 1.0);
+            }
+            GraphAction::PanDown => {
+                select_in_direction(&mut guard, 0.0, -1.0);
+            }
+            GraphAction::PanLeft => {
+                select_in_direction(&mut guard, -1.0, 0.0);
+            }
+            GraphAction::PanRight => {
+                select_in_direction(&mut guard, 1.0, 0.0);
+            }
+            GraphAction::ZoomIn => {
+                guard.viewport.zoom_in(config.graf.interaction.zoom_factor);
+            }
+            GraphAction::ZoomOut => {
+                guard.viewport.zoom_out(config.graf.interaction.zoom_factor);
+            }
+            GraphAction::OpenNote => {
+                if let Some(idx) = guard.selected_node
+                    && let Some(node) = guard.simulation.get_graph().node_weight(idx)
+                {
+                    return Some(GraphInputAction::OpenFile(node.data.note_id.clone()));
+                }
+            }
+            GraphAction::AutoFit => {
+                let vp = guard
+                    .viewport
+                    .clone()
+                    .auto_fit_from_graph(guard.simulation.get_graph(), 1.4);
+                guard.viewport = vp;
+            }
+            GraphAction::Help => {
+                return Some(GraphInputAction::ToggleHelp);
+            }
+            GraphAction::ToggleSearch => {
+                return Some(GraphInputAction::ToggleSearch);
+            }
+            GraphAction::ToggleMinimap => {
+                return Some(GraphInputAction::ToggleMinimap);
+            }
+            GraphAction::ToggleLegend => {
+                return Some(GraphInputAction::ToggleLegend);
+            }
+            GraphAction::ToggleGrid => {
+                return Some(GraphInputAction::ToggleGrid);
+            }
+            GraphAction::ToggleStatus => {
+                return Some(GraphInputAction::ToggleStatus);
+            }
+            GraphAction::Refresh => {
+                return Some(GraphInputAction::Refresh);
+            }
+            GraphAction::ReloadConfig => {
+                return Some(GraphInputAction::ReloadConfig);
+            }
+            GraphAction::TogglePreview => {
+                return Some(GraphInputAction::TogglePreview);
+            }
+        },
+        crate::keybinds::MatchOutcome::Pending => return None,
+        crate::keybinds::MatchOutcome::NoMatch => {}
     }
 
     None

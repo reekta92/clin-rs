@@ -32,6 +32,7 @@ pub struct DrawAppState {
     pub creation_origin: Option<(f64, f64)>,
     pub preview_element: Option<crate::draw::state::DrawElement>,
     pub keybinds: Keybinds,
+    pub seq_matcher: crate::keybinds::KeyMatcher,
 }
 
 impl DrawAppState {
@@ -40,6 +41,7 @@ impl DrawAppState {
         file_id: Option<String>,
         theme: crate::app_theme::AppThemeColors,
         keybinds: Keybinds,
+        seq_matcher: crate::keybinds::KeyMatcher,
     ) -> Self {
         let mut data = DrawData::default();
         if let Some(id) = &file_id {
@@ -69,6 +71,7 @@ impl DrawAppState {
             creation_origin: None,
             preview_element: None,
             keybinds,
+            seq_matcher,
         }
     }
 
@@ -98,10 +101,10 @@ impl OverlayView<()> for DrawAppState {
         &mut self,
         event: crossterm::event::Event,
         _terminal: &ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
-        _config: &mut crate::config::ClinConfig,
+        config: &mut crate::config::ClinConfig,
     ) -> anyhow::Result<Option<()>> {
         let keybinds = self.keybinds.clone();
-        if let Some(action) = handle_event(event, self, &keybinds)? {
+        if let Some(action) = handle_event(event, self, &keybinds, config)? {
             match action {
                 DrawEventAction::Quit => {
                     self.running = false;
@@ -127,8 +130,9 @@ pub fn run_draw_view(
     keybinds: &Keybinds,
     file_id: Option<String>,
     theme: crate::app_theme::AppThemeColors,
+    seq_matcher: &mut crate::keybinds::KeyMatcher,
 ) -> anyhow::Result<Option<String>> {
-    let mut app_state = DrawAppState::new(storage, file_id, theme, keybinds.clone());
+    let mut app_state = DrawAppState::new(storage, file_id, theme, keybinds.clone(), seq_matcher.clone());
     let mut config = crate::config::ClinConfig::default();
     let theme_clone = app_state.theme.clone();
     crate::overlay::run_overlay(

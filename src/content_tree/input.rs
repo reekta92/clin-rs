@@ -1,9 +1,8 @@
-use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+use crossterm::event::{MouseButton, MouseEvent, MouseEventKind, KeyEvent};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
-
 use crate::content_tree::state::ContentTreeState;
 use crate::keybinds::{ContentTreeAction, Keybinds};
-use crossterm::event::KeyEvent;
+use crate::config::ClinConfig;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InputResult {
@@ -83,35 +82,37 @@ pub fn handle_input(
     state: &mut ContentTreeState,
     key: KeyEvent,
     keybinds: &Keybinds,
+    config: &ClinConfig,
 ) -> InputResult {
-    if keybinds.matches_content_tree(ContentTreeAction::Back, &key) {
-        return InputResult::Back;
-    }
-    if keybinds.matches_content_tree(ContentTreeAction::Open, &key) {
-        return InputResult::Open;
-    }
-    if keybinds.matches_content_tree(ContentTreeAction::Help, &key) {
-        return InputResult::Help;
-    }
-    if keybinds.matches_content_tree(ContentTreeAction::MoveUp, &key) {
-        state.move_up();
-        return InputResult::None;
-    }
-    if keybinds.matches_content_tree(ContentTreeAction::MoveDown, &key) {
-        state.move_down();
-        return InputResult::None;
-    }
-    if keybinds.matches_content_tree(ContentTreeAction::ToggleCollapse, &key) {
-        state.toggle_collapse();
-        return InputResult::None;
-    }
-    if keybinds.matches_content_tree(ContentTreeAction::ExpandAll, &key) {
-        state.expand_all();
-        return InputResult::None;
-    }
-    if keybinds.matches_content_tree(ContentTreeAction::CollapseAll, &key) {
-        state.collapse_all();
-        return InputResult::None;
+    let seq = config.core.enable_key_sequences;
+    match keybinds.resolve_content_tree(&mut state.seq_matcher, key, seq) {
+        crate::keybinds::MatchOutcome::Matched(action) => match action {
+            ContentTreeAction::Back => return InputResult::Back,
+            ContentTreeAction::Open => return InputResult::Open,
+            ContentTreeAction::Help => return InputResult::Help,
+            ContentTreeAction::MoveUp => {
+                state.move_up();
+                return InputResult::None;
+            }
+            ContentTreeAction::MoveDown => {
+                state.move_down();
+                return InputResult::None;
+            }
+            ContentTreeAction::ToggleCollapse => {
+                state.toggle_collapse();
+                return InputResult::None;
+            }
+            ContentTreeAction::ExpandAll => {
+                state.expand_all();
+                return InputResult::None;
+            }
+            ContentTreeAction::CollapseAll => {
+                state.collapse_all();
+                return InputResult::None;
+            }
+        },
+        crate::keybinds::MatchOutcome::Pending => return InputResult::None,
+        crate::keybinds::MatchOutcome::NoMatch => {}
     }
 
     InputResult::None
