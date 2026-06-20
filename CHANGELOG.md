@@ -2,6 +2,24 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.8.20] - 2026-06-20
+
+### Added
+
+- Add tab_icons_only mode with overlap-safe title bars
+
+### Fixed
+
+- Move cut/copy/paste to Ctrl+Shift to free bare Ctrl
+
+### Miscellaneous
+
+- Fixed fmt CI failing
+- Fixed fmt CI failing
+
+### Performance
+
+- Cache arboard clipboard in thread-local
 ## [0.8.19] - 2026-06-20
 
 ### Fixed
@@ -23,6 +41,10 @@ All notable changes to clin are documented in this file.
 ### Styling
 
 - Fix formatting in test code
+
+### Release
+
+- V0.8.19
 ## [0.8.18] - 2026-06-18
 
 ### Fixed
