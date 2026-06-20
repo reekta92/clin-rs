@@ -1076,14 +1076,14 @@ impl App {
                 updated_at: now_unix_secs(),
                 tags: Vec::new(),
             };
-            if self.storage.save_note(&id, &new_note).is_ok() {
+            if let Ok(saved_id) = self.storage.save_note(&id, &new_note) {
                 if let Err(e) = self.try_auto_backup(&new_note.title) {
                     self.set_temporary_status(&format!("Backup failed: {e}"));
                 }
                 if let Err(e) = self.refresh_notes() {
                     self.set_temporary_status(&format!("Refresh failed: {e}"));
                 }
-                self.open_note_in_external_editor(&id, None);
+                self.open_note_in_external_editor(&saved_id, None);
             }
             return;
         }
@@ -1123,14 +1123,14 @@ impl App {
                 updated_at: now_unix_secs(),
                 tags: Vec::new(),
             };
-            if self.storage.save_note(&new_id, &new_note).is_ok() {
+            if let Ok(saved_id) = self.storage.save_note(&new_id, &new_note) {
                 if let Err(e) = self.try_auto_backup(&new_note.title) {
                     self.set_temporary_status(&format!("Backup failed: {e}"));
                 }
                 if let Err(e) = self.refresh_notes() {
                     self.set_temporary_status(&format!("Refresh failed: {e}"));
                 }
-                self.open_note_in_external_editor(&new_id, None);
+                self.open_note_in_external_editor(&saved_id, None);
             }
             return;
         }
@@ -1175,14 +1175,14 @@ impl App {
                 updated_at: now_unix_secs(),
                 tags: Vec::new(),
             };
-            if self.storage.save_note(&new_id, &new_note).is_ok() {
+            if let Ok(saved_id) = self.storage.save_note(&new_id, &new_note) {
                 if let Err(e) = self.try_auto_backup(&new_note.title) {
                     self.set_temporary_status(&format!("Backup failed: {e}"));
                 }
                 if let Err(e) = self.refresh_notes() {
                     self.set_temporary_status(&format!("Refresh failed: {e}"));
                 }
-                self.open_note_in_external_editor(&new_id, None);
+                self.open_note_in_external_editor(&saved_id, None);
             }
             return;
         }
@@ -2903,14 +2903,14 @@ template = """
                 updated_at: now_unix_secs(),
                 tags: vec![],
             };
-            if self.storage.save_note(&new_id, &note).is_ok() {
+            if let Ok(saved_id) = self.storage.save_note(&new_id, &note) {
                 if let Err(e) = self.try_auto_backup(&note.title) {
                     self.set_temporary_status(&format!("Backup failed: {e}"));
                 }
                 if let Err(e) = self.refresh_notes() {
                     self.set_temporary_status(&format!("Refresh failed: {e}"));
                 }
-                self.open_note_in_external_editor(&new_id, None);
+                self.open_note_in_external_editor(&saved_id, None);
             }
             return;
         }
@@ -4149,6 +4149,7 @@ mod tests {
     use super::*;
     use crate::storage::Storage;
     use tempfile::tempdir;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
     #[test]
     fn test_refresh_visual_list_requests_preview_update() {
@@ -4186,4 +4187,76 @@ mod tests {
         assert!(!app.list.pending_preview_update);
         assert_eq!(app.list.preview_content_index, Some(0));
     }
+
+    #[test]
+    fn test_y_inserts_in_create_note_popup() {
+        let temp_dir = tempdir().unwrap();
+        let data_dir = temp_dir.path().join("data");
+        let config_dir = temp_dir.path().join("config");
+        let notes_dir = temp_dir.path().join("notes");
+        let templates_dir = temp_dir.path().join("templates");
+        std::fs::create_dir_all(&data_dir).unwrap();
+        std::fs::create_dir_all(&config_dir).unwrap();
+        std::fs::create_dir_all(&notes_dir).unwrap();
+        std::fs::create_dir_all(&templates_dir).unwrap();
+
+        let storage = Storage {
+            data_dir,
+            config_dir,
+            notes_dir,
+            templates_dir,
+            key: [0u8; 32],
+        };
+        let mut app = App::new(storage).unwrap();
+
+        // Open the create-note popup
+        app.begin_create_note_in_folder(String::new());
+        assert!(app.popups.create_note.is_some(), "create_note popup should be open");
+
+        // Dispatch 'y' key — must insert, not confirm
+        crate::events::handle_list_keys(&mut app, KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE));
+
+        // Popup must still be open
+        assert!(app.popups.create_note.is_some(), "popup should remain open after y");
+
+        // Input must contain "y"
+        let (popup, _) = app.popups.create_note.as_ref().unwrap();
+        let text: String = popup.input.lines().join("");
+        assert_eq!(text, "y", "input should contain y, got: {text}");
+    }
+
+    #[test]
+    fn test_external_editor_uses_saved_id() {
+        let temp_dir = tempdir().unwrap();
+        let data_dir = temp_dir.path().join("data");
+        let config_dir = temp_dir.path().join("config");
+        let notes_dir = temp_dir.path().join("notes");
+        let templates_dir = temp_dir.path().join("templates");
+        std::fs::create_dir_all(&data_dir).unwrap();
+        std::fs::create_dir_all(&config_dir).unwrap();
+        std::fs::create_dir_all(&notes_dir).unwrap();
+        std::fs::create_dir_all(&templates_dir).unwrap();
+
+        let storage = Storage {
+            data_dir,
+            config_dir,
+            notes_dir,
+            templates_dir,
+            key: [0u8; 32],
+        };
+        let mut app = App::new(storage).unwrap();
+
+        // Enable external editor with `false` (exits non-zero — proves load succeeded)
+        app.editor.external_editor_enabled = true;
+        app.editor.external_editor = Some("false".into());
+
+        app.start_blank_note_with_title(String::new(), "Yellow".into());
+
+        let status = app.status.to_string();
+        assert!(
+            !status.contains("Failed to load note"),
+            "status should not say 'Failed to load note': {status}"
+        );
+    }
 }
+
