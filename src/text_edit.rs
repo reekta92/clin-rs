@@ -4,7 +4,7 @@ use ratatui_textarea::{CursorMove, TextArea};
 use std::cell::RefCell;
 
 thread_local! {
-    static CLIPBOARD: RefCell<Option<arboard::Clipboard>> = RefCell::new(None);
+    static CLIPBOARD: RefCell<Option<arboard::Clipboard>> = const { RefCell::new(None) };
 }
 
 pub fn apply_text_shortcuts(
@@ -58,11 +58,11 @@ pub fn apply_text_shortcuts(
             if cb.is_none() {
                 *cb = arboard::Clipboard::new().ok();
             }
-            if let Some(clipboard) = cb.as_mut() {
-                if let Ok(text) = clipboard.get_text() {
-                    textarea.insert_str(text);
-                    pasted = true;
-                }
+            if let Some(clipboard) = cb.as_mut()
+                && let Ok(text) = clipboard.get_text()
+            {
+                textarea.insert_str(text);
+                pasted = true;
             }
         });
         if !pasted {
