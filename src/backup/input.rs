@@ -58,8 +58,10 @@ fn handle_normal_input(
                     let max = total.saturating_sub(visible);
                     state.history_scroll = state.history_scroll.min(max as u16);
                 } else if !state.selectable_files.is_empty() {
-                    state.selected_index = (state.selected_index + 1) % state.selectable_files.len();
-                    state.selected_file = Some(state.selectable_files[state.selected_index].clone());
+                    state.selected_index =
+                        (state.selected_index + 1) % state.selectable_files.len();
+                    state.selected_file =
+                        Some(state.selectable_files[state.selected_index].clone());
                     state.load_selected_diff();
                     state.adjust_scroll_to_selection();
                 }
@@ -73,7 +75,8 @@ fn handle_normal_input(
                     } else {
                         state.selected_index - 1
                     };
-                    state.selected_file = Some(state.selectable_files[state.selected_index].clone());
+                    state.selected_file =
+                        Some(state.selectable_files[state.selected_index].clone());
                     state.load_selected_diff();
                     state.adjust_scroll_to_selection();
                 }

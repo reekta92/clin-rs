@@ -318,9 +318,32 @@ pub struct App {
     pub backup_tx: Option<mpsc::Sender<crate::backup::worker::BackupJob>>,
     pub git_lock: Arc<Mutex<()>>,
     pub backup_status: Arc<Mutex<Option<String>>>,
+    pub preview_wrap: bool,
+    pub preview_fullscreen: bool,
+}
+
+const PREVIEW_INNER_PAD: u16 = 4;
+const PREVIEW_NO_WRAP_WIDTH: u16 = 1000;
+
+fn preview_render_cols(pane_width: u16, wrap: bool) -> u16 {
+    if !wrap {
+        return PREVIEW_NO_WRAP_WIDTH;
+    }
+    if pane_width == 0 {
+        return 78;
+    }
+    pane_width.saturating_sub(PREVIEW_INNER_PAD).max(20)
 }
 
 impl App {
+    pub fn desired_list_preview_width(&self) -> u16 {
+        preview_render_cols(self.list.last_preview_pane_width, self.preview_wrap)
+    }
+
+    pub fn desired_editor_preview_width(&self) -> u16 {
+        preview_render_cols(self.editor.last_preview_pane_width, self.preview_wrap)
+    }
+
     pub fn new(storage: Storage) -> Result<Self> {
         let bootstrap_config = crate::config::ClinConfig::load().unwrap_or_default();
         for w in bootstrap_config.validate() {
@@ -353,6 +376,7 @@ impl App {
         list.show_date_in_list = bootstrap_config.list.show_date_in_list;
         list.show_hidden_files = bootstrap_config.list.show_hidden_files;
 
+        let preview_wrap = bootstrap_config.core.preview_wrap;
         let mut app = Self {
             storage,
             keybinds,
@@ -391,6 +415,8 @@ impl App {
             backup_tx: None,
             git_lock: Arc::new(Mutex::new(())),
             backup_status: Arc::new(Mutex::new(None)),
+            preview_wrap,
+            preview_fullscreen: false,
         };
         app.list.folder_expanded.insert(String::new());
         app.refresh_notes()?;
@@ -429,6 +455,7 @@ impl App {
         list.show_date_in_list = bootstrap_config.list.show_date_in_list;
         list.show_hidden_files = bootstrap_config.list.show_hidden_files;
 
+        let preview_wrap = bootstrap_config.core.preview_wrap;
         let mut app = Self {
             storage,
             keybinds,
@@ -467,6 +494,8 @@ impl App {
             backup_tx: None,
             git_lock: Arc::new(Mutex::new(())),
             backup_status: Arc::new(Mutex::new(None)),
+            preview_wrap,
+            preview_fullscreen: false,
         };
         app.list.folder_expanded.insert(String::new());
         Ok(app)
@@ -474,6 +503,7 @@ impl App {
 
     pub fn reload_config(&mut self) {
         self.config = crate::config::ClinConfig::load().unwrap_or_default();
+        self.preview_wrap = self.config.core.preview_wrap;
     }
 
     fn is_virtual_pinned_path(path: &str) -> bool {
@@ -2937,9 +2967,11 @@ template = """
             self.list.visual_list.get(self.list.visual_index)
         {
             let path = self.storage.note_path(&self.notes[*summary_idx].id);
-            if let Ok(state) =
-                crate::pinstar::state::PinstarState::load(&path, self.keybinds.clone(), self.seq_matcher.clone())
-            {
+            if let Ok(state) = crate::pinstar::state::PinstarState::load(
+                &path,
+                self.keybinds.clone(),
+                self.seq_matcher.clone(),
+            ) {
                 self.canvas_state = Some(state);
                 self.return_mode = Some(self.mode);
                 self.mode = ViewMode::Canvas;
@@ -3191,9 +3223,11 @@ template = """
                     self.return_mode = Some(self.mode);
                     self.mode = ViewMode::Canvas;
                     self.editor.editing_id = Some(canvas_id);
-                    if let Ok(state) =
-                        crate::pinstar::state::PinstarState::load(&path, self.keybinds.clone(), self.seq_matcher.clone())
-                    {
+                    if let Ok(state) = crate::pinstar::state::PinstarState::load(
+                        &path,
+                        self.keybinds.clone(),
+                        self.seq_matcher.clone(),
+                    ) {
                         self.canvas_state = Some(state);
                     }
                     self.set_default_status();
@@ -3842,7 +3876,6 @@ template = """
         self.request_preview_update();
     }
 
-
     pub fn initiate_quit(&mut self) {
         if self.confirm_on_quit {
             self.show_confirm(ConfirmAction::QuitApp);
@@ -3850,7 +3883,6 @@ template = """
             self.should_quit = true;
         }
     }
-
 
     pub fn collapse_all_folders(&mut self) {
         self.list.folder_expanded.clear();
@@ -3982,6 +4014,38 @@ template = """
         }
     }
 
+    pub fn toggle_preview_fullscreen(&mut self) {
+        self.preview_fullscreen = !self.preview_fullscreen;
+        match self.mode {
+            ViewMode::Edit => self.update_editor_markdown_preview(),
+            _ => self.update_preview(),
+        }
+        if self.preview_fullscreen {
+            self.set_temporary_status_static("Preview expanded");
+        } else {
+            self.set_temporary_status_static("Preview restored");
+        }
+    }
+
+    pub fn toggle_preview_wrap(&mut self) {
+        self.preview_wrap = !self.preview_wrap;
+        if let Ok(mut config) = crate::config::ClinConfig::load() {
+            config.core.preview_wrap = self.preview_wrap;
+            if let Err(e) = config.save() {
+                self.set_temporary_status(&format!("Failed to save config: {e}"));
+            }
+        }
+        match self.mode {
+            ViewMode::Edit => self.update_editor_markdown_preview(),
+            _ => self.update_preview(),
+        }
+        self.set_temporary_status_static(if self.preview_wrap {
+            "Wrap on"
+        } else {
+            "Wrap off"
+        });
+    }
+
     pub fn poll_renderers(&mut self) -> bool {
         let mut updated = false;
 
@@ -3992,6 +4056,19 @@ template = """
             self.update_editor_markdown_preview();
             self.editor.pending_editor_preview_update = false;
             self.editor.last_editor_change = None;
+            updated = true;
+        }
+        let list_active = self.list.preview_enabled || self.preview_fullscreen;
+        if list_active && self.list.preview_content_width != Some(self.desired_list_preview_width())
+        {
+            self.update_preview();
+            updated = true;
+        }
+        let edit_active = self.editor.editor_preview_enabled || self.preview_fullscreen;
+        if edit_active
+            && self.editor.preview_content_width != Some(self.desired_editor_preview_width())
+        {
+            self.update_editor_markdown_preview();
             updated = true;
         }
 
@@ -4017,7 +4094,7 @@ template = """
     }
 
     pub fn request_preview_update(&mut self) {
-        if !self.list.preview_enabled {
+        if !(self.list.preview_enabled || self.preview_fullscreen) {
             return;
         }
 
@@ -4027,7 +4104,7 @@ template = """
     }
 
     pub fn request_preview_update_immediate(&mut self) {
-        if !self.list.preview_enabled {
+        if !(self.list.preview_enabled || self.preview_fullscreen) {
             return;
         }
 
@@ -4037,7 +4114,7 @@ template = """
     }
 
     pub fn request_editor_preview_update(&mut self) {
-        if !self.editor.editor_preview_enabled {
+        if !(self.editor.editor_preview_enabled || self.preview_fullscreen) {
             return;
         }
         self.editor.last_editor_change = Some(Instant::now());
@@ -4045,7 +4122,7 @@ template = """
     }
 
     pub fn update_preview(&mut self) {
-        if !self.list.preview_enabled {
+        if !(self.list.preview_enabled || self.preview_fullscreen) {
             return;
         }
 
@@ -4126,10 +4203,11 @@ template = """
                 }
 
                 if let Ok(note) = self.storage.load_note(id) {
-                    let width = 80u16.saturating_sub(2).max(40);
+                    let width = self.desired_list_preview_width();
                     let mut renderer = MarkdownRenderer::new(width);
                     renderer.render(&note.content, width);
                     self.list.preview_content = Some(PreviewContent::Markdown(Box::new(renderer)));
+                    self.list.preview_content_width = Some(width);
                 } else {
                     self.list.preview_content = None;
                 }
@@ -4215,10 +4293,11 @@ template = """
                     md.push_str("*This folder is empty.*\n");
                 }
 
-                let width = 80u16.saturating_sub(2).max(40);
+                let width = self.desired_list_preview_width();
                 let mut renderer = MarkdownRenderer::new(width);
                 renderer.render(&md, width);
                 self.list.preview_content = Some(PreviewContent::Markdown(Box::new(renderer)));
+                self.list.preview_content_width = Some(width);
                 self.list.preview_content_index = Some(self.list.visual_index);
             }
             _ => {
@@ -4229,15 +4308,16 @@ template = """
     }
 
     pub fn update_editor_markdown_preview(&mut self) {
-        if !self.editor.editor_preview_enabled {
+        if !(self.editor.editor_preview_enabled || self.preview_fullscreen) {
             return;
         }
 
         let content = self.editor.editor.lines().join("\n");
-        let width = 80u16.saturating_sub(2).max(40);
+        let width = self.desired_editor_preview_width();
         let mut renderer = MarkdownRenderer::new(width);
         renderer.render(&content, width);
         self.editor.md_preview_renderer = Some(renderer);
+        self.editor.preview_content_width = Some(width);
     }
 
     pub fn toggle_markdown_preview(&mut self) {
@@ -4549,6 +4629,14 @@ mod tests {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use tempfile::tempdir;
 
+    #[test]
+    fn test_preview_render_cols() {
+        assert_eq!(preview_render_cols(80, true), 76);
+        assert_eq!(preview_render_cols(22, true), 20);
+        assert_eq!(preview_render_cols(0, true), 78);
+        assert_eq!(preview_render_cols(80, false), 1000);
+        assert_eq!(preview_render_cols(0, false), 1000);
+    }
     #[test]
     fn test_refresh_visual_list_requests_preview_update() {
         let temp_dir = tempdir().unwrap();

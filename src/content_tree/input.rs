@@ -1,8 +1,8 @@
-use crossterm::event::{MouseButton, MouseEvent, MouseEventKind, KeyEvent};
-use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use crate::config::ClinConfig;
 use crate::content_tree::state::ContentTreeState;
 use crate::keybinds::{ContentTreeAction, Keybinds};
-use crate::config::ClinConfig;
+use crossterm::event::{KeyEvent, MouseButton, MouseEvent, MouseEventKind};
+use ratatui::layout::{Constraint, Direction, Layout, Rect};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InputResult {

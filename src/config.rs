@@ -151,7 +151,6 @@ impl std::fmt::Display for KeybindPreset {
     }
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum NodeColorMode {
@@ -731,6 +730,8 @@ pub struct CoreConfig {
     pub keybind_preset: KeybindPreset,
     #[serde(default)]
     pub enable_key_sequences: bool,
+    #[serde(default = "default_true")]
+    pub preview_wrap: bool,
 }
 impl Default for CoreConfig {
     fn default() -> Self {
@@ -743,6 +744,7 @@ impl Default for CoreConfig {
             confirm_on_quit: false,
             keybind_preset: KeybindPreset::Default,
             enable_key_sequences: false,
+            preview_wrap: default_true(),
         }
     }
 }

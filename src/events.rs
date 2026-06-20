@@ -747,7 +747,6 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
-
     if app.list.list_mode == ListMode::Select {
         if key.code == KeyCode::Esc || key.code == KeyCode::Char('q') {
             app.list.tag_to_assign = None;
@@ -1016,6 +1015,14 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 app.toggle_preview();
                 return false;
             }
+            ListAction::TogglePreviewFullscreen => {
+                app.toggle_preview_fullscreen();
+                return false;
+            }
+            ListAction::TogglePreviewWrap => {
+                app.toggle_preview_wrap();
+                return false;
+            }
             ListAction::OpenGraph => {
                 app.open_graph_view();
                 return false;
@@ -1064,17 +1071,15 @@ pub fn handle_help_keys(app: &mut App, key: KeyEvent) {
             }
         },
         crate::keybinds::MatchOutcome::Pending => {}
-        crate::keybinds::MatchOutcome::NoMatch => {
-            match key.code {
-                KeyCode::Char('1') => app.switch_help_tab(HelpTab::Notes),
-                KeyCode::Char('2') => app.switch_help_tab(HelpTab::Editor),
-                KeyCode::Char('3') => app.switch_help_tab(HelpTab::Graph),
-                KeyCode::Char('4') => app.switch_help_tab(HelpTab::Draw),
-                KeyCode::Char('5') => app.switch_help_tab(HelpTab::Canvas),
-                KeyCode::Char('6') => app.switch_help_tab(HelpTab::Templates),
-                _ => {}
-            }
-        }
+        crate::keybinds::MatchOutcome::NoMatch => match key.code {
+            KeyCode::Char('1') => app.switch_help_tab(HelpTab::Notes),
+            KeyCode::Char('2') => app.switch_help_tab(HelpTab::Editor),
+            KeyCode::Char('3') => app.switch_help_tab(HelpTab::Graph),
+            KeyCode::Char('4') => app.switch_help_tab(HelpTab::Draw),
+            KeyCode::Char('5') => app.switch_help_tab(HelpTab::Canvas),
+            KeyCode::Char('6') => app.switch_help_tab(HelpTab::Templates),
+            _ => {}
+        },
     }
 }
 
@@ -1149,6 +1154,14 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
             }
             EditAction::ToggleMarkdownPreview => {
                 app.toggle_markdown_preview();
+                return false;
+            }
+            EditAction::TogglePreviewFullscreen => {
+                app.toggle_preview_fullscreen();
+                return false;
+            }
+            EditAction::TogglePreviewWrap => {
+                app.toggle_preview_wrap();
                 return false;
             }
             _ => {}
@@ -1768,7 +1781,9 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
 
     let main_area = vertical_chunks[1];
 
-    let (list_area, preview_area) = if app.list.preview_enabled {
+    let (list_area, preview_area) = if app.preview_fullscreen {
+        (main_area, Some(main_area))
+    } else if app.list.preview_enabled {
         let (constraints, list_idx, p_idx) = match app.preview_position {
             crate::config::PreviewPosition::Left => (
                 [
@@ -1815,7 +1830,8 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         list_area.height.saturating_sub(2),
     );
 
-    if app.list.preview_enabled
+    let preview_active = app.list.preview_enabled || app.preview_fullscreen;
+    if preview_active
         && let Some(p_area) = preview_area
         && contains_cell(p_area, mouse_event.column, mouse_event.row)
     {
@@ -1847,6 +1863,9 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
             }
             None => {}
         }
+    }
+    if app.preview_fullscreen {
+        return;
     }
 
     if mouse_event.kind == MouseEventKind::ScrollUp {
@@ -2104,8 +2123,23 @@ pub fn handle_edit_mouse(
         app.editor.show_line_numbers,
     );
 
-    if app.editor.editor_preview_enabled
-        && let Some(md_area) = edit_view_md_preview_area(terminal_area)
+    let md_area = if app.preview_fullscreen {
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(1),
+                Constraint::Min(0),
+                Constraint::Length(1),
+            ])
+            .split(terminal_area);
+        Some(chunks[1])
+    } else if app.editor.editor_preview_enabled {
+        edit_view_md_preview_area(terminal_area)
+    } else {
+        None
+    };
+
+    if let Some(md_area) = md_area
         && contains_cell(md_area, mouse_event.column, mouse_event.row)
     {
         match mouse_event.kind {
@@ -2123,6 +2157,10 @@ pub fn handle_edit_mouse(
             }
             _ => {}
         }
+    }
+
+    if app.preview_fullscreen {
+        return;
     }
 
     match mouse_event.kind {

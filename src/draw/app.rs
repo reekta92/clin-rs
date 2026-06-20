@@ -132,7 +132,13 @@ pub fn run_draw_view(
     theme: crate::app_theme::AppThemeColors,
     seq_matcher: &mut crate::keybinds::KeyMatcher,
 ) -> anyhow::Result<Option<String>> {
-    let mut app_state = DrawAppState::new(storage, file_id, theme, keybinds.clone(), seq_matcher.clone());
+    let mut app_state = DrawAppState::new(
+        storage,
+        file_id,
+        theme,
+        keybinds.clone(),
+        seq_matcher.clone(),
+    );
     let mut config = crate::config::ClinConfig::default();
     let theme_clone = app_state.theme.clone();
     crate::overlay::run_overlay(

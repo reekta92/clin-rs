@@ -400,7 +400,6 @@ impl Storage {
         Keybinds::load_layered(&self.keybinds_path(), preset.base_keybinds()).unwrap_or_default()
     }
 
-
     pub fn save_keybinds(&self, keybinds: &Keybinds) -> Result<()> {
         keybinds.save(&self.keybinds_path())
     }
