@@ -4439,6 +4439,22 @@ template = """
         }
     }
 
+    pub fn toggle_tab_icons_only(&mut self) {
+        self.config.ui.tab_icons_only = !self.config.ui.tab_icons_only;
+        let msg: &'static str = if self.config.ui.tab_icons_only {
+            "Tab icons only"
+        } else {
+            "Tab icons + labels"
+        };
+        self.set_temporary_status_static(msg);
+        if let Ok(mut config) = crate::config::ClinConfig::load() {
+            config.ui.tab_icons_only = self.config.ui.tab_icons_only;
+            if let Err(e) = config.save() {
+                self.set_temporary_status(&format!("Failed to save config: {e}"));
+            }
+        }
+    }
+
     pub fn toggle_notes_layout(&mut self) {
         self.list.notes_layout = match self.list.notes_layout {
             crate::config::NotesLayout::Tree => crate::config::NotesLayout::Grid,

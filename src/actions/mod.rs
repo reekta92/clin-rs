@@ -75,6 +75,7 @@ pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyL
         Box::new(settings::TogglePreviewEncryptionAction),
         Box::new(settings::CycleSortAction),
         Box::new(settings::ToggleShowHiddenFilesAction),
+        Box::new(settings::ToggleTabIconsOnlyAction),
         Box::new(import::ImportAction {
             source: crate::popups::ImportSource::File,
             target: crate::popups::ImportTarget::NewNote,

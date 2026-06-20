@@ -109,15 +109,23 @@ pub fn draw_dashboard(
     }
 }
 
+/// Backup-view tab (label, glyph) pairs, in BackupSection order. Shared by
+/// `draw_header` (render) and the backup mouse hit-test so they never drift.
+pub const BACKUP_TABS: &[(&str, &str)] = &[
+    ("Status", "\u{f0e4}"),  // tachometer
+    ("History", "\u{f1da}"), // history
+];
+
 pub fn draw_header(frame: &mut Frame, area: Rect, state: &BackupState) {
     let theme = &state.theme;
-    let tabs = [("Status", None), ("History", None)];
+    let tabs: Vec<(&str, Option<&str>)> =
+        BACKUP_TABS.iter().map(|&(l, g)| (l, Some(g))).collect();
     let active = if state.selected_section == crate::backup::state::BackupSection::History {
         1
     } else {
         0
     };
-    let spans = crate::ui::build_tab_spans(&tabs, active, theme);
+    let spans = crate::ui::build_tab_spans(&tabs, active, theme, state.tab_icons_only);
     crate::ui::draw_view_title_bar_with_tabs(frame, area, "Backup", spans, theme);
 }
 

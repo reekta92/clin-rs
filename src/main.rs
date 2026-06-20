@@ -1022,10 +1022,16 @@ fn run_app(
                     {
                         let tabs: Vec<(&str, Option<&str>)> = crate::ui::HELP_TAB_NAMES
                             .iter()
-                            .map(|&n| (n, None))
+                            .map(|&(l, g)| (l, Some(g)))
                             .collect();
-                        if let Some(i) =
-                            crate::ui::hit_test_tabs(&tabs, area.x, area.width, mouse_event.column)
+                        let region = crate::ui::title_bar_tabs_region(area, "Help");
+                        if let Some(i) = crate::ui::hit_test_tabs(
+                            &tabs,
+                            region.x,
+                            region.width,
+                            mouse_event.column,
+                            app.config.ui.tab_icons_only,
+                        )
                         {
                             app.switch_help_tab(crate::app::HelpTab::from_index(i));
                         }

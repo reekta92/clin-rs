@@ -187,18 +187,18 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     }
 }
 
-/// Help-view tab labels, in HelpTab order. Shared by `draw_help_view` (render)
-/// and the help-tab mouse hit-test so they never drift.
-pub const HELP_TAB_NAMES: &[&str] = &[
-    "Notes",
-    "Editor",
-    "Graph",
-    "Draw",
-    "Canvas",
-    "Backup",
-    "Templates",
-    "Content Tree",
-    "About",
+/// Help-view tab (label, glyph) pairs, in HelpTab order. Shared by
+/// `draw_help_view` (render) and the help-tab mouse hit-test so they never drift.
+pub const HELP_TAB_NAMES: &[(&str, &str)] = &[
+    ("Notes", "\u{f24a}"),        // sticky-note
+    ("Editor", "\u{f040}"),       // pencil
+    ("Graph", "\u{f0e8}"),        // sitemap
+    ("Draw", "\u{f1fc}"),         // paint-brush
+    ("Canvas", "\u{f00a}"),       // th-large
+    ("Backup", "\u{f0c7}"),       // floppy-save
+    ("Templates", "\u{f0c5}"),    // copy
+    ("Content Tree", "\u{f1bb}"), // tree
+    ("About", "\u{f05a}"),        // info-circle
 ];
 
 pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
@@ -212,8 +212,10 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
         ])
         .split(area);
 
-    let tabs: Vec<(&str, Option<&str>)> = HELP_TAB_NAMES.iter().map(|&n| (n, None)).collect();
-    let tab_spans = build_tab_spans(&tabs, app.help_tab.index(), &app.app_theme);
+    let tabs: Vec<(&str, Option<&str>)> =
+        HELP_TAB_NAMES.iter().map(|&(l, g)| (l, Some(g))).collect();
+    let tab_spans =
+        build_tab_spans(&tabs, app.help_tab.index(), &app.app_theme, app.config.ui.tab_icons_only);
     draw_view_title_bar_with_tabs(frame, chunks[0], "Help", tab_spans, &app.app_theme);
 
     let help_text = app.get_help_text().clone();
@@ -1330,7 +1332,12 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     if app.list.notes_layout == crate::config::NotesLayout::Grid {
         let tabs = [("Vault", Some("\u{f07b}")), ("Pinned", Some("\u{f4cc}"))];
         let is_pinned = app.list.grid_folder == crate::app::VIRTUAL_PINNED_PATH;
-        let tab_spans = build_tab_spans(&tabs, if is_pinned { 1 } else { 0 }, &app.app_theme);
+        let tab_spans = build_tab_spans(
+            &tabs,
+            if is_pinned { 1 } else { 0 },
+            &app.app_theme,
+            app.config.ui.tab_icons_only,
+        );
         draw_view_title_bar_with_tabs(frame, chunks[0], "Notes", tab_spans, &app.app_theme);
 
         // Show details of the selected note at the top right (clock/relative time + tags)
@@ -1652,6 +1659,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             });
         }
         // do NOT render a List widget here; do NOT touch list_state (tree view still uses it).
+    } else {
         items.reserve(app.list.display_items.len());
         for item in &app.list.display_items {
             items.push(item.clone());
@@ -2019,7 +2027,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             .iter()
             .map(|(l, g, _)| (*l, Some(*g)))
             .collect();
-        let tab_spans = build_tab_spans(&tabs, palette.active_tab, &app.app_theme);
+        let tab_spans = build_tab_spans(&tabs, palette.active_tab, &app.app_theme, app.config.ui.tab_icons_only);
         let tabs_w = Paragraph::new(Line::from(tab_spans))
             .alignment(Alignment::Center)
             .style(app.app_theme.hint_line_bg_style());
@@ -3088,9 +3096,8 @@ pub fn draw_view_title_bar(frame: &mut Frame, area: Rect, title: &str, theme: &A
 }
 
 /// Renders a full-width bar with a left-aligned title (popup-banner style)
-/// and centered tab spans. The title occupies the left; tabs are centered
-/// in the full row width. If they overlap the title, tabs win visually
-/// (rendered second).
+/// and centered tab spans. Tabs are confined to the region right of the title
+/// so they never overlap, even at narrow widths.
 pub fn draw_view_title_bar_with_tabs(
     frame: &mut Frame,
     area: Rect,
@@ -3098,19 +3105,29 @@ pub fn draw_view_title_bar_with_tabs(
     tab_spans: Vec<Span<'static>>,
     theme: &AppThemeColors,
 ) {
-    // Background fill
-    let bg = Paragraph::new("").style(theme.title_bar_bg_style());
-    frame.render_widget(bg, area);
+    // 1. Background fill across the whole row.
+    frame.render_widget(Paragraph::new("").style(theme.title_bar_bg_style()), area);
 
-    // Tabs centered
-    let tab_line = Line::from(tab_spans);
-    let tabs = Paragraph::new(tab_line)
-        .alignment(Alignment::Center)
-        .style(theme.title_bar_bg_style());
-    frame.render_widget(tabs, area);
+    // 2. Tabs, centered (or left-aligned on overflow) inside the region right of
+    //    the title. Width math mirrors `hit_test_tabs` so mouse hits stay aligned.
+    let tabs_region = title_bar_tabs_region(area, title);
+    let total: u16 = tab_spans
+        .iter()
+        .map(|s| s.content.chars().count() as u16)
+        .fold(0u16, u16::saturating_add);
+    let start_x = tabs_region.x + tabs_region.width.saturating_sub(total) / 2;
+    let render_w = total.min(tabs_region.width);
+    let tabs_area = Rect::new(start_x, area.y, render_w, area.height);
+    frame.render_widget(
+        Paragraph::new(Line::from(tab_spans)).style(theme.title_bar_bg_style()),
+        tabs_area,
+    );
 
-    // Title on the left
+    // 3. Title on the left, confined to its own cells so it can never reach the
+    //    tab region. Styling unchanged from the original.
     let display_text = format!(" {} ", title.to_uppercase());
+    let title_w = display_text.chars().count() as u16;
+    let title_area = Rect::new(area.x, area.y, title_w.min(area.width), area.height);
     let title_span = Span::styled(
         display_text,
         Style::default()
@@ -3118,27 +3135,48 @@ pub fn draw_view_title_bar_with_tabs(
             .bg(theme.heading)
             .add_modifier(Modifier::BOLD),
     );
-    let title_para = Paragraph::new(Line::from(vec![title_span]));
-    frame.render_widget(title_para, area);
+    frame.render_widget(Paragraph::new(Line::from(vec![title_span])), title_area);
 }
 
-/// Display text for one tab. Glyph (Nerd Font codepoint) precedes the label.
+/// Sub-rect of a 1-row title-bar `area` reserved for the tab block: everything
+/// to the right of the `" TITLE "` text. Used by both `draw_view_title_bar_with_tabs`
+/// (render) and the `hit_test_tabs` callers (input) so the rendered and
+/// hit-tested regions can never drift.
+pub fn title_bar_tabs_region(area: Rect, title: &str) -> Rect {
+    let title_w = format!(" {} ", title.to_uppercase())
+        .chars()
+        .count()
+        .min(area.width as usize) as u16;
+    Rect {
+        x: area.x + title_w,
+        y: area.y,
+        width: area.width.saturating_sub(title_w),
+        height: area.height,
+    }
+}
+
+/// Display text for one tab. `icons_only` ⇒ glyph only; otherwise glyph + label.
 /// Private — keep width in sync with `tab_display_width`.
-fn tab_display_text(label: &str, glyph: Option<&str>) -> String {
-    match glyph {
-        Some(g) => format!(" {g} {label} "),
-        None => format!(" {label} "),
+fn tab_display_text(label: &str, glyph: Option<&str>, icons_only: bool) -> String {
+    match (icons_only, glyph) {
+        (true, Some(g)) => format!("  {g}  "),
+        (true, None) => format!(" {label} "),
+        (false, Some(g)) => format!(" {g} {label} "),
+        (false, None) => format!(" {label} "),
     }
 }
 
 /// Cell width of one tab's text. Must equal `tab_display_text(...).chars().count()`.
-fn tab_display_width(label: &str, glyph: Option<&str>) -> u16 {
+fn tab_display_width(label: &str, glyph: Option<&str>, icons_only: bool) -> u16 {
     let label_w = label.chars().count() as u16;
-    match glyph {
-        Some(g) => 3 + g.chars().count() as u16 + label_w, // " g label "
-        None => 2 + label_w,                               // " label "
+    match (icons_only, glyph) {
+        (true, Some(g)) => 4 + g.chars().count() as u16,       // "  g  "
+        (true, None) => 2 + label_w,                            // " label "
+        (false, Some(g)) => 3 + g.chars().count() as u16 + label_w, // " g label "
+        (false, None) => 2 + label_w,                           // " label "
     }
 }
+
 
 /// Build tab spans in the unified Vault/Pinned style: the active tab is a filled
 /// pill (highlight_fg on accent, bold), inactive tabs are muted, each pair of
@@ -3148,12 +3186,12 @@ pub fn build_tab_spans(
     tabs: &[(&str, Option<&str>)],
     active: usize,
     theme: &AppThemeColors,
+    icons_only: bool,
 ) -> Vec<Span<'static>> {
     let active_style = Style::default()
-        .fg(theme.highlight_fg)
-        .bg(theme.accent)
+        .fg(theme.accent)
         .add_modifier(Modifier::BOLD);
-    let inactive_style = Style::default().fg(theme.muted);
+    let inactive_style = Style::default().fg(theme.muted).add_modifier(Modifier::BOLD);
     let mut spans = Vec::with_capacity(tabs.len() * 2);
     for (i, (label, glyph)) in tabs.iter().enumerate() {
         if i > 0 {
@@ -3164,7 +3202,7 @@ pub fn build_tab_spans(
         } else {
             inactive_style
         };
-        spans.push(Span::styled(tab_display_text(label, *glyph), style));
+        spans.push(Span::styled(tab_display_text(label, *glyph, icons_only), style));
     }
     spans
 }
@@ -3179,8 +3217,10 @@ pub fn hit_test_tabs(
     region_x: u16,
     region_width: u16,
     click_x: u16,
+    icons_only: bool,
 ) -> Option<usize> {
-    let widths: Vec<u16> = tabs.iter().map(|(l, g)| tab_display_width(l, *g)).collect();
+    let widths: Vec<u16> =
+        tabs.iter().map(|(l, g)| tab_display_width(l, *g, icons_only)).collect();
     let mut total: u16 = 0;
     for (i, w) in widths.iter().enumerate() {
         total = total.saturating_add(*w);

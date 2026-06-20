@@ -122,6 +122,7 @@ All optional. Hex color strings like `"#ff6600"`. Override theme defaults.
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `show_status_bar` | `bool` | `true` | Show status bar |
+| `tab_icons_only` | `bool` | `false` | Show only Nerd Font icons (no text) on tab bars (Help, Notes, Backup, Palette) |
 | `status_format` | `String` | — | Custom status bar format. Variables: `{files}`, `{links}`, `{selected}`, `{date}`, `{time}`, `{size}`, `{ratio}` |
 | `border_style` | `enum` | `"rounded"` | Border style: `"plain"`, `"rounded"`, `"double"`, `"none"` |
 

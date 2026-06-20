@@ -251,3 +251,35 @@ impl Action for ToggleShowHiddenFilesAction {
         format!("Show Hidden Files [{state}]")
     }
 }
+
+pub struct ToggleTabIconsOnlyAction;
+
+impl Action for ToggleTabIconsOnlyAction {
+    fn id(&self) -> Cow<'static, str> {
+        Cow::Borrowed("settings.tab_icons_only")
+    }
+    fn name(&self) -> Cow<'static, str> {
+        Cow::Borrowed("Tab Icons Only")
+    }
+    fn description(&self) -> Cow<'static, str> {
+        Cow::Borrowed("Show only Nerd Font icons (no text) on tab bars")
+    }
+    fn category(&self) -> ActionCategory {
+        ActionCategory::Settings
+    }
+    fn glyph(&self) -> &'static str {
+        "\u{f26c}" // fa-thermometer-empty (Nerd Fonts) — generic toggle feel
+    }
+    fn execute(&self, app: &mut App, _context_note_id: Option<&str>) -> Result<()> {
+        app.toggle_tab_icons_only();
+        Ok(())
+    }
+    fn name_dynamic(&self, app: &App) -> String {
+        let state = if app.config.ui.tab_icons_only {
+            "On"
+        } else {
+            "Off"
+        };
+        format!("Tab Icons Only [{state}]")
+    }
+}
