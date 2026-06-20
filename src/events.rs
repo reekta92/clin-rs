@@ -419,6 +419,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     }
 
     if app.popups.confirm.is_some() {
+        app.seq_matcher.clear();
         if key.code == KeyCode::Left || key.code == KeyCode::Char('h') {
             app.confirm_popup_select_confirm();
         } else if key.code == KeyCode::Right || key.code == KeyCode::Char('l') {
@@ -438,6 +439,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     }
 
     if let Some(ref mut trash) = app.popups.trash_view {
+        app.seq_matcher.clear();
         match key.code {
             KeyCode::Up | KeyCode::Char('k') => {
                 trash.selected = trash.selected.saturating_sub(1);
@@ -465,6 +467,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     }
 
     if let Some(mut picker) = app.popups.folder_picker.take() {
+        app.seq_matcher.clear();
         match key.code {
             KeyCode::Tab => {
                 picker.focus = match picker.focus {
@@ -518,6 +521,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     }
 
     if let Some(mut popup) = app.popups.template.take() {
+        app.seq_matcher.clear();
         match key.code {
             KeyCode::Tab | KeyCode::BackTab => {
                 popup.focus = match popup.focus {
@@ -609,6 +613,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     }
 
     if let Some(mut popup) = app.popups.theme.take() {
+        app.seq_matcher.clear();
         match key.code {
             KeyCode::Up | KeyCode::Char('k') => {
                 match popup.focus {
@@ -687,6 +692,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     }
 
     if let Some(mut popup) = app.popups.sort.take() {
+        app.seq_matcher.clear();
         match key.code {
             KeyCode::Up | KeyCode::Char('k') => {
                 popup.selected = popup.selected.saturating_sub(1);
@@ -713,6 +719,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     }
 
     if let Some(mut popup) = app.popups.create_format.take() {
+        app.seq_matcher.clear();
         match key.code {
             KeyCode::Up | KeyCode::Char('k') => {
                 popup.selected = popup.selected.saturating_sub(1);
@@ -740,63 +747,8 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
-    if key.code == KeyCode::Esc {
-        app.handle_esc_press();
-    }
-
-    if app.keybinds.matches_list(ListAction::CycleFocus, &key) {
-        if app.list.notes_layout == crate::config::NotesLayout::Grid {
-            app.cycle_grid_tab();
-        }
-        return false;
-    }
-
-    if app.keybinds.matches_list(ListAction::Quit, &key) && app.list.list_mode != ListMode::Select {
-        app.initiate_quit();
-        return false;
-    }
-
-    if app
-        .keybinds
-        .matches_list(ListAction::ToggleExternalEditor, &key)
-    {
-        app.toggle_external_editor_mode();
-        return false;
-    }
-
-    if app
-        .keybinds
-        .matches_list(ListAction::ToggleSelectMode, &key)
-    {
-        if app.list.tag_to_assign.is_some() {
-            return false;
-        }
-        app.list.list_mode = match app.list.list_mode {
-            ListMode::Normal => {
-                app.list.selected_indices.clear();
-                app.list.selected_indices.insert(app.list.visual_index);
-                ListMode::Select
-            }
-            ListMode::Select => {
-                app.list.selected_indices.clear();
-                ListMode::Normal
-            }
-        };
-        return false;
-    }
 
     if app.list.list_mode == ListMode::Select {
-        if app
-            .keybinds
-            .matches_list(ListAction::ToggleSelectItem, &key)
-        {
-            if app.list.selected_indices.contains(&app.list.visual_index) {
-                app.list.selected_indices.remove(&app.list.visual_index);
-            } else {
-                app.list.selected_indices.insert(app.list.visual_index);
-            }
-            return false;
-        }
         if key.code == KeyCode::Esc || key.code == KeyCode::Char('q') {
             app.list.tag_to_assign = None;
             app.list.list_mode = ListMode::Normal;
@@ -850,179 +802,236 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         }
     }
 
-    if app.keybinds.matches_list(ListAction::Help, &key) {
-        app.open_help_page();
-        return false;
-    }
-    if app.keybinds.matches_list(ListAction::OpenLocation, &key) {
-        app.open_selected_note_location();
-        return false;
-    }
-    if app.keybinds.matches_list(ListAction::Delete, &key) {
-        app.begin_delete_selected();
-        return false;
-    }
-    let is_grid = app.list.notes_layout == crate::config::NotesLayout::Grid;
-    let cols = if is_grid {
-        app.list.grid_columns.max(1)
-    } else {
-        1
-    };
-    let len = app.list.visual_list.len();
-
-    if app.keybinds.matches_list(ListAction::MoveLeft, &key) {
-        if is_grid {
-            app.list.visual_index = app.list.visual_index.saturating_sub(1);
-            app.request_preview_update();
-        } else {
-            app.collapse_selected_folder();
-        }
-        return false;
-    }
-    if app.keybinds.matches_list(ListAction::MoveRight, &key) {
-        if is_grid {
-            if len > 0 {
-                app.list.visual_index = (app.list.visual_index + 1).min(len - 1);
+    let seq = app.config.core.enable_key_sequences;
+    match app.keybinds.resolve_list(&mut app.seq_matcher, key, seq) {
+        crate::keybinds::MatchOutcome::Matched(action) => match action {
+            ListAction::CycleFocus => {
+                if app.list.notes_layout == crate::config::NotesLayout::Grid {
+                    app.cycle_grid_tab();
+                }
+                return false;
             }
-            app.request_preview_update();
-        } else {
-            app.expand_selected_folder();
-        }
-        return false;
-    }
-    if app.keybinds.matches_list(ListAction::MoveDown, &key) {
-        if is_grid {
-            let next = app.list.visual_index + cols;
-            if next < len {
-                app.list.visual_index = next;
-            } else if app.list.visual_index / cols < (len.saturating_sub(1)) / cols {
-                app.list.visual_index = len.saturating_sub(1);
+            ListAction::Quit => {
+                if app.list.list_mode != ListMode::Select {
+                    app.initiate_quit();
+                }
+                return false;
             }
-            app.request_preview_update();
-        } else if app.list.visual_index < len.saturating_sub(1) {
-            app.list.visual_index += 1;
-            app.request_preview_update();
-        }
-        return false;
-    }
-    if app.keybinds.matches_list(ListAction::MoveUp, &key) {
-        if is_grid {
-            if app.list.visual_index >= cols {
-                app.list.visual_index -= cols;
+            ListAction::ToggleExternalEditor => {
+                app.toggle_external_editor_mode();
+                return false;
             }
-            app.request_preview_update();
-        } else if app.list.visual_index > 0 {
-            app.list.visual_index -= 1;
-            app.request_preview_update();
-        }
-        return false;
-    }
-    if app.keybinds.matches_list(ListAction::CollapseFolder, &key) {
-        app.collapse_selected_folder();
-        return false;
-    }
-    if app.keybinds.matches_list(ListAction::ExpandFolder, &key) {
-        app.expand_selected_folder();
-        return false;
-    }
-    if app.keybinds.matches_list(ListAction::Open, &key) {
-        app.open_selected();
-        return false;
-    }
-    if app.keybinds.matches_list(ListAction::NewFromTemplate, &key) {
-        app.open_template_popup();
-        return false;
-    }
-    if app.keybinds.matches_list(ListAction::CreateFolder, &key) {
-        app.begin_create_folder();
-        return false;
-    }
-    if app.keybinds.matches_list(ListAction::CreateNote, &key) {
-        app.begin_create_select_format();
-        return false;
-    }
-    if app.keybinds.matches_list(ListAction::RenameFolder, &key)
-        || app.keybinds.matches_list(ListAction::Rename, &key)
-    {
-        if let Some(item) = app.list.visual_list.get(app.list.visual_index) {
-            match item {
-                crate::app::VisualItem::Folder { .. } => app.begin_rename_folder(),
-                crate::app::VisualItem::Note { .. } => app.begin_rename_note(),
-                _ => app.set_temporary_status_static("Select a note or folder to rename"),
+            ListAction::ToggleSelectMode => {
+                if app.list.tag_to_assign.is_some() {
+                    return false;
+                }
+                app.list.list_mode = match app.list.list_mode {
+                    ListMode::Normal => {
+                        app.list.selected_indices.clear();
+                        app.list.selected_indices.insert(app.list.visual_index);
+                        ListMode::Select
+                    }
+                    ListMode::Select => {
+                        app.list.selected_indices.clear();
+                        ListMode::Normal
+                    }
+                };
+                return false;
             }
-        }
-        return false;
-    }
-    if app.keybinds.matches_list(ListAction::MoveNote, &key) {
-        app.begin_move();
-        return false;
-    }
-    if app.keybinds.matches_list(ListAction::ManageTags, &key) {
-        app.begin_manage_tags();
-        return false;
-    }
-    if app
-        .keybinds
-        .matches_list(ListAction::OpenCommandPalette, &key)
-    {
-        if let Some(crate::app::VisualItem::Note { summary_idx, .. }) =
-            app.list.visual_list.get(app.list.visual_index)
-        {
-            let id = app.notes[*summary_idx].id.clone();
-            app.command_palette = Some(crate::palette::CommandPalette::new(Some(id), app));
-        } else {
-            app.command_palette = Some(crate::palette::CommandPalette::new(None, app));
-        }
-        return false;
-    }
-
-    if app.keybinds.matches_list(ListAction::Duplicate, &key) {
-        app.duplicate_note();
-        return false;
-    }
-    if app.keybinds.matches_list(ListAction::TogglePin, &key) {
-        app.toggle_pin();
-        return false;
-    }
-    if app.keybinds.matches_list(ListAction::CycleSort, &key) {
-        app.cycle_sort();
-        return false;
-    }
-    if app.keybinds.matches_list(ListAction::Search, &key) {
-        app.begin_search();
-        return false;
-    }
-    if app.keybinds.matches_list(ListAction::JumpToTop, &key) {
-        app.jump_to_bottom();
-        return false;
-    }
-    if app.keybinds.matches_list(ListAction::PageUp, &key) {
-        app.page_up();
-        return false;
-    }
-    if app.keybinds.matches_list(ListAction::PageDown, &key) {
-        app.page_down();
-        return false;
-    }
-    if app.keybinds.matches_list(ListAction::OpenTrash, &key) {
-        app.open_trash_view();
-        return false;
-    }
-    if app.keybinds.matches_list(ListAction::TogglePreview, &key) {
-        app.toggle_preview();
-        return false;
-    }
-    if app.keybinds.matches_list(ListAction::OpenGraph, &key) {
-        app.open_graph_view();
-        return false;
-    }
-    if app.keybinds.matches_list(ListAction::OpenCanvas, &key) {
-        app.open_draw_view();
-        return false;
-    }
-
-    if key.code == KeyCode::Char('g') && app.handle_g_press() {
-        return false;
+            ListAction::ToggleSelectItem => {
+                if app.list.list_mode == ListMode::Select {
+                    if app.list.selected_indices.contains(&app.list.visual_index) {
+                        app.list.selected_indices.remove(&app.list.visual_index);
+                    } else {
+                        app.list.selected_indices.insert(app.list.visual_index);
+                    }
+                }
+                return false;
+            }
+            ListAction::Help => {
+                app.open_help_page();
+                return false;
+            }
+            ListAction::OpenLocation => {
+                app.open_selected_note_location();
+                return false;
+            }
+            ListAction::Delete => {
+                app.begin_delete_selected();
+                return false;
+            }
+            ListAction::MoveLeft => {
+                let is_grid = app.list.notes_layout == crate::config::NotesLayout::Grid;
+                if is_grid {
+                    app.list.visual_index = app.list.visual_index.saturating_sub(1);
+                    app.request_preview_update();
+                } else {
+                    app.collapse_selected_folder();
+                }
+                return false;
+            }
+            ListAction::MoveRight => {
+                let is_grid = app.list.notes_layout == crate::config::NotesLayout::Grid;
+                let len = app.list.visual_list.len();
+                if is_grid {
+                    if len > 0 {
+                        app.list.visual_index = (app.list.visual_index + 1).min(len - 1);
+                    }
+                    app.request_preview_update();
+                } else {
+                    app.expand_selected_folder();
+                }
+                return false;
+            }
+            ListAction::MoveDown => {
+                let is_grid = app.list.notes_layout == crate::config::NotesLayout::Grid;
+                let cols = if is_grid {
+                    app.list.grid_columns.max(1)
+                } else {
+                    1
+                };
+                let len = app.list.visual_list.len();
+                if is_grid {
+                    let next = app.list.visual_index + cols;
+                    if next < len {
+                        app.list.visual_index = next;
+                    } else if app.list.visual_index / cols < (len.saturating_sub(1)) / cols {
+                        app.list.visual_index = len.saturating_sub(1);
+                    }
+                    app.request_preview_update();
+                } else if app.list.visual_index < len.saturating_sub(1) {
+                    app.list.visual_index += 1;
+                    app.request_preview_update();
+                }
+                return false;
+            }
+            ListAction::MoveUp => {
+                let is_grid = app.list.notes_layout == crate::config::NotesLayout::Grid;
+                let cols = if is_grid {
+                    app.list.grid_columns.max(1)
+                } else {
+                    1
+                };
+                if is_grid {
+                    if app.list.visual_index >= cols {
+                        app.list.visual_index -= cols;
+                    }
+                    app.request_preview_update();
+                } else if app.list.visual_index > 0 {
+                    app.list.visual_index -= 1;
+                    app.request_preview_update();
+                }
+                return false;
+            }
+            ListAction::CollapseFolder => {
+                app.collapse_selected_folder();
+                return false;
+            }
+            ListAction::ExpandFolder => {
+                app.expand_selected_folder();
+                return false;
+            }
+            ListAction::Open => {
+                app.open_selected();
+                return false;
+            }
+            ListAction::NewFromTemplate => {
+                app.open_template_popup();
+                return false;
+            }
+            ListAction::CreateFolder => {
+                app.begin_create_folder();
+                return false;
+            }
+            ListAction::CreateNote => {
+                app.begin_create_select_format();
+                return false;
+            }
+            ListAction::RenameFolder | ListAction::Rename => {
+                if let Some(item) = app.list.visual_list.get(app.list.visual_index) {
+                    match item {
+                        crate::app::VisualItem::Folder { .. } => app.begin_rename_folder(),
+                        crate::app::VisualItem::Note { .. } => app.begin_rename_note(),
+                        _ => app.set_temporary_status_static("Select a note or folder to rename"),
+                    }
+                }
+                return false;
+            }
+            ListAction::MoveNote => {
+                app.begin_move();
+                return false;
+            }
+            ListAction::ManageTags => {
+                app.begin_manage_tags();
+                return false;
+            }
+            ListAction::OpenCommandPalette => {
+                if let Some(crate::app::VisualItem::Note { summary_idx, .. }) =
+                    app.list.visual_list.get(app.list.visual_index)
+                {
+                    let id = app.notes[*summary_idx].id.clone();
+                    app.command_palette = Some(crate::palette::CommandPalette::new(Some(id), app));
+                } else {
+                    app.command_palette = Some(crate::palette::CommandPalette::new(None, app));
+                }
+                return false;
+            }
+            ListAction::Duplicate => {
+                app.duplicate_note();
+                return false;
+            }
+            ListAction::TogglePin => {
+                app.toggle_pin();
+                return false;
+            }
+            ListAction::CycleSort => {
+                app.cycle_sort();
+                return false;
+            }
+            ListAction::Search => {
+                app.begin_search();
+                return false;
+            }
+            ListAction::JumpToTop => {
+                app.jump_to_top();
+                return false;
+            }
+            ListAction::JumpToBottom => {
+                app.jump_to_bottom();
+                return false;
+            }
+            ListAction::PageUp => {
+                app.page_up();
+                return false;
+            }
+            ListAction::PageDown => {
+                app.page_down();
+                return false;
+            }
+            ListAction::OpenTrash => {
+                app.open_trash_view();
+                return false;
+            }
+            ListAction::TogglePreview => {
+                app.toggle_preview();
+                return false;
+            }
+            ListAction::OpenGraph => {
+                app.open_graph_view();
+                return false;
+            }
+            ListAction::OpenCanvas => {
+                app.open_draw_view();
+                return false;
+            }
+            ListAction::CollapseAll => {
+                app.collapse_all_folders();
+                return false;
+            }
+            _ => {}
+        },
+        crate::keybinds::MatchOutcome::Pending => return false,
+        crate::keybinds::MatchOutcome::NoMatch => {}
     }
 
     false
@@ -1035,25 +1044,36 @@ pub fn handle_help_keys(app: &mut App, key: KeyEvent) {
         return;
     }
 
-    if app.keybinds.matches_help(HelpAction::Close, &key) {
-        app.close_help_page();
-    } else if app.keybinds.matches_help(HelpAction::ScrollDown, &key) {
-        app.help_scroll = app.help_scroll.saturating_add(1);
-    } else if app.keybinds.matches_help(HelpAction::ScrollUp, &key) {
-        app.help_scroll = app.help_scroll.saturating_sub(1);
-    } else if app.keybinds.matches_help(HelpAction::NextTab, &key) {
-        app.switch_help_tab(app.help_tab.next());
-    } else if app.keybinds.matches_help(HelpAction::PrevTab, &key) {
-        app.switch_help_tab(app.help_tab.prev());
-    } else {
-        match key.code {
-            KeyCode::Char('1') => app.switch_help_tab(HelpTab::Notes),
-            KeyCode::Char('2') => app.switch_help_tab(HelpTab::Editor),
-            KeyCode::Char('3') => app.switch_help_tab(HelpTab::Graph),
-            KeyCode::Char('4') => app.switch_help_tab(HelpTab::Draw),
-            KeyCode::Char('5') => app.switch_help_tab(HelpTab::Canvas),
-            KeyCode::Char('6') => app.switch_help_tab(HelpTab::Templates),
-            _ => {}
+    let seq = app.config.core.enable_key_sequences;
+    match app.keybinds.resolve_help(&mut app.seq_matcher, key, seq) {
+        crate::keybinds::MatchOutcome::Matched(action) => match action {
+            HelpAction::Close => {
+                app.close_help_page();
+            }
+            HelpAction::ScrollDown => {
+                app.help_scroll = app.help_scroll.saturating_add(1);
+            }
+            HelpAction::ScrollUp => {
+                app.help_scroll = app.help_scroll.saturating_sub(1);
+            }
+            HelpAction::NextTab => {
+                app.switch_help_tab(app.help_tab.next());
+            }
+            HelpAction::PrevTab => {
+                app.switch_help_tab(app.help_tab.prev());
+            }
+        },
+        crate::keybinds::MatchOutcome::Pending => {}
+        crate::keybinds::MatchOutcome::NoMatch => {
+            match key.code {
+                KeyCode::Char('1') => app.switch_help_tab(HelpTab::Notes),
+                KeyCode::Char('2') => app.switch_help_tab(HelpTab::Editor),
+                KeyCode::Char('3') => app.switch_help_tab(HelpTab::Graph),
+                KeyCode::Char('4') => app.switch_help_tab(HelpTab::Draw),
+                KeyCode::Char('5') => app.switch_help_tab(HelpTab::Canvas),
+                KeyCode::Char('6') => app.switch_help_tab(HelpTab::Templates),
+                _ => {}
+            }
         }
     }
 }
@@ -1111,31 +1131,35 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
         }
     }
 
-    if app.keybinds.matches_edit(EditAction::CycleFocus, &key) {
-        *focus = match *focus {
-            EditFocus::Title => EditFocus::Body,
-            EditFocus::Body => EditFocus::Title,
-        };
-        return false;
-    }
-
-    if app.keybinds.matches_edit(EditAction::Back, &key) {
-        app.autosave();
-        app.back_to_list();
-        *focus = EditFocus::Body;
-        return false;
-    }
-
-    if app
-        .keybinds
-        .matches_edit(EditAction::ToggleMarkdownPreview, &key)
-    {
-        app.toggle_markdown_preview();
-        return false;
+    let seq = app.config.core.enable_key_sequences;
+    match app.keybinds.resolve_edit(&mut app.seq_matcher, key, seq) {
+        crate::keybinds::MatchOutcome::Matched(action) => match action {
+            EditAction::CycleFocus => {
+                *focus = match *focus {
+                    EditFocus::Title => EditFocus::Body,
+                    EditFocus::Body => EditFocus::Title,
+                };
+                return false;
+            }
+            EditAction::Back => {
+                app.autosave();
+                app.back_to_list();
+                *focus = EditFocus::Body;
+                return false;
+            }
+            EditAction::ToggleMarkdownPreview => {
+                app.toggle_markdown_preview();
+                return false;
+            }
+            _ => {}
+        },
+        crate::keybinds::MatchOutcome::Pending => return false,
+        crate::keybinds::MatchOutcome::NoMatch => {}
     }
 
     match *focus {
         EditFocus::Title => {
+            app.seq_matcher.clear();
             if key.code == KeyCode::Enter {
                 *focus = EditFocus::Body;
                 return false;
@@ -1159,6 +1183,7 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
             app.request_editor_preview_update();
         }
         EditFocus::Body => {
+            app.seq_matcher.clear();
             if apply_text_shortcuts(&app.keybinds, &mut app.editor.editor, key) {
                 app.request_editor_preview_update();
                 return false;

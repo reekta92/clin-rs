@@ -33,14 +33,14 @@ impl OverlayView<PinstarResult> for PinstarState {
         &mut self,
         event: crossterm::event::Event,
         _terminal: &ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
-        _config: &mut crate::config::ClinConfig,
+        config: &mut crate::config::ClinConfig,
     ) -> anyhow::Result<Option<PinstarResult>> {
         let area = self.last_area;
         let keybinds = self.keybinds.clone();
         let mut running = true;
         match event {
             Event::Key(key) => {
-                let _ = handle_pinstar_event(self, key, &mut running, area, &keybinds);
+                let _ = handle_pinstar_event(self, key, &mut running, area, &keybinds, config);
             }
             Event::Mouse(mouse) => {
                 handle_pinstar_mouse(self, mouse, area);
@@ -69,10 +69,11 @@ pub fn run_pinstar_view(
     keybinds: &Keybinds,
     file_id: Option<String>,
     theme: AppThemeColors,
+    seq_matcher: &mut crate::keybinds::KeyMatcher,
 ) -> anyhow::Result<PinstarResult> {
     let mut state = if let Some(id) = file_id {
         let path = storage.note_path(&id);
-        PinstarState::load(&path, keybinds.clone())?
+        PinstarState::load(&path, keybinds.clone(), seq_matcher.clone())?
     } else {
         anyhow::bail!("No file ID provided for Pinstar view");
     };

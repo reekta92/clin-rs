@@ -35,7 +35,7 @@ impl OverlayView<ContentTreeResult> for ContentTreeState {
         &mut self,
         event: crossterm::event::Event,
         _terminal: &ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
-        _config: &mut crate::config::ClinConfig,
+        config: &mut crate::config::ClinConfig,
     ) -> anyhow::Result<Option<ContentTreeResult>> {
         let keybinds = self.keybinds.clone();
         match event {
@@ -43,7 +43,7 @@ impl OverlayView<ContentTreeResult> for ContentTreeState {
                 if key.kind == crossterm::event::KeyEventKind::Release {
                     return Ok(None);
                 }
-                match input::handle_input(self, key, &keybinds) {
+                match input::handle_input(self, key, &keybinds, config) {
                     input::InputResult::Back => return Ok(Some(ContentTreeResult::Back)),
                     input::InputResult::Help => return Ok(Some(ContentTreeResult::HelpRequested)),
                     input::InputResult::Open => {
@@ -95,14 +95,15 @@ pub fn run_content_tree_view(
     note_id: Option<String>,
     keybinds: &Keybinds,
     theme: AppThemeColors,
+    seq_matcher: &mut crate::keybinds::KeyMatcher,
 ) -> Result<ContentTreeResult> {
     let mut state = if let Some(id) = note_id {
         match storage.load_note(&id) {
-            Ok(note) => ContentTreeState::new(id, &note.title, &note.content, keybinds.clone()),
-            Err(_) => ContentTreeState::error(id, keybinds.clone()),
+            Ok(note) => ContentTreeState::new(id, &note.title, &note.content, keybinds.clone(), seq_matcher.clone()),
+            Err(_) => ContentTreeState::error(id, keybinds.clone(), seq_matcher.clone()),
         }
     } else {
-        ContentTreeState::error(String::new(), keybinds.clone())
+        ContentTreeState::error(String::new(), keybinds.clone(), seq_matcher.clone())
     };
 
     let mut config = crate::config::ClinConfig::default();

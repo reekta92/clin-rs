@@ -34,6 +34,7 @@ pub struct BackupState {
     pub keybinds: Keybinds,
     pub tab_icons_only: bool,
     pub git_lock: Arc<parking_lot::Mutex<()>>,
+    pub seq_matcher: crate::keybinds::KeyMatcher,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BackupSection {
@@ -109,6 +110,7 @@ impl BackupState {
         keybinds: Keybinds,
         tab_icons_only: bool,
         git_lock: Arc<parking_lot::Mutex<()>>,
+        seq_matcher: crate::keybinds::KeyMatcher,
     ) -> Self {
         let settings = BackupSettingsState {
             enabled: config.enabled,
@@ -152,6 +154,7 @@ impl BackupState {
             keybinds,
             tab_icons_only,
             git_lock,
+            seq_matcher,
         };
 
         state.refresh_git_info();

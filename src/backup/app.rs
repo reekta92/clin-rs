@@ -36,12 +36,12 @@ impl OverlayView<BackupResult> for BackupState {
         &mut self,
         event: crossterm::event::Event,
         _terminal: &ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
-        _config: &mut crate::config::ClinConfig,
+        config: &mut crate::config::ClinConfig,
     ) -> anyhow::Result<Option<BackupResult>> {
         match event {
             Event::Key(key) => {
                 let keybinds = self.keybinds.clone();
-                match input::handle_input(self, key, &keybinds) {
+                match input::handle_input(self, key, &keybinds, config) {
                     InputResult::Back => return Ok(Some(BackupResult::Back)),
                     InputResult::Refresh => self.refresh_git_info(),
                     InputResult::None => {}
@@ -78,6 +78,7 @@ pub fn run_backup_view(
     keybinds: &Keybinds,
     app_theme: &AppThemeColors,
     git_lock: Arc<parking_lot::Mutex<()>>,
+    seq_matcher: &mut crate::keybinds::KeyMatcher,
 ) -> Result<BackupResult> {
     let mut state = BackupState::new(
         vault_path,
@@ -86,6 +87,7 @@ pub fn run_backup_view(
         keybinds.clone(),
         config.ui.tab_icons_only,
         git_lock,
+        seq_matcher.clone(),
     );
     state.footer_hint = format!(
         "{}: commit · {}: push · {}: refresh · {}: settings · {}: ←",

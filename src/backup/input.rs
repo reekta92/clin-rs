@@ -13,16 +13,30 @@ pub enum InputResult {
     Refresh,
 }
 
-pub fn handle_input(state: &mut BackupState, event: KeyEvent, keybinds: &Keybinds) -> InputResult {
+pub fn handle_input(
+    state: &mut BackupState,
+    event: KeyEvent,
+    keybinds: &Keybinds,
+    config: &ClinConfig,
+) -> InputResult {
     if state.input_mode == BackupInputMode::Normal {
         state.status_message = None;
     }
 
     match state.input_mode {
-        BackupInputMode::Normal => handle_normal_input(state, event, keybinds),
-        BackupInputMode::EditCommitMessage => handle_commit_input(state, event, keybinds),
-        BackupInputMode::EditSettings => handle_settings_input(state, event, keybinds),
-        BackupInputMode::EditSettingsField => handle_settings_field_input(state, event, keybinds),
+        BackupInputMode::Normal => handle_normal_input(state, event, keybinds, config),
+        BackupInputMode::EditCommitMessage => {
+            state.seq_matcher.clear();
+            handle_commit_input(state, event, keybinds)
+        }
+        BackupInputMode::EditSettings => {
+            state.seq_matcher.clear();
+            handle_settings_input(state, event, keybinds)
+        }
+        BackupInputMode::EditSettingsField => {
+            state.seq_matcher.clear();
+            handle_settings_field_input(state, event, keybinds)
+        }
     }
 }
 
@@ -30,82 +44,88 @@ fn handle_normal_input(
     state: &mut BackupState,
     event: KeyEvent,
     keybinds: &Keybinds,
+    config: &ClinConfig,
 ) -> InputResult {
-    match event.code {
-        _ if keybinds.matches_backup(BackupAction::Back, &event) => return InputResult::Back,
-        _ if keybinds.matches_backup(BackupAction::MoveDown, &event) => {
-            if state.selected_section == BackupSection::History {
-                state.history_scroll = state.history_scroll.saturating_add(1);
-                let visible = state.last_content_height.saturating_sub(2).max(1) as usize;
-                let total = state.commits.len() + 1;
-                let max = total.saturating_sub(visible);
-                state.history_scroll = state.history_scroll.min(max as u16);
-            } else if !state.selectable_files.is_empty() {
-                state.selected_index = (state.selected_index + 1) % state.selectable_files.len();
-                state.selected_file = Some(state.selectable_files[state.selected_index].clone());
-                state.load_selected_diff();
-                state.adjust_scroll_to_selection();
-            }
-        }
-        _ if keybinds.matches_backup(BackupAction::MoveUp, &event) => {
-            if state.selected_section == BackupSection::History {
-                state.history_scroll = state.history_scroll.saturating_sub(1);
-            } else if !state.selectable_files.is_empty() {
-                state.selected_index = if state.selected_index == 0 {
-                    state.selectable_files.len() - 1
-                } else {
-                    state.selected_index - 1
-                };
-                state.selected_file = Some(state.selectable_files[state.selected_index].clone());
-                state.load_selected_diff();
-                state.adjust_scroll_to_selection();
-            }
-        }
-        _ if keybinds.matches_backup(BackupAction::ScrollDiffDown, &event) => {
-            state.diff_scroll = state.diff_scroll.saturating_add(10);
-            let max = state
-                .diff_lines
-                .len()
-                .saturating_sub(state.last_diff_height as usize);
-            state.diff_scroll = state.diff_scroll.min(max as u16);
-        }
-        _ if keybinds.matches_backup(BackupAction::ScrollDiffUp, &event) => {
-            state.diff_scroll = state.diff_scroll.saturating_sub(10);
-        }
-        _ if keybinds.matches_backup(BackupAction::Refresh, &event) => return InputResult::Refresh,
-        _ if keybinds.matches_backup(BackupAction::EnterCommit, &event) => {
-            if state.status.is_some() {
-                state.input_mode = BackupInputMode::EditCommitMessage;
-                state.commit_textarea = TextArea::default();
-            }
-        }
-        _ if keybinds.matches_backup(BackupAction::Push, &event) => {
-            state.push_to_remote();
-        }
-        _ if keybinds.matches_backup(BackupAction::OpenSettings, &event) => {
-            state.settings_open = true;
-            state.input_mode = BackupInputMode::EditSettings;
-        }
-        _ if keybinds.matches_backup(BackupAction::CycleSection, &event) => {
-            state.selected_section = match state.selected_section {
-                BackupSection::Status => BackupSection::History,
-                BackupSection::History => BackupSection::Status,
-            };
-        }
-        _ if keybinds.matches_backup(BackupAction::ToggleFileSelect, &event) => {
-            if state.selected_section == BackupSection::Status
-                && let Some(file) = state.selected_file.clone()
-            {
-                // only meaningful for unstaged/untracked files
-                let is_unstaged = state.status.as_ref().is_some_and(|s| {
-                    s.unstaged.iter().any(|f| f.path == file) || s.untracked.contains(&file)
-                });
-                if is_unstaged && !state.selected_for_commit.remove(&file) {
-                    state.selected_for_commit.insert(file);
+    let seq = config.core.enable_key_sequences;
+    match keybinds.resolve_backup(&mut state.seq_matcher, event, seq) {
+        crate::keybinds::MatchOutcome::Matched(action) => match action {
+            BackupAction::Back => return InputResult::Back,
+            BackupAction::MoveDown => {
+                if state.selected_section == BackupSection::History {
+                    state.history_scroll = state.history_scroll.saturating_add(1);
+                    let visible = state.last_content_height.saturating_sub(2).max(1) as usize;
+                    let total = state.commits.len() + 1;
+                    let max = total.saturating_sub(visible);
+                    state.history_scroll = state.history_scroll.min(max as u16);
+                } else if !state.selectable_files.is_empty() {
+                    state.selected_index = (state.selected_index + 1) % state.selectable_files.len();
+                    state.selected_file = Some(state.selectable_files[state.selected_index].clone());
+                    state.load_selected_diff();
+                    state.adjust_scroll_to_selection();
                 }
             }
-        }
-        _ => {}
+            BackupAction::MoveUp => {
+                if state.selected_section == BackupSection::History {
+                    state.history_scroll = state.history_scroll.saturating_sub(1);
+                } else if !state.selectable_files.is_empty() {
+                    state.selected_index = if state.selected_index == 0 {
+                        state.selectable_files.len() - 1
+                    } else {
+                        state.selected_index - 1
+                    };
+                    state.selected_file = Some(state.selectable_files[state.selected_index].clone());
+                    state.load_selected_diff();
+                    state.adjust_scroll_to_selection();
+                }
+            }
+            BackupAction::ScrollDiffDown => {
+                state.diff_scroll = state.diff_scroll.saturating_add(10);
+                let max = state
+                    .diff_lines
+                    .len()
+                    .saturating_sub(state.last_diff_height as usize);
+                state.diff_scroll = state.diff_scroll.min(max as u16);
+            }
+            BackupAction::ScrollDiffUp => {
+                state.diff_scroll = state.diff_scroll.saturating_sub(10);
+            }
+            BackupAction::Refresh => return InputResult::Refresh,
+            BackupAction::EnterCommit => {
+                if state.status.is_some() {
+                    state.input_mode = BackupInputMode::EditCommitMessage;
+                    state.commit_textarea = TextArea::default();
+                }
+            }
+            BackupAction::Push => {
+                state.push_to_remote();
+            }
+            BackupAction::OpenSettings => {
+                state.settings_open = true;
+                state.input_mode = BackupInputMode::EditSettings;
+            }
+            BackupAction::CycleSection => {
+                state.selected_section = match state.selected_section {
+                    BackupSection::Status => BackupSection::History,
+                    BackupSection::History => BackupSection::Status,
+                };
+            }
+            BackupAction::ToggleFileSelect => {
+                if state.selected_section == BackupSection::Status
+                    && let Some(file) = state.selected_file.clone()
+                {
+                    // only meaningful for unstaged/untracked files
+                    let is_unstaged = state.status.as_ref().is_some_and(|s| {
+                        s.unstaged.iter().any(|f| f.path == file) || s.untracked.contains(&file)
+                    });
+                    if is_unstaged && !state.selected_for_commit.remove(&file) {
+                        state.selected_for_commit.insert(file);
+                    }
+                }
+            }
+            _ => {}
+        },
+        crate::keybinds::MatchOutcome::Pending => return InputResult::None,
+        crate::keybinds::MatchOutcome::NoMatch => {}
     }
     InputResult::None
 }

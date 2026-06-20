@@ -117,6 +117,41 @@ impl std::fmt::Display for Background {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum KeybindPreset {
+    #[default]
+    Default,
+    Helix,
+    Vim,
+    Emacs,
+}
+
+impl std::str::FromStr for KeybindPreset {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "default" => Ok(KeybindPreset::Default),
+            "helix" => Ok(KeybindPreset::Helix),
+            "vim" => Ok(KeybindPreset::Vim),
+            "emacs" => Ok(KeybindPreset::Emacs),
+            _ => Err(format!("Unknown keybind preset: {s}")),
+        }
+    }
+}
+
+impl std::fmt::Display for KeybindPreset {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            KeybindPreset::Default => write!(f, "default"),
+            KeybindPreset::Helix => write!(f, "helix"),
+            KeybindPreset::Vim => write!(f, "vim"),
+            KeybindPreset::Emacs => write!(f, "emacs"),
+        }
+    }
+}
+
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum NodeColorMode {
@@ -692,8 +727,11 @@ pub struct CoreConfig {
     pub confirm_on_delete: bool,
     #[serde(default)]
     pub confirm_on_quit: bool,
+    #[serde(default)]
+    pub keybind_preset: KeybindPreset,
+    #[serde(default)]
+    pub enable_key_sequences: bool,
 }
-
 impl Default for CoreConfig {
     fn default() -> Self {
         Self {
@@ -703,6 +741,8 @@ impl Default for CoreConfig {
             default_folder: None,
             confirm_on_delete: default_true(),
             confirm_on_quit: false,
+            keybind_preset: KeybindPreset::Default,
+            enable_key_sequences: false,
         }
     }
 }
@@ -1368,6 +1408,13 @@ confirm_on_delete = true
 
 # Confirm before quitting.
 confirm_on_quit = false
+
+# Keybind preset ("default", "helix", "vim", "emacs").
+# Applies to all navigation surfaces; never affects text editing.
+# keybind_preset = "default"
+
+# Enable multi-key sequences (e.g. "g g", "Space f"). Off by default.
+# enable_key_sequences = false
 
 # ── Display ──
 

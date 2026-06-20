@@ -30,7 +30,7 @@ For installation, quickstart, and general project info, see the [README.md](../R
 
 - [README.md](../README.md) — Quickstart, config.toml example, keybinds.toml example, CLI commands
 - [CONFIG_REFERENCE.md](CONFIG_REFERENCE.md) — Full configuration reference: all config.toml options, keybinds.toml, graf config sections
-
+- [KEYBIND_PRESETS.md](KEYBIND_PRESETS.md) — Keybind presets: Helix, Vim, and Emacs presets and sequence syntax
 ---
 
 ## File Index
@@ -50,5 +50,5 @@ docs/
 ├── COMMAND_PALETTE.md    Command palette + Action trait
 ├── TEMPLATES.md          Note template system
 ├── CONFIG_REFERENCE.md   All config options
-└── (README.md in root)
+├── KEYBIND_PRESETS.md     Keybind presets and sequence syntax
 ```

@@ -16,6 +16,8 @@ Full reference of all configuration options for clin-rs.
 | `confirm_on_delete` | `bool` | `true` | Show confirmation dialog before deleting notes |
 | `default_folder` | `String` | — | Default folder for new notes (optional) |
 | `confirm_on_quit` | `bool` | `false` | Ask for confirmation before quitting |
+| `keybind_preset` | `enum` | `"default"` | Keybind preset: `"default"`, `"helix"`, `"vim"`, `"emacs"`. Applies to navigation, never text editing |
+| `enable_key_sequences` | `bool` | `false` | Enable multi-key sequences (e.g. `"g g"`, `"Space f"`). Requires a preset that uses them |
 
 ### `[list]`
 
