@@ -1,7 +1,7 @@
 use crate::markdown::MarkdownRenderer;
 use ratatui::style::Style;
 use ratatui::text::Text;
-use ratatui::widgets::ListState;
+use ratatui::widgets::{ListState, ListItem};
 use std::collections::HashSet;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -54,6 +54,7 @@ pub struct GridTile {
 }
 
 pub struct ListView {
+    pub display_items: Vec<ListItem<'static>>,
     pub visual_list: Vec<VisualItem>,
     pub visual_index: usize,
     pub list_state: ListState,
@@ -88,6 +89,7 @@ impl Default for ListView {
         Self {
             visual_list: Vec::new(),
             visual_index: 0,
+            display_items: Vec::new(),
             list_state: ListState::default(),
             grid_scroll: 0,
             grid_tiles: Vec::new(),
