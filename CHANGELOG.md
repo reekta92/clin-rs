@@ -8,6 +8,10 @@ All notable changes to clin are documented in this file.
 
 - Add Toggle Preview Word Wrap action
 - Add word-wrap and fullscreen toggles
+
+### Release
+
+- V0.8.24
 ## [0.8.23] - 2026-06-20
 
 ### Fixed
