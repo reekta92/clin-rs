@@ -1,6 +1,3 @@
-use crate::config::ClinConfig;
-use std::path::PathBuf;
-
 use crate::constants::*;
 pub use crate::editor::*;
 use crate::events::get_title_text;
@@ -24,6 +21,7 @@ use anyhow::{Context, Result};
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
+use parking_lot::Mutex;
 use ratatui_textarea::TextArea;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -318,6 +316,9 @@ pub struct App {
     pub initial_load_done: bool,
     pub load_cancel: Arc<AtomicBool>,
     pub loading_total: usize,
+    pub backup_tx: Option<mpsc::Sender<crate::backup::worker::BackupJob>>,
+    pub git_lock: Arc<Mutex<()>>,
+    pub backup_status: Arc<Mutex<Option<String>>>,
 }
 
 impl App {
@@ -389,6 +390,9 @@ impl App {
             initial_load_done: true,
             load_cancel: Arc::new(AtomicBool::new(false)),
             loading_total: 0,
+            backup_tx: None,
+            git_lock: Arc::new(Mutex::new(())),
+            backup_status: Arc::new(Mutex::new(None)),
         };
         app.list.folder_expanded.insert(String::new());
         app.refresh_notes()?;
@@ -463,6 +467,9 @@ impl App {
             initial_load_done: false,
             load_cancel: Arc::new(AtomicBool::new(false)),
             loading_total: 0,
+            backup_tx: None,
+            git_lock: Arc::new(Mutex::new(())),
+            backup_status: Arc::new(Mutex::new(None)),
         };
         app.list.folder_expanded.insert(String::new());
         Ok(app)
@@ -1298,9 +1305,7 @@ impl App {
                             if let Err(e) = self.storage.save_note(note_id, &updated_note) {
                                 self.set_temporary_status(&format!("Failed to save note: {e}"));
                             } else {
-                                if let Err(e) = self.try_auto_backup(&updated_note.title) {
-                                    self.set_temporary_status(&format!("Backup failed: {e}"));
-                                }
+                                self.enqueue_backup(format!("auto: {}", &updated_note.title));
                                 self.set_temporary_status_static("Note saved");
                                 self.list.folder_cache = None;
                                 if let Err(e) = self.refresh_notes() {
@@ -1468,9 +1473,7 @@ impl App {
                 tags: Vec::new(),
             };
             if let Ok(saved_id) = self.storage.save_note(&id, &new_note) {
-                if let Err(e) = self.try_auto_backup(&new_note.title) {
-                    self.set_temporary_status(&format!("Backup failed: {e}"));
-                }
+                self.enqueue_backup(format!("auto: {}", &new_note.title));
                 if let Err(e) = self.refresh_notes() {
                     self.set_temporary_status(&format!("Refresh failed: {e}"));
                 }
@@ -1515,9 +1518,7 @@ impl App {
                 tags: Vec::new(),
             };
             if let Ok(saved_id) = self.storage.save_note(&new_id, &new_note) {
-                if let Err(e) = self.try_auto_backup(&new_note.title) {
-                    self.set_temporary_status(&format!("Backup failed: {e}"));
-                }
+                self.enqueue_backup(format!("auto: {}", &new_note.title));
                 if let Err(e) = self.refresh_notes() {
                     self.set_temporary_status(&format!("Refresh failed: {e}"));
                 }
@@ -1567,9 +1568,7 @@ impl App {
                 tags: Vec::new(),
             };
             if let Ok(saved_id) = self.storage.save_note(&new_id, &new_note) {
-                if let Err(e) = self.try_auto_backup(&new_note.title) {
-                    self.set_temporary_status(&format!("Backup failed: {e}"));
-                }
+                self.enqueue_backup(format!("auto: {}", &new_note.title));
                 if let Err(e) = self.refresh_notes() {
                     self.set_temporary_status(&format!("Refresh failed: {e}"));
                 }
@@ -1861,39 +1860,10 @@ template = """
         }
     }
 
-    pub fn try_auto_backup_raw(&self, message: &str) -> Result<()> {
-        let config = ClinConfig::load()?;
-        if config.backup.enabled {
-            let vault_path = config
-                .effective_storage_path()
-                .unwrap_or_else(|_| PathBuf::from("."));
-            let git_ops = crate::backup::git_ops::GitOps::init(&vault_path)?;
-            if git_ops.has_changes().unwrap_or(false) {
-                git_ops.add_all().and_then(|_| git_ops.commit(message))?;
-                if config.backup.auto_push
-                    && let Some(remote) = &config.backup.remote_name
-                {
-                    git_ops.push(remote)?;
-                }
-            }
+    pub fn enqueue_backup(&self, message: impl Into<String>) {
+        if let Some(tx) = &self.backup_tx {
+            let _ = tx.send(crate::backup::worker::BackupJob::Auto(message.into()));
         }
-        Ok(())
-    }
-
-    pub fn try_auto_backup(&self, note_title: &str) -> Result<()> {
-        let config = ClinConfig::load()?;
-        if config.backup.enabled && config.backup.backup_on_save {
-            self.try_auto_backup_raw(&format!("auto: {note_title}"))?;
-        }
-        Ok(())
-    }
-
-    pub fn try_auto_backup_on_quit(&self) -> Result<()> {
-        let config = ClinConfig::load()?;
-        if config.backup.enabled && config.backup.backup_on_quit {
-            self.try_auto_backup_raw("auto: backup on quit")?;
-        }
-        Ok(())
     }
 
     pub fn autosave(&mut self) {
@@ -1951,9 +1921,7 @@ template = """
         };
         if let Ok(saved_id) = self.storage.save_note(&id, &note) {
             self.editor.editing_id = Some(saved_id);
-            if let Err(e) = self.try_auto_backup(&note.title) {
-                self.set_temporary_status(&format!("Backup failed: {e}"));
-            }
+            self.enqueue_backup(format!("auto: {}", &note.title));
         }
     }
 
@@ -2670,9 +2638,7 @@ template = """
                 if let Err(e) = self.storage.save_note(&popup.note_id, &note) {
                     self.set_temporary_status(&format!("Failed to save tags: {e}"));
                 } else {
-                    if let Err(e) = self.try_auto_backup(&note.title) {
-                        self.set_temporary_status(&format!("Backup failed: {e}"));
-                    }
+                    self.enqueue_backup(format!("auto: {}", &note.title));
                     if let Err(e) = self.refresh_notes() {
                         self.set_temporary_status(&format!("Refresh failed: {e}"));
                     }
@@ -2790,10 +2756,8 @@ template = """
                     && note.tags.contains(&tag)
                 {
                     note.tags.retain(|t| t != &tag);
-                    if self.storage.save_note(&note_id, &note).is_ok()
-                        && let Err(e) = self.try_auto_backup(&note.title)
-                    {
-                        self.set_temporary_status(&format!("Backup failed: {e}"));
+                    if self.storage.save_note(&note_id, &note).is_ok() {
+                        self.enqueue_backup(format!("auto: {}", note.title));
                     }
                     count += 1;
                 }
@@ -2854,9 +2818,7 @@ template = """
                         loaded.tags.push(tag.clone());
                     }
                     if self.storage.save_note(&note_id, &loaded).is_ok() {
-                        if let Err(e) = self.try_auto_backup(&note_title) {
-                            self.set_temporary_status(&format!("Backup failed: {e}"));
-                        }
+                        self.enqueue_backup(format!("auto: {}", &note_title));
                         count += 1;
                     }
                 }
@@ -3332,7 +3294,7 @@ template = """
                 note.content.push_str(&content);
                 note.updated_at = now_unix_secs();
                 self.storage.save_note(id, &note)?;
-                self.try_auto_backup(&note.title)?;
+                self.enqueue_backup(format!("auto: {}", note.title));
                 self.refresh_notes()?;
                 self.set_temporary_status_static("Content appended");
             }
@@ -3360,9 +3322,7 @@ template = """
                 tags: vec![],
             };
             if let Ok(saved_id) = self.storage.save_note(&new_id, &note) {
-                if let Err(e) = self.try_auto_backup(&note.title) {
-                    self.set_temporary_status(&format!("Backup failed: {e}"));
-                }
+                self.enqueue_backup(format!("auto: {}", &note.title));
                 if let Err(e) = self.refresh_notes() {
                     self.set_temporary_status(&format!("Refresh failed: {e}"));
                 }

@@ -106,6 +106,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml_ng = "0.10"
 signal-hook = "0.4"
+parking_lot = "0.12"
 tempfile = "3.27.0"
 toml = "1.1"
 toml_edit = "0.25"

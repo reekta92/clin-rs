@@ -607,11 +607,11 @@ impl Default for SearchConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct BackupConfig {
-    #[serde(default = "default_true")]
+    #[serde(default)]
     pub enabled: bool,
-    #[serde(default = "default_true")]
+    #[serde(default)]
     pub backup_on_save: bool,
-    #[serde(default = "default_true")]
+    #[serde(default)]
     pub backup_on_quit: bool,
     #[serde(default)]
     pub auto_push: bool,
@@ -1453,13 +1453,13 @@ show_line_numbers = true
 
 [backup]
 # Enable auto-backups via git.
-enabled = true
+enabled = false
 
 # Perform a backup commit whenever a note is saved.
-backup_on_save = true
+backup_on_save = false
 
 # Perform a backup commit when the app exits.
-backup_on_quit = true
+backup_on_quit = false
 
 # Automatically push changes to the remote repository.
 auto_push = false
@@ -1655,6 +1655,15 @@ unknown_field = "ignore me"
         assert!(!parsed.list.show_date_in_list);
         assert_eq!(parsed.list.default_view, NotesLayout::Tree);
         assert_eq!(parsed.backup.auto_backup_interval, Some(60));
+    }
+
+    #[test]
+    fn backup_defaults_disabled_when_keys_omitted() {
+        // A [backup] section that omits the enable flags must default to off.
+        let cfg: ClinConfig = toml::from_str("[backup]\nauto_push = false\n").unwrap();
+        assert!(!cfg.backup.enabled);
+        assert!(!cfg.backup.backup_on_save);
+        assert!(!cfg.backup.backup_on_quit);
     }
 
     #[test]

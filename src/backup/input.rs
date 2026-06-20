@@ -414,6 +414,7 @@ fn handle_settings_mouse(state: &mut BackupState, event: MouseEvent) -> InputRes
 
 impl BackupState {
     fn do_commit(&mut self, message: &str) {
+        let _g = self.git_lock.lock();
         if let Ok(git_ops) = GitOps::init(&self.vault_path) {
             let paths: Vec<String> = self.selected_for_commit.iter().cloned().collect();
             let res = if paths.is_empty() {
@@ -440,6 +441,7 @@ impl BackupState {
             .to_string();
         self.status_message = Some(format!("Pushing to {remote_name}..."));
 
+        let _g = self.git_lock.lock();
         if let Ok(git_ops) = GitOps::init(&self.vault_path) {
             match git_ops.push(&remote_name) {
                 Ok(_) => self.status_message = Some("Push complete".to_string()),
@@ -480,6 +482,7 @@ impl BackupState {
             self.status_message = Some("Settings saved".to_string());
 
             // Re-init git if enabled and not initialized
+            let _g = self.git_lock.lock();
             if config.backup.enabled && !GitOps::is_initialized(&self.vault_path) {
                 if let Ok(git_ops) = GitOps::init(&self.vault_path) {
                     if let Some(url) = &config.backup.remote_url {

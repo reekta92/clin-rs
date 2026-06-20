@@ -1,5 +1,6 @@
 use std::io::Stdout;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
@@ -76,6 +77,7 @@ pub fn run_backup_view(
     config: &ClinConfig,
     keybinds: &Keybinds,
     app_theme: &AppThemeColors,
+    git_lock: Arc<parking_lot::Mutex<()>>,
 ) -> Result<BackupResult> {
     let mut state = BackupState::new(
         vault_path,
@@ -83,6 +85,7 @@ pub fn run_backup_view(
         app_theme.clone(),
         keybinds.clone(),
         config.ui.tab_icons_only,
+        git_lock,
     );
     state.footer_hint = format!(
         "{}: commit · {}: push · {}: refresh · {}: settings · {}: ←",
