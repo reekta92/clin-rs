@@ -143,9 +143,9 @@ All optional. Hex color strings like `"#ff6600"`. Override theme defaults.
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `enabled` | `bool` | `true` | Enable auto-backups via git |
-| `backup_on_save` | `bool` | `true` | Perform a backup commit whenever a note is saved |
-| `backup_on_quit` | `bool` | `true` | Perform a backup commit when the app exits |
+| `enabled` | `bool` | `false` | Enable auto-backups via git |
+| `backup_on_save` | `bool` | `false` | Perform a backup commit whenever a note is saved |
+| `backup_on_quit` | `bool` | `false` | Perform a backup commit when the app exits |
 | `auto_backup_interval` | `u64` | — | Interval in minutes for automatic background backups |
 | `auto_push` | `bool` | `false` | Automatically push commits to remote |
 | `remote_url` | `String` | — | Remote git repository URL |
@@ -180,9 +180,9 @@ preview_enabled = true
 show_line_numbers = true
 
 [backup]
-enabled = true
-backup_on_save = true
-backup_on_quit = true
+enabled = false
+backup_on_save = false
+backup_on_quit = false
 auto_backup_interval = 30
 auto_push = false
 remote_url = "https://github.com/user/my-notes.git"
