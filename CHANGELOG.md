@@ -2,6 +2,21 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.8.21] - 2026-06-20
+
+### Added
+
+- Preview pane rendering optimizatons
+
+### Miscellaneous
+
+- Fixed fmt CI failing
+- Bump toml_edit from 0.22.27 to 0.25.12+spec-1.1.0
+- Bump toml from 0.8.23 to 1.1.2+spec-1.1.0
+- Bump portable-pty from 0.8.1 to 0.9.0
+- Bump signal-hook from 0.3.18 to 0.4.4
+- Bump actions/checkout from 4 to 7
+- Bump cachix/install-nix-action from 27 to 31
 ## [0.8.20] - 2026-06-20
 
 ### Added
@@ -20,6 +35,10 @@ All notable changes to clin are documented in this file.
 ### Performance
 
 - Cache arboard clipboard in thread-local
+
+### Release
+
+- V0.8.20
 ## [0.8.19] - 2026-06-20
 
 ### Fixed
