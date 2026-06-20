@@ -21,7 +21,7 @@ pub fn handle_popup_text_input(
 
 pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     // Ctrl+C → quit (interactive path, raw mode delivers Ctrl+C as key event)
-    if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
+    if key.code == KeyCode::Char('c') && key.modifiers == KeyModifiers::CONTROL {
         app.initiate_quit();
         return false;
     }
@@ -1036,7 +1036,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
 
 pub fn handle_help_keys(app: &mut App, key: KeyEvent) {
     // Ctrl+C → quit (interactive path, raw mode delivers Ctrl+C as key event)
-    if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
+    if key.code == KeyCode::Char('c') && key.modifiers == KeyModifiers::CONTROL {
         app.initiate_quit();
         return;
     }
@@ -1066,7 +1066,7 @@ pub fn handle_help_keys(app: &mut App, key: KeyEvent) {
 
 pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> bool {
     // Ctrl+C → quit (interactive path, raw mode delivers Ctrl+C as key event)
-    if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
+    if key.code == KeyCode::Char('c') && key.modifiers == KeyModifiers::CONTROL {
         app.initiate_quit();
         return false;
     }

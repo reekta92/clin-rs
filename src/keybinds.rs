@@ -584,21 +584,21 @@ impl Default for Keybinds {
         edit.insert(
             EditAction::Copy,
             vec![
-                KeyCombo::ctrl(KeyCode::Char('c')),
+                KeyCombo::ctrl_shift(KeyCode::Char('c')),
                 KeyCombo::ctrl(KeyCode::Insert),
             ],
         );
         edit.insert(
             EditAction::Cut,
             vec![
-                KeyCombo::ctrl(KeyCode::Char('x')),
+                KeyCombo::ctrl_shift(KeyCode::Char('x')),
                 KeyCombo::shift(KeyCode::Delete),
             ],
         );
         edit.insert(
             EditAction::Paste,
             vec![
-                KeyCombo::ctrl(KeyCode::Char('v')),
+                KeyCombo::ctrl_shift(KeyCode::Char('v')),
                 KeyCombo::shift(KeyCode::Insert),
             ],
         );
