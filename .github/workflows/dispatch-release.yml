@@ -34,7 +34,7 @@ jobs:
       new_version: ${{ steps.bump.outputs.new_version }}
       tag: ${{ steps.bump.outputs.tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -143,7 +143,7 @@ jobs:
     needs: prepare
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: "v${{ needs.prepare.outputs.new_version }}"
       - uses: dtolnay/rust-toolchain@stable
@@ -173,7 +173,7 @@ jobs:
     needs: prepare
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: "v${{ needs.prepare.outputs.new_version }}"
       - uses: dtolnay/rust-toolchain@stable
@@ -203,7 +203,7 @@ jobs:
     needs: prepare
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: "v${{ needs.prepare.outputs.new_version }}"
       - uses: dtolnay/rust-toolchain@stable
@@ -238,7 +238,7 @@ jobs:
     needs: prepare
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: "v${{ needs.prepare.outputs.new_version }}"
       - uses: dtolnay/rust-toolchain@stable
@@ -266,7 +266,7 @@ jobs:
     needs: prepare
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: "v${{ needs.prepare.outputs.new_version }}"
       - uses: dtolnay/rust-toolchain@stable
@@ -306,7 +306,7 @@ jobs:
     needs: prepare
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: "v${{ needs.prepare.outputs.new_version }}"
       - uses: cachix/install-nix-action@v31
@@ -324,7 +324,7 @@ jobs:
     env:
       AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: "v${{ needs.prepare.outputs.new_version }}"
       - name: Wait for release assets
@@ -375,7 +375,7 @@ jobs:
     env:
       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: "v${{ needs.prepare.outputs.new_version }}"
       - uses: dtolnay/rust-toolchain@stable
@@ -394,7 +394,7 @@ jobs:
     needs: [prepare, linux-packages, appimage, linux-x86_64, nix]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: main
           token: ${{ secrets.GITHUB_TOKEN }}
