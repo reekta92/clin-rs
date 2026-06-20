@@ -4051,15 +4051,6 @@ template = """
     pub fn poll_renderers(&mut self) -> bool {
         let mut updated = false;
 
-        if let Some(last) = self.list.last_selection_change
-            && last.elapsed() > Duration::from_millis(150)
-            && self.list.pending_preview_update
-        {
-            self.update_preview();
-            self.list.pending_preview_update = false;
-            self.list.last_selection_change = None;
-            updated = true;
-        }
 
         if let Some(last) = self.editor.last_editor_change
             && last.elapsed() > Duration::from_millis(150)
@@ -4097,9 +4088,9 @@ template = """
             return;
         }
 
-        self.list.preview_content_index = None;
-        self.list.last_selection_change = Some(Instant::now());
-        self.list.pending_preview_update = true;
+        self.update_preview();
+        self.list.pending_preview_update = false;
+        self.list.last_selection_change = None;
     }
 
     pub fn request_preview_update_immediate(&mut self) {
