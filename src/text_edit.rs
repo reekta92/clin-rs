@@ -1,12 +1,11 @@
-use std::cell::RefCell;
 use crate::keybinds::{EditAction, Keybinds};
 use crossterm::event::KeyEvent;
 use ratatui_textarea::{CursorMove, TextArea};
+use std::cell::RefCell;
 
 thread_local! {
     static CLIPBOARD: RefCell<Option<arboard::Clipboard>> = RefCell::new(None);
 }
-
 
 pub fn apply_text_shortcuts(
     keybinds: &Keybinds,

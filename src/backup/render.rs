@@ -118,8 +118,7 @@ pub const BACKUP_TABS: &[(&str, &str)] = &[
 
 pub fn draw_header(frame: &mut Frame, area: Rect, state: &BackupState) {
     let theme = &state.theme;
-    let tabs: Vec<(&str, Option<&str>)> =
-        BACKUP_TABS.iter().map(|&(l, g)| (l, Some(g))).collect();
+    let tabs: Vec<(&str, Option<&str>)> = BACKUP_TABS.iter().map(|&(l, g)| (l, Some(g))).collect();
     let active = if state.selected_section == crate::backup::state::BackupSection::History {
         1
     } else {

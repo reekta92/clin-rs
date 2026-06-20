@@ -214,8 +214,12 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
 
     let tabs: Vec<(&str, Option<&str>)> =
         HELP_TAB_NAMES.iter().map(|&(l, g)| (l, Some(g))).collect();
-    let tab_spans =
-        build_tab_spans(&tabs, app.help_tab.index(), &app.app_theme, app.config.ui.tab_icons_only);
+    let tab_spans = build_tab_spans(
+        &tabs,
+        app.help_tab.index(),
+        &app.app_theme,
+        app.config.ui.tab_icons_only,
+    );
     draw_view_title_bar_with_tabs(frame, chunks[0], "Help", tab_spans, &app.app_theme);
 
     let help_text = app.get_help_text().clone();
@@ -2027,7 +2031,12 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             .iter()
             .map(|(l, g, _)| (*l, Some(*g)))
             .collect();
-        let tab_spans = build_tab_spans(&tabs, palette.active_tab, &app.app_theme, app.config.ui.tab_icons_only);
+        let tab_spans = build_tab_spans(
+            &tabs,
+            palette.active_tab,
+            &app.app_theme,
+            app.config.ui.tab_icons_only,
+        );
         let tabs_w = Paragraph::new(Line::from(tab_spans))
             .alignment(Alignment::Center)
             .style(app.app_theme.hint_line_bg_style());
@@ -3170,13 +3179,12 @@ fn tab_display_text(label: &str, glyph: Option<&str>, icons_only: bool) -> Strin
 fn tab_display_width(label: &str, glyph: Option<&str>, icons_only: bool) -> u16 {
     let label_w = label.chars().count() as u16;
     match (icons_only, glyph) {
-        (true, Some(g)) => 4 + g.chars().count() as u16,       // "  g  "
-        (true, None) => 2 + label_w,                            // " label "
+        (true, Some(g)) => 4 + g.chars().count() as u16, // "  g  "
+        (true, None) => 2 + label_w,                     // " label "
         (false, Some(g)) => 3 + g.chars().count() as u16 + label_w, // " g label "
-        (false, None) => 2 + label_w,                           // " label "
+        (false, None) => 2 + label_w,                    // " label "
     }
 }
-
 
 /// Build tab spans in the unified Vault/Pinned style: the active tab is a filled
 /// pill (highlight_fg on accent, bold), inactive tabs are muted, each pair of
@@ -3191,7 +3199,9 @@ pub fn build_tab_spans(
     let active_style = Style::default()
         .fg(theme.accent)
         .add_modifier(Modifier::BOLD);
-    let inactive_style = Style::default().fg(theme.muted).add_modifier(Modifier::BOLD);
+    let inactive_style = Style::default()
+        .fg(theme.muted)
+        .add_modifier(Modifier::BOLD);
     let mut spans = Vec::with_capacity(tabs.len() * 2);
     for (i, (label, glyph)) in tabs.iter().enumerate() {
         if i > 0 {
@@ -3202,7 +3212,10 @@ pub fn build_tab_spans(
         } else {
             inactive_style
         };
-        spans.push(Span::styled(tab_display_text(label, *glyph, icons_only), style));
+        spans.push(Span::styled(
+            tab_display_text(label, *glyph, icons_only),
+            style,
+        ));
     }
     spans
 }
@@ -3219,8 +3232,10 @@ pub fn hit_test_tabs(
     click_x: u16,
     icons_only: bool,
 ) -> Option<usize> {
-    let widths: Vec<u16> =
-        tabs.iter().map(|(l, g)| tab_display_width(l, *g, icons_only)).collect();
+    let widths: Vec<u16> = tabs
+        .iter()
+        .map(|(l, g)| tab_display_width(l, *g, icons_only))
+        .collect();
     let mut total: u16 = 0;
     for (i, w) in widths.iter().enumerate() {
         total = total.saturating_add(*w);

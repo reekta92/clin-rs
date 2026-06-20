@@ -1031,8 +1031,7 @@ fn run_app(
                             region.width,
                             mouse_event.column,
                             app.config.ui.tab_icons_only,
-                        )
-                        {
+                        ) {
                             app.switch_help_tab(crate::app::HelpTab::from_index(i));
                         }
                     } else if mouse_event.kind
