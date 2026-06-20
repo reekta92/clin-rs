@@ -737,21 +737,62 @@ impl Drop for TerminalGuard {
 }
 
 fn run_tui_session(app: &mut App) -> Result<()> {
-    // Register signal handlers before entering raw mode
+    // Register signal handlers before entering raw mode. SIGHUP/SIGQUIT are
+    // included so the terminal is restored deterministically (their default
+    // disposition would kill the process before Drop runs).
     let _ = signal_hook::flag::register(signal_hook::consts::SIGINT, Arc::clone(&SHOULD_EXIT));
     let _ = signal_hook::flag::register(signal_hook::consts::SIGTERM, Arc::clone(&SHOULD_EXIT));
+    let _ = signal_hook::flag::register(signal_hook::consts::SIGHUP, Arc::clone(&SHOULD_EXIT));
+    let _ = signal_hook::flag::register(signal_hook::consts::SIGQUIT, Arc::clone(&SHOULD_EXIT));
 
-    let _guard = TerminalGuard::enter(app.mouse_enabled)?;
-    let backend = ratatui::backend::CrosstermBackend::new(io::stdout());
-    let mut terminal = Terminal::new(backend).context("failed to create terminal")?;
+    // Spawn the background backup worker before entering the terminal.
+    let (tx, done_rx) = crate::backup::worker::spawn(app.git_lock.clone(), app.backup_status.clone());
+    app.backup_tx = Some(tx);
 
-    let mut terminal_safe = std::panic::AssertUnwindSafe(&mut terminal);
-    let mut app_safe = std::panic::AssertUnwindSafe(&mut *app);
-    let res = std::panic::catch_unwind(move || run_app(*terminal_safe, *app_safe));
-    if app.mode == ViewMode::Edit {
-        app.autosave();
+    // Run the TUI inside an inner block so `TerminalGuard` (raw mode + alt
+    // screen) is dropped — restoring the terminal — BEFORE any blocking
+    // quit-time backup. Any later signal/SIGKILL during the flush then leaves
+    // the terminal clean.
+    let result = {
+        let _guard = TerminalGuard::enter(app.mouse_enabled)?;
+        let backend = ratatui::backend::CrosstermBackend::new(io::stdout());
+        let mut terminal = Terminal::new(backend).context("failed to create terminal")?;
+
+        let mut terminal_safe = std::panic::AssertUnwindSafe(&mut terminal);
+        let mut app_safe = std::panic::AssertUnwindSafe(&mut *app);
+        let res = std::panic::catch_unwind(move || run_app(*terminal_safe, *app_safe));
+        if app.mode == ViewMode::Edit {
+            app.autosave();
+        }
+        res
+    }; // _guard dropped here: raw mode off, alt screen left
+
+    let signal_exit = SHOULD_EXIT.load(Ordering::Acquire);
+
+    if signal_exit {
+        // Don't join: the worker may be mid-commit. libgit2 commits are atomic
+        // (HEAD updated last), so killing the thread cannot corrupt the repo.
+        drop(app.backup_tx.take());
+    } else if app.config.backup.enabled && app.config.backup.backup_on_quit {
+        println!("Backing up…");
+        let _ = app
+            .backup_tx
+            .as_ref()
+            .map(|tx| tx.send(crate::backup::worker::BackupJob::Flush("auto: backup on quit".into())));
+        drop(app.backup_tx.take());
+        match done_rx.recv_timeout(crate::backup::worker::FLUSH_BOUND) {
+            Ok(()) => println!("Done."),
+            Err(_) => eprintln!("Backup still running in background; exiting."),
+        }
+        if let Some(msg) = app.backup_status.lock().take() {
+            eprintln!("Backup warning: {msg}");
+        }
+    } else {
+        drop(app.backup_tx.take());
+        let _ = done_rx.recv_timeout(crate::backup::worker::FLUSH_BOUND);
     }
-    match res {
+
+    match result {
         Ok(r) => r,
         Err(err) => std::panic::resume_unwind(err),
     }
@@ -844,6 +885,7 @@ fn run_app(
                 &config,
                 &app.keybinds,
                 &app.app_theme,
+                app.git_lock.clone(),
             );
 
             app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
@@ -931,6 +973,10 @@ fn run_app(
         }
 
         app.tick_status();
+        let failed = app.backup_status.lock().take();
+        if let Some(msg) = failed {
+            app.set_temporary_status(&format!("Backup failed: {msg}"));
+        }
 
         if app.needs_full_redraw {
             terminal.clear()?;
@@ -963,9 +1009,7 @@ fn run_app(
                 None => true,
             };
             if should_backup {
-                if let Err(e) = app.try_auto_backup_raw("auto: scheduled backup") {
-                    app.set_temporary_status(&format!("Auto-backup failed: {e}"));
-                }
+                app.enqueue_backup("auto: scheduled backup");
                 app.last_auto_backup = Some(now);
             }
         }
@@ -1070,10 +1114,6 @@ fn run_app(
                 _ => {}
             }
         }
-    }
-
-    if let Err(e) = app.try_auto_backup_on_quit() {
-        return Err(e).context("backup on quit failed");
     }
     Ok(())
 }

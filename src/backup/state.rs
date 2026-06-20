@@ -4,7 +4,7 @@ use crate::config::BackupConfig;
 use ratatui_textarea::TextArea;
 use std::collections::HashSet;
 use std::path::PathBuf;
-
+use std::sync::Arc;
 use crate::keybinds::Keybinds;
 
 pub struct BackupState {
@@ -33,8 +33,8 @@ pub struct BackupState {
     pub footer_hint: String,
     pub keybinds: Keybinds,
     pub tab_icons_only: bool,
+    pub git_lock: Arc<parking_lot::Mutex<()>>,
 }
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BackupSection {
     Status,
@@ -108,6 +108,7 @@ impl BackupState {
         theme: AppThemeColors,
         keybinds: Keybinds,
         tab_icons_only: bool,
+        git_lock: Arc<parking_lot::Mutex<()>>,
     ) -> Self {
         let settings = BackupSettingsState {
             enabled: config.enabled,
@@ -150,6 +151,7 @@ impl BackupState {
             selected_for_commit: HashSet::new(),
             keybinds,
             tab_icons_only,
+            git_lock,
         };
 
         state.refresh_git_info();
@@ -158,6 +160,7 @@ impl BackupState {
 
     pub fn load_selected_diff(&mut self) {
         if let Some(path) = &self.selected_file {
+            let _g = self.git_lock.lock();
             if let Ok(git_ops) = GitOps::init(&self.vault_path) {
                 self.diff_lines = git_ops.get_file_diff(path).unwrap_or_default();
                 self.diff_scroll = 0;
@@ -168,39 +171,48 @@ impl BackupState {
     }
 
     pub fn refresh_git_info(&mut self) {
-        if let Ok(git_ops) = GitOps::init(&self.vault_path) {
-            self.status = git_ops.status().ok();
-            self.commits = git_ops.log(50).unwrap_or_default();
-            self.diffs = git_ops.diff_summary().unwrap_or_default();
-            let mut files = Vec::new();
-            if let Some(status) = &self.status {
-                for s in &status.staged {
-                    files.push(s.path.clone());
+        let mut need_diff = false;
+        {
+            let _g = self.git_lock.lock();
+            if let Ok(git_ops) = GitOps::init(&self.vault_path) {
+                self.status = git_ops.status().ok();
+                self.commits = git_ops.log(50).unwrap_or_default();
+                self.diffs = git_ops.diff_summary().unwrap_or_default();
+                let mut files = Vec::new();
+                if let Some(status) = &self.status {
+                    for s in &status.staged {
+                        files.push(s.path.clone());
+                    }
+                    for s in &status.unstaged {
+                        files.push(s.path.clone());
+                    }
+                    for s in &status.untracked {
+                        files.push(s.clone());
+                    }
                 }
-                for s in &status.unstaged {
-                    files.push(s.path.clone());
-                }
-                for s in &status.untracked {
-                    files.push(s.clone());
-                }
-            }
-            self.selectable_files = files;
-            self.selected_for_commit = self
-                .status
-                .as_ref()
-                .map(|s| {
-                    s.unstaged
-                        .iter()
-                        .map(|f| f.path.clone())
-                        .chain(s.untracked.iter().cloned())
-                        .collect()
-                })
-                .unwrap_or_default();
+                self.selectable_files = files;
+                self.selected_for_commit = self
+                    .status
+                    .as_ref()
+                    .map(|s| {
+                        s.unstaged
+                            .iter()
+                            .map(|f| f.path.clone())
+                            .chain(s.untracked.iter().cloned())
+                            .collect()
+                    })
+                    .unwrap_or_default();
 
-            if self.selected_file.is_none() && !self.selectable_files.is_empty() {
-                self.selected_file = Some(self.selectable_files[0].clone());
-                self.load_selected_diff();
+                if self.selected_file.is_none() && !self.selectable_files.is_empty() {
+                    self.selected_file = Some(self.selectable_files[0].clone());
+                    need_diff = true;
+                }
             }
+        }
+        // Lock released before recursing into load_selected_diff (non-reentrant
+        // mutex — acquiring again here would self-deadlock).
+        if need_diff {
+            self.load_selected_diff();
         }
     }
 

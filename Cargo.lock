@@ -498,6 +498,7 @@ dependencies = [
  "fuzzy-matcher",
  "git2",
  "image",
+ "parking_lot",
  "portable-pty",
  "rand 0.8.6",
  "ratatui",
