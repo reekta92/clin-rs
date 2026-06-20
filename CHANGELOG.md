@@ -2,6 +2,16 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.8.22] - 2026-06-20
+
+### Added
+
+- Add background backup worker thread
+
+### Fixed
+
+- Set git user config in perform_creates_commit test
+- Disable git backups by default
 ## [0.8.21] - 2026-06-20
 
 ### Added
@@ -17,6 +27,10 @@ All notable changes to clin are documented in this file.
 - Bump signal-hook from 0.3.18 to 0.4.4
 - Bump actions/checkout from 4 to 7
 - Bump cachix/install-nix-action from 27 to 31
+
+### Release
+
+- V0.8.21
 ## [0.8.20] - 2026-06-20
 
 ### Added
