@@ -259,8 +259,8 @@ Key combos are strings like `"a"`, `"Enter"`, `"Ctrl+q"`, `"Ctrl+Shift+z"`, `"Al
 | `toggle_pin` | `p` | Pin/unpin note |
 | `cycle_sort` | `s` | Cycle sort options |
 | `search` | `Ctrl+f` | Quick search by title |
-| `jump_to_top` | `Shift+G` | Jump to top of list |
-| `jump_to_bottom` | — | Jump to bottom of list |
+| `jump_to_top` | `Shift+U` | Jump to top of list |
+| `jump_to_bottom` | `Shift+D` | Jump to bottom of list |
 | `page_up` | `Ctrl+u` | Half page up |
 | `page_down` | `Ctrl+d` | Half page down |
 | `open_trash` | `Shift+T` | Open trash view |

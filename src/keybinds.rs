@@ -544,7 +544,11 @@ impl Default for Keybinds {
         );
         list.insert(
             ListAction::JumpToTop,
-            vec![KeyCombo::shift(KeyCode::Char('G'))],
+            vec![KeyCombo::shift(KeyCode::Char('U'))],
+        );
+        list.insert(
+            ListAction::JumpToBottom,
+            vec![KeyCombo::shift(KeyCode::Char('D'))],
         );
         list.insert(ListAction::PageUp, vec![KeyCombo::ctrl(KeyCode::Char('u'))]);
         list.insert(
