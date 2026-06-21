@@ -1,16 +1,9 @@
-pub mod backup;
 pub mod content_tree;
 pub mod decrypt;
-pub mod draw;
 pub mod encrypt;
-pub mod external_editor;
-pub mod graph;
 pub mod import;
-pub mod layout;
 pub mod ocr;
-pub mod pinstar;
 pub mod settings;
-pub mod theme;
 
 use crate::app::App;
 use anyhow::Result;
@@ -46,6 +39,59 @@ pub trait Action: Send + Sync {
     }
 }
 
+/// Action that delegates to a single `app.$method()` call, no dynamic name.
+#[macro_export]
+macro_rules! simple_action {
+    ($name:ident, $id:literal, $label:literal, $desc:literal,
+     $cat:expr, $glyph:literal, $method:ident) => {
+        pub struct $name;
+        impl $crate::actions::Action for $name {
+            fn id(&self) -> ::std::borrow::Cow<'static, str> { ::std::borrow::Cow::Borrowed($id) }
+            fn name(&self) -> ::std::borrow::Cow<'static, str> { ::std::borrow::Cow::Borrowed($label) }
+            fn description(&self) -> ::std::borrow::Cow<'static, str> { ::std::borrow::Cow::Borrowed($desc) }
+            fn category(&self) -> $crate::actions::ActionCategory { $cat }
+            fn glyph(&self) -> &'static str { $glyph }
+            fn execute(&self, app: &mut $crate::app::App, _: Option<&str>) -> ::anyhow::Result<()> {
+                app.$method();
+                Ok(())
+            }
+        }
+    };
+}
+
+/// Toggle action with dynamic name showing current state.
+#[macro_export]
+macro_rules! toggle_action {
+    ($name:ident, $id:literal, $label:literal, $desc:literal,
+     $cat:expr, $glyph:literal, $method:ident, $state_var:ident, $state_expr:expr) => {
+        pub struct $name;
+        impl $crate::actions::Action for $name {
+            fn id(&self) -> ::std::borrow::Cow<'static, str> { ::std::borrow::Cow::Borrowed($id) }
+            fn name(&self) -> ::std::borrow::Cow<'static, str> { ::std::borrow::Cow::Borrowed($label) }
+            fn description(&self) -> ::std::borrow::Cow<'static, str> { ::std::borrow::Cow::Borrowed($desc) }
+            fn category(&self) -> $crate::actions::ActionCategory { $cat }
+            fn glyph(&self) -> &'static str { $glyph }
+            fn execute(&self, app: &mut $crate::app::App, _: Option<&str>) -> ::anyhow::Result<()> {
+                app.$method();
+                Ok(())
+            }
+            fn name_dynamic(&self, $state_var: &$crate::app::App) -> String {
+                let _ = $state_var;
+                format!("{} [{}]", $label, $state_expr)
+            }
+        }
+    };
+}
+
+simple_action!(OpenBackupAction, "backup.open", "Open Backup Dashboard", "View git backup status, commit history, and push to remote", ActionCategory::Views, "\u{f1d3}", open_backup_view);
+simple_action!(CreateDrawAction, "draw.create", "Create Drawing", "Create a new drawing file", ActionCategory::Views, "\u{f1fc}", begin_create_draw);
+simple_action!(OpenGraphAction, "graph.open", "Open Graph View", "Visualize note connections as a force-directed graph", ActionCategory::Views, "\u{f0e8}", open_graph_view);
+simple_action!(CreateCanvasAction, "create_canvas", "Create Canvas Map", "Create a new .canvas map file (Obsidian-compatible)", ActionCategory::Views, "\u{f005}", begin_create_canvas);
+
+toggle_action!(ToggleExternalEditorAction, "external_editor.toggle", "Toggle External Editor Mode", "Switch between the built-in editor and your $EDITOR for opening notes", ActionCategory::Settings, "\u{f120}", toggle_external_editor_mode, app, if app.editor.external_editor_enabled { "On" } else { "Off" });
+toggle_action!(ToggleLayoutAction, "toggle_notes_layout", "Toggle Notes Layout", "Switch between Tree and Grid layout for the notes view", ActionCategory::Settings, "\u{f0c9}", toggle_notes_layout, app, match app.list.notes_layout { crate::config::NotesLayout::Tree => "Tree", crate::config::NotesLayout::Grid => "Grid" });
+toggle_action!(SwitchThemeAction, "switch_theme", "Switch Theme", "Select from available color themes", ActionCategory::Settings, "\u{f042}", begin_theme_selection, app, crate::config::ClinConfig::load().map(|c| c.ui.theme.to_string()).unwrap_or_else(|_| "default".to_string()));
+
 pub struct ActionInfo {
     pub id: String,
     pub name: String,
@@ -58,15 +104,15 @@ pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyL
     vec![
         Box::new(encrypt::EncryptNoteAction),
         Box::new(decrypt::DecryptNoteAction),
-        Box::new(graph::OpenGraphAction),
+        Box::new(OpenGraphAction),
         Box::new(content_tree::OpenContentTreeAction),
-        Box::new(backup::OpenBackupAction),
-        Box::new(draw::CreateDrawAction),
-        Box::new(pinstar::CreateCanvasAction),
+        Box::new(OpenBackupAction),
+        Box::new(CreateDrawAction),
+        Box::new(CreateCanvasAction),
         Box::new(ocr::OcrPasteAction),
-        Box::new(theme::SwitchThemeAction),
-        Box::new(external_editor::ToggleExternalEditorAction),
-        Box::new(layout::ToggleLayoutAction),
+        Box::new(SwitchThemeAction),
+        Box::new(ToggleExternalEditorAction),
+        Box::new(ToggleLayoutAction),
         Box::new(settings::TogglePreviewPaneAction),
         Box::new(settings::TogglePreviewWrapAction),
         Box::new(settings::ToggleCalendarAction),

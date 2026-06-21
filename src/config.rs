@@ -10,6 +10,8 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::sync::OnceLock;
 
 static CONFIG_PATH_OVERRIDE: OnceLock<Option<PathBuf>> = OnceLock::new();
+#[cfg(test)]
+pub(crate) static CONFIG_TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 /// Set once at startup from the parsed `--config` value. Panics-free: later calls are no-ops.
 pub fn set_config_path_override(path: PathBuf) {
@@ -1384,6 +1386,7 @@ fn test_merge_toml_value_preserves_comments() {
 
 #[test]
 fn test_actual_save_preserves_comments() {
+    let _lock = CONFIG_TEST_MUTEX.lock().unwrap();
     let temp_dir = tempfile::tempdir().unwrap();
     let config_file_path = temp_dir.path().join("config.toml");
 

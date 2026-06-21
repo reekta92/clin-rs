@@ -1,0 +1,204 @@
+use super::*;
+use crate::constants::*;
+use crate::editor::*;
+use crate::list_view::*;
+use crate::popups::*;
+use crate::keybinds::Keybinds;
+use crate::storage::{Note, NoteSummary, Storage};
+use crate::templates::Template;
+use anyhow::{Context, Result};
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
+use std::borrow::Cow;
+use std::time::{Duration, Instant};
+use ratatui_textarea::TextArea;
+
+impl App {
+
+
+    pub fn begin_delete_selected(&mut self) {
+        if !self.list.selected_indices.is_empty() {
+            let mut note_ids = Vec::new();
+            for &idx in &self.list.selected_indices {
+                if let Some(VisualItem::Note { summary_idx, .. }) = self.list.visual_list.get(idx) {
+                    note_ids.push(self.notes[*summary_idx].id.clone());
+                }
+            }
+
+            if !note_ids.is_empty() {
+                if self.confirm_on_delete {
+                    self.show_confirm(ConfirmAction::BulkDeleteNotes { note_ids });
+                } else {
+                    self.confirm_bulk_delete(note_ids);
+                }
+                return;
+            }
+        }
+
+        if self.list.visual_index >= self.list.visual_list.len() {
+            self.set_temporary_status_static("No item selected to delete");
+            return;
+        }
+
+        match &self.list.visual_list[self.list.visual_index] {
+            VisualItem::Note { summary_idx, .. } => {
+                if let Some(note) = self.notes.get(*summary_idx) {
+                    let note_id = note.id.clone();
+                    let title = note.title.clone();
+                    if self.confirm_on_delete {
+                        self.show_confirm(ConfirmAction::DeleteNote { note_id, title });
+                    } else {
+                        self.confirm_delete_selected(note_id);
+                    }
+                }
+            }
+            VisualItem::Folder { path, .. } => {
+                if path.is_empty() {
+                    self.set_temporary_status_static("Cannot delete Vault root");
+                    return;
+                }
+                if Self::is_virtual_pinned_path(path) {
+                    self.set_temporary_status_static("Cannot delete virtual Pinned folder");
+                    return;
+                }
+                let path = path.clone();
+                if self.confirm_on_delete {
+                    self.show_confirm(ConfirmAction::DeleteFolder { path });
+                } else {
+                    self.confirm_delete_folder(path);
+                }
+            }
+            _ => {
+                self.set_temporary_status_static("Cannot delete this item");
+            }
+        }
+    }
+
+    pub fn confirm_delete_selected(&mut self, id: String) {
+        match self.storage.trash_note(&id) {
+            Ok(()) => {
+                if let Err(e) = self.refresh_notes() {
+                    self.set_temporary_status(&format!("Refresh failed: {e}"));
+                }
+                if self.list.visual_index >= self.list.visual_list.len()
+                    && !self.list.visual_list.is_empty()
+                {
+                    self.list.visual_index = self.list.visual_list.len() - 1;
+                }
+                self.set_temporary_status_static("Note moved to trash");
+            }
+            Err(err) => {
+                self.set_temporary_status(&format!("Move to trash failed: {err:#}"));
+            }
+        }
+    }
+
+    pub fn confirm_delete_folder(&mut self, path: String) {
+        match self.storage.trash_folder(&path) {
+            Ok(()) => {
+                self.list.folder_cache = None;
+                self.list
+                    .folder_expanded
+                    .retain(|p| p != &path && !p.starts_with(&format!("{path}/")));
+                if let Err(e) = self.refresh_notes() {
+                    self.set_temporary_status(&format!("Refresh failed: {e}"));
+                }
+                if self.list.visual_index >= self.list.visual_list.len()
+                    && !self.list.visual_list.is_empty()
+                {
+                    self.list.visual_index = self.list.visual_list.len() - 1;
+                }
+                self.set_temporary_status_static("Folder moved to trash");
+            }
+            Err(e) => {
+                self.set_temporary_status(&format!("Failed to trash folder: {e}"));
+            }
+        }
+    }
+
+    pub fn restore_from_trash(&mut self) {
+        let item = self
+            .popups
+            .trash_view
+            .as_ref()
+            .and_then(|t| t.items.get(t.selected).cloned());
+
+        let Some(item) = item else { return };
+
+        match self.storage.restore_trash_items(vec![item]) {
+            Ok(_) => {
+                if let Ok(items) = self.storage.list_trash() {
+                    if items.is_empty() {
+                        self.popups.trash_view = None;
+                        self.set_temporary_status_static("Note restored, trash is now empty");
+                    } else if let Some(ref mut trash) = self.popups.trash_view {
+                        trash.items = items;
+                        trash.selected = trash.selected.min(trash.items.len().saturating_sub(1));
+                        self.set_temporary_status_static("Note restored");
+                    }
+                }
+                self.list.folder_cache = None;
+                if let Err(e) = self.refresh_notes() {
+                    self.set_temporary_status(&format!("Refresh failed: {e}"));
+                }
+            }
+            Err(e) => {
+                self.set_temporary_status(&format!("Failed to restore: {e}"));
+            }
+        }
+    }
+
+    pub fn begin_delete_from_trash(&mut self) {
+        if let Some(trash) = &self.popups.trash_view
+            && let Some(item) = trash.items.get(trash.selected).cloned()
+        {
+            self.show_confirm(ConfirmAction::DeleteFromTrash { item });
+        }
+    }
+
+    pub fn confirm_delete_from_trash(&mut self, item: ::trash::TrashItem) {
+        match self.storage.purge_trash_items(vec![item]) {
+            Ok(()) => {
+                if let Some(ref mut trash) = self.popups.trash_view
+                    && let Ok(items) = self.storage.list_trash()
+                {
+                    if items.is_empty() {
+                        self.popups.trash_view = None;
+                        self.set_temporary_status_static("Note deleted, trash is now empty");
+                    } else {
+                        trash.items = items;
+                        trash.selected = trash.selected.min(trash.items.len().saturating_sub(1));
+                        self.set_temporary_status_static("Note permanently deleted");
+                    }
+                }
+            }
+            Err(e) => {
+                self.set_temporary_status(&format!("Failed to delete: {e}"));
+            }
+        }
+    }
+
+    pub fn begin_empty_trash(&mut self) {
+        if let Some(trash) = &self.popups.trash_view {
+            if trash.items.is_empty() {
+                self.set_temporary_status_static("Trash is already empty");
+            } else {
+                self.show_confirm(ConfirmAction::EmptyTrash {
+                    items: trash.items.clone(),
+                });
+            }
+        }
+    }
+
+    pub fn confirm_empty_trash(&mut self, items: Vec<::trash::TrashItem>) {
+        let count = items.len();
+        match self.storage.purge_trash_items(items) {
+            Ok(()) => {
+                self.popups.trash_view = None;
+                self.set_temporary_status(&format!("Deleted {count} notes from trash"));
+            }
+            Err(e) => {
+                self.set_temporary_status(&format!("Failed to empty trash: {e}"));
+            }
+        }
+    }}

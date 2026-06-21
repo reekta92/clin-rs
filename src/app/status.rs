@@ -1,0 +1,53 @@
+use super::*;
+use crate::constants::*;
+use crate::editor::*;
+use crate::list_view::*;
+use crate::popups::*;
+use crate::keybinds::Keybinds;
+use crate::storage::{Note, NoteSummary, Storage};
+use crate::templates::Template;
+use anyhow::{Context, Result};
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
+use std::borrow::Cow;
+use std::time::{Duration, Instant};
+use ratatui_textarea::TextArea;
+
+impl App {
+
+
+    pub fn default_status_text(&self) -> Cow<'static, str> {
+        match self.mode {
+            ViewMode::List => Cow::Borrowed(LIST_HELP_HINTS),
+            ViewMode::Edit => Cow::Borrowed(EDIT_HELP_HINTS),
+            ViewMode::Help => Cow::Borrowed(HELP_PAGE_HINTS),
+            ViewMode::Graph => Cow::Borrowed(GRAPH_HELP_HINTS),
+            ViewMode::Draw => Cow::Borrowed(DRAW_HELP_HINTS),
+            ViewMode::Canvas => Cow::Borrowed(CANVAS_HELP_HINTS),
+            ViewMode::Backup => Cow::Borrowed(BACKUP_HELP_HINTS),
+            ViewMode::ContentTree => Cow::Borrowed(crate::constants::CONTENT_TREE_HELP_HINTS),
+        }
+    }
+
+    pub fn set_default_status(&mut self) {
+        self.status = self.default_status_text();
+        self.status_until = None;
+    }
+
+    pub fn set_temporary_status(&mut self, message: &str) {
+        self.status = Cow::Owned(message.to_string());
+        self.status_until = Some(Instant::now() + Duration::from_secs(2));
+    }
+
+    pub fn set_temporary_status_static(&mut self, message: &'static str) {
+        self.status = Cow::Borrowed(message);
+        self.status_until = Some(Instant::now() + Duration::from_secs(2));
+    }
+
+    pub fn tick_status(&mut self) {
+        if let Some(until) = self.status_until
+            && Instant::now() >= until
+        {
+            self.set_default_status();
+        }
+    }}
