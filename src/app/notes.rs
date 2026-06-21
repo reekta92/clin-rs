@@ -6,6 +6,7 @@ use crate::storage::Note;
 use crate::templates::Template;
 use anyhow::{Context, Result};
 use std::collections::HashSet;
+use crate::fsutil::SecretTempFile;
 use std::borrow::Cow;
 use ratatui_textarea::TextArea;
 
@@ -232,6 +233,8 @@ impl App {
                 }
             }
 
+            let _secret = SecretTempFile::new(temp_file_path.clone());
+
             let mut args: Vec<String> = Vec::new();
             if let Some(l) = line_number {
                 args.push(format!("+{l}"));
@@ -291,14 +294,6 @@ impl App {
                 }
             }
 
-            if let Ok(len) = std::fs::metadata(&temp_file_path).map(|m| m.len())
-                && let Err(e) = std::fs::write(&temp_file_path, vec![0u8; len as usize])
-            {
-                self.set_temporary_status(&format!("Failed to zero temp file: {e}"));
-            }
-            if let Err(e) = std::fs::remove_file(&temp_file_path) {
-                self.set_temporary_status(&format!("Failed to remove temp file: {e}"));
-            }
         } else {
             self.set_temporary_status_static("Failed to load note for external editor!");
         }
