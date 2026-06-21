@@ -13,7 +13,7 @@ mod popups;
 mod title_bar;
 mod help;
 
-pub use list_view::{draw_list_view, get_preview_info};
+pub(crate) use list_view::{draw_list_view, get_preview_info, list_view_layout};
 pub use edit_view::draw_edit_view;
 pub use popups::*;
 pub use title_bar::*;

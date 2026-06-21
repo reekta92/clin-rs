@@ -117,6 +117,7 @@ pub fn draw_goals_progress(
     theme: &AppThemeColors,
     progress: &DailyProgress,
     config: &GoalsConfig,
+    bottom_border: bool,
 ) {
     if rect.height < 7 || rect.width < 7 {
         return;
@@ -180,11 +181,16 @@ pub fn draw_goals_progress(
         theme,
     ));
 
+    // Border at the interface edge: top when calendar is below list, bottom when above.
+    let border = if bottom_border { Borders::BOTTOM } else { Borders::TOP };
+    let border_bg = theme.bg.unwrap_or(Color::Reset);
+    let inner_h = rect.height.saturating_sub(1); // minus border
+    let pad_top = inner_h.saturating_sub(7) / 2;
     let block = Block::default()
         .style(theme.bg_style())
-        .borders(Borders::TOP)
-        .border_style(Style::default().fg(theme.muted))
-        .padding(Padding::new(2, 2, 0, 0));
+        .borders(border)
+        .border_style(Style::default().fg(theme.muted).bg(border_bg))
+        .padding(Padding::new(2, 2, pad_top, 0));
 
     let paragraph = Paragraph::new(lines).style(theme.bg_style()).block(block);
 

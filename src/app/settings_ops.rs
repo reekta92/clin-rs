@@ -77,6 +77,75 @@ impl App {
         }
     }
 
+    pub fn toggle_layout_edit(&mut self) {
+        self.layout_edit = !self.layout_edit;
+        self.layout_drag = None;
+        self.set_temporary_status_static(if self.layout_edit {
+            "Layout edit mode: drag borders / ←→ ↑↓ / s swap / c cal / Esc"
+        } else {
+            "Layout edit mode off"
+        });
+        if !self.layout_edit {
+            self.persist_list_layout();
+        }
+    }
+
+    pub fn adjust_preview_width(&mut self, delta: f32) {
+        self.adjust_preview_width_to(self.list.preview_width_ratio + delta);
+        self.persist_list_layout();
+    }
+
+    pub fn adjust_preview_width_to(&mut self, ratio: f32) {
+        self.list.preview_width_ratio = ratio.clamp(0.2, 0.8);
+    }
+
+    pub fn adjust_calendar_height(&mut self, delta: i16) {
+        self.adjust_calendar_height_to(self.list.calendar_height.saturating_add_signed(delta));
+        self.persist_list_layout();
+    }
+
+    pub fn adjust_calendar_height_to(&mut self, height: u16) {
+        self.list.calendar_height = height.clamp(9, 20);
+    }
+
+    pub fn swap_preview_position(&mut self) {
+        self.preview_position = match self.preview_position {
+            crate::config::PreviewPosition::Left => crate::config::PreviewPosition::Right,
+            crate::config::PreviewPosition::Right => crate::config::PreviewPosition::Left,
+        };
+        self.set_temporary_status_static(if matches!(self.preview_position, crate::config::PreviewPosition::Left) {
+            "Preview moved to left"
+        } else {
+            "Preview moved to right"
+        });
+        self.persist_list_layout();
+    }
+
+    pub fn swap_calendar_position(&mut self) {
+        self.calendar_position = match self.calendar_position {
+            crate::config::CalendarPosition::Top => crate::config::CalendarPosition::Bottom,
+            crate::config::CalendarPosition::Bottom => crate::config::CalendarPosition::Top,
+        };
+        self.set_temporary_status_static(if matches!(self.calendar_position, crate::config::CalendarPosition::Top) {
+            "Calendar moved to top"
+        } else {
+            "Calendar moved to bottom"
+        });
+        self.persist_list_layout();
+    }
+
+    pub(crate) fn persist_list_layout(&mut self) {
+        if let Ok(mut config) = crate::config::ClinConfig::load() {
+            config.list.preview_width_ratio = self.list.preview_width_ratio;
+            config.list.calendar_height = self.list.calendar_height;
+            config.list.preview_position = self.preview_position;
+            config.list.calendar_position = self.calendar_position;
+            if let Err(e) = config.save() {
+                self.set_temporary_status(&format!("Failed to save layout: {e}"));
+            }
+        }
+    }
+
     pub fn toggle_markdown_preview(&mut self) {
         self.editor.editor_preview_enabled = !self.editor.editor_preview_enabled;
         if self.editor.editor_preview_enabled {
@@ -301,4 +370,5 @@ impl App {
             self.goals_progress = self.load_goals_progress();
         }
         &mut self.goals_progress
-    }}
+    }
+}

@@ -616,6 +616,14 @@ pub enum PreviewPosition {
     Right,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum CalendarPosition {
+    Top,
+    #[default]
+    Bottom,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct FilterConfig {
     #[serde(default)]
@@ -687,6 +695,12 @@ pub struct ListConfig {
     pub show_hidden_files: bool,
     #[serde(default = "default_true")]
     pub calendar_enabled: bool,
+    #[serde(default = "default_preview_width_ratio")]
+    pub preview_width_ratio: f32,
+    #[serde(default = "default_calendar_height")]
+    pub calendar_height: u16,
+    #[serde(default)]
+    pub calendar_position: CalendarPosition,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
@@ -801,6 +815,12 @@ pub struct ClinConfig {
 
 fn default_preview_enabled() -> bool {
     true
+}
+fn default_preview_width_ratio() -> f32 {
+    0.43
+}
+fn default_calendar_height() -> u16 {
+    9
 }
 fn default_label_max() -> usize {
     20
@@ -1521,6 +1541,15 @@ show_hidden_files = false
 
 # Show a month calendar (with note activity) at the bottom of the notes view.
 calendar_enabled = true
+
+# Preview pane width ratio (0.2-0.8). Default 0.43.
+# preview_width_ratio = 0.43
+
+# Calendar height in rows (9-20). Default 9.
+# calendar_height = 9
+
+# Calendar position ("top", "bottom"). Default "bottom".
+# calendar_position = "bottom"
 
 # ── Editor ────────────────────────────────────────────────────────────────────
 

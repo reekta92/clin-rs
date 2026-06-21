@@ -73,3 +73,8 @@ toggle_action!(SetNoteGoalAction, "settings.note_goal",
     "Set Daily Note Goal", "Set target number of notes to edit daily",
     ActionCategory::Settings, "\u{f044}", begin_set_note_goal, app,
     app.config.goals.note_goal);
+
+toggle_action!(ToggleLayoutEditModeAction, "settings.layout_edit",
+    "Toggle Layout Edit Mode", "Resize and reposition notes-view panes with the mouse (Hyprland-style)",
+    ActionCategory::Settings, "\u{f7a2}", toggle_layout_edit, app,
+    if app.layout_edit { "On" } else { "Off" });

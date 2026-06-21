@@ -85,6 +85,9 @@ pub struct ListView {
     pub last_preview_pane_width: u16,
     pub preview_content_width: Option<u16>,
     pub calendar_enabled: bool,
+    pub preview_width_ratio: f32,
+    pub calendar_height: u16,
+    pub calendar_position: crate::config::CalendarPosition,
 }
 
 impl Default for ListView {
@@ -121,6 +124,9 @@ impl Default for ListView {
             grid_columns: 4,
             last_preview_pane_width: 0,
             preview_content_width: None,
+            preview_width_ratio: 0.43,
+            calendar_height: 9,
+            calendar_position: crate::config::CalendarPosition::default(),
         }
     }
 }

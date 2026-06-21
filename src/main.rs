@@ -1093,8 +1093,9 @@ fn run_app(
                         let region = crate::ui::title_bar_tabs_region(area, "Help");
                         if let Some(i) = crate::ui::hit_test_tabs(
                             &tabs,
+                            area.x,
+                            area.width,
                             region.x,
-                            region.width,
                             mouse_event.column,
                             app.config.ui.tab_icons_only,
                         ) {

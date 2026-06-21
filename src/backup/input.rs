@@ -264,7 +264,7 @@ pub fn handle_mouse(state: &mut BackupState, event: MouseEvent) -> InputResult {
                     .collect();
                 let region = crate::ui::title_bar_tabs_region(area, "Backup");
                 if let Some(i) =
-                    crate::ui::hit_test_tabs(&tabs, region.x, region.width, x, state.tab_icons_only)
+                    crate::ui::hit_test_tabs(&tabs, area.x, area.width, region.x, x, state.tab_icons_only)
                 {
                     state.selected_section = match i {
                         1 => BackupSection::History,

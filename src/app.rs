@@ -232,6 +232,14 @@ pub enum HelpTab {
     About,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LayoutDrag {
+    VDivider,
+    HDivider,
+    PreviewSwap,
+    CalendarSwap,
+}
+
 impl HelpTab {
     pub fn prev(self) -> Self {
         match self {
@@ -311,6 +319,7 @@ pub struct App {
     pub should_quit: bool,
     pub preview_encryption: bool,
     pub preview_position: crate::config::PreviewPosition,
+    pub calendar_position: crate::config::CalendarPosition,
     pub pinned_on_top: bool,
     pub default_folder: Option<String>,
     pub mouse_enabled: bool,
@@ -332,6 +341,8 @@ pub struct App {
     pub goals_progress: crate::goals::DailyProgress,
     pub preview_wrap: bool,
     pub preview_fullscreen: bool,
+    pub layout_edit: bool,
+    pub layout_drag: Option<LayoutDrag>,
 }
 
 const PREVIEW_INNER_PAD: u16 = 4;
@@ -388,6 +399,9 @@ impl App {
         list.show_date_in_list = bootstrap_config.list.show_date_in_list;
         list.show_hidden_files = bootstrap_config.list.show_hidden_files;
         list.calendar_enabled = bootstrap_config.list.calendar_enabled;
+        list.preview_width_ratio = bootstrap_config.list.preview_width_ratio;
+        list.calendar_height = bootstrap_config.list.calendar_height;
+        list.calendar_position = bootstrap_config.list.calendar_position;
 
         let preview_wrap = bootstrap_config.core.preview_wrap;
         let config_path = crate::config::ClinConfig::config_path().ok();
@@ -418,6 +432,7 @@ impl App {
             date_format: bootstrap_config.list.date_format.clone(),
             last_auto_backup: None,
             preview_position: bootstrap_config.list.preview_position,
+            calendar_position: bootstrap_config.list.calendar_position,
             pinned_on_top: bootstrap_config.list.pinned_on_top,
             default_folder: bootstrap_config.core.default_folder.clone(),
             return_mode: None,
@@ -436,6 +451,8 @@ impl App {
             goals_progress: crate::goals::DailyProgress::default(),
             preview_wrap,
             preview_fullscreen: false,
+            layout_edit: false,
+            layout_drag: None,
         };
         app.goals_progress = app.load_goals_progress();
         app.list.folder_expanded.insert(String::new());
@@ -475,6 +492,9 @@ impl App {
         list.show_date_in_list = bootstrap_config.list.show_date_in_list;
         list.show_hidden_files = bootstrap_config.list.show_hidden_files;
         list.calendar_enabled = bootstrap_config.list.calendar_enabled;
+        list.preview_width_ratio = bootstrap_config.list.preview_width_ratio;
+        list.calendar_height = bootstrap_config.list.calendar_height;
+        list.calendar_position = bootstrap_config.list.calendar_position;
 
         let preview_wrap = bootstrap_config.core.preview_wrap;
         let config_path = crate::config::ClinConfig::config_path().ok();
@@ -505,6 +525,7 @@ impl App {
             date_format: bootstrap_config.list.date_format.clone(),
             last_auto_backup: None,
             preview_position: bootstrap_config.list.preview_position,
+            calendar_position: bootstrap_config.list.calendar_position,
             pinned_on_top: bootstrap_config.list.pinned_on_top,
             default_folder: bootstrap_config.core.default_folder.clone(),
             return_mode: None,
@@ -523,6 +544,8 @@ impl App {
             goals_progress: crate::goals::DailyProgress::default(),
             preview_wrap,
             preview_fullscreen: false,
+            layout_edit: false,
+            layout_drag: None,
         };
         app.goals_progress = app.load_goals_progress();
         app.list.folder_expanded.insert(String::new());
@@ -986,6 +1009,7 @@ mod tests {
     use crate::storage::Storage;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use tempfile::tempdir;
+    use ratatui_textarea::TextArea;
 
     #[test]
     fn test_preview_render_cols() {
@@ -1338,5 +1362,63 @@ word_goal = 1200
 
         // Verify the config has been reloaded and word_goal is now 1200
         assert_eq!(app.config.goals.word_goal, 1200);
+    }
+
+    #[test]
+    fn adjust_preview_width_to_clamps_to_max() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let data_dir = temp_dir.path().join("data");
+        let config_dir = temp_dir.path().join("config");
+        let notes_dir = temp_dir.path().join("notes");
+        let templates_dir = temp_dir.path().join("templates");
+        std::fs::create_dir_all(&data_dir).unwrap();
+        std::fs::create_dir_all(&config_dir).unwrap();
+        std::fs::create_dir_all(&notes_dir).unwrap();
+        std::fs::create_dir_all(&templates_dir).unwrap();
+
+        let storage = crate::storage::Storage {
+            data_dir,
+            config_dir,
+            notes_dir,
+            templates_dir,
+            key: [0u8; 32],
+        };
+        let mut app = App::new(storage).unwrap();
+
+        app.adjust_preview_width_to(5.0);
+        assert!((app.list.preview_width_ratio - 0.8).abs() < f32::EPSILON,
+            "expected 0.8, got {}", app.list.preview_width_ratio);
+
+        app.adjust_preview_width_to(-1.0);
+        assert!((app.list.preview_width_ratio - 0.2).abs() < f32::EPSILON,
+            "expected 0.2, got {}", app.list.preview_width_ratio);
+    }
+
+    #[test]
+    fn adjust_calendar_height_clamps() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let data_dir = temp_dir.path().join("data");
+        let config_dir = temp_dir.path().join("config");
+        let notes_dir = temp_dir.path().join("notes");
+        let templates_dir = temp_dir.path().join("templates");
+        std::fs::create_dir_all(&data_dir).unwrap();
+        std::fs::create_dir_all(&config_dir).unwrap();
+        std::fs::create_dir_all(&notes_dir).unwrap();
+        std::fs::create_dir_all(&templates_dir).unwrap();
+
+        let storage = crate::storage::Storage {
+            data_dir,
+            config_dir,
+            notes_dir,
+            templates_dir,
+            key: [0u8; 32],
+        };
+        let mut app = App::new(storage).unwrap();
+
+        app.adjust_calendar_height(-20);
+        assert_eq!(app.list.calendar_height, 9);
+
+        app.adjust_calendar_height(50);
+        assert_eq!(app.list.calendar_height, 20);
     }
 }

@@ -2,6 +2,7 @@ use ratatui::{prelude::*, widgets::*};
 use crate::app::{App, VIRTUAL_PINNED_PATH, VIRTUAL_PINNED_LABEL, ViewMode};
 use crate::app_theme::AppThemeColors;
 use crate::constants::LIST_HELP_HINTS;
+use std::borrow::Cow;
 use super::{
     PopupSize, PreviewHeaderInfo, build_tab_spans, draw_view_title_bar,
     draw_view_title_bar_with_tabs, draw_status_bar, draw_dim_vline,
@@ -26,9 +27,10 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             Constraint::Length(1),
         ])
         .split(area);
+    let title = if app.layout_edit { "Notes - Editing Layout" } else { "Notes" };
     if app.preview_fullscreen {
         let preview_info = get_preview_info(app);
-        draw_view_title_bar(frame, chunks[0], "Notes", &app.app_theme, preview_info);
+        draw_view_title_bar(frame, chunks[0], title, &app.app_theme, preview_info);
     } else if app.list.notes_layout == crate::config::NotesLayout::Grid {
         let tabs = [("Vault", Some("\u{f07b}")), ("Pinned", Some("\u{f4cc}"))];
         let is_pinned = app.list.grid_folder == VIRTUAL_PINNED_PATH;
@@ -38,7 +40,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             &app.app_theme,
             app.config.ui.tab_icons_only,
         );
-        draw_view_title_bar_with_tabs(frame, chunks[0], "Notes", tab_spans, &app.app_theme);
+        draw_view_title_bar_with_tabs(frame, chunks[0], title, tab_spans, &app.app_theme);
 
         // Show details of the selected note at the top right (clock/relative time + tags)
         if let Some(crate::app::VisualItem::Note { summary_idx, .. }) =
@@ -94,7 +96,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             frame.render_widget(detail_para, chunks[0]);
         }
     } else {
-        draw_view_title_bar(frame, chunks[0], "Notes", &app.app_theme, None);
+        draw_view_title_bar(frame, chunks[0], title, &app.app_theme, None);
     }
 
     let (list_area, preview_area, calendar_area) = list_view_layout(
@@ -103,6 +105,9 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         app.preview_position,
         app.list.calendar_enabled,
         app.preview_fullscreen,
+        app.list.preview_width_ratio,
+        app.list.calendar_height,
+        app.calendar_position,
     );
     if let Some(p) = preview_area {
         app.list.last_preview_pane_width = p.width;
@@ -406,7 +411,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 .direction(Direction::Horizontal)
                 .constraints([Constraint::Length(25), Constraint::Min(0)])
                 .split(cal_rect);
-            crate::calendar::draw_calendar(frame, layout_chunks[0], &app.app_theme, &app.notes);
+            crate::calendar::draw_calendar(frame, layout_chunks[0], &app.app_theme, &app.notes, app.calendar_position == crate::config::CalendarPosition::Top);
             let _ = app.get_current_goals_progress();
             crate::goals::draw_goals_progress(
                 frame,
@@ -414,13 +419,17 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 &app.app_theme,
                 &app.goals_progress,
                 &app.config.goals,
+                app.calendar_position == crate::config::CalendarPosition::Top,
             );
         } else {
-            crate::calendar::draw_calendar(frame, cal_rect, &app.app_theme, &app.notes);
+            crate::calendar::draw_calendar(frame, cal_rect, &app.app_theme, &app.notes, app.calendar_position == crate::config::CalendarPosition::Top);
         }
     }
-
-    let hint = resolved_status_hint(app, LIST_HELP_HINTS);
+    let hint = if app.layout_edit {
+        Cow::Borrowed("Layout Edit: drag borders · drag panes to swap · s preview · c calendar · ←→ ↑↓ resize · Esc")
+    } else {
+        resolved_status_hint(app, LIST_HELP_HINTS)
+    };
     let badge = Some(ext_badge(
         app.editor.external_editor_enabled,
         &app.app_theme,
@@ -428,23 +437,60 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     draw_status_bar(frame, chunks[2], &app.app_theme, badge, &hint, None);
     draw_corner_watermark(frame, chunks[2], app.app_theme.muted);
     if app.list.preview_enabled && !app.preview_fullscreen {
+        let ratio_num = (app.list.preview_width_ratio.clamp(0.2, 0.8) * 100.0).round() as u32;
         let constraints = match app.preview_position {
             crate::config::PreviewPosition::Left => [
-                Constraint::Ratio(43, 100),
+                Constraint::Ratio(ratio_num, 100),
                 Constraint::Length(1),
                 Constraint::Min(0),
             ],
             crate::config::PreviewPosition::Right => [
                 Constraint::Min(0),
                 Constraint::Length(1),
-                Constraint::Ratio(43, 100),
+                Constraint::Ratio(ratio_num, 100),
             ],
         };
         let full_cols = Layout::default()
             .direction(Direction::Horizontal)
             .constraints(constraints)
             .split(chunks[1]);
-        draw_dim_vline(frame, full_cols[1], app.app_theme.muted);
+        if app.layout_edit {
+            let divider_area = full_cols[1];
+            let accent = app.app_theme.heading;
+            let buf = frame.buffer_mut();
+            for row in divider_area.top()..divider_area.bottom() {
+                if let Some(cell) = buf.cell_mut((divider_area.x, row)) {
+                    cell.set_char('║');
+                    cell.set_fg(accent);
+                }
+            }
+            let mid_row = divider_area.top() + divider_area.height / 2;
+            if let Some(cell) = buf.cell_mut((divider_area.x, mid_row)) {
+                cell.set_char('⇄');
+                cell.set_fg(accent);
+            }
+        } else {
+            draw_dim_vline(frame, full_cols[1], app.app_theme.muted);
+        }
+    }
+    if app.layout_edit && app.list.calendar_enabled {
+        let hdiv_y = match app.calendar_position {
+            crate::config::CalendarPosition::Bottom => list_area.y + list_area.height,
+            crate::config::CalendarPosition::Top => list_area.y.saturating_sub(1),
+        };
+        let accent = app.app_theme.heading;
+        let buf = frame.buffer_mut();
+        for col in list_area.left()..list_area.right() {
+            if let Some(cell) = buf.cell_mut((col, hdiv_y)) {
+                cell.set_char('═');
+                cell.set_fg(accent);
+            }
+        }
+        let mid_col = list_area.left() + list_area.width / 2;
+        if let Some(cell) = buf.cell_mut((mid_col, hdiv_y)) {
+            cell.set_char('⇅');
+            cell.set_fg(accent);
+        }
     }
 
     if let Some(popup) = &app.popups.template {
@@ -1120,6 +1166,9 @@ pub(crate) fn list_view_layout(
     preview_position: crate::config::PreviewPosition,
     calendar_enabled: bool,
     preview_fullscreen: bool,
+    preview_width_ratio: f32,
+    calendar_height: u16,
+    calendar_position: crate::config::CalendarPosition,
 ) -> (Rect, Option<Rect>, Option<Rect>) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -1135,10 +1184,11 @@ pub(crate) fn list_view_layout(
     }
 
     let (list_column, preview_area) = if preview_enabled {
+        let ratio_num = (preview_width_ratio.clamp(0.2, 0.8) * 100.0).round() as u32;
         let (constraints, list_idx, p_idx) = match preview_position {
             crate::config::PreviewPosition::Left => (
                 [
-                    Constraint::Ratio(43, 100),
+                    Constraint::Ratio(ratio_num, 100),
                     Constraint::Length(1),
                     Constraint::Min(0),
                 ],
@@ -1149,7 +1199,7 @@ pub(crate) fn list_view_layout(
                 [
                     Constraint::Min(0),
                     Constraint::Length(1),
-                    Constraint::Ratio(43, 100),
+                    Constraint::Ratio(ratio_num, 100),
                 ],
                 0,
                 2,
@@ -1168,11 +1218,21 @@ pub(crate) fn list_view_layout(
     };
 
     let (list_area, calendar_area) = if calendar_enabled {
-        let sp = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Min(5), Constraint::Length(9)])
-            .split(list_column);
-        (sp[0], Some(sp[1]))
+        let cal_h = calendar_height.max(9);
+        let sp = match calendar_position {
+            crate::config::CalendarPosition::Bottom => Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Min(5), Constraint::Length(cal_h)])
+                .split(list_column),
+            crate::config::CalendarPosition::Top => Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Length(cal_h), Constraint::Min(5)])
+                .split(list_column),
+        };
+        match calendar_position {
+            crate::config::CalendarPosition::Bottom => (sp[0], Some(sp[1])),
+            crate::config::CalendarPosition::Top => (sp[1], Some(sp[0])),
+        }
     } else {
         (list_column, None)
     };
@@ -1344,6 +1404,7 @@ mod tests {
     use super::*;
     use crate::app::ViewMode;
     use crate::config::PreviewPosition;
+    use crate::config::CalendarPosition;
 
     #[test]
     fn calendar_never_overlaps_preview_and_stays_in_list_column() {
@@ -1353,6 +1414,9 @@ mod tests {
                 area, true, // preview enabled
                 position, true,  // calendar enabled
                 false, // preview_fullscreen
+                0.43,  // preview_width_ratio (default)
+                9,     // calendar_height (default)
+                CalendarPosition::Bottom,
             );
 
             let cal = calendar_area.expect("calendar enabled");
@@ -1374,7 +1438,7 @@ mod tests {
     fn calendar_full_width_when_no_preview() {
         let area = Rect::new(0, 0, 80, 24);
         let (list_area, preview_area, calendar_area) =
-            list_view_layout(area, false, PreviewPosition::Right, true, false);
+            list_view_layout(area, false, PreviewPosition::Right, true, false, 0.43, 9, CalendarPosition::Bottom);
 
         assert!(preview_area.is_none());
         let cal = calendar_area.expect("calendar enabled");
@@ -1388,7 +1452,7 @@ mod tests {
     fn no_calendar_area_when_disabled() {
         let area = Rect::new(0, 0, 80, 24);
         let (_, preview_area, calendar_area) =
-            list_view_layout(area, true, PreviewPosition::Right, false, false);
+            list_view_layout(area, true, PreviewPosition::Right, false, false, 0.43, 9, CalendarPosition::Bottom);
         assert!(calendar_area.is_none());
         assert!(preview_area.is_some());
     }
@@ -1508,5 +1572,44 @@ mod tests {
                 next_name: Some("other".to_string()),
             })
         );
+    }
+
+    #[test]
+    fn preview_width_ratio_controls_preview_width() {
+        let area = Rect::new(0, 0, 80, 24);
+        let (_, preview_43, _) = list_view_layout(
+            area, true, PreviewPosition::Right, true, false, 0.43, 9, CalendarPosition::Bottom,
+        );
+        let (_, preview_70, _) = list_view_layout(
+            area, true, PreviewPosition::Right, true, false, 0.70, 9, CalendarPosition::Bottom,
+        );
+        let p43 = preview_43.expect("preview enabled");
+        let p70 = preview_70.expect("preview enabled");
+        assert!(p70.width > p43.width, "0.70 ratio should give wider preview than 0.43");
+    }
+
+    #[test]
+    fn calendar_height_controls_calendar_height() {
+        let area = Rect::new(0, 0, 80, 24);
+        let (_, _, cal_9) = list_view_layout(
+            area, true, PreviewPosition::Right, true, false, 0.43, 9, CalendarPosition::Bottom,
+        );
+        let (_, _, cal_14) = list_view_layout(
+            area, true, PreviewPosition::Right, true, false, 0.43, 14, CalendarPosition::Bottom,
+        );
+        let c9 = cal_9.expect("calendar enabled");
+        let c14 = cal_14.expect("calendar enabled");
+        assert!(c14.height > c9.height, "height 14 should give taller calendar than 9");
+        assert_eq!(c14.height, 14);
+    }
+
+    #[test]
+    fn calendar_height_clamped_to_at_least_9() {
+        let area = Rect::new(0, 0, 80, 24);
+        let (_, _, cal_3) = list_view_layout(
+            area, true, PreviewPosition::Right, true, false, 0.43, 3, CalendarPosition::Bottom,
+        );
+        let c3 = cal_3.expect("calendar enabled");
+        assert_eq!(c3.height, 9, "calendar height should be clamped to at least 9 to be visible");
     }
 }

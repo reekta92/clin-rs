@@ -74,7 +74,8 @@ pub fn draw_view_title_bar_with_tabs(
         .iter()
         .map(|s| s.content.chars().count() as u16)
         .fold(0u16, u16::saturating_add);
-    let start_x = tabs_region.x + tabs_region.width.saturating_sub(total) / 2;
+    let center_x = area.x + area.width.saturating_sub(total) / 2;
+    let start_x = center_x.max(tabs_region.x);
     let render_w = total.min(tabs_region.width);
     let tabs_area = Rect::new(start_x, area.y, render_w, area.height);
     frame.render_widget(
@@ -159,8 +160,9 @@ pub fn build_tab_spans(
 
 pub fn hit_test_tabs(
     tabs: &[(&str, Option<&str>)],
-    region_x: u16,
-    region_width: u16,
+    area_x: u16,
+    area_width: u16,
+    min_x: u16,
     click_x: u16,
     icons_only: bool,
 ) -> Option<usize> {
@@ -175,7 +177,8 @@ pub fn hit_test_tabs(
             total = total.saturating_add(1); // single-space separator
         }
     }
-    let start_x = region_x + region_width.saturating_sub(total) / 2;
+    let center_x = area_x + area_width.saturating_sub(total) / 2;
+    let start_x = center_x.max(min_x);
     if click_x < start_x || click_x >= start_x.saturating_add(total) {
         return None;
     }
