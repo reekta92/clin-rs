@@ -302,6 +302,7 @@ fn render_in_thread(
     loop {
         if cancel_token.load(Ordering::Relaxed) {
             let _ = child.kill();
+            let _ = child.wait();
             return None;
         }
 
