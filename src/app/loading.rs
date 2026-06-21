@@ -1,17 +1,11 @@
 use super::*;
 use crate::constants::*;
-use crate::editor::*;
 use crate::list_view::*;
-use crate::popups::*;
-use crate::keybinds::Keybinds;
-use crate::storage::{Note, NoteSummary, Storage};
-use crate::templates::Template;
-use anyhow::{Context, Result};
-use std::collections::{HashMap, HashSet};
+use crate::storage::NoteSummary;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::borrow::Cow;
 use std::time::{Duration, Instant};
-use ratatui_textarea::TextArea;
 
 impl App {
 

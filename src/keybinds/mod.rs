@@ -8,7 +8,7 @@ mod defaults;
 mod api;
 
 pub use types::*;
-pub use combo::{KeyStroke, KeyCombo};
+pub use combo::KeyCombo;
 pub use matcher::{MatchOutcome, KeyMatcher};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
