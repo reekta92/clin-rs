@@ -40,7 +40,7 @@ use std::path::PathBuf;
 use std::process;
 use std::sync::Arc;
 use std::sync::LazyLock;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::time::Duration;
 use uuid::Uuid;
 
@@ -49,6 +49,8 @@ use mimalloc::MiMalloc;
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 static SHOULD_EXIT: LazyLock<Arc<AtomicBool>> = LazyLock::new(|| Arc::new(AtomicBool::new(false)));
+static SIGNAL_COUNT: AtomicU32 = AtomicU32::new(0);
+static FORCE_QUIT: AtomicBool = AtomicBool::new(false);
 
 use anyhow::{Context, Result};
 use crossterm::event::{
@@ -749,15 +751,26 @@ impl Drop for TerminalGuard {
 }
 
 fn run_tui_session(app: &mut App) -> Result<()> {
-    // Register signal handlers before entering raw mode. SIGHUP/SIGQUIT are
-    // included on Unix so the terminal is restored deterministically (their
-    // default disposition would kill the process before Drop runs).
-    let _ = signal_hook::flag::register(signal_hook::consts::SIGINT, Arc::clone(&SHOULD_EXIT));
-    let _ = signal_hook::flag::register(signal_hook::consts::SIGTERM, Arc::clone(&SHOULD_EXIT));
+    // Clean up any orphaned plaintext temp files from a prior crashed session.
+    crate::fsutil::cleanup_orphaned_temp_files();
+
+    let register_signal = |sig: std::os::raw::c_int| {
+        // SAFETY: signal_hook::low_level::register is async-signal-safe.
+        // The closure only performs atomic stores and fetch-adds, which are
+        // safe operations within a signal handler.
+        let _ = unsafe { signal_hook::low_level::register(sig, || {
+            SHOULD_EXIT.store(true, Ordering::Release);
+            if SIGNAL_COUNT.fetch_add(1, Ordering::SeqCst) >= 1 {
+                FORCE_QUIT.store(true, Ordering::Release);
+            }
+        }) };
+    };
+    register_signal(signal_hook::consts::SIGINT);
+    register_signal(signal_hook::consts::SIGTERM);
     #[cfg(unix)]
     {
-        let _ = signal_hook::flag::register(signal_hook::consts::SIGHUP, Arc::clone(&SHOULD_EXIT));
-        let _ = signal_hook::flag::register(signal_hook::consts::SIGQUIT, Arc::clone(&SHOULD_EXIT));
+        register_signal(signal_hook::consts::SIGHUP);
+        register_signal(signal_hook::consts::SIGQUIT);
     }
 
     // Spawn the background backup worker before entering the terminal.
@@ -797,16 +810,45 @@ fn run_tui_session(app: &mut App) -> Result<()> {
             ))
         });
         drop(app.backup_tx.take());
-        match done_rx.recv_timeout(crate::backup::worker::FLUSH_BOUND) {
-            Ok(()) => println!("Done."),
-            Err(_) => eprintln!("Backup still running in background; exiting."),
+        let deadline = std::time::Instant::now() + crate::backup::worker::FLUSH_BOUND;
+        let timed_out = loop {
+            if FORCE_QUIT.load(Ordering::Acquire) {
+                break true;
+            }
+            match done_rx.recv_timeout(std::time::Duration::from_millis(200)) {
+                Ok(()) => break false,
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break true,
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                    if std::time::Instant::now() >= deadline {
+                        break true;
+                    }
+                }
+            }
+        };
+        if timed_out {
+            eprintln!("Backup still running in background; exiting.");
+        } else {
+            println!("Done.");
         }
         if let Some(msg) = app.backup_status.lock().take() {
             eprintln!("Backup warning: {msg}");
         }
     } else {
         drop(app.backup_tx.take());
-        let _ = done_rx.recv_timeout(crate::backup::worker::FLUSH_BOUND);
+        let deadline = std::time::Instant::now() + crate::backup::worker::FLUSH_BOUND;
+        loop {
+            if FORCE_QUIT.load(Ordering::Acquire) {
+                break;
+            }
+            match done_rx.recv_timeout(std::time::Duration::from_millis(200)) {
+                Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                    if std::time::Instant::now() >= deadline {
+                        break;
+                    }
+                }
+            }
+        }
     }
 
     match result {
