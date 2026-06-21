@@ -8,6 +8,7 @@ use chacha20poly1305::aead::{Aead, KeyInit};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
+use zeroize::Zeroizing;
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -548,7 +549,7 @@ impl Storage {
 
             let plain = self.decrypt(payload)?;
             let (note, _): (Note, usize) =
-                bincode::serde::decode_from_slice(&plain, bincode::config::standard())
+                bincode::serde::decode_from_slice(plain.as_slice(), bincode::config::standard())
                     .context("failed to decode note")?;
 
             let (tags, pinned, links) = fm
@@ -613,7 +614,7 @@ impl Storage {
 
             let plain = self.decrypt(payload)?;
             let (mut note, _) =
-                bincode::serde::decode_from_slice::<Note, _>(&plain, bincode::config::standard())
+                bincode::serde::decode_from_slice::<Note, _>(plain.as_slice(), bincode::config::standard())
                     .context("failed to decode note")?;
 
             if let Some(fm) = fm {
@@ -868,7 +869,7 @@ impl Storage {
             let fm_string = frontmatter::serialize(&fm, "");
             let mut final_output = fm_string.into_bytes();
 
-            let encrypted = self.encrypt(&plain)?;
+            let encrypted = self.encrypt(plain.as_slice())?;
             final_output.extend_from_slice(&encrypted);
 
             crate::fsutil::atomic_write(&path, &final_output).context("failed to write note")?;
@@ -1064,7 +1065,7 @@ impl Storage {
         Ok(output)
     }
 
-    pub fn decrypt(&self, payload: &[u8]) -> Result<Vec<u8>> {
+    pub fn decrypt(&self, payload: &[u8]) -> Result<Zeroizing<Vec<u8>>> {
         let header_len = FILE_MAGIC.len() + NONCE_LEN;
         if payload.len() < header_len {
             anyhow::bail!("invalid note header, payload too short");
@@ -1077,9 +1078,10 @@ impl Storage {
         let ciphertext = &payload[header_len..];
 
         let cipher = ChaCha20Poly1305::new(Key::from_slice(&self.key));
-        cipher
+        let plaintext = cipher
             .decrypt(Nonce::from_slice(nonce), ciphertext)
-            .map_err(|_| anyhow!("note decryption failed"))
+            .map_err(|_| anyhow!("note decryption failed"))?;
+        Ok(Zeroizing::new(plaintext))
     }
 }
 
@@ -1121,7 +1123,7 @@ mod tests {
         let plaintext = b"Secret Message";
         let encrypted = storage.encrypt(plaintext)?;
         let decrypted = storage.decrypt(&encrypted)?;
-        assert_eq!(decrypted, plaintext);
+        assert_eq!(decrypted.as_slice(), &plaintext[..]);
 
         // Test with frontmatter
         let mut file_content = b"---\ntitle: CLIN1 in title\n---\n".to_vec();
@@ -1130,7 +1132,7 @@ mod tests {
         let (fm, payload) = split_frontmatter_payload(&file_content);
         assert!(fm.is_some());
         let decrypted = storage.decrypt(payload)?;
-        assert_eq!(decrypted, plaintext);
+        assert_eq!(decrypted.as_slice(), &plaintext[..]);
 
         Ok(())
     }

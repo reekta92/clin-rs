@@ -80,7 +80,7 @@ impl MarkdownRenderer {
             return;
         }
 
-        let content_owned = content.to_owned();
+        let content_owned = zeroize::Zeroizing::new(content.to_owned());
         let (tx, rx) = mpsc::channel();
         self.state = RendererState::Pending(rx);
 
