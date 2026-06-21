@@ -993,6 +993,10 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
     if app.keybinds.matches_list(ListAction::JumpToTop, &key) {
+        app.jump_to_top();
+        return false;
+    }
+    if app.keybinds.matches_list(ListAction::JumpToBottom, &key) {
         app.jump_to_bottom();
         return false;
     }
