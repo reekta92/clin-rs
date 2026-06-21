@@ -2,6 +2,16 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.8.26] - 2026-06-21
+
+### Fixed
+
+- Correct jump-to-top dispatch and add jump-to-bottom defaults
+## [0.8.25] - 2026-06-20
+
+### Release
+
+- V0.8.25
 ## [0.8.24] - 2026-06-20
 
 ### Added
