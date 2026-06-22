@@ -1,15 +1,8 @@
-use crate::app_theme::AppThemeColors;
-use crate::keybinds::{CanvasAction, Keybinds};
-use crate::overlay::OverlayView;
-use crate::pinstar::input::{handle_pinstar_event, handle_pinstar_mouse};
-use crate::pinstar::render::draw_pinstar_view;
-use crate::pinstar::state::PinstarState;
-use crate::storage::Storage;
 use crossterm::event::Event;
-use ratatui::Terminal;
-use ratatui::backend::CrosstermBackend;
-use std::io::Stdout;
-use std::time::Duration;
+
+use crate::pinstar::render::draw_pinstar_view;
+use crate::pinstar::input::{handle_pinstar_event, handle_pinstar_mouse};
+use crate::pinstar::state::PinstarState;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PinstarResult {
@@ -17,8 +10,8 @@ pub enum PinstarResult {
     HelpRequested,
 }
 
-impl OverlayView<PinstarResult> for PinstarState {
-    fn render(
+impl PinstarState {
+    pub fn overlay_render(
         &mut self,
         frame: &mut ratatui::Frame,
         area: ratatui::layout::Rect,
@@ -29,7 +22,7 @@ impl OverlayView<PinstarResult> for PinstarState {
         draw_pinstar_view(frame, self, theme, area);
     }
 
-    fn handle_event(
+    pub fn overlay_handle_event(
         &mut self,
         event: crossterm::event::Event,
         _terminal: &ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
@@ -57,41 +50,4 @@ impl OverlayView<PinstarResult> for PinstarState {
         }
         Ok(None)
     }
-
-    fn title(&self) -> String {
-        "Canvas".to_string()
-    }
-}
-
-pub fn run_pinstar_view(
-    terminal: &mut Terminal<CrosstermBackend<Stdout>>,
-    storage: Storage,
-    keybinds: &Keybinds,
-    file_id: Option<String>,
-    theme: AppThemeColors,
-    seq_matcher: &mut crate::keybinds::KeyMatcher,
-) -> anyhow::Result<PinstarResult> {
-    let mut state = if let Some(id) = file_id {
-        let path = storage.note_path(&id);
-        PinstarState::load(&path, keybinds.clone(), seq_matcher.clone())?
-    } else {
-        anyhow::bail!("No file ID provided for Pinstar view");
-    };
-
-    state.footer_hint = format!(
-        "{} switch focus · {} back · Arrows select · {} edit · {} save",
-        keybinds.canvas_keys_display(CanvasAction::CycleFocus),
-        keybinds.canvas_keys_display(CanvasAction::Quit),
-        keybinds.canvas_keys_display(CanvasAction::EditOrConnect),
-        keybinds.canvas_keys_display(CanvasAction::Save),
-    );
-
-    let mut config = crate::config::ClinConfig::default();
-    crate::overlay::run_overlay(
-        terminal,
-        &mut state,
-        &mut config,
-        &theme,
-        Duration::from_millis(100),
-    )
 }

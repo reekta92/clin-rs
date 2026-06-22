@@ -18,7 +18,6 @@ pub mod keybinds;
 pub mod list_view;
 pub mod markdown;
 pub mod migration;
-pub mod overlay;
 pub mod palette;
 pub mod pinstar;
 pub mod popups;
@@ -36,7 +35,6 @@ use clap::{CommandFactory, FromArgMatches};
 use std::borrow::Cow;
 use std::fs;
 use std::io::{self, Stdout, Write};
-use std::path::PathBuf;
 use std::process;
 use std::sync::Arc;
 use std::sync::LazyLock;
@@ -71,7 +69,6 @@ pub mod ui;
 use app::*;
 use events::*;
 use storage::*;
-use ui::*;
 pub fn run() -> Result<()> {
     // Panic hook: restore terminal before abort
     let prev = std::panic::take_hook();
@@ -907,149 +904,6 @@ fn run_app(
             }
         }
 
-        if app.mode == ViewMode::Graph {
-            let mut config = match ClinConfig::load() {
-                Ok(c) => c,
-                Err(e) => {
-                    app.set_temporary_status(&format!("Config error: {e}"));
-                    ClinConfig::default()
-                }
-            };
-
-            match crate::graf::app::run_graf_view(
-                terminal,
-                app.storage.clone(),
-                &mut config,
-                &app.keybinds,
-                &mut app.seq_matcher,
-            ) {
-                Ok(crate::graf::app::GrafResult::NoteOpened(note_id)) => {
-                    app.mode = ViewMode::List;
-                    app.reload_theme();
-                    app.open_note_from_graph(&note_id);
-                }
-                Ok(crate::graf::app::GrafResult::OpenHelp) => {
-                    app.reload_theme();
-                    app.return_mode = Some(ViewMode::Graph);
-                    app.open_help_page_with_tab(crate::app::HelpTab::Graph);
-                }
-                _ => {
-                    app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
-                    app.reload_theme();
-                }
-            }
-
-            if let Err(e) = config.save() {
-                app.set_temporary_status(&format!("Failed to save config: {e}"));
-            }
-            app.config = config;
-            app.needs_full_redraw = true;
-            terminal.clear()?;
-            continue;
-        }
-        if app.mode == ViewMode::Backup {
-            let config = app.config.clone();
-            let vault_path = config
-                .effective_storage_path()
-                .unwrap_or_else(|_| PathBuf::from("."));
-
-            let _ = crate::backup::app::run_backup_view(
-                terminal,
-                vault_path,
-                &config,
-                &app.keybinds,
-                &app.app_theme,
-                app.git_lock.clone(),
-                &mut app.seq_matcher,
-            );
-
-            app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
-            app.reload_theme();
-            app.needs_full_redraw = true;
-            terminal.clear()?;
-            app.reload_config();
-            continue;
-        }
-        if app.mode == ViewMode::ContentTree {
-            let note_id = app.get_selected_note_id();
-            match crate::content_tree::app::run_content_tree_view(
-                terminal,
-                app.storage.clone(),
-                note_id,
-                &app.keybinds,
-                app.app_theme.clone(),
-                &mut app.seq_matcher,
-            ) {
-                Ok(crate::content_tree::app::ContentTreeResult::Back) => {
-                    app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
-                    app.reload_theme();
-                    app.needs_full_redraw = true;
-                    terminal.clear()?;
-                }
-                Ok(crate::content_tree::app::ContentTreeResult::JumpToLine { note_id, line }) => {
-                    app.reload_theme();
-                    app.open_note_at_line(&note_id, Some(line)); // sets mode = Edit
-                    app.needs_full_redraw = true;
-                    terminal.clear()?;
-                }
-                Ok(crate::content_tree::app::ContentTreeResult::HelpRequested) => {
-                    app.reload_theme();
-                    app.return_mode = Some(ViewMode::ContentTree);
-                    app.open_help_page_with_tab(crate::app::HelpTab::ContentTree);
-                    app.needs_full_redraw = true;
-                    terminal.clear()?;
-                }
-                Err(_) => {
-                    app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
-                    app.reload_theme();
-                    app.needs_full_redraw = true;
-                    terminal.clear()?;
-                }
-            }
-            continue;
-        }
-
-        if app.mode == ViewMode::Draw {
-            let note_id = app.get_selected_note_id();
-
-            let _ = crate::draw::app::run_draw_view(
-                terminal,
-                app.storage.clone(),
-                &app.keybinds,
-                note_id,
-                app.app_theme.clone(),
-                &mut app.seq_matcher,
-            );
-            app.close_draw_view();
-            app.needs_full_redraw = true;
-            terminal.clear()?;
-            continue;
-        }
-
-        if app.mode == ViewMode::Canvas {
-            let note_id = app.get_selected_note_id();
-            match crate::pinstar::app::run_pinstar_view(
-                terminal,
-                app.storage.clone(),
-                &app.keybinds,
-                note_id,
-                app.app_theme.clone(),
-                &mut app.seq_matcher,
-            ) {
-                Ok(crate::pinstar::app::PinstarResult::HelpRequested) => {
-                    app.reload_theme();
-                    app.return_mode = Some(ViewMode::Canvas);
-                    app.open_help_page_with_tab(crate::app::HelpTab::Canvas);
-                }
-                _ => {
-                    app.close_canvas_view();
-                }
-            }
-            app.needs_full_redraw = true;
-            terminal.clear()?;
-            continue;
-        }
-
         app.tick_status();
         let failed = app.backup_status.lock().take();
         if let Some(msg) = failed {
@@ -1061,9 +915,23 @@ fn run_app(
             app.needs_full_redraw = false;
         }
 
-        terminal.draw(|frame| draw_ui(frame, app, focus))?;
+        // Apply update ticks for continuous views before rendering
+        match app.mode {
+            ViewMode::Graph => {
+                if let Some(graf) = &mut app.graph_state {
+                    graf.overlay_update(&mut app.config);
+                }
+            }
+            _ => {}
+        }
 
-        let poll_timeout = if matches!(
+        terminal.draw(|frame| crate::ui::draw_ui(frame, app, focus))?;
+
+        let poll_timeout = if app.mode == ViewMode::Graph || app.mode == ViewMode::Draw {
+            Duration::from_millis(16)
+        } else if app.mode == ViewMode::Canvas {
+            Duration::from_millis(100)
+        } else if matches!(
             app.list.preview_content,
             Some(crate::list_view::PreviewContent::Markdown(ref r)) if r.is_pending()
         ) || app
@@ -1093,7 +961,7 @@ fn run_app(
         }
 
         if need_redraw {
-            terminal.draw(|frame| draw_ui(frame, app, focus))?;
+            terminal.draw(|frame| crate::ui::draw_ui(frame, app, focus))?;
         }
 
         if event::poll(poll_timeout).context("event poll failed")? {
@@ -1106,81 +974,269 @@ fn run_app(
                 {
                     crate::force_quit();
                 }
-                Event::Key(key) if key.kind == KeyEventKind::Press => match app.mode {
-                    ViewMode::List => {
-                        handle_list_keys(app, key);
-                    }
-                    ViewMode::Edit => {
-                        handle_edit_keys(app, key, &mut focus);
-                    }
-                    ViewMode::Help => {
-                        handle_help_keys(app, key);
-                    }
-                    ViewMode::Graph => {}
-                    ViewMode::Draw => {}
-                    ViewMode::Canvas => {}
-                    ViewMode::Backup => {}
-                    ViewMode::ContentTree => {}
-                },
-                Event::Mouse(mouse_event) if app.mode == ViewMode::List => {
+                ev @ (Event::Key(_) | Event::Mouse(_)) => {
+                    // Global popups & palette get first chance to consume
                     let size = terminal.size().context("failed to get terminal size")?;
                     let area = Rect::new(0, 0, size.width, size.height);
-                    handle_list_mouse(app, mouse_event, area);
-                }
-                Event::Mouse(mouse_event) if app.mode == ViewMode::Edit => {
-                    let size = terminal.size().context("failed to get terminal size")?;
-                    let area = Rect::new(0, 0, size.width, size.height);
-                    handle_edit_mouse(
-                        app,
-                        mouse_event,
-                        area,
-                        &mut focus,
-                        &mut mouse_selecting,
-                        &mut mouse_dragged,
-                    );
-                }
-                Event::Mouse(mouse_event) if app.mode == ViewMode::Help => {
-                    let size = terminal.size().context("failed to get terminal size")?;
-                    let area = Rect::new(0, 0, size.width, size.height);
+                    if crate::events::handle_global_popups_and_palette(app, ev.clone(), area) {
+                        continue;
+                    }
 
-                    let tab_bar_y = area.y;
-                    if mouse_event.kind
-                        == ratatui::crossterm::event::MouseEventKind::Down(
-                            ratatui::crossterm::event::MouseButton::Left,
-                        )
-                        && mouse_event.row == tab_bar_y
-                    {
-                        let tabs: Vec<(&str, Option<&str>)> = crate::ui::HELP_TAB_NAMES
-                            .iter()
-                            .map(|&(l, g)| (l, Some(g)))
-                            .collect();
-                        let region = crate::ui::title_bar_tabs_region(area, "Help");
-                        if let Some(i) = crate::ui::hit_test_tabs(
-                            &tabs,
-                            area.x,
-                            area.width,
-                            region.x,
-                            mouse_event.column,
-                            app.config.ui.tab_icons_only,
-                        ) {
-                            app.switch_help_tab(crate::app::HelpTab::from_index(i));
+                    match ev {
+                        Event::Key(key) if key.kind == KeyEventKind::Press => {
+                            let handled = match app.mode {
+                                ViewMode::List => handle_list_keys(app, key),
+                                ViewMode::Help => { handle_help_keys(app, key); false }
+                                ViewMode::Edit => handle_edit_keys(app, key, &mut focus),
+                                ViewMode::Graph => {
+                                    if let Some(graf) = &mut app.graph_state {
+                                        match graf.overlay_handle_event(
+                                            Event::Key(key),
+                                            terminal,
+                                            &mut app.config,
+                                        )? {
+                                            Some(crate::graf::app::GrafResult::NoteOpened(note_id)) => {
+                                                if let Err(e) = app.config.save() {
+                                                    app.set_temporary_status(&format!("Failed to save config: {e}"));
+                                                }
+                                                app.graph_state = None;
+                                                app.mode = ViewMode::List;
+                                                app.reload_theme();
+                                                app.open_note_from_graph(&note_id);
+                                                app.needs_full_redraw = true;
+                                                terminal.clear()?;
+                                            }
+                                            Some(crate::graf::app::GrafResult::OpenHelp) => {
+                                                app.reload_theme();
+                                                app.return_mode = Some(ViewMode::Graph);
+                                                app.open_help_page_with_tab(crate::app::HelpTab::Graph);
+                                            }
+                                            Some(crate::graf::app::GrafResult::Quit) => {
+                                                if let Err(e) = app.config.save() {
+                                                    app.set_temporary_status(&format!("Failed to save config: {e}"));
+                                                }
+                                                app.graph_state = None;
+                                                app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
+                                                app.reload_theme();
+                                                app.needs_full_redraw = true;
+                                                terminal.clear()?;
+                                            }
+                                            None => {}
+                                        }
+                                        true
+                                    } else {
+                                        false
+                                    }
+                                }
+                                ViewMode::Draw => {
+                                    if let Some(draw) = &mut app.draw_state {
+                                        let result = draw.overlay_handle_event(
+                                            Event::Key(key),
+                                            terminal,
+                                            &mut app.config,
+                                        )?;
+                                        if result.is_some() {
+                                            app.draw_state = None;
+                                            app.close_draw_view();
+                                            app.needs_full_redraw = true;
+                                            terminal.clear()?;
+                                        }
+                                        true
+                                    } else {
+                                        false
+                                    }
+                                }
+                                ViewMode::Canvas => {
+                                    if let Some(canvas) = &mut app.canvas_state {
+                                        match canvas.overlay_handle_event(
+                                            Event::Key(key),
+                                            terminal,
+                                            &mut app.config,
+                                        )? {
+                                            Some(crate::pinstar::app::PinstarResult::HelpRequested) => {
+                                                app.reload_theme();
+                                                app.return_mode = Some(ViewMode::Canvas);
+                                                app.open_help_page_with_tab(crate::app::HelpTab::Canvas);
+                                            }
+                                            Some(crate::pinstar::app::PinstarResult::Normal) => {
+                                                app.close_canvas_view();
+                                                app.needs_full_redraw = true;
+                                                terminal.clear()?;
+                                            }
+                                            None => {}
+                                        }
+                                        true
+                                    } else {
+                                        false
+                                    }
+                                }
+                                ViewMode::Backup => {
+                                    if let Some(backup) = &mut app.backup_state {
+                                        let result = backup.overlay_handle_event(
+                                            Event::Key(key),
+                                            terminal,
+                                            &mut app.config,
+                                        )?;
+                                        match result {
+                                            Some(crate::backup::app::BackupResult::Back) => {
+                                                app.reload_config();
+                                                app.backup_state = None;
+                                                app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
+                                                app.reload_theme();
+                                                app.needs_full_redraw = true;
+                                                terminal.clear()?;
+                                            }
+                                            None => {}
+                                        }
+                                        true
+                                    } else {
+                                        false
+                                    }
+                                }
+                                ViewMode::ContentTree => {
+                                    if let Some(tree) = &mut app.content_tree_state {
+                                        let result = tree.overlay_handle_event(
+                                            Event::Key(key),
+                                            terminal,
+                                            &mut app.config,
+                                        )?;
+                                        match result {
+                                            Some(crate::content_tree::app::ContentTreeResult::Back) => {
+                                                app.content_tree_state = None;
+                                                app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
+                                                app.reload_theme();
+                                                app.needs_full_redraw = true;
+                                                terminal.clear()?;
+                                            }
+                                            Some(crate::content_tree::app::ContentTreeResult::JumpToLine { note_id, line }) => {
+                                                app.content_tree_state = None;
+                                                app.reload_theme();
+                                                app.open_note_at_line(&note_id, Some(line));
+                                                app.needs_full_redraw = true;
+                                                terminal.clear()?;
+                                            }
+                                            Some(crate::content_tree::app::ContentTreeResult::HelpRequested) => {
+                                                app.reload_theme();
+                                                app.return_mode = Some(ViewMode::ContentTree);
+                                                app.open_help_page_with_tab(crate::app::HelpTab::ContentTree);
+                                                app.needs_full_redraw = true;
+                                                terminal.clear()?;
+                                            }
+                                            None => {}
+                                        }
+                                        true
+                                    } else {
+                                        false
+                                    }
+                                }
+                            };
+                            let _ = handled;
                         }
-                    } else if mouse_event.kind
-                        == ratatui::crossterm::event::MouseEventKind::ScrollUp
-                    {
-                        app.help_scroll = app.help_scroll.saturating_sub(3);
-                    } else if mouse_event.kind
-                        == ratatui::crossterm::event::MouseEventKind::ScrollDown
-                    {
-                        let max_scroll = app
-                            .list
-                            .help_text_cache
-                            .as_ref()
-                            .map_or(0, |t| t.height().saturating_sub(5) as u16);
-                        app.help_scroll = app.help_scroll.saturating_add(3).min(max_scroll);
+                        Event::Mouse(mouse_event) => {
+                            let size = terminal.size().context("failed to get terminal size")?;
+                            let area = Rect::new(0, 0, size.width, size.height);
+                            match app.mode {
+                                ViewMode::List => {
+                                    handle_list_mouse(app, mouse_event, area);
+                                }
+                                ViewMode::Edit => {
+                                    handle_edit_mouse(
+                                        app,
+                                        mouse_event,
+                                        area,
+                                        &mut focus,
+                                        &mut mouse_selecting,
+                                        &mut mouse_dragged,
+                                    );
+                                }
+                                ViewMode::Help => {
+                                    let tab_bar_y = area.y;
+                                    if mouse_event.kind
+                                        == ratatui::crossterm::event::MouseEventKind::Down(
+                                            ratatui::crossterm::event::MouseButton::Left,
+                                        )
+                                        && mouse_event.row == tab_bar_y
+                                    {
+                                        let tabs: Vec<(&str, Option<&str>)> = crate::ui::HELP_TAB_NAMES
+                                            .iter()
+                                            .map(|&(l, g)| (l, Some(g)))
+                                            .collect();
+                                        let region = crate::ui::title_bar_tabs_region(area, "Help");
+                                        if let Some(i) = crate::ui::hit_test_tabs(
+                                            &tabs,
+                                            area.x,
+                                            area.width,
+                                            region.x,
+                                            mouse_event.column,
+                                            app.config.ui.tab_icons_only,
+                                        ) {
+                                            app.switch_help_tab(crate::app::HelpTab::from_index(i));
+                                        }
+                                    } else if mouse_event.kind
+                                        == ratatui::crossterm::event::MouseEventKind::ScrollUp
+                                    {
+                                        app.help_scroll = app.help_scroll.saturating_sub(3);
+                                    } else if mouse_event.kind
+                                        == ratatui::crossterm::event::MouseEventKind::ScrollDown
+                                    {
+                                        let max_scroll = app
+                                            .list
+                                            .help_text_cache
+                                            .as_ref()
+                                            .map_or(0, |rows| rows.len().saturating_sub(5) as u16);
+                                        app.help_scroll = app.help_scroll.saturating_add(3).min(max_scroll);
+                                    }
+                                }
+                                ViewMode::Graph => {
+                                    if let Some(graf) = &mut app.graph_state {
+                                        let _ = graf.overlay_handle_event(
+                                            Event::Mouse(mouse_event),
+                                            terminal,
+                                            &mut app.config,
+                                        )?;
+                                    }
+                                }
+                                ViewMode::Draw => {
+                                    if let Some(draw) = &mut app.draw_state {
+                                        let _ = draw.overlay_handle_event(
+                                            Event::Mouse(mouse_event),
+                                            terminal,
+                                            &mut app.config,
+                                        )?;
+                                    }
+                                }
+                                ViewMode::Canvas => {
+                                    if let Some(canvas) = &mut app.canvas_state {
+                                        let _ = canvas.overlay_handle_event(
+                                            Event::Mouse(mouse_event),
+                                            terminal,
+                                            &mut app.config,
+                                        )?;
+                                    }
+                                }
+                                ViewMode::Backup => {
+                                    if let Some(backup) = &mut app.backup_state {
+                                        let _ = backup.overlay_handle_event(
+                                            Event::Mouse(mouse_event),
+                                            terminal,
+                                            &mut app.config,
+                                        )?;
+                                    }
+                                }
+                                ViewMode::ContentTree => {
+                                    if let Some(tree) = &mut app.content_tree_state {
+                                        let _ = tree.overlay_handle_event(
+                                            Event::Mouse(mouse_event),
+                                            terminal,
+                                            &mut app.config,
+                                        )?;
+                                    }
+                                }
+                            }
+                        }
+                        _ => {}
                     }
                 }
-
                 Event::Paste(data) if app.mode == ViewMode::Edit => match focus {
                     EditFocus::Title => {
                         let normalized = data.replace(['\r', '\n'], " ");

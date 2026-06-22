@@ -64,10 +64,12 @@ unnested_or_patterns = "allow"
 unused_self = "allow"
 used_underscore_binding = "allow"
 wildcard_imports = "allow"
+[lib]
+name = "clin"
+
 [[bin]]
 name = "clin"
-path = "src/main.rs"
-
+path = "src/bin/clin.rs"
 [package.metadata.deb]
 name = "clin-rs"
 maintainer = "reekta <reekta@localhost>"

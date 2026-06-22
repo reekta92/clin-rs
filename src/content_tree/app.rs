@@ -1,16 +1,7 @@
-use anyhow::Result;
 use crossterm::event::Event;
-use ratatui::Terminal;
-use ratatui::backend::CrosstermBackend;
-use std::io::Stdout;
-use std::time::Duration;
 
-use crate::app_theme::AppThemeColors;
 use crate::content_tree::state::ContentTreeState;
 use crate::content_tree::{input, render};
-use crate::keybinds::Keybinds;
-use crate::overlay::OverlayView;
-use crate::storage::Storage;
 
 pub enum ContentTreeResult {
     Back,
@@ -18,8 +9,8 @@ pub enum ContentTreeResult {
     HelpRequested,
 }
 
-impl OverlayView<ContentTreeResult> for ContentTreeState {
-    fn render(
+impl ContentTreeState {
+    pub fn overlay_render(
         &mut self,
         frame: &mut ratatui::Frame,
         area: ratatui::layout::Rect,
@@ -31,7 +22,7 @@ impl OverlayView<ContentTreeResult> for ContentTreeState {
         render::draw_content_tree(frame, area, self, theme, &keybinds);
     }
 
-    fn handle_event(
+    pub fn overlay_handle_event(
         &mut self,
         event: crossterm::event::Event,
         _terminal: &ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
@@ -83,41 +74,4 @@ impl OverlayView<ContentTreeResult> for ContentTreeState {
         }
         Ok(None)
     }
-
-    fn title(&self) -> String {
-        format!("CONTENT TREE — {}", self.note_title)
-    }
-}
-
-pub fn run_content_tree_view(
-    terminal: &mut Terminal<CrosstermBackend<Stdout>>,
-    storage: Storage,
-    note_id: Option<String>,
-    keybinds: &Keybinds,
-    theme: AppThemeColors,
-    seq_matcher: &mut crate::keybinds::KeyMatcher,
-) -> Result<ContentTreeResult> {
-    let mut state = if let Some(id) = note_id {
-        match storage.load_note(&id) {
-            Ok(note) => ContentTreeState::new(
-                id,
-                &note.title,
-                &note.content,
-                keybinds.clone(),
-                seq_matcher.clone(),
-            ),
-            Err(_) => ContentTreeState::error(id, keybinds.clone(), seq_matcher.clone()),
-        }
-    } else {
-        ContentTreeState::error(String::new(), keybinds.clone(), seq_matcher.clone())
-    };
-
-    let mut config = crate::config::ClinConfig::default();
-    crate::overlay::run_overlay(
-        terminal,
-        &mut state,
-        &mut config,
-        &theme,
-        Duration::from_millis(100),
-    )
 }

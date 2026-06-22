@@ -320,28 +320,4 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         frame.render_widget(text, popup);
     }
 
-    if let Some(menu) = &app.popups.context_menu {
-        let labels = [" Copy ", " Cut ", " Paste ", " Select All "];
-        let items: Vec<ListItem> = labels.iter().map(|l| ListItem::new(*l)).collect();
-        let menu_width = labels.iter().map(|l| l.len() as u16).max().unwrap_or(0);
-        let menu_height = labels.len() as u16;
-
-        let list = List::new(items)
-            .block(
-                Block::default()
-                    .style(app.app_theme.preview_bg_style())
-                    .borders(Borders::NONE),
-            )
-            .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
-
-        let x = menu.x.min(area.width.saturating_sub(menu_width));
-        let y = menu.y.min(area.height.saturating_sub(menu_height));
-        let menu_area = Rect::new(x, y, menu_width, menu_height);
-
-        let mut state = ListState::default();
-        state.select(Some(menu.selected));
-
-        frame.render_widget(Clear, menu_area);
-        frame.render_stateful_widget(list, menu_area, &mut state);
-    }
 }

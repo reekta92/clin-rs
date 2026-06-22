@@ -20,6 +20,7 @@ impl App {
         self.status = Cow::Borrowed(HELP_PAGE_HINTS);
         self.status_until = None;
         self.list.help_text_cache = None;
+        self.help_search = crate::app::HelpSearchState::default();
     }
 
     pub fn close_help_page(&mut self) {
@@ -28,25 +29,98 @@ impl App {
         self.help_tab = HelpTab::Notes;
         self.help_tab_scroll.clear();
         self.list.help_text_cache = None;
+        self.help_search = crate::app::HelpSearchState::default();
         self.set_default_status();
     }
 
     pub fn open_graph_view(&mut self) {
+        if self.graph_state.is_none() {
+            match crate::graf::app::GrafAppState::new(
+                &self.config,
+                self.storage.clone(),
+                vec![],
+                self.keybinds.clone(),
+                self.seq_matcher.clone(),
+            ) {
+                Ok(state) => {
+                    self.graph_state = Some(state);
+                }
+                Err(_) => {
+                    self.set_temporary_status_static("Failed to build graph view");
+                    return;
+                }
+            }
+        }
         self.return_mode = Some(self.mode);
         self.mode = ViewMode::Graph;
     }
 
     pub fn open_content_tree_view(&mut self) {
+        let note_id = self.get_selected_note_id();
+        self.content_tree_state = if let Some(id) = note_id {
+            match self.storage.load_note(&id) {
+                Ok(note) => Some(crate::content_tree::state::ContentTreeState::new(
+                    id,
+                    &note.title,
+                    &note.content,
+                    self.keybinds.clone(),
+                    self.seq_matcher.clone(),
+                )),
+                Err(_) => Some(crate::content_tree::state::ContentTreeState::error(
+                    id,
+                    self.keybinds.clone(),
+                    self.seq_matcher.clone(),
+                )),
+            }
+        } else {
+            Some(crate::content_tree::state::ContentTreeState::error(
+                String::new(),
+                self.keybinds.clone(),
+                self.seq_matcher.clone(),
+            ))
+        };
         self.return_mode = Some(self.mode);
         self.mode = ViewMode::ContentTree;
     }
 
     pub fn open_backup_view(&mut self) {
+        let vault_path = self.config.effective_storage_path().unwrap_or_else(|_| {
+            std::path::PathBuf::from(".")
+        });
+        let config = &self.config;
+        self.backup_state = Some(crate::backup::state::BackupState::new(
+            vault_path,
+            &config.backup,
+            self.app_theme.clone(),
+            self.keybinds.clone(),
+            config.ui.tab_icons_only,
+            self.git_lock.clone(),
+            self.seq_matcher.clone(),
+        ));
+        // Set footer hint
+        if let Some(backup) = &mut self.backup_state {
+            backup.footer_hint = format!(
+                "{}: commit · {}: push · {}: refresh · {}: settings · {}: ←",
+                self.keybinds.backup_keys_display(crate::keybinds::BackupAction::EnterCommit),
+                self.keybinds.backup_keys_display(crate::keybinds::BackupAction::Push),
+                self.keybinds.backup_keys_display(crate::keybinds::BackupAction::Refresh),
+                self.keybinds.backup_keys_display(crate::keybinds::BackupAction::OpenSettings),
+                self.keybinds.backup_keys_display(crate::keybinds::BackupAction::Back),
+            );
+        }
         self.return_mode = Some(self.mode);
         self.mode = ViewMode::Backup;
     }
 
     pub fn open_draw_view(&mut self) {
+        let note_id = self.get_selected_note_id();
+        self.draw_state = Some(crate::draw::app::DrawAppState::new(
+            self.storage.clone(),
+            note_id,
+            self.app_theme.clone(),
+            self.keybinds.clone(),
+            self.seq_matcher.clone(),
+        ));
         self.return_mode = Some(self.mode);
         self.mode = ViewMode::Draw;
     }
@@ -100,6 +174,7 @@ impl App {
         self.help_tab = tab;
         self.help_scroll = self.help_tab_scroll.get(&tab).copied().unwrap_or(0);
         self.list.help_text_cache = None;
+        self.help_search = crate::app::HelpSearchState::default();
     }
 
     pub fn begin_create_draw(&mut self) {

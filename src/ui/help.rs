@@ -748,7 +748,7 @@ fn about_help_text(
     ));
     rows.push(help_empty_row());
     rows.push(help_item_dyn(
-        "Encrypted terminal note-taking app",
+        "Feature-packed terminal note management app",
         None,
         theme,
     ));

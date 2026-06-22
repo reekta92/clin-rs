@@ -16,17 +16,26 @@ pub struct KeyCombo {
 
 impl KeyStroke {
     /// Returns true if this single keystroke matches the given event.
+    ///
+    /// Per crossterm conventions, uppercase `Char` keys are sent with
+    /// `KeyModifiers::NONE` — the capitalization itself signals that
+    /// shift was held.  We strip `SHIFT` from both sides when the
+    /// bound code is an uppercase letter, matching real terminal input.
     pub fn matches_event(&self, event: &KeyEvent) -> bool {
         if self.code != event.code {
             return false;
         }
-        if self.code == KeyCode::BackTab {
-            let self_mods = self.modifiers & !KeyModifiers::SHIFT;
-            let event_mods = event.modifiers & !KeyModifiers::SHIFT;
-            self_mods == event_mods
-        } else {
-            self.modifiers == event.modifiers
-        }
+        let self_mods = match self.code {
+            KeyCode::BackTab => self.modifiers & !KeyModifiers::SHIFT,
+            KeyCode::Char(c) if c.is_uppercase() => self.modifiers & !KeyModifiers::SHIFT,
+            _ => self.modifiers,
+        };
+        let event_mods = match event.code {
+            KeyCode::BackTab => event.modifiers & !KeyModifiers::SHIFT,
+            KeyCode::Char(c) if c.is_uppercase() => event.modifiers & !KeyModifiers::SHIFT,
+            _ => event.modifiers,
+        };
+        self_mods == event_mods
     }
 }
 
@@ -227,7 +236,7 @@ fn parse_key_code(s: &str) -> Option<KeyCode> {
 
         _ if s.len() == 1 => {
             let c = s.chars().next()?;
-            Some(KeyCode::Char(c.to_ascii_lowercase()))
+            Some(KeyCode::Char(c))
         }
 
         _ => None,

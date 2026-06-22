@@ -1,27 +1,16 @@
-use std::io::Stdout;
-use std::path::PathBuf;
-use std::sync::Arc;
-use std::time::Duration;
 
-use anyhow::Result;
 use crossterm::event::Event;
-use ratatui::Terminal;
-use ratatui::backend::CrosstermBackend;
 
-use crate::app_theme::AppThemeColors;
 use crate::backup::input::{self, InputResult};
 use crate::backup::render;
 use crate::backup::state::BackupState;
-use crate::config::ClinConfig;
-use crate::keybinds::{BackupAction, Keybinds};
-use crate::overlay::OverlayView;
 
 pub enum BackupResult {
     Back,
 }
 
-impl OverlayView<BackupResult> for BackupState {
-    fn render(
+impl BackupState {
+    pub fn overlay_render(
         &mut self,
         frame: &mut ratatui::Frame,
         area: ratatui::layout::Rect,
@@ -32,7 +21,7 @@ impl OverlayView<BackupResult> for BackupState {
         render::draw_dashboard(frame, self, area);
     }
 
-    fn handle_event(
+    pub fn overlay_handle_event(
         &mut self,
         event: crossterm::event::Event,
         _terminal: &ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
@@ -56,55 +45,4 @@ impl OverlayView<BackupResult> for BackupState {
         }
         Ok(None)
     }
-
-    fn title(&self) -> String {
-        "Backup".to_string()
-    }
-
-    fn render_title(
-        &self,
-        frame: &mut ratatui::Frame,
-        area: ratatui::layout::Rect,
-        _theme: &crate::app_theme::AppThemeColors,
-    ) {
-        render::draw_header(frame, area, self);
-    }
-}
-
-pub fn run_backup_view(
-    terminal: &mut Terminal<CrosstermBackend<Stdout>>,
-    vault_path: PathBuf,
-    config: &ClinConfig,
-    keybinds: &Keybinds,
-    app_theme: &AppThemeColors,
-    git_lock: Arc<parking_lot::Mutex<()>>,
-    seq_matcher: &mut crate::keybinds::KeyMatcher,
-) -> Result<BackupResult> {
-    let mut state = BackupState::new(
-        vault_path,
-        &config.backup,
-        app_theme.clone(),
-        keybinds.clone(),
-        config.ui.tab_icons_only,
-        git_lock,
-        seq_matcher.clone(),
-    );
-    state.footer_hint = format!(
-        "{}: commit · {}: push · {}: refresh · {}: settings · {}: ←",
-        keybinds.backup_keys_display(BackupAction::EnterCommit),
-        keybinds.backup_keys_display(BackupAction::Push),
-        keybinds.backup_keys_display(BackupAction::Refresh),
-        keybinds.backup_keys_display(BackupAction::OpenSettings),
-        keybinds.backup_keys_display(BackupAction::Back),
-    );
-
-    // Cast or clone config as mutable to fit run_overlay signature
-    let mut config_mut = config.clone();
-    crate::overlay::run_overlay(
-        terminal,
-        &mut state,
-        &mut config_mut,
-        app_theme,
-        Duration::from_millis(100),
-    )
 }

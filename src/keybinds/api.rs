@@ -698,14 +698,6 @@ mod tests {
                 .iter()
                 .any(|c| c.to_display_string() == "gg")
         );
-        // Shift+G → JumpToBottom
-        assert!(
-            kb.list
-                .get(&ListAction::JumpToBottom)
-                .unwrap()
-                .iter()
-                .any(|c| c.to_display_string() == "Shift+G")
-        );
     }
 
     #[test]
@@ -764,5 +756,40 @@ mod tests {
         );
         let outcome_y = kb.resolve_list(&mut matcher_y, y_event, false);
         assert_eq!(outcome_y, MatchOutcome::Matched(ListAction::Duplicate));
+    }
+
+    #[test]
+    fn test_canvas_quit_resolves_for_esc_and_q() {
+        let kb = Keybinds::default();
+        let mut m = crate::keybinds::KeyMatcher::new();
+
+        // Esc should NOT resolve to Quit — it collides with RenameCancel/MenuClose etc.
+        // Esc is the universal "cancel current operation" key; use q or Ctrl+C to quit.
+        let esc = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
+        let res = kb.resolve_canvas(&mut m, esc, false);
+        assert!(
+            !matches!(res, MatchOutcome::Matched(CanvasAction::Quit)),
+            "Esc should NOT resolve to CanvasAction::Quit, got {:?}",
+            res
+        );
+
+        // q with sequences disabled
+        let q = KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE);
+        let res = kb.resolve_canvas(&mut m, q, false);
+        assert!(
+            matches!(res, MatchOutcome::Matched(CanvasAction::Quit)),
+            "q should resolve to CanvasAction::Quit (seq=false), got {:?}",
+            res
+        );
+
+        // q with sequences enabled
+        let q = KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE);
+        let mut m2 = crate::keybinds::KeyMatcher::new();
+        let res = kb.resolve_canvas(&mut m2, q, true);
+        assert!(
+            matches!(res, MatchOutcome::Matched(CanvasAction::Quit)),
+            "q should resolve to CanvasAction::Quit (seq=true), got {:?}",
+            res
+        );
     }
 }

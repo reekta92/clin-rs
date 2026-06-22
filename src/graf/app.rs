@@ -234,13 +234,13 @@ pub enum GrafResult {
     OpenHelp,
 }
 
-impl crate::overlay::OverlayView<GrafResult> for GrafAppState {
-    fn update(&mut self, config: &mut crate::config::ClinConfig) {
+impl GrafAppState {
+    pub fn overlay_update(&mut self, config: &mut crate::config::ClinConfig) {
         self.sync_preview(config);
         let _ = self.poll_renderers();
     }
 
-    fn render(
+    pub fn overlay_render(
         &mut self,
         frame: &mut ratatui::Frame,
         area: ratatui::layout::Rect,
@@ -250,7 +250,7 @@ impl crate::overlay::OverlayView<GrafResult> for GrafAppState {
         crate::graf::ui::draw_ui(frame, self, config, area);
     }
 
-    fn handle_event(
+    pub fn overlay_handle_event(
         &mut self,
         event: crossterm::event::Event,
         terminal: &ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
@@ -275,35 +275,8 @@ impl crate::overlay::OverlayView<GrafResult> for GrafAppState {
         }
         Ok(None)
     }
-
-    fn title(&self) -> String {
-        "Graph".to_string()
-    }
 }
 
-pub fn run_graf_view(
-    terminal: &mut ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
-    storage: crate::storage::Storage,
-    config: &mut crate::config::ClinConfig,
-    keybinds: &Keybinds,
-    seq_matcher: &mut crate::keybinds::KeyMatcher,
-) -> anyhow::Result<GrafResult> {
-    let mut app_state = GrafAppState::new(
-        config,
-        storage,
-        vec![],
-        keybinds.clone(),
-        seq_matcher.clone(),
-    )?;
-    let theme = crate::app_theme::AppThemeColors::from_config(&config.ui);
-    crate::overlay::run_overlay(
-        terminal,
-        &mut app_state,
-        config,
-        &theme,
-        std::time::Duration::from_millis(16),
-    )
-}
 
 fn handle_event(
     ev: crossterm::event::Event,
