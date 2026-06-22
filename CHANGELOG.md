@@ -2,7 +2,7 @@
 
 All notable changes to clin are documented in this file.
 
-## [0.8.26] - 2026-06-22
+## [0.9.0-beta.0] - 2026-06-22
 
 ### Added
 
@@ -17,6 +17,9 @@ All notable changes to clin are documented in this file.
 
 ### CI
 
+- Added a preview job
+- Updated dispatch-release to have a approval phasei
+- Updated dispatch-release to have an option for overriding the version
 - Updated dispatch-release to have an option for pre-releases
 - Updated dispatch-release to have an option for target branch
 
@@ -38,12 +41,22 @@ All notable changes to clin are documented in this file.
 - Fixed clippy and build warnings
 - Rebuild display list cache on reload_theme
 
+### Miscellaneous
+
+- Bumped version back to 0.8.26
+- Bumped version back to 0.8.26
+- Bump version to 0.8.26
+- Bump version to 0.8.26
+- Bump version to 0.8.26
+- Bump version to 0.8.26
+
 ### Performance
 
 - Use opt-level=3 and mimalloc allocator
 
 ### Release
 
+- V0.10.0-beta.0
 - V0.9.0
 ## [0.8.25] - 2026-06-20
 
