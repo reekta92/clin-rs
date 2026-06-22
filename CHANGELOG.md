@@ -2,7 +2,7 @@
 
 All notable changes to clin are documented in this file.
 
-## [0.9.0-beta.0] - 2026-06-22
+## [0.9.0-beta.1] - 2026-06-22
 
 ### Added
 
@@ -17,6 +17,8 @@ All notable changes to clin are documented in this file.
 
 ### CI
 
+- Fixed simple syntax errors
+- Fixed linux-package release
 - Added a preview job
 - Updated dispatch-release to have a approval phasei
 - Updated dispatch-release to have an option for overriding the version
@@ -56,6 +58,7 @@ All notable changes to clin are documented in this file.
 
 ### Release
 
+- V0.9.0-beta.0
 - V0.10.0-beta.0
 - V0.9.0
 ## [0.8.25] - 2026-06-20
