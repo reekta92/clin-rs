@@ -37,7 +37,7 @@ impl Default for Keybinds {
                 KeyCombo::simple(KeyCode::Char('l')),
             ],
         );
-        list.insert(ListAction::Open, vec![KeyCombo::simple(KeyCode::Enter)]);
+        list.insert(ListAction::Open, vec![KeyCombo::simple(KeyCode::Enter), KeyCombo::simple(KeyCode::Char('o'))]);
         list.insert(
             ListAction::Delete,
             vec![
@@ -55,7 +55,7 @@ impl Default for Keybinds {
         );
         list.insert(
             ListAction::OpenLocation,
-            vec![KeyCombo::ctrl(KeyCode::Char('f'))],
+            vec![KeyCombo::ctrl(KeyCode::Char('l'))],
         );
         list.insert(
             ListAction::CycleFocus,
@@ -88,11 +88,11 @@ impl Default for Keybinds {
         );
         list.insert(
             ListAction::CreateFolder,
-            vec![KeyCombo::simple(KeyCode::Char('n'))],
+            vec![KeyCombo::shift(KeyCode::Char('N'))],
         );
         list.insert(
             ListAction::CreateNote,
-            vec![KeyCombo::simple(KeyCode::Char('a'))],
+            vec![KeyCombo::simple(KeyCode::Char('n'))],
         );
         list.insert(
             ListAction::RenameFolder,
@@ -108,10 +108,7 @@ impl Default for Keybinds {
         );
         list.insert(
             ListAction::OpenCommandPalette,
-            vec![
-                KeyCombo::ctrl(KeyCode::Char('p')),
-                KeyCombo::shift(KeyCode::Enter),
-            ],
+            vec![KeyCombo::simple(KeyCode::Char(':'))],
         );
 
         list.insert(
@@ -132,19 +129,26 @@ impl Default for Keybinds {
         );
         list.insert(
             ListAction::Search,
-            vec![KeyCombo::simple(KeyCode::Char('f'))],
+            vec![KeyCombo::simple(KeyCode::Char('/'))],
         );
         list.insert(
             ListAction::JumpToTop,
             vec![
-                KeyCombo::parse("g g").unwrap(),
-                KeyCombo::shift(KeyCode::Char('G')),
+                KeyCombo::simple(KeyCode::Home),
+                KeyCombo::ctrl(KeyCode::Up),
             ],
         );
-        list.insert(ListAction::PageUp, vec![KeyCombo::ctrl(KeyCode::Char('u'))]);
+        list.insert(ListAction::PageUp, vec![KeyCombo::ctrl(KeyCode::Char('u')), KeyCombo::simple(KeyCode::PageUp)]);
         list.insert(
             ListAction::PageDown,
-            vec![KeyCombo::ctrl(KeyCode::Char('d'))],
+            vec![KeyCombo::ctrl(KeyCode::Char('d')), KeyCombo::simple(KeyCode::PageDown)],
+        );
+        list.insert(
+            ListAction::JumpToBottom,
+            vec![
+                KeyCombo::simple(KeyCode::End),
+                KeyCombo::ctrl(KeyCode::Down),
+            ],
         );
         list.insert(
             ListAction::OpenTrash,
@@ -180,7 +184,10 @@ impl Default for Keybinds {
         );
         list.insert(
             ListAction::CollapseAll,
-            vec![KeyCombo::parse("Esc Esc").unwrap()],
+            vec![
+                KeyCombo::simple(KeyCode::Char('c')),
+                KeyCombo::shift(KeyCode::Char('C')),
+            ],
         );
 
         let mut edit = HashMap::new();
@@ -329,19 +336,19 @@ impl Default for Keybinds {
             GraphAction::ZoomIn,
             vec![
                 KeyCombo::simple(KeyCode::Char('+')),
-                KeyCombo::ctrl(KeyCode::Char('j')),
+                KeyCombo::simple(KeyCode::Char('=')),
             ],
         );
         graph.insert(
             GraphAction::ZoomOut,
             vec![
                 KeyCombo::simple(KeyCode::Char('-')),
-                KeyCombo::ctrl(KeyCode::Char('k')),
+                KeyCombo::simple(KeyCode::Char('_')),
             ],
         );
         graph.insert(
             GraphAction::OpenNote,
-            vec![KeyCombo::simple(KeyCode::Enter)],
+            vec![KeyCombo::simple(KeyCode::Enter), KeyCombo::simple(KeyCode::Char('o'))],
         );
         graph.insert(
             GraphAction::AutoFit,
@@ -356,7 +363,7 @@ impl Default for Keybinds {
         );
         graph.insert(
             GraphAction::ToggleSearch,
-            vec![KeyCombo::simple(KeyCode::Char('f'))],
+            vec![KeyCombo::simple(KeyCode::Char('/'))],
         );
         graph.insert(
             GraphAction::ToggleMinimap,
@@ -413,11 +420,17 @@ impl Default for Keybinds {
         );
         draw.insert(
             DrawAction::ShapeSelectorUp,
-            vec![KeyCombo::simple(KeyCode::Up)],
+            vec![
+                KeyCombo::simple(KeyCode::Up),
+                KeyCombo::simple(KeyCode::Char('k')),
+            ],
         );
         draw.insert(
             DrawAction::ShapeSelectorDown,
-            vec![KeyCombo::simple(KeyCode::Down)],
+            vec![
+                KeyCombo::simple(KeyCode::Down),
+                KeyCombo::simple(KeyCode::Char('j')),
+            ],
         );
         draw.insert(
             DrawAction::ShapeSelectorConfirm,
@@ -443,18 +456,23 @@ impl Default for Keybinds {
         canvas.insert(
             CanvasAction::Quit,
             vec![
-                KeyCombo::simple(KeyCode::Esc),
                 KeyCombo::simple(KeyCode::Char('q')),
             ],
         );
         canvas.insert(CanvasAction::Save, vec![KeyCombo::ctrl(KeyCode::Char('s'))]);
         canvas.insert(
             CanvasAction::ZoomFineIn,
-            vec![KeyCombo::ctrl(KeyCode::Char('j'))],
+            vec![
+                KeyCombo::simple(KeyCode::Char('>')),
+                KeyCombo::simple(KeyCode::Char(']')),
+            ],
         );
         canvas.insert(
             CanvasAction::ZoomFineOut,
-            vec![KeyCombo::ctrl(KeyCode::Char('k'))],
+            vec![
+                KeyCombo::simple(KeyCode::Char('<')),
+                KeyCombo::simple(KeyCode::Char('[')),
+            ],
         );
         canvas.insert(
             CanvasAction::ZoomIn,
@@ -503,6 +521,7 @@ impl Default for Keybinds {
             vec![
                 KeyCombo::simple(KeyCode::Char('i')),
                 KeyCombo::simple(KeyCode::Enter),
+                KeyCombo::simple(KeyCode::Char('o')),
             ],
         );
         canvas.insert(
@@ -511,7 +530,7 @@ impl Default for Keybinds {
         );
         canvas.insert(
             CanvasAction::ToggleGrid,
-            vec![KeyCombo::ctrl(KeyCode::Char('g'))],
+            vec![KeyCombo::shift(KeyCode::Char('G'))],
         );
         canvas.insert(
             CanvasAction::ToggleEditorPane,
@@ -613,11 +632,17 @@ impl Default for Keybinds {
         );
         backup.insert(
             BackupAction::ScrollDiffDown,
-            vec![KeyCombo::simple(KeyCode::PageDown)],
+            vec![
+                KeyCombo::ctrl(KeyCode::Char('d')),
+                KeyCombo::simple(KeyCode::PageDown),
+            ],
         );
         backup.insert(
             BackupAction::ScrollDiffUp,
-            vec![KeyCombo::simple(KeyCode::PageUp)],
+            vec![
+                KeyCombo::ctrl(KeyCode::Char('u')),
+                KeyCombo::simple(KeyCode::PageUp),
+            ],
         );
         backup.insert(
             BackupAction::Refresh,
@@ -625,7 +650,7 @@ impl Default for Keybinds {
         );
         backup.insert(
             BackupAction::EnterCommit,
-            vec![KeyCombo::simple(KeyCode::Char('s'))],
+            vec![KeyCombo::simple(KeyCode::Char('c'))],
         );
         backup.insert(
             BackupAction::Push,
@@ -633,7 +658,10 @@ impl Default for Keybinds {
         );
         backup.insert(
             BackupAction::OpenSettings,
-            vec![KeyCombo::ctrl(KeyCode::Char('p'))],
+            vec![
+                KeyCombo::simple(KeyCode::Char(',')),
+                KeyCombo::shift(KeyCode::Char('S')),
+            ],
         );
         backup.insert(
             BackupAction::ToggleFileSelect,
@@ -709,6 +737,8 @@ impl Default for Keybinds {
                 KeyCombo::simple(KeyCode::Tab),
                 KeyCombo::simple(KeyCode::Left),
                 KeyCombo::simple(KeyCode::Right),
+                KeyCombo::simple(KeyCode::Char('h')),
+                KeyCombo::simple(KeyCode::Char('l')),
             ],
         );
         content_tree.insert(
@@ -721,7 +751,7 @@ impl Default for Keybinds {
         );
         content_tree.insert(
             ContentTreeAction::Open,
-            vec![KeyCombo::simple(KeyCode::Enter)],
+            vec![KeyCombo::simple(KeyCode::Enter), KeyCombo::simple(KeyCode::Char('o'))],
         );
         content_tree.insert(
             ContentTreeAction::Back,
@@ -792,7 +822,6 @@ impl KeybindPreset {
                 kb.list.insert(
                     ListAction::Quit,
                     vec![
-                        KeyCombo::ctrl(KeyCode::Char('c')),
                         KeyCombo::simple(KeyCode::Char('q')),
                     ],
                 );
@@ -921,111 +950,28 @@ impl KeybindPreset {
                 let mut kb = default_kb;
                 // List view
                 kb.list.insert(
-                    ListAction::MoveUp,
-                    vec![
-                        KeyCombo::simple(KeyCode::Char('k')),
-                        KeyCombo::simple(KeyCode::Up),
-                    ],
-                );
-                kb.list.insert(
-                    ListAction::MoveDown,
-                    vec![
-                        KeyCombo::simple(KeyCode::Char('j')),
-                        KeyCombo::simple(KeyCode::Down),
-                    ],
-                );
-                kb.list.insert(
-                    ListAction::MoveLeft,
-                    vec![
-                        KeyCombo::simple(KeyCode::Char('h')),
-                        KeyCombo::simple(KeyCode::Left),
-                    ],
-                );
-                kb.list.insert(
-                    ListAction::MoveRight,
-                    vec![
-                        KeyCombo::simple(KeyCode::Char('l')),
-                        KeyCombo::simple(KeyCode::Right),
-                    ],
-                );
-                kb.list.insert(
                     ListAction::Delete,
                     vec![
                         KeyCombo::parse("d d").unwrap(),
-                        KeyCombo::simple(KeyCode::Char('d')),
-                        KeyCombo::simple(KeyCode::Delete),
                     ],
                 );
                 kb.list.insert(
                     ListAction::Quit,
                     vec![
                         KeyCombo::parse(": q").unwrap(),
-                        KeyCombo::simple(KeyCode::Char('q')),
                     ],
-                );
-                kb.list.insert(
-                    ListAction::Search,
-                    vec![KeyCombo::simple(KeyCode::Char('/'))],
                 );
                 kb.list.insert(
                     ListAction::JumpToTop,
                     vec![
                         KeyCombo::parse("g g").unwrap(),
-                        KeyCombo::shift(KeyCode::Char('G')),
                     ],
-                );
-                kb.list.insert(
-                    ListAction::JumpToBottom,
-                    vec![KeyCombo::shift(KeyCode::Char('G'))],
-                );
-                kb.list
-                    .insert(ListAction::PageUp, vec![KeyCombo::ctrl(KeyCode::Char('b'))]);
-                kb.list.insert(
-                    ListAction::PageDown,
-                    vec![KeyCombo::ctrl(KeyCode::Char('f'))],
-                );
-                kb.list.insert(
-                    ListAction::OpenCommandPalette,
-                    vec![KeyCombo::parse(": ").unwrap()],
-                );
-                kb.list.insert(
-                    ListAction::CollapseAll,
-                    vec![KeyCombo::parse("Esc Esc").unwrap()],
                 );
                 // Graph view — vim-style nav
-                kb.graph.insert(
-                    GraphAction::PanUp,
-                    vec![
-                        KeyCombo::simple(KeyCode::Char('k')),
-                        KeyCombo::simple(KeyCode::Up),
-                    ],
-                );
-                kb.graph.insert(
-                    GraphAction::PanDown,
-                    vec![
-                        KeyCombo::simple(KeyCode::Char('j')),
-                        KeyCombo::simple(KeyCode::Down),
-                    ],
-                );
-                kb.graph.insert(
-                    GraphAction::PanLeft,
-                    vec![
-                        KeyCombo::simple(KeyCode::Char('h')),
-                        KeyCombo::simple(KeyCode::Left),
-                    ],
-                );
-                kb.graph.insert(
-                    GraphAction::PanRight,
-                    vec![
-                        KeyCombo::simple(KeyCode::Char('l')),
-                        KeyCombo::simple(KeyCode::Right),
-                    ],
-                );
                 kb.graph.insert(
                     GraphAction::Quit,
                     vec![
                         KeyCombo::parse(": q").unwrap(),
-                        KeyCombo::simple(KeyCode::Char('q')),
                     ],
                 );
                 kb.edit = Keybinds::default().edit;

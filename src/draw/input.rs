@@ -12,6 +12,7 @@ pub fn handle_event(
     keybinds: &Keybinds,
     config: &crate::config::ClinConfig,
 ) -> anyhow::Result<Option<DrawEventAction>> {
+
     if let Some((idx, textarea)) = &mut app.text_editor {
         app.seq_matcher.clear();
         match ev {

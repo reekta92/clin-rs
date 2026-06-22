@@ -54,6 +54,13 @@ where
                     terminal.autoresize()?;
                     let _ = terminal.clear();
                 }
+                // Global Ctrl+C — immediately kill process
+                crossterm::event::Event::Key(key)
+                    if key.code == crossterm::event::KeyCode::Char('c')
+                        && key.modifiers == crossterm::event::KeyModifiers::CONTROL =>
+                {
+                    crate::force_quit();
+                }
                 ev => {
                     if let Some(result) = view.handle_event(ev, terminal, config)? {
                         return Ok(result);

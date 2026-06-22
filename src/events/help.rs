@@ -1,13 +1,8 @@
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent};
 use crate::app::{App, HelpTab};
 use crate::keybinds::HelpAction;
 
 pub fn handle_help_keys(app: &mut App, key: KeyEvent) {
-    // Ctrl+C → quit (interactive path, raw mode delivers Ctrl+C as key event)
-    if key.code == KeyCode::Char('c') && key.modifiers == KeyModifiers::CONTROL {
-        app.initiate_quit();
-        return;
-    }
 
     let seq = app.config.core.enable_key_sequences;
     match app.keybinds.resolve_help(&mut app.seq_matcher, key, seq) {

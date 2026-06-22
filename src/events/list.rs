@@ -24,11 +24,6 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         }
         return false;
     }
-    // Ctrl+C → quit (interactive path, raw mode delivers Ctrl+C as key event)
-    if key.code == KeyCode::Char('c') && key.modifiers == KeyModifiers::CONTROL {
-        app.initiate_quit();
-        return false;
-    }
 
     if let Some(mut palette) = app.command_palette.take() {
         if palette.handle_input(key, app) {

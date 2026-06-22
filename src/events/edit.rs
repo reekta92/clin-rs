@@ -1,4 +1,4 @@
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind, MouseButton};
+use crossterm::event::{KeyCode, KeyEvent, MouseEvent, MouseEventKind, MouseButton};
 use ratatui::layout::{Rect, Layout, Direction, Constraint};
 use ratatui_textarea::Input;
 
@@ -12,11 +12,6 @@ use super::{
 };
 
 pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> bool {
-    // Ctrl+C → quit (interactive path, raw mode delivers Ctrl+C as key event)
-    if key.code == KeyCode::Char('c') && key.modifiers == KeyModifiers::CONTROL {
-        app.initiate_quit();
-        return false;
-    }
 
     if let Some(mut menu) = app.popups.context_menu.take() {
         match key.code {
