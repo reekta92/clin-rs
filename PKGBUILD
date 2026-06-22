@@ -1,6 +1,6 @@
 # Maintainer: reekta92 mdag.92988@protonmail.com
 pkgname=clin-rs-bin
-pkgver=0.8.26
+pkgver=0.8.25
 pkgrel=1
 pkgdesc="Encrypted terminal note-taking app"
 url="https://github.com/reekta92/clin-rs"
