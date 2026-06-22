@@ -145,6 +145,8 @@ jobs:
 
           echo "new_version=$NEW" >> "$GITHUB_OUTPUT"
           echo "tag=v$NEW" >> "$GITHUB_OUTPUT"
+
+      - name: Validate version
         run: |
           EXPECTED="${{ steps.bump.outputs.new_version }}"
           ACTUAL=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
