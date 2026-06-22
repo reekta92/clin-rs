@@ -14,8 +14,22 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     if app.layout_edit {
         match key.code {
             KeyCode::Esc => { app.toggle_layout_edit(); return false; }
-            KeyCode::Left  => app.adjust_preview_width(-0.02),
-            KeyCode::Right => app.adjust_preview_width( 0.02),
+            KeyCode::Left => {
+                let delta = if app.preview_position == crate::config::PreviewPosition::Right {
+                    0.02
+                } else {
+                    -0.02
+                };
+                app.adjust_preview_width(delta);
+            }
+            KeyCode::Right => {
+                let delta = if app.preview_position == crate::config::PreviewPosition::Right {
+                    -0.02
+                } else {
+                    0.02
+                };
+                app.adjust_preview_width(delta);
+            }
             KeyCode::Up    => app.adjust_calendar_height(1),
             KeyCode::Down  => app.adjust_calendar_height(-1),
             KeyCode::Char('s') | KeyCode::Char('S') => app.swap_preview_position(),
