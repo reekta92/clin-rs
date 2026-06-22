@@ -13,6 +13,11 @@ on:
           - major
           - pre-patch
         default: patch
+      target_branch:
+        description: "The branch to base the release on"
+        required: false
+        type: string
+        default: main
 
 permissions:
   contents: write
@@ -38,6 +43,7 @@ jobs:
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
+          ref: ${{ inputs.target_branch }}
 
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
@@ -118,7 +124,7 @@ jobs:
             git commit -m "release: $TAG"
           fi
           git tag "$TAG"
-          git push --force-with-lease origin HEAD:main
+          git push --force-with-lease origin HEAD:${{ inputs.target_branch }}
           git push origin "$TAG"
 
       - name: Create GitHub Release
@@ -388,7 +394,7 @@ jobs:
 
 
   # ────────────────────────────────────────────
-  # 10. Update README + PKGBUILD in main
+  # 10. Update README + PKGBUILD in target branch
   # ────────────────────────────────────────────
   post-release:
     needs: [prepare, linux-packages, appimage, linux-x86_64, nix]
@@ -396,7 +402,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: main
+          ref: ${{ inputs.target_branch }}
           token: ${{ secrets.GITHUB_TOKEN }}
       - name: Update artifact references
         env:
@@ -437,5 +443,5 @@ jobs:
           git add README.md PKGBUILD flake.nix
           if ! git diff --staged --quiet; then
             git commit -m "release: update versions to v${{ needs.prepare.outputs.new_version }}"
-            git push origin HEAD:main
+            git push origin HEAD:${{ inputs.target_branch }}
           fi
