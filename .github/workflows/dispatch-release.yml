@@ -44,16 +44,11 @@ env:
 
 jobs:
   # ────────────────────────────────────────────
-  # 1. Preview and approve release version
+  # 1. Calculate release version
   # ────────────────────────────────────────────
-  preview:
-    name: Preview and Approve Release
+  calculate_version:
+    name: Calculate Release Version
     runs-on: ubuntu-latest
-    # This environment needs to be created in the repository settings.
-    # It should be configured with "Required reviewers" to enable the approval gate.
-    environment:
-      name: release-approval
-      url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     outputs:
       new_version: ${{ steps.calculate.outputs.new_version }}
     steps:
@@ -107,15 +102,34 @@ jobs:
           fi
           echo "new_version=$NEW" >> "$GITHUB_OUTPUT"
           echo "::notice title=Release Version Preview::Calculated new version is $NEW. Approve to proceed."
+
   # ────────────────────────────────────────────
-  # 2. Bump version, changelog, tag, push, create release
+  # 2. Approve the release
+  # ────────────────────────────────────────────
+  approval:
+    name: Approve Release
+    needs: calculate_version
+    runs-on: ubuntu-latest
+    # This environment needs to be created in the repository settings.
+    # It should be configured with "Required reviewers" to enable the approval gate.
+    environment:
+      name: release-approval
+      url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Waiting for approval
+        run: |
+          echo "Please review the version calculated in the 'Calculate Release Version' job."
+          echo "Version to be released: ${{ needs.calculate_version.outputs.new_version }}"
+          echo "Approve this step to continue with the release."
+  # ────────────────────────────────────────────
+  # 3. Bump version, changelog, tag, push, create release
   # ────────────────────────────────────────────
   prepare:
-    needs: preview
+    needs: [calculate_version, approval]
     runs-on: ubuntu-latest
     outputs:
-      new_version: ${{ needs.preview.outputs.new_version }}
-      tag: v${{ needs.preview.outputs.new_version }}
+      new_version: ${{ needs.calculate_version.outputs.new_version }}
+      tag: v${{ needs.calculate_version.outputs.new_version }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -136,7 +150,7 @@ jobs:
       - name: Set version
         id: bump
         run: |
-          NEW="${{ needs.preview.outputs.new_version }}"
+          NEW="${{ needs.calculate_version.outputs.new_version }}"
           cargo set-version "$NEW"
           if [ -f flake.nix ]; then
             sed -i "s/version = \".*\"; # This will be updated by the release workflow/version = \"$NEW\"; # This will be updated by the release workflow/" flake.nix
@@ -190,7 +204,7 @@ jobs:
           fi
 
   # ────────────────────────────────────────────
-  # 2. Build Linux x86_64 binary
+  # 3. Build Linux x86_64 binary
   # ────────────────────────────────────────────
   linux-x86_64:
     needs: prepare
@@ -218,9 +232,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: "v${{ needs.prepare.outputs.new_version }}"
         run: gh release upload "$TAG" dist/* --clobber
-
-  # ────────────────────────────────────────────
-  # 3. Build Windows x86_64 binary
+  # 4. Build Windows x86_64 binary
   # ────────────────────────────────────────────
   windows-x86_64:
     needs: prepare
@@ -249,8 +261,7 @@ jobs:
         shell: bash
         run: gh release upload "$TAG" dist/* --clobber
 
-  # ────────────────────────────────────────────
-  # 4. Build macOS ARM (Apple Silicon) binary
+  # 5. Build macOS ARM (Apple Silicon) binary
   # ────────────────────────────────────────────
   macos-arm:
     needs: prepare
@@ -284,8 +295,7 @@ jobs:
           TAG: "v${{ needs.prepare.outputs.new_version }}"
         run: gh release upload "$TAG" dist/* --clobber
 
-  # ────────────────────────────────────────────
-  # 5. Build .deb and .rpm
+  # 6. Build .deb and .rpm
   # ────────────────────────────────────────────
   linux-packages:
     needs: prepare
