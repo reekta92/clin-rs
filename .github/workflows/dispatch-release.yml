@@ -44,32 +44,24 @@ env:
 
 jobs:
   # ────────────────────────────────────────────
-  # 1. Bump version, changelog, tag, push, create release
+  # 1. Preview and approve release version
   # ────────────────────────────────────────────
-  prepare:
+  preview:
+    name: Preview and Approve Release
     runs-on: ubuntu-latest
+    # This environment needs to be created in the repository settings.
+    # It should be configured with "Required reviewers" to enable the approval gate.
+    environment:
+      name: release-approval
+      url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     outputs:
-      new_version: ${{ steps.bump.outputs.new_version }}
-      tag: ${{ steps.bump.outputs.tag }}
+      new_version: ${{ steps.calculate.outputs.new_version }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-          ref: ${{ inputs.target_branch }}
-
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          cache-on-failure: true
-
-      - name: Install tools
-        run: |
-          cargo install cargo-edit --locked
-          cargo install git-cliff --locked
-
-      - name: Bump version
-        id: bump
+      - name: Calculate next version
+        id: calculate
         run: |
           OVERRIDE_VERSION="${{ inputs.override_version }}"
           if [ -n "$OVERRIDE_VERSION" ]; then
@@ -113,7 +105,38 @@ jobs:
               NEW="$NEXT_BASE"
             fi
           fi
+          echo "new_version=$NEW" >> "$GITHUB_OUTPUT"
+          echo "::notice title=Release Version Preview::Calculated new version is $NEW. Approve to proceed."
+  # ────────────────────────────────────────────
+  # 2. Bump version, changelog, tag, push, create release
+  # ────────────────────────────────────────────
+  prepare:
+    needs: preview
+    runs-on: ubuntu-latest
+    outputs:
+      new_version: ${{ needs.preview.outputs.new_version }}
+      tag: v${{ needs.preview.outputs.new_version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: ${{ inputs.target_branch }}
 
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Install tools
+        run: |
+          cargo install cargo-edit --locked
+          cargo install git-cliff --locked
+
+      - name: Set version
+        id: bump
+        run: |
+          NEW="${{ needs.preview.outputs.new_version }}"
           cargo set-version "$NEW"
           if [ -f flake.nix ]; then
             sed -i "s/version = \".*\"; # This will be updated by the release workflow/version = \"$NEW\"; # This will be updated by the release workflow/" flake.nix
@@ -122,7 +145,6 @@ jobs:
 
           echo "new_version=$NEW" >> "$GITHUB_OUTPUT"
           echo "tag=v$NEW" >> "$GITHUB_OUTPUT"
-      - name: Validate version
         run: |
           EXPECTED="${{ steps.bump.outputs.new_version }}"
           ACTUAL=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
