@@ -2,11 +2,20 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.9.0-beta.3] - 2026-06-22
+
+### CI
+
+- Fixed simple syntax errors
 ## [0.9.0-beta.2] - 2026-06-22
 
 ### CI
 
 - Fixed simple syntax errors
+
+### Release
+
+- V0.9.0-beta.2
 ## [0.9.0-beta.1] - 2026-06-22
 
 ### Added
