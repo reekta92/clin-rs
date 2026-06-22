@@ -58,7 +58,10 @@ fn about_cli_row(cmd: &str, desc: &str, theme: &AppThemeColors) -> HelpRow {
                     .fg(theme.success)
                     .add_modifier(Modifier::BOLD),
             )])),
-            Cell::from(Line::from(vec![Span::raw(desc.to_owned())])),
+            Cell::from(Line::from(vec![
+                Span::styled("• ", Style::default().fg(theme.muted)),
+                Span::raw(desc.to_owned()),
+            ])),
         ]),
         search_text: search_text.to_lowercase(),
     }
@@ -82,6 +85,7 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
         app.help_tab.index(),
         &app.app_theme,
         app.config.ui.tab_icons_only,
+        app.config.ui.icon_mode,
     );
     draw_view_title_bar_with_tabs(frame, chunks[0], "Help", tab_spans, &app.app_theme);
 
@@ -860,10 +864,7 @@ pub fn help_item_dyn(
         None => HelpRow {
             row: Row::new(vec![
                 Cell::from(""),
-                Cell::from(Line::from(vec![
-                    Span::styled("• ", Style::default().fg(theme.muted)),
-                    Span::raw(text.to_owned()),
-                ])),
+                Cell::from(Line::from(vec![Span::raw(text.to_owned())])),
             ]),
             search_text,
         },
