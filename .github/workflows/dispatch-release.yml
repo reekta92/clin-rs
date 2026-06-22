@@ -72,32 +72,41 @@ jobs:
             CURRENT_PRE=$(echo "$CURRENT" | sed -n 's/^[0-9.]\+-\([^.]\+\).\([0-9]\+\)/\1/p')
             CURRENT_PRE_NUM=$(echo "$CURRENT" | sed -n 's/^[0-9.]\+-\([^.]\+\).\([0-9]\+\)/\2/p')
 
-            # Determine next base version
+            IS_CURRENTLY_PRERELEASE=false
+            if [ -n "$CURRENT_PRE" ]; then
+              IS_CURRENTLY_PRERELEASE=true
+            fi
+
+            # Determine next base version from bump type
             IFS='.' read -r MAJ MIN PAT <<< "$CURRENT_BASE"
             case "$BUMP_TYPE" in
-              patch)
-                NEXT_BASE="$MAJ.$MIN.$((PAT+1))"
-                ;;
-              minor)
-                NEXT_BASE="$MAJ.$((MIN+1)).0"
-                ;;
-              major)
-                NEXT_BASE="$((MAJ+1)).0.0"
-                ;;
+              patch) NEXT_BASE="$MAJ.$MIN.$((PAT+1))";;
+              minor) NEXT_BASE="$MAJ.$((MIN+1)).0";;
+              major) NEXT_BASE="$((MAJ+1)).0.0";;
             esac
 
             if [ "$PRERELEASE" = "true" ]; then
-              # This is a pre-release
-              if [ "$CURRENT_PRE" = "$PRE_ID" ] && [ "$NEXT_BASE" = "$CURRENT_BASE" ]; then
-                # Current version is a pre-release of the same type and base, increment pre-release number
+              # We want to end up with a pre-release
+              if [ "$IS_CURRENTLY_PRERELEASE" = "true" ] && [ "$CURRENT_PRE" = "$PRE_ID" ]; then
+                # Case 1: Incrementing existing pre-release (e.g., beta.0 -> beta.1)
+                # Bump type is ignored. Base version is kept.
                 NEW="$CURRENT_BASE-$PRE_ID.$((CURRENT_PRE_NUM+1))"
               else
-                # This is the first pre-release for this version
+                # Case 2: Starting a new pre-release series (e.g., 1.2.3 -> 1.2.4-rc.0)
+                # Bump type is used.
                 NEW="$NEXT_BASE-$PRE_ID.0"
               fi
             else
-              # This is a stable release, use the next base version
-              NEW="$NEXT_BASE"
+              # We want to end up with a stable release
+              if [ "$IS_CURRENTLY_PRERELEASE" = "true" ]; then
+                # Case 3: Graduating a pre-release (e.g., 1.2.3-rc.1 -> 1.2.3)
+                # Bump type is ignored. Base version is kept.
+                NEW="$CURRENT_BASE"
+              else
+                # Case 4: Standard stable bump (e.g., 1.2.3 -> 1.2.4)
+                # Bump type is used.
+                NEW="$NEXT_BASE"
+              fi
             fi
           fi
           echo "new_version=$NEW" >> "$GITHUB_OUTPUT"
@@ -312,7 +321,7 @@ jobs:
         run: cargo build --release --locked
       - name: Build packages
         run: |
-          cargo install cargo-deb --locked cargo-generate-rpm --locked
+          cargo install cargo-deb cargo-generate-rpm --locked
           VERSION=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
           if [[ "$VERSION" == *"-"* ]]; then
             DEB_VERSION=$(echo "$VERSION" | sed 's/-/~/g')
