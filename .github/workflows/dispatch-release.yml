@@ -213,7 +213,7 @@ jobs:
           fi
 
   # ────────────────────────────────────────────
-  # 3. Build Linux x86_64 binary
+  # 4. Build Linux x86_64 binary
   # ────────────────────────────────────────────
   linux-x86_64:
     needs: prepare
@@ -242,7 +242,7 @@ jobs:
           TAG: "v${{ needs.prepare.outputs.new_version }}"
         run: gh release upload "$TAG" dist/* --clobber
   # 4. Build Windows x86_64 binary
-  # ────────────────────────────────────────────
+  # 5. Build Windows x86_64 binary
   windows-x86_64:
     needs: prepare
     runs-on: windows-latest
@@ -271,7 +271,7 @@ jobs:
         run: gh release upload "$TAG" dist/* --clobber
 
   # 5. Build macOS ARM (Apple Silicon) binary
-  # ────────────────────────────────────────────
+  # 6. Build macOS ARM (Apple Silicon) binary
   macos-arm:
     needs: prepare
     runs-on: macos-latest
@@ -305,7 +305,7 @@ jobs:
         run: gh release upload "$TAG" dist/* --clobber
 
   # 6. Build .deb and .rpm
-  # ────────────────────────────────────────────
+  # 7. Build .deb and .rpm
   linux-packages:
     needs: prepare
     runs-on: ubuntu-22.04
@@ -338,7 +338,7 @@ jobs:
         run: gh release upload "$TAG" target/debian/*.deb target/generate-rpm/*.rpm --clobber
 
   # ────────────────────────────────────────────
-  # 6. Build AppImage
+  # 8. Build AppImage
   # ────────────────────────────────────────────
   appimage:
     needs: prepare
@@ -378,7 +378,7 @@ jobs:
 
 
   # ────────────────────────────────────────────
-  # 7. Build Nix package
+  # 9. Build Nix package
   # ────────────────────────────────────────────
   nix:
     needs: prepare
@@ -394,7 +394,7 @@ jobs:
         run: nix build .#default
 
   # ────────────────────────────────────────────
-  # 8. Publish AUR package
+  # 10. Publish AUR package
   # ────────────────────────────────────────────
   aur:
     needs: [prepare, linux-packages, linux-x86_64]
@@ -445,7 +445,7 @@ jobs:
 
 
   # ────────────────────────────────────────────
-  # 9. Publish to crates.io
+  # 11. Publish to crates.io
   # ────────────────────────────────────────────
   crates-io:
     needs: prepare
@@ -466,7 +466,7 @@ jobs:
 
 
   # ────────────────────────────────────────────
-  # 10. Update README + PKGBUILD in target branch
+  # 12. Update README + PKGBUILD in target branch
   # ────────────────────────────────────────────
   post-release:
     needs: [prepare, linux-packages, appimage, linux-x86_64, nix]
