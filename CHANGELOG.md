@@ -2,7 +2,7 @@
 
 All notable changes to clin are documented in this file.
 
-## [0.9.0] - 2026-06-22
+## [0.10.0-beta.0] - 2026-06-22
 
 ### Added
 
@@ -17,6 +17,7 @@ All notable changes to clin are documented in this file.
 
 ### CI
 
+- Updated dispatch-release to have an option for pre-releases
 - Updated dispatch-release to have an option for target branch
 
 ### Changed
@@ -40,6 +41,10 @@ All notable changes to clin are documented in this file.
 ### Performance
 
 - Use opt-level=3 and mimalloc allocator
+
+### Release
+
+- V0.9.0
 ## [0.8.25] - 2026-06-20
 
 ### Release
