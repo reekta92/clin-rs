@@ -108,7 +108,7 @@ impl Default for Keybinds {
         );
         list.insert(
             ListAction::OpenCommandPalette,
-            vec![KeyCombo::simple(KeyCode::Char(':'))],
+            vec![KeyCombo::simple(KeyCode::Char(':')), KeyCombo::ctrl(KeyCode::Char('p'))],
         );
 
         list.insert(
