@@ -296,6 +296,14 @@ impl Default for Keybinds {
             ],
         );
 
+        help.insert(
+            HelpAction::Search,
+            vec![
+                KeyCombo::simple(KeyCode::Char('/')),
+                KeyCombo::ctrl(KeyCode::Char('f')),
+            ],
+        );
+
         let mut graph = HashMap::new();
         graph.insert(
             GraphAction::Quit,

@@ -1,7 +1,6 @@
 use crate::markdown::MarkdownRenderer;
-use ratatui::style::Style;
-use ratatui::text::Text;
 use ratatui::widgets::{ListItem, ListState};
+use ratatui::style::Style;
 use std::collections::HashSet;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -73,7 +72,7 @@ pub struct ListView {
     pub page_size: usize,
     pub list_mode: ListMode,
     pub selected_indices: HashSet<usize>,
-    pub help_text_cache: Option<Text<'static>>,
+    pub help_text_cache: Option<Vec<crate::ui::HelpRow>>,
     pub tag_to_assign: Option<String>,
     pub grid_folder: String,
     pub grid_columns: usize,

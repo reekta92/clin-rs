@@ -20,7 +20,7 @@ pub use crate::popups::*;
 use crate::ui::text_area_from_content;
 use crate::ui::{now_unix_secs, open_in_file_manager};
 use ratatui::style::{Color, Modifier, Style};
-use ratatui::text::{Line, Span, Text};
+use ratatui::text::{Line, Span};
 use ratatui::widgets::ListItem;
 use std::borrow::Cow;
 use std::time::Instant;
@@ -49,6 +49,29 @@ pub struct SearchQuery {
     pub tag_filter: Option<Vec<String>>,
     pub grep_mode: bool,
     pub grep_text: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct HelpSearchState {
+    pub active: bool,
+    pub query: String,
+    pub results: Vec<(usize, String)>,
+    pub selected: usize,
+    pub cursor: usize,
+    pub highlight_row: Option<usize>,
+}
+
+impl Default for HelpSearchState {
+    fn default() -> Self {
+        Self {
+            active: false,
+            query: String::new(),
+            results: Vec::new(),
+            selected: 0,
+            cursor: 0,
+            highlight_row: None,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -312,6 +335,7 @@ pub struct App {
     pub help_scroll: u16,
     pub help_tab: HelpTab,
     pub help_tab_scroll: HashMap<HelpTab, u16>,
+    pub help_search: HelpSearchState,
     pub command_palette: Option<crate::palette::CommandPalette>,
     pub needs_full_redraw: bool,
     pub confirm_on_delete: bool,
@@ -327,6 +351,10 @@ pub struct App {
     pub last_auto_backup: Option<std::time::Instant>,
     pub return_mode: Option<ViewMode>,
     pub app_theme: crate::app_theme::AppThemeColors,
+    pub graph_state: Option<crate::graf::app::GrafAppState>,
+    pub draw_state: Option<crate::draw::app::DrawAppState>,
+    pub backup_state: Option<crate::backup::state::BackupState>,
+    pub content_tree_state: Option<crate::content_tree::state::ContentTreeState>,
     pub canvas_state: Option<crate::pinstar::state::PinstarState>,
     pub config: crate::config::ClinConfig,
     pub summary_cache: HashMap<String, NoteSummary>,
@@ -421,6 +449,7 @@ impl App {
             help_scroll: 0,
             help_tab: HelpTab::Notes,
             help_tab_scroll: HashMap::new(),
+            help_search: HelpSearchState::default(),
             command_palette: None,
             popups: crate::popups::PopupManager::default(),
             needs_full_redraw: false,
@@ -433,6 +462,10 @@ impl App {
             last_auto_backup: None,
             preview_position: bootstrap_config.list.preview_position,
             calendar_position: bootstrap_config.list.calendar_position,
+            graph_state: None,
+            draw_state: None,
+            backup_state: None,
+            content_tree_state: None,
             pinned_on_top: bootstrap_config.list.pinned_on_top,
             default_folder: bootstrap_config.core.default_folder.clone(),
             return_mode: None,
@@ -514,6 +547,7 @@ impl App {
             help_scroll: 0,
             help_tab: HelpTab::Notes,
             help_tab_scroll: HashMap::new(),
+            help_search: HelpSearchState::default(),
             command_palette: None,
             popups: crate::popups::PopupManager::default(),
             needs_full_redraw: false,
@@ -526,6 +560,10 @@ impl App {
             last_auto_backup: None,
             preview_position: bootstrap_config.list.preview_position,
             calendar_position: bootstrap_config.list.calendar_position,
+            graph_state: None,
+            draw_state: None,
+            backup_state: None,
+            content_tree_state: None,
             pinned_on_top: bootstrap_config.list.pinned_on_top,
             default_folder: bootstrap_config.core.default_folder.clone(),
             return_mode: None,
@@ -966,7 +1004,7 @@ impl App {
         }
     }
 
-    pub fn get_help_text(&mut self) -> &Text<'static> {
+    pub fn get_help_rows(&mut self) -> &[crate::ui::HelpRow] {
         let tab = self.help_tab;
         if self.list.help_text_cache.is_none() {
             self.list.help_text_cache = Some(crate::ui::help_text_for_tab(
@@ -977,8 +1015,27 @@ impl App {
         }
         self.list
             .help_text_cache
-            .as_ref()
+            .as_deref()
             .expect("help_text_cache populated above")
+    }
+
+    pub fn update_help_search(&mut self) {
+        let query = self.help_search.query.to_lowercase();
+        if !query.is_empty() {
+            let results: Vec<(usize, String)> = self
+                .get_help_rows()
+                .iter()
+                .enumerate()
+                .filter(|(_, hr)| hr.search_text.contains(&query))
+                .map(|(i, hr)| (i, hr.search_text.clone()))
+                .collect();
+            self.help_search.results = results;
+        } else {
+            self.help_search.results.clear();
+        }
+        if self.help_search.selected >= self.help_search.results.len() {
+            self.help_search.selected = self.help_search.results.len().saturating_sub(1);
+        }
     }
 
     pub fn initiate_quit(&mut self) {
