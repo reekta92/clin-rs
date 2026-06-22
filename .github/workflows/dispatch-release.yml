@@ -321,13 +321,11 @@ jobs:
         run: cargo build --release --locked
       - name: Build packages
         run: |
-          cargo install cargo-deb cargo-generate-rpm --locked
+          cargo install cargo-deb cargo-generate-rpm cargo-edit --locked
           VERSION=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
           if [[ "$VERSION" == *"-"* ]]; then
             DEB_VERSION=$(echo "$VERSION" | sed 's/-/~/g')
-            echo "" >> Cargo.toml
-            echo "[package.metadata.deb]" >> Cargo.toml
-            echo "version = \"$DEB_VERSION\"" >> Cargo.toml
+            cargo set-val package.metadata.deb.version "$DEB_VERSION"
           fi
           cargo deb --no-build
           cargo generate-rpm
