@@ -6,7 +6,7 @@ use clap::{Parser, Subcommand};
 #[command(
     name = "clin",
     version,
-    about = "Encrypted terminal note-taking app inspired by Obsidian"
+    about = "Feature-packed terminal note management app inspired by Obsidian"
 )]
 pub struct Cli {
     /// Override the config file location for this run.

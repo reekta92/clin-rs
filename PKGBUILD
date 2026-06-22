@@ -2,7 +2,7 @@
 pkgname=clin-rs-bin
 pkgver=0.8.25
 pkgrel=1
-pkgdesc="Encrypted terminal note-taking app"
+pkgdesc="Feature-packed terminal note management app"
 url="https://github.com/reekta92/clin-rs"
 license=("GPL-3.0")
 arch=("x86_64")

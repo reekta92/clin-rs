@@ -1,5 +1,5 @@
 {
-  description = "Encrypted terminal note-taking app inspired by Obsidian";
+  description = "Feature-packed terminal note management app inspired by Obsidian";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -35,7 +35,7 @@
           ];
 
           meta = with pkgs.lib; {
-            description = "Encrypted terminal note-taking app inspired by Obsidian";
+            description = "Feature-packed terminal note management app inspired by Obsidian";
             homepage = "https://github.com/reekta92/clin-rs";
             license = licenses.gpl3;
             maintainers = [ ];
