@@ -2,12 +2,49 @@
 
 All notable changes to clin are documented in this file.
 
-## [Unreleased]
+## [0.9.0] - 2026-06-22
 
 ### Added
 
-- Month calendar widget (note activity) at the bottom of the notes list, toggleable via `Shift+C`, the command palette, and `calendar_enabled` in `[list]`
+- Add Ctrl+P as default command palette keybind
+- Add IconMode with Nerd Font/Unicode/None glyph switching
+- Add inline search popup with row highlighting
+- Hard-abort on Ctrl+C, bypass graceful shutdown
+- Add command palette actions to set daily goals
+- Add daily word and note goal system
+- Add month calendar widget to list view
+- Add editor presets and multi-key sequences
 
+### CI
+
+- Updated dispatch-release to have an option for target branch
+
+### Changed
+
+- Extract TUI event loop into library crate
+- Strip animation engine, fix tab centering, fix calendar border
+- Huge refactor splitting app.rs, keybinds.rs and rendering.rs
+
+### Fixed
+
+- Bullet only CLI items in About tab, not config/info items
+- Match calendar vertical centering
+- Invert resize arrow direction when preview is on right
+- Clear orphaned plaintext temp files after crash
+- Interrupt stuck quit-time flush on second signal
+- Zeroize transient decrypted buffers
+- Reap zombie glow child on cancel render
+- Fixed clippy and build warnings
+- Rebuild display list cache on reload_theme
+
+### Performance
+
+- Use opt-level=3 and mimalloc allocator
+## [0.8.25] - 2026-06-20
+
+### Release
+
+- V0.8.25
 ## [0.8.24] - 2026-06-20
 
 ### Added
