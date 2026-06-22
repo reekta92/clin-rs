@@ -220,6 +220,15 @@ impl FromStr for LabelMode {
     }
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum IconMode {
+    #[default]
+    Nerd,
+    Unicode,
+    None,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum NodeSizeMode {
@@ -585,6 +594,10 @@ pub struct UiConfig {
     /// Show only Nerd Font icons (no text label) on tab bars.
     #[serde(default)]
     pub tab_icons_only: bool,
+
+    /// Icon display mode: Nerd Font, Unicode fallback, or None.
+    #[serde(default)]
+    pub icon_mode: IconMode,
 }
 
 impl Default for UiConfig {
@@ -604,6 +617,7 @@ impl Default for UiConfig {
             background_color: None,
             show_status_bar: default_true(),
             tab_icons_only: false,
+            icon_mode: IconMode::default(),
         }
     }
 }

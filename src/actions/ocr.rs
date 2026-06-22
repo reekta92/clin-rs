@@ -88,8 +88,8 @@ impl Action for OcrPasteAction {
         super::ActionCategory::Append
     }
 
-    fn glyph(&self) -> &'static str {
-        "\u{f03e}"
+    fn glyph(&self) -> (&'static str, &'static str) {
+        ("\u{f03e}", "\u{1f5b9}")
     }
 
     fn execute(&self, app: &mut App, context_note_id: Option<&str>) -> Result<()> {

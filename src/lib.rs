@@ -1157,7 +1157,7 @@ fn run_app(
                                         )
                                         && mouse_event.row == tab_bar_y
                                     {
-                                        let tabs: Vec<(&str, Option<&str>)> = crate::ui::HELP_TAB_NAMES
+                                        let tabs: Vec<(&str, Option<&str>)> = crate::ui::help_tab_names(app.config.ui.icon_mode)
                                             .iter()
                                             .map(|&(l, g)| (l, Some(g)))
                                             .collect();
@@ -1169,6 +1169,7 @@ fn run_app(
                                             region.x,
                                             mouse_event.column,
                                             app.config.ui.tab_icons_only,
+                                            app.config.ui.icon_mode,
                                         ) {
                                             app.switch_help_tab(crate::app::HelpTab::from_index(i));
                                         }

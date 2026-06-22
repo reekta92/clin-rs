@@ -1369,7 +1369,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                     mouse_event.row,
                 );
             } else if mouse_event.row == chunks[1].y {
-                let tabs: Vec<(&str, Option<&str>)> = crate::palette::PALETTE_TABS
+                let tabs: Vec<(&str, Option<&str>)> = crate::palette::palette_tabs(app.config.ui.icon_mode)
                     .iter()
                     .map(|(l, g, _)| (*l, Some(*g)))
                     .collect();
@@ -1380,6 +1380,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                     chunks[1].x, // no title badge to avoid
                     mouse_event.column,
                     app.config.ui.tab_icons_only,
+                    app.config.ui.icon_mode,
                 ) {
                     palette.active_tab = i;
                     palette.refresh_items(app);
@@ -1787,6 +1788,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                     region.x, // min_x: don't overlap the title badge
                     mouse_event.column,
                     app.config.ui.tab_icons_only,
+                    app.config.ui.icon_mode,
                 ) {
                     app.list.grid_folder = if i == 1 {
                         crate::app::VIRTUAL_PINNED_PATH.to_string()

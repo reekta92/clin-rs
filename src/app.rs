@@ -630,16 +630,34 @@ impl App {
                 } => {
                     let indent = "  ".repeat(*depth);
                     let is_pinned = name == crate::app::VIRTUAL_PINNED_LABEL;
-                    let icon = if is_pinned {
+                    let icon = if self.config.ui.icon_mode == crate::config::IconMode::None {
+                        String::new()
+                    } else if is_pinned {
                         if *is_expanded {
-                            "\u{f078} \u{f08d}"
+                            format!(
+                                "{} {}",
+                                crate::ui::get_icon("\u{f078}", "\u{25bc}", self.config.ui.icon_mode),
+                                crate::ui::get_icon("\u{f08d}", "\u{1f4cc}", self.config.ui.icon_mode)
+                            )
                         } else {
-                            "\u{f054} \u{f08d}"
+                            format!(
+                                "{} {}",
+                                crate::ui::get_icon("\u{f054}", "\u{25b6}", self.config.ui.icon_mode),
+                                crate::ui::get_icon("\u{f08d}", "\u{1f4cc}", self.config.ui.icon_mode)
+                            )
                         }
                     } else if *is_expanded {
-                        "\u{f078} \u{f114}"
+                        format!(
+                            "{} {}",
+                            crate::ui::get_icon("\u{f078}", "\u{25bc}", self.config.ui.icon_mode),
+                            crate::ui::get_icon("\u{f114}", "\u{1f4c2}", self.config.ui.icon_mode)
+                        )
                     } else {
-                        "\u{f054} \u{f114}"
+                        format!(
+                            "{} {}",
+                            crate::ui::get_icon("\u{f054}", "\u{25b6}", self.config.ui.icon_mode),
+                            crate::ui::get_icon("\u{f114}", "\u{1f4c2}", self.config.ui.icon_mode)
+                        )
                     };
                     let color = if is_pinned {
                         self.app_theme.heading
@@ -647,14 +665,22 @@ impl App {
                         self.app_theme.folder
                     };
                     let sanitized_name = crate::sanitize::sanitize_for_terminal(name);
-                    let mut text = format!("{indent}{icon} {sanitized_name} ({note_count})");
+                    let mut text = if icon.is_empty() {
+                        format!("{indent}{sanitized_name} ({note_count})")
+                    } else {
+                        format!("{indent}{icon} {sanitized_name} ({note_count})")
+                    };
                     if self.list.list_mode == crate::list_view::ListMode::Select {
                         let checkbox = if self.list.selected_indices.contains(&vi) {
                             "[x] "
                         } else {
                             "[ ] "
                         };
-                        text = format!("{indent}{checkbox}{icon} {sanitized_name} ({note_count})");
+                        text = if icon.is_empty() {
+                            format!("{indent}{checkbox}{sanitized_name} ({note_count})")
+                        } else {
+                            format!("{indent}{checkbox}{icon} {sanitized_name} ({note_count})")
+                        };
                     }
                     let mut lines = vec![Line::from(vec![Span::styled(
                         text,
@@ -703,40 +729,52 @@ impl App {
 
                     spans.push(Span::raw("  "));
                     if summary.pinned {
-                        spans.push(Span::styled(
-                            "\u{f4cc} ",
-                            Style::default()
-                                .fg(self.app_theme.heading)
-                                .add_modifier(Modifier::BOLD),
-                        ));
+                        let icon = crate::ui::get_icon("\u{f4cc}", "\u{1f4cc}", self.config.ui.icon_mode);
+                        if !icon.is_empty() {
+                            spans.push(Span::styled(
+                                format!("{icon} "),
+                                Style::default()
+                                    .fg(self.app_theme.heading)
+                                    .add_modifier(Modifier::BOLD),
+                            ));
+                        }
                     }
 
                     if *is_clin {
                         text_style = text_style.fg(self.app_theme.muted);
-                        spans.push(Span::styled(
-                            "\u{f023} ",
-                            Style::default()
-                                .fg(self.app_theme.destructive)
-                                .add_modifier(Modifier::BOLD),
-                        ));
+                        let icon = crate::ui::get_icon("\u{f023}", "\u{1f512}", self.config.ui.icon_mode);
+                        if !icon.is_empty() {
+                            spans.push(Span::styled(
+                                format!("{icon} "),
+                                Style::default()
+                                    .fg(self.app_theme.destructive)
+                                    .add_modifier(Modifier::BOLD),
+                            ));
+                        }
                     }
 
                     if *is_draw {
-                        spans.push(Span::styled(
-                            "\u{f1fc} ",
-                            Style::default()
-                                .fg(self.app_theme.success)
-                                .add_modifier(Modifier::BOLD),
-                        ));
+                        let icon = crate::ui::get_icon("\u{f1fc}", "\u{270f}", self.config.ui.icon_mode);
+                        if !icon.is_empty() {
+                            spans.push(Span::styled(
+                                format!("{icon} "),
+                                Style::default()
+                                    .fg(self.app_theme.success)
+                                    .add_modifier(Modifier::BOLD),
+                            ));
+                        }
                     }
 
                     if *is_canvas {
-                        spans.push(Span::styled(
-                            "\u{f005} ",
-                            Style::default()
-                                .fg(self.app_theme.accent)
-                                .add_modifier(Modifier::BOLD),
-                        ));
+                        let icon = crate::ui::get_icon("\u{f005}", "\u{2b50}", self.config.ui.icon_mode);
+                        if !icon.is_empty() {
+                            spans.push(Span::styled(
+                                format!("{icon} "),
+                                Style::default()
+                                    .fg(self.app_theme.accent)
+                                    .add_modifier(Modifier::BOLD),
+                            ));
+                        }
                     }
 
                     let sanitized_title =
@@ -801,7 +839,12 @@ impl App {
                 }
                 VisualItem::CreateNew { depth, .. } => {
                     let indent = "  ".repeat(*depth);
-                    let text = format!("{indent} \u{f067} Create new...");
+                    let icon = crate::ui::get_icon("\u{f067}", "\u{2795}", self.config.ui.icon_mode);
+                    let text = if icon.is_empty() {
+                        format!("{indent}Create new...")
+                    } else {
+                        format!("{indent} {icon} Create new...")
+                    };
                     let mut lines = vec![Line::from(vec![Span::styled(
                         text,
                         Style::default().fg(self.app_theme.success),

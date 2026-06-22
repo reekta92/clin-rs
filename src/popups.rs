@@ -164,6 +164,11 @@ pub struct SortPopup {
     pub selected: usize,
 }
 
+pub struct IconModePopup {
+    pub selected: usize,
+}
+
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NoteFormat {
     Markdown,
@@ -199,6 +204,7 @@ pub struct PopupManager {
     pub template: Option<TemplatePopup>,
     pub theme: Option<ThemePopup>,
     pub tag: Option<TagPopup>,
+    pub icon_mode: Option<IconModePopup>,
     pub sort: Option<SortPopup>,
     pub folder: Option<FolderPopup>,
     pub folder_picker: Option<FolderPicker>,
@@ -219,6 +225,7 @@ impl PopupManager {
             || self.template.is_some()
             || self.theme.is_some()
             || self.tag.is_some()
+            || self.icon_mode.is_some()
             || self.sort.is_some()
             || self.folder.is_some()
             || self.folder_picker.is_some()
@@ -249,6 +256,7 @@ impl PopupManager {
         self.template = None;
         self.theme = None;
         self.tag = None;
+        self.icon_mode = None;
         self.sort = None;
         self.folder = None;
         self.folder_picker = None;

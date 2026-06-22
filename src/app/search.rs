@@ -149,9 +149,9 @@ impl App {
                 format!("{}/{}", note.folder, note.title)
             };
             let lock_prefix = if note.id.ends_with(".clin") {
-                "\u{f023} "
+                format!("{} ", crate::ui::get_icon("\u{f023}", "\u{1f512}", self.config.ui.icon_mode))
             } else {
-                ""
+                String::new()
             };
             let tags_str = if note.tags.is_empty() {
                 String::new()

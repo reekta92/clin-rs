@@ -109,8 +109,13 @@ pub fn title_bar_tabs_region(area: Rect, title: &str) -> Rect {
     }
 }
 
-fn tab_display_text(label: &str, glyph: Option<&str>, icons_only: bool) -> String {
-    match (icons_only, glyph) {
+fn tab_display_text(label: &str, glyph: Option<&str>, icons_only: bool, icon_mode: crate::config::IconMode) -> String {
+    let effective_icons_only = icons_only && icon_mode != crate::config::IconMode::None;
+    let effective_glyph = match icon_mode {
+        crate::config::IconMode::None => None,
+        _ => glyph,
+    };
+    match (effective_icons_only, effective_glyph) {
         (true, Some(g)) => format!(" {g} "),
         (true, None) => format!(" {label} "),
         (false, Some(g)) => format!(" {g} {label} "),
@@ -118,9 +123,14 @@ fn tab_display_text(label: &str, glyph: Option<&str>, icons_only: bool) -> Strin
     }
 }
 
-fn tab_display_width(label: &str, glyph: Option<&str>, icons_only: bool) -> u16 {
+fn tab_display_width(label: &str, glyph: Option<&str>, icons_only: bool, icon_mode: crate::config::IconMode) -> u16 {
     let label_w = label.chars().count() as u16;
-    match (icons_only, glyph) {
+    let effective_icons_only = icons_only && icon_mode != crate::config::IconMode::None;
+    let effective_glyph = match icon_mode {
+        crate::config::IconMode::None => None,
+        _ => glyph,
+    };
+    match (effective_icons_only, effective_glyph) {
         (true, Some(g)) => 2 + g.chars().count() as u16, // " g "
         (true, None) => 2 + label_w,                     // " label "
         (false, Some(g)) => 3 + g.chars().count() as u16 + label_w, // " g label "
@@ -133,6 +143,7 @@ pub fn build_tab_spans(
     active: usize,
     theme: &AppThemeColors,
     icons_only: bool,
+    icon_mode: crate::config::IconMode,
 ) -> Vec<Span<'static>> {
     let active_style = Style::default()
         .fg(theme.accent)
@@ -151,7 +162,7 @@ pub fn build_tab_spans(
             inactive_style
         };
         spans.push(Span::styled(
-            tab_display_text(label, *glyph, icons_only),
+            tab_display_text(label, *glyph, icons_only, icon_mode),
             style,
         ));
     }
@@ -165,10 +176,11 @@ pub fn hit_test_tabs(
     min_x: u16,
     click_x: u16,
     icons_only: bool,
+    icon_mode: crate::config::IconMode,
 ) -> Option<usize> {
     let widths: Vec<u16> = tabs
         .iter()
-        .map(|(l, g)| tab_display_width(l, *g, icons_only))
+        .map(|(l, g)| tab_display_width(l, *g, icons_only, icon_mode))
         .collect();
     let mut total: u16 = 0;
     for (i, w) in widths.iter().enumerate() {

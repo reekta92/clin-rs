@@ -37,7 +37,7 @@ impl BackupState {
                 }
             }
             Event::Mouse(mouse) => {
-                if let InputResult::Refresh = input::handle_mouse(self, mouse) {
+                if let InputResult::Refresh = input::handle_mouse(self, mouse, config.ui.icon_mode) {
                     self.refresh_git_info();
                 }
             }

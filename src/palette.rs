@@ -4,34 +4,36 @@ use ratatui::widgets::{Block, Borders};
 use ratatui_textarea::TextArea;
 
 /// (label, glyph, category-to-filter). Tab 0 = All (no filter).
-pub const PALETTE_TABS: &[(&str, &str, Option<crate::actions::ActionCategory>)] = &[
-    ("All", "\u{f0ca}", None),
-    (
-        "Notes",
-        "\u{f15c}",
-        Some(crate::actions::ActionCategory::Notes),
-    ),
-    (
-        "Import",
-        "\u{f019}",
-        Some(crate::actions::ActionCategory::Import),
-    ),
-    (
-        "Append",
-        "\u{f067}",
-        Some(crate::actions::ActionCategory::Append),
-    ),
-    (
-        "Views",
-        "\u{f06e}",
-        Some(crate::actions::ActionCategory::Views),
-    ),
-    (
-        "Settings",
-        "\u{f013}",
-        Some(crate::actions::ActionCategory::Settings),
-    ),
-];
+pub fn palette_tabs(icon_mode: crate::config::IconMode) -> Vec<(&'static str, &'static str, Option<crate::actions::ActionCategory>)> {
+    vec![
+        ("All", crate::ui::get_icon("\u{f0ca}", "\u{1f4cb}", icon_mode), None),
+        (
+            "Notes",
+            crate::ui::get_icon("\u{f15c}", "\u{1f4c4}", icon_mode),
+            Some(crate::actions::ActionCategory::Notes),
+        ),
+        (
+            "Import",
+            crate::ui::get_icon("\u{f019}", "\u{1f4e5}", icon_mode),
+            Some(crate::actions::ActionCategory::Import),
+        ),
+        (
+            "Append",
+            crate::ui::get_icon("\u{f067}", "\u{2795}", icon_mode),
+            Some(crate::actions::ActionCategory::Append),
+        ),
+        (
+            "Views",
+            crate::ui::get_icon("\u{f06e}", "\u{1f441}", icon_mode),
+            Some(crate::actions::ActionCategory::Views),
+        ),
+        (
+            "Settings",
+            crate::ui::get_icon("\u{f013}", "\u{2699}", icon_mode),
+            Some(crate::actions::ActionCategory::Settings),
+        ),
+    ]
+}
 
 pub struct PaletteItem {
     pub id: String,
@@ -77,7 +79,7 @@ impl CommandPalette {
         let actions = crate::actions::get_all_action_infos(app);
         let mut matched = Vec::with_capacity(actions.len());
 
-        let category_filter = PALETTE_TABS[self.active_tab].2;
+        let category_filter = palette_tabs(app.config.ui.icon_mode)[self.active_tab].2;
 
         if query.is_empty() {
             for action in actions {
@@ -126,12 +128,12 @@ impl CommandPalette {
         match key.code {
             KeyCode::Esc => return true,
             KeyCode::Tab => {
-                self.active_tab = (self.active_tab + 1) % PALETTE_TABS.len();
+                self.active_tab = (self.active_tab + 1) % palette_tabs(app.config.ui.icon_mode).len();
                 self.refresh_items(app);
             }
             KeyCode::BackTab => {
                 if self.active_tab == 0 {
-                    self.active_tab = PALETTE_TABS.len() - 1;
+                    self.active_tab = palette_tabs(app.config.ui.icon_mode).len() - 1;
                 } else {
                     self.active_tab -= 1;
                 }

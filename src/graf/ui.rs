@@ -289,6 +289,7 @@ fn draw_preview(frame: &mut Frame, preview_rect: Rect, state: &GrafAppState, con
         state.preview_content.as_ref(),
         hide_encrypted,
         0,
+        config.ui.icon_mode,
     );
 }
 

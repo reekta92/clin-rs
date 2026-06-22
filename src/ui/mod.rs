@@ -19,6 +19,26 @@ pub use popups::*;
 pub use title_bar::*;
 pub use help::*;
 
+use crate::config::IconMode;
+
+/// Return the appropriate icon string based on `mode`.
+pub fn get_icon(nerd: &'static str, unicode: &'static str, mode: IconMode) -> &'static str {
+    match mode {
+        IconMode::Nerd => nerd,
+        IconMode::Unicode => unicode,
+        IconMode::None => "",
+    }
+}
+
+/// Return the appropriate icon character based on `mode`.
+pub fn get_char(nerd: char, unicode: char, mode: IconMode) -> char {
+    match mode {
+        IconMode::Nerd => nerd,
+        IconMode::Unicode => unicode,
+        IconMode::None => ' ',
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum PopupSize {
     Small,   // 40% width, 40% height. Max bounds: 60 cols x 20 rows
@@ -83,7 +103,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     .constraints([Constraint::Length(1), Constraint::Min(0)])
                     .split(frame.area());
                 // Backup uses a custom header render instead of the standard title bar
-                crate::backup::render::draw_header(frame, outer[0], backup);
+                crate::backup::render::draw_header(frame, outer[0], backup, app.config.ui.icon_mode);
                 backup.overlay_render(frame, outer[1], &app.app_theme, &app.config);
             }
         }
@@ -352,7 +372,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         );
         frame.render_widget(&palette.input, chunks[0]);
 
-        let tabs: Vec<(&str, Option<&str>)> = crate::palette::PALETTE_TABS
+        let tabs: Vec<(&str, Option<&str>)> = crate::palette::palette_tabs(app.config.ui.icon_mode)
             .iter()
             .map(|(l, g, _)| (*l, Some(*g)))
             .collect();
@@ -361,6 +381,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             palette.active_tab,
             &app.app_theme,
             app.config.ui.tab_icons_only,
+            app.config.ui.icon_mode,
         );
         let tabs_w = Paragraph::new(Line::from(tab_spans))
             .alignment(Alignment::Center)
@@ -548,11 +569,12 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 let text = if f.is_empty() { "Vault" } else { f.as_str() };
                 add_sep(&mut spans, &mut first, &app.app_theme);
                 spans.push(Span::styled(
-                    "\u{f07c} ",
+                    crate::ui::get_icon("\u{f07c}", "\u{1f4c2}", app.config.ui.icon_mode).to_string(),
                     Style::default()
                         .fg(app.app_theme.accent)
                         .add_modifier(Modifier::BOLD),
                 ));
+                spans.push(Span::raw(" "));
                 spans.push(Span::styled(
                     text.to_string(),
                     Style::default()
@@ -562,8 +584,9 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             }
             if parsed.pinned_only {
                 add_sep(&mut spans, &mut first, &app.app_theme);
+                let pin_icon = crate::ui::get_icon("\u{f08d}", "\u{1f4cc}", app.config.ui.icon_mode);
                 spans.push(Span::styled(
-                    "\u{f08d} Pinned",
+                    format!("{pin_icon} Pinned"),
                     Style::default()
                         .fg(app.app_theme.accent)
                         .add_modifier(Modifier::BOLD),
@@ -576,8 +599,9 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 } else {
                     parsed.grep_text.clone()
                 };
+                let search_icon = crate::ui::get_icon("\u{f002}", "\u{1f50d}", app.config.ui.icon_mode);
                 spans.push(Span::styled(
-                    format!("\u{f002} {grep_display}"),
+                    format!("{search_icon} {grep_display}"),
                     Style::default()
                         .fg(app.app_theme.accent)
                         .add_modifier(Modifier::BOLD),
@@ -591,17 +615,19 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     tags.join(", ")
                 };
                 spans.push(Span::styled(
-                    "\u{f02b} ",
+                    crate::ui::get_icon("\u{f02b}", "\u{1f3f7}", app.config.ui.icon_mode).to_string(),
                     Style::default()
                         .fg(app.app_theme.accent)
                         .add_modifier(Modifier::BOLD),
                 ));
+                spans.push(Span::raw(" "));
                 spans.push(Span::styled(
                     tag_text,
                     Style::default()
                         .fg(app.app_theme.accent)
                         .add_modifier(Modifier::BOLD),
                 ));
+
             }
 
             let filter_line = Line::from(spans);
@@ -655,14 +681,14 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             }
             let items: Vec<ListItem> = visible
                 .iter()
-                .map(|(_, t)| ListItem::new(crate::ui::styled_result_line(t, &app.app_theme)))
+                .map(|(_, t)| ListItem::new(crate::ui::styled_result_line(t, &app.app_theme, app.config.ui.icon_mode)))
                 .collect();
             (items, "")
         } else if has_title {
             let items: Vec<ListItem> = popup
                 .title_results
                 .iter()
-                .map(|entry| ListItem::new(crate::ui::styled_result_line(entry, &app.app_theme)))
+                .map(|entry| ListItem::new(crate::ui::styled_result_line(entry, &app.app_theme, app.config.ui.icon_mode)))
                 .collect();
             (items, "")
         } else {
@@ -786,6 +812,11 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     }
 
     // Sort popup
+    // Icon mode popup
+    if let Some(popup) = &app.popups.icon_mode {
+        draw_icon_mode_popup(frame, popup, frame.area(), &app.app_theme);
+    }
+
     if let Some(popup) = &app.popups.sort {
         draw_sort_popup(frame, popup, frame.area(), &app.app_theme);
     }

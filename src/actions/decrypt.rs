@@ -21,8 +21,8 @@ impl Action for DecryptNoteAction {
         super::ActionCategory::Notes
     }
 
-    fn glyph(&self) -> &'static str {
-        "\u{f3c1}"
+    fn glyph(&self) -> (&'static str, &'static str) {
+        ("\u{f3c1}", "\u{1f513}")
     }
 
     fn execute(&self, app: &mut App, context_note_id: Option<&str>) -> Result<()> {

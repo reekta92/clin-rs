@@ -14,13 +14,14 @@ pub fn draw_preview_pane(
     content: Option<&PreviewContent>,
     hide_encrypted: bool,
     scroll_offset: u16,
+    icon_mode: crate::config::IconMode,
 ) {
     if hide_encrypted {
         let lock_lines = vec![
             Line::from(vec![
                 Span::raw("  "),
                 Span::styled(
-                    "\u{f023}  Encrypted Note",
+                    format!("{}  Encrypted Note", crate::ui::get_icon("\u{f023}", "\u{1f512}", icon_mode)),
                     Style::default()
                         .fg(theme.destructive)
                         .add_modifier(Modifier::BOLD),

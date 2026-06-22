@@ -246,6 +246,46 @@ pub fn draw_sort_popup(
     frame.render_stateful_widget(list, content_area, &mut state);
 }
 
+pub fn draw_icon_mode_popup(
+    frame: &mut Frame,
+    popup: &crate::popups::IconModePopup,
+    area: Rect,
+    theme: &AppThemeColors,
+) {
+    let content_area = draw_popup_frame(
+        frame,
+        area,
+        "ICON MODE",
+        PopupSize::Medium,
+        "↑↓: Navigate • Enter: Select • Esc: Cancel",
+        theme,
+    );
+
+    let options = ["Nerd Font", "Unicode", "None"];
+    let items: Vec<ListItem> = options
+        .iter()
+        .map(|&opt| ListItem::new(Line::from(Span::raw(opt))))
+        .collect();
+
+    let list = List::new(items)
+        .block(
+            Block::default()
+                .style(theme.bg_style())
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(theme.heading)),
+        )
+        .highlight_style(
+            Style::default()
+                .fg(theme.highlight_fg)
+                .bg(theme.highlight_bg)
+                .add_modifier(Modifier::BOLD),
+        );
+
+    let mut state = ListState::default();
+    state.select(Some(popup.selected));
+    frame.render_stateful_widget(list, content_area, &mut state);
+}
+
 pub fn draw_create_format_popup(
     frame: &mut Frame,
     popup: &crate::popups::CreateFormatPopup,

@@ -90,7 +90,7 @@ impl DrawAppState {
         _config: &crate::config::ClinConfig,
     ) {
         self.last_area = area;
-        draw_canvas(frame, self, area);
+        draw_canvas(frame, self, area, _config);
     }
 
     pub fn overlay_handle_event(

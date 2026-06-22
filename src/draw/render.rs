@@ -9,7 +9,7 @@ use ratatui::text::{Line as TuiLine, Span};
 use ratatui::widgets::canvas::{Canvas, Context, Line, Rectangle};
 use ratatui::widgets::{Block, List, ListItem, Paragraph};
 
-pub fn draw_canvas(frame: &mut Frame, app: &DrawAppState, area: Rect) {
+pub fn draw_canvas(frame: &mut Frame, app: &DrawAppState, area: Rect, config: &crate::config::ClinConfig) {
     let x_bounds = [
         app.viewport.x - 100.0 / app.viewport.zoom,
         app.viewport.x + 100.0 / app.viewport.zoom,
@@ -65,11 +65,12 @@ pub fn draw_canvas(frame: &mut Frame, app: &DrawAppState, area: Rect) {
         1,
     );
 
+    let im = config.ui.icon_mode;
     let tools = [
-        (DrawTool::Draw, "\u{f040} Draw"),
-        (DrawTool::Shape, "\u{f0c8} Shape"),
-        (DrawTool::Text, "\u{f031} Text"),
-        (DrawTool::Erase, "\u{f1f8} Erase"),
+        (DrawTool::Draw, crate::ui::get_icon("\u{f040}", "\u{270f}", im)),
+        (DrawTool::Shape, crate::ui::get_icon("\u{f0c8}", "\u{25a0}", im)),
+        (DrawTool::Text, crate::ui::get_icon("\u{f031}", "\u{1f4dd}", im)),
+        (DrawTool::Erase, crate::ui::get_icon("\u{f1f8}", "\u{1f5d1}", im)),
     ];
 
     let mut spans = Vec::new();
@@ -85,7 +86,7 @@ pub fn draw_canvas(frame: &mut Frame, app: &DrawAppState, area: Rect) {
         } else {
             Style::default().fg(app.theme.fg)
         };
-        spans.push(Span::styled(*label, style));
+        spans.push(Span::styled(label.to_string(), style));
     }
 
     frame.render_widget(

@@ -530,6 +530,44 @@ template = """
         self.popups.sort = None;
     }
 
+    pub fn begin_icon_mode_selection(&mut self) {
+        let current_idx = match self.config.ui.icon_mode {
+            crate::config::IconMode::Nerd => 0,
+            crate::config::IconMode::Unicode => 1,
+            crate::config::IconMode::None => 2,
+        };
+        self.popups.icon_mode = Some(crate::popups::IconModePopup {
+            selected: current_idx,
+        });
+    }
+
+    pub fn select_icon_mode(&mut self) {
+        if let Some(popup) = self.popups.icon_mode.take() {
+            let mode = match popup.selected {
+                0 => crate::config::IconMode::Nerd,
+                1 => crate::config::IconMode::Unicode,
+                _ => crate::config::IconMode::None,
+            };
+            self.config.ui.icon_mode = mode;
+            let status = match mode {
+                crate::config::IconMode::Nerd => "Icon mode: Nerd Font",
+                crate::config::IconMode::Unicode => "Icon mode: Unicode",
+                crate::config::IconMode::None => "Icon mode: None",
+            };
+            self.set_temporary_status_static(status);
+            if let Ok(mut config) = crate::config::ClinConfig::load() {
+                config.ui.icon_mode = mode;
+                if let Err(e) = config.save() {
+                    self.set_temporary_status(&format!("Failed to save config: {e}"));
+                }
+            }
+        }
+    }
+
+    pub fn close_icon_mode_popup(&mut self) {
+        self.popups.icon_mode = None;
+    }
+
     pub fn select_theme(&mut self) {
         if let Some(mut popup) = self.popups.theme.take() {
             match popup.focus {

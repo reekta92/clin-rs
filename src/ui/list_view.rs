@@ -32,13 +32,17 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         let preview_info = get_preview_info(app);
         draw_view_title_bar(frame, chunks[0], title, &app.app_theme, preview_info);
     } else if app.list.notes_layout == crate::config::NotesLayout::Grid {
-        let tabs = [("Vault", Some("\u{f07b}")), ("Pinned", Some("\u{f4cc}"))];
+        let tabs = [
+            ("Vault", Some(crate::ui::get_icon("\u{f07b}", "\u{1f4c1}", app.config.ui.icon_mode))),
+            ("Pinned", Some(crate::ui::get_icon("\u{f4cc}", "\u{1f4cc}", app.config.ui.icon_mode))),
+        ];
         let is_pinned = app.list.grid_folder == VIRTUAL_PINNED_PATH;
         let tab_spans = build_tab_spans(
             &tabs,
             if is_pinned { 1 } else { 0 },
             &app.app_theme,
             app.config.ui.tab_icons_only,
+            app.config.ui.icon_mode,
         );
         draw_view_title_bar_with_tabs(frame, chunks[0], title, tab_spans, &app.app_theme);
 
@@ -51,7 +55,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
 
             let when = format_relative_time(s.updated_at);
             spans.push(Span::styled(
-                " \u{f017} ",
+                format!(" {} ", crate::ui::get_icon("\u{f017}", "\u{23f0}", app.config.ui.icon_mode)),
                 Style::default().fg(app.app_theme.muted),
             ));
             spans.push(Span::styled(
@@ -61,7 +65,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
 
             if !s.tags.is_empty() {
                 spans.push(Span::styled(
-                    "  \u{f02b} ",
+                    format!("  {} ", crate::ui::get_icon("\u{f02b}", "\u{1f3f7}", app.config.ui.icon_mode)),
                     Style::default()
                         .fg(app.app_theme.tag)
                         .add_modifier(Modifier::BOLD),
@@ -83,7 +87,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             let mut spans = Vec::new();
             let suffix = if *note_count == 1 { "note" } else { "notes" };
             spans.push(Span::styled(
-                " \u{f0ca} ",
+                format!(" {} ", crate::ui::get_icon("\u{f0ca}", "\u{1f4cb}", app.config.ui.icon_mode)),
                 Style::default().fg(app.app_theme.folder),
             ));
             spans.push(Span::styled(
@@ -125,14 +129,14 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             let mut spans = Vec::new();
             if is_pinned {
                 spans.push(Span::styled(
-                    " \u{f4cc} Pinned",
+                    format!(" {} Pinned", crate::ui::get_icon("\u{f4cc}", "\u{1f4cc}", app.config.ui.icon_mode)),
                     Style::default()
                         .fg(app.app_theme.heading)
                         .add_modifier(Modifier::BOLD),
                 ));
             } else {
                 spans.push(Span::styled(
-                    " \u{f07b} Vault",
+                    format!(" {} Vault", crate::ui::get_icon("\u{f07b}", "\u{1f4c1}", app.config.ui.icon_mode)),
                     Style::default()
                         .fg(app.app_theme.folder)
                         .add_modifier(Modifier::BOLD),
@@ -202,23 +206,23 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
 
                 // --- resolve (icon char, glyph color, display name): SAME mapping the old code used ---
                 let item = &app.list.visual_list[vi];
-                let (icon_char, glyph_color, raw_name) = match item {
+                let (icon_char, text_label, glyph_color, raw_name) = match item {
                     crate::app::VisualItem::Folder { name, .. } => {
                         let is_pinned = name == VIRTUAL_PINNED_LABEL;
                         let is_parent = name == "..";
-                        let ic = if is_pinned {
-                            '\u{f4cc}'
+                        let (ic, label) = if is_pinned {
+                            (crate::ui::get_char('\u{f4cc}', '\u{1f4cc}', app.config.ui.icon_mode), "F")
                         } else if is_parent {
-                            '\u{f062}' // Arrow Up ()
+                            (crate::ui::get_char('\u{f062}', '\u{2b06}', app.config.ui.icon_mode), "^")
                         } else {
-                            '\u{f07b}' // Folder ()
+                            (crate::ui::get_char('\u{f07b}', '\u{1f4c1}', app.config.ui.icon_mode), "F")
                         };
                         let col = if is_pinned {
                             app.app_theme.heading
                         } else {
                             app.app_theme.folder
                         };
-                        (ic, col, name.clone())
+                        (ic, label, col, name.clone())
                     }
                     crate::app::VisualItem::Note {
                         summary_idx,
@@ -240,20 +244,34 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                             app.app_theme.text
                         };
                         let ic = if s.pinned {
-                            '\u{f4cc}'
+                            crate::ui::get_char('\u{f4cc}', '\u{1f4cc}', app.config.ui.icon_mode)
                         } else if *is_clin {
-                            '\u{f023}'
+                            crate::ui::get_char('\u{f023}', '\u{1f512}', app.config.ui.icon_mode)
                         } else if *is_draw {
-                            '\u{f1fc}'
+                            crate::ui::get_char('\u{f1fc}', '\u{270f}', app.config.ui.icon_mode)
                         } else if *is_canvas {
-                            '\u{f005}'
+                            crate::ui::get_char('\u{f005}', '\u{2b50}', app.config.ui.icon_mode)
                         } else {
-                            '\u{f15c}'
+                            crate::ui::get_char('\u{f15c}', '\u{1f4c4}', app.config.ui.icon_mode)
                         };
-                        (ic, col, s.title.clone())
+                        let label = if *is_clin {
+                            "CX"
+                        } else if *is_draw {
+                            "D"
+                        } else if *is_canvas {
+                            "C"
+                        } else {
+                            "MD"
+                        };
+                        (ic, label, col, s.title.clone())
                     }
                     crate::app::VisualItem::CreateNew { .. } => {
-                        ('\u{f067}', app.app_theme.success, "Create...".to_string())
+                        (
+                            crate::ui::get_char('\u{f067}', '\u{2795}', app.config.ui.icon_mode),
+                            "+",
+                            app.app_theme.success,
+                            "Create...".to_string(),
+                        )
                     }
                 };
 
@@ -266,8 +284,6 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 }
                 let inner = block.inner(tile_rect);
                 block.render(tile_rect, buf); // paints border
-
-                // --- icon: centered on the top inner row ---
                 let icon_style = if is_selected {
                     Style::default()
                         .fg(glyph_color)
@@ -275,10 +291,20 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 } else {
                     Style::default().fg(glyph_color)
                 };
-                let inner_w = inner.width as usize; // GRID_TILE_W - 2 = 10
-                let icon_x = inner.x + (inner_w.saturating_sub(1) / 2) as u16; // center the 1-wide glyph
-                if let Some(cell) = buf.cell_mut((icon_x, inner.y)) {
-                    cell.set_char(icon_char).set_style(icon_style);
+                let inner_w = inner.width as usize;
+                if app.config.ui.icon_mode == crate::config::IconMode::None {
+                    let label_chars: Vec<char> = text_label.chars().collect();
+                    let label_start = inner.x + ((inner_w.saturating_sub(label_chars.len())) / 2) as u16;
+                    for (k, ch) in label_chars.iter().enumerate() {
+                        if let Some(cell) = buf.cell_mut((label_start + k as u16, inner.y)) {
+                            cell.set_char(*ch).set_style(icon_style);
+                        }
+                    }
+                } else {
+                    let icon_x = inner.x + (inner_w.saturating_sub(1) / 2) as u16;
+                    if let Some(cell) = buf.cell_mut((icon_x, inner.y)) {
+                        cell.set_char(icon_char).set_style(icon_style);
+                    }
                 }
 
                 // --- tag icon: top right corner for items that have tags ---
@@ -298,7 +324,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                         } else {
                             Style::default().fg(app.app_theme.tag)
                         };
-                        cell.set_char('\u{f02b}').set_style(tag_style);
+                        cell.set_char(crate::ui::get_char('\u{f02b}', '\u{1f3f7}', app.config.ui.icon_mode)).set_style(tag_style);
                     }
                 }
 
@@ -403,6 +429,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             content,
             hide_encrypted,
             app.list.snapshot_scroll_offset,
+            app.config.ui.icon_mode,
         );
     }
     if let Some(cal_rect) = calendar_area {
@@ -739,7 +766,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         );
         frame.render_widget(&palette.input, chunks[0]);
 
-        let tabs: Vec<(&str, Option<&str>)> = crate::palette::PALETTE_TABS
+        let tabs: Vec<(&str, Option<&str>)> = crate::palette::palette_tabs(app.config.ui.icon_mode)
             .iter()
             .map(|(l, g, _)| (*l, Some(*g)))
             .collect();
@@ -748,6 +775,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             palette.active_tab,
             &app.app_theme,
             app.config.ui.tab_icons_only,
+            app.config.ui.icon_mode,
         );
         let tabs_w = Paragraph::new(Line::from(tab_spans))
             .alignment(Alignment::Center)
@@ -930,7 +958,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 let text = if f.is_empty() { "Vault" } else { f.as_str() };
                 add_sep(&mut spans, &mut first, &app.app_theme);
                 spans.push(Span::styled(
-                    "\u{f07c} ",
+                    format!("{} ", crate::ui::get_icon("\u{f07c}", "\u{1f4c2}", app.config.ui.icon_mode)),
                     Style::default()
                         .fg(app.app_theme.accent)
                         .add_modifier(Modifier::BOLD),
@@ -945,7 +973,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             if parsed.pinned_only {
                 add_sep(&mut spans, &mut first, &app.app_theme);
                 spans.push(Span::styled(
-                    "\u{f08d} Pinned",
+                    format!("{} Pinned", crate::ui::get_icon("\u{f08d}", "\u{1f4cc}", app.config.ui.icon_mode)),
                     Style::default()
                         .fg(app.app_theme.accent)
                         .add_modifier(Modifier::BOLD),
@@ -959,7 +987,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     parsed.grep_text.clone()
                 };
                 spans.push(Span::styled(
-                    format!("\u{f002} {grep_display}"),
+                    format!("{} {grep_display}", crate::ui::get_icon("\u{f002}", "\u{1f50d}", app.config.ui.icon_mode)),
                     Style::default()
                         .fg(app.app_theme.accent)
                         .add_modifier(Modifier::BOLD),
@@ -973,7 +1001,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     tags.join(", ")
                 };
                 spans.push(Span::styled(
-                    "\u{f02b} ",
+                    format!("{} ", crate::ui::get_icon("\u{f02b}", "\u{1f3f7}", app.config.ui.icon_mode)),
                     Style::default()
                         .fg(app.app_theme.accent)
                         .add_modifier(Modifier::BOLD),
@@ -1037,14 +1065,14 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             }
             let items: Vec<ListItem> = visible
                 .iter()
-                .map(|(_, t)| ListItem::new(crate::ui::styled_result_line(t, &app.app_theme)))
+                .map(|(_, t)| ListItem::new(crate::ui::styled_result_line(t, &app.app_theme, app.config.ui.icon_mode)))
                 .collect();
             (items, "")
         } else if has_title {
             let items: Vec<ListItem> = popup
                 .title_results
                 .iter()
-                .map(|entry| ListItem::new(crate::ui::styled_result_line(entry, &app.app_theme)))
+                .map(|entry| ListItem::new(crate::ui::styled_result_line(entry, &app.app_theme, app.config.ui.icon_mode)))
                 .collect();
             (items, "")
         } else {

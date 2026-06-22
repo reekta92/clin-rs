@@ -968,6 +968,40 @@ pub fn handle_global_popups_and_palette(
                 return true;
             }
 
+
+            if let Some(mut popup) = app.popups.icon_mode.take() {
+                app.seq_matcher.clear();
+                match key.code {
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        popup.selected = popup.selected.saturating_sub(1);
+                        app.popups.icon_mode = Some(popup);
+                    }
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        if popup.selected < 2 {
+                            popup.selected += 1;
+                        }
+                        app.popups.icon_mode = Some(popup);
+                    }
+                    _ if app
+                        .keybinds
+                        .matches_list(crate::keybinds::ListAction::Confirm, &key) =>
+                    {
+                        app.popups.icon_mode = Some(popup);
+                        app.select_icon_mode();
+                    }
+                    _ if app
+                        .keybinds
+                        .matches_list(crate::keybinds::ListAction::Cancel, &key) =>
+                    {
+                        app.close_icon_mode_popup();
+                    }
+                    _ => {
+                        app.popups.icon_mode = Some(popup);
+                    }
+                }
+                return true;
+            }
+
             if let Some(mut popup) = app.popups.sort.take() {
                 app.seq_matcher.clear();
                 match key.code {

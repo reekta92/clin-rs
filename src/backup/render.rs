@@ -111,20 +111,23 @@ pub fn draw_dashboard(
 
 /// Backup-view tab (label, glyph) pairs, in BackupSection order. Shared by
 /// `draw_header` (render) and the backup mouse hit-test so they never drift.
-pub const BACKUP_TABS: &[(&str, &str)] = &[
-    ("Status", "\u{f0e4}"),  // tachometer
-    ("History", "\u{f1da}"), // history
-];
+pub fn backup_tabs(icon_mode: crate::config::IconMode) -> [(&'static str, &'static str); 2] {
+    [
+        ("Status", crate::ui::get_icon("\u{f0e4}", "\u{1f680}", icon_mode)),
+        ("History", crate::ui::get_icon("\u{f1da}", "\u{1f552}", icon_mode)),
+    ]
+}
 
-pub fn draw_header(frame: &mut Frame, area: Rect, state: &BackupState) {
+pub fn draw_header(frame: &mut Frame, area: Rect, state: &BackupState, icon_mode: crate::config::IconMode) {
     let theme = &state.theme;
-    let tabs: Vec<(&str, Option<&str>)> = BACKUP_TABS.iter().map(|&(l, g)| (l, Some(g))).collect();
+    let backup_tabs_array = backup_tabs(icon_mode);
+    let tabs: Vec<(&str, Option<&str>)> = backup_tabs_array.iter().map(|&(l, g)| (l, Some(g))).collect();
     let active = if state.selected_section == crate::backup::state::BackupSection::History {
         1
     } else {
         0
     };
-    let spans = crate::ui::build_tab_spans(&tabs, active, theme, state.tab_icons_only);
+    let spans = crate::ui::build_tab_spans(&tabs, active, theme, state.tab_icons_only, icon_mode);
     crate::ui::draw_view_title_bar_with_tabs(frame, area, "Backup", spans, theme);
 }
 

@@ -9,17 +9,19 @@ use crate::keybinds::{
 use crate::constants::HELP_PAGE_HINTS;
 use super::{build_tab_spans, draw_view_title_bar_with_tabs, draw_status_bar};
 
-pub const HELP_TAB_NAMES: &[(&str, &str)] = &[
-    ("Notes", "\u{f24a}"),        // sticky-note
-    ("Editor", "\u{f040}"),       // pencil
-    ("Graph", "\u{f0e8}"),        // sitemap
-    ("Draw", "\u{f1fc}"),         // paint-brush
-    ("Canvas", "\u{f00a}"),       // th-large
-    ("Backup", "\u{f0c7}"),       // floppy-save
-    ("Templates", "\u{f0c5}"),    // copy
-    ("Content Tree", "\u{f1bb}"), // tree
-    ("About", "\u{f05a}"),        // info-circle
-];
+pub fn help_tab_names(icon_mode: crate::config::IconMode) -> [(&'static str, &'static str); 9] {
+    [
+        ("Notes", crate::ui::get_icon("\u{f24a}", "\u{1f4cc}", icon_mode)),
+        ("Editor", crate::ui::get_icon("\u{f040}", "\u{270f}", icon_mode)),
+        ("Graph", crate::ui::get_icon("\u{f0e8}", "\u{1f5fa}", icon_mode)),
+        ("Draw", crate::ui::get_icon("\u{f1fc}", "\u{270f}", icon_mode)),
+        ("Canvas", crate::ui::get_icon("\u{f00a}", "\u{1f4cb}", icon_mode)),
+        ("Backup", crate::ui::get_icon("\u{f0c7}", "\u{1f4be}", icon_mode)),
+        ("Templates", crate::ui::get_icon("\u{f0c5}", "\u{1f4c4}", icon_mode)),
+        ("Content Tree", crate::ui::get_icon("\u{f1bb}", "\u{1f333}", icon_mode)),
+        ("About", crate::ui::get_icon("\u{f05a}", "\u{2139}", icon_mode)),
+    ]
+}
 
 #[derive(Clone)]
 pub struct HelpRow {
@@ -79,7 +81,7 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
         .split(area);
 
     let tabs: Vec<(&str, Option<&str>)> =
-        HELP_TAB_NAMES.iter().map(|&(l, g)| (l, Some(g))).collect();
+        help_tab_names(app.config.ui.icon_mode).iter().map(|&(l, g)| (l, Some(g))).collect();
     let tab_spans = build_tab_spans(
         &tabs,
         app.help_tab.index(),
@@ -871,20 +873,39 @@ pub fn help_item_dyn(
     }
 }
 
-fn split_lock_spans(text: &str, theme: &AppThemeColors) -> Vec<Span<'static>> {
+fn split_lock_spans(text: &str, theme: &AppThemeColors, icon_mode: crate::config::IconMode) -> Vec<Span<'static>> {
     let mut result = Vec::new();
-    let mut last = 0;
-    for (i, _) in text.match_indices('\u{f023}') {
-        if i > last {
-            result.push(Span::raw(text[last..i].to_string()));
+    if icon_mode == crate::config::IconMode::None {
+        let mut last = 0;
+        for (i, c) in text.char_indices() {
+            if c == '\u{f023}' || c == '\u{1f512}' {
+                if i > last {
+                    result.push(Span::raw(text[last..i].to_string()));
+                }
+                last = i + c.len_utf8();
+            }
         }
-        result.push(Span::styled(
-            "\u{f023}".to_string(),
-            Style::default()
-                .fg(theme.destructive)
-                .add_modifier(Modifier::BOLD),
-        ));
-        last = i + '\u{f023}'.len_utf8();
+        if last < text.len() {
+            result.push(Span::raw(text[last..].to_string()));
+        }
+        return result;
+    }
+
+    let mut last = 0;
+    let lock_char = crate::ui::get_char('\u{f023}', '\u{1f512}', icon_mode);
+    for (i, c) in text.char_indices() {
+        if c == '\u{f023}' || c == '\u{1f512}' {
+            if i > last {
+                result.push(Span::raw(text[last..i].to_string()));
+            }
+            result.push(Span::styled(
+                lock_char.to_string(),
+                Style::default()
+                    .fg(theme.destructive)
+                    .add_modifier(Modifier::BOLD),
+            ));
+            last = i + c.len_utf8();
+        }
     }
     if last < text.len() {
         result.push(Span::raw(text[last..].to_string()));
@@ -892,7 +913,7 @@ fn split_lock_spans(text: &str, theme: &AppThemeColors) -> Vec<Span<'static>> {
     result
 }
 
-pub fn styled_result_line(s: &str, theme: &AppThemeColors) -> Line<'static> {
+pub fn styled_result_line(s: &str, theme: &AppThemeColors, icon_mode: crate::config::IconMode) -> Line<'static> {
     if let Some(tag_start) = s.find(" [") {
         let after_tag = &s[tag_start..];
         if let Some(close_bracket) = after_tag.find(']') {
@@ -912,7 +933,7 @@ pub fn styled_result_line(s: &str, theme: &AppThemeColors) -> Line<'static> {
                     None
                 };
 
-                let mut spans = split_lock_spans(label_part, theme);
+                let mut spans = split_lock_spans(label_part, theme, icon_mode);
                 spans.push(Span::styled(
                     tag_content.to_string(),
                     Style::default()
@@ -943,7 +964,7 @@ pub fn styled_result_line(s: &str, theme: &AppThemeColors) -> Line<'static> {
                 .all(|c| c.is_ascii_digit())
         {
             let label_part = &s[..count_start + 1];
-            let mut spans = split_lock_spans(label_part, theme);
+            let mut spans = split_lock_spans(label_part, theme, icon_mode);
             spans.push(Span::styled(
                 count_part.to_string(),
                 Style::default()
@@ -953,7 +974,7 @@ pub fn styled_result_line(s: &str, theme: &AppThemeColors) -> Line<'static> {
             return Line::from(spans);
         }
     }
-    Line::from(split_lock_spans(s, theme))
+    Line::from(split_lock_spans(s, theme, icon_mode))
 }
 
 pub fn style_palette_name(name: &str, theme: &AppThemeColors) -> Vec<Span<'static>> {

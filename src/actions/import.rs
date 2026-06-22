@@ -78,13 +78,13 @@ impl Action for ImportAction {
         }
     }
 
-    fn glyph(&self) -> &'static str {
+    fn glyph(&self) -> (&'static str, &'static str) {
         match self.source {
-            ImportSource::File => "\u{f15b}",
-            ImportSource::Csv => "\u{f0ce}",
-            ImportSource::Json => "\u{f121}",
-            ImportSource::Url => "\u{f0ac}",
-            ImportSource::Clipboard => "\u{f0ea}",
+            ImportSource::File => ("\u{f15b}", "\u{1f4c4}"),
+            ImportSource::Csv => ("\u{f0ce}", "\u{1f4c5}"),
+            ImportSource::Json => ("\u{f121}", "\u{1f4cb}"),
+            ImportSource::Url => ("\u{f0ac}", "\u{1f310}"),
+            ImportSource::Clipboard => ("\u{f0ea}", "\u{1f4cb}"),
         }
     }
 
