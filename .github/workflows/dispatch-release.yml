@@ -558,7 +558,7 @@ jobs:
           PKGVER=$(echo "$VERSION" | sed 's/-/_/g')
           sed -i "s/^pkgver=.*/pkgver=$PKGVER/" PKGBUILD
           TARBALL_NAME=$(gh release view "$TAG" --json assets --jq '[.assets[].name | select(contains("x86_64-unknown-linux-gnu") and endswith(".tar.xz"))][0]')
-          wget -q "${{ github.server_url }}/${{ github.repository }}/releases/download/$TAG/$TARBALL_NAME" -O tarball.tar.xz
+          gh release download "$TAG" --pattern "$TARBALL_NAME" --output tarball.tar.xz
           SHA=$(sha256sum tarball.tar.xz | cut -d' ' -f1)
           sed -i "s/^sha256sums=.*/sha256sums=(\"$SHA\")/" PKGBUILD
           sed -i "s|^source=.*|source=(\"${{ github.server_url }}/${{ github.repository }}/releases/download/$TAG/$TARBALL_NAME\")|" PKGBUILD
@@ -646,7 +646,7 @@ jobs:
           sed -i "s/^pkgver=.*/pkgver=$PKGVER/" PKGBUILD
           TARBALL_NAME=$(gh release view "$TAG" --json assets --jq '[.assets[].name | select(contains("x86_64-unknown-linux-gnu") and endswith(".tar.xz"))][0]')
           if [ -n "$TARBALL_NAME" ]; then
-            wget -q "${{ github.server_url }}/${{ github.repository }}/releases/download/$TAG/$TARBALL_NAME" -O tarball.tar.xz
+            gh release download "$TAG" --pattern "$TARBALL_NAME" --output tarball.tar.xz
             SHA=$(sha256sum tarball.tar.xz | cut -d' ' -f1)
             sed -i "s/^sha256sums=.*/sha256sums=(\"$SHA\")/" PKGBUILD
             sed -i "s|^source=.*|source=(\"${{ github.server_url }}/${{ github.repository }}/releases/download/$TAG/$TARBALL_NAME\")|" PKGBUILD
@@ -671,7 +671,7 @@ jobs:
   # ────────────────────────────────────────────
   cleanup-on-failure:
     if: ${{ failure() }}
-    needs: [calculate_version, prepare, linux-x86_64, linux-aarch64, windows-x86_64, macos-arm, linux-packages, linux-packages-aarch64, appimage, nix]
+    needs: [calculate_version, prepare, linux-x86_64, linux-aarch64, windows-x86_64, macos-arm, linux-packages, linux-packages-aarch64, appimage, nix, aur, crates-io, post-release]
     runs-on: ubuntu-latest
     steps:
       - name: Download release metadata
