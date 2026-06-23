@@ -2,11 +2,22 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.9.0-beta.4] - 2026-06-23
+
+### CI
+
+- Fix for generate-rmp
+- Ci fixes for nix and linux-package jobs
+- Ci fixes for nix and linux-package jobs
 ## [0.9.0-beta.3] - 2026-06-22
 
 ### CI
 
 - Fixed simple syntax errors
+
+### Release
+
+- V0.9.0-beta.3
 ## [0.9.0-beta.2] - 2026-06-22
 
 ### CI
