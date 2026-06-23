@@ -95,6 +95,9 @@ These tools are **optional** — clin works without them:
 | `xclip` or `xsel` | Clipboard access (X11) | `xclip` |
 | `glow` | Markdown preview rendering | `glow` |
 
+
+## For Ubuntu users specifically, please use the .deb version of the [glow](https://github.com/charmbracelet/glow) from their repository, .snap version has performance issues due to sandboxing
+
 ---
 
 ## Installation
