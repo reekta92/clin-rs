@@ -321,13 +321,7 @@ jobs:
         run: cargo build --release --locked
       - name: Build packages
         run: |
-          cargo install cargo-deb cargo-generate-rpm toml-cli --locked
-          VERSION=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
-          if [[ "$VERSION" == *"-"* ]]; then
-            DEB_VERSION=$(echo "$VERSION" | sed 's/-/~/g')
-            toml set Cargo.toml package.metadata.deb.version "$DEB_VERSION" > Cargo.toml.new
-            mv Cargo.toml.new Cargo.toml
-          fi
+          cargo install cargo-deb cargo-generate-rpm --locked
           cargo deb --no-build
           cargo generate-rpm
       - name: Upload

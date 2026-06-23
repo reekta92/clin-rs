@@ -82,7 +82,6 @@ assets = [
 	["clin.ico", "usr/share/pixmaps/clin.ico", "644"],
 ]
 extended-description = "clin-rs is a terminal-first encrypted note app with in-app editing and mouse support."
-version = "0.9.0~beta.3"
 
 [package.metadata.generate-rpm]
 name = "clin-rs"
