@@ -117,10 +117,22 @@ Download the latest `.deb` from the [Releases](https://github.com/reekta92/clin-
 sudo dpkg -i clin-rs_*_amd64.deb
 ```
 
+### Debian/Ubuntu (aarch64)
+Download the latest `.deb` from the [Releases](https://github.com/reekta92/clin-rs/releases) page.
+```bash
+sudo dpkg -i clin-rs_*_arm64.deb
+```
+
 ### Fedora/RHEL (.rpm)
 Download the latest `.rpm` from the [Releases](https://github.com/reekta92/clin-rs/releases) page.
 ```bash
 sudo rpm -i clin-rs-*.x86_64.rpm
+```
+
+### Fedora/RHEL (aarch64)
+Download the latest `.rpm` from the [Releases](https://github.com/reekta92/clin-rs/releases) page.
+```bash
+sudo rpm -i clin-rs-*.aarch64.rpm
 ```
 
 ### Arch Linux (PKGBUILD)
@@ -166,6 +178,15 @@ chmod +x clin-*-x86_64.AppImage
 Download the latest `.tar.gz` from the [Releases](https://github.com/reekta92/clin-rs/releases) page.
 ```bash
 tar -xzf clin-rs-x86_64-unknown-linux-gnu.tar.gz
+chmod +x clin
+mkdir -p ~/.local/bin
+mv clin ~/.local/bin/
+```
+
+### Other (aarch64)
+Download the latest `.tar.gz` from the [Releases](https://github.com/reekta92/clin-rs/releases) page.
+```bash
+tar -xzf clin-rs-aarch64-unknown-linux-gnu.tar.gz
 chmod +x clin
 mkdir -p ~/.local/bin
 mv clin ~/.local/bin/

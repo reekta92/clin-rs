@@ -52,6 +52,11 @@ pub struct DebugBuffer {
     dump_count: usize,
 }
 
+/// Channel sender for off-thread log entries.
+/// Level, target, message — timestamp added on the receiving end.
+pub type LogSender = std::sync::mpsc::Sender<(LogLevel, &'static str, String)>;
+pub type LogReceiver = std::sync::mpsc::Receiver<(LogLevel, &'static str, String)>;
+
 impl DebugBuffer {
     /// Create a new buffer.  `max_size` caps the ring.  `data_dir` is the
     /// application data directory; a `debug/` subdirectory is created inside it.
@@ -105,6 +110,41 @@ impl DebugBuffer {
     // Internal helpers
     // ------------------------------------------------------------------
 
+/// Recursively redact sensitive config fields from a JSON Value tree.
+fn redact_config_value(value: &mut serde_json::Value, path: &str) {
+    const SENSITIVE: &[&str] = &[
+        "core.storage_path",
+        "core.previous_storage_path",
+        "core.default_folder",
+        "backup.remote_url",
+        "backup.remote_name",
+        "editor.external_command",
+    ];
+    match value {
+        serde_json::Value::Object(map) => {
+            let keys: Vec<String> = map.keys().cloned().collect();
+            for key in &keys {
+                let child_path = if path.is_empty() {
+                    key.clone()
+                } else {
+                    format!("{path}.{key}")
+                };
+                if SENSITIVE.contains(&child_path.as_str()) {
+                    map.insert(key.clone(), serde_json::Value::String("***redacted***".to_string()));
+                } else if let Some(child) = map.get_mut(key) {
+                    Self::redact_config_value(child, &child_path);
+                }
+            }
+        }
+        serde_json::Value::Array(arr) => {
+            for (i, item) in arr.iter_mut().enumerate() {
+                Self::redact_config_value(item, &format!("{path}[{i}]"));
+            }
+        }
+        _ => {}
+    }
+}
+
     pub(crate) fn render_dump(&self, app: &App) -> String {
         use std::fmt::Write;
 
@@ -125,11 +165,13 @@ impl DebugBuffer {
         }
         let _ = writeln!(out);
 
-        // ── Config (JSON) ──
+        // ── Config (JSON, sensitive fields redacted) ──
         let _ = writeln!(out, "-- Config (JSON) --");
-        let config_json = serde_json::to_string_pretty(&app.config).unwrap_or_else(|_| {
-            "{}".to_string()
+        let mut config_value = serde_json::to_value(&app.config).unwrap_or_else(|_| {
+            serde_json::Value::Object(serde_json::Map::new())
         });
+        Self::redact_config_value(&mut config_value, "");
+        let config_json = serde_json::to_string_pretty(&config_value).unwrap_or_else(|_| "{}".to_string());
         let _ = writeln!(out, "{config_json}");
         let _ = writeln!(out);
 
@@ -141,12 +183,9 @@ impl DebugBuffer {
             "-- Ring buffer entries ({total} max, {present} present) --"
         );
         for entry in &self.entries {
-            let ts = entry.timestamp.format("%Y-%m-%dT%H:%M:%S");
+            let ts = entry.timestamp.format("%Y-%m-%dT%H:%M:%S%.3f");
             let level_str = entry.level.as_str();
-            let level_padded = match entry.level {
-                LogLevel::Error => format!("[{level_str}]"),
-                _ => format!("[{level_str:<5}]"),
-            };
+            let level_padded = format!("[{level_str:<5}]");
             let _ = writeln!(
                 out,
                 "[{ts}] {level_padded} [{}] {}",
@@ -172,8 +211,12 @@ impl DebugBuffer {
             })
             .collect();
 
-        // Newest-first by filename (which starts with an ISO-ish timestamp).
-        files.sort_by_key(|f| std::cmp::Reverse(f.file_name()));
+        // Newest-first by mtime; use filename as tiebreaker for same-second dumps.
+        files.sort_by(|a, b| {
+            let a_mtime = a.metadata().and_then(|m| m.modified()).ok();
+            let b_mtime = b.metadata().and_then(|m| m.modified()).ok();
+            b_mtime.cmp(&a_mtime).then_with(|| b.file_name().cmp(&a.file_name()))
+        });
 
         for f in files.into_iter().skip(keep) {
             let _ = fs::remove_file(f.path());
@@ -193,10 +236,6 @@ macro_rules! debug_log {
             $target,
             format!($($arg)+),
         );
-        let ts = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%.3f");
-        if matches!($crate::debug::LogLevel::$level, $crate::debug::LogLevel::Error | $crate::debug::LogLevel::Warn | $crate::debug::LogLevel::Info) {
-            let _ = std::eprintln!("[{ts}] [{:<5}] [{}] {}", $crate::debug::LogLevel::$level.as_str(), $target, format!($($arg)+));
-        }
     };
 }
 
@@ -293,6 +332,12 @@ mod tests {
         assert!(content.contains("-- Config (JSON) --"));
         assert!(content.contains("-- Ring buffer entries"));
         assert!(content.contains("[INFO ] [test]"));
+        assert!(content.contains("***redacted***"), "sensitive fields should be redacted");
+        // Verify known-sensitive fields are redacted in JSON output.
+        assert!(
+            content.contains(r#""storage_path": "***redacted***"#),
+            "storage_path value should be redacted, not plaintext"
+        );
     }
 
     // ------------------------------------------------------------------
@@ -312,14 +357,18 @@ mod tests {
 
         // Temporarily take ownership to make repeated dumps.
         let mut buf = std::mem::replace(&mut app.debug_buffer, DebugBuffer::new(100, tmp.path()));
+        let mut filenames: Vec<String> = Vec::new();
         for _ in 0..n_writes {
             buf.log(LogLevel::Info, "test", "x".into());
-            buf.dump_to_file(&app).expect("dump");
+            let path = buf.dump_to_file(&app).expect("dump");
+            filenames.push(path.file_name().unwrap().to_string_lossy().to_string());
+            // Ensure distinct mtimes for deterministic sort ordering.
+            std::thread::sleep(std::time::Duration::from_millis(1));
         }
         app.debug_buffer = buf;
-
-        // Count remaining debug-* files.
-        let remaining: Vec<_> = std::fs::read_dir(tmp.path())
+        // Count remaining debug-* files (written to the debug/ subdirectory).
+        let dump_dir = app.debug_buffer.dump_dir.clone();
+        let mut remaining: Vec<_> = std::fs::read_dir(&dump_dir)
             .unwrap()
             .filter_map(|e| e.ok())
             .filter(|e| {
@@ -334,6 +383,16 @@ mod tests {
             "expected ≤{keep} files, got {}",
             remaining.len()
         );
+
+        // Verify the kept files are the most recent ones.
+        // Sorted newest-first by mtime means the first `keep` filenames
+        // (from the end of the creation order) should survive.
+        let expected_kept: Vec<&str> = filenames.iter().rev().take(keep).map(|s| s.as_str()).collect();
+        let mut kept_names: Vec<String> = remaining.iter().map(|e| e.file_name().to_string_lossy().to_string()).collect();
+        kept_names.sort();
+        let mut expected_sorted: Vec<&str> = expected_kept.clone();
+        expected_sorted.sort();
+        assert_eq!(kept_names, expected_sorted, "kept files should be the most recent ones");
     }
 
     // ------------------------------------------------------------------
@@ -354,5 +413,47 @@ mod tests {
         assert_eq!(level_str(LogLevel::Warn), "[WARN ]");
         assert_eq!(level_str(LogLevel::Info), "[INFO ]");
         assert_eq!(level_str(LogLevel::Debug), "[DEBUG]");
+    }
+    // ------------------------------------------------------------------
+    // Empty buffer dump
+    // ------------------------------------------------------------------
+    #[test]
+    fn test_empty_buffer_dump() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut buf = DebugBuffer::new(5, tmp.path());
+        let app = dummy_app();
+        let out = buf.render_dump(&app);
+        assert!(out.contains("=== clin debug dump"));
+        assert!(out.contains("-- App state --"));
+        assert!(out.contains("-- Ring buffer entries (5 max, 0 present) --"));
+    }
+
+    // ------------------------------------------------------------------
+    // Large message in dump
+    // ------------------------------------------------------------------
+    #[test]
+    fn test_large_message() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut buf = DebugBuffer::new(5, tmp.path());
+        let big = "A".repeat(10_240);
+        buf.log(LogLevel::Info, "test", big.clone());
+        let app = dummy_app();
+        let out = buf.render_dump(&app);
+        assert!(out.contains(&big));
+    }
+
+    // ------------------------------------------------------------------
+    // Unicode message survives round-trip
+    // ------------------------------------------------------------------
+    #[test]
+    fn test_unicode_message() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut buf = DebugBuffer::new(5, tmp.path());
+        // Emoji, CJK, and combining marks.
+        let msg = "Hello \u{1f600} \u{4e2d}\u{6587} caff\u{e8} na\u{307}e".to_string();
+        buf.log(LogLevel::Info, "test", msg.clone());
+        let app = dummy_app();
+        let out = buf.render_dump(&app);
+        assert!(out.contains(&msg));
     }
 }

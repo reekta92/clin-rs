@@ -241,8 +241,47 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: "v${{ needs.prepare.outputs.new_version }}"
         run: gh release upload "$TAG" dist/* --clobber
-  # 4. Build Windows x86_64 binary
+  # ────────────────────────────────────────────
+  # 5. Build Linux aarch64 binary
+  # ────────────────────────────────────────────
+  linux-aarch64:
+    needs: prepare
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: "v${{ needs.prepare.outputs.new_version }}"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-unknown-linux-gnu
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cross deps
+        run: |
+          sudo dpkg --add-architecture arm64
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu libssl-dev:arm64 pkg-config
+        env:
+          DEBIAN_FRONTEND: noninteractive
+      - name: Build
+        run: cargo build --release --locked --target aarch64-unknown-linux-gnu
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+          PKG_CONFIG_ALLOW_CROSS: 1
+      - name: Smoke test
+        run: ./target/aarch64-unknown-linux-gnu/release/clin -h
+      - name: Package
+        run: |
+          mkdir -p dist
+          cp target/aarch64-unknown-linux-gnu/release/clin .
+          tar -cJf "dist/clin-rs-aarch64-unknown-linux-gnu.tar.xz" clin LICENSE README.md
+          tar -czf "dist/clin-rs-aarch64-unknown-linux-gnu.tar.gz" clin LICENSE README.md
+      - name: Upload
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: "v${{ needs.prepare.outputs.new_version }}"
+        run: gh release upload "$TAG" dist/* --clobber
   # 5. Build Windows x86_64 binary
+  # 6. Build Windows x86_64 binary
   windows-x86_64:
     needs: prepare
     runs-on: windows-latest
@@ -270,8 +309,8 @@ jobs:
         shell: bash
         run: gh release upload "$TAG" dist/* --clobber
 
-  # 5. Build macOS ARM (Apple Silicon) binary
   # 6. Build macOS ARM (Apple Silicon) binary
+  # 7. Build macOS ARM (Apple Silicon) binary
   macos-arm:
     needs: prepare
     runs-on: macos-latest
@@ -304,8 +343,8 @@ jobs:
           TAG: "v${{ needs.prepare.outputs.new_version }}"
         run: gh release upload "$TAG" dist/* --clobber
 
-  # 6. Build .deb and .rpm
   # 7. Build .deb and .rpm
+  # 8. Build .deb and .rpm
   linux-packages:
     needs: prepare
     runs-on: ubuntu-22.04
@@ -336,9 +375,52 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: "v${{ needs.prepare.outputs.new_version }}"
         run: gh release upload "$TAG" target/debian/*.deb target/generate-rpm/*.rpm --clobber
+  # ────────────────────────────────────────────
+  # 9. Build .deb and .rpm (aarch64)
+  # ────────────────────────────────────────────
+  linux-packages-aarch64:
+    needs: prepare
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: "v${{ needs.prepare.outputs.new_version }}"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-unknown-linux-gnu
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cross deps
+        run: |
+          sudo dpkg --add-architecture arm64
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu libssl-dev:arm64 pkg-config
+        env:
+          DEBIAN_FRONTEND: noninteractive
+      - name: Build release binary
+        run: cargo build --release --locked --target aarch64-unknown-linux-gnu
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+          PKG_CONFIG_ALLOW_CROSS: 1
+      - name: Build packages
+        run: |
+          cargo install cargo-deb cargo-generate-rpm --locked
+          VERSION=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
+          if [[ "$VERSION" == *"-"* ]]; then
+            SAFE_VERSION=$(echo "$VERSION" | sed 's/-/~/g')
+            cargo deb --no-build --target aarch64-unknown-linux-gnu --deb-version "$SAFE_VERSION"
+            cargo generate-rpm --target aarch64-unknown-linux-gnu --set-metadata "version = '$SAFE_VERSION'"
+          else
+            cargo deb --no-build --target aarch64-unknown-linux-gnu
+            cargo generate-rpm --target aarch64-unknown-linux-gnu
+          fi
+      - name: Upload
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: "v${{ needs.prepare.outputs.new_version }}"
+        run: gh release upload "$TAG" target/debian/*.deb target/aarch64-unknown-linux-gnu/generate-rpm/*.rpm --clobber
 
   # ────────────────────────────────────────────
-  # 8. Build AppImage
+  # 10. Build AppImage
   # ────────────────────────────────────────────
   appimage:
     needs: prepare
@@ -378,7 +460,7 @@ jobs:
 
 
   # ────────────────────────────────────────────
-  # 9. Build Nix package
+  # 11. Build Nix package
   # ────────────────────────────────────────────
   nix:
     needs: prepare
@@ -394,7 +476,7 @@ jobs:
         run: nix build .#default
 
   # ────────────────────────────────────────────
-  # 10. Publish AUR package
+  # 12. Publish AUR package
   # ────────────────────────────────────────────
   aur:
     needs: [prepare, linux-packages, linux-x86_64]
@@ -445,7 +527,7 @@ jobs:
 
 
   # ────────────────────────────────────────────
-  # 11. Publish to crates.io
+  # 13. Publish to crates.io
   # ────────────────────────────────────────────
   crates-io:
     needs: prepare
@@ -466,10 +548,10 @@ jobs:
 
 
   # ────────────────────────────────────────────
-  # 12. Update README + PKGBUILD in target branch
+  # 14. Update README + PKGBUILD in target branch
   # ────────────────────────────────────────────
   post-release:
-    needs: [prepare, linux-packages, appimage, linux-x86_64, nix]
+    needs: [prepare, linux-packages, linux-packages-aarch64, appimage, linux-x86_64, linux-aarch64, nix]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -498,6 +580,19 @@ jobs:
           fi
           if [ -n "$TAR_FILE" ]; then
             sed -i -E "s/clin-rs-[0-9a-zA-Z._~-]*x86_64[0-9a-zA-Z._~-]*\.tar\.gz/$TAR_FILE/g" README.md
+          fi
+          # Also update aarch64 references in README.md
+          DEB_ARM64=$(gh release view "$TAG" --json assets --jq '[.assets[].name | select(endswith("_arm64.deb"))][0]')
+          RPM_AARCH64=$(gh release view "$TAG" --json assets --jq '[.assets[].name | select(endswith(".aarch64.rpm"))][0]')
+          TAR_AARCH64=$(gh release view "$TAG" --json assets --jq '[.assets[].name | select(endswith("aarch64-unknown-linux-gnu.tar.gz"))][0]')
+          if [ -n "$DEB_ARM64" ]; then
+            sed -i -E "s/clin-rs_[0-9a-zA-Z._~-]*_arm64\.deb/$DEB_ARM64/g" README.md
+          fi
+          if [ -n "$RPM_AARCH64" ]; then
+            sed -i -E "s/clin-rs-[0-9a-zA-Z._~-]*\.aarch64\.rpm/$RPM_AARCH64/g" README.md
+          fi
+          if [ -n "$TAR_AARCH64" ]; then
+            sed -i -E "s/clin-rs-[0-9a-zA-Z._~-]*aarch64[0-9a-zA-Z._~-]*\.tar\.gz/$TAR_AARCH64/g" README.md
           fi
           PKGVER=$(echo "$VERSION" | sed 's/-/_/g')
           sed -i "s/^pkgver=.*/pkgver=$PKGVER/" PKGBUILD

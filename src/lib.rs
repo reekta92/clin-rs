@@ -787,10 +787,12 @@ fn run_tui_session(app: &mut App) -> Result<()> {
     }
 
     // Spawn the background backup worker before entering the terminal.
+    let (debug_log_tx, debug_log_rx) = std::sync::mpsc::channel();
     let (tx, done_rx) =
-        crate::backup::worker::spawn(app.git_lock.clone(), app.backup_status.clone());
+        crate::backup::worker::spawn(app.git_lock.clone(), app.backup_status.clone(), debug_log_tx);
     debug_log!(app, Debug, "lifecycle", "Backup worker spawned");
     app.backup_tx = Some(tx);
+    app.debug_log_rx = Some(debug_log_rx);
 
     // Run the TUI inside an inner block so `TerminalGuard` (raw mode + alt
     // screen) is dropped — restoring the terminal — BEFORE any blocking
@@ -911,6 +913,8 @@ fn run_app(
             }
         }
 
+        app.drain_debug_logs();
+
         app.tick_status();
         let failed = app.backup_status.lock().take();
         if let Some(msg) = failed {
@@ -996,20 +1000,7 @@ fn run_app(
                         && key.modifiers == (KeyModifiers::CONTROL | KeyModifiers::SHIFT) =>
                     {
                         debug_log!(app, Info, "lifecycle", "Debug dump triggered via Ctrl+Shift+F12");
-                        // Render first (immutable borrow), then write (mutable borrow)
-                        // to satisfy the borrow checker.
-                        let content = app.debug_buffer.render_dump(app);
-                        match app.debug_buffer.write_dump(content) {
-                            Ok(path) => {
-                                let name = path.file_name()
-                                    .and_then(|s| s.to_str())
-                                    .unwrap_or("unknown");
-                                app.set_temporary_status(&format!("Debug dump saved: {name}"));
-                            }
-                            Err(e) => {
-                                app.set_temporary_status(&format!("Debug dump failed: {e}"));
-                            }
-                        }
+                        app.dump_debug_buffer();
                     }
                 ev @ (Event::Key(_) | Event::Mouse(_)) => {
                     // Global popups & palette get first chance to consume

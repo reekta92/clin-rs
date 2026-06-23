@@ -371,6 +371,7 @@ pub struct App {
     pub preview_wrap: bool,
     pub preview_fullscreen: bool,
     pub debug_buffer: crate::debug::DebugBuffer,
+    pub debug_log_rx: Option<std::sync::mpsc::Receiver<(crate::debug::LogLevel, &'static str, String)>>,
     pub layout_edit: bool,
     pub layout_drag: Option<LayoutDrag>,
 }
@@ -488,6 +489,7 @@ impl App {
             preview_wrap,
             preview_fullscreen: false,
             debug_buffer: crate::debug::DebugBuffer::new(1000, &data_dir),
+            debug_log_rx: None,
             layout_edit: false,
             layout_drag: None,
         };
@@ -588,12 +590,58 @@ impl App {
             preview_wrap,
             preview_fullscreen: false,
             debug_buffer: crate::debug::DebugBuffer::new(1000, &data_dir),
+            debug_log_rx: None,
             layout_edit: false,
             layout_drag: None,
         };
         app.goals_progress = app.load_goals_progress();
         app.list.folder_expanded.insert(String::new());
         Ok(app)
+    }
+    /// Render the debug ring buffer, write it to disk, and update status.
+    pub fn dump_debug_buffer(&mut self) -> String {
+        let content = self.debug_buffer.render_dump(self);
+        match self.debug_buffer.write_dump(content) {
+            Ok(path) => {
+                let name = path
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("unknown");
+                let msg = format!("Debug dump saved: {name}");
+                self.set_temporary_status(&msg);
+                msg
+            }
+            Err(e) => {
+                let msg = format!("Debug dump failed: {e}");
+                self.set_temporary_status(&msg);
+                msg
+            }
+        }
+    }
+
+    /// Drain any backup-worker log entries from the channel into the debug buffer.
+    pub fn drain_debug_logs(&mut self) {
+        use std::sync::mpsc::TryRecvError;
+        // Scope the borrow on rx so the disconnected branch can write
+        // self.debug_log_rx after the borrow ends.
+        let disconnected = {
+            let rx = match self.debug_log_rx.as_ref() {
+                Some(rx) => rx,
+                None => return,
+            };
+            loop {
+                match rx.try_recv() {
+                    Ok((level, target, msg)) => {
+                        self.debug_buffer.log(level, target, msg);
+                    }
+                    Err(TryRecvError::Empty) => break false,
+                    Err(TryRecvError::Disconnected) => break true,
+                }
+            }
+        };
+        if disconnected {
+            self.debug_log_rx = None;
+        }
     }
 
     pub fn reload_config(&mut self) {

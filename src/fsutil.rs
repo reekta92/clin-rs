@@ -5,8 +5,9 @@ use std::path::{Path, PathBuf};
 pub fn atomic_write(path: &Path, data: &[u8]) -> Result<()> {
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
     let tmp = parent.join(format!(
-        ".{}.tmp",
-        path.file_name().and_then(|s| s.to_str()).unwrap_or("tmp")
+        ".{}.{}.tmp",
+        path.file_name().and_then(|s| s.to_str()).unwrap_or("tmp"),
+        uuid::Uuid::new_v4()
     ));
     fs::write(&tmp, data).with_context(|| format!("failed to write {}", tmp.display()))?;
 
@@ -32,8 +33,9 @@ pub fn atomic_write_with_mode(path: &Path, data: &[u8], mode: u32) -> Result<()>
     use std::os::unix::fs::PermissionsExt;
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
     let tmp = parent.join(format!(
-        ".{}.tmp",
-        path.file_name().and_then(|s| s.to_str()).unwrap_or("tmp")
+        ".{}.{}.tmp",
+        path.file_name().and_then(|s| s.to_str()).unwrap_or("tmp"),
+        uuid::Uuid::new_v4()
     ));
 
     fs::write(&tmp, data).with_context(|| format!("failed to write {}", tmp.display()))?;
