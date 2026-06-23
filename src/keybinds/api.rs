@@ -540,7 +540,7 @@ mod tests {
     fn test_new_action_displays() {
         let keybinds = Keybinds::default();
         assert_eq!(keybinds.draw_keys_display(DrawAction::SelectDrawTool), "d");
-        assert_eq!(keybinds.canvas_keys_display(CanvasAction::Quit), "Esc/q");
+        assert_eq!(keybinds.canvas_keys_display(CanvasAction::Quit), "q");
         assert_eq!(keybinds.canvas_keys_display(CanvasAction::Save), "Ctrl+s");
     }
 

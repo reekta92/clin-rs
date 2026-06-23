@@ -325,7 +325,8 @@ jobs:
           VERSION=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
           if [[ "$VERSION" == *"-"* ]]; then
             DEB_VERSION=$(echo "$VERSION" | sed 's/-/~/g')
-            toml set package.metadata.deb.version "$DEB_VERSION"
+            toml set Cargo.toml package.metadata.deb.version "$DEB_VERSION" > Cargo.toml.new
+            mv Cargo.toml.new Cargo.toml
           fi
           cargo deb --no-build
           cargo generate-rpm
@@ -429,7 +430,7 @@ jobs:
           wget -q "${{ github.server_url }}/${{ github.repository }}/releases/download/$TAG/$TARBALL_NAME" -O tarball.tar.xz
           SHA=$(sha256sum tarball.tar.xz | cut -d' ' -f1)
           sed -i "s/^sha256sums=.*/sha256sums=(\"$SHA\")/" PKGBUILD
-          sed -i "s|^source=.*|source=(\"${{ github.server_url }}/${{ github.repository }}/releases/download/v\${pkgver}/$TARBALL_NAME\")|" PKGBUILD
+          sed -i "s|^source=.*|source=(\"${{ github.server_url }}/${{ github.repository }}/releases/download/$TAG/$TARBALL_NAME\")|" PKGBUILD
       - name: Publish to AUR
         if: ${{ env.AUR_SSH_PRIVATE_KEY != '' }}
         uses: KSXGitHub/github-actions-deploy-aur@v3.0.1
@@ -504,7 +505,7 @@ jobs:
             wget -q "${{ github.server_url }}/${{ github.repository }}/releases/download/$TAG/$TARBALL_NAME" -O tarball.tar.xz
             SHA=$(sha256sum tarball.tar.xz | cut -d' ' -f1)
             sed -i "s/^sha256sums=.*/sha256sums=(\"$SHA\")/" PKGBUILD
-            sed -i "s|^source=.*|source=(\"${{ github.server_url }}/${{ github.repository }}/releases/download/v\${pkgver}/$TARBALL_NAME\")|" PKGBUILD
+            sed -i "s|^source=.*|source=(\"${{ github.server_url }}/${{ github.repository }}/releases/download/$TAG/$TARBALL_NAME\")|" PKGBUILD
           fi
       - name: Commit and push
         run: |

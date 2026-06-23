@@ -567,7 +567,6 @@ impl Default for Keybinds {
             CanvasAction::MenuClose,
             vec![
                 KeyCombo::simple(KeyCode::Esc),
-                KeyCombo::simple(KeyCode::Char('q')),
             ],
         );
         canvas.insert(
@@ -604,7 +603,6 @@ impl Default for Keybinds {
             CanvasAction::CancelResize,
             vec![
                 KeyCombo::simple(KeyCode::Esc),
-                KeyCombo::simple(KeyCode::Char('q')),
             ],
         );
         canvas.insert(
