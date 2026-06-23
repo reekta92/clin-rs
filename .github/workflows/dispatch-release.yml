@@ -275,6 +275,20 @@ jobs:
       - name: Install cross deps
         run: |
           sudo dpkg --add-architecture arm64
+          # Pin .list files to amd64 (skip lines that already have arch restriction)
+          sudo find /etc/apt/ -name '*.list' -exec sed -i '/^deb /{/\[arch=/!s/^deb /deb [arch=amd64] /}' {} +
+          # Pin .sources files to amd64 (skip if file already has Architectures: set)
+          sudo find /etc/apt/ -name '*.sources' -exec sh -c '
+            grep -q "^Architectures:" "$1" 2>/dev/null || \
+              sed -i "/^Types: deb/a Architectures: amd64" "$1"
+          ' _ {} \;
+          # Add arm64 repos from ports.ubuntu.com (official Ubuntu archive for non-x86 architectures)
+          sudo tee /etc/apt/sources.list.d/arm64.list > /dev/null << 'EOF'
+deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy main restricted universe multiverse
+deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-updates main restricted universe multiverse
+deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-backports main restricted universe multiverse
+deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-security main restricted universe multiverse
+EOF
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu libssl-dev:arm64 pkg-config
         env:
@@ -409,6 +423,20 @@ jobs:
       - name: Install cross deps
         run: |
           sudo dpkg --add-architecture arm64
+          # Pin .list files to amd64 (skip lines that already have arch restriction)
+          sudo find /etc/apt/ -name '*.list' -exec sed -i '/^deb /{/\[arch=/!s/^deb /deb [arch=amd64] /}' {} +
+          # Pin .sources files to amd64 (skip if file already has Architectures: set)
+          sudo find /etc/apt/ -name '*.sources' -exec sh -c '
+            grep -q "^Architectures:" "$1" 2>/dev/null || \
+              sed -i "/^Types: deb/a Architectures: amd64" "$1"
+          ' _ {} \;
+          # Add arm64 repos from ports.ubuntu.com (official Ubuntu archive for non-x86 architectures)
+          sudo tee /etc/apt/sources.list.d/arm64.list > /dev/null << 'EOF'
+deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy main restricted universe multiverse
+deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-updates main restricted universe multiverse
+deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-backports main restricted universe multiverse
+deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-security main restricted universe multiverse
+EOF
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu libssl-dev:arm64 pkg-config
         env:
