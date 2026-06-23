@@ -65,7 +65,7 @@ jobs:
           }
           git checkout "origin/$BRANCH" --detach
 
-          RELEASE_COMMIT=$(git log --oneline --grep="^release: v" --format="%H" -1)
+          RELEASE_COMMIT=$(git log --oneline --grep="^release: v[0-9]" --format="%H" -1)
           POST_COMMIT=$(git log --oneline --grep="^release: update versions to v" --format="%H" -1)
 
           REVERT_COUNT=0
