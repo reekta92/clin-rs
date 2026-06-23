@@ -112,6 +112,22 @@ jobs:
           fi
           echo "new_version=$NEW" >> "$GITHUB_OUTPUT"
           echo "::notice title=Release Version Preview::Calculated new version is $NEW. Approve to proceed."
+      - name: Save release metadata for cleanup
+        run: |
+          OLD_VERSION=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
+          NEW_VERSION="${{ steps.calculate.outputs.new_version }}"
+          jq -n \
+            --arg old "$OLD_VERSION" \
+            --arg new "$NEW_VERSION" \
+            --arg tag "v$NEW_VERSION" \
+            --arg branch "${{ inputs.target_branch }}" \
+            '{old_version: $old, new_version: $new, tag: $tag, target_branch: $branch}' \
+            > release-metadata.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-metadata
+          path: release-metadata.json
+          retention-days: 3
 
   # ────────────────────────────────────────────
   # 2. Approve the release
@@ -209,7 +225,7 @@ jobs:
             gh release create "$TAG" \
               --title "$TAG" \
               --notes-file RELEASE_NOTES.md \
-              --draft=false \
+              --draft \
               --prerelease=${{ inputs.prerelease }}
           fi
 
@@ -259,6 +275,15 @@ jobs:
       - name: Install cross deps
         run: |
           sudo dpkg --add-architecture arm64
+          # Pin existing repos to amd64 only (security.ubuntu.com and azure mirror don't serve arm64)
+          sudo sed -i 's/^deb /deb [arch=amd64] /' /etc/apt/sources.list
+          # Add arm64 repos from ports.ubuntu.com (official Ubuntu archive for non-x86 architectures)
+          sudo bash -c 'cat > /etc/apt/sources.list.d/arm64.list << EOF
+deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy main restricted universe multiverse
+deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-updates main restricted universe multiverse
+deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-backports main restricted universe multiverse
+deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-security main restricted universe multiverse
+EOF'
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu libssl-dev:arm64 pkg-config
         env:
@@ -393,6 +418,15 @@ jobs:
       - name: Install cross deps
         run: |
           sudo dpkg --add-architecture arm64
+          # Pin existing repos to amd64 only (security.ubuntu.com and azure mirror don't serve arm64)
+          sudo sed -i 's/^deb /deb [arch=amd64] /' /etc/apt/sources.list
+          # Add arm64 repos from ports.ubuntu.com (official Ubuntu archive for non-x86 architectures)
+          sudo bash -c 'cat > /etc/apt/sources.list.d/arm64.list << EOF
+deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy main restricted universe multiverse
+deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-updates main restricted universe multiverse
+deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-backports main restricted universe multiverse
+deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-security main restricted universe multiverse
+EOF'
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu libssl-dev:arm64 pkg-config
         env:
@@ -613,3 +647,9 @@ jobs:
             git commit -m "release: update versions to v${{ needs.prepare.outputs.new_version }}"
             git push origin HEAD:${{ inputs.target_branch }}
           fi
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: "v${{ needs.prepare.outputs.new_version }}"
+        run: |
+          gh release edit "$TAG" --draft=false || echo "Warning: could not publish release $TAG"
