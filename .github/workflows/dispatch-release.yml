@@ -298,8 +298,11 @@ jobs:
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
           PKG_CONFIG_ALLOW_CROSS: 1
-      - name: Smoke test
-        run: ./target/aarch64-unknown-linux-gnu/release/clin -h
+      - name: Verify binary architecture
+        run: |
+          readelf -h target/aarch64-unknown-linux-gnu/release/clin | grep -q "AArch64" && \
+          echo "Binary is ARM64 (AArch64)" && \
+          file target/aarch64-unknown-linux-gnu/release/clin
       - name: Package
         run: |
           mkdir -p dist
@@ -664,11 +667,11 @@ jobs:
         run: |
           gh release edit "$TAG" --draft=false || echo "Warning: could not publish release $TAG"
   # ────────────────────────────────────────────
-  # 15. Cleanup on cancellation
+  # 15. Cleanup on failure
   # ────────────────────────────────────────────
-  cleanup-on-cancel:
-    if: ${{ cancelled() }}
-    needs: [calculate_version]
+  cleanup-on-failure:
+    if: ${{ failure() }}
+    needs: [calculate_version, prepare, linux-x86_64, linux-aarch64, windows-x86_64, macos-arm, linux-packages, linux-packages-aarch64, appimage, nix]
     runs-on: ubuntu-latest
     steps:
       - name: Download release metadata
