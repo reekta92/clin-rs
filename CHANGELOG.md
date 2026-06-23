@@ -2,6 +2,17 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.8.27] - 2026-06-23
+
+### Testing
+
+- Testing CI
+- Testing CI
+
+### Release
+
+- V0.9.0-beta.4
+- V0.9.0-beta.4
 ## [0.8.26] - 2026-06-21
 
 ### Fixed
