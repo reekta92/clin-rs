@@ -322,8 +322,15 @@ jobs:
       - name: Build packages
         run: |
           cargo install cargo-deb cargo-generate-rpm --locked
-          cargo deb --no-build
-          cargo generate-rpm
+          VERSION=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
+          if [[ "$VERSION" == *"-"* ]]; then
+            SAFE_VERSION=$(echo "$VERSION" | sed 's/-/~/g')
+            cargo deb --no-build --deb-version "$SAFE_VERSION"
+            cargo generate-rpm --set-metadata "version = '$SAFE_VERSION'"
+          else
+            cargo deb --no-build
+            cargo generate-rpm
+          fi
       - name: Upload
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -484,13 +491,13 @@ jobs:
             sleep 15; ELAPSED=$((ELAPSED + 15))
           done
           if [ -n "$DEB_FILE" ]; then
-            sed -i -E "s/clin-rs_[0-9a-zA-Z._-]*_amd64\.deb/$DEB_FILE/g" README.md
+            sed -i -E "s/clin-rs_[0-9a-zA-Z._~-]*_amd64\.deb/$DEB_FILE/g" README.md
           fi
           if [ -n "$RPM_FILE" ]; then
-            sed -i -E "s/clin-rs-[0-9a-zA-Z._-]*\.x86_64\.rpm/$RPM_FILE/g" README.md
+            sed -i -E "s/clin-rs-[0-9a-zA-Z._~-]*\.x86_64\.rpm/$RPM_FILE/g" README.md
           fi
           if [ -n "$TAR_FILE" ]; then
-            sed -i -E "s/clin-rs-[0-9a-zA-Z._-]*x86_64[0-9a-zA-Z._-]*\.tar\.gz/$TAR_FILE/g" README.md
+            sed -i -E "s/clin-rs-[0-9a-zA-Z._~-]*x86_64[0-9a-zA-Z._~-]*\.tar\.gz/$TAR_FILE/g" README.md
           fi
           PKGVER=$(echo "$VERSION" | sed 's/-/_/g')
           sed -i "s/^pkgver=.*/pkgver=$PKGVER/" PKGBUILD
