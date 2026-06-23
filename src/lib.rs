@@ -9,6 +9,7 @@ pub mod console;
 pub mod constants;
 pub mod content_tree;
 pub mod draw;
+pub mod debug;
 pub mod editor;
 pub mod frontmatter;
 pub mod fsutil;
@@ -764,6 +765,7 @@ pub fn force_quit() -> ! {
 fn run_tui_session(app: &mut App) -> Result<()> {
     // Clean up any orphaned plaintext temp files from a prior crashed session.
     crate::fsutil::cleanup_orphaned_temp_files();
+    debug_log!(app, Info, "lifecycle", "TUI session started");
 
     let register_signal = |sig: std::os::raw::c_int| {
         // SAFETY: signal_hook::low_level::register is async-signal-safe.
@@ -787,6 +789,7 @@ fn run_tui_session(app: &mut App) -> Result<()> {
     // Spawn the background backup worker before entering the terminal.
     let (tx, done_rx) =
         crate::backup::worker::spawn(app.git_lock.clone(), app.backup_status.clone());
+    debug_log!(app, Debug, "lifecycle", "Backup worker spawned");
     app.backup_tx = Some(tx);
 
     // Run the TUI inside an inner block so `TerminalGuard` (raw mode + alt
@@ -802,6 +805,7 @@ fn run_tui_session(app: &mut App) -> Result<()> {
         let mut app_safe = std::panic::AssertUnwindSafe(&mut *app);
         let res = std::panic::catch_unwind(move || run_app(*terminal_safe, *app_safe));
         if app.mode == ViewMode::Edit {
+            debug_log!(app, Info, "lifecycle", "Autosaving before exit");
             app.autosave();
         }
         res
@@ -837,6 +841,7 @@ fn run_tui_session(app: &mut App) -> Result<()> {
             }
         };
         if timed_out {
+            debug_log!(app, Warn, "backup", "Backup worker still running at exit");
             eprintln!("Backup still running in background; exiting.");
         } else {
             println!("Done.");
@@ -862,6 +867,7 @@ fn run_tui_session(app: &mut App) -> Result<()> {
         }
     }
 
+    debug_log!(app, Info, "lifecycle", "TUI session ended normally");
     match result {
         Ok(r) => r,
         Err(err) => std::panic::resume_unwind(err),
@@ -878,6 +884,7 @@ fn run_app(
 
     // Start background note load for deferred startup
     let load_rx = if !app.initial_load_done && app.notes.is_empty() {
+        debug_log!(app, Debug, "lifecycle", "Background load started");
         Some(app.start_background_load())
     } else {
         None
@@ -913,6 +920,7 @@ fn run_app(
         if app.needs_full_redraw {
             terminal.clear()?;
             app.needs_full_redraw = false;
+            debug_log!(app, Debug, "render", "Full redraw performed");
         }
 
         // Apply update ticks for continuous views before rendering
@@ -925,7 +933,10 @@ fn run_app(
             _ => {}
         }
 
-        terminal.draw(|frame| crate::ui::draw_ui(frame, app, focus))?;
+        if let Err(e) = terminal.draw(|frame| crate::ui::draw_ui(frame, app, focus)) {
+            debug_log!(app, Error, "render", "Draw failed: {e}");
+            return Err(e.into());
+        }
 
         let poll_timeout = if app.mode == ViewMode::Graph || app.mode == ViewMode::Draw {
             Duration::from_millis(16)
@@ -961,7 +972,10 @@ fn run_app(
         }
 
         if need_redraw {
-            terminal.draw(|frame| crate::ui::draw_ui(frame, app, focus))?;
+            if let Err(e) = terminal.draw(|frame| crate::ui::draw_ui(frame, app, focus)) {
+                debug_log!(app, Error, "render", "Draw (redraw) failed: {e}");
+                return Err(e.into());
+            }
         }
 
         if event::poll(poll_timeout).context("event poll failed")? {
@@ -972,8 +986,31 @@ fn run_app(
                         && key.code == KeyCode::Char('c')
                         && key.modifiers == KeyModifiers::CONTROL =>
                 {
+                    debug_log!(app, Warn, "lifecycle", "Force quit via Ctrl+C");
                     crate::force_quit();
                 }
+                // Global Ctrl+Shift+F12 — dump debug buffer
+                Event::Key(key)
+                    if key.kind == KeyEventKind::Press
+                        && key.code == KeyCode::F(12)
+                        && key.modifiers == (KeyModifiers::CONTROL | KeyModifiers::SHIFT) =>
+                    {
+                        debug_log!(app, Info, "lifecycle", "Debug dump triggered via Ctrl+Shift+F12");
+                        // Render first (immutable borrow), then write (mutable borrow)
+                        // to satisfy the borrow checker.
+                        let content = app.debug_buffer.render_dump(app);
+                        match app.debug_buffer.write_dump(content) {
+                            Ok(path) => {
+                                let name = path.file_name()
+                                    .and_then(|s| s.to_str())
+                                    .unwrap_or("unknown");
+                                app.set_temporary_status(&format!("Debug dump saved: {name}"));
+                            }
+                            Err(e) => {
+                                app.set_temporary_status(&format!("Debug dump failed: {e}"));
+                            }
+                        }
+                    }
                 ev @ (Event::Key(_) | Event::Mouse(_)) => {
                     // Global popups & palette get first chance to consume
                     let size = terminal.size().context("failed to get terminal size")?;
@@ -984,6 +1021,7 @@ fn run_app(
 
                     match ev {
                         Event::Key(key) if key.kind == KeyEventKind::Press => {
+                            debug_log!(app, Debug, "view", "Processing event: mode={:?}", app.mode);
                             let handled = match app.mode {
                                 ViewMode::List => handle_list_keys(app, key),
                                 ViewMode::Help => { handle_help_keys(app, key); false }
@@ -1001,6 +1039,7 @@ fn run_app(
                                                 }
                                                 app.graph_state = None;
                                                 app.mode = ViewMode::List;
+                                                debug_log!(app, Info, "view", "View: Graph → List (note opened)");
                                                 app.reload_theme();
                                                 app.open_note_from_graph(&note_id);
                                                 app.needs_full_redraw = true;
@@ -1015,8 +1054,11 @@ fn run_app(
                                                 if let Err(e) = app.config.save() {
                                                     app.set_temporary_status(&format!("Failed to save config: {e}"));
                                                 }
+                                                debug_log!(app, Info, "config", "Config saved (graph view close)");
+                                                debug_log!(app, Info, "graf", "Graph view shutdown");
                                                 app.graph_state = None;
                                                 app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
+                                                debug_log!(app, Info, "view", "View: Graph → {:?}", app.mode);
                                                 app.reload_theme();
                                                 app.needs_full_redraw = true;
                                                 terminal.clear()?;
@@ -1036,6 +1078,7 @@ fn run_app(
                                             &mut app.config,
                                         )?;
                                         if result.is_some() {
+                                            debug_log!(app, Info, "draw", "Drawing closed and saved");
                                             app.draw_state = None;
                                             app.close_draw_view();
                                             app.needs_full_redraw = true;
@@ -1059,6 +1102,7 @@ fn run_app(
                                                 app.open_help_page_with_tab(crate::app::HelpTab::Canvas);
                                             }
                                             Some(crate::pinstar::app::PinstarResult::Normal) => {
+                                                debug_log!(app, Info, "canvas", "Canvas closed and saved");
                                                 app.close_canvas_view();
                                                 app.needs_full_redraw = true;
                                                 terminal.clear()?;
@@ -1082,6 +1126,7 @@ fn run_app(
                                                 app.reload_config();
                                                 app.backup_state = None;
                                                 app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
+                                                debug_log!(app, Info, "view", "View: Backup → {:?}", app.mode);
                                                 app.reload_theme();
                                                 app.needs_full_redraw = true;
                                                 terminal.clear()?;
@@ -1104,14 +1149,16 @@ fn run_app(
                                             Some(crate::content_tree::app::ContentTreeResult::Back) => {
                                                 app.content_tree_state = None;
                                                 app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
+                                                debug_log!(app, Info, "view", "View: ContentTree → {:?}", app.mode);
                                                 app.reload_theme();
                                                 app.needs_full_redraw = true;
                                                 terminal.clear()?;
                                             }
-                                            Some(crate::content_tree::app::ContentTreeResult::JumpToLine { note_id, line }) => {
+                                            Some(crate::content_tree::app::ContentTreeResult::JumpToLine { note_id: _, line: _ }) => {
                                                 app.content_tree_state = None;
+                                                app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
+                                                debug_log!(app, Info, "view", "View: ContentTree → {:?} (jump to line)", app.mode);
                                                 app.reload_theme();
-                                                app.open_note_at_line(&note_id, Some(line));
                                                 app.needs_full_redraw = true;
                                                 terminal.clear()?;
                                             }

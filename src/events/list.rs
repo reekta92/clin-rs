@@ -1,3 +1,4 @@
+use crate::debug_log;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind, MouseButton};
 use ratatui::layout::{Rect, Layout, Direction, Constraint, Margin};
 use ratatui_textarea::Input;
@@ -1068,12 +1069,13 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
             _ => {}
         },
         crate::keybinds::MatchOutcome::Pending => return false,
-        crate::keybinds::MatchOutcome::NoMatch => {}
+        crate::keybinds::MatchOutcome::NoMatch => {
+            debug_log!(app, Debug, "event", "Unhandled key in list: {key:?}");
+        }
     }
 
     false
 }
-
 pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: Rect) {
     if app.layout_edit {
         handle_layout_edit_mouse(app, mouse_event, terminal_area);

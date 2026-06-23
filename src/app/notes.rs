@@ -1,3 +1,4 @@
+use crate::debug_log;
 use super::*;
 use crate::constants::*;
 use crate::list_view::*;
@@ -18,12 +19,14 @@ impl App {
 
         let ids = self.storage.list_note_ids(self.list.show_hidden_files)?;
         let mut summaries = Vec::new();
+        let mut cached = 0usize;
 
         for id in &ids {
             let mt = self.storage.note_mtime_millis(id);
             if self.summary_mtime.get(id) == Some(&mt)
                 && let Some(s) = self.summary_cache.get(id)
             {
+                cached += 1;
                 summaries.push(s.clone());
                 continue;
             }
@@ -39,8 +42,10 @@ impl App {
         self.summary_mtime.retain(|k, _| id_set.contains(k));
 
         self.notes = summaries;
+        let len = self.notes.len();
         self.sort_notes();
         self.refresh_visual_list();
+        debug_log!(self, Debug, "storage", "Notes refreshed: {len} total ({cached} cached hits)");
         Ok(())
     }
 
@@ -171,18 +176,22 @@ impl App {
             }
             self.editor.editor = editor;
             self.mode = ViewMode::Edit;
+            debug_log!(self, Info, "view", "View: List → Edit (note={note_id})");
             if self.editor.editor_preview_enabled {
                 self.update_editor_markdown_preview();
             } else {
                 self.editor.md_preview_renderer = None;
             }
             self.status = Cow::Borrowed(EDIT_HELP_HINTS);
+            debug_log!(self, Info, "storage", "Note opened: {note_id} (line={line_number:?})");
         } else {
             self.status = Cow::Borrowed("Failed to load note!");
+            debug_log!(self, Warn, "storage", "Failed to open note: {note_id}");
         }
     }
 
     pub fn open_note_in_external_editor(&mut self, note_id: &str, line_number: Option<usize>) {
+        debug_log!(self, Info, "ext-editor", "Opening {note_id} in external editor");
         if let Ok(note) = self.storage.load_note(note_id) {
             let temp_dir = std::env::temp_dir();
             let temp_id = uuid::Uuid::new_v4().to_string();
@@ -234,6 +243,7 @@ impl App {
             }
 
             let _secret = SecretTempFile::new(temp_file_path.clone());
+            debug_log!(self, Debug, "ext-editor", "External editor temp file: {}", temp_file_path.display());
 
             let mut args: Vec<String> = Vec::new();
             if let Some(l) = line_number {
@@ -241,6 +251,7 @@ impl App {
             }
             args.push(temp_file_path.to_string_lossy().into_owned());
             let (result, editor_prog) = self.run_in_external_editor(&args);
+            debug_log!(self, Info, "ext-editor", "External editor launched: {editor_prog} for {note_id}");
 
             match result {
                 Ok(status) if status.success() => {
@@ -252,6 +263,7 @@ impl App {
                             if after_words > before_words {
                                 diff = after_words - before_words;
                             }
+                            debug_log!(self, Info, "ext-editor", "External editor changes saved: {note_id} ({diff} words)");
 
                             let updated_note = Note {
                                 title: note.title,
@@ -260,6 +272,7 @@ impl App {
                                 tags: note.tags,
                             };
                             if let Err(e) = self.storage.save_note(note_id, &updated_note) {
+                                debug_log!(self, Error, "storage", "Write failed for {note_id}: {e}");
                                 self.set_temporary_status(&format!("Failed to save note: {e}"));
                             } else {
                                 self.enqueue_backup(format!("auto: {}", &updated_note.title));
@@ -278,16 +291,19 @@ impl App {
                         } else {
                             self.set_temporary_status_static("No changes made in external editor.");
                         }
+                        debug_log!(self, Debug, "ext-editor", "External editor: no changes for {note_id}");
                     } else {
                         self.set_temporary_status_static("Failed to read from temp file.");
                     }
                 }
                 Ok(status) => {
+                    debug_log!(self, Warn, "ext-editor", "External editor {editor_prog} exited with status {status}");
                     self.set_temporary_status(&format!(
                         "Editor '{editor_prog}' exited with status: {status}"
                     ));
                 }
                 Err(e) => {
+                    debug_log!(self, Error, "ext-editor", "Failed to launch external editor {editor_prog}: {e}");
                     self.set_temporary_status(&format!(
                         "Failed to launch editor '{editor_prog}': {e}"
                     ));
@@ -336,6 +352,7 @@ impl App {
         if !folder.is_empty() && !Self::is_virtual_pinned_path(&folder) {
             new_id = format!("{folder}/{new_id}");
         }
+        debug_log!(self, Info, "storage", "New note created: {new_id} (format=md)");
         self.enter_edit_mode(new_id, title, String::new());
     }
 
@@ -358,6 +375,7 @@ impl App {
         }
 
         self.mode = ViewMode::Edit;
+        debug_log!(self, Info, "view", "View: List → Edit (new note={id})");
         self.editor.editing_id = Some(id);
         self.editor.initial_word_count = crate::goals::count_words(&content);
         self.editor.title_editor = make_title_editor(
@@ -436,6 +454,7 @@ impl App {
         if !folder.is_empty() && !Self::is_virtual_pinned_path(&folder) {
             new_id = format!("{folder}/{new_id}");
         }
+        debug_log!(self, Info, "storage", "New note created: {new_id} (from template)");
 
         if self.editor.external_editor_enabled {
             let new_note = Note {
@@ -489,6 +508,7 @@ impl App {
             self.editor.md_preview_renderer = None;
             self.mode = return_to;
             self.set_default_status();
+            debug_log!(self, Debug, "view", "View: Edit → {:?} (return_mode)", self.mode);
             return;
         }
         self.mode = ViewMode::List;
@@ -505,6 +525,7 @@ impl App {
         if let Err(e) = self.refresh_notes() {
             self.set_temporary_status(&format!("Refresh failed: {e}"));
         }
+        debug_log!(self, Debug, "view", "View: Edit → List");
         self.set_default_status();
     }
 
@@ -723,6 +744,7 @@ impl App {
                     } else {
                         format!("{}/{}", popup.folder, id)
                     };
+                    debug_log!(self, Info, "storage", "New file created: {full_id} (format=txt)");
                     self.enter_edit_mode(full_id, title, String::new());
                 }
                 crate::popups::NoteFormat::Draw => {
@@ -735,6 +757,7 @@ impl App {
                         format!("{}/{}.draw", popup.folder, title)
                     };
                     self.return_mode = Some(self.mode);
+                    debug_log!(self, Info, "storage", "New file created: {canvas_id} (format=draw)");
                     self.mode = ViewMode::Draw;
                     self.editor.editing_id = Some(canvas_id);
                 }
@@ -764,6 +787,7 @@ impl App {
                         }
                     }
                     self.return_mode = Some(self.mode);
+                    debug_log!(self, Info, "storage", "New file created: {canvas_id} (format=canvas)");
                     self.mode = ViewMode::Canvas;
                     self.editor.editing_id = Some(canvas_id);
                     if let Ok(state) = crate::pinstar::state::PinstarState::load(
@@ -786,6 +810,7 @@ impl App {
         title: String,
         content: String,
     ) -> Result<()> {
+        debug_log!(self, Info, "storage", "Content imported: {title} ({} bytes)", content.len());
         match target {
             ImportTarget::NewNote => {
                 let folder = self.get_current_folder_context();
@@ -885,12 +910,14 @@ impl App {
             }
             match self.storage.rename_note(&popup.note_id, new_title) {
                 Ok(_) => {
+                    debug_log!(self, Info, "storage", "Note renamed: {} → {new_title}", popup.note_id);
                     if let Err(e) = self.refresh_notes() {
                         self.set_temporary_status(&format!("Refresh failed: {e}"));
                     }
                     self.set_temporary_status_static("Note renamed");
                 }
                 Err(e) => {
+                    debug_log!(self, Error, "storage", "Note rename failed for {}: {e}", popup.note_id);
                     self.set_temporary_status(&format!("Failed to rename: {e}"));
                 }
             }
@@ -917,6 +944,7 @@ impl App {
                     focus: crate::popups::FolderPickerFocus::Search,
                 });
             } else {
+                debug_log!(self, Warn, "storage", "Failed to list folders");
                 self.set_temporary_status_static("Failed to list folders");
             }
         } else {

@@ -11,6 +11,7 @@ mod status;
 mod import_ops;
 
 use crate::constants::*;
+use crate::debug_log;
 pub use crate::editor::*;
 use crate::events::get_title_text;
 use crate::events::make_title_editor;
@@ -369,6 +370,7 @@ pub struct App {
     pub goals_progress: crate::goals::DailyProgress,
     pub preview_wrap: bool,
     pub preview_fullscreen: bool,
+    pub debug_buffer: crate::debug::DebugBuffer,
     pub layout_edit: bool,
     pub layout_drag: Option<LayoutDrag>,
 }
@@ -436,6 +438,7 @@ impl App {
         let config_mtime =
             config_path.and_then(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok());
 
+        let data_dir = storage.data_dir.clone();
         let mut app = Self {
             storage,
             keybinds,
@@ -484,6 +487,7 @@ impl App {
             goals_progress: crate::goals::DailyProgress::default(),
             preview_wrap,
             preview_fullscreen: false,
+            debug_buffer: crate::debug::DebugBuffer::new(1000, &data_dir),
             layout_edit: false,
             layout_drag: None,
         };
@@ -534,6 +538,7 @@ impl App {
         let config_mtime =
             config_path.and_then(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok());
 
+        let data_dir = storage.data_dir.clone();
         let mut app = Self {
             storage,
             keybinds,
@@ -582,6 +587,7 @@ impl App {
             goals_progress: crate::goals::DailyProgress::default(),
             preview_wrap,
             preview_fullscreen: false,
+            debug_buffer: crate::debug::DebugBuffer::new(1000, &data_dir),
             layout_edit: false,
             layout_drag: None,
         };
@@ -591,7 +597,16 @@ impl App {
     }
 
     pub fn reload_config(&mut self) {
-        self.config = crate::config::ClinConfig::load().unwrap_or_default();
+        self.config = match crate::config::ClinConfig::load() {
+            Ok(c) => {
+                debug_log!(self, Info, "config", "Config hot-reloaded (mtime change)");
+                c
+            }
+            Err(e) => {
+                debug_log!(self, Error, "config", "Config hot-reload failed: {e}");
+                self.config.clone()
+            }
+        };
         self.preview_wrap = self.config.core.preview_wrap;
         self.app_theme = crate::app_theme::AppThemeColors::from_config(&self.config.ui);
         self.build_display_lines();
@@ -938,6 +953,9 @@ impl App {
     }
 
     pub fn autosave(&mut self) {
+        if let Some(ref editing_id) = self.editor.editing_id {
+            debug_log!(self, Debug, "storage", "Autosave triggered for {editing_id}");
+        }
         let content = self.editor.editor.lines().join("\n");
 
         if let Some(path) = &self.editor.template_edit_path

@@ -1,3 +1,4 @@
+use crate::debug_log;
 use crossterm::event::{KeyCode, KeyEvent, MouseEvent, MouseEventKind, MouseButton};
 use ratatui::layout::{Rect, Layout, Direction, Constraint};
 use ratatui_textarea::Input;
@@ -72,6 +73,7 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
             EditAction::Back => {
                 app.autosave();
                 app.back_to_list();
+                debug_log!(app, Debug, "storage", "Back to list from edit (autosaved)");
                 *focus = EditFocus::Body;
                 return false;
             }

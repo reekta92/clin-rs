@@ -184,10 +184,7 @@ impl Default for Keybinds {
         );
         list.insert(
             ListAction::CollapseAll,
-            vec![
-                KeyCombo::simple(KeyCode::Char('c')),
-                KeyCombo::shift(KeyCode::Char('C')),
-            ],
+            vec![KeyCombo::simple(KeyCode::Char('c'))],
         );
 
         let mut edit = HashMap::new();

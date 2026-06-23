@@ -1,3 +1,4 @@
+use crate::debug_log;
 use super::*;
 use crate::list_view::*;
 use crate::popups::*;
@@ -255,14 +256,18 @@ impl App {
                     }
                 }
                 FolderPickerMode::CopyNote { note_id } => {
-                    if let Err(e) = self.storage.duplicate_note(&note_id, target_folder) {
-                        self.set_temporary_status(&format!("Failed to copy note: {e}"));
-                    } else {
-                        self.list.folder_cache = None;
-                        if let Err(e) = self.refresh_notes() {
-                            self.set_temporary_status(&format!("Refresh failed: {e}"));
+                    match self.storage.duplicate_note(&note_id, target_folder) {
+                        Ok(target_id) => {
+                            debug_log!(self, Info, "storage", "Note duplicated: {note_id} → {target_id}");
+                            self.list.folder_cache = None;
+                            if let Err(e) = self.refresh_notes() {
+                                self.set_temporary_status(&format!("Refresh failed: {e}"));
+                            }
+                            self.set_temporary_status_static("Note copied");
                         }
-                        self.set_temporary_status_static("Note copied");
+                        Err(e) => {
+                            self.set_temporary_status(&format!("Failed to copy note: {e}"));
+                        }
                     }
                 }
                 FolderPickerMode::MoveFolder { folder_path } => {

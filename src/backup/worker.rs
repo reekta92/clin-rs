@@ -15,6 +15,11 @@ use parking_lot::Mutex;
 use crate::backup::git_ops::GitOps;
 use crate::config::{BackupConfig, ClinConfig};
 
+fn log_backup(level: &str, message: impl std::fmt::Display) {
+    let ts = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%.3f");
+    let _ = std::eprintln!("[{ts}] [{level:<5}] [backup] {message}");
+}
+
 /// A backup job for the worker.
 pub enum BackupJob {
     /// Debounced — coalesced with other pending `Auto` jobs (on-save, interval).
@@ -57,30 +62,30 @@ fn worker_loop(
     status: &Arc<Mutex<Option<String>>>,
     done: &Sender<()>,
 ) {
+    log_backup("INFO", "Backup worker started");
     loop {
         // 1. Block for the next job. Err ⇒ all senders dropped ⇒ shutdown.
         let first = match rx.recv() {
             Ok(job) => job,
             Err(_) => {
                 // No coalesced message pending at top-of-loop; just signal done.
+                log_backup("INFO", "Backup worker shutting down");
                 let _ = done.send(());
                 return;
             }
         };
 
         match first {
-            // 2. Flush: drain any other immediately-available jobs (their
-            //    messages are irrelevant — `add_all` stages everything), then
-            //    run immediately. No debounce.
+            // 2. Flush: drain any other immediately-available jobs
             BackupJob::Flush(msg) => {
+                log_backup("INFO", &format!("Backup flush: {msg}"));
                 while rx.try_recv().is_ok() {}
                 run_backup(git_lock, status, &msg);
             }
-            // 3. Auto: record the message and debounce. Coalesce further
-            //    incoming jobs (keep the latest message); upgrade to an
-            //    immediate run if a `Flush` arrives. On disconnect, run the
-            //    coalesced message and shut down.
+            // 3. Auto: record the message and debounce.
             BackupJob::Auto(msg) => {
+                let debounce_ms = DEBOUNCE.as_millis();
+                log_backup("DEBUG", &format!("Backup auto: {msg} (debouncing {debounce_ms}ms)"));
                 let mut current = msg;
                 let start = Instant::now();
                 'debounce: loop {
@@ -89,7 +94,10 @@ fn worker_loop(
                         break;
                     }
                     match rx.recv_timeout(remaining) {
-                        Ok(BackupJob::Auto(m)) => current = m,
+                        Ok(BackupJob::Auto(m)) => {
+                            log_backup("DEBUG", &format!("Backup auto: coalesced, reason={m}"));
+                            current = m;
+                        }
                         Ok(BackupJob::Flush(m)) => {
                             current = m;
                             while rx.try_recv().is_ok() {}
@@ -98,11 +106,13 @@ fn worker_loop(
                         Err(mpsc::RecvTimeoutError::Timeout) => break,
                         Err(mpsc::RecvTimeoutError::Disconnected) => {
                             run_backup(git_lock, status, &current);
+                            log_backup("INFO", "Backup worker shutting down");
                             let _ = done.send(());
                             return;
                         }
                     }
                 }
+                log_backup("INFO", &format!("Backup auto: starting commit ({current})"));
                 run_backup(git_lock, status, &current);
             }
         }
@@ -132,22 +142,44 @@ pub(crate) fn perform(
     message: &str,
 ) {
     if !backup.enabled {
+        log_backup("DEBUG", "Backup: disabled in config, skipping");
         return;
     }
-    let result = (|| -> anyhow::Result<()> {
+    log_backup("INFO", &format!("Backup commit starting: {message}"));
+    let result = (|| -> anyhow::Result<String> {
         let _guard = git_lock.lock();
         let git_ops = GitOps::init(vault_path)?;
-        if git_ops.has_changes().unwrap_or(false) {
-            git_ops.add_all().and_then(|_| git_ops.commit(message))?;
-            if backup.auto_push
-                && let Some(remote) = &backup.remote_name
-            {
-                git_ops.push(remote)?;
-            }
+        if !git_ops.has_changes().unwrap_or(false) {
+            return Ok(String::new());
         }
-        Ok(())
+        git_ops.add_all()?;
+        git_ops.commit(message)?;
+        log_backup("INFO", &format!("Backup commit created: {message}"));
+        if backup.auto_push
+            && let Some(remote) = &backup.remote_name
+        {
+            log_backup("INFO", &format!("Backup push to {remote}"));
+            if let Err(e) = git_ops.push(remote) {
+                log_backup("WARN", &format!("Backup push failed: {e}"));
+                return Err(e);
+            }
+            log_backup("INFO", "Backup push completed");
+        }
+        Ok(message.to_string())
     })();
-    *status.lock() = result.err().map(|e| e.to_string());
+    match result {
+        Ok(msg) if msg.is_empty() => {
+            log_backup("DEBUG", "Backup: no changes to commit");
+            *status.lock() = None;
+        }
+        Ok(_) => {
+            *status.lock() = None;
+        }
+        Err(e) => {
+            log_backup("ERROR", &format!("Backup git error: {e}"));
+            *status.lock() = Some(e.to_string());
+        }
+    }
 }
 
 #[cfg(test)]

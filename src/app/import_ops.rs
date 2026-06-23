@@ -1,3 +1,4 @@
+use crate::debug_log;
 use super::*;
 use crate::popups::*;
 use ratatui_textarea::TextArea;
@@ -17,6 +18,7 @@ impl App {
         folder: String,
         note_id: Option<String>,
     ) {
+        debug_log!(self, Info, "import", "Import started: source={source:?}, target={target:?}");
         if target == ImportTarget::NewNote && Self::is_virtual_pinned_path(&folder) {
             self.set_temporary_status_static("Cannot create note inside virtual Pinned");
             return;
@@ -67,16 +69,20 @@ impl App {
             ImportSource::Clipboard => unreachable!(),
         };
 
+        debug_log!(self, Info, "import", "Import conversion: source={:?}, input={input}", popup.source);
         match result {
             Ok((title, md)) => {
                 if let Err(e) =
                     self.insert_content(popup.target, popup.note_id.as_deref(), title, md)
                 {
+                    debug_log!(self, Error, "import", "Import insert failed: {e}");
                     self.set_temporary_status(&format!("Import failed: {e:#}"));
                 }
             }
             Err(e) => {
+                debug_log!(self, Error, "import", "Import conversion failed: {e}");
                 self.set_temporary_status(&format!("Import failed: {e:#}"));
             }
         }
-    }}
+    }
+    }

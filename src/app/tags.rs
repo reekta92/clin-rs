@@ -1,3 +1,4 @@
+use crate::debug_log;
 use super::*;
 use crate::list_view::*;
 use crate::popups::*;
@@ -212,6 +213,7 @@ impl App {
             }
         }
 
+        debug_log!(self, Info, "storage", "Tag deleted: {tag}");
         self.set_temporary_status(&format!("Deleted '{tag}' from {count} note(s)"));
         if let Err(e) = self.refresh_notes() {
             self.set_temporary_status(&format!("Refresh failed: {e}"));

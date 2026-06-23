@@ -1,3 +1,4 @@
+use crate::debug_log;
 use super::*;
 use crate::list_view::*;
 use crate::popups::*;
@@ -11,6 +12,7 @@ impl App {
         let template_manager = self.storage.template_manager();
         match template_manager.list() {
             Ok(templates) => {
+                debug_log!(self, Debug, "view", "Template popup opened ({} templates)", templates.len());
                 let mut input = TextArea::default();
                 input.set_style(self.app_theme.bg_style());
                 input.set_cursor_line_style(Style::default());
@@ -24,6 +26,7 @@ impl App {
                 });
             }
             Err(_) => {
+                debug_log!(self, Warn, "templates", "Failed to load templates");
                 self.set_temporary_status_static("Failed to load templates");
             }
         }
@@ -50,6 +53,7 @@ impl App {
             if let Ok(template) = template_manager.load(&summary.filename) {
                 self.start_note_from_template(&template, folder);
             } else {
+                debug_log!(self, Warn, "templates", "Failed to load selected template");
                 self.set_temporary_status_static("Failed to load selected template");
             }
         }
@@ -82,6 +86,7 @@ impl App {
         let content = match std::fs::read_to_string(path) {
             Ok(content) => content,
             Err(e) => {
+                debug_log!(self, Error, "templates", "Failed to load template: {e}");
                 self.set_temporary_status(&format!("Failed to load template: {e}"));
                 return;
             }
@@ -205,6 +210,7 @@ impl App {
                 self.set_temporary_status_static("Template deleted");
             }
             Err(e) => {
+                debug_log!(self, Error, "templates", "Failed to delete template: {e}");
                 self.set_temporary_status(&format!("Failed to delete template: {e}"));
             }
         }
@@ -381,6 +387,7 @@ template = """
     }
 
     pub fn confirm_bulk_delete(&mut self, note_ids: Vec<String>) {
+        let total = note_ids.len();
         let mut failed = 0;
         for id in note_ids {
             if self.storage.trash_note(&id).is_err() {
@@ -400,6 +407,8 @@ template = """
         } else {
             self.set_temporary_status_static("Selected notes moved to trash");
         }
+        let n = total - failed;
+        debug_log!(self, Info, "storage", "Bulk trash: {n} succeeded, {failed} failed");
     }
 
     pub fn close_create_format_popup(&mut self) {
@@ -434,11 +443,12 @@ template = """
             (SortField::Title, SortOrder::Ascending) => "Sort: Title (A-Z)",
             (SortField::Title, SortOrder::Descending) => "Sort: Title (Z-A)",
         };
-        self.set_temporary_status_static(sort_desc);
+        debug_log!(self, Debug, "config", "Sort changed to {sort_desc}");
         if let Ok(mut config) = crate::config::ClinConfig::load() {
             config.list.default_sort_field = Some(self.list.sort_field);
             config.list.default_sort_order = Some(self.list.sort_order);
             if let Err(e) = config.save() {
+                debug_log!(self, Error, "config", "Config save failed (sort): {e}");
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
             }
         }
@@ -461,6 +471,7 @@ template = """
 
         let config = crate::config::ClinConfig::load().unwrap_or_default();
         let current = config.ui.theme.to_string();
+        debug_log!(self, Debug, "view", "Theme selection opened (current={current})");
         let selected = themes.iter().position(|t| t == &current).unwrap_or(0);
         let general_is_solid = matches!(config.ui.background, crate::config::Background::Solid);
         let graph_is_solid = matches!(
@@ -515,14 +526,7 @@ template = """
             if let Err(e) = self.refresh_notes() {
                 self.set_temporary_status(&format!("Refresh failed: {e}"));
             }
-            // Persist
-            if let Ok(mut config) = crate::config::ClinConfig::load() {
-                config.list.default_sort_field = Some(self.list.sort_field);
-                config.list.default_sort_order = Some(self.list.sort_order);
-                if let Err(e) = config.save() {
-                    self.set_temporary_status(&format!("Failed to save config: {e}"));
-                }
-            }
+            debug_log!(self, Debug, "view", "Sort: {:?}", (self.list.sort_field, self.list.sort_order));
         }
     }
 
@@ -558,6 +562,7 @@ template = """
             if let Ok(mut config) = crate::config::ClinConfig::load() {
                 config.ui.icon_mode = mode;
                 if let Err(e) = config.save() {
+                    debug_log!(self, Error, "config", "Failed to save config (icon mode): {e}");
                     self.set_temporary_status(&format!("Failed to save config: {e}"));
                 }
             }
@@ -580,6 +585,7 @@ template = """
                         return;
                     }
                     self.reload_theme();
+                    debug_log!(self, Info, "view", "Theme changed to {next_theme}");
                     self.set_temporary_status(&format!("Theme set to: {next_theme}"));
                     self.popups.theme = Some(popup);
                 }
