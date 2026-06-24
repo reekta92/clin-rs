@@ -709,7 +709,7 @@ pub fn compute_status_string(state: &GraphState, area: Rect) -> String {
     };
 
     format!(
-        "Nodes: {} | Edges: {} | Selected: {} | Size: {:.0}% | Ratio: {:.1}x ",
+        "Nodes: {} | Edges: {} | Selected: {} | Size: {:.0}% | Ratio: {:.1}x   ",
         node_count,
         edge_count,
         selected_info.as_deref().unwrap_or("none"),
