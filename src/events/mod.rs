@@ -1020,6 +1020,40 @@ pub fn handle_global_popups_and_palette(
                 return true;
             }
 
+            if let Some(mut popup) = app.popups.hint_bar_style.take() {
+                app.seq_matcher.clear();
+                match key.code {
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        popup.selected = popup.selected.saturating_sub(1);
+                        app.popups.hint_bar_style = Some(popup);
+                        app.select_hint_bar_style();
+                    }
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        if popup.selected < 4 {
+                            popup.selected += 1;
+                        }
+                        app.popups.hint_bar_style = Some(popup);
+                        app.select_hint_bar_style();
+                    }
+                    _ if app
+                        .keybinds
+                        .matches_list(crate::keybinds::ListAction::Confirm, &key) =>
+                    {
+                        app.popups.hint_bar_style = Some(popup);
+                        app.select_hint_bar_style();
+                        app.close_hint_bar_style_popup();
+                    }
+                    _ if crate::events::is_cancel_popup(&app.keybinds, &key, false) =>
+                    {
+                        app.close_hint_bar_style_popup();
+                    }
+                    _ => {
+                        app.popups.hint_bar_style = Some(popup);
+                    }
+                }
+                return true;
+            }
+
             if let Some(mut popup) = app.popups.sort.take() {
                 app.seq_matcher.clear();
                 match key.code {

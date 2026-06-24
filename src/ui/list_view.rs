@@ -7,7 +7,7 @@ use super::{
     draw_view_title_bar_with_tabs, draw_status_bar, draw_dim_vline,
     draw_corner_watermark, draw_popup_frame, draw_confirm_popup,
     draw_template_popup, format_relative_time, build_list_widget,
-    resolved_status_line, format_keybind_hints, ext_badge, popup_block
+    format_keybind_hints, ext_badge, popup_block, popup_hint_line
 };
 
 const GRID_TILE_W: u16 = 10; // outer width incl. border
@@ -29,7 +29,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     let title = if app.layout_edit { "Notes - Editing Layout" } else { "Notes" };
     if app.preview_fullscreen {
         let preview_info = get_preview_info(app);
-        draw_view_title_bar(frame, chunks[0], title, &app.app_theme, preview_info);
+        draw_view_title_bar(frame, chunks[0], title, &app.app_theme, preview_info, Some(app.status.as_ref()));
     } else if app.list.notes_layout == crate::config::NotesLayout::Grid {
         let tabs = [
             ("Vault", Some(crate::ui::get_icon("\u{f07b}", "\u{1f4c1}", app.config.ui.icon_mode))),
@@ -43,7 +43,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             app.config.ui.tab_icons_only,
             app.config.ui.icon_mode,
         );
-        draw_view_title_bar_with_tabs(frame, chunks[0], title, tab_spans, &app.app_theme);
+        draw_view_title_bar_with_tabs(frame, chunks[0], title, tab_spans, &app.app_theme, Some(app.status.as_ref()));
 
         // Show details of the selected note at the top right (clock/relative time + tags)
         if let Some(crate::app::VisualItem::Note { summary_idx, .. }) =
@@ -99,7 +99,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             frame.render_widget(detail_para, chunks[0]);
         }
     } else {
-        draw_view_title_bar(frame, chunks[0], title, &app.app_theme, None);
+        draw_view_title_bar(frame, chunks[0], title, &app.app_theme, None, Some(app.status.as_ref()));
     }
 
     let (list_area, preview_area, calendar_area) = list_view_layout(
@@ -480,7 +480,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         ];
         format_keybind_hints(&app.app_theme, &layout_items)
     } else {
-        resolved_status_line(app, default_hints, &app.app_theme)
+        default_hints
     };
     let badge = Some(ext_badge(
         app.editor.external_editor_enabled,
@@ -554,12 +554,13 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             crate::popups::FolderPopupMode::Create { .. } => "NEW FOLDER",
             crate::popups::FolderPopupMode::Rename { .. } => "RENAME FOLDER",
         };
+        let hint_line = popup_hint_line(&app.app_theme, "Enter confirm · Esc cancel");
         let content = draw_popup_frame(
             frame,
             area,
             title,
             PopupSize::Prompt,
-            "Enter confirm · Esc cancel",
+            &hint_line,
             &app.app_theme,
         );
 
@@ -578,12 +579,13 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         } else {
             (popup.suggestions.len() as u16).clamp(1, 5)
         };
+        let hint_line = popup_hint_line(&app.app_theme, "Ctrl+S batch assign · Tab accept · Enter save · d delete from all · Esc cancel");
         let content = draw_popup_frame(
             frame,
             area,
             "TAGS",
             PopupSize::Large,
-            "Ctrl+S batch assign · Tab accept · Enter save · d delete from all · Esc cancel",
+            &hint_line,
             &app.app_theme,
         );
 
@@ -688,12 +690,13 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             crate::popups::FolderPickerMode::CopyNote { .. } => "COPY",
             _ => "MOVE",
         };
+        let hint_line = popup_hint_line(&app.app_theme, "Tab switch  Enter move  Esc cancel");
         let content = draw_popup_frame(
             frame,
             area,
             title,
             PopupSize::Large,
-            "Tab switch  Enter move  Esc cancel",
+            &hint_line,
             &app.app_theme,
         );
 
@@ -764,12 +767,13 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     }
 
     if let Some(palette) = &mut app.command_palette {
+        let hint_line = popup_hint_line(&app.app_theme, "Tab category · Enter run · ↑/↓ select · Esc close");
         let content = draw_popup_frame(
             frame,
             area,
             "COMMANDS",
             PopupSize::Large,
-            "Tab category · Enter run · ↑/↓ select · Esc close",
+            &hint_line,
             &app.app_theme,
         );
 
@@ -848,12 +852,13 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     }
 
     if let Some(popup) = &mut app.popups.note_rename {
+        let hint_line = popup_hint_line(&app.app_theme, "Enter rename · Esc cancel");
         let content = draw_popup_frame(
             frame,
             area,
             "RENAME",
             PopupSize::Prompt,
-            "Enter rename · Esc cancel",
+            &hint_line,
             &app.app_theme,
         );
 
@@ -875,7 +880,8 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 ("DAILY NOTE GOAL", "Enter note count · Esc cancel")
             }
         };
-        let content = draw_popup_frame(frame, area, title, PopupSize::Prompt, sub, &app.app_theme);
+        let hint_line = popup_hint_line(&app.app_theme, sub);
+        let content = draw_popup_frame(frame, area, title, PopupSize::Prompt, &hint_line, &app.app_theme);
 
         popup.input.set_block(
             Block::default()
@@ -893,12 +899,13 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             crate::popups::NoteFormat::Canvas => "NEW CANVAS",
             crate::popups::NoteFormat::PlainText => "NEW TEXT FILE",
         };
+        let hint_line = popup_hint_line(&app.app_theme, "Enter create · Esc cancel");
         let content = draw_popup_frame(
             frame,
             area,
             title,
             PopupSize::Prompt,
-            "Enter create · Esc cancel",
+            &hint_line,
             &app.app_theme,
         );
         popup.input.set_block(popup_block("", &app.app_theme));
@@ -913,12 +920,13 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             crate::popups::ImportSource::Url => "IMPORT URL",
             crate::popups::ImportSource::Clipboard => "IMPORT CLIPBOARD",
         };
+        let hint_line = popup_hint_line(&app.app_theme, "Enter import · Esc cancel");
         let content = draw_popup_frame(
             frame,
             area,
             title,
             PopupSize::Large,
-            "Enter import · Esc cancel",
+            &hint_line,
             &app.app_theme,
         );
         popup.input.set_block(
@@ -931,12 +939,13 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     }
 
     if let Some(popup) = &mut app.popups.search {
+        let hint_line = popup_hint_line(&app.app_theme, "Tab switch · Enter open · Esc cancel · f:folder p:pinned t:tag g:text · \\e\\ escapes filters");
         let content = draw_popup_frame(
             frame,
             area,
             "SEARCH",
             PopupSize::Large,
-            "Tab switch · Enter open · Esc cancel · f:folder p:pinned t:tag g:text · \\e\\ escapes filters",
+            &hint_line,
             &app.app_theme,
         );
 
@@ -1155,12 +1164,13 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     }
 
     if let Some(trash) = &app.popups.trash_view {
+        let hint_line = popup_hint_line(&app.app_theme, "r restore · d delete · E empty · q close");
         let content = draw_popup_frame(
             frame,
             area,
             "TRASH",
             PopupSize::Large,
-            "r restore · d delete · E empty · q close",
+            &hint_line,
             &app.app_theme,
         );
 

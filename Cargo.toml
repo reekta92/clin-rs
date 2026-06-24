@@ -120,6 +120,7 @@ fdg-sim = "0.9"
 which = "8.0.2"
 zeroize = { version = "1.8.2", features = ["derive"] }
 portable-pty = "0.9"
+unicode-width = "0.2"
 git2 = "0.21"
 mimalloc = "0.1"
 

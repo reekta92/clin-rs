@@ -87,3 +87,14 @@ toggle_action!(CycleIconModeAction, "settings.icon_mode",
         crate::config::IconMode::Unicode => "Unicode",
         crate::config::IconMode::None => "None",
     });
+
+toggle_action!(CycleHintBarStyleAction, "settings.hint_bar_style",
+    "Select Hint Bar Style", "Choose how hint bars and popup footers are styled",
+    ActionCategory::Settings, "\u{f0db}", "\u{1f4cb}", begin_hint_bar_style_selection, app,
+    match app.config.ui.hint_bar_style {
+        crate::config::HintBarStyle::Classic => "Classic",
+        crate::config::HintBarStyle::Accent => "Accent",
+        crate::config::HintBarStyle::PowerlineSharp => "Powerline Sharp",
+        crate::config::HintBarStyle::PowerlineRounded => "Powerline Rounded",
+        crate::config::HintBarStyle::PowerlineSlanted => "Powerline Slanted",
+    });

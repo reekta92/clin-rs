@@ -513,6 +513,7 @@ dependencies = [
  "toml_edit",
  "trash",
  "tui-term",
+ "unicode-width",
  "uuid",
  "which",
  "zeroize",

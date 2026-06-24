@@ -72,7 +72,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     .direction(Direction::Vertical)
                     .constraints([Constraint::Length(1), Constraint::Min(0)])
                     .split(frame.area());
-                draw_view_title_bar(frame, outer[0], "Graph", &app.app_theme, None);
+                draw_view_title_bar(frame, outer[0], "Graph", &app.app_theme, None, Some(app.status.as_ref()));
                 graf.overlay_render(frame, outer[1], &app.app_theme, &app.config);
             }
         }
@@ -82,7 +82,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     .direction(Direction::Vertical)
                     .constraints([Constraint::Length(1), Constraint::Min(0)])
                     .split(frame.area());
-                draw_view_title_bar(frame, outer[0], "Draw", &app.app_theme, None);
+                draw_view_title_bar(frame, outer[0], "Draw", &app.app_theme, None, Some(app.status.as_ref()));
                 draw.overlay_render(frame, outer[1], &app.app_theme, &app.config);
             }
         }
@@ -92,7 +92,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     .direction(Direction::Vertical)
                     .constraints([Constraint::Length(1), Constraint::Min(0)])
                     .split(frame.area());
-                draw_view_title_bar(frame, outer[0], "Canvas", &app.app_theme, None);
+                draw_view_title_bar(frame, outer[0], "Canvas", &app.app_theme, None, Some(app.status.as_ref()));
                 canvas.overlay_render(frame, outer[1], &app.app_theme, &app.config);
             }
         }
@@ -114,7 +114,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     .constraints([Constraint::Length(1), Constraint::Min(0)])
                     .split(frame.area());
                 let title = format!("CONTENT TREE — {}", tree.note_title);
-                draw_view_title_bar(frame, outer[0], &title, &app.app_theme, None);
+                draw_view_title_bar(frame, outer[0], &title, &app.app_theme, None, Some(app.status.as_ref()));
                 tree.overlay_render(frame, outer[1], &app.app_theme, &app.config);
             }
         }
@@ -132,12 +132,13 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             crate::popups::FolderPopupMode::Create { .. } => "NEW FOLDER",
             crate::popups::FolderPopupMode::Rename { .. } => "RENAME FOLDER",
         };
+        let hint_line = popup_hint_line(&app.app_theme, "Enter confirm · Esc cancel");
         let content = draw_popup_frame(
             frame,
             frame.area(),
             title,
             PopupSize::Prompt,
-            "Enter confirm · Esc cancel",
+            &hint_line,
             &app.app_theme,
         );
         popup.input.set_block(
@@ -156,12 +157,13 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         } else {
             (popup.suggestions.len() as u16).clamp(1, 5)
         };
+        let hint_line = popup_hint_line(&app.app_theme, "Ctrl+S batch assign · Tab accept · Enter save · d delete from all · Esc cancel");
         let content = draw_popup_frame(
             frame,
             frame.area(),
             "TAGS",
             PopupSize::Large,
-            "Ctrl+S batch assign · Tab accept · Enter save · d delete from all · Esc cancel",
+            &hint_line,
             &app.app_theme,
         );
 
@@ -267,12 +269,13 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             crate::popups::FolderPickerMode::CopyNote { .. } => "COPY",
             _ => "MOVE",
         };
+        let hint_line = popup_hint_line(&app.app_theme, "Tab switch  Enter move  Esc cancel");
         let content = draw_popup_frame(
             frame,
             frame.area(),
             title,
             PopupSize::Large,
-            "Tab switch  Enter move  Esc cancel",
+            &hint_line,
             &app.app_theme,
         );
 
@@ -345,12 +348,13 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     // Command palette
     if let Some(palette) = &mut app.command_palette {
         let area = frame.area();
+        let hint_line = popup_hint_line(&app.app_theme, "Tab category · Enter run · ↑/↓ select · Esc close");
         let content = draw_popup_frame(
             frame,
             area,
             "COMMANDS",
             PopupSize::Large,
-            "Tab category · Enter run · ↑/↓ select · Esc close",
+            &hint_line,
             &app.app_theme,
         );
 
@@ -430,12 +434,13 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
 
     // Note rename popup
     if let Some(popup) = &mut app.popups.note_rename {
+        let hint_line = popup_hint_line(&app.app_theme, "Enter rename · Esc cancel");
         let content = draw_popup_frame(
             frame,
             frame.area(),
             "RENAME",
             PopupSize::Prompt,
-            "Enter rename · Esc cancel",
+            &hint_line,
             &app.app_theme,
         );
 
@@ -458,7 +463,8 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 ("DAILY NOTE GOAL", "Enter note count · Esc cancel")
             }
         };
-        let content = draw_popup_frame(frame, frame.area(), title, PopupSize::Prompt, sub, &app.app_theme);
+        let hint_line = popup_hint_line(&app.app_theme, sub);
+        let content = draw_popup_frame(frame, frame.area(), title, PopupSize::Prompt, &hint_line, &app.app_theme);
 
         popup.input.set_block(
             Block::default()
@@ -477,12 +483,13 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             crate::popups::NoteFormat::Canvas => "NEW CANVAS",
             crate::popups::NoteFormat::PlainText => "NEW TEXT FILE",
         };
+        let hint_line = popup_hint_line(&app.app_theme, "Enter create · Esc cancel");
         let content = draw_popup_frame(
             frame,
             frame.area(),
             title,
             PopupSize::Prompt,
-            "Enter create · Esc cancel",
+            &hint_line,
             &app.app_theme,
         );
         popup.input.set_block(popup_block("", &app.app_theme));
@@ -498,12 +505,13 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             crate::popups::ImportSource::Url => "IMPORT URL",
             crate::popups::ImportSource::Clipboard => "IMPORT CLIPBOARD",
         };
+        let hint_line = popup_hint_line(&app.app_theme, "Enter import · Esc cancel");
         let content = draw_popup_frame(
             frame,
             frame.area(),
             title,
             PopupSize::Large,
-            "Enter import · Esc cancel",
+            &hint_line,
             &app.app_theme,
         );
         popup.input.set_block(
@@ -518,12 +526,13 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     // Search popup
     if let Some(popup) = &mut app.popups.search {
         let area = frame.area();
+        let hint_line = popup_hint_line(&app.app_theme, "Tab switch · Enter open · Esc cancel · f:folder p:pinned t:tag g:text · \\e\\ escapes filters");
         let content = draw_popup_frame(
             frame,
             area,
             "SEARCH",
             PopupSize::Large,
-            "Tab switch · Enter open · Esc cancel · f:folder p:pinned t:tag g:text · \\e\\ escapes filters",
+            &hint_line,
             &app.app_theme,
         );
 
@@ -748,12 +757,13 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     // Trash view popup
     if let Some(trash) = &app.popups.trash_view {
         let area = frame.area();
+        let hint_line = popup_hint_line(&app.app_theme, "r restore · d delete · E empty · q close");
         let content = draw_popup_frame(
             frame,
             area,
             "TRASH",
             PopupSize::Large,
-            "r restore · d delete · E empty · q close",
+            &hint_line,
             &app.app_theme,
         );
 
@@ -815,6 +825,11 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     // Icon mode popup
     if let Some(popup) = &app.popups.icon_mode {
         draw_icon_mode_popup(frame, popup, frame.area(), &app.app_theme);
+    }
+
+    // Hint bar style popup
+    if let Some(popup) = &app.popups.hint_bar_style {
+        draw_hint_bar_style_popup(frame, popup, frame.area(), &app.app_theme);
     }
 
     if let Some(popup) = &app.popups.sort {

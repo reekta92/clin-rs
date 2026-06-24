@@ -573,6 +573,52 @@ template = """
         self.popups.icon_mode = None;
     }
 
+    pub fn begin_hint_bar_style_selection(&mut self) {
+        let current_idx = match self.config.ui.hint_bar_style {
+            crate::config::HintBarStyle::Classic => 0,
+            crate::config::HintBarStyle::Accent => 1,
+            crate::config::HintBarStyle::PowerlineSharp => 2,
+            crate::config::HintBarStyle::PowerlineRounded => 3,
+            crate::config::HintBarStyle::PowerlineSlanted => 4,
+        };
+        self.popups.hint_bar_style = Some(crate::popups::HintBarStylePopup {
+            selected: current_idx,
+        });
+    }
+
+    pub fn select_hint_bar_style(&mut self) {
+        if let Some(popup) = self.popups.hint_bar_style.take() {
+            let style = match popup.selected {
+                0 => crate::config::HintBarStyle::Classic,
+                1 => crate::config::HintBarStyle::Accent,
+                2 => crate::config::HintBarStyle::PowerlineSharp,
+                3 => crate::config::HintBarStyle::PowerlineRounded,
+                _ => crate::config::HintBarStyle::PowerlineSlanted,
+            };
+            self.config.ui.hint_bar_style = style;
+            let status = match style {
+                crate::config::HintBarStyle::Classic => "Hint bar style: Classic",
+                crate::config::HintBarStyle::Accent => "Hint bar style: Accent",
+                crate::config::HintBarStyle::PowerlineSharp => "Hint bar style: Powerline Sharp",
+                crate::config::HintBarStyle::PowerlineRounded => "Hint bar style: Powerline Rounded",
+                crate::config::HintBarStyle::PowerlineSlanted => "Hint bar style: Powerline Slanted",
+            };
+            self.set_temporary_status_static(status);
+            if let Ok(mut config) = crate::config::ClinConfig::load() {
+                config.ui.hint_bar_style = style;
+                if let Err(e) = config.save() {
+                    debug_log!(self, Error, "config", "Failed to save config (hint bar style): {e}");
+                    self.set_temporary_status(&format!("Failed to save config: {e}"));
+                }
+            }
+            self.popups.hint_bar_style = Some(popup);
+        }
+    }
+
+    pub fn close_hint_bar_style_popup(&mut self) {
+        self.popups.hint_bar_style = None;
+    }
+
     pub fn select_theme(&mut self) {
         if let Some(mut popup) = self.popups.theme.take() {
             match popup.focus {

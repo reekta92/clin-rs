@@ -127,6 +127,7 @@ pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyL
         Box::new(settings::SetWordGoalAction),
         Box::new(settings::SetNoteGoalAction),
         Box::new(settings::CycleIconModeAction),
+        Box::new(settings::CycleHintBarStyleAction),
         Box::new(import::ImportAction {
             source: crate::popups::ImportSource::File,
             target: crate::popups::ImportTarget::NewNote,

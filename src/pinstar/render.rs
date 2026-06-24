@@ -660,12 +660,13 @@ pub fn draw_pinstar_view(
     }
 
     if let Some(textarea) = &mut state.rename_popup {
+        let hint_line = crate::ui::popup_hint_line(theme, "Enter confirm · Esc cancel");
         let content = crate::ui::draw_popup_frame(
             frame,
             area,
             "RENAME NODE",
             crate::ui::PopupSize::Prompt,
-            "Enter confirm · Esc cancel",
+            &hint_line,
             theme,
         );
 

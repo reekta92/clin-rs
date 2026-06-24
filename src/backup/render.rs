@@ -138,7 +138,7 @@ pub fn draw_header(frame: &mut Frame, area: Rect, state: &BackupState, icon_mode
         0
     };
     let spans = crate::ui::build_tab_spans(&tabs, active, theme, state.tab_icons_only, icon_mode);
-    crate::ui::draw_view_title_bar_with_tabs(frame, area, "Backup", spans, theme);
+    crate::ui::draw_view_title_bar_with_tabs(frame, area, "Backup", spans, theme, None);
 }
 
 fn draw_content(frame: &mut Frame, area: Rect, state: &mut BackupState) {
@@ -425,12 +425,13 @@ fn draw_diff_pane(frame: &mut Frame, area: Rect, state: &mut BackupState) {
 
 fn draw_commit_popup(frame: &mut Frame, area: Rect, state: &BackupState) {
     let theme = &state.theme;
+    let hint_line = crate::ui::popup_hint_line(theme, "Enter confirm · Esc cancel");
     let content = crate::ui::draw_popup_frame(
         frame,
         area,
         "COMMIT",
         crate::ui::PopupSize::Prompt,
-        "Enter confirm · Esc cancel",
+        &hint_line,
         theme,
     );
 
@@ -456,12 +457,13 @@ fn draw_commit_popup(frame: &mut Frame, area: Rect, state: &BackupState) {
 
 fn draw_settings_popup(frame: &mut Frame, area: Rect, state: &BackupState) {
     let theme = &state.theme;
+    let hint_line = crate::ui::popup_hint_line(theme, "j/k navigate · Enter toggle/edit · Esc cancel");
     let content = crate::ui::draw_popup_frame(
         frame,
         area,
         "BACKUP SETTINGS",
         crate::ui::PopupSize::Large,
-        "j/k navigate · Enter toggle/edit · Esc cancel",
+        &hint_line,
         theme,
     );
 

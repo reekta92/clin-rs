@@ -3,7 +3,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use ratatui::{prelude::*, widgets::*};
 use ratatui_textarea::TextArea;
 
-use crate::app::{App, ConfirmPopup, TemplatePopup, ThemePopup};
+use crate::app::{ConfirmPopup, TemplatePopup, ThemePopup};
 use crate::app_theme::AppThemeColors;
 use super::{get_textarea_scroll, PopupSize};
 
@@ -13,12 +13,13 @@ pub fn draw_template_popup(
     area: Rect,
     theme: &AppThemeColors,
 ) {
+    let hint_line = popup_hint_line(theme, "Tab switch · Enter use template · n create · d delete · Space edit · ? help · Esc cancel");
     let content = draw_popup_frame(
         frame,
         area,
         "TEMPLATES",
         PopupSize::Large,
-        "Tab switch · Enter use template · n create template · d delete · Space edit · ? help · Esc cancel",
+        &hint_line,
         theme,
     );
 
@@ -101,12 +102,13 @@ pub fn draw_theme_popup(
     area: Rect,
     theme: &AppThemeColors,
 ) {
+    let hint_line = popup_hint_line(theme, "Tab navigate · Enter select · Esc close");
     let content = draw_popup_frame(
         frame,
         area,
         "THEMES",
         PopupSize::Medium,
-        "Tab navigate · Enter select · Esc close",
+        &hint_line,
         theme,
     );
 
@@ -207,12 +209,13 @@ pub fn draw_sort_popup(
     area: Rect,
     theme: &AppThemeColors,
 ) {
+    let hint_line = popup_hint_line(theme, "↑↓: Navigate • Enter: Select • Esc: Cancel");
     let content_area = draw_popup_frame(
         frame,
         area,
         "SORT BY",
         PopupSize::Medium,
-        "↑↓: Navigate • Enter: Select • Esc: Cancel",
+        &hint_line,
         theme,
     );
 
@@ -252,12 +255,13 @@ pub fn draw_icon_mode_popup(
     area: Rect,
     theme: &AppThemeColors,
 ) {
+    let hint_line = popup_hint_line(theme, "↑↓: Navigate • Enter: Select • Esc: Cancel");
     let content_area = draw_popup_frame(
         frame,
         area,
         "ICON MODE",
         PopupSize::Medium,
-        "↑↓: Navigate • Enter: Select • Esc: Cancel",
+        &hint_line,
         theme,
     );
 
@@ -292,12 +296,13 @@ pub fn draw_create_format_popup(
     area: Rect,
     theme: &AppThemeColors,
 ) {
+    let hint_line = popup_hint_line(theme, "↑↓: Navigate • Enter: Select • Esc: Cancel");
     let content_area = draw_popup_frame(
         frame,
         area,
         "CREATE NEW",
         PopupSize::Medium,
-        "↑↓: Navigate • Enter: Select • Esc: Cancel",
+        &hint_line,
         theme,
     );
 
@@ -306,6 +311,53 @@ pub fn draw_create_format_popup(
         "Plain Text (.txt)",
         "Drawing (.draw)",
         "Canvas (.canvas)",
+    ];
+    let items: Vec<ListItem> = options
+        .iter()
+        .map(|&opt| ListItem::new(Line::from(Span::raw(opt))))
+        .collect();
+
+    let list = List::new(items)
+        .block(
+            Block::default()
+                .style(theme.bg_style())
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(theme.heading)),
+        )
+        .highlight_style(
+            Style::default()
+                .fg(theme.highlight_fg)
+                .bg(theme.highlight_bg)
+                .add_modifier(Modifier::BOLD),
+        );
+
+    let mut state = ListState::default();
+    state.select(Some(popup.selected));
+    frame.render_stateful_widget(list, content_area, &mut state);
+}
+
+pub fn draw_hint_bar_style_popup(
+    frame: &mut Frame,
+    popup: &crate::popups::HintBarStylePopup,
+    area: Rect,
+    theme: &AppThemeColors,
+) {
+    let hint_line = popup_hint_line(theme, "↑↓: Navigate • Enter: Select • Esc: Cancel");
+    let content_area = draw_popup_frame(
+        frame,
+        area,
+        "HINT BAR STYLE",
+        PopupSize::Medium,
+        &hint_line,
+        theme,
+    );
+
+    let options = [
+        "Classic",
+        "Accent",
+        "Powerline Sharp",
+        "Powerline Rounded",
+        "Powerline Slanted",
     ];
     let items: Vec<ListItem> = options
         .iter()
@@ -531,15 +583,6 @@ pub fn draw_status_bar<'a>(
     }
 }
 
-pub fn resolved_status_line<'a>(app: &'a App, default_hints: Line<'a>, theme: &'a AppThemeColors) -> Line<'a> {
-    let status = app.status.as_ref();
-    if !status.is_empty() && status != "Ready" {
-        let text = crate::sanitize::sanitize_for_terminal(status);
-        Line::from(vec![Span::styled(text.into_owned(), Style::default().fg(theme.muted))])
-    } else {
-        default_hints
-    }
-}
 
 pub fn format_keybind_hints<'a>(theme: &'a AppThemeColors, items: &[(String, &'static str)]) -> Line<'a> {
     match theme.hint_bar_style {
@@ -594,24 +637,24 @@ pub fn format_keybind_hints<'a>(theme: &'a AppThemeColors, items: &[(String, &'s
 }
 
 
-pub fn draw_popup_footer(
+pub fn draw_popup_footer<'a>(
     frame: &mut Frame,
     area: Rect,
     theme: &AppThemeColors,
-    hints: &str,
+    hints: &Line<'a>,
 ) {
-    let footer = Paragraph::new(Span::styled(hints, Style::default().fg(theme.muted)))
+    let footer = Paragraph::new(hints.clone())
         .alignment(Alignment::Center)
         .style(theme.hint_line_bg_style());
     frame.render_widget(footer, area);
 }
 
-pub fn draw_popup_frame(
+pub fn draw_popup_frame<'a>(
     frame: &mut Frame,
     area: Rect,
     title: &str,
     size: PopupSize,
-    hints: &str,
+    hints: &Line<'a>,
     theme: &AppThemeColors,
 ) -> Rect {
     let popup_area = centered_rect(size, area);
@@ -624,6 +667,11 @@ pub fn draw_popup_frame(
     draw_popup_footer(frame, chunks[1], theme, hints);
     chunks[0]
 }
+
+pub fn popup_hint_line<'a>(theme: &AppThemeColors, text: &str) -> Line<'static> {
+    Line::from(Span::styled(text.to_string(), Style::default().fg(theme.muted)))
+}
+
 
 pub fn draw_confirm_popup_frame(
     frame: &mut Frame,

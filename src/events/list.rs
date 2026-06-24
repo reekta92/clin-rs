@@ -1063,7 +1063,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
             // Vault/Pinned tabs
             if mouse_event.row == terminal_area.y {
-                let tabs = [("Vault", Some("\u{f07b}")), ("Pinned", Some("\u{f4cc}"))];
+                let tabs = [("Vault", Some(crate::ui::get_icon("\u{f07b}", "\u{1f4c1}", app.config.ui.icon_mode))), ("Pinned", Some(crate::ui::get_icon("\u{f4cc}", "\u{1f4cc}", app.config.ui.icon_mode)))];
                 let region = crate::ui::title_bar_tabs_region(terminal_area, "Notes");
                 if let Some(i) = crate::ui::hit_test_tabs(
                     &tabs,

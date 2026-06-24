@@ -8,7 +8,23 @@ pub fn draw_view_title_bar(
     title: &str,
     theme: &AppThemeColors,
     preview_info: Option<PreviewHeaderInfo>,
+    status: Option<&str>,
 ) {
+    // Override header when there's an active status notification
+    if let Some(st) = status {
+        if !st.trim().is_empty() && st != "Ready" {
+            let st = crate::sanitize::sanitize_for_terminal(st);
+            let span = Span::styled(
+                format!("  {}  ", st),
+                Style::default().fg(theme.highlight_fg).add_modifier(Modifier::BOLD),
+            );
+            let bar = Paragraph::new(Line::from(vec![span]))
+                .style(Style::default().bg(theme.accent))
+                .alignment(Alignment::Center);
+            frame.render_widget(bar, area);
+            return;
+        }
+    }
     let display_text = format!(" {} ", title.to_uppercase());
     let title_span = Span::styled(
         display_text,
@@ -84,13 +100,30 @@ pub fn draw_view_title_bar_with_tabs(
     title: &str,
     tab_spans: Vec<Span<'static>>,
     theme: &AppThemeColors,
+    status: Option<&str>,
 ) {
+    // Override header when there's an active status notification
+    if let Some(st) = status {
+        if !st.trim().is_empty() && st != "Ready" {
+            let st = crate::sanitize::sanitize_for_terminal(st);
+            let span = Span::styled(
+                format!("  {}  ", st),
+                Style::default().fg(theme.highlight_fg).add_modifier(Modifier::BOLD),
+            );
+            let bar = Paragraph::new(Line::from(vec![span]))
+                .style(Style::default().bg(theme.accent))
+                .alignment(Alignment::Center);
+            frame.render_widget(bar, area);
+            return;
+        }
+    }
     frame.render_widget(Paragraph::new("").style(theme.title_bar_bg_style()), area);
 
     let tabs_region = title_bar_tabs_region(area, title);
+    use unicode_width::UnicodeWidthStr;
     let total: u16 = tab_spans
         .iter()
-        .map(|s| s.content.chars().count() as u16)
+        .map(|s| s.content.width() as u16)
         .fold(0u16, u16::saturating_add);
     let center_x = area.x + area.width.saturating_sub(total) / 2;
     let start_x = center_x.max(tabs_region.x);
@@ -129,7 +162,7 @@ pub fn draw_view_title_bar_with_tabs(
 
     let title_w = title_spans
         .iter()
-        .map(|s| s.content.chars().count() as u16)
+        .map(|s| s.content.width() as u16)
         .sum::<u16>()
         .min(area.width);
     let title_area = Rect::new(area.x, area.y, title_w, area.height);
@@ -140,9 +173,9 @@ pub fn draw_view_title_bar_with_tabs(
 }
 
 pub fn title_bar_tabs_region(area: Rect, title: &str) -> Rect {
+    use unicode_width::UnicodeWidthStr;
     let title_w = format!(" {} ", title.to_uppercase())
-        .chars()
-        .count()
+        .width()
         .min(area.width as usize) as u16;
     Rect {
         x: area.x + title_w,
@@ -167,17 +200,18 @@ fn tab_display_text(label: &str, glyph: Option<&str>, icons_only: bool, icon_mod
 }
 
 fn tab_display_width(label: &str, glyph: Option<&str>, icons_only: bool, icon_mode: crate::config::IconMode) -> u16 {
-    let label_w = label.chars().count() as u16;
+    use unicode_width::UnicodeWidthStr;
+    let label_w = label.width() as u16;
     let effective_icons_only = icons_only && icon_mode != crate::config::IconMode::None;
     let effective_glyph = match icon_mode {
         crate::config::IconMode::None => None,
         _ => glyph,
     };
     match (effective_icons_only, effective_glyph) {
-        (true, Some(g)) => 2 + g.chars().count() as u16, // " g "
-        (true, None) => 2 + label_w,                     // " label "
-        (false, Some(g)) => 3 + g.chars().count() as u16 + label_w, // " g label "
-        (false, None) => 2 + label_w,                    // " label "
+        (true, Some(g)) => 2 + g.width() as u16,
+        (true, None) => 2 + label_w,
+        (false, Some(g)) => 3 + g.width() as u16 + label_w,
+        (false, None) => 2 + label_w,
     }
 }
 

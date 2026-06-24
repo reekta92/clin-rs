@@ -111,12 +111,13 @@ pub fn draw_canvas(frame: &mut Frame, app: &DrawAppState, area: Rect, config: &c
     crate::ui::draw_status_bar(frame, status_area, &app.theme, None, hint_line, None);
 
     if app.show_shape_selector {
+        let hint_line = crate::ui::popup_hint_line(&app.theme, "Enter select · Esc cancel");
         let content = crate::ui::draw_popup_frame(
             frame,
             area,
             "SELECT SHAPE",
             crate::ui::PopupSize::Small,
-            "Enter select · Esc cancel",
+            &hint_line,
             &app.theme,
         );
 
@@ -152,12 +153,13 @@ pub fn draw_canvas(frame: &mut Frame, app: &DrawAppState, area: Rect, config: &c
     }
 
     if let Some((_, textarea)) = &app.text_editor {
+        let hint_line = crate::ui::popup_hint_line(&app.theme, "Enter save · Esc cancel");
         let content = crate::ui::draw_popup_frame(
             frame,
             area,
             "EDIT TEXT",
             crate::ui::PopupSize::Prompt,
-            "Enter save · Esc cancel",
+            &hint_line,
             &app.theme,
         );
 
