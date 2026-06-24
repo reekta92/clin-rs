@@ -244,10 +244,15 @@ impl GrafAppState {
         &mut self,
         frame: &mut ratatui::Frame,
         area: ratatui::layout::Rect,
-        _theme: &crate::app_theme::AppThemeColors,
+        theme: &crate::app_theme::AppThemeColors,
         config: &crate::config::ClinConfig,
+        app_status: Option<&str>,
     ) {
-        crate::graf::ui::draw_ui(frame, self, config, area);
+        let outer = ratatui::layout::Layout::default()
+            .direction(ratatui::layout::Direction::Vertical)
+            .constraints([ratatui::layout::Constraint::Length(1), ratatui::layout::Constraint::Min(0)])
+            .split(area);
+        crate::graf::ui::draw_ui(frame, self, config, outer[1], outer[0], theme, app_status);
     }
 
     pub fn overlay_handle_event(

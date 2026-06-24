@@ -68,12 +68,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         ViewMode::Help => draw_help_view(frame, app),
         ViewMode::Graph => {
             if let Some(graf) = &mut app.graph_state {
-                let outer = Layout::default()
-                    .direction(Direction::Vertical)
-                    .constraints([Constraint::Length(1), Constraint::Min(0)])
-                    .split(frame.area());
-                draw_view_title_bar(frame, outer[0], "Graph", &app.app_theme, None, Some(app.status.as_ref()));
-                graf.overlay_render(frame, outer[1], &app.app_theme, &app.config);
+                graf.overlay_render(frame, frame.area(), &app.app_theme, &app.config, Some(app.status.as_ref()));
             }
         }
         ViewMode::Draw => {
@@ -82,7 +77,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     .direction(Direction::Vertical)
                     .constraints([Constraint::Length(1), Constraint::Min(0)])
                     .split(frame.area());
-                draw_view_title_bar(frame, outer[0], "Draw", &app.app_theme, None, Some(app.status.as_ref()));
+                draw_view_title_bar(frame, outer[0], "Draw", &app.app_theme, None, Some(app.status.as_ref()), None);
                 draw.overlay_render(frame, outer[1], &app.app_theme, &app.config);
             }
         }
@@ -92,7 +87,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     .direction(Direction::Vertical)
                     .constraints([Constraint::Length(1), Constraint::Min(0)])
                     .split(frame.area());
-                draw_view_title_bar(frame, outer[0], "Canvas", &app.app_theme, None, Some(app.status.as_ref()));
+                draw_view_title_bar(frame, outer[0], "Canvas", &app.app_theme, None, Some(app.status.as_ref()), None);
                 canvas.overlay_render(frame, outer[1], &app.app_theme, &app.config);
             }
         }
@@ -114,7 +109,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     .constraints([Constraint::Length(1), Constraint::Min(0)])
                     .split(frame.area());
                 let title = format!("CONTENT TREE — {}", tree.note_title);
-                draw_view_title_bar(frame, outer[0], &title, &app.app_theme, None, Some(app.status.as_ref()));
+                draw_view_title_bar(frame, outer[0], &title, &app.app_theme, None, Some(app.status.as_ref()), None);
                 tree.overlay_render(frame, outer[1], &app.app_theme, &app.config);
             }
         }

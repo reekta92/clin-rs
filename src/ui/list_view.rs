@@ -29,7 +29,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     let title = if app.layout_edit { "Notes - Editing Layout" } else { "Notes" };
     if app.preview_fullscreen {
         let preview_info = get_preview_info(app);
-        draw_view_title_bar(frame, chunks[0], title, &app.app_theme, preview_info, Some(app.status.as_ref()));
+        draw_view_title_bar(frame, chunks[0], title, &app.app_theme, preview_info, Some(app.status.as_ref()), None);
     } else if app.list.notes_layout == crate::config::NotesLayout::Grid {
         let tabs = [
             ("Vault", Some(crate::ui::get_icon("\u{f07b}", "\u{1f4c1}", app.config.ui.icon_mode))),
@@ -43,10 +43,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             app.config.ui.tab_icons_only,
             app.config.ui.icon_mode,
         );
-        draw_view_title_bar_with_tabs(frame, chunks[0], title, tab_spans, &app.app_theme, Some(app.status.as_ref()));
-
-        // Show details of the selected note at the top right (clock/relative time + tags)
-        if let Some(crate::app::VisualItem::Note { summary_idx, .. }) =
+        let detail_text = if let Some(crate::app::VisualItem::Note { summary_idx, .. }) =
             app.list.visual_list.get(app.list.visual_index)
         {
             let s = &app.notes[*summary_idx];
@@ -63,8 +60,9 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             ));
 
             if !s.tags.is_empty() {
+                spans.push(Span::raw(" | "));
                 spans.push(Span::styled(
-                    format!("  {} ", crate::ui::get_icon("\u{f02b}", "\u{1f3f7}", app.config.ui.icon_mode)),
+                    format!("{} ", crate::ui::get_icon("\u{f02b}", "\u{1f3f7}", app.config.ui.icon_mode)),
                     Style::default()
                         .fg(app.app_theme.tag)
                         .add_modifier(Modifier::BOLD),
@@ -75,9 +73,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 ));
             }
             spans.push(Span::raw(" ")); // padding right
-
-            let detail_para = Paragraph::new(Line::from(spans)).alignment(Alignment::Right);
-            frame.render_widget(detail_para, chunks[0]);
+            Some(Line::from(spans))
         } else if let Some(crate::app::VisualItem::Folder {
             name, note_count, ..
         }) = app.list.visual_list.get(app.list.visual_index)
@@ -94,12 +90,14 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 Style::default().fg(app.app_theme.fg),
             ));
             spans.push(Span::raw(" ")); // padding right
+            Some(Line::from(spans))
+        } else {
+            None
+        };
 
-            let detail_para = Paragraph::new(Line::from(spans)).alignment(Alignment::Right);
-            frame.render_widget(detail_para, chunks[0]);
-        }
+        draw_view_title_bar_with_tabs(frame, chunks[0], title, tab_spans, &app.app_theme, Some(app.status.as_ref()), detail_text);
     } else {
-        draw_view_title_bar(frame, chunks[0], title, &app.app_theme, None, Some(app.status.as_ref()));
+        draw_view_title_bar(frame, chunks[0], title, &app.app_theme, None, Some(app.status.as_ref()), None);
     }
 
     let (list_area, preview_area, calendar_area) = list_view_layout(

@@ -88,7 +88,7 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
         app.config.ui.tab_icons_only,
         app.config.ui.icon_mode,
     );
-    draw_view_title_bar_with_tabs(frame, chunks[0], "Help", tab_spans, &app.app_theme, Some(app.status.as_ref()));
+    draw_view_title_bar_with_tabs(frame, chunks[0], "Help", tab_spans, &app.app_theme, Some(app.status.as_ref()), None);
 
     let scroll = app.help_scroll;
     let _ = app.get_help_rows();

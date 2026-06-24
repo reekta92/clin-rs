@@ -138,7 +138,7 @@ pub fn draw_header(frame: &mut Frame, area: Rect, state: &BackupState, icon_mode
         0
     };
     let spans = crate::ui::build_tab_spans(&tabs, active, theme, state.tab_icons_only, icon_mode);
-    crate::ui::draw_view_title_bar_with_tabs(frame, area, "Backup", spans, theme, None);
+    crate::ui::draw_view_title_bar_with_tabs(frame, area, "Backup", spans, theme, None, None);
 }
 
 fn draw_content(frame: &mut Frame, area: Rect, state: &mut BackupState) {

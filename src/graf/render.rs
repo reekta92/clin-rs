@@ -540,8 +540,6 @@ pub fn draw_graph_view(
     let nodes = cache.nodes.clone();
     let labels = cache.labels.clone();
 
-    let node_count = graph.node_count();
-    let edge_count = graph.edge_count();
 
     let x_bounds = viewport.x_bounds(aspect);
     let y_bounds = viewport.y_bounds(aspect);
@@ -629,38 +627,6 @@ pub fn draw_graph_view(
     }
 
     if flags.show_status_bar {
-        let selected_info = state
-            .selected_node
-            .and_then(|idx| graph.node_weight(idx))
-            .map(|n| n.data.title.clone());
-
-        let (viewport_size_pct, viewport_ratio) = {
-            let (gx_min, gx_max, gy_min, gy_max) = state.graph_bounds;
-            let graph_w = gx_max - gx_min;
-            let graph_h = gy_max - gy_min;
-            let vp_w = x_bounds[1] - x_bounds[0];
-            let vp_h = y_bounds[1] - y_bounds[0];
-            let graph_area = graph_w * graph_h;
-            let vp_area = vp_w * vp_h;
-            let size_pct = if graph_area > 0.0 {
-                (vp_area / graph_area * 100.0).clamp(0.0, 100.0)
-            } else {
-                100.0
-            };
-            let range = graph_w.max(graph_h).max(1.0) * 1.4;
-            let full_zoom = 200.0 / range;
-            let ratio = viewport.zoom / full_zoom;
-            (size_pct, ratio)
-        };
-
-        let status = format!(
-            "Nodes: {} | Edges: {} | Selected: {} | Size: {:.0}% | Ratio: {:.1}x",
-            node_count,
-            edge_count,
-            selected_info.as_deref().unwrap_or("none"),
-            viewport_size_pct.clamp(0.0, 100.0),
-            viewport_ratio
-        );
 
         let status_area = ratatui::layout::Rect::new(
             area.x,
@@ -682,7 +648,7 @@ pub fn draw_graph_view(
             app_theme,
             None,
             hint_line,
-            Some(ratatui::text::Line::from(status.clone())),
+            None,
         );
     }
 
@@ -705,6 +671,51 @@ pub fn draw_graph_view(
 
         cache.minimap_grid = minimap_grid;
     }
+}
+
+pub fn compute_status_string(state: &GraphState, area: Rect) -> String {
+    let aspect = area.width as f64 / area.height as f64;
+    let viewport = &state.viewport;
+    let graph = state.simulation.get_graph();
+
+    let x_bounds = viewport.x_bounds(aspect);
+    let y_bounds = viewport.y_bounds(aspect);
+
+    let node_count = graph.node_count();
+    let edge_count = graph.edge_count();
+
+    let selected_info = state
+        .selected_node
+        .and_then(|idx| graph.node_weight(idx))
+        .map(|n| n.data.title.clone());
+
+    let (viewport_size_pct, viewport_ratio) = {
+        let (gx_min, gx_max, gy_min, gy_max) = state.graph_bounds;
+        let graph_w = gx_max - gx_min;
+        let graph_h = gy_max - gy_min;
+        let vp_w = x_bounds[1] - x_bounds[0];
+        let vp_h = y_bounds[1] - y_bounds[0];
+        let graph_area = graph_w * graph_h;
+        let vp_area = vp_w * vp_h;
+        let size_pct = if graph_area > 0.0 {
+            (vp_area / graph_area * 100.0).clamp(0.0, 100.0)
+        } else {
+            100.0
+        };
+        let range = graph_w.max(graph_h).max(1.0) * 1.4;
+        let full_zoom = 200.0 / range;
+        let ratio = viewport.zoom / full_zoom;
+        (size_pct, ratio)
+    };
+
+    format!(
+        "Nodes: {} | Edges: {} | Selected: {} | Size: {:.0}% | Ratio: {:.1}x ",
+        node_count,
+        edge_count,
+        selected_info.as_deref().unwrap_or("none"),
+        viewport_size_pct.clamp(0.0, 100.0),
+        viewport_ratio
+    )
 }
 
 fn draw_grid(

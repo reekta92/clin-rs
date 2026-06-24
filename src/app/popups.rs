@@ -596,6 +596,7 @@ template = """
                 _ => crate::config::HintBarStyle::PowerlineSlanted,
             };
             self.config.ui.hint_bar_style = style;
+            self.app_theme.hint_bar_style = style;
             let status = match style {
                 crate::config::HintBarStyle::Classic => "Hint bar style: Classic",
                 crate::config::HintBarStyle::Accent => "Hint bar style: Accent",

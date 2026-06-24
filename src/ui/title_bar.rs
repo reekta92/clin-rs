@@ -9,6 +9,7 @@ pub fn draw_view_title_bar(
     theme: &AppThemeColors,
     preview_info: Option<PreviewHeaderInfo>,
     status: Option<&str>,
+    right_text: Option<Line<'_>>,
 ) {
     // Override header when there's an active status notification
     if let Some(st) = status {
@@ -90,8 +91,77 @@ pub fn draw_view_title_bar(
             spans.push(Span::styled(")", Style::default().fg(theme.fg)));
         }
     }
-    let bar = Paragraph::new(Line::from(spans)).style(theme.title_bar_bg_style());
-    frame.render_widget(bar, area);
+    let is_powerline = matches!(
+        theme.hint_bar_style,
+        crate::config::HintBarStyle::PowerlineSharp
+        | crate::config::HintBarStyle::PowerlineRounded
+        | crate::config::HintBarStyle::PowerlineSlanted
+    );
+
+    let (left_area, right_info) = if let Some(r) = right_text {
+        let right_width = r.width() as u16;
+        let chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Min(0), Constraint::Length(right_width)])
+            .split(area);
+        (chunks[0], Some((chunks[1], r)))
+    } else {
+        (area, None)
+    };
+
+    let left_bar = Paragraph::new(Line::from(spans)).style(theme.title_bar_bg_style());
+    frame.render_widget(left_bar, left_area);
+
+    if let Some((r_area, r_text)) = right_info {
+        if is_powerline {
+            // Extract text and split into segments for powerline badges
+            let text: String = r_text.spans.iter().map(|s| s.content.as_ref()).collect();
+            let segments: Vec<&str> = text.split(" | ").collect();
+
+            let bg_colors = [theme.accent, theme.folder, theme.tag, theme.warning, theme.success];
+            let sep_char = match theme.hint_bar_style {
+                crate::config::HintBarStyle::PowerlineSharp => "",
+                crate::config::HintBarStyle::PowerlineRounded => "",
+                crate::config::HintBarStyle::PowerlineSlanted => "",
+                _ => unreachable!(),
+            };
+
+            let mut badge_spans: Vec<Span> = Vec::new();
+            for (i, segment) in segments.iter().enumerate() {
+                let bg = bg_colors[i % bg_colors.len()];
+                let prev_bg = if i == 0 {
+                    theme.title_bar_bg()
+                } else {
+                    Some(bg_colors[(i - 1) % bg_colors.len()])
+                };
+
+                // Separator on the left of each badge, bridging from previous element
+                let mut sep_style = Style::default().fg(bg);
+                if let Some(p_bg) = prev_bg { sep_style = sep_style.bg(p_bg); }
+                badge_spans.push(Span::styled(sep_char, sep_style));
+
+                badge_spans.push(Span::styled(
+                    format!(" {} ", segment.trim()),
+                    Style::default().bg(bg).fg(theme.highlight_fg).add_modifier(Modifier::BOLD),
+                ));
+            }
+
+            let r_bar = Paragraph::new(Line::from(badge_spans))
+                .style(theme.hint_line_bg_style())
+                .alignment(Alignment::Left);
+            frame.render_widget(r_bar, r_area);
+        } else if theme.hint_bar_style == crate::config::HintBarStyle::Accent {
+            let r_bar = Paragraph::new(r_text)
+                .style(theme.title_bar_bg_style().fg(theme.accent))
+                .alignment(Alignment::Right);
+            frame.render_widget(r_bar, r_area);
+        } else {
+            let r_bar = Paragraph::new(r_text)
+                .style(theme.title_bar_bg_style())
+                .alignment(Alignment::Right);
+            frame.render_widget(r_bar, r_area);
+        }
+    }
 }
 
 pub fn draw_view_title_bar_with_tabs(
@@ -101,6 +171,7 @@ pub fn draw_view_title_bar_with_tabs(
     tab_spans: Vec<Span<'static>>,
     theme: &AppThemeColors,
     status: Option<&str>,
+    right_text: Option<Line<'_>>,
 ) {
     // Override header when there's an active status notification
     if let Some(st) = status {
@@ -170,6 +241,65 @@ pub fn draw_view_title_bar_with_tabs(
         Paragraph::new(Line::from(title_spans)),
         title_area,
     );
+
+    // Right-aligned text with hint_bar_style
+    if let Some(r_text) = right_text {
+        let is_powerline = matches!(
+            theme.hint_bar_style,
+            crate::config::HintBarStyle::PowerlineSharp
+            | crate::config::HintBarStyle::PowerlineRounded
+            | crate::config::HintBarStyle::PowerlineSlanted
+        );
+
+        if is_powerline {
+            let text: String = r_text.spans.iter().map(|s| s.content.as_ref()).collect();
+            let segments: Vec<&str> = text.split(" | ").collect();
+
+            let bg_colors = [theme.accent, theme.folder, theme.tag, theme.warning, theme.success];
+            let sep_char = match theme.hint_bar_style {
+                crate::config::HintBarStyle::PowerlineSharp => "",
+                crate::config::HintBarStyle::PowerlineRounded => "",
+                crate::config::HintBarStyle::PowerlineSlanted => "",
+                _ => unreachable!(),
+            };
+
+            let mut badge_spans: Vec<Span> = Vec::new();
+            for (i, segment) in segments.iter().enumerate() {
+                let bg = bg_colors[i % bg_colors.len()];
+                let prev_bg = if i == 0 {
+                    theme.title_bar_bg()
+                } else {
+                    Some(bg_colors[(i - 1) % bg_colors.len()])
+                };
+
+                let mut sep_style = Style::default().fg(bg);
+                if let Some(p_bg) = prev_bg { sep_style = sep_style.bg(p_bg); }
+                badge_spans.push(Span::styled(sep_char, sep_style));
+
+                badge_spans.push(Span::styled(
+                    format!(" {} ", segment.trim()),
+                    Style::default().bg(bg).fg(theme.highlight_fg).add_modifier(Modifier::BOLD),
+                ));
+            }
+
+            frame.render_widget(
+                Paragraph::new(Line::from(badge_spans)).alignment(Alignment::Right),
+                area,
+            );
+        } else if theme.hint_bar_style == crate::config::HintBarStyle::Accent {
+            frame.render_widget(
+                Paragraph::new(r_text)
+                    .style(Style::default().fg(theme.accent))
+                    .alignment(Alignment::Right),
+                area,
+            );
+        } else {
+            frame.render_widget(
+                Paragraph::new(r_text).alignment(Alignment::Right),
+                area,
+            );
+        }
+    }
 }
 
 pub fn title_bar_tabs_region(area: Rect, title: &str) -> Rect {

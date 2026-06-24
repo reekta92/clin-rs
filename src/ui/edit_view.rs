@@ -29,7 +29,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         "Editor",
         &app.app_theme,
         preview_info,
-        Some(app.status.as_ref()),
+        Some(app.status.as_ref()), None,
     );
     let body_area = outer_chunks[1];
     let hint_area = outer_chunks[2];
