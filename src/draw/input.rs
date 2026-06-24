@@ -87,7 +87,11 @@ pub fn handle_event(
                     app.active_tool = DrawTool::Erase;
                     return Ok(None);
                 }
-                _ => {}
+                _ => {
+                    if keybinds.matches_draw(DrawAction::Quit, &k) {
+                        return Ok(Some(DrawEventAction::Quit));
+                    }
+                }
             },
             crate::keybinds::MatchOutcome::Pending => return Ok(None),
             crate::keybinds::MatchOutcome::NoMatch => {}

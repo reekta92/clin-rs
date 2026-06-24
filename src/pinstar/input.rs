@@ -609,7 +609,11 @@ pub fn handle_pinstar_event(
                 state.help_requested = true;
                 *running = false;
             }
-            _ => {}
+            _ => {
+                if keybinds.matches_canvas(CanvasAction::Quit, &key) {
+                    *running = false;
+                }
+            }
         },
         crate::keybinds::MatchOutcome::Pending => return true,
         crate::keybinds::MatchOutcome::NoMatch => return false,

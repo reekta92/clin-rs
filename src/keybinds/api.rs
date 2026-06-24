@@ -581,7 +581,7 @@ mod tests {
     fn test_new_action_displays() {
         let keybinds = Keybinds::default();
         assert_eq!(keybinds.draw_keys_display(DrawAction::SelectDrawTool), "d");
-        assert_eq!(keybinds.canvas_keys_display(CanvasAction::Quit), "q");
+        assert_eq!(keybinds.canvas_keys_display(CanvasAction::Quit), "Esc/q");
         assert_eq!(keybinds.canvas_keys_display(CanvasAction::Save), "Ctrl+s");
     }
 
@@ -804,13 +804,14 @@ mod tests {
         let kb = Keybinds::default();
         let mut m = crate::keybinds::KeyMatcher::new();
 
-        // Esc should NOT resolve to Quit — it collides with RenameCancel/MenuClose etc.
-        // Esc is the universal "cancel current operation" key; use q or Ctrl+C to quit.
+        // Esc is bound to Quit, plus cancel actions (RenameCancel, MenuClose, etc.).
+        // HashMap iteration picks non-deterministically — the handler's catch-all
+        // checks matches_canvas(Quit) so either route works.
         let esc = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
         let res = kb.resolve_canvas(&mut m, esc, false);
         assert!(
-            !matches!(res, MatchOutcome::Matched(CanvasAction::Quit)),
-            "Esc should NOT resolve to CanvasAction::Quit, got {:?}",
+            matches!(res, MatchOutcome::Matched(_)),
+            "Esc should resolve to some canvas action, got {:?}",
             res
         );
 
@@ -823,16 +824,16 @@ mod tests {
             res
         );
 
-        // q with sequences enabled
-        let q = KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE);
-        let mut m2 = crate::keybinds::KeyMatcher::new();
-        let res = kb.resolve_canvas(&mut m2, q, true);
+        // q with sequences enabled (default)
+        let mut m = crate::keybinds::KeyMatcher::new();
+        let res = kb.resolve_canvas(&mut m, q, true);
         assert!(
             matches!(res, MatchOutcome::Matched(CanvasAction::Quit)),
             "q should resolve to CanvasAction::Quit (seq=true), got {:?}",
             res
         );
     }
+
 }
 
 
@@ -851,7 +852,7 @@ fn test_display_picks_hint_key() {
     assert_eq!(kb.display_edit(EditAction::Back), "Esc", "Back");
     // Canvas: letter for nav, conventional for quit
     assert_eq!(kb.display_canvas(CanvasAction::MoveUp), "k", "Canvas MoveUp");
-    assert_eq!(kb.display_canvas(CanvasAction::Quit), "q", "Canvas Quit");
+    assert_eq!(kb.display_canvas(CanvasAction::Quit), "Esc", "Canvas Quit");
     // Backup: Esc for Back (not q)
     assert_eq!(kb.display_backup(BackupAction::Back), "Esc", "Backup Back");
     assert_eq!(kb.display_backup(BackupAction::EnterCommit), "c", "EnterCommit");

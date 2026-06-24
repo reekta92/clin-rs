@@ -461,6 +461,7 @@ impl Default for Keybinds {
         canvas.insert(
             CanvasAction::Quit,
             vec![
+                KeyCombo::simple(KeyCode::Esc),
                 KeyCombo::simple(KeyCode::Char('q')),
             ],
         );
