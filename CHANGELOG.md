@@ -2,6 +2,44 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.9.0-beta.6] - 2026-06-24
+
+### Added
+
+- Apply hint_bar_style to header details
+- Add command palette option for hint bar style
+- Add hjkl navigation to layout edit mode
+- Improvements to the debug logging system
+- Add comprehensive debug logging across all subsystems
+
+### CI
+
+- Aarch64 job fixes
+- Cleanup-cancelled-release workflow for cancelled releases
+- Fix for correct version calculating
+
+### Changed
+
+- Unify popup cancelation with context-aware keybinds
+
+### Fixed
+
+- Help view loop issue
+- Correct help navigation and enable it in draw view
+- Fallback to Quit when popup action shadows it
+- Remove angle brackets from keybind display
+- Add icon_mode to default generated config
+- Notes openned from graph view not going back to graph view with builtin editor
+- Handle mouse double-click result and rebuild graph state on return
+- Add aur, crates-io, post-release to cleanup failure trigger
+- Cleanup on build failure instead of cancel (cancelled() unreliable)
+- Replace heredocs with printf to keep YAML valid, add cleanup-on-cancel job to dispatch-release
+- Remove duplicated deb lines breaking YAML parse
+## [0.9.0-beta.5] - 2026-06-23
+
+### Release
+
+- V0.9.0-beta.5
 ## [0.9.0-beta.4] - 2026-06-23
 
 ### CI
