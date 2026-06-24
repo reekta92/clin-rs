@@ -1512,12 +1512,14 @@ background = "transparent"
 # Show the status bar at the bottom of the screen.
 show_status_bar = true
 
+# Icon mode ("nerd", "unicode", "none"). Controls icon rendering throughout the app.
+icon_mode = "nerd"
+
 # Show only Nerd Font icons (no text) on tab bars (Help, Notes, Backup, Palette).
 tab_icons_only = false
 #
 # Hint bar style ("classic", "accent", "powerline_sharp", "powerline_rounded", "powerline_slanted")
 hint_bar_style = "classic"
-
 
 # Color overrides (hex strings like "#ffffff").
 # accent = "#ff0000"
