@@ -81,7 +81,7 @@ impl App {
         self.layout_edit = !self.layout_edit;
         self.layout_drag = None;
         self.set_temporary_status_static(if self.layout_edit {
-            "Layout edit mode: drag borders / ←→ ↑↓ / s swap / c cal / Esc"
+            "Layout edit mode: drag borders / hjkl←→↑↓ / s swap / c cal / Esc"
         } else {
             "Layout edit mode off"
         });

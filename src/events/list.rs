@@ -31,6 +31,24 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
             KeyCode::Up    => app.adjust_calendar_height(1),
             KeyCode::Down  => app.adjust_calendar_height(-1),
             KeyCode::Char('s') | KeyCode::Char('S') => app.swap_preview_position(),
+            KeyCode::Char('h') | KeyCode::Char('H') => {
+                let delta = if app.preview_position == crate::config::PreviewPosition::Right {
+                    0.02
+                } else {
+                    -0.02
+                };
+                app.adjust_preview_width(delta);
+            }
+            KeyCode::Char('l') | KeyCode::Char('L') => {
+                let delta = if app.preview_position == crate::config::PreviewPosition::Right {
+                    -0.02
+                } else {
+                    0.02
+                };
+                app.adjust_preview_width(delta);
+            }
+            KeyCode::Char('k') | KeyCode::Char('K') => app.adjust_calendar_height(1),
+            KeyCode::Char('j') | KeyCode::Char('J') => app.adjust_calendar_height(-1),
             KeyCode::Char('c') | KeyCode::Char('C') => app.swap_calendar_position(),
             _ => {}
         }
