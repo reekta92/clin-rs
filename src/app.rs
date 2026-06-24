@@ -1173,7 +1173,8 @@ impl App {
 mod tests {
     use super::*;
     use crate::storage::Storage;
-    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+    use ratatui::layout::Rect;
     use tempfile::tempdir;
     use ratatui_textarea::TextArea;
 
@@ -1251,9 +1252,10 @@ mod tests {
         );
 
         // Dispatch 'y' key — must insert, not confirm
-        crate::events::handle_list_keys(
+        crate::events::handle_global_popups_and_palette(
             &mut app,
-            KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE),
+            Event::Key(KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE)),
+            Rect::default(),
         );
 
         // Popup must still be open

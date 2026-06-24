@@ -289,7 +289,7 @@ fn handle_event(
         crossterm::event::Event::Key(key) => {
             if app_state.search_active {
                 app_state.seq_matcher.clear();
-                handle_search_keys(app_state, key, config);
+                handle_search_keys(app_state, key, config, keybinds);
                 return Ok(None);
             }
             if key
@@ -442,20 +442,22 @@ fn handle_search_keys(
     app_state: &mut GrafAppState,
     key: crossterm::event::KeyEvent,
     config: &crate::config::ClinConfig,
+    keybinds: &crate::keybinds::Keybinds,
 ) {
     use crossterm::event::{KeyCode, KeyModifiers};
 
     let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
     let shift = key.modifiers.contains(KeyModifiers::SHIFT);
 
+    if crate::events::is_cancel_popup(keybinds, &key, true) {
+        app_state.search_active = false;
+        app_state.search_query.clear();
+        app_state.search_results.clear();
+        app_state.search_selected = 0;
+        app_state.search_cursor = 0;
+        return;
+    }
     match key.code {
-        KeyCode::Esc => {
-            app_state.search_active = false;
-            app_state.search_query.clear();
-            app_state.search_results.clear();
-            app_state.search_selected = 0;
-            app_state.search_cursor = 0;
-        }
         KeyCode::Enter => {
             if let Some(&(idx, _)) = app_state.search_results.get(app_state.search_selected) {
                 let (nx, ny) = if let Some(graph_state) = &app_state.graph_state {

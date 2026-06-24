@@ -125,8 +125,8 @@ impl CommandPalette {
 
     pub fn handle_input(&mut self, key: crossterm::event::KeyEvent, app: &crate::app::App) -> bool {
         use crossterm::event::KeyCode;
+        if crate::events::is_cancel_popup(&app.keybinds, &key, true) { return true; }
         match key.code {
-            KeyCode::Esc => return true,
             KeyCode::Tab => {
                 self.active_tab = (self.active_tab + 1) % palette_tabs(app.config.ui.icon_mode).len();
                 self.refresh_items(app);

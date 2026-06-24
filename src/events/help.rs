@@ -7,7 +7,7 @@ pub fn handle_help_keys(app: &mut App, key: KeyEvent) {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         let shift = key.modifiers.contains(KeyModifiers::SHIFT);
         match key.code {
-            KeyCode::Esc => {
+            _ if crate::events::is_cancel_popup(&app.keybinds, &key, true) => {
                 app.help_search = crate::app::HelpSearchState::default();
             }
             KeyCode::Enter => {

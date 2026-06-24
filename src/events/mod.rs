@@ -188,6 +188,14 @@ use crossterm::event::{KeyCode, KeyModifiers};
 use ratatui::layout::Rect;
 use crate::app::App;
 
+/// Check if the key event should cancel/close a popup.
+/// Returns `true` if the key matches `ListAction::Cancel`, or if it matches
+/// `ListAction::Quit` and `!has_text_input` (to avoid stealing printable keys).
+pub fn is_cancel_popup(keybinds: &crate::keybinds::Keybinds, key: &crossterm::event::KeyEvent, has_text_input: bool) -> bool {
+    keybinds.matches_list(crate::keybinds::ListAction::Cancel, key)
+        || (!has_text_input && keybinds.matches_list(crate::keybinds::ListAction::Quit, key))
+}
+
 /// Handle global popups (tag, search, create_note, folder, goals, import,
 /// trash_view, confirm, folder_picker, template, note_rename, theme, sort,
 /// create_format) and command palette input.
@@ -225,14 +233,9 @@ pub fn handle_global_popups_and_palette(
                 return true;
             }
 
-            let q_exit = key.code == KeyCode::Char('q') && !app.popups.has_text_input();
-            if app.popups.has_any() && (key.code == KeyCode::Esc || q_exit) {
-                app.popups.clear_all();
-                return true;
-            }
 
             if let Some((mut popup, format)) = app.popups.create_note.take() {
-                if key.code == KeyCode::Esc {
+                if crate::events::is_cancel_popup(&app.keybinds, &key, true) {
                     app.popups.create_note = None;
                 } else if key.code == KeyCode::Enter {
                     app.popups.create_note = Some((popup, format));
@@ -245,7 +248,7 @@ pub fn handle_global_popups_and_palette(
             }
 
             if let Some(mut popup) = app.popups.import.take() {
-                if key.code == KeyCode::Esc {
+                if crate::events::is_cancel_popup(&app.keybinds, &key, true) {
                     app.popups.import = None;
                 } else if key.code == KeyCode::Enter {
                     app.popups.import = Some(popup);
@@ -258,7 +261,7 @@ pub fn handle_global_popups_and_palette(
             }
 
             if let Some(mut popup) = app.popups.folder.take() {
-                if key.code == KeyCode::Esc {
+                if crate::events::is_cancel_popup(&app.keybinds, &key, true) {
                     app.popups.folder = None;
                 } else if key.code == KeyCode::Enter {
                     app.popups.folder = Some(popup);
@@ -290,7 +293,7 @@ pub fn handle_global_popups_and_palette(
                         app.confirm_popup_activate();
                     } else if confirm_key.code == KeyCode::Char('n')
                         || confirm_key.code == KeyCode::Char('N')
-                        || confirm_key.code == KeyCode::Esc
+                        || crate::events::is_cancel_popup(&app.keybinds, &confirm_key, false)
                     {
                         app.cancel_confirm();
                     }
@@ -322,10 +325,11 @@ pub fn handle_global_popups_and_palette(
                     return true;
                 }
 
+                if crate::events::is_cancel_popup(&app.keybinds, &key, true) {
+                    app.popups.tag = None;
+                    return true;
+                }
                 match key.code {
-                    KeyCode::Esc => {
-                        app.popups.tag = None;
-                    }
                     KeyCode::Tab => {
                         if popup.focus == crate::popups::TagPopupFocus::Input {
                             if popup.suggestions.is_empty() {
@@ -405,7 +409,7 @@ pub fn handle_global_popups_and_palette(
             }
 
             if let Some(mut popup) = app.popups.goals.take() {
-                if key.code == KeyCode::Esc {
+                if crate::events::is_cancel_popup(&app.keybinds, &key, true) {
                     app.popups.goals = None;
                 } else if key.code == KeyCode::Enter {
                     app.popups.goals = Some(popup);
@@ -418,7 +422,7 @@ pub fn handle_global_popups_and_palette(
             }
 
             if let Some(mut popup) = app.popups.note_rename.take() {
-                if key.code == KeyCode::Esc {
+                if crate::events::is_cancel_popup(&app.keybinds, &key, true) {
                     app.popups.note_rename = None;
                 } else if key.code == KeyCode::Enter {
                     app.popups.note_rename = Some(popup);
@@ -480,11 +484,12 @@ pub fn handle_global_popups_and_palette(
                         cur
                     };
 
+                if crate::events::is_cancel_popup(&app.keybinds, &key, true) {
+                    app.popups.search = Some(popup);
+                    app.cancel_search();
+                    return true;
+                }
                 match key.code {
-                    KeyCode::Esc => {
-                        app.popups.search = Some(popup);
-                        app.cancel_search();
-                    }
                     KeyCode::Tab | KeyCode::BackTab => {
                         popup.focus = match popup.focus {
                             crate::popups::SearchFocus::Input if has_results => {
@@ -669,7 +674,7 @@ pub fn handle_global_popups_and_palette(
                     app.confirm_popup_toggle_button();
                 } else if key.code == KeyCode::Enter {
                     app.confirm_popup_activate();
-                } else if key.code == KeyCode::Esc {
+                } else if crate::events::is_cancel_popup(&app.keybinds, &key, false) {
                     app.cancel_confirm();
                 } else if app.keybinds.matches_list(crate::keybinds::ListAction::Confirm, &key) {
                     app.confirm_action();
@@ -709,6 +714,10 @@ pub fn handle_global_popups_and_palette(
 
             if let Some(mut picker) = app.popups.folder_picker.take() {
                 app.seq_matcher.clear();
+                if crate::events::is_cancel_popup(&app.keybinds, &key, true) {
+                    app.popups.folder_picker = None;
+                    return true;
+                }
                 match key.code {
                     KeyCode::Tab => {
                         picker.focus = match picker.focus {
@@ -720,9 +729,6 @@ pub fn handle_global_popups_and_palette(
                             }
                         };
                         app.popups.folder_picker = Some(picker);
-                    }
-                    KeyCode::Esc => {
-                        app.popups.folder_picker = None;
                     }
                     _ => match picker.focus {
                         crate::app::FolderPickerFocus::Results => match key.code {
@@ -815,7 +821,7 @@ pub fn handle_global_popups_and_palette(
                             app.update_template_popup_filter();
                         }
                     }
-                    _ if app.keybinds.matches_list(crate::keybinds::ListAction::Cancel, &key) => {
+                    _ if crate::events::is_cancel_popup(&app.keybinds, &key, true) => {
                         app.close_template_popup();
                     }
                     _ => match popup.focus {
@@ -957,9 +963,7 @@ pub fn handle_global_popups_and_palette(
                         app.popups.theme = Some(popup);
                         app.select_theme();
                     }
-                    _ if app
-                        .keybinds
-                        .matches_list(crate::keybinds::ListAction::Cancel, &key) =>
+                    _ if crate::events::is_cancel_popup(&app.keybinds, &key, false) =>
                     {
                         app.close_theme_popup();
                     }
@@ -991,9 +995,7 @@ pub fn handle_global_popups_and_palette(
                         app.popups.icon_mode = Some(popup);
                         app.select_icon_mode();
                     }
-                    _ if app
-                        .keybinds
-                        .matches_list(crate::keybinds::ListAction::Cancel, &key) =>
+                    _ if crate::events::is_cancel_popup(&app.keybinds, &key, false) =>
                     {
                         app.close_icon_mode_popup();
                     }
@@ -1024,9 +1026,7 @@ pub fn handle_global_popups_and_palette(
                         app.popups.sort = Some(popup);
                         app.select_sort();
                     }
-                    _ if app
-                        .keybinds
-                        .matches_list(crate::keybinds::ListAction::Cancel, &key) =>
+                    _ if crate::events::is_cancel_popup(&app.keybinds, &key, false) =>
                     {
                         app.close_sort_popup();
                     }
@@ -1057,10 +1057,7 @@ pub fn handle_global_popups_and_palette(
                         app.popups.create_format = Some(popup);
                         app.confirm_create_format();
                     }
-                    _ if app.keybinds.matches_list(
-                        crate::keybinds::ListAction::Cancel,
-                        &key,
-                    ) || key.code == KeyCode::Esc =>
+                    _ if crate::events::is_cancel_popup(&app.keybinds, &key, false) =>
                     {
                         app.close_create_format_popup();
                     }

@@ -15,22 +15,23 @@ use super::{
 pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> bool {
 
     if let Some(mut menu) = app.popups.context_menu.take() {
+        if crate::events::is_cancel_popup(&app.keybinds, &key, false) {
+            app.popups.context_menu = None;
+            return false;
+        }
         match key.code {
-            KeyCode::Up => {
+            _ if app.keybinds.matches_list(crate::keybinds::ListAction::MoveUp, &key) => {
                 menu.selected = menu.selected.saturating_sub(1);
                 app.popups.context_menu = Some(menu);
             }
-            KeyCode::Down => {
+            _ if app.keybinds.matches_list(crate::keybinds::ListAction::MoveDown, &key) => {
                 if menu.selected < 3 {
                     menu.selected += 1;
                 }
                 app.popups.context_menu = Some(menu);
             }
-            KeyCode::Enter => {
+            _ if app.keybinds.matches_list(crate::keybinds::ListAction::Confirm, &key) => {
                 app.handle_menu_action(menu.selected, focus);
-            }
-            KeyCode::Esc | KeyCode::Char('q') => {
-                app.popups.context_menu = None;
             }
             _ => {
                 app.popups.context_menu = Some(menu);
