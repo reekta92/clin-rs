@@ -407,6 +407,10 @@ impl Default for Keybinds {
                 KeyCombo::simple(KeyCode::Char('q')),
             ],
         );
+       draw.insert(
+           DrawAction::Help,
+           vec![KeyCombo::simple(KeyCode::Char('?'))],
+       );
         draw.insert(
             DrawAction::SelectDrawTool,
             vec![KeyCombo::simple(KeyCode::Char('d'))],

@@ -6,8 +6,13 @@ use crate::keybinds::Keybinds;
 pub enum DrawEventAction {
     Quit,
     Save,
+    OpenHelp,
 }
 
+pub enum DrawResult {
+    Finished,
+    HelpRequested,
+}
 use ratatui::layout::Rect;
 use ratatui_textarea::TextArea;
 
@@ -98,17 +103,20 @@ impl DrawAppState {
         event: crossterm::event::Event,
         _terminal: &ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
         config: &mut crate::config::ClinConfig,
-    ) -> anyhow::Result<Option<()>> {
+    ) -> anyhow::Result<Option<DrawResult>> {
         let keybinds = self.keybinds.clone();
         if let Some(action) = handle_event(event, self, &keybinds, config)? {
             match action {
                 DrawEventAction::Quit => {
                     self.running = false;
                     self.save_draw()?;
-                    return Ok(Some(()));
+                    return Ok(Some(DrawResult::Finished));
                 }
                 DrawEventAction::Save => {
                     self.save_draw()?;
+                }
+                DrawEventAction::OpenHelp => {
+                    return Ok(Some(DrawResult::HelpRequested));
                 }
             }
         }

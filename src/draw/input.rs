@@ -87,6 +87,9 @@ pub fn handle_event(
                     app.active_tool = DrawTool::Erase;
                     return Ok(None);
                 }
+               DrawAction::Help => {
+                   return Ok(Some(DrawEventAction::OpenHelp));
+               }
                 _ => {
                     if keybinds.matches_draw(DrawAction::Quit, &k) {
                         return Ok(Some(DrawEventAction::Quit));

@@ -12,6 +12,9 @@ impl App {
     }
 
     pub fn open_help_page_with_tab(&mut self, tab: HelpTab) {
+        if self.mode != ViewMode::Help {
+            self.return_mode = Some(self.mode);
+        }
         self.mode = ViewMode::Help;
         self.help_tab = tab;
         self.help_scroll = 0;

@@ -1038,7 +1038,6 @@ fn run_app(
                                             }
                                             Some(crate::graf::app::GrafResult::OpenHelp) => {
                                                 app.reload_theme();
-                                                app.return_mode = Some(ViewMode::Graph);
                                                 app.open_help_page_with_tab(crate::app::HelpTab::Graph);
                                             }
                                             Some(crate::graf::app::GrafResult::Quit) => {
@@ -1063,17 +1062,23 @@ fn run_app(
                                 }
                                 ViewMode::Draw => {
                                     if let Some(draw) = &mut app.draw_state {
-                                        let result = draw.overlay_handle_event(
+                                        match draw.overlay_handle_event(
                                             Event::Key(key),
                                             terminal,
                                             &mut app.config,
-                                        )?;
-                                        if result.is_some() {
-                                            debug_log!(app, Info, "draw", "Drawing closed and saved");
-                                            app.draw_state = None;
-                                            app.close_draw_view();
-                                            app.needs_full_redraw = true;
-                                            terminal.clear()?;
+                                        )? {
+                                            Some(crate::draw::app::DrawResult::Finished) => {
+                                                debug_log!(app, Info, "draw", "Drawing closed and saved");
+                                                app.draw_state = None;
+                                                app.close_draw_view();
+                                                app.needs_full_redraw = true;
+                                                terminal.clear()?;
+                                            }
+                                            Some(crate::draw::app::DrawResult::HelpRequested) => {
+                                                app.reload_theme();
+                                                app.open_help_page_with_tab(crate::app::HelpTab::Draw);
+                                            }
+                                            None => {}
                                         }
                                         true
                                     } else {
@@ -1089,7 +1094,6 @@ fn run_app(
                                         )? {
                                             Some(crate::pinstar::app::PinstarResult::HelpRequested) => {
                                                 app.reload_theme();
-                                                app.return_mode = Some(ViewMode::Canvas);
                                                 app.open_help_page_with_tab(crate::app::HelpTab::Canvas);
                                             }
                                             Some(crate::pinstar::app::PinstarResult::Normal) => {
@@ -1155,7 +1159,6 @@ fn run_app(
                                             }
                                             Some(crate::content_tree::app::ContentTreeResult::HelpRequested) => {
                                                 app.reload_theme();
-                                                app.return_mode = Some(ViewMode::ContentTree);
                                                 app.open_help_page_with_tab(crate::app::HelpTab::ContentTree);
                                                 app.needs_full_redraw = true;
                                                 terminal.clear()?;
@@ -1247,7 +1250,6 @@ fn run_app(
                                             }
                                             Some(crate::graf::app::GrafResult::OpenHelp) => {
                                                 app.reload_theme();
-                                                app.return_mode = Some(ViewMode::Graph);
                                                 app.open_help_page_with_tab(crate::app::HelpTab::Graph);
                                             }
                                             Some(crate::graf::app::GrafResult::Quit) => {
@@ -1268,11 +1270,24 @@ fn run_app(
                                 }
                                 ViewMode::Draw => {
                                     if let Some(draw) = &mut app.draw_state {
-                                        let _ = draw.overlay_handle_event(
+                                        match draw.overlay_handle_event(
                                             Event::Mouse(mouse_event),
                                             terminal,
                                             &mut app.config,
-                                        )?;
+                                        )? {
+                                            Some(crate::draw::app::DrawResult::Finished) => {
+                                                debug_log!(app, Info, "draw", "Drawing closed and saved");
+                                                app.draw_state = None;
+                                                app.close_draw_view();
+                                                app.needs_full_redraw = true;
+                                                terminal.clear()?;
+                                            }
+                                            Some(crate::draw::app::DrawResult::HelpRequested) => {
+                                                app.reload_theme();
+                                                app.open_help_page_with_tab(crate::app::HelpTab::Draw);
+                                            }
+                                            None => {}
+                                        }
                                     }
                                 }
                                 ViewMode::Canvas => {

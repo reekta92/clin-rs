@@ -108,6 +108,7 @@ pub enum GraphAction {
 #[serde(rename_all = "snake_case")]
 pub enum DrawAction {
     Quit,
+    Help,
     SelectDrawTool,
     ToggleShapeSelector,
     SelectTextTool,
