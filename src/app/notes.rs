@@ -524,6 +524,9 @@ impl App {
                 }
             }
             self.mode = return_to;
+            self.set_default_status();
+            debug_log!(self, Debug, "view", "View: Edit → {:?} (return_mode)", self.mode);
+            return;
         }
         self.mode = ViewMode::List;
         self.editor.editing_id = None;
