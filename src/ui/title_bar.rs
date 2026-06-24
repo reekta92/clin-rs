@@ -18,6 +18,24 @@ pub fn draw_view_title_bar(
             .add_modifier(Modifier::BOLD),
     );
     let mut spans = vec![title_span];
+
+    // Powerline separator after title
+    match theme.hint_bar_style {
+        crate::config::HintBarStyle::PowerlineSharp
+        | crate::config::HintBarStyle::PowerlineRounded
+        | crate::config::HintBarStyle::PowerlineSlanted => {
+            let sep_char = match theme.hint_bar_style {
+                crate::config::HintBarStyle::PowerlineSharp => "",
+                crate::config::HintBarStyle::PowerlineRounded => "",
+                crate::config::HintBarStyle::PowerlineSlanted => "",
+                _ => unreachable!(),
+            };
+            let sep_style = Style::default().fg(theme.heading).bg(theme.title_bar_bg().unwrap_or(Color::Reset));
+            spans.push(Span::styled(sep_char, sep_style));
+        }
+        _ => {}
+    }
+
     if let Some(info) = preview_info {
         spans.push(Span::styled("  ", Style::default()));
         let parts: Vec<&str> = info.path.split('/').collect();
@@ -84,8 +102,6 @@ pub fn draw_view_title_bar_with_tabs(
     );
 
     let display_text = format!(" {} ", title.to_uppercase());
-    let title_w = display_text.chars().count() as u16;
-    let title_area = Rect::new(area.x, area.y, title_w.min(area.width), area.height);
     let title_span = Span::styled(
         display_text,
         Style::default()
@@ -93,7 +109,34 @@ pub fn draw_view_title_bar_with_tabs(
             .bg(theme.heading)
             .add_modifier(Modifier::BOLD),
     );
-    frame.render_widget(Paragraph::new(Line::from(vec![title_span])), title_area);
+    let mut title_spans = vec![title_span];
+
+    match theme.hint_bar_style {
+        crate::config::HintBarStyle::PowerlineSharp
+        | crate::config::HintBarStyle::PowerlineRounded
+        | crate::config::HintBarStyle::PowerlineSlanted => {
+            let sep_char = match theme.hint_bar_style {
+                crate::config::HintBarStyle::PowerlineSharp => "",
+                crate::config::HintBarStyle::PowerlineRounded => "",
+                crate::config::HintBarStyle::PowerlineSlanted => "",
+                _ => unreachable!(),
+            };
+            let sep_style = Style::default().fg(theme.heading).bg(theme.title_bar_bg().unwrap_or(Color::Reset));
+            title_spans.push(Span::styled(sep_char, sep_style));
+        }
+        _ => {}
+    }
+
+    let title_w = title_spans
+        .iter()
+        .map(|s| s.content.chars().count() as u16)
+        .sum::<u16>()
+        .min(area.width);
+    let title_area = Rect::new(area.x, area.y, title_w, area.height);
+    frame.render_widget(
+        Paragraph::new(Line::from(title_spans)),
+        title_area,
+    );
 }
 
 pub fn title_bar_tabs_region(area: Rect, title: &str) -> Rect {

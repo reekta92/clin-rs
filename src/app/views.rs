@@ -1,5 +1,4 @@
 use super::*;
-use crate::constants::*;
 use crate::list_view::*;
 use crate::popups::*;
 use std::borrow::Cow;
@@ -17,7 +16,7 @@ impl App {
         self.help_tab = tab;
         self.help_scroll = 0;
         self.help_tab_scroll.insert(tab, 0);
-        self.status = Cow::Borrowed(HELP_PAGE_HINTS);
+        self.status = Cow::Borrowed("");
         self.status_until = None;
         self.list.help_text_cache = None;
         self.help_search = crate::app::HelpSearchState::default();

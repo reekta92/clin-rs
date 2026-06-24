@@ -10,7 +10,6 @@ mod loading;
 mod status;
 mod import_ops;
 
-use crate::constants::*;
 use crate::debug_log;
 pub use crate::editor::*;
 use crate::events::get_title_text;
@@ -448,7 +447,7 @@ impl App {
             editor,
             list,
             mode: ViewMode::List,
-            status: Cow::Borrowed(LIST_HELP_HINTS),
+            status: Cow::Borrowed(""),
             status_until: None,
             help_scroll: 0,
             help_tab: HelpTab::Notes,
@@ -549,7 +548,7 @@ impl App {
             editor,
             list,
             mode: ViewMode::List,
-            status: Cow::Borrowed(LIST_HELP_HINTS),
+            status: Cow::Borrowed(""),
             status_until: None,
             help_scroll: 0,
             help_tab: HelpTab::Notes,

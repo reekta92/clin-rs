@@ -1,4 +1,4 @@
-use crate::constants::DRAW_HELP_HINTS;
+use crate::keybinds::DrawAction;
 use crate::draw::app::DrawAppState;
 use crate::draw::state::{DrawElement, DrawShapeType, DrawTool, Shape, Stroke};
 use ratatui::Frame;
@@ -100,7 +100,15 @@ pub fn draw_canvas(frame: &mut Frame, app: &DrawAppState, area: Rect, config: &c
         area.width,
         1,
     );
-    crate::ui::draw_status_bar(frame, status_area, &app.theme, None, DRAW_HELP_HINTS, None);
+    let hints_items = vec![
+        (app.keybinds.display_draw(DrawAction::SelectDrawTool), "draw"),
+        (app.keybinds.display_draw(DrawAction::ToggleShapeSelector), "shape"),
+        (app.keybinds.display_draw(DrawAction::SelectTextTool), "text"),
+        (app.keybinds.display_draw(DrawAction::SelectEraseTool), "erase"),
+        (app.keybinds.display_draw(DrawAction::Quit), "back"),
+    ];
+    let hint_line = crate::ui::format_keybind_hints(&app.theme, &hints_items);
+    crate::ui::draw_status_bar(frame, status_area, &app.theme, None, hint_line, None);
 
     if app.show_shape_selector {
         let content = crate::ui::draw_popup_frame(

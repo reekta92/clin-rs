@@ -598,6 +598,8 @@ pub struct UiConfig {
     /// Icon display mode: Nerd Font, Unicode fallback, or None.
     #[serde(default)]
     pub icon_mode: IconMode,
+    #[serde(default)]
+    pub hint_bar_style: HintBarStyle,
 }
 
 impl Default for UiConfig {
@@ -618,6 +620,7 @@ impl Default for UiConfig {
             show_status_bar: default_true(),
             tab_icons_only: false,
             icon_mode: IconMode::default(),
+            hint_bar_style: HintBarStyle::default(),
         }
     }
 }
@@ -628,6 +631,17 @@ pub enum PreviewPosition {
     Left,
     #[default]
     Right,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum HintBarStyle {
+    #[default]
+    Classic,
+    Accent,
+    PowerlineSharp,
+    PowerlineRounded,
+    PowerlineSlanted,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Default)]
@@ -1500,6 +1514,9 @@ show_status_bar = true
 
 # Show only Nerd Font icons (no text) on tab bars (Help, Notes, Backup, Palette).
 tab_icons_only = false
+#
+# Hint bar style ("classic", "accent", "powerline_sharp", "powerline_rounded", "powerline_slanted")
+hint_bar_style = "classic"
 
 
 # Color overrides (hex strings like "#ffffff").

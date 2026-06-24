@@ -1,5 +1,5 @@
 use crate::app_theme::AppThemeColors;
-use crate::constants::*;
+use crate::keybinds::CanvasAction;
 use crate::pinstar::state::PinstarState;
 use ratatui::{prelude::*, widgets::*};
 
@@ -592,26 +592,30 @@ pub fn draw_pinstar_view(
         }
     }
 
-    let mut hint_text = if state.footer_hint.is_empty() {
-        CANVAS_HELP_HINTS.to_string()
-    } else {
-        state.footer_hint.clone()
-    };
-    if state.connection_source_id.is_some() {
-        hint_text = "CONNECTION MODE: Select target node with mouse or Enter".to_string();
-    } else if state.deleting_connection_source_id.is_some() {
-        hint_text = "DELETE CONNECTION MODE: Select target node to remove link".to_string();
-    } else if state.resizing_node_id.is_some() {
-        hint_text = "RESIZE MODE: Drag mouse to resize, Left-click to confirm".to_string();
-    }
-
     let hint_area = Rect::new(
         total_area.x,
         total_area.bottom().saturating_sub(1),
         total_area.width,
         1,
     );
-    crate::ui::draw_status_bar(frame, hint_area, theme, None, &hint_text, None);
+    let hint_line = if state.connection_source_id.is_some() {
+        Line::from(vec![Span::styled("CONNECTION MODE: Select target node with mouse or Enter", Style::default().fg(theme.muted))])
+    } else if state.deleting_connection_source_id.is_some() {
+        Line::from(vec![Span::styled("DELETE CONNECTION MODE: Select target node to remove link", Style::default().fg(theme.muted))])
+    } else if state.resizing_node_id.is_some() {
+        Line::from(vec![Span::styled("RESIZE MODE: Drag mouse to resize, Left-click to confirm", Style::default().fg(theme.muted))])
+    } else if state.footer_hint.is_empty() {
+        let hints_items = vec![
+            (format!("{}/{}", state.keybinds.display_canvas(CanvasAction::MoveUp), state.keybinds.display_canvas(CanvasAction::MoveDown)), "move"),
+            (state.keybinds.display_canvas(CanvasAction::OpenContextMenu), "menu"),
+            (format!("{}/{}", state.keybinds.display_canvas(CanvasAction::ZoomOut), state.keybinds.display_canvas(CanvasAction::ZoomIn)), "zoom"),
+            (state.keybinds.display_canvas(CanvasAction::Quit), "back"),
+        ];
+        crate::ui::format_keybind_hints(theme, &hints_items)
+    } else {
+        Line::from(vec![Span::styled(state.footer_hint.clone(), Style::default().fg(theme.muted))])
+    };
+    crate::ui::draw_status_bar(frame, hint_area, theme, None, hint_line, None);
 
     if let Some(menu) = &state.context_menu {
         let menu_width = menu

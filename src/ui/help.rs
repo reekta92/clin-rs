@@ -3,11 +3,10 @@ use ratatui::{prelude::*, widgets::*};
 use crate::app::{App, HelpTab};
 use crate::app_theme::AppThemeColors;
 use crate::keybinds::{
-    Keybinds, ListAction, EditAction, GraphAction, DrawAction, CanvasAction,
+    Keybinds, HelpAction, ListAction, EditAction, GraphAction, DrawAction, CanvasAction,
     BackupAction, ContentTreeAction
 };
-use crate::constants::HELP_PAGE_HINTS;
-use super::{build_tab_spans, draw_view_title_bar_with_tabs, draw_status_bar};
+use super::{build_tab_spans, draw_view_title_bar_with_tabs, draw_status_bar, format_keybind_hints};
 
 pub fn help_tab_names(icon_mode: crate::config::IconMode) -> [(&'static str, &'static str); 9] {
     [
@@ -130,14 +129,15 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
         );
     frame.render_widget(table, chunks[1]);
 
-    draw_status_bar(
-        frame,
-        chunks[2],
-        &app.app_theme,
-        None,
-        HELP_PAGE_HINTS,
-        None,
-    );
+    let kb = &app.keybinds;
+    let hints_items = vec![
+        (format!("{}/{}", kb.display_help(HelpAction::PrevTab), kb.display_help(HelpAction::NextTab)), "switch tab"),
+        (format!("{}/{}", kb.display_help(HelpAction::ScrollUp), kb.display_help(HelpAction::ScrollDown)), "scroll"),
+        (kb.display_help(HelpAction::Search), "search"),
+        (kb.display_help(HelpAction::Close), "close"),
+    ];
+    let hint = format_keybind_hints(&app.app_theme, &hints_items);
+    draw_status_bar(frame, chunks[2], &app.app_theme, None, hint, None);
     if app.help_search.active {
         draw_help_search(frame, chunks[1], app);
     }

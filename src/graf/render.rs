@@ -1,4 +1,4 @@
-use crate::constants::GRAPH_HELP_HINTS;
+use crate::keybinds::{GraphAction, Keybinds};
 use std::collections::{HashMap, HashSet};
 
 use fdg_sim::petgraph::graph::NodeIndex;
@@ -514,6 +514,7 @@ pub fn draw_graph_view(
     config: &ClinConfig,
     flags: &FeatureFlags,
     app_theme: &crate::app_theme::AppThemeColors,
+    keybinds: &Keybinds,
 ) {
     let aspect = area.width as f64 / area.height as f64;
     let viewport = &state.viewport;
@@ -667,12 +668,20 @@ pub fn draw_graph_view(
             area.width,
             1,
         );
+        let hints_items = vec![
+            (format!("{}/{}", keybinds.display_graph(GraphAction::PanUp), keybinds.display_graph(GraphAction::PanDown)), "pan"),
+            (format!("{}/{}", keybinds.display_graph(GraphAction::ZoomOut), keybinds.display_graph(GraphAction::ZoomIn)), "zoom"),
+            (keybinds.display_graph(GraphAction::ToggleLegend), "labels"),
+            (keybinds.display_graph(GraphAction::AutoFit), "fit"),
+            (keybinds.display_graph(GraphAction::Quit), "quit"),
+        ];
+        let hint_line = crate::ui::format_keybind_hints(app_theme, &hints_items);
         crate::ui::draw_status_bar(
             frame,
             status_area,
             app_theme,
             None,
-            GRAPH_HELP_HINTS,
+            hint_line,
             Some(ratatui::text::Line::from(status.clone())),
         );
     }

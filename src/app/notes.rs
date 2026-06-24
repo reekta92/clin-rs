@@ -1,6 +1,5 @@
 use crate::debug_log;
 use super::*;
-use crate::constants::*;
 use crate::list_view::*;
 use crate::popups::*;
 use crate::storage::Note;
@@ -182,7 +181,7 @@ impl App {
             } else {
                 self.editor.md_preview_renderer = None;
             }
-            self.status = Cow::Borrowed(EDIT_HELP_HINTS);
+            self.status = Cow::Borrowed("");
             debug_log!(self, Info, "storage", "Note opened: {note_id} (line={line_number:?})");
         } else {
             self.status = Cow::Borrowed("Failed to load note!");
@@ -506,10 +505,25 @@ impl App {
             self.editor.editor = TextArea::default();
             self.popups.confirm = None;
             self.editor.md_preview_renderer = None;
+            if return_to == ViewMode::Graph && self.graph_state.is_none() {
+                match crate::graf::app::GrafAppState::new(
+                    &self.config,
+                    self.storage.clone(),
+                    vec![],
+                    self.keybinds.clone(),
+                    self.seq_matcher.clone(),
+                ) {
+                    Ok(state) => {
+                        self.graph_state = Some(state);
+                    }
+                    Err(e) => {
+                        self.set_temporary_status(&format!("Failed to rebuild graph: {e}"));
+                        self.mode = ViewMode::List;
+                        return;
+                    }
+                }
+            }
             self.mode = return_to;
-            self.set_default_status();
-            debug_log!(self, Debug, "view", "View: Edit → {:?} (return_mode)", self.mode);
-            return;
         }
         self.mode = ViewMode::List;
         self.editor.editing_id = None;
@@ -644,7 +658,25 @@ impl App {
         self.return_mode = Some(ViewMode::Graph);
         if self.editor.external_editor_enabled {
             self.open_note_in_external_editor(note_id, None);
-            self.mode = self.return_mode.take().unwrap_or(ViewMode::List);
+            // graph_state was destroyed when note was opened; rebuild it
+            self.return_mode.take(); // discard return_mode (was set to Graph above)
+            if self.graph_state.is_none() {
+                match crate::graf::app::GrafAppState::new(
+                    &self.config,
+                    self.storage.clone(),
+                    vec![],
+                    self.keybinds.clone(),
+                    self.seq_matcher.clone(),
+                ) {
+                    Ok(state) => {
+                        self.graph_state = Some(state);
+                    }
+                    Err(_) => {
+                        self.set_temporary_status_static("Failed to rebuild graph view");
+                    }
+                }
+            }
+            self.mode = ViewMode::Graph;
         } else {
             self.load_and_open_note(note_id, None);
         }
@@ -950,4 +982,5 @@ impl App {
         } else {
             self.set_temporary_status_static("Select a note to duplicate");
         }
-    }}
+}
+}

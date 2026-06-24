@@ -1,6 +1,5 @@
 use crate::debug_log;
 use super::*;
-use crate::constants::*;
 use crate::list_view::*;
 use crate::storage::NoteSummary;
 use std::collections::HashMap;
@@ -92,7 +91,7 @@ impl App {
             LoadBatch::Done(n) => {
                 self.initial_load_done = true;
                 self.loading_total = 0;
-                self.status = Cow::Borrowed(LIST_HELP_HINTS);
+                self.status = Cow::Borrowed("");
                 debug_log!(self, Info, "lifecycle", "Initial note load complete: {n} notes");
                 true
             }

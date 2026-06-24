@@ -191,9 +191,23 @@ use crate::app::App;
 /// Check if the key event should cancel/close a popup.
 /// Returns `true` if the key matches `ListAction::Cancel`, or if it matches
 /// `ListAction::Quit` and `!has_text_input` (to avoid stealing printable keys).
+///
+/// When `has_text_input` is true, Cancel matches are filtered to exclude
+/// bare (unmodified) `Char` keypresses, so keys like `n` type into the text
+/// field instead of closing the popup. Modifier combos like `Ctrl+N` and
+/// non-printable keys like `Esc` still cancel.
 pub fn is_cancel_popup(keybinds: &crate::keybinds::Keybinds, key: &crossterm::event::KeyEvent, has_text_input: bool) -> bool {
-    keybinds.matches_list(crate::keybinds::ListAction::Cancel, key)
-        || (!has_text_input && keybinds.matches_list(crate::keybinds::ListAction::Quit, key))
+    let cancel = keybinds.matches_list(crate::keybinds::ListAction::Cancel, key);
+    let cancel_triggered = if has_text_input && cancel {
+        // In text-input mode, only non-printable keys and modifier combos cancel.
+        // Bare Char (letter, digit, symbol) goes to the text input.
+        let bare_char = matches!(key.code, KeyCode::Char(_))
+            && !key.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::META);
+        !bare_char
+    } else {
+        cancel
+    };
+    cancel_triggered || (!has_text_input && keybinds.matches_list(crate::keybinds::ListAction::Quit, key))
 }
 
 /// Handle global popups (tag, search, create_note, folder, goals, import,

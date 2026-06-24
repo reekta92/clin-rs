@@ -472,20 +472,42 @@ pub fn ext_badge(enabled: bool, theme: &AppThemeColors) -> StatusBarBadge {
     }
 }
 
-pub fn draw_status_bar(
+pub fn draw_status_bar<'a>(
     frame: &mut Frame,
     area: Rect,
     theme: &AppThemeColors,
     badge: Option<StatusBarBadge>,
-    hint: &str,
-    right: Option<Line<'static>>,
+    hint: Line<'a>,
+    right: Option<Line<'a>>,
 ) {
     let mut left_spans: Vec<Span> = Vec::new();
     if let Some(b) = badge {
-        left_spans.push(Span::styled(b.label, b.style));
-        left_spans.push(Span::raw("  "));
+        match theme.hint_bar_style {
+            crate::config::HintBarStyle::PowerlineSharp
+            | crate::config::HintBarStyle::PowerlineRounded
+            | crate::config::HintBarStyle::PowerlineSlanted => {
+                let sep_char = match theme.hint_bar_style {
+                    crate::config::HintBarStyle::PowerlineSharp => "",
+                    crate::config::HintBarStyle::PowerlineRounded => "",
+                    crate::config::HintBarStyle::PowerlineSlanted => "",
+                    _ => unreachable!(),
+                };
+                let pwr_bg = b.style.fg.unwrap_or(theme.accent);
+                let pwr_style = Style::default().bg(pwr_bg).fg(theme.highlight_fg).add_modifier(b.style.add_modifier);
+                left_spans.push(Span::styled(b.label, pwr_style));
+
+                let next_bg = hint.spans.first().and_then(|s| s.style.bg).or(theme.hint_line_bg());
+                let mut sep_style = Style::default().fg(pwr_bg);
+                if let Some(bg) = next_bg { sep_style = sep_style.bg(bg); }
+                left_spans.push(Span::styled(sep_char, sep_style));
+            }
+            _ => {
+                left_spans.push(Span::styled(b.label, b.style));
+                left_spans.push(Span::raw(" "));
+            }
+        }
     }
-    left_spans.push(Span::styled(hint, Style::default().fg(theme.muted)));
+    left_spans.extend(hint.spans);
 
     if let Some(right_line) = right {
         let chunks = Layout::default()
@@ -509,14 +531,68 @@ pub fn draw_status_bar(
     }
 }
 
-pub fn resolved_status_hint<'a>(app: &'a App, default: &'static str) -> Cow<'a, str> {
+pub fn resolved_status_line<'a>(app: &'a App, default_hints: Line<'a>, theme: &'a AppThemeColors) -> Line<'a> {
     let status = app.status.as_ref();
-    if status != app.default_status_text() && !status.is_empty() && status != "Ready" {
-        crate::sanitize::sanitize_for_terminal(status)
+    if !status.is_empty() && status != "Ready" {
+        let text = crate::sanitize::sanitize_for_terminal(status);
+        Line::from(vec![Span::styled(text.into_owned(), Style::default().fg(theme.muted))])
     } else {
-        Cow::Borrowed(default)
+        default_hints
     }
 }
+
+pub fn format_keybind_hints<'a>(theme: &'a AppThemeColors, items: &[(String, &'static str)]) -> Line<'a> {
+    match theme.hint_bar_style {
+        crate::config::HintBarStyle::Classic => {
+            let mut spans = Vec::new();
+            for (i, (key, action)) in items.iter().enumerate() {
+                if i > 0 { spans.push(Span::styled(" · ", Style::default().fg(theme.muted))); }
+                spans.push(Span::styled(key.clone(), Style::default().fg(theme.muted).add_modifier(Modifier::BOLD)));
+                spans.push(Span::styled(format!(" {}", action), Style::default().fg(theme.muted)));
+            }
+            Line::from(spans)
+        }
+        crate::config::HintBarStyle::Accent => {
+            let mut spans = Vec::new();
+            for (i, (key, action)) in items.iter().enumerate() {
+                if i > 0 { spans.push(Span::styled(" · ", Style::default().fg(theme.muted))); }
+                spans.push(Span::styled(key.clone(), Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)));
+                spans.push(Span::styled(format!(" {}", action), Style::default().fg(theme.muted)));
+            }
+            Line::from(spans)
+        }
+        style @ (crate::config::HintBarStyle::PowerlineSharp
+        | crate::config::HintBarStyle::PowerlineRounded
+        | crate::config::HintBarStyle::PowerlineSlanted) => {
+            let sep_char = match style {
+                crate::config::HintBarStyle::PowerlineSharp => "",
+                crate::config::HintBarStyle::PowerlineRounded => "",
+                crate::config::HintBarStyle::PowerlineSlanted => "",
+                _ => unreachable!(),
+            };
+
+            let bg_colors = [theme.accent, theme.folder, theme.tag, theme.warning, theme.success];
+            let fg = theme.highlight_fg;
+            let mut spans = Vec::new();
+
+            for (i, (key, action)) in items.iter().enumerate() {
+                let bg = bg_colors[i % bg_colors.len()];
+                let next_bg = if i == items.len() - 1 { theme.hint_line_bg() } else { Some(bg_colors[(i + 1) % bg_colors.len()]) };
+
+                spans.push(Span::styled(
+                    format!(" {} {} ", key, action),
+                    Style::default().bg(bg).fg(fg).add_modifier(Modifier::BOLD)
+                ));
+
+                let mut sep_style = Style::default().fg(bg);
+                if let Some(n_bg) = next_bg { sep_style = sep_style.bg(n_bg); }
+                spans.push(Span::styled(sep_char, sep_style));
+            }
+            Line::from(spans)
+        }
+    }
+}
+
 
 pub fn draw_popup_footer(
     frame: &mut Frame,

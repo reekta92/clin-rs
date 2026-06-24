@@ -1,14 +1,13 @@
 use ratatui::{prelude::*, widgets::*};
 use crate::app::{App, VIRTUAL_PINNED_PATH, VIRTUAL_PINNED_LABEL, ViewMode};
 use crate::app_theme::AppThemeColors;
-use crate::constants::LIST_HELP_HINTS;
-use std::borrow::Cow;
+use crate::keybinds::ListAction;
 use super::{
     PopupSize, PreviewHeaderInfo, build_tab_spans, draw_view_title_bar,
     draw_view_title_bar_with_tabs, draw_status_bar, draw_dim_vline,
     draw_corner_watermark, draw_popup_frame, draw_confirm_popup,
     draw_template_popup, format_relative_time, build_list_widget,
-    resolved_status_hint, ext_badge, popup_block
+    resolved_status_line, format_keybind_hints, ext_badge, popup_block
 };
 
 const GRID_TILE_W: u16 = 10; // outer width incl. border
@@ -452,16 +451,42 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             crate::calendar::draw_calendar(frame, cal_rect, &app.app_theme, &app.notes, app.calendar_position == crate::config::CalendarPosition::Top);
         }
     }
-    let hint = if app.layout_edit {
-        Cow::Borrowed("Layout Edit: drag borders · drag panes to swap · s preview · c calendar · ←→ ↑↓ resize · Esc")
+    let kb = &app.keybinds;
+    let is_grid = app.list.notes_layout == crate::config::NotesLayout::Grid;
+    let hints_items = if is_grid {
+        vec![
+            (format!("{}/{}/{}/{}", kb.display_list(ListAction::MoveLeft), kb.display_list(ListAction::MoveDown), kb.display_list(ListAction::MoveUp), kb.display_list(ListAction::MoveRight)), "move"),
+            (kb.display_list(ListAction::Open), "open"),
+            (kb.display_list(ListAction::Help), "help"),
+            (kb.display_list(ListAction::Quit), "quit"),
+        ]
     } else {
-        resolved_status_hint(app, LIST_HELP_HINTS)
+        vec![
+            (format!("{}/{}", kb.display_list(ListAction::MoveDown), kb.display_list(ListAction::MoveUp)), "move"),
+            (kb.display_list(ListAction::Open), "open"),
+            (kb.display_list(ListAction::Help), "help"),
+            (kb.display_list(ListAction::Quit), "quit"),
+        ]
+    };
+    let default_hints = format_keybind_hints(&app.app_theme, &hints_items);
+
+    let hint = if app.layout_edit {
+        let layout_items = vec![
+            ("drag".to_string(), "borders/panes"),
+            ("s".to_string(), "preview"),
+            ("c".to_string(), "calendar"),
+            ("←→ ↑↓".to_string(), "resize"),
+            ("Esc".to_string(), "done"),
+        ];
+        format_keybind_hints(&app.app_theme, &layout_items)
+    } else {
+        resolved_status_line(app, default_hints, &app.app_theme)
     };
     let badge = Some(ext_badge(
         app.editor.external_editor_enabled,
         &app.app_theme,
     ));
-    draw_status_bar(frame, chunks[2], &app.app_theme, badge, &hint, None);
+    draw_status_bar(frame, chunks[2], &app.app_theme, badge, hint, None);
     draw_corner_watermark(frame, chunks[2], app.app_theme.muted);
     if app.list.preview_enabled && !app.preview_fullscreen {
         let ratio_num = (app.list.preview_width_ratio.clamp(0.2, 0.8) * 100.0).round() as u32;

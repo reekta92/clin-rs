@@ -1,5 +1,4 @@
 use super::*;
-use crate::constants::*;
 use std::borrow::Cow;
 use std::time::{Duration, Instant};
 
@@ -7,16 +6,7 @@ impl App {
 
 
     pub fn default_status_text(&self) -> Cow<'static, str> {
-        match self.mode {
-            ViewMode::List => Cow::Borrowed(LIST_HELP_HINTS),
-            ViewMode::Edit => Cow::Borrowed(EDIT_HELP_HINTS),
-            ViewMode::Help => Cow::Borrowed(HELP_PAGE_HINTS),
-            ViewMode::Graph => Cow::Borrowed(GRAPH_HELP_HINTS),
-            ViewMode::Draw => Cow::Borrowed(DRAW_HELP_HINTS),
-            ViewMode::Canvas => Cow::Borrowed(CANVAS_HELP_HINTS),
-            ViewMode::Backup => Cow::Borrowed(BACKUP_HELP_HINTS),
-            ViewMode::ContentTree => Cow::Borrowed(crate::constants::CONTENT_TREE_HELP_HINTS),
-        }
+        Cow::Borrowed("")
     }
 
     pub fn set_default_status(&mut self) {

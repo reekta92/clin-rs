@@ -1228,11 +1228,42 @@ fn run_app(
                                 }
                                 ViewMode::Graph => {
                                     if let Some(graf) = &mut app.graph_state {
-                                        let _ = graf.overlay_handle_event(
+                                        match graf.overlay_handle_event(
                                             Event::Mouse(mouse_event),
                                             terminal,
                                             &mut app.config,
-                                        )?;
+                                        )? {
+                                            Some(crate::graf::app::GrafResult::NoteOpened(note_id)) => {
+                                                if let Err(e) = app.config.save() {
+                                                    app.set_temporary_status(&format!("Failed to save config: {e}"));
+                                                }
+                                                app.graph_state = None;
+                                                app.mode = ViewMode::List;
+                                                debug_log!(app, Info, "view", "View: Graph → List (note opened via mouse)");
+                                                app.reload_theme();
+                                                app.open_note_from_graph(&note_id);
+                                                app.needs_full_redraw = true;
+                                                terminal.clear()?;
+                                            }
+                                            Some(crate::graf::app::GrafResult::OpenHelp) => {
+                                                app.reload_theme();
+                                                app.return_mode = Some(ViewMode::Graph);
+                                                app.open_help_page_with_tab(crate::app::HelpTab::Graph);
+                                            }
+                                            Some(crate::graf::app::GrafResult::Quit) => {
+                                                if let Err(e) = app.config.save() {
+                                                    app.set_temporary_status(&format!("Failed to save config: {e}"));
+                                                }
+                                                debug_log!(app, Info, "graf", "Graph view shutdown via mouse");
+                                                app.graph_state = None;
+                                                app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
+                                                debug_log!(app, Info, "view", "View: Graph → {:?} (via mouse)", app.mode);
+                                                app.reload_theme();
+                                                app.needs_full_redraw = true;
+                                                terminal.clear()?;
+                                            }
+                                            None => {}
+                                        }
                                     }
                                 }
                                 ViewMode::Draw => {

@@ -19,6 +19,7 @@ pub struct AppThemeColors {
     pub folder: Color,
     pub highlight_fg: Color,
     pub highlight_bg: Color,
+    pub hint_bar_style: crate::config::HintBarStyle,
 }
 
 impl Default for AppThemeColors {
@@ -64,6 +65,7 @@ impl AppThemeColors {
                 folder: Color::Blue,
                 highlight_fg: Color::Black,
                 highlight_bg: Color::Cyan,
+                hint_bar_style: crate::config::HintBarStyle::default(),
             }
         } else {
             Self {
@@ -81,6 +83,7 @@ impl AppThemeColors {
                 folder: t.node_colors.get(2).copied().unwrap_or(Color::Blue),
                 highlight_fg: t.background_color.unwrap_or(Color::Black),
                 highlight_bg: t.node_colors.first().copied().unwrap_or(Color::Cyan),
+                hint_bar_style: crate::config::HintBarStyle::default(),
             }
         };
 
@@ -118,6 +121,7 @@ impl AppThemeColors {
         {
             colors.bg = Some(c);
         }
+        colors.hint_bar_style = config.hint_bar_style;
 
         colors
     }

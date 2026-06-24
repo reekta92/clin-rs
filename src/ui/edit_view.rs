@@ -1,13 +1,13 @@
 use ratatui::{prelude::*, widgets::*};
 
 use crate::app::{App, EditFocus};
-use crate::constants::EDIT_HELP_HINTS;
+use crate::keybinds::EditAction;
 use crate::events::get_title_text;
 use super::{
     PopupSize, draw_view_title_bar, line_number_gutter,
-    get_textarea_scroll, fill_cursor_line_bg, resolved_status_hint,
+    get_textarea_scroll, fill_cursor_line_bg, resolved_status_line,
     draw_status_bar, draw_corner_watermark, draw_dim_vline, centered_rect,
-    get_preview_info
+    get_preview_info, format_keybind_hints
 };
 
 pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
@@ -299,8 +299,15 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         }
     }
 
-    let hint = resolved_status_hint(app, EDIT_HELP_HINTS);
-    draw_status_bar(frame, hint_area, &app.app_theme, None, &hint, None);
+    let kb = &app.keybinds;
+    let hints_items = vec![
+        (kb.display_edit(EditAction::CycleFocus), "focus"),
+        (kb.display_edit(EditAction::Back), "back"),
+        (kb.display_edit(EditAction::ToggleMarkdownPreview), "preview"),
+    ];
+    let default_hints = format_keybind_hints(&app.app_theme, &hints_items);
+    let hint = resolved_status_line(app, default_hints, &app.app_theme);
+    draw_status_bar(frame, hint_area, &app.app_theme, None, hint, None);
     draw_corner_watermark(frame, hint_area, app.app_theme.muted);
     if let Some(splitter_area) = splitter_area {
         draw_dim_vline(frame, splitter_area, app.app_theme.muted);

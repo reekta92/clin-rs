@@ -17,6 +17,7 @@ fn format_relative_time(unix_secs: u64) -> String {
 
 use crate::backup::git_ops::FileChangeType;
 use crate::backup::state::{BackupInputMode, BackupState, SettingsField};
+use crate::keybinds::BackupAction;
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -92,12 +93,21 @@ pub fn draw_dashboard(
         Some(Line::from(right_spans))
     };
 
+    let kb = &state.keybinds;
+    let hints_items = vec![
+        (kb.display_backup(BackupAction::EnterCommit), "commit"),
+        (kb.display_backup(BackupAction::Push), "push"),
+        (kb.display_backup(BackupAction::Refresh), "refresh"),
+        (kb.display_backup(BackupAction::OpenSettings), "settings"),
+        (kb.display_backup(BackupAction::Back), "back"),
+    ];
+    let hint_line = crate::ui::format_keybind_hints(theme, &hints_items);
     crate::ui::draw_status_bar(
         frame,
         footer_area,
         theme,
         None,
-        state.footer_hint.as_str(),
+        hint_line,
         right_line,
     );
     if state.input_mode == BackupInputMode::EditCommitMessage {

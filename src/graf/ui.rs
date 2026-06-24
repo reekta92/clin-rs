@@ -59,6 +59,7 @@ pub fn draw_ui(frame: &mut Frame, state: &GrafAppState, config: &ClinConfig, are
             config,
             &flags,
             &state.app_theme,
+            &state.keybinds,
         );
     }
 

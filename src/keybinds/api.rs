@@ -389,6 +389,47 @@ impl Keybinds {
     ) -> MatchOutcome<ContentTreeAction> {
         m.resolve(event, self.bindings_for_content_tree(), seq)
     }
+
+    /// Pick the best key combo to display in hint bars.
+    /// Skips arrow keys, function keys, and page-nav keys to prefer
+    /// letter keys (j/k) or conventional keys (Enter, Esc, Tab).
+    fn pick_hint_key(combos: &[KeyCombo]) -> String {
+        for combo in combos.iter() {
+            let s = combo.to_display_string();
+            let skip = matches!(s.as_str(), "Up" | "Down" | "Left" | "Right" | "Home" | "End" | "PageUp" | "PageDown")
+                || (s.starts_with('F') && s[1..].parse::<u8>().is_ok());
+            if !skip {
+                return s;
+            }
+        }
+        // All keys were nav/function keys, use first
+        combos.first().map(|k| k.to_display_string()).unwrap_or_else(|| "?".to_string())
+    }
+
+    pub fn display_list(&self, action: ListAction) -> String {
+        self.list.get(&action).map(|v| Self::pick_hint_key(v)).unwrap_or_else(|| "?".to_string())
+    }
+    pub fn display_edit(&self, action: EditAction) -> String {
+        self.edit.get(&action).map(|v| Self::pick_hint_key(v)).unwrap_or_else(|| "?".to_string())
+    }
+    pub fn display_help(&self, action: HelpAction) -> String {
+        self.help.get(&action).map(|v| Self::pick_hint_key(v)).unwrap_or_else(|| "?".to_string())
+    }
+    pub fn display_graph(&self, action: GraphAction) -> String {
+        self.graph.get(&action).map(|v| Self::pick_hint_key(v)).unwrap_or_else(|| "?".to_string())
+    }
+    pub fn display_draw(&self, action: DrawAction) -> String {
+        self.draw.get(&action).map(|v| Self::pick_hint_key(v)).unwrap_or_else(|| "?".to_string())
+    }
+    pub fn display_canvas(&self, action: CanvasAction) -> String {
+        self.canvas.get(&action).map(|v| Self::pick_hint_key(v)).unwrap_or_else(|| "?".to_string())
+    }
+    pub fn display_backup(&self, action: BackupAction) -> String {
+        self.backup.get(&action).map(|v| Self::pick_hint_key(v)).unwrap_or_else(|| "?".to_string())
+    }
+    pub fn display_content_tree(&self, action: ContentTreeAction) -> String {
+        self.content_tree.get(&action).map(|v| Self::pick_hint_key(v)).unwrap_or_else(|| "?".to_string())
+    }
 }
 
 #[cfg(test)]
@@ -792,4 +833,26 @@ mod tests {
             res
         );
     }
+}
+
+
+#[test]
+fn test_display_picks_hint_key() {
+    let kb = Keybinds::default();
+    // Navigation: prefer letter over arrow
+    assert_eq!(kb.display_list(ListAction::MoveDown), "j", "MoveDown");
+    assert_eq!(kb.display_list(ListAction::MoveUp), "k", "MoveUp");
+    // Conventional keys for primary actions
+    assert_eq!(kb.display_list(ListAction::Open), "Enter", "Open");
+    assert_eq!(kb.display_list(ListAction::Help), "?", "Help");
+    assert_eq!(kb.display_list(ListAction::Quit), "q", "Quit");
+    // Edit: Tab for CycleFocus, Esc for Back
+    assert_eq!(kb.display_edit(EditAction::CycleFocus), "Tab", "CycleFocus");
+    assert_eq!(kb.display_edit(EditAction::Back), "Esc", "Back");
+    // Canvas: letter for nav, conventional for quit
+    assert_eq!(kb.display_canvas(CanvasAction::MoveUp), "k", "Canvas MoveUp");
+    assert_eq!(kb.display_canvas(CanvasAction::Quit), "q", "Canvas Quit");
+    // Backup: Esc for Back (not q)
+    assert_eq!(kb.display_backup(BackupAction::Back), "Esc", "Backup Back");
+    assert_eq!(kb.display_backup(BackupAction::EnterCommit), "c", "EnterCommit");
 }
