@@ -5,7 +5,6 @@ use crate::text_edit::apply_text_shortcuts;
 use crossterm::event::{Event, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::{Constraint, Direction, Layout, Margin};
 use ratatui_textarea::TextArea;
-use unicode_width::UnicodeWidthStr;
 
 pub fn handle_event(
     ev: Event,
@@ -169,38 +168,22 @@ fn handle_mouse(ev: MouseEvent, app: &mut DrawAppState, config: &crate::config::
 
     match ev.kind {
         MouseEventKind::Down(MouseButton::Left) => {
-            let tools_for_click = [
-                (DrawTool::Draw,   crate::ui::get_icon("\u{f040}", "\u{270f}", config.ui.icon_mode).width(), 4),
-                (DrawTool::Shape,  crate::ui::get_icon("\u{f0c8}", "\u{25a0}", config.ui.icon_mode).width(), 5),
-                (DrawTool::Text,   crate::ui::get_icon("\u{f031}", "\u{1f4dd}", config.ui.icon_mode).width(), 4),
-                (DrawTool::Erase,  crate::ui::get_icon("\u{f1f8}", "\u{1f5d1}", config.ui.icon_mode).width(), 5),
-            ];
-
-            let separator: u16 = 3;
-            let toolbar_width: u16 = tools_for_click.iter()
-                .map(|(_, icon_w, name_w)| {
-                    let w = if *icon_w == 0 { *name_w as u16 + 2 } else { *icon_w as u16 + 1 + *name_w as u16 + 2 };
-                    w
-                })
-                .sum::<u16>() + (tools_for_click.len() - 1) as u16 * separator;
-
-            let tx = area.width.saturating_sub(toolbar_width) / 2;
-            let ty = area.height.saturating_sub(1);
-
-            if ev.row == ty && ev.column >= tx && ev.column < tx + toolbar_width {
-                let col_rel = ev.column - tx;
-                let mut offset: u16 = 0;
-                for (tool, icon_w, name_w) in &tools_for_click {
-                    let w = if *icon_w == 0 { *name_w as u16 + 2 } else { *icon_w as u16 + 1 + *name_w as u16 + 2 };
-                    if col_rel >= offset && col_rel < offset + w {
-                        if *tool == DrawTool::Shape {
-                            app.show_shape_selector = true;
-                        } else {
-                            app.active_tool = *tool;
-                        }
-                        break;
+            let icon_mode = config.ui.icon_mode;
+            let header_y = area.y.saturating_sub(1);
+            if ev.row == header_y {
+                let tabs_arr = crate::draw::render::draw_tool_tabs(icon_mode);
+                let tabs: Vec<(&str, Option<&str>)> =
+                    tabs_arr.iter().map(|&(l, g)| (l, Some(g))).collect();
+                let region = crate::ui::title_bar_tabs_region(area, "Draw");
+                if let Some(i) = crate::ui::hit_test_tabs(
+                    &tabs, area.x, area.width, region.x, ev.column, false, icon_mode,
+                ) {
+                    if i == 1 {
+                        // Shape tab opens the shape selector, matching old bottom-button behavior.
+                        app.show_shape_selector = true;
+                    } else {
+                        app.active_tool = crate::draw::render::DRAW_TAB_TOOLS[i];
                     }
-                    offset += w + separator;
                 }
                 return Ok(None);
             }

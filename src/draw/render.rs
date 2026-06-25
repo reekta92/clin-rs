@@ -2,15 +2,40 @@ use crate::keybinds::DrawAction;
 use crate::draw::app::DrawAppState;
 use crate::draw::state::{DrawElement, DrawShapeType, DrawTool, Shape, Stroke};
 use ratatui::Frame;
-use ratatui::layout::{Alignment, Rect};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::layout::Rect;
+use ratatui::style::{Color, Style};
 use ratatui::symbols::Marker;
-use ratatui::text::{Line as TuiLine, Span};
 use ratatui::widgets::canvas::{Canvas, Context, Line, Rectangle};
-use ratatui::widgets::{Block, List, ListItem, Paragraph};
-use unicode_width::UnicodeWidthStr;
+use ratatui::widgets::{Block, List, ListItem};
 
-pub fn draw_canvas(frame: &mut Frame, app: &DrawAppState, area: Rect, config: &crate::config::ClinConfig) {
+/// Draw-view tool tab (label, glyph) pairs, in toolbar order. Shared by
+/// `draw_canvas` header render (via `ui/mod.rs`) and the draw mouse hit-test
+/// so they never drift — same pattern as `backup::render::backup_tabs`.
+pub fn draw_tool_tabs(icon_mode: crate::config::IconMode) -> [(&'static str, &'static str); 4] {
+    [
+        ("Draw",  crate::ui::get_icon("\u{f040}", "\u{270f}", icon_mode)),
+        ("Shape", crate::ui::get_icon("\u{f0c8}", "\u{25a0}", icon_mode)),
+        ("Text",  crate::ui::get_icon("\u{f031}", "\u{1f4dd}", icon_mode)),
+        ("Erase", crate::ui::get_icon("\u{f1f8}", "\u{1f5d1}", icon_mode)),
+    ]
+}
+
+/// Tab order is fixed (Draw, Shape, Text, Erase) and intentionally NOT the
+/// `DrawTool` enum ordinal (enum is Draw, Erase, Text, Shape). Keep this array
+/// the single source of truth for index<->tool.
+pub const DRAW_TAB_TOOLS: [DrawTool; 4] = [
+    DrawTool::Draw,
+    DrawTool::Shape,
+    DrawTool::Text,
+    DrawTool::Erase,
+];
+
+/// Index of a tool within the tab order, for `build_tab_spans(active)`.
+pub fn draw_tool_tab_index(tool: DrawTool) -> usize {
+    DRAW_TAB_TOOLS.iter().position(|t| *t == tool).unwrap_or(0)
+}
+
+pub fn draw_canvas(frame: &mut Frame, app: &DrawAppState, area: Rect, _config: &crate::config::ClinConfig) {
     let x_bounds = [
         app.viewport.x - 100.0 / app.viewport.zoom,
         app.viewport.x + 100.0 / app.viewport.zoom,
@@ -34,6 +59,8 @@ pub fn draw_canvas(frame: &mut Frame, app: &DrawAppState, area: Rect, config: &c
                     grid_step_x *= 2.0;
                     grid_step_y *= 2.0;
                 }
+                // compensate for terminal cell aspect ratio (~2:1 height:width) so grid appears even
+                grid_step_y *= area.width as f64 / (2.0 * area.height as f64);
                 let start_x = (x_bounds[0] / grid_step_x).floor() * grid_step_x;
                 let end_x = (x_bounds[1] / grid_step_x).ceil() * grid_step_x;
                 let start_y = (y_bounds[0] / grid_step_y).floor() * grid_step_y;
@@ -84,57 +111,6 @@ pub fn draw_canvas(frame: &mut Frame, app: &DrawAppState, area: Rect, config: &c
 
     frame.render_widget(canvas, area);
 
-    let im = config.ui.icon_mode;
-    let tools = [
-        (DrawTool::Draw, crate::ui::get_icon("\u{f040}", "\u{270f}", im), "Draw"),
-        (DrawTool::Shape, crate::ui::get_icon("\u{f0c8}", "\u{25a0}", im), "Shape"),
-        (DrawTool::Text, crate::ui::get_icon("\u{f031}", "\u{1f4dd}", im), "Text"),
-        (DrawTool::Erase, crate::ui::get_icon("\u{f1f8}", "\u{1f5d1}", im), "Erase"),
-    ];
-    let separator_width: u16 = 3;
-    let toolbar_width: u16 = tools.iter().map(|(_, icon, name)| {
-        let label_w = if icon.is_empty() { name.width() + 2 } else { icon.width() + 1 + name.width() + 2 };
-        label_w as u16
-    }).sum::<u16>() + (tools.len() - 1) as u16 * separator_width;
-    let toolbar_area = Rect::new(
-        area.x + area.width.saturating_sub(toolbar_width) / 2,
-        area.y + area.height.saturating_sub(2),
-        toolbar_width,
-        1,
-    );
-
-    let mut spans = Vec::new();
-    for (i, (tool, icon, name)) in tools.iter().enumerate() {
-        if i > 0 {
-            spans.push(Span::raw("   "));
-        }
-        let label = if icon.is_empty() {
-            name.to_string()
-        } else {
-            format!("{} {}", icon, name)
-        };
-        let style = if app.active_tool == *tool {
-            Style::default()
-                .fg(app.theme.highlight_fg)
-                .bg(app.theme.highlight_bg)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(app.theme.fg)
-        };
-        let spacer = if app.active_tool == *tool {
-            Style::default().bg(app.theme.highlight_bg)
-        } else {
-            Style::default()
-        };
-        spans.push(Span::styled(" ", spacer));
-        spans.push(Span::styled(label, style));
-        spans.push(Span::styled(" ", spacer));
-    }
-
-    frame.render_widget(
-        Paragraph::new(TuiLine::from(spans)).alignment(Alignment::Center),
-        toolbar_area,
-    );
 
     let status_area = Rect::new(
         area.x,

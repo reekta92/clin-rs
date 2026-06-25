@@ -77,7 +77,16 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     .direction(Direction::Vertical)
                     .constraints([Constraint::Length(1), Constraint::Min(0)])
                     .split(frame.area());
-                draw_view_title_bar(frame, outer[0], "Draw", &app.app_theme, None, Some(app.status.as_ref()), None);
+                let icon_mode = app.config.ui.icon_mode;
+                let tabs_arr = crate::draw::render::draw_tool_tabs(icon_mode);
+                let tabs: Vec<(&str, Option<&str>)> =
+                    tabs_arr.iter().map(|&(l, g)| (l, Some(g))).collect();
+                let active = crate::draw::render::draw_tool_tab_index(draw.active_tool);
+                let spans = build_tab_spans(&tabs, active, &app.app_theme, false, icon_mode);
+                draw_view_title_bar_with_tabs(
+                    frame, outer[0], "Draw", spans, &app.app_theme,
+                    Some(app.status.as_ref()), None,
+                );
                 draw.overlay_render(frame, outer[1], &app.app_theme, &app.config);
             }
         }

@@ -71,7 +71,7 @@ impl DrawAppState {
             active_shape_type: crate::draw::state::DrawShapeType::Rect,
             show_shape_selector: false,
             creation_origin: None,
-            show_grid: false,
+            show_grid: true,
             preview_element: None,
             keybinds,
             seq_matcher,
