@@ -8,18 +8,12 @@ impl App {
 
     pub fn begin_delete_selected(&mut self) {
         if !self.list.selected_indices.is_empty() {
-            let mut note_ids = Vec::new();
-            for &idx in &self.list.selected_indices {
-                if let Some(VisualItem::Note { summary_idx, .. }) = self.list.visual_list.get(idx) {
-                    note_ids.push(self.notes[*summary_idx].id.clone());
-                }
-            }
-
-            if !note_ids.is_empty() {
+            let (note_ids, folder_paths) = self.collect_selected_notes_and_folders();
+            if !note_ids.is_empty() || !folder_paths.is_empty() {
                 if self.confirm_on_delete {
-                    self.show_confirm(ConfirmAction::BulkDeleteNotes { note_ids });
+                    self.show_confirm(ConfirmAction::BulkDeleteItems { note_ids, folder_paths });
                 } else {
-                    self.confirm_bulk_delete(note_ids);
+                    self.confirm_bulk_delete(note_ids, folder_paths);
                 }
                 return;
             }

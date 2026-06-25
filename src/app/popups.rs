@@ -295,12 +295,17 @@ template = """
                 "Empty Trash".into(),
                 true,
             ),
-            ConfirmAction::BulkDeleteNotes { note_ids } => (
-                format!("Move {} selected note(s) to trash?", note_ids.len()),
-                Some("Use Shift+T to view/restore trashed notes.".into()),
-                "Trash".into(),
-                false,
-            ),
+            ConfirmAction::BulkDeleteItems { note_ids, folder_paths } => {
+                let mut parts = Vec::new();
+                if !note_ids.is_empty()     { parts.push(format!("{} note(s)", note_ids.len())); }
+                if !folder_paths.is_empty() { parts.push(format!("{} folder(s)", folder_paths.len())); }
+                (
+                    format!("Move {} to trash?", parts.join(" and ")),
+                    Some("Use Shift+T to view/restore trashed notes.".into()),
+                    "Trash".into(),
+                    false,
+                )
+            }
             ConfirmAction::QuitApp => (
                 "Are you sure you want to quit?".into(),
                 None,
@@ -340,8 +345,8 @@ template = """
                 ConfirmAction::EmptyTrash { items } => {
                     self.confirm_empty_trash(items);
                 }
-                ConfirmAction::BulkDeleteNotes { note_ids } => {
-                    self.confirm_bulk_delete(note_ids);
+                ConfirmAction::BulkDeleteItems { note_ids, folder_paths } => {
+                    self.confirm_bulk_delete(note_ids, folder_paths);
                 }
                 ConfirmAction::QuitApp => {
                     self.should_quit = true;
@@ -386,29 +391,34 @@ template = """
         }
     }
 
-    pub fn confirm_bulk_delete(&mut self, note_ids: Vec<String>) {
-        let total = note_ids.len();
+    pub fn confirm_bulk_delete(&mut self, note_ids: Vec<String>, folder_paths: Vec<String>) {
         let mut failed = 0;
-        for id in note_ids {
-            if self.storage.trash_note(&id).is_err() {
-                failed += 1;
-            }
+        for id in &note_ids {
+            if self.storage.trash_note(id).is_err() { failed += 1; }
         }
-
+        for path in &folder_paths {
+            if self.storage.trash_folder(path).is_err() { failed += 1; }
+        }
+        // Drop expanded state for every trashed folder + its descendants.
+        for path in &folder_paths {
+            self.list.folder_expanded.remove(path);
+            self.list.folder_expanded.retain(|p| !p.starts_with(&format!("{path}/")));
+        }
+        self.list.folder_cache = None;
         if let Err(e) = self.refresh_notes() {
             self.set_temporary_status(&format!("Refresh failed: {e}"));
         }
-
+        self.clamp_visual_index();
         self.list.selected_indices.clear();
         self.list.list_mode = ListMode::Normal;
 
+        let total = note_ids.len() + folder_paths.len();
         if failed > 0 {
-            self.set_temporary_status(&format!("Failed to trash {failed} note(s)"));
+            self.set_temporary_status(&format!("Failed to trash {failed} item(s)"));
         } else {
-            self.set_temporary_status_static("Selected notes moved to trash");
+            self.set_temporary_status(&format!("Moved {total} item(s) to trash"));
         }
-        let n = total - failed;
-        debug_log!(self, Info, "storage", "Bulk trash: {n} succeeded, {failed} failed");
+        debug_log!(self, Info, "storage", "Bulk trash: {} succeeded, {failed} failed", total - failed);
     }
 
     pub fn close_create_format_popup(&mut self) {

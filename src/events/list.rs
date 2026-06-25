@@ -285,7 +285,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 return false;
             }
             ListAction::Duplicate => {
-                app.duplicate_note();
+                app.begin_duplicate();
                 return false;
             }
             ListAction::TogglePin => {

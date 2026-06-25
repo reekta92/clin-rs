@@ -8,7 +8,7 @@ pub enum ConfirmAction {
     DeleteTemplate { filename: String, name: String },
     DeleteFromTrash { item: trash::TrashItem },
     EmptyTrash { items: Vec<trash::TrashItem> },
-    BulkDeleteNotes { note_ids: Vec<String> },
+    BulkDeleteItems { note_ids: Vec<String>, folder_paths: Vec<String> },
     QuitApp,
 }
 
@@ -87,6 +87,11 @@ pub enum FolderPickerMode {
     CopyNote { note_id: String },
     MoveFolder { folder_path: String },
     BulkMoveNotes { note_ids: Vec<String> },
+    BulkCopyNotes { note_ids: Vec<String> },
+    BulkMoveFolders { folder_paths: Vec<String> },
+    BulkCopyFolders { folder_paths: Vec<String> },
+    BulkMoveMixed { note_ids: Vec<String>, folder_paths: Vec<String> },
+    BulkCopyMixed { note_ids: Vec<String>, folder_paths: Vec<String> },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

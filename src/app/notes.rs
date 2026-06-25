@@ -964,26 +964,9 @@ impl App {
             self.list.visual_list.get(self.list.visual_index)
         {
             let id = self.notes[*summary_idx].id.clone();
-            if let Ok(folders) = self.storage.list_folders(self.list.show_hidden_files) {
-                let mut all_folders = vec!["".to_string()];
-                all_folders.extend(folders);
-                let mut input = ratatui_textarea::TextArea::default();
-                input.set_cursor_line_style(ratatui::style::Style::default());
-                input.set_placeholder_text("Search folders...");
-                self.popups.folder_picker = Some(crate::popups::FolderPicker {
-                    mode: crate::popups::FolderPickerMode::CopyNote { note_id: id },
-                    filtered_folders: all_folders.clone(),
-                    all_folders,
-                    selected: 0,
-                    input,
-                    focus: crate::popups::FolderPickerFocus::Search,
-                });
-            } else {
-                debug_log!(self, Warn, "storage", "Failed to list folders");
-                self.set_temporary_status_static("Failed to list folders");
-            }
+            self.open_folder_picker(FolderPickerMode::CopyNote { note_id: id }, &[]);
         } else {
             self.set_temporary_status_static("Select a note to duplicate");
         }
-}
+    }
 }

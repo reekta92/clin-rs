@@ -270,10 +270,13 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     // Folder picker popup
     if let Some(picker) = &mut app.popups.folder_picker {
         let title = match picker.mode {
-            crate::popups::FolderPickerMode::CopyNote { .. } => "COPY",
+            crate::popups::FolderPickerMode::CopyNote { .. }
+            | crate::popups::FolderPickerMode::BulkCopyNotes { .. }
+            | crate::popups::FolderPickerMode::BulkCopyFolders { .. }
+            | crate::popups::FolderPickerMode::BulkCopyMixed { .. } => "COPY",
             _ => "MOVE",
         };
-        let hint_line = popup_hint_line(&app.app_theme, "Tab switch  Enter move  Esc cancel");
+        let hint_line = popup_hint_line(&app.app_theme, "Tab switch  Enter confirm  Esc cancel");
         let content = draw_popup_frame(
             frame,
             frame.area(),

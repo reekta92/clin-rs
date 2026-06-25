@@ -944,6 +944,60 @@ impl Storage {
         fs::rename(old_full, new_full).context("failed to rename folder")
     }
 
+    /// Recursively copy folder `src_rel` (relative to notes dir) into `target_folder`
+    /// (relative, "" = vault root). On name conflict at target, append " (Copy)" then
+    /// " (Copy 2)", etc. — never overwrites. Bails if `src_rel` is empty or if the
+    /// resolved destination sits inside `src_rel`'s own subtree (would recurse forever).
+    pub fn duplicate_folder(&self, src_rel: &str, target_folder: &str) -> Result<()> {
+        if src_rel.is_empty() {
+            anyhow::bail!("Cannot copy the vault root");
+        }
+        let base = src_rel.rsplit('/').next().unwrap_or(src_rel);
+        let mut new_rel = if target_folder.is_empty() {
+            base.to_string()
+        } else {
+            format!("{target_folder}/{base}")
+        };
+
+        // Copying "a" -> "" resolves to "a" (copy in place): NOT recursion, so let the
+        // conflict-suffix loop below rename it to "a (Copy)". Only a destination that is
+        // a strict descendant of src (e.g. target="a" -> "a/a") is forbidden.
+        if new_rel.starts_with(&format!("{src_rel}/")) {
+            anyhow::bail!("Cannot copy a folder into itself");
+        }
+
+        let mut suffix: u32 = 0;
+        while self
+            .validate_path_within_notes_dir(&new_rel)
+            .is_some_and(|p| p.exists())
+        {
+            suffix += 1;
+            let label = if suffix == 1 {
+                format!("{base} (Copy)")
+            } else {
+                format!("{base} (Copy {suffix})")
+            };
+            new_rel = if target_folder.is_empty() {
+                label
+            } else {
+                format!("{target_folder}/{label}")
+            };
+        }
+
+        let src_full = self
+            .validate_path_within_notes_dir(src_rel)
+            .ok_or_else(|| anyhow::anyhow!("Invalid source folder path"))?;
+        let new_full = self
+            .validate_path_within_notes_dir(&new_rel)
+            .ok_or_else(|| anyhow::anyhow!("Invalid target folder path"))?;
+        if !src_full.exists() {
+            anyhow::bail!("Folder does not exist");
+        }
+        fs::create_dir_all(&new_full)?;
+        copy_dir_recursive(&src_full, &new_full)?;
+        Ok(())
+    }
+
     pub fn move_note(&self, id: &str, new_folder: &str) -> Result<String> {
         let old_path = self.note_path(id);
         if !old_path.exists() {
@@ -1097,6 +1151,22 @@ impl Storage {
             .map_err(|_| anyhow!("note decryption failed"))?;
         Ok(Zeroizing::new(plaintext))
     }
+}
+
+fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
+    for entry in fs::read_dir(src).context("failed to read source folder")? {
+        let entry = entry?;
+        let from = entry.path();
+        let to = dst.join(entry.file_name());
+        if from.is_dir() {
+            fs::create_dir_all(&to)?;
+            copy_dir_recursive(&from, &to)?;
+        } else {
+            fs::copy(&from, &to)
+                .with_context(|| format!("failed to copy {}", from.display()))?;
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
