@@ -17,10 +17,6 @@
 
 </div>
 
-> `clin` was originally an app I made when I got into C. It was really rough and basic, so I decided to remake it in Rust with more features and an improved user experience to better fit your workflow!
-
----
-
 ## About
 `clin` is a free, open-source terminal note manager inspired by Obsidian. It packs Obsidian's core features — markdown editing and rendering, `.canvas` files, and a force-directed graph view — into a roughly 2-5 MB Rust binary with minimal resource use, while keeping the UI approachable.
 
@@ -112,8 +108,8 @@ These tools are **optional** — clin works without them:
 
 | Platform | Method | Command |
 |---|---|---|
-| Any (from source) | ⭐ Cargo build | `cargo build --release` |
-| Any | ⭐ Cargo install | `cargo install clin-rs` |
+| Any (from source) | Cargo build | `cargo build --release` |
+| Any | Cargo install | `cargo install clin-rs` |
 | Debian/Ubuntu (amd64) | `.deb` | `sudo dpkg -i clin-rs_*_amd64.deb` |
 | Debian/Ubuntu (arm64) | `.deb` | `sudo dpkg -i clin-rs_*_arm64.deb` |
 | Fedora/RHEL (x86_64) | `.rpm` | `sudo rpm -i clin-rs-*.x86_64.rpm` |
@@ -340,44 +336,6 @@ Once inside the TUI: navigate with `j`/`k`, open notes with `Enter`, open the co
 | **Keybinds** | Fully customizable via keybinds.toml, with Helix/Vim/Emacs presets |
 | **OCR** | Clipboard image to text via `tesseract` (optional dependency) |
 
-## Architecture
-
-High-level architecture — full detail in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md):
-
-```mermaid
-stateDiagram-v2
-    [*] --> List
-    List --> Edit: Enter (note)
-    List --> Graph: Ctrl+G
-    List --> Draw: Enter (.draw)
-    List --> Canvas: Enter (.canvas)
-    List --> Help: ? / F1
-    List --> Backup: palette
-    List --> ContentTree: palette
-    Edit --> List: Esc
-    Graph --> List: Esc
-    Draw --> List: Esc
-    Canvas --> List: Esc
-    Help --> List: Esc
-    Backup --> List: Esc
-    ContentTree --> List: Esc
-```
-
-```mermaid
-flowchart TD
-    A[parse_cli_command] --> B{CliCommand}
-    B -->|Run| C[Storage::init]
-    B -->|Help / *Config| D[exit]
-    B -->|QuickNote| E[save note, exit]
-    B -->|NewAndOpen| F[save note]
-    C --> H[App::new]
-    F --> H
-    H --> I[run_tui_session]
-    I --> J[run_app loop]
-    J --> K[render frame]
-    J --> J
-```
-
 ---
 
 ## Configuration
@@ -515,17 +473,17 @@ Full technical documentation lives in [`docs/`](docs/INDEX.md):
 
 <div align="center">
 <img src="https://github-readme-activity-graph.vercel.app/graph?username=reekta92&theme=tokyo-night&area=true&hide_total_contributions=false" alt="Contribution activity" width="100%" />
-<br>
-<img src="https://github-readme-stats.vercel.app/api/top-langs/?username=reekta92&repo=clin-rs&layout=compact&theme=tokyo-night&langs_count=8" alt="Top languages" />
 </div>
-
-> Activity reflects the maintainer's GitHub-wide contributions; this project's commit cadence is visible in the [commits](https://github.com/reekta92/clin-rs/commits/main) view.
 
 ---
 
 ## Roadmap
 
 See [ROADMAP.md](ROADMAP.md) for planned features and progress.
+
+## Architecture
+
+Full detail in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Contributing
 
