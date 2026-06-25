@@ -17,10 +17,10 @@ Releases are fully automated via **Actions → Dispatch Release → Run workflow
 2. Click **Run workflow**
 
 This produces:
-- **Platforms:** Linux x86_64, Windows x86_64
-- **Linux packages:** `.deb` (Debian/Ubuntu), `.rpm` (Fedora/RHEL/openSUSE), AppImage, AUR
-- **Registries:** crates.io, AUR (`clin-rs-bin`)
-- **Artifacts:** changelog, .tar.xz, .zip
+- **Platforms:** Linux x86_64, Linux aarch64, Windows x86_64, macOS aarch64 (Apple Silicon)
+- **Linux packages:** `.deb` (x86_64 + aarch64), `.rpm` (x86_64 + aarch64), AppImage (x86_64), AUR (`clin-rs-bin`)
+- **Other package managers:** crates.io, Nix
+- **Artifacts:** changelog, .tar.xz, .tar.gz, .zip, .dmg
 
 ### Required repository secrets
 

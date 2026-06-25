@@ -16,7 +16,8 @@ pub enum ViewMode {
     Graph,   // Force-directed graph (graf)
     Draw,    // Freehand drawing canvas
     Canvas,  // Obsidian-compatible node/edge canvas (pinstar)
-}
+    Backup,  // Git backup dashboard
+    ContentTree,  // Header-based note outline
 ```
 
 Transition rules:
@@ -32,6 +33,10 @@ Draw  ──Esc───► List
 Canvas──Esc───► List
 List  ──?/F1──► Help
 Help  ──Esc───► List
+List  ──palette──► Backup   (via command palette backup.open)
+List  ──palette──► ContentTree  (via command palette content_tree.open)
+Backup ──Esc───► List
+ContentTree ──Esc───► List
 ```
 
 Each view is self-contained. Graph, Draw, and Canvas each have their own event loop (`run_graf_view`, `run_draw_view`, `run_pinstar_view`) that take full control of the terminal and return when the user exits.

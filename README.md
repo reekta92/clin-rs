@@ -69,11 +69,13 @@
 - **Draw view** — freehand drawing canvas with shapes (rect, ellipse, diamond, line, arrow), text, and eraser tool. `.draw` file format. See [DRAW.md](docs/DRAW.md).
 - **Content tree view** — view to see the content of a `.md` file as a tree with headers being the parents and content being the children.
 - **Git backup** — backup system using `git` as backend, initialize a repository and backup your notes automatically.
-- **Command palette** (Ctrl+P) — extensible action system with encrypt/decrypt, theme switcher, OCR paste, canvas/draw creation, graph view. See [COMMAND_PALETTE.md](docs/COMMAND_PALETTE.md).
+- **Command palette** (Ctrl+P) — extensible action system with encrypt/decrypt, theme switcher, OCR paste, canvas/draw creation, graph view, debug dump to file. See [COMMAND_PALETTE.md](docs/COMMAND_PALETTE.md).
 - **Theme system** — 11 built-in themes (TokyoNight, CatppuccinMocha, OneDark, Gruvbox, Dracula, Nord, RosePine, Everforest, Kanagawa, Solarized), transparent/solid backgrounds, per-color overrides. See [THEME_SYSTEM.md](docs/THEME_SYSTEM.md).
 - **Encryption** — on-demand ChaCha20-Poly1305 AEAD per-note encryption. `.clin` files with plaintext frontmatter for fast summary loading. See [ENCRYPTION.md](docs/ENCRYPTION.md).
 - **Obsidian .canvas import** — existing Obsidian canvas files are read and rendered, **except for images**.
 - **Templates** — TOML-based note templates with variable substitution (`{date}`, `{time}`, `{weekday}`, etc.). See [TEMPLATES.md](docs/TEMPLATES.md).
+- **Goals system** — daily word-count and note-count goals with in-app progress bars. Configurable via `[goals]` config section and command palette.
+- **Import & conversion** — import File/CSV/JSON/URL/Clipboard content as a new note or append to the current note. PDF, DOCX, HTML converted via external tools.
 
 ---
 
@@ -192,6 +194,34 @@ mkdir -p ~/.local/bin
 mv clin ~/.local/bin/
 ```
 
+### Windows
+Download the latest `.zip` from the [Releases](https://github.com/reekta92/clin-rs/releases) page.
+```powershell
+Expand-Archive -Path clin-rs-x86_64-pc-windows-msvc.zip -DestinationPath clin
+cd clin
+.\clin.exe
+```
+
+Windows builds are provided but TUI glyph rendering depends on your terminal. [Windows Terminal](https://apps.microsoft.com/detail/9n0dx20hk701) is recommended for the best experience.
+
+### macOS (Apple Silicon)
+Download the latest `.dmg` (or `.tar.gz`) from the [Releases](https://github.com/reekta92/clin-rs/releases) page.
+
+```bash
+# Using .dmg
+hdiutil attach clin-rs-aarch64-apple-darwin.dmg
+cp -r /Volumes/clin/clin.app /Applications/
+hdiutil detach /Volumes/clin
+
+# Or using .tar.gz
+tar -xzf clin-rs-aarch64-apple-darwin.tar.gz
+chmod +x clin
+mkdir -p ~/.local/bin
+mv clin ~/.local/bin/
+```
+
+Apple Silicon only (no Intel build ships).
+
 > **Rust not installed?** Run `curl https://sh.rustup.rs -sSf | sh` to install Rust.
 
 ---
@@ -230,10 +260,12 @@ Once inside the TUI: navigate with `j`/`k`, open notes with `Enter`, open the co
 
 | Feature | Description |
 |---|---|
-| **Command Palette** (Ctrl+P) | Extensible action system: encrypt, decrypt, theme switch, OCR paste, create canvas/draw, open graph |
+| **Command Palette** (Ctrl+P) | Extensible action system: encrypt, decrypt, theme switch, OCR paste, create canvas/draw, open graph, debug dump |
 | **Encryption** | Per-note ChaCha20-Poly1305, `.clin` files, on-demand encrypt/decrypt, zero-knowledge |
 | **Templates** | TOML-based with `{date}`, `{time}`, `{weekday}` variables |
-| **Themes** | 11 built-in themes, transparent/solid backgrounds, per-color overrides |
+| **Themes** | 11 built-in themes, transparent/solid backgrounds, per-color overrides, Nerd Font/Unicode/None icon modes, powerline/classic hint bar styles |
+| **Goals** | Daily word-count and note-count goals with in-app progress bars, configurable via `[goals]` |
+| **Import** | File/CSV/JSON/URL/Clipboard → new note or append to current; PDF/DOCX/HTML via external converters |
 | **Keybinds** | Fully customizable via keybinds.toml, with Helix/Vim/Emacs presets |
 | **OCR** | Clipboard image to text via `tesseract` (optional dependency) |
 
@@ -275,11 +307,13 @@ external_enabled = false
 preview_enabled = false
 show_line_numbers = true
 
-[theme]
+[ui]
 theme = "tokyo_night"
 background = "transparent"
+show_status_bar = true
+icon_mode = "nerd"
+hint_bar_style = "classic"
 # accent = "#ff6600"
-```
 
 See [THEME_SYSTEM.md](docs/THEME_SYSTEM.md) for theme options and [CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md) for all options and sections.
 
@@ -339,7 +373,6 @@ clin config path                  Print config file path
 clin config edit                  Open config in $EDITOR
 clin config reset                 Reset config to default values
 
-clin completion <SHELL>           Generate shell completions
 clin --version                    Print version
 clin --config <PATH>              Override config file (global)
 clin --help                       Show help

@@ -47,11 +47,43 @@ pub static ACTIONS: Lazy<Vec<Box<dyn Action>>> = Lazy::new(|| {
     vec![
         Box::new(encrypt::EncryptNoteAction),
         Box::new(decrypt::DecryptNoteAction),
-        Box::new(graph::OpenGraphAction),
+        Box::new(OpenGraphAction),
         Box::new(content_tree::OpenContentTreeAction),
-        Box::new(draw::CreateDrawAction),
-        Box::new(pinstar::CreateCanvasAction),
-        Box::new(theme::SwitchThemeAction),
+        Box::new(OpenBackupAction),
+        Box::new(CreateDrawAction),
+        Box::new(CreateCanvasAction),
+        Box::new(DebugDumpAction),
+        Box::new(ocr::OcrPasteAction),
+        Box::new(SwitchThemeAction),
+        Box::new(SwitchKeybindPresetAction),
+        Box::new(ToggleExternalEditorAction),
+        Box::new(ToggleLayoutAction),
+        Box::new(settings::ToggleLayoutEditModeAction),
+        Box::new(settings::TogglePreviewPaneAction),
+        Box::new(settings::TogglePreviewWrapAction),
+        Box::new(settings::ToggleCalendarAction),
+        Box::new(settings::ToggleLineNumbersAction),
+        Box::new(settings::ToggleConfirmDeleteAction),
+        Box::new(settings::TogglePinnedOnTopAction),
+        Box::new(settings::ToggleConfirmQuitAction),
+        Box::new(settings::TogglePreviewEncryptionAction),
+        Box::new(settings::CycleSortAction),
+        Box::new(settings::ToggleShowHiddenFilesAction),
+        Box::new(settings::ToggleTabIconsOnlyAction),
+        Box::new(settings::SetWordGoalAction),
+        Box::new(settings::SetNoteGoalAction),
+        Box::new(settings::CycleIconModeAction),
+        Box::new(settings::CycleHintBarStyleAction),
+        Box::new(import::ImportAction { source: ImportSource::File, target: ImportTarget::NewNote }),
+        Box::new(import::ImportAction { source: ImportSource::File, target: ImportTarget::AppendCurrent }),
+        Box::new(import::ImportAction { source: ImportSource::Csv, target: ImportTarget::NewNote }),
+        Box::new(import::ImportAction { source: ImportSource::Csv, target: ImportTarget::AppendCurrent }),
+        Box::new(import::ImportAction { source: ImportSource::Json, target: ImportTarget::NewNote }),
+        Box::new(import::ImportAction { source: ImportSource::Json, target: ImportTarget::AppendCurrent }),
+        Box::new(import::ImportAction { source: ImportSource::Url, target: ImportTarget::NewNote }),
+        Box::new(import::ImportAction { source: ImportSource::Url, target: ImportTarget::AppendCurrent }),
+        Box::new(import::ImportAction { source: ImportSource::Clipboard, target: ImportTarget::NewNote }),
+        Box::new(import::ImportAction { source: ImportSource::Clipboard, target: ImportTarget::AppendCurrent }),
     ]
 });
 ```
@@ -74,40 +106,18 @@ pub static ACTION_INFOS: Lazy<Vec<ActionInfo>> = Lazy::new(|| {
 
 ## Available Actions
 
-| ID | Name | Description | Category | Glyph |
-|---|---|---|---|---|
-| `note.encrypt` | Encrypt Note | Encrypt the selected note (.md → .clin) | Notes | `\u{f023}` |
-| `note.decrypt` | Decrypt Note | Decrypt the selected note (.clin → .md) | Notes | `\u{f3c1}` |
-| `content_tree.open` | Content Tree | Headers and content tree | Notes | `\u{f1bb}` |
-| `graph.open` | Open Graph | Switch to graph view | Views | `\u{f0e8}` |
-| `draw.create` | New Draw | Create a new drawing | Views | `\u{f1fc}` |
-| `canvas.create` | New Canvas | Create a canvas map | Views | `\u{f005}` |
-| `backup.open` | Open Backup | View backup dashboard | Views | `\u{f1d3}` |
-| `ocr.paste` | OCR Paste | OCR clipboard image | Append | `\u{f03e}` |
-| `switch_theme` | Switch Theme | Cycle themes | Settings | `\u{f042}` |
-| `toggle_notes_layout` | Toggle Layout | Tree/Grid layout | Settings | `\u{f0c9}` |
-| `external_editor.toggle`| Toggle Editor | Use $EDITOR | Settings | `\u{f120}` |
-| `settings.preview_pane` | Toggle Preview Pane | Show or hide the preview pane in the notes list | Settings | `\u{f0db}` |
-| `settings.preview_wrap` | Toggle Preview Word Wrap | Wrap long preview lines to the pane width | Settings | `\u{f036}` |
-| `settings.calendar` | Toggle Calendar | Show or hide the month calendar in the notes list | Settings | `\u{f073}` |
-| `settings.line_numbers` | Toggle Line Numbers | Show or hide line numbers in the note editor | Settings | `\u{f03a}` |
-| `settings.confirm_delete` | Toggle Delete Confirmation | Ask for confirmation before moving notes to trash | Settings | `\u{f3ed}` |
-| `settings.pinned_on_top` | Toggle Pinned on Top | Keep pinned notes above others in the list | Settings | `\u{f08d}` |
-| `settings.confirm_quit` | Toggle Quit Confirmation | Ask for confirmation before quitting clin | Settings | `\u{f08b}` |
-| `settings.preview_encryption` | Toggle Encrypted Note Preview | Show or hide previews of encrypted (.clin) notes | Settings | `\u{f06e}` |
-| `settings.cycle_sort` | Cycle Sort Order | Cycle the notes sort field and order | Settings | `\u{f0dc}` |
-| `insert.file_new` | Import File | Convert file as note | Import | `\u{f15b}` |
-| `insert.file_append` | Append File | Convert file to note | Append | `\u{f15b}` |
-| `insert.csv_new` | Import CSV | Convert CSV as note | Import | `\u{f0ce}` |
-| `insert.csv_append` | Append CSV | Convert CSV to note | Append | `\u{f0ce}` |
-| `insert.json_new` | Import JSON | Convert JSON as note | Import | `\u{f121}` |
-| `insert.json_append` | Append JSON | Convert JSON to note | Append | `\u{f121}` |
-| `insert.url_new` | Import URL | Convert URL as note | Import | `\u{f0ac}` |
-| `insert.url_append` | Append URL | Convert URL to note | Append | `\u{f0ac}` |
-| `insert.clipboard_new` | Import Clipboard | Clipboard as note | Import | `\u{f0ea}` |
-| `insert.clipboard_append`| Append Clipboard | Clipboard to note | Append | `\u{f0ea}` |
-**Note:** `insert.file_*` and `insert.url_*` require `markitdown` (pip install markitdown) or `pandoc` installed. `insert.url_*` also requires `curl`. CSV and JSON conversions are pure-Rust and always available.
----
+Actions are grouped by category. See the `ACTIONS` registry in `src/actions/mod.rs` for the complete list (currently ~40 actions).
+
+| Category | Example Actions |
+|---|---|
+| **Notes** | Encrypt, Decrypt, Content Tree |
+| **Views** | Graph, Draw, Canvas, Backup |
+| **Settings** | Theme, Keybind Preset, Layout Toggle, External Editor Toggle, Preview Toggle, Sort Cycle, Calendar Toggle, Word/Note Goal, Icon Mode, Hint Bar Style |
+| **Import** | File/CSV/JSON/URL/Clipboard → New Note |
+| **Append** | File/CSV/JSON/URL/Clipboard → Append to Current, OCR Paste |
+| **General** | Debug Dump |
+
+**Note:** Import and URL actions require `markitdown` (pip install markitdown) or `pandoc` installed. URL import also requires `curl`. CSV and JSON conversions are pure-Rust and always available.
 
 ## Execution
 

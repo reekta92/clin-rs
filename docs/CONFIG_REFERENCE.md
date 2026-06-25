@@ -25,7 +25,7 @@ Full reference of all configuration options for clin-rs.
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `preview_enabled` | `bool` | `true` | Show the preview pane in notes list by default |
-| `preview_position` | `enum` | `"right"` | Preview pane position: `"left"`, `"right"`, `"top"`, `"bottom"` |
+| `preview_position` | `enum` | `"right"` | Preview pane position: `"left"`, `"right"` |
 | `preview_encryption` | `bool` | `false` | Show previews of encrypted notes |
 | `show_date_in_list` | `bool` | `true` | Show modification date in the notes list |
 | `show_file_size` | `bool` | `false` | Show file size in the notes list |
@@ -36,6 +36,10 @@ Full reference of all configuration options for clin-rs.
 | `default_sort_order` | `enum` | `"ascending"` | Default sort order: `"ascending"` or `"descending"` |
 | `pinned_on_top` | `bool` | `false` | Keep pinned notes at the top of the list |
 | `calendar_enabled` | `bool` | `true` | Show a month calendar with note activity at the bottom of the notes list |
+| `show_hidden_files` | `bool` | `false` | Show hidden files and folders (starting with ".") in the notes list |
+| `preview_width_ratio` | `f32` | `0.43` | Preview pane width ratio (0.2–0.8) |
+| `calendar_height` | `u16` | `9` | Calendar height in rows (9–20) |
+| `calendar_position` | `enum` | `"bottom"` | Calendar position: `"top"`, `"bottom"` |
 
 ### `[editor]`
 
@@ -46,12 +50,16 @@ Full reference of all configuration options for clin-rs.
 | `preview_enabled` | `bool` | `false` | Show markdown preview panel in editor by default |
 | `show_line_numbers` | `bool` | `true` | Show line numbers in the editor |
 
-### `[theme]`
+### `[ui]`
 
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `theme` | `enum` | `"default"` | Color theme. See [THEME_SYSTEM.md](THEME_SYSTEM.md) for all 11 options |
 | `background` | `enum` | `"transparent"` | Background mode: `"transparent"`, `"solid"` |
+| `show_status_bar` | `bool` | `true` | Show the status bar at the bottom of the screen |
+| `tab_icons_only` | `bool` | `false` | Show only Nerd Font icons (no text) on tab bars |
+| `icon_mode` | `enum` | `"nerd"` | Icon display mode: `"nerd"`, `"unicode"`, `"none"` |
+| `hint_bar_style` | `enum` | `"classic"` | Hint/status bar style: `"classic"`, `"accent"`, `"powerline_sharp"`, `"powerline_rounded"`, `"powerline_slanted"` |
 | `accent` | `String` | — | Hex color override for accent (#ff6600) |
 | `heading` | `String` | — | Hex color override for headings |
 | `success` | `String` | — | Hex color override for success indicators |
@@ -121,14 +129,6 @@ All optional. Hex color strings like `"#ff6600"`. Override theme defaults.
 | `zoom_factor` | `f64` | `1.15` | Zoom multiplier per step (must be > 0) |
 | `drag_sensitivity` | `f64` | `1.0` | Pan drag sensitivity |
 
-### `[display]`
-
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `show_status_bar` | `bool` | `true` | Show status bar |
-| `tab_icons_only` | `bool` | `false` | Show only Nerd Font icons (no text) on tab bars (Help, Notes, Backup, Palette) |
-| `status_format` | `String` | — | Custom status bar format. Variables: `{files}`, `{links}`, `{selected}`, `{date}`, `{time}`, `{size}`, `{ratio}` |
-| `border_style` | `enum` | `"rounded"` | Border style: `"plain"`, `"rounded"`, `"double"`, `"none"` |
 
 ### `[graf.filter]`
 
@@ -154,6 +154,14 @@ All optional. Hex color strings like `"#ff6600"`. Override theme defaults.
 | `auto_push` | `bool` | `false` | Automatically push commits to remote |
 | `remote_url` | `String` | — | Remote git repository URL |
 | `remote_name` | `String` | `"origin"` | Name of the git remote |
+
+### `[goals]`
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `enabled` | `bool` | `true` | Enable the daily word/note goals system |
+| `word_goal` | `usize` | `500` | Daily target word count (incremental additions). Set to 0 to disable |
+| `note_goal` | `usize` | `3` | Daily target note count (edited or created). Set to 0 to disable |
 ---
 
 ## Example config.toml
@@ -193,9 +201,17 @@ auto_push = false
 remote_url = "https://github.com/user/my-notes.git"
 remote_name = "origin"
 
-[theme]
+[goals]
+enabled = true
+word_goal = 500
+note_goal = 3
+
+[ui]
 theme = "tokyo_night"
 background = "transparent"
+show_status_bar = true
+icon_mode = "nerd"
+hint_bar_style = "classic"
 accent = "#ff6600"
 
 [graf]
@@ -218,9 +234,6 @@ ideal_distance = 80.0
 [graf.interaction]
 drag_sensitivity = 1.0
 
-[display]
-show_status_bar = true
-border_style = "rounded"
 
 [graf.search]
 max_results = 20
@@ -330,7 +343,7 @@ Key combos are strings like `"a"`, `"Enter"`, `"Ctrl+q"`, `"Ctrl+Shift+z"`, `"Al
 
 ## Migration Note
 
-The old `graf.toml` file is **no longer used**. All graf options (`[visual]`, `[physics]`, `[interaction]`, `[display]`, `[filter]`, `[legend]`, `[search]`, `[editor]`) are now part of `config.toml`. The system auto-migrates settings from `graf.toml` on first read for backward compatibility.
+The old `graf.toml` file is **no longer used**. All graf options (`[graf.visual]`, `[graf.physics]`, `[graf.interaction]`, `[graf.filter]`, `[graf.search]`) are now part of `config.toml`. The system auto-migrates settings from `graf.toml` on first read for backward compatibility.
 
 ---
 
