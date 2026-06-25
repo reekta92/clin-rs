@@ -39,6 +39,8 @@ pub enum ListAction {
     TogglePreview,
     TogglePreviewFullscreen,
     TogglePreviewWrap,
+    PreviewPageUp,
+    PreviewPageDown,
     ToggleCalendar,
     OpenGraph,
     OpenCanvas,
@@ -69,6 +71,8 @@ pub enum EditAction {
     ToggleMarkdownPreview,
     TogglePreviewFullscreen,
     TogglePreviewWrap,
+    PreviewPageUp,
+    PreviewPageDown,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

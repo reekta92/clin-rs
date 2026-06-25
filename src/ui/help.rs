@@ -286,6 +286,9 @@ fn notes_help_text(keybinds: &Keybinds, theme: &AppThemeColors) -> Vec<HelpRow> 
     let list_toggle_preview = keybinds.list_keys_display(ListAction::TogglePreview);
     let list_toggle_preview_fs = keybinds.list_keys_display(ListAction::TogglePreviewFullscreen);
     let list_toggle_preview_wrap = keybinds.list_keys_display(ListAction::TogglePreviewWrap);
+    let list_preview_page = format!("{}/{}",
+        keybinds.list_keys_display(ListAction::PreviewPageUp),
+        keybinds.list_keys_display(ListAction::PreviewPageDown));
     let list_toggle_calendar = keybinds.list_keys_display(ListAction::ToggleCalendar);
     let list_open_graph = keybinds.list_keys_display(ListAction::OpenGraph);
     let list_cmd_palette = keybinds.list_keys_display(ListAction::OpenCommandPalette);
@@ -338,6 +341,7 @@ fn notes_help_text(keybinds: &Keybinds, theme: &AppThemeColors) -> Vec<HelpRow> 
     rows.push(help_item_dyn("Toggle preview pane", Some(&list_toggle_preview), theme));
     rows.push(help_item_dyn("Toggle preview fullscreen", Some(&list_toggle_preview_fs), theme));
     rows.push(help_item_dyn("Toggle preview wrap", Some(&list_toggle_preview_wrap), theme));
+    rows.push(help_item_dyn("Page preview up/down", Some(&list_preview_page), theme));
     rows.push(help_item_dyn("Toggle calendar", Some(&list_toggle_calendar), theme));
     rows.push(help_item_dyn("Open graph view", Some(&list_open_graph), theme));
     rows.push(help_item_dyn("Open command palette", Some(&list_cmd_palette), theme));
@@ -373,6 +377,9 @@ fn editor_help_text(
     let edit_md_preview = keybinds.edit_keys_display(EditAction::ToggleMarkdownPreview);
     let edit_fullscreen = keybinds.edit_keys_display(EditAction::TogglePreviewFullscreen);
     let edit_wrap = keybinds.edit_keys_display(EditAction::TogglePreviewWrap);
+    let edit_preview_page = format!("{}/{}",
+        keybinds.edit_keys_display(EditAction::PreviewPageUp),
+        keybinds.edit_keys_display(EditAction::PreviewPageDown));
     let edit_move_top = keybinds.edit_keys_display(EditAction::MoveToTop);
     let edit_move_bottom = keybinds.edit_keys_display(EditAction::MoveToBottom);
 
@@ -402,6 +409,7 @@ fn editor_help_text(
     rows.push(help_item_dyn("Toggle markdown preview", Some(&edit_md_preview), theme));
     rows.push(help_item_dyn("Toggle preview fullscreen", Some(&edit_fullscreen), theme));
     rows.push(help_item_dyn("Toggle preview wrap", Some(&edit_wrap), theme));
+    rows.push(help_item_dyn("Page preview up/down", Some(&edit_preview_page), theme));
     rows
 }
 

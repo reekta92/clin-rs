@@ -252,92 +252,191 @@ Key combos are strings like `"a"`, `"Enter"`, `"Ctrl+q"`, `"Ctrl+Shift+z"`, `"Al
 |---|---|---|
 | `move_up` | `Up`, `k` | Move selection up |
 | `move_down` | `Down`, `j` | Move selection down |
-| `open` | `Enter` | Open selected item |
+| `move_left` | `Left`, `h` | Move selection left (grid) |
+| `move_right` | `Right`, `l` | Move selection right (grid) |
+| `open` | `Enter`, `o` | Open selected item |
 | `delete` | `d`, `Delete` | Delete item |
 | `quit` | `q` | Quit application |
 | `help` | `?`, `F1` | Show help |
-| `open_location` | `f` | Open file location |
-| `cycle_focus` | `Tab` | Cycle focus between panes |
+| `open_location` | `Ctrl+l` | Open file location |
+| `cycle_focus` | `Tab`, `BackTab` | Cycle focus between panes |
 | `confirm` | `y`, `Enter` | Confirm dialog |
 | `cancel` | `n`, `Esc` | Cancel dialog |
-| `toggle_button` | `Enter`, `Space` | Toggle focused button |
+| `toggle_external_editor` | `e` | Open current note in $EDITOR |
 | `new_from_template` | `t` | Create note from template |
-| `create_folder` | `n` | Create folder |
-| `create_note` | `a` | Create note |
+| `create_folder` | `Shift+N` | Create folder |
+| `create_note` | `n` | Create note |
 | `rename_folder` | `r` | Rename folder |
-| `move_note` | `m` | Move note |
+| `rename` | `r` | Rename note (context) |
+| `move_note` | `m` | Move note or folder |
 | `manage_tags` | `.` | Manage tags |
-| `filter_tags` | `/` | Filter by tags |
-| `collapse_folder` | `h` | Collapse folder |
-| `expand_folder` | `l` | Expand folder |
-| `open_command_palette` | `Ctrl+p`, `Shift+Enter` | Open command palette |
-| `rename` | `r` | Context-sensitive rename |
+| `open_command_palette` | `:`, `Ctrl+p` | Open command palette |
 | `duplicate` | `y` | Duplicate note |
 | `toggle_pin` | `p` | Pin/unpin note |
-| `cycle_sort` | `s` | Cycle sort options |
-| `search` | `Ctrl+f` | Quick search by title |
-| `jump_to_top` | `Shift+G` | Jump to top of list |
-| `jump_to_bottom` | — | Jump to bottom of list |
-| `page_up` | `Ctrl+u` | Half page up |
-| `page_down` | `Ctrl+d` | Half page down |
-| `toggle_calendar` | `Shift+C` | Toggle month calendar |
+| `cycle_sort` | `s` | Cycle sort order |
+| `search` | `/` | Search notes |
+| `jump_to_top` | `Home`, `Ctrl+Up` | Jump to top of list |
+| `jump_to_bottom` | `End`, `Ctrl+Down` | Jump to bottom of list |
+| `page_up` | `Ctrl+u`, `PageUp` | Half page up |
+| `page_down` | `Ctrl+d`, `PageDown` | Half page down |
 | `open_trash` | `Shift+T` | Open trash view |
 | `toggle_preview` | `Shift+P` | Toggle preview pane |
-| `toggle_preview_fullscreen` | `Ctrl+e` | Expand preview to full width (hide notes list) |
+| `toggle_preview_fullscreen` | `Ctrl+e` | Preview/editor fullscreen |
 | `toggle_preview_wrap` | `Ctrl+w` | Toggle word-wrap in preview |
+| `preview_page_up` | `Shift+Up` | Page preview pane up |
+| `preview_page_down` | `Shift+Down` | Page preview pane down |
+| `toggle_calendar` | `Shift+C` | Toggle calendar |
 | `open_graph` | `Ctrl+g` | Open graph view |
+| `toggle_select_mode` | `v` | Toggle multi-select mode |
+| `toggle_select_item` | `Space` | Toggle item selection |
+| `collapse_all` | `c` | Collapse all folders |
+| `refresh_notes` | `Ctrl+r` | Refresh notes (external changes) |
 
 ### Edit Actions (`[edit]`)
 
 | Action | Default Keys | Description |
 |---|---|---|
-| `quit` | `Ctrl+q` | Quit editor |
-| `back` | `Esc` | Go back |
-| `cycle_focus` | `Tab` | Cycle focus between elements |
-| `toggle_button` | `Enter`, `Space` | Toggle focused button |
+| `back` | `Esc` | Return to notes (auto-saves) |
+| `cycle_focus` | `Tab`, `BackTab` | Cycle focus (Title/Body) |
 | `select_all` | `Ctrl+a` | Select all text |
-| `copy` | `Ctrl+c`, `Ctrl+Insert` | Copy selection |
-| `cut` | `Ctrl+x`, `Shift+Delete` | Cut selection |
-| `paste` | `Ctrl+v`, `Shift+Insert` | Paste from clipboard |
+| `copy` | `Ctrl+Shift+c`, `Ctrl+Insert` | Copy |
+| `cut` | `Ctrl+Shift+x`, `Shift+Delete` | Cut |
+| `paste` | `Ctrl+Shift+v`, `Shift+Insert` | Paste |
 | `undo` | `Ctrl+z` | Undo |
 | `redo` | `Ctrl+y`, `Ctrl+Shift+z` | Redo |
-| `delete_word` | `Ctrl+Backspace` | Delete word before cursor |
-| `delete_next_word` | `Ctrl+Delete` | Delete word after cursor |
+| `delete_word` | `Ctrl+Backspace` | Delete previous word |
+| `delete_next_word` | `Ctrl+Delete` | Delete next word |
 | `move_to_top` | `Ctrl+Home` | Move cursor to top |
 | `move_to_bottom` | `Ctrl+End` | Move cursor to bottom |
 | `toggle_markdown_preview` | `Ctrl+p` | Toggle markdown preview |
-| `toggle_preview_fullscreen` | `Ctrl+e` | Expand preview to full width (hide editor) |
-| `toggle_preview_wrap` | `Ctrl+w` | Toggle word-wrap in preview |
+| `toggle_preview_fullscreen` | `Ctrl+e` | Preview fullscreen |
+| `toggle_preview_wrap` | `Ctrl+w` | Toggle preview word-wrap |
+| `preview_page_up` | `PageUp` | Page markdown preview up |
+| `preview_page_down` | `PageDown` | Page markdown preview down |
 
 ### Help Actions (`[help]`)
 
 | Action | Default Keys | Description |
 |---|---|---|
 | `close` | `Esc`, `q`, `?`, `F1` | Close help |
+| `next_tab` | `Right`, `l`, `Tab` | Next help tab |
+| `prev_tab` | `Left`, `h`, `BackTab` | Previous help tab |
 | `scroll_up` | `Up`, `k` | Scroll up |
 | `scroll_down` | `Down`, `j` | Scroll down |
+| `search` | `/`, `Ctrl+f` | Search help |
+
+> Note: digits `1`–`9` jump directly to the nine help tabs (Notes→About). These are fixed and not configurable in `keybinds.toml`.
 
 ### Graph Actions (`[graph]`)
 
 | Action | Default Keys | Description |
 |---|---|---|
-| `quit` | `Esc` | Quit graph view |
+| `quit` | `Esc`, `q` | Quit graph view |
 | `pan_up` | `Up`, `k` | Jump to node above |
 | `pan_down` | `Down`, `j` | Jump to node below |
 | `pan_left` | `Left`, `h` | Jump to node left |
 | `pan_right` | `Right`, `l` | Jump to node right |
-| `zoom_in` | `+`, `Ctrl+j` | Zoom in |
-| `zoom_out` | `-`, `Ctrl+k` | Zoom out |
-| `open_note` | `Enter` | Open selected note |
+| `zoom_in` | `+`, `=` | Zoom in |
+| `zoom_out` | `-`, `_` | Zoom out |
+| `open_note` | `Enter`, `o` | Open selected note |
 | `auto_fit` | `a` | Auto-fit view to all nodes |
 | `help` | `?`, `F1` | Show help |
-| `toggle_search` | `f` | Toggle node search |
+| `toggle_search` | `/` | Toggle node search |
 | `toggle_minimap` | `Shift+M` | Toggle minimap |
 | `toggle_legend` | `Shift+L` | Toggle legend |
-| `toggle_grid` | `Shift+G` | Toggle grid |
+| `toggle_grid` | `Shift+G` | Toggle background grid |
 | `toggle_status` | `Shift+S` | Toggle status bar |
+| `toggle_preview` | `Shift+P` | Toggle preview |
 | `refresh` | `r` | Refresh simulation |
 | `reload_config` | `Ctrl+r` | Reload config file |
+
+### Draw Actions (`[draw]`)
+
+| Action | Default Keys | Description |
+|---|---|---|
+| `quit` | `Esc`, `q` | Exit draw view |
+| `help` | `?` | Show help |
+| `select_draw_tool` | `d` | Select freehand draw tool |
+| `toggle_shape_selector` | `s` | Open shape picker |
+| `select_text_tool` | `t` | Select text tool |
+| `select_erase_tool` | `e` | Select erase tool |
+| `shape_selector_up` | `Up`, `k` | Previous shape |
+| `shape_selector_down` | `Down`, `j` | Next shape |
+| `shape_selector_confirm` | `Enter` | Confirm shape |
+| `shape_selector_cancel` | `Esc`, `q` | Cancel shape selection |
+| `text_editor_confirm` | `Enter` | Confirm text edit |
+| `text_editor_cancel` | `Esc` | Cancel text edit |
+| `toggle_grid` | `Shift+G` | Toggle grid |
+
+### Canvas Actions (`[canvas]`)
+
+| Action | Default Keys | Description |
+|---|---|---|
+| `quit` | `Esc`, `q` | Quit canvas view |
+| `save` | `Ctrl+s` | Save canvas |
+| `zoom_fine_in` | `>`, `]` | Zoom in (fine) |
+| `zoom_fine_out` | `<`, `[` | Zoom out (fine) |
+| `zoom_in` | `+`, `=` | Zoom in |
+| `zoom_out` | `-`, `_` | Zoom out |
+| `move_left` | `Left`, `h` | Move selection left |
+| `move_right` | `Right`, `l` | Move selection right |
+| `move_up` | `Up`, `k` | Move selection up |
+| `move_down` | `Down`, `j` | Move selection down |
+| `edit_or_connect` | `i`, `Enter`, `o` | Edit node / connect |
+| `open_context_menu` | `a` | Open context menu |
+| `toggle_grid` | `Shift+G` | Toggle grid |
+| `toggle_editor_pane` | `Ctrl+e` | Toggle editor pane |
+| `cycle_focus` | `Tab`, `BackTab` | Cycle focus |
+| `help` | `?` | Show help |
+| `rename_confirm` | `Enter` | Confirm rename |
+| `rename_cancel` | `Esc` | Cancel rename |
+| `menu_close` | `Esc` | Close context menu |
+| `menu_up` | `Up`, `k` | Menu up |
+| `menu_down` | `Down`, `j` | Menu down |
+| `menu_select` | `Enter` | Menu confirm |
+| `close_editor` | `Esc` | Close editor |
+| `close_editor_alt` | `Ctrl+Enter` | Close editor (alt) |
+| `confirm_resize` | `Enter` | Confirm resize |
+| `cancel_resize` | `Esc` | Cancel resize |
+| `editor_unfocus` | `Esc` | Exit editor focus |
+| `editor_sync_raw` | `Ctrl+s` | Save raw editor changes |
+
+### Backup Actions (`[backup]`)
+
+| Action | Default Keys | Description |
+|---|---|---|
+| `back` | `Esc`, `q` | Back to list |
+| `move_down` | `j`, `Down` | Move selection down |
+| `move_up` | `k`, `Up` | Move selection up |
+| `scroll_diff_down` | `Ctrl+d`, `PageDown` | Scroll diff down |
+| `scroll_diff_up` | `Ctrl+u`, `PageUp` | Scroll diff up |
+| `refresh` | `r` | Refresh status |
+| `enter_commit` | `c` | Enter commit message |
+| `confirm_commit` | `Enter` | Confirm commit |
+| `cancel_commit` | `Esc` | Cancel commit |
+| `push` | `p` | Push to remote |
+| `open_settings` | `,`, `Shift+S` | Open settings |
+| `close_settings` | `Esc`, `q` | Close settings |
+| `toggle_file_select` | `Space` | Toggle file select |
+| `cycle_section` | `Tab`, `BackTab` | Cycle sections |
+| `next_field` | `j`, `Down` | Next settings field |
+| `prev_field` | `k`, `Up` | Previous settings field |
+| `activate_field` | `Enter` | Activate settings field |
+| `confirm_edit_field` | `Enter` | Confirm field edit |
+| `cancel_edit_field` | `Esc` | Cancel field edit |
+
+### Content Tree Actions (`[content_tree]`)
+
+| Action | Default Keys | Description |
+|---|---|---|
+| `move_up` | `k`, `Up` | Move selection up |
+| `move_down` | `j`, `Down` | Move selection down |
+| `toggle_collapse` | `Tab`, `Left`, `Right`, `h`, `l` | Toggle collapse/expand |
+| `expand_all` | `e` | Expand all |
+| `collapse_all` | `c` | Collapse all |
+| `open` | `Enter`, `o` | Jump to section |
+| `back` | `Esc`, `q` | Back |
+| `help` | `?`, `F1` | Show help |
 
 ---
 

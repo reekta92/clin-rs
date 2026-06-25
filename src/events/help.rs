@@ -186,7 +186,10 @@ pub fn handle_help_keys(app: &mut App, key: KeyEvent) {
             KeyCode::Char('3') => app.switch_help_tab(HelpTab::Graph),
             KeyCode::Char('4') => app.switch_help_tab(HelpTab::Draw),
             KeyCode::Char('5') => app.switch_help_tab(HelpTab::Canvas),
-            KeyCode::Char('6') => app.switch_help_tab(HelpTab::Templates),
+            KeyCode::Char('6') => app.switch_help_tab(HelpTab::Backup),
+            KeyCode::Char('7') => app.switch_help_tab(HelpTab::Templates),
+            KeyCode::Char('8') => app.switch_help_tab(HelpTab::ContentTree),
+            KeyCode::Char('9') => app.switch_help_tab(HelpTab::About),
             _ => {}
         },
     }

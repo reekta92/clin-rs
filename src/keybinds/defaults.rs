@@ -166,6 +166,15 @@ impl Default for Keybinds {
             ListAction::TogglePreviewWrap,
             vec![KeyCombo::ctrl(KeyCode::Char('w'))],
         );
+        // Preview paging; inherited by all presets (none override Shift+Up/Down).
+        list.insert(
+            ListAction::PreviewPageUp,
+            vec![KeyCombo::shift(KeyCode::Up)],
+        );
+        list.insert(
+            ListAction::PreviewPageDown,
+            vec![KeyCombo::shift(KeyCode::Down)],
+        );
         list.insert(
             ListAction::ToggleCalendar,
             vec![KeyCombo::shift(KeyCode::Char('C'))],
@@ -254,6 +263,15 @@ impl Default for Keybinds {
         edit.insert(
             EditAction::TogglePreviewWrap,
             vec![KeyCombo::ctrl(KeyCode::Char('w'))],
+        );
+        // Preview paging; inherited by all presets (none override PageUp/Down).
+        edit.insert(
+            EditAction::PreviewPageUp,
+            vec![KeyCombo::simple(KeyCode::PageUp)],
+        );
+        edit.insert(
+            EditAction::PreviewPageDown,
+            vec![KeyCombo::simple(KeyCode::PageDown)],
         );
 
         let mut help = HashMap::new();

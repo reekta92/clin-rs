@@ -40,27 +40,6 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
         return false;
     }
 
-    if key
-        .modifiers
-        .contains(crossterm::event::KeyModifiers::CONTROL)
-    {
-        match key.code {
-            KeyCode::Char('h') => {
-                if let Some(renderer) = &mut app.editor.md_preview_renderer {
-                    renderer.prev_page();
-                    return false;
-                }
-            }
-            KeyCode::Char('l') => {
-                if let Some(renderer) = &mut app.editor.md_preview_renderer {
-                    renderer.next_page();
-                    return false;
-                }
-            }
-            _ => {}
-        }
-    }
-
     let seq = app.config.sequences_enabled();
     let counts = app.config.counts_enabled();
     match app.keybinds.resolve_edit(&mut app.seq_matcher, key, seq, counts) {
@@ -84,6 +63,18 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
             EditAction::ToggleMarkdownPreview => {
                 app.toggle_markdown_preview();
                 return false;
+            }
+            EditAction::PreviewPageUp => {
+                if let Some(renderer) = &mut app.editor.md_preview_renderer {
+                    renderer.prev_page();
+                    return false;
+                }
+            }
+            EditAction::PreviewPageDown => {
+                if let Some(renderer) = &mut app.editor.md_preview_renderer {
+                    renderer.next_page();
+                    return false;
+                }
             }
             _ => {}
         },

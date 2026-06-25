@@ -71,45 +71,6 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         }
     }
 
-    if key
-        .modifiers
-        .contains(crossterm::event::KeyModifiers::CONTROL)
-    {
-        match key.code {
-            KeyCode::Char('h') => match &mut app.list.preview_content {
-                Some(crate::list_view::PreviewContent::Markdown(renderer)) => {
-                    renderer.prev_page();
-                    return false;
-                }
-                Some(
-                    crate::list_view::PreviewContent::CanvasGrid(_)
-                    | crate::list_view::PreviewContent::DrawGrid(_),
-                ) => {
-                    app.list.snapshot_scroll_offset =
-                        app.list.snapshot_scroll_offset.saturating_sub(3);
-                    return false;
-                }
-                _ => {}
-            },
-            KeyCode::Char('l') => match &mut app.list.preview_content {
-                Some(crate::list_view::PreviewContent::Markdown(renderer)) => {
-                    renderer.next_page();
-                    return false;
-                }
-                Some(
-                    crate::list_view::PreviewContent::CanvasGrid(_)
-                    | crate::list_view::PreviewContent::DrawGrid(_),
-                ) => {
-                    app.list.snapshot_scroll_offset =
-                        app.list.snapshot_scroll_offset.saturating_add(3);
-                    return false;
-                }
-                _ => {}
-            },
-            _ => {}
-        }
-    }
-
     let seq = app.config.sequences_enabled();
     let counts = app.config.counts_enabled();
     match app.keybinds.resolve_list(&mut app.seq_matcher, key, seq, counts) {
@@ -328,6 +289,36 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                     app.set_temporary_status_static("Notes refreshed");
                 }
                 return false;
+            }
+            ListAction::PreviewPageUp => {
+                match &mut app.list.preview_content {
+                    Some(crate::list_view::PreviewContent::Markdown(renderer)) => {
+                        renderer.prev_page();
+                    }
+                    Some(
+                        crate::list_view::PreviewContent::CanvasGrid(_)
+                        | crate::list_view::PreviewContent::DrawGrid(_),
+                    ) => {
+                        app.list.snapshot_scroll_offset =
+                            app.list.snapshot_scroll_offset.saturating_sub(3);
+                    }
+                    None => {}
+                }
+            }
+            ListAction::PreviewPageDown => {
+                match &mut app.list.preview_content {
+                    Some(crate::list_view::PreviewContent::Markdown(renderer)) => {
+                        renderer.next_page();
+                    }
+                    Some(
+                        crate::list_view::PreviewContent::CanvasGrid(_)
+                        | crate::list_view::PreviewContent::DrawGrid(_),
+                    ) => {
+                        app.list.snapshot_scroll_offset =
+                            app.list.snapshot_scroll_offset.saturating_add(3);
+                    }
+                    None => {}
+                }
             }
             _ => {}
         },

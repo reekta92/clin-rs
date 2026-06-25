@@ -581,6 +581,36 @@ mod tests {
     }
 
     #[test]
+    fn test_preview_paging_keybinds() {
+        let keybinds = Keybinds::default();
+
+        // New variants are bound in the default maps.
+        assert!(keybinds.list.contains_key(&ListAction::PreviewPageUp));
+        assert!(keybinds.list.contains_key(&ListAction::PreviewPageDown));
+        assert!(keybinds.edit.contains_key(&EditAction::PreviewPageUp));
+        assert!(keybinds.edit.contains_key(&EditAction::PreviewPageDown));
+
+        // Display strings match the documented defaults.
+        assert_eq!(keybinds.list_keys_display(ListAction::PreviewPageUp), "Shift+Up");
+        assert_eq!(keybinds.list_keys_display(ListAction::PreviewPageDown), "Shift+Down");
+        assert_eq!(keybinds.edit_keys_display(EditAction::PreviewPageUp), "PageUp");
+        assert_eq!(keybinds.edit_keys_display(EditAction::PreviewPageDown), "PageDown");
+
+        // Round-trip: serialize to snake_case TOML keys and reload.
+        let temp_dir = tempfile::tempdir().unwrap();
+        let path = temp_dir.path().join("keybinds.toml");
+        keybinds.save(&path).unwrap();
+
+        let toml_text = std::fs::read_to_string(&path).unwrap();
+        assert!(toml_text.contains("preview_page_up"));
+        assert!(toml_text.contains("preview_page_down"));
+
+        let loaded = Keybinds::load(&path).unwrap();
+        assert_eq!(loaded.list, keybinds.list);
+        assert_eq!(loaded.edit, keybinds.edit);
+    }
+
+    #[test]
     fn test_matches_list_action() {
         let keybinds = Keybinds::default();
         let event = KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE);
