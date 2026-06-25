@@ -46,6 +46,7 @@ pub enum ListAction {
     ToggleSelectMode,
     ToggleSelectItem,
     CollapseAll,
+    RefreshNotes,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

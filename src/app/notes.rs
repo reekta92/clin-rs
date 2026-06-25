@@ -48,6 +48,40 @@ impl App {
         Ok(())
     }
 
+    /// Update only one note's summary after an in-place edit, reusing the existing
+    /// summary_cache for every other note. Avoids the full per-note stat loop in
+    /// refresh_notes. `prev_id` is the id before the edit; it may differ from `id`
+    /// when the note was renamed because of a title change (save_note renames).
+    pub fn refresh_note_single(&mut self, prev_id: Option<&str>, id: &str) {
+        // 1. Handle rename: drop the old id from every view.
+        if let Some(old) = prev_id {
+            if old != id {
+                self.summary_cache.remove(old);
+                self.summary_mtime.remove(old);
+                self.notes.retain(|n| n.id != old);
+            }
+        }
+        // 2. Reload this one note's summary + mtime, replace in notes.
+        if let Ok(summary) = self.storage.load_note_summary(id) {
+            let mt = self.storage.note_mtime_millis(id);
+            self.summary_cache.insert(id.to_string(), summary.clone());
+            self.summary_mtime.insert(id.to_string(), mt);
+            self.notes.retain(|n| n.id != id);
+            self.notes.push(summary);
+        } else {
+            // Note vanished (e.g. deleted out of band): ensure it is gone.
+            self.notes.retain(|n| n.id != id);
+            self.summary_cache.remove(id);
+            self.summary_mtime.remove(id);
+        }
+        // 3. Folders are unchanged for a same-folder title rename, so keep
+        //    folder_cache as-is (list_folders rescan is the only other FS cost in
+        //    refresh_visual_list; skipping it is the point).
+        self.sort_notes();
+        self.refresh_visual_list();
+        debug_log!(self, Debug, "storage", "Incremental note refresh: prev={prev_id:?} id={id}");
+    }
+
     pub(crate) fn sort_notes(&mut self) {
         self.notes.sort_by(|a, b| {
             if self.pinned_on_top {
@@ -493,7 +527,7 @@ impl App {
         self.set_default_status();
     }
 
-    pub fn back_to_list(&mut self) {
+    pub fn back_to_list(&mut self, prev_id: Option<&str>, new_id: Option<&str>) {
         if let Some(return_to) = self.return_mode.take() {
             self.editor.editing_id = None;
             if self.editor.template_edit_path.is_some() {
@@ -539,7 +573,9 @@ impl App {
         self.editor.editor = TextArea::default();
         self.popups.confirm = None;
         self.editor.md_preview_renderer = None;
-        if let Err(e) = self.refresh_notes() {
+        if let Some(id) = new_id {
+            self.refresh_note_single(prev_id, id);
+        } else if let Err(e) = self.refresh_notes() {
             self.set_temporary_status(&format!("Refresh failed: {e}"));
         }
         debug_log!(self, Debug, "view", "View: Edit → List");

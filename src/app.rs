@@ -1374,6 +1374,95 @@ mod tests {
     }
 
     #[test]
+    fn test_incremental_refresh_on_back_to_list() {
+        let temp_dir = tempdir().unwrap();
+        let data_dir = temp_dir.path().join("data");
+        let config_dir = temp_dir.path().join("config");
+        let notes_dir = temp_dir.path().join("notes");
+        let templates_dir = temp_dir.path().join("templates");
+        std::fs::create_dir_all(&data_dir).unwrap();
+        std::fs::create_dir_all(&config_dir).unwrap();
+        std::fs::create_dir_all(&notes_dir).unwrap();
+        std::fs::create_dir_all(&templates_dir).unwrap();
+
+        let storage = Storage {
+            data_dir,
+            config_dir,
+            notes_dir,
+            templates_dir,
+            key: [0u8; 32],
+        };
+        let mut app = App::new(storage).unwrap();
+
+        // Create 3 notes, using the incremental refresh path for each
+        for title in ["Note A", "Note B", "Note C"] {
+            app.start_blank_note_with_title(String::new(), title.to_string());
+            let prev = app.editor.editing_id.clone();
+            app.autosave();
+            let new = app.editor.editing_id.clone();
+            app.back_to_list(prev.as_deref(), new.as_deref());
+        }
+
+        assert_eq!(app.notes.len(), 3, "should have 3 notes after setup");
+
+        // Capture note B's id (use title to find it since ids are title-based)
+        let b_id = app
+            .notes
+            .iter()
+            .find(|n| n.title == "Note B")
+            .map(|n| n.id.clone())
+            .expect("Note B should exist");
+
+        // Open note B, edit body, simulate back-to-list flow with incremental refresh
+        app.load_and_open_note(&b_id, None);
+        let body_content = "edited body content for note b";
+        app.editor.editor = TextArea::from(body_content.lines());
+
+        let prev_id = app.editor.editing_id.clone();
+        app.autosave();
+        let new_id = app.editor.editing_id.clone();
+        app.back_to_list(prev_id.as_deref(), new_id.as_deref());
+
+        // All 3 notes should still be present (incremental refresh preserved others)
+        assert_eq!(app.notes.len(), 3, "other notes preserved after incremental body edit");
+
+        // Note B should still exist with same id (body edit doesn't rename)
+        let b_summary = app
+            .notes
+            .iter()
+            .find(|n| n.id == b_id)
+            .expect("Note B should still exist after body edit");
+        assert!(
+            b_summary.size_bytes > 30,
+            "note summary should reflect larger body after edit (size_bytes={})",
+            b_summary.size_bytes
+        );
+
+        // Rename case: change title, autosave renames the file
+        let old_id = b_id.clone();
+        app.load_and_open_note(&old_id, None);
+        app.editor.title_editor =
+            TextArea::from(vec!["Note B Renamed".to_string()].into_iter());
+
+        let prev_id = app.editor.editing_id.clone();
+        app.autosave();
+        let new_id = app.editor.editing_id.clone();
+        let renamed_id = new_id.clone().expect("autosave should produce an id after rename");
+        app.back_to_list(prev_id.as_deref(), new_id.as_deref());
+
+        // Old id should be gone, new id present, still 3 notes
+        assert!(
+            !app.notes.iter().any(|n| n.id == old_id),
+            "old note id should be removed after rename"
+        );
+        assert!(
+            app.notes.iter().any(|n| n.id == renamed_id),
+            "new note id should appear after rename"
+        );
+        assert_eq!(app.notes.len(), 3, "should still have 3 notes after rename");
+    }
+
+    #[test]
     fn test_theme_reload_updates_cached_display_items() {
         let _lock = crate::config::CONFIG_TEST_MUTEX.lock().unwrap();
         let config_path = crate::config::ClinConfig::config_path().unwrap();

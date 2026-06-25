@@ -296,6 +296,7 @@ fn notes_help_text(keybinds: &Keybinds, theme: &AppThemeColors) -> Vec<HelpRow> 
     let list_location = keybinds.list_keys_display(ListAction::OpenLocation);
     let list_trash = keybinds.list_keys_display(ListAction::OpenTrash);
     let list_collapse_all = keybinds.list_keys_display(ListAction::CollapseAll);
+    let list_refresh = keybinds.list_keys_display(ListAction::RefreshNotes);
     let list_template = keybinds.list_keys_display(ListAction::NewFromTemplate);
     let list_help = keybinds.list_keys_display(ListAction::Help);
     let list_quit = keybinds.list_keys_display(ListAction::Quit);
@@ -340,6 +341,7 @@ fn notes_help_text(keybinds: &Keybinds, theme: &AppThemeColors) -> Vec<HelpRow> 
     rows.push(help_item_dyn("Open graph view", Some(&list_open_graph), theme));
     rows.push(help_item_dyn("Open command palette", Some(&list_cmd_palette), theme));
     rows.push(help_item_dyn("Collapse all folders", Some(&list_collapse_all), theme));
+    rows.push(help_item_dyn("Refresh notes (pick up external changes)", Some(&list_refresh), theme));
     rows.push(help_empty_row());
 
     rows.push(help_heading_row("General", theme));

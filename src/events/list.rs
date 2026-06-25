@@ -348,6 +348,15 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 app.collapse_all_folders();
                 return false;
             }
+            ListAction::RefreshNotes => {
+                app.list.folder_cache = None;
+                if let Err(e) = app.refresh_notes() {
+                    app.set_temporary_status(&format!("Refresh failed: {e}"));
+                } else {
+                    app.set_temporary_status_static("Notes refreshed");
+                }
+                return false;
+            }
             _ => {}
         },
         crate::keybinds::MatchOutcome::Pending => return false,

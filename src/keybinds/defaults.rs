@@ -186,6 +186,10 @@ impl Default for Keybinds {
             ListAction::CollapseAll,
             vec![KeyCombo::simple(KeyCode::Char('c'))],
         );
+        list.insert(
+            ListAction::RefreshNotes,
+            vec![KeyCombo::ctrl(KeyCode::Char('r'))],
+        );
 
         let mut edit = HashMap::new();
         edit.insert(EditAction::Back, vec![KeyCombo::simple(KeyCode::Esc)]);

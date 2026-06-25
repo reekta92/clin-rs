@@ -72,8 +72,10 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 return false;
             }
             EditAction::Back => {
+                let prev_id = app.editor.editing_id.clone();
                 app.autosave();
-                app.back_to_list();
+                let new_id = app.editor.editing_id.clone();
+                app.back_to_list(prev_id.as_deref(), new_id.as_deref());
                 debug_log!(app, Debug, "storage", "Back to list from edit (autosaved)");
                 *focus = EditFocus::Body;
                 return false;
