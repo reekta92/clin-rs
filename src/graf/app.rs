@@ -273,7 +273,6 @@ impl GrafAppState {
                     return Ok(Some(GrafResult::NoteOpened(id)));
                 }
                 EventAction::OpenHelp => {
-                    self.shutdown();
                     return Ok(Some(GrafResult::OpenHelp));
                 }
             }
