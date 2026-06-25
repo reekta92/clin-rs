@@ -93,9 +93,9 @@ jobs:
                 # Bump type is ignored. Base version is kept.
                 NEW="$CURRENT_BASE-$PRE_ID.$((CURRENT_PRE_NUM+1))"
               else
-                # Case 2: Starting a new pre-release series (e.g., 1.2.3 -> 1.2.4-rc.0)
-                # Bump type is used.
-                NEW="$NEXT_BASE-$PRE_ID.0"
+                # Case 2: Starting a new pre-release series (e.g., 0.9.0-beta.6 -> 0.9.0-rc.0)
+                # Bump type is ignored when pre-release is selected; base is kept.
+                NEW="$CURRENT_BASE-$PRE_ID.0"
               fi
             else
               # We want to end up with a stable release
