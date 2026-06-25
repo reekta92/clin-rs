@@ -2,6 +2,23 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.9.0-rc.0] - 2026-06-25
+
+### Added
+
+- Handle folders in bulk move/copy/delete
+- Accent-fill selected grid tiles, center mode badge, add footer hints
+- Add presets with picker, per-preset overlays, and pending indicator
+- Move tool buttons to header bar
+- Add text labels to toolbar buttons
+
+### Fixed
+
+- Keep current base when switching pre-release id
+- Incremental refresh on exit-edit instead of full rescan
+- Preserve file extension when duplicating notes
+- Keep graph state alive while Help is open
+- Clear help_requested flag when consumed
 ## [0.9.0-beta.6] - 2026-06-24
 
 ### Added
@@ -35,6 +52,10 @@ All notable changes to clin are documented in this file.
 - Cleanup on build failure instead of cancel (cancelled() unreliable)
 - Replace heredocs with printf to keep YAML valid, add cleanup-on-cancel job to dispatch-release
 - Remove duplicated deb lines breaking YAML parse
+
+### Release
+
+- V0.9.0-beta.6
 ## [0.9.0-beta.5] - 2026-06-23
 
 ### Release
