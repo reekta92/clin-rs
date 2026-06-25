@@ -644,6 +644,14 @@ pub enum HintBarStyle {
     PowerlineSlanted,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum PreviewExpandMode {
+    #[default]
+    Inline,
+    External,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum CalendarPosition {
@@ -777,9 +785,11 @@ pub struct CoreConfig {
     #[serde(default)]
     pub keybind_preset: KeybindPreset,
     #[serde(default)]
-    /// Enable multi-key sequences (e.g. "g g", "Space f"). Off by default; automatically
-    /// enabled when a preset (vim/helix/emacs) uses multi-key sequences.
     pub enable_key_sequences: bool,
+    #[serde(default)]
+    pub preview_expand_mode: crate::config::PreviewExpandMode,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preview_command: Option<String>,
 }
 impl Default for CoreConfig {
     fn default() -> Self {
@@ -793,6 +803,8 @@ impl Default for CoreConfig {
             preview_wrap: default_true(),
             keybind_preset: KeybindPreset::Default,
             enable_key_sequences: false,
+            preview_expand_mode: crate::config::PreviewExpandMode::default(),
+            preview_command: None,
         }
     }
 }
@@ -1509,6 +1521,14 @@ enable_key_sequences = false
 # Keybind preset ("default", "helix", "vim", "emacs").
 # Applies to all navigation surfaces; never affects text editing.
 # keybind_preset = "default"
+# Ctrl+e behavior: "inline" (maximize the preview pane, default) or
+# "external" (suspend the TUI and run preview_command on the note).
+# preview_expand_mode = "inline"
+
+# Command used for external preview (Ctrl+e when preview_expand_mode = "external").
+# Runs as a shell-words-split program with the note's temp file appended.
+# Falls back to $PAGER, then "less". Examples: "glow", "bat", "mdcat".
+# preview_command = "glow"
 
 
 # ── Display ──

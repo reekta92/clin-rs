@@ -163,6 +163,13 @@ impl App {
         }
     }
     pub fn toggle_preview_fullscreen(&mut self) {
+        if matches!(
+            self.config.core.preview_expand_mode,
+            crate::config::PreviewExpandMode::External
+        ) {
+            self.open_external_preview();
+            return;
+        }
         self.preview_fullscreen = !self.preview_fullscreen;
         match self.mode {
             ViewMode::Edit => self.update_editor_markdown_preview(),

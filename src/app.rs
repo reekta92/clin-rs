@@ -921,12 +921,12 @@ impl App {
         self.list.display_items = items;
     }
 
-    /// Suspend the TUI, launch the configured external editor with `extra_args`
-    /// appended after the program's own args, wait for it to exit, then resume
-    /// the TUI. Returns the editor's exit status (or launch error) and the
-    /// resolved program string (for diagnostics).
-    fn run_in_external_editor(
+    /// Suspend the TUI, run `command` (split on whitespace) with `extra_args`
+    /// appended, wait for exit, then resume the TUI. Returns the command's exit
+    /// status (or launch error) and the resolved program string for diagnostics.
+    fn run_external_command(
         &mut self,
+        command: &str,
         extra_args: &[String],
     ) -> (std::io::Result<std::process::ExitStatus>, String) {
         if let Err(e) = disable_raw_mode() {
@@ -941,21 +941,13 @@ impl App {
             eprintln!("Failed to reset terminal: {e}");
         }
 
-        let editor_prog = self
-            .editor
-            .external_editor
-            .clone()
-            .or_else(|| std::env::var("VISUAL").ok())
-            .or_else(|| std::env::var("EDITOR").ok())
-            .unwrap_or_else(|| "vi".to_string());
-
-        let parts: Vec<&str> = editor_prog.split_whitespace().collect();
-        let (program, editor_args) = parts
+        let parts: Vec<&str> = command.split_whitespace().collect();
+        let (program, cmd_args) = parts
             .split_first()
             .map(|(p, a)| (*p, a.to_vec()))
             .unwrap_or(("vi", vec![]));
         let mut command = std::process::Command::new(program);
-        for arg in editor_args {
+        for arg in cmd_args {
             command.arg(arg);
         }
         for arg in extra_args {
@@ -976,8 +968,21 @@ impl App {
             eprintln!("Failed to restore terminal: {e}");
         }
         self.needs_full_redraw = true;
-
-        (result, editor_prog)
+        (result, program.to_string())
+    }
+    /// Resolve the configured external editor and delegate to run_external_command.
+    fn run_in_external_editor(
+        &mut self,
+        extra_args: &[String],
+    ) -> (std::io::Result<std::process::ExitStatus>, String) {
+        let editor_prog = self
+            .editor
+            .external_editor
+            .clone()
+            .or_else(|| std::env::var("VISUAL").ok())
+            .or_else(|| std::env::var("EDITOR").ok())
+            .unwrap_or_else(|| "vi".to_string());
+        self.run_external_command(&editor_prog, extra_args)
     }
 
     fn open_path_in_external_editor(&mut self, path: &std::path::Path) {
@@ -999,6 +1004,87 @@ impl App {
         }
     }
 
+    /// Launch an external preview command for the currently-selected note (Edit mode) or
+    /// currently-visible note (list/graph modes). The TUI suspends, the preview command
+    /// renders the note's content (or live editor buffer), and resumes on exit.
+    fn open_external_preview(&mut self) {
+        let content = if self.mode == ViewMode::Edit {
+            // In edit mode, preview the live editor buffer (unsaved changes).
+            if self.editor.editing_id.is_none() {
+                self.set_temporary_status_static("No note open to preview");
+                return;
+            }
+            self.editor.editor.lines().join("\n")
+        } else {
+            // In list/graph mode, preview the selected note.
+            let item = match self.list.visual_list.get(self.list.visual_index) {
+                Some(item) => item,
+                None => {
+                    self.set_temporary_status_static("No note open to preview");
+                    return;
+                }
+            };
+
+            match item {
+                crate::list_view::VisualItem::Note {
+                    summary_idx,
+                    is_draw: _,
+                    is_canvas: _,
+                    ..
+                } => {
+                    let note = match self.storage.load_note(&self.notes[*summary_idx].id) {
+                        Ok(note) => note,
+                        Err(e) => {
+                            self.set_temporary_status(&format!("Failed to load note: {e}"));
+                            return;
+                        }
+                    };
+                    note.content.clone()
+                }
+                crate::list_view::VisualItem::Folder { .. } | crate::list_view::VisualItem::CreateNew { .. } => {
+                    self.set_temporary_status_static("External preview only supports markdown notes");
+                    return;
+                }
+            }
+        };
+
+        // Write content to a temp file with 0o600 permissions (secret).
+        let temp_dir = std::env::temp_dir();
+        let temp_file_path = temp_dir.join(format!("clin_preview_{}.md", uuid::Uuid::new_v4()));
+        if let Err(e) = std::fs::write(&temp_file_path, &content) {
+            self.set_temporary_status(&format!("Failed to write temp file: {e}"));
+            return;
+        }
+
+        // Resolve preview command: config -> $PAGER -> "less"
+        let preview_prog = self
+            .config
+            .core
+            .preview_command
+            .clone()
+            .or_else(|| std::env::var("PAGER").ok())
+            .unwrap_or_else(|| "less".to_string());
+
+        // Launch the external command.
+        let (result, prog) = self.run_external_command(&preview_prog, &[temp_file_path.to_string_lossy().into_owned()]);
+
+        // Report status based on command result.
+        match result {
+            Ok(status) if status.success() => {
+                self.set_temporary_status_static("External preview closed");
+            }
+            Ok(status) => {
+                self.set_temporary_status(&format!(
+                    "Preview command '{prog}' exited with status: {status}"
+                ));
+            }
+            Err(e) => {
+                self.set_temporary_status(&format!(
+                    "Failed to launch preview command '{prog}': {e}"
+                ));
+            }
+        }
+    }
     pub fn autosave(&mut self) {
         if let Some(ref editing_id) = self.editor.editing_id {
             debug_log!(self, Debug, "storage", "Autosave triggered for {editing_id}");
