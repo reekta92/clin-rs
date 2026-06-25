@@ -42,6 +42,21 @@ impl KeyMatcher {
         self.last_event_at = None;
     }
 
+    /// Returns a display string for the currently buffered pending keys,
+    /// or `None` if no sequence is in progress.
+    pub fn pending_display(&self) -> Option<String> {
+        if self.pending.is_empty() {
+            return None;
+        }
+        Some(
+            self.pending
+                .iter()
+                .map(|ev| crate::keybinds::KeyCombo::keyevent_to_string(ev))
+                .collect::<Vec<_>>()
+                .join(" "),
+        )
+    }
+
     /// Resolve a key event against a binding map.
     ///
     /// When `sequences_enabled` is false, this is a simple length-1 match against all bindings.
@@ -77,7 +92,7 @@ impl KeyMatcher {
         let mut pending_prefix = false;
         let mut full_match: Option<A> = None;
 
-        'outer: for (action, combos) in bindings {
+        for (action, combos) in bindings {
             for combo in combos {
                 let keys = &combo.keys;
                 let pending_len = self.pending.len();
@@ -94,14 +109,21 @@ impl KeyMatcher {
 
                 if all_match {
                     if keys.len() == self.pending.len() {
-                        // Exact match
+                        // Exact match — keep checking for longer prefixes
                         full_match = Some(*action);
-                        break 'outer;
+                    } else {
+                        // Strict prefix match (longer combo starts with these keys)
+                        pending_prefix = true;
                     }
-                    // Strict prefix match
-                    pending_prefix = true;
                 }
             }
+        }
+
+        // If any multi-key sequence is a prefix of the pending buffer, prefer Pending
+        // over an immediate single-key match. This allows Space-leader sequences like
+        // "Space d" to work even when Space is also bound as a single key.
+        if pending_prefix && self.pending.len() == 1 {
+            return MatchOutcome::Pending;
         }
 
         if let Some(action) = full_match {

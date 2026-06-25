@@ -484,7 +484,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         app.editor.external_editor_enabled,
         &app.app_theme,
     ));
-    draw_status_bar(frame, chunks[2], &app.app_theme, badge, hint, None);
+    draw_status_bar(frame, chunks[2], &app.app_theme, badge, hint, None, app.seq_matcher.pending_display().as_deref());
     draw_corner_watermark(frame, chunks[2], app.app_theme.muted);
     if app.list.preview_enabled && !app.preview_fullscreen {
         let ratio_num = (app.list.preview_width_ratio.clamp(0.2, 0.8) * 100.0).round() as u32;

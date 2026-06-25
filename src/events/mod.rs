@@ -1054,6 +1054,40 @@ pub fn handle_global_popups_and_palette(
                 return true;
             }
 
+            if let Some(mut popup) = app.popups.keybind_preset.take() {
+                app.seq_matcher.clear();
+                match key.code {
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        popup.selected = popup.selected.saturating_sub(1);
+                        app.popups.keybind_preset = Some(popup);
+                        app.select_keybind_preset();
+                    }
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        if popup.selected < 3 {
+                            popup.selected += 1;
+                        }
+                        app.popups.keybind_preset = Some(popup);
+                        app.select_keybind_preset();
+                    }
+                    _ if app
+                        .keybinds
+                        .matches_list(crate::keybinds::ListAction::Confirm, &key) =>
+                    {
+                        app.popups.keybind_preset = Some(popup);
+                        app.select_keybind_preset();
+                        app.close_keybind_preset_popup();
+                    }
+                    _ if crate::events::is_cancel_popup(&app.keybinds, &key, false) =>
+                    {
+                        app.close_keybind_preset_popup();
+                    }
+                    _ => {
+                        app.popups.keybind_preset = Some(popup);
+                    }
+                }
+                return true;
+            }
+
             if let Some(mut popup) = app.popups.sort.take() {
                 app.seq_matcher.clear();
                 match key.code {

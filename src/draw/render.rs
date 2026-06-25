@@ -127,7 +127,7 @@ pub fn draw_canvas(frame: &mut Frame, app: &DrawAppState, area: Rect, _config: &
         (app.keybinds.display_draw(DrawAction::Quit), "back"),
     ];
     let hint_line = crate::ui::format_keybind_hints(&app.theme, &hints_items);
-    crate::ui::draw_status_bar(frame, status_area, &app.theme, None, hint_line, None);
+    crate::ui::draw_status_bar(frame, status_area, &app.theme, None, hint_line, None, app.seq_matcher.pending_display().as_deref());
 
     if app.show_shape_selector {
         let hint_line = crate::ui::popup_hint_line(&app.theme, "Enter select · Esc cancel");

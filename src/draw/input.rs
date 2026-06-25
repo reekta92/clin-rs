@@ -65,7 +65,7 @@ pub fn handle_event(
     }
 
     if let Event::Key(k) = ev {
-        let seq = config.core.enable_key_sequences;
+        let seq = config.sequences_enabled();
         match keybinds.resolve_draw(&mut app.seq_matcher, k, seq) {
             crate::keybinds::MatchOutcome::Matched(action) => match action {
                 DrawAction::Quit => {

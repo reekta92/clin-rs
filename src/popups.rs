@@ -172,6 +172,10 @@ pub struct HintBarStylePopup {
     pub selected: usize,
 }
 
+pub struct KeybindPresetPopup {
+    pub selected: usize,
+}
+
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NoteFormat {
@@ -210,6 +214,7 @@ pub struct PopupManager {
     pub tag: Option<TagPopup>,
     pub icon_mode: Option<IconModePopup>,
     pub hint_bar_style: Option<HintBarStylePopup>,
+    pub keybind_preset: Option<KeybindPresetPopup>,
     pub sort: Option<SortPopup>,
     pub folder: Option<FolderPopup>,
     pub folder_picker: Option<FolderPicker>,
@@ -231,6 +236,7 @@ impl PopupManager {
             || self.theme.is_some()
             || self.tag.is_some()
             || self.hint_bar_style.is_some()
+            || self.keybind_preset.is_some()
             || self.sort.is_some()
             || self.folder.is_some()
             || self.folder_picker.is_some()
@@ -263,6 +269,7 @@ impl PopupManager {
         self.tag = None;
         self.icon_mode = None;
         self.hint_bar_style = None;
+        self.keybind_preset = None;
         self.sort = None;
         self.folder = None;
         self.folder_picker = None;

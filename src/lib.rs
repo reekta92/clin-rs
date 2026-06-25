@@ -596,13 +596,14 @@ fn run_keybinds(action: KeybindsCmd) -> Result<()> {
         KeybindsCmd::Reset => {
             let storage = Storage::init()?;
             let config = crate::config::ClinConfig::load().unwrap_or_default();
-            let keybinds = config.core.keybind_preset.base_keybinds();
-            storage.save_keybinds(&keybinds)?;
+            let preset = config.core.keybind_preset;
+            let keybinds = preset.base_keybinds();
+            storage.save_keybinds_for_preset(&keybinds, preset)?;
             println!("{}", console::success("Keybinds reset to defaults"));
             println!(
                 "{} {}",
                 console::dim("Keybinds file:"),
-                console::path(storage.keybinds_path())
+                console::path(storage.keybinds_path_for_preset(preset))
             );
             Ok(())
         }

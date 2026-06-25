@@ -222,5 +222,5 @@ pub fn draw_content_tree(
         (keybinds.display_content_tree(ContentTreeAction::Back), "back"),
     ];
     let hint = crate::ui::format_keybind_hints(theme, &hints_items);
-    crate::ui::draw_status_bar(frame, hint_area, theme, None, hint, None);
+    crate::ui::draw_status_bar(frame, hint_area, theme, None, hint, None, state.seq_matcher.pending_display().as_deref());
 }

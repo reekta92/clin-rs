@@ -615,7 +615,7 @@ pub fn draw_pinstar_view(
     } else {
         Line::from(vec![Span::styled(state.footer_hint.clone(), Style::default().fg(theme.muted))])
     };
-    crate::ui::draw_status_bar(frame, hint_area, theme, None, hint_line, None);
+    crate::ui::draw_status_bar(frame, hint_area, theme, None, hint_line, None, state.seq_matcher.pending_display().as_deref());
 
     if let Some(menu) = &state.context_menu {
         let menu_width = menu

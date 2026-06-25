@@ -620,6 +620,44 @@ template = """
         self.popups.hint_bar_style = None;
     }
 
+    pub fn begin_keybind_preset_selection(&mut self) {
+        let selected = match self.config.core.keybind_preset {
+            crate::config::KeybindPreset::Default => 0,
+            crate::config::KeybindPreset::Helix => 1,
+            crate::config::KeybindPreset::Vim => 2,
+            crate::config::KeybindPreset::Emacs => 3,
+        };
+        self.popups.keybind_preset = Some(crate::popups::KeybindPresetPopup { selected });
+    }
+
+    pub fn select_keybind_preset(&mut self) {
+        if let Some(popup) = self.popups.keybind_preset.take() {
+            let new = match popup.selected {
+                0 => crate::config::KeybindPreset::Default,
+                1 => crate::config::KeybindPreset::Helix,
+                2 => crate::config::KeybindPreset::Vim,
+                _ => crate::config::KeybindPreset::Emacs,
+            };
+            self.config.core.keybind_preset = new;
+            self.apply_keybind_preset(new);
+            self.set_temporary_status(&format!("Keybind preset: {new}"));
+            if let Ok(mut c) = crate::config::ClinConfig::load() {
+                c.core.keybind_preset = new;
+                let _ = c.save();
+            }
+            self.popups.keybind_preset = Some(popup);
+        }
+    }
+
+    pub fn close_keybind_preset_popup(&mut self) {
+        self.popups.keybind_preset = None;
+    }
+
+    pub fn apply_keybind_preset(&mut self, preset: crate::config::KeybindPreset) {
+        self.keybinds = self.storage.load_keybinds_with_preset(preset);
+        self.seq_matcher.clear();
+    }
+
     pub fn select_theme(&mut self) {
         if let Some(mut popup) = self.popups.theme.take() {
             match popup.focus {

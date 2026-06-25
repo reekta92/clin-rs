@@ -77,6 +77,7 @@ pub fn draw_ui(
             &flags,
             theme,
             &state.keybinds,
+            state.seq_matcher.pending_display().as_deref(),
         );
     }
 

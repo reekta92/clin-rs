@@ -515,6 +515,7 @@ pub fn draw_graph_view(
     flags: &FeatureFlags,
     app_theme: &crate::app_theme::AppThemeColors,
     keybinds: &Keybinds,
+    pending: Option<&str>,
 ) {
     let aspect = area.width as f64 / area.height as f64;
     let viewport = &state.viewport;
@@ -649,6 +650,7 @@ pub fn draw_graph_view(
             None,
             hint_line,
             None,
+            pending,
         );
     }
 

@@ -308,7 +308,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     ];
     let default_hints = format_keybind_hints(&app.app_theme, &hints_items);
     let hint = default_hints;
-    draw_status_bar(frame, hint_area, &app.app_theme, None, hint, None);
+    draw_status_bar(frame, hint_area, &app.app_theme, None, hint, None, app.seq_matcher.pending_display().as_deref());
     draw_corner_watermark(frame, hint_area, app.app_theme.muted);
     if let Some(splitter_area) = splitter_area {
         draw_dim_vline(frame, splitter_area, app.app_theme.muted);

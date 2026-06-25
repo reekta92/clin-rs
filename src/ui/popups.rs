@@ -383,6 +383,52 @@ pub fn draw_hint_bar_style_popup(
     frame.render_stateful_widget(list, content_area, &mut state);
 }
 
+pub fn draw_keybind_preset_popup(
+    frame: &mut Frame,
+    popup: &crate::popups::KeybindPresetPopup,
+    area: Rect,
+    theme: &AppThemeColors,
+) {
+    let hint_line = popup_hint_line(theme, "\u{2191}\u{2193}: Navigate \u{2022} Enter: Select \u{2022} Esc: Cancel");
+    let content_area = draw_popup_frame(
+        frame,
+        area,
+        "KEYBIND PRESET",
+        PopupSize::Medium,
+        &hint_line,
+        theme,
+    );
+
+    let options = [
+        "default \u{2014} Default CUA",
+        "helix \u{2014} Space leader",
+        "vim \u{2014} : commands",
+        "emacs \u{2014} Ctrl-x prefix",
+    ];
+    let items: Vec<ListItem> = options
+        .iter()
+        .map(|&opt| ListItem::new(Line::from(Span::raw(opt))))
+        .collect();
+
+    let list = List::new(items)
+        .block(
+            Block::default()
+                .style(theme.bg_style())
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(theme.heading)),
+        )
+        .highlight_style(
+            Style::default()
+                .fg(theme.highlight_fg)
+                .bg(theme.highlight_bg)
+                .add_modifier(Modifier::BOLD),
+        );
+
+    let mut state = ListState::default();
+    state.select(Some(popup.selected));
+    frame.render_stateful_widget(list, content_area, &mut state);
+}
+
 pub fn draw_popup_banner(frame: &mut Frame, popup_area: Rect, title: &str, theme: &AppThemeColors) {
     let display_text = format!(" {} ", title.to_uppercase());
     let width = display_text.len() as u16;
@@ -531,8 +577,15 @@ pub fn draw_status_bar<'a>(
     badge: Option<StatusBarBadge>,
     hint: Line<'a>,
     right: Option<Line<'a>>,
+    pending: Option<&str>,
 ) {
     let mut left_spans: Vec<Span> = Vec::new();
+    if let Some(p) = pending {
+        left_spans.push(Span::styled(
+            format!("{p} "),
+            Style::default().fg(theme.highlight_fg).bg(theme.accent),
+        ));
+    }
     if let Some(b) = badge {
         match theme.hint_bar_style {
             crate::config::HintBarStyle::PowerlineSharp

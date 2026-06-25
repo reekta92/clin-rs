@@ -393,12 +393,28 @@ impl Storage {
         self.config_dir.join("keybinds.toml")
     }
 
+    pub fn keybinds_path_for_preset(&self, preset: crate::config::KeybindPreset) -> std::path::PathBuf {
+        self.config_dir.join(format!("keybinds_{}.toml", preset))
+    }
+    pub fn save_keybinds_for_preset(&self, keybinds: &Keybinds, preset: crate::config::KeybindPreset) -> Result<()> {
+        keybinds.save(&self.keybinds_path_for_preset(preset))
+    }
+
     pub fn load_keybinds(&self) -> Keybinds {
         Keybinds::load(&self.keybinds_path()).unwrap_or_default()
     }
 
     pub fn load_keybinds_with_preset(&self, preset: crate::config::KeybindPreset) -> Keybinds {
-        Keybinds::load_layered(&self.keybinds_path(), preset.base_keybinds()).unwrap_or_default()
+        let per_preset = self.keybinds_path_for_preset(preset);
+        let legacy = self.keybinds_path();
+        if legacy.exists() {
+            if !per_preset.exists() {
+                let _ = std::fs::rename(&legacy, &per_preset);
+            } else {
+                let _ = std::fs::remove_file(&legacy);
+            }
+        }
+        crate::keybinds::Keybinds::load_layered(&per_preset, preset.base_keybinds()).unwrap_or_default()
     }
 
     pub fn save_keybinds(&self, keybinds: &Keybinds) -> Result<()> {

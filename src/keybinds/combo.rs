@@ -133,7 +133,7 @@ impl KeyCombo {
     }
 
     /// Format a single keystroke for display (e.g. `"Ctrl+q"`, `"g"`, `"Enter"`).
-    fn stroke_to_string(s: &KeyStroke) -> String {
+    pub(crate) fn stroke_to_string(s: &KeyStroke) -> String {
         let key = key_code_to_string(&s.code);
         let mut result = String::with_capacity(24);
 
@@ -169,6 +169,11 @@ impl KeyCombo {
         result.push_str(&key);
 
         result
+    }
+
+    /// Convert a crossterm `KeyEvent` to a display string.
+    pub(crate) fn keyevent_to_string(ev: &crossterm::event::KeyEvent) -> String {
+        Self::stroke_to_string(&KeyStroke { code: ev.code, modifiers: ev.modifiers })
     }
 
     /// Display string for this combo.

@@ -61,7 +61,7 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
         }
     }
 
-    let seq = app.config.core.enable_key_sequences;
+    let seq = app.config.sequences_enabled();
     match app.keybinds.resolve_edit(&mut app.seq_matcher, key, seq) {
         crate::keybinds::MatchOutcome::Matched(action) => match action {
             EditAction::CycleFocus => {

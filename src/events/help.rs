@@ -151,7 +151,7 @@ pub fn handle_help_keys(app: &mut App, key: KeyEvent) {
         return;
     }
 
-    let seq = app.config.core.enable_key_sequences;
+    let seq = app.config.sequences_enabled();
     match app.keybinds.resolve_help(&mut app.seq_matcher, key, seq) {
         crate::keybinds::MatchOutcome::Matched(action) => match action {
             HelpAction::Close => {

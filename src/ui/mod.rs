@@ -836,6 +836,11 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         draw_hint_bar_style_popup(frame, popup, frame.area(), &app.app_theme);
     }
 
+    // Keybind preset popup
+    if let Some(popup) = &app.popups.keybind_preset {
+        draw_keybind_preset_popup(frame, popup, frame.area(), &app.app_theme);
+    }
+
     if let Some(popup) = &app.popups.sort {
         draw_sort_popup(frame, popup, frame.area(), &app.app_theme);
     }

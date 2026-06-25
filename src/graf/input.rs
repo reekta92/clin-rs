@@ -33,7 +33,7 @@ pub fn handle_graph_keys(
 ) -> Option<GraphInputAction> {
     let mut guard = state.write().unwrap_or_else(|e| e.into_inner());
 
-    let seq = config.core.enable_key_sequences;
+    let seq = config.sequences_enabled();
     match keybinds.resolve_graph(seq_matcher, key, seq) {
         crate::keybinds::MatchOutcome::Matched(action) => match action {
             GraphAction::Quit => return Some(GraphInputAction::Quit),

@@ -89,6 +89,8 @@ simple_action!(DebugDumpAction, "debug.dump", "Save Debug Dump", "Write ring-buf
 toggle_action!(ToggleExternalEditorAction, "external_editor.toggle", "Toggle External Editor Mode", "Switch between the built-in editor and your $EDITOR for opening notes", ActionCategory::Settings, "\u{f120}", "\u{2328}", toggle_external_editor_mode, app, if app.editor.external_editor_enabled { "On" } else { "Off" });
 toggle_action!(ToggleLayoutAction, "toggle_notes_layout", "Toggle Notes Layout", "Switch between Tree and Grid layout for the notes view", ActionCategory::Settings, "\u{f0c9}", "\u{1f4cb}", toggle_notes_layout, app, match app.list.notes_layout { crate::config::NotesLayout::Tree => "Tree", crate::config::NotesLayout::Grid => "Grid" });
 toggle_action!(SwitchThemeAction, "switch_theme", "Switch Theme", "Select from available color themes", ActionCategory::Settings, "\u{f042}", "\u{1f3a8}", begin_theme_selection, app, crate::config::ClinConfig::load().map(|c| c.ui.theme.to_string()).unwrap_or_else(|_| "default".to_string()));
+simple_action!(SwitchKeybindPresetAction, "keybind.preset", "Switch Keybind Preset", "Choose a keybind preset (default, helix, vim, emacs)", ActionCategory::Settings, "\u{f11c}", "\u{2328}", begin_keybind_preset_selection);
+
 
 pub struct ActionInfo {
     pub id: String,
@@ -110,6 +112,7 @@ pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyL
         Box::new(DebugDumpAction),
         Box::new(ocr::OcrPasteAction),
         Box::new(SwitchThemeAction),
+        Box::new(SwitchKeybindPresetAction),
         Box::new(ToggleExternalEditorAction),
         Box::new(ToggleLayoutAction),
         Box::new(settings::ToggleLayoutEditModeAction),

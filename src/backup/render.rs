@@ -109,6 +109,7 @@ pub fn draw_dashboard(
         None,
         hint_line,
         right_line,
+        state.seq_matcher.pending_display().as_deref(),
     );
     if state.input_mode == BackupInputMode::EditCommitMessage {
         draw_commit_popup(frame, area, state);

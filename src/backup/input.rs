@@ -46,7 +46,7 @@ fn handle_normal_input(
     keybinds: &Keybinds,
     config: &ClinConfig,
 ) -> InputResult {
-    let seq = config.core.enable_key_sequences;
+    let seq = config.sequences_enabled();
     match keybinds.resolve_backup(&mut state.seq_matcher, event, seq) {
         crate::keybinds::MatchOutcome::Matched(action) => match action {
             BackupAction::Back => return InputResult::Back,

@@ -739,6 +739,14 @@ mod tests {
                 .iter()
                 .any(|c| c.to_display_string() == "gg")
         );
+        // gG (from "g G") → JumpToBottom
+        assert!(
+            kb.list
+                .get(&ListAction::JumpToBottom)
+                .unwrap()
+                .iter()
+                .any(|c| c.to_display_string() == "gG")
+        );
     }
 
     #[test]
@@ -832,6 +840,66 @@ mod tests {
             "q should resolve to CanvasAction::Quit (seq=true), got {:?}",
             res
         );
+    }
+
+    #[test]
+    fn test_uses_sequences() {
+        assert!(!KeybindPreset::Default.uses_sequences());
+        assert!(KeybindPreset::Helix.uses_sequences());
+        assert!(KeybindPreset::Vim.uses_sequences());
+        assert!(KeybindPreset::Emacs.uses_sequences());
+    }
+
+    #[test]
+    fn test_helix_preset_has_ge() {
+        let kb = KeybindPreset::Helix.base_keybinds();
+        assert!(
+            kb.list
+                .get(&ListAction::JumpToBottom)
+                .unwrap()
+                .iter()
+                .any(|c| c.to_display_string() == "ge")
+        );
+    }
+
+    #[test]
+    fn test_pending_display() {
+        use std::collections::HashMap;
+        let mut m = crate::keybinds::KeyMatcher::new();
+        let mut b: HashMap<ListAction, Vec<KeyCombo>> = HashMap::new();
+        b.insert(ListAction::JumpToTop, vec![KeyCombo::parse("g g").unwrap()]);
+        let e = KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE);
+        assert_eq!(
+            m.resolve(e, &b, true),
+            MatchOutcome::Pending
+        );
+        assert_eq!(m.pending_display().as_deref(), Some("g"));
+        assert_eq!(
+            m.resolve(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE), &b, true),
+            MatchOutcome::Matched(ListAction::JumpToTop)
+        );
+        assert_eq!(m.pending_display(), None);
+    }
+
+    #[test]
+    fn test_per_preset_path_load() {
+        let dir = std::env::temp_dir().join("clin_test_preset");
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("keybinds_vim.toml");
+        let _ = std::fs::write(&path, "[list]\nquit = [\": q\"]\n");
+        let kb = crate::keybinds::Keybinds::load_layered(
+            &path,
+            crate::config::KeybindPreset::Vim.base_keybinds(),
+        )
+        .unwrap_or_default();
+        assert!(
+            kb.list
+                .get(&ListAction::Quit)
+                .unwrap()
+                .iter()
+                .any(|c| c.to_display_string() == ": q")
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
 }

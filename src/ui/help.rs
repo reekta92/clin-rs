@@ -137,7 +137,7 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
         (kb.display_help(HelpAction::Close), "close"),
     ];
     let hint = format_keybind_hints(&app.app_theme, &hints_items);
-    draw_status_bar(frame, chunks[2], &app.app_theme, None, hint, None);
+    draw_status_bar(frame, chunks[2], &app.app_theme, None, hint, None, app.seq_matcher.pending_display().as_deref());
     if app.help_search.active {
         draw_help_search(frame, chunks[1], app);
     }
@@ -762,7 +762,7 @@ fn about_help_text(
     rows.push(help_heading_row("Configuration", theme));
     rows.push(help_empty_row());
     rows.push(help_item_dyn(
-        "Keybinds file: ~/.config/clin/keybinds.toml",
+        "Keybinds overlay: ~/.config/clin/keybinds_<preset>.toml",
         None,
         theme,
     ));

@@ -525,7 +525,7 @@ pub fn handle_pinstar_event(
         return true;
     }
 
-    let seq = config.core.enable_key_sequences;
+    let seq = config.sequences_enabled();
     match keybinds.resolve_canvas(&mut state.seq_matcher, key, seq) {
         crate::keybinds::MatchOutcome::Matched(action) => match action {
             CanvasAction::Quit => {

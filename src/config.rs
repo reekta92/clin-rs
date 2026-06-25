@@ -777,6 +777,8 @@ pub struct CoreConfig {
     #[serde(default)]
     pub keybind_preset: KeybindPreset,
     #[serde(default)]
+    /// Enable multi-key sequences (e.g. "g g", "Space f"). Off by default; automatically
+    /// enabled when a preset (vim/helix/emacs) uses multi-key sequences.
     pub enable_key_sequences: bool,
 }
 impl Default for CoreConfig {
@@ -950,6 +952,12 @@ pub struct ThemeColors {
 }
 
 impl ClinConfig {
+    /// Returns true if key sequences are enabled: either explicitly via config
+    /// or because the active keybind preset uses multi-key sequences.
+    pub fn sequences_enabled(&self) -> bool {
+        self.core.enable_key_sequences || self.core.keybind_preset.uses_sequences()
+    }
+
     pub fn config_path() -> Result<PathBuf> {
         if let Some(p) = CONFIG_PATH_OVERRIDE.get().and_then(|opt| opt.as_ref()) {
             return Ok(p.clone());
@@ -1489,16 +1497,14 @@ mouse_enabled = true
 
 # Confirm before moving a note or folder to the trash.
 confirm_on_delete = true
-
-# Confirm before quitting.
-confirm_on_quit = false
+# Enable multi-key sequences (e.g. "g g", "Space f"). Off by default; automatically
+# enabled when a preset (vim/helix/emacs) uses multi-key sequences.
+enable_key_sequences = false
 
 # Keybind preset ("default", "helix", "vim", "emacs").
 # Applies to all navigation surfaces; never affects text editing.
 # keybind_preset = "default"
 
-# Enable multi-key sequences (e.g. "g g", "Space f"). Off by default.
-# enable_key_sequences = false
 
 # ── Display ──
 

@@ -110,7 +110,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         }
     }
 
-    let seq = app.config.core.enable_key_sequences;
+    let seq = app.config.sequences_enabled();
     match app.keybinds.resolve_list(&mut app.seq_matcher, key, seq) {
         crate::keybinds::MatchOutcome::Matched(action) => match action {
             ListAction::CycleFocus => {

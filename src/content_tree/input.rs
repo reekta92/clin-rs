@@ -84,7 +84,7 @@ pub fn handle_input(
     keybinds: &Keybinds,
     config: &ClinConfig,
 ) -> InputResult {
-    let seq = config.core.enable_key_sequences;
+    let seq = config.sequences_enabled();
     match keybinds.resolve_content_tree(&mut state.seq_matcher, key, seq) {
         crate::keybinds::MatchOutcome::Matched(action) => match action {
             ContentTreeAction::Back => return InputResult::Back,
