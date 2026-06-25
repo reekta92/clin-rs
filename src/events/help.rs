@@ -152,8 +152,9 @@ pub fn handle_help_keys(app: &mut App, key: KeyEvent) {
     }
 
     let seq = app.config.sequences_enabled();
-    match app.keybinds.resolve_help(&mut app.seq_matcher, key, seq) {
-        crate::keybinds::MatchOutcome::Matched(action) => match action {
+    let counts = app.config.counts_enabled();
+    match app.keybinds.resolve_help(&mut app.seq_matcher, key, seq, counts) {
+        crate::keybinds::MatchOutcome::Matched(action, _count) => match action {
             HelpAction::Close => {
                 app.close_help_page();
             }

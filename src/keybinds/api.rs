@@ -327,67 +327,77 @@ impl Keybinds {
         m: &mut KeyMatcher,
         event: KeyEvent,
         seq: bool,
+        counts: bool,
     ) -> MatchOutcome<ListAction> {
         let mut filtered = self.list.clone();
         filtered.remove(&ListAction::Confirm);
         filtered.remove(&ListAction::Cancel);
-        m.resolve(event, &filtered, seq)
+        m.resolve(event, &filtered, seq, counts)
     }
     pub fn resolve_edit(
         &self,
         m: &mut KeyMatcher,
         event: KeyEvent,
         seq: bool,
+        _counts: bool,
     ) -> MatchOutcome<EditAction> {
-        m.resolve(event, self.bindings_for_edit(), seq)
+        // Edit view never accepts count - digits are text input
+        m.resolve(event, self.bindings_for_edit(), seq, false)
     }
     pub fn resolve_help(
         &self,
         m: &mut KeyMatcher,
         event: KeyEvent,
         seq: bool,
+        _counts: bool,
     ) -> MatchOutcome<HelpAction> {
-        m.resolve(event, self.bindings_for_help(), seq)
+        // Help view never accepts count - digits are tab-switchers
+        m.resolve(event, self.bindings_for_help(), seq, false)
     }
     pub fn resolve_graph(
         &self,
         m: &mut KeyMatcher,
         event: KeyEvent,
         seq: bool,
+        counts: bool,
     ) -> MatchOutcome<GraphAction> {
-        m.resolve(event, self.bindings_for_graph(), seq)
+        m.resolve(event, self.bindings_for_graph(), seq, counts)
     }
     pub fn resolve_draw(
         &self,
         m: &mut KeyMatcher,
         event: KeyEvent,
         seq: bool,
+        counts: bool,
     ) -> MatchOutcome<DrawAction> {
-        m.resolve(event, self.bindings_for_draw(), seq)
+        m.resolve(event, self.bindings_for_draw(), seq, counts)
     }
     pub fn resolve_canvas(
         &self,
         m: &mut KeyMatcher,
         event: KeyEvent,
         seq: bool,
+        counts: bool,
     ) -> MatchOutcome<CanvasAction> {
-        m.resolve(event, self.bindings_for_canvas(), seq)
+        m.resolve(event, self.bindings_for_canvas(), seq, counts)
     }
     pub fn resolve_backup(
         &self,
         m: &mut KeyMatcher,
         event: KeyEvent,
         seq: bool,
+        counts: bool,
     ) -> MatchOutcome<BackupAction> {
-        m.resolve(event, self.bindings_for_backup(), seq)
+        m.resolve(event, self.bindings_for_backup(), seq, counts)
     }
     pub fn resolve_content_tree(
         &self,
         m: &mut KeyMatcher,
         event: KeyEvent,
         seq: bool,
+        counts: bool,
     ) -> MatchOutcome<ContentTreeAction> {
-        m.resolve(event, self.bindings_for_content_tree(), seq)
+        m.resolve(event, self.bindings_for_content_tree(), seq, counts)
     }
 
     /// Pick the best key combo to display in hint bars.
@@ -592,7 +602,7 @@ mod tests {
         bindings.insert(ListAction::JumpToTop, vec![KeyCombo::parse("g g").unwrap()]);
         // With sequences disabled, "g" alone should not match JumpToTop
         let event = KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE);
-        let result = matcher.resolve(event, &bindings, false);
+        let result = matcher.resolve(event, &bindings, false, false);
         assert_eq!(result, MatchOutcome::NoMatch);
     }
 
@@ -604,13 +614,13 @@ mod tests {
 
         // First 'g' should be Pending
         let e1 = KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE);
-        let r1 = matcher.resolve(e1, &bindings, true);
+        let r1 = matcher.resolve(e1, &bindings, true, false);
         assert_eq!(r1, MatchOutcome::Pending);
 
         // Second 'g' within timeout should match
         let e2 = KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE);
-        let r2 = matcher.resolve(e2, &bindings, true);
-        assert_eq!(r2, MatchOutcome::Matched(ListAction::JumpToTop));
+        let r2 = matcher.resolve(e2, &bindings, true, false);
+        assert_eq!(r2, MatchOutcome::Matched(ListAction::JumpToTop, None));
     }
 
     #[test]
@@ -619,13 +629,14 @@ mod tests {
             pending: Vec::new(),
             last_event_at: None,
             timeout: std::time::Duration::from_millis(1), // very short
+            count: None,
         };
         let mut bindings: HashMap<ListAction, Vec<KeyCombo>> = HashMap::new();
         bindings.insert(ListAction::JumpToTop, vec![KeyCombo::parse("g g").unwrap()]);
 
         // First 'g' -> Pending
         let e1 = KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE);
-        let r1 = matcher.resolve(e1, &bindings, true);
+        let r1 = matcher.resolve(e1, &bindings, true, false);
         assert_eq!(r1, MatchOutcome::Pending);
 
         // Wait longer than timeout
@@ -633,7 +644,7 @@ mod tests {
 
         // Second 'g' after timeout should NOT match (pending cleared)
         let e2 = KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE);
-        let r2 = matcher.resolve(e2, &bindings, true);
+        let r2 = matcher.resolve(e2, &bindings, true, false);
         // Should re-start sequence
         assert_eq!(r2, MatchOutcome::Pending);
     }
@@ -647,8 +658,8 @@ mod tests {
 
         // 'q' alone should still match Quit (length-1)
         let event = KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE);
-        let result = matcher.resolve(event, &bindings, true);
-        assert_eq!(result, MatchOutcome::Matched(ListAction::Quit));
+        let result = matcher.resolve(event, &bindings, true, false);
+        assert_eq!(result, MatchOutcome::Matched(ListAction::Quit, None));
     }
 
     #[test]
@@ -794,8 +805,8 @@ mod tests {
             crossterm::event::KeyCode::Enter,
             crossterm::event::KeyModifiers::NONE,
         );
-        let outcome = kb.resolve_list(&mut matcher, enter_event, false);
-        assert_eq!(outcome, MatchOutcome::Matched(ListAction::Open));
+        let outcome = kb.resolve_list(&mut matcher, enter_event, false, false);
+        assert_eq!(outcome, MatchOutcome::Matched(ListAction::Open, None));
 
         // Also verify y and n do not resolve to Confirm/Cancel in list view
         let mut matcher_y = KeyMatcher::new();
@@ -803,8 +814,8 @@ mod tests {
             crossterm::event::KeyCode::Char('y'),
             crossterm::event::KeyModifiers::NONE,
         );
-        let outcome_y = kb.resolve_list(&mut matcher_y, y_event, false);
-        assert_eq!(outcome_y, MatchOutcome::Matched(ListAction::Duplicate));
+        let outcome_y = kb.resolve_list(&mut matcher_y, y_event, false, false);
+        assert_eq!(outcome_y, MatchOutcome::Matched(ListAction::Duplicate, None));
     }
 
     #[test]
@@ -816,27 +827,27 @@ mod tests {
         // HashMap iteration picks non-deterministically — the handler's catch-all
         // checks matches_canvas(Quit) so either route works.
         let esc = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
-        let res = kb.resolve_canvas(&mut m, esc, false);
+        let res = kb.resolve_canvas(&mut m, esc, false, false);
         assert!(
-            matches!(res, MatchOutcome::Matched(_)),
+            matches!(res, MatchOutcome::Matched(_, _)),
             "Esc should resolve to some canvas action, got {:?}",
             res
         );
 
         // q with sequences disabled
         let q = KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE);
-        let res = kb.resolve_canvas(&mut m, q, false);
+        let res = kb.resolve_canvas(&mut m, q, false, false);
         assert!(
-            matches!(res, MatchOutcome::Matched(CanvasAction::Quit)),
+            matches!(res, MatchOutcome::Matched(CanvasAction::Quit, _)),
             "q should resolve to CanvasAction::Quit (seq=false), got {:?}",
             res
         );
 
         // q with sequences enabled (default)
         let mut m = crate::keybinds::KeyMatcher::new();
-        let res = kb.resolve_canvas(&mut m, q, true);
+        let res = kb.resolve_canvas(&mut m, q, true, false);
         assert!(
-            matches!(res, MatchOutcome::Matched(CanvasAction::Quit)),
+            matches!(res, MatchOutcome::Matched(CanvasAction::Quit, _)),
             "q should resolve to CanvasAction::Quit (seq=true), got {:?}",
             res
         );
@@ -870,17 +881,92 @@ mod tests {
         b.insert(ListAction::JumpToTop, vec![KeyCombo::parse("g g").unwrap()]);
         let e = KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE);
         assert_eq!(
-            m.resolve(e, &b, true),
+            m.resolve(e, &b, true, false),
             MatchOutcome::Pending
         );
         assert_eq!(m.pending_display().as_deref(), Some("g"));
         assert_eq!(
-            m.resolve(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE), &b, true),
-            MatchOutcome::Matched(ListAction::JumpToTop)
+            m.resolve(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE), &b, true, false),
+            MatchOutcome::Matched(ListAction::JumpToTop, None)
         );
         assert_eq!(m.pending_display(), None);
     }
 
+    #[test]
+    fn test_count_prefix_simple() {
+        let mut matcher = KeyMatcher::new();
+        let mut bindings: HashMap<ListAction, Vec<KeyCombo>> = HashMap::new();
+        bindings.insert(ListAction::MoveDown, vec![KeyCombo::simple(KeyCode::Char('j'))]);
+
+        // Type '3' — should be consumed as count prefix
+        let e1 = KeyEvent::new(KeyCode::Char('3'), KeyModifiers::NONE);
+        let r1 = matcher.resolve(e1, &bindings, true, true);
+        assert_eq!(r1, MatchOutcome::Pending);
+        assert_eq!(matcher.count, Some(3));
+
+        // Type 'j' — should match MoveDown with count 3
+        let e2 = KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE);
+        let r2 = matcher.resolve(e2, &bindings, true, true);
+        assert_eq!(r2, MatchOutcome::Matched(ListAction::MoveDown, Some(3)));
+        assert_eq!(matcher.count, None); // consumed
+    }
+
+    #[test]
+    fn test_count_prefix_zero_alone() {
+        let mut matcher = KeyMatcher::new();
+        let mut bindings: HashMap<ListAction, Vec<KeyCombo>> = HashMap::new();
+        bindings.insert(ListAction::Help, vec![KeyCombo::simple(KeyCode::Char('0'))]);
+
+        // '0' alone should NOT be consumed as count (bare '0' is not a count digit)
+        let e = KeyEvent::new(KeyCode::Char('0'), KeyModifiers::NONE);
+        let r = matcher.resolve(e, &bindings, true, true);
+        assert_eq!(r, MatchOutcome::Matched(ListAction::Help, None));
+        assert_eq!(matcher.count, None);
+    }
+
+    #[test]
+    fn test_count_prefix_multi_digit() {
+        let mut matcher = KeyMatcher::new();
+        let mut bindings: HashMap<ListAction, Vec<KeyCombo>> = HashMap::new();
+        bindings.insert(ListAction::MoveDown, vec![KeyCombo::simple(KeyCode::Char('j'))]);
+
+        // Type '1' then '0' — accumulates to 10
+        let e1 = KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE);
+        let r1 = matcher.resolve(e1, &bindings, true, true);
+        assert_eq!(r1, MatchOutcome::Pending);
+        assert_eq!(matcher.count, Some(1));
+
+        let e2 = KeyEvent::new(KeyCode::Char('0'), KeyModifiers::NONE);
+        let r2 = matcher.resolve(e2, &bindings, true, true);
+        assert_eq!(r2, MatchOutcome::Pending);
+        assert_eq!(matcher.count, Some(10));
+
+        // Type 'j' — should match with count 10
+        let e3 = KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE);
+        let r3 = matcher.resolve(e3, &bindings, true, true);
+        assert_eq!(r3, MatchOutcome::Matched(ListAction::MoveDown, Some(10)));
+        assert_eq!(matcher.count, None);
+    }
+
+    #[test]
+    fn test_count_prefix_disabled() {
+        let mut matcher = KeyMatcher::new();
+        let mut bindings: HashMap<ListAction, Vec<KeyCombo>> = HashMap::new();
+        bindings.insert(ListAction::Quit, vec![KeyCombo::simple(KeyCode::Char('q'))]);
+
+        // With counts_enabled=false, 'q' should match normally (no count)
+        let e = KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE);
+        let r = matcher.resolve(e, &bindings, true, false);
+        assert_eq!(r, MatchOutcome::Matched(ListAction::Quit, None));
+        assert_eq!(matcher.count, None);
+
+        // With counts_enabled=false, digits should pass through (not consumed)
+        let mut bindings2: HashMap<ListAction, Vec<KeyCombo>> = HashMap::new();
+        bindings2.insert(ListAction::MoveDown, vec![KeyCombo::simple(KeyCode::Char('j'))]);
+        let e2 = KeyEvent::new(KeyCode::Char('3'), KeyModifiers::NONE);
+        let r2 = matcher.resolve(e2, &bindings2, true, false);
+        assert_eq!(r2, MatchOutcome::NoMatch); // '3' is not bound
+    }
     #[test]
     fn test_per_preset_path_load() {
         let dir = std::env::temp_dir().join("clin_test_preset");

@@ -526,8 +526,9 @@ pub fn handle_pinstar_event(
     }
 
     let seq = config.sequences_enabled();
-    match keybinds.resolve_canvas(&mut state.seq_matcher, key, seq) {
-        crate::keybinds::MatchOutcome::Matched(action) => match action {
+    let counts = config.counts_enabled();
+    match keybinds.resolve_canvas(&mut state.seq_matcher, key, seq, counts) {
+        crate::keybinds::MatchOutcome::Matched(action, count) => match action {
             CanvasAction::Quit => {
                 if state.connection_source_id.is_some() {
                     state.connection_source_id = None;
@@ -545,20 +546,32 @@ pub fn handle_pinstar_event(
                 state.zoom_out();
             }
             CanvasAction::MoveLeft => {
-                state.select_node_in_direction(-1.0, 0.0);
-                state.center_on_selected();
+                let n = count.unwrap_or(1) as usize;
+                for _ in 0..n {
+                    state.select_node_in_direction(-1.0, 0.0);
+                    state.center_on_selected();
+                }
             }
             CanvasAction::MoveRight => {
-                state.select_node_in_direction(1.0, 0.0);
-                state.center_on_selected();
+                let n = count.unwrap_or(1) as usize;
+                for _ in 0..n {
+                    state.select_node_in_direction(1.0, 0.0);
+                    state.center_on_selected();
+                }
             }
             CanvasAction::MoveUp => {
-                state.select_node_in_direction(0.0, -1.0);
-                state.center_on_selected();
+                let n = count.unwrap_or(1) as usize;
+                for _ in 0..n {
+                    state.select_node_in_direction(0.0, -1.0);
+                    state.center_on_selected();
+                }
             }
             CanvasAction::MoveDown => {
-                state.select_node_in_direction(0.0, 1.0);
-                state.center_on_selected();
+                let n = count.unwrap_or(1) as usize;
+                for _ in 0..n {
+                    state.select_node_in_direction(0.0, 1.0);
+                    state.center_on_selected();
+                }
             }
             CanvasAction::ZoomIn => {
                 state.zoom_in();
@@ -618,6 +631,6 @@ pub fn handle_pinstar_event(
         crate::keybinds::MatchOutcome::Pending => return true,
         crate::keybinds::MatchOutcome::NoMatch => return false,
     }
-
+    
     true
 }

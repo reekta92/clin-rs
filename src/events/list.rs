@@ -111,8 +111,9 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     }
 
     let seq = app.config.sequences_enabled();
-    match app.keybinds.resolve_list(&mut app.seq_matcher, key, seq) {
-        crate::keybinds::MatchOutcome::Matched(action) => match action {
+    let counts = app.config.counts_enabled();
+    match app.keybinds.resolve_list(&mut app.seq_matcher, key, seq, counts) {
+        crate::keybinds::MatchOutcome::Matched(action, count) => match action {
             ListAction::CycleFocus => {
                 if app.list.notes_layout == crate::config::NotesLayout::Grid {
                     app.cycle_grid_tab();
@@ -169,65 +170,30 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 return false;
             }
             ListAction::MoveLeft => {
-                let is_grid = app.list.notes_layout == crate::config::NotesLayout::Grid;
-                if is_grid {
-                    app.list.visual_index = app.list.visual_index.saturating_sub(1);
-                    app.request_preview_update();
-                } else {
-                    app.collapse_selected_folder();
+                let n = count.unwrap_or(1) as usize;
+                for _ in 0..n {
+                    app.move_left();
                 }
                 return false;
             }
             ListAction::MoveRight => {
-                let is_grid = app.list.notes_layout == crate::config::NotesLayout::Grid;
-                let len = app.list.visual_list.len();
-                if is_grid {
-                    if len > 0 {
-                        app.list.visual_index = (app.list.visual_index + 1).min(len - 1);
-                    }
-                    app.request_preview_update();
-                } else {
-                    app.expand_selected_folder();
+                let n = count.unwrap_or(1) as usize;
+                for _ in 0..n {
+                    app.move_right();
                 }
                 return false;
             }
             ListAction::MoveDown => {
-                let is_grid = app.list.notes_layout == crate::config::NotesLayout::Grid;
-                let cols = if is_grid {
-                    app.list.grid_columns.max(1)
-                } else {
-                    1
-                };
-                let len = app.list.visual_list.len();
-                if is_grid {
-                    let next = app.list.visual_index + cols;
-                    if next < len {
-                        app.list.visual_index = next;
-                    } else if app.list.visual_index / cols < (len.saturating_sub(1)) / cols {
-                        app.list.visual_index = len.saturating_sub(1);
-                    }
-                    app.request_preview_update();
-                } else if app.list.visual_index < len.saturating_sub(1) {
-                    app.list.visual_index += 1;
-                    app.request_preview_update();
+                let n = count.unwrap_or(1) as usize;
+                for _ in 0..n {
+                    app.move_down();
                 }
                 return false;
             }
             ListAction::MoveUp => {
-                let is_grid = app.list.notes_layout == crate::config::NotesLayout::Grid;
-                let cols = if is_grid {
-                    app.list.grid_columns.max(1)
-                } else {
-                    1
-                };
-                if is_grid {
-                    if app.list.visual_index >= cols {
-                        app.list.visual_index -= cols;
-                    }
-                    app.request_preview_update();
-                } else if app.list.visual_index > 0 {
-                    app.list.visual_index -= 1;
-                    app.request_preview_update();
+                let n = count.unwrap_or(1) as usize;
+                for _ in 0..n {
+                    app.move_up();
                 }
                 return false;
             }
@@ -301,19 +267,25 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 return false;
             }
             ListAction::JumpToTop => {
-                app.jump_to_top();
+                app.jump_to(count, true);
                 return false;
             }
             ListAction::JumpToBottom => {
-                app.jump_to_bottom();
+                app.jump_to(count, false);
                 return false;
             }
             ListAction::PageUp => {
-                app.page_up();
+                let n = count.unwrap_or(1) as usize;
+                for _ in 0..n {
+                    app.page_up();
+                }
                 return false;
             }
             ListAction::PageDown => {
-                app.page_down();
+                let n = count.unwrap_or(1) as usize;
+                for _ in 0..n {
+                    app.page_down();
+                }
                 return false;
             }
             ListAction::OpenTrash => {

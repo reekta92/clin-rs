@@ -47,50 +47,63 @@ fn handle_normal_input(
     config: &ClinConfig,
 ) -> InputResult {
     let seq = config.sequences_enabled();
-    match keybinds.resolve_backup(&mut state.seq_matcher, event, seq) {
-        crate::keybinds::MatchOutcome::Matched(action) => match action {
+    let counts = config.counts_enabled();
+    match keybinds.resolve_backup(&mut state.seq_matcher, event, seq, counts) {
+        crate::keybinds::MatchOutcome::Matched(action, count) => match action {
             BackupAction::Back => return InputResult::Back,
             BackupAction::MoveDown => {
-                if state.selected_section == BackupSection::History {
-                    state.history_scroll = state.history_scroll.saturating_add(1);
-                    let visible = state.last_content_height.saturating_sub(2).max(1) as usize;
-                    let total = state.commits.len() + 1;
-                    let max = total.saturating_sub(visible);
-                    state.history_scroll = state.history_scroll.min(max as u16);
-                } else if !state.selectable_files.is_empty() {
-                    state.selected_index =
-                        (state.selected_index + 1) % state.selectable_files.len();
-                    state.selected_file =
-                        Some(state.selectable_files[state.selected_index].clone());
-                    state.load_selected_diff();
-                    state.adjust_scroll_to_selection();
+                let n = count.unwrap_or(1) as usize;
+                for _ in 0..n {
+                    if state.selected_section == BackupSection::History {
+                        state.history_scroll = state.history_scroll.saturating_add(1);
+                        let visible = state.last_content_height.saturating_sub(2).max(1) as usize;
+                        let total = state.commits.len() + 1;
+                        let max = total.saturating_sub(visible);
+                        state.history_scroll = state.history_scroll.min(max as u16);
+                    } else if !state.selectable_files.is_empty() {
+                        state.selected_index =
+                            (state.selected_index + 1) % state.selectable_files.len();
+                        state.selected_file =
+                            Some(state.selectable_files[state.selected_index].clone());
+                        state.load_selected_diff();
+                        state.adjust_scroll_to_selection();
+                    }
                 }
             }
             BackupAction::MoveUp => {
-                if state.selected_section == BackupSection::History {
-                    state.history_scroll = state.history_scroll.saturating_sub(1);
-                } else if !state.selectable_files.is_empty() {
-                    state.selected_index = if state.selected_index == 0 {
-                        state.selectable_files.len() - 1
-                    } else {
-                        state.selected_index - 1
-                    };
-                    state.selected_file =
-                        Some(state.selectable_files[state.selected_index].clone());
-                    state.load_selected_diff();
-                    state.adjust_scroll_to_selection();
+                let n = count.unwrap_or(1) as usize;
+                for _ in 0..n {
+                    if state.selected_section == BackupSection::History {
+                        state.history_scroll = state.history_scroll.saturating_sub(1);
+                    } else if !state.selectable_files.is_empty() {
+                        state.selected_index = if state.selected_index == 0 {
+                            state.selectable_files.len() - 1
+                        } else {
+                            state.selected_index - 1
+                        };
+                        state.selected_file =
+                            Some(state.selectable_files[state.selected_index].clone());
+                        state.load_selected_diff();
+                        state.adjust_scroll_to_selection();
+                    }
                 }
             }
             BackupAction::ScrollDiffDown => {
-                state.diff_scroll = state.diff_scroll.saturating_add(10);
-                let max = state
-                    .diff_lines
-                    .len()
-                    .saturating_sub(state.last_diff_height as usize);
-                state.diff_scroll = state.diff_scroll.min(max as u16);
+                let n = count.unwrap_or(1) as usize;
+                for _ in 0..n {
+                    state.diff_scroll = state.diff_scroll.saturating_add(10);
+                    let max = state
+                        .diff_lines
+                        .len()
+                        .saturating_sub(state.last_diff_height as usize);
+                    state.diff_scroll = state.diff_scroll.min(max as u16);
+                }
             }
             BackupAction::ScrollDiffUp => {
-                state.diff_scroll = state.diff_scroll.saturating_sub(10);
+                let n = count.unwrap_or(1) as usize;
+                for _ in 0..n {
+                    state.diff_scroll = state.diff_scroll.saturating_sub(10);
+                }
             }
             BackupAction::Refresh => return InputResult::Refresh,
             BackupAction::EnterCommit => {
@@ -116,7 +129,6 @@ fn handle_normal_input(
                 if state.selected_section == BackupSection::Status
                     && let Some(file) = state.selected_file.clone()
                 {
-                    // only meaningful for unstaged/untracked files
                     let is_unstaged = state.status.as_ref().is_some_and(|s| {
                         s.unstaged.iter().any(|f| f.path == file) || s.untracked.contains(&file)
                     });

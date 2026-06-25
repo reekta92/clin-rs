@@ -85,17 +85,24 @@ pub fn handle_input(
     config: &ClinConfig,
 ) -> InputResult {
     let seq = config.sequences_enabled();
-    match keybinds.resolve_content_tree(&mut state.seq_matcher, key, seq) {
-        crate::keybinds::MatchOutcome::Matched(action) => match action {
+    let counts = config.counts_enabled();
+    match keybinds.resolve_content_tree(&mut state.seq_matcher, key, seq, counts) {
+        crate::keybinds::MatchOutcome::Matched(action, count) => match action {
             ContentTreeAction::Back => return InputResult::Back,
             ContentTreeAction::Open => return InputResult::Open,
             ContentTreeAction::Help => return InputResult::Help,
             ContentTreeAction::MoveUp => {
-                state.move_up();
+                let n = count.unwrap_or(1) as usize;
+                for _ in 0..n {
+                    state.move_up();
+                }
                 return InputResult::None;
             }
             ContentTreeAction::MoveDown => {
-                state.move_down();
+                let n = count.unwrap_or(1) as usize;
+                for _ in 0..n {
+                    state.move_down();
+                }
                 return InputResult::None;
             }
             ContentTreeAction::ToggleCollapse => {

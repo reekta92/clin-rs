@@ -312,13 +312,88 @@ impl App {
     }
 
     pub fn jump_to_top(&mut self) {
-        self.list.visual_index = 0;
-        self.request_preview_update();
+        self.jump_to(None, true);
     }
 
     pub fn jump_to_bottom(&mut self) {
-        self.list.visual_index = self.list.visual_list.len().saturating_sub(1);
+        self.jump_to(None, false);
+    }
+
+    /// Jump to list top (top=true) or bottom (top=false). With a count, jump to
+    /// absolute 0-based index `count - 1` instead (vim `nG`/`ngg` parity).
+    pub fn jump_to(&mut self, count: Option<u32>, top: bool) {
+        let len = self.list.visual_list.len();
+        let idx = match count {
+            Some(c) => (c as usize).saturating_sub(1).min(len.saturating_sub(1)),
+            None if top => 0,
+            None => len.saturating_sub(1),
+        };
+        self.list.visual_index = idx;
         self.request_preview_update();
+    }
+
+    /// Single-step list directional movements (grid-aware).
+    pub fn move_up(&mut self) {
+        let is_grid = self.list.notes_layout == crate::config::NotesLayout::Grid;
+        let cols = if is_grid {
+            self.list.grid_columns.max(1)
+        } else {
+            1
+        };
+        if is_grid {
+            if self.list.visual_index >= cols {
+                self.list.visual_index -= cols;
+            }
+            self.request_preview_update();
+        } else if self.list.visual_index > 0 {
+            self.list.visual_index -= 1;
+            self.request_preview_update();
+        }
+    }
+
+    pub fn move_down(&mut self) {
+        let is_grid = self.list.notes_layout == crate::config::NotesLayout::Grid;
+        let cols = if is_grid {
+            self.list.grid_columns.max(1)
+        } else {
+            1
+        };
+        let len = self.list.visual_list.len();
+        if is_grid {
+            let next = self.list.visual_index + cols;
+            if next < len {
+                self.list.visual_index = next;
+            } else if self.list.visual_index / cols < (len.saturating_sub(1)) / cols {
+                self.list.visual_index = len.saturating_sub(1);
+            }
+            self.request_preview_update();
+        } else if self.list.visual_index < len.saturating_sub(1) {
+            self.list.visual_index += 1;
+            self.request_preview_update();
+        }
+    }
+
+    pub fn move_left(&mut self) {
+        let is_grid = self.list.notes_layout == crate::config::NotesLayout::Grid;
+        if is_grid {
+            self.list.visual_index = self.list.visual_index.saturating_sub(1);
+            self.request_preview_update();
+        } else {
+            self.collapse_selected_folder();
+        }
+    }
+
+    pub fn move_right(&mut self) {
+        let is_grid = self.list.notes_layout == crate::config::NotesLayout::Grid;
+        let len = self.list.visual_list.len();
+        if is_grid {
+            if len > 0 {
+                self.list.visual_index = (self.list.visual_index + 1).min(len - 1);
+            }
+            self.request_preview_update();
+        } else {
+            self.expand_selected_folder();
+        }
     }
 
     pub fn page_up(&mut self) {
@@ -330,4 +405,5 @@ impl App {
         let max_index = self.list.visual_list.len().saturating_sub(1);
         self.list.visual_index = (self.list.visual_index + self.list.page_size).min(max_index);
         self.request_preview_update();
-    }}
+    }
+}

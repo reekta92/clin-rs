@@ -34,20 +34,33 @@ pub fn handle_graph_keys(
     let mut guard = state.write().unwrap_or_else(|e| e.into_inner());
 
     let seq = config.sequences_enabled();
-    match keybinds.resolve_graph(seq_matcher, key, seq) {
-        crate::keybinds::MatchOutcome::Matched(action) => match action {
+    let counts = config.counts_enabled();
+    match keybinds.resolve_graph(seq_matcher, key, seq, counts) {
+        crate::keybinds::MatchOutcome::Matched(action, count) => match action {
             GraphAction::Quit => return Some(GraphInputAction::Quit),
             GraphAction::PanUp => {
-                select_in_direction(&mut guard, 0.0, 1.0);
+                let n = count.unwrap_or(1) as usize;
+                for _ in 0..n {
+                    select_in_direction(&mut guard, 0.0, 1.0);
+                }
             }
             GraphAction::PanDown => {
-                select_in_direction(&mut guard, 0.0, -1.0);
+                let n = count.unwrap_or(1) as usize;
+                for _ in 0..n {
+                    select_in_direction(&mut guard, 0.0, -1.0);
+                }
             }
             GraphAction::PanLeft => {
-                select_in_direction(&mut guard, -1.0, 0.0);
+                let n = count.unwrap_or(1) as usize;
+                for _ in 0..n {
+                    select_in_direction(&mut guard, -1.0, 0.0);
+                }
             }
             GraphAction::PanRight => {
-                select_in_direction(&mut guard, 1.0, 0.0);
+                let n = count.unwrap_or(1) as usize;
+                for _ in 0..n {
+                    select_in_direction(&mut guard, 1.0, 0.0);
+                }
             }
             GraphAction::ZoomIn => {
                 guard.viewport.zoom_in(config.graf.interaction.zoom_factor);

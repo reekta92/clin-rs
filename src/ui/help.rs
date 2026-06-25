@@ -244,6 +244,7 @@ pub fn help_text_for_tab(
     tab: HelpTab,
     keybinds: &Keybinds,
     theme: &AppThemeColors,
+    config: &crate::config::ClinConfig,
 ) -> Vec<HelpRow> {
     match tab {
         HelpTab::Notes => notes_help_text(keybinds, theme),
@@ -254,7 +255,7 @@ pub fn help_text_for_tab(
         HelpTab::Backup => backup_help_text(keybinds, theme),
         HelpTab::Templates => templates_help_text(keybinds, theme),
         HelpTab::ContentTree => content_tree_help_text(keybinds, theme),
-        HelpTab::About => about_help_text(keybinds, theme),
+        HelpTab::About => about_help_text(keybinds, theme, config),
     }
 }
 
@@ -731,10 +732,10 @@ fn templates_help_text(
     rows.push(help_item_dyn("Variable: zero-padded day", Some("{day}"), theme));
     rows
 }
-
 fn about_help_text(
     _keybinds: &Keybinds,
     theme: &AppThemeColors,
+    config: &crate::config::ClinConfig,
 ) -> Vec<HelpRow> {
     let mut rows = Vec::new();
     rows.push(help_raw_row(
@@ -761,6 +762,18 @@ fn about_help_text(
         theme,
     ));
     rows.push(help_empty_row());
+
+    if config.counts_enabled() {
+        rows.push(help_heading_row("Count Prefix", theme));
+        rows.push(help_empty_row());
+        rows.push(help_item_dyn(
+            "Type a number before a motion key to repeat it N times (e.g. 3j, 11k, 5G)",
+            None,
+            theme,
+        ));
+        rows.push(help_empty_row());
+    }
+
     rows.push(help_heading_row("Configuration", theme));
     rows.push(help_empty_row());
     rows.push(help_item_dyn(

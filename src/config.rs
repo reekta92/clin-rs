@@ -957,6 +957,11 @@ impl ClinConfig {
     pub fn sequences_enabled(&self) -> bool {
         self.core.enable_key_sequences || self.core.keybind_preset.uses_sequences()
     }
+    /// Returns true if count-prefix is enabled for the active keybind preset
+    /// (Vim and Helix only — matching `:q`/`gg`/`ge` count semantics).
+    pub fn counts_enabled(&self) -> bool {
+        matches!(self.core.keybind_preset, KeybindPreset::Vim | KeybindPreset::Helix)
+    }
 
     pub fn config_path() -> Result<PathBuf> {
         if let Some(p) = CONFIG_PATH_OVERRIDE.get().and_then(|opt| opt.as_ref()) {

@@ -1119,6 +1119,7 @@ impl App {
                 tab,
                 &self.keybinds,
                 &self.app_theme,
+                &self.config,
             ));
         }
         self.list
