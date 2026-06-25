@@ -460,6 +460,10 @@ impl Default for Keybinds {
             DrawAction::TextEditorCancel,
             vec![KeyCombo::simple(KeyCode::Esc)],
         );
+        draw.insert(
+            DrawAction::ToggleGrid,
+            vec![KeyCombo::shift(KeyCode::Char('G'))],
+        );
 
         let mut canvas = HashMap::new();
         canvas.insert(

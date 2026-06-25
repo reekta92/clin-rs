@@ -5,6 +5,7 @@ use crate::text_edit::apply_text_shortcuts;
 use crossterm::event::{Event, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::{Constraint, Direction, Layout, Margin};
 use ratatui_textarea::TextArea;
+use unicode_width::UnicodeWidthStr;
 
 pub fn handle_event(
     ev: Event,
@@ -90,6 +91,10 @@ pub fn handle_event(
                DrawAction::Help => {
                    return Ok(Some(DrawEventAction::OpenHelp));
                }
+                DrawAction::ToggleGrid => {
+                    app.show_grid = !app.show_grid;
+                    return Ok(None);
+                }
                 _ => {
                     if keybinds.matches_draw(DrawAction::Quit, &k) {
                         return Ok(Some(DrawEventAction::Quit));
@@ -102,7 +107,7 @@ pub fn handle_event(
     }
 
     match ev {
-        Event::Mouse(mouse_event) => handle_mouse(mouse_event, app),
+        Event::Mouse(mouse_event) => handle_mouse(mouse_event, app, config),
         _ => Ok(None),
     }
 }
@@ -123,7 +128,7 @@ fn cycle_shape_type(app: &mut DrawAppState, delta: i32) {
     app.active_shape_type = shapes[next_idx];
 }
 
-fn handle_mouse(ev: MouseEvent, app: &mut DrawAppState) -> anyhow::Result<Option<DrawEventAction>> {
+fn handle_mouse(ev: MouseEvent, app: &mut DrawAppState, config: &crate::config::ClinConfig) -> anyhow::Result<Option<DrawEventAction>> {
     let area = app.last_area;
 
     if app.show_shape_selector {
@@ -164,20 +169,38 @@ fn handle_mouse(ev: MouseEvent, app: &mut DrawAppState) -> anyhow::Result<Option
 
     match ev.kind {
         MouseEventKind::Down(MouseButton::Left) => {
-            let toolbar_width = 42;
+            let tools_for_click = [
+                (DrawTool::Draw,   crate::ui::get_icon("\u{f040}", "\u{270f}", config.ui.icon_mode).width(), 4),
+                (DrawTool::Shape,  crate::ui::get_icon("\u{f0c8}", "\u{25a0}", config.ui.icon_mode).width(), 5),
+                (DrawTool::Text,   crate::ui::get_icon("\u{f031}", "\u{1f4dd}", config.ui.icon_mode).width(), 4),
+                (DrawTool::Erase,  crate::ui::get_icon("\u{f1f8}", "\u{1f5d1}", config.ui.icon_mode).width(), 5),
+            ];
+
+            let separator: u16 = 3;
+            let toolbar_width: u16 = tools_for_click.iter()
+                .map(|(_, icon_w, name_w)| {
+                    let w = if *icon_w == 0 { *name_w as u16 + 2 } else { *icon_w as u16 + 1 + *name_w as u16 + 2 };
+                    w
+                })
+                .sum::<u16>() + (tools_for_click.len() - 1) as u16 * separator;
+
             let tx = area.width.saturating_sub(toolbar_width) / 2;
             let ty = area.height.saturating_sub(1);
 
             if ev.row == ty && ev.column >= tx && ev.column < tx + toolbar_width {
                 let col_rel = ev.column - tx;
-                if col_rel < 10 {
-                    app.active_tool = DrawTool::Draw;
-                } else if col_rel < 21 {
-                    app.show_shape_selector = true;
-                } else if col_rel < 32 {
-                    app.active_tool = DrawTool::Text;
-                } else {
-                    app.active_tool = DrawTool::Erase;
+                let mut offset: u16 = 0;
+                for (tool, icon_w, name_w) in &tools_for_click {
+                    let w = if *icon_w == 0 { *name_w as u16 + 2 } else { *icon_w as u16 + 1 + *name_w as u16 + 2 };
+                    if col_rel >= offset && col_rel < offset + w {
+                        if *tool == DrawTool::Shape {
+                            app.show_shape_selector = true;
+                        } else {
+                            app.active_tool = *tool;
+                        }
+                        break;
+                    }
+                    offset += w + separator;
                 }
                 return Ok(None);
             }

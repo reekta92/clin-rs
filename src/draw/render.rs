@@ -8,6 +8,7 @@ use ratatui::symbols::Marker;
 use ratatui::text::{Line as TuiLine, Span};
 use ratatui::widgets::canvas::{Canvas, Context, Line, Rectangle};
 use ratatui::widgets::{Block, List, ListItem, Paragraph};
+use unicode_width::UnicodeWidthStr;
 
 pub fn draw_canvas(frame: &mut Frame, app: &DrawAppState, area: Rect, config: &crate::config::ClinConfig) {
     let x_bounds = [
@@ -26,6 +27,32 @@ pub fn draw_canvas(frame: &mut Frame, app: &DrawAppState, area: Rect, config: &c
         .x_bounds(x_bounds)
         .y_bounds(y_bounds)
         .paint(|ctx| {
+            if app.show_grid {
+                let mut grid_step_x = 100.0;
+                let mut grid_step_y = 100.0;
+                while grid_step_y * app.viewport.zoom < 6.0 {
+                    grid_step_x *= 2.0;
+                    grid_step_y *= 2.0;
+                }
+                let start_x = (x_bounds[0] / grid_step_x).floor() * grid_step_x;
+                let end_x = (x_bounds[1] / grid_step_x).ceil() * grid_step_x;
+                let start_y = (y_bounds[0] / grid_step_y).floor() * grid_step_y;
+                let end_y = (y_bounds[1] / grid_step_y).ceil() * grid_step_y;
+                let mut cur_x = start_x;
+                while cur_x <= end_x {
+                    let mut cur_y = start_y;
+                    while cur_y <= end_y {
+                        ctx.print(
+                            cur_x,
+                            cur_y,
+                            ratatui::text::Line::from("·")
+                                .style(Style::default().fg(app.theme.muted)),
+                        );
+                        cur_y += grid_step_y;
+                    }
+                    cur_x += grid_step_x;
+                }
+            }
             for element in &app.data.elements {
                 match element {
                     DrawElement::Stroke(stroke) => {
@@ -57,7 +84,18 @@ pub fn draw_canvas(frame: &mut Frame, app: &DrawAppState, area: Rect, config: &c
 
     frame.render_widget(canvas, area);
 
-    let toolbar_width = 42;
+    let im = config.ui.icon_mode;
+    let tools = [
+        (DrawTool::Draw, crate::ui::get_icon("\u{f040}", "\u{270f}", im), "Draw"),
+        (DrawTool::Shape, crate::ui::get_icon("\u{f0c8}", "\u{25a0}", im), "Shape"),
+        (DrawTool::Text, crate::ui::get_icon("\u{f031}", "\u{1f4dd}", im), "Text"),
+        (DrawTool::Erase, crate::ui::get_icon("\u{f1f8}", "\u{1f5d1}", im), "Erase"),
+    ];
+    let separator_width: u16 = 3;
+    let toolbar_width: u16 = tools.iter().map(|(_, icon, name)| {
+        let label_w = if icon.is_empty() { name.width() + 2 } else { icon.width() + 1 + name.width() + 2 };
+        label_w as u16
+    }).sum::<u16>() + (tools.len() - 1) as u16 * separator_width;
     let toolbar_area = Rect::new(
         area.x + area.width.saturating_sub(toolbar_width) / 2,
         area.y + area.height.saturating_sub(2),
@@ -65,19 +103,16 @@ pub fn draw_canvas(frame: &mut Frame, app: &DrawAppState, area: Rect, config: &c
         1,
     );
 
-    let im = config.ui.icon_mode;
-    let tools = [
-        (DrawTool::Draw, crate::ui::get_icon("\u{f040}", "\u{270f}", im)),
-        (DrawTool::Shape, crate::ui::get_icon("\u{f0c8}", "\u{25a0}", im)),
-        (DrawTool::Text, crate::ui::get_icon("\u{f031}", "\u{1f4dd}", im)),
-        (DrawTool::Erase, crate::ui::get_icon("\u{f1f8}", "\u{1f5d1}", im)),
-    ];
-
     let mut spans = Vec::new();
-    for (i, (tool, label)) in tools.iter().enumerate() {
+    for (i, (tool, icon, name)) in tools.iter().enumerate() {
         if i > 0 {
             spans.push(Span::raw("   "));
         }
+        let label = if icon.is_empty() {
+            name.to_string()
+        } else {
+            format!("{} {}", icon, name)
+        };
         let style = if app.active_tool == *tool {
             Style::default()
                 .fg(app.theme.highlight_fg)
@@ -86,7 +121,14 @@ pub fn draw_canvas(frame: &mut Frame, app: &DrawAppState, area: Rect, config: &c
         } else {
             Style::default().fg(app.theme.fg)
         };
-        spans.push(Span::styled(label.to_string(), style));
+        let spacer = if app.active_tool == *tool {
+            Style::default().bg(app.theme.highlight_bg)
+        } else {
+            Style::default()
+        };
+        spans.push(Span::styled(" ", spacer));
+        spans.push(Span::styled(label, style));
+        spans.push(Span::styled(" ", spacer));
     }
 
     frame.render_widget(
@@ -105,6 +147,7 @@ pub fn draw_canvas(frame: &mut Frame, app: &DrawAppState, area: Rect, config: &c
         (app.keybinds.display_draw(DrawAction::ToggleShapeSelector), "shape"),
         (app.keybinds.display_draw(DrawAction::SelectTextTool), "text"),
         (app.keybinds.display_draw(DrawAction::SelectEraseTool), "erase"),
+        (app.keybinds.display_draw(DrawAction::ToggleGrid), "grid"),
         (app.keybinds.display_draw(DrawAction::Quit), "back"),
     ];
     let hint_line = crate::ui::format_keybind_hints(&app.theme, &hints_items);

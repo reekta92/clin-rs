@@ -119,6 +119,7 @@ pub enum DrawAction {
     ShapeSelectorCancel,
     TextEditorConfirm,
     TextEditorCancel,
+    ToggleGrid,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

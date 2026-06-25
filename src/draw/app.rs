@@ -33,6 +33,7 @@ pub struct DrawAppState {
     pub creation_origin: Option<(f64, f64)>,
     pub preview_element: Option<crate::draw::state::DrawElement>,
     pub keybinds: Keybinds,
+    pub show_grid: bool,
     pub seq_matcher: crate::keybinds::KeyMatcher,
 }
 
@@ -70,6 +71,7 @@ impl DrawAppState {
             active_shape_type: crate::draw::state::DrawShapeType::Rect,
             show_shape_selector: false,
             creation_origin: None,
+            show_grid: false,
             preview_element: None,
             keybinds,
             seq_matcher,
