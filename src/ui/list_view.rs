@@ -27,6 +27,29 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         ])
         .split(area);
     let title = if app.layout_edit { "Notes - Editing Layout" } else { "Notes" };
+    let in_select_mode = app.list.list_mode == crate::list_view::ListMode::Select
+        || app.list.tag_to_assign.is_some();
+    if in_select_mode {
+        let mode_label = if app.list.tag_to_assign.is_some() {
+            "TAG MODE"
+        } else {
+            "SELECT MODE"
+        };
+        let badge_text = format!(
+            " {} \u{2014} {} selected ",
+            mode_label,
+            app.list.selected_indices.len()
+        );
+        let bar = Paragraph::new(Span::styled(
+            badge_text,
+            Style::default()
+                .fg(app.app_theme.highlight_fg)
+                .bg(app.app_theme.accent)
+                .add_modifier(Modifier::BOLD),
+        ))
+        .alignment(Alignment::Center);
+        frame.render_widget(bar, chunks[0]);
+    } else 
     if app.preview_fullscreen {
         let preview_info = get_preview_info(app);
         draw_view_title_bar(frame, chunks[0], title, &app.app_theme, preview_info, Some(app.status.as_ref()), None);
@@ -200,6 +223,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     GRID_TILE_H,
                 );
                 let is_selected = vi == app.list.visual_index;
+                let in_selection = app.list.selected_indices.contains(&vi);
 
                 // --- resolve (icon char, glyph color, display name): SAME mapping the old code used ---
                 let item = &app.list.visual_list[vi];
@@ -274,19 +298,27 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
 
                 // --- tile border (plain border = "button") ---
                 let mut block = Block::default().borders(Borders::ALL);
-                if is_selected {
-                    block = block.border_style(Style::default().fg(app.app_theme.highlight_bg));
-                } else {
-                    block = block.border_style(Style::default().fg(app.app_theme.border));
+                // Selected (in multi-select set) tiles get an accent-filled interior; the
+                // cursor tile keeps its highlight_bg border on top of any fill so a tile
+                // that is both selected and cursor stays distinguishable.
+                if in_selection {
+                    block = block.style(Style::default().bg(app.app_theme.accent));
                 }
+                let border_fg = if is_selected {
+                    app.app_theme.highlight_bg
+                } else if in_selection {
+                    app.app_theme.accent
+                } else {
+                    app.app_theme.border
+                };
+                block = block.border_style(Style::default().fg(border_fg));
                 let inner = block.inner(tile_rect);
                 block.render(tile_rect, buf); // paints border
-                let icon_style = if is_selected {
-                    Style::default()
-                        .fg(glyph_color)
-                        .add_modifier(Modifier::BOLD)
+                let icon_fg = if in_selection { app.app_theme.highlight_fg } else { glyph_color };
+                let icon_style = if is_selected || in_selection {
+                    Style::default().fg(icon_fg).add_modifier(Modifier::BOLD)
                 } else {
-                    Style::default().fg(glyph_color)
+                    Style::default().fg(icon_fg)
                 };
                 let inner_w = inner.width as usize;
                 if app.config.ui.icon_mode == crate::config::IconMode::None {
@@ -314,12 +346,13 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 if has_tags {
                     let tag_x = inner.x + inner.width.saturating_sub(1);
                     if let Some(cell) = buf.cell_mut((tag_x, inner.y)) {
-                        let tag_style = if is_selected {
+                        let tag_fg = if in_selection { app.app_theme.highlight_fg } else { app.app_theme.tag };
+                        let tag_style = if is_selected || in_selection {
                             Style::default()
-                                .fg(app.app_theme.tag)
+                                .fg(tag_fg)
                                 .add_modifier(Modifier::BOLD)
                         } else {
-                            Style::default().fg(app.app_theme.tag)
+                            Style::default().fg(tag_fg)
                         };
                         cell.set_char(crate::ui::get_char('\u{f02b}', '\u{1f3f7}', app.config.ui.icon_mode)).set_style(tag_style);
                     }
@@ -334,8 +367,12 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 }
                 let pad = inner_w.saturating_sub(chars.len());
                 let left = pad / 2;
-                let name_style = if is_selected {
-                    Style::default().add_modifier(Modifier::BOLD)
+                let name_style = if is_selected || in_selection {
+                    if in_selection {
+                        Style::default().fg(app.app_theme.highlight_fg).add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default().add_modifier(Modifier::BOLD)
+                    }
                 } else {
                     Style::default()
                 };
@@ -378,29 +415,6 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             frame.render_stateful_widget(list, list_area, &mut app.list.list_state);
         }
 
-        if app.list.list_mode == crate::list_view::ListMode::Select {
-            let mode_label = if app.list.tag_to_assign.is_some() {
-                "TAG MODE"
-            } else {
-                "SELECT MODE"
-            };
-            let select_hint = format!(
-                " {}: {} selected ",
-                mode_label,
-                app.list.selected_indices.len()
-            );
-            let select_para = Paragraph::new(Span::styled(
-                select_hint,
-                Style::default()
-                    .fg(app.app_theme.highlight_fg)
-                    .bg(app.app_theme.accent)
-                    .add_modifier(Modifier::BOLD),
-            ));
-            let max_width = list_area.width.saturating_sub(4);
-            let select_width = 34.min(max_width);
-            let select_area = Rect::new(list_area.x + 2, list_area.y, select_width, 1);
-            frame.render_widget(select_para, select_area);
-        }
     }
     if let Some(preview_rect) = preview_area {
         let hide_encrypted = app.preview_encryption
@@ -468,7 +482,25 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     };
     let default_hints = format_keybind_hints(&app.app_theme, &hints_items);
 
-    let hint = if app.layout_edit {
+    let hint = if in_select_mode {
+        if app.list.tag_to_assign.is_some() {
+            let tag_items = vec![
+                (kb.display_list(ListAction::ToggleSelectItem), "toggle"),
+                ("Enter".to_string(), "apply tag"),
+                (kb.display_list(ListAction::Cancel), "cancel"),
+            ];
+            format_keybind_hints(&app.app_theme, &tag_items)
+        } else {
+            let select_items = vec![
+                (kb.display_list(ListAction::ToggleSelectItem), "toggle"),
+                (kb.display_list(ListAction::MoveNote), "move"),
+                (kb.display_list(ListAction::ManageTags), "tag"),
+                (kb.display_list(ListAction::Delete), "delete"),
+                (kb.display_list(ListAction::ToggleSelectMode), "exit"),
+            ];
+            format_keybind_hints(&app.app_theme, &select_items)
+        }
+    } else if app.layout_edit {
         let layout_items = vec![
             ("drag".to_string(), "borders/panes"),
             ("s".to_string(), "preview"),
