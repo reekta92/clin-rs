@@ -758,17 +758,15 @@ impl Storage {
         new_note.updated_at = crate::ui::now_unix_secs();
 
         let new_id = self.new_note_id();
-        let is_encrypted = id.ends_with(".clin");
+        let source_ext = Path::new(id)
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("md");
 
         let initial_id = if target_folder.is_empty() {
-            format!("{}.{}", new_id, if is_encrypted { "clin" } else { "md" })
+            format!("{}.{}", new_id, source_ext)
         } else {
-            format!(
-                "{}/{}.{}",
-                target_folder,
-                new_id,
-                if is_encrypted { "clin" } else { "md" }
-            )
+            format!("{}/{}.{}", target_folder, new_id, source_ext)
         };
 
         self.save_note(&initial_id, &new_note)
@@ -1205,6 +1203,61 @@ mod tests {
         )?;
         let mt2 = storage.note_mtime_millis(&id);
         assert!(mt2 > mt1);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_duplicate_preserves_extension() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let notes_dir = temp.path().to_path_buf();
+        let storage = Storage {
+            data_dir: PathBuf::new(),
+            config_dir: PathBuf::new(),
+            notes_dir: notes_dir.clone(),
+            templates_dir: PathBuf::new(),
+            key: [0u8; 32],
+        };
+
+        let content = "Test content for duplicate";
+        let base_note = Note {
+            title: "Original".to_string(),
+            content: content.to_string(),
+            updated_at: 42,
+            tags: vec![],
+        };
+
+        // Test each supported extension
+        let titled_exts = ["md", "txt", "clin"];   // frontmatter/bincode preserves title
+        let raw_exts = ["draw", "canvas"];          // raw bytes, no stored title
+
+        for ext in titled_exts.iter().chain(raw_exts.iter()) {
+            let orig_id = format!("test_original.{}", ext);
+            // Save original — returns the actual id (may differ if name conflicts)
+            let saved_id = storage.save_note(&orig_id, &base_note)?;
+            // Verify the original was saved with the correct extension
+            assert!(
+                saved_id.ends_with(&format!(".{}", ext)),
+                "saved note should end with .{ext}, got: {saved_id}"
+            );
+
+            // Duplicate the saved note
+            let dup_id = storage.duplicate_note(&saved_id, "")?;
+            // Verify the duplicate preserves the extension
+            assert!(
+                dup_id.ends_with(&format!(".{}", ext)),
+                "duplicate should end with .{ext}, got: {dup_id}"
+            );
+
+            // Load the duplicate and verify content matches
+            let dup_note = storage.load_note(&dup_id)?;
+            assert_eq!(dup_note.content, content, "content mismatch for .{ext}");
+
+            // Title is only preserved for frontmatter/bincode-backed formats
+            if titled_exts.contains(ext) {
+                assert_eq!(dup_note.title, "Original (Copy)", "title mismatch for .{ext}");
+            }
+        }
 
         Ok(())
     }
