@@ -42,6 +42,7 @@ impl PinstarState {
         }
         if !running {
             let res = if self.help_requested {
+                self.help_requested = false;
                 PinstarResult::HelpRequested
             } else {
                 PinstarResult::Normal
