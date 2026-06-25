@@ -9,6 +9,7 @@
 [![Release](https://github.com/reekta92/clin-rs/actions/workflows/dispatch-release.yml/badge.svg)](https://github.com/reekta92/clin-rs/actions/workflows/dispatch-release.yml)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
 [![MSRV: 1.88.0](https://img.shields.io/badge/MSRV-1.88.0-orange.svg)](https://blog.rust-lang.org/2025/06/26/Rust-1.88.0/)
+[![Rust](https://img.shields.io/badge/Rust-orange.svg?logo=rust)](https://www.rust-lang.org/)
 [![GitHub release](https://img.shields.io/github/v/release/reekta92/clin-rs.svg?logo=github)](https://github.com/reekta92/clin-rs/releases)
 [![last commit](https://img.shields.io/github/last-commit/reekta92/clin-rs.svg)](https://github.com/reekta92/clin-rs/commits/main)
 
