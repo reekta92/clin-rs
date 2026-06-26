@@ -93,10 +93,14 @@ pub fn run() -> Result<()> {
     if let Some(path) = &cli.config {
         crate::config::set_config_path_override(path.clone());
     }
+    if let Some(v) = &cli.vault {
+        let expanded = crate::config::expand_path(&v.to_string_lossy());
+        crate::config::set_storage_path_override(expanded);
+    }
 
     match cli.command {
         None => launch_tui(None),
-        Some(Command::Notes { action }) => run_notes(action),
+        Some(Command::Notes { action }) => run_notes(action, cli.json),
         Some(Command::Storage { action }) => run_storage(action),
         Some(Command::Keybinds { action }) => run_keybinds(action),
         Some(Command::Templates { action }) => run_templates(action),
@@ -118,22 +122,31 @@ fn launch_tui(open_title: Option<String>) -> Result<()> {
     run_tui_session(&mut app)
 }
 
-fn run_notes(action: NotesCmd) -> Result<()> {
+fn run_notes(action: NotesCmd, json: bool) -> Result<()> {
     match action {
         NotesCmd::List => {
             let storage = Storage::init()?;
             let mut app = App::new(storage)?;
             app.refresh_notes()?;
-            for (index, note) in app.notes.iter().enumerate() {
-                println!(
-                    "{} {}",
-                    console::dim(&format!("{}.", index + 1)),
-                    note.title
-                );
+            if json {
+                println!("{}", serde_json::to_string_pretty(&app.notes)?);
+            } else {
+                for (index, note) in app.notes.iter().enumerate() {
+                    println!(
+                        "{} {}",
+                        console::dim(&format!("{}.", index + 1)),
+                        note.title
+                    );
+                }
             }
             Ok(())
         }
-        NotesCmd::New { template, title } => {
+        NotesCmd::New {
+            template,
+            body,
+            no_tui,
+            title,
+        } => {
             let storage = Storage::init()?;
             let mut app = App::new(storage)?;
 
@@ -170,10 +183,18 @@ fn run_notes(action: NotesCmd) -> Result<()> {
             } else {
                 (String::new(), Vec::new())
             };
+            // --body overrides template content when both are given.
+            // Capture presence before `body` is moved by the `if let` below.
+            let has_body = body.is_some();
+            let content = if let Some(b) = body {
+                b
+            } else {
+                content
+            };
 
             let id = Uuid::new_v4().simple().to_string();
             let note = Note {
-                title: final_title,
+                title: final_title.clone(),
                 content,
                 updated_at: std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)?
@@ -183,12 +204,55 @@ fn run_notes(action: NotesCmd) -> Result<()> {
 
             let saved_id = app.storage.save_note(&id, &note)?;
 
+            if no_tui || has_body {
+                println!(
+                    "{}",
+                    console::success(&format!(
+                        "Created note: {}",
+                        console::bold(&final_title)
+                    ))
+                );
+                return Ok(());
+            }
+
             app.editor.editing_id = Some(saved_id.clone());
             app.refresh_notes()?;
             app.load_and_open_note(&saved_id, None);
             run_tui_session(&mut app)
         }
         NotesCmd::Open { title } => launch_tui(Some(title)),
+        NotesCmd::Cat { title } => {
+            let storage = Storage::init()?;
+            let mut app = App::new(storage)?;
+            app.refresh_notes()?;
+            let id = app
+                .notes
+                .iter()
+                .find(|n| n.title.eq_ignore_ascii_case(title.trim()))
+                .map(|n| n.id.clone());
+            match id {
+                Some(id) => match app.storage.load_note(&id) {
+                    Ok(note) => {
+                        println!("{}", note.content);
+                        Ok(())
+                    }
+                    Err(e) => {
+                        eprintln!(
+                            "{}",
+                            console::error(&format!("Failed to load note: {e}"))
+                        );
+                        process::exit(1);
+                    }
+                },
+                None => {
+                    eprintln!(
+                        "{}",
+                        console::error(&format!("No note found with title: {title}"))
+                    );
+                    process::exit(1);
+                }
+            }
+        }
         NotesCmd::Quick { content, title } => {
             let storage = Storage::init()?;
 
@@ -235,6 +299,20 @@ fn run_notes(action: NotesCmd) -> Result<()> {
                 }
             }
             hits.sort_by_key(|b| std::cmp::Reverse(b.0));
+            if json {
+                let out: Vec<serde_json::Value> = hits
+                    .iter()
+                    .map(|(score, title, folder)| {
+                        serde_json::json!({
+                            "score": score,
+                            "title": title,
+                            "folder": folder,
+                        })
+                    })
+                    .collect();
+                println!("{}", serde_json::to_string_pretty(&out)?);
+                return Ok(());
+            }
             if hits.is_empty() {
                 println!(
                     "{}",

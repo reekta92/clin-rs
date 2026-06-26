@@ -17,6 +17,108 @@ pub(crate) static CONFIG_TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::ne
 pub fn set_config_path_override(path: PathBuf) {
     let _ = CONFIG_PATH_OVERRIDE.set(Some(path));
 }
+static STORAGE_PATH_OVERRIDE: OnceLock<Option<PathBuf>> = OnceLock::new();
+
+/// Set once at startup from the parsed `--vault` value. No-op on later calls.
+pub fn set_storage_path_override(path: PathBuf) {
+    let _ = STORAGE_PATH_OVERRIDE.set(Some(path));
+}
+
+/// Effective storage-path override for this run, if `--vault` was passed.
+fn storage_path_override() -> Option<PathBuf> {
+    STORAGE_PATH_OVERRIDE.get().and_then(|opt| opt.clone())
+}
+/// Expand a leading `~` and `$VAR`/`${VAR}` tokens. Falls back to the raw
+/// input on any lookup failure so callers never panic.
+pub fn expand_path(input: &str) -> PathBuf {
+    let mut s = input.to_string();
+
+    // Leading tilde → home dir.
+    if let Some(rest) = s.strip_prefix('~') {
+        let home = directories::UserDirs::new()
+            .and_then(|u| u.home_dir().to_str().map(str::to_string))
+            .or_else(|| std::env::var("HOME").ok());
+        if let Some(h) = home {
+            s = format!("{h}{rest}");
+        }
+    }
+
+    // `$VAR` and `${VAR}` tokens. Slice-based so non-ASCII path bytes pass
+    // through intact — never reconstruct via `byte as char` (corrupts UTF-8).
+    let mut out = String::with_capacity(s.len());
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'$' {
+            let (var_name, consumed, braced) = parse_var(&s[i..]);
+            if !var_name.is_empty() {
+                match std::env::var(&var_name) {
+                    Ok(val) => {
+                        out.push_str(&val);
+                        i += consumed;
+                        continue;
+                    }
+                    Err(_) => {
+                        // Unresolved: emit literally (incl. `${` ... `}`).
+                        if braced {
+                            out.push_str(&format!("${{{var_name}}}"));
+                        } else {
+                            out.push('$');
+                            out.push_str(&var_name);
+                        }
+                        i += consumed;
+                        continue;
+                    }
+                }
+            }
+        }
+        // Copy one UTF-8 char (1–4 bytes) verbatim.
+        let ch_len = utf8_len_leading_byte(bytes[i]);
+        let end = (i + ch_len).min(bytes.len());
+        if let Ok(slice) = std::str::from_utf8(&bytes[i..end]) {
+            out.push_str(slice);
+        }
+        i = end;
+    }
+    PathBuf::from(out)
+}
+
+/// Length of the UTF-8 sequence whose lead byte is `b`. Falls back to 1 for invalid lead bytes.
+fn utf8_len_leading_byte(b: u8) -> usize {
+    if b < 0x80 {
+        1
+    } else if b >> 5 == 0b110 {
+        2
+    } else if b >> 4 == 0b1110 {
+        3
+    } else if b >> 3 == 0b11110 {
+        4
+    } else {
+        1
+    }
+}
+
+/// Parse `$VAR` or `${VAR}` at the start of `s`. Returns (name, bytes_consumed, was_braced).
+fn parse_var(s: &str) -> (String, usize, bool) {
+    let bytes = s.as_bytes();
+    if bytes.len() < 2 || bytes[0] != b'$' {
+        return (String::new(), 0, false);
+    }
+    if bytes[1] == b'{' {
+        if let Some(end) = s[2..].find('}') {
+            let name = s[2..2 + end].to_string();
+            return (name, 2 + end + 1, true);
+        }
+        return (String::new(), 0, false); // malformed `${`
+    }
+    let mut end = 1;
+    while end < bytes.len()
+        && (bytes[end].is_ascii_alphanumeric() || bytes[end] == b'_')
+    {
+        end += 1;
+    }
+    (s[1..end].to_string(), end, false)
+}
 
 #[path = "graf/themes.rs"]
 pub mod themes;
@@ -1249,6 +1351,9 @@ impl ClinConfig {
     }
 
     pub fn effective_storage_path(&self) -> Result<PathBuf> {
+        if let Some(p) = storage_path_override() {
+            return Ok(p);
+        }
         match &self.core.storage_path {
             Some(path) => Ok(path.clone()),
             None => Self::default_storage_path(),
@@ -1264,7 +1369,7 @@ impl ClinConfig {
     }
 
     pub fn has_custom_storage_path(&self) -> bool {
-        self.core.storage_path.is_some()
+        storage_path_override().is_some() || self.core.storage_path.is_some()
     }
 
     pub fn set_previous_storage_path(&mut self, path: PathBuf) {

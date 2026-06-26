@@ -23,7 +23,7 @@ pub struct Note {
     pub tags: Vec<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct NoteSummary {
     pub id: String,
     pub title: String,
