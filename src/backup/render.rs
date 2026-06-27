@@ -1,19 +1,3 @@
-fn format_relative_time(unix_secs: u64) -> String {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    let diff = now.saturating_sub(unix_secs);
-    if diff < 60 {
-        "just now".to_string()
-    } else if diff < 3600 {
-        format!("{}m ago", diff / 60)
-    } else if diff < 86400 {
-        format!("{}h ago", diff / 3600)
-    } else {
-        format!("{}d ago", diff / 86400)
-    }
-}
 
 use crate::backup::git_ops::FileChangeType;
 use crate::backup::state::{BackupInputMode, BackupState, SettingsField};
@@ -337,7 +321,7 @@ fn draw_content(frame: &mut Frame, area: Rect, state: &mut BackupState) {
                         format!(
                             " ({}, {})",
                             commit.author,
-                            format_relative_time(commit.time)
+                            crate::ui::format_relative_time(commit.time)
                         ),
                         Style::default().fg(theme.muted),
                     ),

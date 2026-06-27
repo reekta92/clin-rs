@@ -2,7 +2,10 @@ use anyhow::{Context, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-pub fn atomic_write(path: &Path, data: &[u8]) -> Result<()> {
+/// Core atomic write: write data to a temp file in the same directory,
+/// sync it (unix only), optionally set permissions (unix only), then
+/// atomically rename over `path`.
+fn atomic_write_impl(path: &Path, data: &[u8], mode: Option<u32>) -> Result<()> {
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
     let tmp = parent.join(format!(
         ".{}.{}.tmp",
@@ -10,6 +13,14 @@ pub fn atomic_write(path: &Path, data: &[u8]) -> Result<()> {
         uuid::Uuid::new_v4()
     ));
     fs::write(&tmp, data).with_context(|| format!("failed to write {}", tmp.display()))?;
+
+    #[cfg(unix)]
+    if let Some(mode) = mode {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = fs::metadata(&tmp)?.permissions();
+        perms.set_mode(mode);
+        fs::set_permissions(&tmp, perms).context("failed to set permissions on temp file")?;
+    }
 
     #[cfg(unix)]
     {
@@ -28,36 +39,16 @@ pub fn atomic_write(path: &Path, data: &[u8]) -> Result<()> {
     Ok(())
 }
 
+/// Write `data` to `path` atomically using a temp file + rename.
+/// On unix the temp file is synced before rename; permissions are umask-default.
+pub fn atomic_write(path: &Path, data: &[u8]) -> Result<()> {
+    atomic_write_impl(path, data, None)
+}
+
+/// Like [`atomic_write`] but sets file permissions to `mode` before syncing.
 #[cfg(unix)]
 pub fn atomic_write_with_mode(path: &Path, data: &[u8], mode: u32) -> Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-    let parent = path.parent().unwrap_or_else(|| Path::new("."));
-    let tmp = parent.join(format!(
-        ".{}.{}.tmp",
-        path.file_name().and_then(|s| s.to_str()).unwrap_or("tmp"),
-        uuid::Uuid::new_v4()
-    ));
-
-    fs::write(&tmp, data).with_context(|| format!("failed to write {}", tmp.display()))?;
-
-    let mut perms = fs::metadata(&tmp)?.permissions();
-    perms.set_mode(mode);
-    fs::set_permissions(&tmp, perms).context("failed to set permissions on temp file")?;
-
-    {
-        use std::fs::File;
-        let f = File::open(&tmp).context("failed to open temp file for syncing")?;
-        f.sync_all().context("failed to sync temp file")?;
-    }
-
-    fs::rename(&tmp, path).with_context(|| {
-        format!(
-            "failed to rename temp file {} to {}",
-            tmp.display(),
-            path.display()
-        )
-    })?;
-    Ok(())
+    atomic_write_impl(path, data, Some(mode))
 }
 
 /// Best-effort removal of orphaned clin plaintext temp files from a previous

@@ -196,9 +196,7 @@ fn run_notes(action: NotesCmd, json: bool) -> Result<()> {
             let note = Note {
                 title: final_title.clone(),
                 content,
-                updated_at: std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)?
-                    .as_secs(),
+                updated_at: crate::ui::now_unix_secs(),
                 tags,
             };
 
@@ -261,9 +259,7 @@ fn run_notes(action: NotesCmd, json: bool) -> Result<()> {
             let note = Note {
                 title: final_title.clone(),
                 content,
-                updated_at: std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)?
-                    .as_secs(),
+                updated_at: crate::ui::now_unix_secs(),
                 tags: Vec::new(),
             };
 
