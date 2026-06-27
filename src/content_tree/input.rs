@@ -5,7 +5,7 @@ use crossterm::event::{KeyEvent, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum InputResult {
+pub enum ContentTreeInput {
     None,
     Open,
     Back,
@@ -16,7 +16,7 @@ pub fn handle_content_tree_mouse(
     state: &mut ContentTreeState,
     mouse: MouseEvent,
     area: Rect,
-) -> InputResult {
+) -> ContentTreeInput {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -42,22 +42,22 @@ pub fn handle_content_tree_mouse(
     match mouse.kind {
         MouseEventKind::ScrollUp => {
             state.move_up();
-            return InputResult::None;
+            return ContentTreeInput::None;
         }
         MouseEventKind::ScrollDown => {
             state.move_down();
-            return InputResult::None;
+            return ContentTreeInput::None;
         }
         MouseEventKind::Down(MouseButton::Left) => {
             if !crate::events::contains_cell(left_area, mouse.column, mouse.row) {
-                return InputResult::None;
+                return ContentTreeInput::None;
             }
 
             let visible = state.visible_indices();
             let row = mouse.row.saturating_sub(left_area.y) as usize;
 
             if row >= visible.len() {
-                return InputResult::None;
+                return ContentTreeInput::None;
             }
 
             let node_idx = visible[row];
@@ -69,13 +69,13 @@ pub fn handle_content_tree_mouse(
                     state.toggle_collapse();
                 }
             } else if was_selected {
-                return InputResult::Open;
+                return ContentTreeInput::Open;
             }
         }
         _ => {}
     }
 
-    InputResult::None
+    ContentTreeInput::None
 }
 
 pub fn handle_input(
@@ -83,44 +83,44 @@ pub fn handle_input(
     key: KeyEvent,
     keybinds: &Keybinds,
     config: &ClinConfig,
-) -> InputResult {
+) -> ContentTreeInput {
     let seq = config.sequences_enabled();
     let counts = config.counts_enabled();
     match keybinds.resolve_content_tree(&mut state.seq_matcher, key, seq, counts) {
         crate::keybinds::MatchOutcome::Matched(action, count) => match action {
-            ContentTreeAction::Back => return InputResult::Back,
-            ContentTreeAction::Open => return InputResult::Open,
-            ContentTreeAction::Help => return InputResult::Help,
+            ContentTreeAction::Back => return ContentTreeInput::Back,
+            ContentTreeAction::Open => return ContentTreeInput::Open,
+            ContentTreeAction::Help => return ContentTreeInput::Help,
             ContentTreeAction::MoveUp => {
                 let n = count.unwrap_or(1) as usize;
                 for _ in 0..n {
                     state.move_up();
                 }
-                return InputResult::None;
+                return ContentTreeInput::None;
             }
             ContentTreeAction::MoveDown => {
                 let n = count.unwrap_or(1) as usize;
                 for _ in 0..n {
                     state.move_down();
                 }
-                return InputResult::None;
+                return ContentTreeInput::None;
             }
             ContentTreeAction::ToggleCollapse => {
                 state.toggle_collapse();
-                return InputResult::None;
+                return ContentTreeInput::None;
             }
             ContentTreeAction::ExpandAll => {
                 state.expand_all();
-                return InputResult::None;
+                return ContentTreeInput::None;
             }
             ContentTreeAction::CollapseAll => {
                 state.collapse_all();
-                return InputResult::None;
+                return ContentTreeInput::None;
             }
         },
-        crate::keybinds::MatchOutcome::Pending => return InputResult::None,
+        crate::keybinds::MatchOutcome::Pending => return ContentTreeInput::None,
         crate::keybinds::MatchOutcome::NoMatch => {}
     }
 
-    InputResult::None
+    ContentTreeInput::None
 }

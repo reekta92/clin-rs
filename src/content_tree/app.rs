@@ -9,6 +9,27 @@ pub enum ContentTreeResult {
     HelpRequested,
 }
 
+/// Shared mapping from input::ContentTreeInput to Option<ContentTreeResult>,
+/// eliminating the identical match in the Key and Mouse dispatch arms.
+fn map_input_result(state: &ContentTreeState, res: input::ContentTreeInput) -> Option<ContentTreeResult> {
+    match res {
+        input::ContentTreeInput::Back => Some(ContentTreeResult::Back),
+        input::ContentTreeInput::Help => Some(ContentTreeResult::HelpRequested),
+        input::ContentTreeInput::Open => {
+            if !state.load_error && state.selected < state.nodes.len() {
+                let line = state.nodes[state.selected].line;
+                Some(ContentTreeResult::JumpToLine {
+                    note_id: state.note_id.clone(),
+                    line,
+                })
+            } else {
+                Some(ContentTreeResult::Back)
+            }
+        }
+        input::ContentTreeInput::None => None,
+    }
+}
+
 impl ContentTreeState {
     pub fn overlay_render(
         &mut self,
@@ -34,40 +55,16 @@ impl ContentTreeState {
                 if key.kind == crossterm::event::KeyEventKind::Release {
                     return Ok(None);
                 }
-                match input::handle_input(self, key, &keybinds, config) {
-                    input::InputResult::Back => return Ok(Some(ContentTreeResult::Back)),
-                    input::InputResult::Help => return Ok(Some(ContentTreeResult::HelpRequested)),
-                    input::InputResult::Open => {
-                        if !self.load_error && self.selected < self.nodes.len() {
-                            let node = &self.nodes[self.selected];
-                            return Ok(Some(ContentTreeResult::JumpToLine {
-                                note_id: self.note_id.clone(),
-                                line: node.line,
-                            }));
-                        } else {
-                            return Ok(Some(ContentTreeResult::Back));
-                        }
-                    }
-                    input::InputResult::None => {}
+                let r = input::handle_input(self, key, &keybinds, config);
+                if let Some(result) = map_input_result(self, r) {
+                    return Ok(Some(result));
                 }
             }
             Event::Mouse(mouse) => {
                 let term_area = self.last_area;
-                match input::handle_content_tree_mouse(self, mouse, term_area) {
-                    input::InputResult::Back => return Ok(Some(ContentTreeResult::Back)),
-                    input::InputResult::Help => return Ok(Some(ContentTreeResult::HelpRequested)),
-                    input::InputResult::Open => {
-                        if !self.load_error && self.selected < self.nodes.len() {
-                            let node = &self.nodes[self.selected];
-                            return Ok(Some(ContentTreeResult::JumpToLine {
-                                note_id: self.note_id.clone(),
-                                line: node.line,
-                            }));
-                        } else {
-                            return Ok(Some(ContentTreeResult::Back));
-                        }
-                    }
-                    input::InputResult::None => {}
+                let res = input::handle_content_tree_mouse(self, mouse, term_area);
+                if let Some(result) = map_input_result(self, res) {
+                    return Ok(Some(result));
                 }
             }
             _ => {}
