@@ -1551,7 +1551,7 @@ mod tests {
 
     #[test]
     fn test_theme_reload_updates_cached_display_items() {
-        let _lock = crate::config::CONFIG_TEST_MUTEX.lock().unwrap();
+        let _lock = crate::config::CONFIG_TEST_MUTEX.lock();
         let config_path = crate::config::ClinConfig::config_path().unwrap();
         if let Some(parent) = config_path.parent() {
             let _ = std::fs::create_dir_all(parent);
@@ -1590,7 +1590,7 @@ theme = "tokyo_night"
 
     #[test]
     fn test_set_goals_actions() {
-        let _lock = crate::config::CONFIG_TEST_MUTEX.lock().unwrap();
+        let _lock = crate::config::CONFIG_TEST_MUTEX.lock();
         let config_path = crate::config::ClinConfig::config_path().unwrap();
         if let Some(parent) = config_path.parent() {
             let _ = std::fs::create_dir_all(parent);
@@ -1657,7 +1657,7 @@ theme = "tokyo_night"
 
     #[test]
     fn test_auto_reload_config_on_disk_change() {
-        let _lock = crate::config::CONFIG_TEST_MUTEX.lock().unwrap();
+        let _lock = crate::config::CONFIG_TEST_MUTEX.lock();
         let config_path = crate::config::ClinConfig::config_path().unwrap();
         if let Some(parent) = config_path.parent() {
             let _ = std::fs::create_dir_all(parent);
