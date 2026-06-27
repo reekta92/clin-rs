@@ -283,8 +283,6 @@ fn render_in_thread(
     let mut cmd = CommandBuilder::new("glow");
     cmd.arg("-w");
     cmd.arg(cols.to_string());
-    cmd.arg("-s");
-    cmd.arg("dark");
     cmd.arg(&temp_path);
     cmd.env("TERM", "dumb");
     cmd.env("PAGER", "cat");

@@ -202,7 +202,7 @@ Once inside the TUI: navigate with `j`/`k`, open notes with `Enter`, open the co
 
 | View | Purpose | Key Actions |
 |---|---|---|
-| **List / Notes** | Browse, search, filter, manage notes | Grid/Tree layout, format chooser, folders, tags, sort, pin, glow preview, search, trash, copy/move/delete |
+| **List / Notes** | Browse, search, filter, manage notes | Grid/Tree layout, format chooser, folders, tags, sort, pin, glow preview(using the configured theme in glow), search, trash, copy/move/delete |
 | **Editor** | Write and edit notes | Title + body, undo/redo, mouse support, line numbers, markdown preview pane, external editor |
 | **Graph** | Visualize note connections | Force-directed layout, [[wikilinks]] edges, physics, preview pane, minimap, legend, search, grid, configurable colors |
 | **Backup** | Git-based vault versioning | Status (staged/unstaged), commit history, diff preview, auto-push, remote sync |
