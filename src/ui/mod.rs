@@ -260,10 +260,11 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             )
             .highlight_symbol("  ");
 
-        let mut tags_state = ListState::default();
-        if popup.focus == crate::popups::TagPopupFocus::AllTagsList && !popup.all_tags.is_empty() {
-            tags_state.select(Some(popup.all_tags_selected));
-        }
+        let mut tags_state = list_state_selected(
+            (popup.focus == crate::popups::TagPopupFocus::AllTagsList
+                && !popup.all_tags.is_empty())
+            .then_some(popup.all_tags_selected),
+        );
         frame.render_stateful_widget(tags_list, chunks[1], &mut tags_state);
     }
 
@@ -342,12 +343,11 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             )
             .highlight_symbol("  ");
 
-        let mut state = ListState::default();
-        if picker.focus == crate::app::FolderPickerFocus::Results
-            && !picker.filtered_folders.is_empty()
-        {
-            state.select(Some(picker.selected));
-        }
+        let mut state = list_state_selected(
+            (picker.focus == crate::app::FolderPickerFocus::Results
+                && !picker.filtered_folders.is_empty())
+            .then_some(picker.selected),
+        );
 
         frame.render_stateful_widget(list, chunks[1], &mut state);
     }
@@ -812,8 +812,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             )
             .highlight_symbol("  ");
 
-        let mut state = ListState::default();
-        state.select(Some(trash.selected));
+        let mut state = list_state_selected(Some(trash.selected));
 
         frame.render_stateful_widget(list, content, &mut state);
     }
@@ -872,8 +871,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         let y = menu.y.min(frame.area().height.saturating_sub(menu_height));
         let menu_area = Rect::new(x, y, menu_width, menu_height);
 
-        let mut state = ListState::default();
-        state.select(Some(menu.selected));
+        let mut state = list_state_selected(Some(menu.selected));
 
         frame.render_widget(Clear, menu_area);
         frame.render_stateful_widget(list, menu_area, &mut state);

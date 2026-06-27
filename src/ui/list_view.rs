@@ -7,6 +7,7 @@ use super::{
     draw_view_title_bar_with_tabs, draw_status_bar, draw_dim_vline,
     draw_corner_watermark, draw_popup_frame, draw_confirm_popup,
     draw_template_popup, format_relative_time, build_list_widget,
+    list_state_selected,
     format_keybind_hints, ext_badge, popup_block, popup_hint_line
 };
 
@@ -708,10 +709,11 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             )
             .highlight_symbol("  ");
 
-        let mut tags_state = ListState::default();
-        if popup.focus == crate::popups::TagPopupFocus::AllTagsList && !popup.all_tags.is_empty() {
-            tags_state.select(Some(popup.all_tags_selected));
-        }
+        let mut tags_state = list_state_selected(
+            (popup.focus == crate::popups::TagPopupFocus::AllTagsList
+                && !popup.all_tags.is_empty())
+            .then_some(popup.all_tags_selected),
+        );
         frame.render_stateful_widget(tags_list, chunks[1], &mut tags_state);
     }
 
@@ -789,12 +791,11 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             )
             .highlight_symbol("  ");
 
-        let mut state = ListState::default();
-        if picker.focus == crate::app::FolderPickerFocus::Results
-            && !picker.filtered_folders.is_empty()
-        {
-            state.select(Some(picker.selected));
-        }
+        let mut state = list_state_selected(
+            (picker.focus == crate::app::FolderPickerFocus::Results
+                && !picker.filtered_folders.is_empty())
+            .then_some(picker.selected),
+        );
 
         frame.render_stateful_widget(list, chunks[1], &mut state);
     }
@@ -1245,8 +1246,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             )
             .highlight_symbol("  ");
 
-        let mut state = ListState::default();
-        state.select(Some(trash.selected));
+        let mut state = list_state_selected(Some(trash.selected));
 
         frame.render_stateful_widget(list, content, &mut state);
     }

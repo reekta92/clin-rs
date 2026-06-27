@@ -86,12 +86,13 @@ pub fn draw_template_popup(
         )
         .highlight_symbol("  ");
 
-    let mut state = ListState::default();
-    if popup.focus == crate::popups::TemplatePopupFocus::Results
+    let mut state = list_state_selected(if popup.focus == crate::popups::TemplatePopupFocus::Results
         && !popup.filtered_templates.is_empty()
     {
-        state.select(Some(popup.selected));
-    }
+        Some(popup.selected)
+    } else {
+        None
+    });
 
     frame.render_stateful_widget(list, chunks[1], &mut state);
 }
@@ -147,8 +148,7 @@ pub fn draw_theme_popup(
                 .add_modifier(Modifier::BOLD),
         );
 
-    let mut state = ListState::default();
-    state.select(Some(popup.selected));
+    let mut state = list_state_selected(Some(popup.selected));
     frame.render_stateful_widget(list, chunks[0], &mut state);
 
     let gen_label = if popup.general_is_solid {
@@ -244,8 +244,7 @@ pub fn draw_sort_popup(
                 .add_modifier(Modifier::BOLD),
         );
 
-    let mut state = ListState::default();
-    state.select(Some(popup.selected));
+    let mut state = list_state_selected(Some(popup.selected));
     frame.render_stateful_widget(list, content_area, &mut state);
 }
 
@@ -285,8 +284,7 @@ pub fn draw_icon_mode_popup(
                 .add_modifier(Modifier::BOLD),
         );
 
-    let mut state = ListState::default();
-    state.select(Some(popup.selected));
+    let mut state = list_state_selected(Some(popup.selected));
     frame.render_stateful_widget(list, content_area, &mut state);
 }
 
@@ -331,8 +329,7 @@ pub fn draw_create_format_popup(
                 .add_modifier(Modifier::BOLD),
         );
 
-    let mut state = ListState::default();
-    state.select(Some(popup.selected));
+    let mut state = list_state_selected(Some(popup.selected));
     frame.render_stateful_widget(list, content_area, &mut state);
 }
 
@@ -378,8 +375,7 @@ pub fn draw_hint_bar_style_popup(
                 .add_modifier(Modifier::BOLD),
         );
 
-    let mut state = ListState::default();
-    state.select(Some(popup.selected));
+    let mut state = list_state_selected(Some(popup.selected));
     frame.render_stateful_widget(list, content_area, &mut state);
 }
 
@@ -424,8 +420,7 @@ pub fn draw_keybind_preset_popup(
                 .add_modifier(Modifier::BOLD),
         );
 
-    let mut state = ListState::default();
-    state.select(Some(popup.selected));
+    let mut state = list_state_selected(Some(popup.selected));
     frame.render_stateful_widget(list, content_area, &mut state);
 }
 
@@ -497,6 +492,13 @@ pub fn build_list_widget<'a>(
             .bg(theme.highlight_bg)
             .fg(theme.highlight_fg),
     )
+}
+
+/// Initialize a [`ListState`] with an optional selection.
+pub fn list_state_selected(selected: Option<usize>) -> ListState {
+    let mut s = ListState::default();
+    s.select(selected);
+    s
 }
 
 pub fn text_area_from_content(content: &str) -> TextArea<'static> {

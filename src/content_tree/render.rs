@@ -6,7 +6,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, List, ListItem, ListState, Paragraph},
+    widgets::{Block, List, ListItem, Paragraph},
 };
 
 fn get_tree_prefix(state: &ContentTreeState, visible: &[usize], p: usize) -> String {
@@ -169,10 +169,7 @@ pub fn draw_content_tree(
             .highlight_symbol("> ");
 
         let selected_pos = visible.iter().position(|&x| x == state.selected);
-        let mut list_state = ListState::default();
-        if let Some(pos) = selected_pos {
-            list_state.select(Some(pos));
-        }
+        let mut list_state = crate::ui::list_state_selected(selected_pos);
 
         frame.render_stateful_widget(list, left_area, &mut list_state);
 
