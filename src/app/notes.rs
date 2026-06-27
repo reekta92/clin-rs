@@ -422,6 +422,11 @@ impl App {
                 .fg(self.app_theme.highlight_fg)
                 .bg(self.app_theme.highlight_bg),
         );
+        self.editor.editor.set_selection_style(
+            Style::default()
+                .fg(self.app_theme.highlight_fg)
+                .bg(self.app_theme.highlight_bg),
+        );
         self.editor.editor.set_cursor_line_style(Style::default());
         self.set_default_status();
     }
@@ -466,6 +471,11 @@ impl App {
         self.editor.editor = text_area_from_content(&rendered.content);
 
         self.editor.editor.set_cursor_style(
+            Style::default()
+                .fg(self.app_theme.highlight_fg)
+                .bg(self.app_theme.highlight_bg),
+        );
+        self.editor.editor.set_selection_style(
             Style::default()
                 .fg(self.app_theme.highlight_fg)
                 .bg(self.app_theme.highlight_bg),
@@ -518,6 +528,11 @@ impl App {
         self.editor.editor = text_area_from_content(&rendered.content);
 
         self.editor.editor.set_cursor_style(
+            Style::default()
+                .fg(self.app_theme.highlight_fg)
+                .bg(self.app_theme.highlight_bg),
+        );
+        self.editor.editor.set_selection_style(
             Style::default()
                 .fg(self.app_theme.highlight_fg)
                 .bg(self.app_theme.highlight_bg),
@@ -941,6 +956,11 @@ impl App {
         );
         self.editor.editor = text_area_from_content(&content);
         self.editor.editor.set_cursor_style(
+            Style::default()
+                .fg(self.app_theme.highlight_fg)
+                .bg(self.app_theme.highlight_bg),
+        );
+        self.editor.editor.set_selection_style(
             Style::default()
                 .fg(self.app_theme.highlight_fg)
                 .bg(self.app_theme.highlight_bg),

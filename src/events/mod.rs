@@ -162,6 +162,7 @@ pub fn make_title_editor(
         TextArea::from([initial.to_string()])
     };
     title.set_cursor_style(Style::default().fg(highlight_fg).bg(highlight_bg));
+    title.set_selection_style(Style::default().fg(highlight_fg).bg(highlight_bg));
     title
 }
 
