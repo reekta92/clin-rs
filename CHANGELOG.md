@@ -2,6 +2,17 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.8.32] - 2026-06-27
+
+### Miscellaneous
+
+- Bump anyhow from 1.0.102 to 1.0.103
+- Bump uuid from 1.23.3 to 1.23.4
+## [0.8.31] - 2026-06-23
+
+### Release
+
+- V0.8.31
 ## [0.8.30] - 2026-06-23
 
 ### Release
