@@ -476,6 +476,8 @@ pub struct ClinConfig {
     pub goals: GoalsConfig,
 }
 
+/// Graph data-viz colors (node/edge/label). Distinct from
+/// [`AppThemeColors`](crate::app_theme::AppThemeColors) (app chrome).
 pub struct ThemeColors {
     pub node_colors: Vec<Color>,
     pub edge_color: Color,

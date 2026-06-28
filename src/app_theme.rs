@@ -3,6 +3,8 @@ use crate::config::themes::theme_colors;
 use crate::config::{Background, Theme};
 use ratatui::style::{Color, Style};
 
+/// App chrome colors (accent/heading/border). Distinct from
+/// [`ThemeColors`](crate::config::ThemeColors) (graph viz).
 #[derive(Debug, Clone)]
 pub struct AppThemeColors {
     pub accent: Color,
@@ -29,17 +31,6 @@ impl Default for AppThemeColors {
 }
 
 impl AppThemeColors {
-    fn parse_hex(hex: &str) -> Option<Color> {
-        let hex = hex.trim_start_matches('#');
-        if hex.len() != 6 {
-            return None;
-        }
-        let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
-        let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
-        let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
-        Some(Color::Rgb(r, g, b))
-    }
-
     pub fn from_config(config: &UiConfig) -> Self {
         let theme_enum = config.theme.clone();
         let bg_enum = config.background.clone();
@@ -87,37 +78,37 @@ impl AppThemeColors {
             }
         };
 
-        if let Some(c) = config.accent.as_ref().and_then(|h| Self::parse_hex(h)) {
+        if let Some(c) = config.accent.as_ref().and_then(|h| crate::config::parse_hex_color(h)) {
             colors.accent = c;
         }
-        if let Some(c) = config.heading.as_ref().and_then(|h| Self::parse_hex(h)) {
+        if let Some(c) = config.heading.as_ref().and_then(|h| crate::config::parse_hex_color(h)) {
             colors.heading = c;
         }
-        if let Some(c) = config.success.as_ref().and_then(|h| Self::parse_hex(h)) {
+        if let Some(c) = config.success.as_ref().and_then(|h| crate::config::parse_hex_color(h)) {
             colors.success = c;
         }
-        if let Some(c) = config.destructive.as_ref().and_then(|h| Self::parse_hex(h)) {
+        if let Some(c) = config.destructive.as_ref().and_then(|h| crate::config::parse_hex_color(h)) {
             colors.destructive = c;
         }
-        if let Some(c) = config.muted.as_ref().and_then(|h| Self::parse_hex(h)) {
+        if let Some(c) = config.muted.as_ref().and_then(|h| crate::config::parse_hex_color(h)) {
             colors.muted = c;
         }
-        if let Some(c) = config.text.as_ref().and_then(|h| Self::parse_hex(h)) {
+        if let Some(c) = config.text.as_ref().and_then(|h| crate::config::parse_hex_color(h)) {
             colors.text = c;
         }
-        if let Some(c) = config.border.as_ref().and_then(|h| Self::parse_hex(h)) {
+        if let Some(c) = config.border.as_ref().and_then(|h| crate::config::parse_hex_color(h)) {
             colors.border = c;
         }
-        if let Some(c) = config.tag.as_ref().and_then(|h| Self::parse_hex(h)) {
+        if let Some(c) = config.tag.as_ref().and_then(|h| crate::config::parse_hex_color(h)) {
             colors.tag = c;
         }
-        if let Some(c) = config.folder.as_ref().and_then(|h| Self::parse_hex(h)) {
+        if let Some(c) = config.folder.as_ref().and_then(|h| crate::config::parse_hex_color(h)) {
             colors.folder = c;
         }
         if let Some(c) = config
             .background_color
             .as_ref()
-            .and_then(|h| Self::parse_hex(h))
+            .and_then(|h| crate::config::parse_hex_color(h))
         {
             colors.bg = Some(c);
         }
