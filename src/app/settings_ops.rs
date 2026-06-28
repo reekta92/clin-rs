@@ -366,7 +366,7 @@ impl App {
             let _ = std::fs::create_dir_all(parent);
         }
         if let Ok(content) = serde_json::to_string(progress) {
-            let _ = std::fs::write(&path, content);
+            let _ = crate::fsutil::atomic_write_str(&path, &content);
         }
     }
 

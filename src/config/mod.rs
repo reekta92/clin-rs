@@ -1,5 +1,4 @@
 use std::fs;
-use std::io::Write;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
@@ -103,15 +102,12 @@ impl ClinConfig {
             }
 
             let content = merge::default_config_content();
-            let mut file =
-                fs::File::create(&config_path).context("failed to create config file")?;
-            file.write_all(content.as_bytes())
-                .context("failed to write config file")?;
             #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                let _ = fs::set_permissions(&config_path, fs::Permissions::from_mode(0o600));
-            }
+            crate::fsutil::atomic_write_with_mode(&config_path, content.as_bytes(), 0o600)
+                .context("failed to write config file")?;
+            #[cfg(not(unix))]
+            crate::fsutil::atomic_write_str(&config_path, &content)
+                .context("failed to write config file")?;
 
             return Ok(config);
         }

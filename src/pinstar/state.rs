@@ -98,7 +98,7 @@ impl PinstarState {
 
     pub fn save(&self) -> Result<()> {
         let content = serde_json::to_string_pretty(&self.data)?;
-        std::fs::write(&self.path, content)?;
+        crate::fsutil::atomic_write_str(&self.path, &content)?;
         Ok(())
     }
 

@@ -44,6 +44,10 @@ fn atomic_write_impl(path: &Path, data: &[u8], mode: Option<u32>) -> Result<()> 
 pub fn atomic_write(path: &Path, data: &[u8]) -> Result<()> {
     atomic_write_impl(path, data, None)
 }
+/// Write the string `s` to `path` atomically via [`atomic_write`].
+pub fn atomic_write_str(path: &Path, s: &str) -> Result<()> {
+    atomic_write(path, s.as_bytes())
+}
 
 /// Like [`atomic_write`] but sets file permissions to `mode` before syncing.
 #[cfg(unix)]
@@ -91,5 +95,34 @@ impl Drop for SecretTempFile {
             let _ = std::fs::write(&self.0, vec![0u8; len as usize]);
         }
         let _ = std::fs::remove_file(&self.0);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn atomic_write_with_mode_sets_perms_and_round_trips() {
+        let dir = std::env::temp_dir().join(format!("clin_fsutil_test_{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("secret.txt");
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            atomic_write_with_mode(&path, b"hello", 0o600).unwrap();
+            let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o600);
+            assert_eq!(std::fs::read(&path).unwrap(), b"hello");
+        }
+
+        #[cfg(not(unix))]
+        {
+            atomic_write(&path, b"hello").unwrap();
+            assert_eq!(std::fs::read(&path).unwrap(), b"hello");
+        }
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
