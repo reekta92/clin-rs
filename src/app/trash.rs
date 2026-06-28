@@ -105,11 +105,11 @@ impl App {
     }
 
     pub fn restore_from_trash(&mut self) {
-        let item = self
-            .popups
-            .trash_view
-            .as_ref()
-            .and_then(|t| t.items.get(t.selected).cloned());
+        let item = if let Some(crate::popups::ActivePopup::TrashView(trash)) = &self.popups.active {
+            trash.items.get(trash.selected).cloned()
+        } else {
+            None
+        };
 
         let Some(item) = item else { return };
 
@@ -117,9 +117,9 @@ impl App {
             Ok(_) => {
                 if let Ok(items) = self.storage.list_trash() {
                     if items.is_empty() {
-                        self.popups.trash_view = None;
+                        self.popups.active = None;
                         self.set_temporary_status_static("Note restored, trash is now empty");
-                    } else if let Some(ref mut trash) = self.popups.trash_view {
+                    } else if let Some(crate::popups::ActivePopup::TrashView(trash)) = &mut self.popups.active {
                         trash.items = items;
                         trash.selected = trash.selected.min(trash.items.len().saturating_sub(1));
                         self.set_temporary_status_static("Note restored");
@@ -137,7 +137,7 @@ impl App {
     }
 
     pub fn begin_delete_from_trash(&mut self) {
-        if let Some(trash) = &self.popups.trash_view
+        if let Some(crate::popups::ActivePopup::TrashView(trash)) = &self.popups.active
             && let Some(item) = trash.items.get(trash.selected).cloned()
         {
             self.show_confirm(ConfirmAction::DeleteFromTrash { item });
@@ -147,11 +147,11 @@ impl App {
     pub fn confirm_delete_from_trash(&mut self, item: ::trash::TrashItem) {
         match self.storage.purge_trash_items(vec![item]) {
             Ok(()) => {
-                if let Some(ref mut trash) = self.popups.trash_view
+                if let Some(crate::popups::ActivePopup::TrashView(trash)) = &mut self.popups.active
                     && let Ok(items) = self.storage.list_trash()
                 {
                     if items.is_empty() {
-                        self.popups.trash_view = None;
+                        self.popups.active = None;
                         self.set_temporary_status_static("Note deleted, trash is now empty");
                     } else {
                         trash.items = items;
@@ -167,7 +167,7 @@ impl App {
     }
 
     pub fn begin_empty_trash(&mut self) {
-        if let Some(trash) = &self.popups.trash_view {
+        if let Some(crate::popups::ActivePopup::TrashView(trash)) = &self.popups.active {
             if trash.items.is_empty() {
                 self.set_temporary_status_static("Trash is already empty");
             } else {
@@ -182,7 +182,7 @@ impl App {
         let count = items.len();
         match self.storage.purge_trash_items(items) {
             Ok(()) => {
-                self.popups.trash_view = None;
+                self.popups.active = None;
                 self.set_temporary_status(&format!("Deleted {count} notes from trash"));
             }
             Err(e) => {

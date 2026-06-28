@@ -6,6 +6,7 @@ use ratatui_textarea::TextArea;
 
 use crate::app::{App, EditFocus, ViewMode};
 use crate::app_theme::AppThemeColors;
+use crate::overlay::OverlayView;
 
 mod list_view;
 mod edit_view;
@@ -87,7 +88,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     frame, outer[0], "Draw", spans, &app.app_theme,
                     Some(app.status.as_ref()), None,
                 );
-                draw.overlay_render(frame, outer[1], &app.app_theme, &app.config);
+                draw.overlay_render(frame, outer[1], &app.app_theme, &app.config, None);
             }
         }
         ViewMode::Canvas => {
@@ -97,7 +98,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     .constraints([Constraint::Length(1), Constraint::Min(0)])
                     .split(frame.area());
                 draw_view_title_bar(frame, outer[0], "Canvas", &app.app_theme, None, Some(app.status.as_ref()), None);
-                canvas.overlay_render(frame, outer[1], &app.app_theme, &app.config);
+                canvas.overlay_render(frame, outer[1], &app.app_theme, &app.config, None);
             }
         }
         ViewMode::Backup => {
@@ -108,7 +109,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     .split(frame.area());
                 // Backup uses a custom header render instead of the standard title bar
                 crate::backup::render::draw_header(frame, outer[0], backup, app.config.ui.icon_mode);
-                backup.overlay_render(frame, outer[1], &app.app_theme, &app.config);
+                backup.overlay_render(frame, outer[1], &app.app_theme, &app.config, None);
             }
         }
         ViewMode::ContentTree => {
@@ -119,19 +120,19 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     .split(frame.area());
                 let title = format!("CONTENT TREE — {}", tree.note_title);
                 draw_view_title_bar(frame, outer[0], &title, &app.app_theme, None, Some(app.status.as_ref()), None);
-                tree.overlay_render(frame, outer[1], &app.app_theme, &app.config);
+                tree.overlay_render(frame, outer[1], &app.app_theme, &app.config, None);
             }
         }
     }
 
     // Global popups — rendered on top of the active view
     // Template popup
-    if let Some(popup) = &app.popups.template {
+    if let Some(crate::popups::ActivePopup::Template(popup)) = &app.popups.active {
         draw_template_popup(frame, popup, frame.area(), &app.app_theme);
     }
 
     // Folder popup
-    if let Some(popup) = &mut app.popups.folder {
+    if let Some(crate::popups::ActivePopup::Folder(popup)) = &mut app.popups.active {
         let title = match popup.mode {
             crate::popups::FolderPopupMode::Create { .. } => "NEW FOLDER",
             crate::popups::FolderPopupMode::Rename { .. } => "RENAME FOLDER",
@@ -155,7 +156,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     }
 
     // Tag popup
-    if let Some(popup) = &mut app.popups.tag {
+    if let Some(crate::popups::ActivePopup::Tag(popup)) = &mut app.popups.active {
         let suggestion_height = if popup.suggestions.is_empty() {
             0u16
         } else {
@@ -269,7 +270,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     }
 
     // Folder picker popup
-    if let Some(picker) = &mut app.popups.folder_picker {
+    if let Some(crate::popups::ActivePopup::FolderPicker(picker)) = &mut app.popups.active {
         let title = match picker.mode {
             crate::popups::FolderPickerMode::CopyNote { .. }
             | crate::popups::FolderPickerMode::BulkCopyNotes { .. }
@@ -440,7 +441,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     }
 
     // Note rename popup
-    if let Some(popup) = &mut app.popups.note_rename {
+    if let Some(crate::popups::ActivePopup::NoteRename(popup)) = &mut app.popups.active {
         let hint_line = popup_hint_line(&app.app_theme, "Enter rename · Esc cancel");
         let content = draw_popup_frame(
             frame,
@@ -461,7 +462,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     }
 
     // Goals popup
-    if let Some(popup) = &mut app.popups.goals {
+    if let Some(crate::popups::ActivePopup::Goals(popup)) = &mut app.popups.active {
         let (title, sub) = match popup.mode {
             crate::popups::GoalsPopupMode::WordGoal => {
                 ("DAILY WORD GOAL", "Enter word count · Esc cancel")
@@ -483,7 +484,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     }
 
     // Create note popup
-    if let Some((popup, format)) = &mut app.popups.create_note {
+    if let Some(crate::popups::ActivePopup::CreateNote(popup, format)) = &mut app.popups.active {
         let title = match format {
             crate::popups::NoteFormat::Markdown => "NEW NOTE",
             crate::popups::NoteFormat::Draw => "NEW DRAWING",
@@ -504,7 +505,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     }
 
     // Import popup
-    if let Some(popup) = &mut app.popups.import {
+    if let Some(crate::popups::ActivePopup::Import(popup)) = &mut app.popups.active {
         let title = match popup.source {
             crate::popups::ImportSource::File => "IMPORT FILE",
             crate::popups::ImportSource::Csv => "IMPORT CSV/TSV",
@@ -531,7 +532,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     }
 
     // Search popup
-    if let Some(popup) = &mut app.popups.search {
+    if let Some(crate::popups::ActivePopup::Search(popup)) = &mut app.popups.active {
         let area = frame.area();
         let hint_line = popup_hint_line(&app.app_theme, "Tab switch · Enter open · Esc cancel · f:folder p:pinned t:tag g:text · \\e\\ escapes filters");
         let content = draw_popup_frame(
@@ -762,7 +763,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     }
 
     // Trash view popup
-    if let Some(trash) = &app.popups.trash_view {
+    if let Some(crate::popups::ActivePopup::TrashView(trash)) = &app.popups.active {
         let area = frame.area();
         let hint_line = popup_hint_line(&app.app_theme, "r restore · d delete · E empty · q close");
         let content = draw_popup_frame(
@@ -823,37 +824,37 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     }
 
     // Theme popup
-    if let Some(popup) = &app.popups.theme {
+    if let Some(crate::popups::ActivePopup::Theme(popup)) = &app.popups.active {
         draw_theme_popup(frame, popup, frame.area(), &app.app_theme);
     }
 
     // Sort popup
     // Icon mode popup
-    if let Some(popup) = &app.popups.icon_mode {
+    if let Some(crate::popups::ActivePopup::IconMode(popup)) = &app.popups.active {
         draw_icon_mode_popup(frame, popup, frame.area(), &app.app_theme);
     }
 
     // Hint bar style popup
-    if let Some(popup) = &app.popups.hint_bar_style {
+    if let Some(crate::popups::ActivePopup::HintBarStyle(popup)) = &app.popups.active {
         draw_hint_bar_style_popup(frame, popup, frame.area(), &app.app_theme);
     }
 
     // Keybind preset popup
-    if let Some(popup) = &app.popups.keybind_preset {
+    if let Some(crate::popups::ActivePopup::KeybindPreset(popup)) = &app.popups.active {
         draw_keybind_preset_popup(frame, popup, frame.area(), &app.app_theme);
     }
 
-    if let Some(popup) = &app.popups.sort {
+    if let Some(crate::popups::ActivePopup::Sort(popup)) = &app.popups.active {
         draw_sort_popup(frame, popup, frame.area(), &app.app_theme);
     }
 
     // Create format popup
-    if let Some(popup) = &app.popups.create_format {
+    if let Some(crate::popups::ActivePopup::CreateFormat(popup)) = &app.popups.active {
         draw_create_format_popup(frame, popup, frame.area(), &app.app_theme);
     }
 
     // Context menu (from edit view)
-    if let Some(menu) = &app.popups.context_menu {
+    if let Some(crate::popups::ActivePopup::ContextMenu(menu)) = &app.popups.active {
         let labels = [" Copy ", " Cut ", " Paste ", " Select All "];
         let items: Vec<ListItem> = labels.iter().map(|l| ListItem::new(*l)).collect();
         let menu_width = labels.iter().map(|l| l.len() as u16).max().unwrap_or(0);

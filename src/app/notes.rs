@@ -621,10 +621,10 @@ impl App {
                 .borders(ratatui::widgets::Borders::ALL)
                 .title(title),
         );
-        self.popups.folder = Some(FolderPopup {
+        self.popups.active = Some(crate::popups::ActivePopup::Folder(FolderPopup {
             mode: FolderPopupMode::Create { parent_path },
             input,
-        });
+        }));
     }
 
     pub fn begin_rename_folder(&mut self) {
@@ -649,12 +649,12 @@ impl App {
                     .borders(ratatui::widgets::Borders::ALL)
                     .title("Rename Folder - Esc to cancel, Enter to save"),
             );
-            self.popups.folder = Some(FolderPopup {
+            self.popups.active = Some(crate::popups::ActivePopup::Folder(FolderPopup {
                 mode: FolderPopupMode::Rename {
                     old_path: path.clone(),
                 },
                 input,
-            });
+            }));
         } else {
             self.set_temporary_status_static("Select a folder to rename");
         }
@@ -749,13 +749,13 @@ impl App {
         self.begin_create_select_format_in_folder(folder);
     }
     pub fn begin_create_select_format_in_folder(&mut self, folder: String) {
-        self.popups.create_format = Some(crate::popups::CreateFormatPopup {
+        self.popups.active = Some(crate::popups::ActivePopup::CreateFormat(CreateFormatPopup {
             folder,
             selected: 0,
-        });
+        }));
     }
     pub fn confirm_create_format(&mut self) {
-        if let Some(popup) = self.popups.create_format.take() {
+        if let Some(crate::popups::ActivePopup::CreateFormat(popup)) = self.popups.active.take() {
             match popup.selected {
                 0 => self.begin_create_note_in_folder(popup.folder), // .md
                 1 => self.begin_create_text_in_folder(popup.folder), // .txt (new)
@@ -781,9 +781,9 @@ impl App {
                 .borders(ratatui::widgets::Borders::ALL)
                 .title("New Text File Name - Esc to cancel, Enter to create"),
         );
-        self.popups.create_note = Some((
-            crate::popups::NoteCreatePopup { folder, input },
-            crate::popups::NoteFormat::PlainText,
+        self.popups.active = Some(crate::popups::ActivePopup::CreateNote(
+            NoteCreatePopup { folder, input },
+            NoteFormat::PlainText,
         ));
     }
 
@@ -802,14 +802,14 @@ impl App {
                 .borders(ratatui::widgets::Borders::ALL)
                 .title("New Note Name - Esc to cancel, Enter to create"),
         );
-        self.popups.create_note = Some((
+        self.popups.active = Some(crate::popups::ActivePopup::CreateNote(
             NoteCreatePopup { folder, input },
             crate::popups::NoteFormat::Markdown,
         ));
     }
 
     pub fn confirm_create_note(&mut self) {
-        if let Some((popup, format)) = self.popups.create_note.take() {
+        if let Some(crate::popups::ActivePopup::CreateNote(popup, format)) = self.popups.active.take() {
             let mut title = popup.input.lines().join("");
             title = title.trim().to_string();
             match format {
@@ -866,7 +866,7 @@ impl App {
                             edges: vec![],
                         };
                         if let Ok(content) = serde_json::to_string_pretty(&data)
-                            && let Err(e) = std::fs::write(&path, content)
+                            && let Err(e) = crate::fsutil::atomic_write_str(&path, &content)
                         {
                             self.set_temporary_status(&format!("Failed to write canvas file: {e}"));
                             return;
@@ -985,14 +985,14 @@ impl App {
                     .borders(ratatui::widgets::Borders::ALL)
                     .title("Rename Note - Esc to cancel, Enter to save"),
             );
-            self.popups.note_rename = Some(NoteRenamePopup { note_id: id, input });
+            self.popups.active = Some(crate::popups::ActivePopup::NoteRename(NoteRenamePopup { note_id: id, input }));
         } else {
             self.set_temporary_status_static("Select a note to rename");
         }
     }
 
     pub fn confirm_rename_note(&mut self) {
-        if let Some(popup) = self.popups.note_rename.take() {
+        if let Some(crate::popups::ActivePopup::NoteRename(popup)) = self.popups.active.take() {
             let new_title = popup.input.lines().join("");
             let new_title = new_title.trim();
             if new_title.is_empty() {

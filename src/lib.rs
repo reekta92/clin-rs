@@ -18,6 +18,7 @@ pub mod graf;
 pub mod keybinds;
 pub mod list_view;
 pub mod markdown;
+pub mod overlay;
 pub mod migration;
 pub mod palette;
 pub mod pinstar;
@@ -30,6 +31,7 @@ pub mod text_edit;
 
 use crate::cli::{Cli, Command, ConfigCmd, KeybindsCmd, NotesCmd, StorageCmd, TemplatesCmd};
 use crate::config::ClinConfig;
+use crate::overlay::OverlayView;
 use crate::keybinds::{EditAction, HelpAction, ListAction};
 use clap::{CommandFactory, FromArgMatches};
 
@@ -1099,7 +1101,7 @@ fn run_app(
                                             terminal,
                                             &mut app.config,
                                         )? {
-                                            Some(crate::graf::app::GrafResult::NoteOpened(note_id)) => {
+                                            crate::overlay::OverlayResult::NoteOpened(note_id) => {
                                                 if let Err(e) = app.config.save() {
                                                     app.set_temporary_status(&format!("Failed to save config: {e}"));
                                                 }
@@ -1111,11 +1113,11 @@ fn run_app(
                                                 app.needs_full_redraw = true;
                                                 terminal.clear()?;
                                             }
-                                            Some(crate::graf::app::GrafResult::OpenHelp) => {
+                                            crate::overlay::OverlayResult::OpenHelp(tab) => {
                                                 app.reload_theme();
-                                                app.open_help_page_with_tab(crate::app::HelpTab::Graph);
+                                                app.open_help_page_with_tab(tab);
                                             }
-                                            Some(crate::graf::app::GrafResult::Quit) => {
+                                            crate::overlay::OverlayResult::Exit => {
                                                 if let Err(e) = app.config.save() {
                                                     app.set_temporary_status(&format!("Failed to save config: {e}"));
                                                 }
@@ -1128,7 +1130,7 @@ fn run_app(
                                                 app.needs_full_redraw = true;
                                                 terminal.clear()?;
                                             }
-                                            None => {}
+                                            _ => {}
                                         }
                                         true
                                     } else {
@@ -1142,18 +1144,18 @@ fn run_app(
                                             terminal,
                                             &mut app.config,
                                         )? {
-                                            Some(crate::draw::app::DrawResult::Finished) => {
+                                            crate::overlay::OverlayResult::Exit => {
                                                 debug_log!(app, Info, "draw", "Drawing closed and saved");
                                                 app.draw_state = None;
                                                 app.close_draw_view();
                                                 app.needs_full_redraw = true;
                                                 terminal.clear()?;
                                             }
-                                            Some(crate::draw::app::DrawResult::HelpRequested) => {
+                                            crate::overlay::OverlayResult::OpenHelp(tab) => {
                                                 app.reload_theme();
-                                                app.open_help_page_with_tab(crate::app::HelpTab::Draw);
+                                                app.open_help_page_with_tab(tab);
                                             }
-                                            None => {}
+                                            _ => {}
                                         }
                                         true
                                     } else {
@@ -1167,17 +1169,17 @@ fn run_app(
                                             terminal,
                                             &mut app.config,
                                         )? {
-                                            Some(crate::pinstar::app::PinstarResult::HelpRequested) => {
+                                            crate::overlay::OverlayResult::OpenHelp(tab) => {
                                                 app.reload_theme();
-                                                app.open_help_page_with_tab(crate::app::HelpTab::Canvas);
+                                                app.open_help_page_with_tab(tab);
                                             }
-                                            Some(crate::pinstar::app::PinstarResult::Normal) => {
+                                            crate::overlay::OverlayResult::Exit => {
                                                 debug_log!(app, Info, "canvas", "Canvas closed and saved");
                                                 app.close_canvas_view();
                                                 app.needs_full_redraw = true;
                                                 terminal.clear()?;
                                             }
-                                            None => {}
+                                            _ => {}
                                         }
                                         true
                                     } else {
@@ -1192,7 +1194,7 @@ fn run_app(
                                             &mut app.config,
                                         )?;
                                         match result {
-                                            Some(crate::backup::app::BackupResult::Back) => {
+                                            crate::overlay::OverlayResult::Exit => {
                                                 app.reload_config();
                                                 app.backup_state = None;
                                                 app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
@@ -1201,7 +1203,7 @@ fn run_app(
                                                 app.needs_full_redraw = true;
                                                 terminal.clear()?;
                                             }
-                                            None => {}
+                                            _ => {}
                                         }
                                         true
                                     } else {
@@ -1216,7 +1218,7 @@ fn run_app(
                                             &mut app.config,
                                         )?;
                                         match result {
-                                            Some(crate::content_tree::app::ContentTreeResult::Back) => {
+                                            crate::overlay::OverlayResult::Exit => {
                                                 app.content_tree_state = None;
                                                 app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
                                                 debug_log!(app, Info, "view", "View: ContentTree → {:?}", app.mode);
@@ -1224,7 +1226,7 @@ fn run_app(
                                                 app.needs_full_redraw = true;
                                                 terminal.clear()?;
                                             }
-                                            Some(crate::content_tree::app::ContentTreeResult::JumpToLine { note_id: _, line: _ }) => {
+                                            crate::overlay::OverlayResult::JumpToLine { note_id: _, line: _ } => {
                                                 app.content_tree_state = None;
                                                 app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
                                                 debug_log!(app, Info, "view", "View: ContentTree → {:?} (jump to line)", app.mode);
@@ -1232,13 +1234,13 @@ fn run_app(
                                                 app.needs_full_redraw = true;
                                                 terminal.clear()?;
                                             }
-                                            Some(crate::content_tree::app::ContentTreeResult::HelpRequested) => {
+                                            crate::overlay::OverlayResult::OpenHelp(tab) => {
                                                 app.reload_theme();
-                                                app.open_help_page_with_tab(crate::app::HelpTab::ContentTree);
+                                                app.open_help_page_with_tab(tab);
                                                 app.needs_full_redraw = true;
                                                 terminal.clear()?;
                                             }
-                                            None => {}
+                                            _ => {}
                                         }
                                         true
                                     } else {
@@ -1311,7 +1313,7 @@ fn run_app(
                                             terminal,
                                             &mut app.config,
                                         )? {
-                                            Some(crate::graf::app::GrafResult::NoteOpened(note_id)) => {
+                                            crate::overlay::OverlayResult::NoteOpened(note_id) => {
                                                 if let Err(e) = app.config.save() {
                                                     app.set_temporary_status(&format!("Failed to save config: {e}"));
                                                 }
@@ -1323,11 +1325,11 @@ fn run_app(
                                                 app.needs_full_redraw = true;
                                                 terminal.clear()?;
                                             }
-                                            Some(crate::graf::app::GrafResult::OpenHelp) => {
+                                            crate::overlay::OverlayResult::OpenHelp(tab) => {
                                                 app.reload_theme();
-                                                app.open_help_page_with_tab(crate::app::HelpTab::Graph);
+                                                app.open_help_page_with_tab(tab);
                                             }
-                                            Some(crate::graf::app::GrafResult::Quit) => {
+                                            crate::overlay::OverlayResult::Exit => {
                                                 if let Err(e) = app.config.save() {
                                                     app.set_temporary_status(&format!("Failed to save config: {e}"));
                                                 }
@@ -1339,7 +1341,7 @@ fn run_app(
                                                 app.needs_full_redraw = true;
                                                 terminal.clear()?;
                                             }
-                                            None => {}
+                                            _ => {}
                                         }
                                     }
                                 }
@@ -1350,18 +1352,18 @@ fn run_app(
                                             terminal,
                                             &mut app.config,
                                         )? {
-                                            Some(crate::draw::app::DrawResult::Finished) => {
+                                            crate::overlay::OverlayResult::Exit => {
                                                 debug_log!(app, Info, "draw", "Drawing closed and saved");
                                                 app.draw_state = None;
                                                 app.close_draw_view();
                                                 app.needs_full_redraw = true;
                                                 terminal.clear()?;
                                             }
-                                            Some(crate::draw::app::DrawResult::HelpRequested) => {
+                                            crate::overlay::OverlayResult::OpenHelp(tab) => {
                                                 app.reload_theme();
-                                                app.open_help_page_with_tab(crate::app::HelpTab::Draw);
+                                                app.open_help_page_with_tab(tab);
                                             }
-                                            None => {}
+                                            _ => {}
                                         }
                                     }
                                 }

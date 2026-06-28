@@ -228,19 +228,15 @@ pub enum EventAction {
     OpenHelp,
 }
 
-pub enum GrafResult {
-    NoteOpened(String),
-    Quit,
-    OpenHelp,
-}
-
 impl GrafAppState {
     pub fn overlay_update(&mut self, config: &mut crate::config::ClinConfig) {
         self.sync_preview(config);
         let _ = self.poll_renderers();
     }
+}
 
-    pub fn overlay_render(
+impl crate::overlay::OverlayView for GrafAppState {
+    fn overlay_render(
         &mut self,
         frame: &mut ratatui::Frame,
         area: ratatui::layout::Rect,
@@ -255,29 +251,29 @@ impl GrafAppState {
         crate::graf::ui::draw_ui(frame, self, config, outer[1], outer[0], theme, app_status);
     }
 
-    pub fn overlay_handle_event(
+    fn overlay_handle_event(
         &mut self,
         event: crossterm::event::Event,
         terminal: &ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
         config: &mut crate::config::ClinConfig,
-    ) -> anyhow::Result<Option<GrafResult>> {
+    ) -> anyhow::Result<crate::overlay::OverlayResult> {
         let keybinds = self.keybinds.clone();
         if let Some(action) = handle_event(event, self, config, &keybinds, terminal)? {
             match action {
                 EventAction::Quit => {
                     self.shutdown();
-                    return Ok(Some(GrafResult::Quit));
+                    return Ok(crate::overlay::OverlayResult::Exit);
                 }
                 EventAction::OpenFile(id) => {
                     self.shutdown();
-                    return Ok(Some(GrafResult::NoteOpened(id)));
+                    return Ok(crate::overlay::OverlayResult::NoteOpened(id));
                 }
                 EventAction::OpenHelp => {
-                    return Ok(Some(GrafResult::OpenHelp));
+                    return Ok(crate::overlay::OverlayResult::OpenHelp(crate::app::HelpTab::Graph));
                 }
             }
         }
-        Ok(None)
+        Ok(crate::overlay::OverlayResult::Continue)
     }
 }
 

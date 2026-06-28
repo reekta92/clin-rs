@@ -17,13 +17,13 @@ impl App {
                 input.set_style(self.app_theme.bg_style());
                 input.set_cursor_line_style(Style::default());
                 input.set_placeholder_text("Search templates...");
-                self.popups.template = Some(TemplatePopup {
+                self.popups.active = Some(crate::popups::ActivePopup::Template(TemplatePopup {
                     all_templates: templates.clone(),
                     filtered_templates: templates,
                     input,
                     selected: 0,
                     focus: crate::popups::TemplatePopupFocus::Search,
-                });
+                }));
             }
             Err(_) => {
                 debug_log!(self, Warn, "templates", "Failed to load templates");
@@ -33,7 +33,7 @@ impl App {
     }
 
     pub fn close_template_popup(&mut self) {
-        self.popups.template = None;
+        self.popups.active = None;
     }
 
     pub fn select_template(&mut self) {
@@ -46,7 +46,7 @@ impl App {
         } else {
             self.get_current_folder_context()
         };
-        if let Some(popup) = self.popups.template.take()
+        if let Some(crate::popups::ActivePopup::Template(popup)) = self.popups.active.take()
             && let Some(summary) = popup.filtered_templates.get(popup.selected)
         {
             let template_manager = self.storage.template_manager();
@@ -60,7 +60,7 @@ impl App {
     }
 
     pub fn edit_selected_template_from_popup(&mut self) {
-        let path = if let Some(popup) = self.popups.template.as_ref()
+        let path = if let Some(crate::popups::ActivePopup::Template(popup)) = self.popups.active.as_ref()
             && let Some(summary) = popup.filtered_templates.get(popup.selected)
         {
             self.storage
@@ -71,7 +71,7 @@ impl App {
             return;
         };
 
-        self.popups.template = None;
+        self.popups.active = None;
         self.open_template_path_in_editor(&path);
     }
 
@@ -148,7 +148,7 @@ impl App {
     }
 
     pub fn update_template_popup_filter(&mut self) {
-        if let Some(popup) = &mut self.popups.template {
+        if let Some(crate::popups::ActivePopup::Template(popup)) = &mut self.popups.active {
             let query = popup.input.lines()[0].trim().to_lowercase();
             if query.is_empty() {
                 popup.filtered_templates = popup.all_templates.clone();
@@ -170,7 +170,7 @@ impl App {
     }
 
     pub fn begin_delete_selected_template_from_popup(&mut self) {
-        let (filename, name) = if let Some(popup) = self.popups.template.as_ref()
+        let (filename, name) = if let Some(crate::popups::ActivePopup::Template(popup)) = self.popups.active.as_ref()
             && let Some(summary) = popup.filtered_templates.get(popup.selected)
         {
             (summary.filename.clone(), summary.name.clone())
@@ -184,7 +184,7 @@ impl App {
 
     pub fn refresh_template_popup(&mut self) {
         let template_manager = self.storage.template_manager();
-        if let Some(popup) = &mut self.popups.template {
+        if let Some(crate::popups::ActivePopup::Template(popup)) = &mut self.popups.active {
             let selected = popup.selected;
             let focus = popup.focus;
             match template_manager.list() {
@@ -192,7 +192,7 @@ impl App {
                     popup.all_templates = all_templates;
                     popup.focus = focus;
                     self.update_template_popup_filter();
-                    if let Some(popup) = &mut self.popups.template {
+                    if let Some(crate::popups::ActivePopup::Template(popup)) = &mut self.popups.active {
                         if popup.filtered_templates.is_empty() {
                             popup.selected = 0;
                         } else {
@@ -253,7 +253,7 @@ template = """
 """
 "#;
 
-        if let Err(e) = std::fs::write(&path, skeleton) {
+        if let Err(e) = crate::fsutil::atomic_write_str(&path, &skeleton) {
             self.set_temporary_status(&format!("Failed to create template: {e}"));
             return;
         }
@@ -427,7 +427,7 @@ template = """
     }
 
     pub fn close_create_format_popup(&mut self) {
-        self.popups.create_format = None;
+        self.popups.active = None;
     }
 
     pub fn cycle_sort(&mut self) {
@@ -494,13 +494,13 @@ template = """
             crate::config::Background::Solid
         );
 
-        self.popups.theme = Some(ThemePopup {
+        self.popups.active = Some(crate::popups::ActivePopup::Theme(ThemePopup {
             themes,
             selected,
             focus: ThemePopupFocus::ThemeList,
             general_is_solid,
             graph_is_solid,
-        });
+        }));
     }
 
     pub fn begin_sort_selection(&mut self) {
@@ -511,13 +511,13 @@ template = """
             (SortField::Modified, SortOrder::Descending) => 2,
             (SortField::Modified, SortOrder::Ascending) => 3,
         };
-        self.popups.sort = Some(crate::popups::SortPopup {
+        self.popups.active = Some(crate::popups::ActivePopup::Sort(crate::popups::SortPopup {
             selected: current_idx,
-        });
+        }));
     }
 
     pub fn select_sort(&mut self) {
-        if let Some(popup) = self.popups.sort.take() {
+        if let Some(crate::popups::ActivePopup::Sort(popup)) = self.popups.active.take() {
             use crate::list_view::{SortField, SortOrder};
             match popup.selected {
                 0 => {
@@ -546,7 +546,7 @@ template = """
     }
 
     pub fn close_sort_popup(&mut self) {
-        self.popups.sort = None;
+        self.popups.active = None;
     }
 
     pub fn begin_icon_mode_selection(&mut self) {
@@ -555,13 +555,13 @@ template = """
             crate::config::IconMode::Unicode => 1,
             crate::config::IconMode::None => 2,
         };
-        self.popups.icon_mode = Some(crate::popups::IconModePopup {
+        self.popups.active = Some(crate::popups::ActivePopup::IconMode(crate::popups::IconModePopup {
             selected: current_idx,
-        });
+        }));
     }
 
     pub fn select_icon_mode(&mut self) {
-        if let Some(popup) = self.popups.icon_mode.take() {
+        if let Some(crate::popups::ActivePopup::IconMode(popup)) = self.popups.active.take() {
             let mode = match popup.selected {
                 0 => crate::config::IconMode::Nerd,
                 1 => crate::config::IconMode::Unicode,
@@ -585,7 +585,7 @@ template = """
     }
 
     pub fn close_icon_mode_popup(&mut self) {
-        self.popups.icon_mode = None;
+        self.popups.active = None;
     }
 
     pub fn begin_hint_bar_style_selection(&mut self) {
@@ -596,13 +596,13 @@ template = """
             crate::config::HintBarStyle::PowerlineRounded => 3,
             crate::config::HintBarStyle::PowerlineSlanted => 4,
         };
-        self.popups.hint_bar_style = Some(crate::popups::HintBarStylePopup {
+        self.popups.active = Some(crate::popups::ActivePopup::HintBarStyle(crate::popups::HintBarStylePopup {
             selected: current_idx,
-        });
+        }));
     }
 
     pub fn select_hint_bar_style(&mut self) {
-        if let Some(popup) = self.popups.hint_bar_style.take() {
+        if let Some(crate::popups::ActivePopup::HintBarStyle(popup)) = self.popups.active.take() {
             let style = match popup.selected {
                 0 => crate::config::HintBarStyle::Classic,
                 1 => crate::config::HintBarStyle::Accent,
@@ -627,12 +627,12 @@ template = """
                     self.set_temporary_status(&format!("Failed to save config: {e}"));
                 }
             }
-            self.popups.hint_bar_style = Some(popup);
+            self.popups.active = Some(crate::popups::ActivePopup::HintBarStyle(popup));
         }
     }
 
     pub fn close_hint_bar_style_popup(&mut self) {
-        self.popups.hint_bar_style = None;
+        self.popups.active = None;
     }
 
     pub fn begin_keybind_preset_selection(&mut self) {
@@ -642,11 +642,11 @@ template = """
             crate::config::KeybindPreset::Vim => 2,
             crate::config::KeybindPreset::Emacs => 3,
         };
-        self.popups.keybind_preset = Some(crate::popups::KeybindPresetPopup { selected });
+        self.popups.active = Some(crate::popups::ActivePopup::KeybindPreset(crate::popups::KeybindPresetPopup { selected }));
     }
 
     pub fn select_keybind_preset(&mut self) {
-        if let Some(popup) = self.popups.keybind_preset.take() {
+        if let Some(crate::popups::ActivePopup::KeybindPreset(popup)) = self.popups.active.take() {
             let new = match popup.selected {
                 0 => crate::config::KeybindPreset::Default,
                 1 => crate::config::KeybindPreset::Helix,
@@ -660,12 +660,12 @@ template = """
                 c.core.keybind_preset = new;
                 let _ = c.save();
             }
-            self.popups.keybind_preset = Some(popup);
+            self.popups.active = Some(crate::popups::ActivePopup::KeybindPreset(popup));
         }
     }
 
     pub fn close_keybind_preset_popup(&mut self) {
-        self.popups.keybind_preset = None;
+        self.popups.active = None;
     }
 
     pub fn apply_keybind_preset(&mut self, preset: crate::config::KeybindPreset) {
@@ -674,7 +674,7 @@ template = """
     }
 
     pub fn select_theme(&mut self) {
-        if let Some(mut popup) = self.popups.theme.take() {
+        if let Some(crate::popups::ActivePopup::Theme(mut popup)) = self.popups.active.take() {
             match popup.focus {
                 ThemePopupFocus::ThemeList => {
                     let next_theme = popup.themes[popup.selected].clone();
@@ -687,7 +687,7 @@ template = """
                     self.reload_theme();
                     debug_log!(self, Info, "view", "Theme changed to {next_theme}");
                     self.set_temporary_status(&format!("Theme set to: {next_theme}"));
-                    self.popups.theme = Some(popup);
+                    self.popups.active = Some(crate::popups::ActivePopup::Theme(popup));
                 }
                 ThemePopupFocus::GeneralBg => {
                     popup.general_is_solid = !popup.general_is_solid;
@@ -701,7 +701,7 @@ template = """
                         self.set_temporary_status(&format!("Failed to save bg: {e}"));
                     }
                     self.reload_theme();
-                    self.popups.theme = Some(popup);
+                    self.popups.active = Some(crate::popups::ActivePopup::Theme(popup));
                 }
                 ThemePopupFocus::GraphBg => {
                     popup.graph_is_solid = !popup.graph_is_solid;
@@ -714,14 +714,14 @@ template = """
                     if let Err(e) = config.save() {
                         self.set_temporary_status(&format!("Failed to save graph bg: {e}"));
                     }
-                    self.popups.theme = Some(popup);
+                    self.popups.active = Some(crate::popups::ActivePopup::Theme(popup));
                 }
             }
         }
     }
 
     pub fn close_theme_popup(&mut self) {
-        self.popups.theme = None;
+        self.popups.active = None;
     }
 
     pub fn begin_set_word_goal(&mut self) {
@@ -731,10 +731,10 @@ template = """
         if self.config.goals.word_goal > 0 {
             input.insert_str(&self.config.goals.word_goal.to_string());
         }
-        self.popups.goals = Some(crate::popups::GoalsPopup {
+        self.popups.active = Some(crate::popups::ActivePopup::Goals(crate::popups::GoalsPopup {
             mode: crate::popups::GoalsPopupMode::WordGoal,
             input,
-        });
+        }));
     }
 
     pub fn begin_set_note_goal(&mut self) {
@@ -744,14 +744,14 @@ template = """
         if self.config.goals.note_goal > 0 {
             input.insert_str(&self.config.goals.note_goal.to_string());
         }
-        self.popups.goals = Some(crate::popups::GoalsPopup {
+        self.popups.active = Some(crate::popups::ActivePopup::Goals(crate::popups::GoalsPopup {
             mode: crate::popups::GoalsPopupMode::NoteGoal,
             input,
-        });
+        }));
     }
 
     pub fn confirm_goals_popup(&mut self) {
-        if let Some(popup) = self.popups.goals.take() {
+        if let Some(crate::popups::ActivePopup::Goals(popup)) = self.popups.active.take() {
             let val_str = popup.input.lines().join("");
             match val_str.trim().parse::<usize>() {
                 Ok(val) => {

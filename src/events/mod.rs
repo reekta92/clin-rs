@@ -215,100 +215,150 @@ pub fn is_cancel_popup(keybinds: &crate::keybinds::Keybinds, key: &crossterm::ev
 /// trash_view, confirm, folder_picker, template, note_rename, theme, sort,
 /// create_format) and command palette input.
 /// Returns `true` if the event was consumed, `false` otherwise.
+///
+/// Preserves the historical precedence: group-A popups (create_note, import,
+/// folder, tag, goals, note_rename, search) shadow the standalone confirm
+/// overlay; tag additionally handles a layered confirm inline. The standalone
+/// confirm check therefore runs only when no group-A popup is active, and
+/// group-B popups (trash, folder_picker, template, theme, …) follow it.
 pub fn handle_global_popups_and_palette(
     app: &mut App,
     event: crossterm::event::Event,
     _terminal_area: Rect,
 ) -> bool {
-    match event {
-        crossterm::event::Event::Key(key) => {
-            if key.kind != crossterm::event::KeyEventKind::Press {
-                return false;
-            }
+    let crossterm::event::Event::Key(key) = event else {
+        return false;
+    };
+    if key.kind != crossterm::event::KeyEventKind::Press {
+        return false;
+    }
 
-            // Command palette
-            if let Some(mut palette) = app.command_palette.take() {
-                if palette.handle_input(key, app) {
-                    if key.code == KeyCode::Enter
-                        && let Some(selected_idx) = palette.state.selected()
-                        && let Some(item) = palette.items.get(selected_idx)
-                    {
-                        let action_id = item.id.clone();
-                        debug_log!(app, Info, "event", "Command palette: {action_id}");
-                        let note_id = palette.context_note_id.clone();
-                        if let Err(e) =
-                            crate::actions::execute_action(&action_id, app, note_id.as_deref())
-                        {
-                            app.set_temporary_status(&format!("Action failed: {e}"));
-                        }
-                    }
-                    return true;
+    // Command palette
+    if let Some(mut palette) = app.command_palette.take() {
+        if palette.handle_input(key, app) {
+            if key.code == KeyCode::Enter
+                && let Some(selected_idx) = palette.state.selected()
+                && let Some(item) = palette.items.get(selected_idx)
+            {
+                let action_id = item.id.clone();
+                debug_log!(app, Info, "event", "Command palette: {action_id}");
+                let note_id = palette.context_note_id.clone();
+                if let Err(e) =
+                    crate::actions::execute_action(&action_id, app, note_id.as_deref())
+                {
+                    app.set_temporary_status(&format!("Action failed: {e}"));
                 }
-                app.command_palette = Some(palette);
-                return true;
             }
+            return true;
+        }
+        app.command_palette = Some(palette);
+        return true;
+    }
 
+    // Group A: popups that shadow the standalone confirm check.
+    let group_a = matches!(
+        app.popups.active,
+        Some(crate::popups::ActivePopup::CreateNote(..))
+            | Some(crate::popups::ActivePopup::Import(_))
+            | Some(crate::popups::ActivePopup::Folder(_))
+            | Some(crate::popups::ActivePopup::Tag(_))
+            | Some(crate::popups::ActivePopup::Goals(_))
+            | Some(crate::popups::ActivePopup::NoteRename(_))
+            | Some(crate::popups::ActivePopup::Search(_))
+    );
+    if group_a {
+        let popup = app.popups.active.take().unwrap();
+        return popup.handle_key(key, app);
+    }
 
-            if let Some((mut popup, format)) = app.popups.create_note.take() {
+    // Standalone confirm overlay (layers over group-B popups or nothing).
+    if app.popups.confirm.is_some() {
+        app.seq_matcher.clear();
+        if key.code == KeyCode::Left || key.code == KeyCode::Char('h') {
+            app.confirm_popup_select_confirm();
+        } else if key.code == KeyCode::Right || key.code == KeyCode::Char('l') {
+            app.confirm_popup_select_cancel();
+        } else if key.code == KeyCode::Tab {
+            app.confirm_popup_toggle_button();
+        } else if key.code == KeyCode::Enter {
+            app.confirm_popup_activate();
+        } else if crate::events::is_cancel_popup(&app.keybinds, &key, false) {
+            app.cancel_confirm();
+        } else if app.keybinds.matches_list(crate::keybinds::ListAction::Confirm, &key) {
+            app.confirm_action();
+        } else if app.keybinds.matches_list(crate::keybinds::ListAction::Cancel, &key) {
+            app.cancel_confirm();
+        }
+        return true;
+    }
+
+    // Group B: the remaining popups (and ContextMenu, which falls through).
+    if let Some(popup) = app.popups.active.take() {
+        return popup.handle_key(key, app);
+    }
+    false
+}
+
+impl crate::popups::ActivePopup {
+    /// Handle one key. `self` is the popup taken out of `app.popups.active`;
+    /// this method re-inserts it (`app.popups.active = Some(...)`) whenever it
+    /// should remain open, and drops it to close. Returns `true` if consumed.
+    fn handle_key(self, key: KeyEvent, app: &mut App) -> bool {
+        use crate::popups::ActivePopup;
+        match self {
+            ActivePopup::CreateNote(mut popup, format) => {
                 if crate::events::is_cancel_popup(&app.keybinds, &key, true) {
-                    app.popups.create_note = None;
+                    // close: drop
                 } else if key.code == KeyCode::Enter {
-                    app.popups.create_note = Some((popup, format));
+                    app.popups.active = Some(ActivePopup::CreateNote(popup, format));
                     app.confirm_create_note();
                 } else {
                     crate::events::handle_popup_text_input(key, &mut popup.input, &app.keybinds);
-                    app.popups.create_note = Some((popup, format));
+                    app.popups.active = Some(ActivePopup::CreateNote(popup, format));
                 }
-                return true;
+                true
             }
-
-            if let Some(mut popup) = app.popups.import.take() {
+            ActivePopup::Import(mut popup) => {
                 if crate::events::is_cancel_popup(&app.keybinds, &key, true) {
-                    app.popups.import = None;
+                    // drop
                 } else if key.code == KeyCode::Enter {
-                    app.popups.import = Some(popup);
+                    app.popups.active = Some(ActivePopup::Import(popup));
                     app.confirm_import();
                 } else {
                     crate::events::handle_popup_text_input(key, &mut popup.input, &app.keybinds);
-                    app.popups.import = Some(popup);
+                    app.popups.active = Some(ActivePopup::Import(popup));
                 }
-                return true;
+                true
             }
-
-            if let Some(mut popup) = app.popups.folder.take() {
+            ActivePopup::Folder(mut popup) => {
                 if crate::events::is_cancel_popup(&app.keybinds, &key, true) {
-                    app.popups.folder = None;
+                    // drop
                 } else if key.code == KeyCode::Enter {
-                    app.popups.folder = Some(popup);
+                    app.popups.active = Some(ActivePopup::Folder(popup));
                     app.confirm_folder_popup();
                 } else {
                     crate::events::handle_popup_text_input(key, &mut popup.input, &app.keybinds);
-                    app.popups.folder = Some(popup);
+                    app.popups.active = Some(ActivePopup::Folder(popup));
                 }
-                return true;
+                true
             }
-
-            if let Some(mut popup) = app.popups.tag.take() {
+            ActivePopup::Tag(mut popup) => {
                 if app.popups.confirm.is_some() {
-                    app.popups.tag = Some(popup);
-                    let confirm_key = key;
-                    if confirm_key.code == KeyCode::Left || confirm_key.code == KeyCode::Char('h')
-                    {
+                    app.popups.active = Some(ActivePopup::Tag(popup));
+                    if key.code == KeyCode::Left || key.code == KeyCode::Char('h') {
                         app.confirm_popup_select_confirm();
-                    } else if confirm_key.code == KeyCode::Right
-                        || confirm_key.code == KeyCode::Char('l')
-                    {
+                    } else if key.code == KeyCode::Right || key.code == KeyCode::Char('l') {
                         app.confirm_popup_select_cancel();
-                    } else if confirm_key.code == KeyCode::Tab {
+                    } else if key.code == KeyCode::Tab {
                         app.confirm_popup_toggle_button();
-                    } else if confirm_key.code == KeyCode::Enter
-                        || confirm_key.code == KeyCode::Char('y')
-                        || confirm_key.code == KeyCode::Char('Y')
+                    } else if key.code == KeyCode::Enter
+                        || key.code == KeyCode::Char('y')
+                        || key.code == KeyCode::Char('Y')
                     {
                         app.confirm_popup_activate();
-                    } else if confirm_key.code == KeyCode::Char('n')
-                        || confirm_key.code == KeyCode::Char('N')
-                        || crate::events::is_cancel_popup(&app.keybinds, &confirm_key, false)
+                    } else if key.code == KeyCode::Char('n')
+                        || key.code == KeyCode::Char('N')
+                        || crate::events::is_cancel_popup(&app.keybinds, &key, false)
                     {
                         app.cancel_confirm();
                     }
@@ -326,7 +376,6 @@ pub fn handle_global_popups_and_palette(
                         .filter(|s| !s.is_empty());
                     if let Some(tag) = tag {
                         app.list.tag_to_assign = Some(tag);
-                        app.popups.tag = None;
                         app.list.list_mode = crate::list_view::ListMode::Select;
                         app.list.selected_indices.clear();
                         app.list.selected_indices.insert(app.list.visual_index);
@@ -334,14 +383,12 @@ pub fn handle_global_popups_and_palette(
                             "TAG MODE: Select notes to apply tag, Enter to confirm, Esc to cancel",
                         );
                     } else {
-                        app.popups.tag = None;
                         app.set_temporary_status_static("Enter a tag name first");
                     }
                     return true;
                 }
 
                 if crate::events::is_cancel_popup(&app.keybinds, &key, true) {
-                    app.popups.tag = None;
                     return true;
                 }
                 match key.code {
@@ -350,14 +397,14 @@ pub fn handle_global_popups_and_palette(
                             if popup.suggestions.is_empty() {
                                 popup.focus = crate::popups::TagPopupFocus::AllTagsList;
                             } else {
-                                app.popups.tag = Some(popup);
+                                app.popups.active = Some(ActivePopup::Tag(popup));
                                 app.accept_tag_suggestion();
                                 return true;
                             }
                         } else {
                             popup.focus = crate::popups::TagPopupFocus::Input;
                         }
-                        app.popups.tag = Some(popup);
+                        app.popups.active = Some(ActivePopup::Tag(popup));
                     }
                     KeyCode::BackTab => {
                         popup.focus = match popup.focus {
@@ -368,12 +415,12 @@ pub fn handle_global_popups_and_palette(
                                 crate::popups::TagPopupFocus::Input
                             }
                         };
-                        app.popups.tag = Some(popup);
+                        app.popups.active = Some(ActivePopup::Tag(popup));
                     }
                     _ => match popup.focus {
                         crate::popups::TagPopupFocus::Input => {
                             if key.code == KeyCode::Enter {
-                                app.popups.tag = Some(popup);
+                                app.popups.active = Some(ActivePopup::Tag(popup));
                                 app.confirm_manage_tags();
                             } else if key.code == KeyCode::Char('D')
                                 && key.modifiers.contains(KeyModifiers::SHIFT)
@@ -381,6 +428,7 @@ pub fn handle_global_popups_and_palette(
                                 if let Some(tag) =
                                     popup.suggestions.get(popup.suggestion_index).cloned()
                                 {
+                                    app.popups.active = Some(ActivePopup::Tag(popup));
                                     app.begin_delete_tag_with_name(tag);
                                 }
                             } else {
@@ -391,68 +439,65 @@ pub fn handle_global_popups_and_palette(
                                 ) {
                                     popup.input.input(ratatui_textarea::Input::from(key));
                                 }
-                                app.popups.tag = Some(popup);
+                                app.popups.active = Some(ActivePopup::Tag(popup));
                                 app.update_tag_suggestions();
                             }
                         }
                         crate::popups::TagPopupFocus::AllTagsList => match key.code {
                             KeyCode::Up | KeyCode::Char('k') => {
                                 popup.all_tags_selected = popup.all_tags_selected.saturating_sub(1);
-                                app.popups.tag = Some(popup);
+                                app.popups.active = Some(ActivePopup::Tag(popup));
                             }
                             KeyCode::Down | KeyCode::Char('j') => {
                                 if popup.all_tags_selected + 1 < popup.all_tags.len() {
                                     popup.all_tags_selected += 1;
                                 }
-                                app.popups.tag = Some(popup);
+                                app.popups.active = Some(ActivePopup::Tag(popup));
                             }
                             KeyCode::Char('d') | KeyCode::Delete => {
                                 if let Some(tag) =
                                     popup.all_tags.get(popup.all_tags_selected).cloned()
                                 {
-                                    app.popups.tag = Some(popup);
+                                    app.popups.active = Some(ActivePopup::Tag(popup));
                                     app.begin_delete_tag_with_name(tag);
                                 }
                             }
                             _ => {
-                                app.popups.tag = Some(popup);
+                                app.popups.active = Some(ActivePopup::Tag(popup));
                             }
                         },
                     },
                 }
-                return true;
+                true
             }
-
-            if let Some(mut popup) = app.popups.goals.take() {
+            ActivePopup::Goals(mut popup) => {
                 if crate::events::is_cancel_popup(&app.keybinds, &key, true) {
-                    app.popups.goals = None;
+                    // drop
                 } else if key.code == KeyCode::Enter {
-                    app.popups.goals = Some(popup);
+                    app.popups.active = Some(ActivePopup::Goals(popup));
                     app.confirm_goals_popup();
                 } else {
                     crate::events::handle_popup_text_input(key, &mut popup.input, &app.keybinds);
-                    app.popups.goals = Some(popup);
+                    app.popups.active = Some(ActivePopup::Goals(popup));
                 }
-                return true;
+                true
             }
-
-            if let Some(mut popup) = app.popups.note_rename.take() {
+            ActivePopup::NoteRename(mut popup) => {
                 if crate::events::is_cancel_popup(&app.keybinds, &key, true) {
-                    app.popups.note_rename = None;
+                    // drop
                 } else if key.code == KeyCode::Enter {
-                    app.popups.note_rename = Some(popup);
+                    app.popups.active = Some(ActivePopup::NoteRename(popup));
                     app.confirm_rename_note();
                 } else {
                     if !crate::text_edit::apply_text_shortcuts(&app.keybinds, &mut popup.input, key)
                     {
                         popup.input.input(ratatui_textarea::Input::from(key));
                     }
-                    app.popups.note_rename = Some(popup);
+                    app.popups.active = Some(ActivePopup::NoteRename(popup));
                 }
-                return true;
+                true
             }
-
-            if let Some(mut popup) = app.popups.search.take() {
+            ActivePopup::Search(mut popup) => {
                 let has_title = !popup.title_results.is_empty();
                 let has_grep = !popup.grep_results.is_empty();
                 let has_results = has_title || has_grep;
@@ -500,10 +545,11 @@ pub fn handle_global_popups_and_palette(
                     };
 
                 if crate::events::is_cancel_popup(&app.keybinds, &key, true) {
-                    app.popups.search = Some(popup);
+                    app.popups.active = Some(ActivePopup::Search(popup));
                     app.cancel_search();
                     return true;
                 }
+                let reinsert = |p: crate::popups::SearchPopup| ActivePopup::Search(p);
                 match key.code {
                     KeyCode::Tab | KeyCode::BackTab => {
                         popup.focus = match popup.focus {
@@ -512,15 +558,15 @@ pub fn handle_global_popups_and_palette(
                             }
                             _ => crate::popups::SearchFocus::Input,
                         };
-                        app.popups.search = Some(popup);
+                        app.popups.active = Some(reinsert(popup));
                     }
                     KeyCode::Enter => {
                         if popup.focus == crate::popups::SearchFocus::Results && has_results {
-                            app.popups.search = Some(popup);
+                            app.popups.active = Some(reinsert(popup));
                             app.jump_to_selected_result();
                             app.confirm_search();
                         } else {
-                            app.popups.search = Some(popup);
+                            app.popups.active = Some(reinsert(popup));
                             app.confirm_search();
                         }
                     }
@@ -533,7 +579,7 @@ pub fn handle_global_popups_and_palette(
                             ) {
                                 popup.input.input(ratatui_textarea::Input::from(key));
                             }
-                            app.popups.search = Some(popup);
+                            app.popups.active = Some(reinsert(popup));
                             app.update_search();
                         } else if has_grep
                             && popup
@@ -547,13 +593,13 @@ pub fn handle_global_popups_and_palette(
                             } else {
                                 popup.grep_expanded.insert(popup.grep_selected);
                             }
-                            app.popups.search = Some(popup);
+                            app.popups.active = Some(reinsert(popup));
                         } else if has_results {
-                            app.popups.search = Some(popup);
+                            app.popups.active = Some(reinsert(popup));
                             app.jump_to_selected_result();
                             app.confirm_search();
                         } else {
-                            app.popups.search = Some(popup);
+                            app.popups.active = Some(reinsert(popup));
                             app.update_search();
                         }
                     }
@@ -566,14 +612,14 @@ pub fn handle_global_popups_and_palette(
                             ) {
                                 popup.input.input(ratatui_textarea::Input::from(key));
                             }
-                            app.popups.search = Some(popup);
+                            app.popups.active = Some(reinsert(popup));
                             app.update_search();
                         } else if has_grep {
                             popup.grep_selected = grep_prev_visible(&popup, popup.grep_selected);
-                            app.popups.search = Some(popup);
+                            app.popups.active = Some(reinsert(popup));
                         } else if has_title {
                             popup.title_selected = popup.title_selected.saturating_sub(1);
-                            app.popups.search = Some(popup);
+                            app.popups.active = Some(reinsert(popup));
                         }
                     }
                     KeyCode::Down | KeyCode::Char('j') => {
@@ -585,16 +631,16 @@ pub fn handle_global_popups_and_palette(
                             ) {
                                 popup.input.input(ratatui_textarea::Input::from(key));
                             }
-                            app.popups.search = Some(popup);
+                            app.popups.active = Some(reinsert(popup));
                             app.update_search();
                         } else if has_grep {
                             popup.grep_selected = grep_next_visible(&popup, popup.grep_selected);
-                            app.popups.search = Some(popup);
+                            app.popups.active = Some(reinsert(popup));
                         } else if has_title {
                             if popup.title_selected + 1 < popup.title_results.len() {
                                 popup.title_selected += 1;
                             }
-                            app.popups.search = Some(popup);
+                            app.popups.active = Some(reinsert(popup));
                         }
                     }
                     KeyCode::Right | KeyCode::Char(' ') => {
@@ -606,7 +652,7 @@ pub fn handle_global_popups_and_palette(
                             ) {
                                 popup.input.input(ratatui_textarea::Input::from(key));
                             }
-                            app.popups.search = Some(popup);
+                            app.popups.active = Some(reinsert(popup));
                             app.update_search();
                         } else if has_grep
                             && popup
@@ -616,7 +662,7 @@ pub fn handle_global_popups_and_palette(
                                 .unwrap_or(false)
                         {
                             popup.grep_expanded.insert(popup.grep_selected);
-                            app.popups.search = Some(popup);
+                            app.popups.active = Some(reinsert(popup));
                         } else {
                             popup.focus = crate::popups::SearchFocus::Input;
                             if !crate::text_edit::apply_text_shortcuts(
@@ -626,7 +672,7 @@ pub fn handle_global_popups_and_palette(
                             ) {
                                 popup.input.input(ratatui_textarea::Input::from(key));
                             }
-                            app.popups.search = Some(popup);
+                            app.popups.active = Some(reinsert(popup));
                             app.update_search();
                         }
                     }
@@ -639,7 +685,7 @@ pub fn handle_global_popups_and_palette(
                             ) {
                                 popup.input.input(ratatui_textarea::Input::from(key));
                             }
-                            app.popups.search = Some(popup);
+                            app.popups.active = Some(reinsert(popup));
                             app.update_search();
                         } else if has_grep
                             && popup
@@ -649,7 +695,7 @@ pub fn handle_global_popups_and_palette(
                                 .unwrap_or(false)
                         {
                             popup.grep_expanded.remove(&popup.grep_selected);
-                            app.popups.search = Some(popup);
+                            app.popups.active = Some(reinsert(popup));
                         } else {
                             popup.focus = crate::popups::SearchFocus::Input;
                             if !crate::text_edit::apply_text_shortcuts(
@@ -659,7 +705,7 @@ pub fn handle_global_popups_and_palette(
                             ) {
                                 popup.input.input(ratatui_textarea::Input::from(key));
                             }
-                            app.popups.search = Some(popup);
+                            app.popups.active = Some(reinsert(popup));
                             app.update_search();
                         }
                     }
@@ -672,34 +718,13 @@ pub fn handle_global_popups_and_palette(
                         ) {
                             popup.input.input(ratatui_textarea::Input::from(key));
                         }
-                        app.popups.search = Some(popup);
+                        app.popups.active = Some(reinsert(popup));
                         app.update_search();
                     }
                 }
-                return true;
+                true
             }
-
-            if app.popups.confirm.is_some() {
-                app.seq_matcher.clear();
-                if key.code == KeyCode::Left || key.code == KeyCode::Char('h') {
-                    app.confirm_popup_select_confirm();
-                } else if key.code == KeyCode::Right || key.code == KeyCode::Char('l') {
-                    app.confirm_popup_select_cancel();
-                } else if key.code == KeyCode::Tab {
-                    app.confirm_popup_toggle_button();
-                } else if key.code == KeyCode::Enter {
-                    app.confirm_popup_activate();
-                } else if crate::events::is_cancel_popup(&app.keybinds, &key, false) {
-                    app.cancel_confirm();
-                } else if app.keybinds.matches_list(crate::keybinds::ListAction::Confirm, &key) {
-                    app.confirm_action();
-                } else if app.keybinds.matches_list(crate::keybinds::ListAction::Cancel, &key) {
-                    app.cancel_confirm();
-                }
-                return true;
-            }
-
-            if let Some(trash) = &mut app.popups.trash_view {
+            ActivePopup::TrashView(mut trash) => {
                 app.seq_matcher.clear();
                 match key.code {
                     KeyCode::Up | KeyCode::Char('k') => {
@@ -711,28 +736,35 @@ pub fn handle_global_popups_and_palette(
                         }
                     }
                     KeyCode::Char('r') | KeyCode::Enter => {
+                        app.popups.active = Some(ActivePopup::TrashView(trash));
                         app.restore_from_trash();
+                        return true;
                     }
                     KeyCode::Char('d') | KeyCode::Delete => {
+                        app.popups.active = Some(ActivePopup::TrashView(trash));
                         app.begin_delete_from_trash();
+                        return true;
                     }
                     KeyCode::Char('E') => {
+                        app.popups.active = Some(ActivePopup::TrashView(trash));
                         app.begin_empty_trash();
+                        return true;
                     }
                     KeyCode::Esc | KeyCode::Char('q') => {
                         app.close_trash_view();
+                        return true;
                     }
                     _ => {}
                 }
-                return true;
+                app.popups.active = Some(ActivePopup::TrashView(trash));
+                true
             }
-
-            if let Some(mut picker) = app.popups.folder_picker.take() {
+            ActivePopup::FolderPicker(mut picker) => {
                 app.seq_matcher.clear();
                 if crate::events::is_cancel_popup(&app.keybinds, &key, true) {
-                    app.popups.folder_picker = None;
                     return true;
                 }
+                let reinsert = |p: crate::popups::FolderPicker| ActivePopup::FolderPicker(p);
                 match key.code {
                     KeyCode::Tab => {
                         picker.focus = match picker.focus {
@@ -743,26 +775,26 @@ pub fn handle_global_popups_and_palette(
                                 crate::app::FolderPickerFocus::Search
                             }
                         };
-                        app.popups.folder_picker = Some(picker);
+                        app.popups.active = Some(reinsert(picker));
                     }
                     _ => match picker.focus {
                         crate::app::FolderPickerFocus::Results => match key.code {
                             KeyCode::Up | KeyCode::Char('k') => {
                                 picker.selected = picker.selected.saturating_sub(1);
-                                app.popups.folder_picker = Some(picker);
+                                app.popups.active = Some(reinsert(picker));
                             }
                             KeyCode::Down | KeyCode::Char('j') => {
                                 if picker.selected + 1 < picker.filtered_folders.len() {
                                     picker.selected += 1;
                                 }
-                                app.popups.folder_picker = Some(picker);
+                                app.popups.active = Some(reinsert(picker));
                             }
                             KeyCode::Enter | KeyCode::Char('l') => {
-                                app.popups.folder_picker = Some(picker);
+                                app.popups.active = Some(reinsert(picker));
                                 app.confirm_move();
                             }
                             _ => {
-                                app.popups.folder_picker = Some(picker);
+                                app.popups.active = Some(reinsert(picker));
                             }
                         },
                         crate::app::FolderPickerFocus::Search => {
@@ -776,22 +808,22 @@ pub fn handle_global_popups_and_palette(
                             }
                             let new_query = picker.input.lines().join("");
                             if old_query != new_query {
-                                app.popups.folder_picker = Some(picker);
+                                app.popups.active = Some(reinsert(picker));
                                 app.update_folder_picker_filter();
                             } else if key.code == KeyCode::Enter {
                                 picker.focus = crate::app::FolderPickerFocus::Results;
-                                app.popups.folder_picker = Some(picker);
+                                app.popups.active = Some(reinsert(picker));
                             } else {
-                                app.popups.folder_picker = Some(picker);
+                                app.popups.active = Some(reinsert(picker));
                             }
                         }
                     },
                 }
-                return true;
+                true
             }
-
-            if let Some(mut popup) = app.popups.template.take() {
+            ActivePopup::Template(mut popup) => {
                 app.seq_matcher.clear();
+                let reinsert = |p: crate::popups::TemplatePopup| ActivePopup::Template(p);
                 match key.code {
                     KeyCode::Tab | KeyCode::BackTab => {
                         popup.focus = match popup.focus {
@@ -802,11 +834,11 @@ pub fn handle_global_popups_and_palette(
                                 crate::popups::TemplatePopupFocus::Search
                             }
                         };
-                        app.popups.template = Some(popup);
+                        app.popups.active = Some(reinsert(popup));
                     }
                     KeyCode::Char('?') => {
                         if popup.focus == crate::popups::TemplatePopupFocus::Results {
-                            app.popups.template = Some(popup);
+                            app.popups.active = Some(reinsert(popup));
                             app.open_help_page_with_tab(crate::app::HelpTab::Templates);
                         } else {
                             if !crate::text_edit::apply_text_shortcuts(
@@ -816,13 +848,13 @@ pub fn handle_global_popups_and_palette(
                             ) {
                                 popup.input.input(ratatui_textarea::Input::from(key));
                             }
-                            app.popups.template = Some(popup);
+                            app.popups.active = Some(reinsert(popup));
                             app.update_template_popup_filter();
                         }
                     }
                     KeyCode::Char('n') => {
                         if popup.focus == crate::popups::TemplatePopupFocus::Results {
-                            app.popups.template = Some(popup);
+                            app.popups.active = Some(reinsert(popup));
                             app.create_template_from_popup();
                         } else {
                             if !crate::text_edit::apply_text_shortcuts(
@@ -832,7 +864,7 @@ pub fn handle_global_popups_and_palette(
                             ) {
                                 popup.input.input(ratatui_textarea::Input::from(key));
                             }
-                            app.popups.template = Some(popup);
+                            app.popups.active = Some(reinsert(popup));
                             app.update_template_popup_filter();
                         }
                     }
@@ -846,7 +878,7 @@ pub fn handle_global_popups_and_palette(
                                 .matches_list(crate::keybinds::ListAction::MoveUp, &key) =>
                             {
                                 popup.selected = popup.selected.saturating_sub(1);
-                                app.popups.template = Some(popup);
+                                app.popups.active = Some(reinsert(popup));
                             }
                             _ if app
                                 .keybinds
@@ -855,7 +887,7 @@ pub fn handle_global_popups_and_palette(
                                 if popup.selected + 1 < popup.filtered_templates.len() {
                                     popup.selected += 1;
                                 }
-                                app.popups.template = Some(popup);
+                                app.popups.active = Some(reinsert(popup));
                             }
                             _ if app.keybinds.matches_list(
                                 crate::keybinds::ListAction::Confirm,
@@ -865,28 +897,28 @@ pub fn handle_global_popups_and_palette(
                                 &key,
                             ) =>
                             {
-                                app.popups.template = Some(popup);
+                                app.popups.active = Some(reinsert(popup));
                                 app.select_template();
                             }
                             KeyCode::Char(' ') => {
-                                app.popups.template = Some(popup);
+                                app.popups.active = Some(reinsert(popup));
                                 app.edit_selected_template_from_popup();
                             }
                             KeyCode::Char('d') => {
-                                app.popups.template = Some(popup);
+                                app.popups.active = Some(reinsert(popup));
                                 app.begin_delete_selected_template_from_popup();
                             }
                             KeyCode::Char('h') => {
                                 app.close_template_popup();
                             }
                             _ => {
-                                app.popups.template = Some(popup);
+                                app.popups.active = Some(reinsert(popup));
                             }
                         },
                         crate::popups::TemplatePopupFocus::Search => match key.code {
                             _ if key.code == KeyCode::Enter => {
                                 popup.focus = crate::popups::TemplatePopupFocus::Results;
-                                app.popups.template = Some(popup);
+                                app.popups.active = Some(reinsert(popup));
                             }
                             _ => {
                                 if !crate::text_edit::apply_text_shortcuts(
@@ -896,23 +928,23 @@ pub fn handle_global_popups_and_palette(
                                 ) {
                                     popup.input.input(ratatui_textarea::Input::from(key));
                                 }
-                                app.popups.template = Some(popup);
+                                app.popups.active = Some(reinsert(popup));
                                 app.update_template_popup_filter();
                             }
                         },
                     },
                 }
-                return true;
+                true
             }
-
-            if let Some(mut popup) = app.popups.theme.take() {
+            ActivePopup::Theme(mut popup) => {
                 app.seq_matcher.clear();
+                let reinsert = |p: crate::popups::ThemePopup| ActivePopup::Theme(p);
                 match key.code {
                     KeyCode::Up | KeyCode::Char('k') => {
                         match popup.focus {
                             crate::app::ThemePopupFocus::ThemeList => {
                                 popup.selected = popup.selected.saturating_sub(1);
-                                app.popups.theme = Some(popup);
+                                app.popups.active = Some(reinsert(popup));
                                 app.select_theme();
                                 return true;
                             }
@@ -924,14 +956,14 @@ pub fn handle_global_popups_and_palette(
                                 popup.focus = crate::app::ThemePopupFocus::GeneralBg;
                             }
                         }
-                        app.popups.theme = Some(popup);
+                        app.popups.active = Some(reinsert(popup));
                     }
                     KeyCode::Down | KeyCode::Char('j') => {
                         match popup.focus {
                             crate::app::ThemePopupFocus::ThemeList => {
                                 if popup.selected + 1 < popup.themes.len() {
                                     popup.selected += 1;
-                                    app.popups.theme = Some(popup);
+                                    app.popups.active = Some(reinsert(popup));
                                     app.select_theme();
                                     return true;
                                 } else {
@@ -946,7 +978,7 @@ pub fn handle_global_popups_and_palette(
                                 popup.selected = 0;
                             }
                         }
-                        app.popups.theme = Some(popup);
+                        app.popups.active = Some(reinsert(popup));
                     }
                     KeyCode::Tab => {
                         match popup.focus {
@@ -960,7 +992,7 @@ pub fn handle_global_popups_and_palette(
                                 popup.focus = crate::app::ThemePopupFocus::ThemeList
                             }
                         }
-                        app.popups.theme = Some(popup);
+                        app.popups.active = Some(reinsert(popup));
                     }
                     _ if app
                         .keybinds
@@ -968,192 +1000,182 @@ pub fn handle_global_popups_and_palette(
                     {
                         let is_list =
                             matches!(popup.focus, crate::app::ThemePopupFocus::ThemeList);
-                        app.popups.theme = Some(popup);
+                        app.popups.active = Some(reinsert(popup));
                         app.select_theme();
                         if is_list {
                             app.close_theme_popup();
                         }
                     }
                     KeyCode::Char('l') | KeyCode::Char(' ') => {
-                        app.popups.theme = Some(popup);
+                        app.popups.active = Some(reinsert(popup));
                         app.select_theme();
                     }
-                    _ if crate::events::is_cancel_popup(&app.keybinds, &key, false) =>
-                    {
+                    _ if crate::events::is_cancel_popup(&app.keybinds, &key, false) => {
                         app.close_theme_popup();
                     }
                     _ => {
-                        app.popups.theme = Some(popup);
+                        app.popups.active = Some(reinsert(popup));
                     }
                 }
-                return true;
+                true
             }
-
-
-            if let Some(mut popup) = app.popups.icon_mode.take() {
+            ActivePopup::IconMode(mut popup) => {
                 app.seq_matcher.clear();
                 match key.code {
                     KeyCode::Up | KeyCode::Char('k') => {
                         popup.selected = popup.selected.saturating_sub(1);
-                        app.popups.icon_mode = Some(popup);
+                        app.popups.active = Some(ActivePopup::IconMode(popup));
                     }
                     KeyCode::Down | KeyCode::Char('j') => {
                         if popup.selected < 2 {
                             popup.selected += 1;
                         }
-                        app.popups.icon_mode = Some(popup);
+                        app.popups.active = Some(ActivePopup::IconMode(popup));
                     }
                     _ if app
                         .keybinds
                         .matches_list(crate::keybinds::ListAction::Confirm, &key) =>
                     {
-                        app.popups.icon_mode = Some(popup);
+                        app.popups.active = Some(ActivePopup::IconMode(popup));
                         app.select_icon_mode();
                     }
-                    _ if crate::events::is_cancel_popup(&app.keybinds, &key, false) =>
-                    {
+                    _ if crate::events::is_cancel_popup(&app.keybinds, &key, false) => {
                         app.close_icon_mode_popup();
                     }
                     _ => {
-                        app.popups.icon_mode = Some(popup);
+                        app.popups.active = Some(ActivePopup::IconMode(popup));
                     }
                 }
-                return true;
+                true
             }
-
-            if let Some(mut popup) = app.popups.hint_bar_style.take() {
+            ActivePopup::HintBarStyle(mut popup) => {
                 app.seq_matcher.clear();
                 match key.code {
                     KeyCode::Up | KeyCode::Char('k') => {
                         popup.selected = popup.selected.saturating_sub(1);
-                        app.popups.hint_bar_style = Some(popup);
+                        app.popups.active = Some(ActivePopup::HintBarStyle(popup));
                         app.select_hint_bar_style();
                     }
                     KeyCode::Down | KeyCode::Char('j') => {
                         if popup.selected < 4 {
                             popup.selected += 1;
                         }
-                        app.popups.hint_bar_style = Some(popup);
+                        app.popups.active = Some(ActivePopup::HintBarStyle(popup));
                         app.select_hint_bar_style();
                     }
                     _ if app
                         .keybinds
                         .matches_list(crate::keybinds::ListAction::Confirm, &key) =>
                     {
-                        app.popups.hint_bar_style = Some(popup);
+                        app.popups.active = Some(ActivePopup::HintBarStyle(popup));
                         app.select_hint_bar_style();
                         app.close_hint_bar_style_popup();
                     }
-                    _ if crate::events::is_cancel_popup(&app.keybinds, &key, false) =>
-                    {
+                    _ if crate::events::is_cancel_popup(&app.keybinds, &key, false) => {
                         app.close_hint_bar_style_popup();
                     }
                     _ => {
-                        app.popups.hint_bar_style = Some(popup);
+                        app.popups.active = Some(ActivePopup::HintBarStyle(popup));
                     }
                 }
-                return true;
+                true
             }
-
-            if let Some(mut popup) = app.popups.keybind_preset.take() {
+            ActivePopup::KeybindPreset(mut popup) => {
                 app.seq_matcher.clear();
                 match key.code {
                     KeyCode::Up | KeyCode::Char('k') => {
                         popup.selected = popup.selected.saturating_sub(1);
-                        app.popups.keybind_preset = Some(popup);
+                        app.popups.active = Some(ActivePopup::KeybindPreset(popup));
                         app.select_keybind_preset();
                     }
                     KeyCode::Down | KeyCode::Char('j') => {
                         if popup.selected < 3 {
                             popup.selected += 1;
                         }
-                        app.popups.keybind_preset = Some(popup);
+                        app.popups.active = Some(ActivePopup::KeybindPreset(popup));
                         app.select_keybind_preset();
                     }
                     _ if app
                         .keybinds
                         .matches_list(crate::keybinds::ListAction::Confirm, &key) =>
                     {
-                        app.popups.keybind_preset = Some(popup);
+                        app.popups.active = Some(ActivePopup::KeybindPreset(popup));
                         app.select_keybind_preset();
                         app.close_keybind_preset_popup();
                     }
-                    _ if crate::events::is_cancel_popup(&app.keybinds, &key, false) =>
-                    {
+                    _ if crate::events::is_cancel_popup(&app.keybinds, &key, false) => {
                         app.close_keybind_preset_popup();
                     }
                     _ => {
-                        app.popups.keybind_preset = Some(popup);
+                        app.popups.active = Some(ActivePopup::KeybindPreset(popup));
                     }
                 }
-                return true;
+                true
             }
-
-            if let Some(mut popup) = app.popups.sort.take() {
+            ActivePopup::Sort(mut popup) => {
                 app.seq_matcher.clear();
                 match key.code {
                     KeyCode::Up | KeyCode::Char('k') => {
                         popup.selected = popup.selected.saturating_sub(1);
-                        app.popups.sort = Some(popup);
+                        app.popups.active = Some(ActivePopup::Sort(popup));
                     }
                     KeyCode::Down | KeyCode::Char('j') => {
                         if popup.selected < 3 {
                             popup.selected += 1;
                         }
-                        app.popups.sort = Some(popup);
+                        app.popups.active = Some(ActivePopup::Sort(popup));
                     }
                     _ if app
                         .keybinds
                         .matches_list(crate::keybinds::ListAction::Confirm, &key) =>
                     {
-                        app.popups.sort = Some(popup);
+                        app.popups.active = Some(ActivePopup::Sort(popup));
                         app.select_sort();
                     }
-                    _ if crate::events::is_cancel_popup(&app.keybinds, &key, false) =>
-                    {
+                    _ if crate::events::is_cancel_popup(&app.keybinds, &key, false) => {
                         app.close_sort_popup();
                     }
                     _ => {
-                        app.popups.sort = Some(popup);
+                        app.popups.active = Some(ActivePopup::Sort(popup));
                     }
                 }
-                return true;
+                true
             }
-
-            if let Some(mut popup) = app.popups.create_format.take() {
+            ActivePopup::CreateFormat(mut popup) => {
                 app.seq_matcher.clear();
                 match key.code {
                     KeyCode::Up | KeyCode::Char('k') => {
                         popup.selected = popup.selected.saturating_sub(1);
-                        app.popups.create_format = Some(popup);
+                        app.popups.active = Some(ActivePopup::CreateFormat(popup));
                     }
                     KeyCode::Down | KeyCode::Char('j') => {
                         if popup.selected < 3 {
                             popup.selected += 1;
                         }
-                        app.popups.create_format = Some(popup);
+                        app.popups.active = Some(ActivePopup::CreateFormat(popup));
                     }
                     _ if app
                         .keybinds
                         .matches_list(crate::keybinds::ListAction::Confirm, &key) =>
                     {
-                        app.popups.create_format = Some(popup);
+                        app.popups.active = Some(ActivePopup::CreateFormat(popup));
                         app.confirm_create_format();
                     }
-                    _ if crate::events::is_cancel_popup(&app.keybinds, &key, false) =>
-                    {
+                    _ if crate::events::is_cancel_popup(&app.keybinds, &key, false) => {
                         app.close_create_format_popup();
                     }
                     _ => {
-                        app.popups.create_format = Some(popup);
+                        app.popups.active = Some(ActivePopup::CreateFormat(popup));
                     }
                 }
-                return true;
+                true
             }
-
-
-            false
+            ActivePopup::ContextMenu(menu) => {
+                // Context menu keys are handled in the list/edit view handlers;
+                // re-insert and report unconsumed so they receive the key.
+                app.popups.active = Some(ActivePopup::ContextMenu(menu));
+                false
+            }
         }
-        _ => false,
     }
 }

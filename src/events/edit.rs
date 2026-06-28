@@ -14,27 +14,27 @@ use super::{
 
 pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> bool {
 
-    if let Some(mut menu) = app.popups.context_menu.take() {
+    if let Some(crate::popups::ActivePopup::ContextMenu(mut menu)) = app.popups.active.take() {
         if crate::events::is_cancel_popup(&app.keybinds, &key, false) {
-            app.popups.context_menu = None;
+            app.popups.active = None;
             return false;
         }
         match key.code {
             _ if app.keybinds.matches_list(crate::keybinds::ListAction::MoveUp, &key) => {
                 menu.selected = menu.selected.saturating_sub(1);
-                app.popups.context_menu = Some(menu);
+                app.popups.active = Some(crate::popups::ActivePopup::ContextMenu(menu));
             }
             _ if app.keybinds.matches_list(crate::keybinds::ListAction::MoveDown, &key) => {
                 if menu.selected < 3 {
                     menu.selected += 1;
                 }
-                app.popups.context_menu = Some(menu);
+                app.popups.active = Some(crate::popups::ActivePopup::ContextMenu(menu));
             }
             _ if app.keybinds.matches_list(crate::keybinds::ListAction::Confirm, &key) => {
                 app.handle_menu_action(menu.selected, focus);
             }
             _ => {
-                app.popups.context_menu = Some(menu);
+                app.popups.active = Some(crate::popups::ActivePopup::ContextMenu(menu));
             }
         }
         return false;
@@ -144,7 +144,7 @@ pub fn handle_edit_mouse(
     mouse_selecting: &mut bool,
     mouse_dragged: &mut bool,
 ) {
-    if let Some(menu) = &app.popups.context_menu {
+    if let Some(crate::popups::ActivePopup::ContextMenu(menu)) = &app.popups.active {
         let menu_rect = Rect::new(menu.x, menu.y, 14, 4);
         if contains_cell(menu_rect, mouse_event.column, mouse_event.row) {
             if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
@@ -152,29 +152,27 @@ pub fn handle_edit_mouse(
                 if clicked_idx < 4 {
                     app.handle_menu_action(clicked_idx, focus);
                 }
-                app.popups.context_menu = None;
+                app.popups.active = None;
             } else if mouse_event.kind == MouseEventKind::ScrollUp {
-                let mut menu_copy = app
-                    .popups
-                    .context_menu
-                    .take()
+                let mut menu_taken = app.popups.active.take()
                     .expect("context_menu Some — guarded by enclosing if-let");
-                menu_copy.selected = menu_copy.selected.saturating_sub(1);
-                app.popups.context_menu = Some(menu_copy);
-            } else if mouse_event.kind == MouseEventKind::ScrollDown {
-                let mut menu_copy = app
-                    .popups
-                    .context_menu
-                    .take()
-                    .expect("context_menu Some — guarded by enclosing if-let");
-                if menu_copy.selected < 3 {
-                    menu_copy.selected += 1;
+                if let crate::popups::ActivePopup::ContextMenu(menu) = &mut menu_taken {
+                    menu.selected = menu.selected.saturating_sub(1);
                 }
-                app.popups.context_menu = Some(menu_copy);
+                app.popups.active = Some(menu_taken);
+            } else if mouse_event.kind == MouseEventKind::ScrollDown {
+                let mut menu_taken = app.popups.active.take()
+                    .expect("context_menu Some — guarded by enclosing if-let");
+                if let crate::popups::ActivePopup::ContextMenu(menu) = &mut menu_taken {
+                    if menu.selected < 3 {
+                        menu.selected += 1;
+                    }
+                }
+                app.popups.active = Some(menu_taken);
             }
             return;
         } else if matches!(mouse_event.kind, MouseEventKind::Down(_)) {
-            app.popups.context_menu = None;
+            app.popups.active = None;
             if mouse_event.kind != MouseEventKind::Down(MouseButton::Right) {
                 return;
             }
@@ -211,11 +209,11 @@ pub fn handle_edit_mouse(
 
         let max_x = terminal_area.width.saturating_sub(14);
         let max_y = terminal_area.height.saturating_sub(4);
-        app.popups.context_menu = Some(ContextMenu {
+        app.popups.active = Some(crate::popups::ActivePopup::ContextMenu(ContextMenu {
             x: mouse_event.column.min(max_x),
             y: mouse_event.row.min(max_y),
             selected: 0,
-        });
+        }));
         return;
     }
 

@@ -41,17 +41,16 @@ impl App {
                 .borders(ratatui::widgets::Borders::ALL)
                 .title(prompt),
         );
-
-        self.popups.import = Some(ImportPopup {
+        self.popups.active = Some(crate::popups::ActivePopup::Import(ImportPopup {
             source,
             target,
             note_id,
             input,
-        });
+        }));
     }
 
     pub fn confirm_import(&mut self) {
-        let Some(popup) = self.popups.import.take() else {
+        let Some(crate::popups::ActivePopup::Import(popup)) = self.popups.active.take() else {
             return;
         };
         let input = popup.input.lines().join("").trim().to_string();
@@ -85,4 +84,4 @@ impl App {
             }
         }
     }
-    }
+}

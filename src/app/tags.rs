@@ -46,7 +46,7 @@ impl App {
             input.set_placeholder_text("Add tags...");
             input.insert_str(current_tags.join(", "));
 
-            self.popups.tag = Some(TagPopup {
+            self.popups.active = Some(crate::popups::ActivePopup::Tag(TagPopup {
                 note_id: note.id.clone(),
                 input,
                 all_tags,
@@ -54,7 +54,7 @@ impl App {
                 suggestion_index: 0,
                 focus: crate::popups::TagPopupFocus::Input,
                 all_tags_selected: 0,
-            });
+            }));
             self.update_tag_suggestions();
         } else {
             self.set_temporary_status_static("Select a note to manage tags");
@@ -62,7 +62,7 @@ impl App {
     }
 
     pub fn confirm_manage_tags(&mut self) {
-        if let Some(popup) = self.popups.tag.take() {
+        if let Some(crate::popups::ActivePopup::Tag(popup)) = self.popups.active.take() {
             let text = popup.input.lines().join("");
             let tags: Vec<String> = text
                 .split(',')
@@ -104,7 +104,7 @@ impl App {
     }
 
     pub fn update_tag_suggestions(&mut self) {
-        if let Some(popup) = &mut self.popups.tag {
+        if let Some(crate::popups::ActivePopup::Tag(popup)) = &mut self.popups.active {
             let text = popup.input.lines().join("");
             let current_word = Self::get_current_tag_word(&text).to_lowercase();
 
@@ -132,7 +132,7 @@ impl App {
     }
 
     pub fn accept_tag_suggestion(&mut self) {
-        if let Some(popup) = &mut self.popups.tag
+        if let Some(crate::popups::ActivePopup::Tag(popup)) = &mut self.popups.active
             && let Some(suggestion) = popup.suggestions.get(popup.suggestion_index).cloned()
         {
             let text = popup.input.lines().join("");
@@ -220,7 +220,7 @@ impl App {
         }
         let live_tags = self.collect_live_tags();
 
-        if let Some(popup) = &mut self.popups.tag {
+        if let Some(crate::popups::ActivePopup::Tag(popup)) = &mut self.popups.active {
             popup.all_tags = live_tags;
             let text = popup.input.lines().join("");
 

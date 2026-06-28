@@ -221,7 +221,7 @@ impl App {
                 .borders(ratatui::widgets::Borders::ALL)
                 .title("New Drawing Name - Esc to cancel, Enter to create"),
         );
-        self.popups.create_note = Some((
+        self.popups.active = Some(crate::popups::ActivePopup::CreateNote(
             crate::popups::NoteCreatePopup { folder, input },
             crate::popups::NoteFormat::Draw,
         ));
@@ -251,7 +251,7 @@ impl App {
                 .borders(ratatui::widgets::Borders::ALL)
                 .title("New Canvas Name - Esc to cancel, Enter to create"),
         );
-        self.popups.create_note = Some((
+        self.popups.active = Some(crate::popups::ActivePopup::CreateNote(
             crate::popups::NoteCreatePopup { folder, input },
             crate::popups::NoteFormat::Canvas,
         ));
@@ -264,7 +264,7 @@ impl App {
                     self.set_temporary_status_static("Trash is empty");
                     return;
                 }
-                self.popups.trash_view = Some(TrashView { items, selected: 0 });
+                self.popups.active = Some(crate::popups::ActivePopup::TrashView(TrashView { items, selected: 0 }));
             }
             Err(e) => {
                 self.set_temporary_status(&format!("Failed to open trash: {e}"));
@@ -273,5 +273,5 @@ impl App {
     }
 
     pub fn close_trash_view(&mut self) {
-        self.popups.trash_view = None;
+        self.popups.active = None;
     }}

@@ -9,10 +9,6 @@ pub enum DrawEventAction {
     OpenHelp,
 }
 
-pub enum DrawResult {
-    Finished,
-    HelpRequested,
-}
 use ratatui::layout::Rect;
 use ratatui_textarea::TextArea;
 
@@ -82,46 +78,47 @@ impl DrawAppState {
         if let Some(id) = &self.current_file {
             let path = self.storage.note_path(id);
             let content = serde_json::to_string(&self.data)?;
-            std::fs::write(path, content)?;
+            crate::fsutil::atomic_write_str(&path, &content)?;
         }
         Ok(())
     }
 }
 
-impl DrawAppState {
-    pub fn overlay_render(
+impl crate::overlay::OverlayView for DrawAppState {
+    fn overlay_render(
         &mut self,
         frame: &mut ratatui::Frame,
         area: ratatui::layout::Rect,
         _theme: &crate::app_theme::AppThemeColors,
         _config: &crate::config::ClinConfig,
+        _app_status: Option<&str>,
     ) {
         self.last_area = area;
         draw_canvas(frame, self, area, _config);
     }
 
-    pub fn overlay_handle_event(
+    fn overlay_handle_event(
         &mut self,
         event: crossterm::event::Event,
         _terminal: &ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
         config: &mut crate::config::ClinConfig,
-    ) -> anyhow::Result<Option<DrawResult>> {
+    ) -> anyhow::Result<crate::overlay::OverlayResult> {
         let keybinds = self.keybinds.clone();
         if let Some(action) = handle_event(event, self, &keybinds, config)? {
             match action {
                 DrawEventAction::Quit => {
                     self.running = false;
                     self.save_draw()?;
-                    return Ok(Some(DrawResult::Finished));
+                    return Ok(crate::overlay::OverlayResult::Exit);
                 }
                 DrawEventAction::Save => {
                     self.save_draw()?;
                 }
                 DrawEventAction::OpenHelp => {
-                    return Ok(Some(DrawResult::HelpRequested));
+                    return Ok(crate::overlay::OverlayResult::OpenHelp(crate::app::HelpTab::Draw));
                 }
             }
         }
-        Ok(None)
+        Ok(crate::overlay::OverlayResult::Continue)
     }
 }

@@ -1051,7 +1051,7 @@ impl App {
         // Write content to a temp file with 0o600 permissions (secret).
         let temp_dir = std::env::temp_dir();
         let temp_file_path = temp_dir.join(format!("clin_preview_{}.md", uuid::Uuid::new_v4()));
-        if let Err(e) = std::fs::write(&temp_file_path, &content) {
+        if let Err(e) = crate::fsutil::atomic_write_str(&temp_file_path, &content) {
             self.set_temporary_status(&format!("Failed to write temp file: {e}"));
             return;
         }
@@ -1110,7 +1110,7 @@ impl App {
                 }
             }
 
-            if let Err(e) = std::fs::write(&path_to_write, content) {
+            if let Err(e) = crate::fsutil::atomic_write_str(&path_to_write, &content) {
                 self.set_temporary_status(&format!("Template save failed: {e}"));
             }
             return;
@@ -1333,7 +1333,7 @@ mod tests {
         // Open the create-note popup
         app.begin_create_note_in_folder(String::new());
         assert!(
-            app.popups.create_note.is_some(),
+            matches!(app.popups.active, Some(crate::popups::ActivePopup::CreateNote(..))),
             "create_note popup should be open"
         );
 
@@ -1346,12 +1346,16 @@ mod tests {
 
         // Popup must still be open
         assert!(
-            app.popups.create_note.is_some(),
+            matches!(app.popups.active, Some(crate::popups::ActivePopup::CreateNote(..))),
             "popup should remain open after y"
         );
 
         // Input must contain "y"
-        let (popup, _) = app.popups.create_note.as_ref().unwrap();
+        let (popup, _) = if let Some(crate::popups::ActivePopup::CreateNote(p, f)) = &app.popups.active {
+            (p, f)
+        } else {
+            panic!("create_note popup should be open")
+        };
         let text: String = popup.input.lines().join("");
         assert_eq!(text, "y", "input should contain y, got: {text}");
     }
@@ -1622,9 +1626,13 @@ theme = "tokyo_night"
 
         // Execute set word goal action
         crate::actions::execute_action("settings.word_goal", &mut app, None).unwrap();
-        assert!(app.popups.goals.is_some());
+        assert!(matches!(app.popups.active, Some(crate::popups::ActivePopup::Goals(_))));
 
-        let mut popup = app.popups.goals.take().unwrap();
+        let mut popup = if let Some(crate::popups::ActivePopup::Goals(p)) = app.popups.active.take() {
+            p
+        } else {
+            panic!()
+        };
         assert!(matches!(
             popup.mode,
             crate::popups::GoalsPopupMode::WordGoal
@@ -1632,16 +1640,20 @@ theme = "tokyo_night"
 
         // Enter new word goal: 750
         popup.input = TextArea::from(vec!["750".to_string()]);
-        app.popups.goals = Some(popup);
+        app.popups.active = Some(crate::popups::ActivePopup::Goals(popup));
         app.confirm_goals_popup();
 
         assert_eq!(app.config.goals.word_goal, 750);
 
         // Execute set note goal action
         crate::actions::execute_action("settings.note_goal", &mut app, None).unwrap();
-        assert!(app.popups.goals.is_some());
+        assert!(matches!(app.popups.active, Some(crate::popups::ActivePopup::Goals(_))));
 
-        let mut popup2 = app.popups.goals.take().unwrap();
+        let mut popup2 = if let Some(crate::popups::ActivePopup::Goals(p)) = app.popups.active.take() {
+            p
+        } else {
+            panic!()
+        };
         assert!(matches!(
             popup2.mode,
             crate::popups::GoalsPopupMode::NoteGoal
@@ -1649,7 +1661,7 @@ theme = "tokyo_night"
 
         // Enter new note goal: 5
         popup2.input = TextArea::from(vec!["5".to_string()]);
-        app.popups.goals = Some(popup2);
+        app.popups.active = Some(crate::popups::ActivePopup::Goals(popup2));
         app.confirm_goals_popup();
 
         assert_eq!(app.config.goals.note_goal, 5);

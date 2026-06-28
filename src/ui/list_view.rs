@@ -576,11 +576,11 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         }
     }
 
-    if let Some(popup) = &app.popups.template {
+    if let Some(crate::popups::ActivePopup::Template(popup)) = &app.popups.active {
         draw_template_popup(frame, popup, area, &app.app_theme);
     }
 
-    if let Some(popup) = &mut app.popups.folder {
+    if let Some(crate::popups::ActivePopup::Folder(popup)) = &mut app.popups.active {
         let title = match popup.mode {
             crate::popups::FolderPopupMode::Create { .. } => "NEW FOLDER",
             crate::popups::FolderPopupMode::Rename { .. } => "RENAME FOLDER",
@@ -604,7 +604,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         frame.render_widget(&popup.input, content);
     }
 
-    if let Some(popup) = &mut app.popups.tag {
+    if let Some(crate::popups::ActivePopup::Tag(popup)) = &mut app.popups.active {
         let suggestion_height = if popup.suggestions.is_empty() {
             0u16
         } else {
@@ -717,7 +717,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         frame.render_stateful_widget(tags_list, chunks[1], &mut tags_state);
     }
 
-    if let Some(picker) = &mut app.popups.folder_picker {
+    if let Some(crate::popups::ActivePopup::FolderPicker(picker)) = &mut app.popups.active {
         let title = match picker.mode {
             crate::popups::FolderPickerMode::CopyNote { .. }
             | crate::popups::FolderPickerMode::BulkCopyNotes { .. }
@@ -885,7 +885,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         frame.render_stateful_widget(list, chunks[2], &mut palette.state);
     }
 
-    if let Some(popup) = &mut app.popups.note_rename {
+    if let Some(crate::popups::ActivePopup::NoteRename(popup)) = &mut app.popups.active {
         let hint_line = popup_hint_line(&app.app_theme, "Enter rename · Esc cancel");
         let content = draw_popup_frame(
             frame,
@@ -905,7 +905,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         frame.render_widget(&popup.input, content);
     }
 
-    if let Some(popup) = &mut app.popups.goals {
+    if let Some(crate::popups::ActivePopup::Goals(popup)) = &mut app.popups.active {
         let (title, sub) = match popup.mode {
             crate::popups::GoalsPopupMode::WordGoal => {
                 ("DAILY WORD GOAL", "Enter word count · Esc cancel")
@@ -926,7 +926,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         frame.render_widget(&popup.input, content);
     }
 
-    if let Some((popup, format)) = &mut app.popups.create_note {
+    if let Some(crate::popups::ActivePopup::CreateNote(popup, format)) = &mut app.popups.active {
         let title = match format {
             crate::popups::NoteFormat::Markdown => "NEW NOTE",
             crate::popups::NoteFormat::Draw => "NEW DRAWING",
@@ -946,7 +946,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         frame.render_widget(&popup.input, content);
     }
 
-    if let Some(popup) = &mut app.popups.import {
+    if let Some(crate::popups::ActivePopup::Import(popup)) = &mut app.popups.active {
         let title = match popup.source {
             crate::popups::ImportSource::File => "IMPORT FILE",
             crate::popups::ImportSource::Csv => "IMPORT CSV/TSV",
@@ -972,7 +972,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         frame.render_widget(&popup.input, content);
     }
 
-    if let Some(popup) = &mut app.popups.search {
+    if let Some(crate::popups::ActivePopup::Search(popup)) = &mut app.popups.active {
         let hint_line = popup_hint_line(&app.app_theme, "Tab switch · Enter open · Esc cancel · f:folder p:pinned t:tag g:text · \\e\\ escapes filters");
         let content = draw_popup_frame(
             frame,
@@ -1197,7 +1197,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         frame.render_stateful_widget(results_list, results_chunk, &mut list_state);
     }
 
-    if let Some(trash) = &app.popups.trash_view {
+    if let Some(crate::popups::ActivePopup::TrashView(trash)) = &app.popups.active {
         let hint_line = popup_hint_line(&app.app_theme, "r restore · d delete · E empty · q close");
         let content = draw_popup_frame(
             frame,

@@ -101,18 +101,18 @@ impl App {
         let mut input = TextArea::default();
         input.set_cursor_line_style(ratatui::style::Style::default());
         input.set_placeholder_text("Search folders...");
-        self.popups.folder_picker = Some(FolderPicker {
+        self.popups.active = Some(crate::popups::ActivePopup::FolderPicker(FolderPicker {
             mode,
             filtered_folders: all_folders.clone(),
             all_folders,
             selected: 0,
             input,
             focus: FolderPickerFocus::Search,
-        });
+        }));
     }
 
     pub fn confirm_folder_popup(&mut self) {
-        if let Some(popup) = self.popups.folder.take() {
+        if let Some(crate::popups::ActivePopup::Folder(popup)) = self.popups.active.take() {
             let text = popup.input.lines().join("");
             let text = text.trim();
             if text.is_empty() {
@@ -325,7 +325,7 @@ impl App {
     }
 
     pub fn confirm_move(&mut self) {
-        if let Some(picker) = self.popups.folder_picker.take()
+        if let Some(crate::popups::ActivePopup::FolderPicker(picker)) = self.popups.active.take()
             && let Some(target_folder) = picker.filtered_folders.get(picker.selected)
         {
             match picker.mode {
@@ -477,7 +477,7 @@ impl App {
     }
 
     pub fn update_folder_picker_filter(&mut self) {
-        if let Some(picker) = &mut self.popups.folder_picker {
+        if let Some(crate::popups::ActivePopup::FolderPicker(picker)) = &mut self.popups.active {
             let query = picker.input.lines().join("").trim().to_lowercase();
             if query.is_empty() {
                 picker.filtered_folders = picker.all_folders.clone();

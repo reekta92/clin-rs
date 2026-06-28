@@ -28,7 +28,7 @@ impl App {
         input.set_cursor_line_style(Style::default());
         input.set_placeholder_text("Search notes...");
 
-        self.popups.search = Some(SearchPopup {
+        self.popups.active = Some(crate::popups::ActivePopup::Search(SearchPopup {
             input,
             focus: crate::popups::SearchFocus::Input,
             title_results: Vec::new(),
@@ -41,7 +41,7 @@ impl App {
             grep_selected: 0,
             original_index: self.list.visual_index,
             original_folder_expanded: self.list.folder_expanded.clone(),
-        });
+        }));
     }
 
     fn jump_to_note_index(&mut self, note_idx: usize) {
@@ -72,7 +72,7 @@ impl App {
     }
 
     pub fn update_search(&mut self) {
-        let Some(popup) = self.popups.search.as_ref() else {
+        let Some(crate::popups::ActivePopup::Search(popup)) = &self.popups.active else {
             return;
         };
         let query_text = popup.input.lines().join("");
@@ -86,7 +86,7 @@ impl App {
             && !parsed.pinned_only
             && parsed.tag_filter.is_none();
         if no_filters {
-            if let Some(popup) = &mut self.popups.search {
+            if let Some(crate::popups::ActivePopup::Search(popup)) = &mut self.popups.active {
                 popup.title_results.clear();
                 popup.title_result_indices.clear();
                 popup.title_selected = 0;
@@ -229,7 +229,7 @@ impl App {
             }
         }
 
-        if let Some(popup) = &mut self.popups.search {
+        if let Some(crate::popups::ActivePopup::Search(popup)) = &mut self.popups.active {
             popup.title_results = title_results;
             popup.title_result_indices = title_result_indices;
             if popup.title_selected >= popup.title_results.len() {
@@ -245,18 +245,18 @@ impl App {
     }
 
     pub fn confirm_search(&mut self) {
-        if let Some(popup) = &self.popups.search {
+        if let Some(crate::popups::ActivePopup::Search(popup)) = &self.popups.active {
             debug_log!(self, Debug, "event", "Search: '{}' ({} title results, {} grep results)",
                 popup.input.lines().join(""),
                 popup.title_results.len(),
                 popup.grep_results.len(),
             );
         }
-        self.popups.search = None;
+        self.popups.active = None;
     }
 
     pub fn jump_to_selected_result(&mut self) {
-        if let Some(popup) = &self.popups.search {
+        if let Some(crate::popups::ActivePopup::Search(popup)) = &self.popups.active {
             let mut target_line = None;
             let note_idx = match popup.focus {
                 crate::popups::SearchFocus::Results => {
@@ -297,7 +297,7 @@ impl App {
     }
 
     pub fn cancel_search(&mut self) {
-        if let Some(popup) = self.popups.search.take() {
+        if let Some(crate::popups::ActivePopup::Search(popup)) = self.popups.active.take() {
             self.list.visual_index = popup.original_index;
             self.list.folder_expanded = popup.original_folder_expanded;
             self.refresh_visual_list();
