@@ -92,7 +92,11 @@ pub fn draw_pinstar_view(
         state
             .raw_editor
             .set_cursor_line_style(if state.editor_focus {
-                Style::default().bg(theme.preview_bg().unwrap_or(Color::DarkGray))
+                if let Some(bg) = theme.preview_bg() {
+                    Style::default().bg(bg)
+                } else {
+                    Style::default().bg(theme.highlight_bg).fg(theme.highlight_fg)
+                }
             } else {
                 Style::default()
             });

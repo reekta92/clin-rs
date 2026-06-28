@@ -166,7 +166,11 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             app.editor
                 .editor
                 .set_cursor_line_style(if focus == EditFocus::Body {
-                    Style::default().bg(app.app_theme.preview_bg().unwrap_or(Color::DarkGray))
+                    if let Some(bg) = app.app_theme.preview_bg() {
+                        Style::default().bg(bg)
+                    } else {
+                        Style::default().bg(app.app_theme.highlight_bg).fg(app.app_theme.highlight_fg)
+                    }
                 } else {
                     Style::default()
                 });
@@ -286,7 +290,11 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         app.editor
             .editor
             .set_cursor_line_style(if focus == EditFocus::Body {
-                Style::default().bg(app.app_theme.preview_bg().unwrap_or(Color::DarkGray))
+                if let Some(bg) = app.app_theme.preview_bg() {
+                    Style::default().bg(bg)
+                } else {
+                    Style::default().bg(app.app_theme.highlight_bg).fg(app.app_theme.highlight_fg)
+                }
             } else {
                 Style::default()
             });
