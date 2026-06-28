@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 
-use super::structs::{VisualConfig, PhysicsConfig, InteractionConfig, UiConfig, FilterConfig, SearchConfig};
+use super::structs::{
+    FilterConfig, InteractionConfig, PhysicsConfig, SearchConfig, UiConfig, VisualConfig,
+};
 
 /// Merge a `toml::Value` into a `toml_edit::Item`, preserving comments/decor.
 pub fn merge_toml_value(edit_item: &mut toml_edit::Item, toml_val: &toml::Value) {
@@ -138,6 +140,12 @@ enable_key_sequences = false
 # Runs as a shell-words-split program with the note's temp file appended.
 # Falls back to $PAGER, then "less". Examples: "glow", "bat", "mdcat".
 # preview_command = "glow"
+
+# Markdown renderer ("auto" = built-in with glow fallback, "builtin", "glow").
+# markdown_renderer = "auto"
+
+# Enable syntax highlighting for code blocks in the built-in markdown preview.
+# syntax_highlighting = true
 
 
 # ── Display ──

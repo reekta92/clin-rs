@@ -21,7 +21,10 @@ pub fn draw_preview_pane(
             Line::from(vec![
                 Span::raw("  "),
                 Span::styled(
-                    format!("{}  Encrypted Note", crate::ui::get_icon("\u{f023}", "\u{1f512}", icon_mode)),
+                    format!(
+                        "{}  Encrypted Note",
+                        crate::ui::get_icon("\u{f023}", "\u{1f512}", icon_mode)
+                    ),
                     Style::default()
                         .fg(theme.destructive)
                         .add_modifier(Modifier::BOLD),

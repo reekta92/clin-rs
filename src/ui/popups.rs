@@ -1,11 +1,11 @@
-use std::borrow::Cow;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use ratatui::{prelude::*, widgets::*};
 use ratatui_textarea::TextArea;
+use std::borrow::Cow;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use super::{PopupSize, get_textarea_scroll};
 use crate::app::{ConfirmPopup, TemplatePopup, ThemePopup};
 use crate::app_theme::AppThemeColors;
-use super::{get_textarea_scroll, PopupSize};
 
 pub fn draw_template_popup(
     frame: &mut Frame,
@@ -13,7 +13,10 @@ pub fn draw_template_popup(
     area: Rect,
     theme: &AppThemeColors,
 ) {
-    let hint_line = popup_hint_line(theme, "Tab switch · Enter use template · n create · d delete · Space edit · ? help · Esc cancel");
+    let hint_line = popup_hint_line(
+        theme,
+        "Tab switch · Enter use template · n create · d delete · Space edit · ? help · Esc cancel",
+    );
     let content = draw_popup_frame(
         frame,
         area,
@@ -86,32 +89,22 @@ pub fn draw_template_popup(
         )
         .highlight_symbol("  ");
 
-    let mut state = list_state_selected(if popup.focus == crate::popups::TemplatePopupFocus::Results
-        && !popup.filtered_templates.is_empty()
-    {
-        Some(popup.selected)
-    } else {
-        None
-    });
+    let mut state = list_state_selected(
+        if popup.focus == crate::popups::TemplatePopupFocus::Results
+            && !popup.filtered_templates.is_empty()
+        {
+            Some(popup.selected)
+        } else {
+            None
+        },
+    );
 
     frame.render_stateful_widget(list, chunks[1], &mut state);
 }
 
-pub fn draw_theme_popup(
-    frame: &mut Frame,
-    popup: &ThemePopup,
-    area: Rect,
-    theme: &AppThemeColors,
-) {
+pub fn draw_theme_popup(frame: &mut Frame, popup: &ThemePopup, area: Rect, theme: &AppThemeColors) {
     let hint_line = popup_hint_line(theme, "Tab navigate · Enter select · Esc close");
-    let content = draw_popup_frame(
-        frame,
-        area,
-        "THEMES",
-        PopupSize::Medium,
-        &hint_line,
-        theme,
-    );
+    let content = draw_popup_frame(frame, area, "THEMES", PopupSize::Medium, &hint_line, theme);
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -210,14 +203,8 @@ pub fn draw_sort_popup(
     theme: &AppThemeColors,
 ) {
     let hint_line = popup_hint_line(theme, "↑↓: Navigate • Enter: Select • Esc: Cancel");
-    let content_area = draw_popup_frame(
-        frame,
-        area,
-        "SORT BY",
-        PopupSize::Medium,
-        &hint_line,
-        theme,
-    );
+    let content_area =
+        draw_popup_frame(frame, area, "SORT BY", PopupSize::Medium, &hint_line, theme);
 
     let options = [
         "Title (A-Z)",
@@ -385,7 +372,10 @@ pub fn draw_keybind_preset_popup(
     area: Rect,
     theme: &AppThemeColors,
 ) {
-    let hint_line = popup_hint_line(theme, "\u{2191}\u{2193}: Navigate \u{2022} Enter: Select \u{2022} Esc: Cancel");
+    let hint_line = popup_hint_line(
+        theme,
+        "\u{2191}\u{2193}: Navigate \u{2022} Enter: Select \u{2022} Esc: Cancel",
+    );
     let content_area = draw_popup_frame(
         frame,
         area,
@@ -600,12 +590,21 @@ pub fn draw_status_bar<'a>(
                     _ => unreachable!(),
                 };
                 let pwr_bg = b.style.fg.unwrap_or(theme.accent);
-                let pwr_style = Style::default().bg(pwr_bg).fg(theme.highlight_fg).add_modifier(b.style.add_modifier);
+                let pwr_style = Style::default()
+                    .bg(pwr_bg)
+                    .fg(theme.highlight_fg)
+                    .add_modifier(b.style.add_modifier);
                 left_spans.push(Span::styled(b.label, pwr_style));
 
-                let next_bg = hint.spans.first().and_then(|s| s.style.bg).or(theme.hint_line_bg());
+                let next_bg = hint
+                    .spans
+                    .first()
+                    .and_then(|s| s.style.bg)
+                    .or(theme.hint_line_bg());
                 let mut sep_style = Style::default().fg(pwr_bg);
-                if let Some(bg) = next_bg { sep_style = sep_style.bg(bg); }
+                if let Some(bg) = next_bg {
+                    sep_style = sep_style.bg(bg);
+                }
                 left_spans.push(Span::styled(sep_char, sep_style));
             }
             _ => {
@@ -638,24 +637,46 @@ pub fn draw_status_bar<'a>(
     }
 }
 
-
-pub fn format_keybind_hints<'a>(theme: &'a AppThemeColors, items: &[(String, &'static str)]) -> Line<'a> {
+pub fn format_keybind_hints<'a>(
+    theme: &'a AppThemeColors,
+    items: &[(String, &'static str)],
+) -> Line<'a> {
     match theme.hint_bar_style {
         crate::config::HintBarStyle::Classic => {
             let mut spans = Vec::new();
             for (i, (key, action)) in items.iter().enumerate() {
-                if i > 0 { spans.push(Span::styled(" · ", Style::default().fg(theme.muted))); }
-                spans.push(Span::styled(key.clone(), Style::default().fg(theme.muted).add_modifier(Modifier::BOLD)));
-                spans.push(Span::styled(format!(" {}", action), Style::default().fg(theme.muted)));
+                if i > 0 {
+                    spans.push(Span::styled(" · ", Style::default().fg(theme.muted)));
+                }
+                spans.push(Span::styled(
+                    key.clone(),
+                    Style::default()
+                        .fg(theme.muted)
+                        .add_modifier(Modifier::BOLD),
+                ));
+                spans.push(Span::styled(
+                    format!(" {}", action),
+                    Style::default().fg(theme.muted),
+                ));
             }
             Line::from(spans)
         }
         crate::config::HintBarStyle::Accent => {
             let mut spans = Vec::new();
             for (i, (key, action)) in items.iter().enumerate() {
-                if i > 0 { spans.push(Span::styled(" · ", Style::default().fg(theme.muted))); }
-                spans.push(Span::styled(key.clone(), Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)));
-                spans.push(Span::styled(format!(" {}", action), Style::default().fg(theme.muted)));
+                if i > 0 {
+                    spans.push(Span::styled(" · ", Style::default().fg(theme.muted)));
+                }
+                spans.push(Span::styled(
+                    key.clone(),
+                    Style::default()
+                        .fg(theme.accent)
+                        .add_modifier(Modifier::BOLD),
+                ));
+                spans.push(Span::styled(
+                    format!(" {}", action),
+                    Style::default().fg(theme.muted),
+                ));
             }
             Line::from(spans)
         }
@@ -669,28 +690,39 @@ pub fn format_keybind_hints<'a>(theme: &'a AppThemeColors, items: &[(String, &'s
                 _ => unreachable!(),
             };
 
-            let bg_colors = [theme.accent, theme.folder, theme.tag, theme.warning, theme.success];
+            let bg_colors = [
+                theme.accent,
+                theme.folder,
+                theme.tag,
+                theme.warning,
+                theme.success,
+            ];
             let fg = theme.highlight_fg;
             let mut spans = Vec::new();
 
             for (i, (key, action)) in items.iter().enumerate() {
                 let bg = bg_colors[i % bg_colors.len()];
-                let next_bg = if i == items.len() - 1 { theme.hint_line_bg() } else { Some(bg_colors[(i + 1) % bg_colors.len()]) };
+                let next_bg = if i == items.len() - 1 {
+                    theme.hint_line_bg()
+                } else {
+                    Some(bg_colors[(i + 1) % bg_colors.len()])
+                };
 
                 spans.push(Span::styled(
                     format!(" {} {} ", key, action),
-                    Style::default().bg(bg).fg(fg).add_modifier(Modifier::BOLD)
+                    Style::default().bg(bg).fg(fg).add_modifier(Modifier::BOLD),
                 ));
 
                 let mut sep_style = Style::default().fg(bg);
-                if let Some(n_bg) = next_bg { sep_style = sep_style.bg(n_bg); }
+                if let Some(n_bg) = next_bg {
+                    sep_style = sep_style.bg(n_bg);
+                }
                 spans.push(Span::styled(sep_char, sep_style));
             }
             Line::from(spans)
         }
     }
 }
-
 
 pub fn draw_popup_footer<'a>(
     frame: &mut Frame,
@@ -724,9 +756,11 @@ pub fn draw_popup_frame<'a>(
 }
 
 pub fn popup_hint_line<'a>(theme: &AppThemeColors, text: &str) -> Line<'static> {
-    Line::from(Span::styled(text.to_string(), Style::default().fg(theme.muted)))
+    Line::from(Span::styled(
+        text.to_string(),
+        Style::default().fg(theme.muted),
+    ))
 }
-
 
 pub fn draw_confirm_popup_frame(
     frame: &mut Frame,

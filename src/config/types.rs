@@ -1,5 +1,5 @@
-use std::str::FromStr;
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 
 // ── Enums ───────────────────────────────────────────────────────────────────
 
@@ -331,6 +331,37 @@ pub enum PreviewExpandMode {
     #[default]
     Inline,
     External,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum MarkdownRendererKind {
+    #[default]
+    Auto,
+    Builtin,
+    Glow,
+}
+
+impl std::str::FromStr for MarkdownRendererKind {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "auto" => Ok(MarkdownRendererKind::Auto),
+            "builtin" => Ok(MarkdownRendererKind::Builtin),
+            "glow" => Ok(MarkdownRendererKind::Glow),
+            _ => Err(format!("Unknown markdown renderer: {s}")),
+        }
+    }
+}
+
+impl std::fmt::Display for MarkdownRendererKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MarkdownRendererKind::Auto => write!(f, "auto"),
+            MarkdownRendererKind::Builtin => write!(f, "builtin"),
+            MarkdownRendererKind::Glow => write!(f, "glow"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Default)]

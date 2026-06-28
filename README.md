@@ -64,7 +64,7 @@ Drop an existing Obsidian vault into `clin` and it works out of the box. Image r
 
 ## Highlights
 
-- **Notes view** — folder tree, tags, markdown preview pane (via `glow`), search, filter, sort, pin, multi-select, trash management, file management (copy, paste, delete, rename, move).
+- **Notes view** — folder tree, tags, markdown preview pane (via built-in renderer or glow), search, filter, sort, pin, multi-select, trash management, file management (copy, paste, delete, rename, move).
 - **Editor view** — built-in text editor with mouse support, line numbers, undo/redo, and **external editor** integration (VISUAL/EDITOR env or config). Markdown preview pane alongside editor.
 - **Graph view** — fully integrated force-directed graph visualization of your note corpus. Edges from `[[wikilinks]]`. Physics simulation, minimap, legend, search, configurable colors and layout. See [GRAPH_VIEW.md](docs/GRAPH_VIEW.md).
 - **Canvas view** — Obsidian-compatible `.canvas` file format. Place text/file/link/group nodes on an infinite 2D canvas, connect them with edges. Right-click context menu, drag, resize, zoom. See [CANVAS.md](docs/CANVAS.md).
@@ -98,7 +98,7 @@ These tools are **optional** — clin works without them:
 | `tesseract` | OCR paste (clipboard image → text) | `tesseract-ocr` |
 | `wl-clipboard` | Clipboard access (Wayland) | `wl-clipboard` |
 | `xclip` or `xsel` | Clipboard access (X11) | `xclip` |
-| `glow` | Markdown preview rendering | `glow` |
+| `glow` | Optional markdown preview rendering | `glow` |
 
 ---
 
@@ -317,7 +317,7 @@ Once inside the TUI: navigate with `j`/`k`, open notes with `Enter`, open the co
 
 | View | Purpose | Key Actions |
 |---|---|---|
-| **List / Notes** | Browse, search, filter, manage notes | Grid/Tree layout, format chooser, folders, tags, sort, pin, glow preview, search, trash, copy/move/delete |
+| **List / Notes** | Browse, search, filter, manage notes | Grid/Tree layout, format chooser, folders, tags, sort, pin, markdown preview, search, trash, copy/move/delete |
 | **Editor** | Write and edit notes | Title + body, undo/redo, mouse support, line numbers, markdown preview pane, external editor |
 | **Graph** | Visualize note connections | Force-directed layout, [[wikilinks]] edges, physics, preview pane, minimap, legend, search, grid, configurable colors |
 | **Backup** | Git-based vault versioning | Status (staged/unstaged), commit history, diff preview, auto-push, remote sync |
@@ -495,4 +495,4 @@ Licensed under the [GNU General Public License v3.0](LICENSE).
 
 ## Credits
 
-Built with [Ratatui](https://ratatui.rs), [Crossterm](https://github.com/crossterm-rs/crossterm), and [fdg-sim](https://github.com/grantshandy/fdg). Markdown preview powered by [glow](https://github.com/charmbracelet/glow).
+Built with [Ratatui](https://ratatui.rs), [Crossterm](https://github.com/crossterm-rs/crossterm), and [fdg-sim](https://github.com/grantshandy/fdg). Markdown preview powered by built-in comrak/syntect renderer (with optional [glow](https://github.com/charmbracelet/glow) fallback).

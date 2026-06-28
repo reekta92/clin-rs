@@ -22,7 +22,13 @@ use crate::storage::NoteSummary;
 ///
 /// Needs at least 9 rows (1 top divider + 1 title + 1 weekday header + 6 week
 /// rows) and 7 columns; otherwise it no-ops to avoid clipping or panics.
-pub fn draw_calendar(frame: &mut Frame, rect: Rect, theme: &AppThemeColors, notes: &[NoteSummary], bottom_border: bool) {
+pub fn draw_calendar(
+    frame: &mut Frame,
+    rect: Rect,
+    theme: &AppThemeColors,
+    notes: &[NoteSummary],
+    bottom_border: bool,
+) {
     if rect.height < 9 || rect.width < 7 {
         return;
     }
@@ -101,7 +107,11 @@ pub fn draw_calendar(frame: &mut Frame, rect: Rect, theme: &AppThemeColors, note
 
     // Content is 8 lines; border-top costs 1 row. Centre vertically when
     // Border at the interface edge: top when calendar is below list, bottom when above.
-    let border = if bottom_border { Borders::BOTTOM } else { Borders::TOP };
+    let border = if bottom_border {
+        Borders::BOTTOM
+    } else {
+        Borders::TOP
+    };
     let border_bg = theme.bg.unwrap_or(Color::Reset);
     let inner_h = rect.height.saturating_sub(1); // minus border
     let pad_top = inner_h.saturating_sub(8) / 2;

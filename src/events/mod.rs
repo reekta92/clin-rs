@@ -1,18 +1,18 @@
 use crate::debug_log;
-use std::borrow::Cow;
-use crossterm::event::KeyEvent;
-use ratatui::prelude::*;
-use ratatui_textarea::{TextArea, CursorMove, Input};
 use crate::keybinds::Keybinds;
 use crate::text_edit::apply_text_shortcuts;
+use crossterm::event::KeyEvent;
+use ratatui::prelude::*;
+use ratatui_textarea::{CursorMove, Input, TextArea};
+use std::borrow::Cow;
 
-mod list;
 mod edit;
 mod help;
+mod list;
 
-pub use list::{handle_list_keys, handle_list_mouse};
 pub use edit::{handle_edit_keys, handle_edit_mouse};
 pub use help::handle_help_keys;
+pub use list::{handle_list_keys, handle_list_mouse};
 
 pub fn handle_popup_text_input(
     key: KeyEvent,
@@ -185,9 +185,9 @@ pub fn get_title_text<'a>(title_editor: &'a TextArea<'static>) -> Cow<'a, str> {
     )
 }
 
+use crate::app::App;
 use crossterm::event::{KeyCode, KeyModifiers};
 use ratatui::layout::Rect;
-use crate::app::App;
 
 /// Check if the key event should cancel/close a popup.
 /// Returns `true` if the key matches `ListAction::Cancel`, or if it matches
@@ -197,18 +197,25 @@ use crate::app::App;
 /// bare (unmodified) `Char` keypresses, so keys like `n` type into the text
 /// field instead of closing the popup. Modifier combos like `Ctrl+N` and
 /// non-printable keys like `Esc` still cancel.
-pub fn is_cancel_popup(keybinds: &crate::keybinds::Keybinds, key: &crossterm::event::KeyEvent, has_text_input: bool) -> bool {
+pub fn is_cancel_popup(
+    keybinds: &crate::keybinds::Keybinds,
+    key: &crossterm::event::KeyEvent,
+    has_text_input: bool,
+) -> bool {
     let cancel = keybinds.matches_list(crate::keybinds::ListAction::Cancel, key);
     let cancel_triggered = if has_text_input && cancel {
         // In text-input mode, only non-printable keys and modifier combos cancel.
         // Bare Char (letter, digit, symbol) goes to the text input.
         let bare_char = matches!(key.code, KeyCode::Char(_))
-            && !key.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::META);
+            && !key
+                .modifiers
+                .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::META);
         !bare_char
     } else {
         cancel
     };
-    cancel_triggered || (!has_text_input && keybinds.matches_list(crate::keybinds::ListAction::Quit, key))
+    cancel_triggered
+        || (!has_text_input && keybinds.matches_list(crate::keybinds::ListAction::Quit, key))
 }
 
 /// Handle global popups (tag, search, create_note, folder, goals, import,
@@ -243,8 +250,7 @@ pub fn handle_global_popups_and_palette(
                 let action_id = item.id.clone();
                 debug_log!(app, Info, "event", "Command palette: {action_id}");
                 let note_id = palette.context_note_id.clone();
-                if let Err(e) =
-                    crate::actions::execute_action(&action_id, app, note_id.as_deref())
+                if let Err(e) = crate::actions::execute_action(&action_id, app, note_id.as_deref())
                 {
                     app.set_temporary_status(&format!("Action failed: {e}"));
                 }
@@ -284,9 +290,15 @@ pub fn handle_global_popups_and_palette(
             app.confirm_popup_activate();
         } else if crate::events::is_cancel_popup(&app.keybinds, &key, false) {
             app.cancel_confirm();
-        } else if app.keybinds.matches_list(crate::keybinds::ListAction::Confirm, &key) {
+        } else if app
+            .keybinds
+            .matches_list(crate::keybinds::ListAction::Confirm, &key)
+        {
             app.confirm_action();
-        } else if app.keybinds.matches_list(crate::keybinds::ListAction::Cancel, &key) {
+        } else if app
+            .keybinds
+            .matches_list(crate::keybinds::ListAction::Cancel, &key)
+        {
             app.cancel_confirm();
         }
         return true;
@@ -365,9 +377,7 @@ impl crate::popups::ActivePopup {
                     return true;
                 }
 
-                if key.code == KeyCode::Char('s')
-                    && key.modifiers.contains(KeyModifiers::CONTROL)
-                {
+                if key.code == KeyCode::Char('s') && key.modifiers.contains(KeyModifiers::CONTROL) {
                     let tag_text = popup.input.lines().join("");
                     let tag = tag_text
                         .split(',')
@@ -502,47 +512,45 @@ impl crate::popups::ActivePopup {
                 let has_grep = !popup.grep_results.is_empty();
                 let has_results = has_title || has_grep;
 
-                let grep_prev_visible =
-                    |p: &crate::popups::SearchPopup, cur: usize| -> usize {
-                        if cur == 0 {
+                let grep_prev_visible = |p: &crate::popups::SearchPopup, cur: usize| -> usize {
+                    if cur == 0 {
+                        return 0;
+                    }
+                    let mut i = cur - 1;
+                    loop {
+                        if p.grep_is_header[i] {
+                            return i;
+                        }
+                        let mut parent = i;
+                        while parent > 0 && !p.grep_is_header[parent] {
+                            parent -= 1;
+                        }
+                        if p.grep_expanded.contains(&parent) {
+                            return i;
+                        }
+                        if i == 0 {
                             return 0;
                         }
-                        let mut i = cur - 1;
-                        loop {
-                            if p.grep_is_header[i] {
-                                return i;
-                            }
-                            let mut parent = i;
-                            while parent > 0 && !p.grep_is_header[parent] {
-                                parent -= 1;
-                            }
-                            if p.grep_expanded.contains(&parent) {
-                                return i;
-                            }
-                            if i == 0 {
-                                return 0;
-                            }
-                            i -= 1;
+                        i -= 1;
+                    }
+                };
+                let grep_next_visible = |p: &crate::popups::SearchPopup, cur: usize| -> usize {
+                    let mut i = cur + 1;
+                    while i < p.grep_results.len() {
+                        if p.grep_is_header[i] {
+                            return i;
                         }
-                    };
-                let grep_next_visible =
-                    |p: &crate::popups::SearchPopup, cur: usize| -> usize {
-                        let mut i = cur + 1;
-                        while i < p.grep_results.len() {
-                            if p.grep_is_header[i] {
-                                return i;
-                            }
-                            let mut parent = i;
-                            while parent > 0 && !p.grep_is_header[parent] {
-                                parent -= 1;
-                            }
-                            if p.grep_expanded.contains(&parent) {
-                                return i;
-                            }
-                            i += 1;
+                        let mut parent = i;
+                        while parent > 0 && !p.grep_is_header[parent] {
+                            parent -= 1;
                         }
-                        cur
-                    };
+                        if p.grep_expanded.contains(&parent) {
+                            return i;
+                        }
+                        i += 1;
+                    }
+                    cur
+                };
 
                 if crate::events::is_cancel_popup(&app.keybinds, &key, true) {
                     app.popups.active = Some(ActivePopup::Search(popup));
@@ -889,13 +897,12 @@ impl crate::popups::ActivePopup {
                                 }
                                 app.popups.active = Some(reinsert(popup));
                             }
-                            _ if app.keybinds.matches_list(
-                                crate::keybinds::ListAction::Confirm,
-                                &key,
-                            ) || app.keybinds.matches_list(
-                                crate::keybinds::ListAction::Open,
-                                &key,
-                            ) =>
+                            _ if app
+                                .keybinds
+                                .matches_list(crate::keybinds::ListAction::Confirm, &key)
+                                || app
+                                    .keybinds
+                                    .matches_list(crate::keybinds::ListAction::Open, &key) =>
                             {
                                 app.popups.active = Some(reinsert(popup));
                                 app.select_template();
@@ -998,8 +1005,7 @@ impl crate::popups::ActivePopup {
                         .keybinds
                         .matches_list(crate::keybinds::ListAction::Confirm, &key) =>
                     {
-                        let is_list =
-                            matches!(popup.focus, crate::app::ThemePopupFocus::ThemeList);
+                        let is_list = matches!(popup.focus, crate::app::ThemePopupFocus::ThemeList);
                         app.popups.active = Some(reinsert(popup));
                         app.select_theme();
                         if is_list {

@@ -173,7 +173,7 @@ List and Edit views use ratatui's `Layout` to split the terminal into panes:
 **List view layout:**
 ```
 ┌─ Notes Pane ──┬──── Preview Pane ────┐
-│  folder tree  │  markdown (glow) or  │
+│  markdown preview or │
 │  note list    │  text preview        │
 │  search bar   │                      │
 ├────── Status Bar ────────────────────┤
@@ -185,7 +185,7 @@ List and Edit views use ratatui's `Layout` to split the terminal into panes:
 ┌─ Title Bar ────────────────────────┐
 │  [Title input]                     │
 ├─ Body Editor ───┬─ MD Preview ────┤
-│  (TextArea)     │  (glow render)  │
+│  (preview render)│
 │                  │                  │
 ├── Status Bar ──────────────────────┤
 └────────────────────────────────────┘
@@ -218,7 +218,7 @@ src/
 ├── frontmatter.rs    — YAML frontmatter parse/serialize
 ├── keybinds.rs       — Keybind loading, Keybinds struct
 ├── list_view.rs      — ListView state, VisualItem, PreviewContent, sort
-├── markdown.rs       — MarkdownRenderer (glow-based async rendering)
+├── markdown/         — MarkdownRenderer (built-in async rendering with optional glow fallback)
 ├── migration.rs      — Storage migration logic
 ├── palette.rs        — CommandPalette popup widget
 ├── popups.rs         — ConfirmPopup, FolderPopup, TagPopup, etc.
@@ -295,9 +295,9 @@ src/
          │ spawn / join (oneshot)
          ▼
 ┌──────────────────────────────────────────────────────┐
-│  Markdown Render Threads (glow)                      │
+│  Markdown Render Threads (built-in)                  │
 │  - One per preview pane (list + editor)              │
-│  - Asynchronously pipes markdown through `glow` CLI  │
+│  - Asynchronously renders markdown via comrak/syntect│
 │  - Result stored in MarkdownRenderer pending field   │
 │  - Polled by main loop via poll_renderers()           │
 └──────────────────────────────────────────────────────┘

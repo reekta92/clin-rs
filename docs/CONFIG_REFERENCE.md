@@ -17,6 +17,8 @@ Full reference of all configuration options for clin-rs.
 | `default_folder` | `String` | — | Default folder for new notes (optional) |
 | `confirm_on_quit` | `bool` | `false` | Ask for confirmation before quitting |
 | `preview_wrap` | `bool` | `true` | Wrap markdown preview to pane width (toggle at runtime with Ctrl+w) |
+| `markdown_renderer` | `enum` | `"auto"` | Markdown renderer: `"auto"` (built-in with glow fallback), `"builtin"`, or `"glow"` |
+| `syntax_highlighting` | `bool` | `true` | Enable syntax highlighting for code blocks in the built-in markdown preview |
 | `keybind_preset` | `enum` | `"default"` | Keybind preset: `"default"`, `"helix"`, `"vim"`, `"emacs"`. Applies to navigation, never text editing |
 | `enable_key_sequences` | `bool` | `false` | Enable multi-key sequences (e.g. `"g g"`, `"Space f"`). Requires a preset that uses them |
 

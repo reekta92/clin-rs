@@ -115,7 +115,9 @@ impl crate::overlay::OverlayView for DrawAppState {
                     self.save_draw()?;
                 }
                 DrawEventAction::OpenHelp => {
-                    return Ok(crate::overlay::OverlayResult::OpenHelp(crate::app::HelpTab::Draw));
+                    return Ok(crate::overlay::OverlayResult::OpenHelp(
+                        crate::app::HelpTab::Draw,
+                    ));
                 }
             }
         }

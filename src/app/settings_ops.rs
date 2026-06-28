@@ -2,8 +2,6 @@ use super::*;
 use crate::list_view::*;
 
 impl App {
-
-
     pub fn toggle_external_editor_mode(&mut self) {
         self.editor.external_editor_enabled = !self.editor.external_editor_enabled;
         let msg = if self.editor.external_editor_enabled {
@@ -113,11 +111,13 @@ impl App {
             crate::config::PreviewPosition::Left => crate::config::PreviewPosition::Right,
             crate::config::PreviewPosition::Right => crate::config::PreviewPosition::Left,
         };
-        self.set_temporary_status_static(if matches!(self.preview_position, crate::config::PreviewPosition::Left) {
-            "Preview moved to left"
-        } else {
-            "Preview moved to right"
-        });
+        self.set_temporary_status_static(
+            if matches!(self.preview_position, crate::config::PreviewPosition::Left) {
+                "Preview moved to left"
+            } else {
+                "Preview moved to right"
+            },
+        );
         self.persist_list_layout();
     }
 
@@ -126,11 +126,13 @@ impl App {
             crate::config::CalendarPosition::Top => crate::config::CalendarPosition::Bottom,
             crate::config::CalendarPosition::Bottom => crate::config::CalendarPosition::Top,
         };
-        self.set_temporary_status_static(if matches!(self.calendar_position, crate::config::CalendarPosition::Top) {
-            "Calendar moved to top"
-        } else {
-            "Calendar moved to bottom"
-        });
+        self.set_temporary_status_static(
+            if matches!(self.calendar_position, crate::config::CalendarPosition::Top) {
+                "Calendar moved to top"
+            } else {
+                "Calendar moved to bottom"
+            },
+        );
         self.persist_list_layout();
     }
 

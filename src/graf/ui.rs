@@ -47,12 +47,22 @@ pub fn draw_ui(
 
     let right_text = if let Some(graph_state) = &state.graph_state {
         let guard = graph_state.read().unwrap_or_else(|e| e.into_inner());
-        Some(ratatui::text::Line::from(crate::graf::render::compute_status_string(&guard, graph_area)))
+        Some(ratatui::text::Line::from(
+            crate::graf::render::compute_status_string(&guard, graph_area),
+        ))
     } else {
         None
     };
 
-    crate::ui::draw_view_title_bar(frame, header_area, "Graph", theme, None, app_status, right_text);
+    crate::ui::draw_view_title_bar(
+        frame,
+        header_area,
+        "Graph",
+        theme,
+        None,
+        app_status,
+        right_text,
+    );
 
     if !state.config_errors.is_empty() {
         draw_config_errors(frame, area, &state.config_errors, config);

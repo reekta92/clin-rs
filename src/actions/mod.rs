@@ -46,11 +46,21 @@ macro_rules! simple_action {
      $cat:expr, $glyph_nerd:literal, $glyph_unicode:literal, $method:ident) => {
         pub struct $name;
         impl $crate::actions::Action for $name {
-            fn id(&self) -> ::std::borrow::Cow<'static, str> { ::std::borrow::Cow::Borrowed($id) }
-            fn name(&self) -> ::std::borrow::Cow<'static, str> { ::std::borrow::Cow::Borrowed($label) }
-            fn description(&self) -> ::std::borrow::Cow<'static, str> { ::std::borrow::Cow::Borrowed($desc) }
-            fn category(&self) -> $crate::actions::ActionCategory { $cat }
-            fn glyph(&self) -> (&'static str, &'static str) { ($glyph_nerd, $glyph_unicode) }
+            fn id(&self) -> ::std::borrow::Cow<'static, str> {
+                ::std::borrow::Cow::Borrowed($id)
+            }
+            fn name(&self) -> ::std::borrow::Cow<'static, str> {
+                ::std::borrow::Cow::Borrowed($label)
+            }
+            fn description(&self) -> ::std::borrow::Cow<'static, str> {
+                ::std::borrow::Cow::Borrowed($desc)
+            }
+            fn category(&self) -> $crate::actions::ActionCategory {
+                $cat
+            }
+            fn glyph(&self) -> (&'static str, &'static str) {
+                ($glyph_nerd, $glyph_unicode)
+            }
             fn execute(&self, app: &mut $crate::app::App, _: Option<&str>) -> ::anyhow::Result<()> {
                 app.$method();
                 Ok(())
@@ -65,11 +75,21 @@ macro_rules! toggle_action {
      $cat:expr, $glyph_nerd:literal, $glyph_unicode:literal, $method:ident, $state_var:ident, $state_expr:expr) => {
         pub struct $name;
         impl $crate::actions::Action for $name {
-            fn id(&self) -> ::std::borrow::Cow<'static, str> { ::std::borrow::Cow::Borrowed($id) }
-            fn name(&self) -> ::std::borrow::Cow<'static, str> { ::std::borrow::Cow::Borrowed($label) }
-            fn description(&self) -> ::std::borrow::Cow<'static, str> { ::std::borrow::Cow::Borrowed($desc) }
-            fn category(&self) -> $crate::actions::ActionCategory { $cat }
-            fn glyph(&self) -> (&'static str, &'static str) { ($glyph_nerd, $glyph_unicode) }
+            fn id(&self) -> ::std::borrow::Cow<'static, str> {
+                ::std::borrow::Cow::Borrowed($id)
+            }
+            fn name(&self) -> ::std::borrow::Cow<'static, str> {
+                ::std::borrow::Cow::Borrowed($label)
+            }
+            fn description(&self) -> ::std::borrow::Cow<'static, str> {
+                ::std::borrow::Cow::Borrowed($desc)
+            }
+            fn category(&self) -> $crate::actions::ActionCategory {
+                $cat
+            }
+            fn glyph(&self) -> (&'static str, &'static str) {
+                ($glyph_nerd, $glyph_unicode)
+            }
             fn execute(&self, app: &mut $crate::app::App, _: Option<&str>) -> ::anyhow::Result<()> {
                 app.$method();
                 Ok(())
@@ -81,16 +101,111 @@ macro_rules! toggle_action {
         }
     };
 }
-simple_action!(OpenBackupAction, "backup.open", "Open Backup Dashboard", "View git backup status, commit history, and push to remote", ActionCategory::Views, "\u{f1d3}", "\u{1f4be}", open_backup_view);
-simple_action!(CreateDrawAction, "draw.create", "Create Drawing", "Create a new drawing file", ActionCategory::Views, "\u{f1fc}", "\u{270f}", begin_create_draw);
-simple_action!(OpenGraphAction, "graph.open", "Open Graph View", "Visualize note connections as a force-directed graph", ActionCategory::Views, "\u{f0e8}", "\u{1f5fa}", open_graph_view);
-simple_action!(CreateCanvasAction, "create_canvas", "Create Canvas Map", "Create a new .canvas map file (Obsidian-compatible)", ActionCategory::Views, "\u{f005}", "\u{1f58c}", begin_create_canvas);
-simple_action!(DebugDumpAction, "debug.dump", "Save Debug Dump", "Write ring-buffer contents to a debug log file", ActionCategory::General, "\u{f0ca}", "\u{1f4cb}", dump_debug_buffer);
-toggle_action!(ToggleExternalEditorAction, "external_editor.toggle", "Toggle External Editor Mode", "Switch between the built-in editor and your $EDITOR for opening notes", ActionCategory::Settings, "\u{f120}", "\u{2328}", toggle_external_editor_mode, app, if app.editor.external_editor_enabled { "On" } else { "Off" });
-toggle_action!(ToggleLayoutAction, "toggle_notes_layout", "Toggle Notes Layout", "Switch between Tree and Grid layout for the notes view", ActionCategory::Settings, "\u{f0c9}", "\u{1f4cb}", toggle_notes_layout, app, match app.list.notes_layout { crate::config::NotesLayout::Tree => "Tree", crate::config::NotesLayout::Grid => "Grid" });
-toggle_action!(SwitchThemeAction, "switch_theme", "Switch Theme", "Select from available color themes", ActionCategory::Settings, "\u{f042}", "\u{1f3a8}", begin_theme_selection, app, crate::config::ClinConfig::load().map(|c| c.ui.theme.to_string()).unwrap_or_else(|_| "default".to_string()));
-simple_action!(SwitchKeybindPresetAction, "keybind.preset", "Switch Keybind Preset", "Choose a keybind preset (default, helix, vim, emacs)", ActionCategory::Settings, "\u{f11c}", "\u{2328}", begin_keybind_preset_selection);
-
+simple_action!(
+    OpenBackupAction,
+    "backup.open",
+    "Open Backup Dashboard",
+    "View git backup status, commit history, and push to remote",
+    ActionCategory::Views,
+    "\u{f1d3}",
+    "\u{1f4be}",
+    open_backup_view
+);
+simple_action!(
+    CreateDrawAction,
+    "draw.create",
+    "Create Drawing",
+    "Create a new drawing file",
+    ActionCategory::Views,
+    "\u{f1fc}",
+    "\u{270f}",
+    begin_create_draw
+);
+simple_action!(
+    OpenGraphAction,
+    "graph.open",
+    "Open Graph View",
+    "Visualize note connections as a force-directed graph",
+    ActionCategory::Views,
+    "\u{f0e8}",
+    "\u{1f5fa}",
+    open_graph_view
+);
+simple_action!(
+    CreateCanvasAction,
+    "create_canvas",
+    "Create Canvas Map",
+    "Create a new .canvas map file (Obsidian-compatible)",
+    ActionCategory::Views,
+    "\u{f005}",
+    "\u{1f58c}",
+    begin_create_canvas
+);
+simple_action!(
+    DebugDumpAction,
+    "debug.dump",
+    "Save Debug Dump",
+    "Write ring-buffer contents to a debug log file",
+    ActionCategory::General,
+    "\u{f0ca}",
+    "\u{1f4cb}",
+    dump_debug_buffer
+);
+toggle_action!(
+    ToggleExternalEditorAction,
+    "external_editor.toggle",
+    "Toggle External Editor Mode",
+    "Switch between the built-in editor and your $EDITOR for opening notes",
+    ActionCategory::Settings,
+    "\u{f120}",
+    "\u{2328}",
+    toggle_external_editor_mode,
+    app,
+    if app.editor.external_editor_enabled {
+        "On"
+    } else {
+        "Off"
+    }
+);
+toggle_action!(
+    ToggleLayoutAction,
+    "toggle_notes_layout",
+    "Toggle Notes Layout",
+    "Switch between Tree and Grid layout for the notes view",
+    ActionCategory::Settings,
+    "\u{f0c9}",
+    "\u{1f4cb}",
+    toggle_notes_layout,
+    app,
+    match app.list.notes_layout {
+        crate::config::NotesLayout::Tree => "Tree",
+        crate::config::NotesLayout::Grid => "Grid",
+    }
+);
+toggle_action!(
+    SwitchThemeAction,
+    "switch_theme",
+    "Switch Theme",
+    "Select from available color themes",
+    ActionCategory::Settings,
+    "\u{f042}",
+    "\u{1f3a8}",
+    begin_theme_selection,
+    app,
+    crate::config::ClinConfig::load()
+        .map(|c| c.ui.theme.to_string())
+        .unwrap_or_else(|_| "default".to_string())
+);
+simple_action!(
+    SwitchKeybindPresetAction,
+    "keybind.preset",
+    "Switch Keybind Preset",
+    "Choose a keybind preset (default, helix, vim, emacs)",
+    ActionCategory::Settings,
+    "\u{f11c}",
+    "\u{2328}",
+    begin_keybind_preset_selection
+);
 
 pub struct ActionInfo {
     pub id: String,

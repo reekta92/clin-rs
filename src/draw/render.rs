@@ -1,6 +1,6 @@
-use crate::keybinds::DrawAction;
 use crate::draw::app::DrawAppState;
 use crate::draw::state::{DrawElement, DrawShapeType, DrawTool, Shape, Stroke};
+use crate::keybinds::DrawAction;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
@@ -13,10 +13,22 @@ use ratatui::widgets::{Block, List, ListItem};
 /// so they never drift — same pattern as `backup::render::backup_tabs`.
 pub fn draw_tool_tabs(icon_mode: crate::config::IconMode) -> [(&'static str, &'static str); 4] {
     [
-        ("Draw",  crate::ui::get_icon("\u{f040}", "\u{270f}", icon_mode)),
-        ("Shape", crate::ui::get_icon("\u{f0c8}", "\u{25a0}", icon_mode)),
-        ("Text",  crate::ui::get_icon("\u{f031}", "\u{1f4dd}", icon_mode)),
-        ("Erase", crate::ui::get_icon("\u{f1f8}", "\u{1f5d1}", icon_mode)),
+        (
+            "Draw",
+            crate::ui::get_icon("\u{f040}", "\u{270f}", icon_mode),
+        ),
+        (
+            "Shape",
+            crate::ui::get_icon("\u{f0c8}", "\u{25a0}", icon_mode),
+        ),
+        (
+            "Text",
+            crate::ui::get_icon("\u{f031}", "\u{1f4dd}", icon_mode),
+        ),
+        (
+            "Erase",
+            crate::ui::get_icon("\u{f1f8}", "\u{1f5d1}", icon_mode),
+        ),
     ]
 }
 
@@ -35,7 +47,12 @@ pub fn draw_tool_tab_index(tool: DrawTool) -> usize {
     DRAW_TAB_TOOLS.iter().position(|t| *t == tool).unwrap_or(0)
 }
 
-pub fn draw_canvas(frame: &mut Frame, app: &DrawAppState, area: Rect, _config: &crate::config::ClinConfig) {
+pub fn draw_canvas(
+    frame: &mut Frame,
+    app: &DrawAppState,
+    area: Rect,
+    _config: &crate::config::ClinConfig,
+) {
     let x_bounds = [
         app.viewport.x - 100.0 / app.viewport.zoom,
         app.viewport.x + 100.0 / app.viewport.zoom,
@@ -111,7 +128,6 @@ pub fn draw_canvas(frame: &mut Frame, app: &DrawAppState, area: Rect, _config: &
 
     frame.render_widget(canvas, area);
 
-
     let status_area = Rect::new(
         area.x,
         area.y + area.height.saturating_sub(1),
@@ -119,15 +135,35 @@ pub fn draw_canvas(frame: &mut Frame, app: &DrawAppState, area: Rect, _config: &
         1,
     );
     let hints_items = vec![
-        (app.keybinds.display_draw(DrawAction::SelectDrawTool), "draw"),
-        (app.keybinds.display_draw(DrawAction::ToggleShapeSelector), "shape"),
-        (app.keybinds.display_draw(DrawAction::SelectTextTool), "text"),
-        (app.keybinds.display_draw(DrawAction::SelectEraseTool), "erase"),
+        (
+            app.keybinds.display_draw(DrawAction::SelectDrawTool),
+            "draw",
+        ),
+        (
+            app.keybinds.display_draw(DrawAction::ToggleShapeSelector),
+            "shape",
+        ),
+        (
+            app.keybinds.display_draw(DrawAction::SelectTextTool),
+            "text",
+        ),
+        (
+            app.keybinds.display_draw(DrawAction::SelectEraseTool),
+            "erase",
+        ),
         (app.keybinds.display_draw(DrawAction::ToggleGrid), "grid"),
         (app.keybinds.display_draw(DrawAction::Quit), "back"),
     ];
     let hint_line = crate::ui::format_keybind_hints(&app.theme, &hints_items);
-    crate::ui::draw_status_bar(frame, status_area, &app.theme, None, hint_line, None, app.seq_matcher.pending_display().as_deref());
+    crate::ui::draw_status_bar(
+        frame,
+        status_area,
+        &app.theme,
+        None,
+        hint_line,
+        None,
+        app.seq_matcher.pending_display().as_deref(),
+    );
 
     if app.show_shape_selector {
         let hint_line = crate::ui::popup_hint_line(&app.theme, "Enter select · Esc cancel");
