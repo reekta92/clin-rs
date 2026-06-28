@@ -173,10 +173,7 @@ impl KeyCombo {
 
     /// Convert a crossterm `KeyEvent` to a display string.
     pub(crate) fn keyevent_to_string(ev: &crossterm::event::KeyEvent) -> String {
-        Self::stroke_to_string(&KeyStroke {
-            code: ev.code,
-            modifiers: ev.modifiers,
-        })
+        Self::stroke_to_string(&KeyStroke { code: ev.code, modifiers: ev.modifiers })
     }
 
     /// Display string for this combo.

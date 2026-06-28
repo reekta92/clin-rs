@@ -1,24 +1,24 @@
+use std::path::Path;
+use std::process::Command;
 use anyhow::{Context, Result};
 use ratatui::{prelude::*, widgets::*};
 use ratatui_textarea::TextArea;
-use std::path::Path;
-use std::process::Command;
 
 use crate::app::{App, EditFocus, ViewMode};
 use crate::app_theme::AppThemeColors;
 use crate::overlay::OverlayView;
 
-mod edit_view;
-mod help;
 mod list_view;
+mod edit_view;
 mod popups;
 mod title_bar;
+mod help;
 
-pub use edit_view::draw_edit_view;
-pub use help::*;
 pub(crate) use list_view::{draw_list_view, get_preview_info, list_view_layout};
+pub use edit_view::draw_edit_view;
 pub use popups::*;
 pub use title_bar::*;
+pub use help::*;
 
 use crate::config::IconMode;
 
@@ -69,13 +69,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         ViewMode::Help => draw_help_view(frame, app),
         ViewMode::Graph => {
             if let Some(graf) = &mut app.graph_state {
-                graf.overlay_render(
-                    frame,
-                    frame.area(),
-                    &app.app_theme,
-                    &app.config,
-                    Some(app.status.as_ref()),
-                );
+                graf.overlay_render(frame, frame.area(), &app.app_theme, &app.config, Some(app.status.as_ref()));
             }
         }
         ViewMode::Draw => {
@@ -91,13 +85,8 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 let active = crate::draw::render::draw_tool_tab_index(draw.active_tool);
                 let spans = build_tab_spans(&tabs, active, &app.app_theme, false, icon_mode);
                 draw_view_title_bar_with_tabs(
-                    frame,
-                    outer[0],
-                    "Draw",
-                    spans,
-                    &app.app_theme,
-                    Some(app.status.as_ref()),
-                    None,
+                    frame, outer[0], "Draw", spans, &app.app_theme,
+                    Some(app.status.as_ref()), None,
                 );
                 draw.overlay_render(frame, outer[1], &app.app_theme, &app.config, None);
             }
@@ -108,15 +97,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     .direction(Direction::Vertical)
                     .constraints([Constraint::Length(1), Constraint::Min(0)])
                     .split(frame.area());
-                draw_view_title_bar(
-                    frame,
-                    outer[0],
-                    "Canvas",
-                    &app.app_theme,
-                    None,
-                    Some(app.status.as_ref()),
-                    None,
-                );
+                draw_view_title_bar(frame, outer[0], "Canvas", &app.app_theme, None, Some(app.status.as_ref()), None);
                 canvas.overlay_render(frame, outer[1], &app.app_theme, &app.config, None);
             }
         }
@@ -127,12 +108,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     .constraints([Constraint::Length(1), Constraint::Min(0)])
                     .split(frame.area());
                 // Backup uses a custom header render instead of the standard title bar
-                crate::backup::render::draw_header(
-                    frame,
-                    outer[0],
-                    backup,
-                    app.config.ui.icon_mode,
-                );
+                crate::backup::render::draw_header(frame, outer[0], backup, app.config.ui.icon_mode);
                 backup.overlay_render(frame, outer[1], &app.app_theme, &app.config, None);
             }
         }
@@ -143,15 +119,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     .constraints([Constraint::Length(1), Constraint::Min(0)])
                     .split(frame.area());
                 let title = format!("CONTENT TREE — {}", tree.note_title);
-                draw_view_title_bar(
-                    frame,
-                    outer[0],
-                    &title,
-                    &app.app_theme,
-                    None,
-                    Some(app.status.as_ref()),
-                    None,
-                );
+                draw_view_title_bar(frame, outer[0], &title, &app.app_theme, None, Some(app.status.as_ref()), None);
                 tree.overlay_render(frame, outer[1], &app.app_theme, &app.config, None);
             }
         }
@@ -194,10 +162,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         } else {
             (popup.suggestions.len() as u16).clamp(1, 5)
         };
-        let hint_line = popup_hint_line(
-            &app.app_theme,
-            "Ctrl+S batch assign · Tab accept · Enter save · d delete from all · Esc cancel",
-        );
+        let hint_line = popup_hint_line(&app.app_theme, "Ctrl+S batch assign · Tab accept · Enter save · d delete from all · Esc cancel");
         let content = draw_popup_frame(
             frame,
             frame.area(),
@@ -391,10 +356,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     // Command palette
     if let Some(palette) = &mut app.command_palette {
         let area = frame.area();
-        let hint_line = popup_hint_line(
-            &app.app_theme,
-            "Tab category · Enter run · ↑/↓ select · Esc close",
-        );
+        let hint_line = popup_hint_line(&app.app_theme, "Tab category · Enter run · ↑/↓ select · Esc close");
         let content = draw_popup_frame(
             frame,
             area,
@@ -510,14 +472,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             }
         };
         let hint_line = popup_hint_line(&app.app_theme, sub);
-        let content = draw_popup_frame(
-            frame,
-            frame.area(),
-            title,
-            PopupSize::Prompt,
-            &hint_line,
-            &app.app_theme,
-        );
+        let content = draw_popup_frame(frame, frame.area(), title, PopupSize::Prompt, &hint_line, &app.app_theme);
 
         popup.input.set_block(
             Block::default()
@@ -579,10 +534,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     // Search popup
     if let Some(crate::popups::ActivePopup::Search(popup)) = &mut app.popups.active {
         let area = frame.area();
-        let hint_line = popup_hint_line(
-            &app.app_theme,
-            "Tab switch · Enter open · Esc cancel · f:folder p:pinned t:tag g:text · \\e\\ escapes filters",
-        );
+        let hint_line = popup_hint_line(&app.app_theme, "Tab switch · Enter open · Esc cancel · f:folder p:pinned t:tag g:text · \\e\\ escapes filters");
         let content = draw_popup_frame(
             frame,
             area,
@@ -616,25 +568,25 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         if has_filter {
             let mut spans: Vec<Span<'static>> = vec![Span::raw("  ")];
             let mut first = true;
-            let add_sep =
-                |spans: &mut Vec<Span<'static>>, first: &mut bool, theme: &AppThemeColors| {
-                    if !*first {
-                        spans.push(Span::styled(
-                            " · ",
-                            Style::default()
-                                .fg(theme.accent)
-                                .add_modifier(Modifier::BOLD),
-                        ));
-                    }
-                    *first = false;
-                };
+            let add_sep = |spans: &mut Vec<Span<'static>>,
+                           first: &mut bool,
+                           theme: &AppThemeColors| {
+                if !*first {
+                    spans.push(Span::styled(
+                        " · ",
+                        Style::default()
+                            .fg(theme.accent)
+                            .add_modifier(Modifier::BOLD),
+                    ));
+                }
+                *first = false;
+            };
 
             if let Some(f) = &parsed.folder_filter {
                 let text = if f.is_empty() { "Vault" } else { f.as_str() };
                 add_sep(&mut spans, &mut first, &app.app_theme);
                 spans.push(Span::styled(
-                    crate::ui::get_icon("\u{f07c}", "\u{1f4c2}", app.config.ui.icon_mode)
-                        .to_string(),
+                    crate::ui::get_icon("\u{f07c}", "\u{1f4c2}", app.config.ui.icon_mode).to_string(),
                     Style::default()
                         .fg(app.app_theme.accent)
                         .add_modifier(Modifier::BOLD),
@@ -649,8 +601,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             }
             if parsed.pinned_only {
                 add_sep(&mut spans, &mut first, &app.app_theme);
-                let pin_icon =
-                    crate::ui::get_icon("\u{f08d}", "\u{1f4cc}", app.config.ui.icon_mode);
+                let pin_icon = crate::ui::get_icon("\u{f08d}", "\u{1f4cc}", app.config.ui.icon_mode);
                 spans.push(Span::styled(
                     format!("{pin_icon} Pinned"),
                     Style::default()
@@ -665,8 +616,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 } else {
                     parsed.grep_text.clone()
                 };
-                let search_icon =
-                    crate::ui::get_icon("\u{f002}", "\u{1f50d}", app.config.ui.icon_mode);
+                let search_icon = crate::ui::get_icon("\u{f002}", "\u{1f50d}", app.config.ui.icon_mode);
                 spans.push(Span::styled(
                     format!("{search_icon} {grep_display}"),
                     Style::default()
@@ -682,8 +632,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     tags.join(", ")
                 };
                 spans.push(Span::styled(
-                    crate::ui::get_icon("\u{f02b}", "\u{1f3f7}", app.config.ui.icon_mode)
-                        .to_string(),
+                    crate::ui::get_icon("\u{f02b}", "\u{1f3f7}", app.config.ui.icon_mode).to_string(),
                     Style::default()
                         .fg(app.app_theme.accent)
                         .add_modifier(Modifier::BOLD),
@@ -695,6 +644,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                         .fg(app.app_theme.accent)
                         .add_modifier(Modifier::BOLD),
                 ));
+
             }
 
             let filter_line = Line::from(spans);
@@ -748,26 +698,14 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             }
             let items: Vec<ListItem> = visible
                 .iter()
-                .map(|(_, t)| {
-                    ListItem::new(crate::ui::styled_result_line(
-                        t,
-                        &app.app_theme,
-                        app.config.ui.icon_mode,
-                    ))
-                })
+                .map(|(_, t)| ListItem::new(crate::ui::styled_result_line(t, &app.app_theme, app.config.ui.icon_mode)))
                 .collect();
             (items, "")
         } else if has_title {
             let items: Vec<ListItem> = popup
                 .title_results
                 .iter()
-                .map(|entry| {
-                    ListItem::new(crate::ui::styled_result_line(
-                        entry,
-                        &app.app_theme,
-                        app.config.ui.icon_mode,
-                    ))
-                })
+                .map(|entry| ListItem::new(crate::ui::styled_result_line(entry, &app.app_theme, app.config.ui.icon_mode)))
                 .collect();
             (items, "")
         } else {

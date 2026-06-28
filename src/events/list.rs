@@ -1,6 +1,6 @@
 use crate::debug_log;
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
-use ratatui::layout::{Constraint, Direction, Layout, Margin, Rect};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind, MouseButton};
+use ratatui::layout::{Rect, Layout, Direction, Constraint, Margin};
 
 use crate::app::App;
 use crate::keybinds::ListAction;
@@ -11,10 +11,7 @@ use super::{contains_cell, move_textarea_cursor_to_mouse};
 pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
     if app.layout_edit {
         match key.code {
-            KeyCode::Esc => {
-                app.toggle_layout_edit();
-                return false;
-            }
+            KeyCode::Esc => { app.toggle_layout_edit(); return false; }
             KeyCode::Left => {
                 let delta = if app.preview_position == crate::config::PreviewPosition::Right {
                     0.02
@@ -31,8 +28,8 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 };
                 app.adjust_preview_width(delta);
             }
-            KeyCode::Up => app.adjust_calendar_height(1),
-            KeyCode::Down => app.adjust_calendar_height(-1),
+            KeyCode::Up    => app.adjust_calendar_height(1),
+            KeyCode::Down  => app.adjust_calendar_height(-1),
             KeyCode::Char('s') | KeyCode::Char('S') => app.swap_preview_position(),
             KeyCode::Char('h') | KeyCode::Char('H') => {
                 let delta = if app.preview_position == crate::config::PreviewPosition::Right {
@@ -58,6 +55,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
+
     if app.list.list_mode == ListMode::Select {
         if crate::events::is_cancel_popup(&app.keybinds, &key, false) {
             app.list.tag_to_assign = None;
@@ -75,10 +73,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
 
     let seq = app.config.sequences_enabled();
     let counts = app.config.counts_enabled();
-    match app
-        .keybinds
-        .resolve_list(&mut app.seq_matcher, key, seq, counts)
-    {
+    match app.keybinds.resolve_list(&mut app.seq_matcher, key, seq, counts) {
         crate::keybinds::MatchOutcome::Matched(action, count) => match action {
             ListAction::CycleFocus => {
                 if app.list.notes_layout == crate::config::NotesLayout::Grid {
@@ -295,32 +290,36 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 }
                 return false;
             }
-            ListAction::PreviewPageUp => match &mut app.list.preview_content {
-                Some(crate::list_view::PreviewContent::Markdown(renderer)) => {
-                    renderer.prev_page();
+            ListAction::PreviewPageUp => {
+                match &mut app.list.preview_content {
+                    Some(crate::list_view::PreviewContent::Markdown(renderer)) => {
+                        renderer.prev_page();
+                    }
+                    Some(
+                        crate::list_view::PreviewContent::CanvasGrid(_)
+                        | crate::list_view::PreviewContent::DrawGrid(_),
+                    ) => {
+                        app.list.snapshot_scroll_offset =
+                            app.list.snapshot_scroll_offset.saturating_sub(3);
+                    }
+                    None => {}
                 }
-                Some(
-                    crate::list_view::PreviewContent::CanvasGrid(_)
-                    | crate::list_view::PreviewContent::DrawGrid(_),
-                ) => {
-                    app.list.snapshot_scroll_offset =
-                        app.list.snapshot_scroll_offset.saturating_sub(3);
+            }
+            ListAction::PreviewPageDown => {
+                match &mut app.list.preview_content {
+                    Some(crate::list_view::PreviewContent::Markdown(renderer)) => {
+                        renderer.next_page();
+                    }
+                    Some(
+                        crate::list_view::PreviewContent::CanvasGrid(_)
+                        | crate::list_view::PreviewContent::DrawGrid(_),
+                    ) => {
+                        app.list.snapshot_scroll_offset =
+                            app.list.snapshot_scroll_offset.saturating_add(3);
+                    }
+                    None => {}
                 }
-                None => {}
-            },
-            ListAction::PreviewPageDown => match &mut app.list.preview_content {
-                Some(crate::list_view::PreviewContent::Markdown(renderer)) => {
-                    renderer.next_page();
-                }
-                Some(
-                    crate::list_view::PreviewContent::CanvasGrid(_)
-                    | crate::list_view::PreviewContent::DrawGrid(_),
-                ) => {
-                    app.list.snapshot_scroll_offset =
-                        app.list.snapshot_scroll_offset.saturating_add(3);
-                }
-                None => {}
-            },
+            }
             _ => {}
         },
         crate::keybinds::MatchOutcome::Pending => return false,
@@ -405,9 +404,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         return;
     }
 
-    if let Some(crate::popups::ActivePopup::CreateNote(mut popup, format)) =
-        app.popups.active.take()
-    {
+    if let Some(crate::popups::ActivePopup::CreateNote(mut popup, format)) = app.popups.active.take() {
         let area = crate::ui::centered_rect(crate::ui::PopupSize::Prompt, terminal_area);
         if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
             && !contains_cell(area, mouse_event.column, mouse_event.row)
@@ -628,11 +625,10 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                     mouse_event.row,
                 );
             } else if mouse_event.row == chunks[1].y {
-                let tabs: Vec<(&str, Option<&str>)> =
-                    crate::palette::palette_tabs(app.config.ui.icon_mode)
-                        .iter()
-                        .map(|(l, g, _)| (*l, Some(*g)))
-                        .collect();
+                let tabs: Vec<(&str, Option<&str>)> = crate::palette::palette_tabs(app.config.ui.icon_mode)
+                    .iter()
+                    .map(|(l, g, _)| (*l, Some(*g)))
+                    .collect();
                 if let Some(i) = crate::ui::hit_test_tabs(
                     &tabs,
                     chunks[1].x,
@@ -692,10 +688,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         return;
     }
 
-    if matches!(
-        app.popups.active,
-        Some(crate::popups::ActivePopup::Template(_))
-    ) {
+    if matches!(app.popups.active, Some(crate::popups::ActivePopup::Template(_))) {
         let popup_area = crate::ui::centered_rect(crate::ui::PopupSize::Large, terminal_area);
         if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
             && !contains_cell(popup_area, mouse_event.column, mouse_event.row)
@@ -757,10 +750,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         return;
     }
 
-    if matches!(
-        app.popups.active,
-        Some(crate::popups::ActivePopup::FolderPicker(_))
-    ) {
+    if matches!(app.popups.active, Some(crate::popups::ActivePopup::FolderPicker(_))) {
         let popup_area = crate::ui::centered_rect(crate::ui::PopupSize::Large, terminal_area);
         if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
             && !contains_cell(popup_area, mouse_event.column, mouse_event.row)
@@ -818,10 +808,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         return;
     }
 
-    if matches!(
-        app.popups.active,
-        Some(crate::popups::ActivePopup::Search(_))
-    ) {
+    if matches!(app.popups.active, Some(crate::popups::ActivePopup::Search(_))) {
         let popup_area = crate::ui::centered_rect(crate::ui::PopupSize::Large, terminal_area);
         if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
             && !contains_cell(popup_area, mouse_event.column, mouse_event.row)
@@ -899,10 +886,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         return;
     }
 
-    if matches!(
-        app.popups.active,
-        Some(crate::popups::ActivePopup::TrashView(_))
-    ) {
+    if matches!(app.popups.active, Some(crate::popups::ActivePopup::TrashView(_))) {
         let popup_area = crate::ui::centered_rect(crate::ui::PopupSize::Large, terminal_area);
         if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
             && !contains_cell(popup_area, mouse_event.column, mouse_event.row)
@@ -1051,24 +1035,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
             // Vault/Pinned tabs
             if mouse_event.row == terminal_area.y {
-                let tabs = [
-                    (
-                        "Vault",
-                        Some(crate::ui::get_icon(
-                            "\u{f07b}",
-                            "\u{1f4c1}",
-                            app.config.ui.icon_mode,
-                        )),
-                    ),
-                    (
-                        "Pinned",
-                        Some(crate::ui::get_icon(
-                            "\u{f4cc}",
-                            "\u{1f4cc}",
-                            app.config.ui.icon_mode,
-                        )),
-                    ),
-                ];
+                let tabs = [("Vault", Some(crate::ui::get_icon("\u{f07b}", "\u{1f4c1}", app.config.ui.icon_mode))), ("Pinned", Some(crate::ui::get_icon("\u{f4cc}", "\u{1f4cc}", app.config.ui.icon_mode)))];
                 let region = crate::ui::title_bar_tabs_region(terminal_area, "Notes");
                 if let Some(i) = crate::ui::hit_test_tabs(
                     &tabs,
@@ -1243,28 +1210,21 @@ fn handle_layout_edit_mouse(app: &mut App, mouse: MouseEvent, terminal_area: Rec
     // Compute horizontal divider (list ↔ calendar)
     let hdiv_y = calendar_area.map(|c| {
         match app.calendar_position {
-            crate::config::CalendarPosition::Bottom => c.y, // top edge of bottom calendar
-            crate::config::CalendarPosition::Top => c.bottom(), // bottom edge of top calendar
+            crate::config::CalendarPosition::Bottom => c.y,       // top edge of bottom calendar
+            crate::config::CalendarPosition::Top => c.bottom(),   // bottom edge of top calendar
         }
     });
 
     // Content row range for the list column
-    let col_top = list_area
-        .top()
-        .min(calendar_area.map(|c| c.top()).unwrap_or(list_area.top()));
-    let col_bot = list_area.bottom().max(
-        calendar_area
-            .map(|c| c.bottom())
-            .unwrap_or(list_area.bottom()),
-    );
+    let col_top = list_area.top().min(calendar_area.map(|c| c.top()).unwrap_or(list_area.top()));
+    let col_bot = list_area.bottom().max(calendar_area.map(|c| c.bottom()).unwrap_or(list_area.bottom()));
 
     match mouse.kind {
         MouseEventKind::Down(MouseButton::Left) => {
             // 1. Check vertical divider
             if let Some(vx) = vdiv_x {
                 if (mouse.column as i16 - vx as i16).abs() <= 1
-                    && mouse.row >= col_top
-                    && mouse.row < col_bot
+                    && mouse.row >= col_top && mouse.row < col_bot
                 {
                     app.layout_drag = Some(crate::app::LayoutDrag::VDivider);
                     return;
@@ -1282,10 +1242,8 @@ fn handle_layout_edit_mouse(app: &mut App, mouse: MouseEvent, terminal_area: Rec
             }
             // 3. Check preview area (for swap)
             if let Some(p) = preview_area {
-                if mouse.column >= p.x
-                    && mouse.column < p.right()
-                    && mouse.row >= p.y
-                    && mouse.row < p.bottom()
+                if mouse.column >= p.x && mouse.column < p.right()
+                    && mouse.row >= p.y && mouse.row < p.bottom()
                 {
                     app.layout_drag = Some(crate::app::LayoutDrag::PreviewSwap);
                     return;
@@ -1293,10 +1251,8 @@ fn handle_layout_edit_mouse(app: &mut App, mouse: MouseEvent, terminal_area: Rec
             }
             // 4. Check calendar area (for swap)
             if let Some(c) = calendar_area {
-                if mouse.column >= c.x
-                    && mouse.column < c.right()
-                    && mouse.row >= c.y
-                    && mouse.row < c.bottom()
+                if mouse.column >= c.x && mouse.column < c.right()
+                    && mouse.row >= c.y && mouse.row < c.bottom()
                 {
                     app.layout_drag = Some(crate::app::LayoutDrag::CalendarSwap);
                     return;
@@ -1304,38 +1260,37 @@ fn handle_layout_edit_mouse(app: &mut App, mouse: MouseEvent, terminal_area: Rec
             }
             app.layout_drag = None;
         }
-        MouseEventKind::Drag(MouseButton::Left) => match app.layout_drag {
-            Some(crate::app::LayoutDrag::VDivider) => {
-                let area_right = terminal_area.x.saturating_add(terminal_area.width);
-                let preview_cols = match app.preview_position {
-                    crate::config::PreviewPosition::Right => {
-                        area_right.saturating_sub(mouse.column)
-                    }
-                    crate::config::PreviewPosition::Left => {
-                        mouse.column.saturating_sub(terminal_area.x)
-                    }
-                };
-                let ratio = preview_cols as f32 / terminal_area.width as f32;
-                app.adjust_preview_width_to(ratio);
+        MouseEventKind::Drag(MouseButton::Left) => {
+            match app.layout_drag {
+                Some(crate::app::LayoutDrag::VDivider) => {
+                    let area_right = terminal_area.x.saturating_add(terminal_area.width);
+                    let preview_cols = match app.preview_position {
+                        crate::config::PreviewPosition::Right => area_right.saturating_sub(mouse.column),
+                        crate::config::PreviewPosition::Left => mouse.column.saturating_sub(terminal_area.x),
+                    };
+                    let ratio = preview_cols as f32 / terminal_area.width as f32;
+                    app.adjust_preview_width_to(ratio);
+                }
+                Some(crate::app::LayoutDrag::HDivider) => {
+                    let new_h = match app.calendar_position {
+                        crate::config::CalendarPosition::Bottom => {
+                            col_bot.saturating_sub(mouse.row)
+                        }
+                        crate::config::CalendarPosition::Top => {
+                            mouse.row.saturating_sub(col_top).saturating_add(1)
+                        }
+                    };
+                    app.adjust_calendar_height_to(new_h);
+                }
+                _ => {}
             }
-            Some(crate::app::LayoutDrag::HDivider) => {
-                let new_h = match app.calendar_position {
-                    crate::config::CalendarPosition::Bottom => col_bot.saturating_sub(mouse.row),
-                    crate::config::CalendarPosition::Top => {
-                        mouse.row.saturating_sub(col_top).saturating_add(1)
-                    }
-                };
-                app.adjust_calendar_height_to(new_h);
-            }
-            _ => {}
-        },
+        }
         MouseEventKind::Up(MouseButton::Left) => {
             match app.layout_drag {
                 Some(crate::app::LayoutDrag::PreviewSwap) => {
                     let mid = terminal_area.x.saturating_add(terminal_area.width / 2);
                     let on_left = mouse.column < mid;
-                    let start_left =
-                        matches!(app.preview_position, crate::config::PreviewPosition::Left);
+                    let start_left = matches!(app.preview_position, crate::config::PreviewPosition::Left);
                     if on_left != start_left {
                         app.swap_preview_position();
                     }
@@ -1343,8 +1298,7 @@ fn handle_layout_edit_mouse(app: &mut App, mouse: MouseEvent, terminal_area: Rec
                 Some(crate::app::LayoutDrag::CalendarSwap) => {
                     let mid = col_top + (col_bot - col_top) / 2;
                     let on_top = mouse.row < mid;
-                    let start_top =
-                        matches!(app.calendar_position, crate::config::CalendarPosition::Top);
+                    let start_top = matches!(app.calendar_position, crate::config::CalendarPosition::Top);
                     if on_top != start_top {
                         app.swap_calendar_position();
                     }

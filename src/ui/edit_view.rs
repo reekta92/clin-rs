@@ -1,13 +1,14 @@
 use ratatui::{prelude::*, widgets::*};
 
-use super::{
-    PopupSize, centered_rect, draw_corner_watermark, draw_dim_vline, draw_status_bar,
-    draw_view_title_bar, fill_cursor_line_bg, format_keybind_hints, get_preview_info,
-    get_textarea_scroll, line_number_gutter,
-};
 use crate::app::{App, EditFocus};
-use crate::events::get_title_text;
 use crate::keybinds::EditAction;
+use crate::events::get_title_text;
+use super::{
+    PopupSize, draw_view_title_bar, line_number_gutter,
+    get_textarea_scroll, fill_cursor_line_bg,
+    draw_status_bar, draw_corner_watermark, draw_dim_vline, centered_rect,
+    get_preview_info, format_keybind_hints
+};
 
 pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     let area = frame.area();
@@ -28,8 +29,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         "Editor",
         &app.app_theme,
         preview_info,
-        Some(app.status.as_ref()),
-        None,
+        Some(app.status.as_ref()), None,
     );
     let body_area = outer_chunks[1];
     let hint_area = outer_chunks[2];
@@ -169,9 +169,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     if let Some(bg) = app.app_theme.preview_bg() {
                         Style::default().bg(bg)
                     } else {
-                        Style::default()
-                            .bg(app.app_theme.highlight_bg)
-                            .fg(app.app_theme.highlight_fg)
+                        Style::default().bg(app.app_theme.highlight_bg).fg(app.app_theme.highlight_fg)
                     }
                 } else {
                     Style::default()
@@ -295,9 +293,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 if let Some(bg) = app.app_theme.preview_bg() {
                     Style::default().bg(bg)
                 } else {
-                    Style::default()
-                        .bg(app.app_theme.highlight_bg)
-                        .fg(app.app_theme.highlight_fg)
+                    Style::default().bg(app.app_theme.highlight_bg).fg(app.app_theme.highlight_fg)
                 }
             } else {
                 Style::default()
@@ -316,22 +312,11 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     let hints_items = vec![
         (kb.display_edit(EditAction::CycleFocus), "focus"),
         (kb.display_edit(EditAction::Back), "back"),
-        (
-            kb.display_edit(EditAction::ToggleMarkdownPreview),
-            "preview",
-        ),
+        (kb.display_edit(EditAction::ToggleMarkdownPreview), "preview"),
     ];
     let default_hints = format_keybind_hints(&app.app_theme, &hints_items);
     let hint = default_hints;
-    draw_status_bar(
-        frame,
-        hint_area,
-        &app.app_theme,
-        None,
-        hint,
-        None,
-        app.seq_matcher.pending_display().as_deref(),
-    );
+    draw_status_bar(frame, hint_area, &app.app_theme, None, hint, None, app.seq_matcher.pending_display().as_deref());
     draw_corner_watermark(frame, hint_area, app.app_theme.muted);
     if let Some(splitter_area) = splitter_area {
         draw_dim_vline(frame, splitter_area, app.app_theme.muted);
@@ -350,4 +335,5 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             .wrap(Wrap { trim: true });
         frame.render_widget(text, popup);
     }
+
 }

@@ -2,30 +2,13 @@ use crate::templates::TemplateSummary;
 use ratatui_textarea::TextArea;
 
 pub enum ConfirmAction {
-    DeleteNote {
-        note_id: String,
-        title: String,
-    },
-    DeleteFolder {
-        path: String,
-    },
-    DeleteTag {
-        tag: String,
-    },
-    DeleteTemplate {
-        filename: String,
-        name: String,
-    },
-    DeleteFromTrash {
-        item: trash::TrashItem,
-    },
-    EmptyTrash {
-        items: Vec<trash::TrashItem>,
-    },
-    BulkDeleteItems {
-        note_ids: Vec<String>,
-        folder_paths: Vec<String>,
-    },
+    DeleteNote { note_id: String, title: String },
+    DeleteFolder { path: String },
+    DeleteTag { tag: String },
+    DeleteTemplate { filename: String, name: String },
+    DeleteFromTrash { item: trash::TrashItem },
+    EmptyTrash { items: Vec<trash::TrashItem> },
+    BulkDeleteItems { note_ids: Vec<String>, folder_paths: Vec<String> },
     QuitApp,
 }
 
@@ -100,35 +83,15 @@ pub struct FolderPopup {
 }
 
 pub enum FolderPickerMode {
-    MoveNote {
-        note_id: String,
-    },
-    CopyNote {
-        note_id: String,
-    },
-    MoveFolder {
-        folder_path: String,
-    },
-    BulkMoveNotes {
-        note_ids: Vec<String>,
-    },
-    BulkCopyNotes {
-        note_ids: Vec<String>,
-    },
-    BulkMoveFolders {
-        folder_paths: Vec<String>,
-    },
-    BulkCopyFolders {
-        folder_paths: Vec<String>,
-    },
-    BulkMoveMixed {
-        note_ids: Vec<String>,
-        folder_paths: Vec<String>,
-    },
-    BulkCopyMixed {
-        note_ids: Vec<String>,
-        folder_paths: Vec<String>,
-    },
+    MoveNote { note_id: String },
+    CopyNote { note_id: String },
+    MoveFolder { folder_path: String },
+    BulkMoveNotes { note_ids: Vec<String> },
+    BulkCopyNotes { note_ids: Vec<String> },
+    BulkMoveFolders { folder_paths: Vec<String> },
+    BulkCopyFolders { folder_paths: Vec<String> },
+    BulkMoveMixed { note_ids: Vec<String>, folder_paths: Vec<String> },
+    BulkCopyMixed { note_ids: Vec<String>, folder_paths: Vec<String> },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -217,6 +180,7 @@ pub struct HintBarStylePopup {
 pub struct KeybindPresetPopup {
     pub selected: usize,
 }
+
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NoteFormat {

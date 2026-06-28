@@ -393,17 +393,10 @@ impl Storage {
         self.config_dir.join("keybinds.toml")
     }
 
-    pub fn keybinds_path_for_preset(
-        &self,
-        preset: crate::config::KeybindPreset,
-    ) -> std::path::PathBuf {
+    pub fn keybinds_path_for_preset(&self, preset: crate::config::KeybindPreset) -> std::path::PathBuf {
         self.config_dir.join(format!("keybinds_{}.toml", preset))
     }
-    pub fn save_keybinds_for_preset(
-        &self,
-        keybinds: &Keybinds,
-        preset: crate::config::KeybindPreset,
-    ) -> Result<()> {
+    pub fn save_keybinds_for_preset(&self, keybinds: &Keybinds, preset: crate::config::KeybindPreset) -> Result<()> {
         keybinds.save(&self.keybinds_path_for_preset(preset))
     }
 
@@ -421,8 +414,7 @@ impl Storage {
                 let _ = std::fs::remove_file(&legacy);
             }
         }
-        crate::keybinds::Keybinds::load_layered(&per_preset, preset.base_keybinds())
-            .unwrap_or_default()
+        crate::keybinds::Keybinds::load_layered(&per_preset, preset.base_keybinds()).unwrap_or_default()
     }
 
     pub fn save_keybinds(&self, keybinds: &Keybinds) -> Result<()> {
@@ -637,11 +629,9 @@ impl Storage {
             let (fm, payload) = split_frontmatter_payload(&file_content);
 
             let plain = self.decrypt(payload)?;
-            let (mut note, _) = bincode::serde::decode_from_slice::<Note, _>(
-                plain.as_slice(),
-                bincode::config::standard(),
-            )
-            .context("failed to decode note")?;
+            let (mut note, _) =
+                bincode::serde::decode_from_slice::<Note, _>(plain.as_slice(), bincode::config::standard())
+                    .context("failed to decode note")?;
 
             if let Some(fm) = fm {
                 note.tags = fm.tags;
@@ -1172,7 +1162,8 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
             fs::create_dir_all(&to)?;
             copy_dir_recursive(&from, &to)?;
         } else {
-            fs::copy(&from, &to).with_context(|| format!("failed to copy {}", from.display()))?;
+            fs::copy(&from, &to)
+                .with_context(|| format!("failed to copy {}", from.display()))?;
         }
     }
     Ok(())
@@ -1307,8 +1298,8 @@ mod tests {
         };
 
         // Test each supported extension
-        let titled_exts = ["md", "txt", "clin"]; // frontmatter/bincode preserves title
-        let raw_exts = ["draw", "canvas"]; // raw bytes, no stored title
+        let titled_exts = ["md", "txt", "clin"];   // frontmatter/bincode preserves title
+        let raw_exts = ["draw", "canvas"];          // raw bytes, no stored title
 
         for ext in titled_exts.iter().chain(raw_exts.iter()) {
             let orig_id = format!("test_original.{}", ext);
@@ -1334,10 +1325,7 @@ mod tests {
 
             // Title is only preserved for frontmatter/bincode-backed formats
             if titled_exts.contains(ext) {
-                assert_eq!(
-                    dup_note.title, "Original (Copy)",
-                    "title mismatch for .{ext}"
-                );
+                assert_eq!(dup_note.title, "Original (Copy)", "title mismatch for .{ext}");
             }
         }
 

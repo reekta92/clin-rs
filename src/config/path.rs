@@ -84,7 +84,9 @@ fn parse_var(s: &str) -> (String, usize, bool) {
         return (String::new(), 0, false); // malformed `${`
     }
     let mut end = 1;
-    while end < bytes.len() && (bytes[end].is_ascii_alphanumeric() || bytes[end] == b'_') {
+    while end < bytes.len()
+        && (bytes[end].is_ascii_alphanumeric() || bytes[end] == b'_')
+    {
         end += 1;
     }
     (s[1..end].to_string(), end, false)

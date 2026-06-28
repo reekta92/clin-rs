@@ -1,22 +1,18 @@
-use super::*;
 use crate::debug_log;
+use super::*;
 use crate::list_view::*;
 use crate::popups::*;
 use crate::templates::Template;
 use ratatui_textarea::TextArea;
 
 impl App {
+
+
     pub fn open_template_popup(&mut self) {
         let template_manager = self.storage.template_manager();
         match template_manager.list() {
             Ok(templates) => {
-                debug_log!(
-                    self,
-                    Debug,
-                    "view",
-                    "Template popup opened ({} templates)",
-                    templates.len()
-                );
+                debug_log!(self, Debug, "view", "Template popup opened ({} templates)", templates.len());
                 let mut input = TextArea::default();
                 input.set_style(self.app_theme.bg_style());
                 input.set_cursor_line_style(Style::default());
@@ -64,8 +60,7 @@ impl App {
     }
 
     pub fn edit_selected_template_from_popup(&mut self) {
-        let path = if let Some(crate::popups::ActivePopup::Template(popup)) =
-            self.popups.active.as_ref()
+        let path = if let Some(crate::popups::ActivePopup::Template(popup)) = self.popups.active.as_ref()
             && let Some(summary) = popup.filtered_templates.get(popup.selected)
         {
             self.storage
@@ -175,8 +170,7 @@ impl App {
     }
 
     pub fn begin_delete_selected_template_from_popup(&mut self) {
-        let (filename, name) = if let Some(crate::popups::ActivePopup::Template(popup)) =
-            self.popups.active.as_ref()
+        let (filename, name) = if let Some(crate::popups::ActivePopup::Template(popup)) = self.popups.active.as_ref()
             && let Some(summary) = popup.filtered_templates.get(popup.selected)
         {
             (summary.filename.clone(), summary.name.clone())
@@ -198,9 +192,7 @@ impl App {
                     popup.all_templates = all_templates;
                     popup.focus = focus;
                     self.update_template_popup_filter();
-                    if let Some(crate::popups::ActivePopup::Template(popup)) =
-                        &mut self.popups.active
-                    {
+                    if let Some(crate::popups::ActivePopup::Template(popup)) = &mut self.popups.active {
                         if popup.filtered_templates.is_empty() {
                             popup.selected = 0;
                         } else {
@@ -308,17 +300,10 @@ template = """
                 "Empty Trash".into(),
                 true,
             ),
-            ConfirmAction::BulkDeleteItems {
-                note_ids,
-                folder_paths,
-            } => {
+            ConfirmAction::BulkDeleteItems { note_ids, folder_paths } => {
                 let mut parts = Vec::new();
-                if !note_ids.is_empty() {
-                    parts.push(format!("{} note(s)", note_ids.len()));
-                }
-                if !folder_paths.is_empty() {
-                    parts.push(format!("{} folder(s)", folder_paths.len()));
-                }
+                if !note_ids.is_empty()     { parts.push(format!("{} note(s)", note_ids.len())); }
+                if !folder_paths.is_empty() { parts.push(format!("{} folder(s)", folder_paths.len())); }
                 (
                     format!("Move {} to trash?", parts.join(" and ")),
                     Some("Use Shift+T to view/restore trashed notes.".into()),
@@ -365,10 +350,7 @@ template = """
                 ConfirmAction::EmptyTrash { items } => {
                     self.confirm_empty_trash(items);
                 }
-                ConfirmAction::BulkDeleteItems {
-                    note_ids,
-                    folder_paths,
-                } => {
+                ConfirmAction::BulkDeleteItems { note_ids, folder_paths } => {
                     self.confirm_bulk_delete(note_ids, folder_paths);
                 }
                 ConfirmAction::QuitApp => {
@@ -417,21 +399,15 @@ template = """
     pub fn confirm_bulk_delete(&mut self, note_ids: Vec<String>, folder_paths: Vec<String>) {
         let mut failed = 0;
         for id in &note_ids {
-            if self.storage.trash_note(id).is_err() {
-                failed += 1;
-            }
+            if self.storage.trash_note(id).is_err() { failed += 1; }
         }
         for path in &folder_paths {
-            if self.storage.trash_folder(path).is_err() {
-                failed += 1;
-            }
+            if self.storage.trash_folder(path).is_err() { failed += 1; }
         }
         // Drop expanded state for every trashed folder + its descendants.
         for path in &folder_paths {
             self.list.folder_expanded.remove(path);
-            self.list
-                .folder_expanded
-                .retain(|p| !p.starts_with(&format!("{path}/")));
+            self.list.folder_expanded.retain(|p| !p.starts_with(&format!("{path}/")));
         }
         self.list.folder_cache = None;
         if let Err(e) = self.refresh_notes() {
@@ -447,13 +423,7 @@ template = """
         } else {
             self.set_temporary_status(&format!("Moved {total} item(s) to trash"));
         }
-        debug_log!(
-            self,
-            Info,
-            "storage",
-            "Bulk trash: {} succeeded, {failed} failed",
-            total - failed
-        );
+        debug_log!(self, Info, "storage", "Bulk trash: {} succeeded, {failed} failed", total - failed);
     }
 
     pub fn close_create_format_popup(&mut self) {
@@ -516,12 +486,7 @@ template = """
 
         let config = crate::config::ClinConfig::load().unwrap_or_default();
         let current = config.ui.theme.to_string();
-        debug_log!(
-            self,
-            Debug,
-            "view",
-            "Theme selection opened (current={current})"
-        );
+        debug_log!(self, Debug, "view", "Theme selection opened (current={current})");
         let selected = themes.iter().position(|t| t == &current).unwrap_or(0);
         let general_is_solid = matches!(config.ui.background, crate::config::Background::Solid);
         let graph_is_solid = matches!(
@@ -576,13 +541,7 @@ template = """
             if let Err(e) = self.refresh_notes() {
                 self.set_temporary_status(&format!("Refresh failed: {e}"));
             }
-            debug_log!(
-                self,
-                Debug,
-                "view",
-                "Sort: {:?}",
-                (self.list.sort_field, self.list.sort_order)
-            );
+            debug_log!(self, Debug, "view", "Sort: {:?}", (self.list.sort_field, self.list.sort_order));
         }
     }
 
@@ -596,11 +555,9 @@ template = """
             crate::config::IconMode::Unicode => 1,
             crate::config::IconMode::None => 2,
         };
-        self.popups.active = Some(crate::popups::ActivePopup::IconMode(
-            crate::popups::IconModePopup {
-                selected: current_idx,
-            },
-        ));
+        self.popups.active = Some(crate::popups::ActivePopup::IconMode(crate::popups::IconModePopup {
+            selected: current_idx,
+        }));
     }
 
     pub fn select_icon_mode(&mut self) {
@@ -620,12 +577,7 @@ template = """
             if let Ok(mut config) = crate::config::ClinConfig::load() {
                 config.ui.icon_mode = mode;
                 if let Err(e) = config.save() {
-                    debug_log!(
-                        self,
-                        Error,
-                        "config",
-                        "Failed to save config (icon mode): {e}"
-                    );
+                    debug_log!(self, Error, "config", "Failed to save config (icon mode): {e}");
                     self.set_temporary_status(&format!("Failed to save config: {e}"));
                 }
             }
@@ -644,11 +596,9 @@ template = """
             crate::config::HintBarStyle::PowerlineRounded => 3,
             crate::config::HintBarStyle::PowerlineSlanted => 4,
         };
-        self.popups.active = Some(crate::popups::ActivePopup::HintBarStyle(
-            crate::popups::HintBarStylePopup {
-                selected: current_idx,
-            },
-        ));
+        self.popups.active = Some(crate::popups::ActivePopup::HintBarStyle(crate::popups::HintBarStylePopup {
+            selected: current_idx,
+        }));
     }
 
     pub fn select_hint_bar_style(&mut self) {
@@ -666,23 +616,14 @@ template = """
                 crate::config::HintBarStyle::Classic => "Hint bar style: Classic",
                 crate::config::HintBarStyle::Accent => "Hint bar style: Accent",
                 crate::config::HintBarStyle::PowerlineSharp => "Hint bar style: Powerline Sharp",
-                crate::config::HintBarStyle::PowerlineRounded => {
-                    "Hint bar style: Powerline Rounded"
-                }
-                crate::config::HintBarStyle::PowerlineSlanted => {
-                    "Hint bar style: Powerline Slanted"
-                }
+                crate::config::HintBarStyle::PowerlineRounded => "Hint bar style: Powerline Rounded",
+                crate::config::HintBarStyle::PowerlineSlanted => "Hint bar style: Powerline Slanted",
             };
             self.set_temporary_status_static(status);
             if let Ok(mut config) = crate::config::ClinConfig::load() {
                 config.ui.hint_bar_style = style;
                 if let Err(e) = config.save() {
-                    debug_log!(
-                        self,
-                        Error,
-                        "config",
-                        "Failed to save config (hint bar style): {e}"
-                    );
+                    debug_log!(self, Error, "config", "Failed to save config (hint bar style): {e}");
                     self.set_temporary_status(&format!("Failed to save config: {e}"));
                 }
             }
@@ -701,9 +642,7 @@ template = """
             crate::config::KeybindPreset::Vim => 2,
             crate::config::KeybindPreset::Emacs => 3,
         };
-        self.popups.active = Some(crate::popups::ActivePopup::KeybindPreset(
-            crate::popups::KeybindPresetPopup { selected },
-        ));
+        self.popups.active = Some(crate::popups::ActivePopup::KeybindPreset(crate::popups::KeybindPresetPopup { selected }));
     }
 
     pub fn select_keybind_preset(&mut self) {
@@ -792,12 +731,10 @@ template = """
         if self.config.goals.word_goal > 0 {
             input.insert_str(&self.config.goals.word_goal.to_string());
         }
-        self.popups.active = Some(crate::popups::ActivePopup::Goals(
-            crate::popups::GoalsPopup {
-                mode: crate::popups::GoalsPopupMode::WordGoal,
-                input,
-            },
-        ));
+        self.popups.active = Some(crate::popups::ActivePopup::Goals(crate::popups::GoalsPopup {
+            mode: crate::popups::GoalsPopupMode::WordGoal,
+            input,
+        }));
     }
 
     pub fn begin_set_note_goal(&mut self) {
@@ -807,12 +744,10 @@ template = """
         if self.config.goals.note_goal > 0 {
             input.insert_str(&self.config.goals.note_goal.to_string());
         }
-        self.popups.active = Some(crate::popups::ActivePopup::Goals(
-            crate::popups::GoalsPopup {
-                mode: crate::popups::GoalsPopupMode::NoteGoal,
-                input,
-            },
-        ));
+        self.popups.active = Some(crate::popups::ActivePopup::Goals(crate::popups::GoalsPopup {
+            mode: crate::popups::GoalsPopupMode::NoteGoal,
+            input,
+        }));
     }
 
     pub fn confirm_goals_popup(&mut self) {
@@ -840,5 +775,4 @@ template = """
                 }
             }
         }
-    }
-}
+    }}

@@ -1,6 +1,6 @@
-use super::PreviewHeaderInfo;
-use crate::app_theme::AppThemeColors;
 use ratatui::{prelude::*, widgets::*};
+use crate::app_theme::AppThemeColors;
+use super::PreviewHeaderInfo;
 
 pub fn draw_view_title_bar(
     frame: &mut Frame,
@@ -17,9 +17,7 @@ pub fn draw_view_title_bar(
             let st = crate::sanitize::sanitize_for_terminal(st);
             let span = Span::styled(
                 format!("  {}  ", st),
-                Style::default()
-                    .fg(theme.highlight_fg)
-                    .add_modifier(Modifier::BOLD),
+                Style::default().fg(theme.highlight_fg).add_modifier(Modifier::BOLD),
             );
             let bar = Paragraph::new(Line::from(vec![span]))
                 .style(Style::default().bg(theme.accent))
@@ -49,9 +47,7 @@ pub fn draw_view_title_bar(
                 crate::config::HintBarStyle::PowerlineSlanted => "",
                 _ => unreachable!(),
             };
-            let sep_style = Style::default()
-                .fg(theme.heading)
-                .bg(theme.title_bar_bg().unwrap_or(Color::Reset));
+            let sep_style = Style::default().fg(theme.heading).bg(theme.title_bar_bg().unwrap_or(Color::Reset));
             spans.push(Span::styled(sep_char, sep_style));
         }
         _ => {}
@@ -98,8 +94,8 @@ pub fn draw_view_title_bar(
     let is_powerline = matches!(
         theme.hint_bar_style,
         crate::config::HintBarStyle::PowerlineSharp
-            | crate::config::HintBarStyle::PowerlineRounded
-            | crate::config::HintBarStyle::PowerlineSlanted
+        | crate::config::HintBarStyle::PowerlineRounded
+        | crate::config::HintBarStyle::PowerlineSlanted
     );
 
     let (left_area, right_info) = if let Some(r) = right_text {
@@ -122,13 +118,7 @@ pub fn draw_view_title_bar(
             let text: String = r_text.spans.iter().map(|s| s.content.as_ref()).collect();
             let segments: Vec<&str> = text.split(" | ").collect();
 
-            let bg_colors = [
-                theme.accent,
-                theme.folder,
-                theme.tag,
-                theme.warning,
-                theme.success,
-            ];
+            let bg_colors = [theme.accent, theme.folder, theme.tag, theme.warning, theme.success];
             let sep_char = match theme.hint_bar_style {
                 crate::config::HintBarStyle::PowerlineSharp => "",
                 crate::config::HintBarStyle::PowerlineRounded => "",
@@ -147,17 +137,12 @@ pub fn draw_view_title_bar(
 
                 // Separator on the left of each badge, bridging from previous element
                 let mut sep_style = Style::default().fg(bg);
-                if let Some(p_bg) = prev_bg {
-                    sep_style = sep_style.bg(p_bg);
-                }
+                if let Some(p_bg) = prev_bg { sep_style = sep_style.bg(p_bg); }
                 badge_spans.push(Span::styled(sep_char, sep_style));
 
                 badge_spans.push(Span::styled(
                     format!(" {} ", segment.trim()),
-                    Style::default()
-                        .bg(bg)
-                        .fg(theme.highlight_fg)
-                        .add_modifier(Modifier::BOLD),
+                    Style::default().bg(bg).fg(theme.highlight_fg).add_modifier(Modifier::BOLD),
                 ));
             }
 
@@ -194,9 +179,7 @@ pub fn draw_view_title_bar_with_tabs(
             let st = crate::sanitize::sanitize_for_terminal(st);
             let span = Span::styled(
                 format!("  {}  ", st),
-                Style::default()
-                    .fg(theme.highlight_fg)
-                    .add_modifier(Modifier::BOLD),
+                Style::default().fg(theme.highlight_fg).add_modifier(Modifier::BOLD),
             );
             let bar = Paragraph::new(Line::from(vec![span]))
                 .style(Style::default().bg(theme.accent))
@@ -242,9 +225,7 @@ pub fn draw_view_title_bar_with_tabs(
                 crate::config::HintBarStyle::PowerlineSlanted => "",
                 _ => unreachable!(),
             };
-            let sep_style = Style::default()
-                .fg(theme.heading)
-                .bg(theme.title_bar_bg().unwrap_or(Color::Reset));
+            let sep_style = Style::default().fg(theme.heading).bg(theme.title_bar_bg().unwrap_or(Color::Reset));
             title_spans.push(Span::styled(sep_char, sep_style));
         }
         _ => {}
@@ -256,28 +237,25 @@ pub fn draw_view_title_bar_with_tabs(
         .sum::<u16>()
         .min(area.width);
     let title_area = Rect::new(area.x, area.y, title_w, area.height);
-    frame.render_widget(Paragraph::new(Line::from(title_spans)), title_area);
+    frame.render_widget(
+        Paragraph::new(Line::from(title_spans)),
+        title_area,
+    );
 
     // Right-aligned text with hint_bar_style
     if let Some(r_text) = right_text {
         let is_powerline = matches!(
             theme.hint_bar_style,
             crate::config::HintBarStyle::PowerlineSharp
-                | crate::config::HintBarStyle::PowerlineRounded
-                | crate::config::HintBarStyle::PowerlineSlanted
+            | crate::config::HintBarStyle::PowerlineRounded
+            | crate::config::HintBarStyle::PowerlineSlanted
         );
 
         if is_powerline {
             let text: String = r_text.spans.iter().map(|s| s.content.as_ref()).collect();
             let segments: Vec<&str> = text.split(" | ").collect();
 
-            let bg_colors = [
-                theme.accent,
-                theme.folder,
-                theme.tag,
-                theme.warning,
-                theme.success,
-            ];
+            let bg_colors = [theme.accent, theme.folder, theme.tag, theme.warning, theme.success];
             let sep_char = match theme.hint_bar_style {
                 crate::config::HintBarStyle::PowerlineSharp => "",
                 crate::config::HintBarStyle::PowerlineRounded => "",
@@ -295,17 +273,12 @@ pub fn draw_view_title_bar_with_tabs(
                 };
 
                 let mut sep_style = Style::default().fg(bg);
-                if let Some(p_bg) = prev_bg {
-                    sep_style = sep_style.bg(p_bg);
-                }
+                if let Some(p_bg) = prev_bg { sep_style = sep_style.bg(p_bg); }
                 badge_spans.push(Span::styled(sep_char, sep_style));
 
                 badge_spans.push(Span::styled(
                     format!(" {} ", segment.trim()),
-                    Style::default()
-                        .bg(bg)
-                        .fg(theme.highlight_fg)
-                        .add_modifier(Modifier::BOLD),
+                    Style::default().bg(bg).fg(theme.highlight_fg).add_modifier(Modifier::BOLD),
                 ));
             }
 
@@ -321,7 +294,10 @@ pub fn draw_view_title_bar_with_tabs(
                 area,
             );
         } else {
-            frame.render_widget(Paragraph::new(r_text).alignment(Alignment::Right), area);
+            frame.render_widget(
+                Paragraph::new(r_text).alignment(Alignment::Right),
+                area,
+            );
         }
     }
 }
@@ -339,12 +315,7 @@ pub fn title_bar_tabs_region(area: Rect, title: &str) -> Rect {
     }
 }
 
-fn tab_display_text(
-    label: &str,
-    glyph: Option<&str>,
-    icons_only: bool,
-    icon_mode: crate::config::IconMode,
-) -> String {
+fn tab_display_text(label: &str, glyph: Option<&str>, icons_only: bool, icon_mode: crate::config::IconMode) -> String {
     let effective_icons_only = icons_only && icon_mode != crate::config::IconMode::None;
     let effective_glyph = match icon_mode {
         crate::config::IconMode::None => None,
@@ -358,12 +329,7 @@ fn tab_display_text(
     }
 }
 
-fn tab_display_width(
-    label: &str,
-    glyph: Option<&str>,
-    icons_only: bool,
-    icon_mode: crate::config::IconMode,
-) -> u16 {
+fn tab_display_width(label: &str, glyph: Option<&str>, icons_only: bool, icon_mode: crate::config::IconMode) -> u16 {
     use unicode_width::UnicodeWidthStr;
     let label_w = label.width() as u16;
     let effective_icons_only = icons_only && icon_mode != crate::config::IconMode::None;

@@ -1,44 +1,36 @@
 use crate::debug_log;
-use crossterm::event::{KeyCode, KeyEvent, MouseButton, MouseEvent, MouseEventKind};
-use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use crossterm::event::{KeyCode, KeyEvent, MouseEvent, MouseEventKind, MouseButton};
+use ratatui::layout::{Rect, Layout, Direction, Constraint};
 use ratatui_textarea::Input;
 
-use crate::app::{App, ContextMenu, EditFocus};
+use crate::app::{App, EditFocus, ContextMenu};
 use crate::keybinds::EditAction;
 use crate::text_edit::apply_text_shortcuts;
 
 use super::{
-    contains_cell, edit_view_input_areas, edit_view_md_preview_area, get_title_text,
-    make_title_editor, move_textarea_cursor_to_mouse,
+    edit_view_input_areas, edit_view_md_preview_area, contains_cell,
+    move_textarea_cursor_to_mouse, make_title_editor, get_title_text
 };
 
 pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> bool {
+
     if let Some(crate::popups::ActivePopup::ContextMenu(mut menu)) = app.popups.active.take() {
         if crate::events::is_cancel_popup(&app.keybinds, &key, false) {
             app.popups.active = None;
             return false;
         }
         match key.code {
-            _ if app
-                .keybinds
-                .matches_list(crate::keybinds::ListAction::MoveUp, &key) =>
-            {
+            _ if app.keybinds.matches_list(crate::keybinds::ListAction::MoveUp, &key) => {
                 menu.selected = menu.selected.saturating_sub(1);
                 app.popups.active = Some(crate::popups::ActivePopup::ContextMenu(menu));
             }
-            _ if app
-                .keybinds
-                .matches_list(crate::keybinds::ListAction::MoveDown, &key) =>
-            {
+            _ if app.keybinds.matches_list(crate::keybinds::ListAction::MoveDown, &key) => {
                 if menu.selected < 3 {
                     menu.selected += 1;
                 }
                 app.popups.active = Some(crate::popups::ActivePopup::ContextMenu(menu));
             }
-            _ if app
-                .keybinds
-                .matches_list(crate::keybinds::ListAction::Confirm, &key) =>
-            {
+            _ if app.keybinds.matches_list(crate::keybinds::ListAction::Confirm, &key) => {
                 app.handle_menu_action(menu.selected, focus);
             }
             _ => {
@@ -50,10 +42,7 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
 
     let seq = app.config.sequences_enabled();
     let counts = app.config.counts_enabled();
-    match app
-        .keybinds
-        .resolve_edit(&mut app.seq_matcher, key, seq, counts)
-    {
+    match app.keybinds.resolve_edit(&mut app.seq_matcher, key, seq, counts) {
         crate::keybinds::MatchOutcome::Matched(action, _count) => match action {
             EditAction::CycleFocus => {
                 *focus = match *focus {
@@ -165,20 +154,14 @@ pub fn handle_edit_mouse(
                 }
                 app.popups.active = None;
             } else if mouse_event.kind == MouseEventKind::ScrollUp {
-                let mut menu_taken = app
-                    .popups
-                    .active
-                    .take()
+                let mut menu_taken = app.popups.active.take()
                     .expect("context_menu Some — guarded by enclosing if-let");
                 if let crate::popups::ActivePopup::ContextMenu(menu) = &mut menu_taken {
                     menu.selected = menu.selected.saturating_sub(1);
                 }
                 app.popups.active = Some(menu_taken);
             } else if mouse_event.kind == MouseEventKind::ScrollDown {
-                let mut menu_taken = app
-                    .popups
-                    .active
-                    .take()
+                let mut menu_taken = app.popups.active.take()
                     .expect("context_menu Some — guarded by enclosing if-let");
                 if let crate::popups::ActivePopup::ContextMenu(menu) = &mut menu_taken {
                     if menu.selected < 3 {

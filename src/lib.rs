@@ -8,8 +8,8 @@ pub mod config;
 pub mod console;
 pub mod constants;
 pub mod content_tree;
-pub mod debug;
 pub mod draw;
+pub mod debug;
 pub mod editor;
 pub mod frontmatter;
 pub mod fsutil;
@@ -18,8 +18,8 @@ pub mod graf;
 pub mod keybinds;
 pub mod list_view;
 pub mod markdown;
-pub mod migration;
 pub mod overlay;
+pub mod migration;
 pub mod palette;
 pub mod pinstar;
 pub mod popups;
@@ -31,8 +31,8 @@ pub mod text_edit;
 
 use crate::cli::{Cli, Command, ConfigCmd, KeybindsCmd, NotesCmd, StorageCmd, TemplatesCmd};
 use crate::config::ClinConfig;
-use crate::keybinds::{EditAction, HelpAction, ListAction};
 use crate::overlay::OverlayView;
+use crate::keybinds::{EditAction, HelpAction, ListAction};
 use clap::{CommandFactory, FromArgMatches};
 
 use std::borrow::Cow;
@@ -112,16 +112,6 @@ pub fn run() -> Result<()> {
 fn launch_tui(open_title: Option<String>) -> Result<()> {
     let storage = Storage::init()?;
     let mut app = App::new_deferred(storage)?;
-    if open_title.is_some() {
-        let rx = app.start_background_load();
-        while let Ok(batch) = rx.recv() {
-            let is_done = matches!(batch, crate::app::LoadBatch::Done(_));
-            app.merge_loaded(batch);
-            if is_done {
-                break;
-            }
-        }
-    }
     if let Some(title) = open_title
         && !app.open_note_by_title(&title)
     {
@@ -198,7 +188,11 @@ fn run_notes(action: NotesCmd, json: bool) -> Result<()> {
             // --body overrides template content when both are given.
             // Capture presence before `body` is moved by the `if let` below.
             let has_body = body.is_some();
-            let content = if let Some(b) = body { b } else { content };
+            let content = if let Some(b) = body {
+                b
+            } else {
+                content
+            };
 
             let id = Uuid::new_v4().simple().to_string();
             let note = Note {
@@ -213,7 +207,10 @@ fn run_notes(action: NotesCmd, json: bool) -> Result<()> {
             if no_tui || has_body {
                 println!(
                     "{}",
-                    console::success(&format!("Created note: {}", console::bold(&final_title)))
+                    console::success(&format!(
+                        "Created note: {}",
+                        console::bold(&final_title)
+                    ))
                 );
                 return Ok(());
             }
@@ -240,7 +237,10 @@ fn run_notes(action: NotesCmd, json: bool) -> Result<()> {
                         Ok(())
                     }
                     Err(e) => {
-                        eprintln!("{}", console::error(&format!("Failed to load note: {e}")));
+                        eprintln!(
+                            "{}",
+                            console::error(&format!("Failed to load note: {e}"))
+                        );
                         process::exit(1);
                     }
                 },
@@ -848,14 +848,12 @@ fn run_tui_session(app: &mut App) -> Result<()> {
         // SAFETY: signal_hook::low_level::register is async-signal-safe.
         // The closure only performs atomic stores and fetch-adds, which are
         // safe operations within a signal handler.
-        let _ = unsafe {
-            signal_hook::low_level::register(sig, || {
-                SHOULD_EXIT.store(true, Ordering::Release);
-                if SIGNAL_COUNT.fetch_add(1, Ordering::SeqCst) >= 1 {
-                    FORCE_QUIT.store(true, Ordering::Release);
-                }
-            })
-        };
+        let _ = unsafe { signal_hook::low_level::register(sig, || {
+            SHOULD_EXIT.store(true, Ordering::Release);
+            if SIGNAL_COUNT.fetch_add(1, Ordering::SeqCst) >= 1 {
+                FORCE_QUIT.store(true, Ordering::Release);
+            }
+        }) };
     };
     register_signal(signal_hook::consts::SIGINT);
     register_signal(signal_hook::consts::SIGTERM);
@@ -867,11 +865,8 @@ fn run_tui_session(app: &mut App) -> Result<()> {
 
     // Spawn the background backup worker before entering the terminal.
     let (debug_log_tx, debug_log_rx) = std::sync::mpsc::channel();
-    let (tx, done_rx) = crate::backup::worker::spawn(
-        app.git_lock.clone(),
-        app.backup_status.clone(),
-        debug_log_tx,
-    );
+    let (tx, done_rx) =
+        crate::backup::worker::spawn(app.git_lock.clone(), app.backup_status.clone(), debug_log_tx);
     debug_log!(app, Debug, "lifecycle", "Backup worker spawned");
     app.backup_tx = Some(tx);
     app.debug_log_rx = Some(debug_log_rx);
@@ -1080,15 +1075,10 @@ fn run_app(
                     if key.kind == KeyEventKind::Press
                         && key.code == KeyCode::F(12)
                         && key.modifiers == (KeyModifiers::CONTROL | KeyModifiers::SHIFT) =>
-                {
-                    debug_log!(
-                        app,
-                        Info,
-                        "lifecycle",
-                        "Debug dump triggered via Ctrl+Shift+F12"
-                    );
-                    app.dump_debug_buffer();
-                }
+                    {
+                        debug_log!(app, Info, "lifecycle", "Debug dump triggered via Ctrl+Shift+F12");
+                        app.dump_debug_buffer();
+                    }
                 ev @ (Event::Key(_) | Event::Mouse(_)) => {
                     // Global popups & palette get first chance to consume
                     let size = terminal.size().context("failed to get terminal size")?;
@@ -1102,10 +1092,7 @@ fn run_app(
                             debug_log!(app, Debug, "view", "Processing event: mode={:?}", app.mode);
                             let handled = match app.mode {
                                 ViewMode::List => handle_list_keys(app, key),
-                                ViewMode::Help => {
-                                    handle_help_keys(app, key);
-                                    false
-                                }
+                                ViewMode::Help => { handle_help_keys(app, key); false }
                                 ViewMode::Edit => handle_edit_keys(app, key, &mut focus),
                                 ViewMode::Graph => {
                                     if let Some(graf) = &mut app.graph_state {
@@ -1116,18 +1103,11 @@ fn run_app(
                                         )? {
                                             crate::overlay::OverlayResult::NoteOpened(note_id) => {
                                                 if let Err(e) = app.config.save() {
-                                                    app.set_temporary_status(&format!(
-                                                        "Failed to save config: {e}"
-                                                    ));
+                                                    app.set_temporary_status(&format!("Failed to save config: {e}"));
                                                 }
                                                 app.graph_state = None;
                                                 app.mode = ViewMode::List;
-                                                debug_log!(
-                                                    app,
-                                                    Info,
-                                                    "view",
-                                                    "View: Graph → List (note opened)"
-                                                );
+                                                debug_log!(app, Info, "view", "View: Graph → List (note opened)");
                                                 app.reload_theme();
                                                 app.open_note_from_graph(&note_id);
                                                 app.needs_full_redraw = true;
@@ -1139,34 +1119,13 @@ fn run_app(
                                             }
                                             crate::overlay::OverlayResult::Exit => {
                                                 if let Err(e) = app.config.save() {
-                                                    app.set_temporary_status(&format!(
-                                                        "Failed to save config: {e}"
-                                                    ));
+                                                    app.set_temporary_status(&format!("Failed to save config: {e}"));
                                                 }
-                                                debug_log!(
-                                                    app,
-                                                    Info,
-                                                    "config",
-                                                    "Config saved (graph view close)"
-                                                );
-                                                debug_log!(
-                                                    app,
-                                                    Info,
-                                                    "graf",
-                                                    "Graph view shutdown"
-                                                );
+                                                debug_log!(app, Info, "config", "Config saved (graph view close)");
+                                                debug_log!(app, Info, "graf", "Graph view shutdown");
                                                 app.graph_state = None;
-                                                app.mode = app
-                                                    .return_mode
-                                                    .take()
-                                                    .unwrap_or(ViewMode::List);
-                                                debug_log!(
-                                                    app,
-                                                    Info,
-                                                    "view",
-                                                    "View: Graph → {:?}",
-                                                    app.mode
-                                                );
+                                                app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
+                                                debug_log!(app, Info, "view", "View: Graph → {:?}", app.mode);
                                                 app.reload_theme();
                                                 app.needs_full_redraw = true;
                                                 terminal.clear()?;
@@ -1186,12 +1145,7 @@ fn run_app(
                                             &mut app.config,
                                         )? {
                                             crate::overlay::OverlayResult::Exit => {
-                                                debug_log!(
-                                                    app,
-                                                    Info,
-                                                    "draw",
-                                                    "Drawing closed and saved"
-                                                );
+                                                debug_log!(app, Info, "draw", "Drawing closed and saved");
                                                 app.draw_state = None;
                                                 app.close_draw_view();
                                                 app.needs_full_redraw = true;
@@ -1220,12 +1174,7 @@ fn run_app(
                                                 app.open_help_page_with_tab(tab);
                                             }
                                             crate::overlay::OverlayResult::Exit => {
-                                                debug_log!(
-                                                    app,
-                                                    Info,
-                                                    "canvas",
-                                                    "Canvas closed and saved"
-                                                );
+                                                debug_log!(app, Info, "canvas", "Canvas closed and saved");
                                                 app.close_canvas_view();
                                                 app.needs_full_redraw = true;
                                                 terminal.clear()?;
@@ -1248,17 +1197,8 @@ fn run_app(
                                             crate::overlay::OverlayResult::Exit => {
                                                 app.reload_config();
                                                 app.backup_state = None;
-                                                app.mode = app
-                                                    .return_mode
-                                                    .take()
-                                                    .unwrap_or(ViewMode::List);
-                                                debug_log!(
-                                                    app,
-                                                    Info,
-                                                    "view",
-                                                    "View: Backup → {:?}",
-                                                    app.mode
-                                                );
+                                                app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
+                                                debug_log!(app, Info, "view", "View: Backup → {:?}", app.mode);
                                                 app.reload_theme();
                                                 app.needs_full_redraw = true;
                                                 terminal.clear()?;
@@ -1280,37 +1220,16 @@ fn run_app(
                                         match result {
                                             crate::overlay::OverlayResult::Exit => {
                                                 app.content_tree_state = None;
-                                                app.mode = app
-                                                    .return_mode
-                                                    .take()
-                                                    .unwrap_or(ViewMode::List);
-                                                debug_log!(
-                                                    app,
-                                                    Info,
-                                                    "view",
-                                                    "View: ContentTree → {:?}",
-                                                    app.mode
-                                                );
+                                                app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
+                                                debug_log!(app, Info, "view", "View: ContentTree → {:?}", app.mode);
                                                 app.reload_theme();
                                                 app.needs_full_redraw = true;
                                                 terminal.clear()?;
                                             }
-                                            crate::overlay::OverlayResult::JumpToLine {
-                                                note_id: _,
-                                                line: _,
-                                            } => {
+                                            crate::overlay::OverlayResult::JumpToLine { note_id: _, line: _ } => {
                                                 app.content_tree_state = None;
-                                                app.mode = app
-                                                    .return_mode
-                                                    .take()
-                                                    .unwrap_or(ViewMode::List);
-                                                debug_log!(
-                                                    app,
-                                                    Info,
-                                                    "view",
-                                                    "View: ContentTree → {:?} (jump to line)",
-                                                    app.mode
-                                                );
+                                                app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
+                                                debug_log!(app, Info, "view", "View: ContentTree → {:?} (jump to line)", app.mode);
                                                 app.reload_theme();
                                                 app.needs_full_redraw = true;
                                                 terminal.clear()?;
@@ -1356,11 +1275,10 @@ fn run_app(
                                         )
                                         && mouse_event.row == tab_bar_y
                                     {
-                                        let tabs: Vec<(&str, Option<&str>)> =
-                                            crate::ui::help_tab_names(app.config.ui.icon_mode)
-                                                .iter()
-                                                .map(|&(l, g)| (l, Some(g)))
-                                                .collect();
+                                        let tabs: Vec<(&str, Option<&str>)> = crate::ui::help_tab_names(app.config.ui.icon_mode)
+                                            .iter()
+                                            .map(|&(l, g)| (l, Some(g)))
+                                            .collect();
                                         let region = crate::ui::title_bar_tabs_region(area, "Help");
                                         if let Some(i) = crate::ui::hit_test_tabs(
                                             &tabs,
@@ -1380,12 +1298,12 @@ fn run_app(
                                     } else if mouse_event.kind
                                         == ratatui::crossterm::event::MouseEventKind::ScrollDown
                                     {
-                                        let max_scroll =
-                                            app.list.help_text_cache.as_ref().map_or(0, |rows| {
-                                                rows.len().saturating_sub(5) as u16
-                                            });
-                                        app.help_scroll =
-                                            app.help_scroll.saturating_add(3).min(max_scroll);
+                                        let max_scroll = app
+                                            .list
+                                            .help_text_cache
+                                            .as_ref()
+                                            .map_or(0, |rows| rows.len().saturating_sub(5) as u16);
+                                        app.help_scroll = app.help_scroll.saturating_add(3).min(max_scroll);
                                     }
                                 }
                                 ViewMode::Graph => {
@@ -1397,18 +1315,11 @@ fn run_app(
                                         )? {
                                             crate::overlay::OverlayResult::NoteOpened(note_id) => {
                                                 if let Err(e) = app.config.save() {
-                                                    app.set_temporary_status(&format!(
-                                                        "Failed to save config: {e}"
-                                                    ));
+                                                    app.set_temporary_status(&format!("Failed to save config: {e}"));
                                                 }
                                                 app.graph_state = None;
                                                 app.mode = ViewMode::List;
-                                                debug_log!(
-                                                    app,
-                                                    Info,
-                                                    "view",
-                                                    "View: Graph → List (note opened via mouse)"
-                                                );
+                                                debug_log!(app, Info, "view", "View: Graph → List (note opened via mouse)");
                                                 app.reload_theme();
                                                 app.open_note_from_graph(&note_id);
                                                 app.needs_full_redraw = true;
@@ -1420,28 +1331,12 @@ fn run_app(
                                             }
                                             crate::overlay::OverlayResult::Exit => {
                                                 if let Err(e) = app.config.save() {
-                                                    app.set_temporary_status(&format!(
-                                                        "Failed to save config: {e}"
-                                                    ));
+                                                    app.set_temporary_status(&format!("Failed to save config: {e}"));
                                                 }
-                                                debug_log!(
-                                                    app,
-                                                    Info,
-                                                    "graf",
-                                                    "Graph view shutdown via mouse"
-                                                );
+                                                debug_log!(app, Info, "graf", "Graph view shutdown via mouse");
                                                 app.graph_state = None;
-                                                app.mode = app
-                                                    .return_mode
-                                                    .take()
-                                                    .unwrap_or(ViewMode::List);
-                                                debug_log!(
-                                                    app,
-                                                    Info,
-                                                    "view",
-                                                    "View: Graph → {:?} (via mouse)",
-                                                    app.mode
-                                                );
+                                                app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
+                                                debug_log!(app, Info, "view", "View: Graph → {:?} (via mouse)", app.mode);
                                                 app.reload_theme();
                                                 app.needs_full_redraw = true;
                                                 terminal.clear()?;
@@ -1458,12 +1353,7 @@ fn run_app(
                                             &mut app.config,
                                         )? {
                                             crate::overlay::OverlayResult::Exit => {
-                                                debug_log!(
-                                                    app,
-                                                    Info,
-                                                    "draw",
-                                                    "Drawing closed and saved"
-                                                );
+                                                debug_log!(app, Info, "draw", "Drawing closed and saved");
                                                 app.draw_state = None;
                                                 app.close_draw_view();
                                                 app.needs_full_redraw = true;

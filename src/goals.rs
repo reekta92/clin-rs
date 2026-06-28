@@ -182,11 +182,7 @@ pub fn draw_goals_progress(
     ));
 
     // Border at the interface edge: top when calendar is below list, bottom when above.
-    let border = if bottom_border {
-        Borders::BOTTOM
-    } else {
-        Borders::TOP
-    };
+    let border = if bottom_border { Borders::BOTTOM } else { Borders::TOP };
     let border_bg = theme.bg.unwrap_or(Color::Reset);
     let inner_h = rect.height.saturating_sub(1); // minus border
     let pad_top = inner_h.saturating_sub(8) / 2;

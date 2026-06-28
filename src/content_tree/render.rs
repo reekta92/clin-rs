@@ -213,35 +213,11 @@ pub fn draw_content_tree(
 
     // 3. Draw Hint line
     let hints_items = vec![
-        (
-            format!(
-                "{}/{}",
-                keybinds.display_content_tree(ContentTreeAction::MoveDown),
-                keybinds.display_content_tree(ContentTreeAction::MoveUp)
-            ),
-            "move",
-        ),
-        (
-            keybinds.display_content_tree(ContentTreeAction::ToggleCollapse),
-            "fold",
-        ),
-        (
-            keybinds.display_content_tree(ContentTreeAction::Open),
-            "jump",
-        ),
-        (
-            keybinds.display_content_tree(ContentTreeAction::Back),
-            "back",
-        ),
+        (format!("{}/{}", keybinds.display_content_tree(ContentTreeAction::MoveDown), keybinds.display_content_tree(ContentTreeAction::MoveUp)), "move"),
+        (keybinds.display_content_tree(ContentTreeAction::ToggleCollapse), "fold"),
+        (keybinds.display_content_tree(ContentTreeAction::Open), "jump"),
+        (keybinds.display_content_tree(ContentTreeAction::Back), "back"),
     ];
     let hint = crate::ui::format_keybind_hints(theme, &hints_items);
-    crate::ui::draw_status_bar(
-        frame,
-        hint_area,
-        theme,
-        None,
-        hint,
-        None,
-        state.seq_matcher.pending_display().as_deref(),
-    );
+    crate::ui::draw_status_bar(frame, hint_area, theme, None, hint, None, state.seq_matcher.pending_display().as_deref());
 }

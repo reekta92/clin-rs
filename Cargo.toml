@@ -123,8 +123,6 @@ portable-pty = "0.9"
 unicode-width = "0.2"
 git2 = "0.21"
 mimalloc = "0.1"
-comrak = { version = "0.36", default-features = false }
-syntect = { version = "5.2", default-features = false, features = ["default-fancy"] }
 
 [profile.release]
 lto = "thin"

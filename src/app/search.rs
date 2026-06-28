@@ -1,10 +1,12 @@
-use super::*;
 use crate::debug_log;
+use super::*;
 use crate::list_view::*;
 use crate::popups::*;
 use ratatui_textarea::TextArea;
 
 impl App {
+
+
     /// In grid layout, cycle between Pinned and Vault tabs.
     pub fn cycle_grid_tab(&mut self) {
         if self.list.notes_layout != crate::config::NotesLayout::Grid {
@@ -20,13 +22,7 @@ impl App {
     }
 
     pub fn begin_search(&mut self) {
-        debug_log!(
-            self,
-            Debug,
-            "view",
-            "Search opened (current_folder={:?})",
-            self.list.grid_folder
-        );
+        debug_log!(self, Debug, "view", "Search opened (current_folder={:?})", self.list.grid_folder);
         let mut input = TextArea::default();
         input.set_style(self.app_theme.bg_style());
         input.set_cursor_line_style(Style::default());
@@ -155,10 +151,7 @@ impl App {
                 format!("{}/{}", note.folder, note.title)
             };
             let lock_prefix = if note.id.ends_with(".clin") {
-                format!(
-                    "{} ",
-                    crate::ui::get_icon("\u{f023}", "\u{1f512}", self.config.ui.icon_mode)
-                )
+                format!("{} ", crate::ui::get_icon("\u{f023}", "\u{1f512}", self.config.ui.icon_mode))
             } else {
                 String::new()
             };
@@ -253,11 +246,7 @@ impl App {
 
     pub fn confirm_search(&mut self) {
         if let Some(crate::popups::ActivePopup::Search(popup)) = &self.popups.active {
-            debug_log!(
-                self,
-                Debug,
-                "event",
-                "Search: '{}' ({} title results, {} grep results)",
+            debug_log!(self, Debug, "event", "Search: '{}' ({} title results, {} grep results)",
                 popup.input.lines().join(""),
                 popup.title_results.len(),
                 popup.grep_results.len(),

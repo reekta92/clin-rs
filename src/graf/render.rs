@@ -541,6 +541,7 @@ pub fn draw_graph_view(
     let nodes = cache.nodes.clone();
     let labels = cache.labels.clone();
 
+
     let x_bounds = viewport.x_bounds(aspect);
     let y_bounds = viewport.y_bounds(aspect);
 
@@ -627,6 +628,7 @@ pub fn draw_graph_view(
     }
 
     if flags.show_status_bar {
+
         let status_area = ratatui::layout::Rect::new(
             area.x,
             area.y + area.height.saturating_sub(1),
@@ -634,22 +636,8 @@ pub fn draw_graph_view(
             1,
         );
         let hints_items = vec![
-            (
-                format!(
-                    "{}/{}",
-                    keybinds.display_graph(GraphAction::PanUp),
-                    keybinds.display_graph(GraphAction::PanDown)
-                ),
-                "pan",
-            ),
-            (
-                format!(
-                    "{}/{}",
-                    keybinds.display_graph(GraphAction::ZoomOut),
-                    keybinds.display_graph(GraphAction::ZoomIn)
-                ),
-                "zoom",
-            ),
+            (format!("{}/{}", keybinds.display_graph(GraphAction::PanUp), keybinds.display_graph(GraphAction::PanDown)), "pan"),
+            (format!("{}/{}", keybinds.display_graph(GraphAction::ZoomOut), keybinds.display_graph(GraphAction::ZoomIn)), "zoom"),
             (keybinds.display_graph(GraphAction::ToggleLegend), "labels"),
             (keybinds.display_graph(GraphAction::AutoFit), "fit"),
             (keybinds.display_graph(GraphAction::Quit), "quit"),

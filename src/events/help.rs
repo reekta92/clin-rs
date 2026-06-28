@@ -1,6 +1,6 @@
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use crate::app::{App, HelpTab};
 use crate::keybinds::HelpAction;
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 pub fn handle_help_keys(app: &mut App, key: KeyEvent) {
     if app.help_search.active {
@@ -153,10 +153,7 @@ pub fn handle_help_keys(app: &mut App, key: KeyEvent) {
 
     let seq = app.config.sequences_enabled();
     let counts = app.config.counts_enabled();
-    match app
-        .keybinds
-        .resolve_help(&mut app.seq_matcher, key, seq, counts)
-    {
+    match app.keybinds.resolve_help(&mut app.seq_matcher, key, seq, counts) {
         crate::keybinds::MatchOutcome::Matched(action, _count) => match action {
             HelpAction::Close => {
                 app.close_help_page();

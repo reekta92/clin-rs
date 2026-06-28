@@ -203,18 +203,6 @@ pub fn render_draw_snapshot(data: &DrawData, theme: &AppThemeColors) -> Vec<Vec<
     extract_grid(terminal, width, height)
 }
 
-/// Map a character to one that is safe to write into a ratatui buffer cell.
-///
-/// ratatui-core's `cell_width` panics on C0/C1 control characters
-/// (`"control character passed to cell_width without filtering"`), which aborts
-/// the whole app under the release `panic = "abort"` profile. Note content and
-/// titles can legitimately contain such characters (e.g. a tab or ANSI ESC inside
-/// a code block), so every manual `cell.set_char(<user content>)` site must filter
-/// through this. `char::is_control()` matches exactly the rejected set.
-pub fn sanitize_cell_char(ch: char) -> char {
-    if ch.is_control() { ' ' } else { ch }
-}
-
 pub struct RenderedSnapshot<'a> {
     grid: &'a [Vec<(char, Style)>],
     scroll_offset: u16,
@@ -265,7 +253,6 @@ impl Widget for RenderedSnapshot<'_> {
                     break;
                 }
                 let (ch, style) = row[col_idx];
-                let ch = sanitize_cell_char(ch);
                 if let Some(cell) = buf.cell_mut((buf_x, buf_y)) {
                     cell.set_char(ch).set_style(style);
                 }
@@ -605,114 +592,6 @@ fn draw_shape_on_canvas(ctx: &mut Context, shape: &Shape) {
                 y2: y2 - head_len * (angle + head_angle).sin(),
                 color,
             });
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn sanitize_cell_char_replaces_controls_with_space() {
-        // C0 controls (the set ratatui-core's cell_width rejects).
-        for c in ['\0', '\t', '\n', '\r', '\x07', '\x1b'] {
-            assert_eq!(sanitize_cell_char(c), ' ', "{c:?} should be sanitized");
-        }
-        // DEL and C1 controls.
-        assert_eq!(sanitize_cell_char('\u{007f}'), ' ');
-        assert_eq!(sanitize_cell_char('\u{009b}'), ' ');
-
-        // Printable / wide content is preserved unchanged.
-        assert_eq!(sanitize_cell_char('a'), 'a');
-        assert_eq!(sanitize_cell_char(' '), ' ');
-        assert_eq!(sanitize_cell_char('中'), '中');
-        assert_eq!(sanitize_cell_char('\u{2800}'), '\u{2800}'); // braille (draw/canvas)
-        assert_eq!(sanitize_cell_char('─'), '─'); // box drawing
-    }
-
-    #[test]
-    fn rendered_snapshot_never_writes_control_chars_to_buffer() {
-        // A note whose rendered cells contain control characters (tab, ANSI ESC,
-        // NUL) must not reach the ratatui buffer — ratatui-core's cell_width
-        // panics on them during draw ("control character passed to cell_width
-        // without filtering"), which aborts the app under panic=abort.
-        let grid = vec![vec![
-            ('\t', Style::default()),
-            ('\x1b', Style::default()),
-            ('\0', Style::default()),
-            ('x', Style::default()),
-        ]];
-        let area = Rect::new(0, 0, 4, 1);
-        let mut buf = Buffer::empty(area);
-        RenderedSnapshot::new(&grid).render(area, &mut buf);
-
-        assert_eq!(
-            buf.cell((0, 0)).unwrap().symbol(),
-            " ",
-            "tab must be sanitized"
-        );
-        assert_eq!(
-            buf.cell((1, 0)).unwrap().symbol(),
-            " ",
-            "ESC must be sanitized"
-        );
-        assert_eq!(
-            buf.cell((2, 0)).unwrap().symbol(),
-            " ",
-            "NUL must be sanitized"
-        );
-        assert_eq!(
-            buf.cell((3, 0)).unwrap().symbol(),
-            "x",
-            "printable preserved"
-        );
-    }
-
-    #[test]
-    fn builtin_markdown_with_control_chars_renders_without_panic() {
-        // End-to-end through the actual builtin markdown renderer (the crash
-        // source): a code block containing a literal tab and text with an ESC
-        // are emitted as cells by the renderer, then must be sanitized at the
-        // snapshot draw boundary so ratatui's cell_width never sees them.
-        use crate::app_theme::AppThemeColors;
-        use crate::config::MarkdownRendererKind;
-        use crate::markdown::MarkdownRenderer;
-        use std::time::{Duration, Instant};
-
-        let md = "before ESC\x1b[0m text\n\n```rust\n\tpub fn x() {}\n```\n";
-        let mut renderer = MarkdownRenderer::new(78);
-        renderer.render_with(
-            md,
-            78,
-            &AppThemeColors::default(),
-            MarkdownRendererKind::Builtin,
-            true,
-        );
-
-        let deadline = Instant::now() + Duration::from_secs(10);
-        while !renderer.poll() {
-            assert!(Instant::now() < deadline, "builtin render did not complete");
-            std::thread::sleep(Duration::from_millis(5));
-        }
-        renderer.build_pages(20, None);
-        let grid = renderer
-            .current_page_grid()
-            .expect("page grid built")
-            .clone();
-
-        let area = Rect::new(0, 0, 78, 20);
-        let mut buf = Buffer::empty(area);
-        RenderedSnapshot::new(&grid).render(area, &mut buf);
-
-        for y in 0..area.height {
-            for x in 0..area.width {
-                let sym = buf.cell((x, y)).unwrap().symbol();
-                assert!(
-                    !sym.chars().any(|c| c.is_control()),
-                    "control char leaked into buffer at ({x},{y}): {sym:?}"
-                );
-            }
         }
     }
 }

@@ -1,12 +1,12 @@
-use super::{
-    BackupAction, CanvasAction, ContentTreeAction, DrawAction, EditAction, GraphAction, HelpAction,
-    KeyCombo, KeyMatcher, Keybinds, KeybindsToml, ListAction, MatchOutcome,
-};
-use anyhow::{Context, Result};
-use crossterm::event::KeyEvent;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+use anyhow::{Context, Result};
+use crossterm::event::KeyEvent;
+use super::{
+    Keybinds, KeybindsToml, KeyCombo, ListAction, EditAction, HelpAction, GraphAction,
+    DrawAction, CanvasAction, BackupAction, ContentTreeAction, KeyMatcher, MatchOutcome
+};
 
 // ── Generic keybind-section helpers ─────────────────────────────────────────
 
@@ -209,92 +209,31 @@ impl Keybinds {
     fn pick_hint_key(combos: &[KeyCombo]) -> String {
         for combo in combos.iter() {
             let s = combo.to_display_string();
-            let skip = matches!(
-                s.as_str(),
-                "Up" | "Down" | "Left" | "Right" | "Home" | "End" | "PageUp" | "PageDown"
-            ) || (s.starts_with('F') && s[1..].parse::<u8>().is_ok());
+            let skip = matches!(s.as_str(), "Up" | "Down" | "Left" | "Right" | "Home" | "End" | "PageUp" | "PageDown")
+                || (s.starts_with('F') && s[1..].parse::<u8>().is_ok());
             if !skip {
                 return s;
             }
         }
         // All keys were nav/function keys, use first
-        combos
-            .first()
-            .map(|k| k.to_display_string())
-            .unwrap_or_else(|| "?".to_string())
+        combos.first().map(|k| k.to_display_string()).unwrap_or_else(|| "?".to_string())
     }
 }
 
-keybind_scope!(
-    list,
-    ListAction,
-    matches_list,
-    list_keys_display,
-    bindings_for_list,
-    display_list
-);
-keybind_scope!(
-    edit,
-    EditAction,
-    matches_edit,
-    edit_keys_display,
-    bindings_for_edit,
-    display_edit
-);
-keybind_scope!(
-    help,
-    HelpAction,
-    matches_help,
-    help_keys_display,
-    bindings_for_help,
-    display_help
-);
-keybind_scope!(
-    graph,
-    GraphAction,
-    matches_graph,
-    graph_keys_display,
-    bindings_for_graph,
-    display_graph
-);
-keybind_scope!(
-    draw,
-    DrawAction,
-    matches_draw,
-    draw_keys_display,
-    bindings_for_draw,
-    display_draw
-);
-keybind_scope!(
-    canvas,
-    CanvasAction,
-    matches_canvas,
-    canvas_keys_display,
-    bindings_for_canvas,
-    display_canvas
-);
-keybind_scope!(
-    backup,
-    BackupAction,
-    matches_backup,
-    backup_keys_display,
-    bindings_for_backup,
-    display_backup
-);
-keybind_scope!(
-    content_tree,
-    ContentTreeAction,
-    matches_content_tree,
-    content_tree_keys_display,
-    bindings_for_content_tree,
-    display_content_tree
-);
+keybind_scope!(list, ListAction, matches_list, list_keys_display, bindings_for_list, display_list);
+keybind_scope!(edit, EditAction, matches_edit, edit_keys_display, bindings_for_edit, display_edit);
+keybind_scope!(help, HelpAction, matches_help, help_keys_display, bindings_for_help, display_help);
+keybind_scope!(graph, GraphAction, matches_graph, graph_keys_display, bindings_for_graph, display_graph);
+keybind_scope!(draw, DrawAction, matches_draw, draw_keys_display, bindings_for_draw, display_draw);
+keybind_scope!(canvas, CanvasAction, matches_canvas, canvas_keys_display, bindings_for_canvas, display_canvas);
+keybind_scope!(backup, BackupAction, matches_backup, backup_keys_display, bindings_for_backup, display_backup);
+keybind_scope!(content_tree, ContentTreeAction, matches_content_tree, content_tree_keys_display, bindings_for_content_tree, display_content_tree);
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::KeybindPreset;
     use crossterm::event::{KeyCode, KeyModifiers};
+    use crate::config::KeybindPreset;
 
     #[test]
     fn test_parse_key_combo_simple() {
@@ -439,22 +378,10 @@ mod tests {
         assert!(keybinds.edit.contains_key(&EditAction::PreviewPageDown));
 
         // Display strings match the documented defaults.
-        assert_eq!(
-            keybinds.list_keys_display(ListAction::PreviewPageUp),
-            "Shift+Up"
-        );
-        assert_eq!(
-            keybinds.list_keys_display(ListAction::PreviewPageDown),
-            "Shift+Down"
-        );
-        assert_eq!(
-            keybinds.edit_keys_display(EditAction::PreviewPageUp),
-            "PageUp"
-        );
-        assert_eq!(
-            keybinds.edit_keys_display(EditAction::PreviewPageDown),
-            "PageDown"
-        );
+        assert_eq!(keybinds.list_keys_display(ListAction::PreviewPageUp), "Shift+Up");
+        assert_eq!(keybinds.list_keys_display(ListAction::PreviewPageDown), "Shift+Down");
+        assert_eq!(keybinds.edit_keys_display(EditAction::PreviewPageUp), "PageUp");
+        assert_eq!(keybinds.edit_keys_display(EditAction::PreviewPageDown), "PageDown");
 
         // Round-trip: serialize to snake_case TOML keys and reload.
         let temp_dir = tempfile::tempdir().unwrap();
@@ -705,10 +632,7 @@ mod tests {
             crossterm::event::KeyModifiers::NONE,
         );
         let outcome_y = kb.resolve_list(&mut matcher_y, y_event, false, false);
-        assert_eq!(
-            outcome_y,
-            MatchOutcome::Matched(ListAction::Duplicate, None)
-        );
+        assert_eq!(outcome_y, MatchOutcome::Matched(ListAction::Duplicate, None));
     }
 
     #[test]
@@ -773,15 +697,13 @@ mod tests {
         let mut b: HashMap<ListAction, Vec<KeyCombo>> = HashMap::new();
         b.insert(ListAction::JumpToTop, vec![KeyCombo::parse("g g").unwrap()]);
         let e = KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE);
-        assert_eq!(m.resolve(e, &b, true, false), MatchOutcome::Pending);
+        assert_eq!(
+            m.resolve(e, &b, true, false),
+            MatchOutcome::Pending
+        );
         assert_eq!(m.pending_display().as_deref(), Some("g"));
         assert_eq!(
-            m.resolve(
-                KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE),
-                &b,
-                true,
-                false
-            ),
+            m.resolve(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE), &b, true, false),
             MatchOutcome::Matched(ListAction::JumpToTop, None)
         );
         assert_eq!(m.pending_display(), None);
@@ -791,10 +713,7 @@ mod tests {
     fn test_count_prefix_simple() {
         let mut matcher = KeyMatcher::new();
         let mut bindings: HashMap<ListAction, Vec<KeyCombo>> = HashMap::new();
-        bindings.insert(
-            ListAction::MoveDown,
-            vec![KeyCombo::simple(KeyCode::Char('j'))],
-        );
+        bindings.insert(ListAction::MoveDown, vec![KeyCombo::simple(KeyCode::Char('j'))]);
 
         // Type '3' — should be consumed as count prefix
         let e1 = KeyEvent::new(KeyCode::Char('3'), KeyModifiers::NONE);
@@ -826,10 +745,7 @@ mod tests {
     fn test_count_prefix_multi_digit() {
         let mut matcher = KeyMatcher::new();
         let mut bindings: HashMap<ListAction, Vec<KeyCombo>> = HashMap::new();
-        bindings.insert(
-            ListAction::MoveDown,
-            vec![KeyCombo::simple(KeyCode::Char('j'))],
-        );
+        bindings.insert(ListAction::MoveDown, vec![KeyCombo::simple(KeyCode::Char('j'))]);
 
         // Type '1' then '0' — accumulates to 10
         let e1 = KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE);
@@ -863,10 +779,7 @@ mod tests {
 
         // With counts_enabled=false, digits should pass through (not consumed)
         let mut bindings2: HashMap<ListAction, Vec<KeyCombo>> = HashMap::new();
-        bindings2.insert(
-            ListAction::MoveDown,
-            vec![KeyCombo::simple(KeyCode::Char('j'))],
-        );
+        bindings2.insert(ListAction::MoveDown, vec![KeyCombo::simple(KeyCode::Char('j'))]);
         let e2 = KeyEvent::new(KeyCode::Char('3'), KeyModifiers::NONE);
         let r2 = matcher.resolve(e2, &bindings2, true, false);
         assert_eq!(r2, MatchOutcome::NoMatch); // '3' is not bound
@@ -891,7 +804,9 @@ mod tests {
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
+
 }
+
 
 #[test]
 fn test_display_picks_hint_key() {
@@ -907,19 +822,11 @@ fn test_display_picks_hint_key() {
     assert_eq!(kb.display_edit(EditAction::CycleFocus), "Tab", "CycleFocus");
     assert_eq!(kb.display_edit(EditAction::Back), "Esc", "Back");
     // Canvas: letter for nav, conventional for quit
-    assert_eq!(
-        kb.display_canvas(CanvasAction::MoveUp),
-        "k",
-        "Canvas MoveUp"
-    );
+    assert_eq!(kb.display_canvas(CanvasAction::MoveUp), "k", "Canvas MoveUp");
     assert_eq!(kb.display_canvas(CanvasAction::Quit), "Esc", "Canvas Quit");
     // Backup: Esc for Back (not q)
     assert_eq!(kb.display_backup(BackupAction::Back), "Esc", "Backup Back");
-    assert_eq!(
-        kb.display_backup(BackupAction::EnterCommit),
-        "c",
-        "EnterCommit"
-    );
+    assert_eq!(kb.display_backup(BackupAction::EnterCommit), "c", "EnterCommit");
 }
 
 #[test]
@@ -928,24 +835,15 @@ fn test_matches_help_coverage_gap_closed() {
     use crossterm::event::KeyEvent;
     let kb = Keybinds::default();
     // Find any single-key Help binding so matches() (which requires len==1) applies.
-    let single = kb
-        .help
-        .values()
-        .flatten()
-        .find(|c| c.keys.len() == 1)
-        .cloned();
+    let single = kb.help.values().flatten().find(|c| c.keys.len() == 1).cloned();
     let Some(combo) = single else {
         return;
     };
     let stroke = &combo.keys[0];
     let event = KeyEvent::new(stroke.code, stroke.modifiers);
     // The generated matches_help must return true for the exact event of a bound combo.
-    let matched = kb
-        .help
-        .iter()
-        .any(|(a, cs)| cs.contains(&combo) && kb.matches_help(*a, &event));
-    assert!(
-        matched,
-        "matches_help should fire for a bound single-key Help action"
-    );
+    let matched = kb.help.iter().any(|(a, cs)| {
+        cs.contains(&combo) && kb.matches_help(*a, &event)
+    });
+    assert!(matched, "matches_help should fire for a bound single-key Help action");
 }

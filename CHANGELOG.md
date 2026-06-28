@@ -2,13 +2,6 @@
 
 All notable changes to clin are documented in this file.
 
-## [Unreleased]
-
-### Added
-
-- Built-in Markdown renderer powered by comrak and syntect (makes `glow` optional)
-- Config options `markdown_renderer` and `syntax_highlighting` to select renderer and enable code block highlighting
-
 ## [0.9.0-rc.1] - 2026-06-28
 
 ### Added

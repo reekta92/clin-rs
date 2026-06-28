@@ -1,7 +1,7 @@
 use crossterm::event::Event;
 
-use crate::pinstar::input::{handle_pinstar_event, handle_pinstar_mouse};
 use crate::pinstar::render::draw_pinstar_view;
+use crate::pinstar::input::{handle_pinstar_event, handle_pinstar_mouse};
 use crate::pinstar::state::PinstarState;
 
 impl crate::overlay::OverlayView for PinstarState {

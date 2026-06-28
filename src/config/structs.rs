@@ -1,11 +1,8 @@
+use std::path::PathBuf;
 use ratatui::style::Color;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
 
-use super::de::{
-    deserialize_background, deserialize_optional_color, deserialize_theme, serialize_background,
-    serialize_theme,
-};
+use super::de::{deserialize_optional_color, serialize_background, deserialize_background, serialize_theme, deserialize_theme};
 use super::defaults::*;
 use super::types::*;
 
@@ -420,10 +417,6 @@ pub struct CoreConfig {
     pub preview_expand_mode: crate::config::PreviewExpandMode,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preview_command: Option<String>,
-    #[serde(default)]
-    pub markdown_renderer: crate::config::MarkdownRendererKind,
-    #[serde(default = "default_true")]
-    pub syntax_highlighting: bool,
 }
 
 impl Default for CoreConfig {
@@ -440,8 +433,6 @@ impl Default for CoreConfig {
             enable_key_sequences: false,
             preview_expand_mode: crate::config::PreviewExpandMode::default(),
             preview_command: None,
-            markdown_renderer: crate::config::MarkdownRendererKind::default(),
-            syntax_highlighting: default_true(),
         }
     }
 }

@@ -393,6 +393,7 @@ fn execute_menu_action(
     }
 }
 
+
 pub fn handle_pinstar_event(
     state: &mut PinstarState,
     key: KeyEvent,
@@ -401,6 +402,7 @@ pub fn handle_pinstar_event(
     keybinds: &Keybinds,
     config: &crate::config::ClinConfig,
 ) -> bool {
+
     if let Some(textarea) = &mut state.rename_popup {
         state.seq_matcher.clear();
         match key.code {
@@ -629,6 +631,6 @@ pub fn handle_pinstar_event(
         crate::keybinds::MatchOutcome::Pending => return true,
         crate::keybinds::MatchOutcome::NoMatch => return false,
     }
-
+    
     true
 }

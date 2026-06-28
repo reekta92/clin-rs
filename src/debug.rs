@@ -110,43 +110,40 @@ impl DebugBuffer {
     // Internal helpers
     // ------------------------------------------------------------------
 
-    /// Recursively redact sensitive config fields from a JSON Value tree.
-    fn redact_config_value(value: &mut serde_json::Value, path: &str) {
-        const SENSITIVE: &[&str] = &[
-            "core.storage_path",
-            "core.previous_storage_path",
-            "core.default_folder",
-            "backup.remote_url",
-            "backup.remote_name",
-            "editor.external_command",
-        ];
-        match value {
-            serde_json::Value::Object(map) => {
-                let keys: Vec<String> = map.keys().cloned().collect();
-                for key in &keys {
-                    let child_path = if path.is_empty() {
-                        key.clone()
-                    } else {
-                        format!("{path}.{key}")
-                    };
-                    if SENSITIVE.contains(&child_path.as_str()) {
-                        map.insert(
-                            key.clone(),
-                            serde_json::Value::String("***redacted***".to_string()),
-                        );
-                    } else if let Some(child) = map.get_mut(key) {
-                        Self::redact_config_value(child, &child_path);
-                    }
+/// Recursively redact sensitive config fields from a JSON Value tree.
+fn redact_config_value(value: &mut serde_json::Value, path: &str) {
+    const SENSITIVE: &[&str] = &[
+        "core.storage_path",
+        "core.previous_storage_path",
+        "core.default_folder",
+        "backup.remote_url",
+        "backup.remote_name",
+        "editor.external_command",
+    ];
+    match value {
+        serde_json::Value::Object(map) => {
+            let keys: Vec<String> = map.keys().cloned().collect();
+            for key in &keys {
+                let child_path = if path.is_empty() {
+                    key.clone()
+                } else {
+                    format!("{path}.{key}")
+                };
+                if SENSITIVE.contains(&child_path.as_str()) {
+                    map.insert(key.clone(), serde_json::Value::String("***redacted***".to_string()));
+                } else if let Some(child) = map.get_mut(key) {
+                    Self::redact_config_value(child, &child_path);
                 }
             }
-            serde_json::Value::Array(arr) => {
-                for (i, item) in arr.iter_mut().enumerate() {
-                    Self::redact_config_value(item, &format!("{path}[{i}]"));
-                }
-            }
-            _ => {}
         }
+        serde_json::Value::Array(arr) => {
+            for (i, item) in arr.iter_mut().enumerate() {
+                Self::redact_config_value(item, &format!("{path}[{i}]"));
+            }
+        }
+        _ => {}
     }
+}
 
     pub(crate) fn render_dump(&self, app: &App) -> String {
         use std::fmt::Write;
@@ -170,11 +167,11 @@ impl DebugBuffer {
 
         // ── Config (JSON, sensitive fields redacted) ──
         let _ = writeln!(out, "-- Config (JSON) --");
-        let mut config_value = serde_json::to_value(&app.config)
-            .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::new()));
+        let mut config_value = serde_json::to_value(&app.config).unwrap_or_else(|_| {
+            serde_json::Value::Object(serde_json::Map::new())
+        });
         Self::redact_config_value(&mut config_value, "");
-        let config_json =
-            serde_json::to_string_pretty(&config_value).unwrap_or_else(|_| "{}".to_string());
+        let config_json = serde_json::to_string_pretty(&config_value).unwrap_or_else(|_| "{}".to_string());
         let _ = writeln!(out, "{config_json}");
         let _ = writeln!(out);
 
@@ -218,9 +215,7 @@ impl DebugBuffer {
         files.sort_by(|a, b| {
             let a_mtime = a.metadata().and_then(|m| m.modified()).ok();
             let b_mtime = b.metadata().and_then(|m| m.modified()).ok();
-            b_mtime
-                .cmp(&a_mtime)
-                .then_with(|| b.file_name().cmp(&a.file_name()))
+            b_mtime.cmp(&a_mtime).then_with(|| b.file_name().cmp(&a.file_name()))
         });
 
         for f in files.into_iter().skip(keep) {
@@ -304,7 +299,8 @@ mod tests {
     fn test_dump_creates_file() {
         let mut app = dummy_app();
 
-        app.debug_buffer.log(LogLevel::Info, "test", "hello".into());
+        app.debug_buffer
+            .log(LogLevel::Info, "test", "hello".into());
         app.debug_buffer
             .log(LogLevel::Error, "storage", "boom".into());
 
@@ -336,10 +332,7 @@ mod tests {
         assert!(content.contains("-- Config (JSON) --"));
         assert!(content.contains("-- Ring buffer entries"));
         assert!(content.contains("[INFO ] [test]"));
-        assert!(
-            content.contains("***redacted***"),
-            "sensitive fields should be redacted"
-        );
+        assert!(content.contains("***redacted***"), "sensitive fields should be redacted");
         // Verify known-sensitive fields are redacted in JSON output.
         assert!(
             content.contains(r#""storage_path": "***redacted***"#),
@@ -394,23 +387,12 @@ mod tests {
         // Verify the kept files are the most recent ones.
         // Sorted newest-first by mtime means the first `keep` filenames
         // (from the end of the creation order) should survive.
-        let expected_kept: Vec<&str> = filenames
-            .iter()
-            .rev()
-            .take(keep)
-            .map(|s| s.as_str())
-            .collect();
-        let mut kept_names: Vec<String> = remaining
-            .iter()
-            .map(|e| e.file_name().to_string_lossy().to_string())
-            .collect();
+        let expected_kept: Vec<&str> = filenames.iter().rev().take(keep).map(|s| s.as_str()).collect();
+        let mut kept_names: Vec<String> = remaining.iter().map(|e| e.file_name().to_string_lossy().to_string()).collect();
         kept_names.sort();
         let mut expected_sorted: Vec<&str> = expected_kept.clone();
         expected_sorted.sort();
-        assert_eq!(
-            kept_names, expected_sorted,
-            "kept files should be the most recent ones"
-        );
+        assert_eq!(kept_names, expected_sorted, "kept files should be the most recent ones");
     }
 
     // ------------------------------------------------------------------

@@ -1,15 +1,15 @@
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use serde::{Deserialize, Serialize};
 
-mod api;
-mod combo;
-mod defaults;
-mod matcher;
 mod types;
+mod combo;
+mod matcher;
+mod defaults;
+mod api;
 
-pub use combo::KeyCombo;
-pub use matcher::{KeyMatcher, MatchOutcome};
 pub use types::*;
+pub use combo::KeyCombo;
+pub use matcher::{MatchOutcome, KeyMatcher};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct KeybindsToml {

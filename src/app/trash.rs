@@ -1,18 +1,17 @@
-use super::*;
 use crate::debug_log;
+use super::*;
 use crate::list_view::*;
 use crate::popups::*;
 
 impl App {
+
+
     pub fn begin_delete_selected(&mut self) {
         if !self.list.selected_indices.is_empty() {
             let (note_ids, folder_paths) = self.collect_selected_notes_and_folders();
             if !note_ids.is_empty() || !folder_paths.is_empty() {
                 if self.confirm_on_delete {
-                    self.show_confirm(ConfirmAction::BulkDeleteItems {
-                        note_ids,
-                        folder_paths,
-                    });
+                    self.show_confirm(ConfirmAction::BulkDeleteItems { note_ids, folder_paths });
                 } else {
                     self.confirm_bulk_delete(note_ids, folder_paths);
                 }
@@ -99,12 +98,7 @@ impl App {
                 self.set_temporary_status_static("Folder moved to trash");
             }
             Err(e) => {
-                debug_log!(
-                    self,
-                    Error,
-                    "storage",
-                    "Folder trash failed for {path}: {e}"
-                );
+                debug_log!(self, Error, "storage", "Folder trash failed for {path}: {e}");
                 self.set_temporary_status(&format!("Failed to trash folder: {e}"));
             }
         }
@@ -125,9 +119,7 @@ impl App {
                     if items.is_empty() {
                         self.popups.active = None;
                         self.set_temporary_status_static("Note restored, trash is now empty");
-                    } else if let Some(crate::popups::ActivePopup::TrashView(trash)) =
-                        &mut self.popups.active
-                    {
+                    } else if let Some(crate::popups::ActivePopup::TrashView(trash)) = &mut self.popups.active {
                         trash.items = items;
                         trash.selected = trash.selected.min(trash.items.len().saturating_sub(1));
                         self.set_temporary_status_static("Note restored");
@@ -197,5 +189,4 @@ impl App {
                 self.set_temporary_status(&format!("Failed to empty trash: {e}"));
             }
         }
-    }
-}
+    }}

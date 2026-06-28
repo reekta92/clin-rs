@@ -1,11 +1,13 @@
-use super::*;
 use crate::debug_log;
+use super::*;
 use crate::list_view::*;
 use crate::popups::*;
-use ratatui_textarea::TextArea;
 use std::collections::HashSet;
+use ratatui_textarea::TextArea;
 
 impl App {
+
+
     pub fn collect_live_tags(&self) -> Vec<String> {
         let mut tags: HashSet<String> = HashSet::new();
         for note in &self.notes {
@@ -282,5 +284,4 @@ impl App {
         }
 
         self.set_temporary_status(&format!("Tag '{tag}' applied to {count} note(s)"));
-    }
-}
+    }}

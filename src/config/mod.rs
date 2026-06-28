@@ -8,37 +8,28 @@ use directories::ProjectDirs;
 #[cfg(test)]
 use parking_lot::Mutex;
 
-pub mod de;
+pub mod types;
 pub mod defaults;
-pub mod merge;
+pub mod de;
 pub mod path;
 pub mod structs;
-pub mod types;
+pub mod merge;
 
-pub use {de::*, defaults::*, merge::*, path::*, structs::*, types::*};
+pub use {types::*, defaults::*, de::*, path::*, structs::*, merge::*};
 
 #[path = "../graf/themes.rs"]
 pub mod themes;
 
 // ── Path overrides ──────────────────────────────────────────────────────────
 
-static CONFIG_PATH_OVERRIDE: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None);
+static CONFIG_PATH_OVERRIDE: OnceLock<Option<PathBuf>> = OnceLock::new();
 
 #[cfg(test)]
 pub(crate) static CONFIG_TEST_MUTEX: Mutex<()> = Mutex::new(());
 
 /// Set once at startup from the parsed `--config` value. Panics-free: later calls are no-ops.
 pub fn set_config_path_override(path: PathBuf) {
-    if let Ok(mut guard) = CONFIG_PATH_OVERRIDE.lock() {
-        *guard = Some(path);
-    }
-}
-
-#[cfg(test)]
-pub fn reset_config_path_override() {
-    if let Ok(mut guard) = CONFIG_PATH_OVERRIDE.lock() {
-        *guard = None;
-    }
+    let _ = CONFIG_PATH_OVERRIDE.set(Some(path));
 }
 
 static STORAGE_PATH_OVERRIDE: OnceLock<Option<PathBuf>> = OnceLock::new();
@@ -55,6 +46,7 @@ fn storage_path_override() -> Option<PathBuf> {
 
 // ── ClinConfig impl ─────────────────────────────────────────────────────────
 
+
 impl ClinConfig {
     /// Returns true if key sequences are enabled: either explicitly via config
     /// or because the active keybind preset uses multi-key sequences.
@@ -64,15 +56,12 @@ impl ClinConfig {
     /// Returns true if count-prefix is enabled for the active keybind preset
     /// (Vim and Helix only — matching `:q`/`gg`/`ge` count semantics).
     pub fn counts_enabled(&self) -> bool {
-        matches!(
-            self.core.keybind_preset,
-            KeybindPreset::Vim | KeybindPreset::Helix
-        )
+        matches!(self.core.keybind_preset, KeybindPreset::Vim | KeybindPreset::Helix)
     }
 
     pub fn config_path() -> Result<PathBuf> {
-        if let Some(p) = CONFIG_PATH_OVERRIDE.lock().ok().and_then(|g| g.clone()) {
-            return Ok(p);
+        if let Some(p) = CONFIG_PATH_OVERRIDE.get().and_then(|opt| opt.as_ref()) {
+            return Ok(p.clone());
         }
         let proj_dirs = ProjectDirs::from("com", "clin", "clin")
             .context("could not determine config directory")?;
@@ -329,10 +318,7 @@ impl ClinConfig {
         if let toml::Value::Table(toml_tbl) = self_value {
             for (k, v) in toml_tbl {
                 if doc.contains_key(&k) {
-                    merge::merge_toml_value(
-                        doc.get_mut(&k).expect("key presence already checked"),
-                        &v,
-                    );
+                    merge::merge_toml_value(doc.get_mut(&k).expect("key presence already checked"), &v);
                 } else {
                     doc.insert(&k, merge::toml_value_to_item(&v));
                 }
@@ -798,6 +784,5 @@ show_status_bar = false
         let saved_content = fs::read_to_string(&config_file_path).unwrap();
         assert!(saved_content.contains("# Enable mouse support (clicking, scrolling, panning)."));
         assert!(saved_content.contains("mouse_enabled = false"));
-        reset_config_path_override();
     }
 }

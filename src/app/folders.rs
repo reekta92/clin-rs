@@ -1,10 +1,12 @@
-use super::*;
 use crate::debug_log;
+use super::*;
 use crate::list_view::*;
 use crate::popups::*;
 use ratatui_textarea::TextArea;
 
 impl App {
+
+
     pub fn collapse_selected_folder(&mut self) {
         if self.list.visual_list.is_empty() {
             return;
@@ -93,11 +95,7 @@ impl App {
         // Protection layer: a selected source folder and ALL its descendants are
         // removed from the picker so they can never be chosen as a destination.
         let hide: Vec<&String> = hide_paths.iter().filter(|p| !p.is_empty()).collect();
-        folders.retain(|f| {
-            !hide
-                .iter()
-                .any(|h| f == *h || f.starts_with(&format!("{}/", h)))
-        });
+        folders.retain(|f| !hide.iter().any(|h| f == *h || f.starts_with(&format!("{}/", h))));
         let mut all_folders = vec![String::new()]; // "" = vault root, always present and selectable
         all_folders.extend(folders);
         let mut input = TextArea::default();
@@ -169,12 +167,7 @@ impl App {
             self.list.visual_list.get(self.list.visual_index)
         {
             let note = &self.notes[*summary_idx];
-            self.open_folder_picker(
-                FolderPickerMode::MoveNote {
-                    note_id: note.id.clone(),
-                },
-                &[],
-            );
+            self.open_folder_picker(FolderPickerMode::MoveNote { note_id: note.id.clone() }, &[]);
         } else {
             self.set_temporary_status_static("Select a note to move");
         }
@@ -189,16 +182,12 @@ impl App {
                 return;
             }
             let folder_path = path.clone();
-            self.open_folder_picker(
-                FolderPickerMode::MoveFolder {
-                    folder_path: folder_path.clone(),
-                },
-                &[folder_path],
-            );
+            self.open_folder_picker(FolderPickerMode::MoveFolder { folder_path: folder_path.clone() }, &[folder_path]);
         } else {
             self.set_temporary_status_static("Select a folder to move");
         }
     }
+
 
     pub(crate) fn collect_selected_notes_and_folders(&self) -> (Vec<String>, Vec<String>) {
         let mut note_ids = Vec::new();
@@ -211,12 +200,8 @@ impl App {
                     }
                 }
                 Some(VisualItem::Folder { path, .. }) => {
-                    if path.is_empty() {
-                        continue;
-                    } // never move/delete vault root
-                    if Self::is_virtual_pinned_path(path) {
-                        continue;
-                    } // never touch virtual Pinned
+                    if path.is_empty() { continue; }                    // never move/delete vault root
+                    if Self::is_virtual_pinned_path(path) { continue; } // never touch virtual Pinned
                     folder_paths.push(path.clone());
                 }
                 _ => {}
@@ -233,14 +218,9 @@ impl App {
                 return;
             }
             let mode = match (!note_ids.is_empty(), !folder_paths.is_empty()) {
-                (true, false) => FolderPickerMode::BulkMoveNotes { note_ids },
-                (false, true) => FolderPickerMode::BulkMoveFolders {
-                    folder_paths: folder_paths.clone(),
-                },
-                (true, true) => FolderPickerMode::BulkMoveMixed {
-                    note_ids,
-                    folder_paths: folder_paths.clone(),
-                },
+                (true, false)  => FolderPickerMode::BulkMoveNotes { note_ids },
+                (false, true)  => FolderPickerMode::BulkMoveFolders { folder_paths: folder_paths.clone() },
+                (true, true)   => FolderPickerMode::BulkMoveMixed { note_ids, folder_paths: folder_paths.clone() },
                 (false, false) => unreachable!(),
             };
             self.open_folder_picker(mode, &folder_paths);
@@ -261,14 +241,9 @@ impl App {
                 return;
             }
             let mode = match (!note_ids.is_empty(), !folder_paths.is_empty()) {
-                (true, false) => FolderPickerMode::BulkCopyNotes { note_ids },
-                (false, true) => FolderPickerMode::BulkCopyFolders {
-                    folder_paths: folder_paths.clone(),
-                },
-                (true, true) => FolderPickerMode::BulkCopyMixed {
-                    note_ids,
-                    folder_paths: folder_paths.clone(),
-                },
+                (true, false)  => FolderPickerMode::BulkCopyNotes { note_ids },
+                (false, true)  => FolderPickerMode::BulkCopyFolders { folder_paths: folder_paths.clone() },
+                (true, true)   => FolderPickerMode::BulkCopyMixed { note_ids, folder_paths: folder_paths.clone() },
                 (false, false) => unreachable!(),
             };
             self.open_folder_picker(mode, &folder_paths);
@@ -278,9 +253,7 @@ impl App {
     }
 
     pub(crate) fn clamp_visual_index(&mut self) {
-        if self.list.visual_index >= self.list.visual_list.len()
-            && !self.list.visual_list.is_empty()
-        {
+        if self.list.visual_index >= self.list.visual_list.len() && !self.list.visual_list.is_empty() {
             self.list.visual_index = self.list.visual_list.len() - 1;
         } else if self.list.visual_list.is_empty() {
             self.list.visual_index = 0;
@@ -306,24 +279,18 @@ impl App {
         let mut failed = 0;
         let target_is_selected = folder_paths.iter().any(|f| f == target);
         // Phase 1: every folder that is not the chosen target, in selection order.
-        for f in folder_paths
-            .iter()
-            .filter(|f| !(target_is_selected && *f == target))
-        {
+        for f in folder_paths.iter().filter(|f| !(target_is_selected && *f == target)) {
             if let Err(e) = self.move_one_folder(f, target) {
                 debug_log!(self, Warn, "storage", "bulk move folder {f} failed: {e}");
                 failed += 1;
             }
         }
         // Phase 2: relocate the target folder itself last (if it was co-selected).
-        if target_is_selected && let Some(t) = folder_paths.iter().find(|f| *f == target) {
+        if target_is_selected
+            && let Some(t) = folder_paths.iter().find(|f| *f == target)
+        {
             if let Err(e) = self.move_one_folder(t, target) {
-                debug_log!(
-                    self,
-                    Warn,
-                    "storage",
-                    "relocate target folder {t} failed: {e}"
-                );
+                debug_log!(self, Warn, "storage", "relocate target folder {t} failed: {e}");
                 failed += 1;
             }
         }
@@ -350,9 +317,7 @@ impl App {
         // Remap expanded state: drop the old path and anything beneath it; if the old
         // folder was expanded, expand the new location (mirrors folders.rs:289-291).
         let was_expanded = self.list.folder_expanded.remove(folder_path);
-        self.list
-            .folder_expanded
-            .retain(|p| !p.starts_with(&format!("{folder_path}/")));
+        self.list.folder_expanded.retain(|p| !p.starts_with(&format!("{folder_path}/")));
         if was_expanded {
             self.list.folder_expanded.insert(new_path);
         }
@@ -378,12 +343,7 @@ impl App {
                 FolderPickerMode::CopyNote { note_id } => {
                     match self.storage.duplicate_note(&note_id, target_folder) {
                         Ok(target_id) => {
-                            debug_log!(
-                                self,
-                                Info,
-                                "storage",
-                                "Note duplicated: {note_id} → {target_id}"
-                            );
+                            debug_log!(self, Info, "storage", "Note duplicated: {note_id} → {target_id}");
                             self.list.folder_cache = None;
                             if let Err(e) = self.refresh_notes() {
                                 self.set_temporary_status(&format!("Refresh failed: {e}"));
@@ -465,10 +425,7 @@ impl App {
                         self.set_temporary_status(&format!("Copied {ok} folder(s)"));
                     }
                 }
-                FolderPickerMode::BulkCopyMixed {
-                    note_ids,
-                    folder_paths,
-                } => {
+                FolderPickerMode::BulkCopyMixed { note_ids, folder_paths } => {
                     let mut failed = 0;
                     for id in &note_ids {
                         if self.storage.duplicate_note(id, target_folder).is_err() {
@@ -498,10 +455,7 @@ impl App {
                         self.set_temporary_status_static("Moved folder(s)");
                     }
                 }
-                FolderPickerMode::BulkMoveMixed {
-                    note_ids,
-                    folder_paths,
-                } => {
+                FolderPickerMode::BulkMoveMixed { note_ids, folder_paths } => {
                     let total = note_ids.len() + folder_paths.len();
                     let mut failed = 0;
                     for id in &note_ids {
@@ -546,5 +500,4 @@ impl App {
         self.list.folder_expanded.insert(String::new());
         self.refresh_visual_list();
         self.request_preview_update();
-    }
-}
+    }}

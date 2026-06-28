@@ -78,67 +78,31 @@ impl AppThemeColors {
             }
         };
 
-        if let Some(c) = config
-            .accent
-            .as_ref()
-            .and_then(|h| crate::config::parse_hex_color(h))
-        {
+        if let Some(c) = config.accent.as_ref().and_then(|h| crate::config::parse_hex_color(h)) {
             colors.accent = c;
         }
-        if let Some(c) = config
-            .heading
-            .as_ref()
-            .and_then(|h| crate::config::parse_hex_color(h))
-        {
+        if let Some(c) = config.heading.as_ref().and_then(|h| crate::config::parse_hex_color(h)) {
             colors.heading = c;
         }
-        if let Some(c) = config
-            .success
-            .as_ref()
-            .and_then(|h| crate::config::parse_hex_color(h))
-        {
+        if let Some(c) = config.success.as_ref().and_then(|h| crate::config::parse_hex_color(h)) {
             colors.success = c;
         }
-        if let Some(c) = config
-            .destructive
-            .as_ref()
-            .and_then(|h| crate::config::parse_hex_color(h))
-        {
+        if let Some(c) = config.destructive.as_ref().and_then(|h| crate::config::parse_hex_color(h)) {
             colors.destructive = c;
         }
-        if let Some(c) = config
-            .muted
-            .as_ref()
-            .and_then(|h| crate::config::parse_hex_color(h))
-        {
+        if let Some(c) = config.muted.as_ref().and_then(|h| crate::config::parse_hex_color(h)) {
             colors.muted = c;
         }
-        if let Some(c) = config
-            .text
-            .as_ref()
-            .and_then(|h| crate::config::parse_hex_color(h))
-        {
+        if let Some(c) = config.text.as_ref().and_then(|h| crate::config::parse_hex_color(h)) {
             colors.text = c;
         }
-        if let Some(c) = config
-            .border
-            .as_ref()
-            .and_then(|h| crate::config::parse_hex_color(h))
-        {
+        if let Some(c) = config.border.as_ref().and_then(|h| crate::config::parse_hex_color(h)) {
             colors.border = c;
         }
-        if let Some(c) = config
-            .tag
-            .as_ref()
-            .and_then(|h| crate::config::parse_hex_color(h))
-        {
+        if let Some(c) = config.tag.as_ref().and_then(|h| crate::config::parse_hex_color(h)) {
             colors.tag = c;
         }
-        if let Some(c) = config
-            .folder
-            .as_ref()
-            .and_then(|h| crate::config::parse_hex_color(h))
-        {
+        if let Some(c) = config.folder.as_ref().and_then(|h| crate::config::parse_hex_color(h)) {
             colors.folder = c;
         }
         if let Some(c) = config

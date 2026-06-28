@@ -1,3 +1,4 @@
+
 use crate::backup::git_ops::FileChangeType;
 use crate::backup::state::{BackupInputMode, BackupState, SettingsField};
 use crate::keybinds::BackupAction;
@@ -107,29 +108,15 @@ pub fn draw_dashboard(
 /// `draw_header` (render) and the backup mouse hit-test so they never drift.
 pub fn backup_tabs(icon_mode: crate::config::IconMode) -> [(&'static str, &'static str); 2] {
     [
-        (
-            "Status",
-            crate::ui::get_icon("\u{f0e4}", "\u{1f680}", icon_mode),
-        ),
-        (
-            "History",
-            crate::ui::get_icon("\u{f1da}", "\u{1f552}", icon_mode),
-        ),
+        ("Status", crate::ui::get_icon("\u{f0e4}", "\u{1f680}", icon_mode)),
+        ("History", crate::ui::get_icon("\u{f1da}", "\u{1f552}", icon_mode)),
     ]
 }
 
-pub fn draw_header(
-    frame: &mut Frame,
-    area: Rect,
-    state: &BackupState,
-    icon_mode: crate::config::IconMode,
-) {
+pub fn draw_header(frame: &mut Frame, area: Rect, state: &BackupState, icon_mode: crate::config::IconMode) {
     let theme = &state.theme;
     let backup_tabs_array = backup_tabs(icon_mode);
-    let tabs: Vec<(&str, Option<&str>)> = backup_tabs_array
-        .iter()
-        .map(|&(l, g)| (l, Some(g)))
-        .collect();
+    let tabs: Vec<(&str, Option<&str>)> = backup_tabs_array.iter().map(|&(l, g)| (l, Some(g))).collect();
     let active = if state.selected_section == crate::backup::state::BackupSection::History {
         1
     } else {
@@ -455,8 +442,7 @@ fn draw_commit_popup(frame: &mut Frame, area: Rect, state: &BackupState) {
 
 fn draw_settings_popup(frame: &mut Frame, area: Rect, state: &BackupState) {
     let theme = &state.theme;
-    let hint_line =
-        crate::ui::popup_hint_line(theme, "j/k navigate · Enter toggle/edit · Esc cancel");
+    let hint_line = crate::ui::popup_hint_line(theme, "j/k navigate · Enter toggle/edit · Esc cancel");
     let content = crate::ui::draw_popup_frame(
         frame,
         area,
