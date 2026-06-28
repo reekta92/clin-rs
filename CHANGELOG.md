@@ -2,6 +2,41 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.9.0-rc.1] - 2026-06-28
+
+### Added
+
+- Add --vault, --json, notes cat, notes new --body/--no-tui
+- Added config options for customizing preview pane command
+- Expose preview paging and fix help tab digits
+- Add vim-style count-prefix for motion keys
+
+### Changed
+
+- Unify overlay dispatch via OverlayView trait and collape popup god-function
+- Consolidate 4 accessor families via keybind_scope! macro
+- Route production writes through atomic_write
+- Unify hex color parsing, clarify ThemeColors docs
+- Split 2170-line config.rs into module tree
+- Add list_state_selected helper
+- Deduplicate overlay dispatch
+- Consolidate format_relative_time
+
+### Documentation
+
+- Restructure install matrix and add visuals layer
+- Sync README and docs/ with current code
+
+### Fixed
+
+- Ensure cursor line text contrast with transparent backgrounds
+- Switch CONFIG_TEST_MUTEX to parking_lot::Mutex
+- Set select_style on all TextArea editors
+
+### Miscellaneous
+
+- Remove stale Cargo.toml.bak
+- Readme update
 ## [0.9.0-rc.0] - 2026-06-25
 
 ### Added
@@ -19,6 +54,10 @@ All notable changes to clin are documented in this file.
 - Preserve file extension when duplicating notes
 - Keep graph state alive while Help is open
 - Clear help_requested flag when consumed
+
+### Release
+
+- V0.9.0-rc.0
 ## [0.9.0-beta.6] - 2026-06-24
 
 ### Added
