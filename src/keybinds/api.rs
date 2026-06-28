@@ -8,12 +8,74 @@ use super::{
     DrawAction, CanvasAction, BackupAction, ContentTreeAction, KeyMatcher, MatchOutcome
 };
 
+// ── Generic keybind-section helpers ─────────────────────────────────────────
+
+fn merge_section<A: std::hash::Hash + std::cmp::Eq + Clone>(
+    into: &mut HashMap<A, Vec<KeyCombo>>,
+    from: &HashMap<A, Vec<String>>,
+) {
+    for (action, strs) in from {
+        let combos: Vec<KeyCombo> = strs.iter().filter_map(|s| KeyCombo::parse(s)).collect();
+        if !combos.is_empty() {
+            into.insert(action.clone(), combos);
+        }
+    }
+}
+
+fn section_to_toml<A: std::hash::Hash + std::cmp::Eq + Clone>(
+    from: &HashMap<A, Vec<KeyCombo>>,
+) -> HashMap<A, Vec<String>> {
+    from.iter()
+        .map(|(a, c)| {
+            (
+                a.clone(),
+                c.iter().map(|k| k.to_display_string()).collect::<Vec<_>>(),
+            )
+        })
+        .collect()
+}
+
+/// Emits the four parallel accessor families (`matches_*`, `*_keys_display`,
+/// `bindings_for_*`, `display_*`) for one keybind scope from a single template.
+/// Add a scope by adding one `keybind_scope!(...)` line below.
+macro_rules! keybind_scope {
+    ($field:ident, $Action:ty, $matches:ident, $kd:ident, $bindings:ident, $display:ident) => {
+        impl Keybinds {
+            pub fn $matches(&self, action: $Action, event: &KeyEvent) -> bool {
+                self.$field
+                    .get(&action)
+                    .is_some_and(|c| c.iter().any(|x| x.matches(event)))
+            }
+            pub fn $kd(&self, action: $Action) -> String {
+                self.$field
+                    .get(&action)
+                    .map(|c| {
+                        c.iter()
+                            .map(|k| k.to_display_string())
+                            .collect::<Vec<_>>()
+                            .join("/")
+                    })
+                    .unwrap_or_default()
+            }
+            pub fn $bindings(&self) -> &HashMap<$Action, Vec<KeyCombo>> {
+                &self.$field
+            }
+            pub fn $display(&self, action: $Action) -> String {
+                self.$field
+                    .get(&action)
+                    .map(|v| Self::pick_hint_key(v))
+                    .unwrap_or_else(|| "?".to_string())
+            }
+        }
+    };
+}
+
 impl Keybinds {
     pub fn load(path: &Path) -> Result<Self> {
         Self::load_layered(path, Self::default())
     }
 
-    pub fn load_layered(path: &Path, base: Keybinds) -> Result<Self> {
+    pub fn load_layered(path: &Path, base: Keybinds) -> Result<Keybinds> {
         let mut keybinds = base;
 
         if !path.exists() {
@@ -25,85 +87,14 @@ impl Keybinds {
         let toml: KeybindsToml =
             toml::from_str(&content).context("failed to parse keybinds file")?;
 
-        for (action, combos_str) in &toml.list {
-            let combos: Vec<KeyCombo> = combos_str
-                .iter()
-                .filter_map(|s| KeyCombo::parse(s))
-                .collect();
-            if !combos.is_empty() {
-                keybinds.list.insert(*action, combos);
-            }
-        }
-
-        for (action, combos_str) in &toml.edit {
-            let combos: Vec<KeyCombo> = combos_str
-                .iter()
-                .filter_map(|s| KeyCombo::parse(s))
-                .collect();
-            if !combos.is_empty() {
-                keybinds.edit.insert(*action, combos);
-            }
-        }
-
-        for (action, combos_str) in &toml.help {
-            let combos: Vec<KeyCombo> = combos_str
-                .iter()
-                .filter_map(|s| KeyCombo::parse(s))
-                .collect();
-            if !combos.is_empty() {
-                keybinds.help.insert(*action, combos);
-            }
-        }
-
-        for (action, combos_str) in &toml.graph {
-            let combos: Vec<KeyCombo> = combos_str
-                .iter()
-                .filter_map(|s| KeyCombo::parse(s))
-                .collect();
-            if !combos.is_empty() {
-                keybinds.graph.insert(*action, combos);
-            }
-        }
-
-        for (action, combos_str) in &toml.draw {
-            let combos: Vec<KeyCombo> = combos_str
-                .iter()
-                .filter_map(|s| KeyCombo::parse(s))
-                .collect();
-            if !combos.is_empty() {
-                keybinds.draw.insert(*action, combos);
-            }
-        }
-
-        for (action, combos_str) in &toml.canvas {
-            let combos: Vec<KeyCombo> = combos_str
-                .iter()
-                .filter_map(|s| KeyCombo::parse(s))
-                .collect();
-            if !combos.is_empty() {
-                keybinds.canvas.insert(*action, combos);
-            }
-        }
-
-        for (action, combos_str) in &toml.backup {
-            let combos: Vec<KeyCombo> = combos_str
-                .iter()
-                .filter_map(|s| KeyCombo::parse(s))
-                .collect();
-            if !combos.is_empty() {
-                keybinds.backup.insert(*action, combos);
-            }
-        }
-
-        for (action, combos_str) in &toml.content_tree {
-            let combos: Vec<KeyCombo> = combos_str
-                .iter()
-                .filter_map(|s| KeyCombo::parse(s))
-                .collect();
-            if !combos.is_empty() {
-                keybinds.content_tree.insert(*action, combos);
-            }
-        }
+        merge_section(&mut keybinds.list, &toml.list);
+        merge_section(&mut keybinds.edit, &toml.edit);
+        merge_section(&mut keybinds.help, &toml.help);
+        merge_section(&mut keybinds.graph, &toml.graph);
+        merge_section(&mut keybinds.draw, &toml.draw);
+        merge_section(&mut keybinds.canvas, &toml.canvas);
+        merge_section(&mut keybinds.backup, &toml.backup);
+        merge_section(&mut keybinds.content_tree, &toml.content_tree);
         Ok(keybinds)
     }
 
@@ -122,203 +113,15 @@ impl Keybinds {
 
     pub fn to_toml(&self) -> KeybindsToml {
         let mut toml = KeybindsToml::default();
-
-        for (action, combos) in &self.list {
-            let values: Vec<String> = combos.iter().map(KeyCombo::to_display_string).collect();
-            toml.list.insert(*action, values);
-        }
-
-        for (action, combos) in &self.edit {
-            let values: Vec<String> = combos.iter().map(KeyCombo::to_display_string).collect();
-            toml.edit.insert(*action, values);
-        }
-
-        for (action, combos) in &self.help {
-            let values: Vec<String> = combos.iter().map(KeyCombo::to_display_string).collect();
-            toml.help.insert(*action, values);
-        }
-
-        for (action, combos) in &self.graph {
-            let values: Vec<String> = combos.iter().map(KeyCombo::to_display_string).collect();
-            toml.graph.insert(*action, values);
-        }
-
-        for (action, combos) in &self.draw {
-            let values: Vec<String> = combos.iter().map(KeyCombo::to_display_string).collect();
-            toml.draw.insert(*action, values);
-        }
-
-        for (action, combos) in &self.canvas {
-            let values: Vec<String> = combos.iter().map(KeyCombo::to_display_string).collect();
-            toml.canvas.insert(*action, values);
-        }
-
-        for (action, combos) in &self.backup {
-            let values: Vec<String> = combos.iter().map(KeyCombo::to_display_string).collect();
-            toml.backup.insert(*action, values);
-        }
-
-        for (action, combos) in &self.content_tree {
-            let values: Vec<String> = combos.iter().map(KeyCombo::to_display_string).collect();
-            toml.content_tree.insert(*action, values);
-        }
+        toml.list = section_to_toml(&self.list);
+        toml.edit = section_to_toml(&self.edit);
+        toml.help = section_to_toml(&self.help);
+        toml.graph = section_to_toml(&self.graph);
+        toml.draw = section_to_toml(&self.draw);
+        toml.canvas = section_to_toml(&self.canvas);
+        toml.backup = section_to_toml(&self.backup);
+        toml.content_tree = section_to_toml(&self.content_tree);
         toml
-    }
-
-    pub fn matches_list(&self, action: ListAction, event: &KeyEvent) -> bool {
-        self.list
-            .get(&action)
-            .is_some_and(|combos| combos.iter().any(|c| c.matches(event)))
-    }
-
-    pub fn matches_edit(&self, action: EditAction, event: &KeyEvent) -> bool {
-        self.edit
-            .get(&action)
-            .is_some_and(|combos| combos.iter().any(|c| c.matches(event)))
-    }
-
-    pub fn matches_draw(&self, action: DrawAction, event: &KeyEvent) -> bool {
-        self.draw
-            .get(&action)
-            .is_some_and(|combos| combos.iter().any(|c| c.matches(event)))
-    }
-
-    pub fn matches_canvas(&self, action: CanvasAction, event: &KeyEvent) -> bool {
-        self.canvas
-            .get(&action)
-            .is_some_and(|combos| combos.iter().any(|c| c.matches(event)))
-    }
-
-    pub fn matches_backup(&self, action: BackupAction, event: &KeyEvent) -> bool {
-        self.backup
-            .get(&action)
-            .is_some_and(|combos| combos.iter().any(|c| c.matches(event)))
-    }
-
-    pub fn list_keys_display(&self, action: ListAction) -> String {
-        self.list
-            .get(&action)
-            .map(|combos| {
-                combos
-                    .iter()
-                    .map(KeyCombo::to_display_string)
-                    .collect::<Vec<_>>()
-                    .join("/")
-            })
-            .unwrap_or_default()
-    }
-
-    pub fn edit_keys_display(&self, action: EditAction) -> String {
-        self.edit
-            .get(&action)
-            .map(|combos| {
-                combos
-                    .iter()
-                    .map(KeyCombo::to_display_string)
-                    .collect::<Vec<_>>()
-                    .join("/")
-            })
-            .unwrap_or_default()
-    }
-
-    pub fn help_keys_display(&self, action: HelpAction) -> String {
-        self.help
-            .get(&action)
-            .map(|combos| {
-                combos
-                    .iter()
-                    .map(KeyCombo::to_display_string)
-                    .collect::<Vec<_>>()
-                    .join("/")
-            })
-            .unwrap_or_default()
-    }
-
-    pub fn graph_keys_display(&self, action: GraphAction) -> String {
-        self.graph
-            .get(&action)
-            .map(|combos| {
-                combos
-                    .iter()
-                    .map(KeyCombo::to_display_string)
-                    .collect::<Vec<_>>()
-                    .join("/")
-            })
-            .unwrap_or_default()
-    }
-
-    pub fn draw_keys_display(&self, action: DrawAction) -> String {
-        self.draw
-            .get(&action)
-            .map(|combos| {
-                combos
-                    .iter()
-                    .map(KeyCombo::to_display_string)
-                    .collect::<Vec<_>>()
-                    .join("/")
-            })
-            .unwrap_or_default()
-    }
-
-    pub fn canvas_keys_display(&self, action: CanvasAction) -> String {
-        self.canvas
-            .get(&action)
-            .map(|combos| {
-                combos
-                    .iter()
-                    .map(KeyCombo::to_display_string)
-                    .collect::<Vec<_>>()
-                    .join("/")
-            })
-            .unwrap_or_default()
-    }
-
-    pub fn backup_keys_display(&self, action: BackupAction) -> String {
-        self.backup
-            .get(&action)
-            .map(|combos| {
-                combos
-                    .iter()
-                    .map(KeyCombo::to_display_string)
-                    .collect::<Vec<_>>()
-                    .join("/")
-            })
-            .unwrap_or_default()
-    }
-
-    pub fn content_tree_keys_display(&self, action: ContentTreeAction) -> String {
-        self.content_tree
-            .get(&action)
-            .map(|combos| {
-                combos
-                    .iter()
-                    .map(KeyCombo::to_display_string)
-                    .collect::<Vec<_>>()
-                    .join("/")
-            })
-            .unwrap_or_default()
-    }
-
-    pub fn bindings_for_edit(&self) -> &HashMap<EditAction, Vec<KeyCombo>> {
-        &self.edit
-    }
-    pub fn bindings_for_help(&self) -> &HashMap<HelpAction, Vec<KeyCombo>> {
-        &self.help
-    }
-    pub fn bindings_for_graph(&self) -> &HashMap<GraphAction, Vec<KeyCombo>> {
-        &self.graph
-    }
-    pub fn bindings_for_draw(&self) -> &HashMap<DrawAction, Vec<KeyCombo>> {
-        &self.draw
-    }
-    pub fn bindings_for_canvas(&self) -> &HashMap<CanvasAction, Vec<KeyCombo>> {
-        &self.canvas
-    }
-    pub fn bindings_for_backup(&self) -> &HashMap<BackupAction, Vec<KeyCombo>> {
-        &self.backup
-    }
-    pub fn bindings_for_content_tree(&self) -> &HashMap<ContentTreeAction, Vec<KeyCombo>> {
-        &self.content_tree
     }
 
     // -- Resolve wrappers (delegate to KeyMatcher::resolve) --
@@ -415,32 +218,16 @@ impl Keybinds {
         // All keys were nav/function keys, use first
         combos.first().map(|k| k.to_display_string()).unwrap_or_else(|| "?".to_string())
     }
-
-    pub fn display_list(&self, action: ListAction) -> String {
-        self.list.get(&action).map(|v| Self::pick_hint_key(v)).unwrap_or_else(|| "?".to_string())
-    }
-    pub fn display_edit(&self, action: EditAction) -> String {
-        self.edit.get(&action).map(|v| Self::pick_hint_key(v)).unwrap_or_else(|| "?".to_string())
-    }
-    pub fn display_help(&self, action: HelpAction) -> String {
-        self.help.get(&action).map(|v| Self::pick_hint_key(v)).unwrap_or_else(|| "?".to_string())
-    }
-    pub fn display_graph(&self, action: GraphAction) -> String {
-        self.graph.get(&action).map(|v| Self::pick_hint_key(v)).unwrap_or_else(|| "?".to_string())
-    }
-    pub fn display_draw(&self, action: DrawAction) -> String {
-        self.draw.get(&action).map(|v| Self::pick_hint_key(v)).unwrap_or_else(|| "?".to_string())
-    }
-    pub fn display_canvas(&self, action: CanvasAction) -> String {
-        self.canvas.get(&action).map(|v| Self::pick_hint_key(v)).unwrap_or_else(|| "?".to_string())
-    }
-    pub fn display_backup(&self, action: BackupAction) -> String {
-        self.backup.get(&action).map(|v| Self::pick_hint_key(v)).unwrap_or_else(|| "?".to_string())
-    }
-    pub fn display_content_tree(&self, action: ContentTreeAction) -> String {
-        self.content_tree.get(&action).map(|v| Self::pick_hint_key(v)).unwrap_or_else(|| "?".to_string())
-    }
 }
+
+keybind_scope!(list, ListAction, matches_list, list_keys_display, bindings_for_list, display_list);
+keybind_scope!(edit, EditAction, matches_edit, edit_keys_display, bindings_for_edit, display_edit);
+keybind_scope!(help, HelpAction, matches_help, help_keys_display, bindings_for_help, display_help);
+keybind_scope!(graph, GraphAction, matches_graph, graph_keys_display, bindings_for_graph, display_graph);
+keybind_scope!(draw, DrawAction, matches_draw, draw_keys_display, bindings_for_draw, display_draw);
+keybind_scope!(canvas, CanvasAction, matches_canvas, canvas_keys_display, bindings_for_canvas, display_canvas);
+keybind_scope!(backup, BackupAction, matches_backup, backup_keys_display, bindings_for_backup, display_backup);
+keybind_scope!(content_tree, ContentTreeAction, matches_content_tree, content_tree_keys_display, bindings_for_content_tree, display_content_tree);
 
 #[cfg(test)]
 mod tests {
@@ -1040,4 +827,23 @@ fn test_display_picks_hint_key() {
     // Backup: Esc for Back (not q)
     assert_eq!(kb.display_backup(BackupAction::Back), "Esc", "Backup Back");
     assert_eq!(kb.display_backup(BackupAction::EnterCommit), "c", "EnterCommit");
+}
+
+#[test]
+fn test_matches_help_coverage_gap_closed() {
+    // matches_help did not exist before macro consolidation; prove it works.
+    use crossterm::event::KeyEvent;
+    let kb = Keybinds::default();
+    // Find any single-key Help binding so matches() (which requires len==1) applies.
+    let single = kb.help.values().flatten().find(|c| c.keys.len() == 1).cloned();
+    let Some(combo) = single else {
+        return;
+    };
+    let stroke = &combo.keys[0];
+    let event = KeyEvent::new(stroke.code, stroke.modifiers);
+    // The generated matches_help must return true for the exact event of a bound combo.
+    let matched = kb.help.iter().any(|(a, cs)| {
+        cs.contains(&combo) && kb.matches_help(*a, &event)
+    });
+    assert!(matched, "matches_help should fire for a bound single-key Help action");
 }
