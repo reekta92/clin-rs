@@ -6,15 +6,25 @@ All notable changes to clin are documented in this file.
 
 ### Added
 
+- Improve renderer styling, layout, and performance
+- Added a builtin markdown renderer to replace glow
 - Replace month grid with rolling-weeks heatmap
 - Add Draw and Graf strip sections, halfblock preview, centering
 - Added a builtin markdown renderer to replace glow
 
-### Changed
+### Fixed
 
-- Replace glow with built-in markdown renderer (comrak + syntect). Glow is no longer a
-  dependency. Code blocks now have syntax highlighting when a language is specified.
+- Initialize draw_state when creating new .draw file
 
+### Performance
+
+- Pre-warm graph preview at startup to avoid first-frame blink
+- Progressive graph preview settle across frames
+- Reduce graf preview freeze on first cycle
+
+### Release
+
+- V0.9.0-rc.2
 ## [0.9.0-rc.1] - 2026-06-28
 
 ### Added
