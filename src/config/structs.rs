@@ -367,6 +367,8 @@ pub struct ListConfig {
     pub calendar_height: u16,
     #[serde(default)]
     pub calendar_position: CalendarPosition,
+    #[serde(default)]
+    pub week_start: WeekStart,
     #[serde(default = "default_sections")]
     pub sections: Vec<NotesSection>,
 }

@@ -34,43 +34,61 @@ pub(crate) fn section_rects(cal_rect: Rect, active: &[crate::config::NotesSectio
     }
 }
 
-fn draw_strip_draw(frame: &mut Frame, rect: Rect, app: &App, bottom_border: bool) {
+fn draw_strip_draw(
+    frame: &mut Frame,
+    rect: Rect,
+    app: &App,
+    bottom_border: bool,
+    strip_rect: Rect,
+) {
     use ratatui::widgets::{Block, Borders};
+
+    // Strip-wide border so that a single centered section still gets a
+    // full-width border.
+    let borders = if bottom_border {
+        Borders::BOTTOM
+    } else {
+        Borders::TOP
+    };
+    let strip_block = Block::default()
+        .borders(borders)
+        .border_style(ratatui::style::Style::default().fg(app.app_theme.border));
+    frame.render_widget(&strip_block, strip_rect);
+    let inner = strip_block.inner(strip_rect);
+
+    // Content area = section rect clipped to the border's inner area.
+    let content_x = rect.x.max(inner.x);
+    let content_y = rect.y.max(inner.y);
+    let content_w = (rect.right().min(inner.right())).saturating_sub(content_x);
+    let content_h = (rect.bottom().min(inner.bottom())).saturating_sub(content_y);
+    let content_area = Rect::new(content_x, content_y, content_w, content_h);
+
     let (_, data) = match app.draw_preview.as_ref() {
         Some(pair) => pair,
         None => {
             let line = popup_hint_line(&app.app_theme, "No .draw file");
             let p = ratatui::widgets::Paragraph::new(line)
                 .alignment(ratatui::layout::Alignment::Center);
-            frame.render_widget(p, rect);
+            frame.render_widget(p, content_area);
             return;
         }
     };
-    let borders = if bottom_border {
-        Borders::BOTTOM
-    } else {
-        Borders::TOP
-    };
-    let block = Block::default()
-        .borders(borders)
-        .border_style(ratatui::style::Style::default().fg(app.app_theme.border));
-    let inner = block.inner(rect);
-    if data.elements.is_empty() || inner.width == 0 || inner.height == 0 {
+    if data.elements.is_empty() || content_area.width == 0 || content_area.height == 0 {
         let line = popup_hint_line(&app.app_theme, "No .draw file");
         let p =
             ratatui::widgets::Paragraph::new(line).alignment(ratatui::layout::Alignment::Center);
-        frame.render_widget(p, rect);
+        frame.render_widget(p, content_area);
         return;
     }
     let grid = crate::snapshot::render_draw_snapshot_with_size(
         data,
         &app.app_theme,
-        inner.width,
-        inner.height,
+        content_area.width,
+        content_area.height,
     );
     frame.render_widget(
-        crate::snapshot::RenderedSnapshot::new(&grid).block(block),
-        rect,
+        crate::snapshot::RenderedSnapshot::new(&grid),
+        content_area,
     );
 }
 
@@ -745,6 +763,8 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     &app.app_theme,
                     &app.notes,
                     bottom_border,
+                    app.config.list.week_start,
+                    cal_rect,
                 ),
                 crate::config::NotesSection::Goals => {
                     let _ = app.get_current_goals_progress();
@@ -755,11 +775,12 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                         &app.goals_progress,
                         &app.config.goals,
                         bottom_border,
+                        cal_rect,
                     );
                 }
                 crate::config::NotesSection::Draw => {
                     app.ensure_draw_preview();
-                    draw_strip_draw(frame, r, app, bottom_border);
+                    draw_strip_draw(frame, r, app, bottom_border, cal_rect);
                 }
                 crate::config::NotesSection::Graf => {
                     app.ensure_graph_preview();

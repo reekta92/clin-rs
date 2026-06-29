@@ -341,6 +341,14 @@ pub enum CalendarPosition {
     Bottom,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum WeekStart {
+    #[default]
+    Sunday,
+    Monday,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum NotesSection {

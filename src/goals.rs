@@ -118,6 +118,7 @@ pub fn draw_goals_progress(
     progress: &DailyProgress,
     config: &GoalsConfig,
     bottom_border: bool,
+    strip_rect: Rect,
 ) {
     if rect.height < 7 || rect.width < 7 {
         return;
@@ -181,24 +182,34 @@ pub fn draw_goals_progress(
         theme,
     ));
 
-    // Border at the interface edge: top when calendar is below list, bottom when above.
+
+    // Border at the interface edge spans the full strip width so that a single
+    // centered section still gets a full-width border.
     let border = if bottom_border {
         Borders::BOTTOM
     } else {
         Borders::TOP
     };
     let border_bg = theme.bg.unwrap_or(Color::Reset);
-    let inner_h = rect.height.saturating_sub(1); // minus border
-    let pad_top = inner_h.saturating_sub(8) / 2;
-    let block = Block::default()
+    let strip_block = Block::default()
         .style(theme.bg_style())
         .borders(border)
-        .border_style(Style::default().fg(theme.muted).bg(border_bg))
+        .border_style(Style::default().fg(theme.muted).bg(border_bg));
+    let inner = strip_block.inner(strip_rect);
+    frame.render_widget(&strip_block, strip_rect);
+
+    // Content area = section rect clipped to the border's inner area.
+    let content_x = rect.x.max(inner.x);
+    let content_y = rect.y.max(inner.y);
+    let content_w = (rect.right().min(inner.right())).saturating_sub(content_x);
+    let content_h = (rect.bottom().min(inner.bottom())).saturating_sub(content_y);
+    let content_area = Rect::new(content_x, content_y, content_w, content_h);
+    let pad_top = content_area.height.saturating_sub(8) / 2;
+    let inner_block = Block::default()
+        .style(theme.bg_style())
         .padding(Padding::new(2, 2, pad_top, 0));
-
-    let paragraph = Paragraph::new(lines).style(theme.bg_style()).block(block);
-
-    frame.render_widget(paragraph, rect);
+    let paragraph = Paragraph::new(lines).style(theme.bg_style()).block(inner_block);
+    frame.render_widget(paragraph, content_area);
 }
 
 #[cfg(test)]

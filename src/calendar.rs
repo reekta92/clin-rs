@@ -11,115 +11,143 @@ use ratatui::widgets::{Block, Borders, Padding, Paragraph};
 use crate::app_theme::AppThemeColors;
 use crate::storage::NoteSummary;
 
-/// Draw a single-month calendar (current month) with note activity at the bottom
-/// of the notes view.
+/// Draw a GitHub-contributions-style rolling-weeks heatmap at the bottom of
+/// the notes view.
 ///
-/// Days that have at least one note — by modification date, since that is the
-/// only timestamp on [`NoteSummary`] — are marked with a leading `•`; today is
-/// highlighted with the accent color on the success background. The calendar
-/// reflects exactly the notes it is given (the active, non-trashed list); no
-/// extra filtering is applied here.
+/// Columns are weeks ending at the current day; rows are weekdays. Each cell
+/// is shaded by the count of active (non-trashed) notes modified on that day
+/// (using the modification timestamp on [`NoteSummary`]). Today is highlighted
+/// with a filled cell.
 ///
-/// Needs at least 9 rows (1 top divider + 1 title + 1 weekday header + 6 week
-/// rows) and 7 columns; otherwise it no-ops to avoid clipping or panics.
+/// Needs at least 9 rows and 8 columns; otherwise it no-ops.
 pub fn draw_calendar(
     frame: &mut Frame,
     rect: Rect,
     theme: &AppThemeColors,
     notes: &[NoteSummary],
     bottom_border: bool,
+    week_start: crate::config::WeekStart,
+    strip_rect: Rect,
 ) {
-    if rect.height < 9 || rect.width < 7 {
+    if rect.height < 9 || rect.width < 8 {
         return;
     }
 
     let today = chrono::Local::now().date_naive();
-    let year = today.year();
-    let month = today.month();
-    let today_day = today.day();
 
-    // Aggregate note activity for the current month (modified-date metric).
-    let mut counts: HashMap<u32, usize> = HashMap::new();
+    // Width-adaptive week count.
+    const LEFT_LABEL: u16 = 3;   // "Mo "
+    const COL_PITCH: u16 = 2;    // cell char + gap
+    let inner_w = rect.width.saturating_sub(4 + LEFT_LABEL); // 4 = block padding (2+2)
+    let weeks = (inner_w / COL_PITCH).clamp(1, 26);
+
+    // Window: last column starts on the week-start weekday, ending with today.
+    let today_wd = today.weekday().num_days_from_sunday() as i64;
+    let target = match week_start {
+        crate::config::WeekStart::Sunday => 0,
+        crate::config::WeekStart::Monday => 1,
+    };
+    let shift = (today_wd - target).rem_euclid(7);
+    let last_col_start = today - chrono::Duration::days(shift);
+    let first_col_start = last_col_start - chrono::Duration::days(7 * (weeks as i64 - 1));
+
+    // Aggregate counts per date within the window.
+    let mut counts: HashMap<chrono::NaiveDate, usize> = HashMap::new();
     for n in notes {
         let secs = UNIX_EPOCH + Duration::from_secs(n.updated_at);
         let dt: chrono::DateTime<chrono::Local> = secs.into();
         let d = dt.date_naive();
-        if d.month() == month && d.year() == year {
-            *counts.entry(d.day()).or_insert(0) += 1;
+        if d >= first_col_start && d <= today {
+            *counts.entry(d).or_insert(0) += 1;
         }
-    }
-
-    // First weekday of the month (0 = Sunday, matching the Su..Sa header) and
-    // the number of days in the month.
-    let first = chrono::NaiveDate::from_ymd_opt(year, month, 1)
-        .expect("first day of any month is a valid date");
-    let lead = first.weekday().num_days_from_sunday() as usize;
-    let mut days_in_month = 0u32;
-    while chrono::NaiveDate::from_ymd_opt(year, month, days_in_month + 1).is_some() {
-        days_in_month += 1;
     }
 
     let mut lines: Vec<Line> = Vec::with_capacity(8);
 
-    // Title line.
-    lines.push(Line::from(vec![Span::styled(
-        format!("  {}", today.format("%B %Y")),
-        Style::default()
-            .fg(theme.heading)
-            .add_modifier(Modifier::BOLD),
-    )]));
+    // Month-labels row (GitHub-style).
+    let mut month_row_text = String::from("   "); // align with day-label column
+    let mut prev_month = 0u32;
+    for col_i in 0..weeks as usize {
+        let col_start = first_col_start + chrono::Duration::days(7 * col_i as i64);
+        let m = col_start.month();
+        if col_i == 0 || m != prev_month {
+            month_row_text.push_str(&format!("{:<3}", col_start.format("%b")));
+            prev_month = m;
+        } else {
+            month_row_text.push_str("  ");
+        }
+    }
+    let expected_row_w = (LEFT_LABEL + weeks * COL_PITCH) as usize;
+    month_row_text.truncate(expected_row_w);
+    lines.push(Line::from(Span::raw(month_row_text)));
 
-    // Weekday header — fixed 3-char columns, Sunday-first.
-    lines.push(Line::from(vec![Span::styled(
-        " Su Mo Tu We Th Fr Sa",
-        Style::default().fg(theme.muted),
-    )]));
+    // 7 day-rows.
+    let weekdays: &[&str] = match week_start {
+        crate::config::WeekStart::Sunday => &["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"],
+        crate::config::WeekStart::Monday => &["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"],
+    };
 
-    // 6 week rows × 7 columns. Leading/trailing out-of-month slots render as
-    // blank 3-char cells so the columns stay aligned.
-    for week in 0..6u32 {
-        let mut spans: Vec<Span> = Vec::with_capacity(7);
-        for col in 0..7u32 {
-            let day = (week * 7 + col) as i32 - lead as i32 + 1;
-            if day < 1 || day > days_in_month as i32 {
-                spans.push(Span::styled("   ", Style::default().fg(theme.muted)));
-                continue;
-            }
-            let day_u = day as u32;
-            let count = counts.get(&day_u).copied().unwrap_or(0);
-            let (prefix, style) = if day_u == today_day {
+    for (row_i, weekday) in weekdays.iter().enumerate() {
+        let mut spans: Vec<Span> = Vec::with_capacity(weeks as usize + 1);
+        // Day-label prefix.
+        spans.push(Span::styled(
+            format!("{} ", weekday),
+            Style::default().fg(theme.muted),
+        ));
+        for col_i in 0..weeks as usize {
+            let date = first_col_start + chrono::Duration::days((7 * col_i + row_i) as i64);
+            let count = counts.get(&date).copied().unwrap_or(0);
+            let (ch, style) = if date == today {
                 (
-                    '\u{2022}',
+                    '\u{2588}', // █
                     Style::default()
-                        .fg(theme.accent)
-                        .bg(theme.success)
+                        .fg(theme.highlight_fg)
+                        .bg(theme.highlight_bg)
                         .add_modifier(Modifier::BOLD),
                 )
-            } else if count > 0 {
-                ('\u{2022}', Style::default().fg(theme.success))
             } else {
-                (' ', Style::default().fg(theme.muted))
+                match count {
+                    0 => ('\u{00B7}', Style::default().fg(theme.muted)), // ·
+                    1 => ('\u{2591}', Style::default().fg(theme.text)), // ░
+                    2..=3 => ('\u{2592}', Style::default().fg(theme.accent)), // ▒
+                    _ => (
+                        '\u{2593}', // ▓
+                        Style::default()
+                            .fg(theme.accent)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                }
             };
-            spans.push(Span::styled(format!("{prefix}{day:>2}"), style));
+            spans.push(Span::styled(format!("{ch} "), style));
         }
         lines.push(Line::from(spans));
     }
 
-    // Content is 8 lines; border-top costs 1 row. Centre vertically when
-    // Border at the interface edge: top when calendar is below list, bottom when above.
+    // Border at the interface edge spans the full strip width so that a single
+    // centered section still gets a full-width border.
     let border = if bottom_border {
         Borders::BOTTOM
     } else {
         Borders::TOP
     };
     let border_bg = theme.bg.unwrap_or(Color::Reset);
-    let inner_h = rect.height.saturating_sub(1); // minus border
-    let pad_top = inner_h.saturating_sub(8) / 2;
-    let block = Block::default()
+    let strip_block = Block::default()
         .style(theme.bg_style())
         .borders(border)
-        .border_style(Style::default().fg(theme.muted).bg(border_bg))
+        .border_style(Style::default().fg(theme.muted).bg(border_bg));
+    let inner = strip_block.inner(strip_rect);
+    frame.render_widget(&strip_block, strip_rect);
+
+    // Content area = section rect clipped to the border's inner area.
+    let content_x = rect.x.max(inner.x);
+    let content_y = rect.y.max(inner.y);
+    let content_w = (rect.right().min(inner.right())).saturating_sub(content_x);
+    let content_h = (rect.bottom().min(inner.bottom())).saturating_sub(content_y);
+    let content_area = Rect::new(content_x, content_y, content_w, content_h);
+    let pad_top = content_area.height.saturating_sub(8) / 2;
+    let inner_block = Block::default()
+        .style(theme.bg_style())
         .padding(Padding::new(2, 2, pad_top, 0));
-    let paragraph = Paragraph::new(lines).style(theme.bg_style()).block(block);
-    frame.render_widget(paragraph, rect);
+    let paragraph = Paragraph::new(lines).style(theme.bg_style()).block(inner_block);
+    frame.render_widget(paragraph, content_area);
 }
