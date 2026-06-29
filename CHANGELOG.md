@@ -8,6 +8,11 @@ All notable changes to clin are documented in this file.
 
 - Add Draw and Graf widgets to the notes-view strip; configurable (cycle/swap) via layout-edit mode
 
+### Changed
+
+- Replace glow with built-in markdown renderer (comrak + syntect). Glow is no longer a
+  dependency. Code blocks now have syntax highlighting when a language is specified.
+
 ## [0.9.0-rc.1] - 2026-06-28
 
 ### Added

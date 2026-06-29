@@ -295,11 +295,11 @@ src/
          │ spawn / join (oneshot)
          ▼
 ┌──────────────────────────────────────────────────────┐
-│  Markdown Render Threads (glow)                      │
-│  - One per preview pane (list + editor)              │
-│  - Asynchronously pipes markdown through `glow` CLI  │
-│  - Result stored in MarkdownRenderer pending field   │
-│  - Polled by main loop via poll_renderers()           │
+│  Markdown Render Thread                              │
+│  - comrak GFM parse → AST walk → Vec<RenderLine>     │
+│  - Optionally syntect-highlights fenced code blocks   │
+│  - Runs in a cancelable background thread             │
+│  - Result polled by main loop via poll_renderers()    │
 └──────────────────────────────────────────────────────┘
 ```
 

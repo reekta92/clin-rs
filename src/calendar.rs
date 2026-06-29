@@ -36,8 +36,8 @@ pub fn draw_calendar(
     let today = chrono::Local::now().date_naive();
 
     // Width-adaptive week count.
-    const LEFT_LABEL: u16 = 3;   // "Mo "
-    const COL_PITCH: u16 = 2;    // cell char + gap
+    const LEFT_LABEL: u16 = 3; // "Mo "
+    const COL_PITCH: u16 = 2; // cell char + gap
     let inner_w = rect.width.saturating_sub(4 + LEFT_LABEL); // 4 = block padding (2+2)
     let weeks = (inner_w / COL_PITCH).clamp(1, 26);
 
@@ -108,7 +108,7 @@ pub fn draw_calendar(
             } else {
                 match count {
                     0 => ('\u{00B7}', Style::default().fg(theme.muted)), // ·
-                    1 => ('\u{2591}', Style::default().fg(theme.text)), // ░
+                    1 => ('\u{2591}', Style::default().fg(theme.text)),  // ░
                     2..=3 => ('\u{2592}', Style::default().fg(theme.accent)), // ▒
                     _ => (
                         '\u{2593}', // ▓
@@ -148,6 +148,8 @@ pub fn draw_calendar(
     let inner_block = Block::default()
         .style(theme.bg_style())
         .padding(Padding::new(2, 2, pad_top, 0));
-    let paragraph = Paragraph::new(lines).style(theme.bg_style()).block(inner_block);
+    let paragraph = Paragraph::new(lines)
+        .style(theme.bg_style())
+        .block(inner_block);
     frame.render_widget(paragraph, content_area);
 }

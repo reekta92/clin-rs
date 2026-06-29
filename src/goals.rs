@@ -182,7 +182,6 @@ pub fn draw_goals_progress(
         theme,
     ));
 
-
     // Border at the interface edge spans the full strip width so that a single
     // centered section still gets a full-width border.
     let border = if bottom_border {
@@ -208,7 +207,9 @@ pub fn draw_goals_progress(
     let inner_block = Block::default()
         .style(theme.bg_style())
         .padding(Padding::new(2, 2, pad_top, 0));
-    let paragraph = Paragraph::new(lines).style(theme.bg_style()).block(inner_block);
+    let paragraph = Paragraph::new(lines)
+        .style(theme.bg_style())
+        .block(inner_block);
     frame.render_widget(paragraph, content_area);
 }
 

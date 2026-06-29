@@ -11,7 +11,7 @@
 - [X] **Command palette** — extensible action system with search
 - [X] **Encryption** — on-demand ChaCha20-Poly1305, `.clin` files
 - [X] **Templates** — TOML-based with variable substitution
-- [X] **Markdown preview** — `glow`-based rendering in list preview and editor split pane
+- [X] **Markdown preview** — built-in renderer (comrak + syntect) in list preview and editor split pane
 - [X] **External editor** — VISUAL/EDITOR env or configured command
 - [X] **Folder management** — create, rename, move, collapse/expand
 - [X] **Tag management** — add, remove, filter by tags

@@ -113,13 +113,13 @@ tempfile = "3.27.0"
 toml = "1.1"
 toml_edit = "0.25"
 trash = "5"
-tui-term = "0.3"
 ratatui-textarea = "0.9"
 uuid = { version = "1.8", features = ["v4"] }
 fdg-sim = "0.9"
 which = "8.0.2"
+comrak = { version = "0.36", default-features = false }
+syntect = { version = "5.2", default-features = false, features = ["default-fancy"] }
 zeroize = { version = "1.8.2", features = ["derive"] }
-portable-pty = "0.9"
 unicode-width = "0.2"
 git2 = "0.21"
 mimalloc = "0.1"

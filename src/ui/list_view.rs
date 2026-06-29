@@ -86,10 +86,7 @@ fn draw_strip_draw(
         content_area.width,
         content_area.height,
     );
-    frame.render_widget(
-        crate::snapshot::RenderedSnapshot::new(&grid),
-        content_area,
-    );
+    frame.render_widget(crate::snapshot::RenderedSnapshot::new(&grid), content_area);
 }
 
 fn draw_strip_graf(
