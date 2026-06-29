@@ -1197,6 +1197,10 @@ fn run_app(
                                                 app.needs_full_redraw = true;
                                                 terminal.clear()?;
                                             }
+                                            crate::overlay::OverlayResult::OpenHelp(tab) => {
+                                                app.reload_theme();
+                                                app.open_help_page_with_tab(tab);
+                                            }
                                             _ => {}
                                         }
                                         true

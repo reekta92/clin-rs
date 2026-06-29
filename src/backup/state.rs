@@ -9,8 +9,6 @@ use std::sync::Arc;
 pub struct BackupState {
     pub status: Option<GitStatus>,
     pub commits: Vec<CommitInfo>,
-    pub scroll: u16,
-    pub history_scroll: u16,
     pub diff_scroll: u16,
     pub last_content_height: u16,
     pub last_diff_height: u16,
@@ -131,8 +129,6 @@ impl BackupState {
         let mut state = Self {
             status: None,
             commits: Vec::new(),
-            scroll: 0,
-            history_scroll: 0,
             diff_scroll: 0,
             selected_section: BackupSection::Status,
             selected_index: 0,
@@ -188,6 +184,14 @@ impl BackupState {
     }
 
     pub fn refresh_git_info(&mut self) {
+        if !self.settings.enabled {
+            self.status = None;
+            self.commits.clear();
+            self.selectable_files.clear();
+            self.selected_file = None;
+            self.diff_lines.clear();
+            return;
+        }
         let mut need_diff = false;
         {
             let _g = self.git_lock.lock();
@@ -233,14 +237,6 @@ impl BackupState {
         }
     }
 
-    pub fn adjust_scroll_to_selection(&mut self) {
-        let visible_lines = 20;
-        if self.selected_index < self.scroll as usize {
-            self.scroll = self.selected_index as u16;
-        } else if self.selected_index >= self.scroll as usize + visible_lines {
-            self.scroll = (self.selected_index + 1).saturating_sub(visible_lines) as u16;
-        }
-    }
 
     pub fn file_index_at_rendered_line(&self, line_idx: usize) -> Option<usize> {
         if self.selected_section != BackupSection::Status {

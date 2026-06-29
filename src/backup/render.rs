@@ -45,37 +45,7 @@ pub fn draw_dashboard(
         draw_content(frame, content_area, state);
     }
 
-    let mut right_spans = Vec::new();
     let theme = &state.theme;
-    if let Some(status) = &state.status {
-        right_spans.push(Span::styled(
-            status.branch.clone(),
-            Style::default()
-                .fg(theme.accent)
-                .add_modifier(Modifier::BOLD),
-        ));
-        right_spans.push(Span::styled(" · ", Style::default().fg(theme.muted)));
-        right_spans.push(Span::styled(
-            format!("↑{} ↓{}", status.ahead, status.behind),
-            Style::default().fg(theme.text),
-        ));
-        right_spans.push(Span::styled(" · ", Style::default().fg(theme.muted)));
-
-        if !status.staged.is_empty() || !status.unstaged.is_empty() || !status.untracked.is_empty()
-        {
-            right_spans.push(Span::styled("modified", Style::default().fg(theme.warning)));
-        } else {
-            right_spans.push(Span::styled("clean", Style::default().fg(theme.success)));
-        }
-        right_spans.push(Span::raw(" "));
-    }
-
-    let right_line = if right_spans.is_empty() {
-        None
-    } else {
-        Some(Line::from(right_spans))
-    };
-
     let kb = &state.keybinds;
     let hints_items = vec![
         (kb.display_backup(BackupAction::StageFile), "stage"),
@@ -83,6 +53,7 @@ pub fn draw_dashboard(
         (kb.display_backup(BackupAction::Push), "push"),
         (kb.display_backup(BackupAction::Pull), "pull"),
         (kb.display_backup(BackupAction::Refresh), "refresh"),
+        (kb.display_backup(BackupAction::OpenSettings), "settings"),
         (kb.display_backup(BackupAction::Help), "help"),
         (kb.display_backup(BackupAction::Back), "back"),
     ];
@@ -93,7 +64,7 @@ pub fn draw_dashboard(
         theme,
         None,
         hint_line,
-        right_line,
+        None,
         state.seq_matcher.pending_display().as_deref(),
     );
     if state.input_mode == BackupInputMode::EditCommitMessage {
@@ -138,7 +109,15 @@ pub fn draw_header(
         0
     };
     let spans = crate::ui::build_tab_spans(&tabs, active, theme, state.tab_icons_only, icon_mode);
-    crate::ui::draw_view_title_bar_with_tabs(frame, area, "Backup", spans, theme, None, None);
+    let right_text = state.status.as_ref().map(|status| {
+        let modified_text = if !status.staged.is_empty() || !status.unstaged.is_empty() || !status.untracked.is_empty() {
+            "modified"
+        } else {
+            "clean"
+        };
+        Line::from(format!("{} | ↑{} ↓{} | {}", status.branch, status.ahead, status.behind, modified_text))
+    });
+    crate::ui::draw_view_title_bar_with_tabs(frame, area, "Backup", spans, theme, None, right_text);
 }
 
 fn draw_content(frame: &mut Frame, area: Rect, state: &mut BackupState) {
@@ -151,7 +130,7 @@ fn draw_content(frame: &mut Frame, area: Rect, state: &mut BackupState) {
             .border_style(Style::default().fg(theme.border));
 
         let msg = if !state.settings.enabled {
-            "Git backup system is disabled."
+            "Backup system is disabled, turn it on from settings"
         } else {
             "Git backup not configured."
         };
@@ -159,12 +138,6 @@ fn draw_content(frame: &mut Frame, area: Rect, state: &mut BackupState) {
         let text = vec![
             Line::from(Span::styled(
                 msg,
-                Style::default()
-                    .fg(theme.muted)
-                    .add_modifier(Modifier::ITALIC),
-            )),
-            Line::from(Span::styled(
-                "Press Ctrl+P to open settings.",
                 Style::default()
                     .fg(theme.muted)
                     .add_modifier(Modifier::ITALIC),

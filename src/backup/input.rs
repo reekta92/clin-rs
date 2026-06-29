@@ -3,9 +3,10 @@ use crate::config::ClinConfig;
 use crate::keybinds::{BackupAction, Keybinds};
 use crate::text_edit::apply_text_shortcuts;
 use crossterm::event::{KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
-use ratatui::layout::{Constraint, Layout};
+use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui_textarea::TextArea;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InputResult {
     None,
     Back,
@@ -49,9 +50,25 @@ fn handle_normal_input(
     let seq = config.sequences_enabled();
     let counts = config.counts_enabled();
     match keybinds.resolve_backup(&mut state.seq_matcher, event, seq, counts) {
-        crate::keybinds::MatchOutcome::Matched(action, count) => match action {
-            BackupAction::Back => return InputResult::Back,
-            BackupAction::MoveDown => {
+        crate::keybinds::MatchOutcome::Matched(action, count) => {
+            if !state.settings.enabled {
+                match action {
+                    BackupAction::Back
+                    | BackupAction::CancelCommit
+                    | BackupAction::CloseSettings
+                    | BackupAction::CancelEditField => return InputResult::Back,
+                    BackupAction::OpenSettings => {
+                        state.settings_open = true;
+                        state.input_mode = BackupInputMode::EditSettings;
+                        return InputResult::None;
+                    }
+                    BackupAction::Help => return InputResult::Help,
+                    _ => return InputResult::None,
+                }
+            }
+            match action {
+            BackupAction::Back | BackupAction::CancelCommit | BackupAction::CloseSettings | BackupAction::CancelEditField => return InputResult::Back,
+            BackupAction::MoveDown | BackupAction::NextField => {
                 let n = count.unwrap_or(1) as usize;
                 for _ in 0..n {
                     if state.selected_section == BackupSection::History {
@@ -66,11 +83,10 @@ fn handle_normal_input(
                         state.selected_file =
                             Some(state.selectable_files[state.selected_index].clone());
                         state.load_selected_diff();
-                        state.adjust_scroll_to_selection();
                     }
                 }
             }
-            BackupAction::MoveUp => {
+            BackupAction::MoveUp | BackupAction::PrevField => {
                 let n = count.unwrap_or(1) as usize;
                 for _ in 0..n {
                     if state.selected_section == BackupSection::History {
@@ -91,7 +107,6 @@ fn handle_normal_input(
                         state.selected_file =
                             Some(state.selectable_files[state.selected_index].clone());
                         state.load_selected_diff();
-                        state.adjust_scroll_to_selection();
                     }
                 }
             }
@@ -185,6 +200,7 @@ fn handle_normal_input(
                 };
             }
             _ => {}
+            }
         },
         crate::keybinds::MatchOutcome::Pending => return InputResult::None,
         crate::keybinds::MatchOutcome::NoMatch => {}
@@ -320,13 +336,18 @@ pub fn handle_mouse(
         let y = event.row;
 
         if let Some(area) = state.last_area {
-            if y == area.y {
+            if y == area.y.saturating_sub(1) {
                 let backup_tabs_array = crate::backup::render::backup_tabs(icon_mode);
                 let tabs: Vec<(&str, Option<&str>)> = backup_tabs_array
                     .iter()
                     .map(|&(l, g)| (l, Some(g)))
                     .collect();
-                let region = crate::ui::title_bar_tabs_region(area, "Backup");
+                let header_area = Rect {
+                    y: area.y.saturating_sub(1),
+                    height: 1,
+                    ..area
+                };
+                let region = crate::ui::title_bar_tabs_region(header_area, "Backup");
                 if let Some(i) = crate::ui::hit_test_tabs(
                     &tabs,
                     area.x,
@@ -354,17 +375,16 @@ pub fn handle_mouse(
             if x >= area.x && x < area.x + list_width && y > area.y && y < area.y + area.height - 1
             {
                 if state.selected_section == BackupSection::Status {
-                    let line_idx =
-                        (y.saturating_sub(area.y).saturating_sub(2)).saturating_add(state.scroll) as usize;
+                    let line_idx = y.saturating_sub(area.y).saturating_sub(1) as usize + state.list_state.offset();
                     if let Some(file_idx) = state.file_index_at_rendered_line(line_idx) {
                         state.selected_index = file_idx;
                         state.selected_file = Some(state.selectable_files[file_idx].clone());
                         state.load_selected_diff();
                     }
                 } else if state.selected_section == BackupSection::History {
-                    let item_idx = (y.saturating_sub(area.y).saturating_sub(2)) as usize;
-                    if item_idx > 0 {
-                        let commit_idx = item_idx - 1;
+                    let line_idx = y.saturating_sub(area.y).saturating_sub(1) as usize + state.history_list_state.offset();
+                    if line_idx > 0 {
+                        let commit_idx = line_idx - 1;
                         if commit_idx < state.commits.len() {
                             state.selected_commit_index = commit_idx;
                             state.load_commit_diff();
@@ -518,3 +538,130 @@ fn handle_settings_mouse(state: &mut BackupState, event: MouseEvent) -> InputRes
     InputResult::None
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use std::sync::Arc;
+    use crate::config::BackupConfig;
+    use crate::keybinds::Keybinds;
+    use crate::app_theme::AppThemeColors;
+    use ratatui::layout::Rect;
+
+    #[test]
+    fn test_backup_esc_q_always_returns_back() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let config = BackupConfig::default();
+        let theme = AppThemeColors::default();
+        let keybinds = Keybinds::default();
+        let seq_matcher = crate::keybinds::KeyMatcher::new();
+        
+        let mut state = BackupState::new(
+            temp_dir.path().to_path_buf(),
+            &config,
+            theme,
+            keybinds.clone(),
+            false,
+            Arc::new(parking_lot::Mutex::new(())),
+            seq_matcher,
+        );
+
+        let clin_config = crate::config::ClinConfig::default();
+        let seq = clin_config.sequences_enabled();
+        let counts = clin_config.counts_enabled();
+
+        let esc_event = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
+        let q_event = KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE);
+
+        let res1 = handle_normal_input(&mut state, esc_event, &keybinds, &clin_config);
+        let res2 = handle_normal_input(&mut state, q_event, &keybinds, &clin_config);
+
+        assert_eq!(res1, InputResult::Back);
+        assert_eq!(res2, InputResult::Back);
+    }
+
+    #[test]
+    fn test_backup_mouse_targeting() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let config = BackupConfig::default();
+        let theme = AppThemeColors::default();
+        let keybinds = Keybinds::default();
+        let seq_matcher = crate::keybinds::KeyMatcher::new();
+        
+        let mut state = BackupState::new(
+            temp_dir.path().to_path_buf(),
+            &config,
+            theme,
+            keybinds.clone(),
+            false,
+            Arc::new(parking_lot::Mutex::new(())),
+            seq_matcher,
+        );
+
+        state.selectable_files = vec!["file1.txt".to_string(), "file2.txt".to_string()];
+        state.selected_section = BackupSection::Status;
+
+        let area = Rect::new(0, 0, 100, 20);
+        state.last_area = Some(area);
+
+        state.status = Some(crate::backup::git_ops::GitStatus {
+            branch: "main".to_string(),
+            ahead: 0,
+            behind: 0,
+            staged: vec![],
+            unstaged: vec![crate::backup::git_ops::FileStatus {
+                path: "file1.txt".to_string(),
+                status: crate::backup::git_ops::FileChangeType::Modified,
+            }],
+            untracked: vec!["file2.txt".to_string()],
+        });
+
+        let mouse_event = crossterm::event::MouseEvent {
+            kind: crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
+            column: 5,
+            row: area.y + 5,
+            modifiers: crossterm::event::KeyModifiers::empty(),
+        };
+
+        handle_mouse(&mut state, mouse_event, crate::config::IconMode::None);
+
+        assert_eq!(state.selected_index, 0);
+        assert_eq!(state.selected_file.as_deref(), Some("file1.txt"));
+    }
+
+    #[test]
+    fn test_backup_disabled_ignores_movement_and_clears_state() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let mut config = BackupConfig::default();
+        config.enabled = true;
+        let theme = AppThemeColors::default();
+        let keybinds = Keybinds::default();
+        let seq_matcher = crate::keybinds::KeyMatcher::new();
+        
+        let mut state = BackupState::new(
+            temp_dir.path().to_path_buf(),
+            &config,
+            theme,
+            keybinds.clone(),
+            false,
+            Arc::new(parking_lot::Mutex::new(())),
+            seq_matcher,
+        );
+
+        state.selectable_files = vec!["file1.txt".to_string()];
+        state.diff_lines = vec!["some diff".to_string()];
+
+        state.settings.enabled = false;
+        state.refresh_git_info();
+
+        assert!(state.selectable_files.is_empty());
+        assert!(state.diff_lines.is_empty());
+        assert!(state.status.is_none());
+
+        let clin_config = crate::config::ClinConfig::default();
+        let j_event = KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE);
+        let res = handle_normal_input(&mut state, j_event, &keybinds, &clin_config);
+        assert_eq!(res, InputResult::None);
+    }
+}
