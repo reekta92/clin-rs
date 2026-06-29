@@ -1,6 +1,5 @@
 use super::Action;
 use crate::app::App;
-use crate::debug_log;
 use anyhow::{Result, anyhow};
 use std::borrow::Cow;
 
@@ -49,18 +48,13 @@ impl Action for DecryptNoteAction {
 
         match app.storage.decrypt_note(&note_id) {
             Ok(new_id) => {
-                debug_log!(app, Info, "storage", "Note decrypted: {note_id} → {new_id}");
+                
                 app.list.folder_cache = None;
                 let _ = app.refresh_notes();
                 app.set_temporary_status(&format!("Note decrypted: {new_id}"));
             }
             Err(e) => {
-                debug_log!(
-                    app,
-                    Error,
-                    "storage",
-                    "Note decrypt failed for {note_id}: {e}"
-                );
+                
                 app.set_temporary_status(&format!("Failed to decrypt: {e:#}"));
             }
         }

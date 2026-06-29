@@ -1,5 +1,4 @@
 use super::*;
-use crate::debug_log;
 use crate::list_view::*;
 use crate::popups::*;
 use ratatui_textarea::TextArea;
@@ -310,20 +309,13 @@ impl App {
             .iter()
             .filter(|f| !(target_is_selected && *f == target))
         {
-            if let Err(e) = self.move_one_folder(f, target) {
-                debug_log!(self, Warn, "storage", "bulk move folder {f} failed: {e}");
+            if self.move_one_folder(f, target).is_err() {
                 failed += 1;
             }
         }
         // Phase 2: relocate the target folder itself last (if it was co-selected).
         if target_is_selected && let Some(t) = folder_paths.iter().find(|f| *f == target) {
-            if let Err(e) = self.move_one_folder(t, target) {
-                debug_log!(
-                    self,
-                    Warn,
-                    "storage",
-                    "relocate target folder {t} failed: {e}"
-                );
+            if self.move_one_folder(t, target).is_err() {
                 failed += 1;
             }
         }
@@ -377,13 +369,8 @@ impl App {
                 }
                 FolderPickerMode::CopyNote { note_id } => {
                     match self.storage.duplicate_note(&note_id, target_folder) {
-                        Ok(target_id) => {
-                            debug_log!(
-                                self,
-                                Info,
-                                "storage",
-                                "Note duplicated: {note_id} → {target_id}"
-                            );
+                        Ok(_) => {
+                            
                             self.list.folder_cache = None;
                             if let Err(e) = self.refresh_notes() {
                                 self.set_temporary_status(&format!("Refresh failed: {e}"));

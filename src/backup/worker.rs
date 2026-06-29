@@ -39,14 +39,13 @@ pub const FLUSH_BOUND: Duration = Duration::from_secs(15);
 pub fn spawn(
     git_lock: Arc<Mutex<()>>,
     status: Arc<Mutex<Option<String>>>,
-    log_tx: crate::debug::LogSender,
 ) -> (Sender<BackupJob>, Receiver<()>) {
     let (tx, rx) = mpsc::channel();
     let (done_tx, done_rx) = mpsc::channel();
     std::thread::Builder::new()
         .name("clin-backup-worker".into())
         .spawn(move || {
-            worker_loop(&rx, &git_lock, &status, &done_tx, log_tx);
+            worker_loop(&rx, &git_lock, &status, &done_tx);
         })
         .expect("failed to spawn backup worker");
     (tx, done_rx)
@@ -57,24 +56,13 @@ fn worker_loop(
     git_lock: &Arc<Mutex<()>>,
     status: &Arc<Mutex<Option<String>>>,
     done: &Sender<()>,
-    log_tx: crate::debug::LogSender,
 ) {
-    let _ = log_tx.send((
-        crate::debug::LogLevel::Info,
-        "backup",
-        "Backup worker started".to_string(),
-    ));
     loop {
         // 1. Block for the next job. Err ⇒ all senders dropped ⇒ shutdown.
         let first = match rx.recv() {
             Ok(job) => job,
             Err(_) => {
                 // No coalesced message pending at top-of-loop; just signal done.
-                let _ = log_tx.send((
-                    crate::debug::LogLevel::Info,
-                    "backup",
-                    "Backup worker shutting down".to_string(),
-                ));
                 let _ = done.send(());
                 return;
             }
@@ -83,22 +71,11 @@ fn worker_loop(
         match first {
             // 2. Flush: drain any other immediately-available jobs
             BackupJob::Flush(msg) => {
-                let _ = log_tx.send((
-                    crate::debug::LogLevel::Info,
-                    "backup",
-                    format!("Backup flush: {msg}"),
-                ));
                 while rx.try_recv().is_ok() {}
-                run_backup(git_lock, status, &msg, &log_tx);
+                run_backup(git_lock, status, &msg);
             }
             // 3. Auto: record the message and debounce.
             BackupJob::Auto(msg) => {
-                let debounce_ms = DEBOUNCE.as_millis();
-                let _ = log_tx.send((
-                    crate::debug::LogLevel::Debug,
-                    "backup",
-                    format!("Backup auto: {msg} (debouncing {debounce_ms}ms)"),
-                ));
                 let mut current = msg;
                 let start = Instant::now();
                 'debounce: loop {
@@ -108,11 +85,6 @@ fn worker_loop(
                     }
                     match rx.recv_timeout(remaining) {
                         Ok(BackupJob::Auto(m)) => {
-                            let _ = log_tx.send((
-                                crate::debug::LogLevel::Debug,
-                                "backup",
-                                format!("Backup auto: coalesced, reason={m}"),
-                            ));
                             current = m;
                         }
                         Ok(BackupJob::Flush(m)) => {
@@ -122,23 +94,13 @@ fn worker_loop(
                         }
                         Err(mpsc::RecvTimeoutError::Timeout) => break,
                         Err(mpsc::RecvTimeoutError::Disconnected) => {
-                            run_backup(git_lock, status, &current, &log_tx);
-                            let _ = log_tx.send((
-                                crate::debug::LogLevel::Info,
-                                "backup",
-                                "Backup worker shutting down".to_string(),
-                            ));
+                            run_backup(git_lock, status, &current);
                             let _ = done.send(());
                             return;
                         }
                     }
                 }
-                let _ = log_tx.send((
-                    crate::debug::LogLevel::Info,
-                    "backup",
-                    format!("Backup auto: starting commit ({current})"),
-                ));
-                run_backup(git_lock, status, &current, &log_tx);
+                run_backup(git_lock, status, &current);
             }
         }
     }
@@ -151,7 +113,6 @@ fn run_backup(
     git_lock: &Arc<Mutex<()>>,
     status: &Arc<Mutex<Option<String>>>,
     message: &str,
-    log_tx: &crate::debug::LogSender,
 ) {
     let config = ClinConfig::load().unwrap_or_default();
     let vault_path = config
@@ -163,7 +124,6 @@ fn run_backup(
         &vault_path,
         &config.backup,
         message,
-        log_tx,
     );
 }
 
@@ -177,21 +137,10 @@ pub(crate) fn perform(
     vault_path: &Path,
     backup: &BackupConfig,
     message: &str,
-    log_tx: &crate::debug::LogSender,
 ) {
     if !backup.enabled {
-        let _ = log_tx.send((
-            crate::debug::LogLevel::Debug,
-            "backup",
-            "Backup: disabled in config, skipping".to_string(),
-        ));
         return;
     }
-    let _ = log_tx.send((
-        crate::debug::LogLevel::Info,
-        "backup",
-        format!("Backup commit starting: {message}"),
-    ));
     let result = (|| -> anyhow::Result<String> {
         let _guard = git_lock.lock();
         let git_ops = GitOps::init(vault_path)?;
@@ -200,53 +149,21 @@ pub(crate) fn perform(
         }
         git_ops.add_all()?;
         git_ops.commit(message)?;
-        let _ = log_tx.send((
-            crate::debug::LogLevel::Info,
-            "backup",
-            format!("Backup commit created: {message}"),
-        ));
         if backup.auto_push
             && let Some(remote) = &backup.remote_name
         {
-            let _ = log_tx.send((
-                crate::debug::LogLevel::Info,
-                "backup",
-                format!("Backup push to {remote}"),
-            ));
-            if let Err(e) = git_ops.push(remote) {
-                let _ = log_tx.send((
-                    crate::debug::LogLevel::Warn,
-                    "backup",
-                    format!("Backup push failed: {e}"),
-                ));
-                return Err(e);
-            }
-            let _ = log_tx.send((
-                crate::debug::LogLevel::Info,
-                "backup",
-                "Backup push completed".to_string(),
-            ));
+            git_ops.push(remote)?;
         }
         Ok(message.to_string())
     })();
     match result {
         Ok(msg) if msg.is_empty() => {
-            let _ = log_tx.send((
-                crate::debug::LogLevel::Debug,
-                "backup",
-                "Backup: no changes to commit".to_string(),
-            ));
             *status.lock() = None;
         }
         Ok(_) => {
             *status.lock() = None;
         }
         Err(e) => {
-            let _ = log_tx.send((
-                crate::debug::LogLevel::Error,
-                "backup",
-                format!("Backup git error: {e}"),
-            ));
             *status.lock() = Some(e.to_string());
         }
     }
@@ -262,9 +179,6 @@ mod tests {
         (Arc::new(Mutex::new(())), Arc::new(Mutex::new(None)))
     }
 
-    fn log_pair() -> (crate::debug::LogSender, crate::debug::LogReceiver) {
-        std::sync::mpsc::channel()
-    }
 
     #[test]
     fn perform_creates_commit() {
@@ -283,7 +197,6 @@ mod tests {
         }
         fs::write(vault.join("note.md"), "hello").expect("write");
         let (git_lock, status) = locks();
-        let (log_tx, _log_rx) = log_pair();
         perform(
             &git_lock,
             &status,
@@ -293,7 +206,6 @@ mod tests {
                 ..Default::default()
             },
             "t",
-            &log_tx,
         );
 
         assert!(status.lock().is_none(), "status should be clean");
@@ -312,7 +224,6 @@ mod tests {
         fs::write(&file_path, "x").expect("write");
 
         let (git_lock, status) = locks();
-        let (log_tx, _log_rx) = log_pair();
         perform(
             &git_lock,
             &status,
@@ -322,7 +233,6 @@ mod tests {
                 ..Default::default()
             },
             "t",
-            &log_tx,
         );
 
         assert!(status.lock().is_some(), "expected an error status");
@@ -336,7 +246,6 @@ mod tests {
         fs::write(vault.join("note.md"), "hello").expect("write");
 
         let (git_lock, status) = locks();
-        let (log_tx, _log_rx) = log_pair();
         perform(
             &git_lock,
             &status,
@@ -346,7 +255,6 @@ mod tests {
                 ..Default::default()
             },
             "t",
-            &log_tx,
         );
 
         assert!(status.lock().is_none(), "disabled must not set status");
@@ -360,8 +268,7 @@ mod tests {
     #[test]
     fn worker_shuts_down_on_drop() {
         let (git_lock, status) = locks();
-        let (log_tx, _log_rx) = log_pair();
-        let (tx, done_rx) = spawn(git_lock, status, log_tx);
+        let (tx, done_rx) = spawn(git_lock, status);
 
         tx.send(BackupJob::Auto("a".into())).expect("send 1");
         tx.send(BackupJob::Auto("b".into())).expect("send 2");

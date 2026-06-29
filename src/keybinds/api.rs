@@ -553,6 +553,26 @@ mod tests {
     }
 
     #[test]
+    fn test_matcher_sequence_break() {
+        let mut matcher = KeyMatcher::new();
+        let mut bindings: HashMap<ListAction, Vec<KeyCombo>> = HashMap::new();
+        bindings.insert(ListAction::Quit, vec![KeyCombo::simple(KeyCode::Char('q'))]);
+        bindings.insert(ListAction::JumpToTop, vec![KeyCombo::parse("g g").unwrap()]);
+
+        // First event 'g' -> Pending (start of "g g" sequence)
+        let e1 = KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE);
+        let r1 = matcher.resolve(e1, &bindings, true, false);
+        assert_eq!(r1, MatchOutcome::Pending);
+        assert_eq!(matcher.pending.len(), 1);
+
+        // Second event 'q' -> should break the sequence and immediately match Quit
+        let e2 = KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE);
+        let r2 = matcher.resolve(e2, &bindings, true, false);
+        assert_eq!(r2, MatchOutcome::Matched(ListAction::Quit, None));
+        assert_eq!(matcher.pending.len(), 0);
+    }
+
+    #[test]
     fn test_preset_edit_unchanged() {
         let default_edit = &Keybinds::default().edit;
         for preset in &[

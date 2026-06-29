@@ -1,4 +1,3 @@
-use crate::debug_log;
 use crate::keybinds::Keybinds;
 use crate::text_edit::apply_text_shortcuts;
 use crossterm::event::KeyEvent;
@@ -248,7 +247,7 @@ pub fn handle_global_popups_and_palette(
                 && let Some(item) = palette.items.get(selected_idx)
             {
                 let action_id = item.id.clone();
-                debug_log!(app, Info, "event", "Command palette: {action_id}");
+                
                 let note_id = palette.context_note_id.clone();
                 if let Err(e) = crate::actions::execute_action(&action_id, app, note_id.as_deref())
                 {

@@ -141,16 +141,6 @@ simple_action!(
     "\u{1f58c}",
     begin_create_canvas
 );
-simple_action!(
-    DebugDumpAction,
-    "debug.dump",
-    "Save Debug Dump",
-    "Write ring-buffer contents to a debug log file",
-    ActionCategory::General,
-    "\u{f0ca}",
-    "\u{1f4cb}",
-    dump_debug_buffer
-);
 toggle_action!(
     ToggleExternalEditorAction,
     "external_editor.toggle",
@@ -224,7 +214,6 @@ pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyL
         Box::new(OpenBackupAction),
         Box::new(CreateDrawAction),
         Box::new(CreateCanvasAction),
-        Box::new(DebugDumpAction),
         Box::new(ocr::OcrPasteAction),
         Box::new(SwitchThemeAction),
         Box::new(SwitchKeybindPresetAction),

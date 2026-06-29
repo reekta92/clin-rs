@@ -10,7 +10,6 @@ mod tags;
 mod trash;
 mod views;
 
-use crate::debug_log;
 pub use crate::editor::*;
 use crate::events::get_title_text;
 use crate::events::make_title_editor;
@@ -373,9 +372,6 @@ pub struct App {
     pub graph_preview_steps: usize,
     pub preview_wrap: bool,
     pub preview_fullscreen: bool,
-    pub debug_buffer: crate::debug::DebugBuffer,
-    pub debug_log_rx:
-        Option<std::sync::mpsc::Receiver<(crate::debug::LogLevel, &'static str, String)>>,
     pub layout_edit: bool,
     pub layout_drag: Option<LayoutDrag>,
 }
@@ -443,7 +439,6 @@ impl App {
         let config_mtime =
             config_path.and_then(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok());
 
-        let data_dir = storage.data_dir.clone();
         let mut app = Self {
             storage,
             keybinds,
@@ -496,8 +491,6 @@ impl App {
             graph_preview_steps: 0,
             preview_wrap,
             preview_fullscreen: false,
-            debug_buffer: crate::debug::DebugBuffer::new(1000, &data_dir),
-            debug_log_rx: None,
             layout_edit: false,
             layout_drag: None,
         };
@@ -556,7 +549,6 @@ impl App {
         let config_mtime =
             config_path.and_then(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok());
 
-        let data_dir = storage.data_dir.clone();
         let mut app = Self {
             storage,
             keybinds,
@@ -609,8 +601,6 @@ impl App {
             graph_preview_steps: 0,
             preview_wrap,
             preview_fullscreen: false,
-            debug_buffer: crate::debug::DebugBuffer::new(1000, &data_dir),
-            debug_log_rx: None,
             layout_edit: false,
             layout_drag: None,
         };
@@ -618,60 +608,14 @@ impl App {
         app.list.folder_expanded.insert(String::new());
         Ok(app)
     }
-    /// Render the debug ring buffer, write it to disk, and update status.
-    pub fn dump_debug_buffer(&mut self) -> String {
-        let content = self.debug_buffer.render_dump(self);
-        match self.debug_buffer.write_dump(content) {
-            Ok(path) => {
-                let name = path
-                    .file_name()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("unknown");
-                let msg = format!("Debug dump saved: {name}");
-                self.set_temporary_status(&msg);
-                msg
-            }
-            Err(e) => {
-                let msg = format!("Debug dump failed: {e}");
-                self.set_temporary_status(&msg);
-                msg
-            }
-        }
-    }
-
-    /// Drain any backup-worker log entries from the channel into the debug buffer.
-    pub fn drain_debug_logs(&mut self) {
-        use std::sync::mpsc::TryRecvError;
-        // Scope the borrow on rx so the disconnected branch can write
-        // self.debug_log_rx after the borrow ends.
-        let disconnected = {
-            let rx = match self.debug_log_rx.as_ref() {
-                Some(rx) => rx,
-                None => return,
-            };
-            loop {
-                match rx.try_recv() {
-                    Ok((level, target, msg)) => {
-                        self.debug_buffer.log(level, target, msg);
-                    }
-                    Err(TryRecvError::Empty) => break false,
-                    Err(TryRecvError::Disconnected) => break true,
-                }
-            }
-        };
-        if disconnected {
-            self.debug_log_rx = None;
-        }
-    }
-
     pub fn reload_config(&mut self) {
         self.config = match crate::config::ClinConfig::load() {
             Ok(c) => {
-                debug_log!(self, Info, "config", "Config hot-reloaded (mtime change)");
+                
                 c
             }
-            Err(e) => {
-                debug_log!(self, Error, "config", "Config hot-reload failed: {e}");
+            Err(_) => {
+                
                 self.config.clone()
             }
         };
@@ -1134,14 +1078,6 @@ impl App {
         }
     }
     pub fn autosave(&mut self) {
-        if let Some(ref editing_id) = self.editor.editing_id {
-            debug_log!(
-                self,
-                Debug,
-                "storage",
-                "Autosave triggered for {editing_id}"
-            );
-        }
         let content = self.editor.editor.lines().join("\n");
 
         if let Some(path) = &self.editor.template_edit_path
@@ -1850,5 +1786,46 @@ word_goal = 1200
 
         app.adjust_calendar_height(50);
         assert_eq!(app.list.calendar_height, 20);
+    }
+
+    #[test]
+    fn test_view_mode_transitions_prevent_zombie_state() {
+        let temp_dir = tempdir().unwrap();
+        let data_dir = temp_dir.path().join("data");
+        let config_dir = temp_dir.path().join("config");
+        let notes_dir = temp_dir.path().join("notes");
+        let templates_dir = temp_dir.path().join("templates");
+        std::fs::create_dir_all(&data_dir).unwrap();
+        std::fs::create_dir_all(&config_dir).unwrap();
+        std::fs::create_dir_all(&notes_dir).unwrap();
+        std::fs::create_dir_all(&templates_dir).unwrap();
+
+        let storage = Storage {
+            data_dir,
+            config_dir,
+            notes_dir,
+            templates_dir,
+            key: [0u8; 32],
+        };
+        let mut app = App::new(storage).unwrap();
+
+        // 1. Initially mode is List, return_mode is None
+        assert_eq!(app.mode, ViewMode::List);
+        assert_eq!(app.return_mode, None);
+
+        // 2. Open Backup view first time
+        app.open_backup_view();
+        assert_eq!(app.mode, ViewMode::Backup);
+        assert_eq!(app.return_mode, Some(ViewMode::List));
+
+        // 3. Open Backup view a second time (e.g. from command palette while in Backup)
+        app.open_backup_view();
+        assert_eq!(app.mode, ViewMode::Backup);
+        assert_eq!(app.return_mode, Some(ViewMode::List)); // Should STILL be List, NOT Backup!
+
+        // 4. Simulate exit back
+        let prev_mode = app.return_mode.take().unwrap_or(ViewMode::List);
+        app.mode = prev_mode;
+        assert_eq!(app.mode, ViewMode::List);
     }
 }

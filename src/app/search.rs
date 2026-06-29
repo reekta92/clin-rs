@@ -1,5 +1,4 @@
 use super::*;
-use crate::debug_log;
 use crate::list_view::*;
 use crate::popups::*;
 use ratatui_textarea::TextArea;
@@ -20,13 +19,7 @@ impl App {
     }
 
     pub fn begin_search(&mut self) {
-        debug_log!(
-            self,
-            Debug,
-            "view",
-            "Search opened (current_folder={:?})",
-            self.list.grid_folder
-        );
+        
         let mut input = TextArea::default();
         input.set_style(self.app_theme.bg_style());
         input.set_cursor_line_style(Style::default());
@@ -252,17 +245,6 @@ impl App {
     }
 
     pub fn confirm_search(&mut self) {
-        if let Some(crate::popups::ActivePopup::Search(popup)) = &self.popups.active {
-            debug_log!(
-                self,
-                Debug,
-                "event",
-                "Search: '{}' ({} title results, {} grep results)",
-                popup.input.lines().join(""),
-                popup.title_results.len(),
-                popup.grep_results.len(),
-            );
-        }
         self.popups.active = None;
     }
 

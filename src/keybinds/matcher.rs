@@ -164,21 +164,34 @@ impl KeyMatcher {
             return MatchOutcome::Pending;
         }
 
-        // No prefix match — pop the last event and re-check as a single key
-        self.pending.pop(); // remove last pushed event
-        let last_event = self.pending.pop().unwrap_or(event); // use last buffered or the original
+        // Sequence broken by the new event. Discard the old prefix.
         self.pending.clear();
-        self.last_event_at = None;
 
-        // Re-check as length-1
+        // Check if the NEW event is a single-key match or starts a new prefix.
+        let mut new_prefix = false;
+        let mut new_match = None;
         for (action, combos) in bindings {
             for combo in combos {
-                if combo.matches(&last_event) {
-                    return MatchOutcome::Matched(*action, self.count.take());
+                if combo.matches(&event) {
+                    new_match = Some(*action);
+                } else if combo.keys.len() > 1 && combo.keys[0].matches_event(&event) {
+                    new_prefix = true;
                 }
             }
         }
 
+        if new_prefix {
+            self.pending.push(event);
+            self.last_event_at = Some(std::time::Instant::now());
+            return MatchOutcome::Pending;
+        }
+
+        if let Some(action) = new_match {
+            self.last_event_at = None;
+            return MatchOutcome::Matched(action, self.count.take());
+        }
+
+        self.last_event_at = None;
         self.count = None;
         MatchOutcome::NoMatch
     }

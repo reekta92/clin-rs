@@ -43,18 +43,7 @@ impl App {
                 self.seq_matcher.clone(),
             ) {
                 Ok(state) => {
-                    let node_count = state
-                        .graph_state
-                        .as_ref()
-                        .and_then(|g| g.read().ok())
-                        .map(|g| g.simulation.get_graph().node_count())
-                        .unwrap_or(0);
-                    debug_log!(
-                        self,
-                        Info,
-                        "graf",
-                        "Graph view initialized ({node_count} nodes)"
-                    );
+                    
                     self.graph_state = Some(state);
                 }
                 Err(_) => {
@@ -63,15 +52,11 @@ impl App {
                 }
             }
         }
-        self.return_mode = Some(self.mode);
-        self.mode = ViewMode::Graph;
-        debug_log!(
-            self,
-            Info,
-            "view",
-            "View: {:?} → Graph (opened)",
-            self.return_mode.unwrap_or(ViewMode::List)
-        );
+        if self.mode != ViewMode::Graph {
+            self.return_mode = Some(self.mode);
+            self.mode = ViewMode::Graph;
+        }
+        
     }
     pub fn open_content_tree_view(&mut self) {
         let note_id = self.get_selected_note_id();
@@ -85,22 +70,11 @@ impl App {
                         self.keybinds.clone(),
                         self.seq_matcher.clone(),
                     );
-                    debug_log!(
-                        self,
-                        Debug,
-                        "content-tree",
-                        "Content tree parsed: {} nodes from {id}",
-                        state.nodes.len()
-                    );
+                    
                     Some(state)
                 }
-                Err(e) => {
-                    debug_log!(
-                        self,
-                        Warn,
-                        "content-tree",
-                        "Content tree parse failed for {id}: {e}"
-                    );
+                Err(_) => {
+                    
                     Some(crate::content_tree::state::ContentTreeState::error(
                         id,
                         self.keybinds.clone(),
@@ -115,15 +89,11 @@ impl App {
                 self.seq_matcher.clone(),
             ))
         };
-        self.return_mode = Some(self.mode);
-        self.mode = ViewMode::ContentTree;
-        debug_log!(
-            self,
-            Info,
-            "view",
-            "View: {:?} → ContentTree (opened)",
-            self.return_mode.as_ref().unwrap_or(&ViewMode::List)
-        );
+        if self.mode != ViewMode::ContentTree {
+            self.return_mode = Some(self.mode);
+            self.mode = ViewMode::ContentTree;
+        }
+        
     }
 
     pub fn open_backup_view(&mut self) {
@@ -132,7 +102,7 @@ impl App {
             .effective_storage_path()
             .unwrap_or_else(|_| std::path::PathBuf::from("."));
         let config = &self.config;
-        debug_log!(self, Debug, "backup-dashboard", "Backup dashboard opened");
+        
         self.backup_state = Some(crate::backup::state::BackupState::new(
             vault_path,
             &config.backup,
@@ -158,15 +128,11 @@ impl App {
                     .backup_keys_display(crate::keybinds::BackupAction::Back),
             );
         }
-        self.return_mode = Some(self.mode);
-        self.mode = ViewMode::Backup;
-        debug_log!(
-            self,
-            Info,
-            "view",
-            "View: {:?} → Backup (opened)",
-            self.return_mode.as_ref().unwrap_or(&ViewMode::List)
-        );
+        if self.mode != ViewMode::Backup {
+            self.return_mode = Some(self.mode);
+            self.mode = ViewMode::Backup;
+        }
+        
     }
 
     pub fn open_draw_view(&mut self) {
@@ -178,21 +144,17 @@ impl App {
             self.keybinds.clone(),
             self.seq_matcher.clone(),
         ));
-        self.return_mode = Some(self.mode);
-        self.mode = ViewMode::Draw;
-        debug_log!(
-            self,
-            Info,
-            "view",
-            "View: {:?} → Draw (opened)",
-            self.return_mode.as_ref().unwrap_or(&ViewMode::List)
-        );
+        if self.mode != ViewMode::Draw {
+            self.return_mode = Some(self.mode);
+            self.mode = ViewMode::Draw;
+        }
+        
     }
 
     pub fn close_draw_view(&mut self) {
         self.editor.editing_id = None;
         self.mode = self.return_mode.take().unwrap_or(ViewMode::List);
-        debug_log!(self, Info, "view", "View: Draw → {:?}", self.mode);
+        
         if let Err(e) = self.refresh_notes() {
             self.set_temporary_status(&format!("Refresh failed: {e}"));
         }
@@ -210,15 +172,11 @@ impl App {
                 self.seq_matcher.clone(),
             ) {
                 self.canvas_state = Some(state);
-                self.return_mode = Some(self.mode);
-                self.mode = ViewMode::Canvas;
-                debug_log!(
-                    self,
-                    Info,
-                    "view",
-                    "View: {:?} → Canvas (opened)",
-                    self.return_mode.as_ref().unwrap_or(&ViewMode::List)
-                );
+                if self.mode != ViewMode::Canvas {
+                    self.return_mode = Some(self.mode);
+                    self.mode = ViewMode::Canvas;
+                }
+                
                 self.editor.editing_id = Some(self.notes[*summary_idx].id.clone());
                 self.set_default_status();
             } else {
@@ -230,7 +188,7 @@ impl App {
     pub fn close_canvas_view(&mut self) {
         self.editor.editing_id = None;
         self.mode = self.return_mode.take().unwrap_or(ViewMode::List);
-        debug_log!(self, Info, "view", "View: Canvas → {:?}", self.mode);
+        
         if let Err(e) = self.refresh_notes() {
             self.set_temporary_status(&format!("Refresh failed: {e}"));
         }

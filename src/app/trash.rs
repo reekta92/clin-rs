@@ -1,5 +1,4 @@
 use super::*;
-use crate::debug_log;
 use crate::list_view::*;
 use crate::popups::*;
 
@@ -62,7 +61,7 @@ impl App {
     pub fn confirm_delete_selected(&mut self, id: String) {
         match self.storage.trash_note(&id) {
             Ok(()) => {
-                debug_log!(self, Info, "storage", "Note trashed: {id}");
+                
                 if let Err(e) = self.refresh_notes() {
                     self.set_temporary_status(&format!("Refresh failed: {e}"));
                 }
@@ -74,7 +73,7 @@ impl App {
                 self.set_temporary_status_static("Note moved to trash");
             }
             Err(err) => {
-                debug_log!(self, Error, "storage", "Delete failed for {id}: {err}");
+                
                 self.set_temporary_status(&format!("Move to trash failed: {err:#}"));
             }
         }
@@ -83,7 +82,7 @@ impl App {
     pub fn confirm_delete_folder(&mut self, path: String) {
         match self.storage.trash_folder(&path) {
             Ok(()) => {
-                debug_log!(self, Info, "storage", "Folder trashed: {path}");
+                
                 self.list.folder_cache = None;
                 self.list
                     .folder_expanded
@@ -99,12 +98,7 @@ impl App {
                 self.set_temporary_status_static("Folder moved to trash");
             }
             Err(e) => {
-                debug_log!(
-                    self,
-                    Error,
-                    "storage",
-                    "Folder trash failed for {path}: {e}"
-                );
+                
                 self.set_temporary_status(&format!("Failed to trash folder: {e}"));
             }
         }

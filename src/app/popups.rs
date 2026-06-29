@@ -1,5 +1,4 @@
 use super::*;
-use crate::debug_log;
 use crate::list_view::*;
 use crate::popups::*;
 use crate::templates::Template;
@@ -10,13 +9,7 @@ impl App {
         let template_manager = self.storage.template_manager();
         match template_manager.list() {
             Ok(templates) => {
-                debug_log!(
-                    self,
-                    Debug,
-                    "view",
-                    "Template popup opened ({} templates)",
-                    templates.len()
-                );
+                
                 let mut input = TextArea::default();
                 input.set_style(self.app_theme.bg_style());
                 input.set_cursor_line_style(Style::default());
@@ -30,7 +23,7 @@ impl App {
                 }));
             }
             Err(_) => {
-                debug_log!(self, Warn, "templates", "Failed to load templates");
+                
                 self.set_temporary_status_static("Failed to load templates");
             }
         }
@@ -57,7 +50,7 @@ impl App {
             if let Ok(template) = template_manager.load(&summary.filename) {
                 self.start_note_from_template(&template, folder);
             } else {
-                debug_log!(self, Warn, "templates", "Failed to load selected template");
+                
                 self.set_temporary_status_static("Failed to load selected template");
             }
         }
@@ -91,7 +84,7 @@ impl App {
         let content = match std::fs::read_to_string(path) {
             Ok(content) => content,
             Err(e) => {
-                debug_log!(self, Error, "templates", "Failed to load template: {e}");
+                
                 self.set_temporary_status(&format!("Failed to load template: {e}"));
                 return;
             }
@@ -223,7 +216,7 @@ impl App {
                 self.set_temporary_status_static("Template deleted");
             }
             Err(e) => {
-                debug_log!(self, Error, "templates", "Failed to delete template: {e}");
+                
                 self.set_temporary_status(&format!("Failed to delete template: {e}"));
             }
         }
@@ -447,13 +440,7 @@ template = """
         } else {
             self.set_temporary_status(&format!("Moved {total} item(s) to trash"));
         }
-        debug_log!(
-            self,
-            Info,
-            "storage",
-            "Bulk trash: {} succeeded, {failed} failed",
-            total - failed
-        );
+        
     }
 
     pub fn close_create_format_popup(&mut self) {
@@ -482,18 +469,12 @@ template = """
         if let Err(e) = self.refresh_notes() {
             self.set_temporary_status(&format!("Refresh failed: {e}"));
         }
-        let sort_desc = match (self.list.sort_field, self.list.sort_order) {
-            (SortField::Modified, SortOrder::Descending) => "Sort: Modified (newest)",
-            (SortField::Modified, SortOrder::Ascending) => "Sort: Modified (oldest)",
-            (SortField::Title, SortOrder::Ascending) => "Sort: Title (A-Z)",
-            (SortField::Title, SortOrder::Descending) => "Sort: Title (Z-A)",
-        };
-        debug_log!(self, Debug, "config", "Sort changed to {sort_desc}");
+        
         if let Ok(mut config) = crate::config::ClinConfig::load() {
             config.list.default_sort_field = Some(self.list.sort_field);
             config.list.default_sort_order = Some(self.list.sort_order);
             if let Err(e) = config.save() {
-                debug_log!(self, Error, "config", "Config save failed (sort): {e}");
+                
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
             }
         }
@@ -516,12 +497,7 @@ template = """
 
         let config = crate::config::ClinConfig::load().unwrap_or_default();
         let current = config.ui.theme.to_string();
-        debug_log!(
-            self,
-            Debug,
-            "view",
-            "Theme selection opened (current={current})"
-        );
+        
         let selected = themes.iter().position(|t| t == &current).unwrap_or(0);
         let general_is_solid = matches!(config.ui.background, crate::config::Background::Solid);
         let graph_is_solid = matches!(
@@ -576,13 +552,7 @@ template = """
             if let Err(e) = self.refresh_notes() {
                 self.set_temporary_status(&format!("Refresh failed: {e}"));
             }
-            debug_log!(
-                self,
-                Debug,
-                "view",
-                "Sort: {:?}",
-                (self.list.sort_field, self.list.sort_order)
-            );
+            
         }
     }
 
@@ -620,12 +590,7 @@ template = """
             if let Ok(mut config) = crate::config::ClinConfig::load() {
                 config.ui.icon_mode = mode;
                 if let Err(e) = config.save() {
-                    debug_log!(
-                        self,
-                        Error,
-                        "config",
-                        "Failed to save config (icon mode): {e}"
-                    );
+                    
                     self.set_temporary_status(&format!("Failed to save config: {e}"));
                 }
             }
@@ -677,12 +642,7 @@ template = """
             if let Ok(mut config) = crate::config::ClinConfig::load() {
                 config.ui.hint_bar_style = style;
                 if let Err(e) = config.save() {
-                    debug_log!(
-                        self,
-                        Error,
-                        "config",
-                        "Failed to save config (hint bar style): {e}"
-                    );
+                    
                     self.set_temporary_status(&format!("Failed to save config: {e}"));
                 }
             }
@@ -746,7 +706,7 @@ template = """
                         return;
                     }
                     self.reload_theme();
-                    debug_log!(self, Info, "view", "Theme changed to {next_theme}");
+                    
                     self.set_temporary_status(&format!("Theme set to: {next_theme}"));
                     self.popups.active = Some(crate::popups::ActivePopup::Theme(popup));
                 }
