@@ -220,6 +220,7 @@ impl GrafAppState {
                 &self.app_theme,
                 config.core.syntax_highlighting,
                 config.core.preview_wrap,
+                config.ui.icon_mode,
             );
             self.preview_content = Some(PreviewContent::Markdown(Box::new(renderer)));
         } else {

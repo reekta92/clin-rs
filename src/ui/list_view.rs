@@ -402,6 +402,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     );
     if let Some(p) = preview_area {
         app.list.last_preview_pane_width = p.width;
+        app.list.last_preview_pane_height = p.height;
     }
 
     if !app.preview_fullscreen {

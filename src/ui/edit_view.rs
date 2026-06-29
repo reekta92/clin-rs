@@ -36,6 +36,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
 
     let (edit_area, preview_area_rect, splitter_area) = if app.preview_fullscreen {
         app.editor.last_preview_pane_width = body_area.width;
+        app.editor.last_preview_pane_height = body_area.height;
         (body_area, Some(body_area), None)
     } else if app.editor.editor_preview_enabled {
         let (constraints, main_idx, p_idx) = match app.preview_position {
@@ -63,6 +64,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             .constraints(constraints)
             .split(body_area);
         app.editor.last_preview_pane_width = cols[p_idx].width;
+        app.editor.last_preview_pane_height = cols[p_idx].height;
         (cols[main_idx], Some(cols[p_idx]), Some(cols[1]))
     } else {
         (body_area, None, None)

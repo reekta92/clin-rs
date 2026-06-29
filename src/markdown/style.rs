@@ -58,17 +58,17 @@ impl MarkdownTheme {
                 .add_modifier(Modifier::BOLD),
             h2: Style::default()
                 .fg(theme.heading)
-                .add_modifier(Modifier::BOLD),
+                .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
             h3: Style::default().fg(theme.tag).add_modifier(Modifier::BOLD),
             h4: Style::default()
                 .fg(theme.muted)
                 .add_modifier(Modifier::BOLD),
             h5: Style::default()
                 .fg(theme.muted)
-                .add_modifier(Modifier::BOLD),
+                .add_modifier(Modifier::ITALIC | Modifier::DIM),
             h6: Style::default()
                 .fg(theme.muted)
-                .add_modifier(Modifier::BOLD),
+                .add_modifier(Modifier::ITALIC),
             paragraph: Style::default().fg(theme.text),
             code_inline: Style::default()
                 .fg(theme.fg)

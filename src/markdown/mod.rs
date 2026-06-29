@@ -25,7 +25,6 @@ pub struct MarkdownRenderer {
     current_page: usize,
     total_pages: usize,
     content_empty: bool,
-    theme_bg: Option<Color>,
 }
 
 impl Drop for MarkdownRenderer {
@@ -44,7 +43,6 @@ impl MarkdownRenderer {
             current_page: 0,
             total_pages: 0,
             content_empty: true,
-            theme_bg: None,
         }
     }
 
@@ -57,6 +55,7 @@ impl MarkdownRenderer {
             &crate::app_theme::AppThemeColors::default(),
             true,
             true,
+            crate::config::IconMode::default(),
         );
     }
 
@@ -74,6 +73,7 @@ impl MarkdownRenderer {
         theme: &crate::app_theme::AppThemeColors,
         syntax_hl: bool,
         wrap: bool,
+        icon_mode: crate::config::IconMode,
     ) {
         // Reset state
         self.pages.clear();
@@ -108,6 +108,7 @@ impl MarkdownRenderer {
                 &md_theme,
                 wrap,
                 syntax_hl,
+                icon_mode,
                 &cancel_token,
             );
 
@@ -154,8 +155,6 @@ impl MarkdownRenderer {
     /// `theme_bg` is accepted for API compatibility but **ignored** — each cell
     /// already carries its own background colour from the markdown theme.
     pub fn build_pages(&mut self, visible_rows: u16, _theme_bg: Option<Color>) {
-        self.theme_bg = _theme_bg;
-
         // Trim trailing lines that are entirely whitespace / empty
         let last_non_empty = self
             .lines
@@ -206,7 +205,14 @@ mod tests {
         let content = "# Vault (Root)\n\n## Folders\n- Documents\n\n## Notes\n- hello\n";
         let mut renderer = MarkdownRenderer::new(80);
         let theme = AppThemeColors::default();
-        renderer.render_with(content, 80, &theme, false, true);
+        renderer.render_with(
+            content,
+            80,
+            &theme,
+            false,
+            true,
+            crate::config::IconMode::default(),
+        );
         // Poll until done (thread runs synchronously here due to simple input)
         let mut tries = 0;
         let mut completed = false;
@@ -233,7 +239,14 @@ mod tests {
     fn test_empty_input_returns_empty() {
         let mut renderer = MarkdownRenderer::new(80);
         let theme = AppThemeColors::default();
-        renderer.render_with("", 80, &theme, false, true);
+        renderer.render_with(
+            "",
+            80,
+            &theme,
+            false,
+            true,
+            crate::config::IconMode::default(),
+        );
         assert!(renderer.is_content_empty());
         assert!(!renderer.is_pending());
     }

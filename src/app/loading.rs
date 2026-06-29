@@ -361,7 +361,7 @@ impl App {
             && renderer.poll()
         {
             if !renderer.pages_built() {
-                let visible = 34u16;
+                let visible = self.list.last_preview_pane_height.saturating_sub(2).max(10);
                 renderer.build_pages(visible, self.app_theme.preview_bg());
             }
             updated = true;
@@ -370,7 +370,11 @@ impl App {
             && renderer.poll()
         {
             if !renderer.pages_built() {
-                let visible = 36u16;
+                let visible = self
+                    .editor
+                    .last_preview_pane_height
+                    .saturating_sub(2)
+                    .max(10);
                 renderer.build_pages(visible, self.app_theme.preview_bg());
             }
             updated = true;
@@ -501,6 +505,7 @@ impl App {
                         &self.app_theme,
                         self.config.core.syntax_highlighting,
                         self.config.core.preview_wrap,
+                        self.config.ui.icon_mode,
                     );
                     self.list.preview_content = Some(PreviewContent::Markdown(Box::new(renderer)));
                     self.list.preview_content_width = Some(width);
@@ -597,6 +602,7 @@ impl App {
                     &self.app_theme,
                     self.config.core.syntax_highlighting,
                     self.config.core.preview_wrap,
+                    self.config.ui.icon_mode,
                 );
                 self.list.preview_content = Some(PreviewContent::Markdown(Box::new(renderer)));
                 self.list.preview_content_width = Some(width);
@@ -623,6 +629,7 @@ impl App {
             &self.app_theme,
             self.config.core.syntax_highlighting,
             self.config.core.preview_wrap,
+            self.config.ui.icon_mode,
         );
         self.editor.md_preview_renderer = Some(renderer);
         self.editor.preview_content_width = Some(width);
