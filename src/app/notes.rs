@@ -928,7 +928,14 @@ impl App {
                         "New file created: {canvas_id} (format=draw)"
                     );
                     self.mode = ViewMode::Draw;
-                    self.editor.editing_id = Some(canvas_id);
+                    self.editor.editing_id = Some(canvas_id.clone());
+                    self.draw_state = Some(crate::draw::app::DrawAppState::new(
+                        self.storage.clone(),
+                        Some(canvas_id),
+                        self.app_theme.clone(),
+                        self.keybinds.clone(),
+                        self.seq_matcher.clone(),
+                    ));
                 }
                 crate::popups::NoteFormat::Canvas => {
                     if title.is_empty() {
