@@ -14,7 +14,7 @@
       {
         packages.default = pkgs.rustPlatform.buildRustPackage {
           pname = "clin";
-          version = "0.9.0-rc.1"; # This will be updated by the release workflow
+          version = "0.9.0-rc.2"; # This will be updated by the release workflow
           doCheck = false;
 
           src = ./.;

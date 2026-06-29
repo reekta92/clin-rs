@@ -2,12 +2,23 @@
 
 All notable changes to clin are documented in this file.
 
-## [Unreleased]
+## [0.9.0-rc.2] - 2026-06-29
 
 ### Added
 
-- Add Draw and Graf widgets to the notes-view strip; configurable (cycle/swap) via layout-edit mode
+- Replace month grid with rolling-weeks heatmap
+- Add Draw and Graf strip sections, halfblock preview, centering
+- Added a builtin markdown renderer to replace glow
 
+### Fixed
+
+- Initialize draw_state when creating new .draw file
+
+### Performance
+
+- Pre-warm graph preview at startup to avoid first-frame blink
+- Progressive graph preview settle across frames
+- Reduce graf preview freeze on first cycle
 ## [0.9.0-rc.1] - 2026-06-28
 
 ### Added
@@ -43,6 +54,10 @@ All notable changes to clin are documented in this file.
 
 - Remove stale Cargo.toml.bak
 - Readme update
+
+### Release
+
+- V0.9.0-rc.1
 ## [0.9.0-rc.0] - 2026-06-25
 
 ### Added
