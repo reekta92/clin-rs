@@ -1,16 +1,14 @@
 use crate::app_theme::AppThemeColors;
-use crate::backup::git_ops::{CommitInfo, FileDiff, GitOps, GitStatus};
-use crate::config::BackupConfig;
+use crate::backup::git_ops::{CommitInfo, GitOps, GitStatus};
+use crate::config::{BackupConfig, ClinConfig};
 use crate::keybinds::Keybinds;
 use ratatui_textarea::TextArea;
-use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 pub struct BackupState {
     pub status: Option<GitStatus>,
     pub commits: Vec<CommitInfo>,
-    pub diffs: Vec<FileDiff>,
     pub scroll: u16,
     pub history_scroll: u16,
     pub diff_scroll: u16,
@@ -25,16 +23,17 @@ pub struct BackupState {
     pub settings_open: bool,
     pub settings: BackupSettingsState,
     pub selectable_files: Vec<String>,
-    pub selected_for_commit: HashSet<String>,
     pub theme: AppThemeColors,
     pub selected_file: Option<String>,
     pub diff_lines: Vec<String>,
     pub last_area: Option<ratatui::layout::Rect>,
-    pub footer_hint: String,
     pub keybinds: Keybinds,
     pub tab_icons_only: bool,
     pub git_lock: Arc<parking_lot::Mutex<()>>,
     pub seq_matcher: crate::keybinds::KeyMatcher,
+    pub list_state: ratatui::widgets::ListState,
+    pub history_list_state: ratatui::widgets::ListState,
+    pub selected_commit_index: usize,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BackupSection {
@@ -81,6 +80,7 @@ impl SettingsField {
         SettingsField::RemoteName,
         SettingsField::SaveButton,
     ];
+    #[must_use]
     pub fn next(self) -> Self {
         Self::ORDER
             .iter()
@@ -90,6 +90,7 @@ impl SettingsField {
             .copied()
             .unwrap_or(self)
     }
+    #[must_use]
     pub fn prev(self) -> Self {
         Self::ORDER
             .iter()
@@ -130,7 +131,6 @@ impl BackupState {
         let mut state = Self {
             status: None,
             commits: Vec::new(),
-            diffs: Vec::new(),
             scroll: 0,
             history_scroll: 0,
             diff_scroll: 0,
@@ -147,14 +147,15 @@ impl BackupState {
             last_diff_height: 0,
             vault_path: vault_path.clone(),
             settings_open: false,
-            footer_hint: String::new(),
             settings,
             theme,
-            selected_for_commit: HashSet::new(),
             keybinds,
             tab_icons_only,
             git_lock,
             seq_matcher,
+            list_state: ratatui::widgets::ListState::default(),
+            history_list_state: ratatui::widgets::ListState::default(),
+            selected_commit_index: 0,
         };
 
         state.refresh_git_info();
@@ -173,6 +174,19 @@ impl BackupState {
         }
     }
 
+    pub fn load_commit_diff(&mut self) {
+        if let Some(commit) = self.commits.get(self.selected_commit_index) {
+            let commit_id = commit.id.clone();
+            let _g = self.git_lock.lock();
+            if let Ok(git_ops) = GitOps::init(&self.vault_path) {
+                self.diff_lines = git_ops.get_commit_diff(&commit_id).unwrap_or_default();
+                self.diff_scroll = 0;
+            }
+        } else {
+            self.diff_lines.clear();
+        }
+    }
+
     pub fn refresh_git_info(&mut self) {
         let mut need_diff = false;
         {
@@ -180,7 +194,6 @@ impl BackupState {
             if let Ok(git_ops) = GitOps::init(&self.vault_path) {
                 self.status = git_ops.status().ok();
                 self.commits = git_ops.log(50).unwrap_or_default();
-                self.diffs = git_ops.diff_summary().unwrap_or_default();
                 let mut files = Vec::new();
                 if let Some(status) = &self.status {
                     for s in &status.staged {
@@ -194,26 +207,27 @@ impl BackupState {
                     }
                 }
                 self.selectable_files = files;
-                self.selected_for_commit = self
-                    .status
-                    .as_ref()
-                    .map(|s| {
-                        s.unstaged
-                            .iter()
-                            .map(|f| f.path.clone())
-                            .chain(s.untracked.iter().cloned())
-                            .collect()
-                    })
-                    .unwrap_or_default();
 
-                if self.selected_file.is_none() && !self.selectable_files.is_empty() {
+                if let Some(file) = &self.selected_file {
+                    if let Some(pos) = self.selectable_files.iter().position(|f| f == file) {
+                        self.selected_index = pos;
+                    } else {
+                        if !self.selectable_files.is_empty() {
+                            self.selected_file = Some(self.selectable_files[0].clone());
+                            self.selected_index = 0;
+                        } else {
+                            self.selected_file = None;
+                            self.selected_index = 0;
+                        }
+                        need_diff = true;
+                    }
+                } else if !self.selectable_files.is_empty() {
                     self.selected_file = Some(self.selectable_files[0].clone());
+                    self.selected_index = 0;
                     need_diff = true;
                 }
             }
         }
-        // Lock released before recursing into load_selected_diff (non-reentrant
-        // mutex — acquiring again here would self-deadlock).
         if need_diff {
             self.load_selected_diff();
         }
@@ -291,5 +305,152 @@ impl BackupState {
         }
 
         None
+    }
+
+    pub fn rendered_index_for_file(&self, file_idx: usize) -> usize {
+        let status = match &self.status {
+            Some(s) => s,
+            None => return 0,
+        };
+        let s_len = status.staged.len();
+        if file_idx < s_len {
+            1 + file_idx
+        } else if s_len == 0 {
+            4 + file_idx
+        } else {
+            3 + file_idx
+        }
+    }
+    pub fn do_commit(&mut self, message: &str) {
+        let _g = self.git_lock.lock();
+        if let Ok(git_ops) = GitOps::init(&self.vault_path) {
+            match git_ops.commit(message) {
+                Ok(_) => self.status_message = Some("Commit successful".to_string()),
+                Err(e) => self.status_message = Some(format!("Error: {e}")),
+            }
+        }
+    }
+
+    pub fn push_to_remote(&mut self) {
+        let remote_name = self
+            .settings
+            .remote_name
+            .lines()
+            .join("")
+            .trim()
+            .to_string();
+        self.status_message = Some(format!("Pushing to {remote_name}..."));
+
+        let _g = self.git_lock.lock();
+        if let Ok(git_ops) = GitOps::init(&self.vault_path) {
+            match git_ops.push(&remote_name) {
+                Ok(_) => self.status_message = Some("Push complete".to_string()),
+                Err(e) => self.status_message = Some(format!("Push failed: {e}")),
+            }
+        }
+    }
+
+    pub fn pull_from_remote(&mut self) {
+        let remote_name = self
+            .settings
+            .remote_name
+            .lines()
+            .join("")
+            .trim()
+            .to_string();
+        self.status_message = Some(format!("Pulling from {remote_name}..."));
+
+        let _g = self.git_lock.lock();
+        if let Ok(git_ops) = GitOps::init(&self.vault_path) {
+            match git_ops.pull(&remote_name) {
+                Ok(_) => self.status_message = Some("Pull complete".to_string()),
+                Err(e) => self.status_message = Some(format!("Pull failed: {e}")),
+            }
+        }
+    }
+
+    pub fn stage_file(&mut self, path: &str) {
+        let _g = self.git_lock.lock();
+        if let Ok(git_ops) = GitOps::init(&self.vault_path) {
+            match git_ops.add_paths(&[path.to_string()]) {
+                Ok(_) => self.status_message = Some(format!("Staged: {path}")),
+                Err(e) => self.status_message = Some(format!("Stage failed: {e}")),
+            }
+        }
+    }
+
+    pub fn unstage_file(&mut self, path: &str) {
+        let _g = self.git_lock.lock();
+        if let Ok(git_ops) = GitOps::init(&self.vault_path) {
+            match git_ops.unstage_paths(&[path.to_string()]) {
+                Ok(_) => self.status_message = Some(format!("Unstaged: {path}")),
+                Err(e) => self.status_message = Some(format!("Unstage failed: {e}")),
+            }
+        }
+    }
+
+    pub fn stage_all(&mut self) {
+        let _g = self.git_lock.lock();
+        if let Ok(git_ops) = GitOps::init(&self.vault_path) {
+            match git_ops.add_all() {
+                Ok(_) => self.status_message = Some("All changes staged".to_string()),
+                Err(e) => self.status_message = Some(format!("Stage all failed: {e}")),
+            }
+        }
+    }
+
+    pub fn save_settings(&mut self) {
+        let mut config = ClinConfig::load().unwrap_or_default();
+
+        config.backup.enabled = self.settings.enabled;
+        config.backup.backup_on_save = self.settings.backup_on_save;
+        config.backup.backup_on_quit = self.settings.backup_on_quit;
+        config.backup.auto_push = self.settings.auto_push;
+        let url_text = self.settings.remote_url.lines().join("").trim().to_string();
+        let name_text = self
+            .settings
+            .remote_name
+            .lines()
+            .join("")
+            .trim()
+            .to_string();
+        config.backup.remote_url = if url_text.is_empty() {
+            None
+        } else {
+            Some(url_text)
+        };
+        config.backup.remote_name = if name_text.is_empty() {
+            Some("origin".to_string())
+        } else {
+            Some(name_text.clone())
+        };
+
+        if let Err(e) = config.save() {
+            self.status_message = Some(format!("Config save failed: {e}"));
+        } else {
+            self.status_message = Some("Settings saved".to_string());
+
+            // Re-init git if enabled and not initialized
+            let _g = self.git_lock.lock();
+            if config.backup.enabled && !GitOps::is_initialized(&self.vault_path) {
+                if let Ok(git_ops) = GitOps::init(&self.vault_path) {
+                    if let Some(url) = &config.backup.remote_url {
+                        let _ = git_ops.set_remote(&name_text, url);
+                    }
+                    // Initial commit
+                    let _ = git_ops
+                        .add_all()
+                        .and_then(|_| git_ops.commit("Initial backup"));
+                    if config.backup.auto_push {
+                        let _ = git_ops.push(&name_text);
+                    }
+                }
+            } else if let Ok(git_ops) = GitOps::init(&self.vault_path) {
+                // Update remote if url changed
+                if let Some(url) = &config.backup.remote_url {
+                    let _ = git_ops.set_remote(&name_text, url);
+                }
+            }
+        }
     }
 }

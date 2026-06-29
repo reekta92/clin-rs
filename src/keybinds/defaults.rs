@@ -703,14 +703,7 @@ impl Default for Keybinds {
         );
         backup.insert(
             BackupAction::OpenSettings,
-            vec![
-                KeyCombo::simple(KeyCode::Char(',')),
-                KeyCombo::shift(KeyCode::Char('S')),
-            ],
-        );
-        backup.insert(
-            BackupAction::ToggleFileSelect,
-            vec![KeyCombo::simple(KeyCode::Char(' '))],
+            vec![KeyCombo::simple(KeyCode::Char(','))],
         );
         backup.insert(
             BackupAction::CycleSection,
@@ -718,6 +711,29 @@ impl Default for Keybinds {
                 KeyCombo::simple(KeyCode::Tab),
                 KeyCombo::simple(KeyCode::BackTab),
             ],
+        );
+        backup.insert(
+            BackupAction::Help,
+            vec![KeyCombo::simple(KeyCode::Char('?'))],
+        );
+        backup.insert(
+            BackupAction::Pull,
+            vec![KeyCombo::shift(KeyCode::Char('P'))],
+        );
+        backup.insert(
+            BackupAction::StageFile,
+            vec![
+                KeyCombo::simple(KeyCode::Char(' ')),
+                KeyCombo::simple(KeyCode::Char('s')),
+            ],
+        );
+        backup.insert(
+            BackupAction::UnstageFile,
+            vec![KeyCombo::simple(KeyCode::Char('u'))],
+        );
+        backup.insert(
+            BackupAction::StageAll,
+            vec![KeyCombo::shift(KeyCode::Char('S'))],
         );
         backup.insert(
             BackupAction::CancelCommit,
@@ -1233,6 +1249,10 @@ impl KeybindPreset {
                     vec![KeyCombo::simple(KeyCode::Char('p'))],
                 );
                 kb.backup.insert(
+                    BackupAction::StageFile,
+                    vec![KeyCombo::simple(KeyCode::Char(' '))],
+                );
+                kb.backup.insert(
                     BackupAction::OpenSettings,
                     vec![KeyCombo::parse("Space s").unwrap()],
                 );
@@ -1242,10 +1262,6 @@ impl KeybindPreset {
                         KeyCombo::simple(KeyCode::Tab),
                         KeyCombo::simple(KeyCode::BackTab),
                     ],
-                );
-                kb.backup.insert(
-                    BackupAction::ToggleFileSelect,
-                    vec![KeyCombo::simple(KeyCode::Char(' '))],
                 );
                 // ── Content tree view ──
                 kb.content_tree.insert(
@@ -1706,7 +1722,7 @@ impl KeybindPreset {
                     ],
                 );
                 kb.backup.insert(
-                    BackupAction::ToggleFileSelect,
+                    BackupAction::StageFile,
                     vec![KeyCombo::simple(KeyCode::Char(' '))],
                 );
                 // ── Content tree view ──

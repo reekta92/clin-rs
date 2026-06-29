@@ -950,7 +950,11 @@ fn backup_help_text(keybinds: &Keybinds, theme: &AppThemeColors) -> Vec<HelpRow>
     let backup_settings = keybinds.backup_keys_display(BackupAction::OpenSettings);
     let backup_cycle = keybinds.backup_keys_display(BackupAction::CycleSection);
     let backup_back = keybinds.backup_keys_display(BackupAction::Back);
-    let backup_toggle_file = keybinds.backup_keys_display(BackupAction::ToggleFileSelect);
+    let backup_stage_file = keybinds.backup_keys_display(BackupAction::StageFile);
+    let backup_unstage_file = keybinds.backup_keys_display(BackupAction::UnstageFile);
+    let backup_stage_all = keybinds.backup_keys_display(BackupAction::StageAll);
+    let backup_pull = keybinds.backup_keys_display(BackupAction::Pull);
+    let backup_help = keybinds.backup_keys_display(BackupAction::Help);
     let backup_cancel_commit = keybinds.backup_keys_display(BackupAction::CancelCommit);
     let backup_confirm_commit = keybinds.backup_keys_display(BackupAction::ConfirmCommit);
     let backup_close_settings = keybinds.backup_keys_display(BackupAction::CloseSettings);
@@ -974,6 +978,9 @@ fn backup_help_text(keybinds: &Keybinds, theme: &AppThemeColors) -> Vec<HelpRow>
 
     rows.push(help_heading_row("Actions", theme));
     rows.push(help_empty_row());
+    rows.push(help_item_dyn("Stage file", Some(&backup_stage_file), theme));
+    rows.push(help_item_dyn("Unstage file", Some(&backup_unstage_file), theme));
+    rows.push(help_item_dyn("Stage all changes", Some(&backup_stage_all), theme));
     rows.push(help_item_dyn(
         "Refresh status",
         Some(&backup_refresh),
@@ -991,6 +998,7 @@ fn backup_help_text(keybinds: &Keybinds, theme: &AppThemeColors) -> Vec<HelpRow>
         theme,
     ));
     rows.push(help_item_dyn("Push to remote", Some(&backup_push), theme));
+    rows.push(help_item_dyn("Pull from remote", Some(&backup_pull), theme));
     rows.push(help_item_dyn(
         "Open settings",
         Some(&backup_settings),
@@ -1005,11 +1013,6 @@ fn backup_help_text(keybinds: &Keybinds, theme: &AppThemeColors) -> Vec<HelpRow>
 
     rows.push(help_heading_row("Settings Fields", theme));
     rows.push(help_empty_row());
-    rows.push(help_item_dyn(
-        "Toggle file select",
-        Some(&backup_toggle_file),
-        theme,
-    ));
     rows.push(help_item_dyn("Next field", Some(&backup_next_field), theme));
     rows.push(help_item_dyn(
         "Previous field",
@@ -1035,6 +1038,7 @@ fn backup_help_text(keybinds: &Keybinds, theme: &AppThemeColors) -> Vec<HelpRow>
 
     rows.push(help_heading_row("General", theme));
     rows.push(help_empty_row());
+    rows.push(help_item_dyn("Show help", Some(&backup_help), theme));
     rows.push(help_item_dyn("Back to list", Some(&backup_back), theme));
     rows
 }

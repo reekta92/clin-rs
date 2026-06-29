@@ -176,12 +176,16 @@ pub enum BackupAction {
     CancelCommit,
     ConfirmCommit,
     CloseSettings,
-    ToggleFileSelect,
     NextField,
     PrevField,
     ActivateField,
     CancelEditField,
     ConfirmEditField,
+    Help,
+    Pull,
+    StageFile,
+    UnstageFile,
+    StageAll,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

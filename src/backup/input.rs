@@ -1,4 +1,3 @@
-use crate::backup::git_ops::GitOps;
 use crate::backup::state::{BackupInputMode, BackupSection, BackupState, SettingsField};
 use crate::config::ClinConfig;
 use crate::keybinds::{BackupAction, Keybinds};
@@ -11,6 +10,7 @@ pub enum InputResult {
     None,
     Back,
     Refresh,
+    Help,
 }
 
 pub fn handle_input(
@@ -55,11 +55,11 @@ fn handle_normal_input(
                 let n = count.unwrap_or(1) as usize;
                 for _ in 0..n {
                     if state.selected_section == BackupSection::History {
-                        state.history_scroll = state.history_scroll.saturating_add(1);
-                        let visible = state.last_content_height.saturating_sub(2).max(1) as usize;
-                        let total = state.commits.len() + 1;
-                        let max = total.saturating_sub(visible);
-                        state.history_scroll = state.history_scroll.min(max as u16);
+                        if !state.commits.is_empty() {
+                            state.selected_commit_index =
+                                (state.selected_commit_index + 1) % state.commits.len();
+                            state.load_commit_diff();
+                        }
                     } else if !state.selectable_files.is_empty() {
                         state.selected_index =
                             (state.selected_index + 1) % state.selectable_files.len();
@@ -74,7 +74,14 @@ fn handle_normal_input(
                 let n = count.unwrap_or(1) as usize;
                 for _ in 0..n {
                     if state.selected_section == BackupSection::History {
-                        state.history_scroll = state.history_scroll.saturating_sub(1);
+                        if !state.commits.is_empty() {
+                            state.selected_commit_index = if state.selected_commit_index == 0 {
+                                state.commits.len() - 1
+                            } else {
+                                state.selected_commit_index - 1
+                            };
+                            state.load_commit_diff();
+                        }
                     } else if !state.selectable_files.is_empty() {
                         state.selected_index = if state.selected_index == 0 {
                             state.selectable_files.len() - 1
@@ -114,6 +121,52 @@ fn handle_normal_input(
             }
             BackupAction::Push => {
                 state.push_to_remote();
+                return InputResult::Refresh;
+            }
+            BackupAction::Pull => {
+                state.pull_from_remote();
+                return InputResult::Refresh;
+            }
+            BackupAction::StageFile => {
+                if state.selected_section == BackupSection::Status
+                    && let Some(file) = state.selected_file.clone()
+                {
+                    let is_unstaged = state.status.as_ref().is_some_and(|s| {
+                        s.unstaged.iter().any(|f| f.path == file) || s.untracked.contains(&file)
+                    });
+                    let is_staged = state.status.as_ref().is_some_and(|s| {
+                        s.staged.iter().any(|f| f.path == file)
+                    });
+                    if is_unstaged {
+                        state.stage_file(&file);
+                        return InputResult::Refresh;
+                    } else if is_staged {
+                        state.unstage_file(&file);
+                        return InputResult::Refresh;
+                    }
+                }
+            }
+            BackupAction::UnstageFile => {
+                if state.selected_section == BackupSection::Status
+                    && let Some(file) = state.selected_file.clone()
+                {
+                    let is_staged = state.status.as_ref().is_some_and(|s| {
+                        s.staged.iter().any(|f| f.path == file)
+                    });
+                    if is_staged {
+                        state.unstage_file(&file);
+                        return InputResult::Refresh;
+                    }
+                }
+            }
+            BackupAction::StageAll => {
+                if state.selected_section == BackupSection::Status {
+                    state.stage_all();
+                    return InputResult::Refresh;
+                }
+            }
+            BackupAction::Help => {
+                return InputResult::Help;
             }
             BackupAction::OpenSettings => {
                 state.settings_open = true;
@@ -121,21 +174,15 @@ fn handle_normal_input(
             }
             BackupAction::CycleSection => {
                 state.selected_section = match state.selected_section {
-                    BackupSection::Status => BackupSection::History,
-                    BackupSection::History => BackupSection::Status,
-                };
-            }
-            BackupAction::ToggleFileSelect => {
-                if state.selected_section == BackupSection::Status
-                    && let Some(file) = state.selected_file.clone()
-                {
-                    let is_unstaged = state.status.as_ref().is_some_and(|s| {
-                        s.unstaged.iter().any(|f| f.path == file) || s.untracked.contains(&file)
-                    });
-                    if is_unstaged && !state.selected_for_commit.remove(&file) {
-                        state.selected_for_commit.insert(file);
+                    BackupSection::Status => {
+                        state.load_commit_diff();
+                        BackupSection::History
                     }
-                }
+                    BackupSection::History => {
+                        state.load_selected_diff();
+                        BackupSection::Status
+                    }
+                };
             }
             _ => {}
         },
@@ -297,9 +344,7 @@ pub fn handle_mouse(
                 return InputResult::None;
             }
 
-            let has_diff = state.selected_section == BackupSection::Status
-                && state.selected_file.is_some()
-                && !state.diff_lines.is_empty();
+            let has_diff = !state.diff_lines.is_empty();
             let list_width = if has_diff {
                 (area.width as f32 * 0.43) as u16
             } else {
@@ -308,36 +353,46 @@ pub fn handle_mouse(
 
             if x >= area.x && x < area.x + list_width && y > area.y && y < area.y + area.height - 1
             {
-                let scroll = if state.selected_section == BackupSection::Status {
-                    state.scroll
-                } else {
-                    state.history_scroll
-                };
-
-                let line_idx =
-                    (y.saturating_sub(area.y).saturating_sub(2)).saturating_add(scroll) as usize;
-                if let Some(file_idx) = state.file_index_at_rendered_line(line_idx) {
-                    state.selected_index = file_idx;
-                    state.selected_file = Some(state.selectable_files[file_idx].clone());
-                    state.load_selected_diff();
+                if state.selected_section == BackupSection::Status {
+                    let line_idx =
+                        (y.saturating_sub(area.y).saturating_sub(2)).saturating_add(state.scroll) as usize;
+                    if let Some(file_idx) = state.file_index_at_rendered_line(line_idx) {
+                        state.selected_index = file_idx;
+                        state.selected_file = Some(state.selectable_files[file_idx].clone());
+                        state.load_selected_diff();
+                    }
+                } else if state.selected_section == BackupSection::History {
+                    let item_idx = (y.saturating_sub(area.y).saturating_sub(2)) as usize;
+                    if item_idx > 0 {
+                        let commit_idx = item_idx - 1;
+                        if commit_idx < state.commits.len() {
+                            state.selected_commit_index = commit_idx;
+                            state.load_commit_diff();
+                        }
+                    }
                 }
             }
         }
     } else if let MouseEventKind::ScrollDown = event.kind {
         if let Some(area) = state.last_area {
             let is_history = state.selected_section == BackupSection::History;
-            let has_diff = state.selected_section == BackupSection::Status
-                && state.selected_file.is_some()
-                && !state.diff_lines.is_empty();
+            let has_diff = !state.diff_lines.is_empty();
             let list_width = if has_diff {
                 (area.width as f32 * 0.43) as u16
             } else {
                 area.width
             };
-            if is_history {
-                state.history_scroll = state.history_scroll.saturating_add(3);
-            } else if !has_diff || event.column < area.x + list_width {
-                state.scroll = state.scroll.saturating_add(3);
+            if event.column < area.x + list_width {
+                if is_history {
+                    if !state.commits.is_empty() {
+                        state.selected_commit_index = (state.selected_commit_index + 1).min(state.commits.len() - 1);
+                        state.load_commit_diff();
+                    }
+                } else if !state.selectable_files.is_empty() {
+                    state.selected_index = (state.selected_index + 1).min(state.selectable_files.len() - 1);
+                    state.selected_file = Some(state.selectable_files[state.selected_index].clone());
+                    state.load_selected_diff();
+                }
             } else {
                 state.diff_scroll = state.diff_scroll.saturating_add(3);
             }
@@ -347,18 +402,23 @@ pub fn handle_mouse(
     } else if let MouseEventKind::ScrollUp = event.kind {
         if let Some(area) = state.last_area {
             let is_history = state.selected_section == BackupSection::History;
-            let has_diff = state.selected_section == BackupSection::Status
-                && state.selected_file.is_some()
-                && !state.diff_lines.is_empty();
+            let has_diff = !state.diff_lines.is_empty();
             let list_width = if has_diff {
                 (area.width as f32 * 0.43) as u16
             } else {
                 area.width
             };
-            if is_history {
-                state.history_scroll = state.history_scroll.saturating_sub(3);
-            } else if !has_diff || event.column < area.x + list_width {
-                state.scroll = state.scroll.saturating_sub(3);
+            if event.column < area.x + list_width {
+                if is_history {
+                    if !state.commits.is_empty() {
+                        state.selected_commit_index = state.selected_commit_index.saturating_sub(1);
+                        state.load_commit_diff();
+                    }
+                } else if !state.selectable_files.is_empty() {
+                    state.selected_index = state.selected_index.saturating_sub(1);
+                    state.selected_file = Some(state.selectable_files[state.selected_index].clone());
+                    state.load_selected_diff();
+                }
             } else {
                 state.diff_scroll = state.diff_scroll.saturating_sub(3);
             }
@@ -458,96 +518,3 @@ fn handle_settings_mouse(state: &mut BackupState, event: MouseEvent) -> InputRes
     InputResult::None
 }
 
-impl BackupState {
-    fn do_commit(&mut self, message: &str) {
-        let _g = self.git_lock.lock();
-        if let Ok(git_ops) = GitOps::init(&self.vault_path) {
-            let paths: Vec<String> = self.selected_for_commit.iter().cloned().collect();
-            let res = if paths.is_empty() {
-                git_ops.commit(message) // commit already-staged only
-            } else {
-                git_ops
-                    .add_paths(&paths)
-                    .and_then(|_| git_ops.commit(message))
-            };
-            match res {
-                Ok(_) => self.status_message = Some("Commit successful".to_string()),
-                Err(e) => self.status_message = Some(format!("Error: {e}")),
-            }
-        }
-    }
-
-    fn push_to_remote(&mut self) {
-        let remote_name = self
-            .settings
-            .remote_name
-            .lines()
-            .join("")
-            .trim()
-            .to_string();
-        self.status_message = Some(format!("Pushing to {remote_name}..."));
-
-        let _g = self.git_lock.lock();
-        if let Ok(git_ops) = GitOps::init(&self.vault_path) {
-            match git_ops.push(&remote_name) {
-                Ok(_) => self.status_message = Some("Push complete".to_string()),
-                Err(e) => self.status_message = Some(format!("Push failed: {e}")),
-            }
-        }
-    }
-
-    fn save_settings(&mut self) {
-        let mut config = ClinConfig::load().unwrap_or_default();
-
-        config.backup.enabled = self.settings.enabled;
-        config.backup.backup_on_save = self.settings.backup_on_save;
-        config.backup.backup_on_quit = self.settings.backup_on_quit;
-        config.backup.auto_push = self.settings.auto_push;
-        let url_text = self.settings.remote_url.lines().join("").trim().to_string();
-        let name_text = self
-            .settings
-            .remote_name
-            .lines()
-            .join("")
-            .trim()
-            .to_string();
-        config.backup.remote_url = if url_text.is_empty() {
-            None
-        } else {
-            Some(url_text)
-        };
-        config.backup.remote_name = if name_text.is_empty() {
-            Some("origin".to_string())
-        } else {
-            Some(name_text.clone())
-        };
-
-        if let Err(e) = config.save() {
-            self.status_message = Some(format!("Config save failed: {e}"));
-        } else {
-            self.status_message = Some("Settings saved".to_string());
-
-            // Re-init git if enabled and not initialized
-            let _g = self.git_lock.lock();
-            if config.backup.enabled && !GitOps::is_initialized(&self.vault_path) {
-                if let Ok(git_ops) = GitOps::init(&self.vault_path) {
-                    if let Some(url) = &config.backup.remote_url {
-                        let _ = git_ops.set_remote(&name_text, url);
-                    }
-                    // Initial commit
-                    let _ = git_ops
-                        .add_all()
-                        .and_then(|_| git_ops.commit("Initial backup"));
-                    if config.backup.auto_push {
-                        let _ = git_ops.push(&name_text);
-                    }
-                }
-            } else if let Ok(git_ops) = GitOps::init(&self.vault_path) {
-                // Update remote if url changed
-                if let Some(url) = &config.backup.remote_url {
-                    let _ = git_ops.set_remote(&name_text, url);
-                }
-            }
-        }
-    }
-}

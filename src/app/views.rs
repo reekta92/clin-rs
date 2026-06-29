@@ -112,22 +112,6 @@ impl App {
             self.git_lock.clone(),
             self.seq_matcher.clone(),
         ));
-        // Set footer hint
-        if let Some(backup) = &mut self.backup_state {
-            backup.footer_hint = format!(
-                "{}: commit · {}: push · {}: refresh · {}: settings · {}: ←",
-                self.keybinds
-                    .backup_keys_display(crate::keybinds::BackupAction::EnterCommit),
-                self.keybinds
-                    .backup_keys_display(crate::keybinds::BackupAction::Push),
-                self.keybinds
-                    .backup_keys_display(crate::keybinds::BackupAction::Refresh),
-                self.keybinds
-                    .backup_keys_display(crate::keybinds::BackupAction::OpenSettings),
-                self.keybinds
-                    .backup_keys_display(crate::keybinds::BackupAction::Back),
-            );
-        }
         if self.mode != ViewMode::Backup {
             self.return_mode = Some(self.mode);
             self.mode = ViewMode::Backup;

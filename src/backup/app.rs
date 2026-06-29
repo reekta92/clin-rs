@@ -31,6 +31,9 @@ impl crate::overlay::OverlayView for BackupState {
                         return Ok(crate::overlay::OverlayResult::Exit);
                     }
                     InputResult::Refresh => self.refresh_git_info(),
+                    InputResult::Help => {
+                        return Ok(crate::overlay::OverlayResult::OpenHelp(crate::app::HelpTab::Backup));
+                    }
                     InputResult::None => {}
                 }
             }

@@ -6,7 +6,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Padding, Paragraph, Wrap},
+    widgets::{Block, Borders, Padding, Paragraph, Wrap, List, ListItem},
 };
 
 pub fn draw_dashboard(
@@ -24,24 +24,24 @@ pub fn draw_dashboard(
 
     let content_area = chunks[0];
     let footer_area = chunks[1];
-    if state.selected_section == crate::backup::state::BackupSection::Status {
-        // Content area split into list and diff if a file is selected and has diffs
-        if state.selected_file.is_some() && !state.diff_lines.is_empty() {
-            let content_chunks = Layout::default()
-                .direction(Direction::Horizontal)
-                .constraints([
-                    Constraint::Ratio(43, 100), // File list
-                    Constraint::Min(0),         // Diff pane
-                ])
-                .split(content_area);
+    let has_diff = (state.selected_section == crate::backup::state::BackupSection::Status
+        && state.selected_file.is_some()
+        && !state.diff_lines.is_empty())
+        || (state.selected_section == crate::backup::state::BackupSection::History
+        && !state.diff_lines.is_empty());
 
-            draw_content(frame, content_chunks[0], state);
-            draw_diff_pane(frame, content_chunks[1], state);
-        } else {
-            draw_content(frame, content_area, state);
-        }
+    if has_diff {
+        let content_chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Ratio(43, 100), // File list
+                Constraint::Min(0),         // Diff pane
+            ])
+            .split(content_area);
+
+        draw_content(frame, content_chunks[0], state);
+        draw_diff_pane(frame, content_chunks[1], state);
     } else {
-        // History tab
         draw_content(frame, content_area, state);
     }
 
@@ -78,10 +78,12 @@ pub fn draw_dashboard(
 
     let kb = &state.keybinds;
     let hints_items = vec![
+        (kb.display_backup(BackupAction::StageFile), "stage"),
         (kb.display_backup(BackupAction::EnterCommit), "commit"),
         (kb.display_backup(BackupAction::Push), "push"),
+        (kb.display_backup(BackupAction::Pull), "pull"),
         (kb.display_backup(BackupAction::Refresh), "refresh"),
-        (kb.display_backup(BackupAction::OpenSettings), "settings"),
+        (kb.display_backup(BackupAction::Help), "help"),
         (kb.display_backup(BackupAction::Back), "back"),
     ];
     let hint_line = crate::ui::format_keybind_hints(theme, &hints_items);
@@ -179,21 +181,21 @@ fn draw_content(frame: &mut Frame, area: Rect, state: &mut BackupState) {
         return;
     }
 
-    let mut lines = Vec::new();
     let status = state
         .status
         .as_ref()
         .expect("status populated before render");
+
     if state.selected_section == crate::backup::state::BackupSection::Status {
-        // Staged Changes
-        lines.push(Line::from(Span::styled(
+        let mut items = Vec::new();
+        items.push(ListItem::new(Line::from(Span::styled(
             format!("Staged ({}):", status.staged.len()),
             Style::default()
                 .fg(theme.heading)
                 .add_modifier(Modifier::BOLD),
-        )));
+        ))));
         if status.staged.is_empty() {
-            lines.push(Line::from(Span::styled(
+            items.push(ListItem::new(Span::styled(
                 "  No staged changes",
                 Style::default()
                     .fg(theme.muted)
@@ -201,43 +203,28 @@ fn draw_content(frame: &mut Frame, area: Rect, state: &mut BackupState) {
             )));
         } else {
             for s in &status.staged {
-                let is_selected = state.selected_file.as_ref() == Some(&s.path);
                 let (sym, style) = match s.status {
                     FileChangeType::Added => ("+", Style::default().fg(theme.success)),
                     FileChangeType::Modified => ("M", Style::default().fg(theme.accent)),
                     FileChangeType::Deleted => ("D", Style::default().fg(theme.destructive)),
                     FileChangeType::Renamed => ("R", Style::default().fg(theme.text)),
                 };
-
-                let line_style = if is_selected {
-                    Style::default()
-                        .bg(theme.highlight_bg)
-                        .fg(theme.highlight_fg)
-                        .add_modifier(Modifier::BOLD)
-                } else {
-                    Style::default()
-                };
-
-                lines.push(
-                    Line::from(vec![
-                        Span::styled(format!("  {sym} "), style),
-                        Span::styled(&s.path, Style::default().fg(theme.text)),
-                    ])
-                    .style(line_style),
-                );
+                items.push(ListItem::new(Line::from(vec![
+                    Span::styled(format!("  {sym} "), style),
+                    Span::styled(&s.path, Style::default().fg(theme.text)),
+                ])));
             }
         }
-        lines.push(Line::from(""));
+        items.push(ListItem::new(""));
 
-        // Unstaged Changes
-        lines.push(Line::from(Span::styled(
+        items.push(ListItem::new(Line::from(Span::styled(
             format!("Unstaged ({}):", status.unstaged.len()),
             Style::default()
                 .fg(theme.heading)
                 .add_modifier(Modifier::BOLD),
-        )));
+        ))));
         if status.unstaged.is_empty() && status.untracked.is_empty() {
-            lines.push(Line::from(Span::styled(
+            items.push(ListItem::new(Span::styled(
                 "  No unstaged changes",
                 Style::default()
                     .fg(theme.muted)
@@ -245,78 +232,54 @@ fn draw_content(frame: &mut Frame, area: Rect, state: &mut BackupState) {
             )));
         } else {
             for s in &status.unstaged {
-                let is_selected = state.selected_file.as_ref() == Some(&s.path);
                 let (sym, style) = match s.status {
                     FileChangeType::Modified => ("M", Style::default().fg(theme.warning)),
                     FileChangeType::Deleted => ("D", Style::default().fg(theme.destructive)),
                     _ => ("M", Style::default().fg(theme.warning)),
                 };
-
-                let line_style = if is_selected {
-                    Style::default()
-                        .bg(theme.highlight_bg)
-                        .fg(theme.highlight_fg)
-                        .add_modifier(Modifier::BOLD)
-                } else {
-                    Style::default()
-                };
-
-                lines.push(
-                    Line::from(vec![
-                        Span::styled(
-                            format!(
-                                "  [{}] {sym} ",
-                                if state.selected_for_commit.contains(&s.path) {
-                                    'x'
-                                } else {
-                                    ' '
-                                }
-                            ),
-                            style,
-                        ),
-                        Span::styled(&s.path, Style::default().fg(theme.text)),
-                    ])
-                    .style(line_style),
-                );
+                items.push(ListItem::new(Line::from(vec![
+                    Span::styled(format!("  {sym} "), style),
+                    Span::styled(&s.path, Style::default().fg(theme.text)),
+                ])));
             }
             for path in &status.untracked {
-                let is_selected = state.selected_file.as_ref() == Some(path);
-                let line_style = if is_selected {
-                    Style::default()
-                        .bg(theme.highlight_bg)
-                        .fg(theme.highlight_fg)
-                        .add_modifier(Modifier::BOLD)
-                } else {
-                    Style::default()
-                };
-
-                lines.push(
-                    Line::from(vec![
-                        Span::styled(
-                            format!(
-                                "  [{}] ? ",
-                                if state.selected_for_commit.contains(path) {
-                                    'x'
-                                } else {
-                                    ' '
-                                }
-                            ),
-                            Style::default().fg(theme.muted),
-                        ),
-                        Span::styled(path, Style::default().fg(theme.text)),
-                    ])
-                    .style(line_style),
-                );
+                items.push(ListItem::new(Line::from(vec![
+                    Span::styled("  ? ", Style::default().fg(theme.muted)),
+                    Span::styled(path, Style::default().fg(theme.text)),
+                ])));
             }
         }
+
+        let list = List::new(items)
+            .block(
+                Block::default()
+                    .style(theme.bg_style())
+                    .borders(Borders::NONE)
+                    .padding(Padding::new(2, 2, 1, 1)),
+            )
+            .highlight_style(
+                Style::default()
+                    .bg(theme.highlight_bg)
+                    .fg(theme.highlight_fg)
+                    .add_modifier(Modifier::BOLD),
+            );
+
+        if !state.selectable_files.is_empty() {
+            let list_idx = state.rendered_index_for_file(state.selected_index);
+            state.list_state.select(Some(list_idx));
+        } else {
+            state.list_state.select(None);
+        }
+        frame.render_stateful_widget(list, area, &mut state.list_state);
+
     } else if state.selected_section == crate::backup::state::BackupSection::History {
-        // History
-        lines.push(Line::from(Span::styled(
+        let mut items = Vec::new();
+        items.push(ListItem::new(Line::from(Span::styled(
             "── Recent Commits ──",
             Style::default().fg(theme.muted),
-        )));
+        ))));
         if state.commits.is_empty() {
-            lines.push(Line::from(Span::styled(
+            items.push(ListItem::new(Span::styled(
                 "  No commits yet",
                 Style::default()
                     .fg(theme.muted)
@@ -324,9 +287,9 @@ fn draw_content(frame: &mut Frame, area: Rect, state: &mut BackupState) {
             )));
         } else {
             for commit in &state.commits {
-                lines.push(Line::from(vec![
+                items.push(ListItem::new(Line::from(vec![
                     Span::styled(
-                        format!("  {} ", commit.id),
+                        format!("  {} ", &commit.id[..7.min(commit.id.len())]),
                         Style::default().fg(theme.accent),
                     ),
                     Span::styled(&commit.message, Style::default().fg(theme.text)),
@@ -338,28 +301,31 @@ fn draw_content(frame: &mut Frame, area: Rect, state: &mut BackupState) {
                         ),
                         Style::default().fg(theme.muted),
                     ),
-                ]));
+                ])));
             }
         }
+
+        let list = List::new(items)
+            .block(
+                Block::default()
+                    .style(theme.bg_style())
+                    .borders(Borders::NONE)
+                    .padding(Padding::new(2, 2, 1, 1)),
+            )
+            .highlight_style(
+                Style::default()
+                    .bg(theme.highlight_bg)
+                    .fg(theme.highlight_fg)
+                    .add_modifier(Modifier::BOLD),
+            );
+
+        if !state.commits.is_empty() {
+            state.history_list_state.select(Some(state.selected_commit_index + 1));
+        } else {
+            state.history_list_state.select(None);
+        }
+        frame.render_stateful_widget(list, area, &mut state.history_list_state);
     }
-
-    let scroll_val = if state.selected_section == crate::backup::state::BackupSection::Status {
-        state.scroll
-    } else {
-        state.history_scroll
-    };
-
-    let paragraph = Paragraph::new(lines)
-        .block(
-            Block::default()
-                .style(theme.bg_style())
-                .borders(Borders::NONE)
-                .padding(Padding::new(2, 2, 1, 1)),
-        )
-        .wrap(Wrap { trim: false })
-        .scroll((scroll_val, 0));
-
-    frame.render_widget(paragraph, area);
 
     // Status Message Flash
     if let Some(msg) = &state.status_message {
@@ -388,19 +354,37 @@ fn draw_diff_pane(frame: &mut Frame, area: Rect, state: &mut BackupState) {
         .border_style(Style::default().fg(theme.border))
         .style(theme.bg_style());
 
-    if let Some(file) = &state.selected_file {
-        let mut lines = Vec::new();
+    let mut lines = Vec::new();
+    if state.selected_section == crate::backup::state::BackupSection::Status {
+        if let Some(file) = &state.selected_file {
+            lines.push(Line::from(vec![
+                Span::styled("File: ", Style::default().fg(theme.muted)),
+                Span::styled(
+                    file,
+                    Style::default()
+                        .fg(theme.accent)
+                        .add_modifier(Modifier::BOLD),
+                ),
+            ]));
+            lines.push(Line::from(""));
+        }
+    } else if state.selected_section == crate::backup::state::BackupSection::History
+        && let Some(commit) = state.commits.get(state.selected_commit_index)
+    {
         lines.push(Line::from(vec![
-            Span::styled("File: ", Style::default().fg(theme.muted)),
+            Span::styled("Commit: ", Style::default().fg(theme.muted)),
             Span::styled(
-                file,
+                &commit.id[..7.min(commit.id.len())],
                 Style::default()
                     .fg(theme.accent)
                     .add_modifier(Modifier::BOLD),
             ),
+            Span::styled(format!(" - {}", commit.message), Style::default().fg(theme.text)),
         ]));
         lines.push(Line::from(""));
+    }
 
+    if !lines.is_empty() || !state.diff_lines.is_empty() {
         for line in &state.diff_lines {
             let style = if line.starts_with('+') {
                 Style::default().fg(theme.success)
@@ -423,7 +407,11 @@ fn draw_diff_pane(frame: &mut Frame, area: Rect, state: &mut BackupState) {
 
 fn draw_commit_popup(frame: &mut Frame, area: Rect, state: &BackupState) {
     let theme = &state.theme;
-    let hint_line = crate::ui::popup_hint_line(theme, "Enter confirm · Esc cancel");
+    let hints_items = vec![
+        (state.keybinds.display_backup(BackupAction::ConfirmCommit), "confirm"),
+        (state.keybinds.display_backup(BackupAction::CancelCommit), "cancel"),
+    ];
+    let hint_line = crate::ui::format_keybind_hints(theme, &hints_items);
     let content = crate::ui::draw_popup_frame(
         frame,
         area,
@@ -455,8 +443,13 @@ fn draw_commit_popup(frame: &mut Frame, area: Rect, state: &BackupState) {
 
 fn draw_settings_popup(frame: &mut Frame, area: Rect, state: &BackupState) {
     let theme = &state.theme;
-    let hint_line =
-        crate::ui::popup_hint_line(theme, "j/k navigate · Enter toggle/edit · Esc cancel");
+    let hints_items = vec![
+        (state.keybinds.display_backup(BackupAction::NextField), "next"),
+        (state.keybinds.display_backup(BackupAction::PrevField), "prev"),
+        (state.keybinds.display_backup(BackupAction::ActivateField), "toggle/edit"),
+        (state.keybinds.display_backup(BackupAction::CloseSettings), "close"),
+    ];
+    let hint_line = crate::ui::format_keybind_hints(theme, &hints_items);
     let content = crate::ui::draw_popup_frame(
         frame,
         area,
