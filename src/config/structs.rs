@@ -424,6 +424,8 @@ pub struct CoreConfig {
     pub preview_expand_mode: crate::config::PreviewExpandMode,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preview_command: Option<String>,
+    #[serde(default = "default_true")]
+    pub syntax_highlighting: bool,
 }
 
 impl Default for CoreConfig {
@@ -439,6 +441,7 @@ impl Default for CoreConfig {
             keybind_preset: KeybindPreset::Default,
             enable_key_sequences: false,
             preview_expand_mode: crate::config::PreviewExpandMode::default(),
+            syntax_highlighting: default_true(),
             preview_command: None,
         }
     }

@@ -86,10 +86,7 @@ fn draw_strip_draw(
         content_area.width,
         content_area.height,
     );
-    frame.render_widget(
-        crate::snapshot::RenderedSnapshot::new(&grid),
-        content_area,
-    );
+    frame.render_widget(crate::snapshot::RenderedSnapshot::new(&grid), content_area);
 }
 
 fn draw_strip_graf(
@@ -405,6 +402,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     );
     if let Some(p) = preview_area {
         app.list.last_preview_pane_width = p.width;
+        app.list.last_preview_pane_height = p.height;
     }
 
     if !app.preview_fullscreen {

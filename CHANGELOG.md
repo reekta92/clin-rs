@@ -10,15 +10,11 @@ All notable changes to clin are documented in this file.
 - Add Draw and Graf strip sections, halfblock preview, centering
 - Added a builtin markdown renderer to replace glow
 
-### Fixed
+### Changed
 
-- Initialize draw_state when creating new .draw file
+- Replace glow with built-in markdown renderer (comrak + syntect). Glow is no longer a
+  dependency. Code blocks now have syntax highlighting when a language is specified.
 
-### Performance
-
-- Pre-warm graph preview at startup to avoid first-frame blink
-- Progressive graph preview settle across frames
-- Reduce graf preview freeze on first cycle
 ## [0.9.0-rc.1] - 2026-06-28
 
 ### Added
