@@ -77,7 +77,7 @@ pub fn run() -> Result<()> {
     std::panic::set_hook(Box::new(move |panic_info| {
         disable_raw_mode().ok();
         let _ = execute!(
-            io::stdout(),
+            io::stderr(),
             LeaveAlternateScreen,
             DisableMouseCapture,
             DisableBracketedPaste,
