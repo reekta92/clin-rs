@@ -488,14 +488,6 @@ impl App {
         }
         match crate::graf::graph::GraphState::new(&self.storage, &self.config) {
             Ok(mut gs) => {
-                if !gs.is_settled {
-                    for _ in 0..100 {
-                        crate::graf::physics::simulation_step(&mut gs, 0.01, 0.016);
-                        if gs.is_settled {
-                            break;
-                        }
-                    }
-                }
                 gs.viewport = gs
                     .viewport
                     .auto_fit_from_graph(gs.simulation.get_graph(), 1.4);
@@ -503,10 +495,12 @@ impl App {
                     crate::graf::render::compute_graph_bounds(gs.simulation.get_graph());
                 self.graph_preview = Some(gs);
                 self.graph_preview_sig = sig;
+                self.graph_preview_steps = 0;
             }
             Err(_) => {
                 self.graph_preview = None;
                 self.graph_preview_sig = sig;
+                self.graph_preview_steps = 0;
             }
         }
     }

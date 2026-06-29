@@ -83,6 +83,16 @@ fn draw_strip_graf(
 ) {
     match app.graph_preview.as_mut() {
         Some(gs) => {
+            // Progressive settle: 10 steps per frame to avoid blocking
+            if !gs.is_settled && app.graph_preview_steps < 100 {
+                for _ in 0..10 {
+                    crate::graf::physics::simulation_step(gs, 0.01, 0.016);
+                    app.graph_preview_steps += 1;
+                    if gs.is_settled {
+                        break;
+                    }
+                }
+            }
             let (wx_min, wx_max, wy_min, wy_max) = gs.graph_bounds;
             if wx_max - wx_min <= 0.0 || wy_max - wy_min <= 0.0 {
                 return;
