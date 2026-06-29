@@ -148,7 +148,6 @@ fn draw_strip_graf(
             if cache.topology_dirty {
                 cache.rebuild_topology(graph, &app.config, &colors, false);
             }
-            cache.fill_nodes(graph, &app.config, None, colors.selected_indicator_color);
 
             // Map nodes to sub-pixel grid with per-node colors
             let grid_size = sub_h * iw;

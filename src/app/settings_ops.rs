@@ -489,7 +489,7 @@ impl App {
         match crate::graf::graph::GraphState::new(&self.storage, &self.config) {
             Ok(mut gs) => {
                 if !gs.is_settled {
-                    for _ in 0..300 {
+                    for _ in 0..100 {
                         crate::graf::physics::simulation_step(&mut gs, 0.01, 0.016);
                         if gs.is_settled {
                             break;
