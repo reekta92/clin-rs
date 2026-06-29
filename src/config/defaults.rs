@@ -63,3 +63,9 @@ pub fn default_word_goal() -> usize {
 pub fn default_note_goal() -> usize {
     3
 }
+pub fn default_sections() -> Vec<super::types::NotesSection> {
+    vec![
+        super::types::NotesSection::Calendar,
+        super::types::NotesSection::Goals,
+    ]
+}

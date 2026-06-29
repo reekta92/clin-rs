@@ -246,7 +246,10 @@ impl crate::overlay::OverlayView for GrafAppState {
     ) {
         let outer = ratatui::layout::Layout::default()
             .direction(ratatui::layout::Direction::Vertical)
-            .constraints([ratatui::layout::Constraint::Length(1), ratatui::layout::Constraint::Min(0)])
+            .constraints([
+                ratatui::layout::Constraint::Length(1),
+                ratatui::layout::Constraint::Min(0),
+            ])
             .split(area);
         crate::graf::ui::draw_ui(frame, self, config, outer[1], outer[0], theme, app_status);
     }
@@ -269,14 +272,15 @@ impl crate::overlay::OverlayView for GrafAppState {
                     return Ok(crate::overlay::OverlayResult::NoteOpened(id));
                 }
                 EventAction::OpenHelp => {
-                    return Ok(crate::overlay::OverlayResult::OpenHelp(crate::app::HelpTab::Graph));
+                    return Ok(crate::overlay::OverlayResult::OpenHelp(
+                        crate::app::HelpTab::Graph,
+                    ));
                 }
             }
         }
         Ok(crate::overlay::OverlayResult::Continue)
     }
 }
-
 
 fn handle_event(
     ev: crossterm::event::Event,

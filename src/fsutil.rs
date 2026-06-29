@@ -62,15 +62,23 @@ pub fn atomic_write_with_mode(path: &Path, data: &[u8], mode: u32) -> Result<()>
 pub fn cleanup_orphaned_temp_files() {
     const MAX_AGE: std::time::Duration = std::time::Duration::from_secs(24 * 3600);
     let now = std::time::SystemTime::now();
-    let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) else { return };
+    let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) else {
+        return;
+    };
     for entry in entries.flatten() {
-        let Ok(name) = entry.file_name().into_string() else { continue };
+        let Ok(name) = entry.file_name().into_string() else {
+            continue;
+        };
         if !name.starts_with("clin_") {
             continue;
         }
         if let Ok(meta) = entry.metadata() {
             if let Ok(mtime) = meta.modified() {
-                if now.duration_since(mtime).map(|d| d < MAX_AGE).unwrap_or(true) {
+                if now
+                    .duration_since(mtime)
+                    .map(|d| d < MAX_AGE)
+                    .unwrap_or(true)
+                {
                     continue; // too fresh — may belong to a running session
                 }
             }

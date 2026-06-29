@@ -1,14 +1,14 @@
-mod notes;
-mod views;
-mod popups;
 mod folders;
-mod tags;
-mod trash;
+mod import_ops;
+mod loading;
+mod notes;
+mod popups;
 mod search;
 mod settings_ops;
-mod loading;
 mod status;
-mod import_ops;
+mod tags;
+mod trash;
+mod views;
 
 use crate::debug_log;
 pub use crate::editor::*;
@@ -367,10 +367,14 @@ pub struct App {
     pub backup_status: Arc<Mutex<Option<String>>>,
     pub config_mtime: Option<std::time::SystemTime>,
     pub goals_progress: crate::goals::DailyProgress,
+    pub draw_preview: Option<(String, crate::draw::state::DrawData)>,
+    pub graph_preview: Option<crate::graf::graph::GraphState>,
+    pub graph_preview_sig: usize,
     pub preview_wrap: bool,
     pub preview_fullscreen: bool,
     pub debug_buffer: crate::debug::DebugBuffer,
-    pub debug_log_rx: Option<std::sync::mpsc::Receiver<(crate::debug::LogLevel, &'static str, String)>>,
+    pub debug_log_rx:
+        Option<std::sync::mpsc::Receiver<(crate::debug::LogLevel, &'static str, String)>>,
     pub layout_edit: bool,
     pub layout_drag: Option<LayoutDrag>,
 }
@@ -389,7 +393,6 @@ fn preview_render_cols(pane_width: u16, wrap: bool) -> u16 {
 }
 
 impl App {
-
     pub fn desired_list_preview_width(&self) -> u16 {
         preview_render_cols(self.list.last_preview_pane_width, self.preview_wrap)
     }
@@ -432,6 +435,7 @@ impl App {
         list.preview_width_ratio = bootstrap_config.list.preview_width_ratio;
         list.calendar_height = bootstrap_config.list.calendar_height;
         list.calendar_position = bootstrap_config.list.calendar_position;
+        list.sections = bootstrap_config.list.sections.clone();
 
         let preview_wrap = bootstrap_config.core.preview_wrap;
         let config_path = crate::config::ClinConfig::config_path().ok();
@@ -485,6 +489,9 @@ impl App {
             backup_status: Arc::new(Mutex::new(None)),
             config_mtime,
             goals_progress: crate::goals::DailyProgress::default(),
+            draw_preview: None,
+            graph_preview: None,
+            graph_preview_sig: 0,
             preview_wrap,
             preview_fullscreen: false,
             debug_buffer: crate::debug::DebugBuffer::new(1000, &data_dir),
@@ -533,6 +540,7 @@ impl App {
         list.preview_width_ratio = bootstrap_config.list.preview_width_ratio;
         list.calendar_height = bootstrap_config.list.calendar_height;
         list.calendar_position = bootstrap_config.list.calendar_position;
+        list.sections = bootstrap_config.list.sections.clone();
 
         let preview_wrap = bootstrap_config.core.preview_wrap;
         let config_path = crate::config::ClinConfig::config_path().ok();
@@ -586,6 +594,9 @@ impl App {
             backup_status: Arc::new(Mutex::new(None)),
             config_mtime,
             goals_progress: crate::goals::DailyProgress::default(),
+            draw_preview: None,
+            graph_preview: None,
+            graph_preview_sig: 0,
             preview_wrap,
             preview_fullscreen: false,
             debug_buffer: crate::debug::DebugBuffer::new(1000, &data_dir),
@@ -698,14 +709,30 @@ impl App {
                         if *is_expanded {
                             format!(
                                 "{} {}",
-                                crate::ui::get_icon("\u{f078}", "\u{25bc}", self.config.ui.icon_mode),
-                                crate::ui::get_icon("\u{f08d}", "\u{1f4cc}", self.config.ui.icon_mode)
+                                crate::ui::get_icon(
+                                    "\u{f078}",
+                                    "\u{25bc}",
+                                    self.config.ui.icon_mode
+                                ),
+                                crate::ui::get_icon(
+                                    "\u{f08d}",
+                                    "\u{1f4cc}",
+                                    self.config.ui.icon_mode
+                                )
                             )
                         } else {
                             format!(
                                 "{} {}",
-                                crate::ui::get_icon("\u{f054}", "\u{25b6}", self.config.ui.icon_mode),
-                                crate::ui::get_icon("\u{f08d}", "\u{1f4cc}", self.config.ui.icon_mode)
+                                crate::ui::get_icon(
+                                    "\u{f054}",
+                                    "\u{25b6}",
+                                    self.config.ui.icon_mode
+                                ),
+                                crate::ui::get_icon(
+                                    "\u{f08d}",
+                                    "\u{1f4cc}",
+                                    self.config.ui.icon_mode
+                                )
                             )
                         }
                     } else if *is_expanded {
@@ -791,7 +818,8 @@ impl App {
 
                     spans.push(Span::raw("  "));
                     if summary.pinned {
-                        let icon = crate::ui::get_icon("\u{f4cc}", "\u{1f4cc}", self.config.ui.icon_mode);
+                        let icon =
+                            crate::ui::get_icon("\u{f4cc}", "\u{1f4cc}", self.config.ui.icon_mode);
                         if !icon.is_empty() {
                             spans.push(Span::styled(
                                 format!("{icon} "),
@@ -804,7 +832,8 @@ impl App {
 
                     if *is_clin {
                         text_style = text_style.fg(self.app_theme.muted);
-                        let icon = crate::ui::get_icon("\u{f023}", "\u{1f512}", self.config.ui.icon_mode);
+                        let icon =
+                            crate::ui::get_icon("\u{f023}", "\u{1f512}", self.config.ui.icon_mode);
                         if !icon.is_empty() {
                             spans.push(Span::styled(
                                 format!("{icon} "),
@@ -816,7 +845,8 @@ impl App {
                     }
 
                     if *is_draw {
-                        let icon = crate::ui::get_icon("\u{f1fc}", "\u{270f}", self.config.ui.icon_mode);
+                        let icon =
+                            crate::ui::get_icon("\u{f1fc}", "\u{270f}", self.config.ui.icon_mode);
                         if !icon.is_empty() {
                             spans.push(Span::styled(
                                 format!("{icon} "),
@@ -828,7 +858,8 @@ impl App {
                     }
 
                     if *is_canvas {
-                        let icon = crate::ui::get_icon("\u{f005}", "\u{2b50}", self.config.ui.icon_mode);
+                        let icon =
+                            crate::ui::get_icon("\u{f005}", "\u{2b50}", self.config.ui.icon_mode);
                         if !icon.is_empty() {
                             spans.push(Span::styled(
                                 format!("{icon} "),
@@ -901,7 +932,8 @@ impl App {
                 }
                 VisualItem::CreateNew { depth, .. } => {
                     let indent = "  ".repeat(*depth);
-                    let icon = crate::ui::get_icon("\u{f067}", "\u{2795}", self.config.ui.icon_mode);
+                    let icon =
+                        crate::ui::get_icon("\u{f067}", "\u{2795}", self.config.ui.icon_mode);
                     let text = if icon.is_empty() {
                         format!("{indent}Create new...")
                     } else {
@@ -1041,8 +1073,11 @@ impl App {
                     };
                     note.content.clone()
                 }
-                crate::list_view::VisualItem::Folder { .. } | crate::list_view::VisualItem::CreateNew { .. } => {
-                    self.set_temporary_status_static("External preview only supports markdown notes");
+                crate::list_view::VisualItem::Folder { .. }
+                | crate::list_view::VisualItem::CreateNew { .. } => {
+                    self.set_temporary_status_static(
+                        "External preview only supports markdown notes",
+                    );
                     return;
                 }
             }
@@ -1066,7 +1101,10 @@ impl App {
             .unwrap_or_else(|| "less".to_string());
 
         // Launch the external command.
-        let (result, prog) = self.run_external_command(&preview_prog, &[temp_file_path.to_string_lossy().into_owned()]);
+        let (result, prog) = self.run_external_command(
+            &preview_prog,
+            &[temp_file_path.to_string_lossy().into_owned()],
+        );
 
         // Report status based on command result.
         match result {
@@ -1087,7 +1125,12 @@ impl App {
     }
     pub fn autosave(&mut self) {
         if let Some(ref editing_id) = self.editor.editing_id {
-            debug_log!(self, Debug, "storage", "Autosave triggered for {editing_id}");
+            debug_log!(
+                self,
+                Debug,
+                "storage",
+                "Autosave triggered for {editing_id}"
+            );
         }
         let content = self.editor.editor.lines().join("\n");
 
@@ -1248,12 +1291,8 @@ impl App {
         if self.mode == ViewMode::Help {
             self.list.help_text_cache = None;
         }
-    }}
-
-
-
-
-
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -1261,8 +1300,8 @@ mod tests {
     use crate::storage::Storage;
     use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
     use ratatui::layout::Rect;
-    use tempfile::tempdir;
     use ratatui_textarea::TextArea;
+    use tempfile::tempdir;
 
     #[test]
     fn test_preview_render_cols() {
@@ -1333,7 +1372,10 @@ mod tests {
         // Open the create-note popup
         app.begin_create_note_in_folder(String::new());
         assert!(
-            matches!(app.popups.active, Some(crate::popups::ActivePopup::CreateNote(..))),
+            matches!(
+                app.popups.active,
+                Some(crate::popups::ActivePopup::CreateNote(..))
+            ),
             "create_note popup should be open"
         );
 
@@ -1346,16 +1388,20 @@ mod tests {
 
         // Popup must still be open
         assert!(
-            matches!(app.popups.active, Some(crate::popups::ActivePopup::CreateNote(..))),
+            matches!(
+                app.popups.active,
+                Some(crate::popups::ActivePopup::CreateNote(..))
+            ),
             "popup should remain open after y"
         );
 
         // Input must contain "y"
-        let (popup, _) = if let Some(crate::popups::ActivePopup::CreateNote(p, f)) = &app.popups.active {
-            (p, f)
-        } else {
-            panic!("create_note popup should be open")
-        };
+        let (popup, _) =
+            if let Some(crate::popups::ActivePopup::CreateNote(p, f)) = &app.popups.active {
+                (p, f)
+            } else {
+                panic!("create_note popup should be open")
+            };
         let text: String = popup.input.lines().join("");
         assert_eq!(text, "y", "input should contain y, got: {text}");
     }
@@ -1515,7 +1561,11 @@ mod tests {
         app.back_to_list(prev_id.as_deref(), new_id.as_deref());
 
         // All 3 notes should still be present (incremental refresh preserved others)
-        assert_eq!(app.notes.len(), 3, "other notes preserved after incremental body edit");
+        assert_eq!(
+            app.notes.len(),
+            3,
+            "other notes preserved after incremental body edit"
+        );
 
         // Note B should still exist with same id (body edit doesn't rename)
         let b_summary = app
@@ -1532,13 +1582,14 @@ mod tests {
         // Rename case: change title, autosave renames the file
         let old_id = b_id.clone();
         app.load_and_open_note(&old_id, None);
-        app.editor.title_editor =
-            TextArea::from(vec!["Note B Renamed".to_string()].into_iter());
+        app.editor.title_editor = TextArea::from(vec!["Note B Renamed".to_string()].into_iter());
 
         let prev_id = app.editor.editing_id.clone();
         app.autosave();
         let new_id = app.editor.editing_id.clone();
-        let renamed_id = new_id.clone().expect("autosave should produce an id after rename");
+        let renamed_id = new_id
+            .clone()
+            .expect("autosave should produce an id after rename");
         app.back_to_list(prev_id.as_deref(), new_id.as_deref());
 
         // Old id should be gone, new id present, still 3 notes
@@ -1626,9 +1677,13 @@ theme = "tokyo_night"
 
         // Execute set word goal action
         crate::actions::execute_action("settings.word_goal", &mut app, None).unwrap();
-        assert!(matches!(app.popups.active, Some(crate::popups::ActivePopup::Goals(_))));
+        assert!(matches!(
+            app.popups.active,
+            Some(crate::popups::ActivePopup::Goals(_))
+        ));
 
-        let mut popup = if let Some(crate::popups::ActivePopup::Goals(p)) = app.popups.active.take() {
+        let mut popup = if let Some(crate::popups::ActivePopup::Goals(p)) = app.popups.active.take()
+        {
             p
         } else {
             panic!()
@@ -1647,13 +1702,17 @@ theme = "tokyo_night"
 
         // Execute set note goal action
         crate::actions::execute_action("settings.note_goal", &mut app, None).unwrap();
-        assert!(matches!(app.popups.active, Some(crate::popups::ActivePopup::Goals(_))));
+        assert!(matches!(
+            app.popups.active,
+            Some(crate::popups::ActivePopup::Goals(_))
+        ));
 
-        let mut popup2 = if let Some(crate::popups::ActivePopup::Goals(p)) = app.popups.active.take() {
-            p
-        } else {
-            panic!()
-        };
+        let mut popup2 =
+            if let Some(crate::popups::ActivePopup::Goals(p)) = app.popups.active.take() {
+                p
+            } else {
+                panic!()
+            };
         assert!(matches!(
             popup2.mode,
             crate::popups::GoalsPopupMode::NoteGoal
@@ -1741,12 +1800,18 @@ word_goal = 1200
         let mut app = App::new(storage).unwrap();
 
         app.adjust_preview_width_to(5.0);
-        assert!((app.list.preview_width_ratio - 0.8).abs() < f32::EPSILON,
-            "expected 0.8, got {}", app.list.preview_width_ratio);
+        assert!(
+            (app.list.preview_width_ratio - 0.8).abs() < f32::EPSILON,
+            "expected 0.8, got {}",
+            app.list.preview_width_ratio
+        );
 
         app.adjust_preview_width_to(-1.0);
-        assert!((app.list.preview_width_ratio - 0.2).abs() < f32::EPSILON,
-            "expected 0.2, got {}", app.list.preview_width_ratio);
+        assert!(
+            (app.list.preview_width_ratio - 0.2).abs() < f32::EPSILON,
+            "expected 0.2, got {}",
+            app.list.preview_width_ratio
+        );
     }
 
     #[test]

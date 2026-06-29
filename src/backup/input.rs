@@ -248,7 +248,11 @@ fn handle_settings_field_input(
     InputResult::None
 }
 
-pub fn handle_mouse(state: &mut BackupState, event: MouseEvent, icon_mode: crate::config::IconMode) -> InputResult {
+pub fn handle_mouse(
+    state: &mut BackupState,
+    event: MouseEvent,
+    icon_mode: crate::config::IconMode,
+) -> InputResult {
     if state.settings_open {
         return handle_settings_mouse(state, event);
     }
@@ -276,9 +280,15 @@ pub fn handle_mouse(state: &mut BackupState, event: MouseEvent, icon_mode: crate
                     .map(|&(l, g)| (l, Some(g)))
                     .collect();
                 let region = crate::ui::title_bar_tabs_region(area, "Backup");
-                if let Some(i) =
-                    crate::ui::hit_test_tabs(&tabs, area.x, area.width, region.x, x, state.tab_icons_only, icon_mode)
-                {
+                if let Some(i) = crate::ui::hit_test_tabs(
+                    &tabs,
+                    area.x,
+                    area.width,
+                    region.x,
+                    x,
+                    state.tab_icons_only,
+                    icon_mode,
+                ) {
                     state.selected_section = match i {
                         1 => BackupSection::History,
                         _ => BackupSection::Status,

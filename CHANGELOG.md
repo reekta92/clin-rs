@@ -2,6 +2,12 @@
 
 All notable changes to clin are documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- Add Draw and Graf widgets to the notes-view strip; configurable (cycle/swap) via layout-edit mode
+
 ## [0.9.0-rc.1] - 2026-06-28
 
 ### Added

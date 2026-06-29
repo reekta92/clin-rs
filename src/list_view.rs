@@ -1,6 +1,6 @@
 use crate::markdown::MarkdownRenderer;
-use ratatui::widgets::{ListItem, ListState};
 use ratatui::style::Style;
+use ratatui::widgets::{ListItem, ListState};
 use std::collections::HashSet;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -87,6 +87,7 @@ pub struct ListView {
     pub preview_width_ratio: f32,
     pub calendar_height: u16,
     pub calendar_position: crate::config::CalendarPosition,
+    pub sections: Vec<crate::config::NotesSection>,
 }
 
 impl Default for ListView {
@@ -125,6 +126,7 @@ impl Default for ListView {
             preview_content_width: None,
             preview_width_ratio: 0.43,
             calendar_height: 9,
+            sections: crate::config::defaults::default_sections(),
             calendar_position: crate::config::CalendarPosition::default(),
         }
     }

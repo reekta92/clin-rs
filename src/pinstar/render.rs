@@ -95,7 +95,9 @@ pub fn draw_pinstar_view(
                 if let Some(bg) = theme.preview_bg() {
                     Style::default().bg(bg)
                 } else {
-                    Style::default().bg(theme.highlight_bg).fg(theme.highlight_fg)
+                    Style::default()
+                        .bg(theme.highlight_bg)
+                        .fg(theme.highlight_fg)
                 }
             } else {
                 Style::default()
@@ -603,23 +605,60 @@ pub fn draw_pinstar_view(
         1,
     );
     let hint_line = if state.connection_source_id.is_some() {
-        Line::from(vec![Span::styled("CONNECTION MODE: Select target node with mouse or Enter", Style::default().fg(theme.muted))])
+        Line::from(vec![Span::styled(
+            "CONNECTION MODE: Select target node with mouse or Enter",
+            Style::default().fg(theme.muted),
+        )])
     } else if state.deleting_connection_source_id.is_some() {
-        Line::from(vec![Span::styled("DELETE CONNECTION MODE: Select target node to remove link", Style::default().fg(theme.muted))])
+        Line::from(vec![Span::styled(
+            "DELETE CONNECTION MODE: Select target node to remove link",
+            Style::default().fg(theme.muted),
+        )])
     } else if state.resizing_node_id.is_some() {
-        Line::from(vec![Span::styled("RESIZE MODE: Drag mouse to resize, Left-click to confirm", Style::default().fg(theme.muted))])
+        Line::from(vec![Span::styled(
+            "RESIZE MODE: Drag mouse to resize, Left-click to confirm",
+            Style::default().fg(theme.muted),
+        )])
     } else if state.footer_hint.is_empty() {
         let hints_items = vec![
-            (format!("{}/{}", state.keybinds.display_canvas(CanvasAction::MoveUp), state.keybinds.display_canvas(CanvasAction::MoveDown)), "move"),
-            (state.keybinds.display_canvas(CanvasAction::OpenContextMenu), "menu"),
-            (format!("{}/{}", state.keybinds.display_canvas(CanvasAction::ZoomOut), state.keybinds.display_canvas(CanvasAction::ZoomIn)), "zoom"),
+            (
+                format!(
+                    "{}/{}",
+                    state.keybinds.display_canvas(CanvasAction::MoveUp),
+                    state.keybinds.display_canvas(CanvasAction::MoveDown)
+                ),
+                "move",
+            ),
+            (
+                state.keybinds.display_canvas(CanvasAction::OpenContextMenu),
+                "menu",
+            ),
+            (
+                format!(
+                    "{}/{}",
+                    state.keybinds.display_canvas(CanvasAction::ZoomOut),
+                    state.keybinds.display_canvas(CanvasAction::ZoomIn)
+                ),
+                "zoom",
+            ),
             (state.keybinds.display_canvas(CanvasAction::Quit), "back"),
         ];
         crate::ui::format_keybind_hints(theme, &hints_items)
     } else {
-        Line::from(vec![Span::styled(state.footer_hint.clone(), Style::default().fg(theme.muted))])
+        Line::from(vec![Span::styled(
+            state.footer_hint.clone(),
+            Style::default().fg(theme.muted),
+        )])
     };
-    crate::ui::draw_status_bar(frame, hint_area, theme, None, hint_line, None, state.seq_matcher.pending_display().as_deref());
+    crate::ui::draw_status_bar(
+        frame,
+        hint_area,
+        theme,
+        None,
+        hint_line,
+        None,
+        state.seq_matcher.pending_display().as_deref(),
+    );
 
     if let Some(menu) = &state.context_menu {
         let menu_width = menu

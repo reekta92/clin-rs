@@ -150,9 +150,15 @@ pub fn render_canvas_snapshot(
 }
 
 pub fn render_draw_snapshot(data: &DrawData, theme: &AppThemeColors) -> Vec<Vec<(char, Style)>> {
-    let width = PREVIEW_COLS;
-    let height = PREVIEW_ROWS;
+    render_draw_snapshot_with_size(data, theme, PREVIEW_COLS, PREVIEW_ROWS)
+}
 
+pub fn render_draw_snapshot_with_size(
+    data: &DrawData,
+    theme: &AppThemeColors,
+    width: u16,
+    height: u16,
+) -> Vec<Vec<(char, Style)>> {
     if width == 0 || height == 0 {
         return empty_grid(width, height);
     }

@@ -4,9 +4,19 @@ use ratatui::widgets::{Block, Borders};
 use ratatui_textarea::TextArea;
 
 /// (label, glyph, category-to-filter). Tab 0 = All (no filter).
-pub fn palette_tabs(icon_mode: crate::config::IconMode) -> Vec<(&'static str, &'static str, Option<crate::actions::ActionCategory>)> {
+pub fn palette_tabs(
+    icon_mode: crate::config::IconMode,
+) -> Vec<(
+    &'static str,
+    &'static str,
+    Option<crate::actions::ActionCategory>,
+)> {
     vec![
-        ("All", crate::ui::get_icon("\u{f0ca}", "\u{1f4cb}", icon_mode), None),
+        (
+            "All",
+            crate::ui::get_icon("\u{f0ca}", "\u{1f4cb}", icon_mode),
+            None,
+        ),
         (
             "Notes",
             crate::ui::get_icon("\u{f15c}", "\u{1f4c4}", icon_mode),
@@ -125,10 +135,13 @@ impl CommandPalette {
 
     pub fn handle_input(&mut self, key: crossterm::event::KeyEvent, app: &crate::app::App) -> bool {
         use crossterm::event::KeyCode;
-        if crate::events::is_cancel_popup(&app.keybinds, &key, true) { return true; }
+        if crate::events::is_cancel_popup(&app.keybinds, &key, true) {
+            return true;
+        }
         match key.code {
             KeyCode::Tab => {
-                self.active_tab = (self.active_tab + 1) % palette_tabs(app.config.ui.icon_mode).len();
+                self.active_tab =
+                    (self.active_tab + 1) % palette_tabs(app.config.ui.icon_mode).len();
                 self.refresh_items(app);
             }
             KeyCode::BackTab => {

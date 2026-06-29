@@ -1,21 +1,213 @@
-use ratatui::{prelude::*, widgets::*};
-use crate::app::{App, VIRTUAL_PINNED_PATH, VIRTUAL_PINNED_LABEL, ViewMode};
+use super::{
+    PopupSize, PreviewHeaderInfo, build_list_widget, build_tab_spans, draw_confirm_popup,
+    draw_corner_watermark, draw_dim_vline, draw_popup_frame, draw_status_bar, draw_template_popup,
+    draw_view_title_bar, draw_view_title_bar_with_tabs, ext_badge, format_keybind_hints,
+    format_relative_time, list_state_selected, popup_block, popup_hint_line,
+};
+use crate::app::{App, VIRTUAL_PINNED_LABEL, VIRTUAL_PINNED_PATH, ViewMode};
 use crate::app_theme::AppThemeColors;
 use crate::keybinds::ListAction;
-use super::{
-    PopupSize, PreviewHeaderInfo, build_tab_spans, draw_view_title_bar,
-    draw_view_title_bar_with_tabs, draw_status_bar, draw_dim_vline,
-    draw_corner_watermark, draw_popup_frame, draw_confirm_popup,
-    draw_template_popup, format_relative_time, build_list_widget,
-    list_state_selected,
-    format_keybind_hints, ext_badge, popup_block, popup_hint_line
-};
+use ratatui::{prelude::*, widgets::*};
 
 const GRID_TILE_W: u16 = 10; // outer width incl. border
 const GRID_TILE_H: u16 = 5; // outer height incl. border
 const GRID_GAP: u16 = 1; // space between tiles (h and v)
 const GRID_LEFT_MARGIN: u16 = 2; // left inset inside list_area
 const GRID_TOP_MARGIN: u16 = 3; // top inset inside list_area
+
+/// Compute the per-section rectangles within the calendar strip area.
+pub(crate) fn section_rects(cal_rect: Rect, active: &[crate::config::NotesSection]) -> Vec<Rect> {
+    match active.len() {
+        0 => Vec::new(),
+        1 => {
+            let w = cal_rect.width / 2;
+            let x = cal_rect.x + (cal_rect.width - w) / 2;
+            vec![Rect::new(x, cal_rect.y, w, cal_rect.height)]
+        }
+        _ => {
+            let cs = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+                .split(cal_rect);
+            vec![cs[0], cs[1]]
+        }
+    }
+}
+
+fn draw_strip_draw(frame: &mut Frame, rect: Rect, app: &App, bottom_border: bool) {
+    use ratatui::widgets::{Block, Borders};
+    let (_, data) = match app.draw_preview.as_ref() {
+        Some(pair) => pair,
+        None => {
+            let line = popup_hint_line(&app.app_theme, "No .draw file");
+            let p = ratatui::widgets::Paragraph::new(line)
+                .alignment(ratatui::layout::Alignment::Center);
+            frame.render_widget(p, rect);
+            return;
+        }
+    };
+    let borders = if bottom_border {
+        Borders::BOTTOM
+    } else {
+        Borders::TOP
+    };
+    let block = Block::default()
+        .borders(borders)
+        .border_style(ratatui::style::Style::default().fg(app.app_theme.border));
+    let inner = block.inner(rect);
+    if data.elements.is_empty() || inner.width == 0 || inner.height == 0 {
+        let line = popup_hint_line(&app.app_theme, "No .draw file");
+        let p =
+            ratatui::widgets::Paragraph::new(line).alignment(ratatui::layout::Alignment::Center);
+        frame.render_widget(p, rect);
+        return;
+    }
+    let grid = crate::snapshot::render_draw_snapshot_with_size(
+        data,
+        &app.app_theme,
+        inner.width,
+        inner.height,
+    );
+    frame.render_widget(
+        crate::snapshot::RenderedSnapshot::new(&grid).block(block),
+        rect,
+    );
+}
+
+fn draw_strip_graf(
+    frame: &mut Frame,
+    rect: Rect,
+    app: &mut App,
+    bottom_border: bool,
+    strip_rect: Rect,
+) {
+    match app.graph_preview.as_mut() {
+        Some(gs) => {
+            let (wx_min, wx_max, wy_min, wy_max) = gs.graph_bounds;
+            if wx_max - wx_min <= 0.0 || wy_max - wy_min <= 0.0 {
+                return;
+            }
+
+            // Border spans the full strip rect (so it extends across the
+            // entire strip even when a single section is centered)
+            let borders = if bottom_border {
+                Borders::BOTTOM
+            } else {
+                Borders::TOP
+            };
+            let block = Block::default()
+                .borders(borders)
+                .border_style(Style::default().fg(app.app_theme.border));
+            let outer_inner = block.inner(strip_rect);
+            frame.render_widget(block, strip_rect);
+
+            // Content area = intersection of section rect with border inner
+            let content_x = rect.x.max(outer_inner.x);
+            let content_y = rect.y.max(outer_inner.y);
+            let content_w = (rect.right().min(outer_inner.right())).saturating_sub(content_x);
+            let content_h = (rect.bottom().min(outer_inner.bottom())).saturating_sub(content_y);
+            if content_w == 0 || content_h == 0 {
+                return;
+            }
+            let iw = content_w as usize;
+            let ih = content_h as usize;
+            let sub_h = ih * 2; // 2× vertical sub-pixels for halfblocks
+            let world_w = wx_max - wx_min;
+            let world_h = wy_max - wy_min;
+
+            // Preserve world aspect ratio — constrain the tighter axis and center
+            let av_cols = content_w as f64;
+            let av_rows_sub = sub_h as f64;
+            let world_aspect = world_w / world_h;
+            let grid_aspect = av_cols / av_rows_sub;
+            let (draw_cols, draw_rows_sub) = if grid_aspect > world_aspect {
+                // grid wider → constrain horizontal
+                (av_rows_sub * world_aspect, av_rows_sub)
+            } else {
+                // grid taller → constrain vertical
+                (av_cols, av_cols / world_aspect)
+            };
+            let col_off = ((av_cols - draw_cols) / 2.0) as isize;
+            let row_off = ((av_rows_sub - draw_rows_sub) / 2.0) as isize;
+
+            let world_to_col = |x: f64| -> usize {
+                let t = (x - wx_min) / world_w;
+                let v = (t * draw_cols).floor() as isize + col_off;
+                v.clamp(0, (iw as isize) - 1) as usize
+            };
+            let world_to_subrow = |y: f64| -> usize {
+                let t = (wy_max - y) / world_h;
+                let v = (t * draw_rows_sub).floor() as isize + row_off;
+                v.clamp(0, (sub_h as isize) - 1) as usize
+            };
+
+            // Build per-node colors via the render cache (respects graf node_color_mode config)
+            let graph = gs.simulation.get_graph();
+            let colors = app.config.theme_colors();
+            let mut cache = gs.render_cache.lock().unwrap_or_else(|e| e.into_inner());
+            if cache.topology_dirty {
+                cache.rebuild_topology(graph, &app.config, &colors, false);
+            }
+            cache.fill_nodes(graph, &app.config, None, colors.selected_indicator_color);
+
+            // Map nodes to sub-pixel grid with per-node colors
+            let grid_size = sub_h * iw;
+            let mut grid: Vec<Option<Color>> = Vec::with_capacity(grid_size);
+            grid.resize(grid_size, None);
+
+            for idx in graph.node_indices() {
+                let node = &graph[idx];
+                let color = cache
+                    .node_own_color
+                    .get(&idx)
+                    .copied()
+                    .unwrap_or(Color::Gray);
+                let col = world_to_col(node.location.x as f64);
+                let sub_row = world_to_subrow(node.location.y as f64);
+                grid[sub_row * iw + col] = Some(color);
+            }
+            drop(cache);
+
+            // Render using halfblocks (▀ top-half, ▄ bottom-half)
+            let buf = frame.buffer_mut();
+            for cell_row in 0..ih {
+                let top_sub = cell_row * 2;
+                let bot_sub = cell_row * 2 + 1;
+                for col in 0..iw {
+                    let top_color = grid[top_sub * iw + col];
+                    let bot_color = grid[bot_sub * iw + col];
+                    let x = content_x + col as u16;
+                    let y = content_y + cell_row as u16;
+                    let cell = match buf.cell_mut((x, y)) {
+                        Some(c) => c,
+                        None => continue,
+                    };
+                    match (top_color, bot_color) {
+                        (None, None) => {}
+                        (Some(tc), None) => {
+                            cell.set_symbol("▀");
+                            cell.set_style(Style::default().fg(tc));
+                        }
+                        (None, Some(bc)) => {
+                            cell.set_symbol("▄");
+                            cell.set_style(Style::default().fg(bc));
+                        }
+                        (Some(tc), Some(bc)) => {
+                            cell.set_symbol("▄");
+                            cell.set_style(Style::default().fg(bc).bg(tc));
+                        }
+                    }
+                }
+            }
+        }
+        None => {
+            let line = popup_hint_line(&app.app_theme, "Graph unavailable");
+            let p = ratatui::widgets::Paragraph::new(line)
+                .alignment(ratatui::layout::Alignment::Center);
+            frame.render_widget(p, rect);
+        }
+    }
+}
 
 pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
@@ -27,7 +219,11 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             Constraint::Length(1),
         ])
         .split(area);
-    let title = if app.layout_edit { "Notes - Editing Layout" } else { "Notes" };
+    let title = if app.layout_edit {
+        "Notes - Editing Layout"
+    } else {
+        "Notes"
+    };
     let in_select_mode = app.list.list_mode == crate::list_view::ListMode::Select
         || app.list.tag_to_assign.is_some();
     if in_select_mode {
@@ -50,14 +246,35 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         ))
         .alignment(Alignment::Center);
         frame.render_widget(bar, chunks[0]);
-    } else 
-    if app.preview_fullscreen {
+    } else if app.preview_fullscreen {
         let preview_info = get_preview_info(app);
-        draw_view_title_bar(frame, chunks[0], title, &app.app_theme, preview_info, Some(app.status.as_ref()), None);
+        draw_view_title_bar(
+            frame,
+            chunks[0],
+            title,
+            &app.app_theme,
+            preview_info,
+            Some(app.status.as_ref()),
+            None,
+        );
     } else if app.list.notes_layout == crate::config::NotesLayout::Grid {
         let tabs = [
-            ("Vault", Some(crate::ui::get_icon("\u{f07b}", "\u{1f4c1}", app.config.ui.icon_mode))),
-            ("Pinned", Some(crate::ui::get_icon("\u{f4cc}", "\u{1f4cc}", app.config.ui.icon_mode))),
+            (
+                "Vault",
+                Some(crate::ui::get_icon(
+                    "\u{f07b}",
+                    "\u{1f4c1}",
+                    app.config.ui.icon_mode,
+                )),
+            ),
+            (
+                "Pinned",
+                Some(crate::ui::get_icon(
+                    "\u{f4cc}",
+                    "\u{1f4cc}",
+                    app.config.ui.icon_mode,
+                )),
+            ),
         ];
         let is_pinned = app.list.grid_folder == VIRTUAL_PINNED_PATH;
         let tab_spans = build_tab_spans(
@@ -75,7 +292,10 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
 
             let when = format_relative_time(s.updated_at);
             spans.push(Span::styled(
-                format!(" {} ", crate::ui::get_icon("\u{f017}", "\u{23f0}", app.config.ui.icon_mode)),
+                format!(
+                    " {} ",
+                    crate::ui::get_icon("\u{f017}", "\u{23f0}", app.config.ui.icon_mode)
+                ),
                 Style::default().fg(app.app_theme.muted),
             ));
             spans.push(Span::styled(
@@ -86,7 +306,10 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             if !s.tags.is_empty() {
                 spans.push(Span::raw(" | "));
                 spans.push(Span::styled(
-                    format!("{} ", crate::ui::get_icon("\u{f02b}", "\u{1f3f7}", app.config.ui.icon_mode)),
+                    format!(
+                        "{} ",
+                        crate::ui::get_icon("\u{f02b}", "\u{1f3f7}", app.config.ui.icon_mode)
+                    ),
                     Style::default()
                         .fg(app.app_theme.tag)
                         .add_modifier(Modifier::BOLD),
@@ -106,7 +329,10 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             let mut spans = Vec::new();
             let suffix = if *note_count == 1 { "note" } else { "notes" };
             spans.push(Span::styled(
-                format!(" {} ", crate::ui::get_icon("\u{f0ca}", "\u{1f4cb}", app.config.ui.icon_mode)),
+                format!(
+                    " {} ",
+                    crate::ui::get_icon("\u{f0ca}", "\u{1f4cb}", app.config.ui.icon_mode)
+                ),
                 Style::default().fg(app.app_theme.folder),
             ));
             spans.push(Span::styled(
@@ -119,9 +345,25 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             None
         };
 
-        draw_view_title_bar_with_tabs(frame, chunks[0], title, tab_spans, &app.app_theme, Some(app.status.as_ref()), detail_text);
+        draw_view_title_bar_with_tabs(
+            frame,
+            chunks[0],
+            title,
+            tab_spans,
+            &app.app_theme,
+            Some(app.status.as_ref()),
+            detail_text,
+        );
     } else {
-        draw_view_title_bar(frame, chunks[0], title, &app.app_theme, None, Some(app.status.as_ref()), None);
+        draw_view_title_bar(
+            frame,
+            chunks[0],
+            title,
+            &app.app_theme,
+            None,
+            Some(app.status.as_ref()),
+            None,
+        );
     }
 
     let (list_area, preview_area, calendar_area) = list_view_layout(
@@ -150,14 +392,20 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             let mut spans = Vec::new();
             if is_pinned {
                 spans.push(Span::styled(
-                    format!(" {} Pinned", crate::ui::get_icon("\u{f4cc}", "\u{1f4cc}", app.config.ui.icon_mode)),
+                    format!(
+                        " {} Pinned",
+                        crate::ui::get_icon("\u{f4cc}", "\u{1f4cc}", app.config.ui.icon_mode)
+                    ),
                     Style::default()
                         .fg(app.app_theme.heading)
                         .add_modifier(Modifier::BOLD),
                 ));
             } else {
                 spans.push(Span::styled(
-                    format!(" {} Vault", crate::ui::get_icon("\u{f07b}", "\u{1f4c1}", app.config.ui.icon_mode)),
+                    format!(
+                        " {} Vault",
+                        crate::ui::get_icon("\u{f07b}", "\u{1f4c1}", app.config.ui.icon_mode)
+                    ),
                     Style::default()
                         .fg(app.app_theme.folder)
                         .add_modifier(Modifier::BOLD),
@@ -233,11 +481,32 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                         let is_pinned = name == VIRTUAL_PINNED_LABEL;
                         let is_parent = name == "..";
                         let (ic, label) = if is_pinned {
-                            (crate::ui::get_char('\u{f4cc}', '\u{1f4cc}', app.config.ui.icon_mode), "F")
+                            (
+                                crate::ui::get_char(
+                                    '\u{f4cc}',
+                                    '\u{1f4cc}',
+                                    app.config.ui.icon_mode,
+                                ),
+                                "F",
+                            )
                         } else if is_parent {
-                            (crate::ui::get_char('\u{f062}', '\u{2b06}', app.config.ui.icon_mode), "^")
+                            (
+                                crate::ui::get_char(
+                                    '\u{f062}',
+                                    '\u{2b06}',
+                                    app.config.ui.icon_mode,
+                                ),
+                                "^",
+                            )
                         } else {
-                            (crate::ui::get_char('\u{f07b}', '\u{1f4c1}', app.config.ui.icon_mode), "F")
+                            (
+                                crate::ui::get_char(
+                                    '\u{f07b}',
+                                    '\u{1f4c1}',
+                                    app.config.ui.icon_mode,
+                                ),
+                                "F",
+                            )
                         };
                         let col = if is_pinned {
                             app.app_theme.heading
@@ -287,14 +556,12 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                         };
                         (ic, label, col, s.title.clone())
                     }
-                    crate::app::VisualItem::CreateNew { .. } => {
-                        (
-                            crate::ui::get_char('\u{f067}', '\u{2795}', app.config.ui.icon_mode),
-                            "+",
-                            app.app_theme.success,
-                            "Create...".to_string(),
-                        )
-                    }
+                    crate::app::VisualItem::CreateNew { .. } => (
+                        crate::ui::get_char('\u{f067}', '\u{2795}', app.config.ui.icon_mode),
+                        "+",
+                        app.app_theme.success,
+                        "Create...".to_string(),
+                    ),
                 };
 
                 // --- tile border (plain border = "button") ---
@@ -315,7 +582,11 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 block = block.border_style(Style::default().fg(border_fg));
                 let inner = block.inner(tile_rect);
                 block.render(tile_rect, buf); // paints border
-                let icon_fg = if in_selection { app.app_theme.highlight_fg } else { glyph_color };
+                let icon_fg = if in_selection {
+                    app.app_theme.highlight_fg
+                } else {
+                    glyph_color
+                };
                 let icon_style = if is_selected || in_selection {
                     Style::default().fg(icon_fg).add_modifier(Modifier::BOLD)
                 } else {
@@ -324,7 +595,8 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 let inner_w = inner.width as usize;
                 if app.config.ui.icon_mode == crate::config::IconMode::None {
                     let label_chars: Vec<char> = text_label.chars().collect();
-                    let label_start = inner.x + ((inner_w.saturating_sub(label_chars.len())) / 2) as u16;
+                    let label_start =
+                        inner.x + ((inner_w.saturating_sub(label_chars.len())) / 2) as u16;
                     for (k, ch) in label_chars.iter().enumerate() {
                         if let Some(cell) = buf.cell_mut((label_start + k as u16, inner.y)) {
                             cell.set_char(*ch).set_style(icon_style);
@@ -347,15 +619,22 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 if has_tags {
                     let tag_x = inner.x + inner.width.saturating_sub(1);
                     if let Some(cell) = buf.cell_mut((tag_x, inner.y)) {
-                        let tag_fg = if in_selection { app.app_theme.highlight_fg } else { app.app_theme.tag };
+                        let tag_fg = if in_selection {
+                            app.app_theme.highlight_fg
+                        } else {
+                            app.app_theme.tag
+                        };
                         let tag_style = if is_selected || in_selection {
-                            Style::default()
-                                .fg(tag_fg)
-                                .add_modifier(Modifier::BOLD)
+                            Style::default().fg(tag_fg).add_modifier(Modifier::BOLD)
                         } else {
                             Style::default().fg(tag_fg)
                         };
-                        cell.set_char(crate::ui::get_char('\u{f02b}', '\u{1f3f7}', app.config.ui.icon_mode)).set_style(tag_style);
+                        cell.set_char(crate::ui::get_char(
+                            '\u{f02b}',
+                            '\u{1f3f7}',
+                            app.config.ui.icon_mode,
+                        ))
+                        .set_style(tag_style);
                     }
                 }
 
@@ -370,7 +649,9 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 let left = pad / 2;
                 let name_style = if is_selected || in_selection {
                     if in_selection {
-                        Style::default().fg(app.app_theme.highlight_fg).add_modifier(Modifier::BOLD)
+                        Style::default()
+                            .fg(app.app_theme.highlight_fg)
+                            .add_modifier(Modifier::BOLD)
                     } else {
                         Style::default().add_modifier(Modifier::BOLD)
                     }
@@ -415,7 +696,6 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             app.list.list_state.select(Some(app.list.visual_index));
             frame.render_stateful_widget(list, list_area, &mut app.list.list_state);
         }
-
     }
     if let Some(preview_rect) = preview_area {
         let hide_encrypted = app.preview_encryption
@@ -445,37 +725,68 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         );
     }
     if let Some(cal_rect) = calendar_area {
-        if app.config.goals.enabled && cal_rect.width >= 42 {
-            let layout_chunks = Layout::default()
-                .direction(Direction::Horizontal)
-                .constraints([Constraint::Length(25), Constraint::Min(0)])
-                .split(cal_rect);
-            crate::calendar::draw_calendar(frame, layout_chunks[0], &app.app_theme, &app.notes, app.calendar_position == crate::config::CalendarPosition::Top);
-            let _ = app.get_current_goals_progress();
-            crate::goals::draw_goals_progress(
-                frame,
-                layout_chunks[1],
-                &app.app_theme,
-                &app.goals_progress,
-                &app.config.goals,
-                app.calendar_position == crate::config::CalendarPosition::Top,
-            );
-        } else {
-            crate::calendar::draw_calendar(frame, cal_rect, &app.app_theme, &app.notes, app.calendar_position == crate::config::CalendarPosition::Top);
+        let bottom_border = app.calendar_position == crate::config::CalendarPosition::Top;
+        let active = app.active_strip_sections_for(cal_rect.width);
+        let rects = section_rects(cal_rect, &active);
+        for (sec, r) in active.iter().zip(rects.iter().copied()) {
+            match sec {
+                crate::config::NotesSection::Calendar => crate::calendar::draw_calendar(
+                    frame,
+                    r,
+                    &app.app_theme,
+                    &app.notes,
+                    bottom_border,
+                ),
+                crate::config::NotesSection::Goals => {
+                    let _ = app.get_current_goals_progress();
+                    crate::goals::draw_goals_progress(
+                        frame,
+                        r,
+                        &app.app_theme,
+                        &app.goals_progress,
+                        &app.config.goals,
+                        bottom_border,
+                    );
+                }
+                crate::config::NotesSection::Draw => {
+                    app.ensure_draw_preview();
+                    draw_strip_draw(frame, r, app, bottom_border);
+                }
+                crate::config::NotesSection::Graf => {
+                    app.ensure_graph_preview();
+                    draw_strip_graf(frame, r, app, bottom_border, cal_rect);
+                }
+            }
         }
     }
     let kb = &app.keybinds;
     let is_grid = app.list.notes_layout == crate::config::NotesLayout::Grid;
     let hints_items = if is_grid {
         vec![
-            (format!("{}/{}/{}/{}", kb.display_list(ListAction::MoveLeft), kb.display_list(ListAction::MoveDown), kb.display_list(ListAction::MoveUp), kb.display_list(ListAction::MoveRight)), "move"),
+            (
+                format!(
+                    "{}/{}/{}/{}",
+                    kb.display_list(ListAction::MoveLeft),
+                    kb.display_list(ListAction::MoveDown),
+                    kb.display_list(ListAction::MoveUp),
+                    kb.display_list(ListAction::MoveRight)
+                ),
+                "move",
+            ),
             (kb.display_list(ListAction::Open), "open"),
             (kb.display_list(ListAction::Help), "help"),
             (kb.display_list(ListAction::Quit), "quit"),
         ]
     } else {
         vec![
-            (format!("{}/{}", kb.display_list(ListAction::MoveDown), kb.display_list(ListAction::MoveUp)), "move"),
+            (
+                format!(
+                    "{}/{}",
+                    kb.display_list(ListAction::MoveDown),
+                    kb.display_list(ListAction::MoveUp)
+                ),
+                "move",
+            ),
             (kb.display_list(ListAction::Open), "open"),
             (kb.display_list(ListAction::Help), "help"),
             (kb.display_list(ListAction::Quit), "quit"),
@@ -504,6 +815,9 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     } else if app.layout_edit {
         let layout_items = vec![
             ("drag".to_string(), "borders/panes"),
+            ("Tab".to_string(), "swap sections"),
+            ("Space/click".to_string(), "cycle section"),
+            ("a".to_string(), "add/remove section"),
             ("s".to_string(), "preview"),
             ("c".to_string(), "calendar"),
             ("←→ ↑↓".to_string(), "resize"),
@@ -517,7 +831,15 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         app.editor.external_editor_enabled,
         &app.app_theme,
     ));
-    draw_status_bar(frame, chunks[2], &app.app_theme, badge, hint, None, app.seq_matcher.pending_display().as_deref());
+    draw_status_bar(
+        frame,
+        chunks[2],
+        &app.app_theme,
+        badge,
+        hint,
+        None,
+        app.seq_matcher.pending_display().as_deref(),
+    );
     draw_corner_watermark(frame, chunks[2], app.app_theme.muted);
     if app.list.preview_enabled && !app.preview_fullscreen {
         let ratio_num = (app.list.preview_width_ratio.clamp(0.2, 0.8) * 100.0).round() as u32;
@@ -610,7 +932,10 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         } else {
             (popup.suggestions.len() as u16).clamp(1, 5)
         };
-        let hint_line = popup_hint_line(&app.app_theme, "Ctrl+S batch assign · Tab accept · Enter save · d delete from all · Esc cancel");
+        let hint_line = popup_hint_line(
+            &app.app_theme,
+            "Ctrl+S batch assign · Tab accept · Enter save · d delete from all · Esc cancel",
+        );
         let content = draw_popup_frame(
             frame,
             area,
@@ -801,7 +1126,10 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     }
 
     if let Some(palette) = &mut app.command_palette {
-        let hint_line = popup_hint_line(&app.app_theme, "Tab category · Enter run · ↑/↓ select · Esc close");
+        let hint_line = popup_hint_line(
+            &app.app_theme,
+            "Tab category · Enter run · ↑/↓ select · Esc close",
+        );
         let content = draw_popup_frame(
             frame,
             area,
@@ -915,7 +1243,14 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             }
         };
         let hint_line = popup_hint_line(&app.app_theme, sub);
-        let content = draw_popup_frame(frame, area, title, PopupSize::Prompt, &hint_line, &app.app_theme);
+        let content = draw_popup_frame(
+            frame,
+            area,
+            title,
+            PopupSize::Prompt,
+            &hint_line,
+            &app.app_theme,
+        );
 
         popup.input.set_block(
             Block::default()
@@ -973,7 +1308,10 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     }
 
     if let Some(crate::popups::ActivePopup::Search(popup)) = &mut app.popups.active {
-        let hint_line = popup_hint_line(&app.app_theme, "Tab switch · Enter open · Esc cancel · f:folder p:pinned t:tag g:text · \\e\\ escapes filters");
+        let hint_line = popup_hint_line(
+            &app.app_theme,
+            "Tab switch · Enter open · Esc cancel · f:folder p:pinned t:tag g:text · \\e\\ escapes filters",
+        );
         let content = draw_popup_frame(
             frame,
             area,
@@ -1008,25 +1346,27 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             let mut spans: Vec<Span<'static>> = vec![Span::raw("  ")];
             let mut first = true;
 
-            let add_sep = |spans: &mut Vec<Span<'static>>,
-                           first: &mut bool,
-                           theme: &AppThemeColors| {
-                if !*first {
-                    spans.push(Span::styled(
-                        " · ",
-                        Style::default()
-                            .fg(theme.accent)
-                            .add_modifier(Modifier::BOLD),
-                    ));
-                }
-                *first = false;
-            };
+            let add_sep =
+                |spans: &mut Vec<Span<'static>>, first: &mut bool, theme: &AppThemeColors| {
+                    if !*first {
+                        spans.push(Span::styled(
+                            " · ",
+                            Style::default()
+                                .fg(theme.accent)
+                                .add_modifier(Modifier::BOLD),
+                        ));
+                    }
+                    *first = false;
+                };
 
             if let Some(f) = &parsed.folder_filter {
                 let text = if f.is_empty() { "Vault" } else { f.as_str() };
                 add_sep(&mut spans, &mut first, &app.app_theme);
                 spans.push(Span::styled(
-                    format!("{} ", crate::ui::get_icon("\u{f07c}", "\u{1f4c2}", app.config.ui.icon_mode)),
+                    format!(
+                        "{} ",
+                        crate::ui::get_icon("\u{f07c}", "\u{1f4c2}", app.config.ui.icon_mode)
+                    ),
                     Style::default()
                         .fg(app.app_theme.accent)
                         .add_modifier(Modifier::BOLD),
@@ -1041,7 +1381,10 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             if parsed.pinned_only {
                 add_sep(&mut spans, &mut first, &app.app_theme);
                 spans.push(Span::styled(
-                    format!("{} Pinned", crate::ui::get_icon("\u{f08d}", "\u{1f4cc}", app.config.ui.icon_mode)),
+                    format!(
+                        "{} Pinned",
+                        crate::ui::get_icon("\u{f08d}", "\u{1f4cc}", app.config.ui.icon_mode)
+                    ),
                     Style::default()
                         .fg(app.app_theme.accent)
                         .add_modifier(Modifier::BOLD),
@@ -1055,7 +1398,10 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     parsed.grep_text.clone()
                 };
                 spans.push(Span::styled(
-                    format!("{} {grep_display}", crate::ui::get_icon("\u{f002}", "\u{1f50d}", app.config.ui.icon_mode)),
+                    format!(
+                        "{} {grep_display}",
+                        crate::ui::get_icon("\u{f002}", "\u{1f50d}", app.config.ui.icon_mode)
+                    ),
                     Style::default()
                         .fg(app.app_theme.accent)
                         .add_modifier(Modifier::BOLD),
@@ -1069,7 +1415,10 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     tags.join(", ")
                 };
                 spans.push(Span::styled(
-                    format!("{} ", crate::ui::get_icon("\u{f02b}", "\u{1f3f7}", app.config.ui.icon_mode)),
+                    format!(
+                        "{} ",
+                        crate::ui::get_icon("\u{f02b}", "\u{1f3f7}", app.config.ui.icon_mode)
+                    ),
                     Style::default()
                         .fg(app.app_theme.accent)
                         .add_modifier(Modifier::BOLD),
@@ -1133,14 +1482,26 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             }
             let items: Vec<ListItem> = visible
                 .iter()
-                .map(|(_, t)| ListItem::new(crate::ui::styled_result_line(t, &app.app_theme, app.config.ui.icon_mode)))
+                .map(|(_, t)| {
+                    ListItem::new(crate::ui::styled_result_line(
+                        t,
+                        &app.app_theme,
+                        app.config.ui.icon_mode,
+                    ))
+                })
                 .collect();
             (items, "")
         } else if has_title {
             let items: Vec<ListItem> = popup
                 .title_results
                 .iter()
-                .map(|entry| ListItem::new(crate::ui::styled_result_line(entry, &app.app_theme, app.config.ui.icon_mode)))
+                .map(|entry| {
+                    ListItem::new(crate::ui::styled_result_line(
+                        entry,
+                        &app.app_theme,
+                        app.config.ui.icon_mode,
+                    ))
+                })
                 .collect();
             (items, "")
         } else {
@@ -1499,16 +1860,18 @@ pub fn get_preview_info(app: &App) -> Option<PreviewHeaderInfo> {
 mod tests {
     use super::*;
     use crate::app::ViewMode;
-    use crate::config::PreviewPosition;
     use crate::config::CalendarPosition;
+    use crate::config::PreviewPosition;
 
     #[test]
     fn calendar_never_overlaps_preview_and_stays_in_list_column() {
         let area = Rect::new(0, 0, 80, 24);
         for &position in &[PreviewPosition::Left, PreviewPosition::Right] {
             let (list_area, preview_area, calendar_area) = list_view_layout(
-                area, true, // preview enabled
-                position, true,  // calendar enabled
+                area,
+                true, // preview enabled
+                position,
+                true,  // calendar enabled
                 false, // preview_fullscreen
                 0.43,  // preview_width_ratio (default)
                 9,     // calendar_height (default)
@@ -1533,8 +1896,16 @@ mod tests {
     #[test]
     fn calendar_full_width_when_no_preview() {
         let area = Rect::new(0, 0, 80, 24);
-        let (list_area, preview_area, calendar_area) =
-            list_view_layout(area, false, PreviewPosition::Right, true, false, 0.43, 9, CalendarPosition::Bottom);
+        let (list_area, preview_area, calendar_area) = list_view_layout(
+            area,
+            false,
+            PreviewPosition::Right,
+            true,
+            false,
+            0.43,
+            9,
+            CalendarPosition::Bottom,
+        );
 
         assert!(preview_area.is_none());
         let cal = calendar_area.expect("calendar enabled");
@@ -1547,8 +1918,16 @@ mod tests {
     #[test]
     fn no_calendar_area_when_disabled() {
         let area = Rect::new(0, 0, 80, 24);
-        let (_, preview_area, calendar_area) =
-            list_view_layout(area, true, PreviewPosition::Right, false, false, 0.43, 9, CalendarPosition::Bottom);
+        let (_, preview_area, calendar_area) = list_view_layout(
+            area,
+            true,
+            PreviewPosition::Right,
+            false,
+            false,
+            0.43,
+            9,
+            CalendarPosition::Bottom,
+        );
         assert!(calendar_area.is_none());
         assert!(preview_area.is_some());
     }
@@ -1674,28 +2053,62 @@ mod tests {
     fn preview_width_ratio_controls_preview_width() {
         let area = Rect::new(0, 0, 80, 24);
         let (_, preview_43, _) = list_view_layout(
-            area, true, PreviewPosition::Right, true, false, 0.43, 9, CalendarPosition::Bottom,
+            area,
+            true,
+            PreviewPosition::Right,
+            true,
+            false,
+            0.43,
+            9,
+            CalendarPosition::Bottom,
         );
         let (_, preview_70, _) = list_view_layout(
-            area, true, PreviewPosition::Right, true, false, 0.70, 9, CalendarPosition::Bottom,
+            area,
+            true,
+            PreviewPosition::Right,
+            true,
+            false,
+            0.70,
+            9,
+            CalendarPosition::Bottom,
         );
         let p43 = preview_43.expect("preview enabled");
         let p70 = preview_70.expect("preview enabled");
-        assert!(p70.width > p43.width, "0.70 ratio should give wider preview than 0.43");
+        assert!(
+            p70.width > p43.width,
+            "0.70 ratio should give wider preview than 0.43"
+        );
     }
 
     #[test]
     fn calendar_height_controls_calendar_height() {
         let area = Rect::new(0, 0, 80, 24);
         let (_, _, cal_9) = list_view_layout(
-            area, true, PreviewPosition::Right, true, false, 0.43, 9, CalendarPosition::Bottom,
+            area,
+            true,
+            PreviewPosition::Right,
+            true,
+            false,
+            0.43,
+            9,
+            CalendarPosition::Bottom,
         );
         let (_, _, cal_14) = list_view_layout(
-            area, true, PreviewPosition::Right, true, false, 0.43, 14, CalendarPosition::Bottom,
+            area,
+            true,
+            PreviewPosition::Right,
+            true,
+            false,
+            0.43,
+            14,
+            CalendarPosition::Bottom,
         );
         let c9 = cal_9.expect("calendar enabled");
         let c14 = cal_14.expect("calendar enabled");
-        assert!(c14.height > c9.height, "height 14 should give taller calendar than 9");
+        assert!(
+            c14.height > c9.height,
+            "height 14 should give taller calendar than 9"
+        );
         assert_eq!(c14.height, 14);
     }
 
@@ -1703,9 +2116,56 @@ mod tests {
     fn calendar_height_clamped_to_at_least_9() {
         let area = Rect::new(0, 0, 80, 24);
         let (_, _, cal_3) = list_view_layout(
-            area, true, PreviewPosition::Right, true, false, 0.43, 3, CalendarPosition::Bottom,
+            area,
+            true,
+            PreviewPosition::Right,
+            true,
+            false,
+            0.43,
+            3,
+            CalendarPosition::Bottom,
         );
         let c3 = cal_3.expect("calendar enabled");
-        assert_eq!(c3.height, 9, "calendar height should be clamped to at least 9 to be visible");
+        assert_eq!(
+            c3.height, 9,
+            "calendar height should be clamped to at least 9 to be visible"
+        );
+    }
+
+    #[test]
+    fn section_rects_zero_active() {
+        let r = Rect::new(0, 0, 100, 10);
+        let rects = section_rects(r, &[]);
+        assert!(rects.is_empty());
+    }
+
+    #[test]
+    fn section_rects_one_active() {
+        let r = Rect::new(0, 0, 100, 10);
+        let active = [crate::config::NotesSection::Calendar];
+        let rects = section_rects(r, &active);
+        assert_eq!(rects.len(), 1);
+        // Single section centered at 50% width: 100/2=50 wide, x=(100-50)/2=25
+        assert_eq!(rects[0], Rect::new(25, 0, 50, 10));
+    }
+
+    #[test]
+    fn section_rects_two_active_equal_halves() {
+        let r = Rect::new(0, 0, 100, 10);
+        let active = [
+            crate::config::NotesSection::Calendar,
+            crate::config::NotesSection::Goals,
+        ];
+        let rects = section_rects(r, &active);
+        assert_eq!(rects.len(), 2);
+        // widths differ by at most 1
+        let diff = (rects[0].width as i16 - rects[1].width as i16).unsigned_abs();
+        assert!(diff <= 1, "halves must be equal width within 1, got {diff}");
+        assert_eq!(rects[0].x, r.x);
+        assert_eq!(rects[0].y, r.y);
+        assert_eq!(rects[0].height, r.height);
+        assert_eq!(rects[1].y, r.y);
+        assert_eq!(rects[1].height, r.height);
+        assert_eq!(rects[1].right(), r.right());
     }
 }

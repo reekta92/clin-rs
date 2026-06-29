@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 
-use super::structs::{VisualConfig, PhysicsConfig, InteractionConfig, UiConfig, FilterConfig, SearchConfig};
+use super::structs::{
+    FilterConfig, InteractionConfig, PhysicsConfig, SearchConfig, UiConfig, VisualConfig,
+};
 
 /// Merge a `toml::Value` into a `toml_edit::Item`, preserving comments/decor.
 pub fn merge_toml_value(edit_item: &mut toml_edit::Item, toml_val: &toml::Value) {
@@ -223,6 +225,9 @@ calendar_enabled = true
 
 # Calendar position ("top", "bottom"). Default "bottom".
 # calendar_position = "bottom"
+#
+# Bottom-strip sections, left-to-right. Max 2. One of: calendar, goals, draw, graf.
+# sections = ["calendar", "goals"]
 
 # ── Editor ────────────────────────────────────────────────────────────────────
 

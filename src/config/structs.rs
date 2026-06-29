@@ -1,8 +1,11 @@
-use std::path::PathBuf;
 use ratatui::style::Color;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
-use super::de::{deserialize_optional_color, serialize_background, deserialize_background, serialize_theme, deserialize_theme};
+use super::de::{
+    deserialize_background, deserialize_optional_color, deserialize_theme, serialize_background,
+    serialize_theme,
+};
 use super::defaults::*;
 use super::types::*;
 
@@ -364,6 +367,8 @@ pub struct ListConfig {
     pub calendar_height: u16,
     #[serde(default)]
     pub calendar_position: CalendarPosition,
+    #[serde(default = "default_sections")]
+    pub sections: Vec<NotesSection>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]

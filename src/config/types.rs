@@ -1,5 +1,5 @@
-use std::str::FromStr;
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 
 // ── Enums ───────────────────────────────────────────────────────────────────
 
@@ -339,4 +339,40 @@ pub enum CalendarPosition {
     Top,
     #[default]
     Bottom,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum NotesSection {
+    Calendar,
+    #[default]
+    Goals,
+    Draw,
+    Graf,
+}
+
+impl std::str::FromStr for NotesSection {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "calendar" => Ok(NotesSection::Calendar),
+            "goals" => Ok(NotesSection::Goals),
+            "draw" => Ok(NotesSection::Draw),
+            "graf" => Ok(NotesSection::Graf),
+            _ => Err(format!(
+                "Unknown section: {s}. Expected calendar, goals, draw, or graf."
+            )),
+        }
+    }
+}
+
+impl std::fmt::Display for NotesSection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NotesSection::Calendar => write!(f, "calendar"),
+            NotesSection::Goals => write!(f, "goals"),
+            NotesSection::Draw => write!(f, "draw"),
+            NotesSection::Graf => write!(f, "graf"),
+        }
+    }
 }

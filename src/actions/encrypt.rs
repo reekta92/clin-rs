@@ -1,6 +1,6 @@
-use crate::debug_log;
 use super::Action;
 use crate::app::App;
+use crate::debug_log;
 use anyhow::{Result, anyhow};
 use std::borrow::Cow;
 
@@ -55,7 +55,12 @@ impl Action for EncryptNoteAction {
                 app.set_temporary_status(&format!("Note encrypted: {new_id}"));
             }
             Err(e) => {
-                debug_log!(app, Error, "storage", "Note encrypt failed for {note_id}: {e}");
+                debug_log!(
+                    app,
+                    Error,
+                    "storage",
+                    "Note encrypt failed for {note_id}: {e}"
+                );
                 app.set_temporary_status(&format!("Failed to encrypt: {e:#}"));
             }
         }

@@ -1,6 +1,6 @@
-use std::collections::HashMap;
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use super::KeyCombo;
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use std::collections::HashMap;
 
 /// The result of trying to match a key event against a set of bindings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

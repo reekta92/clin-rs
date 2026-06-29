@@ -1,12 +1,10 @@
 use super::*;
 use crate::list_view::*;
 use crate::popups::*;
-use std::borrow::Cow;
 use ratatui_textarea::TextArea;
+use std::borrow::Cow;
 
 impl App {
-
-
     pub fn open_help_page(&mut self) {
         self.open_help_page_with_tab(HelpTab::Notes);
     }
@@ -45,11 +43,18 @@ impl App {
                 self.seq_matcher.clone(),
             ) {
                 Ok(state) => {
-                    let node_count = state.graph_state.as_ref()
+                    let node_count = state
+                        .graph_state
+                        .as_ref()
                         .and_then(|g| g.read().ok())
                         .map(|g| g.simulation.get_graph().node_count())
                         .unwrap_or(0);
-                    debug_log!(self, Info, "graf", "Graph view initialized ({node_count} nodes)");
+                    debug_log!(
+                        self,
+                        Info,
+                        "graf",
+                        "Graph view initialized ({node_count} nodes)"
+                    );
                     self.graph_state = Some(state);
                 }
                 Err(_) => {
@@ -60,7 +65,13 @@ impl App {
         }
         self.return_mode = Some(self.mode);
         self.mode = ViewMode::Graph;
-        debug_log!(self, Info, "view", "View: {:?} → Graph (opened)", self.return_mode.unwrap_or(ViewMode::List));
+        debug_log!(
+            self,
+            Info,
+            "view",
+            "View: {:?} → Graph (opened)",
+            self.return_mode.unwrap_or(ViewMode::List)
+        );
     }
     pub fn open_content_tree_view(&mut self) {
         let note_id = self.get_selected_note_id();
@@ -74,11 +85,22 @@ impl App {
                         self.keybinds.clone(),
                         self.seq_matcher.clone(),
                     );
-                    debug_log!(self, Debug, "content-tree", "Content tree parsed: {} nodes from {id}", state.nodes.len());
+                    debug_log!(
+                        self,
+                        Debug,
+                        "content-tree",
+                        "Content tree parsed: {} nodes from {id}",
+                        state.nodes.len()
+                    );
                     Some(state)
                 }
                 Err(e) => {
-                    debug_log!(self, Warn, "content-tree", "Content tree parse failed for {id}: {e}");
+                    debug_log!(
+                        self,
+                        Warn,
+                        "content-tree",
+                        "Content tree parse failed for {id}: {e}"
+                    );
                     Some(crate::content_tree::state::ContentTreeState::error(
                         id,
                         self.keybinds.clone(),
@@ -95,13 +117,20 @@ impl App {
         };
         self.return_mode = Some(self.mode);
         self.mode = ViewMode::ContentTree;
-        debug_log!(self, Info, "view", "View: {:?} → ContentTree (opened)", self.return_mode.as_ref().unwrap_or(&ViewMode::List));
+        debug_log!(
+            self,
+            Info,
+            "view",
+            "View: {:?} → ContentTree (opened)",
+            self.return_mode.as_ref().unwrap_or(&ViewMode::List)
+        );
     }
 
     pub fn open_backup_view(&mut self) {
-        let vault_path = self.config.effective_storage_path().unwrap_or_else(|_| {
-            std::path::PathBuf::from(".")
-        });
+        let vault_path = self
+            .config
+            .effective_storage_path()
+            .unwrap_or_else(|_| std::path::PathBuf::from("."));
         let config = &self.config;
         debug_log!(self, Debug, "backup-dashboard", "Backup dashboard opened");
         self.backup_state = Some(crate::backup::state::BackupState::new(
@@ -117,16 +146,27 @@ impl App {
         if let Some(backup) = &mut self.backup_state {
             backup.footer_hint = format!(
                 "{}: commit · {}: push · {}: refresh · {}: settings · {}: ←",
-                self.keybinds.backup_keys_display(crate::keybinds::BackupAction::EnterCommit),
-                self.keybinds.backup_keys_display(crate::keybinds::BackupAction::Push),
-                self.keybinds.backup_keys_display(crate::keybinds::BackupAction::Refresh),
-                self.keybinds.backup_keys_display(crate::keybinds::BackupAction::OpenSettings),
-                self.keybinds.backup_keys_display(crate::keybinds::BackupAction::Back),
+                self.keybinds
+                    .backup_keys_display(crate::keybinds::BackupAction::EnterCommit),
+                self.keybinds
+                    .backup_keys_display(crate::keybinds::BackupAction::Push),
+                self.keybinds
+                    .backup_keys_display(crate::keybinds::BackupAction::Refresh),
+                self.keybinds
+                    .backup_keys_display(crate::keybinds::BackupAction::OpenSettings),
+                self.keybinds
+                    .backup_keys_display(crate::keybinds::BackupAction::Back),
             );
         }
         self.return_mode = Some(self.mode);
         self.mode = ViewMode::Backup;
-        debug_log!(self, Info, "view", "View: {:?} → Backup (opened)", self.return_mode.as_ref().unwrap_or(&ViewMode::List));
+        debug_log!(
+            self,
+            Info,
+            "view",
+            "View: {:?} → Backup (opened)",
+            self.return_mode.as_ref().unwrap_or(&ViewMode::List)
+        );
     }
 
     pub fn open_draw_view(&mut self) {
@@ -140,7 +180,13 @@ impl App {
         ));
         self.return_mode = Some(self.mode);
         self.mode = ViewMode::Draw;
-        debug_log!(self, Info, "view", "View: {:?} → Draw (opened)", self.return_mode.as_ref().unwrap_or(&ViewMode::List));
+        debug_log!(
+            self,
+            Info,
+            "view",
+            "View: {:?} → Draw (opened)",
+            self.return_mode.as_ref().unwrap_or(&ViewMode::List)
+        );
     }
 
     pub fn close_draw_view(&mut self) {
@@ -166,7 +212,13 @@ impl App {
                 self.canvas_state = Some(state);
                 self.return_mode = Some(self.mode);
                 self.mode = ViewMode::Canvas;
-                debug_log!(self, Info, "view", "View: {:?} → Canvas (opened)", self.return_mode.as_ref().unwrap_or(&ViewMode::List));
+                debug_log!(
+                    self,
+                    Info,
+                    "view",
+                    "View: {:?} → Canvas (opened)",
+                    self.return_mode.as_ref().unwrap_or(&ViewMode::List)
+                );
                 self.editor.editing_id = Some(self.notes[*summary_idx].id.clone());
                 self.set_default_status();
             } else {
@@ -264,7 +316,10 @@ impl App {
                     self.set_temporary_status_static("Trash is empty");
                     return;
                 }
-                self.popups.active = Some(crate::popups::ActivePopup::TrashView(TrashView { items, selected: 0 }));
+                self.popups.active = Some(crate::popups::ActivePopup::TrashView(TrashView {
+                    items,
+                    selected: 0,
+                }));
             }
             Err(e) => {
                 self.set_temporary_status(&format!("Failed to open trash: {e}"));
@@ -274,4 +329,5 @@ impl App {
 
     pub fn close_trash_view(&mut self) {
         self.popups.active = None;
-    }}
+    }
+}

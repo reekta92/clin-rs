@@ -12,7 +12,6 @@ pub fn handle_event(
     keybinds: &Keybinds,
     config: &crate::config::ClinConfig,
 ) -> anyhow::Result<Option<DrawEventAction>> {
-
     if let Some((idx, textarea)) = &mut app.text_editor {
         app.seq_matcher.clear();
         match ev {
@@ -88,9 +87,9 @@ pub fn handle_event(
                     app.active_tool = DrawTool::Erase;
                     return Ok(None);
                 }
-               DrawAction::Help => {
-                   return Ok(Some(DrawEventAction::OpenHelp));
-               }
+                DrawAction::Help => {
+                    return Ok(Some(DrawEventAction::OpenHelp));
+                }
                 DrawAction::ToggleGrid => {
                     app.show_grid = !app.show_grid;
                     return Ok(None);
@@ -128,7 +127,11 @@ fn cycle_shape_type(app: &mut DrawAppState, delta: i32) {
     app.active_shape_type = shapes[next_idx];
 }
 
-fn handle_mouse(ev: MouseEvent, app: &mut DrawAppState, config: &crate::config::ClinConfig) -> anyhow::Result<Option<DrawEventAction>> {
+fn handle_mouse(
+    ev: MouseEvent,
+    app: &mut DrawAppState,
+    config: &crate::config::ClinConfig,
+) -> anyhow::Result<Option<DrawEventAction>> {
     let area = app.last_area;
 
     if app.show_shape_selector {

@@ -2,8 +2,6 @@ use super::*;
 use crate::list_view::*;
 
 impl App {
-
-
     pub fn toggle_external_editor_mode(&mut self) {
         self.editor.external_editor_enabled = !self.editor.external_editor_enabled;
         let msg = if self.editor.external_editor_enabled {
@@ -113,11 +111,13 @@ impl App {
             crate::config::PreviewPosition::Left => crate::config::PreviewPosition::Right,
             crate::config::PreviewPosition::Right => crate::config::PreviewPosition::Left,
         };
-        self.set_temporary_status_static(if matches!(self.preview_position, crate::config::PreviewPosition::Left) {
-            "Preview moved to left"
-        } else {
-            "Preview moved to right"
-        });
+        self.set_temporary_status_static(
+            if matches!(self.preview_position, crate::config::PreviewPosition::Left) {
+                "Preview moved to left"
+            } else {
+                "Preview moved to right"
+            },
+        );
         self.persist_list_layout();
     }
 
@@ -126,11 +126,73 @@ impl App {
             crate::config::CalendarPosition::Top => crate::config::CalendarPosition::Bottom,
             crate::config::CalendarPosition::Bottom => crate::config::CalendarPosition::Top,
         };
-        self.set_temporary_status_static(if matches!(self.calendar_position, crate::config::CalendarPosition::Top) {
-            "Calendar moved to top"
+        self.set_temporary_status_static(
+            if matches!(self.calendar_position, crate::config::CalendarPosition::Top) {
+                "Calendar moved to top"
+            } else {
+                "Calendar moved to bottom"
+            },
+        );
+        self.persist_list_layout();
+    }
+
+    pub fn active_strip_sections(&self) -> Vec<crate::config::NotesSection> {
+        let mut v: Vec<_> = self
+            .list
+            .sections
+            .iter()
+            .copied()
+            .filter(|s| {
+                !matches!(s, crate::config::NotesSection::Goals) || self.config.goals.enabled
+            })
+            .collect();
+        if v.is_empty() {
+            v.push(crate::config::NotesSection::Calendar);
+        }
+        v
+    }
+
+    pub fn active_strip_sections_for(&self, width: u16) -> Vec<crate::config::NotesSection> {
+        let mut v = self.active_strip_sections();
+        if width < 42 {
+            v.retain(|s| !matches!(s, crate::config::NotesSection::Goals));
+        }
+        if v.is_empty() {
+            v.push(crate::config::NotesSection::Calendar);
+        }
+        v
+    }
+
+    pub fn swap_section_order(&mut self) {
+        if self.list.sections.len() >= 2 {
+            self.list.sections.reverse();
+            self.set_temporary_status_static("Sections swapped");
+            self.persist_list_layout();
+        }
+    }
+
+    pub fn cycle_section(&mut self, slot: usize) {
+        if slot >= self.list.sections.len() {
+            return;
+        }
+        self.list.sections[slot] = match self.list.sections[slot] {
+            crate::config::NotesSection::Calendar => crate::config::NotesSection::Goals,
+            crate::config::NotesSection::Goals => crate::config::NotesSection::Draw,
+            crate::config::NotesSection::Draw => crate::config::NotesSection::Graf,
+            crate::config::NotesSection::Graf => crate::config::NotesSection::Calendar,
+        };
+        self.set_temporary_status_static("Section changed");
+        self.persist_list_layout();
+    }
+
+    pub fn toggle_section(&mut self) {
+        if self.list.sections.len() < 2 {
+            self.list.sections.push(crate::config::NotesSection::Goals);
+            self.set_temporary_status_static("Section added");
         } else {
-            "Calendar moved to bottom"
-        });
+            self.list.sections.truncate(1);
+            self.set_temporary_status_static("Section removed");
+        }
         self.persist_list_layout();
     }
 
@@ -140,6 +202,7 @@ impl App {
             config.list.calendar_height = self.list.calendar_height;
             config.list.preview_position = self.preview_position;
             config.list.calendar_position = self.calendar_position;
+            config.list.sections = self.list.sections.clone();
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save layout: {e}"));
             }
@@ -377,5 +440,146 @@ impl App {
             self.goals_progress = self.load_goals_progress();
         }
         &mut self.goals_progress
+    }
+
+    pub fn ensure_draw_preview(&mut self) {
+        let target = self
+            .get_selected_note_id()
+            .filter(|id| id.ends_with(".draw"))
+            .or_else(|| {
+                self.notes
+                    .iter()
+                    .filter(|n| n.id.ends_with(".draw"))
+                    .max_by_key(|n| n.updated_at)
+                    .map(|n| n.id.clone())
+            });
+        let target = match target {
+            Some(id) => id,
+            None => {
+                if !matches!(
+                    self.draw_preview.as_ref().map(|(id, _)| id.as_str()),
+                    Some("")
+                ) {
+                    self.draw_preview =
+                        Some((String::new(), crate::draw::state::DrawData::default()));
+                }
+                return;
+            }
+        };
+        if self
+            .draw_preview
+            .as_ref()
+            .map(|(id, _)| id == &target)
+            .unwrap_or(false)
+        {
+            return;
+        }
+        let data = std::fs::read_to_string(self.storage.note_path(&target))
+            .ok()
+            .and_then(|s| serde_json::from_str::<crate::draw::state::DrawData>(&s).ok())
+            .unwrap_or_default();
+        self.draw_preview = Some((target, data));
+    }
+
+    pub fn ensure_graph_preview(&mut self) {
+        let sig = self.notes.len();
+        if self.graph_preview.is_some() && self.graph_preview_sig == sig {
+            return;
+        }
+        match crate::graf::graph::GraphState::new(&self.storage, &self.config) {
+            Ok(mut gs) => {
+                if !gs.is_settled {
+                    for _ in 0..300 {
+                        crate::graf::physics::simulation_step(&mut gs, 0.01, 0.016);
+                        if gs.is_settled {
+                            break;
+                        }
+                    }
+                }
+                gs.viewport = gs
+                    .viewport
+                    .auto_fit_from_graph(gs.simulation.get_graph(), 1.4);
+                gs.graph_bounds =
+                    crate::graf::render::compute_graph_bounds(gs.simulation.get_graph());
+                self.graph_preview = Some(gs);
+                self.graph_preview_sig = sig;
+            }
+            Err(_) => {
+                self.graph_preview = None;
+                self.graph_preview_sig = sig;
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_app() -> App {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let data_dir = temp_dir.path().join("data");
+        let config_dir = temp_dir.path().join("config");
+        let notes_dir = temp_dir.path().join("notes");
+        let templates_dir = temp_dir.path().join("templates");
+        std::fs::create_dir_all(&data_dir).unwrap();
+        std::fs::create_dir_all(&config_dir).unwrap();
+        std::fs::create_dir_all(&notes_dir).unwrap();
+        std::fs::create_dir_all(&templates_dir).unwrap();
+
+        let storage = crate::storage::Storage {
+            data_dir,
+            config_dir,
+            notes_dir,
+            templates_dir,
+            key: [0u8; 32],
+        };
+        App::new(storage).unwrap()
+    }
+
+    #[test]
+    fn test_swap_section_order_reverses() {
+        let mut app = make_app();
+        app.list.sections = vec![
+            crate::config::NotesSection::Calendar,
+            crate::config::NotesSection::Draw,
+        ];
+        app.swap_section_order();
+        assert_eq!(app.list.sections[0], crate::config::NotesSection::Draw);
+        assert_eq!(app.list.sections[1], crate::config::NotesSection::Calendar);
+    }
+
+    #[test]
+    fn test_swap_section_order_noop_on_single() {
+        let mut app = make_app();
+        app.list.sections = vec![crate::config::NotesSection::Calendar];
+        app.swap_section_order();
+        assert_eq!(app.list.sections.len(), 1);
+        assert_eq!(app.list.sections[0], crate::config::NotesSection::Calendar);
+    }
+
+    #[test]
+    fn test_cycle_section_calendar_to_goals() {
+        let mut app = make_app();
+        app.list.sections = vec![crate::config::NotesSection::Calendar];
+        app.cycle_section(0);
+        assert_eq!(app.list.sections[0], crate::config::NotesSection::Goals);
+    }
+
+    #[test]
+    fn test_cycle_section_graf_wraps_to_calendar() {
+        let mut app = make_app();
+        app.list.sections = vec![crate::config::NotesSection::Graf];
+        app.cycle_section(0);
+        assert_eq!(app.list.sections[0], crate::config::NotesSection::Calendar);
+    }
+
+    #[test]
+    fn test_cycle_section_out_of_range_noop() {
+        let mut app = make_app();
+        app.list.sections = vec![crate::config::NotesSection::Calendar];
+        app.cycle_section(5); // out of range
+        assert_eq!(app.list.sections.len(), 1);
+        assert_eq!(app.list.sections[0], crate::config::NotesSection::Calendar);
     }
 }

@@ -3,8 +3,6 @@ use std::borrow::Cow;
 use std::time::{Duration, Instant};
 
 impl App {
-
-
     pub fn default_status_text(&self) -> Cow<'static, str> {
         Cow::Borrowed("")
     }
@@ -30,4 +28,5 @@ impl App {
         {
             self.set_default_status();
         }
-    }}
+    }
+}

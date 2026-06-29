@@ -1,15 +1,13 @@
-use crate::debug_log;
 use super::*;
+use crate::debug_log;
 use crate::list_view::*;
 use crate::storage::NoteSummary;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::borrow::Cow;
 use std::time::{Duration, Instant};
 
 impl App {
-
-
     /// Spawns a background thread that streams note summaries in batches.
     /// Caller must drain the receiver in the main loop via merge_loaded.
     pub fn start_background_load(&self) -> mpsc::Receiver<LoadBatch> {
@@ -92,7 +90,12 @@ impl App {
                 self.initial_load_done = true;
                 self.loading_total = 0;
                 self.status = Cow::Borrowed("");
-                debug_log!(self, Info, "lifecycle", "Initial note load complete: {n} notes");
+                debug_log!(
+                    self,
+                    Info,
+                    "lifecycle",
+                    "Initial note load complete: {n} notes"
+                );
                 true
             }
         }
@@ -413,7 +416,12 @@ impl App {
                 let is_canvas = *is_canvas;
                 let id = &self.notes[summary_idx].id;
                 let is_clin = id.ends_with(".clin");
-                debug_log!(self, Debug, "preview", "Preview updated for {id} (is_draw={is_draw}, is_canvas={is_canvas}, is_clin={is_clin})");
+                debug_log!(
+                    self,
+                    Debug,
+                    "preview",
+                    "Preview updated for {id} (is_draw={is_draw}, is_canvas={is_canvas}, is_clin={is_clin})"
+                );
                 if self.preview_encryption && is_clin {
                     self.list.preview_content = None;
                     self.list.preview_content_index = Some(self.list.visual_index);
@@ -592,4 +600,5 @@ impl App {
         renderer.render(&content, width);
         self.editor.md_preview_renderer = Some(renderer);
         self.editor.preview_content_width = Some(width);
-    }}
+    }
+}

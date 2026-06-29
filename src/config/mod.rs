@@ -8,14 +8,14 @@ use directories::ProjectDirs;
 #[cfg(test)]
 use parking_lot::Mutex;
 
-pub mod types;
-pub mod defaults;
 pub mod de;
+pub mod defaults;
+pub mod merge;
 pub mod path;
 pub mod structs;
-pub mod merge;
+pub mod types;
 
-pub use {types::*, defaults::*, de::*, path::*, structs::*, merge::*};
+pub use {de::*, defaults::*, merge::*, path::*, structs::*, types::*};
 
 #[path = "../graf/themes.rs"]
 pub mod themes;
@@ -46,7 +46,6 @@ fn storage_path_override() -> Option<PathBuf> {
 
 // ── ClinConfig impl ─────────────────────────────────────────────────────────
 
-
 impl ClinConfig {
     /// Returns true if key sequences are enabled: either explicitly via config
     /// or because the active keybind preset uses multi-key sequences.
@@ -56,7 +55,10 @@ impl ClinConfig {
     /// Returns true if count-prefix is enabled for the active keybind preset
     /// (Vim and Helix only — matching `:q`/`gg`/`ge` count semantics).
     pub fn counts_enabled(&self) -> bool {
-        matches!(self.core.keybind_preset, KeybindPreset::Vim | KeybindPreset::Helix)
+        matches!(
+            self.core.keybind_preset,
+            KeybindPreset::Vim | KeybindPreset::Helix
+        )
     }
 
     pub fn config_path() -> Result<PathBuf> {
@@ -287,10 +289,14 @@ impl ClinConfig {
             let migrated_content =
                 toml::to_string_pretty(&value).context("failed to serialize migrated config")?;
             let _ = crate::fsutil::atomic_write(&config_path, migrated_content.as_bytes());
-            return toml::from_str(&migrated_content).context("failed to parse migrated config");
+            let mut config: ClinConfig =
+                toml::from_str(&migrated_content).context("failed to parse migrated config")?;
+            config.normalize_sections();
+            return Ok(config);
         }
 
-        let config: ClinConfig = toml::from_str(&content).context("failed to parse config")?;
+        let mut config: ClinConfig = toml::from_str(&content).context("failed to parse config")?;
+        config.normalize_sections();
         Ok(config)
     }
 
@@ -318,7 +324,10 @@ impl ClinConfig {
         if let toml::Value::Table(toml_tbl) = self_value {
             for (k, v) in toml_tbl {
                 if doc.contains_key(&k) {
-                    merge::merge_toml_value(doc.get_mut(&k).expect("key presence already checked"), &v);
+                    merge::merge_toml_value(
+                        doc.get_mut(&k).expect("key presence already checked"),
+                        &v,
+                    );
                 } else {
                     doc.insert(&k, merge::toml_value_to_item(&v));
                 }
@@ -400,6 +409,16 @@ impl ClinConfig {
         colors
     }
 
+    fn normalize_sections(&mut self) {
+        let secs = &mut self.list.sections;
+        let mut seen = std::collections::HashSet::new();
+        secs.retain(|s| seen.insert(*s));
+        secs.truncate(2);
+        if secs.is_empty() {
+            secs.extend(default_sections());
+        }
+    }
+
     pub fn validate(&self) -> Vec<String> {
         let mut errs = Vec::new();
         if self.graf.visual.label_max_length < 1 || self.graf.visual.label_max_length > 60 {
@@ -419,6 +438,23 @@ impl ClinConfig {
                 "graf.visual.edge_thickness must be 1-3, got {}",
                 self.graf.visual.edge_thickness
             ));
+        }
+        if self.list.sections.len() > 2 {
+            errs.push(format!(
+                "list.sections has {} entries, max is 2",
+                self.list.sections.len()
+            ));
+        }
+        {
+            let mut seen = std::collections::HashSet::new();
+            for s in &self.list.sections {
+                if !seen.insert(s) {
+                    errs.push(format!("list.sections contains duplicate: {s}"));
+                }
+            }
+        }
+        if self.list.sections.is_empty() {
+            errs.push("list.sections is empty, will use defaults".to_string());
         }
         errs
     }
@@ -784,5 +820,78 @@ show_status_bar = false
         let saved_content = fs::read_to_string(&config_file_path).unwrap();
         assert!(saved_content.contains("# Enable mouse support (clicking, scrolling, panning)."));
         assert!(saved_content.contains("mouse_enabled = false"));
+    }
+
+    #[test]
+    fn test_sections_default() {
+        let toml_str = r#"
+[list]
+"#;
+        let config: ClinConfig = toml::from_str(toml_str).unwrap();
+        assert_eq!(
+            config.list.sections,
+            vec![NotesSection::Calendar, NotesSection::Goals]
+        );
+    }
+
+    #[test]
+    fn test_sections_roundtrip() {
+        let toml_str = r#"
+[list]
+sections = ["draw", "graf"]
+"#;
+        let config: ClinConfig = toml::from_str(toml_str).unwrap();
+        assert_eq!(
+            config.list.sections,
+            vec![NotesSection::Draw, NotesSection::Graf]
+        );
+
+        let serialized = toml::to_string(&config).unwrap();
+        let parsed: ClinConfig = toml::from_str(&serialized).unwrap();
+        assert_eq!(
+            parsed.list.sections,
+            vec![NotesSection::Draw, NotesSection::Graf]
+        );
+    }
+
+    #[test]
+    fn test_sections_clamp() {
+        let toml_str = r#"
+[list]
+sections = ["calendar", "goals", "draw"]
+"#;
+        let mut config: ClinConfig = toml::from_str(toml_str).unwrap();
+        config.normalize_sections();
+        assert_eq!(config.list.sections.len(), 2);
+        assert_eq!(config.list.sections[0], NotesSection::Calendar);
+        assert_eq!(config.list.sections[1], NotesSection::Goals);
+    }
+
+    #[test]
+    fn test_sections_empty_fallback() {
+        let toml_str = r#"
+[list]
+sections = []
+"#;
+        let mut config: ClinConfig = toml::from_str(toml_str).unwrap();
+        config.normalize_sections();
+        assert_eq!(
+            config.list.sections,
+            vec![NotesSection::Calendar, NotesSection::Goals]
+        );
+    }
+
+    #[test]
+    fn test_sections_duplicates_removed() {
+        let toml_str = r#"
+[list]
+sections = ["draw", "draw", "graf"]
+"#;
+        let mut config: ClinConfig = toml::from_str(toml_str).unwrap();
+        config.normalize_sections();
+        // "draw" kept once, truncated to 2 → [draw, graf]
+        assert_eq!(config.list.sections.len(), 2);
+        assert_eq!(config.list.sections[0], NotesSection::Draw);
+        assert_eq!(config.list.sections[1], NotesSection::Graf);
     }
 }
