@@ -504,6 +504,13 @@ impl App {
         app.goals_progress = app.load_goals_progress();
         app.list.folder_expanded.insert(String::new());
         app.refresh_notes()?;
+        if app
+            .list
+            .sections
+            .contains(&crate::config::NotesSection::Graf)
+        {
+            app.ensure_graph_preview();
+        }
         Ok(app)
     }
 

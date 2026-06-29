@@ -90,6 +90,14 @@ impl App {
                 self.initial_load_done = true;
                 self.loading_total = 0;
                 self.status = Cow::Borrowed("");
+                // Pre-warm graph preview so the first render doesn't block
+                if self
+                    .list
+                    .sections
+                    .contains(&crate::config::NotesSection::Graf)
+                {
+                    self.ensure_graph_preview();
+                }
                 debug_log!(
                     self,
                     Info,
