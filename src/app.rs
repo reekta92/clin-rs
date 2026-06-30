@@ -1563,12 +1563,10 @@ mod tests {
         let mut app = App::new(storage).expect("value is present");
 
         // Write a clean base config first so it has tokyo_night
-        let config_content = r#"[ui]
-theme = "tokyo_night"
-"#;
+        let config_content = crate::config::merge::default_config_content()
+            .replace("theme = \"default\"", "theme = \"tokyo_night\"");
         std::fs::write(&config_path, config_content).expect("value is present");
         app.reload_theme();
-
         // Verify the theme colors changed
         assert_ne!(app.app_theme.accent, ratatui::style::Color::Cyan);
     }
