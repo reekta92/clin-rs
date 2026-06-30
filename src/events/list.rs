@@ -367,240 +367,233 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         }
         return;
     }
-    if let Some(crate::popups::ActivePopup::Goals(mut popup)) = app.popups.active.take() {
-        let area = crate::ui::centered_rect(crate::ui::PopupSize::Prompt, terminal_area);
-        if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
-            && !contains_cell(area, mouse_event.column, mouse_event.row)
-        {
-            return;
-        }
-        if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
-            let inner = area.inner(Margin {
-                vertical: 1,
-                horizontal: 1,
-            });
-            move_textarea_cursor_to_mouse(
-                &mut popup.input,
-                inner,
-                mouse_event.column,
-                mouse_event.row,
-            );
-        }
-        app.popups.active = Some(crate::popups::ActivePopup::Goals(popup));
-        return;
-    }
-
-    if let Some(crate::popups::ActivePopup::NoteRename(mut popup)) = app.popups.active.take() {
-        let area = crate::ui::centered_rect(crate::ui::PopupSize::Prompt, terminal_area);
-        if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
-            && !contains_cell(area, mouse_event.column, mouse_event.row)
-        {
-            return;
-        }
-        if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
-            let inner = area.inner(Margin {
-                vertical: 1,
-                horizontal: 1,
-            });
-            move_textarea_cursor_to_mouse(
-                &mut popup.input,
-                inner,
-                mouse_event.column,
-                mouse_event.row,
-            );
-        }
-        app.popups.active = Some(crate::popups::ActivePopup::NoteRename(popup));
-        return;
-    }
-
-    if let Some(crate::popups::ActivePopup::CreateNote(mut popup, format)) =
-        app.popups.active.take()
-    {
-        let area = crate::ui::centered_rect(crate::ui::PopupSize::Prompt, terminal_area);
-        if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
-            && !contains_cell(area, mouse_event.column, mouse_event.row)
-        {
-            return;
-        }
-        if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
-            let inner = area.inner(Margin {
-                vertical: 1,
-                horizontal: 1,
-            });
-            move_textarea_cursor_to_mouse(
-                &mut popup.input,
-                inner,
-                mouse_event.column,
-                mouse_event.row,
-            );
-        }
-        app.popups.active = Some(crate::popups::ActivePopup::CreateNote(popup, format));
-        return;
-    }
-
-    if let Some(crate::popups::ActivePopup::Import(mut popup)) = app.popups.active.take() {
-        let area = crate::ui::centered_rect(crate::ui::PopupSize::Large, terminal_area);
-        if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
-            && !contains_cell(area, mouse_event.column, mouse_event.row)
-        {
-            return;
-        }
-        if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
-            let inner = area.inner(Margin {
-                vertical: 1,
-                horizontal: 1,
-            });
-            move_textarea_cursor_to_mouse(
-                &mut popup.input,
-                inner,
-                mouse_event.column,
-                mouse_event.row,
-            );
-        }
-        app.popups.active = Some(crate::popups::ActivePopup::Import(popup));
-        return;
-    }
-
-    if let Some(crate::popups::ActivePopup::Folder(mut popup)) = app.popups.active.take() {
-        let area = crate::ui::centered_rect(crate::ui::PopupSize::Prompt, terminal_area);
-        if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
-            && !contains_cell(area, mouse_event.column, mouse_event.row)
-        {
-            return;
-        }
-        if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
-            let inner = area.inner(Margin {
-                vertical: 1,
-                horizontal: 1,
-            });
-            move_textarea_cursor_to_mouse(
-                &mut popup.input,
-                inner,
-                mouse_event.column,
-                mouse_event.row,
-            );
-        }
-        app.popups.active = Some(crate::popups::ActivePopup::Folder(popup));
-        return;
-    }
-
-    if let Some(crate::popups::ActivePopup::Tag(mut popup)) = app.popups.active.take() {
-        let suggestion_height = if popup.suggestions.is_empty() {
-            0
-        } else {
-            (popup.suggestions.len() as u16).clamp(1, 5)
-        };
-        let popup_area = crate::ui::centered_rect(crate::ui::PopupSize::Large, terminal_area);
-        if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
-            && !contains_cell(popup_area, mouse_event.column, mouse_event.row)
-        {
-            return;
-        }
-        let content = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Min(1), Constraint::Length(1)])
-            .split(popup_area)[0];
-
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(3 + suggestion_height),
-                Constraint::Min(3),
-            ])
-            .split(content);
-
-        let input_chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Length(3), Constraint::Min(0)])
-            .split(chunks[0]);
-
-        if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
-            if contains_cell(chunks[1], mouse_event.column, mouse_event.row) {
-                if !popup.all_tags.is_empty() {
-                    let row = mouse_event
-                        .row
-                        .saturating_sub(chunks[1].y)
-                        .saturating_sub(1) as usize;
-                    popup.all_tags_selected = row.min(popup.all_tags.len() - 1);
-                    popup.focus = crate::popups::TagPopupFocus::AllTagsList;
-                }
-            } else if !popup.suggestions.is_empty()
-                && contains_cell(input_chunks[1], mouse_event.column, mouse_event.row)
-            {
-                let row = mouse_event.row.saturating_sub(input_chunks[1].y) as usize;
-                popup.suggestion_index = row.min(popup.suggestions.len() - 1);
-                app.popups.active = Some(crate::popups::ActivePopup::Tag(popup));
-                app.accept_tag_suggestion();
-                return;
-            } else if contains_cell(input_chunks[0], mouse_event.column, mouse_event.row) {
-                popup.focus = crate::popups::TagPopupFocus::Input;
-                move_textarea_cursor_to_mouse(
-                    &mut popup.input,
-                    input_chunks[0],
-                    mouse_event.column,
-                    mouse_event.row,
-                );
-            }
-        }
-        app.popups.active = Some(crate::popups::ActivePopup::Tag(popup));
-        return;
-    }
-
-    if let Some(crate::popups::ActivePopup::Theme(mut popup)) = app.popups.active.take() {
-        let popup_area = crate::ui::centered_rect(crate::ui::PopupSize::Medium, terminal_area);
-        let content = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Min(1), Constraint::Length(1)])
-            .split(popup_area)[0];
-
-        if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
-            && !contains_cell(popup_area, mouse_event.column, mouse_event.row)
-        {
-            return;
-        }
-
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Min(0),
-                Constraint::Length(3),
-                Constraint::Length(3),
-            ])
-            .split(content);
-
-        if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
-            if contains_cell(chunks[0], mouse_event.column, mouse_event.row) {
-                let row = mouse_event
-                    .row
-                    .saturating_sub(chunks[0].y)
-                    .saturating_sub(1) as usize;
-                if !popup.themes.is_empty() {
-                    let clicked = row.min(popup.themes.len() - 1);
-                    let was_selected = popup.selected == clicked
-                        && matches!(popup.focus, crate::app::ThemePopupFocus::ThemeList);
-                    popup.selected = clicked;
-                    popup.focus = crate::app::ThemePopupFocus::ThemeList;
-                    app.popups.active = Some(crate::popups::ActivePopup::Theme(popup));
-                    app.select_theme();
-                    if was_selected {
-                        app.close_theme_popup();
-                    }
+    if let Some(popup) = app.popups.active.take() {
+        match popup {
+            crate::popups::ActivePopup::Goals(mut p) => {
+                let area = crate::ui::centered_rect(crate::ui::PopupSize::Prompt, terminal_area);
+                if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
+                    && !contains_cell(area, mouse_event.column, mouse_event.row)
+                {
                     return;
                 }
-            } else if contains_cell(chunks[1], mouse_event.column, mouse_event.row) {
-                popup.focus = crate::app::ThemePopupFocus::GeneralBg;
-                app.popups.active = Some(crate::popups::ActivePopup::Theme(popup));
-                app.select_theme();
-                return;
-            } else if contains_cell(chunks[2], mouse_event.column, mouse_event.row) {
-                popup.focus = crate::app::ThemePopupFocus::GraphBg;
-                app.popups.active = Some(crate::popups::ActivePopup::Theme(popup));
-                app.select_theme();
+                if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
+                    let inner = area.inner(Margin {
+                        vertical: 1,
+                        horizontal: 1,
+                    });
+                    move_textarea_cursor_to_mouse(
+                        &mut p.input,
+                        inner,
+                        mouse_event.column,
+                        mouse_event.row,
+                    );
+                }
+                app.popups.active = Some(crate::popups::ActivePopup::Goals(p));
                 return;
             }
+            crate::popups::ActivePopup::NoteRename(mut p) => {
+                let area = crate::ui::centered_rect(crate::ui::PopupSize::Prompt, terminal_area);
+                if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
+                    && !contains_cell(area, mouse_event.column, mouse_event.row)
+                {
+                    return;
+                }
+                if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
+                    let inner = area.inner(Margin {
+                        vertical: 1,
+                        horizontal: 1,
+                    });
+                    move_textarea_cursor_to_mouse(
+                        &mut p.input,
+                        inner,
+                        mouse_event.column,
+                        mouse_event.row,
+                    );
+                }
+                app.popups.active = Some(crate::popups::ActivePopup::NoteRename(p));
+                return;
+            }
+            crate::popups::ActivePopup::CreateNote(mut p, format) => {
+                let area = crate::ui::centered_rect(crate::ui::PopupSize::Prompt, terminal_area);
+                if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
+                    && !contains_cell(area, mouse_event.column, mouse_event.row)
+                {
+                    return;
+                }
+                if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
+                    let inner = area.inner(Margin {
+                        vertical: 1,
+                        horizontal: 1,
+                    });
+                    move_textarea_cursor_to_mouse(
+                        &mut p.input,
+                        inner,
+                        mouse_event.column,
+                        mouse_event.row,
+                    );
+                }
+                app.popups.active = Some(crate::popups::ActivePopup::CreateNote(p, format));
+                return;
+            }
+            crate::popups::ActivePopup::Import(mut p) => {
+                let area = crate::ui::centered_rect(crate::ui::PopupSize::Large, terminal_area);
+                if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
+                    && !contains_cell(area, mouse_event.column, mouse_event.row)
+                {
+                    return;
+                }
+                if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
+                    let inner = area.inner(Margin {
+                        vertical: 1,
+                        horizontal: 1,
+                    });
+                    move_textarea_cursor_to_mouse(
+                        &mut p.input,
+                        inner,
+                        mouse_event.column,
+                        mouse_event.row,
+                    );
+                }
+                app.popups.active = Some(crate::popups::ActivePopup::Import(p));
+                return;
+            }
+            crate::popups::ActivePopup::Folder(mut p) => {
+                let area = crate::ui::centered_rect(crate::ui::PopupSize::Prompt, terminal_area);
+                if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
+                    && !contains_cell(area, mouse_event.column, mouse_event.row)
+                {
+                    return;
+                }
+                if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
+                    let inner = area.inner(Margin {
+                        vertical: 1,
+                        horizontal: 1,
+                    });
+                    move_textarea_cursor_to_mouse(
+                        &mut p.input,
+                        inner,
+                        mouse_event.column,
+                        mouse_event.row,
+                    );
+                }
+                app.popups.active = Some(crate::popups::ActivePopup::Folder(p));
+                return;
+            }
+            crate::popups::ActivePopup::Tag(mut p) => {
+                let suggestion_height = if p.suggestions.is_empty() {
+                    0
+                } else {
+                    (p.suggestions.len() as u16).clamp(1, 5)
+                };
+                let popup_area = crate::ui::centered_rect(crate::ui::PopupSize::Large, terminal_area);
+                if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
+                    && !contains_cell(popup_area, mouse_event.column, mouse_event.row)
+                {
+                    return;
+                }
+                let content = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([Constraint::Min(1), Constraint::Length(1)])
+                    .split(popup_area)[0];
+                let chunks = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([
+                        Constraint::Length(3 + suggestion_height),
+                        Constraint::Min(3),
+                    ])
+                    .split(content);
+                let input_chunks = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([Constraint::Length(3), Constraint::Min(0)])
+                    .split(chunks[0]);
+                if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
+                    if contains_cell(chunks[1], mouse_event.column, mouse_event.row) {
+                        if !p.all_tags.is_empty() {
+                            let row = mouse_event
+                                .row
+                                .saturating_sub(chunks[1].y)
+                                .saturating_sub(1) as usize;
+                            p.all_tags_selected = row.min(p.all_tags.len() - 1);
+                            p.focus = crate::popups::TagPopupFocus::AllTagsList;
+                        }
+                    } else if !p.suggestions.is_empty()
+                        && contains_cell(input_chunks[1], mouse_event.column, mouse_event.row)
+                    {
+                        let row = mouse_event.row.saturating_sub(input_chunks[1].y) as usize;
+                        p.suggestion_index = row.min(p.suggestions.len() - 1);
+                        app.popups.active = Some(crate::popups::ActivePopup::Tag(p));
+                        app.accept_tag_suggestion();
+                        return;
+                    } else if contains_cell(input_chunks[0], mouse_event.column, mouse_event.row) {
+                        p.focus = crate::popups::TagPopupFocus::Input;
+                        move_textarea_cursor_to_mouse(
+                            &mut p.input,
+                            input_chunks[0],
+                            mouse_event.column,
+                            mouse_event.row,
+                        );
+                    }
+                }
+                app.popups.active = Some(crate::popups::ActivePopup::Tag(p));
+                return;
+            }
+            crate::popups::ActivePopup::Theme(mut p) => {
+                let popup_area = crate::ui::centered_rect(crate::ui::PopupSize::Medium, terminal_area);
+                let content = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([Constraint::Min(1), Constraint::Length(1)])
+                    .split(popup_area)[0];
+                if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
+                    && !contains_cell(popup_area, mouse_event.column, mouse_event.row)
+                {
+                    return;
+                }
+                let chunks = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([
+                        Constraint::Min(0),
+                        Constraint::Length(3),
+                        Constraint::Length(3),
+                    ])
+                    .split(content);
+                if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
+                    if contains_cell(chunks[0], mouse_event.column, mouse_event.row) {
+                        let row = mouse_event
+                            .row
+                            .saturating_sub(chunks[0].y)
+                            .saturating_sub(1) as usize;
+                        if !p.themes.is_empty() {
+                            let clicked = row.min(p.themes.len() - 1);
+                            let was_selected = p.selected == clicked
+                                && matches!(p.focus, crate::app::ThemePopupFocus::ThemeList);
+                            p.selected = clicked;
+                            p.focus = crate::app::ThemePopupFocus::ThemeList;
+                            app.popups.active = Some(crate::popups::ActivePopup::Theme(p));
+                            app.select_theme();
+                            if was_selected {
+                                app.close_theme_popup();
+                            }
+                            return;
+                        }
+                    } else if contains_cell(chunks[1], mouse_event.column, mouse_event.row) {
+                        p.focus = crate::app::ThemePopupFocus::GeneralBg;
+                        app.popups.active = Some(crate::popups::ActivePopup::Theme(p));
+                        app.select_theme();
+                        return;
+                    } else if contains_cell(chunks[2], mouse_event.column, mouse_event.row) {
+                        p.focus = crate::app::ThemePopupFocus::GraphBg;
+                        app.popups.active = Some(crate::popups::ActivePopup::Theme(p));
+                        app.select_theme();
+                        return;
+                    }
+                }
+                app.popups.active = Some(crate::popups::ActivePopup::Theme(p));
+                return;
+            }
+            other => {
+                app.popups.active = Some(other);
+            }
         }
-        app.popups.active = Some(crate::popups::ActivePopup::Theme(popup));
-        return;
     }
 
     if let Some(mut palette) = app.command_palette.take() {
