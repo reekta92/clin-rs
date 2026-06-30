@@ -48,13 +48,11 @@ impl Action for DecryptNoteAction {
 
         match app.storage.decrypt_note(&note_id) {
             Ok(new_id) => {
-                
                 app.list.folder_cache = None;
                 let _ = app.refresh_notes();
                 app.set_temporary_status(&format!("Note decrypted: {new_id}"));
             }
             Err(e) => {
-                
                 app.set_temporary_status(&format!("Failed to decrypt: {e:#}"));
             }
         }

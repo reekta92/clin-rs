@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use parking_lot::RwLock;
+use std::sync::Arc;
 use std::time::Instant;
 
 use crossterm::event::{KeyEvent, MouseButton, MouseEvent, MouseEventKind};

@@ -247,7 +247,7 @@ pub fn handle_global_popups_and_palette(
                 && let Some(item) = palette.items.get(selected_idx)
             {
                 let action_id = item.id.clone();
-                
+
                 let note_id = palette.context_note_id.clone();
                 if let Err(e) = crate::actions::execute_action(&action_id, app, note_id.as_deref())
                 {
@@ -272,7 +272,7 @@ pub fn handle_global_popups_and_palette(
             | Some(crate::popups::ActivePopup::Search(_))
     );
     if group_a {
-        let popup = app.popups.active.take().unwrap();
+        let popup = app.popups.active.take().expect("value is present");
         return popup.handle_key(key, app);
     }
 

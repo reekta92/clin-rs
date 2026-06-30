@@ -17,7 +17,6 @@ pub struct Cli {
     #[arg(long, global = true)]
     pub vault: Option<PathBuf>,
 
-
     #[command(subcommand)]
     pub command: Option<Command>,
 }

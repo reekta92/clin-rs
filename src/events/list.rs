@@ -332,9 +332,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
             _ => {}
         },
         crate::keybinds::MatchOutcome::Pending => return false,
-        crate::keybinds::MatchOutcome::NoMatch => {
-            
-        }
+        crate::keybinds::MatchOutcome::NoMatch => {}
     }
 
     false
@@ -485,7 +483,8 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                 } else {
                     (p.suggestions.len() as u16).clamp(1, 5)
                 };
-                let popup_area = crate::ui::centered_rect(crate::ui::PopupSize::Large, terminal_area);
+                let popup_area =
+                    crate::ui::centered_rect(crate::ui::PopupSize::Large, terminal_area);
                 if mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
                     && !contains_cell(popup_area, mouse_event.column, mouse_event.row)
                 {
@@ -538,7 +537,8 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                 return;
             }
             crate::popups::ActivePopup::Theme(mut p) => {
-                let popup_area = crate::ui::centered_rect(crate::ui::PopupSize::Medium, terminal_area);
+                let popup_area =
+                    crate::ui::centered_rect(crate::ui::PopupSize::Medium, terminal_area);
                 let content = Layout::default()
                     .direction(Direction::Vertical)
                     .constraints([Constraint::Min(1), Constraint::Length(1)])
@@ -1273,7 +1273,7 @@ fn handle_layout_edit_mouse(app: &mut App, mouse: MouseEvent, terminal_area: Rec
     // Compute vertical divider (list ↔ preview)
     let vdiv_x = if app.list.preview_enabled {
         Some(match app.preview_position {
-            crate::config::PreviewPosition::Left => preview_area.unwrap().right(),
+            crate::config::PreviewPosition::Left => preview_area.expect("value is present").right(),
             crate::config::PreviewPosition::Right => list_area.right(),
         })
     } else {
@@ -1303,31 +1303,31 @@ fn handle_layout_edit_mouse(app: &mut App, mouse: MouseEvent, terminal_area: Rec
             // 1. Check vertical divider
             if let Some(vx) = vdiv_x
                 && (mouse.column as i16 - vx as i16).abs() <= 1
-                    && mouse.row >= col_top
-                    && mouse.row < col_bot
-                {
-                    app.layout_drag = Some(crate::app::LayoutDrag::VDivider);
-                    return;
-                }
+                && mouse.row >= col_top
+                && mouse.row < col_bot
+            {
+                app.layout_drag = Some(crate::app::LayoutDrag::VDivider);
+                return;
+            }
             // 2. Check horizontal divider
             if let Some(hy) = hdiv_y
                 && (mouse.row as i16 - hy as i16).abs() <= 1
-                    && mouse.column >= list_area.left()
-                    && mouse.column < list_area.right()
-                {
-                    app.layout_drag = Some(crate::app::LayoutDrag::HDivider);
-                    return;
-                }
+                && mouse.column >= list_area.left()
+                && mouse.column < list_area.right()
+            {
+                app.layout_drag = Some(crate::app::LayoutDrag::HDivider);
+                return;
+            }
             // 3. Check preview area (for swap)
             if let Some(p) = preview_area
                 && mouse.column >= p.x
-                    && mouse.column < p.right()
-                    && mouse.row >= p.y
-                    && mouse.row < p.bottom()
-                {
-                    app.layout_drag = Some(crate::app::LayoutDrag::PreviewSwap);
-                    return;
-                }
+                && mouse.column < p.right()
+                && mouse.row >= p.y
+                && mouse.row < p.bottom()
+            {
+                app.layout_drag = Some(crate::app::LayoutDrag::PreviewSwap);
+                return;
+            }
             // 4. Check strip sections (cycle on click)
             for (i, r) in sec_rects.iter().enumerate() {
                 if mouse.column >= r.x
@@ -1342,24 +1342,24 @@ fn handle_layout_edit_mouse(app: &mut App, mouse: MouseEvent, terminal_area: Rec
             // 4b. Click on empty strip space → add section if only one exists
             if app.list.sections.len() < 2
                 && let Some(c) = calendar_area
-                    && mouse.column >= c.x
-                        && mouse.column < c.right()
-                        && mouse.row >= c.y
-                        && mouse.row < c.bottom()
-                    {
-                        app.toggle_section();
-                        return;
-                    }
+                && mouse.column >= c.x
+                && mouse.column < c.right()
+                && mouse.row >= c.y
+                && mouse.row < c.bottom()
+            {
+                app.toggle_section();
+                return;
+            }
             // 5. Check calendar area (for swap)
             if let Some(c) = calendar_area
                 && mouse.column >= c.x
-                    && mouse.column < c.right()
-                    && mouse.row >= c.y
-                    && mouse.row < c.bottom()
-                {
-                    app.layout_drag = Some(crate::app::LayoutDrag::CalendarSwap);
-                    return;
-                }
+                && mouse.column < c.right()
+                && mouse.row >= c.y
+                && mouse.row < c.bottom()
+            {
+                app.layout_drag = Some(crate::app::LayoutDrag::CalendarSwap);
+                return;
+            }
             app.layout_drag = None;
         }
         MouseEventKind::Drag(MouseButton::Left) => match app.layout_drag {

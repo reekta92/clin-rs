@@ -43,7 +43,6 @@ impl App {
                 self.seq_matcher.clone(),
             ) {
                 Ok(state) => {
-                    
                     self.graph_state = Some(state);
                 }
                 Err(_) => {
@@ -56,7 +55,6 @@ impl App {
             self.return_mode = Some(self.mode);
             self.mode = ViewMode::Graph;
         }
-        
     }
     pub fn open_content_tree_view(&mut self) {
         let note_id = self.get_selected_note_id();
@@ -70,17 +68,14 @@ impl App {
                         self.keybinds.clone(),
                         self.seq_matcher.clone(),
                     );
-                    
+
                     Some(state)
                 }
-                Err(_) => {
-                    
-                    Some(crate::content_tree::state::ContentTreeState::error(
-                        id,
-                        self.keybinds.clone(),
-                        self.seq_matcher.clone(),
-                    ))
-                }
+                Err(_) => Some(crate::content_tree::state::ContentTreeState::error(
+                    id,
+                    self.keybinds.clone(),
+                    self.seq_matcher.clone(),
+                )),
             }
         } else {
             Some(crate::content_tree::state::ContentTreeState::error(
@@ -93,7 +88,6 @@ impl App {
             self.return_mode = Some(self.mode);
             self.mode = ViewMode::ContentTree;
         }
-        
     }
 
     pub fn open_backup_view(&mut self) {
@@ -102,7 +96,7 @@ impl App {
             .effective_storage_path()
             .unwrap_or_else(|_| std::path::PathBuf::from("."));
         let config = &self.config;
-        
+
         self.backup_state = Some(crate::backup::state::BackupState::new(
             vault_path,
             &config.backup,
@@ -116,7 +110,6 @@ impl App {
             self.return_mode = Some(self.mode);
             self.mode = ViewMode::Backup;
         }
-        
     }
 
     pub fn open_draw_view(&mut self) {
@@ -132,13 +125,12 @@ impl App {
             self.return_mode = Some(self.mode);
             self.mode = ViewMode::Draw;
         }
-        
     }
 
     pub fn close_draw_view(&mut self) {
         self.editor.editing_id = None;
         self.mode = self.return_mode.take().unwrap_or(ViewMode::List);
-        
+
         if let Err(e) = self.refresh_notes() {
             self.set_temporary_status(&format!("Refresh failed: {e}"));
         }
@@ -160,7 +152,7 @@ impl App {
                     self.return_mode = Some(self.mode);
                     self.mode = ViewMode::Canvas;
                 }
-                
+
                 self.editor.editing_id = Some(self.notes[*summary_idx].id.clone());
                 self.set_default_status();
             } else {
@@ -172,7 +164,7 @@ impl App {
     pub fn close_canvas_view(&mut self) {
         self.editor.editing_id = None;
         self.mode = self.return_mode.take().unwrap_or(ViewMode::List);
-        
+
         if let Err(e) = self.refresh_notes() {
             self.set_temporary_status(&format!("Refresh failed: {e}"));
         }

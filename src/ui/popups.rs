@@ -724,12 +724,7 @@ pub fn format_keybind_hints<'a>(
     }
 }
 
-pub fn draw_popup_footer(
-    frame: &mut Frame,
-    area: Rect,
-    theme: &AppThemeColors,
-    hints: &Line<'_>,
-) {
+pub fn draw_popup_footer(frame: &mut Frame, area: Rect, theme: &AppThemeColors, hints: &Line<'_>) {
     let footer = Paragraph::new(hints.clone())
         .alignment(Alignment::Center)
         .style(theme.hint_line_bg_style());
@@ -755,7 +750,7 @@ pub fn draw_popup_frame(
     chunks[0]
 }
 
-pub fn popup_hint_line<'a>(theme: &AppThemeColors, text: &str) -> Line<'static> {
+pub fn popup_hint_line(theme: &AppThemeColors, text: &str) -> Line<'static> {
     Line::from(Span::styled(
         text.to_string(),
         Style::default().fg(theme.muted),

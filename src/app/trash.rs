@@ -61,7 +61,6 @@ impl App {
     pub fn confirm_delete_selected(&mut self, id: String) {
         match self.storage.trash_note(&id) {
             Ok(()) => {
-                
                 if let Err(e) = self.refresh_notes() {
                     self.set_temporary_status(&format!("Refresh failed: {e}"));
                 }
@@ -73,7 +72,6 @@ impl App {
                 self.set_temporary_status_static("Note moved to trash");
             }
             Err(err) => {
-                
                 self.set_temporary_status(&format!("Move to trash failed: {err:#}"));
             }
         }
@@ -82,7 +80,6 @@ impl App {
     pub fn confirm_delete_folder(&mut self, path: String) {
         match self.storage.trash_folder(&path) {
             Ok(()) => {
-                
                 self.list.folder_cache = None;
                 self.list
                     .folder_expanded
@@ -98,7 +95,6 @@ impl App {
                 self.set_temporary_status_static("Folder moved to trash");
             }
             Err(e) => {
-                
                 self.set_temporary_status(&format!("Failed to trash folder: {e}"));
             }
         }

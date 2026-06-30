@@ -408,10 +408,11 @@ impl App {
         let today = chrono::Local::now().date_naive().to_string();
         if path.exists()
             && let Ok(content) = std::fs::read_to_string(&path)
-                && let Ok(progress) = serde_json::from_str::<crate::goals::DailyProgress>(&content)
-                    && progress.date == today {
-                        return progress;
-                    }
+            && let Ok(progress) = serde_json::from_str::<crate::goals::DailyProgress>(&content)
+            && progress.date == today
+        {
+            return progress;
+        }
         crate::goals::DailyProgress {
             date: today,
             words_written: 0,

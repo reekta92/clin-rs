@@ -19,7 +19,6 @@ impl App {
     }
 
     pub fn begin_search(&mut self) {
-        
         let mut input = TextArea::default();
         input.set_style(self.app_theme.bg_style());
         input.set_cursor_line_style(Style::default());

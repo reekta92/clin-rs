@@ -1,6 +1,6 @@
 use anyhow::Context;
-use std::sync::Arc;
 use parking_lot::RwLock;
+use std::sync::Arc;
 
 use fdg_sim::petgraph::graph::NodeIndex;
 

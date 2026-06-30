@@ -13,20 +13,22 @@ pub fn draw_view_title_bar(
 ) {
     // Override header when there's an active status notification
     if let Some(st) = status
-        && !st.trim().is_empty() && st != "Ready" {
-            let st = crate::sanitize::sanitize_for_terminal(st);
-            let span = Span::styled(
-                format!("  {}  ", st),
-                Style::default()
-                    .fg(theme.highlight_fg)
-                    .add_modifier(Modifier::BOLD),
-            );
-            let bar = Paragraph::new(Line::from(vec![span]))
-                .style(Style::default().bg(theme.accent))
-                .alignment(Alignment::Center);
-            frame.render_widget(bar, area);
-            return;
-        }
+        && !st.trim().is_empty()
+        && st != "Ready"
+    {
+        let st = crate::sanitize::sanitize_for_terminal(st);
+        let span = Span::styled(
+            format!("  {}  ", st),
+            Style::default()
+                .fg(theme.highlight_fg)
+                .add_modifier(Modifier::BOLD),
+        );
+        let bar = Paragraph::new(Line::from(vec![span]))
+            .style(Style::default().bg(theme.accent))
+            .alignment(Alignment::Center);
+        frame.render_widget(bar, area);
+        return;
+    }
     let display_text = format!(" {} ", title.to_uppercase());
     let title_span = Span::styled(
         display_text,
@@ -189,20 +191,22 @@ pub fn draw_view_title_bar_with_tabs(
 ) {
     // Override header when there's an active status notification
     if let Some(st) = status
-        && !st.trim().is_empty() && st != "Ready" {
-            let st = crate::sanitize::sanitize_for_terminal(st);
-            let span = Span::styled(
-                format!("  {}  ", st),
-                Style::default()
-                    .fg(theme.highlight_fg)
-                    .add_modifier(Modifier::BOLD),
-            );
-            let bar = Paragraph::new(Line::from(vec![span]))
-                .style(Style::default().bg(theme.accent))
-                .alignment(Alignment::Center);
-            frame.render_widget(bar, area);
-            return;
-        }
+        && !st.trim().is_empty()
+        && st != "Ready"
+    {
+        let st = crate::sanitize::sanitize_for_terminal(st);
+        let span = Span::styled(
+            format!("  {}  ", st),
+            Style::default()
+                .fg(theme.highlight_fg)
+                .add_modifier(Modifier::BOLD),
+        );
+        let bar = Paragraph::new(Line::from(vec![span]))
+            .style(Style::default().bg(theme.accent))
+            .alignment(Alignment::Center);
+        frame.render_widget(bar, area);
+        return;
+    }
     frame.render_widget(Paragraph::new("").style(theme.title_bar_bg_style()), area);
 
     let tabs_region = title_bar_tabs_region(area, title);

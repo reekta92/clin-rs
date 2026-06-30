@@ -314,10 +314,12 @@ impl App {
             }
         }
         // Phase 2: relocate the target folder itself last (if it was co-selected).
-        if target_is_selected && let Some(t) = folder_paths.iter().find(|f| *f == target)
-            && self.move_one_folder(t, target).is_err() {
-                failed += 1;
-            }
+        if target_is_selected
+            && let Some(t) = folder_paths.iter().find(|f| *f == target)
+            && self.move_one_folder(t, target).is_err()
+        {
+            failed += 1;
+        }
         failed
     }
 
@@ -369,7 +371,6 @@ impl App {
                 FolderPickerMode::CopyNote { note_id } => {
                     match self.storage.duplicate_note(&note_id, target_folder) {
                         Ok(_) => {
-                            
                             self.list.folder_cache = None;
                             if let Err(e) = self.refresh_notes() {
                                 self.set_temporary_status(&format!("Refresh failed: {e}"));

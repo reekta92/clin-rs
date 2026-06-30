@@ -97,7 +97,7 @@ impl App {
                 {
                     self.ensure_graph_preview();
                 }
-                
+
                 true
             }
         }
@@ -422,7 +422,7 @@ impl App {
                 let is_canvas = *is_canvas;
                 let id = &self.notes[summary_idx].id;
                 let is_clin = id.ends_with(".clin");
-                
+
                 if self.preview_encryption && is_clin {
                     self.list.preview_content = None;
                     self.list.preview_content_index = Some(self.list.visual_index);

@@ -6,7 +6,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Padding, Paragraph, Wrap, List, ListItem},
+    widgets::{Block, Borders, List, ListItem, Padding, Paragraph, Wrap},
 };
 
 pub fn draw_dashboard(
@@ -28,7 +28,7 @@ pub fn draw_dashboard(
         && state.selected_file.is_some()
         && !state.diff_lines.is_empty())
         || (state.selected_section == crate::backup::state::BackupSection::History
-        && !state.diff_lines.is_empty());
+            && !state.diff_lines.is_empty());
 
     if has_diff {
         let content_chunks = Layout::default()
@@ -110,12 +110,18 @@ pub fn draw_header(
     };
     let spans = crate::ui::build_tab_spans(&tabs, active, theme, state.tab_icons_only, icon_mode);
     let right_text = state.status.as_ref().map(|status| {
-        let modified_text = if !status.staged.is_empty() || !status.unstaged.is_empty() || !status.untracked.is_empty() {
+        let modified_text = if !status.staged.is_empty()
+            || !status.unstaged.is_empty()
+            || !status.untracked.is_empty()
+        {
             "modified"
         } else {
             "clean"
         };
-        Line::from(format!("{} | ↑{} ↓{} | {}", status.branch, status.ahead, status.behind, modified_text))
+        Line::from(format!(
+            "{} | ↑{} ↓{} | {}",
+            status.branch, status.ahead, status.behind, modified_text
+        ))
     });
     crate::ui::draw_view_title_bar_with_tabs(frame, area, "Backup", spans, theme, None, right_text);
 }
@@ -135,14 +141,12 @@ fn draw_content(frame: &mut Frame, area: Rect, state: &mut BackupState) {
             "Git backup not configured."
         };
 
-        let text = vec![
-            Line::from(Span::styled(
-                msg,
-                Style::default()
-                    .fg(theme.muted)
-                    .add_modifier(Modifier::ITALIC),
-            )),
-        ];
+        let text = vec![Line::from(Span::styled(
+            msg,
+            Style::default()
+                .fg(theme.muted)
+                .add_modifier(Modifier::ITALIC),
+        ))];
 
         let paragraph = Paragraph::new(text)
             .alignment(Alignment::Center)
@@ -244,7 +248,6 @@ fn draw_content(frame: &mut Frame, area: Rect, state: &mut BackupState) {
             state.list_state.select(None);
         }
         frame.render_stateful_widget(list, area, &mut state.list_state);
-
     } else if state.selected_section == crate::backup::state::BackupSection::History {
         let mut items = Vec::new();
         items.push(ListItem::new(Line::from(Span::styled(
@@ -293,7 +296,9 @@ fn draw_content(frame: &mut Frame, area: Rect, state: &mut BackupState) {
             );
 
         if !state.commits.is_empty() {
-            state.history_list_state.select(Some(state.selected_commit_index + 1));
+            state
+                .history_list_state
+                .select(Some(state.selected_commit_index + 1));
         } else {
             state.history_list_state.select(None);
         }
@@ -352,7 +357,10 @@ fn draw_diff_pane(frame: &mut Frame, area: Rect, state: &mut BackupState) {
                     .fg(theme.accent)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled(format!(" - {}", commit.message), Style::default().fg(theme.text)),
+            Span::styled(
+                format!(" - {}", commit.message),
+                Style::default().fg(theme.text),
+            ),
         ]));
         lines.push(Line::from(""));
     }
@@ -381,8 +389,14 @@ fn draw_diff_pane(frame: &mut Frame, area: Rect, state: &mut BackupState) {
 fn draw_commit_popup(frame: &mut Frame, area: Rect, state: &BackupState) {
     let theme = &state.theme;
     let hints_items = vec![
-        (state.keybinds.display_backup(BackupAction::ConfirmCommit), "confirm"),
-        (state.keybinds.display_backup(BackupAction::CancelCommit), "cancel"),
+        (
+            state.keybinds.display_backup(BackupAction::ConfirmCommit),
+            "confirm",
+        ),
+        (
+            state.keybinds.display_backup(BackupAction::CancelCommit),
+            "cancel",
+        ),
     ];
     let hint_line = crate::ui::format_keybind_hints(theme, &hints_items);
     let content = crate::ui::draw_popup_frame(
@@ -417,10 +431,22 @@ fn draw_commit_popup(frame: &mut Frame, area: Rect, state: &BackupState) {
 fn draw_settings_popup(frame: &mut Frame, area: Rect, state: &BackupState) {
     let theme = &state.theme;
     let hints_items = vec![
-        (state.keybinds.display_backup(BackupAction::NextField), "next"),
-        (state.keybinds.display_backup(BackupAction::PrevField), "prev"),
-        (state.keybinds.display_backup(BackupAction::ActivateField), "toggle/edit"),
-        (state.keybinds.display_backup(BackupAction::CloseSettings), "close"),
+        (
+            state.keybinds.display_backup(BackupAction::NextField),
+            "next",
+        ),
+        (
+            state.keybinds.display_backup(BackupAction::PrevField),
+            "prev",
+        ),
+        (
+            state.keybinds.display_backup(BackupAction::ActivateField),
+            "toggle/edit",
+        ),
+        (
+            state.keybinds.display_backup(BackupAction::CloseSettings),
+            "close",
+        ),
     ];
     let hint_line = crate::ui::format_keybind_hints(theme, &hints_items);
     let content = crate::ui::draw_popup_frame(

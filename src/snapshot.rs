@@ -224,11 +224,13 @@ impl<'a> RenderedSnapshot<'a> {
         }
     }
 
+    #[must_use]
     pub fn scroll_offset(mut self, offset: u16) -> Self {
         self.scroll_offset = offset;
         self
     }
 
+    #[must_use]
     pub fn block(mut self, block: Block<'a>) -> Self {
         self.block = Some(block);
         self

@@ -511,7 +511,12 @@ fn run_keybinds(action: KeybindsCmd) -> Result<()> {
         KeybindsCmd::Show => {
             let storage = Storage::init()?;
             let config = crate::config::ClinConfig::load().unwrap_or_default();
-            println!("{}", storage.keybinds_path_for_preset(config.core.keybind_preset).display());
+            println!(
+                "{}",
+                storage
+                    .keybinds_path_for_preset(config.core.keybind_preset)
+                    .display()
+            );
             Ok(())
         }
         KeybindsCmd::Export => {
@@ -690,7 +695,6 @@ pub fn force_quit() -> ! {
 fn run_tui_session(app: &mut App) -> Result<()> {
     // Clean up any orphaned plaintext temp files from a prior crashed session.
     crate::fsutil::cleanup_orphaned_temp_files();
-    
 
     let register_signal = |sig: std::os::raw::c_int| {
         // SAFETY: signal_hook::low_level::register is async-signal-safe.
@@ -714,11 +718,9 @@ fn run_tui_session(app: &mut App) -> Result<()> {
     }
 
     // Spawn the background backup worker before entering the terminal.
-    let (tx, done_rx) = crate::backup::worker::spawn(
-        app.git_lock.clone(),
-        app.backup_status.clone(),
-    );
-    
+    let (tx, done_rx) =
+        crate::backup::worker::spawn(app.git_lock.clone(), app.backup_status.clone());
+
     app.backup_tx = Some(tx);
 
     // Run the TUI inside an inner block so `TerminalGuard` (raw mode + alt
@@ -734,7 +736,6 @@ fn run_tui_session(app: &mut App) -> Result<()> {
         let mut app_safe = std::panic::AssertUnwindSafe(&mut *app);
         let res = std::panic::catch_unwind(move || run_app(*terminal_safe, *app_safe));
         if app.mode == ViewMode::Edit {
-            
             app.autosave();
         }
         res
@@ -770,7 +771,6 @@ fn run_tui_session(app: &mut App) -> Result<()> {
             }
         };
         if timed_out {
-            
             eprintln!("Backup still running in background; exiting.");
         } else {
             println!("Done.");
@@ -796,7 +796,6 @@ fn run_tui_session(app: &mut App) -> Result<()> {
         }
     }
 
-    
     match result {
         Ok(r) => r,
         Err(err) => std::panic::resume_unwind(err),
@@ -813,7 +812,6 @@ fn run_app(
 
     // Start background note load for deferred startup
     let load_rx = if !app.initial_load_done && app.notes.is_empty() {
-        
         Some(app.start_background_load())
     } else {
         None
@@ -840,7 +838,6 @@ fn run_app(
             }
         }
 
-
         app.tick_status();
         let failed = app.backup_status.lock().take();
         if let Some(msg) = failed {
@@ -850,17 +847,16 @@ fn run_app(
         if app.needs_full_redraw {
             terminal.clear()?;
             app.needs_full_redraw = false;
-            
         }
 
         // Apply update ticks for continuous views before rendering
         if app.mode == ViewMode::Graph
-            && let Some(graf) = &mut app.graph_state {
-                graf.overlay_update(&mut app.config);
-            }
+            && let Some(graf) = &mut app.graph_state
+        {
+            graf.overlay_update(&mut app.config);
+        }
 
         if let Err(e) = terminal.draw(|frame| crate::ui::draw_ui(frame, app, focus)) {
-            
             return Err(e.into());
         }
 
@@ -897,11 +893,10 @@ fn run_app(
             }
         }
 
-        if need_redraw
-            && let Err(e) = terminal.draw(|frame| crate::ui::draw_ui(frame, app, focus)) {
-                
-                return Err(e.into());
-            }
+        if need_redraw && let Err(e) = terminal.draw(|frame| crate::ui::draw_ui(frame, app, focus))
+        {
+            return Err(e.into());
+        }
 
         if event::poll(poll_timeout).context("event poll failed")? {
             match event::read().context("failed to read event")? {
@@ -911,7 +906,6 @@ fn run_app(
                         && key.code == KeyCode::Char('c')
                         && key.modifiers == KeyModifiers::CONTROL =>
                 {
-                    
                     crate::force_quit();
                 }
                 ev @ (Event::Key(_) | Event::Mouse(_)) => {
@@ -924,7 +918,6 @@ fn run_app(
 
                     match ev {
                         Event::Key(key) if key.kind == KeyEventKind::Press => {
-                            
                             let handled = match app.mode {
                                 ViewMode::List => handle_list_keys(app, key),
                                 ViewMode::Help => {
@@ -947,7 +940,7 @@ fn run_app(
                                                 }
                                                 app.graph_state = None;
                                                 app.mode = ViewMode::List;
-                                                
+
                                                 app.reload_theme();
                                                 app.open_note_from_graph(&note_id);
                                                 app.needs_full_redraw = true;
@@ -963,14 +956,13 @@ fn run_app(
                                                         "Failed to save config: {e}"
                                                     ));
                                                 }
-                                                
-                                                
+
                                                 app.graph_state = None;
                                                 app.mode = app
                                                     .return_mode
                                                     .take()
                                                     .unwrap_or(ViewMode::List);
-                                                
+
                                                 app.reload_theme();
                                                 app.needs_full_redraw = true;
                                                 terminal.clear()?;
@@ -990,7 +982,6 @@ fn run_app(
                                             &mut app.config,
                                         )? {
                                             crate::overlay::OverlayResult::Exit => {
-                                                
                                                 app.draw_state = None;
                                                 app.close_draw_view();
                                                 app.needs_full_redraw = true;
@@ -1019,7 +1010,6 @@ fn run_app(
                                                 app.open_help_page_with_tab(tab);
                                             }
                                             crate::overlay::OverlayResult::Exit => {
-                                                
                                                 app.close_canvas_view();
                                                 app.needs_full_redraw = true;
                                                 terminal.clear()?;
@@ -1046,7 +1036,7 @@ fn run_app(
                                                     .return_mode
                                                     .take()
                                                     .unwrap_or(ViewMode::List);
-                                                
+
                                                 app.reload_theme();
                                                 app.needs_full_redraw = true;
                                                 terminal.clear()?;
@@ -1076,7 +1066,7 @@ fn run_app(
                                                     .return_mode
                                                     .take()
                                                     .unwrap_or(ViewMode::List);
-                                                
+
                                                 app.reload_theme();
                                                 app.needs_full_redraw = true;
                                                 terminal.clear()?;
@@ -1090,7 +1080,7 @@ fn run_app(
                                                     .return_mode
                                                     .take()
                                                     .unwrap_or(ViewMode::List);
-                                                
+
                                                 app.reload_theme();
                                                 app.needs_full_redraw = true;
                                                 terminal.clear()?;
@@ -1183,7 +1173,7 @@ fn run_app(
                                                 }
                                                 app.graph_state = None;
                                                 app.mode = ViewMode::List;
-                                                
+
                                                 app.reload_theme();
                                                 app.open_note_from_graph(&note_id);
                                                 app.needs_full_redraw = true;
@@ -1199,13 +1189,13 @@ fn run_app(
                                                         "Failed to save config: {e}"
                                                     ));
                                                 }
-                                                
+
                                                 app.graph_state = None;
                                                 app.mode = app
                                                     .return_mode
                                                     .take()
                                                     .unwrap_or(ViewMode::List);
-                                                
+
                                                 app.reload_theme();
                                                 app.needs_full_redraw = true;
                                                 terminal.clear()?;
@@ -1222,7 +1212,6 @@ fn run_app(
                                             &mut app.config,
                                         )? {
                                             crate::overlay::OverlayResult::Exit => {
-                                                
                                                 app.draw_state = None;
                                                 app.close_draw_view();
                                                 app.needs_full_redraw = true;

@@ -78,18 +78,20 @@ impl KeyMatcher {
     ) -> MatchOutcome<A> {
         // Digit capture for count prefix (before any other logic, so digits are consumed
         // even when sequences are disabled).
-        if counts_enabled && event.modifiers == KeyModifiers::NONE
+        if counts_enabled
+            && event.modifiers == KeyModifiers::NONE
             && let KeyCode::Char(c) = event.code
-                && c.is_ascii_digit() {
-                    if c == '0' && self.count.is_none() {
-                        // bare '0' is not a count digit; fall through to normal matching
-                    } else {
-                        let d = (c as u8 - b'0') as u32;
-                        self.count = Some((self.count.unwrap_or(0) * 10 + d).min(9999));
-                        self.last_event_at = Some(std::time::Instant::now());
-                        return MatchOutcome::Pending;
-                    }
-                }
+            && c.is_ascii_digit()
+        {
+            if c == '0' && self.count.is_none() {
+                // bare '0' is not a count digit; fall through to normal matching
+            } else {
+                let d = (c as u8 - b'0') as u32;
+                self.count = Some((self.count.unwrap_or(0) * 10 + d).min(9999));
+                self.last_event_at = Some(std::time::Instant::now());
+                return MatchOutcome::Pending;
+            }
+        }
 
         if !sequences_enabled {
             for (action, combos) in bindings {

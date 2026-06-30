@@ -1,3 +1,4 @@
+#![allow(clippy::vec_init_then_push)]
 use ratatui::{prelude::*, widgets::*};
 
 use super::{
@@ -131,7 +132,11 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
 
     let scroll = app.help_scroll;
     let _ = app.get_help_rows();
-    let rows = app.list.help_text_cache.as_deref().unwrap();
+    let rows = app
+        .list
+        .help_text_cache
+        .as_deref()
+        .expect("value is present");
     let theme = &app.app_theme;
     let visible_rows: Vec<Row<'static>> = rows
         .iter()
@@ -162,13 +167,14 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
                         row.style(Style::default().bg(theme.preview_bg().unwrap_or(Color::Reset)));
                 }
             } else if let Some(hl_idx) = app.help_search.highlight_row
-                && abs_idx == hl_idx {
-                    row = row.style(
-                        Style::default()
-                            .bg(theme.highlight_bg)
-                            .fg(theme.highlight_fg),
-                    );
-                }
+                && abs_idx == hl_idx
+            {
+                row = row.style(
+                    Style::default()
+                        .bg(theme.highlight_bg)
+                        .fg(theme.highlight_fg),
+                );
+            }
             row
         })
         .collect();
@@ -978,8 +984,16 @@ fn backup_help_text(keybinds: &Keybinds, theme: &AppThemeColors) -> Vec<HelpRow>
     rows.push(help_heading_row("Actions", theme));
     rows.push(help_empty_row());
     rows.push(help_item_dyn("Stage file", Some(&backup_stage_file), theme));
-    rows.push(help_item_dyn("Unstage file", Some(&backup_unstage_file), theme));
-    rows.push(help_item_dyn("Stage all changes", Some(&backup_stage_all), theme));
+    rows.push(help_item_dyn(
+        "Unstage file",
+        Some(&backup_unstage_file),
+        theme,
+    ));
+    rows.push(help_item_dyn(
+        "Stage all changes",
+        Some(&backup_stage_all),
+        theme,
+    ));
     rows.push(help_item_dyn(
         "Refresh status",
         Some(&backup_refresh),

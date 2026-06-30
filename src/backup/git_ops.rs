@@ -35,7 +35,6 @@ pub struct CommitInfo {
     pub author: String,
 }
 
-
 impl GitOps {
     pub fn init(vault_path: &Path) -> Result<Self> {
         let repo = if Repository::discover(vault_path).is_ok() {
@@ -242,7 +241,10 @@ impl GitOps {
             Ok(h) => Some(h.peel_to_tree()?),
             Err(_) => None,
         };
-        self.repo.reset_default(head_tree.as_ref().map(|t| t.as_object()), paths.iter().map(std::path::Path::new))?;
+        self.repo.reset_default(
+            head_tree.as_ref().map(|t| t.as_object()),
+            paths.iter().map(std::path::Path::new),
+        )?;
         Ok(())
     }
 
@@ -251,7 +253,9 @@ impl GitOps {
         let commit = self.repo.find_commit(oid)?;
         let tree = commit.tree()?;
         let parent_tree = commit.parent(0).ok().and_then(|p| p.tree().ok());
-        let diff = self.repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), None)?;
+        let diff = self
+            .repo
+            .diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), None)?;
         let mut lines = Vec::new();
         diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
             let origin = line.origin();
@@ -276,10 +280,13 @@ impl GitOps {
         let fetch_commit = self.repo.reference_to_annotated_commit(&fetch_head)?;
         let (analysis, _) = self.repo.merge_analysis(&[&fetch_commit])?;
         if analysis.is_fast_forward() {
-            let mut reference = self.repo.find_reference(&format!("refs/heads/{}", branch))?;
+            let mut reference = self
+                .repo
+                .find_reference(&format!("refs/heads/{}", branch))?;
             reference.set_target(fetch_commit.id(), "fast-forward pull")?;
             self.repo.set_head(&format!("refs/heads/{}", branch))?;
-            self.repo.checkout_head(Some(git2::build::CheckoutBuilder::default().force()))?;
+            self.repo
+                .checkout_head(Some(git2::build::CheckoutBuilder::default().force()))?;
         } else if analysis.is_normal() {
             return Err(anyhow!("Merge required - pull aborted. Resolve manually."));
         }

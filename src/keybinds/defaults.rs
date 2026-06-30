@@ -923,14 +923,14 @@ impl KeybindPreset {
                 kb.list.insert(
                     ListAction::JumpToTop,
                     vec![
-                        KeyCombo::parse("g g").unwrap(),
+                        KeyCombo::parse("g g").expect("valid key combo"),
                         KeyCombo::shift(KeyCode::Char('G')),
                     ],
                 );
                 kb.list.insert(
                     ListAction::JumpToBottom,
                     vec![
-                        KeyCombo::parse("g e").unwrap(),
+                        KeyCombo::parse("g e").expect("valid key combo"),
                         KeyCombo::shift(KeyCode::Char('G')),
                     ],
                 );
@@ -942,51 +942,51 @@ impl KeybindPreset {
                 );
                 kb.list.insert(
                     ListAction::Delete,
-                    vec![KeyCombo::parse("Space d").unwrap()],
+                    vec![KeyCombo::parse("Space d").expect("valid key combo")],
                 );
                 kb.list.insert(
                     ListAction::OpenCommandPalette,
-                    vec![KeyCombo::parse("Space Space").unwrap()],
+                    vec![KeyCombo::parse("Space Space").expect("valid key combo")],
                 );
                 kb.list.insert(
                     ListAction::NewFromTemplate,
-                    vec![KeyCombo::parse("Space t").unwrap()],
+                    vec![KeyCombo::parse("Space t").expect("valid key combo")],
                 );
                 kb.list.insert(
                     ListAction::CreateNote,
-                    vec![KeyCombo::parse("Space n").unwrap()],
+                    vec![KeyCombo::parse("Space n").expect("valid key combo")],
                 );
                 kb.list.insert(
                     ListAction::CreateFolder,
-                    vec![KeyCombo::parse("Space N").unwrap()],
+                    vec![KeyCombo::parse("Space N").expect("valid key combo")],
                 );
                 kb.list.insert(
                     ListAction::TogglePin,
-                    vec![KeyCombo::parse("Space p").unwrap()],
+                    vec![KeyCombo::parse("Space p").expect("valid key combo")],
                 );
                 kb.list.insert(
                     ListAction::OpenGraph,
-                    vec![KeyCombo::parse("Space g").unwrap()],
+                    vec![KeyCombo::parse("Space g").expect("valid key combo")],
                 );
                 kb.list.insert(
                     ListAction::TogglePreview,
-                    vec![KeyCombo::parse("Space P").unwrap()],
+                    vec![KeyCombo::parse("Space P").expect("valid key combo")],
                 );
                 kb.list.insert(
                     ListAction::OpenTrash,
-                    vec![KeyCombo::parse("Space T").unwrap()],
+                    vec![KeyCombo::parse("Space T").expect("valid key combo")],
                 );
                 kb.list.insert(
                     ListAction::CycleSort,
-                    vec![KeyCombo::parse("Space s").unwrap()],
+                    vec![KeyCombo::parse("Space s").expect("valid key combo")],
                 );
                 kb.list.insert(
                     ListAction::ManageTags,
-                    vec![KeyCombo::parse("Space .").unwrap()],
+                    vec![KeyCombo::parse("Space .").expect("valid key combo")],
                 );
                 kb.list.insert(
                     ListAction::CollapseAll,
-                    vec![KeyCombo::parse("Esc Esc").unwrap()],
+                    vec![KeyCombo::parse("Esc Esc").expect("valid key combo")],
                 );
                 // ── Graph view ──
                 kb.graph.insert(
@@ -1042,19 +1042,19 @@ impl KeybindPreset {
                 );
                 kb.graph.insert(
                     GraphAction::AutoFit,
-                    vec![KeyCombo::parse("Space a").unwrap()],
+                    vec![KeyCombo::parse("Space a").expect("valid key combo")],
                 );
                 kb.graph.insert(
                     GraphAction::Refresh,
-                    vec![KeyCombo::parse("Space r").unwrap()],
+                    vec![KeyCombo::parse("Space r").expect("valid key combo")],
                 );
                 kb.graph.insert(
                     GraphAction::ToggleMinimap,
-                    vec![KeyCombo::parse("Space m").unwrap()],
+                    vec![KeyCombo::parse("Space m").expect("valid key combo")],
                 );
                 kb.graph.insert(
                     GraphAction::ToggleGrid,
-                    vec![KeyCombo::parse("Space g").unwrap()],
+                    vec![KeyCombo::parse("Space g").expect("valid key combo")],
                 );
                 kb.graph.insert(
                     GraphAction::Help,
@@ -1121,7 +1121,7 @@ impl KeybindPreset {
                 );
                 kb.draw.insert(
                     DrawAction::ToggleGrid,
-                    vec![KeyCombo::parse("Space g").unwrap()],
+                    vec![KeyCombo::parse("Space g").expect("valid key combo")],
                 );
                 // ── Canvas view ──
                 kb.canvas.insert(
@@ -1190,11 +1190,11 @@ impl KeybindPreset {
                 );
                 kb.canvas.insert(
                     CanvasAction::OpenContextMenu,
-                    vec![KeyCombo::parse("Space m").unwrap()],
+                    vec![KeyCombo::parse("Space m").expect("valid key combo")],
                 );
                 kb.canvas.insert(
                     CanvasAction::ToggleGrid,
-                    vec![KeyCombo::parse("Space g").unwrap()],
+                    vec![KeyCombo::parse("Space g").expect("valid key combo")],
                 );
                 kb.canvas.insert(
                     CanvasAction::Help,
@@ -1254,7 +1254,7 @@ impl KeybindPreset {
                 );
                 kb.backup.insert(
                     BackupAction::OpenSettings,
-                    vec![KeyCombo::parse("Space s").unwrap()],
+                    vec![KeyCombo::parse("Space s").expect("valid key combo")],
                 );
                 kb.backup.insert(
                     BackupAction::CycleSection,
@@ -1358,10 +1358,14 @@ impl KeybindPreset {
                         KeyCombo::simple(KeyCode::Char('o')),
                     ],
                 );
-                kb.list
-                    .insert(ListAction::Delete, vec![KeyCombo::parse("d d").unwrap()]);
-                kb.list
-                    .insert(ListAction::Quit, vec![KeyCombo::parse(": q").unwrap()]);
+                kb.list.insert(
+                    ListAction::Delete,
+                    vec![KeyCombo::parse("d d").expect("valid key combo")],
+                );
+                kb.list.insert(
+                    ListAction::Quit,
+                    vec![KeyCombo::parse(": q").expect("valid key combo")],
+                );
                 kb.list.insert(
                     ListAction::Help,
                     vec![
@@ -1373,12 +1377,14 @@ impl KeybindPreset {
                     ListAction::Search,
                     vec![KeyCombo::simple(KeyCode::Char('/'))],
                 );
-                kb.list
-                    .insert(ListAction::JumpToTop, vec![KeyCombo::parse("g g").unwrap()]);
+                kb.list.insert(
+                    ListAction::JumpToTop,
+                    vec![KeyCombo::parse("g g").expect("valid key combo")],
+                );
                 kb.list.insert(
                     ListAction::JumpToBottom,
                     vec![
-                        KeyCombo::parse("g G").unwrap(),
+                        KeyCombo::parse("g G").expect("valid key combo"),
                         KeyCombo::shift(KeyCode::Char('G')),
                     ],
                 );
@@ -1484,7 +1490,7 @@ impl KeybindPreset {
                 kb.graph.insert(
                     GraphAction::Quit,
                     vec![
-                        KeyCombo::parse(": q").unwrap(),
+                        KeyCombo::parse(": q").expect("valid key combo"),
                         KeyCombo::simple(KeyCode::Char('q')),
                     ],
                 );
@@ -1816,7 +1822,7 @@ impl KeybindPreset {
                 kb.list.insert(
                     ListAction::Quit,
                     vec![
-                        KeyCombo::parse("Ctrl+x Ctrl+c").unwrap(),
+                        KeyCombo::parse("Ctrl+x Ctrl+c").expect("valid key combo"),
                         KeyCombo::simple(KeyCode::Char('q')),
                     ],
                 );
@@ -1839,7 +1845,7 @@ impl KeybindPreset {
                 kb.list.insert(
                     ListAction::PageUp,
                     vec![
-                        KeyCombo::parse("Alt+v").unwrap(),
+                        KeyCombo::parse("Alt+v").expect("valid key combo"),
                         KeyCombo::simple(KeyCode::PageUp),
                     ],
                 );
@@ -1852,11 +1858,11 @@ impl KeybindPreset {
                 );
                 kb.list.insert(
                     ListAction::OpenCommandPalette,
-                    vec![KeyCombo::parse("Ctrl+x Ctrl+p").unwrap()],
+                    vec![KeyCombo::parse("Ctrl+x Ctrl+p").expect("valid key combo")],
                 );
                 kb.list.insert(
                     ListAction::CollapseAll,
-                    vec![KeyCombo::parse("Esc Esc").unwrap()],
+                    vec![KeyCombo::parse("Esc Esc").expect("valid key combo")],
                 );
                 // ── Graph view ──
                 kb.graph.insert(
@@ -1890,7 +1896,7 @@ impl KeybindPreset {
                 kb.graph.insert(
                     GraphAction::Quit,
                     vec![
-                        KeyCombo::parse("Ctrl+x Ctrl+c").unwrap(),
+                        KeyCombo::parse("Ctrl+x Ctrl+c").expect("valid key combo"),
                         KeyCombo::simple(KeyCode::Char('q')),
                     ],
                 );
@@ -1924,7 +1930,7 @@ impl KeybindPreset {
                 kb.draw.insert(
                     DrawAction::Quit,
                     vec![
-                        KeyCombo::parse("Ctrl+x Ctrl+c").unwrap(),
+                        KeyCombo::parse("Ctrl+x Ctrl+c").expect("valid key combo"),
                         KeyCombo::simple(KeyCode::Char('q')),
                     ],
                 );
@@ -1983,7 +1989,7 @@ impl KeybindPreset {
                 );
                 kb.canvas.insert(
                     CanvasAction::Quit,
-                    vec![KeyCombo::parse("Ctrl+x Ctrl+c").unwrap()],
+                    vec![KeyCombo::parse("Ctrl+x Ctrl+c").expect("valid key combo")],
                 );
                 kb.canvas
                     .insert(CanvasAction::Save, vec![KeyCombo::ctrl(KeyCode::Char('s'))]);
@@ -1993,7 +1999,7 @@ impl KeybindPreset {
                 kb.backup.insert(
                     BackupAction::Back,
                     vec![
-                        KeyCombo::parse("Ctrl+x Ctrl+c").unwrap(),
+                        KeyCombo::parse("Ctrl+x Ctrl+c").expect("valid key combo"),
                         KeyCombo::simple(KeyCode::Char('q')),
                     ],
                 );
@@ -2059,7 +2065,7 @@ impl KeybindPreset {
                 kb.content_tree.insert(
                     ContentTreeAction::Back,
                     vec![
-                        KeyCombo::parse("Ctrl+x Ctrl+c").unwrap(),
+                        KeyCombo::parse("Ctrl+x Ctrl+c").expect("valid key combo"),
                         KeyCombo::simple(KeyCode::Char('q')),
                     ],
                 );

@@ -109,22 +109,12 @@ fn worker_loop(
 /// Worker's per-job helper: resolve the live config, then delegate to
 /// `perform`. Config is read per job (not cached) so runtime changes made in
 /// the Backup view's settings are picked up.
-fn run_backup(
-    git_lock: &Arc<Mutex<()>>,
-    status: &Arc<Mutex<Option<String>>>,
-    message: &str,
-) {
+fn run_backup(git_lock: &Arc<Mutex<()>>, status: &Arc<Mutex<Option<String>>>, message: &str) {
     let config = ClinConfig::load().unwrap_or_default();
     let vault_path = config
         .effective_storage_path()
         .unwrap_or_else(|_| std::path::PathBuf::from("."));
-    perform(
-        git_lock,
-        status,
-        &vault_path,
-        &config.backup,
-        message,
-    );
+    perform(git_lock, status, &vault_path, &config.backup, message);
 }
 
 /// Pure backup body (lifted from the old `try_auto_backup_raw`), parameterized
@@ -178,7 +168,6 @@ mod tests {
     fn locks() -> (Arc<Mutex<()>>, Arc<Mutex<Option<String>>>) {
         (Arc::new(Mutex::new(())), Arc::new(Mutex::new(None)))
     }
-
 
     #[test]
     fn perform_creates_commit() {

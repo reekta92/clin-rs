@@ -237,7 +237,6 @@ impl BackupState {
         }
     }
 
-
     pub fn file_index_at_rendered_line(&self, line_idx: usize) -> Option<usize> {
         if self.selected_section != BackupSection::Status {
             return None;

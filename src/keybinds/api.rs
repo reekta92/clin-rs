@@ -112,16 +112,16 @@ impl Keybinds {
     }
 
     pub fn to_toml(&self) -> KeybindsToml {
-        let mut toml = KeybindsToml::default();
-        toml.list = section_to_toml(&self.list);
-        toml.edit = section_to_toml(&self.edit);
-        toml.help = section_to_toml(&self.help);
-        toml.graph = section_to_toml(&self.graph);
-        toml.draw = section_to_toml(&self.draw);
-        toml.canvas = section_to_toml(&self.canvas);
-        toml.backup = section_to_toml(&self.backup);
-        toml.content_tree = section_to_toml(&self.content_tree);
-        toml
+        KeybindsToml {
+            list: section_to_toml(&self.list),
+            edit: section_to_toml(&self.edit),
+            help: section_to_toml(&self.help),
+            graph: section_to_toml(&self.graph),
+            draw: section_to_toml(&self.draw),
+            canvas: section_to_toml(&self.canvas),
+            backup: section_to_toml(&self.backup),
+            content_tree: section_to_toml(&self.content_tree),
+        }
     }
 
     // -- Resolve wrappers (delegate to KeyMatcher::resolve) --

@@ -1,5 +1,5 @@
-use std::sync::{Arc, mpsc};
 use parking_lot::RwLock;
+use std::sync::{Arc, mpsc};
 
 use super::graph::GraphState;
 use crate::config::ClinConfig;

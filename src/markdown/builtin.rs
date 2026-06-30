@@ -131,7 +131,7 @@ impl Ctx<'_> {
         if self.lines.is_empty() {
             self.lines.push(Vec::with_capacity(self.cols));
         }
-        self.lines.last_mut().unwrap()
+        self.lines.last_mut().expect("lines is not empty")
     }
 
     /// Start a new line with `margin` leading spaces.
@@ -453,31 +453,32 @@ fn render_code_block(ctx: &mut Ctx, cb: &NodeCodeBlock, depth: usize) {
         let lang = cb.info.split_whitespace().next().unwrap_or("");
         if !lang.is_empty()
             && let Some(syntax) = SYNTAX_SET.find_syntax_by_token(lang)
-                && let Some(theme) = THEME_SET.themes.get(CODE_THEME) {
-                    let mut highlighter = syntect::easy::HighlightLines::new(syntax, theme);
+            && let Some(theme) = THEME_SET.themes.get(CODE_THEME)
+        {
+            let mut highlighter = syntect::easy::HighlightLines::new(syntax, theme);
 
-                    for line in cb.literal.lines() {
-                        if ctx.cancel_token.load(Ordering::Relaxed) {
-                            return;
-                        }
-                        ctx.new_line(margin);
-                        ctx.push_spaces(4, margin);
-
-                        if let Ok(ranges) = highlighter.highlight_line(line, &SYNTAX_SET) {
-                            for (syn_style, text) in &ranges {
-                                let rt_style = syntect_style_to_ratatui(*syn_style);
-                                ctx.push_str(text, rt_style, code_margin);
-                            }
-                        } else {
-                            ctx.push_str(line, ctx.theme.paragraph, code_margin);
-                        }
-                    }
-
-                    ctx.new_line(margin);
-
-                    ctx.new_line(0);
+            for line in cb.literal.lines() {
+                if ctx.cancel_token.load(Ordering::Relaxed) {
                     return;
                 }
+                ctx.new_line(margin);
+                ctx.push_spaces(4, margin);
+
+                if let Ok(ranges) = highlighter.highlight_line(line, &SYNTAX_SET) {
+                    for (syn_style, text) in &ranges {
+                        let rt_style = syntect_style_to_ratatui(*syn_style);
+                        ctx.push_str(text, rt_style, code_margin);
+                    }
+                } else {
+                    ctx.push_str(line, ctx.theme.paragraph, code_margin);
+                }
+            }
+
+            ctx.new_line(margin);
+
+            ctx.new_line(0);
+            return;
+        }
     }
 
     // Plain rendering (no syntect or no lang info)
@@ -774,10 +775,8 @@ fn link_icon(url: &str, icon_mode: crate::config::IconMode) -> &'static str {
         crate::ui::get_icon("\u{f266}", "\u{1f4d6}", icon_mode) // nerd:  / unicode: 📖
     } else if url_lower.starts_with("mailto:") {
         crate::ui::get_icon("\u{f0e0}", "\u{2709}", icon_mode) // nerd:  / unicode: ✉
-    } else if url_lower.starts_with("http://") || url_lower.starts_with("https://") {
-        crate::ui::get_icon("\u{f0c1}", "\u{1f517}", icon_mode) // nerd:  / unicode: 🔗
     } else {
-        crate::ui::get_icon("\u{f0c1}", "\u{1f517}", icon_mode) // fallback: generic link
+        crate::ui::get_icon("\u{f0c1}", "\u{1f517}", icon_mode) // nerd:  / unicode: 🔗
     }
 }
 
@@ -945,24 +944,30 @@ mod tests {
         assert!(h1_line.is_some(), "h1 should appear");
         // First non-space cell is '#' which should be bold
         let h1_first = h1_line
-            .unwrap()
+            .expect("lines is not empty")
             .cells
             .iter()
             .find(|(c, _)| *c != ' ')
             .map(|(_, s)| *s);
         assert!(h1_first.is_some(), "h1 has content");
-        assert!(has_mod(h1_first.unwrap(), Modifier::BOLD), "h1 bold");
+        assert!(
+            has_mod(h1_first.expect("lines is not empty"), Modifier::BOLD),
+            "h1 bold"
+        );
 
         let h2_line = lines.iter().find(|l| line_text(l).contains("Heading 2"));
         assert!(h2_line.is_some(), "h2 should appear");
         let h2_first = h2_line
-            .unwrap()
+            .expect("lines is not empty")
             .cells
             .iter()
             .find(|(c, _)| *c != ' ')
             .map(|(_, s)| *s);
         assert!(h2_first.is_some(), "h2 has content");
-        assert!(has_mod(h2_first.unwrap(), Modifier::BOLD), "h2 bold");
+        assert!(
+            has_mod(h2_first.expect("lines is not empty"), Modifier::BOLD),
+            "h2 bold"
+        );
     }
 
     #[test]
@@ -972,7 +977,10 @@ mod tests {
         let h2 = lines.iter().find(|l| line_text(l).contains("Heading 2"));
         assert!(h2.is_some(), "H2 should contain heading text");
         assert!(
-            !h2.unwrap().cells.iter().any(|(c, _)| *c == '#'),
+            !h2.expect("lines is not empty")
+                .cells
+                .iter()
+                .any(|(c, _)| *c == '#'),
             "heading should NOT contain hash prefix"
         );
     }
@@ -1009,7 +1017,10 @@ mod tests {
         let lines = render_test("> blockquote", 80, true, false);
         let bq = lines.iter().find(|l| line_text(l).contains("blockquote"));
         assert!(bq.is_some(), "blockquote text should appear");
-        assert!(line_text(bq.unwrap()).contains('┃'), "blockquote bar");
+        assert!(
+            line_text(bq.expect("lines is not empty")).contains('┃'),
+            "blockquote bar"
+        );
     }
 
     #[test]
@@ -1059,7 +1070,7 @@ mod tests {
         let lines = render_test("---\n", 40, true, false);
         let hr_line = lines.iter().find(|l| line_text(l).contains("─"));
         assert!(hr_line.is_some(), "HR should be present");
-        let hr_str = line_text(hr_line.unwrap());
+        let hr_str = line_text(hr_line.expect("lines is not empty"));
         let count = hr_str.chars().filter(|&c| c == '─').count();
         assert!(
             count >= 30,
@@ -1189,7 +1200,7 @@ mod tests {
     #[test]
     fn no_trailing_blank_lines() {
         let lines = render_test("a\n\nb", 80, true, false);
-        let last = lines.last().unwrap();
+        let last = lines.last().expect("lines is not empty");
         assert!(
             !last.cells.iter().all(|(c, _)| c.is_whitespace()),
             "last row should not be blank"
@@ -1319,7 +1330,7 @@ mod tests {
         let lines = render_test("## Sub\n", 80, true, false);
         let h2_line = lines.iter().find(|l| line_text(l).contains("Sub"));
         assert!(h2_line.is_some(), "H2 should contain Sub");
-        let h2 = h2_line.unwrap();
+        let h2 = h2_line.expect("lines is not empty");
         // No '#' char in the rendered output
         assert!(
             !h2.cells.iter().any(|(c, _)| *c == '#'),
@@ -1328,7 +1339,10 @@ mod tests {
         // No bg fill: cells after text should be absent/default
         let h2_first = h2.cells.iter().find(|(c, _)| *c != ' ').map(|(_, s)| *s);
         assert!(h2_first.is_some(), "H2 has content");
-        assert!(has_mod(h2_first.unwrap(), Modifier::BOLD), "H2 bold");
+        assert!(
+            has_mod(h2_first.expect("lines is not empty"), Modifier::BOLD),
+            "H2 bold"
+        );
     }
 
     #[test]
@@ -1423,7 +1437,7 @@ mod tests {
         let def_line = lines
             .iter()
             .find(|l| line_text(l).contains("Definition text"))
-            .unwrap();
+            .expect("lines is not empty");
         let leading_spaces = def_line.cells.iter().take_while(|(c, _)| *c == ' ').count();
         assert_eq!(
             leading_spaces, 6,

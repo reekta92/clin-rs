@@ -66,7 +66,7 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 app.autosave();
                 let new_id = app.editor.editing_id.clone();
                 app.back_to_list(prev_id.as_deref(), new_id.as_deref());
-                
+
                 *focus = EditFocus::Body;
                 return false;
             }
@@ -180,9 +180,10 @@ pub fn handle_edit_mouse(
                     .take()
                     .expect("context_menu Some — guarded by enclosing if-let");
                 if let crate::popups::ActivePopup::ContextMenu(menu) = &mut menu_taken
-                    && menu.selected < 3 {
-                        menu.selected += 1;
-                    }
+                    && menu.selected < 3
+                {
+                    menu.selected += 1;
+                }
                 app.popups.active = Some(menu_taken);
             }
             return;

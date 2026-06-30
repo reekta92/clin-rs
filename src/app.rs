@@ -50,8 +50,7 @@ pub struct SearchQuery {
     pub grep_text: String,
 }
 
-#[derive(Debug, Clone)]
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
 pub struct HelpSearchState {
     pub active: bool,
     pub query: String,
@@ -60,7 +59,6 @@ pub struct HelpSearchState {
     pub cursor: usize,
     pub highlight_row: Option<usize>,
 }
-
 
 #[derive(Debug)]
 pub enum LoadBatch {
@@ -252,6 +250,7 @@ pub enum LayoutDrag {
 }
 
 impl HelpTab {
+    #[must_use]
     pub fn prev(self) -> Self {
         match self {
             HelpTab::Notes => HelpTab::About,
@@ -266,6 +265,7 @@ impl HelpTab {
         }
     }
 
+    #[must_use]
     pub fn next(self) -> Self {
         match self {
             HelpTab::Notes => HelpTab::Editor,
@@ -599,10 +599,7 @@ impl App {
     }
     pub fn reload_config(&mut self) {
         self.config = match crate::config::ClinConfig::load() {
-            Ok(c) => {
-                
-                c
-            }
+            Ok(c) => c,
             Err(e) => {
                 eprintln!("RELOAD ERROR: {:?}", e);
                 self.config.clone()
@@ -616,11 +613,12 @@ impl App {
     pub fn check_and_reload_config(&mut self) {
         if let Ok(config_path) = crate::config::ClinConfig::config_path()
             && let Ok(metadata) = std::fs::metadata(&config_path)
-                && let Ok(mtime) = metadata.modified()
-                    && (self.config_mtime.is_none() || self.config_mtime.unwrap() < mtime) {
-                        self.config_mtime = Some(mtime);
-                        self.reload_config();
-                    }
+            && let Ok(mtime) = metadata.modified()
+            && (self.config_mtime.is_none() || self.config_mtime.expect("value is present") < mtime)
+        {
+            self.config_mtime = Some(mtime);
+            self.reload_config();
+        }
     }
 
     fn is_virtual_pinned_path(path: &str) -> bool {
@@ -1245,15 +1243,15 @@ mod tests {
     }
     #[test]
     fn test_refresh_visual_list_requests_preview_update() {
-        let temp_dir = tempdir().unwrap();
+        let temp_dir = tempdir().expect("value is present");
         let data_dir = temp_dir.path().join("data");
         let config_dir = temp_dir.path().join("config");
         let notes_dir = temp_dir.path().join("notes");
         let templates_dir = temp_dir.path().join("templates");
-        std::fs::create_dir_all(&data_dir).unwrap();
-        std::fs::create_dir_all(&config_dir).unwrap();
-        std::fs::create_dir_all(&notes_dir).unwrap();
-        std::fs::create_dir_all(&templates_dir).unwrap();
+        std::fs::create_dir_all(&data_dir).expect("value is present");
+        std::fs::create_dir_all(&config_dir).expect("value is present");
+        std::fs::create_dir_all(&notes_dir).expect("value is present");
+        std::fs::create_dir_all(&templates_dir).expect("value is present");
 
         let storage = Storage {
             data_dir,
@@ -1262,7 +1260,7 @@ mod tests {
             templates_dir,
             key: [0u8; 32],
         };
-        let mut app = App::new(storage).unwrap();
+        let mut app = App::new(storage).expect("value is present");
         app.list.preview_enabled = true;
 
         // Test Grid layout (visual list is empty -> preview_content_index is None)
@@ -1282,15 +1280,15 @@ mod tests {
 
     #[test]
     fn test_y_inserts_in_create_note_popup() {
-        let temp_dir = tempdir().unwrap();
+        let temp_dir = tempdir().expect("value is present");
         let data_dir = temp_dir.path().join("data");
         let config_dir = temp_dir.path().join("config");
         let notes_dir = temp_dir.path().join("notes");
         let templates_dir = temp_dir.path().join("templates");
-        std::fs::create_dir_all(&data_dir).unwrap();
-        std::fs::create_dir_all(&config_dir).unwrap();
-        std::fs::create_dir_all(&notes_dir).unwrap();
-        std::fs::create_dir_all(&templates_dir).unwrap();
+        std::fs::create_dir_all(&data_dir).expect("value is present");
+        std::fs::create_dir_all(&config_dir).expect("value is present");
+        std::fs::create_dir_all(&notes_dir).expect("value is present");
+        std::fs::create_dir_all(&templates_dir).expect("value is present");
 
         let storage = Storage {
             data_dir,
@@ -1299,7 +1297,7 @@ mod tests {
             templates_dir,
             key: [0u8; 32],
         };
-        let mut app = App::new(storage).unwrap();
+        let mut app = App::new(storage).expect("value is present");
 
         // Open the create-note popup
         app.begin_create_note_in_folder(String::new());
@@ -1340,15 +1338,15 @@ mod tests {
 
     #[test]
     fn test_external_editor_uses_saved_id() {
-        let temp_dir = tempdir().unwrap();
+        let temp_dir = tempdir().expect("value is present");
         let data_dir = temp_dir.path().join("data");
         let config_dir = temp_dir.path().join("config");
         let notes_dir = temp_dir.path().join("notes");
         let templates_dir = temp_dir.path().join("templates");
-        std::fs::create_dir_all(&data_dir).unwrap();
-        std::fs::create_dir_all(&config_dir).unwrap();
-        std::fs::create_dir_all(&notes_dir).unwrap();
-        std::fs::create_dir_all(&templates_dir).unwrap();
+        std::fs::create_dir_all(&data_dir).expect("value is present");
+        std::fs::create_dir_all(&config_dir).expect("value is present");
+        std::fs::create_dir_all(&notes_dir).expect("value is present");
+        std::fs::create_dir_all(&templates_dir).expect("value is present");
 
         let storage = Storage {
             data_dir,
@@ -1357,7 +1355,7 @@ mod tests {
             templates_dir,
             key: [0u8; 32],
         };
-        let mut app = App::new(storage).unwrap();
+        let mut app = App::new(storage).expect("value is present");
 
         // Enable external editor with `false` (exits non-zero — proves load succeeded)
         app.editor.external_editor_enabled = true;
@@ -1374,15 +1372,15 @@ mod tests {
 
     #[test]
     fn test_goals_progress_tracking_autosave() {
-        let temp_dir = tempdir().unwrap();
+        let temp_dir = tempdir().expect("value is present");
         let data_dir = temp_dir.path().join("data");
         let config_dir = temp_dir.path().join("config");
         let notes_dir = temp_dir.path().join("notes");
         let templates_dir = temp_dir.path().join("templates");
-        std::fs::create_dir_all(&data_dir).unwrap();
-        std::fs::create_dir_all(&config_dir).unwrap();
-        std::fs::create_dir_all(&notes_dir).unwrap();
-        std::fs::create_dir_all(&templates_dir).unwrap();
+        std::fs::create_dir_all(&data_dir).expect("value is present");
+        std::fs::create_dir_all(&config_dir).expect("value is present");
+        std::fs::create_dir_all(&notes_dir).expect("value is present");
+        std::fs::create_dir_all(&templates_dir).expect("value is present");
 
         let storage = Storage {
             data_dir,
@@ -1391,7 +1389,7 @@ mod tests {
             templates_dir,
             key: [0u8; 32],
         };
-        let mut app = App::new(storage).unwrap();
+        let mut app = App::new(storage).expect("value is present");
 
         // Initially no words written and no notes modified
         assert_eq!(app.goals_progress.words_written, 0);
@@ -1444,15 +1442,15 @@ mod tests {
 
     #[test]
     fn test_incremental_refresh_on_back_to_list() {
-        let temp_dir = tempdir().unwrap();
+        let temp_dir = tempdir().expect("value is present");
         let data_dir = temp_dir.path().join("data");
         let config_dir = temp_dir.path().join("config");
         let notes_dir = temp_dir.path().join("notes");
         let templates_dir = temp_dir.path().join("templates");
-        std::fs::create_dir_all(&data_dir).unwrap();
-        std::fs::create_dir_all(&config_dir).unwrap();
-        std::fs::create_dir_all(&notes_dir).unwrap();
-        std::fs::create_dir_all(&templates_dir).unwrap();
+        std::fs::create_dir_all(&data_dir).expect("value is present");
+        std::fs::create_dir_all(&config_dir).expect("value is present");
+        std::fs::create_dir_all(&notes_dir).expect("value is present");
+        std::fs::create_dir_all(&templates_dir).expect("value is present");
 
         let storage = Storage {
             data_dir,
@@ -1461,7 +1459,7 @@ mod tests {
             templates_dir,
             key: [0u8; 32],
         };
-        let mut app = App::new(storage).unwrap();
+        let mut app = App::new(storage).expect("value is present");
 
         // Create 3 notes, using the incremental refresh path for each
         for title in ["Note A", "Note B", "Note C"] {
@@ -1539,21 +1537,21 @@ mod tests {
     #[test]
     fn test_theme_reload_updates_cached_display_items() {
         let _lock = crate::config::CONFIG_TEST_MUTEX.lock();
-        let config_path = crate::config::ClinConfig::config_path().unwrap();
+        let config_path = crate::config::ClinConfig::config_path().expect("value is present");
         if let Some(parent) = config_path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
         let _ = std::fs::remove_file(&config_path);
 
-        let temp_dir = tempdir().unwrap();
+        let temp_dir = tempdir().expect("value is present");
         let data_dir = temp_dir.path().join("data");
         let config_dir = temp_dir.path().join("config");
         let notes_dir = temp_dir.path().join("notes");
         let templates_dir = temp_dir.path().join("templates");
-        std::fs::create_dir_all(&data_dir).unwrap();
-        std::fs::create_dir_all(&config_dir).unwrap();
-        std::fs::create_dir_all(&notes_dir).unwrap();
-        std::fs::create_dir_all(&templates_dir).unwrap();
+        std::fs::create_dir_all(&data_dir).expect("value is present");
+        std::fs::create_dir_all(&config_dir).expect("value is present");
+        std::fs::create_dir_all(&notes_dir).expect("value is present");
+        std::fs::create_dir_all(&templates_dir).expect("value is present");
 
         let storage = Storage {
             data_dir,
@@ -1562,13 +1560,13 @@ mod tests {
             templates_dir,
             key: [0u8; 32],
         };
-        let mut app = App::new(storage).unwrap();
+        let mut app = App::new(storage).expect("value is present");
 
         // Write a clean base config first so it has tokyo_night
         let config_content = r#"[ui]
 theme = "tokyo_night"
 "#;
-        std::fs::write(&config_path, config_content).unwrap();
+        std::fs::write(&config_path, config_content).expect("value is present");
         app.reload_theme();
 
         // Verify the theme colors changed
@@ -1578,21 +1576,21 @@ theme = "tokyo_night"
     #[test]
     fn test_set_goals_actions() {
         let _lock = crate::config::CONFIG_TEST_MUTEX.lock();
-        let config_path = crate::config::ClinConfig::config_path().unwrap();
+        let config_path = crate::config::ClinConfig::config_path().expect("value is present");
         if let Some(parent) = config_path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
         let _ = std::fs::remove_file(&config_path);
 
-        let temp_dir = tempdir().unwrap();
+        let temp_dir = tempdir().expect("value is present");
         let data_dir = temp_dir.path().join("data");
         let config_dir = temp_dir.path().join("config");
         let notes_dir = temp_dir.path().join("notes");
         let templates_dir = temp_dir.path().join("templates");
-        std::fs::create_dir_all(&data_dir).unwrap();
-        std::fs::create_dir_all(&config_dir).unwrap();
-        std::fs::create_dir_all(&notes_dir).unwrap();
-        std::fs::create_dir_all(&templates_dir).unwrap();
+        std::fs::create_dir_all(&data_dir).expect("value is present");
+        std::fs::create_dir_all(&config_dir).expect("value is present");
+        std::fs::create_dir_all(&notes_dir).expect("value is present");
+        std::fs::create_dir_all(&templates_dir).expect("value is present");
 
         let storage = Storage {
             data_dir,
@@ -1601,14 +1599,15 @@ theme = "tokyo_night"
             templates_dir,
             key: [0u8; 32],
         };
-        let mut app = App::new(storage).unwrap();
+        let mut app = App::new(storage).expect("value is present");
 
         // Initially defaults are 500 and 3
         assert_eq!(app.config.goals.word_goal, 500);
         assert_eq!(app.config.goals.note_goal, 3);
 
         // Execute set word goal action
-        crate::actions::execute_action("settings.word_goal", &mut app, None).unwrap();
+        crate::actions::execute_action("settings.word_goal", &mut app, None)
+            .expect("value is present");
         assert!(matches!(
             app.popups.active,
             Some(crate::popups::ActivePopup::Goals(_))
@@ -1633,7 +1632,8 @@ theme = "tokyo_night"
         assert_eq!(app.config.goals.word_goal, 750);
 
         // Execute set note goal action
-        crate::actions::execute_action("settings.note_goal", &mut app, None).unwrap();
+        crate::actions::execute_action("settings.note_goal", &mut app, None)
+            .expect("value is present");
         assert!(matches!(
             app.popups.active,
             Some(crate::popups::ActivePopup::Goals(_))
@@ -1661,21 +1661,21 @@ theme = "tokyo_night"
     #[test]
     fn test_auto_reload_config_on_disk_change() {
         let _lock = crate::config::CONFIG_TEST_MUTEX.lock();
-        let config_path = crate::config::ClinConfig::config_path().unwrap();
+        let config_path = crate::config::ClinConfig::config_path().expect("value is present");
         if let Some(parent) = config_path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
         let _ = std::fs::remove_file(&config_path);
 
-        let temp_dir = tempdir().unwrap();
+        let temp_dir = tempdir().expect("value is present");
         let data_dir = temp_dir.path().join("data");
         let config_dir = temp_dir.path().join("config");
         let notes_dir = temp_dir.path().join("notes");
         let templates_dir = temp_dir.path().join("templates");
-        std::fs::create_dir_all(&data_dir).unwrap();
-        std::fs::create_dir_all(&config_dir).unwrap();
-        std::fs::create_dir_all(&notes_dir).unwrap();
-        std::fs::create_dir_all(&templates_dir).unwrap();
+        std::fs::create_dir_all(&data_dir).expect("value is present");
+        std::fs::create_dir_all(&config_dir).expect("value is present");
+        std::fs::create_dir_all(&notes_dir).expect("value is present");
+        std::fs::create_dir_all(&templates_dir).expect("value is present");
 
         let storage = Storage {
             data_dir,
@@ -1684,7 +1684,7 @@ theme = "tokyo_night"
             templates_dir,
             key: [0u8; 32],
         };
-        let mut app = App::new(storage).unwrap();
+        let mut app = App::new(storage).expect("value is present");
 
         // Initially defaults to 500
         assert_eq!(app.config.goals.word_goal, 500);
@@ -1693,7 +1693,7 @@ theme = "tokyo_night"
         let config_content = r#"[goals]
 word_goal = 1200
 "#;
-        std::fs::write(&config_path, config_content).unwrap();
+        std::fs::write(&config_path, config_content).expect("value is present");
 
         // Force a reload by clearing the cached mtime
         // Force a reload by clearing the cached mtime
@@ -1706,15 +1706,15 @@ word_goal = 1200
 
     #[test]
     fn adjust_preview_width_to_clamps_to_max() {
-        let temp_dir = tempfile::tempdir().unwrap();
+        let temp_dir = tempfile::tempdir().expect("value is present");
         let data_dir = temp_dir.path().join("data");
         let config_dir = temp_dir.path().join("config");
         let notes_dir = temp_dir.path().join("notes");
         let templates_dir = temp_dir.path().join("templates");
-        std::fs::create_dir_all(&data_dir).unwrap();
-        std::fs::create_dir_all(&config_dir).unwrap();
-        std::fs::create_dir_all(&notes_dir).unwrap();
-        std::fs::create_dir_all(&templates_dir).unwrap();
+        std::fs::create_dir_all(&data_dir).expect("value is present");
+        std::fs::create_dir_all(&config_dir).expect("value is present");
+        std::fs::create_dir_all(&notes_dir).expect("value is present");
+        std::fs::create_dir_all(&templates_dir).expect("value is present");
 
         let storage = crate::storage::Storage {
             data_dir,
@@ -1723,7 +1723,7 @@ word_goal = 1200
             templates_dir,
             key: [0u8; 32],
         };
-        let mut app = App::new(storage).unwrap();
+        let mut app = App::new(storage).expect("value is present");
 
         app.adjust_preview_width_to(5.0);
         assert!(
@@ -1742,15 +1742,15 @@ word_goal = 1200
 
     #[test]
     fn adjust_calendar_height_clamps() {
-        let temp_dir = tempfile::tempdir().unwrap();
+        let temp_dir = tempfile::tempdir().expect("value is present");
         let data_dir = temp_dir.path().join("data");
         let config_dir = temp_dir.path().join("config");
         let notes_dir = temp_dir.path().join("notes");
         let templates_dir = temp_dir.path().join("templates");
-        std::fs::create_dir_all(&data_dir).unwrap();
-        std::fs::create_dir_all(&config_dir).unwrap();
-        std::fs::create_dir_all(&notes_dir).unwrap();
-        std::fs::create_dir_all(&templates_dir).unwrap();
+        std::fs::create_dir_all(&data_dir).expect("value is present");
+        std::fs::create_dir_all(&config_dir).expect("value is present");
+        std::fs::create_dir_all(&notes_dir).expect("value is present");
+        std::fs::create_dir_all(&templates_dir).expect("value is present");
 
         let storage = crate::storage::Storage {
             data_dir,
@@ -1759,7 +1759,7 @@ word_goal = 1200
             templates_dir,
             key: [0u8; 32],
         };
-        let mut app = App::new(storage).unwrap();
+        let mut app = App::new(storage).expect("value is present");
 
         app.adjust_calendar_height(-20);
         assert_eq!(app.list.calendar_height, 9);
@@ -1770,15 +1770,15 @@ word_goal = 1200
 
     #[test]
     fn test_view_mode_transitions_prevent_zombie_state() {
-        let temp_dir = tempdir().unwrap();
+        let temp_dir = tempdir().expect("value is present");
         let data_dir = temp_dir.path().join("data");
         let config_dir = temp_dir.path().join("config");
         let notes_dir = temp_dir.path().join("notes");
         let templates_dir = temp_dir.path().join("templates");
-        std::fs::create_dir_all(&data_dir).unwrap();
-        std::fs::create_dir_all(&config_dir).unwrap();
-        std::fs::create_dir_all(&notes_dir).unwrap();
-        std::fs::create_dir_all(&templates_dir).unwrap();
+        std::fs::create_dir_all(&data_dir).expect("value is present");
+        std::fs::create_dir_all(&config_dir).expect("value is present");
+        std::fs::create_dir_all(&notes_dir).expect("value is present");
+        std::fs::create_dir_all(&templates_dir).expect("value is present");
 
         let storage = Storage {
             data_dir,
@@ -1787,7 +1787,7 @@ word_goal = 1200
             templates_dir,
             key: [0u8; 32],
         };
-        let mut app = App::new(storage).unwrap();
+        let mut app = App::new(storage).expect("value is present");
 
         // 1. Initially mode is List, return_mode is None
         assert_eq!(app.mode, ViewMode::List);

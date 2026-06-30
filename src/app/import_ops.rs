@@ -15,7 +15,6 @@ impl App {
         folder: String,
         note_id: Option<String>,
     ) {
-        
         if target == ImportTarget::NewNote && Self::is_virtual_pinned_path(&folder) {
             self.set_temporary_status_static("Cannot create note inside virtual Pinned");
             return;
@@ -65,18 +64,15 @@ impl App {
             ImportSource::Clipboard => unreachable!(),
         };
 
-        
         match result {
             Ok((title, md)) => {
                 if let Err(e) =
                     self.insert_content(popup.target, popup.note_id.as_deref(), title, md)
                 {
-                    
                     self.set_temporary_status(&format!("Import failed: {e:#}"));
                 }
             }
             Err(e) => {
-                
                 self.set_temporary_status(&format!("Import failed: {e:#}"));
             }
         }
