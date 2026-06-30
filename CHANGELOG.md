@@ -2,6 +2,89 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.9.0] - 2026-06-30
+
+### CI
+
+- Fixed clippy, format check warnings and errors
+- Fixed clippy, format check warnings and errors
+- Fixed CI check warnings and errors
+## [0.8.32] - 2026-06-27
+
+### Miscellaneous
+
+- Bump anyhow from 1.0.102 to 1.0.103
+- Bump uuid from 1.23.3 to 1.23.4
+
+### Release
+
+- V0.8.32
+## [0.8.31] - 2026-06-23
+
+### Release
+
+- V0.8.31
+## [0.8.30] - 2026-06-23
+
+### Release
+
+- V0.8.30
+## [0.8.29] - 2026-06-23
+
+### Release
+
+- V0.8.29
+## [0.8.28] - 2026-06-23
+
+### Release
+
+- V0.8.28
+## [0.8.27] - 2026-06-23
+
+### Testing
+
+- Testing CI
+- Testing CI
+
+### Release
+
+- V0.8.27
+- V0.9.0-beta.4
+- V0.9.0-beta.4
+## [0.8.26] - 2026-06-21
+
+### Added
+
+- Reimplement view with git-style staging
+
+### Changed
+
+- Simplify command outputs and drop json arg
+- Replace std Mutex/RwLock with parking_lot
+- Remove custom logging and debug dump
+
+### Documentation
+
+- Update CLI Commands to match current CLI
+- Reflect OverlayView trait architecture
+- Sync docs with code changes
+
+### Fixed
+
+- Correct jump-to-top dispatch and add jump-to-bottom defaults
+- Add #[serde(default)] to all config structs
+- Prevent mouse movement from closing non-target popups
+- Align UI consistency, navigation, and mouse targeting
+- Restore terminal on stderr in panic hook
+
+### Release
+
+- V0.8.26
+## [0.9.0-rc.3] - 2026-06-29
+
+### Release
+
+- V0.9.0-rc.3
 ## [0.9.0-rc.2] - 2026-06-29
 
 ### Added
