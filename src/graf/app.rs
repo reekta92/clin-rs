@@ -1,6 +1,6 @@
 use anyhow::Context;
 use std::sync::Arc;
-use std::sync::RwLock;
+use parking_lot::RwLock;
 
 use fdg_sim::petgraph::graph::NodeIndex;
 
@@ -127,7 +127,7 @@ impl GrafAppState {
             return;
         }
         let selected_note_id = if let Some(gs) = &self.graph_state {
-            let guard = gs.read().unwrap_or_else(|e| e.into_inner());
+            let guard = gs.read();
             if let Some(idx) = guard.selected_node {
                 guard
                     .simulation
@@ -472,7 +472,7 @@ fn handle_search_keys(
         KeyCode::Enter => {
             if let Some(&(idx, _)) = app_state.search_results.get(app_state.search_selected) {
                 let (nx, ny) = if let Some(graph_state) = &app_state.graph_state {
-                    let guard = graph_state.read().unwrap_or_else(|e| e.into_inner());
+                    let guard = graph_state.read();
                     let graph = guard.simulation.get_graph();
                     if let Some(node) = graph.node_weight(idx) {
                         (node.location.x as f64, node.location.y as f64)
@@ -483,7 +483,7 @@ fn handle_search_keys(
                     (0.0, 0.0)
                 };
                 if let Some(graph_state) = &app_state.graph_state {
-                    let mut guard = graph_state.write().unwrap_or_else(|e| e.into_inner());
+                    let mut guard = graph_state.write();
                     guard.selected_node = Some(idx);
                     guard.viewport.center_on_node(nx as f32, ny as f32);
                 }
@@ -620,7 +620,7 @@ fn delete_word_back(app_state: &mut GrafAppState) {
 
 fn run_search(app_state: &mut GrafAppState, config: &crate::config::ClinConfig) {
     if let Some(graph_state) = &app_state.graph_state {
-        let guard = graph_state.read().unwrap_or_else(|e| e.into_inner());
+        let guard = graph_state.read();
         app_state.search_results = crate::graf::graph::search_nodes(
             &guard.simulation,
             &app_state.search_query,

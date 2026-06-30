@@ -46,7 +46,7 @@ pub fn draw_ui(
     };
 
     let right_text = if let Some(graph_state) = &state.graph_state {
-        let guard = graph_state.read().unwrap_or_else(|e| e.into_inner());
+        let guard = graph_state.read();
         Some(ratatui::text::Line::from(
             crate::graf::render::compute_status_string(&guard, graph_area),
         ))
@@ -72,7 +72,7 @@ pub fn draw_ui(
     let colors = config.theme_colors();
 
     if let Some(graph_state) = &state.graph_state {
-        let guard = graph_state.read().unwrap_or_else(|e| e.into_inner());
+        let guard = graph_state.read();
         let flags = crate::graf::render::FeatureFlags {
             show_legend: state.show_legend,
             show_grid: state.show_grid,

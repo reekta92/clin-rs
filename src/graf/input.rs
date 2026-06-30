@@ -1,4 +1,5 @@
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
+use parking_lot::RwLock;
 use std::time::Instant;
 
 use crossterm::event::{KeyEvent, MouseButton, MouseEvent, MouseEventKind};
@@ -31,7 +32,7 @@ pub fn handle_graph_keys(
     config: &ClinConfig,
     seq_matcher: &mut crate::keybinds::KeyMatcher,
 ) -> Option<GraphInputAction> {
-    let mut guard = state.write().unwrap_or_else(|e| e.into_inner());
+    let mut guard = state.write();
 
     let seq = config.sequences_enabled();
     let counts = config.counts_enabled();
@@ -156,14 +157,14 @@ pub fn handle_graph_mouse(
             if !inside_area {
                 return None;
             }
-            let mut guard = state.write().unwrap_or_else(|e| e.into_inner());
+            let mut guard = state.write();
             guard.viewport.zoom_in(config.graf.interaction.zoom_factor);
         }
         MouseEventKind::ScrollDown => {
             if !inside_area {
                 return None;
             }
-            let mut guard = state.write().unwrap_or_else(|e| e.into_inner());
+            let mut guard = state.write();
             guard.viewport.zoom_out(config.graf.interaction.zoom_factor);
         }
         MouseEventKind::Down(MouseButton::Left) => {
@@ -176,9 +177,9 @@ pub fn handle_graph_mouse(
                         mouse_event.column,
                         mouse_event.row,
                         ma,
-                        &state.read().unwrap_or_else(|e| e.into_inner()),
+                        &state.read(),
                     );
-                    let mut guard = state.write().unwrap_or_else(|e| e.into_inner());
+                    let mut guard = state.write();
                     guard.viewport.center_x = world.0;
                     guard.viewport.center_y = world.1;
                     mouse_state.is_minimap_dragging = true;
@@ -186,14 +187,14 @@ pub fn handle_graph_mouse(
                 }
             } else {
                 let (wx, wy) = {
-                    let guard = state.read().unwrap_or_else(|e| e.into_inner());
+                    let guard = state.read();
                     guard
                         .viewport
                         .screen_to_world(mouse_event.column, mouse_event.row, area)
                 };
 
                 let hit = {
-                    let guard = state.read().unwrap_or_else(|e| e.into_inner());
+                    let guard = state.read();
                     guard.viewport.hit_test(wx, wy, &guard)
                 };
 
@@ -202,7 +203,7 @@ pub fn handle_graph_mouse(
                     .is_some_and(|t| t.elapsed().as_millis() < 300);
 
                 if let Some(node_idx) = hit {
-                    let mut guard = state.write().unwrap_or_else(|e| e.into_inner());
+                    let mut guard = state.write();
                     guard.selected_node = Some(node_idx);
                     guard.dragging_node = Some(node_idx);
                     mouse_state.drag_origin = Some((mouse_event.column, mouse_event.row));
@@ -216,7 +217,7 @@ pub fn handle_graph_mouse(
                         return Some(GraphInputAction::OpenFile(node.data.note_id.clone()));
                     }
                 } else {
-                    let mut guard = state.write().unwrap_or_else(|e| e.into_inner());
+                    let mut guard = state.write();
                     if is_double_click {
                         guard.selected_node = None;
                     }
@@ -236,15 +237,15 @@ pub fn handle_graph_mouse(
                         mouse_event.column,
                         mouse_event.row,
                         ma,
-                        &state.read().unwrap_or_else(|e| e.into_inner()),
+                        &state.read(),
                     );
-                    let mut guard = state.write().unwrap_or_else(|e| e.into_inner());
+                    let mut guard = state.write();
                     guard.viewport.center_x = world.0;
                     guard.viewport.center_y = world.1;
                     mouse_state.drag_origin = Some((mouse_event.column, mouse_event.row));
                 }
             } else if mouse_state.is_panning {
-                let mut guard = state.write().unwrap_or_else(|e| e.into_inner());
+                let mut guard = state.write();
                 let dx_col = -(mouse_event.column as f64 - orig_col as f64);
                 let dy_row = mouse_event.row as f64 - orig_row as f64;
                 let vp = &guard.viewport;
@@ -257,13 +258,13 @@ pub fn handle_graph_mouse(
                 mouse_state.drag_origin = Some((mouse_event.column, mouse_event.row));
             } else {
                 let (wx, wy) = {
-                    let guard = state.read().unwrap_or_else(|e| e.into_inner());
+                    let guard = state.read();
                     guard
                         .viewport
                         .screen_to_world(mouse_event.column, mouse_event.row, area)
                 };
 
-                let mut guard = state.write().unwrap_or_else(|e| e.into_inner());
+                let mut guard = state.write();
                 if let Some(node_idx) = guard.dragging_node {
                     let graph = guard.simulation.get_graph_mut();
                     if let Some(node) = graph.node_weight_mut(node_idx) {
@@ -279,7 +280,7 @@ pub fn handle_graph_mouse(
         }
         MouseEventKind::Up(MouseButton::Left) => {
             {
-                let mut guard = state.write().unwrap_or_else(|e| e.into_inner());
+                let mut guard = state.write();
                 guard.dragging_node = None;
                 guard.drag_target = None;
             }

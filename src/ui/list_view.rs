@@ -169,7 +169,7 @@ fn draw_strip_graf(
             // Build per-node colors via the render cache (respects graf node_color_mode config)
             let graph = gs.simulation.get_graph();
             let colors = app.config.theme_colors();
-            let mut cache = gs.render_cache.lock().unwrap_or_else(|e| e.into_inner());
+            let mut cache = gs.render_cache.lock();
             if cache.topology_dirty {
                 cache.rebuild_topology(graph, &app.config, &colors, false);
             }

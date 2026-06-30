@@ -1,4 +1,5 @@
-use std::sync::{Arc, RwLock, mpsc};
+use std::sync::{Arc, mpsc};
+use parking_lot::RwLock;
 
 use super::graph::GraphState;
 use crate::config::ClinConfig;
@@ -36,12 +37,12 @@ pub fn start_physics(
             }
 
             let should_update = {
-                let guard = state.read().unwrap_or_else(|e| e.into_inner());
+                let guard = state.read();
                 !guard.is_settled
             };
 
             if should_update {
-                let mut guard = state.write().unwrap_or_else(|e| e.into_inner());
+                let mut guard = state.write();
                 if let Some((tx, ty)) = guard.drag_target
                     && let Some(idx) = guard.dragging_node
                 {

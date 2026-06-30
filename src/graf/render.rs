@@ -522,7 +522,7 @@ pub fn draw_graph_view(
     let colors = config.theme_colors();
     let graph = state.simulation.get_graph();
 
-    let mut cache = state.render_cache.lock().unwrap_or_else(|e| e.into_inner());
+    let mut cache = state.render_cache.lock();
 
     if cache.topology_dirty || (flags.show_legend && cache.legend_data.is_none()) {
         cache.rebuild_topology(graph, config, &colors, flags.show_legend);
