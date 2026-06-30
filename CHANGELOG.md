@@ -2,13 +2,17 @@
 
 All notable changes to clin are documented in this file.
 
-## [0.9.0] - 2026-06-30
+## [0.9.1] - 2026-06-30
 
 ### CI
 
 - Fixed clippy, format check warnings and errors
 - Fixed clippy, format check warnings and errors
 - Fixed CI check warnings and errors
+
+### Release
+
+- V0.9.0
 ## [0.8.32] - 2026-06-27
 
 ### Miscellaneous
