@@ -52,7 +52,6 @@ pub static ACTIONS: Lazy<Vec<Box<dyn Action>>> = Lazy::new(|| {
         Box::new(OpenBackupAction),
         Box::new(CreateDrawAction),
         Box::new(CreateCanvasAction),
-        Box::new(DebugDumpAction),
         Box::new(ocr::OcrPasteAction),
         Box::new(SwitchThemeAction),
         Box::new(SwitchKeybindPresetAction),
@@ -115,7 +114,6 @@ Actions are grouped by category. See the `ACTIONS` registry in `src/actions/mod.
 | **Settings** | Theme, Keybind Preset, Layout Toggle, External Editor Toggle, Preview Toggle, Sort Cycle, Calendar Toggle, Word/Note Goal, Icon Mode, Hint Bar Style |
 | **Import** | File/CSV/JSON/URL/Clipboard → New Note |
 | **Append** | File/CSV/JSON/URL/Clipboard → Append to Current, OCR Paste |
-| **General** | Debug Dump |
 
 **Note:** Import and URL actions require `markitdown` (pip install markitdown) or `pandoc` installed. URL import also requires `curl`. CSV and JSON conversions are pure-Rust and always available.
 

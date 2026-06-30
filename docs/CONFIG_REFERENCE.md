@@ -41,6 +41,7 @@ Full reference of all configuration options for clin-rs.
 | `preview_width_ratio` | `f32` | `0.43` | Preview pane width ratio (0.2–0.8) |
 | `calendar_height` | `u16` | `9` | Calendar height in rows (9–20) |
 | `calendar_position` | `enum` | `"bottom"` | Calendar position: `"top"`, `"bottom"` |
+| `week_start` | `enum` | `"Sunday"` | Start day for the rolling-weeks calendar: `"Sunday"` or `"Monday"` |
 | `sections` | `array` | `["calendar","goals"]` | Bottom-strip widgets (max 2): `calendar`, `goals`, `draw`, `graf`. `calendar_enabled` controls strip on/off |
 
 ### `[editor]`

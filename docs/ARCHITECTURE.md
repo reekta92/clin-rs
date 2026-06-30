@@ -173,7 +173,7 @@ List and Edit views use ratatui's `Layout` to split the terminal into panes:
 **List view layout:**
 ```
 ┌─ Notes Pane ──┬──── Preview Pane ────┐
-│  folder tree  │  markdown (glow) or  │
+|  folder tree  │  markdown (built-in) or  │
 │  note list    │  text preview        │
 │  search bar   │                      │
 ├────── Status Bar ────────────────────┤
@@ -185,7 +185,7 @@ List and Edit views use ratatui's `Layout` to split the terminal into panes:
 ┌─ Title Bar ────────────────────────┐
 │  [Title input]                     │
 ├─ Body Editor ───┬─ MD Preview ────┤
-│  (TextArea)     │  (glow render)  │
+|  (TextArea)     │  (built-in render)  │
 │                  │                  │
 ├── Status Bar ──────────────────────┤
 └────────────────────────────────────┘
@@ -218,7 +218,7 @@ src/
 ├── frontmatter.rs    — YAML frontmatter parse/serialize
 ├── keybinds.rs       — Keybind loading, Keybinds struct
 ├── list_view.rs      — ListView state, VisualItem, PreviewContent, sort
-├── markdown.rs       — MarkdownRenderer (glow-based async rendering)
+├── markdown.rs       — MarkdownRenderer (built-in comrak/syntect renderer)
 ├── migration.rs      — Storage migration logic
 ├── palette.rs        — CommandPalette popup widget
 ├── popups.rs         — ConfirmPopup, FolderPopup, TagPopup, etc.
