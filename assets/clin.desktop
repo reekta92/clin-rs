@@ -1,6 +1,6 @@
 [Desktop Entry]
 Name=clin
-Comment=Encrypted terminal note-taking app
+Comment=Feature-packed terminal note management app
 Exec=clin
 Icon=clin
 Terminal=true

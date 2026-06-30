@@ -10,8 +10,10 @@ pub fn handle_event(
     ev: Event,
     app: &mut DrawAppState,
     keybinds: &Keybinds,
+    config: &crate::config::ClinConfig,
 ) -> anyhow::Result<Option<DrawEventAction>> {
     if let Some((idx, textarea)) = &mut app.text_editor {
+        app.seq_matcher.clear();
         match ev {
             Event::Key(k) if keybinds.matches_draw(DrawAction::TextEditorCancel, &k) => {
                 app.text_editor = None;
@@ -38,6 +40,7 @@ pub fn handle_event(
     }
 
     if app.show_shape_selector {
+        app.seq_matcher.clear();
         match ev {
             Event::Key(k) if keybinds.matches_draw(DrawAction::ShapeSelectorCancel, &k) => {
                 app.show_shape_selector = false;
@@ -60,27 +63,50 @@ pub fn handle_event(
         }
     }
 
+    if let Event::Key(k) = ev {
+        let seq = config.sequences_enabled();
+        let counts = config.counts_enabled();
+        match keybinds.resolve_draw(&mut app.seq_matcher, k, seq, counts) {
+            crate::keybinds::MatchOutcome::Matched(action, _count) => match action {
+                DrawAction::Quit => {
+                    return Ok(Some(DrawEventAction::Quit));
+                }
+                DrawAction::SelectDrawTool => {
+                    app.active_tool = DrawTool::Draw;
+                    return Ok(None);
+                }
+                DrawAction::ToggleShapeSelector => {
+                    app.show_shape_selector = !app.show_shape_selector;
+                    return Ok(None);
+                }
+                DrawAction::SelectTextTool => {
+                    app.active_tool = DrawTool::Text;
+                    return Ok(None);
+                }
+                DrawAction::SelectEraseTool => {
+                    app.active_tool = DrawTool::Erase;
+                    return Ok(None);
+                }
+                DrawAction::Help => {
+                    return Ok(Some(DrawEventAction::OpenHelp));
+                }
+                DrawAction::ToggleGrid => {
+                    app.show_grid = !app.show_grid;
+                    return Ok(None);
+                }
+                _ => {
+                    if keybinds.matches_draw(DrawAction::Quit, &k) {
+                        return Ok(Some(DrawEventAction::Quit));
+                    }
+                }
+            },
+            crate::keybinds::MatchOutcome::Pending => return Ok(None),
+            crate::keybinds::MatchOutcome::NoMatch => {}
+        }
+    }
+
     match ev {
-        Event::Key(k) if keybinds.matches_draw(DrawAction::Quit, &k) => {
-            Ok(Some(DrawEventAction::Quit))
-        }
-        Event::Key(k) if keybinds.matches_draw(DrawAction::SelectDrawTool, &k) => {
-            app.active_tool = DrawTool::Draw;
-            Ok(None)
-        }
-        Event::Key(k) if keybinds.matches_draw(DrawAction::ToggleShapeSelector, &k) => {
-            app.show_shape_selector = !app.show_shape_selector;
-            Ok(None)
-        }
-        Event::Key(k) if keybinds.matches_draw(DrawAction::SelectTextTool, &k) => {
-            app.active_tool = DrawTool::Text;
-            Ok(None)
-        }
-        Event::Key(k) if keybinds.matches_draw(DrawAction::SelectEraseTool, &k) => {
-            app.active_tool = DrawTool::Erase;
-            Ok(None)
-        }
-        Event::Mouse(mouse_event) => handle_mouse(mouse_event, app),
+        Event::Mouse(mouse_event) => handle_mouse(mouse_event, app, config),
         _ => Ok(None),
     }
 }
@@ -101,7 +127,11 @@ fn cycle_shape_type(app: &mut DrawAppState, delta: i32) {
     app.active_shape_type = shapes[next_idx];
 }
 
-fn handle_mouse(ev: MouseEvent, app: &mut DrawAppState) -> anyhow::Result<Option<DrawEventAction>> {
+fn handle_mouse(
+    ev: MouseEvent,
+    app: &mut DrawAppState,
+    config: &crate::config::ClinConfig,
+) -> anyhow::Result<Option<DrawEventAction>> {
     let area = app.last_area;
 
     if app.show_shape_selector {
@@ -142,20 +172,22 @@ fn handle_mouse(ev: MouseEvent, app: &mut DrawAppState) -> anyhow::Result<Option
 
     match ev.kind {
         MouseEventKind::Down(MouseButton::Left) => {
-            let toolbar_width = 42;
-            let tx = area.width.saturating_sub(toolbar_width) / 2;
-            let ty = area.height.saturating_sub(1);
-
-            if ev.row == ty && ev.column >= tx && ev.column < tx + toolbar_width {
-                let col_rel = ev.column - tx;
-                if col_rel < 10 {
-                    app.active_tool = DrawTool::Draw;
-                } else if col_rel < 21 {
-                    app.show_shape_selector = true;
-                } else if col_rel < 32 {
-                    app.active_tool = DrawTool::Text;
-                } else {
-                    app.active_tool = DrawTool::Erase;
+            let icon_mode = config.ui.icon_mode;
+            let header_y = area.y.saturating_sub(1);
+            if ev.row == header_y {
+                let tabs_arr = crate::draw::render::draw_tool_tabs(icon_mode);
+                let tabs: Vec<(&str, Option<&str>)> =
+                    tabs_arr.iter().map(|&(l, g)| (l, Some(g))).collect();
+                let region = crate::ui::title_bar_tabs_region(area, "Draw");
+                if let Some(i) = crate::ui::hit_test_tabs(
+                    &tabs, area.x, area.width, region.x, ev.column, false, icon_mode,
+                ) {
+                    if i == 1 {
+                        // Shape tab opens the shape selector, matching old bottom-button behavior.
+                        app.show_shape_selector = true;
+                    } else {
+                        app.active_tool = crate::draw::render::DRAW_TAB_TOOLS[i];
+                    }
                 }
                 return Ok(None);
             }

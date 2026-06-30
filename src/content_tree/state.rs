@@ -9,12 +9,17 @@ pub struct ContentTreeState {
     pub expanded: HashSet<usize>, // header node-indices that are expanded
     pub load_error: bool,
     pub keybinds: crate::keybinds::Keybinds,
+    pub seq_matcher: crate::keybinds::KeyMatcher,
     pub last_area: ratatui::layout::Rect,
 }
 
 impl ContentTreeState {
     /// `load_error=true` variant for unloadable notes.
-    pub fn error(note_id: String, keybinds: crate::keybinds::Keybinds) -> Self {
+    pub fn error(
+        note_id: String,
+        keybinds: crate::keybinds::Keybinds,
+        seq_matcher: crate::keybinds::KeyMatcher,
+    ) -> Self {
         Self {
             note_id,
             note_title: String::new(),
@@ -23,6 +28,7 @@ impl ContentTreeState {
             expanded: HashSet::new(),
             load_error: true,
             keybinds,
+            seq_matcher,
             last_area: ratatui::layout::Rect::default(),
         }
     }
@@ -32,6 +38,7 @@ impl ContentTreeState {
         title: &str,
         content: &str,
         keybinds: crate::keybinds::Keybinds,
+        seq_matcher: crate::keybinds::KeyMatcher,
     ) -> Self {
         let nodes = crate::content_tree::parse::parse_outline(title, content);
         let mut expanded = HashSet::new();
@@ -48,6 +55,7 @@ impl ContentTreeState {
             expanded,
             load_error: false,
             keybinds,
+            seq_matcher,
             last_area: ratatui::layout::Rect::default(),
         }
     }
@@ -171,6 +179,7 @@ Some intro.
             "Title",
             content,
             crate::keybinds::Keybinds::default(),
+            crate::keybinds::KeyMatcher::new(),
         );
         assert!(!state.load_error);
         assert_eq!(state.note_title, "Title");

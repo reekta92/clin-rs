@@ -1,15 +1,58 @@
-use crate::constants::DRAW_HELP_HINTS;
 use crate::draw::app::DrawAppState;
 use crate::draw::state::{DrawElement, DrawShapeType, DrawTool, Shape, Stroke};
+use crate::keybinds::DrawAction;
 use ratatui::Frame;
-use ratatui::layout::{Alignment, Rect};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::layout::Rect;
+use ratatui::style::{Color, Style};
 use ratatui::symbols::Marker;
-use ratatui::text::{Line as TuiLine, Span};
 use ratatui::widgets::canvas::{Canvas, Context, Line, Rectangle};
-use ratatui::widgets::{Block, List, ListItem, Paragraph};
+use ratatui::widgets::{Block, List, ListItem};
 
-pub fn draw_canvas(frame: &mut Frame, app: &DrawAppState, area: Rect) {
+/// Draw-view tool tab (label, glyph) pairs, in toolbar order. Shared by
+/// `draw_canvas` header render (via `ui/mod.rs`) and the draw mouse hit-test
+/// so they never drift — same pattern as `backup::render::backup_tabs`.
+pub fn draw_tool_tabs(icon_mode: crate::config::IconMode) -> [(&'static str, &'static str); 4] {
+    [
+        (
+            "Draw",
+            crate::ui::get_icon("\u{f040}", "\u{270f}", icon_mode),
+        ),
+        (
+            "Shape",
+            crate::ui::get_icon("\u{f0c8}", "\u{25a0}", icon_mode),
+        ),
+        (
+            "Text",
+            crate::ui::get_icon("\u{f031}", "\u{1f4dd}", icon_mode),
+        ),
+        (
+            "Erase",
+            crate::ui::get_icon("\u{f1f8}", "\u{1f5d1}", icon_mode),
+        ),
+    ]
+}
+
+/// Tab order is fixed (Draw, Shape, Text, Erase) and intentionally NOT the
+/// `DrawTool` enum ordinal (enum is Draw, Erase, Text, Shape). Keep this array
+/// the single source of truth for index<->tool.
+pub const DRAW_TAB_TOOLS: [DrawTool; 4] = [
+    DrawTool::Draw,
+    DrawTool::Shape,
+    DrawTool::Text,
+    DrawTool::Erase,
+];
+
+/// Index of a tool within the tab order, for `build_tab_spans(active)`.
+pub fn draw_tool_tab_index(tool: DrawTool) -> usize {
+    DRAW_TAB_TOOLS.iter().position(|t| *t == tool).unwrap_or(0)
+}
+
+pub fn draw_canvas(
+    frame: &mut Frame,
+    app: &DrawAppState,
+    area: Rect,
+    _config: &crate::config::ClinConfig,
+) {
     let x_bounds = [
         app.viewport.x - 100.0 / app.viewport.zoom,
         app.viewport.x + 100.0 / app.viewport.zoom,
@@ -26,6 +69,34 @@ pub fn draw_canvas(frame: &mut Frame, app: &DrawAppState, area: Rect) {
         .x_bounds(x_bounds)
         .y_bounds(y_bounds)
         .paint(|ctx| {
+            if app.show_grid {
+                let mut grid_step_x = 100.0;
+                let mut grid_step_y = 100.0;
+                while grid_step_y * app.viewport.zoom < 6.0 {
+                    grid_step_x *= 2.0;
+                    grid_step_y *= 2.0;
+                }
+                // compensate for terminal cell aspect ratio (~2:1 height:width) so grid appears even
+                grid_step_y *= area.width as f64 / (2.0 * area.height as f64);
+                let start_x = (x_bounds[0] / grid_step_x).floor() * grid_step_x;
+                let end_x = (x_bounds[1] / grid_step_x).ceil() * grid_step_x;
+                let start_y = (y_bounds[0] / grid_step_y).floor() * grid_step_y;
+                let end_y = (y_bounds[1] / grid_step_y).ceil() * grid_step_y;
+                let mut cur_x = start_x;
+                while cur_x <= end_x {
+                    let mut cur_y = start_y;
+                    while cur_y <= end_y {
+                        ctx.print(
+                            cur_x,
+                            cur_y,
+                            ratatui::text::Line::from("·")
+                                .style(Style::default().fg(app.theme.muted)),
+                        );
+                        cur_y += grid_step_y;
+                    }
+                    cur_x += grid_step_x;
+                }
+            }
             for element in &app.data.elements {
                 match element {
                     DrawElement::Stroke(stroke) => {
@@ -57,57 +128,51 @@ pub fn draw_canvas(frame: &mut Frame, app: &DrawAppState, area: Rect) {
 
     frame.render_widget(canvas, area);
 
-    let toolbar_width = 42;
-    let toolbar_area = Rect::new(
-        area.x + area.width.saturating_sub(toolbar_width) / 2,
-        area.y + area.height.saturating_sub(2),
-        toolbar_width,
-        1,
-    );
-
-    let tools = [
-        (DrawTool::Draw, "\u{f040} Draw"),
-        (DrawTool::Shape, "\u{f0c8} Shape"),
-        (DrawTool::Text, "\u{f031} Text"),
-        (DrawTool::Erase, "\u{f1f8} Erase"),
-    ];
-
-    let mut spans = Vec::new();
-    for (i, (tool, label)) in tools.iter().enumerate() {
-        if i > 0 {
-            spans.push(Span::raw("   "));
-        }
-        let style = if app.active_tool == *tool {
-            Style::default()
-                .fg(app.theme.highlight_fg)
-                .bg(app.theme.highlight_bg)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(app.theme.fg)
-        };
-        spans.push(Span::styled(*label, style));
-    }
-
-    frame.render_widget(
-        Paragraph::new(TuiLine::from(spans)).alignment(Alignment::Center),
-        toolbar_area,
-    );
-
     let status_area = Rect::new(
         area.x,
         area.y + area.height.saturating_sub(1),
         area.width,
         1,
     );
-    crate::ui::draw_status_bar(frame, status_area, &app.theme, None, DRAW_HELP_HINTS, None);
+    let hints_items = vec![
+        (
+            app.keybinds.display_draw(DrawAction::SelectDrawTool),
+            "draw",
+        ),
+        (
+            app.keybinds.display_draw(DrawAction::ToggleShapeSelector),
+            "shape",
+        ),
+        (
+            app.keybinds.display_draw(DrawAction::SelectTextTool),
+            "text",
+        ),
+        (
+            app.keybinds.display_draw(DrawAction::SelectEraseTool),
+            "erase",
+        ),
+        (app.keybinds.display_draw(DrawAction::ToggleGrid), "grid"),
+        (app.keybinds.display_draw(DrawAction::Quit), "back"),
+    ];
+    let hint_line = crate::ui::format_keybind_hints(&app.theme, &hints_items);
+    crate::ui::draw_status_bar(
+        frame,
+        status_area,
+        &app.theme,
+        None,
+        hint_line,
+        None,
+        app.seq_matcher.pending_display().as_deref(),
+    );
 
     if app.show_shape_selector {
+        let hint_line = crate::ui::popup_hint_line(&app.theme, "Enter select · Esc cancel");
         let content = crate::ui::draw_popup_frame(
             frame,
             area,
             "SELECT SHAPE",
             crate::ui::PopupSize::Small,
-            "Enter select · Esc cancel",
+            &hint_line,
             &app.theme,
         );
 
@@ -143,12 +208,13 @@ pub fn draw_canvas(frame: &mut Frame, app: &DrawAppState, area: Rect) {
     }
 
     if let Some((_, textarea)) = &app.text_editor {
+        let hint_line = crate::ui::popup_hint_line(&app.theme, "Enter save · Esc cancel");
         let content = crate::ui::draw_popup_frame(
             frame,
             area,
             "EDIT TEXT",
             crate::ui::PopupSize::Prompt,
-            "Enter save · Esc cancel",
+            &hint_line,
             &app.theme,
         );
 

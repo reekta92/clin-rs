@@ -6,12 +6,16 @@ use clap::{Parser, Subcommand};
 #[command(
     name = "clin",
     version,
-    about = "Encrypted terminal note-taking app inspired by Obsidian"
+    about = "Feature-packed terminal note management app inspired by Obsidian"
 )]
 pub struct Cli {
     /// Override the config file location for this run.
     #[arg(long, global = true)]
     pub config: Option<PathBuf>,
+
+    /// Override the storage/vault path for this run (~ and $VAR expanded).
+    #[arg(long, global = true)]
+    pub vault: Option<PathBuf>,
 
     #[command(subcommand)]
     pub command: Option<Command>,
@@ -55,12 +59,23 @@ pub enum NotesCmd {
         /// Create the note from this template.
         #[arg(short, long)]
         template: Option<String>,
+        /// Initial body content. When set, the note is created and the TUI is not opened.
+        #[arg(long)]
+        body: Option<String>,
+        /// Create the note and exit without opening the TUI.
+        #[arg(long)]
+        no_tui: bool,
         /// Optional title for the note.
         title: Option<String>,
     },
     /// Open a note by title in the TUI.
     Open {
         /// Title of the note to open.
+        title: String,
+    },
+    /// Print a note's body to stdout.
+    Cat {
+        /// Title of the note to print (case-insensitive match).
         title: String,
     },
     /// Create a quick note from content and exit (no TUI).
@@ -109,10 +124,8 @@ pub enum TemplatesCmd {
 
 #[derive(Subcommand, Debug)]
 pub enum ConfigCmd {
-    /// Print the effective configuration as TOML.
-    Show,
     /// Print the config file path.
-    Path,
+    Show,
     /// Open the config file in $VISUAL or $EDITOR.
     Edit,
     /// Reset the configuration to default values.

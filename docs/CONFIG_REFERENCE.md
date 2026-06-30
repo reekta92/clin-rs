@@ -17,13 +17,16 @@ Full reference of all configuration options for clin-rs.
 | `default_folder` | `String` | — | Default folder for new notes (optional) |
 | `confirm_on_quit` | `bool` | `false` | Ask for confirmation before quitting |
 | `preview_wrap` | `bool` | `true` | Wrap markdown preview to pane width (toggle at runtime with Ctrl+w) |
+| `syntax_highlighting` | `bool` | `true` | Enable syntax highlighting in markdown fenced code blocks (requires re-render) |
+| `keybind_preset` | `enum` | `"default"` | Keybind preset: `"default"`, `"helix"`, `"vim"`, `"emacs"`. Applies to navigation, never text editing |
+| `enable_key_sequences` | `bool` | `false` | Enable multi-key sequences (e.g. `"g g"`, `"Space f"`). Requires a preset that uses them |
 
 ### `[list]`
 
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `preview_enabled` | `bool` | `true` | Show the preview pane in notes list by default |
-| `preview_position` | `enum` | `"right"` | Preview pane position: `"left"`, `"right"`, `"top"`, `"bottom"` |
+| `preview_position` | `enum` | `"right"` | Preview pane position: `"left"`, `"right"` |
 | `preview_encryption` | `bool` | `false` | Show previews of encrypted notes |
 | `show_date_in_list` | `bool` | `true` | Show modification date in the notes list |
 | `show_file_size` | `bool` | `false` | Show file size in the notes list |
@@ -33,6 +36,13 @@ Full reference of all configuration options for clin-rs.
 | `default_sort_field` | `enum` | `"title"` | Default sort field: `"title"` or `"modified"` |
 | `default_sort_order` | `enum` | `"ascending"` | Default sort order: `"ascending"` or `"descending"` |
 | `pinned_on_top` | `bool` | `false` | Keep pinned notes at the top of the list |
+| `calendar_enabled` | `bool` | `true` | Show a month calendar with note activity at the bottom of the notes list |
+| `show_hidden_files` | `bool` | `false` | Show hidden files and folders (starting with ".") in the notes list |
+| `preview_width_ratio` | `f32` | `0.43` | Preview pane width ratio (0.2–0.8) |
+| `calendar_height` | `u16` | `9` | Calendar height in rows (9–20) |
+| `calendar_position` | `enum` | `"bottom"` | Calendar position: `"top"`, `"bottom"` |
+| `week_start` | `enum` | `"Sunday"` | Start day for the rolling-weeks calendar: `"Sunday"` or `"Monday"` |
+| `sections` | `array` | `["calendar","goals"]` | Bottom-strip widgets (max 2): `calendar`, `goals`, `draw`, `graf`. `calendar_enabled` controls strip on/off |
 
 ### `[editor]`
 
@@ -43,12 +53,16 @@ Full reference of all configuration options for clin-rs.
 | `preview_enabled` | `bool` | `false` | Show markdown preview panel in editor by default |
 | `show_line_numbers` | `bool` | `true` | Show line numbers in the editor |
 
-### `[theme]`
+### `[ui]`
 
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `theme` | `enum` | `"default"` | Color theme. See [THEME_SYSTEM.md](THEME_SYSTEM.md) for all 11 options |
 | `background` | `enum` | `"transparent"` | Background mode: `"transparent"`, `"solid"` |
+| `show_status_bar` | `bool` | `true` | Show the status bar at the bottom of the screen |
+| `tab_icons_only` | `bool` | `false` | Show only Nerd Font icons (no text) on tab bars |
+| `icon_mode` | `enum` | `"nerd"` | Icon display mode: `"nerd"`, `"unicode"`, `"none"` |
+| `hint_bar_style` | `enum` | `"classic"` | Hint/status bar style: `"classic"`, `"accent"`, `"powerline_sharp"`, `"powerline_rounded"`, `"powerline_slanted"` |
 | `accent` | `String` | — | Hex color override for accent (#ff6600) |
 | `heading` | `String` | — | Hex color override for headings |
 | `success` | `String` | — | Hex color override for success indicators |
@@ -118,14 +132,6 @@ All optional. Hex color strings like `"#ff6600"`. Override theme defaults.
 | `zoom_factor` | `f64` | `1.15` | Zoom multiplier per step (must be > 0) |
 | `drag_sensitivity` | `f64` | `1.0` | Pan drag sensitivity |
 
-### `[display]`
-
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `show_status_bar` | `bool` | `true` | Show status bar |
-| `tab_icons_only` | `bool` | `false` | Show only Nerd Font icons (no text) on tab bars (Help, Notes, Backup, Palette) |
-| `status_format` | `String` | — | Custom status bar format. Variables: `{files}`, `{links}`, `{selected}`, `{date}`, `{time}`, `{size}`, `{ratio}` |
-| `border_style` | `enum` | `"rounded"` | Border style: `"plain"`, `"rounded"`, `"double"`, `"none"` |
 
 ### `[graf.filter]`
 
@@ -151,6 +157,14 @@ All optional. Hex color strings like `"#ff6600"`. Override theme defaults.
 | `auto_push` | `bool` | `false` | Automatically push commits to remote |
 | `remote_url` | `String` | — | Remote git repository URL |
 | `remote_name` | `String` | `"origin"` | Name of the git remote |
+
+### `[goals]`
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `enabled` | `bool` | `true` | Enable the daily word/note goals system |
+| `word_goal` | `usize` | `500` | Daily target word count (incremental additions). Set to 0 to disable |
+| `note_goal` | `usize` | `3` | Daily target note count (edited or created). Set to 0 to disable |
 ---
 
 ## Example config.toml
@@ -172,6 +186,7 @@ density = "comfortable"
 default_view = "grid"
 default_sort_field = "modified"
 default_sort_order = "descending"
+calendar_enabled = true
 pinned_on_top = true
 
 [editor]
@@ -189,9 +204,17 @@ auto_push = false
 remote_url = "https://github.com/user/my-notes.git"
 remote_name = "origin"
 
-[theme]
+[goals]
+enabled = true
+word_goal = 500
+note_goal = 3
+
+[ui]
 theme = "tokyo_night"
 background = "transparent"
+show_status_bar = true
+icon_mode = "nerd"
+hint_bar_style = "classic"
 accent = "#ff6600"
 
 [graf]
@@ -214,9 +237,6 @@ ideal_distance = 80.0
 [graf.interaction]
 drag_sensitivity = 1.0
 
-[display]
-show_status_bar = true
-border_style = "rounded"
 
 [graf.search]
 max_results = 20
@@ -235,97 +255,197 @@ Key combos are strings like `"a"`, `"Enter"`, `"Ctrl+q"`, `"Ctrl+Shift+z"`, `"Al
 |---|---|---|
 | `move_up` | `Up`, `k` | Move selection up |
 | `move_down` | `Down`, `j` | Move selection down |
-| `open` | `Enter` | Open selected item |
+| `move_left` | `Left`, `h` | Move selection left (grid) |
+| `move_right` | `Right`, `l` | Move selection right (grid) |
+| `open` | `Enter`, `o` | Open selected item |
 | `delete` | `d`, `Delete` | Delete item |
 | `quit` | `q` | Quit application |
 | `help` | `?`, `F1` | Show help |
-| `open_location` | `f` | Open file location |
-| `cycle_focus` | `Tab` | Cycle focus between panes |
+| `open_location` | `Ctrl+l` | Open file location |
+| `cycle_focus` | `Tab`, `BackTab` | Cycle focus between panes |
 | `confirm` | `y`, `Enter` | Confirm dialog |
 | `cancel` | `n`, `Esc` | Cancel dialog |
-| `toggle_button` | `Enter`, `Space` | Toggle focused button |
+| `toggle_external_editor` | `e` | Open current note in $EDITOR |
 | `new_from_template` | `t` | Create note from template |
-| `create_folder` | `n` | Create folder |
-| `create_note` | `a` | Create note |
+| `create_folder` | `Shift+N` | Create folder |
+| `create_note` | `n` | Create note |
 | `rename_folder` | `r` | Rename folder |
-| `move_note` | `m` | Move note |
+| `rename` | `r` | Rename note (context) |
+| `move_note` | `m` | Move note or folder |
 | `manage_tags` | `.` | Manage tags |
-| `filter_tags` | `/` | Filter by tags |
-| `collapse_folder` | `h` | Collapse folder |
-| `expand_folder` | `l` | Expand folder |
-| `open_command_palette` | `Ctrl+p`, `Shift+Enter` | Open command palette |
-| `rename` | `r` | Context-sensitive rename |
+| `open_command_palette` | `:`, `Ctrl+p` | Open command palette |
 | `duplicate` | `y` | Duplicate note |
 | `toggle_pin` | `p` | Pin/unpin note |
-| `cycle_sort` | `s` | Cycle sort options |
-| `search` | `Ctrl+f` | Quick search by title |
-| `jump_to_top` | `Shift+U` | Jump to top of list |
-| `jump_to_bottom` | `Shift+D` | Jump to bottom of list |
-| `page_up` | `Ctrl+u` | Half page up |
-| `page_down` | `Ctrl+d` | Half page down |
+| `cycle_sort` | `s` | Cycle sort order |
+| `search` | `/` | Search notes |
+| `jump_to_top` | `Home`, `Ctrl+Up` | Jump to top of list |
+| `jump_to_bottom` | `End`, `Ctrl+Down` | Jump to bottom of list |
+| `page_up` | `Ctrl+u`, `PageUp` | Half page up |
+| `page_down` | `Ctrl+d`, `PageDown` | Half page down |
 | `open_trash` | `Shift+T` | Open trash view |
 | `toggle_preview` | `Shift+P` | Toggle preview pane |
-| `toggle_preview_fullscreen` | `Ctrl+e` | Expand preview to full width (hide notes list) |
+| `toggle_preview_fullscreen` | `Ctrl+e` | Preview/editor fullscreen |
 | `toggle_preview_wrap` | `Ctrl+w` | Toggle word-wrap in preview |
+| `preview_page_up` | `Shift+Up` | Page preview pane up |
+| `preview_page_down` | `Shift+Down` | Page preview pane down |
+| `toggle_calendar` | `Shift+C` | Toggle calendar |
 | `open_graph` | `Ctrl+g` | Open graph view |
+| `toggle_select_mode` | `v` | Toggle multi-select mode |
+| `toggle_select_item` | `Space` | Toggle item selection |
+| `collapse_all` | `c` | Collapse all folders |
+| `refresh_notes` | `Ctrl+r` | Refresh notes (external changes) |
 
 ### Edit Actions (`[edit]`)
 
 | Action | Default Keys | Description |
 |---|---|---|
-| `quit` | `Ctrl+q` | Quit editor |
-| `back` | `Esc` | Go back |
-| `cycle_focus` | `Tab` | Cycle focus between elements |
-| `toggle_button` | `Enter`, `Space` | Toggle focused button |
+| `back` | `Esc` | Return to notes (auto-saves) |
+| `cycle_focus` | `Tab`, `BackTab` | Cycle focus (Title/Body) |
 | `select_all` | `Ctrl+a` | Select all text |
-| `copy` | `Ctrl+c`, `Ctrl+Insert` | Copy selection |
-| `cut` | `Ctrl+x`, `Shift+Delete` | Cut selection |
-| `paste` | `Ctrl+v`, `Shift+Insert` | Paste from clipboard |
+| `copy` | `Ctrl+Shift+c`, `Ctrl+Insert` | Copy |
+| `cut` | `Ctrl+Shift+x`, `Shift+Delete` | Cut |
+| `paste` | `Ctrl+Shift+v`, `Shift+Insert` | Paste |
 | `undo` | `Ctrl+z` | Undo |
 | `redo` | `Ctrl+y`, `Ctrl+Shift+z` | Redo |
-| `delete_word` | `Ctrl+Backspace` | Delete word before cursor |
-| `delete_next_word` | `Ctrl+Delete` | Delete word after cursor |
+| `delete_word` | `Ctrl+Backspace` | Delete previous word |
+| `delete_next_word` | `Ctrl+Delete` | Delete next word |
 | `move_to_top` | `Ctrl+Home` | Move cursor to top |
 | `move_to_bottom` | `Ctrl+End` | Move cursor to bottom |
 | `toggle_markdown_preview` | `Ctrl+p` | Toggle markdown preview |
-| `toggle_preview_fullscreen` | `Ctrl+e` | Expand preview to full width (hide editor) |
-| `toggle_preview_wrap` | `Ctrl+w` | Toggle word-wrap in preview |
+| `toggle_preview_fullscreen` | `Ctrl+e` | Preview fullscreen |
+| `toggle_preview_wrap` | `Ctrl+w` | Toggle preview word-wrap |
+| `preview_page_up` | `PageUp` | Page markdown preview up |
+| `preview_page_down` | `PageDown` | Page markdown preview down |
 
 ### Help Actions (`[help]`)
 
 | Action | Default Keys | Description |
 |---|---|---|
 | `close` | `Esc`, `q`, `?`, `F1` | Close help |
+| `next_tab` | `Right`, `l`, `Tab` | Next help tab |
+| `prev_tab` | `Left`, `h`, `BackTab` | Previous help tab |
 | `scroll_up` | `Up`, `k` | Scroll up |
 | `scroll_down` | `Down`, `j` | Scroll down |
+| `search` | `/`, `Ctrl+f` | Search help |
+
+> Note: digits `1`–`9` jump directly to the nine help tabs (Notes→About). These are fixed and not configurable in `keybinds.toml`.
 
 ### Graph Actions (`[graph]`)
 
 | Action | Default Keys | Description |
 |---|---|---|
-| `quit` | `Esc` | Quit graph view |
+| `quit` | `Esc`, `q` | Quit graph view |
 | `pan_up` | `Up`, `k` | Jump to node above |
 | `pan_down` | `Down`, `j` | Jump to node below |
 | `pan_left` | `Left`, `h` | Jump to node left |
 | `pan_right` | `Right`, `l` | Jump to node right |
-| `zoom_in` | `+`, `Ctrl+j` | Zoom in |
-| `zoom_out` | `-`, `Ctrl+k` | Zoom out |
-| `open_note` | `Enter` | Open selected note |
+| `zoom_in` | `+`, `=` | Zoom in |
+| `zoom_out` | `-`, `_` | Zoom out |
+| `open_note` | `Enter`, `o` | Open selected note |
 | `auto_fit` | `a` | Auto-fit view to all nodes |
 | `help` | `?`, `F1` | Show help |
-| `toggle_search` | `f` | Toggle node search |
+| `toggle_search` | `/` | Toggle node search |
 | `toggle_minimap` | `Shift+M` | Toggle minimap |
 | `toggle_legend` | `Shift+L` | Toggle legend |
-| `toggle_grid` | `Shift+G` | Toggle grid |
+| `toggle_grid` | `Shift+G` | Toggle background grid |
 | `toggle_status` | `Shift+S` | Toggle status bar |
+| `toggle_preview` | `Shift+P` | Toggle preview |
 | `refresh` | `r` | Refresh simulation |
 | `reload_config` | `Ctrl+r` | Reload config file |
+
+### Draw Actions (`[draw]`)
+
+| Action | Default Keys | Description |
+|---|---|---|
+| `quit` | `Esc`, `q` | Exit draw view |
+| `help` | `?` | Show help |
+| `select_draw_tool` | `d` | Select freehand draw tool |
+| `toggle_shape_selector` | `s` | Open shape picker |
+| `select_text_tool` | `t` | Select text tool |
+| `select_erase_tool` | `e` | Select erase tool |
+| `shape_selector_up` | `Up`, `k` | Previous shape |
+| `shape_selector_down` | `Down`, `j` | Next shape |
+| `shape_selector_confirm` | `Enter` | Confirm shape |
+| `shape_selector_cancel` | `Esc`, `q` | Cancel shape selection |
+| `text_editor_confirm` | `Enter` | Confirm text edit |
+| `text_editor_cancel` | `Esc` | Cancel text edit |
+| `toggle_grid` | `Shift+G` | Toggle grid |
+
+### Canvas Actions (`[canvas]`)
+
+| Action | Default Keys | Description |
+|---|---|---|
+| `quit` | `Esc`, `q` | Quit canvas view |
+| `save` | `Ctrl+s` | Save canvas |
+| `zoom_fine_in` | `>`, `]` | Zoom in (fine) |
+| `zoom_fine_out` | `<`, `[` | Zoom out (fine) |
+| `zoom_in` | `+`, `=` | Zoom in |
+| `zoom_out` | `-`, `_` | Zoom out |
+| `move_left` | `Left`, `h` | Move selection left |
+| `move_right` | `Right`, `l` | Move selection right |
+| `move_up` | `Up`, `k` | Move selection up |
+| `move_down` | `Down`, `j` | Move selection down |
+| `edit_or_connect` | `i`, `Enter`, `o` | Edit node / connect |
+| `open_context_menu` | `a` | Open context menu |
+| `toggle_grid` | `Shift+G` | Toggle grid |
+| `toggle_editor_pane` | `Ctrl+e` | Toggle editor pane |
+| `cycle_focus` | `Tab`, `BackTab` | Cycle focus |
+| `help` | `?` | Show help |
+| `rename_confirm` | `Enter` | Confirm rename |
+| `rename_cancel` | `Esc` | Cancel rename |
+| `menu_close` | `Esc` | Close context menu |
+| `menu_up` | `Up`, `k` | Menu up |
+| `menu_down` | `Down`, `j` | Menu down |
+| `menu_select` | `Enter` | Menu confirm |
+| `close_editor` | `Esc` | Close editor |
+| `close_editor_alt` | `Ctrl+Enter` | Close editor (alt) |
+| `confirm_resize` | `Enter` | Confirm resize |
+| `cancel_resize` | `Esc` | Cancel resize |
+| `editor_unfocus` | `Esc` | Exit editor focus |
+| `editor_sync_raw` | `Ctrl+s` | Save raw editor changes |
+
+### Backup Actions (`[backup]`)
+
+| Action | Default Keys | Description |
+|---|---|---|
+| `back` | `Esc`, `q` | Back to list |
+| `move_down` | `j`, `Down` | Move selection down |
+| `move_up` | `k`, `Up` | Move selection up |
+| `scroll_diff_down` | `Ctrl+d`, `PageDown` | Scroll diff down |
+| `scroll_diff_up` | `Ctrl+u`, `PageUp` | Scroll diff up |
+| `refresh` | `r` | Refresh status |
+| `enter_commit` | `c` | Enter commit message |
+| `confirm_commit` | `Enter` | Confirm commit |
+| `cancel_commit` | `Esc` | Cancel commit |
+| `push` | `p` | Push to remote |
+| `open_settings` | `,`, `Shift+S` | Open settings |
+| `close_settings` | `Esc`, `q` | Close settings |
+| `toggle_file_select` | `Space` | Toggle file select |
+| `cycle_section` | `Tab`, `BackTab` | Cycle sections |
+| `next_field` | `j`, `Down` | Next settings field |
+| `prev_field` | `k`, `Up` | Previous settings field |
+| `activate_field` | `Enter` | Activate settings field |
+| `confirm_edit_field` | `Enter` | Confirm field edit |
+| `cancel_edit_field` | `Esc` | Cancel field edit |
+
+### Content Tree Actions (`[content_tree]`)
+
+| Action | Default Keys | Description |
+|---|---|---|
+| `move_up` | `k`, `Up` | Move selection up |
+| `move_down` | `j`, `Down` | Move selection down |
+| `toggle_collapse` | `Tab`, `Left`, `Right`, `h`, `l` | Toggle collapse/expand |
+| `expand_all` | `e` | Expand all |
+| `collapse_all` | `c` | Collapse all |
+| `open` | `Enter`, `o` | Jump to section |
+| `back` | `Esc`, `q` | Back |
+| `help` | `?`, `F1` | Show help |
 
 ---
 
 ## Migration Note
 
-The old `graf.toml` file is **no longer used**. All graf options (`[visual]`, `[physics]`, `[interaction]`, `[display]`, `[filter]`, `[legend]`, `[search]`, `[editor]`) are now part of `config.toml`. The system auto-migrates settings from `graf.toml` on first read for backward compatibility.
+The old `graf.toml` file is **no longer used**. All graf options (`[graf.visual]`, `[graf.physics]`, `[graf.interaction]`, `[graf.filter]`, `[graf.search]`) are now part of `config.toml`. The system auto-migrates settings from `graf.toml` on first read for backward compatibility.
 
 ---
 

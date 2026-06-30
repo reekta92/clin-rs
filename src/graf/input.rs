@@ -1,4 +1,5 @@
-use std::sync::{Arc, RwLock};
+use parking_lot::RwLock;
+use std::sync::Arc;
 use std::time::Instant;
 
 use crossterm::event::{KeyEvent, MouseButton, MouseEvent, MouseEventKind};
@@ -29,55 +30,89 @@ pub fn handle_graph_keys(
     key: KeyEvent,
     keybinds: &Keybinds,
     config: &ClinConfig,
+    seq_matcher: &mut crate::keybinds::KeyMatcher,
 ) -> Option<GraphInputAction> {
-    let mut guard = state.write().unwrap_or_else(|e| e.into_inner());
+    let mut guard = state.write();
 
-    if keybinds.matches_graph(GraphAction::Quit, &key) {
-        return Some(GraphInputAction::Quit);
-    }
-
-    if keybinds.matches_graph(GraphAction::PanUp, &key) {
-        select_in_direction(&mut guard, 0.0, 1.0);
-    } else if keybinds.matches_graph(GraphAction::PanDown, &key) {
-        select_in_direction(&mut guard, 0.0, -1.0);
-    } else if keybinds.matches_graph(GraphAction::PanLeft, &key) {
-        select_in_direction(&mut guard, -1.0, 0.0);
-    } else if keybinds.matches_graph(GraphAction::PanRight, &key) {
-        select_in_direction(&mut guard, 1.0, 0.0);
-    } else if keybinds.matches_graph(GraphAction::ZoomIn, &key) {
-        guard.viewport.zoom_in(config.graf.interaction.zoom_factor);
-    } else if keybinds.matches_graph(GraphAction::ZoomOut, &key) {
-        guard.viewport.zoom_out(config.graf.interaction.zoom_factor);
-    } else if keybinds.matches_graph(GraphAction::OpenNote, &key) {
-        if let Some(idx) = guard.selected_node
-            && let Some(node) = guard.simulation.get_graph().node_weight(idx)
-        {
-            return Some(GraphInputAction::OpenFile(node.data.note_id.clone()));
-        }
-    } else if keybinds.matches_graph(GraphAction::AutoFit, &key) {
-        let vp = guard
-            .viewport
-            .clone()
-            .auto_fit_from_graph(guard.simulation.get_graph(), 1.4);
-        guard.viewport = vp;
-    } else if keybinds.matches_graph(GraphAction::Help, &key) {
-        return Some(GraphInputAction::ToggleHelp);
-    } else if keybinds.matches_graph(GraphAction::ToggleSearch, &key) {
-        return Some(GraphInputAction::ToggleSearch);
-    } else if keybinds.matches_graph(GraphAction::ToggleMinimap, &key) {
-        return Some(GraphInputAction::ToggleMinimap);
-    } else if keybinds.matches_graph(GraphAction::ToggleLegend, &key) {
-        return Some(GraphInputAction::ToggleLegend);
-    } else if keybinds.matches_graph(GraphAction::ToggleGrid, &key) {
-        return Some(GraphInputAction::ToggleGrid);
-    } else if keybinds.matches_graph(GraphAction::ToggleStatus, &key) {
-        return Some(GraphInputAction::ToggleStatus);
-    } else if keybinds.matches_graph(GraphAction::Refresh, &key) {
-        return Some(GraphInputAction::Refresh);
-    } else if keybinds.matches_graph(GraphAction::ReloadConfig, &key) {
-        return Some(GraphInputAction::ReloadConfig);
-    } else if keybinds.matches_graph(GraphAction::TogglePreview, &key) {
-        return Some(GraphInputAction::TogglePreview);
+    let seq = config.sequences_enabled();
+    let counts = config.counts_enabled();
+    match keybinds.resolve_graph(seq_matcher, key, seq, counts) {
+        crate::keybinds::MatchOutcome::Matched(action, count) => match action {
+            GraphAction::Quit => return Some(GraphInputAction::Quit),
+            GraphAction::PanUp => {
+                let n = count.unwrap_or(1) as usize;
+                for _ in 0..n {
+                    select_in_direction(&mut guard, 0.0, 1.0);
+                }
+            }
+            GraphAction::PanDown => {
+                let n = count.unwrap_or(1) as usize;
+                for _ in 0..n {
+                    select_in_direction(&mut guard, 0.0, -1.0);
+                }
+            }
+            GraphAction::PanLeft => {
+                let n = count.unwrap_or(1) as usize;
+                for _ in 0..n {
+                    select_in_direction(&mut guard, -1.0, 0.0);
+                }
+            }
+            GraphAction::PanRight => {
+                let n = count.unwrap_or(1) as usize;
+                for _ in 0..n {
+                    select_in_direction(&mut guard, 1.0, 0.0);
+                }
+            }
+            GraphAction::ZoomIn => {
+                guard.viewport.zoom_in(config.graf.interaction.zoom_factor);
+            }
+            GraphAction::ZoomOut => {
+                guard.viewport.zoom_out(config.graf.interaction.zoom_factor);
+            }
+            GraphAction::OpenNote => {
+                if let Some(idx) = guard.selected_node
+                    && let Some(node) = guard.simulation.get_graph().node_weight(idx)
+                {
+                    return Some(GraphInputAction::OpenFile(node.data.note_id.clone()));
+                }
+            }
+            GraphAction::AutoFit => {
+                let vp = guard
+                    .viewport
+                    .clone()
+                    .auto_fit_from_graph(guard.simulation.get_graph(), 1.4);
+                guard.viewport = vp;
+            }
+            GraphAction::Help => {
+                return Some(GraphInputAction::ToggleHelp);
+            }
+            GraphAction::ToggleSearch => {
+                return Some(GraphInputAction::ToggleSearch);
+            }
+            GraphAction::ToggleMinimap => {
+                return Some(GraphInputAction::ToggleMinimap);
+            }
+            GraphAction::ToggleLegend => {
+                return Some(GraphInputAction::ToggleLegend);
+            }
+            GraphAction::ToggleGrid => {
+                return Some(GraphInputAction::ToggleGrid);
+            }
+            GraphAction::ToggleStatus => {
+                return Some(GraphInputAction::ToggleStatus);
+            }
+            GraphAction::Refresh => {
+                return Some(GraphInputAction::Refresh);
+            }
+            GraphAction::ReloadConfig => {
+                return Some(GraphInputAction::ReloadConfig);
+            }
+            GraphAction::TogglePreview => {
+                return Some(GraphInputAction::TogglePreview);
+            }
+        },
+        crate::keybinds::MatchOutcome::Pending => return None,
+        crate::keybinds::MatchOutcome::NoMatch => {}
     }
 
     None
@@ -122,14 +157,14 @@ pub fn handle_graph_mouse(
             if !inside_area {
                 return None;
             }
-            let mut guard = state.write().unwrap_or_else(|e| e.into_inner());
+            let mut guard = state.write();
             guard.viewport.zoom_in(config.graf.interaction.zoom_factor);
         }
         MouseEventKind::ScrollDown => {
             if !inside_area {
                 return None;
             }
-            let mut guard = state.write().unwrap_or_else(|e| e.into_inner());
+            let mut guard = state.write();
             guard.viewport.zoom_out(config.graf.interaction.zoom_factor);
         }
         MouseEventKind::Down(MouseButton::Left) => {
@@ -142,9 +177,9 @@ pub fn handle_graph_mouse(
                         mouse_event.column,
                         mouse_event.row,
                         ma,
-                        &state.read().unwrap_or_else(|e| e.into_inner()),
+                        &state.read(),
                     );
-                    let mut guard = state.write().unwrap_or_else(|e| e.into_inner());
+                    let mut guard = state.write();
                     guard.viewport.center_x = world.0;
                     guard.viewport.center_y = world.1;
                     mouse_state.is_minimap_dragging = true;
@@ -152,14 +187,14 @@ pub fn handle_graph_mouse(
                 }
             } else {
                 let (wx, wy) = {
-                    let guard = state.read().unwrap_or_else(|e| e.into_inner());
+                    let guard = state.read();
                     guard
                         .viewport
                         .screen_to_world(mouse_event.column, mouse_event.row, area)
                 };
 
                 let hit = {
-                    let guard = state.read().unwrap_or_else(|e| e.into_inner());
+                    let guard = state.read();
                     guard.viewport.hit_test(wx, wy, &guard)
                 };
 
@@ -168,7 +203,7 @@ pub fn handle_graph_mouse(
                     .is_some_and(|t| t.elapsed().as_millis() < 300);
 
                 if let Some(node_idx) = hit {
-                    let mut guard = state.write().unwrap_or_else(|e| e.into_inner());
+                    let mut guard = state.write();
                     guard.selected_node = Some(node_idx);
                     guard.dragging_node = Some(node_idx);
                     mouse_state.drag_origin = Some((mouse_event.column, mouse_event.row));
@@ -182,7 +217,7 @@ pub fn handle_graph_mouse(
                         return Some(GraphInputAction::OpenFile(node.data.note_id.clone()));
                     }
                 } else {
-                    let mut guard = state.write().unwrap_or_else(|e| e.into_inner());
+                    let mut guard = state.write();
                     if is_double_click {
                         guard.selected_node = None;
                     }
@@ -202,15 +237,15 @@ pub fn handle_graph_mouse(
                         mouse_event.column,
                         mouse_event.row,
                         ma,
-                        &state.read().unwrap_or_else(|e| e.into_inner()),
+                        &state.read(),
                     );
-                    let mut guard = state.write().unwrap_or_else(|e| e.into_inner());
+                    let mut guard = state.write();
                     guard.viewport.center_x = world.0;
                     guard.viewport.center_y = world.1;
                     mouse_state.drag_origin = Some((mouse_event.column, mouse_event.row));
                 }
             } else if mouse_state.is_panning {
-                let mut guard = state.write().unwrap_or_else(|e| e.into_inner());
+                let mut guard = state.write();
                 let dx_col = -(mouse_event.column as f64 - orig_col as f64);
                 let dy_row = mouse_event.row as f64 - orig_row as f64;
                 let vp = &guard.viewport;
@@ -223,13 +258,13 @@ pub fn handle_graph_mouse(
                 mouse_state.drag_origin = Some((mouse_event.column, mouse_event.row));
             } else {
                 let (wx, wy) = {
-                    let guard = state.read().unwrap_or_else(|e| e.into_inner());
+                    let guard = state.read();
                     guard
                         .viewport
                         .screen_to_world(mouse_event.column, mouse_event.row, area)
                 };
 
-                let mut guard = state.write().unwrap_or_else(|e| e.into_inner());
+                let mut guard = state.write();
                 if let Some(node_idx) = guard.dragging_node {
                     let graph = guard.simulation.get_graph_mut();
                     if let Some(node) = graph.node_weight_mut(node_idx) {
@@ -245,7 +280,7 @@ pub fn handle_graph_mouse(
         }
         MouseEventKind::Up(MouseButton::Left) => {
             {
-                let mut guard = state.write().unwrap_or_else(|e| e.into_inner());
+                let mut guard = state.write();
                 guard.dragging_node = None;
                 guard.drag_target = None;
             }

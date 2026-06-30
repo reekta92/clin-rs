@@ -1,6 +1,5 @@
 use crate::markdown::MarkdownRenderer;
 use ratatui::style::Style;
-use ratatui::text::Text;
 use ratatui::widgets::{ListItem, ListState};
 use std::collections::HashSet;
 
@@ -73,7 +72,7 @@ pub struct ListView {
     pub page_size: usize,
     pub list_mode: ListMode,
     pub selected_indices: HashSet<usize>,
-    pub help_text_cache: Option<Text<'static>>,
+    pub help_text_cache: Option<Vec<crate::ui::HelpRow>>,
     pub tag_to_assign: Option<String>,
     pub grid_folder: String,
     pub grid_columns: usize,
@@ -83,7 +82,13 @@ pub struct ListView {
     pub show_date_in_list: bool,
     pub show_hidden_files: bool,
     pub last_preview_pane_width: u16,
+    pub last_preview_pane_height: u16,
     pub preview_content_width: Option<u16>,
+    pub calendar_enabled: bool,
+    pub preview_width_ratio: f32,
+    pub calendar_height: u16,
+    pub calendar_position: crate::config::CalendarPosition,
+    pub sections: Vec<crate::config::NotesSection>,
 }
 
 impl Default for ListView {
@@ -114,11 +119,17 @@ impl Default for ListView {
             list_density: crate::config::ListDensity::Compact,
             show_file_size: false,
             show_hidden_files: false,
+            calendar_enabled: true,
             show_date_in_list: true,
             grid_folder: String::new(),
             grid_columns: 4,
             last_preview_pane_width: 0,
+            last_preview_pane_height: 34,
             preview_content_width: None,
+            preview_width_ratio: 0.43,
+            calendar_height: 9,
+            sections: crate::config::defaults::default_sections(),
+            calendar_position: crate::config::CalendarPosition::default(),
         }
     }
 }

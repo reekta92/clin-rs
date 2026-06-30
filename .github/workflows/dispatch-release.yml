@@ -11,13 +11,26 @@ on:
           - patch
           - minor
           - major
-          - pre-patch
         default: patch
       target_branch:
         description: "The branch to base the release on"
         required: false
         type: string
         default: main
+      prerelease:
+        description: "Mark this release as a pre-release"
+        required: false
+        type: boolean
+        default: false
+      prerelease_identifier:
+        description: "Pre-release identifier (e.g., rc, beta, alpha)"
+        required: false
+        type: string
+        default: rc
+      override_version:
+        description: "Manually override the version number (e.g., 1.2.3-rc.0). If set, 'bump' is ignored."
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -31,13 +44,118 @@ env:
 
 jobs:
   # ────────────────────────────────────────────
-  # 1. Bump version, changelog, tag, push, create release
+  # 1. Calculate release version
   # ────────────────────────────────────────────
-  prepare:
+  calculate_version:
+    name: Calculate Release Version
     runs-on: ubuntu-latest
     outputs:
-      new_version: ${{ steps.bump.outputs.new_version }}
-      tag: ${{ steps.bump.outputs.tag }}
+      new_version: ${{ steps.calculate.outputs.new_version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.target_branch }}
+      - name: Calculate next version
+        id: calculate
+        run: |
+          OVERRIDE_VERSION="${{ inputs.override_version }}"
+          if [ -n "$OVERRIDE_VERSION" ]; then
+            NEW="$OVERRIDE_VERSION"
+          else
+            CURRENT=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
+            BUMP_TYPE="${{ inputs.bump }}"
+            PRERELEASE="${{ inputs.prerelease }}"
+            PRE_ID="${{ inputs.prerelease_identifier }}"
+
+            # Separate pre-release identifier and version if they exist
+            CURRENT_BASE=$(echo "$CURRENT" | cut -d'-' -f1)
+            CURRENT_PRE=$(echo "$CURRENT" | sed -n 's/^[0-9.]\+-\([^.]\+\).\([0-9]\+\)/\1/p')
+            CURRENT_PRE_NUM=$(echo "$CURRENT" | sed -n 's/^[0-9.]\+-\([^.]\+\).\([0-9]\+\)/\2/p')
+
+            IS_CURRENTLY_PRERELEASE=false
+            if [ -n "$CURRENT_PRE" ]; then
+              IS_CURRENTLY_PRERELEASE=true
+            fi
+
+            # Determine next base version from bump type
+            IFS='.' read -r MAJ MIN PAT <<< "$CURRENT_BASE"
+            case "$BUMP_TYPE" in
+              patch) NEXT_BASE="$MAJ.$MIN.$((PAT+1))";;
+              minor) NEXT_BASE="$MAJ.$((MIN+1)).0";;
+              major) NEXT_BASE="$((MAJ+1)).0.0";;
+            esac
+
+            if [ "$PRERELEASE" = "true" ]; then
+              # We want to end up with a pre-release
+              if [ "$IS_CURRENTLY_PRERELEASE" = "true" ] && [ "$CURRENT_PRE" = "$PRE_ID" ]; then
+                # Case 1: Incrementing existing pre-release (e.g., beta.0 -> beta.1)
+                # Bump type is ignored. Base version is kept.
+                NEW="$CURRENT_BASE-$PRE_ID.$((CURRENT_PRE_NUM+1))"
+              else
+                # Case 2: Starting a new pre-release series (e.g., 0.9.0-beta.6 -> 0.9.0-rc.0)
+                # Bump type is ignored when pre-release is selected; base is kept.
+                NEW="$CURRENT_BASE-$PRE_ID.0"
+              fi
+            else
+              # We want to end up with a stable release
+              if [ "$IS_CURRENTLY_PRERELEASE" = "true" ]; then
+                # Case 3: Graduating a pre-release (e.g., 1.2.3-rc.1 -> 1.2.3)
+                # Bump type is ignored. Base version is kept.
+                NEW="$CURRENT_BASE"
+              else
+                # Case 4: Standard stable bump (e.g., 1.2.3 -> 1.2.4)
+                # Bump type is used.
+                NEW="$NEXT_BASE"
+              fi
+            fi
+          fi
+          echo "new_version=$NEW" >> "$GITHUB_OUTPUT"
+          echo "::notice title=Release Version Preview::Calculated new version is $NEW. Approve to proceed."
+      - name: Save release metadata for cleanup
+        run: |
+          OLD_VERSION=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
+          NEW_VERSION="${{ steps.calculate.outputs.new_version }}"
+          jq -n \
+            --arg old "$OLD_VERSION" \
+            --arg new "$NEW_VERSION" \
+            --arg tag "v$NEW_VERSION" \
+            --arg branch "${{ inputs.target_branch }}" \
+            '{old_version: $old, new_version: $new, tag: $tag, target_branch: $branch}' \
+            > release-metadata.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-metadata
+          path: release-metadata.json
+          retention-days: 3
+
+  # ────────────────────────────────────────────
+  # 2. Approve the release
+  # ────────────────────────────────────────────
+  approval:
+    name: Approve Release
+    needs: calculate_version
+    runs-on: ubuntu-latest
+    # This environment needs to be created in the repository settings.
+    # It should be configured with "Required reviewers" to enable the approval gate.
+    environment:
+      name: release-approval
+      url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Waiting for approval
+        run: |
+          echo "Please review the version calculated in the 'Calculate Release Version' job."
+          echo "Version to be released: ${{ needs.calculate_version.outputs.new_version }}"
+          echo "Approve this step to continue with the release."
+  # ────────────────────────────────────────────
+  # 3. Bump version, changelog, tag, push, create release
+  # ────────────────────────────────────────────
+  prepare:
+    needs: [calculate_version, approval]
+    runs-on: ubuntu-latest
+    outputs:
+      new_version: ${{ needs.calculate_version.outputs.new_version }}
+      tag: v${{ needs.calculate_version.outputs.new_version }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -55,41 +173,10 @@ jobs:
           cargo install cargo-edit --locked
           cargo install git-cliff --locked
 
-      - name: Bump version
+      - name: Set version
         id: bump
         run: |
-          CURRENT=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
-          BUMP_TYPE="${{ inputs.bump }}"
-
-          case "$BUMP_TYPE" in
-            patch)
-              BASE=$(echo "$CURRENT" | cut -d'-' -f1)
-              IFS='.' read -r MAJ MIN PAT <<< "$BASE"
-              NEW="$MAJ.$MIN.$((PAT+1))"
-              ;;
-            minor)
-              BASE=$(echo "$CURRENT" | cut -d'-' -f1)
-              IFS='.' read -r MAJ MIN PAT <<< "$BASE"
-              NEW="$MAJ.$((MIN+1)).0"
-              ;;
-            major)
-              BASE=$(echo "$CURRENT" | cut -d'-' -f1)
-              IFS='.' read -r MAJ MIN PAT <<< "$BASE"
-              NEW="$((MAJ+1)).0.0"
-              ;;
-            pre-patch)
-              if [[ "$CURRENT" =~ (.*-)([0-9]+)(.*) ]]; then
-                PREFIX="${BASH_REMATCH[1]}"
-                NUM="${BASH_REMATCH[2]}"
-                SUFFIX="${BASH_REMATCH[3]}"
-                NEW="${PREFIX}$((NUM+1))${SUFFIX}"
-              else
-                echo "::error::Current version $CURRENT has no pre-release component"
-                exit 1
-              fi
-              ;;
-          esac
-
+          NEW="${{ needs.calculate_version.outputs.new_version }}"
           cargo set-version "$NEW"
           if [ -f flake.nix ]; then
             sed -i "s/version = \".*\"; # This will be updated by the release workflow/version = \"$NEW\"; # This will be updated by the release workflow/" flake.nix
@@ -138,12 +225,12 @@ jobs:
             gh release create "$TAG" \
               --title "$TAG" \
               --notes-file RELEASE_NOTES.md \
-              --draft=false \
-              --prerelease=${{ contains(steps.bump.outputs.new_version, '-') }}
+              --draft \
+              --prerelease=${{ inputs.prerelease }}
           fi
 
   # ────────────────────────────────────────────
-  # 2. Build Linux x86_64 binary
+  # 4. Build Linux x86_64 binary
   # ────────────────────────────────────────────
   linux-x86_64:
     needs: prepare
@@ -171,10 +258,64 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: "v${{ needs.prepare.outputs.new_version }}"
         run: gh release upload "$TAG" dist/* --clobber
-
   # ────────────────────────────────────────────
-  # 3. Build Windows x86_64 binary
+  # 5. Build Linux aarch64 binary
   # ────────────────────────────────────────────
+  linux-aarch64:
+    needs: prepare
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: "v${{ needs.prepare.outputs.new_version }}"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-unknown-linux-gnu
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cross deps
+        run: |
+          sudo dpkg --add-architecture arm64
+          # Pin .list files to amd64 (skip lines that already have arch restriction)
+          sudo find /etc/apt/ -name '*.list' -exec sed -i '/^deb /{/\[arch=/!s/^deb /deb [arch=amd64] /}' {} +
+          # Pin .sources files to amd64 (skip if file already has Architectures: set)
+          sudo find /etc/apt/ -name '*.sources' -exec sh -c '
+            grep -q "^Architectures:" "$1" 2>/dev/null || \
+              sed -i "/^Types: deb/a Architectures: amd64" "$1"
+          ' _ {} \;
+          # Add arm64 repos from ports.ubuntu.com (official Ubuntu archive for non-x86 architectures)
+          printf '%s\n' \
+            "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy main restricted universe multiverse" \
+            "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-updates main restricted universe multiverse" \
+            "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-backports main restricted universe multiverse" \
+            "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-security main restricted universe multiverse" \
+            | sudo tee /etc/apt/sources.list.d/arm64.list > /dev/null
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu libssl-dev:arm64 pkg-config
+        env:
+          DEBIAN_FRONTEND: noninteractive
+      - name: Build
+        run: cargo build --release --locked --target aarch64-unknown-linux-gnu
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+          PKG_CONFIG_ALLOW_CROSS: 1
+      - name: Verify binary architecture
+        run: |
+          readelf -h target/aarch64-unknown-linux-gnu/release/clin | grep -q "AArch64" && \
+          echo "Binary is ARM64 (AArch64)" && \
+          file target/aarch64-unknown-linux-gnu/release/clin
+      - name: Package
+        run: |
+          mkdir -p dist
+          cp target/aarch64-unknown-linux-gnu/release/clin .
+          tar -cJf "dist/clin-rs-aarch64-unknown-linux-gnu.tar.xz" clin LICENSE README.md
+          tar -czf "dist/clin-rs-aarch64-unknown-linux-gnu.tar.gz" clin LICENSE README.md
+      - name: Upload
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: "v${{ needs.prepare.outputs.new_version }}"
+        run: gh release upload "$TAG" dist/* --clobber
+  # 5. Build Windows x86_64 binary
+  # 6. Build Windows x86_64 binary
   windows-x86_64:
     needs: prepare
     runs-on: windows-latest
@@ -202,9 +343,8 @@ jobs:
         shell: bash
         run: gh release upload "$TAG" dist/* --clobber
 
-  # ────────────────────────────────────────────
-  # 4. Build macOS ARM (Apple Silicon) binary
-  # ────────────────────────────────────────────
+  # 6. Build macOS ARM (Apple Silicon) binary
+  # 7. Build macOS ARM (Apple Silicon) binary
   macos-arm:
     needs: prepare
     runs-on: macos-latest
@@ -237,9 +377,8 @@ jobs:
           TAG: "v${{ needs.prepare.outputs.new_version }}"
         run: gh release upload "$TAG" dist/* --clobber
 
-  # ────────────────────────────────────────────
-  # 5. Build .deb and .rpm
-  # ────────────────────────────────────────────
+  # 7. Build .deb and .rpm
+  # 8. Build .deb and .rpm
   linux-packages:
     needs: prepare
     runs-on: ubuntu-22.04
@@ -255,18 +394,81 @@ jobs:
         run: cargo build --release --locked
       - name: Build packages
         run: |
-          cargo install cargo-deb --locked
-          cargo deb --no-build
-          cargo install cargo-generate-rpm --locked
-          cargo generate-rpm
+          cargo install cargo-deb cargo-generate-rpm --locked
+          VERSION=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
+          if [[ "$VERSION" == *"-"* ]]; then
+            SAFE_VERSION=$(echo "$VERSION" | sed 's/-/~/g')
+            cargo deb --no-build --deb-version "$SAFE_VERSION"
+            cargo generate-rpm --set-metadata "version = '$SAFE_VERSION'"
+          else
+            cargo deb --no-build
+            cargo generate-rpm
+          fi
       - name: Upload
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: "v${{ needs.prepare.outputs.new_version }}"
         run: gh release upload "$TAG" target/debian/*.deb target/generate-rpm/*.rpm --clobber
+  # ────────────────────────────────────────────
+  # 9. Build .deb and .rpm (aarch64)
+  # ────────────────────────────────────────────
+  linux-packages-aarch64:
+    needs: prepare
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: "v${{ needs.prepare.outputs.new_version }}"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-unknown-linux-gnu
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cross deps
+        run: |
+          sudo dpkg --add-architecture arm64
+          # Pin .list files to amd64 (skip lines that already have arch restriction)
+          sudo find /etc/apt/ -name '*.list' -exec sed -i '/^deb /{/\[arch=/!s/^deb /deb [arch=amd64] /}' {} +
+          # Pin .sources files to amd64 (skip if file already has Architectures: set)
+          sudo find /etc/apt/ -name '*.sources' -exec sh -c '
+            grep -q "^Architectures:" "$1" 2>/dev/null || \
+              sed -i "/^Types: deb/a Architectures: amd64" "$1"
+          ' _ {} \;
+          # Add arm64 repos from ports.ubuntu.com (official Ubuntu archive for non-x86 architectures)
+          printf '%s\n' \
+            "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy main restricted universe multiverse" \
+            "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-updates main restricted universe multiverse" \
+            "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-backports main restricted universe multiverse" \
+            "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-security main restricted universe multiverse" \
+            | sudo tee /etc/apt/sources.list.d/arm64.list > /dev/null
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu libssl-dev:arm64 pkg-config
+        env:
+          DEBIAN_FRONTEND: noninteractive
+      - name: Build release binary
+        run: cargo build --release --locked --target aarch64-unknown-linux-gnu
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+          PKG_CONFIG_ALLOW_CROSS: 1
+      - name: Build packages
+        run: |
+          cargo install cargo-deb cargo-generate-rpm --locked
+          VERSION=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
+          if [[ "$VERSION" == *"-"* ]]; then
+            SAFE_VERSION=$(echo "$VERSION" | sed 's/-/~/g')
+            cargo deb --no-build --target aarch64-unknown-linux-gnu --deb-version "$SAFE_VERSION"
+            cargo generate-rpm --target aarch64-unknown-linux-gnu --set-metadata "version = '$SAFE_VERSION'"
+          else
+            cargo deb --no-build --target aarch64-unknown-linux-gnu
+            cargo generate-rpm --target aarch64-unknown-linux-gnu
+          fi
+      - name: Upload
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: "v${{ needs.prepare.outputs.new_version }}"
+        run: gh release upload "$TAG" target/debian/*.deb target/aarch64-unknown-linux-gnu/generate-rpm/*.rpm --clobber
 
   # ────────────────────────────────────────────
-  # 6. Build AppImage
+  # 10. Build AppImage
   # ────────────────────────────────────────────
   appimage:
     needs: prepare
@@ -306,7 +508,7 @@ jobs:
 
 
   # ────────────────────────────────────────────
-  # 7. Build Nix package
+  # 11. Build Nix package
   # ────────────────────────────────────────────
   nix:
     needs: prepare
@@ -322,7 +524,7 @@ jobs:
         run: nix build .#default
 
   # ────────────────────────────────────────────
-  # 8. Publish AUR package
+  # 12. Publish AUR package
   # ────────────────────────────────────────────
   aur:
     needs: [prepare, linux-packages, linux-x86_64]
@@ -356,10 +558,10 @@ jobs:
           PKGVER=$(echo "$VERSION" | sed 's/-/_/g')
           sed -i "s/^pkgver=.*/pkgver=$PKGVER/" PKGBUILD
           TARBALL_NAME=$(gh release view "$TAG" --json assets --jq '[.assets[].name | select(contains("x86_64-unknown-linux-gnu") and endswith(".tar.xz"))][0]')
-          wget -q "${{ github.server_url }}/${{ github.repository }}/releases/download/$TAG/$TARBALL_NAME" -O tarball.tar.xz
+          gh release download "$TAG" --pattern "$TARBALL_NAME" --output tarball.tar.xz
           SHA=$(sha256sum tarball.tar.xz | cut -d' ' -f1)
           sed -i "s/^sha256sums=.*/sha256sums=(\"$SHA\")/" PKGBUILD
-          sed -i "s|^source=.*|source=(\"${{ github.server_url }}/${{ github.repository }}/releases/download/v\${pkgver}/$TARBALL_NAME\")|" PKGBUILD
+          sed -i "s|^source=.*|source=(\"${{ github.server_url }}/${{ github.repository }}/releases/download/$TAG/$TARBALL_NAME\")|" PKGBUILD
       - name: Publish to AUR
         if: ${{ env.AUR_SSH_PRIVATE_KEY != '' }}
         uses: KSXGitHub/github-actions-deploy-aur@v3.0.1
@@ -373,7 +575,7 @@ jobs:
 
 
   # ────────────────────────────────────────────
-  # 9. Publish to crates.io
+  # 13. Publish to crates.io
   # ────────────────────────────────────────────
   crates-io:
     needs: prepare
@@ -394,10 +596,10 @@ jobs:
 
 
   # ────────────────────────────────────────────
-  # 10. Update README + PKGBUILD in target branch
+  # 14. Update README + PKGBUILD in target branch
   # ────────────────────────────────────────────
   post-release:
-    needs: [prepare, linux-packages, appimage, linux-x86_64, nix]
+    needs: [prepare, linux-packages, linux-packages-aarch64, appimage, linux-x86_64, linux-aarch64, nix]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -419,22 +621,35 @@ jobs:
             sleep 15; ELAPSED=$((ELAPSED + 15))
           done
           if [ -n "$DEB_FILE" ]; then
-            sed -i -E "s/clin-rs_[0-9a-zA-Z._-]*_amd64\.deb/$DEB_FILE/g" README.md
+            sed -i -E "s/clin-rs_[0-9a-zA-Z._~-]*_amd64\.deb/$DEB_FILE/g" README.md
           fi
           if [ -n "$RPM_FILE" ]; then
-            sed -i -E "s/clin-rs-[0-9a-zA-Z._-]*\.x86_64\.rpm/$RPM_FILE/g" README.md
+            sed -i -E "s/clin-rs-[0-9a-zA-Z._~-]*\.x86_64\.rpm/$RPM_FILE/g" README.md
           fi
           if [ -n "$TAR_FILE" ]; then
-            sed -i -E "s/clin-rs-[0-9a-zA-Z._-]*x86_64[0-9a-zA-Z._-]*\.tar\.gz/$TAR_FILE/g" README.md
+            sed -i -E "s/clin-rs-[0-9a-zA-Z._~-]*x86_64[0-9a-zA-Z._~-]*\.tar\.gz/$TAR_FILE/g" README.md
+          fi
+          # Also update aarch64 references in README.md
+          DEB_ARM64=$(gh release view "$TAG" --json assets --jq '[.assets[].name | select(endswith("_arm64.deb"))][0]')
+          RPM_AARCH64=$(gh release view "$TAG" --json assets --jq '[.assets[].name | select(endswith(".aarch64.rpm"))][0]')
+          TAR_AARCH64=$(gh release view "$TAG" --json assets --jq '[.assets[].name | select(endswith("aarch64-unknown-linux-gnu.tar.gz"))][0]')
+          if [ -n "$DEB_ARM64" ]; then
+            sed -i -E "s/clin-rs_[0-9a-zA-Z._~-]*_arm64\.deb/$DEB_ARM64/g" README.md
+          fi
+          if [ -n "$RPM_AARCH64" ]; then
+            sed -i -E "s/clin-rs-[0-9a-zA-Z._~-]*\.aarch64\.rpm/$RPM_AARCH64/g" README.md
+          fi
+          if [ -n "$TAR_AARCH64" ]; then
+            sed -i -E "s/clin-rs-[0-9a-zA-Z._~-]*aarch64[0-9a-zA-Z._~-]*\.tar\.gz/$TAR_AARCH64/g" README.md
           fi
           PKGVER=$(echo "$VERSION" | sed 's/-/_/g')
           sed -i "s/^pkgver=.*/pkgver=$PKGVER/" PKGBUILD
           TARBALL_NAME=$(gh release view "$TAG" --json assets --jq '[.assets[].name | select(contains("x86_64-unknown-linux-gnu") and endswith(".tar.xz"))][0]')
           if [ -n "$TARBALL_NAME" ]; then
-            wget -q "${{ github.server_url }}/${{ github.repository }}/releases/download/$TAG/$TARBALL_NAME" -O tarball.tar.xz
+            gh release download "$TAG" --pattern "$TARBALL_NAME" --output tarball.tar.xz
             SHA=$(sha256sum tarball.tar.xz | cut -d' ' -f1)
             sed -i "s/^sha256sums=.*/sha256sums=(\"$SHA\")/" PKGBUILD
-            sed -i "s|^source=.*|source=(\"${{ github.server_url }}/${{ github.repository }}/releases/download/v\${pkgver}/$TARBALL_NAME\")|" PKGBUILD
+            sed -i "s|^source=.*|source=(\"${{ github.server_url }}/${{ github.repository }}/releases/download/$TAG/$TARBALL_NAME\")|" PKGBUILD
           fi
       - name: Commit and push
         run: |
@@ -445,3 +660,91 @@ jobs:
             git commit -m "release: update versions to v${{ needs.prepare.outputs.new_version }}"
             git push origin HEAD:${{ inputs.target_branch }}
           fi
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: "v${{ needs.prepare.outputs.new_version }}"
+        run: |
+          gh release edit "$TAG" --draft=false || echo "Warning: could not publish release $TAG"
+  # ────────────────────────────────────────────
+  # 15. Cleanup on failure
+  # ────────────────────────────────────────────
+  cleanup-on-failure:
+    if: ${{ failure() }}
+    needs: [calculate_version, prepare, linux-x86_64, linux-aarch64, windows-x86_64, macos-arm, linux-packages, linux-packages-aarch64, appimage, nix, aur, crates-io, post-release]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download release metadata
+        uses: actions/download-artifact@v4
+        with:
+          name: release-metadata
+
+      - name: Read metadata
+        id: metadata
+        run: |
+          if [ ! -f release-metadata.json ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "content=$(cat release-metadata.json | jq -c .)" >> "$GITHUB_OUTPUT"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Revert release (delete release, tag, undo version commit)
+        if: ${{ steps.metadata.outputs.skip == 'false' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ fromJSON(steps.metadata.outputs.content).tag }}"
+          BRANCH="${{ fromJSON(steps.metadata.outputs.content).target_branch }}"
+
+          echo "::group::Delete release $TAG"
+          gh release delete "$TAG" --yes 2>/dev/null && echo "Deleted release $TAG" \
+            || echo "Release $TAG not found (OK)"
+          echo "::endgroup::"
+
+          echo "::group::Delete tag $TAG"
+          git push origin --delete "$TAG" 2>/dev/null && echo "Deleted tag $TAG" \
+            || echo "Tag $TAG not found (OK)"
+          echo "::endgroup::"
+
+          echo "::group::Revert commits on $BRANCH"
+          git fetch origin "$BRANCH" 2>/dev/null || {
+            echo "Branch $BRANCH not found, skipping revert"
+            echo "::endgroup::"
+            exit 0
+          }
+          git checkout "origin/$BRANCH" --detach
+
+          # Find release commit (matches "release: vX.Y.Z" but NOT "release: update versions to vX.Y.Z")
+          RELEASE_COMMIT=$(git log --oneline --grep="^release: v[0-9]" --format="%H" -1)
+
+          REVERT_COUNT=0
+          if [ -n "$RELEASE_COMMIT" ]; then
+            echo "Reverting release commit $RELEASE_COMMIT..."
+            if git revert --no-edit "$RELEASE_COMMIT" 2>/dev/null; then
+              REVERT_COUNT=$((REVERT_COUNT + 1))
+            elif git revert --no-edit -X theirs "$RELEASE_COMMIT" 2>/dev/null; then
+              echo "Revert completed with theirs strategy (conflicts auto-resolved)"
+              REVERT_COUNT=$((REVERT_COUNT + 1))
+            else
+              echo "WARNING: Could not revert $RELEASE_COMMIT even with theirs strategy. Manual cleanup needed."
+              echo "tag=$TAG old_version=$(cat release-metadata.json | jq -r '.old_version')"
+            fi
+          fi
+
+          if [ "$REVERT_COUNT" -gt 0 ]; then
+            if git push origin "HEAD:$BRANCH"; then
+              echo "Pushed $REVERT_COUNT revert commit(s) to $BRANCH"
+            else
+              echo "WARNING: Revert commit created locally but push failed."
+              echo "  To push manually: git push origin HEAD:$BRANCH"
+            fi
+          else
+            echo "No commits to revert"
+          fi
+          echo "::endgroup::"

@@ -1,6 +1,6 @@
 use anyhow::Context;
+use parking_lot::RwLock;
 use std::sync::Arc;
-use std::sync::RwLock;
 
 use fdg_sim::petgraph::graph::NodeIndex;
 
@@ -35,6 +35,7 @@ pub struct GrafAppState {
     pub preview_note_id: Option<String>,
     pub app_theme: crate::app_theme::AppThemeColors,
     pub keybinds: Keybinds,
+    pub seq_matcher: crate::keybinds::KeyMatcher,
 }
 
 impl Drop for GrafAppState {
@@ -49,6 +50,7 @@ impl GrafAppState {
         storage: Storage,
         config_errors: Vec<String>,
         keybinds: Keybinds,
+        seq_matcher: crate::keybinds::KeyMatcher,
     ) -> anyhow::Result<Self> {
         let graph_state = crate::graf::graph::GraphState::new(&storage, config)?;
         let state = Arc::new(RwLock::new(graph_state));
@@ -78,6 +80,7 @@ impl GrafAppState {
             preview_note_id: None,
             app_theme: crate::app_theme::AppThemeColors::from_config(&config.ui),
             keybinds,
+            seq_matcher,
         })
     }
 
@@ -124,7 +127,7 @@ impl GrafAppState {
             return;
         }
         let selected_note_id = if let Some(gs) = &self.graph_state {
-            let guard = gs.read().unwrap_or_else(|e| e.into_inner());
+            let guard = gs.read();
             if let Some(idx) = guard.selected_node {
                 guard
                     .simulation
@@ -211,7 +214,14 @@ impl GrafAppState {
         if let Ok(note) = self.storage.load_note(&id) {
             let width = 80u16.saturating_sub(2).max(40);
             let mut renderer = MarkdownRenderer::new(width);
-            renderer.render(&note.content, width);
+            renderer.render_with(
+                &note.content,
+                width,
+                &self.app_theme,
+                config.core.syntax_highlighting,
+                config.core.preview_wrap,
+                config.ui.icon_mode,
+            );
             self.preview_content = Some(PreviewContent::Markdown(Box::new(renderer)));
         } else {
             self.preview_content = None;
@@ -225,74 +235,58 @@ pub enum EventAction {
     OpenHelp,
 }
 
-pub enum GrafResult {
-    NoteOpened(String),
-    Quit,
-    OpenHelp,
-}
-
-impl crate::overlay::OverlayView<GrafResult> for GrafAppState {
-    fn update(&mut self, config: &mut crate::config::ClinConfig) {
+impl GrafAppState {
+    pub fn overlay_update(&mut self, config: &mut crate::config::ClinConfig) {
         self.sync_preview(config);
         let _ = self.poll_renderers();
     }
+}
 
-    fn render(
+impl crate::overlay::OverlayView for GrafAppState {
+    fn overlay_render(
         &mut self,
         frame: &mut ratatui::Frame,
         area: ratatui::layout::Rect,
-        _theme: &crate::app_theme::AppThemeColors,
+        theme: &crate::app_theme::AppThemeColors,
         config: &crate::config::ClinConfig,
+        app_status: Option<&str>,
     ) {
-        crate::graf::ui::draw_ui(frame, self, config, area);
+        let outer = ratatui::layout::Layout::default()
+            .direction(ratatui::layout::Direction::Vertical)
+            .constraints([
+                ratatui::layout::Constraint::Length(1),
+                ratatui::layout::Constraint::Min(0),
+            ])
+            .split(area);
+        crate::graf::ui::draw_ui(frame, self, config, outer[1], outer[0], theme, app_status);
     }
 
-    fn handle_event(
+    fn overlay_handle_event(
         &mut self,
         event: crossterm::event::Event,
         terminal: &ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
         config: &mut crate::config::ClinConfig,
-    ) -> anyhow::Result<Option<GrafResult>> {
+    ) -> anyhow::Result<crate::overlay::OverlayResult> {
         let keybinds = self.keybinds.clone();
         if let Some(action) = handle_event(event, self, config, &keybinds, terminal)? {
             match action {
                 EventAction::Quit => {
                     self.shutdown();
-                    return Ok(Some(GrafResult::Quit));
+                    return Ok(crate::overlay::OverlayResult::Exit);
                 }
                 EventAction::OpenFile(id) => {
                     self.shutdown();
-                    return Ok(Some(GrafResult::NoteOpened(id)));
+                    return Ok(crate::overlay::OverlayResult::NoteOpened(id));
                 }
                 EventAction::OpenHelp => {
-                    self.shutdown();
-                    return Ok(Some(GrafResult::OpenHelp));
+                    return Ok(crate::overlay::OverlayResult::OpenHelp(
+                        crate::app::HelpTab::Graph,
+                    ));
                 }
             }
         }
-        Ok(None)
+        Ok(crate::overlay::OverlayResult::Continue)
     }
-
-    fn title(&self) -> String {
-        "Graph".to_string()
-    }
-}
-
-pub fn run_graf_view(
-    terminal: &mut ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
-    storage: crate::storage::Storage,
-    config: &mut crate::config::ClinConfig,
-    keybinds: &Keybinds,
-) -> anyhow::Result<GrafResult> {
-    let mut app_state = GrafAppState::new(config, storage, vec![], keybinds.clone())?;
-    let theme = crate::app_theme::AppThemeColors::from_config(&config.ui);
-    crate::overlay::run_overlay(
-        terminal,
-        &mut app_state,
-        config,
-        &theme,
-        std::time::Duration::from_millis(16),
-    )
 }
 
 fn handle_event(
@@ -305,7 +299,8 @@ fn handle_event(
     match ev {
         crossterm::event::Event::Key(key) => {
             if app_state.search_active {
-                handle_search_keys(app_state, key, config);
+                app_state.seq_matcher.clear();
+                handle_search_keys(app_state, key, config, keybinds);
                 return Ok(None);
             }
             if key
@@ -334,8 +329,13 @@ fn handle_event(
             }
 
             if let Some(graph_state) = &app_state.graph_state
-                && let Some(action) =
-                    crate::graf::input::handle_graph_keys(graph_state, key, keybinds, config)
+                && let Some(action) = crate::graf::input::handle_graph_keys(
+                    graph_state,
+                    key,
+                    keybinds,
+                    config,
+                    &mut app_state.seq_matcher,
+                )
             {
                 use crate::graf::input::GraphInputAction;
                 match action {
@@ -453,24 +453,26 @@ fn handle_search_keys(
     app_state: &mut GrafAppState,
     key: crossterm::event::KeyEvent,
     config: &crate::config::ClinConfig,
+    keybinds: &crate::keybinds::Keybinds,
 ) {
     use crossterm::event::{KeyCode, KeyModifiers};
 
     let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
     let shift = key.modifiers.contains(KeyModifiers::SHIFT);
 
+    if crate::events::is_cancel_popup(keybinds, &key, true) {
+        app_state.search_active = false;
+        app_state.search_query.clear();
+        app_state.search_results.clear();
+        app_state.search_selected = 0;
+        app_state.search_cursor = 0;
+        return;
+    }
     match key.code {
-        KeyCode::Esc => {
-            app_state.search_active = false;
-            app_state.search_query.clear();
-            app_state.search_results.clear();
-            app_state.search_selected = 0;
-            app_state.search_cursor = 0;
-        }
         KeyCode::Enter => {
             if let Some(&(idx, _)) = app_state.search_results.get(app_state.search_selected) {
                 let (nx, ny) = if let Some(graph_state) = &app_state.graph_state {
-                    let guard = graph_state.read().unwrap_or_else(|e| e.into_inner());
+                    let guard = graph_state.read();
                     let graph = guard.simulation.get_graph();
                     if let Some(node) = graph.node_weight(idx) {
                         (node.location.x as f64, node.location.y as f64)
@@ -481,7 +483,7 @@ fn handle_search_keys(
                     (0.0, 0.0)
                 };
                 if let Some(graph_state) = &app_state.graph_state {
-                    let mut guard = graph_state.write().unwrap_or_else(|e| e.into_inner());
+                    let mut guard = graph_state.write();
                     guard.selected_node = Some(idx);
                     guard.viewport.center_on_node(nx as f32, ny as f32);
                 }
@@ -618,7 +620,7 @@ fn delete_word_back(app_state: &mut GrafAppState) {
 
 fn run_search(app_state: &mut GrafAppState, config: &crate::config::ClinConfig) {
     if let Some(graph_state) = &app_state.graph_state {
-        let guard = graph_state.read().unwrap_or_else(|e| e.into_inner());
+        let guard = graph_state.read();
         app_state.search_results = crate::graf::graph::search_nodes(
             &guard.simulation,
             &app_state.search_query,

@@ -2,7 +2,7 @@ use ratatui::style::Color;
 
 use super::{Background, Theme, ThemeColors};
 
-struct ThemePalette {
+struct GraphThemePalette {
     nodes: [[u8; 3]; 8],
     chrome: [u8; 3],
     title: [u8; 3],
@@ -12,7 +12,7 @@ struct ThemePalette {
     bg: [u8; 3],
 }
 
-impl ThemePalette {
+impl GraphThemePalette {
     const fn rgb(c: [u8; 3]) -> Color {
         Color::Rgb(c[0], c[1], c[2])
     }
@@ -40,8 +40,8 @@ impl ThemePalette {
     }
 }
 
-const PALETTES: [ThemePalette; 10] = [
-    ThemePalette {
+const PALETTES: [GraphThemePalette; 10] = [
+    GraphThemePalette {
         nodes: [
             [122, 162, 247],
             [187, 154, 247],
@@ -59,7 +59,7 @@ const PALETTES: [ThemePalette; 10] = [
         grid: [56, 62, 95],
         bg: [26, 27, 38],
     },
-    ThemePalette {
+    GraphThemePalette {
         nodes: [
             [137, 180, 250],
             [203, 166, 247],
@@ -77,7 +77,7 @@ const PALETTES: [ThemePalette; 10] = [
         grid: [49, 50, 68],
         bg: [30, 30, 46],
     },
-    ThemePalette {
+    GraphThemePalette {
         nodes: [
             [97, 175, 239],
             [198, 120, 221],
@@ -95,7 +95,7 @@ const PALETTES: [ThemePalette; 10] = [
         grid: [56, 63, 76],
         bg: [40, 44, 52],
     },
-    ThemePalette {
+    GraphThemePalette {
         nodes: [
             [184, 187, 38],
             [215, 153, 33],
@@ -113,7 +113,7 @@ const PALETTES: [ThemePalette; 10] = [
         grid: [60, 56, 54],
         bg: [40, 40, 40],
     },
-    ThemePalette {
+    GraphThemePalette {
         nodes: [
             [139, 233, 253],
             [189, 147, 249],
@@ -131,7 +131,7 @@ const PALETTES: [ThemePalette; 10] = [
         grid: [68, 71, 90],
         bg: [40, 42, 54],
     },
-    ThemePalette {
+    GraphThemePalette {
         nodes: [
             [136, 192, 208],
             [143, 188, 187],
@@ -149,7 +149,7 @@ const PALETTES: [ThemePalette; 10] = [
         grid: [59, 66, 82],
         bg: [46, 52, 64],
     },
-    ThemePalette {
+    GraphThemePalette {
         nodes: [
             [180, 142, 173],
             [234, 154, 151],
@@ -167,7 +167,7 @@ const PALETTES: [ThemePalette; 10] = [
         grid: [57, 53, 82],
         bg: [40, 37, 61],
     },
-    ThemePalette {
+    GraphThemePalette {
         nodes: [
             [255, 215, 89],
             [255, 143, 105],
@@ -185,7 +185,7 @@ const PALETTES: [ThemePalette; 10] = [
         grid: [40, 50, 45],
         bg: [30, 38, 34],
     },
-    ThemePalette {
+    GraphThemePalette {
         nodes: [
             [147, 191, 254],
             [255, 158, 181],
@@ -203,7 +203,7 @@ const PALETTES: [ThemePalette; 10] = [
         grid: [34, 40, 62],
         bg: [26, 30, 48],
     },
-    ThemePalette {
+    GraphThemePalette {
         nodes: [
             [181, 137, 0],
             [203, 75, 22],

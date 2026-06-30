@@ -1,5 +1,4 @@
 use std::fs;
-use std::io::Write;
 use std::path::Path;
 
 use anyhow::{Context, Result};
@@ -74,9 +73,7 @@ impl Template {
             fs::create_dir_all(parent).context("failed to create templates directory")?;
         }
 
-        let mut file = fs::File::create(path).context("failed to create template file")?;
-        file.write_all(content.as_bytes())
-            .context("failed to write template file")?;
+        crate::fsutil::atomic_write_str(path, &content).context("failed to write template file")?;
 
         Ok(())
     }

@@ -78,13 +78,13 @@ impl Action for ImportAction {
         }
     }
 
-    fn glyph(&self) -> &'static str {
+    fn glyph(&self) -> (&'static str, &'static str) {
         match self.source {
-            ImportSource::File => "\u{f15b}",
-            ImportSource::Csv => "\u{f0ce}",
-            ImportSource::Json => "\u{f121}",
-            ImportSource::Url => "\u{f0ac}",
-            ImportSource::Clipboard => "\u{f0ea}",
+            ImportSource::File => ("\u{f15b}", "\u{1f4c4}"),
+            ImportSource::Csv => ("\u{f0ce}", "\u{1f4c5}"),
+            ImportSource::Json => ("\u{f121}", "\u{1f4cb}"),
+            ImportSource::Url => ("\u{f0ac}", "\u{1f310}"),
+            ImportSource::Clipboard => ("\u{f0ea}", "\u{1f4cb}"),
         }
     }
 
@@ -437,6 +437,11 @@ pub fn convert_url(url: &str) -> Result<(String, String)> {
                     title = extract_html_title(&html);
                 }
                 let final_title = title.unwrap_or_else(|| url_fallback_title(url));
+                let ts = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%.3f");
+                std::eprintln!(
+                    "[{ts}] [INFO] [import] Import URL: {url} → {final_title} ({} bytes)",
+                    md.len()
+                );
                 return Ok(sanitized(final_title, md));
             }
         }

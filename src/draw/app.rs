@@ -2,14 +2,11 @@ use crate::draw::input::handle_event;
 use crate::draw::render::draw_canvas;
 use crate::draw::state::{DrawData, Viewport};
 use crate::keybinds::Keybinds;
-use crate::overlay::OverlayView;
-use ratatui::Terminal;
-use ratatui::backend::CrosstermBackend;
-use std::io::Stdout;
 
 pub enum DrawEventAction {
     Quit,
     Save,
+    OpenHelp,
 }
 
 use ratatui::layout::Rect;
@@ -32,6 +29,8 @@ pub struct DrawAppState {
     pub creation_origin: Option<(f64, f64)>,
     pub preview_element: Option<crate::draw::state::DrawElement>,
     pub keybinds: Keybinds,
+    pub show_grid: bool,
+    pub seq_matcher: crate::keybinds::KeyMatcher,
 }
 
 impl DrawAppState {
@@ -40,6 +39,7 @@ impl DrawAppState {
         file_id: Option<String>,
         theme: crate::app_theme::AppThemeColors,
         keybinds: Keybinds,
+        seq_matcher: crate::keybinds::KeyMatcher,
     ) -> Self {
         let mut data = DrawData::default();
         if let Some(id) = &file_id {
@@ -67,8 +67,10 @@ impl DrawAppState {
             active_shape_type: crate::draw::state::DrawShapeType::Rect,
             show_shape_selector: false,
             creation_origin: None,
+            show_grid: true,
             preview_element: None,
             keybinds,
+            seq_matcher,
         }
     }
 
@@ -76,67 +78,49 @@ impl DrawAppState {
         if let Some(id) = &self.current_file {
             let path = self.storage.note_path(id);
             let content = serde_json::to_string(&self.data)?;
-            std::fs::write(path, content)?;
+            crate::fsutil::atomic_write_str(&path, &content)?;
         }
         Ok(())
     }
 }
 
-impl OverlayView<()> for DrawAppState {
-    fn render(
+impl crate::overlay::OverlayView for DrawAppState {
+    fn overlay_render(
         &mut self,
         frame: &mut ratatui::Frame,
         area: ratatui::layout::Rect,
         _theme: &crate::app_theme::AppThemeColors,
         _config: &crate::config::ClinConfig,
+        _app_status: Option<&str>,
     ) {
         self.last_area = area;
-        draw_canvas(frame, self, area);
+        draw_canvas(frame, self, area, _config);
     }
 
-    fn handle_event(
+    fn overlay_handle_event(
         &mut self,
         event: crossterm::event::Event,
         _terminal: &ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
-        _config: &mut crate::config::ClinConfig,
-    ) -> anyhow::Result<Option<()>> {
+        config: &mut crate::config::ClinConfig,
+    ) -> anyhow::Result<crate::overlay::OverlayResult> {
         let keybinds = self.keybinds.clone();
-        if let Some(action) = handle_event(event, self, &keybinds)? {
+        if let Some(action) = handle_event(event, self, &keybinds, config)? {
             match action {
                 DrawEventAction::Quit => {
                     self.running = false;
                     self.save_draw()?;
-                    return Ok(Some(()));
+                    return Ok(crate::overlay::OverlayResult::Exit);
                 }
                 DrawEventAction::Save => {
                     self.save_draw()?;
                 }
+                DrawEventAction::OpenHelp => {
+                    return Ok(crate::overlay::OverlayResult::OpenHelp(
+                        crate::app::HelpTab::Draw,
+                    ));
+                }
             }
         }
-        Ok(None)
+        Ok(crate::overlay::OverlayResult::Continue)
     }
-
-    fn title(&self) -> String {
-        "Draw".to_string()
-    }
-}
-
-pub fn run_draw_view(
-    terminal: &mut Terminal<CrosstermBackend<Stdout>>,
-    storage: crate::storage::Storage,
-    keybinds: &Keybinds,
-    file_id: Option<String>,
-    theme: crate::app_theme::AppThemeColors,
-) -> anyhow::Result<Option<String>> {
-    let mut app_state = DrawAppState::new(storage, file_id, theme, keybinds.clone());
-    let mut config = crate::config::ClinConfig::default();
-    let theme_clone = app_state.theme.clone();
-    crate::overlay::run_overlay(
-        terminal,
-        &mut app_state,
-        &mut config,
-        &theme_clone,
-        std::time::Duration::from_millis(16),
-    )?;
-    Ok(None)
 }

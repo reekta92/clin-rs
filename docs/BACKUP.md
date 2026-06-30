@@ -17,8 +17,8 @@ The Backup view (`ViewMode::Backup`) is designed to keep your notes synchronized
 The dashboard is divided into three main sections:
 
 ### 1. Status Section
-Located at the top-left, this section shows the current state of your vault:
-- **Staged Changes**: Files ready to be committed.
+Located at the top-left, this section shows the current state of your vault using explicit Git-style staging workflows:
+- **Staged Changes**: Files ready to be committed. Stage files individually or all at once.
 - **Unstaged Changes**: Modified files not yet staged.
 - **Untracked Files**: New files not yet tracked by Git.
 
@@ -33,7 +33,10 @@ Located on the right side, the preview pane shows the diff for the currently sel
 ## Core Interactions
 
 ### Staging and Committing
-- **Selective Staging**: You can select individual files or changes to stage for the next commit. This allows for granular control over your vault's history.
+- **Stage file**: Select a file from unstaged or untracked changes and press the stage shortcut to move it to staged changes.
+- **Unstage file**: Select a file from staged changes and press the unstage shortcut to return it to unstaged changes.
+- **Stage all changes**: Use a single action to stage all modified and untracked files at once.
+- **Pull from remote**: Fetch and merge the latest changes from the configured remote repository.
 - **Commit Mode**: Pressing the commit shortcut opens an input mode where you can enter a commit message. Confirming the message creates a new commit with the staged changes.
 
 ### Settings and Automation

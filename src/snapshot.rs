@@ -150,9 +150,15 @@ pub fn render_canvas_snapshot(
 }
 
 pub fn render_draw_snapshot(data: &DrawData, theme: &AppThemeColors) -> Vec<Vec<(char, Style)>> {
-    let width = PREVIEW_COLS;
-    let height = PREVIEW_ROWS;
+    render_draw_snapshot_with_size(data, theme, PREVIEW_COLS, PREVIEW_ROWS)
+}
 
+pub fn render_draw_snapshot_with_size(
+    data: &DrawData,
+    theme: &AppThemeColors,
+    width: u16,
+    height: u16,
+) -> Vec<Vec<(char, Style)>> {
     if width == 0 || height == 0 {
         return empty_grid(width, height);
     }
@@ -218,11 +224,13 @@ impl<'a> RenderedSnapshot<'a> {
         }
     }
 
+    #[must_use]
     pub fn scroll_offset(mut self, offset: u16) -> Self {
         self.scroll_offset = offset;
         self
     }
 
+    #[must_use]
     pub fn block(mut self, block: Block<'a>) -> Self {
         self.block = Some(block);
         self
@@ -253,8 +261,9 @@ impl Widget for RenderedSnapshot<'_> {
                     break;
                 }
                 let (ch, style) = row[col_idx];
+                let safe_ch = if ch.is_control() { ' ' } else { ch };
                 if let Some(cell) = buf.cell_mut((buf_x, buf_y)) {
-                    cell.set_char(ch).set_style(style);
+                    cell.set_char(safe_ch).set_style(style);
                 }
             }
         }
@@ -593,5 +602,32 @@ fn draw_shape_on_canvas(ctx: &mut Context, shape: &Shape) {
                 color,
             });
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::backend::TestBackend;
+
+    /// Regression guard: a grid cell containing a control char must not
+    /// reach `Cell::set_char` as-is (ratatui debug-assert!-panics on
+    /// control chars in `cell_width.rs`).
+    #[test]
+    fn rendered_snapshot_replaces_control_char() {
+        let grid = vec![vec![('\n', Style::default())]];
+        let snapshot = RenderedSnapshot::new(&grid);
+
+        let backend = TestBackend::new(1, 1);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| {
+                frame.render_widget(snapshot, frame.area());
+            })
+            .unwrap();
+
+        let buffer = terminal.backend().buffer();
+        let cell = buffer.cell((0, 0)).unwrap();
+        assert_eq!(cell.symbol(), " ", "control char replaced by space");
     }
 }

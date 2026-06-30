@@ -69,17 +69,12 @@ fn worker_loop(
         };
 
         match first {
-            // 2. Flush: drain any other immediately-available jobs (their
-            //    messages are irrelevant — `add_all` stages everything), then
-            //    run immediately. No debounce.
+            // 2. Flush: drain any other immediately-available jobs
             BackupJob::Flush(msg) => {
                 while rx.try_recv().is_ok() {}
                 run_backup(git_lock, status, &msg);
             }
-            // 3. Auto: record the message and debounce. Coalesce further
-            //    incoming jobs (keep the latest message); upgrade to an
-            //    immediate run if a `Flush` arrives. On disconnect, run the
-            //    coalesced message and shut down.
+            // 3. Auto: record the message and debounce.
             BackupJob::Auto(msg) => {
                 let mut current = msg;
                 let start = Instant::now();
@@ -89,7 +84,9 @@ fn worker_loop(
                         break;
                     }
                     match rx.recv_timeout(remaining) {
-                        Ok(BackupJob::Auto(m)) => current = m,
+                        Ok(BackupJob::Auto(m)) => {
+                            current = m;
+                        }
                         Ok(BackupJob::Flush(m)) => {
                             current = m;
                             while rx.try_recv().is_ok() {}
@@ -134,20 +131,32 @@ pub(crate) fn perform(
     if !backup.enabled {
         return;
     }
-    let result = (|| -> anyhow::Result<()> {
+    let result = (|| -> anyhow::Result<String> {
         let _guard = git_lock.lock();
         let git_ops = GitOps::init(vault_path)?;
-        if git_ops.has_changes().unwrap_or(false) {
-            git_ops.add_all().and_then(|_| git_ops.commit(message))?;
-            if backup.auto_push
-                && let Some(remote) = &backup.remote_name
-            {
-                git_ops.push(remote)?;
-            }
+        if !git_ops.has_changes().unwrap_or(false) {
+            return Ok(String::new());
         }
-        Ok(())
+        git_ops.add_all()?;
+        git_ops.commit(message)?;
+        if backup.auto_push
+            && let Some(remote) = &backup.remote_name
+        {
+            git_ops.push(remote)?;
+        }
+        Ok(message.to_string())
     })();
-    *status.lock() = result.err().map(|e| e.to_string());
+    match result {
+        Ok(msg) if msg.is_empty() => {
+            *status.lock() = None;
+        }
+        Ok(_) => {
+            *status.lock() = None;
+        }
+        Err(e) => {
+            *status.lock() = Some(e.to_string());
+        }
+    }
 }
 
 #[cfg(test)]
@@ -176,7 +185,6 @@ mod tests {
                 .expect("set user.email");
         }
         fs::write(vault.join("note.md"), "hello").expect("write");
-
         let (git_lock, status) = locks();
         perform(
             &git_lock,
@@ -196,7 +204,6 @@ mod tests {
             "expected a commit"
         );
     }
-
     #[test]
     fn perform_records_error_status() {
         // A path that is a regular file cannot host a git repo, so GitOps::init

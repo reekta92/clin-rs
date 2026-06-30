@@ -11,7 +11,7 @@
 - [X] **Command palette** — extensible action system with search
 - [X] **Encryption** — on-demand ChaCha20-Poly1305, `.clin` files
 - [X] **Templates** — TOML-based with variable substitution
-- [X] **Markdown preview** — `glow`-based rendering in list preview and editor split pane
+- [X] **Markdown preview** — built-in renderer (comrak + syntect) in list preview and editor split pane
 - [X] **External editor** — VISUAL/EDITOR env or configured command
 - [X] **Folder management** — create, rename, move, collapse/expand
 - [X] **Tag management** — add, remove, filter by tags
@@ -28,6 +28,8 @@
 - [X] **URL import** — fetch article content as formatted markdown
 - [X] **Git integration** — vault versioning and backup
 - [X] **Grid view notes** — file manager like grid/icon view in notes list
+- [X] **Daily goals** — daily word count and note count goals with in-app progress bars
+- [X] **Calendar** — month calendar widget with note activity in the notes list view
 
 ## Planned
 
@@ -35,12 +37,10 @@
 - [ ] **Consistent UI/UX** — literally hardest part of making a TUI, the UI/UX must be consistent accross the app
 - [ ] **More filtypes** — more text filetypes(`org-mode`, `.gv`, `.puml`, `.md` mermaid, `.dot`) support to edit/view
 - [ ] **Image rendering** — image rendering logic throught the app using `sixel` or `kitty image protocol`
-- [ ] **Daily goals** — daily word count goal and learning process progress bars, toggleable
 
 #### Notes View
 - [ ] **Smart folders** — auto-move tagged notes to specific folders
 - [ ] **Word & character metrics** — writing statistics and goals
-- [ ] **Calendar** — just for the visual, a calendar at the notes view
 
 #### Editor
 - [ ] **Rework as side panel** — replace editor view with a feature-rich side panel

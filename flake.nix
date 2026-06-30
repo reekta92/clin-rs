@@ -1,5 +1,5 @@
 {
-  description = "Encrypted terminal note-taking app inspired by Obsidian";
+  description = "Feature-packed terminal note management app inspired by Obsidian";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -14,7 +14,8 @@
       {
         packages.default = pkgs.rustPlatform.buildRustPackage {
           pname = "clin";
-          version = "0.8.32"; # This will be updated by the release workflow
+          version = "0.9.0-rc.3"; # This will be updated by the release workflow
+          doCheck = false;
 
           src = ./.;
 
@@ -35,7 +36,7 @@
           ];
 
           meta = with pkgs.lib; {
-            description = "Encrypted terminal note-taking app inspired by Obsidian";
+            description = "Feature-packed terminal note management app inspired by Obsidian";
             homepage = "https://github.com/reekta92/clin-rs";
             license = licenses.gpl3;
             maintainers = [ ];

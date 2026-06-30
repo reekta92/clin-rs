@@ -2,13 +2,30 @@ use crate::templates::TemplateSummary;
 use ratatui_textarea::TextArea;
 
 pub enum ConfirmAction {
-    DeleteNote { note_id: String, title: String },
-    DeleteFolder { path: String },
-    DeleteTag { tag: String },
-    DeleteTemplate { filename: String, name: String },
-    DeleteFromTrash { item: trash::TrashItem },
-    EmptyTrash { items: Vec<trash::TrashItem> },
-    BulkDeleteNotes { note_ids: Vec<String> },
+    DeleteNote {
+        note_id: String,
+        title: String,
+    },
+    DeleteFolder {
+        path: String,
+    },
+    DeleteTag {
+        tag: String,
+    },
+    DeleteTemplate {
+        filename: String,
+        name: String,
+    },
+    DeleteFromTrash {
+        item: trash::TrashItem,
+    },
+    EmptyTrash {
+        items: Vec<trash::TrashItem>,
+    },
+    BulkDeleteItems {
+        note_ids: Vec<String>,
+        folder_paths: Vec<String>,
+    },
     QuitApp,
 }
 
@@ -83,10 +100,35 @@ pub struct FolderPopup {
 }
 
 pub enum FolderPickerMode {
-    MoveNote { note_id: String },
-    CopyNote { note_id: String },
-    MoveFolder { folder_path: String },
-    BulkMoveNotes { note_ids: Vec<String> },
+    MoveNote {
+        note_id: String,
+    },
+    CopyNote {
+        note_id: String,
+    },
+    MoveFolder {
+        folder_path: String,
+    },
+    BulkMoveNotes {
+        note_ids: Vec<String>,
+    },
+    BulkCopyNotes {
+        note_ids: Vec<String>,
+    },
+    BulkMoveFolders {
+        folder_paths: Vec<String>,
+    },
+    BulkCopyFolders {
+        folder_paths: Vec<String>,
+    },
+    BulkMoveMixed {
+        note_ids: Vec<String>,
+        folder_paths: Vec<String>,
+    },
+    BulkCopyMixed {
+        note_ids: Vec<String>,
+        folder_paths: Vec<String>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -164,6 +206,18 @@ pub struct SortPopup {
     pub selected: usize,
 }
 
+pub struct IconModePopup {
+    pub selected: usize,
+}
+
+pub struct HintBarStylePopup {
+    pub selected: usize,
+}
+
+pub struct KeybindPresetPopup {
+    pub selected: usize,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NoteFormat {
     Markdown,
@@ -177,73 +231,77 @@ pub struct CreateFormatPopup {
     pub selected: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GoalsPopupMode {
+    WordGoal,
+    NoteGoal,
+}
+
+pub struct GoalsPopup {
+    pub mode: GoalsPopupMode,
+    pub input: TextArea<'static>,
+}
+
 pub struct TrashView {
     pub items: Vec<trash::TrashItem>,
     pub selected: usize,
 }
 
+/// The single active (non-confirm) popup. Only one is ever active at a time;
+/// a `ConfirmPopup` layers separately on top via [`PopupManager::confirm`].
+pub enum ActivePopup {
+    Template(TemplatePopup),
+    Theme(ThemePopup),
+    Tag(TagPopup),
+    IconMode(IconModePopup),
+    HintBarStyle(HintBarStylePopup),
+    KeybindPreset(KeybindPresetPopup),
+    Sort(SortPopup),
+    Folder(FolderPopup),
+    FolderPicker(FolderPicker),
+    NoteRename(NoteRenamePopup),
+    CreateNote(NoteCreatePopup, NoteFormat),
+    Import(ImportPopup),
+    CreateFormat(CreateFormatPopup),
+    Search(SearchPopup),
+    ContextMenu(ContextMenu),
+    TrashView(TrashView),
+    Goals(GoalsPopup),
+}
+
 #[derive(Default)]
 pub struct PopupManager {
+    /// Layered confirm dialog drawn on top of `active` when present.
     pub confirm: Option<ConfirmPopup>,
-    pub template: Option<TemplatePopup>,
-    pub theme: Option<ThemePopup>,
-    pub tag: Option<TagPopup>,
-    pub sort: Option<SortPopup>,
-    pub folder: Option<FolderPopup>,
-    pub folder_picker: Option<FolderPicker>,
-    pub note_rename: Option<NoteRenamePopup>,
-    pub create_note: Option<(NoteCreatePopup, NoteFormat)>,
-    pub import: Option<ImportPopup>,
-    pub create_format: Option<CreateFormatPopup>,
-
-    pub search: Option<SearchPopup>,
-    pub context_menu: Option<ContextMenu>,
-    pub trash_view: Option<TrashView>,
+    /// The single active popup, if any.
+    pub active: Option<ActivePopup>,
 }
 
 impl PopupManager {
     pub fn has_any(&self) -> bool {
-        self.confirm.is_some()
-            || self.template.is_some()
-            || self.theme.is_some()
-            || self.tag.is_some()
-            || self.sort.is_some()
-            || self.folder.is_some()
-            || self.folder_picker.is_some()
-            || self.note_rename.is_some()
-            || self.create_note.is_some()
-            || self.import.is_some()
-            || self.create_format.is_some()
-            || self.search.is_some()
-            || self.context_menu.is_some()
-            || self.trash_view.is_some()
+        self.confirm.is_some() || self.active.is_some()
     }
 
+    /// True when a popup with a text input is active (and no confirm overlay
+    /// is intercepting keys). Mirrors the prior text-input popup set.
     pub fn has_text_input(&self) -> bool {
-        self.create_note.is_some()
-            || self.import.is_some()
-            || self.folder.is_some()
-            || self.folder_picker.is_some()
-            || self.note_rename.is_some()
-            || self.search.is_some()
-            || self.template.is_some()
-            || self.tag.is_some()
+        self.confirm.is_none()
+            && matches!(
+                self.active,
+                Some(ActivePopup::CreateNote(..))
+                    | Some(ActivePopup::Import(_))
+                    | Some(ActivePopup::Folder(_))
+                    | Some(ActivePopup::FolderPicker(_))
+                    | Some(ActivePopup::NoteRename(_))
+                    | Some(ActivePopup::Search(_))
+                    | Some(ActivePopup::Template(_))
+                    | Some(ActivePopup::Tag(_))
+                    | Some(ActivePopup::Goals(_))
+            )
     }
 
     pub fn clear_all(&mut self) {
+        self.active = None;
         self.confirm = None;
-        self.template = None;
-        self.theme = None;
-        self.tag = None;
-        self.sort = None;
-        self.folder = None;
-        self.folder_picker = None;
-        self.note_rename = None;
-        self.create_note = None;
-        self.import = None;
-        self.create_format = None;
-        self.search = None;
-        self.context_menu = None;
-        self.trash_view = None;
     }
 }

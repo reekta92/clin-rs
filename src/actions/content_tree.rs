@@ -21,8 +21,8 @@ impl Action for OpenContentTreeAction {
         super::ActionCategory::Notes
     }
 
-    fn glyph(&self) -> &'static str {
-        "\u{f1bb}"
+    fn glyph(&self) -> (&'static str, &'static str) {
+        ("\u{f1bb}", "\u{1f333}")
     }
 
     fn execute(&self, app: &mut App, _context_note_id: Option<&str>) -> Result<()> {

@@ -8,6 +8,7 @@ use chacha20poly1305::aead::{Aead, KeyInit};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
+use zeroize::Zeroizing;
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -22,7 +23,7 @@ pub struct Note {
     pub tags: Vec<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct NoteSummary {
     pub id: String,
     pub title: String,
@@ -392,8 +393,36 @@ impl Storage {
         self.config_dir.join("keybinds.toml")
     }
 
+    pub fn keybinds_path_for_preset(
+        &self,
+        preset: crate::config::KeybindPreset,
+    ) -> std::path::PathBuf {
+        self.config_dir.join(format!("keybinds_{}.toml", preset))
+    }
+    pub fn save_keybinds_for_preset(
+        &self,
+        keybinds: &Keybinds,
+        preset: crate::config::KeybindPreset,
+    ) -> Result<()> {
+        keybinds.save(&self.keybinds_path_for_preset(preset))
+    }
+
     pub fn load_keybinds(&self) -> Keybinds {
         Keybinds::load(&self.keybinds_path()).unwrap_or_default()
+    }
+
+    pub fn load_keybinds_with_preset(&self, preset: crate::config::KeybindPreset) -> Keybinds {
+        let per_preset = self.keybinds_path_for_preset(preset);
+        let legacy = self.keybinds_path();
+        if legacy.exists() {
+            if !per_preset.exists() {
+                let _ = std::fs::rename(&legacy, &per_preset);
+            } else {
+                let _ = std::fs::remove_file(&legacy);
+            }
+        }
+        crate::keybinds::Keybinds::load_layered(&per_preset, preset.base_keybinds())
+            .unwrap_or_default()
     }
 
     pub fn save_keybinds(&self, keybinds: &Keybinds) -> Result<()> {
@@ -544,7 +573,7 @@ impl Storage {
 
             let plain = self.decrypt(payload)?;
             let (note, _): (Note, usize) =
-                bincode::serde::decode_from_slice(&plain, bincode::config::standard())
+                bincode::serde::decode_from_slice(plain.as_slice(), bincode::config::standard())
                     .context("failed to decode note")?;
 
             let (tags, pinned, links) = fm
@@ -608,9 +637,11 @@ impl Storage {
             let (fm, payload) = split_frontmatter_payload(&file_content);
 
             let plain = self.decrypt(payload)?;
-            let (mut note, _) =
-                bincode::serde::decode_from_slice::<Note, _>(&plain, bincode::config::standard())
-                    .context("failed to decode note")?;
+            let (mut note, _) = bincode::serde::decode_from_slice::<Note, _>(
+                plain.as_slice(),
+                bincode::config::standard(),
+            )
+            .context("failed to decode note")?;
 
             if let Some(fm) = fm {
                 note.tags = fm.tags;
@@ -737,17 +768,15 @@ impl Storage {
         new_note.updated_at = crate::ui::now_unix_secs();
 
         let new_id = self.new_note_id();
-        let is_encrypted = id.ends_with(".clin");
+        let source_ext = Path::new(id)
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("md");
 
         let initial_id = if target_folder.is_empty() {
-            format!("{}.{}", new_id, if is_encrypted { "clin" } else { "md" })
+            format!("{}.{}", new_id, source_ext)
         } else {
-            format!(
-                "{}/{}.{}",
-                target_folder,
-                new_id,
-                if is_encrypted { "clin" } else { "md" }
-            )
+            format!("{}/{}.{}", target_folder, new_id, source_ext)
         };
 
         self.save_note(&initial_id, &new_note)
@@ -864,7 +893,7 @@ impl Storage {
             let fm_string = frontmatter::serialize(&fm, "");
             let mut final_output = fm_string.into_bytes();
 
-            let encrypted = self.encrypt(&plain)?;
+            let encrypted = self.encrypt(plain.as_slice())?;
             final_output.extend_from_slice(&encrypted);
 
             crate::fsutil::atomic_write(&path, &final_output).context("failed to write note")?;
@@ -923,6 +952,60 @@ impl Storage {
         }
 
         fs::rename(old_full, new_full).context("failed to rename folder")
+    }
+
+    /// Recursively copy folder `src_rel` (relative to notes dir) into `target_folder`
+    /// (relative, "" = vault root). On name conflict at target, append " (Copy)" then
+    /// " (Copy 2)", etc. — never overwrites. Bails if `src_rel` is empty or if the
+    /// resolved destination sits inside `src_rel`'s own subtree (would recurse forever).
+    pub fn duplicate_folder(&self, src_rel: &str, target_folder: &str) -> Result<()> {
+        if src_rel.is_empty() {
+            anyhow::bail!("Cannot copy the vault root");
+        }
+        let base = src_rel.rsplit('/').next().unwrap_or(src_rel);
+        let mut new_rel = if target_folder.is_empty() {
+            base.to_string()
+        } else {
+            format!("{target_folder}/{base}")
+        };
+
+        // Copying "a" -> "" resolves to "a" (copy in place): NOT recursion, so let the
+        // conflict-suffix loop below rename it to "a (Copy)". Only a destination that is
+        // a strict descendant of src (e.g. target="a" -> "a/a") is forbidden.
+        if new_rel.starts_with(&format!("{src_rel}/")) {
+            anyhow::bail!("Cannot copy a folder into itself");
+        }
+
+        let mut suffix: u32 = 0;
+        while self
+            .validate_path_within_notes_dir(&new_rel)
+            .is_some_and(|p| p.exists())
+        {
+            suffix += 1;
+            let label = if suffix == 1 {
+                format!("{base} (Copy)")
+            } else {
+                format!("{base} (Copy {suffix})")
+            };
+            new_rel = if target_folder.is_empty() {
+                label
+            } else {
+                format!("{target_folder}/{label}")
+            };
+        }
+
+        let src_full = self
+            .validate_path_within_notes_dir(src_rel)
+            .ok_or_else(|| anyhow::anyhow!("Invalid source folder path"))?;
+        let new_full = self
+            .validate_path_within_notes_dir(&new_rel)
+            .ok_or_else(|| anyhow::anyhow!("Invalid target folder path"))?;
+        if !src_full.exists() {
+            anyhow::bail!("Folder does not exist");
+        }
+        fs::create_dir_all(&new_full)?;
+        copy_dir_recursive(&src_full, &new_full)?;
+        Ok(())
     }
 
     pub fn move_note(&self, id: &str, new_folder: &str) -> Result<String> {
@@ -1060,7 +1143,7 @@ impl Storage {
         Ok(output)
     }
 
-    pub fn decrypt(&self, payload: &[u8]) -> Result<Vec<u8>> {
+    pub fn decrypt(&self, payload: &[u8]) -> Result<Zeroizing<Vec<u8>>> {
         let header_len = FILE_MAGIC.len() + NONCE_LEN;
         if payload.len() < header_len {
             anyhow::bail!("invalid note header, payload too short");
@@ -1073,10 +1156,26 @@ impl Storage {
         let ciphertext = &payload[header_len..];
 
         let cipher = ChaCha20Poly1305::new(Key::from_slice(&self.key));
-        cipher
+        let plaintext = cipher
             .decrypt(Nonce::from_slice(nonce), ciphertext)
-            .map_err(|_| anyhow!("note decryption failed"))
+            .map_err(|_| anyhow!("note decryption failed"))?;
+        Ok(Zeroizing::new(plaintext))
     }
+}
+
+fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
+    for entry in fs::read_dir(src).context("failed to read source folder")? {
+        let entry = entry?;
+        let from = entry.path();
+        let to = dst.join(entry.file_name());
+        if from.is_dir() {
+            fs::create_dir_all(&to)?;
+            copy_dir_recursive(&from, &to)?;
+        } else {
+            fs::copy(&from, &to).with_context(|| format!("failed to copy {}", from.display()))?;
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -1117,7 +1216,7 @@ mod tests {
         let plaintext = b"Secret Message";
         let encrypted = storage.encrypt(plaintext)?;
         let decrypted = storage.decrypt(&encrypted)?;
-        assert_eq!(decrypted, plaintext);
+        assert_eq!(decrypted.as_slice(), &plaintext[..]);
 
         // Test with frontmatter
         let mut file_content = b"---\ntitle: CLIN1 in title\n---\n".to_vec();
@@ -1126,7 +1225,7 @@ mod tests {
         let (fm, payload) = split_frontmatter_payload(&file_content);
         assert!(fm.is_some());
         let decrypted = storage.decrypt(payload)?;
-        assert_eq!(decrypted, plaintext);
+        assert_eq!(decrypted.as_slice(), &plaintext[..]);
 
         Ok(())
     }
@@ -1183,6 +1282,64 @@ mod tests {
         )?;
         let mt2 = storage.note_mtime_millis(&id);
         assert!(mt2 > mt1);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_duplicate_preserves_extension() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let notes_dir = temp.path().to_path_buf();
+        let storage = Storage {
+            data_dir: PathBuf::new(),
+            config_dir: PathBuf::new(),
+            notes_dir: notes_dir.clone(),
+            templates_dir: PathBuf::new(),
+            key: [0u8; 32],
+        };
+
+        let content = "Test content for duplicate";
+        let base_note = Note {
+            title: "Original".to_string(),
+            content: content.to_string(),
+            updated_at: 42,
+            tags: vec![],
+        };
+
+        // Test each supported extension
+        let titled_exts = ["md", "txt", "clin"]; // frontmatter/bincode preserves title
+        let raw_exts = ["draw", "canvas"]; // raw bytes, no stored title
+
+        for ext in titled_exts.iter().chain(raw_exts.iter()) {
+            let orig_id = format!("test_original.{}", ext);
+            // Save original — returns the actual id (may differ if name conflicts)
+            let saved_id = storage.save_note(&orig_id, &base_note)?;
+            // Verify the original was saved with the correct extension
+            assert!(
+                saved_id.ends_with(&format!(".{}", ext)),
+                "saved note should end with .{ext}, got: {saved_id}"
+            );
+
+            // Duplicate the saved note
+            let dup_id = storage.duplicate_note(&saved_id, "")?;
+            // Verify the duplicate preserves the extension
+            assert!(
+                dup_id.ends_with(&format!(".{}", ext)),
+                "duplicate should end with .{ext}, got: {dup_id}"
+            );
+
+            // Load the duplicate and verify content matches
+            let dup_note = storage.load_note(&dup_id)?;
+            assert_eq!(dup_note.content, content, "content mismatch for .{ext}");
+
+            // Title is only preserved for frontmatter/bincode-backed formats
+            if titled_exts.contains(ext) {
+                assert_eq!(
+                    dup_note.title, "Original (Copy)",
+                    "title mismatch for .{ext}"
+                );
+            }
+        }
 
         Ok(())
     }

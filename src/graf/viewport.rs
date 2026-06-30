@@ -46,6 +46,7 @@ impl Viewport {
         (wx, wy)
     }
 
+    #[must_use]
     pub fn auto_fit_from_graph(
         &self,
         graph: &fdg_sim::ForceGraph<super::graph::GraphNodeData, ()>,

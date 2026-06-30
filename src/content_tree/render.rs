@@ -6,7 +6,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, List, ListItem, ListState, Paragraph},
+    widgets::{Block, List, ListItem, Paragraph},
 };
 
 fn get_tree_prefix(state: &ContentTreeState, visible: &[usize], p: usize) -> String {
@@ -169,10 +169,7 @@ pub fn draw_content_tree(
             .highlight_symbol("> ");
 
         let selected_pos = visible.iter().position(|&x| x == state.selected);
-        let mut list_state = ListState::default();
-        if let Some(pos) = selected_pos {
-            list_state.select(Some(pos));
-        }
+        let mut list_state = crate::ui::list_state_selected(selected_pos);
 
         frame.render_stateful_widget(list, left_area, &mut list_state);
 
@@ -215,29 +212,36 @@ pub fn draw_content_tree(
     }
 
     // 3. Draw Hint line
-    let move_keys = format!(
-        "{}/{} move",
-        keybinds.content_tree_keys_display(ContentTreeAction::MoveDown),
-        keybinds.content_tree_keys_display(ContentTreeAction::MoveUp)
+    let hints_items = vec![
+        (
+            format!(
+                "{}/{}",
+                keybinds.display_content_tree(ContentTreeAction::MoveDown),
+                keybinds.display_content_tree(ContentTreeAction::MoveUp)
+            ),
+            "move",
+        ),
+        (
+            keybinds.display_content_tree(ContentTreeAction::ToggleCollapse),
+            "fold",
+        ),
+        (
+            keybinds.display_content_tree(ContentTreeAction::Open),
+            "jump",
+        ),
+        (
+            keybinds.display_content_tree(ContentTreeAction::Back),
+            "back",
+        ),
+    ];
+    let hint = crate::ui::format_keybind_hints(theme, &hints_items);
+    crate::ui::draw_status_bar(
+        frame,
+        hint_area,
+        theme,
+        None,
+        hint,
+        None,
+        state.seq_matcher.pending_display().as_deref(),
     );
-    let fold_keys = format!(
-        "{} fold",
-        keybinds.content_tree_keys_display(ContentTreeAction::ToggleCollapse)
-    );
-    let jump_keys = format!(
-        "{} jump",
-        keybinds.content_tree_keys_display(ContentTreeAction::Open)
-    );
-    let back_keys = format!(
-        "{} back",
-        keybinds.content_tree_keys_display(ContentTreeAction::Back)
-    );
-    let help_keys = format!(
-        "{} help",
-        keybinds.content_tree_keys_display(ContentTreeAction::Help)
-    );
-
-    let hint = format!("{move_keys} · {fold_keys} · {jump_keys} · {back_keys} · {help_keys}");
-
-    crate::ui::draw_status_bar(frame, hint_area, theme, None, &hint, None);
 }

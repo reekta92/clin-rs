@@ -6,12 +6,15 @@ use ratatui::Frame;
 use crate::config::ClinConfig;
 use crate::graf::app::GrafAppState;
 
-pub fn draw_ui(frame: &mut Frame, state: &GrafAppState, config: &ClinConfig, area: Rect) {
-    if !state.config_errors.is_empty() {
-        draw_config_errors(frame, area, &state.config_errors, config);
-        return;
-    }
-
+pub fn draw_ui(
+    frame: &mut Frame,
+    state: &GrafAppState,
+    config: &ClinConfig,
+    area: Rect,
+    header_area: Rect,
+    theme: &crate::app_theme::AppThemeColors,
+    app_status: Option<&str>,
+) {
     let (graph_area, preview_area) = if state.preview_enabled {
         let (constraints, main_idx, p_idx) = match config.list.preview_position {
             crate::config::PreviewPosition::Left => (
@@ -42,10 +45,34 @@ pub fn draw_ui(frame: &mut Frame, state: &GrafAppState, config: &ClinConfig, are
         (area, None)
     };
 
+    let right_text = if let Some(graph_state) = &state.graph_state {
+        let guard = graph_state.read();
+        Some(ratatui::text::Line::from(
+            crate::graf::render::compute_status_string(&guard, graph_area),
+        ))
+    } else {
+        None
+    };
+
+    crate::ui::draw_view_title_bar(
+        frame,
+        header_area,
+        "Graph",
+        theme,
+        None,
+        app_status,
+        right_text,
+    );
+
+    if !state.config_errors.is_empty() {
+        draw_config_errors(frame, area, &state.config_errors, config);
+        return;
+    }
+
     let colors = config.theme_colors();
 
     if let Some(graph_state) = &state.graph_state {
-        let guard = graph_state.read().unwrap_or_else(|e| e.into_inner());
+        let guard = graph_state.read();
         let flags = crate::graf::render::FeatureFlags {
             show_legend: state.show_legend,
             show_grid: state.show_grid,
@@ -58,7 +85,9 @@ pub fn draw_ui(frame: &mut Frame, state: &GrafAppState, config: &ClinConfig, are
             &guard,
             config,
             &flags,
-            &state.app_theme,
+            theme,
+            &state.keybinds,
+            state.seq_matcher.pending_display().as_deref(),
         );
     }
 
@@ -289,6 +318,7 @@ fn draw_preview(frame: &mut Frame, preview_rect: Rect, state: &GrafAppState, con
         state.preview_content.as_ref(),
         hide_encrypted,
         0,
+        config.ui.icon_mode,
     );
 }
 

@@ -2,53 +2,220 @@
 
 All notable changes to clin are documented in this file.
 
-## [0.8.32] - 2026-06-27
+## [0.9.0-rc.2] - 2026-06-29
 
-### Miscellaneous
+### Added
 
-- Bump anyhow from 1.0.102 to 1.0.103
-- Bump uuid from 1.23.3 to 1.23.4
-## [0.8.31] - 2026-06-23
-
-### Release
-
-- V0.8.31
-## [0.8.30] - 2026-06-23
-
-### Release
-
-- V0.8.30
-## [0.8.29] - 2026-06-23
-
-### Release
-
-- V0.8.29
-## [0.8.28] - 2026-06-23
-
-### Release
-
-- V0.8.28
-## [0.8.27] - 2026-06-23
-
-### Testing
-
-- Testing CI
-- Testing CI
-
-### Release
-
-- V0.8.27
-- V0.9.0-beta.4
-- V0.9.0-beta.4
-## [0.8.26] - 2026-06-21
+- Improve renderer styling, layout, and performance
+- Added a builtin markdown renderer to replace glow
+- Replace month grid with rolling-weeks heatmap
+- Add Draw and Graf strip sections, halfblock preview, centering
+- Added a builtin markdown renderer to replace glow
 
 ### Fixed
 
-- Correct jump-to-top dispatch and add jump-to-bottom defaults
+- Initialize draw_state when creating new .draw file
+
+### Performance
+
+- Pre-warm graph preview at startup to avoid first-frame blink
+- Progressive graph preview settle across frames
+- Reduce graf preview freeze on first cycle
 
 ### Release
 
-- V0.8.26
+- V0.9.0-rc.2
+## [0.9.0-rc.1] - 2026-06-28
+
+### Added
+
+- Add --vault, --json, notes cat, notes new --body/--no-tui
+- Added config options for customizing preview pane command
+- Expose preview paging and fix help tab digits
+- Add vim-style count-prefix for motion keys
+
+### Changed
+
+- Unify overlay dispatch via OverlayView trait and collape popup god-function
+- Consolidate 4 accessor families via keybind_scope! macro
+- Route production writes through atomic_write
+- Unify hex color parsing, clarify ThemeColors docs
+- Split 2170-line config.rs into module tree
+- Add list_state_selected helper
+- Deduplicate overlay dispatch
+- Consolidate format_relative_time
+
+### Documentation
+
+- Restructure install matrix and add visuals layer
+- Sync README and docs/ with current code
+
+### Fixed
+
+- Ensure cursor line text contrast with transparent backgrounds
+- Switch CONFIG_TEST_MUTEX to parking_lot::Mutex
+- Set select_style on all TextArea editors
+
+### Miscellaneous
+
+- Remove stale Cargo.toml.bak
+- Readme update
+
+### Release
+
+- V0.9.0-rc.1
+## [0.9.0-rc.0] - 2026-06-25
+
+### Added
+
+- Handle folders in bulk move/copy/delete
+- Accent-fill selected grid tiles, center mode badge, add footer hints
+- Add presets with picker, per-preset overlays, and pending indicator
+- Move tool buttons to header bar
+- Add text labels to toolbar buttons
+
+### Fixed
+
+- Keep current base when switching pre-release id
+- Incremental refresh on exit-edit instead of full rescan
+- Preserve file extension when duplicating notes
+- Keep graph state alive while Help is open
+- Clear help_requested flag when consumed
+
+### Release
+
+- V0.9.0-rc.0
+## [0.9.0-beta.6] - 2026-06-24
+
+### Added
+
+- Apply hint_bar_style to header details
+- Add command palette option for hint bar style
+- Add hjkl navigation to layout edit mode
+- Improvements to the debug logging system
+- Add comprehensive debug logging across all subsystems
+
+### CI
+
+- Aarch64 job fixes
+- Cleanup-cancelled-release workflow for cancelled releases
+- Fix for correct version calculating
+
+### Changed
+
+- Unify popup cancelation with context-aware keybinds
+
+### Fixed
+
+- Help view loop issue
+- Correct help navigation and enable it in draw view
+- Fallback to Quit when popup action shadows it
+- Remove angle brackets from keybind display
+- Add icon_mode to default generated config
+- Notes openned from graph view not going back to graph view with builtin editor
+- Handle mouse double-click result and rebuild graph state on return
+- Add aur, crates-io, post-release to cleanup failure trigger
+- Cleanup on build failure instead of cancel (cancelled() unreliable)
+- Replace heredocs with printf to keep YAML valid, add cleanup-on-cancel job to dispatch-release
+- Remove duplicated deb lines breaking YAML parse
+
+### Release
+
+- V0.9.0-beta.6
+## [0.9.0-beta.5] - 2026-06-23
+
+### Release
+
+- V0.9.0-beta.5
+## [0.9.0-beta.4] - 2026-06-23
+
+### CI
+
+- Fix for generate-rmp
+- Ci fixes for nix and linux-package jobs
+- Ci fixes for nix and linux-package jobs
+
+### Release
+
+- V0.9.0-beta.4
+## [0.9.0-beta.3] - 2026-06-22
+
+### CI
+
+- Fixed simple syntax errors
+
+### Release
+
+- V0.9.0-beta.3
+## [0.9.0-beta.2] - 2026-06-22
+
+### CI
+
+- Fixed simple syntax errors
+
+### Release
+
+- V0.9.0-beta.2
+## [0.9.0-beta.1] - 2026-06-22
+
+### Added
+
+- Add Ctrl+P as default command palette keybind
+- Add IconMode with Nerd Font/Unicode/None glyph switching
+- Add inline search popup with row highlighting
+- Hard-abort on Ctrl+C, bypass graceful shutdown
+- Add command palette actions to set daily goals
+- Add daily word and note goal system
+- Add month calendar widget to list view
+- Add editor presets and multi-key sequences
+
+### CI
+
+- Fixed simple syntax errors
+- Fixed linux-package release
+- Added a preview job
+- Updated dispatch-release to have a approval phasei
+- Updated dispatch-release to have an option for overriding the version
+- Updated dispatch-release to have an option for pre-releases
+- Updated dispatch-release to have an option for target branch
+
+### Changed
+
+- Extract TUI event loop into library crate
+- Strip animation engine, fix tab centering, fix calendar border
+- Huge refactor splitting app.rs, keybinds.rs and rendering.rs
+
+### Fixed
+
+- Bullet only CLI items in About tab, not config/info items
+- Match calendar vertical centering
+- Invert resize arrow direction when preview is on right
+- Clear orphaned plaintext temp files after crash
+- Interrupt stuck quit-time flush on second signal
+- Zeroize transient decrypted buffers
+- Reap zombie glow child on cancel render
+- Fixed clippy and build warnings
+- Rebuild display list cache on reload_theme
+
+### Miscellaneous
+
+- Bumped version back to 0.8.26
+- Bumped version back to 0.8.26
+- Bump version to 0.8.26
+- Bump version to 0.8.26
+- Bump version to 0.8.26
+- Bump version to 0.8.26
+
+### Performance
+
+- Use opt-level=3 and mimalloc allocator
+
+### Release
+
+- V0.9.0-beta.1
+- V0.9.0-beta.0
+- V0.10.0-beta.0
+- V0.9.0
 ## [0.8.25] - 2026-06-20
 
 ### Release

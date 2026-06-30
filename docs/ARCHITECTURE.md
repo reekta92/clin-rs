@@ -16,7 +16,8 @@ pub enum ViewMode {
     Graph,   // Force-directed graph (graf)
     Draw,    // Freehand drawing canvas
     Canvas,  // Obsidian-compatible node/edge canvas (pinstar)
-}
+    Backup,  // Git backup dashboard
+    ContentTree,  // Header-based note outline
 ```
 
 Transition rules:
@@ -32,9 +33,13 @@ Draw  ──Esc───► List
 Canvas──Esc───► List
 List  ──?/F1──► Help
 Help  ──Esc───► List
+List  ──palette──► Backup   (via command palette backup.open)
+List  ──palette──► ContentTree  (via command palette content_tree.open)
+Backup ──Esc───► List
+ContentTree ──Esc───► List
 ```
 
-Each view is self-contained. Graph, Draw, and Canvas each have their own event loop (`run_graf_view`, `run_draw_view`, `run_pinstar_view`) that take full control of the terminal and return when the user exits.
+Each overlay view implements the [`OverlayView`] trait (see `src/overlay.rs`). Graph, Draw, Canvas, Backup, and ContentTree all integrate into the main event loop via `overlay_render()` and `overlay_handle_event()` — they do not take control of the terminal. Their state is owned by `App` and instantiated on view transition.
 
 ---
 
@@ -68,61 +73,70 @@ run_tui_session(app)
 
 ```
 while !should_quit:
-  // 1. Sub-view delegation (modal views take over terminal)
-  if mode == Graph  → run_graf_view()      // full terminal control
-  if mode == Draw   → run_draw_view()      // full terminal control
-  if mode == Canvas → run_pinstar_view()   // full terminal control
-
-  // 2. Status tick
+  // 1. Status tick
   app.tick_status()
 
-  // 3. Render
+  // 2. Render
   terminal.draw(|frame| draw_ui(frame, app, focus))
+        │
+        └─ draw_ui():
+             ├─ match app.mode:
+             │    ├─ List / Edit / Help → dedicated render
+             │    └─ Graph/Draw/Canvas/Backup/ContentTree
+             │       → state.overlay_render(frame, area, theme, config, status)
+             └─ popups, palette
 
-  // 4. Poll async renderers (markdown preview)
+  // 3. Poll async renderers (markdown preview)
   poll_renderers() → may trigger another draw
 
-  // 5. Handle events
+  // 4. Handle events
   poll event with timeout → match mode → per-view handler
     ├─ List  → handle_list_keys() / handle_list_mouse()
     ├─ Edit  → handle_edit_keys() / handle_edit_mouse()
     ├─ Help  → handle_help_keys() + tab switching
-    └─ other → handled in sub-views above
+    └─ Graph/Draw/Canvas/Backup/ContentTree
+       → state.overlay_handle_event(event, terminal, config)
+          returns OverlayResult::{Continue, Exit, OpenHelp, NoteOpened, JumpToLine}
+          └─ Exit → state = None; mode = return_mode (restored to previous view)
 ```
 
-### Sub-view loops (graf, draw, pinstar)
+### Sub-view Overlays (OverlayView trait)
 
-Each sub-view has its own event loop in `src/graf/app.rs`, `src/draw/app.rs`, `src/pinstar/app.rs`. They:
+Five sub-views (Graph, Draw, Canvas, Backup, ContentTree) implement the [`OverlayView`] trait (see `src/overlay.rs`):
 
-- Take ownership of the terminal
-- Run their own draw → poll → handle cycle
-- Return a result enum (`GrafResult`, `PinstarResult`) on exit
-- Clean up their own state, then `app` mode is restored
+- [`overlay_render()`] — draws the overlay into a given screen area; called from `draw_ui()` during the main render pass
+- [`overlay_handle_event()`] — handles one terminal event; returns [`OverlayResult`] indicating whether the overlay should stay active, exit, open help, or perform a view-specific action (open a note, jump to a line)
+
+Their state is stored as `Option<X>` fields on `App` (e.g. `graph_state: Option<GrafAppState>`, `draw_state: Option<DrawAppState>`). When the user enters Graph/Draw/Canvas/Backup/ContentTree, the state is created and owned by `App`. On exit, the state is dropped (set to `None`) and the previous view is restored via `return_mode`.
+
+No sub-view takes terminal ownership or runs a separate event loop.
 
 ---
 
 ## App State (`app.rs`)
 
 `App` is the central state struct. It owns everything:
-
 ```
 App
-  ├── storage: Storage              // file I/O, encryption, templates
-  ├── keybinds: Keybinds            // loaded from keybinds.toml
-  ├── notes: Vec<NoteSummary>       // filtered/sorted note list
-  ├── editor: NoteEditor            // TextArea for title + body
-  ├── list: ListView                // selection, sort, filter, preview
-  ├── mode: ViewMode                // current active view
+  ├── storage: Storage                    // file I/O, encryption, templates
+  ├── keybinds: Keybinds                  // loaded from keybinds.toml
+  ├── notes: Vec<NoteSummary>             // filtered/sorted note list
+  ├── editor: NoteEditor                  // TextArea for title + body
+  ├── list: ListView                      // selection, sort, filter, preview
+  ├── mode: ViewMode                      // current active view
   ├── command_palette: Option<CommandPalette>  // Ctrl+P popup
-  ├── popups: PopupManager          // confirm, folder, tag, template, theme popups
-  ├── app_theme: AppThemeColors     // derived colors from theme config
-  ├── canvas_state: Option<PinstarState>  // persisted canvas state
-  ├── return_mode: Option<ViewMode> // where to return after sub-view
-  └── ...status helpers
+  ├── popups: PopupManager                // confirm, folder, tag, template, theme popups
+  ├── app_theme: AppThemeColors           // derived colors from theme config
+  ├── return_mode: Option<ViewMode>       // where to return after overlay exit
+  ├── graph_state: Option<GrafAppState>        // force-directed graph overlay
+  ├── draw_state: Option<DrawAppState>         // freehand drawing overlay
+  ├── canvas_state: Option<PinstarState>       // node/edge canvas overlay
+  ├── backup_state: Option<BackupState>        // git backup dashboard overlay
+  ├── content_tree_state: Option<ContentTreeState>  // header-based outline overlay
+  └── ...status helpers, config, caches
 ```
 
 ### Data flow
-
 ```
 Storage (filesystem)
     │
@@ -138,9 +152,9 @@ App::new(storage)
     ├── App::autosave()
     │     └─ storage.save_note() → writes to disk
     │
-    └── Per-view state (graf, draw, canvas)
-          └─ Each sub-view has its own state struct (GraphState, DrawAppState, PinstarState)
-             These are NOT owned by App; they're created/destroyed in sub-view loops
+    └── Overlay state (graph_state, draw_state, canvas_state, backup_state, content_tree_state)
+          └─ Owned by App as Option<X>. Created on view transition via mode change.
+             Dropped (set to None) on overlay exit. No separate event loop.
 ```
 
 ---
@@ -156,9 +170,11 @@ main.rs: terminal.draw(|frame| draw_ui(frame, app, focus))
             ├─ List  → draw_list_view()
             ├─ Edit  → draw_edit_view()
             ├─ Help  → draw_help_view()
-            ├─ Graph → no-op (handled in graf's own loop)
-            ├─ Draw  → no-op
-            └─ Canvas→ no-op
+            ├─ Graph → graf_state.overlay_render(frame, area, theme, config, status)
+            ├─ Draw  → draw_state.overlay_render(frame, area, theme, config, status)
+            ├─ Canvas→ canvas_state.overlay_render(frame, area, theme, config, status)
+            ├─ Backup→ backup_state.overlay_render(frame, area, theme, config, status)
+            └─ ContentTree → content_tree_state.overlay_render(frame, area, theme, config, status)
        │
        └─ if theme popup → draw_theme_popup()
 ```
@@ -168,7 +184,7 @@ List and Edit views use ratatui's `Layout` to split the terminal into panes:
 **List view layout:**
 ```
 ┌─ Notes Pane ──┬──── Preview Pane ────┐
-│  folder tree  │  markdown (glow) or  │
+|  folder tree  │  markdown (built-in) or  │
 │  note list    │  text preview        │
 │  search bar   │                      │
 ├────── Status Bar ────────────────────┤
@@ -180,7 +196,7 @@ List and Edit views use ratatui's `Layout` to split the terminal into panes:
 ┌─ Title Bar ────────────────────────┐
 │  [Title input]                     │
 ├─ Body Editor ───┬─ MD Preview ────┤
-│  (TextArea)     │  (glow render)  │
+|  (TextArea)     │  (built-in render)  │
 │                  │                  │
 ├── Status Bar ──────────────────────┤
 └────────────────────────────────────┘
@@ -213,7 +229,7 @@ src/
 ├── frontmatter.rs    — YAML frontmatter parse/serialize
 ├── keybinds.rs       — Keybind loading, Keybinds struct
 ├── list_view.rs      — ListView state, VisualItem, PreviewContent, sort
-├── markdown.rs       — MarkdownRenderer (glow-based async rendering)
+├── markdown.rs       — MarkdownRenderer (built-in comrak/syntect renderer)
 ├── migration.rs      — Storage migration logic
 ├── palette.rs        — CommandPalette popup widget
 ├── popups.rs         — ConfirmPopup, FolderPopup, TagPopup, etc.
@@ -239,7 +255,7 @@ src/
 │   └── theme.rs      — SwitchThemeAction
 │
 ├── graf/             — Graph view (force-directed)
-│   ├── app.rs        — run_graf_view(), GrafResult
+│   ├── app.rs        — GrafAppState, OverlayView implementation
 │   ├── graph.rs      — build_graph(), GraphNodeData, edge resolution
 │   ├── input.rs      — Keyboard/mouse event handling
 │   ├── physics.rs    — Force simulation thread (fdg_sim)
@@ -251,13 +267,13 @@ src/
 │   └── viewport.rs   — Viewport (screen↔world transform)
 │
 ├── draw/             — Draw view (freehand + shapes)
-│   ├── app.rs        — run_draw_view()
+│   ├── app.rs        — DrawAppState, OverlayView implementation
 │   ├── input.rs      — Mouse/keyboard handlers
 │   ├── render.rs     — Canvas + element rendering
 │   └── state.rs      — DrawAppState, DrawData, DrawElement
 │
 └── pinstar/          — Canvas view (Obsidian-compatible)
-    ├── app.rs        — run_pinstar_view(), PinstarResult
+    ├── app.rs        — PinstarState, OverlayView implementation
     ├── data.rs       — CanvasData, CanvasNode, CanvasEdge (JSON schema)
     ├── input.rs      — Keyboard/mouse handlers
     ├── render.rs     — Canvas + node/edge rendering
@@ -290,11 +306,11 @@ src/
          │ spawn / join (oneshot)
          ▼
 ┌──────────────────────────────────────────────────────┐
-│  Markdown Render Threads (glow)                      │
-│  - One per preview pane (list + editor)              │
-│  - Asynchronously pipes markdown through `glow` CLI  │
-│  - Result stored in MarkdownRenderer pending field   │
-│  - Polled by main loop via poll_renderers()           │
+│  Markdown Render Thread                              │
+│  - comrak GFM parse → AST walk → Vec<RenderLine>     │
+│  - Optionally syntect-highlights fenced code blocks   │
+│  - Runs in a cancelable background thread             │
+│  - Result polled by main loop via poll_renderers()    │
 └──────────────────────────────────────────────────────┘
 ```
 

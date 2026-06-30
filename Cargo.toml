@@ -1,9 +1,9 @@
 [package]
 name = "clin-rs"
-version = "0.8.32"
+version = "0.9.0-rc.3"
 edition = "2024"
 rust-version = "1.88.0"
-description = "Encrypted terminal note-taking app inspired by Obsidian"
+description = "Feature-packed terminal note management app inspired by Obsidian"
 authors = ["reekta92 <mdag.92988@protonmail.com>"]
 repository = "https://github.com/reekta92/clin-rs"
 homepage = "https://github.com/reekta92/clin-rs"
@@ -64,10 +64,12 @@ unnested_or_patterns = "allow"
 unused_self = "allow"
 used_underscore_binding = "allow"
 wildcard_imports = "allow"
+[lib]
+name = "clin"
+
 [[bin]]
 name = "clin"
-path = "src/main.rs"
-
+path = "src/bin/clin.rs"
 [package.metadata.deb]
 name = "clin-rs"
 maintainer = "reekta <reekta@localhost>"
@@ -111,19 +113,21 @@ tempfile = "3.27.0"
 toml = "1.1"
 toml_edit = "0.25"
 trash = "5"
-tui-term = "0.3"
 ratatui-textarea = "0.9"
 uuid = { version = "1.8", features = ["v4"] }
 fdg-sim = "0.9"
 which = "8.0.2"
+comrak = { version = "0.36", default-features = false }
+syntect = { version = "5.2", default-features = false, features = ["default-fancy"] }
 zeroize = { version = "1.8.2", features = ["derive"] }
-portable-pty = "0.9"
+unicode-width = "0.2"
 git2 = "0.21"
+mimalloc = "0.1"
 
 [profile.release]
 lto = "thin"
 codegen-units = 1
 panic = "abort"
 strip = true
-opt-level = "s"
+opt-level = 3
 
