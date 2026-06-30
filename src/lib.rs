@@ -30,7 +30,7 @@ pub mod text_edit;
 
 use crate::cli::{Cli, Command, ConfigCmd, KeybindsCmd, NotesCmd, StorageCmd, TemplatesCmd};
 use crate::config::ClinConfig;
-use crate::keybinds::{EditAction, HelpAction, ListAction};
+
 use crate::overlay::OverlayView;
 use clap::{CommandFactory, FromArgMatches};
 
@@ -101,7 +101,7 @@ pub fn run() -> Result<()> {
 
     match cli.command {
         None => launch_tui(None),
-        Some(Command::Notes { action }) => run_notes(action, cli.json),
+        Some(Command::Notes { action }) => run_notes(action),
         Some(Command::Storage { action }) => run_storage(action),
         Some(Command::Keybinds { action }) => run_keybinds(action),
         Some(Command::Templates { action }) => run_templates(action),
@@ -123,22 +123,18 @@ fn launch_tui(open_title: Option<String>) -> Result<()> {
     run_tui_session(&mut app)
 }
 
-fn run_notes(action: NotesCmd, json: bool) -> Result<()> {
+fn run_notes(action: NotesCmd) -> Result<()> {
     match action {
         NotesCmd::List => {
             let storage = Storage::init()?;
             let mut app = App::new(storage)?;
             app.refresh_notes()?;
-            if json {
-                println!("{}", serde_json::to_string_pretty(&app.notes)?);
-            } else {
-                for (index, note) in app.notes.iter().enumerate() {
-                    println!(
-                        "{} {}",
-                        console::dim(&format!("{}.", index + 1)),
-                        note.title
-                    );
-                }
+            for (index, note) in app.notes.iter().enumerate() {
+                println!(
+                    "{} {}",
+                    console::dim(&format!("{}.", index + 1)),
+                    note.title
+                );
             }
             Ok(())
         }
@@ -286,20 +282,6 @@ fn run_notes(action: NotesCmd, json: bool) -> Result<()> {
                 }
             }
             hits.sort_by_key(|b| std::cmp::Reverse(b.0));
-            if json {
-                let out: Vec<serde_json::Value> = hits
-                    .iter()
-                    .map(|(score, title, folder)| {
-                        serde_json::json!({
-                            "score": score,
-                            "title": title,
-                            "folder": folder,
-                        })
-                    })
-                    .collect();
-                println!("{}", serde_json::to_string_pretty(&out)?);
-                return Ok(());
-            }
             if hits.is_empty() {
                 println!(
                     "{}",
@@ -529,125 +511,7 @@ fn run_keybinds(action: KeybindsCmd) -> Result<()> {
         KeybindsCmd::Show => {
             let storage = Storage::init()?;
             let config = crate::config::ClinConfig::load().unwrap_or_default();
-            let keybinds = storage.load_keybinds_with_preset(config.core.keybind_preset);
-            println!(
-                "{} (preset: {})\n",
-                console::bold("Current keybinds"),
-                console::cyan(&config.core.keybind_preset.to_string())
-            );
-            println!("{}", console::section("List View"));
-            println!(
-                "  {:<18} {}",
-                "Move up:",
-                console::cyan(&keybinds.list_keys_display(ListAction::MoveUp))
-            );
-            println!(
-                "  {:<18} {}",
-                "Move down:",
-                console::cyan(&keybinds.list_keys_display(ListAction::MoveDown))
-            );
-            println!(
-                "  {:<18} {}",
-                "Open:",
-                console::cyan(&keybinds.list_keys_display(ListAction::Open))
-            );
-            println!(
-                "  {:<18} {}",
-                "Delete:",
-                console::cyan(&keybinds.list_keys_display(ListAction::Delete))
-            );
-            println!(
-                "  {:<18} {}",
-                "Quit:",
-                console::cyan(&keybinds.list_keys_display(ListAction::Quit))
-            );
-            println!(
-                "  {:<18} {}",
-                "Help:",
-                console::cyan(&keybinds.list_keys_display(ListAction::Help))
-            );
-            println!(
-                "  {:<18} {}",
-                "Open location:",
-                console::cyan(&keybinds.list_keys_display(ListAction::OpenLocation))
-            );
-            println!(
-                "  {:<18} {}",
-                "Cycle focus:",
-                console::cyan(&keybinds.list_keys_display(ListAction::CycleFocus))
-            );
-            println!(
-                "  {:<18} {}",
-                "New from template:",
-                console::cyan(&keybinds.list_keys_display(ListAction::NewFromTemplate))
-            );
-            println!("\n{}", console::section("Edit View"));
-            println!(
-                "  {:<18} {}",
-                "Quit:",
-                console::cyan(&keybinds.edit_keys_display(EditAction::Quit))
-            );
-            println!(
-                "  {:<18} {}",
-                "Back:",
-                console::cyan(&keybinds.edit_keys_display(EditAction::Back))
-            );
-            println!(
-                "  {:<18} {}",
-                "Cycle focus:",
-                console::cyan(&keybinds.edit_keys_display(EditAction::CycleFocus))
-            );
-            println!(
-                "  {:<18} {}",
-                "Select all:",
-                console::cyan(&keybinds.edit_keys_display(EditAction::SelectAll))
-            );
-            println!(
-                "  {:<18} {}",
-                "Copy:",
-                console::cyan(&keybinds.edit_keys_display(EditAction::Copy))
-            );
-            println!(
-                "  {:<18} {}",
-                "Cut:",
-                console::cyan(&keybinds.edit_keys_display(EditAction::Cut))
-            );
-            println!(
-                "  {:<18} {}",
-                "Paste:",
-                console::cyan(&keybinds.edit_keys_display(EditAction::Paste))
-            );
-            println!(
-                "  {:<18} {}",
-                "Undo:",
-                console::cyan(&keybinds.edit_keys_display(EditAction::Undo))
-            );
-            println!(
-                "  {:<18} {}",
-                "Redo:",
-                console::cyan(&keybinds.edit_keys_display(EditAction::Redo))
-            );
-            println!("\n{}", console::section("Help View"));
-            println!(
-                "  {:<18} {}",
-                "Close:",
-                console::cyan(&keybinds.help_keys_display(HelpAction::Close))
-            );
-            println!(
-                "  {:<18} {}",
-                "Scroll up:",
-                console::cyan(&keybinds.help_keys_display(HelpAction::ScrollUp))
-            );
-            println!(
-                "  {:<18} {}",
-                "Scroll down:",
-                console::cyan(&keybinds.help_keys_display(HelpAction::ScrollDown))
-            );
-            println!(
-                "\n  {} {}",
-                console::dim("Keybinds file:"),
-                console::path(storage.keybinds_path())
-            );
+            println!("{}", storage.keybinds_path_for_preset(config.core.keybind_preset).display());
             Ok(())
         }
         KeybindsCmd::Export => {
@@ -739,11 +603,6 @@ fn run_templates(action: TemplatesCmd) -> Result<()> {
 fn run_config(action: ConfigCmd) -> Result<()> {
     match action {
         ConfigCmd::Show => {
-            let config = ClinConfig::load()?;
-            println!("{}", toml::to_string_pretty(&config)?);
-            Ok(())
-        }
-        ConfigCmd::Path => {
             let path = ClinConfig::config_path()?;
             println!("{}", console::path(&path));
             Ok(())

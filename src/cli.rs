@@ -17,9 +17,6 @@ pub struct Cli {
     #[arg(long, global = true)]
     pub vault: Option<PathBuf>,
 
-    /// Emit machine-readable JSON instead of human text (notes list/search).
-    #[arg(long, global = true)]
-    pub json: bool,
 
     #[command(subcommand)]
     pub command: Option<Command>,
@@ -128,10 +125,8 @@ pub enum TemplatesCmd {
 
 #[derive(Subcommand, Debug)]
 pub enum ConfigCmd {
-    /// Print the effective configuration as TOML.
-    Show,
     /// Print the config file path.
-    Path,
+    Show,
     /// Open the config file in $VISUAL or $EDITOR.
     Edit,
     /// Reset the configuration to default values.
