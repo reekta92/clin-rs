@@ -120,6 +120,7 @@ impl<'de> serde::Deserialize<'de> for ColorOverrides {
 // ── Config Structs ─────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
 pub struct VisualConfig {
     #[serde(default = "default_graph_background")]
     pub graph_background: Background,
@@ -188,6 +189,7 @@ impl Default for VisualConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
 pub struct PhysicsConfig {
     #[serde(default = "default_ideal_distance")]
     pub ideal_distance: f64,
@@ -202,6 +204,7 @@ impl Default for PhysicsConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
 pub struct InteractionConfig {
     #[serde(default = "default_zoom_factor")]
     pub zoom_factor: f64,
@@ -219,6 +222,7 @@ impl Default for InteractionConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
 pub struct UiConfig {
     #[serde(
         default = "default_theme",
@@ -291,6 +295,7 @@ impl Default for UiConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
 pub struct FilterConfig {
     #[serde(default)]
     pub exclude_tags: Vec<String>,
@@ -299,6 +304,7 @@ pub struct FilterConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
 pub struct SearchConfig {
     #[serde(default = "default_search_max_results")]
     pub max_results: usize,
@@ -316,6 +322,7 @@ impl Default for SearchConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
 pub struct BackupConfig {
     #[serde(default)]
     pub enabled: bool,
@@ -334,6 +341,7 @@ pub struct BackupConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
 pub struct ListConfig {
     #[serde(default = "default_preview_enabled")]
     pub preview_enabled: bool,
@@ -374,6 +382,7 @@ pub struct ListConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
 pub struct EditorConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub external_command: Option<String>,
@@ -386,6 +395,7 @@ pub struct EditorConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
 pub struct GrafConfig {
     #[serde(default)]
     pub visual: VisualConfig,
@@ -402,6 +412,7 @@ pub struct GrafConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
 pub struct CoreConfig {
     pub storage_path: Option<PathBuf>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -448,6 +459,7 @@ impl Default for CoreConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
 pub struct GoalsConfig {
     #[serde(default = "default_true")]
     pub enabled: bool,
@@ -468,6 +480,7 @@ impl Default for GoalsConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
 pub struct ClinConfig {
     #[serde(default)]
     pub core: CoreConfig,
