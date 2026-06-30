@@ -48,13 +48,12 @@ impl App {
     /// when the note was renamed because of a title change (save_note renames).
     pub fn refresh_note_single(&mut self, prev_id: Option<&str>, id: &str) {
         // 1. Handle rename: drop the old id from every view.
-        if let Some(old) = prev_id {
-            if old != id {
+        if let Some(old) = prev_id
+            && old != id {
                 self.summary_cache.remove(old);
                 self.summary_mtime.remove(old);
                 self.notes.retain(|n| n.id != old);
             }
-        }
         // 2. Reload this one note's summary + mtime, replace in notes.
         if let Ok(summary) = self.storage.load_note_summary(id) {
             let mt = self.storage.note_mtime_millis(id);

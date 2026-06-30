@@ -161,15 +161,14 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
                     row =
                         row.style(Style::default().bg(theme.preview_bg().unwrap_or(Color::Reset)));
                 }
-            } else if let Some(hl_idx) = app.help_search.highlight_row {
-                if abs_idx == hl_idx {
+            } else if let Some(hl_idx) = app.help_search.highlight_row
+                && abs_idx == hl_idx {
                     row = row.style(
                         Style::default()
                             .bg(theme.highlight_bg)
                             .fg(theme.highlight_fg),
                     );
                 }
-            }
             row
         })
         .collect();

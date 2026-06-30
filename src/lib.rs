@@ -854,14 +854,10 @@ fn run_app(
         }
 
         // Apply update ticks for continuous views before rendering
-        match app.mode {
-            ViewMode::Graph => {
-                if let Some(graf) = &mut app.graph_state {
-                    graf.overlay_update(&mut app.config);
-                }
+        if app.mode == ViewMode::Graph
+            && let Some(graf) = &mut app.graph_state {
+                graf.overlay_update(&mut app.config);
             }
-            _ => {}
-        }
 
         if let Err(e) = terminal.draw(|frame| crate::ui::draw_ui(frame, app, focus)) {
             
@@ -901,12 +897,11 @@ fn run_app(
             }
         }
 
-        if need_redraw {
-            if let Err(e) = terminal.draw(|frame| crate::ui::draw_ui(frame, app, focus)) {
+        if need_redraw
+            && let Err(e) = terminal.draw(|frame| crate::ui::draw_ui(frame, app, focus)) {
                 
                 return Err(e.into());
             }
-        }
 
         if event::poll(poll_timeout).context("event poll failed")? {
             match event::read().context("failed to read event")? {

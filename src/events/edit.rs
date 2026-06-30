@@ -179,11 +179,10 @@ pub fn handle_edit_mouse(
                     .active
                     .take()
                     .expect("context_menu Some — guarded by enclosing if-let");
-                if let crate::popups::ActivePopup::ContextMenu(menu) = &mut menu_taken {
-                    if menu.selected < 3 {
+                if let crate::popups::ActivePopup::ContextMenu(menu) = &mut menu_taken
+                    && menu.selected < 3 {
                         menu.selected += 1;
                     }
-                }
                 app.popups.active = Some(menu_taken);
             }
             return;

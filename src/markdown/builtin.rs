@@ -29,9 +29,9 @@ use crate::markdown::style::{MarkdownTheme, RenderLine};
 // Lazy-loaded syntect assets (first render pays ~50 ms init)
 // ---------------------------------------------------------------------------
 
-static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(|| SyntaxSet::load_defaults_nonewlines());
+static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(SyntaxSet::load_defaults_nonewlines);
 
-static THEME_SET: LazyLock<ThemeSet> = LazyLock::new(|| ThemeSet::load_defaults());
+static THEME_SET: LazyLock<ThemeSet> = LazyLock::new(ThemeSet::load_defaults);
 
 /// Theme name for code-block syntax highlighting.
 const CODE_THEME: &str = "base16-ocean.dark";
@@ -90,7 +90,7 @@ pub(crate) fn render_builtin(
         if ctx.cancel_token.load(Ordering::Relaxed) {
             break;
         }
-        render_block(&mut ctx, &child, 0);
+        render_block(&mut ctx, child, 0);
     }
 
     // Remove any trailing empty rows (but keep at least one)
@@ -163,7 +163,7 @@ impl Ctx<'_> {
         if ch.is_control() {
             return;
         }
-        let w = UnicodeWidthChar::width(ch).unwrap_or(0) as usize;
+        let w = UnicodeWidthChar::width(ch).unwrap_or(0);
         let col = self.cur_col();
         if col + w > self.cols {
             if self.wrap {
@@ -202,7 +202,7 @@ fn render_block<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, depth: usize) {
         NodeValue::List(list) => render_list(ctx, node, list, depth),
         NodeValue::Item(_) => {
             for child in node.children() {
-                render_block(ctx, &child, depth);
+                render_block(ctx, child, depth);
             }
         }
         NodeValue::TaskItem(checked) => {
@@ -212,7 +212,7 @@ fn render_block<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, depth: usize) {
                 ctx.push_str("[ ] ", ctx.theme.task_unchecked, 2 + depth * 2);
             }
             for child in node.children() {
-                render_block(ctx, &child, depth);
+                render_block(ctx, child, depth);
             }
         }
         NodeValue::CodeBlock(cb) => render_code_block(ctx, cb, depth),
@@ -221,13 +221,13 @@ fn render_block<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, depth: usize) {
         NodeValue::ThematicBreak => render_hr(ctx, depth),
         NodeValue::DescriptionList => {
             for child in node.children() {
-                render_block(ctx, &child, depth);
+                render_block(ctx, child, depth);
             }
             ctx.new_line(0);
         }
         NodeValue::DescriptionItem(_) => {
             for child in node.children() {
-                render_block(ctx, &child, depth);
+                render_block(ctx, child, depth);
             }
         }
         NodeValue::DescriptionTerm => {
@@ -235,7 +235,7 @@ fn render_block<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, depth: usize) {
             let style = ctx.theme.table_header;
             ctx.ensure_margin(margin);
             for child in node.children() {
-                render_inline(ctx, &child, style, margin);
+                render_inline(ctx, child, style, margin);
             }
             ctx.new_line(0);
         }
@@ -248,11 +248,11 @@ fn render_block<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, depth: usize) {
                     let style = ctx.theme.paragraph;
                     drop(data_val);
                     for inline in child.children() {
-                        render_inline(ctx, &inline, style, margin);
+                        render_inline(ctx, inline, style, margin);
                     }
                 } else {
                     drop(data_val);
-                    render_block(ctx, &child, depth + 1);
+                    render_block(ctx, child, depth + 1);
                 }
             }
             ctx.new_line(0);
@@ -261,7 +261,7 @@ fn render_block<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, depth: usize) {
         NodeValue::HtmlBlock(_) | NodeValue::FrontMatter(_) => {}
         _ => {
             for child in node.children() {
-                render_block(ctx, &child, depth);
+                render_block(ctx, child, depth);
             }
         }
     }
@@ -291,14 +291,14 @@ fn render_heading<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, h: &NodeHeading, dep
         ctx.ensure_line();
         ctx.push(' ', banner, 0); // leading space
         for child in node.children() {
-            render_inline(ctx, &child, banner, 0);
+            render_inline(ctx, child, banner, 0);
         }
         ctx.push(' ', banner, 0); // trailing space
     } else {
         let style = heading_style(ctx, h.level);
         ctx.ensure_margin(margin);
         for child in node.children() {
-            render_inline(ctx, &child, style, margin);
+            render_inline(ctx, child, style, margin);
         }
     }
 
@@ -317,7 +317,7 @@ fn render_paragraph<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, depth: usize) {
     ctx.ensure_margin(margin);
 
     for child in node.children() {
-        render_inline(ctx, &child, style, margin);
+        render_inline(ctx, child, style, margin);
     }
 
     ctx.new_line(0);
@@ -335,7 +335,7 @@ fn render_list_child<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, depth: usize, mar
     if is_paragraph {
         let style = ctx.theme.paragraph;
         for inline in node.children() {
-            render_inline(ctx, &inline, style, margin);
+            render_inline(ctx, inline, style, margin);
         }
     } else {
         render_block(ctx, node, depth);
@@ -386,7 +386,7 @@ fn render_list<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, list: &NodeList, depth:
                         if matches!(grandchild.data.borrow().value, NodeValue::TaskItem(_)) {
                             continue;
                         }
-                        render_list_child(ctx, &grandchild, depth + 1, margin);
+                        render_list_child(ctx, grandchild, depth + 1, margin);
                     }
                 } else {
                     let bullet = if is_ordered {
@@ -399,7 +399,7 @@ fn render_list<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, list: &NodeList, depth:
                     ctx.push_str(&format!("{} ", bullet), ctx.theme.paragraph, margin);
 
                     for grandchild in child.children() {
-                        render_list_child(ctx, &grandchild, depth + 1, margin);
+                        render_list_child(ctx, grandchild, depth + 1, margin);
                     }
                 }
 
@@ -413,13 +413,13 @@ fn render_list<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, list: &NodeList, depth:
                 }
                 // TaskItem has children (Paragraph with text)
                 for grandchild in child.children() {
-                    render_list_child(ctx, &grandchild, depth + 1, margin);
+                    render_list_child(ctx, grandchild, depth + 1, margin);
                 }
 
                 ctx.new_line(margin);
             }
             _ => {
-                render_block(ctx, &child, depth);
+                render_block(ctx, child, depth);
             }
         }
     }
@@ -451,9 +451,9 @@ fn render_code_block(ctx: &mut Ctx, cb: &NodeCodeBlock, depth: usize) {
     }
     if ctx.syntax_hl && cb.fenced && !cb.info.is_empty() {
         let lang = cb.info.split_whitespace().next().unwrap_or("");
-        if !lang.is_empty() {
-            if let Some(syntax) = SYNTAX_SET.find_syntax_by_token(lang) {
-                if let Some(theme) = THEME_SET.themes.get(CODE_THEME) {
+        if !lang.is_empty()
+            && let Some(syntax) = SYNTAX_SET.find_syntax_by_token(lang)
+                && let Some(theme) = THEME_SET.themes.get(CODE_THEME) {
                     let mut highlighter = syntect::easy::HighlightLines::new(syntax, theme);
 
                     for line in cb.literal.lines() {
@@ -463,7 +463,7 @@ fn render_code_block(ctx: &mut Ctx, cb: &NodeCodeBlock, depth: usize) {
                         ctx.new_line(margin);
                         ctx.push_spaces(4, margin);
 
-                        if let Ok(ranges) = highlighter.highlight_line(line, &*SYNTAX_SET) {
+                        if let Ok(ranges) = highlighter.highlight_line(line, &SYNTAX_SET) {
                             for (syn_style, text) in &ranges {
                                 let rt_style = syntect_style_to_ratatui(*syn_style);
                                 ctx.push_str(text, rt_style, code_margin);
@@ -478,8 +478,6 @@ fn render_code_block(ctx: &mut Ctx, cb: &NodeCodeBlock, depth: usize) {
                     ctx.new_line(0);
                     return;
                 }
-            }
-        }
     }
 
     // Plain rendering (no syntect or no lang info)
@@ -517,13 +515,13 @@ fn render_blockquote<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, depth: usize) {
             NodeValue::Paragraph => {
                 let style = ctx.theme.blockquote;
                 for inline in child.children() {
-                    render_inline(ctx, &inline, style, margin + 2);
+                    render_inline(ctx, inline, style, margin + 2);
                 }
             }
             _ => {
                 // Drop borrow before recursion
                 drop(data);
-                render_block(ctx, &child, depth + 1);
+                render_block(ctx, child, depth + 1);
             }
         }
 
@@ -704,7 +702,7 @@ fn inline_text_len<'a>(node: &'a AstNode<'a>) -> usize {
         | NodeValue::Strikethrough => {
             let mut len = 0usize;
             for child in node.children() {
-                len += inline_text_len(&child);
+                len += inline_text_len(child);
             }
             len
         }
@@ -747,7 +745,7 @@ fn render_footnote_def<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, depth: usize) {
     // Drop borrow before recursing
     drop(data);
     for child in node.children() {
-        render_block(ctx, &child, depth);
+        render_block(ctx, child, depth);
     }
 
     ctx.new_line(0);
@@ -799,19 +797,19 @@ fn render_inline<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, base_style: Style, ma
         NodeValue::Strong => {
             let st = base_style.add_modifier(Modifier::BOLD);
             for child in node.children() {
-                render_inline(ctx, &child, st, margin);
+                render_inline(ctx, child, st, margin);
             }
         }
         NodeValue::Emph => {
             let st = base_style.add_modifier(Modifier::ITALIC);
             for child in node.children() {
-                render_inline(ctx, &child, st, margin);
+                render_inline(ctx, child, st, margin);
             }
         }
         NodeValue::Strikethrough => {
             let st = base_style.add_modifier(Modifier::CROSSED_OUT);
             for child in node.children() {
-                render_inline(ctx, &child, st, margin);
+                render_inline(ctx, child, st, margin);
             }
         }
         NodeValue::Link(link) => {
@@ -821,7 +819,7 @@ fn render_inline<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, base_style: Style, ma
                 ctx.push(' ', ctx.theme.blockquote, margin);
             }
             for child in node.children() {
-                render_inline(ctx, &child, ctx.theme.link_text, margin);
+                render_inline(ctx, child, ctx.theme.link_text, margin);
             }
             ctx.push(' ', base_style, margin);
             ctx.push_str(&link.url, ctx.theme.link_url, margin);
@@ -868,12 +866,12 @@ fn render_inline<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, base_style: Style, ma
         NodeValue::HtmlInline(_) => {}
         NodeValue::Escaped => {
             for child in node.children() {
-                render_inline(ctx, &child, base_style, margin);
+                render_inline(ctx, child, base_style, margin);
             }
         }
         _ => {
             for child in node.children() {
-                render_inline(ctx, &child, base_style, margin);
+                render_inline(ctx, child, base_style, margin);
             }
         }
     }
@@ -990,10 +988,10 @@ mod tests {
         assert!(text.contains('└'), "bottom-left border");
         assert!(text.contains('┘'), "bottom-right border");
         assert!(text.contains('┃'), "column separator");
-        assert!(text.contains("A"), "cell A");
-        assert!(text.contains("B"), "cell B");
-        assert!(text.contains("1"), "cell 1");
-        assert!(text.contains("2"), "cell 2");
+        assert!(text.contains('A'), "cell A");
+        assert!(text.contains('B'), "cell B");
+        assert!(text.contains('1'), "cell 1");
+        assert!(text.contains('2'), "cell 2");
     }
 
     #[test]

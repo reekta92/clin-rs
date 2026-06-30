@@ -72,17 +72,15 @@ pub fn cleanup_orphaned_temp_files() {
         if !name.starts_with("clin_") {
             continue;
         }
-        if let Ok(meta) = entry.metadata() {
-            if let Ok(mtime) = meta.modified() {
-                if now
+        if let Ok(meta) = entry.metadata()
+            && let Ok(mtime) = meta.modified()
+                && now
                     .duration_since(mtime)
                     .map(|d| d < MAX_AGE)
                     .unwrap_or(true)
                 {
                     continue; // too fresh — may belong to a running session
                 }
-            }
-        }
         // matches both `clin_{uuid}.md` and `clin_md_<rand>` (tempfile prefix)
         let _ = std::fs::remove_file(entry.path());
     }

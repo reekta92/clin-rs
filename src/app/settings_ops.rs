@@ -406,16 +406,12 @@ impl App {
     pub fn load_goals_progress(&self) -> crate::goals::DailyProgress {
         let path = self.storage.config_dir.join("goals_progress.json");
         let today = chrono::Local::now().date_naive().to_string();
-        if path.exists() {
-            if let Ok(content) = std::fs::read_to_string(&path) {
-                if let Ok(progress) = serde_json::from_str::<crate::goals::DailyProgress>(&content)
-                {
-                    if progress.date == today {
+        if path.exists()
+            && let Ok(content) = std::fs::read_to_string(&path)
+                && let Ok(progress) = serde_json::from_str::<crate::goals::DailyProgress>(&content)
+                    && progress.date == today {
                         return progress;
                     }
-                }
-            }
-        }
         crate::goals::DailyProgress {
             date: today,
             words_written: 0,

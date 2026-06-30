@@ -207,7 +207,7 @@ impl Keybinds {
     /// Skips arrow keys, function keys, and page-nav keys to prefer
     /// letter keys (j/k) or conventional keys (Enter, Esc, Tab).
     fn pick_hint_key(combos: &[KeyCombo]) -> String {
-        for combo in combos.iter() {
+        for combo in combos {
             let s = combo.to_display_string();
             let skip = matches!(
                 s.as_str(),

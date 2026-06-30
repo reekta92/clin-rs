@@ -12,8 +12,8 @@ pub fn draw_view_title_bar(
     right_text: Option<Line<'_>>,
 ) {
     // Override header when there's an active status notification
-    if let Some(st) = status {
-        if !st.trim().is_empty() && st != "Ready" {
+    if let Some(st) = status
+        && !st.trim().is_empty() && st != "Ready" {
             let st = crate::sanitize::sanitize_for_terminal(st);
             let span = Span::styled(
                 format!("  {}  ", st),
@@ -27,7 +27,6 @@ pub fn draw_view_title_bar(
             frame.render_widget(bar, area);
             return;
         }
-    }
     let display_text = format!(" {} ", title.to_uppercase());
     let title_span = Span::styled(
         display_text,
@@ -189,8 +188,8 @@ pub fn draw_view_title_bar_with_tabs(
     right_text: Option<Line<'_>>,
 ) {
     // Override header when there's an active status notification
-    if let Some(st) = status {
-        if !st.trim().is_empty() && st != "Ready" {
+    if let Some(st) = status
+        && !st.trim().is_empty() && st != "Ready" {
             let st = crate::sanitize::sanitize_for_terminal(st);
             let span = Span::styled(
                 format!("  {}  ", st),
@@ -204,7 +203,6 @@ pub fn draw_view_title_bar_with_tabs(
             frame.render_widget(bar, area);
             return;
         }
-    }
     frame.render_widget(Paragraph::new("").style(theme.title_bar_bg_style()), area);
 
     let tabs_region = title_bar_tabs_region(area, title);

@@ -314,11 +314,10 @@ impl App {
             }
         }
         // Phase 2: relocate the target folder itself last (if it was co-selected).
-        if target_is_selected && let Some(t) = folder_paths.iter().find(|f| *f == target) {
-            if self.move_one_folder(t, target).is_err() {
+        if target_is_selected && let Some(t) = folder_paths.iter().find(|f| *f == target)
+            && self.move_one_folder(t, target).is_err() {
                 failed += 1;
             }
-        }
         failed
     }
 

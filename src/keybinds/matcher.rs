@@ -53,7 +53,7 @@ impl KeyMatcher {
             Some(
                 self.pending
                     .iter()
-                    .map(|ev| crate::keybinds::KeyCombo::keyevent_to_string(ev))
+                    .map(crate::keybinds::KeyCombo::keyevent_to_string)
                     .collect::<Vec<_>>()
                     .join(" "),
             )
@@ -78,9 +78,9 @@ impl KeyMatcher {
     ) -> MatchOutcome<A> {
         // Digit capture for count prefix (before any other logic, so digits are consumed
         // even when sequences are disabled).
-        if counts_enabled && event.modifiers == KeyModifiers::NONE {
-            if let KeyCode::Char(c) = event.code {
-                if c.is_ascii_digit() {
+        if counts_enabled && event.modifiers == KeyModifiers::NONE
+            && let KeyCode::Char(c) = event.code
+                && c.is_ascii_digit() {
                     if c == '0' && self.count.is_none() {
                         // bare '0' is not a count digit; fall through to normal matching
                     } else {
@@ -90,8 +90,6 @@ impl KeyMatcher {
                         return MatchOutcome::Pending;
                     }
                 }
-            }
-        }
 
         if !sequences_enabled {
             for (action, combos) in bindings {

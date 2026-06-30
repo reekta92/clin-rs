@@ -438,7 +438,7 @@ pub fn convert_url(url: &str) -> Result<(String, String)> {
                 }
                 let final_title = title.unwrap_or_else(|| url_fallback_title(url));
                 let ts = chrono::Local::now().format("%Y-%m-%dT%H:%M:%S%.3f");
-                let _ = std::eprintln!(
+                std::eprintln!(
                     "[{ts}] [INFO] [import] Import URL: {url} → {final_title} ({} bytes)",
                     md.len()
                 );

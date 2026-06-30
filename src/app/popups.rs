@@ -254,7 +254,7 @@ template = """
 """
 "#;
 
-        if let Err(e) = crate::fsutil::atomic_write_str(&path, &skeleton) {
+        if let Err(e) = crate::fsutil::atomic_write_str(&path, skeleton) {
             self.set_temporary_status(&format!("Failed to create template: {e}"));
             return;
         }
@@ -750,7 +750,7 @@ template = """
         input.set_cursor_line_style(ratatui::style::Style::default());
         input.set_placeholder_text("Enter daily word goal (e.g. 500)");
         if self.config.goals.word_goal > 0 {
-            input.insert_str(&self.config.goals.word_goal.to_string());
+            input.insert_str(self.config.goals.word_goal.to_string());
         }
         self.popups.active = Some(crate::popups::ActivePopup::Goals(
             crate::popups::GoalsPopup {
@@ -765,7 +765,7 @@ template = """
         input.set_cursor_line_style(ratatui::style::Style::default());
         input.set_placeholder_text("Enter daily note goal (e.g. 3)");
         if self.config.goals.note_goal > 0 {
-            input.insert_str(&self.config.goals.note_goal.to_string());
+            input.insert_str(self.config.goals.note_goal.to_string());
         }
         self.popups.active = Some(crate::popups::ActivePopup::Goals(
             crate::popups::GoalsPopup {

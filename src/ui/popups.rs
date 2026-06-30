@@ -724,11 +724,11 @@ pub fn format_keybind_hints<'a>(
     }
 }
 
-pub fn draw_popup_footer<'a>(
+pub fn draw_popup_footer(
     frame: &mut Frame,
     area: Rect,
     theme: &AppThemeColors,
-    hints: &Line<'a>,
+    hints: &Line<'_>,
 ) {
     let footer = Paragraph::new(hints.clone())
         .alignment(Alignment::Center)
@@ -736,12 +736,12 @@ pub fn draw_popup_footer<'a>(
     frame.render_widget(footer, area);
 }
 
-pub fn draw_popup_frame<'a>(
+pub fn draw_popup_frame(
     frame: &mut Frame,
     area: Rect,
     title: &str,
     size: PopupSize,
-    hints: &Line<'a>,
+    hints: &Line<'_>,
     theme: &AppThemeColors,
 ) -> Rect {
     let popup_area = centered_rect(size, area);

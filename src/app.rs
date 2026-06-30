@@ -51,6 +51,7 @@ pub struct SearchQuery {
 }
 
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub struct HelpSearchState {
     pub active: bool,
     pub query: String,
@@ -60,18 +61,6 @@ pub struct HelpSearchState {
     pub highlight_row: Option<usize>,
 }
 
-impl Default for HelpSearchState {
-    fn default() -> Self {
-        Self {
-            active: false,
-            query: String::new(),
-            results: Vec::new(),
-            selected: 0,
-            cursor: 0,
-            highlight_row: None,
-        }
-    }
-}
 
 #[derive(Debug)]
 pub enum LoadBatch {
@@ -614,8 +603,8 @@ impl App {
                 
                 c
             }
-            Err(_) => {
-                
+            Err(e) => {
+                eprintln!("RELOAD ERROR: {:?}", e);
                 self.config.clone()
             }
         };
@@ -625,16 +614,13 @@ impl App {
     }
 
     pub fn check_and_reload_config(&mut self) {
-        if let Ok(config_path) = crate::config::ClinConfig::config_path() {
-            if let Ok(metadata) = std::fs::metadata(&config_path) {
-                if let Ok(mtime) = metadata.modified() {
-                    if self.config_mtime.is_none() || self.config_mtime.unwrap() < mtime {
+        if let Ok(config_path) = crate::config::ClinConfig::config_path()
+            && let Ok(metadata) = std::fs::metadata(&config_path)
+                && let Ok(mtime) = metadata.modified()
+                    && (self.config_mtime.is_none() || self.config_mtime.unwrap() < mtime) {
                         self.config_mtime = Some(mtime);
                         self.reload_config();
                     }
-                }
-            }
-        }
     }
 
     fn is_virtual_pinned_path(path: &str) -> bool {
@@ -1709,15 +1695,9 @@ word_goal = 1200
 "#;
         std::fs::write(&config_path, config_content).unwrap();
 
-        // Update the file's modification time so the reload is triggered
-        let file = std::fs::OpenOptions::new()
-            .write(true)
-            .open(&config_path)
-            .unwrap();
-        let future_time = std::time::SystemTime::now() + std::time::Duration::from_secs(60);
-        file.set_modified(future_time).unwrap();
-
-        // Get progress, which calls check_and_reload_config internally
+        // Force a reload by clearing the cached mtime
+        // Force a reload by clearing the cached mtime
+        app.config_mtime = None;
         app.get_current_goals_progress();
 
         // Verify the config has been reloaded and word_goal is now 1200

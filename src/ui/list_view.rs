@@ -1830,13 +1830,11 @@ pub fn get_preview_info(app: &App) -> Option<PreviewHeaderInfo> {
                     ("Vault".to_string(), "Vault".to_string())
                 } else if path == VIRTUAL_PINNED_PATH {
                     ("Pinned".to_string(), "Pinned".to_string())
+                } else if let Some(slash_idx) = path.rfind('/') {
+                    let parent = &path[..slash_idx];
+                    (format!("Vault/{}", parent), name.clone())
                 } else {
-                    if let Some(slash_idx) = path.rfind('/') {
-                        let parent = &path[..slash_idx];
-                        (format!("Vault/{}", parent), name.clone())
-                    } else {
-                        ("Vault".to_string(), name.clone())
-                    }
+                    ("Vault".to_string(), name.clone())
                 }
             }
             crate::list_view::VisualItem::Note { summary_idx, .. } => {

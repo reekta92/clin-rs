@@ -568,8 +568,8 @@ mod tests {
         );
 
         let clin_config = crate::config::ClinConfig::default();
-        let seq = clin_config.sequences_enabled();
-        let counts = clin_config.counts_enabled();
+        let _seq = clin_config.sequences_enabled();
+        let _counts = clin_config.counts_enabled();
 
         let esc_event = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
         let q_event = KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE);
