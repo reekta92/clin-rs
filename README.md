@@ -419,8 +419,9 @@ pan_up = ["Up", "k"]
 ```
 clin                              Launch interactive TUI (default)
 clin notes list                   List note titles
-clin notes new [-t,--template N] [TITLE]   Create a note and open it
+clin notes new [OPTIONS] [TITLE]  Create a note (supports --body, --no-tui)
 clin notes open <TITLE>           Open a note by title
+clin notes cat <TITLE>            Print a note's body to stdout
 clin notes quick <CONTENT> [TITLE] Quick note, then exit
 clin notes search <QUERY>         Search notes by title and content
 
@@ -436,13 +437,13 @@ clin keybinds reset               Reset keybinds to defaults
 clin templates list               List templates
 clin templates init               Create example templates
 
-clin config show                  Print effective config (TOML)
-clin config path                  Print config file path
-clin config edit                  Open config in $EDITOR
+clin config show                  Print the config file path
+clin config edit                  Open config in $VISUAL or $EDITOR
 clin config reset                 Reset config to default values
 
 clin --version                    Print version
 clin --config <PATH>              Override config file (global)
+clin --vault <VAULT>              Override the storage/vault path (global)
 clin --help                       Show help
 ```
 
