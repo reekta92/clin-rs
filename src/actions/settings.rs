@@ -246,3 +246,16 @@ toggle_action!(
         crate::config::HintBarStyle::PowerlineSlanted => "Powerline Slanted",
     }
 );
+
+toggle_action!(
+    ToggleFoldersFirstAction,
+    "settings.folders_first",
+    "Toggle Folders First",
+    "Show subfolders before files in the notes list (Tree and Grid layouts)",
+    ActionCategory::Settings,
+    "\u{f07c}",
+    "\u{1f4c1}",
+    toggle_folders_first,
+    app,
+    if app.list.folders_first { "On" } else { "Off" }
+);
