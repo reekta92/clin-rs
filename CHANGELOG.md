@@ -2,6 +2,15 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.9.2] - 2026-07-01
+
+### Added
+
+- Added folders_first config and Ctrl + h shortcut to toggle it
+
+### CI
+
+- Fixed fmt check failing
 ## [0.9.1] - 2026-06-30
 
 ### CI
@@ -12,6 +21,7 @@ All notable changes to clin are documented in this file.
 
 ### Release
 
+- V0.9.1
 - V0.9.0
 ## [0.8.32] - 2026-06-27
 
