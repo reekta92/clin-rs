@@ -257,9 +257,5 @@ toggle_action!(
     "\u{1f4c1}",
     toggle_folders_first,
     app,
-    if app.list.folders_first {
-        "On"
-    } else {
-        "Off"
-    }
+    if app.list.folders_first { "On" } else { "Off" }
 );

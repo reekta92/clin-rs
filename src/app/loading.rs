@@ -203,8 +203,13 @@ impl App {
                             });
                             if is_expanded {
                                 push_tree(
-                                    folder, depth + 1, visual, expanded_folders,
-                                    subfolders_map, by_folder, folders_first,
+                                    folder,
+                                    depth + 1,
+                                    visual,
+                                    expanded_folders,
+                                    subfolders_map,
+                                    by_folder,
+                                    folders_first,
                                 );
                             }
                         }
@@ -257,8 +262,13 @@ impl App {
                             });
                             if is_expanded {
                                 push_tree(
-                                    folder, depth + 1, visual, expanded_folders,
-                                    subfolders_map, by_folder, folders_first,
+                                    folder,
+                                    depth + 1,
+                                    visual,
+                                    expanded_folders,
+                                    subfolders_map,
+                                    by_folder,
+                                    folders_first,
                                 );
                             }
                         }
@@ -386,7 +396,6 @@ impl App {
             self.request_preview_update_immediate();
             return;
         }
-
 
         self.list.visual_list = visual;
         self.build_display_lines();
