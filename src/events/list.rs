@@ -282,6 +282,10 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 app.toggle_calendar();
                 return false;
             }
+            ListAction::ToggleFoldersFirst => {
+                app.toggle_folders_first();
+                return false;
+            }
             ListAction::OpenGraph => {
                 app.open_graph_view();
                 return false;

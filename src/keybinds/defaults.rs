@@ -195,6 +195,10 @@ impl Default for Keybinds {
             vec![KeyCombo::shift(KeyCode::Char('C'))],
         );
         list.insert(
+            ListAction::ToggleFoldersFirst,
+            vec![KeyCombo::ctrl(KeyCode::Char('h'))],
+        );
+        list.insert(
             ListAction::OpenGraph,
             vec![KeyCombo::ctrl(KeyCode::Char('g'))],
         );

@@ -39,34 +39,34 @@ impl serde::Serialize for ColorOverrides {
                 format!("{c:?}")
             }
         }
-        if let Some(ref v) = self.node_color {
+        if let Some(v) = &self.node_color {
             s.serialize_field("node_color", &fmt_color(v))?;
         }
-        if let Some(ref v) = self.edge_color {
+        if let Some(v) = &self.edge_color {
             s.serialize_field("edge_color", &fmt_color(v))?;
         }
-        if let Some(ref v) = self.label_color {
+        if let Some(v) = &self.label_color {
             s.serialize_field("label_color", &fmt_color(v))?;
         }
-        if let Some(ref v) = self.selection_ring_color {
+        if let Some(v) = &self.selection_ring_color {
             s.serialize_field("selection_ring_color", &fmt_color(v))?;
         }
-        if let Some(ref v) = self.border_color {
+        if let Some(v) = &self.border_color {
             s.serialize_field("border_color", &fmt_color(v))?;
         }
-        if let Some(ref v) = self.title_color {
+        if let Some(v) = &self.title_color {
             s.serialize_field("title_color", &fmt_color(v))?;
         }
-        if let Some(ref v) = self.grid_color {
+        if let Some(v) = &self.grid_color {
             s.serialize_field("grid_color", &fmt_color(v))?;
         }
-        if let Some(ref v) = self.legend_text_color {
+        if let Some(v) = &self.legend_text_color {
             s.serialize_field("legend_text_color", &fmt_color(v))?;
         }
-        if let Some(ref v) = self.status_bar_color {
+        if let Some(v) = &self.status_bar_color {
             s.serialize_field("status_bar_color", &fmt_color(v))?;
         }
-        if let Some(ref v) = self.background_color {
+        if let Some(v) = &self.background_color {
             s.serialize_field("background_color", &fmt_color(v))?;
         }
         s.end()
@@ -367,6 +367,8 @@ pub struct ListConfig {
     pub pinned_on_top: bool,
     #[serde(default)]
     pub show_hidden_files: bool,
+    #[serde(default = "default_true")]
+    pub folders_first: bool,
     #[serde(default = "default_true")]
     pub calendar_enabled: bool,
     #[serde(default = "default_preview_width_ratio")]

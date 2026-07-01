@@ -370,6 +370,23 @@ impl App {
         }
     }
 
+    pub fn toggle_folders_first(&mut self) {
+        self.list.folders_first = !self.list.folders_first;
+        self.refresh_visual_list();
+        let msg: &'static str = if self.list.folders_first {
+            "Folders first in list"
+        } else {
+            "Files first in list"
+        };
+        self.set_temporary_status_static(msg);
+        if let Ok(mut config) = crate::config::ClinConfig::load() {
+            config.list.folders_first = self.list.folders_first;
+            if let Err(e) = config.save() {
+                self.set_temporary_status(&format!("Failed to save config: {e}"));
+            }
+        }
+    }
+
     pub fn toggle_tab_icons_only(&mut self) {
         self.config.ui.tab_icons_only = !self.config.ui.tab_icons_only;
         let msg: &'static str = if self.config.ui.tab_icons_only {
