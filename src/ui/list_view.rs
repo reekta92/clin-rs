@@ -612,11 +612,20 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 } else {
                     glyph_color
                 };
-                let icon_style = if is_selected || in_selection {
-                    Style::default().fg(icon_fg).add_modifier(Modifier::BOLD)
+                let base_style = if in_selection {
+                    Style::default().bg(app.app_theme.accent)
                 } else {
-                    Style::default().fg(icon_fg)
+                    Style::default()
                 };
+                let icon_style =
+                    base_style
+                        .fg(icon_fg)
+                        .add_modifier(if is_selected || in_selection {
+                            Modifier::BOLD
+                        } else {
+                            Modifier::empty()
+                        });
+                buf.set_style(Rect::new(inner.x, inner.y, inner.width, 1), icon_style);
                 let inner_w = inner.width as usize;
                 if app.config.ui.icon_mode == crate::config::IconMode::None {
                     let label_chars: Vec<char> = text_label.chars().collect();
@@ -628,10 +637,10 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                         }
                     }
                 } else {
-                    let icon_x = inner.x + (inner_w.saturating_sub(1) / 2) as u16;
-                    if let Some(cell) = buf.cell_mut((icon_x, inner.y)) {
-                        cell.set_char(icon_char).set_style(icon_style);
-                    }
+                    use unicode_width::UnicodeWidthChar;
+                    let w = UnicodeWidthChar::width(icon_char).unwrap_or(1) as u16;
+                    let icon_x = inner.x + (inner_w.saturating_sub(w as usize) / 2) as u16;
+                    buf.set_string(icon_x, inner.y, icon_char.to_string(), icon_style);
                 }
 
                 // --- tag icon: top right corner for items that have tags ---
@@ -643,24 +652,24 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 };
                 if has_tags {
                     let tag_x = inner.x + inner.width.saturating_sub(1);
-                    if let Some(cell) = buf.cell_mut((tag_x, inner.y)) {
-                        let tag_fg = if in_selection {
-                            app.app_theme.highlight_fg
-                        } else {
-                            app.app_theme.tag
-                        };
-                        let tag_style = if is_selected || in_selection {
-                            Style::default().fg(tag_fg).add_modifier(Modifier::BOLD)
-                        } else {
-                            Style::default().fg(tag_fg)
-                        };
-                        cell.set_char(crate::ui::get_char(
-                            '\u{f02b}',
-                            '\u{1f3f7}',
-                            app.config.ui.icon_mode,
-                        ))
-                        .set_style(tag_style);
-                    }
+                    let tag_fg = if in_selection {
+                        app.app_theme.highlight_fg
+                    } else {
+                        app.app_theme.tag
+                    };
+                    let tag_style =
+                        base_style
+                            .fg(tag_fg)
+                            .add_modifier(if is_selected || in_selection {
+                                Modifier::BOLD
+                            } else {
+                                Modifier::empty()
+                            });
+                    use unicode_width::UnicodeWidthChar;
+                    let tg = crate::ui::get_char('\u{f02b}', '\u{1f3f7}', app.config.ui.icon_mode);
+                    let tw = UnicodeWidthChar::width(tg).unwrap_or(1) as u16;
+                    let tg_x = tag_x.saturating_sub(tw.saturating_sub(1));
+                    buf.set_string(tg_x, inner.y, tg.to_string(), tag_style);
                 }
 
                 // --- name: sanitize, truncate to inner width, center, write on the bottom row (row 2) ---
