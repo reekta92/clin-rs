@@ -2,6 +2,19 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.9.3] - 2026-07-02
+
+### Added
+
+- Add show-all-files toggle and external open for non-notes
+
+### CI
+
+- Fixed deny check failing
+
+### Fixed
+
+- Set uniform icon-row style for contiguous text runs
 ## [0.9.2] - 2026-07-01
 
 ### Added
@@ -11,6 +24,10 @@ All notable changes to clin are documented in this file.
 ### CI
 
 - Fixed fmt check failing
+
+### Release
+
+- V0.9.2
 ## [0.9.1] - 2026-06-30
 
 ### CI
