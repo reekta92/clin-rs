@@ -469,7 +469,11 @@ impl Storage {
         Some(self.notes_dir.join(normalized))
     }
 
-    pub fn list_note_ids(&self, include_hidden: bool) -> Result<Vec<String>> {
+    pub fn list_note_ids(
+        &self,
+        include_hidden: bool,
+        include_all_files: bool,
+    ) -> Result<Vec<String>> {
         let mut ids = Vec::new();
         let mut dirs_to_visit = vec![self.notes_dir.clone()];
 
@@ -485,16 +489,22 @@ impl Storage {
                         .is_some_and(|n| include_hidden || !n.starts_with('.'))
                 {
                     dirs_to_visit.push(path);
-                } else if let Some(ext) = path.extension().and_then(|e| e.to_str())
-                    && (ext == "clin"
-                        || ext == "md"
-                        || ext == "txt"
-                        || ext == "draw"
-                        || ext == "canvas")
-                    && let Ok(rel_path) = path.strip_prefix(&self.notes_dir)
-                    && let Some(rel_str) = rel_path.to_str()
-                {
-                    ids.push(rel_str.to_string());
+                } else {
+                    let accepted = if include_all_files {
+                        path.is_file()
+                    } else {
+                        path.extension()
+                            .and_then(|e| e.to_str())
+                            .is_some_and(|ext| {
+                                matches!(ext, "clin" | "md" | "txt" | "draw" | "canvas")
+                            })
+                    };
+                    if accepted
+                        && let Ok(rel_path) = path.strip_prefix(&self.notes_dir)
+                        && let Some(rel_str) = rel_path.to_str()
+                    {
+                        ids.push(rel_str.to_string());
+                    }
                 }
             }
         }

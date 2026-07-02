@@ -500,6 +500,11 @@ fn notes_help_text(keybinds: &Keybinds, theme: &AppThemeColors) -> Vec<HelpRow> 
         theme,
     ));
     rows.push(help_item_dyn(
+        "Show all files (Cmd+P → Settings)",
+        Some(&list_cmd_palette),
+        theme,
+    ));
+    rows.push(help_item_dyn(
         "Swap strip sections (layout-edit)",
         Some("Tab"),
         theme,

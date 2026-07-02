@@ -367,6 +367,8 @@ pub struct ListConfig {
     pub pinned_on_top: bool,
     #[serde(default)]
     pub show_hidden_files: bool,
+    #[serde(default)]
+    pub show_all_files: bool,
     #[serde(default = "default_true")]
     pub folders_first: bool,
     #[serde(default = "default_true")]

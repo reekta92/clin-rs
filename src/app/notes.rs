@@ -13,7 +13,9 @@ impl App {
     pub fn refresh_notes(&mut self) -> Result<()> {
         self.load_cancel.store(true, Ordering::Release);
 
-        let ids = self.storage.list_note_ids(self.list.show_hidden_files)?;
+        let ids = self
+            .storage
+            .list_note_ids(self.list.show_hidden_files, self.list.show_all_files)?;
         let mut summaries = Vec::new();
 
         for id in &ids {
@@ -141,6 +143,21 @@ impl App {
         if note_id.ends_with(".clin") {
             self.status =
                 Cow::Borrowed("Note is encrypted. Use command palette (Ctrl+P) to decrypt.");
+            return;
+        }
+        let ext = std::path::Path::new(note_id)
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("");
+        if ext != "md" && ext != "txt" {
+            let path = self.storage.note_path(note_id);
+            match crate::ui::open_with_default_application(&path) {
+                Ok(()) => {
+                    self.status =
+                        Cow::Owned(format!("Opened in default application: {}", path.display()))
+                }
+                Err(e) => self.set_temporary_status(&format!("Failed to open file: {e}")),
+            }
             return;
         }
         if self.editor.external_editor_enabled {

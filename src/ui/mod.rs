@@ -964,6 +964,33 @@ pub fn open_in_file_manager(path: &Path) -> Result<()> {
     Ok(())
 }
 
+pub fn open_with_default_application(path: &Path) -> Result<()> {
+    use std::process::Stdio;
+
+    let command = if cfg!(target_os = "linux") {
+        "xdg-open"
+    } else if cfg!(target_os = "macos") {
+        "open"
+    } else if cfg!(target_os = "windows") {
+        "cmd"
+    } else {
+        anyhow::bail!("opening files is not supported on this platform")
+    };
+
+    let mut cmd = Command::new(command);
+    if cfg!(target_os = "windows") {
+        // `cmd /C start "" <path>` invokes the associated application.
+        cmd.arg("/C").arg("start").arg("");
+    }
+    cmd.arg(path)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .with_context(|| format!("failed to launch {command}"))?;
+    Ok(())
+}
+
 pub fn pick_file(filter_name: &str, filter_ext: &str) -> Result<Option<String>> {
     if cfg!(target_os = "linux") {
         if which::which("zenity").is_ok() {

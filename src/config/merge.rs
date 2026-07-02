@@ -214,6 +214,10 @@ pinned_on_top = true
 # Show hidden files and folders (starting with ".") in the notes list.
 show_hidden_files = false
 
+# Show ALL files in the vault (any extension), not just notes (.md/.txt/.clin/.draw/.canvas).
+# Non-note files open in the OS default application.
+show_all_files = false
+
 # Show a month calendar (with note activity) at the bottom of the notes view.
 calendar_enabled = true
 

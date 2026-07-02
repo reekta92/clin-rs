@@ -418,6 +418,7 @@ impl App {
         list.show_date_in_list = bootstrap_config.list.show_date_in_list;
         list.folders_first = bootstrap_config.list.folders_first;
         list.show_hidden_files = bootstrap_config.list.show_hidden_files;
+        list.show_all_files = bootstrap_config.list.show_all_files;
         list.calendar_enabled = bootstrap_config.list.calendar_enabled;
         list.preview_width_ratio = bootstrap_config.list.preview_width_ratio;
         list.calendar_height = bootstrap_config.list.calendar_height;
@@ -528,6 +529,7 @@ impl App {
         list.show_file_size = bootstrap_config.list.show_file_size;
         list.show_date_in_list = bootstrap_config.list.show_date_in_list;
         list.folders_first = bootstrap_config.list.folders_first;
+        list.show_all_files = bootstrap_config.list.show_all_files;
         list.show_hidden_files = bootstrap_config.list.show_hidden_files;
         list.calendar_enabled = bootstrap_config.list.calendar_enabled;
         list.preview_width_ratio = bootstrap_config.list.preview_width_ratio;

@@ -13,9 +13,10 @@ impl App {
         let (tx, rx) = mpsc::channel();
         let storage = self.storage.clone();
         let show_hidden = self.list.show_hidden_files;
+        let show_all = self.list.show_all_files;
         let cancel = Arc::clone(&self.load_cancel);
         std::thread::spawn(move || {
-            let ids = match storage.list_note_ids(show_hidden) {
+            let ids = match storage.list_note_ids(show_hidden, show_all) {
                 Ok(ids) => ids,
                 Err(_) => {
                     let _ = tx.send(LoadBatch::Done(0));

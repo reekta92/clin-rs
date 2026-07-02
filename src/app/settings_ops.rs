@@ -370,6 +370,26 @@ impl App {
         }
     }
 
+    pub fn toggle_show_all_files(&mut self) {
+        self.list.show_all_files = !self.list.show_all_files;
+        self.list.folder_cache = None; // invalidate cached folder list
+        if let Err(e) = self.refresh_notes() {
+            self.set_temporary_status(&format!("Refresh failed: {e}"));
+        }
+        let msg: &'static str = if self.list.show_all_files {
+            "Showing all files"
+        } else {
+            "Showing notes only"
+        };
+        self.set_temporary_status_static(msg);
+        if let Ok(mut config) = crate::config::ClinConfig::load() {
+            config.list.show_all_files = self.list.show_all_files;
+            if let Err(e) = config.save() {
+                self.set_temporary_status(&format!("Failed to save config: {e}"));
+            }
+        }
+    }
+
     pub fn toggle_folders_first(&mut self) {
         self.list.folders_first = !self.list.folders_first;
         self.refresh_visual_list();

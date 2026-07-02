@@ -156,6 +156,19 @@ toggle_action!(
 );
 
 toggle_action!(
+    ToggleShowAllFilesAction,
+    "settings.show_all_files",
+    "Show All Files",
+    "Show every file in the vault, not just notes (.md/.txt/.clin/.draw/.canvas)",
+    ActionCategory::Settings,
+    "\u{f07c}",
+    "\u{1f4c2}",
+    toggle_show_all_files,
+    app,
+    if app.list.show_all_files { "On" } else { "Off" }
+);
+
+toggle_action!(
     ToggleTabIconsOnlyAction,
     "settings.tab_icons_only",
     "Tab Icons Only",

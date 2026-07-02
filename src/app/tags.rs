@@ -155,7 +155,7 @@ impl App {
     pub fn begin_delete_tag_with_name(&mut self, tag: String) {
         let count = self
             .storage
-            .list_note_ids(self.list.show_hidden_files)
+            .list_note_ids(self.list.show_hidden_files, false)
             .ok()
             .map(|ids| {
                 ids.iter()
@@ -187,7 +187,10 @@ impl App {
 
     pub fn confirm_delete_tag(&mut self, tag: String) {
         let mut count = 0;
-        if let Ok(note_ids) = self.storage.list_note_ids(self.list.show_hidden_files) {
+        if let Ok(note_ids) = self
+            .storage
+            .list_note_ids(self.list.show_hidden_files, false)
+        {
             for note_id in note_ids {
                 let ext = std::path::Path::new(&note_id)
                     .extension()

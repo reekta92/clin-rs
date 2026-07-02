@@ -230,6 +230,7 @@ pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyL
         Box::new(settings::TogglePreviewEncryptionAction),
         Box::new(settings::CycleSortAction),
         Box::new(settings::ToggleShowHiddenFilesAction),
+        Box::new(settings::ToggleShowAllFilesAction),
         Box::new(settings::ToggleTabIconsOnlyAction),
         Box::new(settings::SetWordGoalAction),
         Box::new(settings::ToggleFoldersFirstAction),
