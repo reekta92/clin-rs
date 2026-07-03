@@ -114,6 +114,7 @@ pub fn default_config_content() -> &'static str {
 
 [core]
 # Custom path for notes storage (e.g., "/home/user/vault").
+# Supports leading ~ and $VAR/${VAR} expansion (e.g., "~/notes", "$HOME/vault").
 # If not set, defaults to the standard data directory for your OS.
 # storage_path = "/path/to/your/notes"
 

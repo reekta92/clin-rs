@@ -324,6 +324,7 @@ fn run_storage(action: StorageCmd) -> Result<()> {
         }
         StorageCmd::Set { path } => {
             let mut bootstrap = ClinConfig::load()?;
+            let path = crate::config::expand_path(&path.to_string_lossy());
             let old_path = bootstrap.effective_storage_path()?;
 
             if !path.is_absolute() {

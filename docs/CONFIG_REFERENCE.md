@@ -10,7 +10,7 @@ Full reference of all configuration options for clin-rs.
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `storage_path` | `PathBuf` | `~/.local/share/clin` | Custom vault storage path |
+| `storage_path` | `PathBuf` | `~/.local/share/clin` | Custom vault storage path. Supports `~` and `$VAR`/`${VAR}` expansion (e.g., `~/notes`, `$HOME/vault`) |
 | `previous_storage_path` | `PathBuf` | — | Previous storage path for migration |
 | `mouse_enabled` | `bool` | `true` | Enable mouse support (clicking, scrolling, panning) |
 | `confirm_on_delete` | `bool` | `true` | Show confirmation dialog before deleting notes |
@@ -175,6 +175,7 @@ All optional. Hex color strings like `"#ff6600"`. Override theme defaults.
 
 ```toml
 # General
+# storage_path supports ~ and $VAR/${VAR} expansion: "~/notes", "$HOME/vault"
 storage_path = "/path/to/your/vault"
 mouse_enabled = true
 confirm_on_delete = true

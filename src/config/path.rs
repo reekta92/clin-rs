@@ -89,3 +89,61 @@ fn parse_var(s: &str) -> (String, usize, bool) {
     }
     (s[1..end].to_string(), end, false)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_expand_path_tilde() {
+        let home = std::env::var("HOME").expect("HOME must be set");
+        let result = expand_path("~/foo");
+        let s = result.to_string_lossy().into_owned();
+        assert!(s.starts_with(&home), "expected {s} to start with {home}");
+        assert!(s.ends_with("/foo"), "expected {s} to end with /foo");
+    }
+
+    #[test]
+    fn test_expand_path_dollar_home() {
+        let home = std::env::var("HOME").expect("HOME must be set");
+        let result = expand_path("$HOME/foo");
+        let s = result.to_string_lossy().into_owned();
+        assert!(s.starts_with(&home), "expected {s} to start with {home}");
+        assert!(s.ends_with("/foo"), "expected {s} to end with /foo");
+    }
+
+    #[test]
+    fn test_expand_path_braced_home() {
+        let home = std::env::var("HOME").expect("HOME must be set");
+        let result = expand_path("${HOME}/foo");
+        let s = result.to_string_lossy().into_owned();
+        assert!(s.starts_with(&home), "expected {s} to start with {home}");
+        assert!(s.ends_with("/foo"), "expected {s} to end with /foo");
+    }
+
+    #[test]
+    fn test_expand_path_plain_absolute() {
+        let result = expand_path("/usr/local/foo");
+        assert_eq!(result.to_string_lossy(), "/usr/local/foo");
+    }
+
+    #[test]
+    fn test_expand_path_unresolved_var() {
+        // Ensure set_var before any test that sets it
+        let name = "__CLIN_TEST_UNRESOLVED_XYZ";
+        // Remove if somehow set
+        unsafe { std::env::remove_var(name) };
+        let result = expand_path(&format!("${name}/foo"));
+        let s = result.to_string_lossy().into_owned();
+        assert_eq!(s, format!("${name}/foo"));
+    }
+
+    #[test]
+    fn test_expand_path_unresolved_braced_var() {
+        let name = "__CLIN_TEST_UNSET_YET";
+        unsafe { std::env::remove_var(name) };
+        let result = expand_path(&format!("${{{name}}}/x"));
+        let s = result.to_string_lossy().into_owned();
+        assert_eq!(s, format!("${{{name}}}/x"));
+    }
+}

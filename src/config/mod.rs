@@ -343,7 +343,7 @@ impl ClinConfig {
             return Ok(p);
         }
         match &self.core.storage_path {
-            Some(path) => Ok(path.clone()),
+            Some(path) => Ok(expand_path(&path.to_string_lossy())),
             None => Self::default_storage_path(),
         }
     }
@@ -491,6 +491,17 @@ mod tests {
         config.set_storage_path(PathBuf::from("/custom/path"));
         config.reset_storage_path();
         assert!(!config.has_custom_storage_path());
+    }
+
+    #[test]
+    fn test_effective_storage_path_expands_tilde() {
+        let home = std::env::var("HOME").expect("HOME must be set");
+        let mut config = ClinConfig::default();
+        config.core.storage_path = Some("~/x".into());
+        let result = config.effective_storage_path().unwrap();
+        let s = result.to_string_lossy().into_owned();
+        assert!(s.starts_with(&home), "expected {s} to start with {home}");
+        assert!(s.ends_with("/x"), "expected {s} to end with /x");
     }
 
     #[test]
