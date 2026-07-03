@@ -20,6 +20,8 @@ Full reference of all configuration options for clin-rs.
 | `syntax_highlighting` | `bool` | `true` | Enable syntax highlighting in markdown fenced code blocks (requires re-render) |
 | `keybind_preset` | `enum` | `"default"` | Keybind preset: `"default"`, `"helix"`, `"vim"`, `"emacs"`. Applies to navigation, never text editing |
 | `enable_key_sequences` | `bool` | `false` | Enable multi-key sequences (e.g. `"g g"`, `"Space f"`). Requires a preset that uses them |
+| `preview_expand_mode` | `enum` | `"inline"` | Ctrl+e behavior: `"inline"` (maximize the preview pane) or `"external"` (run `preview_command` on the note) |
+| `preview_command` | `String` | — | Command for external preview (Ctrl+e when `preview_expand_mode = "external"`). Shell-split with the note's temp file appended; falls back to `$PAGER`, then `less` |
 
 ### `[list]`
 
@@ -31,17 +33,19 @@ Full reference of all configuration options for clin-rs.
 | `show_date_in_list` | `bool` | `true` | Show modification date in the notes list |
 | `show_file_size` | `bool` | `false` | Show file size in the notes list |
 | `date_format` | `String` | `"%Y-%m-%d"` | Date format for the notes list (chrono format) |
-| `density` | `enum` | `"comfortable"` | Density of the notes list: `"comfortable"` or `"compact"` |
+| `density` | `enum` | `"compact"` | Density of the notes list: `"comfortable"` or `"compact"` |
 | `default_view` | `enum` | `"grid"` | Default view mode for the notes list: `"grid"` or `"tree"` |
 | `default_sort_field` | `enum` | `"title"` | Default sort field: `"title"` or `"modified"` |
 | `default_sort_order` | `enum` | `"ascending"` | Default sort order: `"ascending"` or `"descending"` |
-| `pinned_on_top` | `bool` | `false` | Keep pinned notes at the top of the list |
+| `pinned_on_top` | `bool` | `true` | Keep pinned notes at the top of the list |
 | `calendar_enabled` | `bool` | `true` | Show a month calendar with note activity at the bottom of the notes list |
 | `show_hidden_files` | `bool` | `false` | Show hidden files and folders (starting with ".") in the notes list |
+| `show_all_files` | `bool` | `false` | Show every file in the vault, not just notes (.md/.txt/.clin/.draw/.canvas). Non-note files open in the OS default application |
+| `folders_first` | `bool` | `true` | Show subfolders before files in the notes list (Tree and Grid layouts) |
 | `preview_width_ratio` | `f32` | `0.43` | Preview pane width ratio (0.2–0.8) |
 | `calendar_height` | `u16` | `9` | Calendar height in rows (9–20) |
 | `calendar_position` | `enum` | `"bottom"` | Calendar position: `"top"`, `"bottom"` |
-| `week_start` | `enum` | `"Sunday"` | Start day for the rolling-weeks calendar: `"Sunday"` or `"Monday"` |
+| `week_start` | `enum` | `"sunday"` | Start day for the rolling-weeks calendar: `"sunday"` or `"monday"` |
 | `sections` | `array` | `["calendar","goals"]` | Bottom-strip widgets (max 2): `calendar`, `goals`, `draw`, `graf`. `calendar_enabled` controls strip on/off |
 
 ### `[editor]`

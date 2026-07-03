@@ -64,7 +64,7 @@ When creating a new note (via the "Create new..." tile or keyboard shortcuts), a
 The bottom strip is a configurable section below the notes list that displays up to two widgets at a time. Configure it via the `sections` array in the `[list]` config section (e.g., `sections = ["calendar", "goals"]`). The `calendar_enabled` option controls whether the strip is shown at all.
 
 Available widgets:
-- **`calendar`**: A rolling-weeks GitHub-style activity heatmap showing note activity over time. The start day is configured via `week_start` (`"Sunday"` or `"Monday"`).
+- **`calendar`**: A rolling-weeks GitHub-style activity heatmap showing note activity over time. The start day is configured via `week_start` (`"sunday"` or `"monday"`).
 - **`goals`**: Daily word-count and note-count progress bars. Configure targets via the `[goals]` config section.
 - **`draw`**: A mini preview pane for recent `.draw` files.
 - **`graf`**: A mini preview pane for graph visualizations.
