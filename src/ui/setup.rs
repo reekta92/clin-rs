@@ -111,10 +111,15 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
         };
         let label = crate::setup::SetupState::row_label(row);
         let value = state.row_value(row);
+        let truncated_value = if value.len() > 11 {
+            format!("{}..", &value[..9])
+        } else {
+            format!("{:^11}", value)
+        };
         lines.push(Line::from(vec![
-            Span::styled(format!("{label}: "), base),
+            Span::styled(format!("{:<10} ", label), base),
             Span::styled("◀ ", arrow),
-            Span::styled(value, base),
+            Span::styled(truncated_value, base),
             Span::styled(" ▶", arrow),
         ]));
     }
