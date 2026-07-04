@@ -543,6 +543,7 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ratatui_textarea::TextArea;
 
     fn make_app() -> App {
         let temp_dir = tempfile::tempdir().unwrap();
@@ -609,5 +610,122 @@ mod tests {
         app.cycle_section(5); // out of range
         assert_eq!(app.list.sections.len(), 1);
         assert_eq!(app.list.sections[0], crate::config::NotesSection::Calendar);
+    }
+
+    #[test]
+    fn apply_setup_results_writes_all_fields() {
+        let _lock = crate::config::CONFIG_TEST_MUTEX.lock();
+        let mut app = make_app();
+
+        // Build a SetupState with non-default values
+        let mut word_goal_input = TextArea::default();
+        word_goal_input.insert_str("250");
+        let mut remote_url_input = TextArea::default();
+        remote_url_input.insert_str("git@github.com:user/repo.git");
+        let mut storage_path_input = TextArea::default();
+        storage_path_input.insert_str("/custom/vault/path");
+
+        app.setup_state = Some(crate::setup::SetupState {
+            step: 9,
+            cursor: 0,
+            focus: 0,
+            visited: vec![false; crate::setup::SETUP_STEPS.len()],
+            theme: 4, // gruvbox
+            background_solid: true,
+            keybind_preset: 2, // vim
+            mouse_enabled: false,
+            list_density: 1, // comfortable
+            goals_enabled: false,
+            backup_enabled: true,
+            hint_bar_style: 2, // PowerlineSharp
+            word_goal_input,
+            remote_url_input,
+            storage_path_input,
+        });
+
+        app.finish_setup();
+
+        // Assert in-memory config
+        assert_eq!(app.config.ui.theme, crate::config::Theme::Gruvbox);
+        assert_eq!(
+            app.config.core.keybind_preset,
+            crate::config::KeybindPreset::Vim
+        );
+        assert!(!app.config.core.mouse_enabled);
+        assert_eq!(
+            app.config.list.density,
+            crate::config::ListDensity::Comfortable
+        );
+        assert_eq!(app.config.ui.background, crate::config::Background::Solid);
+        assert_eq!(
+            app.config.ui.hint_bar_style,
+            crate::config::HintBarStyle::PowerlineSharp
+        );
+        assert!(!app.config.goals.enabled);
+        assert_eq!(app.config.goals.word_goal, 250);
+        assert!(app.config.backup.enabled);
+        assert_eq!(
+            app.config.backup.remote_url,
+            Some("git@github.com:user/repo.git".to_string())
+        );
+        assert_eq!(
+            app.config.core.storage_path,
+            Some(std::path::PathBuf::from("/custom/vault/path"))
+        );
+
+        // Assert live App fields that mirror key config settings
+        assert!(!app.mouse_enabled);
+        assert_eq!(
+            app.list.list_density,
+            crate::config::ListDensity::Comfortable
+        );
+    }
+    #[test]
+    fn test_setup_wizard_live_apply() {
+        let _lock = crate::config::CONFIG_TEST_MUTEX.lock();
+        let mut app = make_app();
+
+        let mut word_goal_input = TextArea::default();
+        word_goal_input.insert_str("250");
+        let mut remote_url_input = TextArea::default();
+        remote_url_input.insert_str("git@github.com:user/repo.git");
+        let mut storage_path_input = TextArea::default();
+        storage_path_input.insert_str("/custom/vault/path");
+
+        app.setup_state = Some(crate::setup::SetupState {
+            step: 2,
+            cursor: 0,
+            focus: 0,
+            visited: vec![false; crate::setup::SETUP_STEPS.len()],
+            theme: 1, // tokyo_night
+            background_solid: false,
+            keybind_preset: 0, // default
+            mouse_enabled: true,
+            list_density: 0, // compact
+            goals_enabled: true,
+            backup_enabled: false,
+            hint_bar_style: 0,
+            word_goal_input,
+            remote_url_input,
+            storage_path_input,
+        });
+
+        // Live-apply with background_solid: false
+        app.apply_setup_live();
+        assert_eq!(app.config.ui.theme, crate::config::Theme::TokyoNight);
+        assert_eq!(
+            app.config.ui.background,
+            crate::config::Background::Transparent
+        );
+
+        // Flip background and live-apply again
+        app.setup_state.as_mut().unwrap().background_solid = true;
+        app.apply_setup_live();
+        assert_eq!(app.config.ui.background, crate::config::Background::Solid);
+
+        // Finalize with finish_setup — state cleared, mode returns to List
+        app.finish_setup();
+        assert!(app.setup_state.is_none());
+        assert_eq!(app.mode, crate::app::ViewMode::List);
     }
 }

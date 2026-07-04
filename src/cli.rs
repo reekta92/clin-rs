@@ -17,6 +17,10 @@ pub struct Cli {
     #[arg(long, global = true)]
     pub vault: Option<PathBuf>,
 
+    /// Force the first-run setup wizard, even if config already exists.
+    #[arg(long)]
+    pub setup: bool,
+
     #[command(subcommand)]
     pub command: Option<Command>,
 }

@@ -8,10 +8,12 @@ use std::borrow::Cow;
 mod edit;
 mod help;
 mod list;
+mod setup;
 
 pub use edit::{handle_edit_keys, handle_edit_mouse};
 pub use help::handle_help_keys;
 pub use list::{handle_list_keys, handle_list_mouse};
+pub use setup::{handle_setup_keys, handle_setup_mouse};
 
 pub fn handle_popup_text_input(
     key: KeyEvent,
@@ -1175,6 +1177,7 @@ impl crate::popups::ActivePopup {
                 }
                 true
             }
+
             ActivePopup::ContextMenu(menu) => {
                 // Context menu keys are handled in the list/edit view handlers;
                 // re-insert and report unconsumed so they receive the key.

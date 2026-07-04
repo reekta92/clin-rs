@@ -196,6 +196,16 @@ simple_action!(
     "\u{2328}",
     begin_keybind_preset_selection
 );
+simple_action!(
+    OpenSetupWizardAction,
+    "setup_wizard",
+    "Run Setup Wizard",
+    "Re-run the first-run setup to choose theme, keybinds, backup, and more",
+    ActionCategory::Settings,
+    "\u{f0a9}",
+    "\u{2699}",
+    open_setup_view
+);
 
 pub struct ActionInfo {
     pub id: String,
@@ -216,6 +226,7 @@ pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyL
         Box::new(CreateCanvasAction),
         Box::new(ocr::OcrPasteAction),
         Box::new(SwitchThemeAction),
+        Box::new(OpenSetupWizardAction),
         Box::new(SwitchKeybindPresetAction),
         Box::new(ToggleExternalEditorAction),
         Box::new(ToggleLayoutAction),

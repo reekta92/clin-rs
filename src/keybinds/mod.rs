@@ -29,6 +29,8 @@ pub struct KeybindsToml {
     pub backup: HashMap<BackupAction, Vec<String>>,
     #[serde(default)]
     pub content_tree: HashMap<ContentTreeAction, Vec<String>>,
+    #[serde(default)]
+    pub setup: HashMap<SetupAction, Vec<String>>,
 }
 
 #[derive(Debug, Clone)]
@@ -41,4 +43,5 @@ pub struct Keybinds {
     pub canvas: HashMap<CanvasAction, Vec<KeyCombo>>,
     pub backup: HashMap<BackupAction, Vec<KeyCombo>>,
     pub content_tree: HashMap<ContentTreeAction, Vec<KeyCombo>>,
+    pub setup: HashMap<SetupAction, Vec<KeyCombo>>,
 }

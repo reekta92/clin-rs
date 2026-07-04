@@ -1,6 +1,6 @@
 use super::{
     BackupAction, CanvasAction, ContentTreeAction, DrawAction, EditAction, GraphAction, HelpAction,
-    KeyCombo, KeyMatcher, Keybinds, KeybindsToml, ListAction, MatchOutcome,
+    KeyCombo, KeyMatcher, Keybinds, KeybindsToml, ListAction, MatchOutcome, SetupAction,
 };
 use anyhow::{Context, Result};
 use crossterm::event::KeyEvent;
@@ -95,6 +95,7 @@ impl Keybinds {
         merge_section(&mut keybinds.canvas, &toml.canvas);
         merge_section(&mut keybinds.backup, &toml.backup);
         merge_section(&mut keybinds.content_tree, &toml.content_tree);
+        merge_section(&mut keybinds.setup, &toml.setup);
         Ok(keybinds)
     }
 
@@ -121,6 +122,7 @@ impl Keybinds {
             canvas: section_to_toml(&self.canvas),
             backup: section_to_toml(&self.backup),
             content_tree: section_to_toml(&self.content_tree),
+            setup: section_to_toml(&self.setup),
         }
     }
 
@@ -201,6 +203,16 @@ impl Keybinds {
         counts: bool,
     ) -> MatchOutcome<ContentTreeAction> {
         m.resolve(event, self.bindings_for_content_tree(), seq, counts)
+    }
+
+    pub fn resolve_setup(
+        &self,
+        m: &mut KeyMatcher,
+        event: KeyEvent,
+        seq: bool,
+        _counts: bool,
+    ) -> MatchOutcome<SetupAction> {
+        m.resolve(event, self.bindings_for_setup(), seq, false)
     }
 
     /// Pick the best key combo to display in hint bars.
@@ -288,6 +300,14 @@ keybind_scope!(
     content_tree_keys_display,
     bindings_for_content_tree,
     display_content_tree
+);
+keybind_scope!(
+    setup,
+    SetupAction,
+    matches_setup,
+    setup_keys_display,
+    bindings_for_setup,
+    display_setup
 );
 
 #[cfg(test)]

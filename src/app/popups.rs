@@ -791,4 +791,139 @@ template = """
             }
         }
     }
+
+    pub fn apply_setup_live(&mut self) {
+        use std::str::FromStr;
+        let Some(state) = self.setup_state.as_ref() else {
+            return;
+        };
+        let mut visuals_changed = false;
+
+        // 1. Theme
+        if let Ok(t) = crate::config::Theme::from_str(crate::setup::SETUP_THEMES[state.theme])
+            && self.config.ui.theme != t
+        {
+            self.config.ui.theme = t;
+            visuals_changed = true;
+        }
+
+        // 2. Background
+        let bg = if state.background_solid {
+            crate::config::Background::Solid
+        } else {
+            crate::config::Background::Transparent
+        };
+        if self.config.ui.background != bg {
+            self.config.ui.background = bg;
+            visuals_changed = true;
+        }
+
+        // 3. Keybind preset — only rebuild keybinds when the preset actually changed.
+        let preset = match state.keybind_preset {
+            1 => crate::config::KeybindPreset::Helix,
+            2 => crate::config::KeybindPreset::Vim,
+            3 => crate::config::KeybindPreset::Emacs,
+            _ => crate::config::KeybindPreset::Default,
+        };
+        if self.config.core.keybind_preset != preset {
+            self.config.core.keybind_preset = preset;
+            self.keybinds = self.storage.load_keybinds_with_preset(preset);
+        }
+
+        // 4. Mouse
+        self.config.core.mouse_enabled = state.mouse_enabled;
+        self.mouse_enabled = state.mouse_enabled;
+
+        // 5. Density
+        let density = if state.list_density == 1 {
+            crate::config::ListDensity::Comfortable
+        } else {
+            crate::config::ListDensity::Compact
+        };
+        self.config.list.density = density.clone();
+        self.list.list_density = density;
+
+        // Hint bar style
+        let hbs = crate::setup::hint_style_at(state.hint_bar_style);
+        if self.config.ui.hint_bar_style != hbs {
+            self.config.ui.hint_bar_style = hbs;
+            visuals_changed = true;
+        }
+
+        // 7. Goals
+        self.config.goals.enabled = state.goals_enabled;
+        self.config.goals.word_goal = state
+            .word_goal_input
+            .lines()
+            .join("")
+            .trim()
+            .parse::<usize>()
+            .unwrap_or(500);
+
+        // 8. Backup
+        self.config.backup.enabled = state.backup_enabled;
+        let url = state.remote_url_input.lines().join("").trim().to_string();
+        if !url.is_empty() {
+            self.config.backup.remote_url = Some(url);
+        }
+
+        // 9. Vault path — field only; no live Storage swap (Storage already initialized).
+        let path_raw = state.storage_path_input.lines().join("").trim().to_string();
+        if !path_raw.is_empty() {
+            self.config.core.storage_path = Some(std::path::PathBuf::from(path_raw));
+        }
+
+        // Preview theme/background immediately (in-memory; no disk write).
+        if visuals_changed {
+            self.refresh_theme_from_config();
+        }
+    }
+
+    /// Finish: live-apply + persist + seed templates/welcome note + close.
+    pub fn finish_setup(&mut self) {
+        // path_changed must be read before apply_setup_live mutates self.config.core.storage_path.
+        let path_changed = match self.setup_state.as_ref() {
+            Some(state) => {
+                let raw = state.storage_path_input.lines().join("").trim().to_string();
+                !raw.is_empty()
+                    && self
+                        .config
+                        .core
+                        .storage_path
+                        .as_deref()
+                        .is_none_or(|p| p.to_string_lossy() != raw)
+            }
+            None => false,
+        };
+
+        self.apply_setup_live();
+        let save_res = self.config.save();
+
+        // Seed starter templates (idempotent — skips if templates already exist) + welcome note.
+        if save_res.is_ok() {
+            let _ = self.storage.template_manager().create_examples();
+            let welcome = crate::storage::Note {
+                title: "Welcome to clin".to_string(),
+                content: crate::setup::WELCOME_NOTE_MD.to_string(),
+                updated_at: crate::ui::now_unix_secs(),
+                tags: vec![],
+            };
+            let _ = self.storage.save_note("welcome-to-clin.md", &welcome);
+            // Refresh the note list so the welcome note appears immediately.
+            let _ = self.refresh_notes();
+        }
+
+        if path_changed {
+            self.set_temporary_status_static(
+                "Vault path saved \u{2014} restart clin to use the new location",
+            );
+        } else {
+            self.set_temporary_status_static("Setup complete");
+        }
+        self.setup_state = None;
+        self.mode = self
+            .return_mode
+            .take()
+            .unwrap_or(crate::app::ViewMode::List);
+    }
 }
