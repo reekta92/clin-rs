@@ -1,21 +1,15 @@
-use ratatui_textarea::TextArea;
+//! First-run setup wizard state.
+//!
+//! Single centered screen: CLIN ASCII logo + 5 cycle-in-place option rows
+//! (Theme, Background, Hint bar style, Icon mode, Keybind preset) + a Done
+//! button. No title/status bars, no preview pane. Every change is live-applied
+//! via `App::apply_setup_live`.
 
-/// Highest step index (Done). `advance()`/`go_next()` clamp here.
-pub const SETUP_TOTAL_STEPS: usize = 9;
-
-/// Step labels for the sidebar. Index == step number.
-pub const SETUP_STEPS: &[(&str, &str)] = &[
-    ("Welcome", "\u{f015}"),
-    ("Theme", "\u{f042}"),
-    ("Keybinds", "\u{f11c}"),
-    ("Mouse", "\u{f245}"),
-    ("Density", "\u{f0c9}"),
-    ("Hint Bar", "\u{f0e4}"),
-    ("Daily Goals", "\u{f091}"),
-    ("Auto-Backup", "\u{f0c0}"),
-    ("Vault Path", "\u{f07b}"),
-    ("Done", "\u{f00c}"),
-];
+/// Option rows shown below the logo. The last selectable row is the Done
+/// button, so selectable indices run `0..=DONE_ROW`.
+pub const OPTION_ROWS: usize = 5;
+pub const DONE_ROW: usize = 5;
+pub const ROW_COUNT: usize = 6;
 
 pub const SETUP_THEMES: &[&str] = &[
     "default",
@@ -31,7 +25,7 @@ pub const SETUP_THEMES: &[&str] = &[
     "solarized",
 ];
 pub const SETUP_PRESETS: &[&str] = &["default", "helix", "vim", "emacs"];
-pub const SETUP_DENSITIES: &[&str] = &["compact", "comfortable"];
+pub const SETUP_ICON_MODES: &[&str] = &["nerd_font", "unicode", "none"];
 pub const SETUP_HINT_STYLES: &[&str] = &[
     "Classic",
     "Accent",
@@ -39,6 +33,29 @@ pub const SETUP_HINT_STYLES: &[&str] = &[
     "Powerline Rounded",
     "Powerline Slanted",
 ];
+
+pub const CLIN_ASCII: &str = "\
+ ██████╗ ██╗      ██╗██╗   ██╗
+██╔═══██╗██║      ██║██║   ██║
+██║   ██║██║      ██║██║   ██║
+██║   ██║██║      ██║╚██╗ ██╔╝
+╚██████╔╝███████╗ ██║ ╚████╔╝
+ ╚═════╝ ╚═════╝  ╚═╝  ╚═══╝ ";
+
+pub fn icon_mode_at(idx: usize) -> crate::config::IconMode {
+    match idx {
+        1 => crate::config::IconMode::Unicode,
+        2 => crate::config::IconMode::None,
+        _ => crate::config::IconMode::Nerd,
+    }
+}
+pub fn icon_mode_index(m: crate::config::IconMode) -> usize {
+    match m {
+        crate::config::IconMode::Nerd => 0,
+        crate::config::IconMode::Unicode => 1,
+        crate::config::IconMode::None => 2,
+    }
+}
 
 pub fn hint_style_at(idx: usize) -> crate::config::HintBarStyle {
     match idx {
@@ -49,7 +66,6 @@ pub fn hint_style_at(idx: usize) -> crate::config::HintBarStyle {
         _ => crate::config::HintBarStyle::Classic,
     }
 }
-
 pub fn hint_style_index(s: crate::config::HintBarStyle) -> usize {
     match s {
         crate::config::HintBarStyle::Classic => 0,
@@ -59,227 +75,203 @@ pub fn hint_style_index(s: crate::config::HintBarStyle) -> usize {
         crate::config::HintBarStyle::PowerlineSlanted => 4,
     }
 }
+
 #[derive(Debug)]
 pub struct SetupState {
-    pub step: usize,
-    pub cursor: usize,
-    /// 0 = toggle, 1 = text — for the two two-field steps (6 Goals, 7 Backup).
-    pub focus: usize,
-    /// One entry per step; `true` once the user has visited it. Drives sidebar checkmarks.
-    pub visited: Vec<bool>,
-
     pub theme: usize,
     pub background_solid: bool,
-    pub keybind_preset: usize,
-    pub mouse_enabled: bool,
-    pub list_density: usize,
-    pub goals_enabled: bool,
-    pub backup_enabled: bool,
     pub hint_bar_style: usize,
-
-    pub word_goal_input: TextArea<'static>,
-    pub remote_url_input: TextArea<'static>,
-    pub storage_path_input: TextArea<'static>,
+    pub icon_mode: usize,
+    pub keybind_preset: usize,
+    /// Currently focused row: 0..OPTION_ROWS = options, DONE_ROW = Done button.
+    pub selected: usize,
+    /// When true, the Esc→confirm overlay is rendered and absorbs keys.
+    pub confirm_exit: bool,
 }
 
 impl SetupState {
     /// Build from the live config so a re-run (`--setup` / palette) pre-fills current values.
     pub fn from_config(
         config: &crate::config::ClinConfig,
-        theme: &crate::app_theme::AppThemeColors,
+        _theme: &crate::app_theme::AppThemeColors,
     ) -> Self {
-        let mut s = Self {
-            step: 0,
-            cursor: 0,
-            focus: 0,
-            visited: vec![false; SETUP_STEPS.len()],
+        Self {
             theme: SETUP_THEMES
                 .iter()
                 .position(|t| *t == config.ui.theme.to_string())
                 .unwrap_or(0),
             background_solid: matches!(config.ui.background, crate::config::Background::Solid),
+            hint_bar_style: hint_style_index(config.ui.hint_bar_style),
+            icon_mode: icon_mode_index(config.ui.icon_mode),
             keybind_preset: match config.core.keybind_preset {
                 crate::config::KeybindPreset::Default => 0,
                 crate::config::KeybindPreset::Helix => 1,
                 crate::config::KeybindPreset::Vim => 2,
                 crate::config::KeybindPreset::Emacs => 3,
             },
-            mouse_enabled: config.core.mouse_enabled,
-            list_density: match config.list.density {
-                crate::config::ListDensity::Compact => 0,
-                crate::config::ListDensity::Comfortable => 1,
-            },
-            goals_enabled: config.goals.enabled,
-            backup_enabled: config.backup.enabled,
-            hint_bar_style: hint_style_index(config.ui.hint_bar_style),
-            word_goal_input: Self::make_input(
-                theme,
-                "Enter daily word goal (e.g. 500)",
-                if config.goals.word_goal > 0 {
-                    Some(config.goals.word_goal.to_string())
-                } else {
-                    None
-                },
-            ),
-            remote_url_input: Self::make_input(
-                theme,
-                "Git remote URL (optional)",
-                config.backup.remote_url.clone(),
-            ),
-            storage_path_input: Self::make_input(
-                theme,
-                "Vault path (~ and $VAR supported)",
-                config
-                    .core
-                    .storage_path
-                    .as_ref()
-                    .map(|p| p.to_string_lossy().into_owned()),
-            ),
-        };
-        s.visited[0] = true;
-        s
-    }
-
-    fn make_input(
-        theme: &crate::app_theme::AppThemeColors,
-        placeholder: &str,
-        initial: Option<String>,
-    ) -> TextArea<'static> {
-        let mut input = TextArea::default();
-        input.set_cursor_line_style(ratatui::style::Style::default());
-        input.set_style(theme.bg_style());
-        input.set_placeholder_text(placeholder);
-        if let Some(text) = initial
-            && !text.is_empty()
-        {
-            input.insert_str(&text);
-        }
-        input
-    }
-
-    fn mark_visited(&mut self) {
-        if self.step < self.visited.len() {
-            self.visited[self.step] = true;
+            selected: 0,
+            confirm_exit: false,
         }
     }
 
-    pub fn advance(&mut self) {
-        self.go_to_step((self.step + 1).min(SETUP_TOTAL_STEPS));
-    }
-    pub fn go_next(&mut self) {
-        self.advance();
-    }
-    pub fn go_prev(&mut self) {
-        self.go_to_step(self.step.saturating_sub(1));
-    }
-    pub fn go_to_step(&mut self, step: usize) {
-        self.step = step.min(SETUP_TOTAL_STEPS);
-        self.cursor = self.default_cursor_for_step();
-        self.focus = 0;
-        self.mark_visited();
+    pub fn is_done_selected(&self) -> bool {
+        self.selected == DONE_ROW
     }
 
-    pub fn move_cursor(&mut self, down: bool) {
-        match self.step {
-            1 => {
-                if self.focus == 0 {
-                    self.cursor = if down {
-                        (self.cursor + 1).min(SETUP_THEMES.len() - 1)
-                    } else {
-                        self.cursor.saturating_sub(1)
-                    };
-                    self.theme = self.cursor;
+    /// Move selection up/down, clamped to `0..=DONE_ROW`.
+    pub fn move_sel(&mut self, down: bool) {
+        if down {
+            self.selected = (self.selected + 1).min(DONE_ROW);
+        } else {
+            self.selected = self.selected.saturating_sub(1);
+        }
+    }
+
+    /// Cycle the currently selected option's value. No-op on the Done row.
+    pub fn cycle(&mut self, forward: bool) {
+        match self.selected {
+            0 => {
+                let len = SETUP_THEMES.len();
+                self.theme = if forward {
+                    (self.theme + 1) % len
                 } else {
-                    self.background_solid = !self.background_solid;
-                }
-            }
-            2 => {
-                self.cursor = if down {
-                    (self.cursor + 1).min(SETUP_PRESETS.len() - 1)
-                } else {
-                    self.cursor.saturating_sub(1)
+                    (self.theme + len - 1) % len
                 };
-                self.keybind_preset = self.cursor;
+            }
+            1 => self.background_solid = !self.background_solid,
+            2 => {
+                let len = SETUP_HINT_STYLES.len();
+                self.hint_bar_style = if forward {
+                    (self.hint_bar_style + 1) % len
+                } else {
+                    (self.hint_bar_style + len - 1) % len
+                };
             }
             3 => {
-                self.mouse_enabled = !self.mouse_enabled;
+                let len = SETUP_ICON_MODES.len();
+                self.icon_mode = if forward {
+                    (self.icon_mode + 1) % len
+                } else {
+                    (self.icon_mode + len - 1) % len
+                };
             }
             4 => {
-                self.cursor = if down {
-                    (self.cursor + 1).min(SETUP_DENSITIES.len() - 1)
+                let len = SETUP_PRESETS.len();
+                self.keybind_preset = if forward {
+                    (self.keybind_preset + 1) % len
                 } else {
-                    self.cursor.saturating_sub(1)
+                    (self.keybind_preset + len - 1) % len
                 };
-                self.list_density = self.cursor;
-            }
-            5 => {
-                self.cursor = if down {
-                    (self.cursor + 1).min(SETUP_HINT_STYLES.len() - 1)
-                } else {
-                    self.cursor.saturating_sub(1)
-                };
-                self.hint_bar_style = self.cursor;
-            }
-            6 => {
-                if self.focus == 0 {
-                    self.goals_enabled = !self.goals_enabled;
-                }
-            }
-            7 => {
-                if self.focus == 0 {
-                    self.backup_enabled = !self.backup_enabled;
-                }
             }
             _ => {}
         }
     }
 
-    fn default_cursor_for_step(&self) -> usize {
-        match self.step {
-            1 => self.theme,
-            2 => self.keybind_preset,
-            4 => self.list_density,
-            5 => self.hint_bar_style,
-            _ => 0,
+    /// Display label for a given option row.
+    pub fn row_label(row: usize) -> &'static str {
+        match row {
+            0 => "Theme",
+            1 => "Background",
+            2 => "Hint bar",
+            3 => "Icons",
+            4 => "Keybinds",
+            _ => "",
         }
     }
 
-    pub fn is_toggle_active(&self) -> bool {
-        (self.step == 1 && self.focus == 1)
-            || self.step == 3
-            || (self.step == 6 && self.focus == 0)
-            || (self.step == 7 && self.focus == 0)
-    }
-
-    pub fn is_text_focused(&self) -> bool {
-        ((self.step == 6 || self.step == 7) && self.focus == 1) || self.step == 8
-    }
-    pub fn focused_input_mut(&mut self) -> Option<&mut TextArea<'static>> {
-        match self.step {
-            6 if self.focus == 1 => Some(&mut self.word_goal_input),
-            7 if self.focus == 1 => Some(&mut self.remote_url_input),
-            8 => Some(&mut self.storage_path_input),
-            _ => None,
-        }
-    }
-    pub fn toggle_focus(&mut self) {
-        if self.step == 1 || self.step == 6 || self.step == 7 {
-            self.focus = 1 - self.focus;
+    /// Current value string for a given option row.
+    pub fn row_value(&self, row: usize) -> String {
+        match row {
+            0 => SETUP_THEMES[self.theme].to_string(),
+            1 => {
+                if self.background_solid {
+                    "Solid".to_string()
+                } else {
+                    "Transparent".to_string()
+                }
+            }
+            2 => SETUP_HINT_STYLES[self.hint_bar_style].to_string(),
+            3 => SETUP_ICON_MODES[self.icon_mode].to_string(),
+            4 => SETUP_PRESETS[self.keybind_preset].to_string(),
+            _ => String::new(),
         }
     }
 }
 
-/// Welcome note markdown seeded on first-run/finish.
-pub const WELCOME_NOTE_MD: &str = r#"# Welcome to clin
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-Your encrypted, git-backed terminal notebook. A few things to try:
+    #[test]
+    fn cycle_wraps_each_row() {
+        let mut s = SetupState {
+            theme: 0,
+            background_solid: false,
+            hint_bar_style: 0,
+            icon_mode: 0,
+            keybind_preset: 0,
+            selected: 0,
+            confirm_exit: false,
+        };
 
-- Press `?` any time for the full keybind reference.
-- Press `:` (or `Ctrl+p`) to open the command palette.
-- Press `n` to create a note, `t` to create one from a template.
-- Press `Ctrl+g` for the graph view, `.` to manage tags.
+        // Theme wraps forward
+        s.cycle(true);
+        assert_eq!(s.theme, 1);
+        s.theme = SETUP_THEMES.len() - 1;
+        s.cycle(true);
+        assert_eq!(s.theme, 0);
 
-Notes are saved to your vault. Edit `~/.config/clin/config.toml` any time, or re-run `clin --setup`.
+        // Theme wraps backward
+        s.cycle(false);
+        assert_eq!(s.theme, SETUP_THEMES.len() - 1);
 
-Happy writing.
-"#;
+        // Background flips
+        s.selected = 1;
+        s.cycle(true);
+        assert!(s.background_solid);
+        s.cycle(false);
+        assert!(!s.background_solid);
+
+        // Hint bar wraps
+        s.selected = 2;
+        s.hint_bar_style = SETUP_HINT_STYLES.len() - 1;
+        s.cycle(true);
+        assert_eq!(s.hint_bar_style, 0);
+
+        // Icon mode wraps
+        s.selected = 3;
+        s.icon_mode = SETUP_ICON_MODES.len() - 1;
+        s.cycle(true);
+        assert_eq!(s.icon_mode, 0);
+
+        // Keybind preset wraps
+        s.selected = 4;
+        s.keybind_preset = SETUP_PRESETS.len() - 1;
+        s.cycle(true);
+        assert_eq!(s.keybind_preset, 0);
+
+        // Done row: no-op
+        s.selected = DONE_ROW;
+        s.cycle(true);
+        assert_eq!(s.keybind_preset, 0);
+    }
+
+    #[test]
+    fn move_sel_clamps() {
+        let mut s = SetupState {
+            theme: 0,
+            background_solid: false,
+            hint_bar_style: 0,
+            icon_mode: 0,
+            keybind_preset: 0,
+            selected: 0,
+            confirm_exit: false,
+        };
+        s.move_sel(false);
+        assert_eq!(s.selected, 0);
+        for _ in 0..ROW_COUNT {
+            s.move_sel(true);
+        }
+        assert_eq!(s.selected, DONE_ROW);
+    }
+}

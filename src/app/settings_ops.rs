@@ -613,119 +613,112 @@ mod tests {
     }
 
     #[test]
-    fn apply_setup_results_writes_all_fields() {
+    fn apply_setup_live_writes_5_fields() {
         let _lock = crate::config::CONFIG_TEST_MUTEX.lock();
         let mut app = make_app();
 
-        // Build a SetupState with non-default values
-        let mut word_goal_input = TextArea::default();
-        word_goal_input.insert_str("250");
-        let mut remote_url_input = TextArea::default();
-        remote_url_input.insert_str("git@github.com:user/repo.git");
-        let mut storage_path_input = TextArea::default();
-        storage_path_input.insert_str("/custom/vault/path");
-
         app.setup_state = Some(crate::setup::SetupState {
-            step: 9,
-            cursor: 0,
-            focus: 0,
-            visited: vec![false; crate::setup::SETUP_STEPS.len()],
             theme: 4, // gruvbox
             background_solid: true,
-            keybind_preset: 2, // vim
-            mouse_enabled: false,
-            list_density: 1, // comfortable
-            goals_enabled: false,
-            backup_enabled: true,
             hint_bar_style: 2, // PowerlineSharp
-            word_goal_input,
-            remote_url_input,
-            storage_path_input,
+            icon_mode: 1,      // Unicode
+            keybind_preset: 2, // Vim
+            selected: 0,
+            confirm_exit: false,
         });
 
         app.finish_setup();
 
-        // Assert in-memory config
         assert_eq!(app.config.ui.theme, crate::config::Theme::Gruvbox);
-        assert_eq!(
-            app.config.core.keybind_preset,
-            crate::config::KeybindPreset::Vim
-        );
-        assert!(!app.config.core.mouse_enabled);
-        assert_eq!(
-            app.config.list.density,
-            crate::config::ListDensity::Comfortable
-        );
         assert_eq!(app.config.ui.background, crate::config::Background::Solid);
         assert_eq!(
             app.config.ui.hint_bar_style,
             crate::config::HintBarStyle::PowerlineSharp
         );
-        assert!(!app.config.goals.enabled);
-        assert_eq!(app.config.goals.word_goal, 250);
-        assert!(app.config.backup.enabled);
+        assert_eq!(app.config.ui.icon_mode, crate::config::IconMode::Unicode);
         assert_eq!(
-            app.config.backup.remote_url,
-            Some("git@github.com:user/repo.git".to_string())
+            app.config.core.keybind_preset,
+            crate::config::KeybindPreset::Vim
         );
-        assert_eq!(
-            app.config.core.storage_path,
-            Some(std::path::PathBuf::from("/custom/vault/path"))
-        );
-
-        // Assert live App fields that mirror key config settings
-        assert!(!app.mouse_enabled);
-        assert_eq!(
-            app.list.list_density,
-            crate::config::ListDensity::Comfortable
-        );
+        // finish_setup tears down the view.
+        assert!(app.setup_state.is_none());
+        assert_eq!(app.mode, crate::app::ViewMode::List);
     }
+
     #[test]
-    fn test_setup_wizard_live_apply() {
+    fn setup_cycle_live_applies_theme() {
         let _lock = crate::config::CONFIG_TEST_MUTEX.lock();
         let mut app = make_app();
 
-        let mut word_goal_input = TextArea::default();
-        word_goal_input.insert_str("250");
-        let mut remote_url_input = TextArea::default();
-        remote_url_input.insert_str("git@github.com:user/repo.git");
-        let mut storage_path_input = TextArea::default();
-        storage_path_input.insert_str("/custom/vault/path");
-
         app.setup_state = Some(crate::setup::SetupState {
-            step: 2,
-            cursor: 0,
-            focus: 0,
-            visited: vec![false; crate::setup::SETUP_STEPS.len()],
-            theme: 1, // tokyo_night
+            theme: 0,
             background_solid: false,
-            keybind_preset: 0, // default
-            mouse_enabled: true,
-            list_density: 0, // compact
-            goals_enabled: true,
-            backup_enabled: false,
             hint_bar_style: 0,
-            word_goal_input,
-            remote_url_input,
-            storage_path_input,
+            icon_mode: 0,
+            keybind_preset: 0,
+            selected: 0, // Theme row
+            confirm_exit: false,
         });
 
-        // Live-apply with background_solid: false
+        // Cycle theme forward → apply_setup_live writes it to config.
+        app.setup_state.as_mut().unwrap().cycle(true);
         app.apply_setup_live();
         assert_eq!(app.config.ui.theme, crate::config::Theme::TokyoNight);
-        assert_eq!(
-            app.config.ui.background,
-            crate::config::Background::Transparent
-        );
 
-        // Flip background and live-apply again
-        app.setup_state.as_mut().unwrap().background_solid = true;
+        // Flip background via row 1 → config mirrors it.
+        let state = app.setup_state.as_mut().unwrap();
+        state.selected = 1;
+        state.cycle(true);
         app.apply_setup_live();
         assert_eq!(app.config.ui.background, crate::config::Background::Solid);
+    }
 
-        // Finalize with finish_setup — state cleared, mode returns to List
-        app.finish_setup();
+    #[test]
+    fn setup_esc_opens_confirm_then_y_finishes() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+        let _lock = crate::config::CONFIG_TEST_MUTEX.lock();
+        let mut app = make_app();
+
+        app.setup_state = Some(crate::setup::SetupState {
+            theme: 4, // gruvbox — non-default so we can confirm it propagates
+            background_solid: true,
+            hint_bar_style: 0,
+            icon_mode: 0,
+            keybind_preset: 0,
+            selected: 0,
+            confirm_exit: false,
+        });
+
+        let esc = KeyEvent {
+            code: KeyCode::Esc,
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::empty(),
+        };
+        crate::events::handle_setup_keys(&mut app, esc);
+        assert!(app.setup_state.as_ref().unwrap().confirm_exit);
+
+        // 'n' cancels the confirm overlay.
+        let n = KeyEvent {
+            code: KeyCode::Char('n'),
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::empty(),
+        };
+        crate::events::handle_setup_keys(&mut app, n);
+        assert!(!app.setup_state.as_ref().unwrap().confirm_exit);
+
+        // Re-open and confirm with 'y' → finish_setup saves + closes.
+        app.setup_state.as_mut().unwrap().confirm_exit = true;
+        let y = KeyEvent {
+            code: KeyCode::Char('y'),
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::empty(),
+        };
+        crate::events::handle_setup_keys(&mut app, y);
         assert!(app.setup_state.is_none());
         assert_eq!(app.mode, crate::app::ViewMode::List);
+        assert_eq!(app.config.ui.theme, crate::config::Theme::Gruvbox);
     }
 }

@@ -205,10 +205,10 @@ pub enum ContentTreeAction {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SetupAction {
-    Next,
-    Prev,
     Up,
     Down,
-    ToggleField,
+    CycleNext,
+    CyclePrev,
+    Activate,
     Finish,
 }

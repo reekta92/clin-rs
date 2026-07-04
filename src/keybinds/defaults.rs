@@ -838,21 +838,6 @@ impl Default for Keybinds {
 
         let mut setup = HashMap::new();
         setup.insert(
-            SetupAction::Next,
-            vec![
-                KeyCombo::simple(KeyCode::Enter),
-                KeyCombo::simple(KeyCode::Right),
-                KeyCombo::simple(KeyCode::Char('l')),
-            ],
-        );
-        setup.insert(
-            SetupAction::Prev,
-            vec![
-                KeyCombo::simple(KeyCode::Left),
-                KeyCombo::simple(KeyCode::Char('h')),
-            ],
-        );
-        setup.insert(
             SetupAction::Up,
             vec![
                 KeyCombo::simple(KeyCode::Up),
@@ -867,11 +852,23 @@ impl Default for Keybinds {
             ],
         );
         setup.insert(
-            SetupAction::ToggleField,
+            SetupAction::CycleNext,
             vec![
-                KeyCombo::simple(KeyCode::Tab),
-                KeyCombo::simple(KeyCode::BackTab),
+                KeyCombo::simple(KeyCode::Right),
+                KeyCombo::simple(KeyCode::Char('l')),
+                KeyCombo::simple(KeyCode::Char(' ')),
             ],
+        );
+        setup.insert(
+            SetupAction::CyclePrev,
+            vec![
+                KeyCombo::simple(KeyCode::Left),
+                KeyCombo::simple(KeyCode::Char('h')),
+            ],
+        );
+        setup.insert(
+            SetupAction::Activate,
+            vec![KeyCombo::simple(KeyCode::Enter)],
         );
         setup.insert(SetupAction::Finish, vec![KeyCombo::simple(KeyCode::Esc)]);
 
