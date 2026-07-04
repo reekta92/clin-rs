@@ -27,6 +27,16 @@ pub struct MarkdownRenderer {
     content_empty: bool,
 }
 
+impl std::fmt::Debug for MarkdownRenderer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MarkdownRenderer")
+            .field("current_page", &self.current_page)
+            .field("total_pages", &self.total_pages)
+            .field("content_empty", &self.content_empty)
+            .finish_non_exhaustive()
+    }
+}
+
 impl Drop for MarkdownRenderer {
     fn drop(&mut self) {
         self.cancel_token.store(true, Ordering::Relaxed);

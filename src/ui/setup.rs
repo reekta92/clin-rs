@@ -7,43 +7,65 @@ use crate::setup::{CLIN_ASCII, OPTION_ROWS, SetupState};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Modifier, Style},
+    style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, Paragraph},
+    widgets::{Block, BorderType, Borders, Clear, Padding, Paragraph},
 };
+use crate::keybinds::ListAction;
 
-/// Vertical column dimensions: logo (6) + gap (1) + options (5) + gap (1) + done (1).
 const COL_HEIGHT: u16 = 14;
-const COL_WIDTH: u16 = 42;
+/// Vertical column dimensions: logo (6) + gap (1) + options (5) + gap (1) + done (1).
+const COL_WIDTH: u16 = 44;
+const PREVIEW_WIDTH: u16 = 50;
 pub(crate) struct SetupLayout {
     pub logo: Rect,
     pub options: Rect,
     pub done: Rect,
+    pub preview: Rect,
 }
 
 pub(crate) fn setup_layout(area: Rect) -> SetupLayout {
-    let height = COL_HEIGHT.min(area.height);
-    let width = COL_WIDTH.min(area.width);
+    let total_w = COL_WIDTH + 2 + PREVIEW_WIDTH;
+    let actual_w = total_w.min(area.width);
+
     let col = Rect {
-        x: area.x + (area.width.saturating_sub(width)) / 2,
-        y: area.y + (area.height.saturating_sub(height)) / 2,
-        width,
-        height,
+        x: area.x + (area.width.saturating_sub(actual_w)) / 2,
+        y: area.y + (area.height.saturating_sub(COL_HEIGHT)) / 2,
+        width: actual_w,
+        height: COL_HEIGHT.min(area.height),
     };
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
+
+    let h_chunks = Layout::default()
+        .direction(Direction::Horizontal)
         .constraints([
-            Constraint::Length(6),                  // logo
-            Constraint::Length(1),                  // gap
-            Constraint::Length(OPTION_ROWS as u16), // options
-            Constraint::Length(1),                  // gap
-            Constraint::Length(1),                  // done
+            Constraint::Length(COL_WIDTH + 2),
+            Constraint::Length(col.width.saturating_sub(COL_WIDTH + 2)),
         ])
         .split(col);
+
+    let left_col = h_chunks[0];
+    let preview_col = if actual_w >= COL_WIDTH + 2 + PREVIEW_WIDTH {
+        h_chunks[1]
+    } else {
+        Rect::default()
+    };
+
+    let v_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(6),
+            Constraint::Length(1),
+            Constraint::Length(OPTION_ROWS as u16),
+            Constraint::Length(1),
+            Constraint::Length(1),
+        ])
+        .split(left_col);
+
     SetupLayout {
-        logo: chunks[0],
-        options: chunks[2],
-        done: chunks[4],
+        logo: v_chunks[0],
+        options: v_chunks[2],
+        done: v_chunks[4],
+        preview: preview_col,
     }
 }
 
@@ -87,7 +109,7 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
         } else {
             Style::default().fg(theme.muted)
         };
-        let label = SetupState::row_label(row);
+        let label = crate::setup::SetupState::row_label(row);
         let value = state.row_value(row);
         lines.push(Line::from(vec![
             Span::styled(format!("{label}: "), base),
@@ -96,6 +118,7 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
             Span::styled(" ▶", arrow),
         ]));
     }
+
     frame.render_widget(
         Paragraph::new(lines).alignment(Alignment::Center),
         layout.options,
@@ -114,6 +137,146 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
     let done = Paragraph::new(Line::from(Span::styled("  Done  ", done_style)))
         .alignment(Alignment::Center);
     frame.render_widget(done, layout.done);
+
+    if layout.preview.width > 0 && layout.preview.height > 0 {
+        draw_setup_preview(
+            frame,
+            layout.preview,
+            state.selected,
+            theme,
+            app.config.ui.icon_mode,
+            &app.keybinds,
+        );
+    }
+
+    fn draw_setup_preview(
+        frame: &mut Frame,
+        area: Rect,
+        selected: usize,
+        theme: &AppThemeColors,
+        icon_mode: crate::config::IconMode,
+        keybinds: &crate::keybinds::Keybinds,
+    ) {
+        match selected {
+            0 | 1 => draw_preview_markdown(frame, area, theme),
+            2 => draw_preview_hint_bar(frame, area, theme),
+            3 => draw_preview_icons(frame, area, theme, icon_mode),
+            4 => draw_preview_keybinds(frame, area, theme, keybinds),
+            _ => {}
+        }
+    }
+
+    fn draw_preview_markdown(frame: &mut Frame, area: Rect, theme: &AppThemeColors) {
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .title(Span::styled(" Preview ", Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)))
+            .padding(Padding::new(1, 1, 1, 0));
+        let lines = vec![
+            Line::from(Span::styled("# Welcome to Clin", Style::default().fg(theme.accent).add_modifier(Modifier::BOLD))),
+            Line::from(""),
+            Line::from(Span::styled("A terminal note-taking app with", Style::default().fg(theme.text))),
+            Line::from(vec![
+                Span::styled("support for ", Style::default().fg(theme.text)),
+                Span::styled("`inline code`", Style::default().fg(theme.fg).bg(theme.bg.unwrap_or(Color::Black))),
+                Span::styled(" and more.", Style::default().fg(theme.text)),
+            ]),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("  • ", Style::default().fg(theme.muted)),
+                Span::styled("Markdown", Style::default().fg(theme.heading).add_modifier(Modifier::BOLD)),
+                Span::styled(" rendering", Style::default().fg(theme.text)),
+            ]),
+            Line::from(vec![
+                Span::styled("  • ", Style::default().fg(theme.muted)),
+                Span::styled("Tags", Style::default().fg(theme.tag)),
+                Span::styled(" and ", Style::default().fg(theme.text)),
+                Span::styled("folders", Style::default().fg(theme.folder)),
+            ]),
+            Line::from(vec![
+                Span::styled("  • ", Style::default().fg(theme.muted)),
+                Span::styled("Encryption", Style::default().fg(theme.warning)),
+                Span::styled(" & ", Style::default().fg(theme.text)),
+                Span::styled("backups", Style::default().fg(theme.success)),
+            ]),
+        ];
+        frame.render_widget(Paragraph::new(lines).block(block), area);
+    }
+
+    fn draw_preview_hint_bar(frame: &mut Frame, area: Rect, theme: &AppThemeColors) {
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .title(Span::styled(" Preview ", Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)))
+            .padding(Padding::new(1, 1, 1, 0));
+        frame.render_widget(block.clone(), area);
+        frame.render_widget(Paragraph::new(Span::styled("Hint bar style preview", Style::default().fg(theme.muted))).alignment(Alignment::Center), area.inner(ratatui::layout::Margin { horizontal: 1, vertical: 1 }));
+
+        let sample_hints = vec![
+            ("j/k".to_string(), "navigate"),
+            ("Enter".to_string(), "select"),
+            ("q".to_string(), "quit"),
+            ("?".to_string(), "help"),
+        ];
+        let hint_line = crate::ui::format_keybind_hints(theme, &sample_hints);
+        let hint_area = Rect::new(area.x + 1, area.y + area.height - 2, area.width - 2, 1);
+        frame.render_widget(Paragraph::new(hint_line), hint_area);
+    }
+
+    fn draw_preview_icons(
+        frame: &mut Frame,
+        area: Rect,
+        theme: &AppThemeColors,
+        icon_mode: crate::config::IconMode,
+    ) {
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .title(Span::styled(" Icon Preview ", Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)))
+            .padding(Padding::new(1, 1, 1, 0));
+        let pairs: [((&str, &str), &'static str, Color); 5] = [
+            (("\u{f07b}", "\u{1f4c1}"), "Folder", theme.folder),
+            (("\u{f15c}", "\u{1f4c4}"), "Note", theme.text),
+            (("\u{f4cc}", "\u{1f4cc}"), "Pinned", theme.heading),
+            (("\u{f02b}", "\u{1f3f7}"), "Tagged", theme.tag),
+            (("\u{f023}", "\u{1f512}"), "Encrypted", theme.warning),
+        ];
+        let lines: Vec<Line> = pairs.iter().map(|((nerd, unicode), label, color)| {
+            let icon = crate::ui::get_icon(nerd, unicode, icon_mode);
+            Line::from(vec![
+                Span::styled(format!("  {}  ", icon), Style::default().fg(*color)),
+                Span::styled(*label, Style::default().fg(theme.text)),
+            ])
+        }).collect();
+        frame.render_widget(Paragraph::new(lines).block(block), area);
+    }
+
+    fn draw_preview_keybinds(
+        frame: &mut Frame,
+        area: Rect,
+        theme: &AppThemeColors,
+        keybinds: &crate::keybinds::Keybinds,
+    ) {
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .title(Span::styled(" Keybind Preview ", Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)))
+            .padding(Padding::new(1, 1, 1, 0));
+        let kb_items = vec![
+            (keybinds.display_list(ListAction::MoveUp), "move up"),
+            (keybinds.display_list(ListAction::MoveDown), "move down"),
+            (keybinds.display_list(ListAction::Open), "open"),
+            (keybinds.display_list(ListAction::Search), "search"),
+            (keybinds.display_list(ListAction::CreateNote), "new note"),
+        ];
+        let lines: Vec<Line> = kb_items.iter().map(|(key, label)| {
+            Line::from(vec![
+                Span::styled(format!("  {}  ", key), Style::default().fg(theme.accent)),
+                Span::styled(*label, Style::default().fg(theme.text)),
+            ])
+        }).collect();
+        frame.render_widget(Paragraph::new(lines).block(block), area);
+    }
 
     // Esc → confirm overlay.
     if state.confirm_exit {
