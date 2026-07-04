@@ -1,6 +1,6 @@
 use super::{
-    BackupAction, CanvasAction, ContentTreeAction, DrawAction, EditAction, GraphAction, HelpAction,
-    KeyCombo, KeyMatcher, Keybinds, KeybindsToml, ListAction, MatchOutcome,
+    BackupAction, BaseAction, CanvasAction, ContentTreeAction, DrawAction, EditAction, GraphAction,
+    HelpAction, KeyCombo, KeyMatcher, Keybinds, KeybindsToml, ListAction, MatchOutcome,
 };
 use anyhow::{Context, Result};
 use crossterm::event::KeyEvent;
@@ -95,6 +95,7 @@ impl Keybinds {
         merge_section(&mut keybinds.canvas, &toml.canvas);
         merge_section(&mut keybinds.backup, &toml.backup);
         merge_section(&mut keybinds.content_tree, &toml.content_tree);
+        merge_section(&mut keybinds.base, &toml.base);
         Ok(keybinds)
     }
 
@@ -121,6 +122,7 @@ impl Keybinds {
             canvas: section_to_toml(&self.canvas),
             backup: section_to_toml(&self.backup),
             content_tree: section_to_toml(&self.content_tree),
+            base: section_to_toml(&self.base),
         }
     }
 
@@ -201,6 +203,16 @@ impl Keybinds {
         counts: bool,
     ) -> MatchOutcome<ContentTreeAction> {
         m.resolve(event, self.bindings_for_content_tree(), seq, counts)
+    }
+
+    pub fn resolve_base(
+        &self,
+        m: &mut KeyMatcher,
+        event: KeyEvent,
+        seq: bool,
+        counts: bool,
+    ) -> MatchOutcome<BaseAction> {
+        m.resolve(event, self.bindings_for_base(), seq, counts)
     }
 
     /// Pick the best key combo to display in hint bars.
@@ -288,6 +300,15 @@ keybind_scope!(
     content_tree_keys_display,
     bindings_for_content_tree,
     display_content_tree
+);
+
+keybind_scope!(
+    base,
+    BaseAction,
+    matches_base,
+    base_keys_display,
+    bindings_for_base,
+    display_base
 );
 
 #[cfg(test)]
@@ -967,5 +988,32 @@ fn test_matches_help_coverage_gap_closed() {
     assert!(
         matched,
         "matches_help should fire for a bound single-key Help action"
+    );
+}
+
+#[test]
+fn test_edit_base_binding_uppercase_e() {
+    use crossterm::event::KeyEvent;
+    use crossterm::event::{KeyCode, KeyModifiers};
+    let kb = Keybinds::default();
+    let mut matcher = KeyMatcher::new();
+
+    // Pressing Shift+E (uppercase) should resolve to EditBase
+    let e_upper = KeyEvent::new(KeyCode::Char('E'), KeyModifiers::NONE);
+    let result = kb.resolve_base(&mut matcher, e_upper, true, false);
+    assert_eq!(
+        result,
+        MatchOutcome::Matched(BaseAction::EditBase, None),
+        "Shift+E should resolve to EditBase"
+    );
+
+    // Pressing lowercase e should NOT resolve to EditBase
+    let e_lower = KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE);
+    let mut matcher2 = KeyMatcher::new();
+    let result2 = kb.resolve_base(&mut matcher2, e_lower, true, false);
+    assert_ne!(
+        result2,
+        MatchOutcome::Matched(BaseAction::EditBase, None),
+        "lowercase e should NOT resolve to EditBase"
     );
 }

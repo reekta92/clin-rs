@@ -140,6 +140,10 @@ impl App {
             self.open_canvas_view();
             return;
         }
+        if note_id.ends_with(".base") {
+            self.open_base_view(note_id.to_string());
+            return;
+        }
         if note_id.ends_with(".clin") {
             self.status =
                 Cow::Borrowed("Note is encrypted. Use command palette (Ctrl+P) to decrypt.");
@@ -569,6 +573,11 @@ impl App {
                         return;
                     }
                 }
+            }
+            if return_to == ViewMode::Base
+                && let Some(bs) = &mut self.base_state
+            {
+                bs.refresh();
             }
             self.mode = return_to;
             self.set_default_status();

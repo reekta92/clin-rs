@@ -485,6 +485,12 @@ impl Default for GoalsConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[serde(default)]
+pub struct BaseConfig {
+    pub default_view_limit: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default)]
 pub struct ClinConfig {
     #[serde(default)]
     pub core: CoreConfig,
@@ -501,6 +507,8 @@ pub struct ClinConfig {
     pub graf: GrafConfig,
     #[serde(default)]
     pub goals: GoalsConfig,
+    #[serde(default)]
+    pub base: BaseConfig,
 }
 
 /// Graph data-viz colors (node/edge/label). Distinct from

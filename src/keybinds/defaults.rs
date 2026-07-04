@@ -1,6 +1,6 @@
 use super::{
-    BackupAction, CanvasAction, ContentTreeAction, DrawAction, EditAction, GraphAction, HelpAction,
-    KeyCombo, Keybinds, ListAction,
+    BackupAction, BaseAction, CanvasAction, ContentTreeAction, DrawAction, EditAction, GraphAction,
+    HelpAction, KeyCombo, Keybinds, ListAction,
 };
 use crate::config::KeybindPreset;
 use crossterm::event::KeyCode;
@@ -836,6 +836,135 @@ impl Default for Keybinds {
             ],
         );
 
+        let mut base = HashMap::new();
+        base.insert(
+            BaseAction::MoveUp,
+            vec![
+                KeyCombo::simple(KeyCode::Char('k')),
+                KeyCombo::simple(KeyCode::Up),
+            ],
+        );
+        base.insert(
+            BaseAction::MoveDown,
+            vec![
+                KeyCombo::simple(KeyCode::Char('j')),
+                KeyCombo::simple(KeyCode::Down),
+            ],
+        );
+        base.insert(
+            BaseAction::MoveLeft,
+            vec![
+                KeyCombo::simple(KeyCode::Char('h')),
+                KeyCombo::simple(KeyCode::Left),
+            ],
+        );
+        base.insert(
+            BaseAction::MoveRight,
+            vec![
+                KeyCombo::simple(KeyCode::Char('l')),
+                KeyCombo::simple(KeyCode::Right),
+            ],
+        );
+        base.insert(
+            BaseAction::Open,
+            vec![
+                KeyCombo::simple(KeyCode::Enter),
+                KeyCombo::simple(KeyCode::Char('o')),
+            ],
+        );
+        base.insert(
+            BaseAction::Back,
+            vec![
+                KeyCombo::simple(KeyCode::Esc),
+                KeyCombo::simple(KeyCode::Char('q')),
+            ],
+        );
+        base.insert(
+            BaseAction::Help,
+            vec![
+                KeyCombo::simple(KeyCode::Char('?')),
+                KeyCombo::simple(KeyCode::F(1)),
+            ],
+        );
+        base.insert(
+            BaseAction::Refresh,
+            vec![KeyCombo::simple(KeyCode::Char('r'))],
+        );
+        base.insert(
+            BaseAction::EditCell,
+            vec![KeyCombo::simple(KeyCode::Char('e'))],
+        );
+        base.insert(
+            BaseAction::CommitEdit,
+            vec![KeyCombo::simple(KeyCode::Enter)],
+        );
+        base.insert(BaseAction::CancelEdit, vec![KeyCombo::simple(KeyCode::Esc)]);
+        base.insert(
+            BaseAction::SortAsc,
+            vec![KeyCombo::simple(KeyCode::Char('s'))],
+        );
+        base.insert(
+            BaseAction::SortDesc,
+            vec![KeyCombo::simple(KeyCode::Char('S'))],
+        );
+        base.insert(BaseAction::CycleView, vec![KeyCombo::simple(KeyCode::Tab)]);
+        base.insert(
+            BaseAction::CycleMarker,
+            vec![KeyCombo::simple(KeyCode::Char('m'))],
+        );
+        base.insert(
+            BaseAction::NewBase,
+            vec![KeyCombo::simple(KeyCode::Char('n'))],
+        );
+        base.insert(
+            BaseAction::EditBase,
+            vec![KeyCombo::simple(KeyCode::Char('E'))],
+        );
+        base.insert(
+            BaseAction::SaveBase,
+            vec![KeyCombo::ctrl(KeyCode::Char('s'))],
+        );
+        base.insert(
+            BaseAction::ExportCsv,
+            vec![KeyCombo::simple(KeyCode::Char('x'))],
+        );
+        base.insert(
+            BaseAction::CopyTable,
+            vec![KeyCombo::simple(KeyCode::Char('y'))],
+        );
+        base.insert(
+            BaseAction::NewNote,
+            vec![KeyCombo::simple(KeyCode::Char('N'))],
+        );
+        base.insert(
+            BaseAction::PageUp,
+            vec![
+                KeyCombo::simple(KeyCode::PageUp),
+                KeyCombo::ctrl(KeyCode::Char('u')),
+            ],
+        );
+        base.insert(
+            BaseAction::PageDown,
+            vec![
+                KeyCombo::simple(KeyCode::PageDown),
+                KeyCombo::ctrl(KeyCode::Char('d')),
+            ],
+        );
+        base.insert(
+            BaseAction::JumpToTop,
+            vec![
+                KeyCombo::simple(KeyCode::Char('g')),
+                KeyCombo::simple(KeyCode::Home),
+            ],
+        );
+        base.insert(
+            BaseAction::JumpToBottom,
+            vec![
+                KeyCombo::simple(KeyCode::Char('G')),
+                KeyCombo::simple(KeyCode::End),
+            ],
+        );
+
         Self {
             list,
             edit,
@@ -845,6 +974,7 @@ impl Default for Keybinds {
             canvas,
             backup,
             content_tree,
+            base,
         }
     }
 }
@@ -861,6 +991,7 @@ impl KeybindPreset {
             || Self::has_multi_seq(&kb.canvas)
             || Self::has_multi_seq(&kb.backup)
             || Self::has_multi_seq(&kb.content_tree)
+            || Self::has_multi_seq(&kb.base)
     }
 
     fn has_multi_seq<A>(map: &std::collections::HashMap<A, Vec<super::KeyCombo>>) -> bool {
@@ -2075,6 +2206,48 @@ impl KeybindPreset {
                 );
                 kb.content_tree.insert(
                     ContentTreeAction::Help,
+                    vec![
+                        KeyCombo::ctrl(KeyCode::Char('h')),
+                        KeyCombo::simple(KeyCode::F(1)),
+                    ],
+                );
+                kb.base.insert(
+                    BaseAction::MoveUp,
+                    vec![
+                        KeyCombo::ctrl(KeyCode::Char('p')),
+                        KeyCombo::simple(KeyCode::Up),
+                    ],
+                );
+                kb.base.insert(
+                    BaseAction::MoveDown,
+                    vec![
+                        KeyCombo::ctrl(KeyCode::Char('n')),
+                        KeyCombo::simple(KeyCode::Down),
+                    ],
+                );
+                kb.base.insert(
+                    BaseAction::MoveLeft,
+                    vec![
+                        KeyCombo::ctrl(KeyCode::Char('b')),
+                        KeyCombo::simple(KeyCode::Left),
+                    ],
+                );
+                kb.base.insert(
+                    BaseAction::MoveRight,
+                    vec![
+                        KeyCombo::ctrl(KeyCode::Char('f')),
+                        KeyCombo::simple(KeyCode::Right),
+                    ],
+                );
+                kb.base.insert(
+                    BaseAction::Back,
+                    vec![
+                        KeyCombo::parse("Ctrl+x Ctrl+c").expect("valid key combo"),
+                        KeyCombo::simple(KeyCode::Char('q')),
+                    ],
+                );
+                kb.base.insert(
+                    BaseAction::Help,
                     vec![
                         KeyCombo::ctrl(KeyCode::Char('h')),
                         KeyCombo::simple(KeyCode::F(1)),

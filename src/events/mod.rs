@@ -270,6 +270,8 @@ pub fn handle_global_popups_and_palette(
             | Some(crate::popups::ActivePopup::Goals(_))
             | Some(crate::popups::ActivePopup::NoteRename(_))
             | Some(crate::popups::ActivePopup::Search(_))
+            | Some(crate::popups::ActivePopup::BaseCreate(_))
+            | Some(crate::popups::ActivePopup::BasePicker(_))
     );
     if group_a {
         let popup = app.popups.active.take().expect("value is present");
@@ -1171,6 +1173,62 @@ impl crate::popups::ActivePopup {
                     }
                     _ => {
                         app.popups.active = Some(ActivePopup::CreateFormat(popup));
+                    }
+                }
+                true
+            }
+            ActivePopup::BaseCreate(mut popup) => {
+                if crate::events::is_cancel_popup(&app.keybinds, &key, true) {
+                    // drop
+                } else if key.code == KeyCode::Enter {
+                    app.popups.active = Some(ActivePopup::BaseCreate(popup));
+                    app.confirm_create_base();
+                } else {
+                    crate::events::handle_popup_text_input(key, &mut popup.input, &app.keybinds);
+                    app.popups.active = Some(ActivePopup::BaseCreate(popup));
+                }
+                true
+            }
+            ActivePopup::BasePicker(mut popup) => {
+                if crate::events::is_cancel_popup(&app.keybinds, &key, true) {
+                    // drop
+                } else if key.code == KeyCode::Enter {
+                    if popup.selected < popup.filtered.len() {
+                        app.open_base_view(popup.filtered[popup.selected].clone());
+                    }
+                } else {
+                    match key.code {
+                        KeyCode::Up | KeyCode::Char('k') => {
+                            popup.selected = popup.selected.saturating_sub(1);
+                            app.popups.active = Some(ActivePopup::BasePicker(popup));
+                        }
+                        KeyCode::Down | KeyCode::Char('j') => {
+                            if !popup.filtered.is_empty()
+                                && popup.selected + 1 < popup.filtered.len()
+                            {
+                                popup.selected += 1;
+                            }
+                            app.popups.active = Some(ActivePopup::BasePicker(popup));
+                        }
+                        _ => {
+                            crate::events::handle_popup_text_input(
+                                key,
+                                &mut popup.input,
+                                &app.keybinds,
+                            );
+                            let query = popup.input.lines().join("").trim().to_lowercase();
+                            popup.filtered = popup
+                                .ids
+                                .iter()
+                                .filter(|id| id.to_lowercase().contains(&query))
+                                .cloned()
+                                .collect();
+                            if popup.selected >= popup.filtered.len() && !popup.filtered.is_empty()
+                            {
+                                popup.selected = popup.filtered.len() - 1;
+                            }
+                            app.popups.active = Some(ActivePopup::BasePicker(popup));
+                        }
                     }
                 }
                 true

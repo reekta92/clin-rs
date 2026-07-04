@@ -1,3 +1,4 @@
+pub mod base;
 pub mod content_tree;
 pub mod decrypt;
 pub mod encrypt;
@@ -277,6 +278,8 @@ pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyL
             source: crate::popups::ImportSource::Clipboard,
             target: crate::popups::ImportTarget::AppendCurrent,
         }),
+        Box::new(base::NewBaseAction),
+        Box::new(base::OpenBaseAction),
     ]
 });
 

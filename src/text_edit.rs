@@ -106,3 +106,15 @@ pub fn apply_text_shortcuts(
 
     false
 }
+
+pub fn set_clipboard_text(s: &str) {
+    CLIPBOARD.with(|cb_cell| {
+        let mut cb = cb_cell.borrow_mut();
+        if cb.is_none() {
+            *cb = arboard::Clipboard::new().ok();
+        }
+        if let Some(clipboard) = cb.as_mut() {
+            let _ = clipboard.set_text(s);
+        }
+    });
+}

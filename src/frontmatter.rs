@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use std::collections::BTreeMap;
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Frontmatter {
     #[serde(default)]
@@ -14,6 +16,14 @@ pub struct Frontmatter {
     pub links: Option<Vec<String>>,
     #[serde(default)]
     pub original_ext: Option<String>,
+    #[serde(default, flatten)]
+    pub extra: BTreeMap<String, serde_yaml_ng::Value>,
+}
+
+impl Frontmatter {
+    pub fn get(&self, key: &str) -> Option<&serde_yaml_ng::Value> {
+        self.extra.get(key)
+    }
 }
 
 pub fn parse(content: &str) -> (Frontmatter, &str) {
@@ -51,6 +61,7 @@ pub fn serialize(frontmatter: &Frontmatter, content: &str) -> String {
         && frontmatter.updated_at.is_none()
         && frontmatter.links.is_none()
         && frontmatter.original_ext.is_none()
+        && frontmatter.extra.is_empty()
     {
         return content.to_string();
     }
@@ -98,5 +109,22 @@ mod tests {
         assert!(serialized.starts_with("---\n"));
         assert!(serialized.contains("work"));
         assert!(serialized.ends_with("\n---\nMy note"));
+    }
+
+    #[test]
+    fn test_parse_and_serialize_extra_keys() {
+        let content = "---\ntags:\n  - work\nstatus: done\nrating: 4\n---\nBody here";
+        let (fm, remaining) = parse(content);
+        assert_eq!(fm.tags, vec!["work"]);
+        assert_eq!(fm.get("status").and_then(|v| v.as_str()), Some("done"));
+        assert_eq!(fm.get("rating").and_then(|v| v.as_u64()), Some(4));
+        assert_eq!(remaining, "Body here");
+
+        let serialized = serialize(&fm, "Body here");
+        let (fm2, remaining2) = parse(&serialized);
+        assert_eq!(fm2.tags, vec!["work"]);
+        assert_eq!(fm2.get("status").and_then(|v| v.as_str()), Some("done"));
+        assert_eq!(fm2.get("rating").and_then(|v| v.as_u64()), Some(4));
+        assert_eq!(remaining2, "Body here");
     }
 }

@@ -307,6 +307,7 @@ impl Storage {
             pinned: false,
             links: Some(extract_wikilinks(&note.content)),
             original_ext,
+            extra: std::collections::BTreeMap::default(),
         };
         let bytes = bincode::serde::encode_to_vec(&note, bincode::config::standard())
             .context("failed to encode note")?;
@@ -375,6 +376,7 @@ impl Storage {
                 pinned: false,
                 links: Some(extract_wikilinks(&note.content)),
                 original_ext: None,
+                extra: std::collections::BTreeMap::default(),
             };
             let final_content = frontmatter::serialize(&fm, &note.content);
             crate::fsutil::atomic_write(&target_path, final_content.as_bytes())
@@ -496,7 +498,7 @@ impl Storage {
                         path.extension()
                             .and_then(|e| e.to_str())
                             .is_some_and(|ext| {
-                                matches!(ext, "clin" | "md" | "txt" | "draw" | "canvas")
+                                matches!(ext, "clin" | "md" | "txt" | "draw" | "canvas" | "base")
                             })
                     };
                     if accepted
@@ -638,6 +640,21 @@ impl Storage {
         }
     }
 
+    pub fn load_frontmatter(&self, id: &str) -> Result<frontmatter::Frontmatter> {
+        let path = self.note_path(id);
+        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+
+        if ext == "clin" {
+            let file_content = fs::read(&path).context("failed to read note")?;
+            let (fm, _) = split_frontmatter_payload(&file_content);
+            Ok(fm.unwrap_or_default())
+        } else {
+            let content = fs::read_to_string(&path).context("failed to read note")?;
+            let (fm, _) = frontmatter::parse(&content);
+            Ok(fm)
+        }
+    }
+
     pub fn load_note(&self, id: &str) -> Result<Note> {
         let path = self.note_path(id);
         let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
@@ -725,6 +742,7 @@ impl Storage {
             pinned: existing_pinned,
             links: Some(links),
             original_ext: None,
+            extra: std::collections::BTreeMap::default(),
         };
 
         let target_path = self.note_path(&target_id);
@@ -919,6 +937,33 @@ impl Storage {
                 .context("failed to write note")?;
             Ok(new_pinned)
         }
+    }
+
+    pub fn update_frontmatter<F>(&self, id: &str, f: F) -> Result<()>
+    where
+        F: FnOnce(&mut frontmatter::Frontmatter),
+    {
+        let path = self.note_path(id);
+        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+
+        if ext == "clin" {
+            let bytes = fs::read(&path).context("failed to read note")?;
+            let (fm_opt, payload) = split_frontmatter_payload(&bytes);
+            let mut fm = fm_opt.unwrap_or_default();
+            f(&mut fm);
+            let fm_string = frontmatter::serialize(&fm, "");
+            let mut final_output = fm_string.into_bytes();
+            final_output.extend_from_slice(payload);
+            crate::fsutil::atomic_write(&path, &final_output).context("failed to write note")?;
+        } else {
+            let content = fs::read_to_string(&path).context("failed to read note")?;
+            let (mut fm, body) = frontmatter::parse(&content);
+            f(&mut fm);
+            let new_content = frontmatter::serialize(&fm, body);
+            crate::fsutil::atomic_write(&path, new_content.as_bytes())
+                .context("failed to write note")?;
+        }
+        Ok(())
     }
 
     pub fn new_note_id(&self) -> String {

@@ -1,3 +1,4 @@
+mod bases;
 mod folders;
 mod import_ops;
 mod loading;
@@ -226,6 +227,7 @@ pub enum ViewMode {
     Canvas,
     Backup,
     ContentTree,
+    Base,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -238,6 +240,7 @@ pub enum HelpTab {
     Backup,
     Templates,
     ContentTree,
+    Base,
     About,
 }
 
@@ -261,7 +264,8 @@ impl HelpTab {
             HelpTab::Backup => HelpTab::Canvas,
             HelpTab::Templates => HelpTab::Backup,
             HelpTab::ContentTree => HelpTab::Templates,
-            HelpTab::About => HelpTab::ContentTree,
+            HelpTab::Base => HelpTab::ContentTree,
+            HelpTab::About => HelpTab::Base,
         }
     }
 
@@ -275,7 +279,8 @@ impl HelpTab {
             HelpTab::Canvas => HelpTab::Backup,
             HelpTab::Backup => HelpTab::Templates,
             HelpTab::Templates => HelpTab::ContentTree,
-            HelpTab::ContentTree => HelpTab::About,
+            HelpTab::ContentTree => HelpTab::Base,
+            HelpTab::Base => HelpTab::About,
             HelpTab::About => HelpTab::Notes,
         }
     }
@@ -290,6 +295,7 @@ impl HelpTab {
             5 => HelpTab::Backup,
             6 => HelpTab::Templates,
             7 => HelpTab::ContentTree,
+            8 => HelpTab::Base,
             _ => HelpTab::About,
         }
     }
@@ -304,7 +310,8 @@ impl HelpTab {
             HelpTab::Backup => 5,
             HelpTab::Templates => 6,
             HelpTab::ContentTree => 7,
-            HelpTab::About => 8,
+            HelpTab::Base => 8,
+            HelpTab::About => 9,
         }
     }
 }
@@ -343,6 +350,7 @@ pub struct App {
     pub draw_state: Option<crate::draw::app::DrawAppState>,
     pub backup_state: Option<crate::backup::state::BackupState>,
     pub content_tree_state: Option<crate::content_tree::state::ContentTreeState>,
+    pub base_state: Option<crate::base_view::state::BaseState>,
     pub canvas_state: Option<crate::pinstar::state::PinstarState>,
     pub config: crate::config::ClinConfig,
     pub summary_cache: HashMap<String, NoteSummary>,
@@ -460,6 +468,7 @@ impl App {
             draw_state: None,
             backup_state: None,
             content_tree_state: None,
+            base_state: None,
             pinned_on_top: bootstrap_config.list.pinned_on_top,
             default_folder: bootstrap_config.core.default_folder.clone(),
             return_mode: None,
@@ -572,6 +581,7 @@ impl App {
             draw_state: None,
             backup_state: None,
             content_tree_state: None,
+            base_state: None,
             pinned_on_top: bootstrap_config.list.pinned_on_top,
             default_folder: bootstrap_config.core.default_folder.clone(),
             return_mode: None,

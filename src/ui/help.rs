@@ -7,11 +7,11 @@ use super::{
 use crate::app::{App, HelpTab};
 use crate::app_theme::AppThemeColors;
 use crate::keybinds::{
-    BackupAction, CanvasAction, ContentTreeAction, DrawAction, EditAction, GraphAction, HelpAction,
-    Keybinds, ListAction,
+    BackupAction, BaseAction, CanvasAction, ContentTreeAction, DrawAction, EditAction, GraphAction,
+    HelpAction, Keybinds, ListAction,
 };
 
-pub fn help_tab_names(icon_mode: crate::config::IconMode) -> [(&'static str, &'static str); 9] {
+pub fn help_tab_names(icon_mode: crate::config::IconMode) -> [(&'static str, &'static str); 10] {
     [
         (
             "Notes",
@@ -44,6 +44,10 @@ pub fn help_tab_names(icon_mode: crate::config::IconMode) -> [(&'static str, &'s
         (
             "Content Tree",
             crate::ui::get_icon("\u{f1bb}", "\u{1f333}", icon_mode),
+        ),
+        (
+            "Bases",
+            crate::ui::get_icon("\u{f1c0}", "\u{1f5c2}", icon_mode),
         ),
         (
             "About",
@@ -331,10 +335,10 @@ pub fn help_text_for_tab(
         HelpTab::Backup => backup_help_text(keybinds, theme),
         HelpTab::Templates => templates_help_text(keybinds, theme),
         HelpTab::ContentTree => content_tree_help_text(keybinds, theme),
+        HelpTab::Base => base_help_text(keybinds, theme),
         HelpTab::About => about_help_text(keybinds, theme, config),
     }
 }
-
 fn notes_help_text(keybinds: &Keybinds, theme: &AppThemeColors) -> Vec<HelpRow> {
     let list_move = format!(
         "{}/{}",
@@ -1553,4 +1557,116 @@ pub fn style_palette_name(name: &str, theme: &AppThemeColors) -> Vec<Span<'stati
             Style::default().add_modifier(Modifier::BOLD),
         )]
     }
+}
+
+fn base_help_text(keybinds: &Keybinds, theme: &AppThemeColors) -> Vec<HelpRow> {
+    let base_move = format!(
+        "{}/{}/{}/{}",
+        keybinds.base_keys_display(BaseAction::MoveUp),
+        keybinds.base_keys_display(BaseAction::MoveDown),
+        keybinds.base_keys_display(BaseAction::MoveLeft),
+        keybinds.base_keys_display(BaseAction::MoveRight)
+    );
+    let base_open = keybinds.base_keys_display(BaseAction::Open);
+    let base_edit = keybinds.base_keys_display(BaseAction::EditCell);
+    let base_cycle = keybinds.base_keys_display(BaseAction::CycleView);
+    let base_sort_asc = keybinds.base_keys_display(BaseAction::SortAsc);
+    let base_sort_desc = keybinds.base_keys_display(BaseAction::SortDesc);
+    let base_refresh = keybinds.base_keys_display(BaseAction::Refresh);
+    let base_back = keybinds.base_keys_display(BaseAction::Back);
+    let base_edit_base = keybinds.base_keys_display(BaseAction::EditBase);
+    let base_save = keybinds.base_keys_display(BaseAction::SaveBase);
+    let base_export = keybinds.base_keys_display(BaseAction::ExportCsv);
+    let base_copy = keybinds.base_keys_display(BaseAction::CopyTable);
+    let base_new_note = keybinds.base_keys_display(BaseAction::NewNote);
+
+    let mut rows = Vec::new();
+    rows.push(help_heading_row("Navigation", theme));
+    rows.push(help_empty_row());
+    rows.push(help_item_dyn(
+        "Move cell selection",
+        Some(&base_move),
+        theme,
+    ));
+    rows.push(help_item_dyn("Open selected note", Some(&base_open), theme));
+    rows.push(help_empty_row());
+    rows.push(help_heading_row("Layouts", theme));
+    rows.push(help_empty_row());
+    rows.push(help_item_dyn(
+        "Table: column grid with sort, edit, summaries",
+        None,
+        theme,
+    ));
+    rows.push(help_item_dyn(
+        "List: per-row bullet + property lines",
+        None,
+        theme,
+    ));
+    rows.push(help_item_dyn(
+        "Cards: tile grid (title + first 4 properties), click to select",
+        None,
+        theme,
+    ));
+    rows.push(help_item_dyn(
+        "Map: ASCII scatter of coordinates property, keyboard-nav only",
+        None,
+        theme,
+    ));
+    rows.push(help_item_dyn(
+        "Layout extras: Cards color banner, Map color/icon, m=List marker mode",
+        None,
+        theme,
+    ));
+    rows.push(help_empty_row());
+
+    rows.push(help_heading_row("Actions", theme));
+    rows.push(help_empty_row());
+    rows.push(help_item_dyn("Edit cell inline", Some(&base_edit), theme));
+    rows.push(help_item_dyn("Cycle view layout", Some(&base_cycle), theme));
+    rows.push(help_item_dyn(
+        "Sort column ascending",
+        Some(&base_sort_asc),
+        theme,
+    ));
+    rows.push(help_item_dyn(
+        "Sort column descending",
+        Some(&base_sort_desc),
+        theme,
+    ));
+    rows.push(help_item_dyn(
+        "Refresh / Reload",
+        Some(&base_refresh),
+        theme,
+    ));
+    rows.push(help_item_dyn("Exit view", Some(&base_back), theme));
+    rows.push(help_empty_row());
+    rows.push(help_heading_row("Editing & Export", theme));
+    rows.push(help_empty_row());
+    rows.push(help_item_dyn(
+        "Edit base raw YAML",
+        Some(&base_edit_base),
+        theme,
+    ));
+    rows.push(help_item_dyn(
+        "Save base (in editor)",
+        Some(&base_save),
+        theme,
+    ));
+    rows.push(help_item_dyn(
+        "Export view as CSV",
+        Some(&base_export),
+        theme,
+    ));
+    rows.push(help_item_dyn(
+        "Copy table to clipboard",
+        Some(&base_copy),
+        theme,
+    ));
+    rows.push(help_item_dyn(
+        "New note in base folder",
+        Some(&base_new_note),
+        theme,
+    ));
+
+    rows
 }

@@ -201,3 +201,33 @@ pub enum ContentTreeAction {
     Back,
     Help,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BaseAction {
+    MoveUp,
+    MoveDown,
+    MoveLeft,
+    MoveRight,
+    Open,
+    Back,
+    Help,
+    Refresh,
+    EditCell,
+    CommitEdit,
+    CancelEdit,
+    SortAsc,
+    SortDesc,
+    CycleView,
+    NewBase,
+    EditBase,
+    SaveBase,
+    ExportCsv,
+    CopyTable,
+    PageUp,
+    PageDown,
+    JumpToTop,
+    JumpToBottom,
+    NewNote,
+    CycleMarker,
+}

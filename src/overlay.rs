@@ -25,6 +25,8 @@ pub enum OverlayResult {
     OpenHelp(HelpTab),
     /// A note was opened from within the overlay (Graph only).
     NoteOpened(String),
+    /// Create a new note in the active base's folder, returning to base view after.
+    NewNoteFromBase,
     /// Jump to a line in a note (ContentTree only).
     JumpToLine { note_id: String, line: usize },
 }

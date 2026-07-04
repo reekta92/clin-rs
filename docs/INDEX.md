@@ -18,6 +18,7 @@ For installation, quickstart, and general project info, see the [README.md](../R
 - [CANVAS.md](CANVAS.md) — Obsidian-compatible canvas view (pinstar): `.canvas` JSON schema, node types, interaction model, key types
 - [DRAW.md](DRAW.md) — Freehand drawing canvas: `.draw` format, tool set, shape types, interaction
 - [CONTENT_TREE.md](CONTENT_TREE.md) — Content Tree view: nested outline parsing, collapsible subtrees, jump-to-section editor navigation
+- [BASES.md](BASES.md) — Obsidian Bases view: table layout, expression engine, cell editing, column summaries
 
 ## Features
 
@@ -45,6 +46,7 @@ docs/
 ├── CANVAS.md             Obsidian-compatible canvas
 ├── DRAW.md               Freehand drawing
 ├── CONTENT_TREE.md       Content tree outline
+├── BASES.md              Obsidian-compatible Bases view
 ├── ENCRYPTION.md         Zero-knowledge encryption
 ├── THEME_SYSTEM.md       Theme and color system
 ├── COMMAND_PALETTE.md    Command palette + Action trait

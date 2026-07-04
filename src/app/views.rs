@@ -90,6 +90,27 @@ impl App {
         }
     }
 
+    pub fn open_base_view(&mut self, base_id: String) {
+        let text = match self.storage.load_note(&base_id) {
+            Ok(note) => note.content,
+            Err(_) => "".to_string(),
+        };
+        let keybinds = self.keybinds.clone();
+        let sm = self.seq_matcher.clone();
+        let theme = self.app_theme.clone();
+        self.return_mode = Some(self.mode);
+        self.base_state = Some(crate::base_view::state::BaseState::new(
+            base_id,
+            &text,
+            keybinds,
+            sm,
+            theme,
+            self.storage.clone(),
+        ));
+        self.mode = ViewMode::Base;
+        self.needs_full_redraw = true;
+    }
+
     pub fn open_backup_view(&mut self) {
         let vault_path = self
             .config

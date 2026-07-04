@@ -2,6 +2,8 @@
 pub mod actions;
 pub mod app_theme;
 pub mod backup;
+pub mod base;
+pub mod base_view;
 pub mod calendar;
 pub mod cli;
 pub mod config;
@@ -1099,6 +1101,59 @@ fn run_app(
                                         false
                                     }
                                 }
+                                ViewMode::Base => {
+                                    let mut new_note_folder: Option<String> = None;
+                                    if let Some(base) = &mut app.base_state {
+                                        let result = base.overlay_handle_event(
+                                            Event::Key(key),
+                                            terminal,
+                                            &mut app.config,
+                                        )?;
+                                        match result {
+                                            crate::overlay::OverlayResult::Exit => {
+                                                app.base_state = None;
+                                                app.mode = app
+                                                    .return_mode
+                                                    .take()
+                                                    .unwrap_or(ViewMode::List);
+
+                                                app.reload_theme();
+                                                app.needs_full_redraw = true;
+                                                terminal.clear()?;
+                                            }
+                                            crate::overlay::OverlayResult::NoteOpened(note_id) => {
+                                                app.base_state = None;
+                                                app.mode = app
+                                                    .return_mode
+                                                    .take()
+                                                    .unwrap_or(ViewMode::List);
+
+                                                app.reload_theme();
+                                                app.open_note_at_line(&note_id, None);
+                                                app.needs_full_redraw = true;
+                                                terminal.clear()?;
+                                            }
+                                            crate::overlay::OverlayResult::OpenHelp(tab) => {
+                                                app.reload_theme();
+                                                app.open_help_page_with_tab(tab);
+                                            }
+                                            crate::overlay::OverlayResult::NewNoteFromBase => {
+                                                new_note_folder = Some(base.new_note_folder());
+                                            }
+                                            _ => {}
+                                        }
+                                    }
+                                    if let Some(folder) = new_note_folder {
+                                        app.return_mode = Some(ViewMode::Base);
+                                        app.start_blank_note_with_title(
+                                            folder,
+                                            "Untitled note".to_string(),
+                                        );
+                                        app.needs_full_redraw = true;
+                                        terminal.clear()?;
+                                    }
+                                    true
+                                }
                             };
                             let _ = handled;
                         }
@@ -1251,6 +1306,45 @@ fn run_app(
                                             terminal,
                                             &mut app.config,
                                         )?;
+                                    }
+                                }
+                                ViewMode::Base => {
+                                    if let Some(base) = &mut app.base_state {
+                                        let result = base.overlay_handle_event(
+                                            Event::Mouse(mouse_event),
+                                            terminal,
+                                            &mut app.config,
+                                        )?;
+                                        match result {
+                                            crate::overlay::OverlayResult::Exit => {
+                                                app.base_state = None;
+                                                app.mode = app
+                                                    .return_mode
+                                                    .take()
+                                                    .unwrap_or(ViewMode::List);
+
+                                                app.reload_theme();
+                                                app.needs_full_redraw = true;
+                                                terminal.clear()?;
+                                            }
+                                            crate::overlay::OverlayResult::NoteOpened(note_id) => {
+                                                app.base_state = None;
+                                                app.mode = app
+                                                    .return_mode
+                                                    .take()
+                                                    .unwrap_or(ViewMode::List);
+
+                                                app.reload_theme();
+                                                app.open_note_at_line(&note_id, None);
+                                                app.needs_full_redraw = true;
+                                                terminal.clear()?;
+                                            }
+                                            crate::overlay::OverlayResult::OpenHelp(tab) => {
+                                                app.reload_theme();
+                                                app.open_help_page_with_tab(tab);
+                                            }
+                                            _ => {}
+                                        }
                                     }
                                 }
                             }

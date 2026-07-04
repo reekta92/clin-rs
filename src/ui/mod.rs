@@ -155,6 +155,25 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 tree.overlay_render(frame, outer[1], &app.app_theme, &app.config, None);
             }
         }
+        ViewMode::Base => {
+            if let Some(base) = &mut app.base_state {
+                let outer = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([Constraint::Length(1), Constraint::Min(0)])
+                    .split(frame.area());
+                let title = format!("BASES — {}", base.base_id);
+                draw_view_title_bar(
+                    frame,
+                    outer[0],
+                    &title,
+                    &app.app_theme,
+                    None,
+                    Some(app.status.as_ref()),
+                    None,
+                );
+                base.overlay_render(frame, outer[1], &app.app_theme, &app.config, None);
+            }
+        }
     }
 
     // Global popups — rendered on top of the active view
@@ -915,6 +934,60 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         draw_create_format_popup(frame, popup, frame.area(), &app.app_theme);
     }
 
+    // Base Create popup
+    if let Some(crate::popups::ActivePopup::BaseCreate(popup)) = &mut app.popups.active {
+        let hint_line = popup_hint_line(&app.app_theme, "Enter create · Esc cancel");
+        let content = draw_popup_frame(
+            frame,
+            frame.area(),
+            "NEW BASE",
+            crate::ui::PopupSize::Prompt,
+            &hint_line,
+            &app.app_theme,
+        );
+        frame.render_widget(&popup.input, content);
+    }
+
+    // Base Picker popup
+    if let Some(crate::popups::ActivePopup::BasePicker(popup)) = &mut app.popups.active {
+        let hint_line = popup_hint_line(&app.app_theme, "Enter open · Esc cancel");
+        let content = draw_popup_frame(
+            frame,
+            frame.area(),
+            "OPEN BASE",
+            crate::ui::PopupSize::Medium,
+            &hint_line,
+            &app.app_theme,
+        );
+
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(1), Constraint::Min(0)])
+            .split(content);
+
+        frame.render_widget(&popup.input, chunks[0]);
+
+        let items: Vec<ListItem> = popup
+            .filtered
+            .iter()
+            .enumerate()
+            .map(|(idx, id)| {
+                let style = if idx == popup.selected {
+                    Style::default()
+                        .bg(app.app_theme.highlight_bg)
+                        .fg(app.app_theme.highlight_fg)
+                        .add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default()
+                };
+                ListItem::new(id.as_str()).style(style)
+            })
+            .collect();
+
+        let list = List::new(items).block(Block::default().borders(Borders::NONE));
+        frame.render_widget(list, chunks[1]);
+    }
+
     // Context menu (from edit view)
     if let Some(crate::popups::ActivePopup::ContextMenu(menu)) = &app.popups.active {
         let labels = [" Copy ", " Cut ", " Paste ", " Select All "];
@@ -1103,4 +1176,67 @@ pub fn line_number_gutter(
                 .padding(Padding::new(0, 0, top_padding, 0))
                 .style(theme.preview_bg_style()),
         )
+}
+
+/// Resolve a color string as Obsidian marker/cover colors: `#rrggbb` hex, a CSS name, or a
+/// markdown-style 1-6 code. Unknown → `fallback`.
+pub fn resolve_color(s: &str, fallback: Color) -> Color {
+    let s = s.trim();
+    if let Some(c) = crate::config::parse_hex_color(s) {
+        return c;
+    }
+    match s.to_lowercase().as_str() {
+        "1" | "red" => Color::Rgb(255, 82, 82),
+        "2" | "orange" => Color::Rgb(255, 152, 0),
+        "3" | "yellow" => Color::Rgb(255, 235, 59),
+        "4" | "green" => Color::Rgb(76, 175, 80),
+        "5" | "cyan" => Color::Rgb(0, 188, 212),
+        "6" | "purple" => Color::Rgb(156, 39, 176),
+        "blue" => Color::Rgb(33, 150, 243),
+        "pink" => Color::Rgb(233, 30, 99),
+        "white" => Color::Rgb(255, 255, 255),
+        "black" => Color::Rgb(0, 0, 0),
+        "gray" | "grey" => Color::Rgb(158, 158, 158),
+        _ => fallback,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::style::Color;
+
+    #[test]
+    fn test_resolve_color_hex() {
+        assert_eq!(
+            resolve_color("#ff0000", Color::Rgb(0, 0, 0)),
+            Color::Rgb(255, 0, 0)
+        );
+    }
+
+    #[test]
+    fn test_resolve_color_named() {
+        assert_eq!(
+            resolve_color("red", Color::Rgb(0, 0, 0)),
+            Color::Rgb(255, 82, 82)
+        );
+        assert_eq!(
+            resolve_color("1", Color::Rgb(0, 0, 0)),
+            Color::Rgb(255, 82, 82)
+        );
+        assert_eq!(
+            resolve_color("green", Color::Rgb(0, 0, 0)),
+            Color::Rgb(76, 175, 80)
+        );
+        assert_eq!(
+            resolve_color("4", Color::Rgb(0, 0, 0)),
+            Color::Rgb(76, 175, 80)
+        );
+    }
+
+    #[test]
+    fn test_resolve_color_unknown() {
+        let fallback = Color::Rgb(128, 128, 128);
+        assert_eq!(resolve_color("nonsense", fallback), fallback);
+    }
 }

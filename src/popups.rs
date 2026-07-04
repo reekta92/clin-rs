@@ -156,6 +156,18 @@ pub struct NoteCreatePopup {
     pub input: TextArea<'static>,
 }
 
+pub struct BaseCreatePopup {
+    pub folder: String,
+    pub input: TextArea<'static>,
+}
+
+pub struct BasePickerPopup {
+    pub ids: Vec<String>,
+    pub filtered: Vec<String>,
+    pub selected: usize,
+    pub input: TextArea<'static>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ImportSource {
     File,
@@ -266,6 +278,8 @@ pub enum ActivePopup {
     Search(SearchPopup),
     ContextMenu(ContextMenu),
     TrashView(TrashView),
+    BaseCreate(BaseCreatePopup),
+    BasePicker(BasePickerPopup),
     Goals(GoalsPopup),
 }
 

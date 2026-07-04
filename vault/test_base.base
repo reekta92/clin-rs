@@ -1,0 +1,31 @@
+filters:
+  or:
+    - expr: 'status == "active"'
+    - expr: "rating > 3"
+formulas:
+  formatted_price: '"$" + price'
+  ppu: "price / qty"
+properties:
+  status:
+    displayName: Status
+  price:
+    displayName: Price
+views:
+  - type: table
+    name: Table View
+    limit: 10
+    filters:
+      expr: "qty > 0"
+    groupBy:
+      property: status
+      direction: ASC
+    order:
+      - file.name
+      - status
+      - price
+      - qty
+      - formula.ppu
+      - formula.formatted_price
+    summaries:
+      price: Sum
+      formula.ppu: Average
