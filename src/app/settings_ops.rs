@@ -543,7 +543,6 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ratatui_textarea::TextArea;
 
     fn make_app() -> App {
         let temp_dir = tempfile::tempdir().unwrap();

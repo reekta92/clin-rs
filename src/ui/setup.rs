@@ -3,7 +3,8 @@
 
 use crate::app::App;
 use crate::app_theme::AppThemeColors;
-use crate::setup::{CLIN_ASCII, OPTION_ROWS, SetupState};
+use crate::keybinds::ListAction;
+use crate::setup::{CLIN_ASCII, OPTION_ROWS};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -11,7 +12,6 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Clear, Padding, Paragraph},
 };
-use crate::keybinds::ListAction;
 
 const COL_HEIGHT: u16 = 14;
 /// Vertical column dimensions: logo (6) + gap (1) + options (5) + gap (1) + done (1).
@@ -175,21 +175,44 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
         let block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
-            .title(Span::styled(" Preview ", Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)))
+            .title(Span::styled(
+                " Preview ",
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD),
+            ))
             .padding(Padding::new(1, 1, 1, 0));
         let lines = vec![
-            Line::from(Span::styled("# Welcome to Clin", Style::default().fg(theme.accent).add_modifier(Modifier::BOLD))),
+            Line::from(Span::styled(
+                "# Welcome to Clin",
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD),
+            )),
             Line::from(""),
-            Line::from(Span::styled("A terminal note-taking app with", Style::default().fg(theme.text))),
+            Line::from(Span::styled(
+                "A terminal note-taking app with",
+                Style::default().fg(theme.text),
+            )),
             Line::from(vec![
                 Span::styled("support for ", Style::default().fg(theme.text)),
-                Span::styled("`inline code`", Style::default().fg(theme.fg).bg(theme.bg.unwrap_or(Color::Black))),
+                Span::styled(
+                    "`inline code`",
+                    Style::default()
+                        .fg(theme.fg)
+                        .bg(theme.bg.unwrap_or(Color::Black)),
+                ),
                 Span::styled(" and more.", Style::default().fg(theme.text)),
             ]),
             Line::from(""),
             Line::from(vec![
                 Span::styled("  • ", Style::default().fg(theme.muted)),
-                Span::styled("Markdown", Style::default().fg(theme.heading).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    "Markdown",
+                    Style::default()
+                        .fg(theme.heading)
+                        .add_modifier(Modifier::BOLD),
+                ),
                 Span::styled(" rendering", Style::default().fg(theme.text)),
             ]),
             Line::from(vec![
@@ -212,10 +235,25 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
         let block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
-            .title(Span::styled(" Preview ", Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)))
+            .title(Span::styled(
+                " Preview ",
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD),
+            ))
             .padding(Padding::new(1, 1, 1, 0));
         frame.render_widget(block.clone(), area);
-        frame.render_widget(Paragraph::new(Span::styled("Hint bar style preview", Style::default().fg(theme.muted))).alignment(Alignment::Center), area.inner(ratatui::layout::Margin { horizontal: 1, vertical: 1 }));
+        frame.render_widget(
+            Paragraph::new(Span::styled(
+                "Hint bar style preview",
+                Style::default().fg(theme.muted),
+            ))
+            .alignment(Alignment::Center),
+            area.inner(ratatui::layout::Margin {
+                horizontal: 1,
+                vertical: 1,
+            }),
+        );
 
         let sample_hints = vec![
             ("j/k".to_string(), "navigate"),
@@ -237,7 +275,12 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
         let block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
-            .title(Span::styled(" Icon Preview ", Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)))
+            .title(Span::styled(
+                " Icon Preview ",
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD),
+            ))
             .padding(Padding::new(1, 1, 1, 0));
         let pairs: [((&str, &str), &'static str, Color); 5] = [
             (("\u{f07b}", "\u{1f4c1}"), "Folder", theme.folder),
@@ -246,13 +289,16 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
             (("\u{f02b}", "\u{1f3f7}"), "Tagged", theme.tag),
             (("\u{f023}", "\u{1f512}"), "Encrypted", theme.warning),
         ];
-        let lines: Vec<Line> = pairs.iter().map(|((nerd, unicode), label, color)| {
-            let icon = crate::ui::get_icon(nerd, unicode, icon_mode);
-            Line::from(vec![
-                Span::styled(format!("  {}  ", icon), Style::default().fg(*color)),
-                Span::styled(*label, Style::default().fg(theme.text)),
-            ])
-        }).collect();
+        let lines: Vec<Line> = pairs
+            .iter()
+            .map(|((nerd, unicode), label, color)| {
+                let icon = crate::ui::get_icon(nerd, unicode, icon_mode);
+                Line::from(vec![
+                    Span::styled(format!("  {}  ", icon), Style::default().fg(*color)),
+                    Span::styled(*label, Style::default().fg(theme.text)),
+                ])
+            })
+            .collect();
         frame.render_widget(Paragraph::new(lines).block(block), area);
     }
 
@@ -265,21 +311,29 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
         let block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
-            .title(Span::styled(" Keybind Preview ", Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)))
+            .title(Span::styled(
+                " Keybind Preview ",
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD),
+            ))
             .padding(Padding::new(1, 1, 1, 0));
-        let kb_items = vec![
+        let kb_items = [
             (keybinds.display_list(ListAction::MoveUp), "move up"),
             (keybinds.display_list(ListAction::MoveDown), "move down"),
             (keybinds.display_list(ListAction::Open), "open"),
             (keybinds.display_list(ListAction::Search), "search"),
             (keybinds.display_list(ListAction::CreateNote), "new note"),
         ];
-        let lines: Vec<Line> = kb_items.iter().map(|(key, label)| {
-            Line::from(vec![
-                Span::styled(format!("  {}  ", key), Style::default().fg(theme.accent)),
-                Span::styled(*label, Style::default().fg(theme.text)),
-            ])
-        }).collect();
+        let lines: Vec<Line> = kb_items
+            .iter()
+            .map(|(key, label)| {
+                Line::from(vec![
+                    Span::styled(format!("  {}  ", key), Style::default().fg(theme.accent)),
+                    Span::styled(*label, Style::default().fg(theme.text)),
+                ])
+            })
+            .collect();
         frame.render_widget(Paragraph::new(lines).block(block), area);
     }
 
