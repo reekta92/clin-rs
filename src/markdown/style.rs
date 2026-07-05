@@ -72,7 +72,7 @@ impl MarkdownTheme {
             paragraph: Style::default().fg(theme.text),
             code_inline: Style::default()
                 .fg(theme.fg)
-                .bg(theme.bg.unwrap_or(Color::Black)),
+                .bg(theme.muted),
             code_block_bg: theme.bg,
             link_text: Style::default()
                 .fg(theme.accent)

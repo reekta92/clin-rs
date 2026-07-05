@@ -1,8 +1,8 @@
 mod builtin;
 mod style;
 
-use style::MarkdownTheme;
-pub(crate) use style::RenderLine;
+pub(crate) use builtin::render_builtin;
+pub(crate) use style::{MarkdownTheme, RenderLine};
 
 use ratatui::style::{Color, Style};
 
