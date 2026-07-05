@@ -1,12 +1,12 @@
 # Theme System
 
-Technical docs for the theme and color system — 11 built-in themes, per-color overrides, background modes, and color derivation.
+Technical docs for the theme and color system — 19 built-in themes, per-color overrides, background modes, and color derivation.
 
 ---
 
 ## Overview
 
-clin has a flexible theme system with 11 built-in themes, transparent and solid background modes, and per-color overrides via config.toml. The theme affects all views: list, editor, graph, canvas, draw, and popups.
+clin has a flexible theme system with 19 built-in themes, transparent and solid background modes, and per-color overrides via config.toml. The theme affects all views: list, editor, graph, canvas, draw, and popups.
 
 ---
 
@@ -54,6 +54,14 @@ Used everywhere in rendering (app_theme field on App)
 | 9 | Everforest | `"everforest"` |
 | 10 | Kanagawa | `"kanagawa"` |
 | 11 | Solarized | `"solarized"` / `"solarized_dark"` |
+| 12 | Catppuccin Frappé | `"catppuccin_frappe"` / `"catppuccinfrappe"` |
+| 13 | Catppuccin Macchiato | `"catppuccin_macchiato"` / `"catppuccinmacchiato"` |
+| 14 | Rose Pine Moon | `"rose_pine_moon"` / `"rosepinemoon"` |
+| 15 | Gruvbox Material | `"gruvbox_material"` / `"gruvboxmaterial"` |
+| 16 | GitHub Dark | `"github_dark"` / `"githubdark"` |
+| 17 | Ayu Mirage | `"ayu_mirage"` / `"ayumirage"` |
+| 18 | Synthwave '84 | `"synthwave"` / `"synthwave84"` |
+| 19 | Material | `"material"` / `"material_theme"` |
 
 Each theme defines an 8-color palette for nodes plus chrome, title, text, foreground, grid, and background colors in `src/graf/themes.rs`.
 

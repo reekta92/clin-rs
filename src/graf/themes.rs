@@ -40,7 +40,7 @@ impl GraphThemePalette {
     }
 }
 
-const PALETTES: [GraphThemePalette; 10] = [
+const PALETTES: [GraphThemePalette; 18] = [
     GraphThemePalette {
         nodes: [
             [122, 162, 247],
@@ -142,7 +142,7 @@ const PALETTES: [GraphThemePalette; 10] = [
             [200, 200, 200],
             [163, 190, 140],
         ],
-        chrome: [67, 76, 94],
+        chrome: [108, 120, 140],
         title: [216, 222, 233],
         text: [216, 222, 233],
         fg: [236, 239, 244],
@@ -221,6 +221,158 @@ const PALETTES: [GraphThemePalette; 10] = [
         grid: [0, 74, 94],
         bg: [0, 43, 54],
     },
+    // Catppuccin Frappé (dark) — PALETTES[10]
+    GraphThemePalette {
+        nodes: [
+            [202, 158, 230], // accent (mauve)
+            [244, 184, 228], // tag (pink)
+            [140, 170, 238], // folder (blue)
+            [231, 130, 132], // heading (red)
+            [166, 209, 137], // success (green)
+            [234, 153, 156], // destructive (maroon)
+            [153, 209, 219], // spare_a (sky)
+            [239, 159, 118], // spare_b (peach)
+        ],
+        chrome: [115, 121, 148],
+        title: [198, 208, 245],
+        text: [198, 208, 245],
+        fg: [181, 191, 226],
+        grid: [65, 69, 89],
+        bg: [48, 52, 70],
+    },
+    // Catppuccin Macchiato (dark) — PALETTES[11]
+    GraphThemePalette {
+        nodes: [
+            [198, 160, 246], // accent (mauve)
+            [245, 189, 230], // tag (pink)
+            [138, 173, 244], // folder (blue)
+            [237, 135, 150], // heading (red)
+            [166, 218, 149], // success (green)
+            [238, 153, 160], // destructive (maroon)
+            [145, 215, 227], // spare_a (sky)
+            [245, 169, 127], // spare_b (peach)
+        ],
+        chrome: [110, 115, 141],
+        title: [202, 211, 245],
+        text: [202, 211, 245],
+        fg: [184, 192, 224],
+        grid: [54, 58, 79],
+        bg: [36, 39, 58],
+    },
+    // Rose Pine Moon (dark) — PALETTES[12]
+    GraphThemePalette {
+        nodes: [
+            [196, 167, 231], // accent (iris)
+            [235, 188, 186], // tag (rose)
+            [62, 143, 176],  // folder (pine)
+            [246, 193, 119], // heading (gold)
+            [156, 207, 216], // success (foam)
+            [235, 111, 146], // destructive (love)
+            [110, 106, 134], // spare_a (muted)
+            [235, 188, 186], // spare_b (rose)
+        ],
+        chrome: [96, 92, 116],
+        title: [224, 222, 244],
+        text: [224, 222, 244],
+        fg: [224, 222, 244],
+        grid: [42, 39, 63],
+        bg: [35, 33, 54],
+    },
+    // Gruvbox Material (dark) — PALETTES[13]
+    GraphThemePalette {
+        nodes: [
+            [215, 153, 33],  // accent (yellow)
+            [211, 134, 155], // tag (purple)
+            [125, 174, 163], // folder (blue)
+            [234, 157, 52],  // heading (orange)
+            [169, 182, 101], // success (green)
+            [234, 105, 98],  // destructive (red)
+            [137, 180, 130], // spare_a (aqua)
+            [240, 235, 215], // spare_b (fg0)
+        ],
+        chrome: [108, 100, 96],
+        title: [235, 219, 178],
+        text: [235, 219, 178],
+        fg: [251, 241, 199],
+        grid: [50, 48, 47],
+        bg: [40, 40, 40],
+    },
+    // GitHub Dark — PALETTES[14]
+    GraphThemePalette {
+        nodes: [
+            [88, 166, 255],  // accent (blue)
+            [188, 140, 255], // tag (purple)
+            [63, 185, 80],   // folder (green)
+            [210, 153, 34],  // heading (yellow)
+            [255, 123, 114], // success (orange)
+            [248, 81, 73],   // destructive (red)
+            [57, 210, 190],  // spare_a (teal)
+            [139, 148, 158], // spare_b (fg muted)
+        ],
+        chrome: [100, 108, 120],
+        title: [201, 209, 217],
+        text: [201, 209, 217],
+        fg: [255, 255, 255],
+        grid: [33, 38, 45],
+        bg: [13, 17, 23],
+    },
+    // Ayu Mirage (dark) — PALETTES[15]
+    GraphThemePalette {
+        nodes: [
+            [255, 204, 102], // accent
+            [255, 167, 89],  // tag (orange)
+            [115, 184, 255], // folder (blue)
+            [247, 135, 121], // heading (red)
+            [135, 201, 105], // success (green)
+            [255, 167, 89],  // destructive (orange)
+            [57, 191, 204],  // spare_a (cyan)
+            [193, 202, 214], // spare_b (fg)
+        ],
+        chrome: [100, 110, 125],
+        title: [203, 204, 198],
+        text: [203, 204, 198],
+        fg: [255, 255, 255],
+        grid: [40, 47, 62],
+        bg: [31, 36, 48],
+    },
+    // Synthwave '84 (dark) — PALETTES[16]
+    GraphThemePalette {
+        nodes: [
+            [255, 126, 219], // accent (pink)
+            [54, 249, 242],  // tag (cyan)
+            [123, 130, 149], // folder (comment)
+            [255, 123, 114], // heading (orange-red)
+            [114, 241, 184], // success (green)
+            [254, 68, 68],   // destructive (red)
+            [253, 226, 143], // spare_a (yellow)
+            [152, 154, 206], // spare_b (purple-blue)
+        ],
+        chrome: [108, 103, 131],
+        title: [248, 248, 242],
+        text: [248, 248, 242],
+        fg: [255, 255, 255],
+        grid: [38, 33, 53],
+        bg: [36, 29, 53],
+    },
+    // Material Theme (Darker) — PALETTES[17]
+    GraphThemePalette {
+        nodes: [
+            [130, 170, 255], // accent (blue)
+            [199, 146, 234], // tag (purple)
+            [255, 203, 107], // folder (yellow)
+            [247, 140, 108], // heading (orange)
+            [195, 232, 141], // success (green)
+            [240, 113, 120], // destructive (red)
+            [137, 221, 255], // spare_a (cyan)
+            [255, 139, 174], // spare_b (pink)
+        ],
+        chrome: [80, 80, 80],
+        title: [238, 255, 255],
+        text: [238, 255, 255],
+        fg: [255, 255, 255],
+        grid: [40, 40, 40],
+        bg: [28, 28, 28],
+    },
 ];
 
 fn default_theme_colors(background: Background) -> ThemeColors {
@@ -271,5 +423,13 @@ pub fn theme_colors(theme: &Theme, background: Background) -> ThemeColors {
         Theme::Everforest => PALETTES[7].build(background),
         Theme::Kanagawa => PALETTES[8].build(background),
         Theme::Solarized => PALETTES[9].build(background),
+        Theme::CatppuccinFrappe => PALETTES[10].build(background),
+        Theme::CatppuccinMacchiato => PALETTES[11].build(background),
+        Theme::RosePineMoon => PALETTES[12].build(background),
+        Theme::GruvboxMaterial => PALETTES[13].build(background),
+        Theme::GithubDark => PALETTES[14].build(background),
+        Theme::AyuMirage => PALETTES[15].build(background),
+        Theme::Synthwave => PALETTES[16].build(background),
+        Theme::Material => PALETTES[17].build(background),
     }
 }

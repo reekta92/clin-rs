@@ -23,6 +23,14 @@ pub const SETUP_THEMES: &[&str] = &[
     "everforest",
     "kanagawa",
     "solarized",
+    "catppuccin_frappe",
+    "catppuccin_macchiato",
+    "rose_pine_moon",
+    "gruvbox_material",
+    "github_dark",
+    "ayu_mirage",
+    "synthwave",
+    "material",
 ];
 pub const SETUP_PRESETS: &[&str] = &["default", "helix", "vim", "emacs"];
 pub const SETUP_ICON_MODES: &[&str] = &["nerd_font", "unicode", "none"];

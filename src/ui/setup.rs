@@ -160,9 +160,7 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
         Style::default().fg(theme.muted)
     };
     let done_style = if done_active {
-        Style::default()
-            .fg(theme.fg)
-            .add_modifier(Modifier::BOLD)
+        Style::default().fg(theme.fg).add_modifier(Modifier::BOLD)
     } else {
         Style::default().fg(theme.muted)
     };

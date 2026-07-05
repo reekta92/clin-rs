@@ -478,14 +478,22 @@ template = """
             "default".to_string(),
             "tokyo_night".to_string(),
             "catppuccin_mocha".to_string(),
+            "catppuccin_frappe".to_string(),
+            "catppuccin_macchiato".to_string(),
             "onedark".to_string(),
             "gruvbox".to_string(),
+            "gruvbox_material".to_string(),
             "dracula".to_string(),
             "nord".to_string(),
             "rose_pine".to_string(),
+            "rose_pine_moon".to_string(),
             "everforest".to_string(),
             "kanagawa".to_string(),
             "solarized".to_string(),
+            "github_dark".to_string(),
+            "ayu_mirage".to_string(),
+            "synthwave".to_string(),
+            "material".to_string(),
         ];
 
         let config = crate::config::ClinConfig::load().unwrap_or_default();
