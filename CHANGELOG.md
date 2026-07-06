@@ -9,18 +9,6 @@ All notable changes to clin are documented in this file.
 - Add modular custom theme support
 - Add 6 built-in themes
 - Use builtin markdown renderer in preview
-
-### CI
-
-- Added overwrite release
-
-### Fixed
-
-- Patch 8 bugs in wizard save, abort, display, and key handling
-## [0.9.4] - 2026-07-06
-
-### Added
-
 - Small changes for the setup wizard
 - Add live preview panel and fix logo
 - Replace multi-step wizard with single centered screen
@@ -29,6 +17,7 @@ All notable changes to clin are documented in this file.
 
 ### CI
 
+- Added overwrite release
 - Fixed fmt and clippy checks
 - Fixed deny check failing
 
@@ -38,11 +27,13 @@ All notable changes to clin are documented in this file.
 
 ### Fixed
 
+- Patch 8 bugs in wizard save, abort, display, and key handling
 - Expand ~ and $VAR in storage paths
 - Set uniform icon-row style for contiguous text runs
 
 ### Release
 
+- V0.9.4
 - V0.9.4
 - V0.9.3
 ## [0.9.2] - 2026-07-01
