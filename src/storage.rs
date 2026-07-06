@@ -33,7 +33,6 @@ pub struct SubNote {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", content = "data")]
 pub enum SubNotePayload {
     Plain(Vec<SubNote>),
     Encrypted(Vec<u8>), // bincode + chacha20poly1305 ciphertext
@@ -1190,9 +1189,9 @@ impl Storage {
 
     fn subnotes_db_path(&self) -> PathBuf {
         if self.data_dir == self.notes_dir { // Vault mode
-            self.data_dir.join(".clin").join("subnotes.json")
+            self.data_dir.join(".clin").join("subnotes.bin")
         } else { // Directory mode
-            self.notes_dir.join(".clin_subnotes.json")
+            self.notes_dir.join(".clin_subnotes.bin")
         }
     }
 
@@ -1201,10 +1200,14 @@ impl Storage {
         if !path.exists() {
             return Ok(Vec::new());
         }
-        let content = fs::read_to_string(&path)
+        let bytes = fs::read(&path)
             .context("failed to read subnotes database")?;
-        let db: HashMap<String, SubNotePayload> = serde_json::from_str(&content)
-            .unwrap_or_default();
+        let db: HashMap<String, SubNotePayload> = bincode::serde::decode_from_slice(
+            &bytes,
+            bincode::config::standard(),
+        )
+        .map(|(map, _)| map)
+        .unwrap_or_default();
         if let Some(payload) = db.get(parent_id) {
             match payload {
                 SubNotePayload::Plain(notes) => Ok(notes.clone()),
@@ -1228,9 +1231,11 @@ impl Storage {
     pub fn set_subnotes(&mut self, parent_id: &str, subnotes: &[SubNote]) -> Result<()> {
         let path = self.subnotes_db_path();
         let mut db: HashMap<String, SubNotePayload> = if path.exists() {
-            let content = fs::read_to_string(&path)
+            let bytes = fs::read(&path)
                 .context("failed to read subnotes database")?;
-            serde_json::from_str(&content).unwrap_or_default()
+            bincode::serde::decode_from_slice(&bytes, bincode::config::standard())
+                .map(|(map, _)| map)
+                .unwrap_or_default()
         } else {
             HashMap::new()
         };
@@ -1255,10 +1260,18 @@ impl Storage {
             if let Some(parent) = path.parent() {
                 fs::create_dir_all(parent).context("failed to create subnotes parent directory")?;
             }
-            let content = serde_json::to_string_pretty(&db)
+            let bytes = bincode::serde::encode_to_vec(&db, bincode::config::standard())
                 .context("failed to serialize subnotes database")?;
-            crate::fsutil::atomic_write_str(&path, &content)
-                .context("failed to write subnotes database")?;
+            #[cfg(unix)]
+            {
+                crate::fsutil::atomic_write_with_mode(&path, &bytes, 0o600)
+                    .context("failed to write subnotes database")?;
+            }
+            #[cfg(not(unix))]
+            {
+                crate::fsutil::atomic_write(&path, &bytes)
+                    .context("failed to write subnotes database")?;
+            }
         }
         Ok(())
     }
@@ -1268,10 +1281,14 @@ impl Storage {
         if !path.exists() {
             return Ok(HashSet::new());
         }
-        let content = fs::read_to_string(&path)
+        let bytes = fs::read(&path)
             .context("failed to read subnotes database")?;
-        let db: HashMap<String, SubNotePayload> = serde_json::from_str(&content)
-            .unwrap_or_default();
+        let db: HashMap<String, SubNotePayload> = bincode::serde::decode_from_slice(
+            &bytes,
+            bincode::config::standard(),
+        )
+        .map(|(map, _)| map)
+        .unwrap_or_default();
         Ok(db.keys().cloned().collect())
     }
 }
@@ -1505,12 +1522,21 @@ mod tests {
         let notes_with = storage.get_notes_with_subnotes()?;
         assert!(notes_with.contains(plain_id));
 
-        // Verify JSON contents are plaintext
+        // Verify contents are plaintext in binary format and have 0o600 permissions
         let db_path = storage.subnotes_db_path();
-        let db_contents = fs::read_to_string(&db_path)?;
-        assert!(db_contents.contains("Plain Sub 1"));
-        assert!(db_contents.contains("Plain Content 2"));
-        assert!(db_contents.contains("\"type\": \"Plain\""));
+        let db_contents = std::fs::read(&db_path)?;
+        let contains_sub1 = db_contents.windows(11).any(|w| w == b"Plain Sub 1");
+        let contains_sub2 = db_contents.windows(15).any(|w| w == b"Plain Content 2");
+        assert!(contains_sub1);
+        assert!(contains_sub2);
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let metadata = std::fs::metadata(&db_path)?;
+            let mode = metadata.permissions().mode() & 0o777;
+            assert_eq!(mode, 0o600);
+        }
 
         // 2. Encrypted note subnotes
         let encrypted_id = "test_note.clin";
@@ -1534,10 +1560,10 @@ mod tests {
         let notes_with2 = storage.get_notes_with_subnotes()?;
         assert!(notes_with2.contains(encrypted_id));
 
-        // Verify JSON contents do NOT contain plaintext secret, but instead have Encrypted
-        let db_contents_after = fs::read_to_string(&db_path)?;
-        assert!(!db_contents_after.contains("Secret Sub 1"));
-        assert!(db_contents_after.contains("\"type\": \"Encrypted\""));
+        // Verify database contents do NOT contain plaintext secret
+        let db_contents_after = std::fs::read(&db_path)?;
+        let contains_secret = db_contents_after.windows(12).any(|w| w == b"Secret Sub 1");
+        assert!(!contains_secret);
 
         // 3. Deletion / Cleanup
         storage.set_subnotes(plain_id, &[])?;
