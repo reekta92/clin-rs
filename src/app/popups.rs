@@ -838,6 +838,7 @@ template = """
             if self.config.core.keybind_preset != preset {
                 self.config.core.keybind_preset = preset;
                 self.keybinds = self.storage.load_keybinds_with_preset(preset);
+                self.seq_matcher.clear();
                 visuals_changed = true;
             }
 
@@ -865,15 +866,41 @@ template = """
     /// Finish: live-apply + persist + seed templates/welcome note + close.
     pub fn finish_setup(&mut self) {
         self.apply_setup_live();
-        let save_res = self.config.save();
-
-        // Seed starter templates (idempotent — skips if templates already exist).
-        if save_res.is_ok() {
-            let _ = self.storage.template_manager().create_examples();
-            let _ = self.refresh_notes();
+        match self.config.save() {
+            Ok(()) => {
+                let _ = self.storage.template_manager().create_examples();
+                let _ = self.refresh_notes();
+                self.set_temporary_status_static("Setup complete");
+                self.setup_state = None;
+                self.mode = self
+                    .return_mode
+                    .take()
+                    .unwrap_or(crate::app::ViewMode::List);
+            }
+            Err(e) => {
+                // Keep the wizard open so the user can retry. Selections are
+                // preserved in setup_state; in-memory config already reflects them.
+                self.set_temporary_status(&format!("Setup failed to save: {e}"));
+                if let Some(state) = self.setup_state.as_mut() {
+                    state.confirm_exit = false;
+                }
+            }
         }
+    }
 
-        self.set_temporary_status_static("Setup complete");
+    /// Discard wizard mutations: reload config + keybinds from disk, close wizard.
+    pub fn abort_setup(&mut self) {
+        if let Ok(fresh) = crate::config::ClinConfig::load() {
+            self.config = fresh;
+        }
+        // Rebuild keybinds for the (now disk-truth) preset; clear any stale
+        // in-flight sequence buffered against the old binding set.
+        self.keybinds = self
+            .storage
+            .load_keybinds_with_preset(self.config.core.keybind_preset);
+        self.seq_matcher.clear();
+        self.refresh_theme_from_config();
+        self.set_temporary_status_static("Setup cancelled");
         self.setup_state = None;
         self.mode = self
             .return_mode

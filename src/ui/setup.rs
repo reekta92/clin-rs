@@ -10,12 +10,13 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, BorderType, Borders, Clear, Padding, Paragraph},
+    widgets::{Block, BorderType, Borders, Padding, Paragraph},
 };
 
 const COL_HEIGHT: u16 = 16;
 /// Vertical column dimensions: logo (6) + gap (1) + options (5) + gap (1) + done (3).
 const COL_WIDTH: u16 = 44;
+const VALUE_WIDTH: usize = 18;
 const PREVIEW_WIDTH: u16 = 50;
 const SETUP_PREVIEW_MD: &str = r#"# Welcome to Clin
 
@@ -134,10 +135,11 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
         };
         let label = crate::setup::SetupState::row_label(row);
         let value = state.row_value(row);
-        let truncated_value = if value.len() > 11 {
-            format!("{}..", &value[..9])
+        let truncated_value = if value.chars().count() > VALUE_WIDTH {
+            let head: String = value.chars().take(VALUE_WIDTH - 2).collect();
+            format!("{head}..")
         } else {
-            format!("{:^11}", value)
+            format!("{:^VALUE_WIDTH$}", value)
         };
         lines.push(Line::from(vec![
             Span::styled(format!("{:<10} ", label), base),
@@ -419,13 +421,14 @@ fn draw_setup_confirm(frame: &mut Frame, area: Rect, theme: &AppThemeColors) {
         theme,
         &[
             ("y".to_string(), "save & exit"),
-            ("n".to_string(), "cancel"),
+            ("q".to_string(), "discard"),
+            ("n".to_string(), "back"),
         ],
     );
     let inner = crate::ui::draw_confirm_popup_frame(
         frame,
         area,
-        "Quit first-time setup?",
+        "Exit setup?",
         crate::ui::PopupSize::Confirm,
         false,
         theme,
@@ -440,9 +443,9 @@ fn draw_setup_confirm(frame: &mut Frame, area: Rect, theme: &AppThemeColors) {
             Constraint::Min(1),
         ])
         .split(inner);
-    let msg = Paragraph::new("Save your choices and exit setup?").alignment(Alignment::Center);
+    let msg = Paragraph::new("Save choices and exit, or discard?").alignment(Alignment::Center);
     frame.render_widget(msg, chunks[0]);
-    let detail = Paragraph::new("Press y to save, n to go back.")
+    let detail = Paragraph::new("y = save & exit, q = discard changes, n = back")
         .style(Style::default().fg(theme.muted))
         .alignment(Alignment::Center);
     frame.render_widget(detail, chunks[1]);
@@ -452,6 +455,4 @@ fn draw_setup_confirm(frame: &mut Frame, area: Rect, theme: &AppThemeColors) {
             .style(theme.bg_style()),
         chunks[2],
     );
-    // Ensure the popup clears underlying content.
-    let _ = Clear;
 }

@@ -6,7 +6,7 @@ use crate::keybinds::{MatchOutcome, SetupAction};
 use crossterm::event::{KeyCode, KeyEvent, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::Rect;
 
-pub fn handle_setup_keys(app: &mut App, key: KeyEvent) -> bool {
+pub fn handle_setup_keys(app: &mut App, key: KeyEvent) {
     // Esc→confirm overlay absorbs all keys until resolved.
     if let Some(state) = app.setup_state.as_mut()
         && state.confirm_exit
@@ -14,13 +14,17 @@ pub fn handle_setup_keys(app: &mut App, key: KeyEvent) -> bool {
         match key.code {
             KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
                 app.finish_setup();
-                return true;
+                return;
             }
-            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc | KeyCode::Char('q') => {
+            KeyCode::Char('q') | KeyCode::Char('Q') => {
+                app.abort_setup();
+                return;
+            }
+            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
                 state.confirm_exit = false;
-                return true;
+                return;
             }
-            _ => return true,
+            _ => return,
         }
     }
 
@@ -35,7 +39,7 @@ pub fn handle_setup_keys(app: &mut App, key: KeyEvent) -> bool {
     };
 
     let Some(act) = action else {
-        return true;
+        return;
     };
 
     match act {
@@ -49,7 +53,7 @@ pub fn handle_setup_keys(app: &mut App, key: KeyEvent) -> bool {
                 state.move_sel(true);
             }
         }
-        SetupAction::CycleNext | SetupAction::Activate => {
+        SetupAction::Activate => {
             let finish = app
                 .setup_state
                 .as_ref()
@@ -58,6 +62,14 @@ pub fn handle_setup_keys(app: &mut App, key: KeyEvent) -> bool {
             if finish {
                 app.finish_setup();
             } else if let Some(state) = app.setup_state.as_mut() {
+                state.cycle(true);
+                app.apply_setup_live();
+            }
+        }
+        SetupAction::CycleNext => {
+            if let Some(state) = app.setup_state.as_mut()
+                && !state.is_done_selected()
+            {
                 state.cycle(true);
                 app.apply_setup_live();
             }
@@ -74,7 +86,6 @@ pub fn handle_setup_keys(app: &mut App, key: KeyEvent) -> bool {
             }
         }
     }
-    true
 }
 
 pub fn handle_setup_mouse(app: &mut App, mouse: MouseEvent, terminal_area: Rect) {
