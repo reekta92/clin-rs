@@ -7,7 +7,6 @@ use std::collections::HashSet;
 pub enum ListMode {
     Normal,
     Select,
-    RenameInline,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
@@ -43,11 +42,6 @@ impl SmartFolderKind {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RenameTarget {
-    Note,
-    Folder(String),
-}
 
 #[derive(Debug, Clone)]
 pub enum VisualItem {
@@ -128,7 +122,6 @@ pub struct ListView {
     pub calendar_position: crate::config::CalendarPosition,
     pub sections: Vec<crate::config::NotesSection>,
     pub pinned_folders: HashSet<String>,
-    pub rename_target: Option<RenameTarget>,
     pub note_drag: Option<usize>,
     pub drag_hover: Option<usize>,
 }
@@ -175,7 +168,6 @@ impl Default for ListView {
             sections: crate::config::defaults::default_sections(),
             calendar_position: crate::config::CalendarPosition::default(),
             pinned_folders: HashSet::new(),
-            rename_target: None,
             note_drag: None,
             drag_hover: None,
         }

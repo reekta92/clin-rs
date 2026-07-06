@@ -8,68 +8,6 @@ use crate::list_view::ListMode;
 use super::{contains_cell, move_textarea_cursor_to_mouse};
 
 pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
-    if app.list.list_mode == ListMode::RenameInline {
-        if key.code == KeyCode::Esc {
-            app.list.list_mode = ListMode::Normal;
-            app.list.rename_target = None;
-            app.refresh_visual_list();
-            return false;
-        } else if key.code == KeyCode::Enter {
-            let text = super::get_title_text(&app.editor.title_editor).into_owned();
-            let text = text.trim().to_string();
-            if !text.is_empty()
-                && let Some(target) = &app.list.rename_target
-            {
-                match target {
-                    crate::list_view::RenameTarget::Note => {
-                        if let Some(crate::app::VisualItem::Note { summary_idx, .. }) =
-                            app.list.visual_list.get(app.list.visual_index)
-                        {
-                            let id = app.notes[*summary_idx].id.clone();
-                            match app.storage.rename_note(&id, &text) {
-                                Ok(_) => {
-                                    let _ = app.refresh_notes();
-                                    app.set_temporary_status_static("Note renamed");
-                                }
-                                Err(e) => {
-                                    app.set_temporary_status(&format!("Rename failed: {e}"));
-                                }
-                            }
-                        }
-                    }
-                    crate::list_view::RenameTarget::Folder(old_path) => {
-                        if text != *old_path {
-                            match app.storage.rename_folder(old_path, &text) {
-                                Ok(_) => {
-                                    app.list.folder_cache = None;
-                                    let _ = app.refresh_notes();
-                                    app.set_temporary_status_static("Folder renamed");
-                                }
-                                Err(e) => {
-                                    app.set_temporary_status(&format!("Rename failed: {e}"));
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            app.list.list_mode = ListMode::Normal;
-            app.list.rename_target = None;
-            app.refresh_visual_list();
-            return false;
-        } else {
-            if !crate::text_edit::apply_text_shortcuts(
-                &app.keybinds,
-                &mut app.editor.title_editor,
-                key,
-            ) {
-                app.editor
-                    .title_editor
-                    .input(ratatui_textarea::Input::from(key));
-            }
-            return false;
-        }
-    }
     if app.layout_edit {
         match key.code {
             KeyCode::Esc => {
@@ -180,7 +118,6 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                         app.list.selected_indices.clear();
                         ListMode::Normal
                     }
-                    ListMode::RenameInline => ListMode::RenameInline,
                 };
                 return false;
             }
@@ -260,52 +197,10 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
             }
             ListAction::RenameFolder | ListAction::Rename => {
                 if let Some(item) = app.list.visual_list.get(app.list.visual_index) {
-                    if app.list.notes_layout == crate::config::NotesLayout::Tree {
-                        match item {
-                            crate::app::VisualItem::Folder { path, .. } => {
-                                if path.is_empty() {
-                                    app.set_temporary_status_static("Cannot rename Vault root");
-                                    return false;
-                                }
-                                if App::is_virtual_pinned_path(path) {
-                                    app.set_temporary_status_static(
-                                        "Cannot rename virtual Pinned folder",
-                                    );
-                                    return false;
-                                }
-                                app.editor.title_editor = super::make_title_editor(
-                                    path,
-                                    app.app_theme.highlight_fg,
-                                    app.app_theme.highlight_bg,
-                                );
-                                app.list.rename_target =
-                                    Some(crate::list_view::RenameTarget::Folder(path.clone()));
-                                app.list.list_mode = ListMode::RenameInline;
-                            }
-                            crate::app::VisualItem::Note { summary_idx, .. } => {
-                                let note = &app.notes[*summary_idx];
-                                app.editor.title_editor = super::make_title_editor(
-                                    &note.title,
-                                    app.app_theme.highlight_fg,
-                                    app.app_theme.highlight_bg,
-                                );
-                                app.list.rename_target = Some(crate::list_view::RenameTarget::Note);
-                                app.list.list_mode = ListMode::RenameInline;
-                            }
-                            _ => {
-                                app.set_temporary_status_static(
-                                    "Select a note or folder to rename",
-                                );
-                            }
-                        }
-                    } else {
-                        match item {
-                            crate::app::VisualItem::Folder { .. } => app.begin_rename_folder(),
-                            crate::app::VisualItem::Note { .. } => app.begin_rename_note(),
-                            _ => {
-                                app.set_temporary_status_static("Select a note or folder to rename")
-                            }
-                        }
+                    match item {
+                        crate::app::VisualItem::Folder { .. } => app.begin_rename_folder(),
+                        crate::app::VisualItem::Note { .. } => app.begin_rename_note(),
+                        _ => app.set_temporary_status_static("Select a note or folder to rename"),
                     }
                 }
                 return false;
