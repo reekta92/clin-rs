@@ -8,7 +8,7 @@ The Backup dashboard provides a Git-based version control interface for your not
 
 The Backup view (`ViewMode::Backup`) is designed to keep your notes synchronized and versioned. It integrates directly with Git to provide a familiar workflow for managing your vault's state.
 
-**Source:** `src/backup/` — modules: `app`, `git_ops`, `input`, `render`, `state`
+**Source:** `src/backup/` — modules: `app`, `git_ops`, `input`, `render`, `state`, `worker`
 
 ---
 

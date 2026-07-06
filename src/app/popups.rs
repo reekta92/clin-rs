@@ -684,42 +684,28 @@ template = """
             match popup.focus {
                 ThemePopupFocus::ThemeList => {
                     let next_theme = popup.themes[popup.selected].clone();
-                    let mut config = crate::config::ClinConfig::load().unwrap_or_default();
-                    config.ui.theme = next_theme.clone();
-                    if let Err(e) = config.save() {
-                        self.set_temporary_status(&format!("Failed to save theme: {e}"));
-                        return;
-                    }
-                    self.reload_theme();
-
+                    self.config.ui.theme = next_theme.clone();
+                    self.refresh_theme_from_config();
                     self.set_temporary_status(&format!("Theme set to: {next_theme}"));
                     self.popups.active = Some(crate::popups::ActivePopup::Theme(popup));
                 }
                 ThemePopupFocus::GeneralBg => {
                     popup.general_is_solid = !popup.general_is_solid;
-                    let mut config = crate::config::ClinConfig::load().unwrap_or_default();
-                    config.ui.background = if popup.general_is_solid {
+                    self.config.ui.background = if popup.general_is_solid {
                         crate::config::Background::Solid
                     } else {
                         crate::config::Background::Transparent
                     };
-                    if let Err(e) = config.save() {
-                        self.set_temporary_status(&format!("Failed to save bg: {e}"));
-                    }
-                    self.reload_theme();
+                    self.refresh_theme_from_config();
                     self.popups.active = Some(crate::popups::ActivePopup::Theme(popup));
                 }
                 ThemePopupFocus::GraphBg => {
                     popup.graph_is_solid = !popup.graph_is_solid;
-                    let mut config = crate::config::ClinConfig::load().unwrap_or_default();
-                    config.graf.visual.graph_background = if popup.graph_is_solid {
+                    self.config.graf.visual.graph_background = if popup.graph_is_solid {
                         crate::config::Background::Solid
                     } else {
                         crate::config::Background::Transparent
                     };
-                    if let Err(e) = config.save() {
-                        self.set_temporary_status(&format!("Failed to save graph bg: {e}"));
-                    }
                     self.popups.active = Some(crate::popups::ActivePopup::Theme(popup));
                 }
             }
@@ -727,6 +713,9 @@ template = """
     }
 
     pub fn close_theme_popup(&mut self) {
+        if let Err(e) = self.config.save() {
+            self.set_temporary_status(&format!("Failed to save theme: {e}"));
+        }
         self.popups.active = None;
     }
 

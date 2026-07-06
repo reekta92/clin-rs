@@ -157,7 +157,7 @@ impl AppThemeColors {
         colors
     }
 
-    fn from_custom_chrome(c: &crate::config::CustomChrome, _bg: &Background) -> Self {
+    fn from_custom_chrome(c: &crate::config::CustomChrome, bg_enum: &Background) -> Self {
         Self {
             accent: crate::config::parse_hex_color(&c.accent).unwrap_or(Color::Cyan),
             heading: crate::config::parse_hex_color(&c.heading).unwrap_or(Color::Reset),
@@ -167,10 +167,13 @@ impl AppThemeColors {
             muted: crate::config::parse_hex_color(&c.muted).unwrap_or(Color::Reset),
             text: crate::config::parse_hex_color(&c.text).unwrap_or(Color::Reset),
             fg: crate::config::parse_hex_color(&c.fg).unwrap_or(Color::Reset),
-            bg: c
-                .background
-                .as_ref()
-                .and_then(|h| crate::config::parse_hex_color(h)),
+            bg: match bg_enum {
+                Background::Transparent => None,
+                Background::Solid => c
+                    .background
+                    .as_ref()
+                    .and_then(|h| crate::config::parse_hex_color(h)),
+            },
             border: crate::config::parse_hex_color(&c.border).unwrap_or(Color::Reset),
             tag: crate::config::parse_hex_color(&c.tag).unwrap_or(Color::Reset),
             folder: crate::config::parse_hex_color(&c.folder).unwrap_or(Color::Reset),
@@ -285,5 +288,29 @@ mod tests {
         let colors = AppThemeColors::from_custom_chrome(&chrome, &Background::Transparent);
         assert_eq!(colors.accent, Color::Rgb(255, 0, 0));
         assert_eq!(colors.bg, None);
+    }
+
+    #[test]
+    fn custom_chrome_bg_toggle_respected() {
+        let chrome = crate::config::CustomChrome {
+            accent: "#ff0000".to_string(),
+            heading: "#00ff00".to_string(),
+            success: "#0000ff".to_string(),
+            warning: "#ffff00".to_string(),
+            destructive: "#ff00ff".to_string(),
+            muted: "#888888".to_string(),
+            text: "#ffffff".to_string(),
+            fg: "#ffffff".to_string(),
+            border: "#444444".to_string(),
+            tag: "#ffa500".to_string(),
+            folder: "#00ffff".to_string(),
+            highlight_fg: "#000000".to_string(),
+            highlight_bg: "#ff0000".to_string(),
+            background: Some("#1a1b26".to_string()),
+        };
+        let transparent = AppThemeColors::from_custom_chrome(&chrome, &Background::Transparent);
+        assert_eq!(transparent.bg, None);
+        let solid = AppThemeColors::from_custom_chrome(&chrome, &Background::Solid);
+        assert_eq!(solid.bg, Some(Color::Rgb(0x1a, 0x1b, 0x26)));
     }
 }

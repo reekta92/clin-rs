@@ -184,16 +184,18 @@ DrawAppState::save_draw()
 
 ### View Lifecycle
 
+Draw is an `OverlayView` owned by `App` (see [ARCHITECTURE.md](ARCHITECTURE.md)):
+
 ```
-run_draw_view()
-  ├─ DrawAppState::new(storage, note_id, theme)
-  ├─ Terminal taken over
-  ├─ Loop:
-  │   ├─ draw_canvas() → frame.render_widget()
-  │   ├─ poll event → handle_event() → modify state
-  │   └─ auto-save on tool/zoom changes
-  ├─ Save on exit
-  └─ Return
+User enters Draw view
+  ├─ State created: DrawAppState::new(storage, note_id, theme)
+  ├─ Owned by App as Option<DrawAppState>
+  ├─ overlay_render() called from draw_ui() each frame
+  ├─ Events dispatched to overlay_handle_event()
+  │     └─ returns OverlayResult::{Continue, Exit}
+  └─ On Exit:
+       ├─ DrawAppState::save_draw() writes changes to disk
+       └─ state = None; mode = return_mode
 ```
 
 ---

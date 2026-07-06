@@ -18,6 +18,7 @@ pub enum ViewMode {
     Canvas,  // Obsidian-compatible node/edge canvas (pinstar)
     Backup,  // Git backup dashboard
     ContentTree,  // Header-based note outline
+    Setup,  // First-run setup wizard
 ```
 
 Transition rules:
@@ -35,6 +36,8 @@ List  ──?/F1──► Help
 Help  ──Esc───► List
 List  ──palette──► Backup   (via command palette backup.open)
 List  ──palette──► ContentTree  (via command palette content_tree.open)
+List  ──palette──► Setup   (via setup.open)
+Setup ──Esc───► List
 Backup ──Esc───► List
 ContentTree ──Esc───► List
 ```
@@ -81,7 +84,7 @@ while !should_quit:
         │
         └─ draw_ui():
              ├─ match app.mode:
-             │    ├─ List / Edit / Help → dedicated render
+             │    ├─ List / Edit / Help / Setup → dedicated render
              │    └─ Graph/Draw/Canvas/Backup/ContentTree
              │       → state.overlay_render(frame, area, theme, config, status)
              └─ popups, palette
@@ -94,6 +97,7 @@ while !should_quit:
     ├─ List  → handle_list_keys() / handle_list_mouse()
     ├─ Edit  → handle_edit_keys() / handle_edit_mouse()
     ├─ Help  → handle_help_keys() + tab switching
+    ├─ Setup → handle_setup_keys() / handle_setup_mouse()
     └─ Graph/Draw/Canvas/Backup/ContentTree
        → state.overlay_handle_event(event, terminal, config)
           returns OverlayResult::{Continue, Exit, OpenHelp, NoteOpened, JumpToLine}
@@ -219,40 +223,93 @@ List and Edit views use ratatui's `Layout` to split the terminal into panes:
 ```
 src/
 ├── main.rs           — CLI parsing, terminal setup, main event loop
-├── app.rs            — App struct, view transitions, note operations
+├── app.rs            — App struct, ViewMode enum, top-level App API
+├── app/              — App logic split by concern (see app.rs for public API)
+│   ├── views.rs      — View transitions (open_graph_view, open_backup_view, etc.)
+│   ├── notes.rs      — Note CRUD helpers
+│   ├── folders.rs    — Folder operations
+│   ├── popups.rs     — Popup creation helpers
+│   ├── tags.rs       — Tag management
+│   ├── trash.rs      — Trash operations
+│   ├── search.rs     — Search
+│   ├── status.rs     — Status bar tick
+│   ├── settings_ops.rs — Settings operations
+│   ├── import_ops.rs — Import operations
+│   └── loading.rs    — Async loading state
 ├── app_theme.rs      — AppThemeColors derivation from ThemeConfig
 ├── cli.rs            — CliCommand enum
-├── config.rs         — ClinConfig, ThemeConfig, graf config sections
 ├── constants.rs      — Hints, strings, layout constants
 ├── editor.rs         — NoteEditor (title + body TextArea), popup state
-├── events.rs         — Keyboard/mouse event handlers per view
 ├── frontmatter.rs    — YAML frontmatter parse/serialize
-├── keybinds.rs       — Keybind loading, Keybinds struct
+├── config/           — Config structs, defaults, merging, custom themes
+│   ├── mod.rs        — public re-exports, legacy-key compat shim
+│   ├── structs.rs    — ClinConfig, sub-config structs
+│   ├── types.rs      — Theme enum, enums + FromStr/Display
+│   ├── merge.rs      — TOML value merging logic
+│   ├── defaults.rs   — Default config values
+│   ├── custom_themes.rs — Drop-in TOML theme loading
+│   ├── path.rs       — Config path resolution
+│   └── de.rs         — Custom deserialization helpers
 ├── list_view.rs      — ListView state, VisualItem, PreviewContent, sort
-├── markdown.rs       — MarkdownRenderer (built-in comrak/syntect renderer)
+├── markdown/         — Markdown renderer (built-in comrak/syntect)
+│   ├── mod.rs        — MarkdownRenderer public API
+│   ├── render.rs     — comrak parse + syntect highlight rendering
+│   └── theme.rs      — Syntect theme mapping
 ├── migration.rs      — Storage migration logic
 ├── palette.rs        — CommandPalette popup widget
 ├── popups.rs         — ConfirmPopup, FolderPopup, TagPopup, etc.
-├── sanitize.rs       — Terminal output sanitization
+├── events/           — Keyboard/mouse event handlers per view
+│   ├── mod.rs        — Shared popup/palette dispatcher
+│   ├── list.rs       — handle_list_keys(), handle_list_mouse()
+│   ├── edit.rs       — handle_edit_keys(), handle_edit_mouse()
+│   ├── help.rs       — handle_help_keys()
+│   └── setup.rs      — handle_setup_keys(), handle_setup_mouse()
 ├── snapshot.rs       — Backup/restore snapshots
 ├── storage.rs        — Note CRUD, encryption, key management
+├── keybinds/         — Keybind loading, Keybinds struct, presets
+│   ├── mod.rs        — Keybinds struct, KeybindsToml
+│   ├── types.rs      — Action enums per scope (ListAction, SetupAction, etc.)
+│   ├── defaults.rs   — Default bindings + preset overrides (Helix/Vim/Emacs)
+│   ├── combo.rs      — KeyCombo helpers
+│   ├── matcher.rs    — MatchOutcome enum, sequence matcher
+│   └── api.rs        — keybind_scope! macro, resolve_* methods
 ├── templates/        — modular template system
 │   ├── mod.rs        — public re-exports
 │   ├── model.rs      — Template schema + render
 │   ├── variables.rs  — variable substitution
 │   ├── store.rs      — filename sanitization
 │   └── manager.rs    — TemplateManager orchestration
-├── ui.rs             — draw_ui(), draw_list_view(), draw_edit_view(), ...
+├── ui/               — UI rendering: draw_ui() and per-view renderers
+│   ├── mod.rs        — draw_ui(), shared layout helpers
+│   ├── list_view.rs  — draw_list_view()
+│   ├── edit_view.rs  — draw_edit_view()
+│   ├── help.rs       — draw_help_view()
+│   ├── popups.rs     — Popup/dialog drawers + format_keybind_hints
+│   ├── title_bar.rs  — Title bar, tab bar rendering
+│   └── setup.rs      — draw_setup_view(), setup_layout()
 │
 ├── actions/
-│   ├── mod.rs        — Action trait, ACTIONS registry
-│   ├── encrypt.rs    — EncryptNoteAction
+│   ├── mod.rs        — Action trait, ACTIONS registry, OpenGraphAction, OpenBackupAction,
+│   │                    CreateDrawAction, CreateCanvasAction, SwitchThemeAction,
+│   │                    OpenSetupWizardAction, SwitchKeybindPresetAction,
+│   │                    ToggleExternalEditorAction, ToggleLayoutAction
+│   ├── content_tree.rs — OpenContentTreeAction
 │   ├── decrypt.rs    — DecryptNoteAction
-│   ├── graph.rs      — OpenGraphAction
-│   ├── draw.rs       — CreateDrawAction
-│   ├── pinstar.rs    — CreateCanvasAction
+│   ├── encrypt.rs    — EncryptNoteAction
+│   ├── import.rs     — ImportAction (File/CSV/JSON/URL/Clipboard → New/Append)
 │   ├── ocr.rs        — OcrPasteAction
-│   └── theme.rs      — SwitchThemeAction
+│   └── settings.rs   — Toggle actions: LayoutEditMode, PreviewPane/Wrap, Calendar,
+│                        LineNumbers, ConfirmDelete, PinnedOnTop, ConfirmQuit,
+│                        PreviewEncryption, CycleSort, ShowHiddenFiles/AllFiles,
+│                        SetWordGoal, FoldersFirst, SetNoteGoal, CycleIconMode, HintBarStyle
+│
+├── backup/           — Git backup dashboard
+│   ├── app.rs        — BackupState, OverlayView implementation
+│   ├── git_ops.rs    — GitOps (git2 safe wrappers)
+│   ├── input.rs      — Keyboard/mouse event handling
+│   ├── render.rs     — Dashboard rendering
+│   ├── state.rs      — BackupState, BackupInputMode, BackupSection
+│   └── worker.rs     — Background worker for auto-backup
 │
 ├── graf/             — Graph view (force-directed)
 │   ├── app.rs        — GrafAppState, OverlayView implementation

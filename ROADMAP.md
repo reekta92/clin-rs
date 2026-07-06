@@ -2,7 +2,7 @@
 
 ## Completed
 
-- [X] **Theme system** — 11 built-in themes, backgrounds, per-color overrides, theme switcher
+- [X] **Theme system** — 19 built-in themes, backgrounds, per-color overrides, theme switcher
 - [X] **Trash** — move notes/folders to trash, restore, empty trash
 - [X] **OCR paste** — clipboard image → OCR text (`tesseract`) via command palette
 - [X] **Canvas view (pinstar)** — Obsidian-compatible `.canvas` files, 4 node types, edges, context menu
@@ -30,6 +30,13 @@
 - [X] **Grid view notes** — file manager like grid/icon view in notes list
 - [X] **Daily goals** — daily word count and note count goals with in-app progress bars
 - [X] **Calendar** — month calendar widget with note activity in the notes list view
+
+- [X] **Setup wizard** — first-run single-screen onboarding: theme, background, hint bar style, icon mode, keybind preset cycling with live markdown preview
+- [X] **Modular custom themes** — drop-in TOML themes in ~/.config/clin/themes/, no recompile
+- [X] **Expanded theme library** — 19 built-in themes (added Catppuccin Frappé/Macchiato, Rose Pine Moon, Gruvbox Material, GitHub Dark, Ayu Mirage, Synthwave '84, Material)
+- [X] **Show-all-files mode** — list every vault file, non-notes open in OS default app
+- [X] **Folders-first toggle** — folders_before_files config + Ctrl+H shortcut
+- [X] **Path expansion** — ~ and $VAR/${VAR} expansion in storage_path
 
 ## Planned
 

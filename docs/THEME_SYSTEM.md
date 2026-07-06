@@ -236,7 +236,17 @@ impl AppThemeColors {
 
 ## Adding a New Theme
 
-1. Add variant to `Theme` enum in `src/config.rs`:
+There are two ways to add a theme. The **preferred path requires no recompile**.
+
+### Preferred: No-Recompile Custom TOML (see "Custom Themes" above)
+
+Drop a TOML file into `~/.config/clin/themes/<name>.toml` with the schema documented in the [Custom Themes](#custom-themes) section above. The theme name is the filename (without `.toml`). Select it by setting `theme = "<name>"` in `config.toml` — no Rust code changes, no recompilation.
+
+### Fallback: Built-in Theme (recompile required)
+
+Only needed if the theme should be bundled into the binary and available without a custom TOML file.
+
+1. Add variant to `Theme` enum in `src/config/types.rs`:
    ```rust
    pub enum Theme {
        // ... existing ...
@@ -245,21 +255,15 @@ impl AppThemeColors {
    ```
 2. Add palette entry in `src/graf/themes.rs`:
    ```rust
-   const PALETTES: [ThemePalette; 11] = [
-       // ... existing ...
-       ThemePalette {
-           nodes: [[...], [...], ...],
-           chrome: [...],
-           title: [...],
-           text: [...],
-           fg: [...],
-           grid: [...],
-           bg: [...],
-       },
+   const PALETTES: [GraphThemePalette; 18] = [
+       // ... existing (currently 18 entries — see note below) ...
+       GraphThemePalette { /* my new palette */ },
    ];
    ```
-3. Add parse/display mapping in `Theme::from_str()` and `Theme::fmt()` in `config.rs`.
+3. Add parse/display mapping in `Theme::from_str()` and `Theme::fmt()` in `src/config/types.rs`.
 4. Build and test — theme is auto-detected from config and applied on startup.
+
+> **Note:** The `Theme` enum has 19 variants but `PALETTES` in `src/graf/themes.rs:43` has 18 entries (`Material` falls back to a default-generated palette at runtime). When adding a new built-in theme, increment the array size to `19` (or `N+1`) and add a matching palette entry unless the theme is deliberately reusing a fallback.
 
 ---
 

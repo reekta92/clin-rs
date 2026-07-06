@@ -54,6 +54,7 @@ pub static ACTIONS: Lazy<Vec<Box<dyn Action>>> = Lazy::new(|| {
         Box::new(CreateCanvasAction),
         Box::new(ocr::OcrPasteAction),
         Box::new(SwitchThemeAction),
+        Box::new(OpenSetupWizardAction),
         Box::new(SwitchKeybindPresetAction),
         Box::new(ToggleExternalEditorAction),
         Box::new(ToggleLayoutAction),
@@ -68,8 +69,10 @@ pub static ACTIONS: Lazy<Vec<Box<dyn Action>>> = Lazy::new(|| {
         Box::new(settings::TogglePreviewEncryptionAction),
         Box::new(settings::CycleSortAction),
         Box::new(settings::ToggleShowHiddenFilesAction),
+        Box::new(settings::ToggleShowAllFilesAction),
         Box::new(settings::ToggleTabIconsOnlyAction),
         Box::new(settings::SetWordGoalAction),
+        Box::new(settings::ToggleFoldersFirstAction),
         Box::new(settings::SetNoteGoalAction),
         Box::new(settings::CycleIconModeAction),
         Box::new(settings::CycleHintBarStyleAction),
@@ -101,17 +104,16 @@ pub static ACTION_INFOS: Lazy<Vec<ActionInfo>> = Lazy::new(|| {
 });
 ```
 
----
 
 ## Available Actions
 
-Actions are grouped by category. See the `ACTIONS` registry in `src/actions/mod.rs` for the complete list (currently ~40 actions).
+Actions are grouped by category. See the `ACTIONS` registry in `src/actions/mod.rs` for the complete list (currently 39 actions).
 
 | Category | Example Actions |
 |---|---|
 | **Notes** | Encrypt, Decrypt, Content Tree |
-| **Views** | Graph, Draw, Canvas, Backup |
-| **Settings** | Theme, Keybind Preset, Layout Toggle, External Editor Toggle, Preview Toggle, Sort Cycle, Calendar Toggle, Word/Note Goal, Icon Mode, Hint Bar Style |
+| **Views** | Graph, Draw, Canvas, Backup, Open Setup Wizard |
+| **Settings** | Theme, Keybind Preset, Layout Toggle, External Editor Toggle, Preview Toggle, Sort Cycle, Calendar Toggle, Show All Files, Folders First, Word/Note Goal, Icon Mode, Hint Bar Style |
 | **Import** | File/CSV/JSON/URL/Clipboard → New Note |
 | **Append** | File/CSV/JSON/URL/Clipboard → Append to Current, OCR Paste |
 

@@ -46,39 +46,39 @@ Runs in a dedicated background thread (`start_physics()` in `src/graf/physics.rs
 
 ### Parameters
 
-All configured in `[physics]` section of config.toml:
+Only `ideal_distance` is a user-configurable option (in `[graf.physics]`, `PhysicsConfig` in `src/config/structs.rs`):
 
 | Parameter | Default | Description |
 |---|---|---|
 | `ideal_distance` | 80.0 | Target distance between connected nodes |
-| `damping` | 0.95 | Velocity damping per step |
-| `max_iterations` | 800 | Iteration limit before settling |
-| `gravity` | 0.01 | Pull toward center (prevents drift) |
-| `cooling` | true | Gradual energy reduction over time |
-| `prevent_overlapping` | true | Repulsion between overlapping nodes |
-| `timestep` | 0.016 | Simulation step (~60fps equivalent) |
-| `thread_sleep_ms` | 16 | Sleep between iterations |
+
+All other simulation constants (`damping`, `max_iterations`, `gravity`, `cooling`, `timestep`, `thread_sleep_ms`, `prevent_overlapping`) are internal to `src/graf/physics.rs` and not exposed as config options.
 
 ### Thread Lifecycle
 
+Graph is an `OverlayView` owned by `App` (see [ARCHITECTURE.md](ARCHITECTURE.md)). The physics thread is spawned on view entry and joined on exit:
+
 ```
-run_graf_view()
-  ├─ GraphState created (Arc<RwLock<>>)
-  ├─ mpsc::channel() for kill signal
-  ├─ start_physics(state, config, kill_rx)
-  │     └─ Background loop:
+User enters Graph view
+  ├─ graf_state = Some(GrafAppState::new(...))
+  ├─ start_physics() spawns background thread
+  │     └─ Arc<AtomicBool> kill signal + channel
+  │     └─ Loop:
   │         ├─ Check kill signal
   │         ├─ simulation.update(timestep)
   │         ├─ Apply gravity, drag targets
   │         ├─ Set is_settled if energy < threshold
   │         └─ Compute bounds, update render cache
-  ├─ Main loop polls physics state for rendering
-  └─ On exit: send kill signal, join thread
-```
+  ├─ Main loop calls graf_state.overlay_render() each frame
+  │     └─ Polls shared GraphState for positions
+  └─ On overlay exit (OverlayResult::Exit):
+       ├─ Send kill signal → join physics thread
+       └─ graf_state = None; mode = return_mode
 
 ### Settling
 
 The simulation is considered "settled" when total kinetic energy drops below `0.05 × node_count`. Once settled, the physics thread sleeps until a wake signal (e.g., drag, auto-fit, config reload).
+
 
 ---
 
@@ -205,16 +205,13 @@ All graf options are stored in the main `config.toml` under sections:
 | Section | Purpose |
 |---|---|
 | `[graf]` | Global graph settings: preview_enabled |
-| `[visual]` | Colors, node/edge style, labels, minimap, legend, grid |
-| `[visual.colors]` | Per-color overrides (hex values) |
-| `[physics]` | Force simulation parameters |
-| `[interaction]` | Zoom, drag, double-click settings |
-| `[display]` | Status bar, border style/title |
-| `[filter]` | Node inclusion/exclusion rules |
-| `[legend]` | Legend position, max items |
-| `[search]` | Search popup behavior |
-| `[editor]` | External editor command for graf |
-See [CONFIG_REFERENCE.md](CONFIG_REFERENCE.md) for full option documentation.
+| `[graf.visual]` | Colors, node/edge style, labels, minimap, legend, grid |
+| `[graf.visual.colors]` | Per-color overrides (hex values) |
+| `[graf.physics]` | Force simulation parameters |
+| `[graf.interaction]` | Zoom, drag, double-click settings |
+| `[graf.filter]` | Node inclusion/exclusion rules |
+| `[graf.search]` | Search popup behavior |
+See [CONFIG_REFERENCE.md](CONFIG_REFERENCE.md) for full option documentation — that is the authoritative reference for all graf config sections and keys.
 
 ---
 

@@ -176,16 +176,18 @@ PinstarState::save() -> writes JSON to disk
 
 ### View Lifecycle
 
+Canvas is an `OverlayView` owned by `App` (see [ARCHITECTURE.md](ARCHITECTURE.md)):
+
 ```
-run_pinstar_view()
-  ├─ PinstarState::load(path)
-  ├─ Terminal taken over
-  ├─ Loop:
-  │   ├─ render_canvas() + overlays
-  │   ├─ poll event → handle_mouse() / handle_keys()
-  │   └─ state mutations
-  ├─ PinstarState::save() on exit
-  └─ Return PinstarResult
+User enters Canvas view
+  ├─ State created: PinstarState::load(path)
+  ├─ Owned by App as Option<PinstarState>
+  ├─ overlay_render() called from draw_ui() each frame
+  ├─ Events dispatched to overlay_handle_event()
+  │     └─ returns OverlayResult::{Continue, Exit}
+  └─ On Exit:
+       ├─ PinstarState::save() writes changes to disk
+       └─ state = None; mode = return_mode
 ```
 
 ---

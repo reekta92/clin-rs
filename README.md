@@ -72,7 +72,8 @@ Drop an existing Obsidian vault into `clin` and it works out of the box. Image r
 - **Content tree view** — view to see the content of a `.md` file as a tree with headers being the parents and content being the children.
 - **Git backup** — backup system using `git` as backend, initialize a repository and backup your notes automatically.
 - **Command palette** (Ctrl+P) — extensible action system with encrypt/decrypt, theme switcher, OCR paste, canvas/draw creation, graph view. See [COMMAND_PALETTE.md](docs/COMMAND_PALETTE.md).
-- **Theme system** — 11 built-in themes (default, TokyoNight, CatppuccinMocha, OneDark, Gruvbox, Dracula, Nord, RosePine, Everforest, Kanagawa, Solarized), transparent/solid backgrounds, per-color overrides. See [THEME_SYSTEM.md](docs/THEME_SYSTEM.md).
+- **Theme system** — 19 built-in themes (default, TokyoNight, CatppuccinMocha, OneDark, Gruvbox, Dracula, Nord, RosePine, Everforest, Kanagawa, Solarized, Catppuccin Frappé, Catppuccin Macchiato, Rose Pine Moon, Gruvbox Material, GitHub Dark, Ayu Mirage, Synthwave '84, Material), transparent/solid backgrounds, per-color overrides. See [THEME_SYSTEM.md](docs/THEME_SYSTEM.md).
+- **Custom themes** — drop-in TOML themes in `~/.config/clin/themes/`, no recompile needed. See [THEME_SYSTEM.md](docs/THEME_SYSTEM.md).
 
 - **Encryption** — on-demand ChaCha20-Poly1305 AEAD per-note encryption. `.clin` files with plaintext frontmatter for fast summary loading. See [ENCRYPTION.md](docs/ENCRYPTION.md).
 - **Obsidian .canvas import** — existing Obsidian canvas files are read and rendered, **except for images**.
@@ -323,13 +324,14 @@ Once inside the TUI: navigate with `j`/`k`, open notes with `Enter`, open the co
 | **Canvas** | Obsidian-compatible node/edge canvas | Text/file/link/group nodes, edges, drag/resize, context menu, raw JSON editor |
 | **Draw** | Freehand drawing and shapes | Stroke, rect/ellipse/diamond/line/arrow, text, eraser, pan/zoom |
 | **Content Tree** | Note outline and navigation | Header-based tree parsing, collapsible sections, jump-to-section |
+| **Setup Wizard** | First-run onboarding / reopenable via palette | Theme/background/hint-bar/icon-mode/keybind-preset cycling with live markdown preview |
 
 | Feature | Description |
 |---|---|
 | **Command Palette** (Ctrl+P) | Extensible action system: encrypt, decrypt, theme switch, OCR paste, create canvas/draw, open graph |
 | **Encryption** | Per-note ChaCha20-Poly1305, `.clin` files, on-demand encrypt/decrypt, zero-knowledge |
 | **Templates** | TOML-based with `{date}`, `{time}`, `{weekday}` variables |
-| **Themes** | 11 built-in themes, transparent/solid backgrounds, per-color overrides, Nerd Font/Unicode/None icon modes, powerline/classic hint bar styles |
+| **Themes** | 19 built-in themes, transparent/solid backgrounds, per-color overrides, Nerd Font/Unicode/None icon modes, powerline/classic hint bar styles |
 | **Goals** | Daily word-count and note-count goals with in-app progress bars, configurable via `[goals]` |
 | **Import** | File/CSV/JSON/URL/Clipboard → new note or append to current; PDF/DOCX/HTML via external converters |
 | **Keybinds** | Fully customizable via keybinds.toml, with Helix/Vim/Emacs presets |
@@ -466,6 +468,7 @@ Full technical documentation lives in [`docs/`](docs/INDEX.md):
 - [Content Tree](docs/CONTENT_TREE.md) — nested outline navigation
 - [Encryption](docs/ENCRYPTION.md) — ChaCha20-Poly1305 per-note encryption
 - [Theme System](docs/THEME_SYSTEM.md) — built-in themes and customization
+- [Setup](docs/SETUP.md) — first-run setup wizard
 - [Command Palette](docs/COMMAND_PALETTE.md) — extensible action system
 - [Templates](docs/TEMPLATES.md) — TOML-based note templates
 

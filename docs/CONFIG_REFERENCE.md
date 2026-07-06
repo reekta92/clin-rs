@@ -61,7 +61,7 @@ Full reference of all configuration options for clin-rs.
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `theme` | `enum` | `"default"` | Color theme. See [THEME_SYSTEM.md](THEME_SYSTEM.md) for all 11 options |
+| `theme` | `enum` | `"default"` | Color theme. See [THEME_SYSTEM.md](THEME_SYSTEM.md) for all 19 options |
 | `background` | `enum` | `"transparent"` | Background mode: `"transparent"`, `"solid"` |
 | `show_status_bar` | `bool` | `true` | Show the status bar at the bottom of the screen |
 | `tab_icons_only` | `bool` | `false` | Show only Nerd Font icons (no text) on tab bars |
