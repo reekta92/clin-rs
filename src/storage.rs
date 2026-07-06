@@ -1186,7 +1186,6 @@ impl Storage {
             .map_err(|_| anyhow!("note decryption failed"))?;
         Ok(Zeroizing::new(plaintext))
     }
-
     fn subnotes_db_path(&self) -> PathBuf {
         if self.data_dir == self.notes_dir { // Vault mode
             self.data_dir.join(".clin").join("subnotes.bin")
@@ -1200,8 +1199,9 @@ impl Storage {
         if !path.exists() {
             return Ok(Vec::new());
         }
-        let bytes = fs::read(&path)
+        let mut bytes = fs::read(&path)
             .context("failed to read subnotes database")?;
+        obfuscate(&mut bytes);
         let db: HashMap<String, SubNotePayload> = bincode::serde::decode_from_slice(
             &bytes,
             bincode::config::standard(),
@@ -1231,8 +1231,9 @@ impl Storage {
     pub fn set_subnotes(&mut self, parent_id: &str, subnotes: &[SubNote]) -> Result<()> {
         let path = self.subnotes_db_path();
         let mut db: HashMap<String, SubNotePayload> = if path.exists() {
-            let bytes = fs::read(&path)
+            let mut bytes = fs::read(&path)
                 .context("failed to read subnotes database")?;
+            obfuscate(&mut bytes);
             bincode::serde::decode_from_slice(&bytes, bincode::config::standard())
                 .map(|(map, _)| map)
                 .unwrap_or_default()
@@ -1260,8 +1261,9 @@ impl Storage {
             if let Some(parent) = path.parent() {
                 fs::create_dir_all(parent).context("failed to create subnotes parent directory")?;
             }
-            let bytes = bincode::serde::encode_to_vec(&db, bincode::config::standard())
+            let mut bytes = bincode::serde::encode_to_vec(&db, bincode::config::standard())
                 .context("failed to serialize subnotes database")?;
+            obfuscate(&mut bytes);
             #[cfg(unix)]
             {
                 crate::fsutil::atomic_write_with_mode(&path, &bytes, 0o600)
@@ -1281,8 +1283,9 @@ impl Storage {
         if !path.exists() {
             return Ok(HashSet::new());
         }
-        let bytes = fs::read(&path)
+        let mut bytes = fs::read(&path)
             .context("failed to read subnotes database")?;
+        obfuscate(&mut bytes);
         let db: HashMap<String, SubNotePayload> = bincode::serde::decode_from_slice(
             &bytes,
             bincode::config::standard(),
@@ -1290,6 +1293,13 @@ impl Storage {
         .map(|(map, _)| map)
         .unwrap_or_default();
         Ok(db.keys().cloned().collect())
+    }
+}
+
+fn obfuscate(data: &mut [u8]) {
+    let pattern = b"clin_subnotes_obfuscation_key_pattern";
+    for (i, byte) in data.iter_mut().enumerate() {
+        *byte ^= pattern[i % pattern.len()];
     }
 }
 
@@ -1522,13 +1532,19 @@ mod tests {
         let notes_with = storage.get_notes_with_subnotes()?;
         assert!(notes_with.contains(plain_id));
 
-        // Verify contents are plaintext in binary format and have 0o600 permissions
+        // Verify database contents on disk do NOT contain plaintext strings
         let db_path = storage.subnotes_db_path();
         let db_contents = std::fs::read(&db_path)?;
         let contains_sub1 = db_contents.windows(11).any(|w| w == b"Plain Sub 1");
-        let contains_sub2 = db_contents.windows(15).any(|w| w == b"Plain Content 2");
-        assert!(contains_sub1);
-        assert!(contains_sub2);
+        assert!(!contains_sub1);
+
+        // De-obfuscate and verify they do contain them
+        let mut deobfuscated = db_contents.clone();
+        obfuscate(&mut deobfuscated);
+        let contains_sub1_deob = deobfuscated.windows(11).any(|w| w == b"Plain Sub 1");
+        let contains_sub2_deob = deobfuscated.windows(15).any(|w| w == b"Plain Content 2");
+        assert!(contains_sub1_deob);
+        assert!(contains_sub2_deob);
 
         #[cfg(unix)]
         {
