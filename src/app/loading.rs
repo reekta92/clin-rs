@@ -567,14 +567,8 @@ impl App {
                 if let Ok(note) = self.storage.load_note(id) {
                     let width = self.desired_list_preview_width();
                     let mut renderer = MarkdownRenderer::new(width);
-                    renderer.render_with(
-                        &note.content,
-                        width,
-                        &self.app_theme,
-                        self.config.core.syntax_highlighting,
-                        self.config.core.preview_wrap,
-                        self.config.ui.icon_mode,
-                    );
+                    let opts = crate::markdown::MdRenderOpts::from_config(&self.config);
+                    renderer.render_with(&note.content, width, &self.app_theme, &opts);
                     self.list.preview_content = Some(PreviewContent::Markdown(Box::new(renderer)));
                     self.list.preview_content_width = Some(width);
                 } else {
@@ -664,14 +658,8 @@ impl App {
 
                 let width = self.desired_list_preview_width();
                 let mut renderer = MarkdownRenderer::new(width);
-                renderer.render_with(
-                    &md,
-                    width,
-                    &self.app_theme,
-                    self.config.core.syntax_highlighting,
-                    self.config.core.preview_wrap,
-                    self.config.ui.icon_mode,
-                );
+                let opts = crate::markdown::MdRenderOpts::from_config(&self.config);
+                renderer.render_with(&md, width, &self.app_theme, &opts);
                 self.list.preview_content = Some(PreviewContent::Markdown(Box::new(renderer)));
                 self.list.preview_content_width = Some(width);
                 self.list.preview_content_index = Some(self.list.visual_index);
@@ -691,14 +679,8 @@ impl App {
         let content = self.editor.editor.lines().join("\n");
         let width = self.desired_editor_preview_width();
         let mut renderer = MarkdownRenderer::new(width);
-        renderer.render_with(
-            &content,
-            width,
-            &self.app_theme,
-            self.config.core.syntax_highlighting,
-            self.config.core.preview_wrap,
-            self.config.ui.icon_mode,
-        );
+        let opts = crate::markdown::MdRenderOpts::from_config(&self.config);
+        renderer.render_with(&content, width, &self.app_theme, &opts);
         self.editor.md_preview_renderer = Some(renderer);
         self.editor.preview_content_width = Some(width);
     }

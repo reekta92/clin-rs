@@ -1,7 +1,7 @@
 mod builtin;
 mod style;
 
-pub(crate) use builtin::render_builtin;
+pub(crate) use builtin::{default_code_theme, render_builtin};
 pub(crate) use style::{MarkdownTheme, RenderLine};
 
 use ratatui::style::{Color, Style};
@@ -9,6 +9,48 @@ use ratatui::style::{Color, Style};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
+
+/// Bundled render flags threaded into `render_builtin`. Replaces the prior
+/// loose `(syntax_hl, wrap, icon_mode)` args.
+#[derive(Debug, Clone)]
+pub(crate) struct MdRenderOpts {
+    pub syntax_hl: bool,
+    pub wrap: bool,
+    pub icon_mode: crate::config::IconMode,
+    pub code_theme: String,
+    pub code_line_numbers: bool,
+    pub wrap_indicator: bool,
+    pub link_url_max: usize,
+}
+
+impl Default for MdRenderOpts {
+    fn default() -> Self {
+        Self {
+            syntax_hl: true,
+            wrap: true,
+            icon_mode: crate::config::IconMode::default(),
+            code_theme: crate::markdown::default_code_theme().to_string(),
+            code_line_numbers: true,
+            wrap_indicator: false,
+            link_url_max: 80,
+        }
+    }
+}
+
+impl MdRenderOpts {
+    /// Build render options from the app config (used by all three preview call sites).
+    pub(crate) fn from_config(config: &crate::config::ClinConfig) -> Self {
+        Self {
+            syntax_hl: config.core.syntax_highlighting,
+            wrap: config.core.preview_wrap,
+            icon_mode: config.ui.icon_mode,
+            code_theme: config.core.code_theme.clone(),
+            code_line_numbers: config.core.code_line_numbers,
+            wrap_indicator: config.core.preview_wrap_indicator,
+            link_url_max: config.core.link_url_max_length,
+        }
+    }
+}
 
 /// Renders markdown into a paged grid of `(char, Style)` cells.
 ///
@@ -63,9 +105,7 @@ impl MarkdownRenderer {
             content,
             cols,
             &crate::app_theme::AppThemeColors::default(),
-            true,
-            true,
-            crate::config::IconMode::default(),
+            &MdRenderOpts::default(),
         );
     }
 
@@ -74,16 +114,13 @@ impl MarkdownRenderer {
     /// - `content` — raw markdown string
     /// - `cols` — terminal column width
     /// - `theme` — app colour palette (all render styles derive from it)
-    /// - `syntax_hl` — whether to syntax-highlight fenced code blocks with syntect
-    /// - `wrap` — hard-wrap lines at `cols` when true, truncate when false
-    pub fn render_with(
+    /// - `opts` — render options bundle (`MdRenderOpts`)
+    pub(crate) fn render_with(
         &mut self,
         content: &str,
         cols: u16,
         theme: &crate::app_theme::AppThemeColors,
-        syntax_hl: bool,
-        wrap: bool,
-        icon_mode: crate::config::IconMode,
+        opts: &MdRenderOpts,
     ) {
         // Reset state
         self.pages.clear();
@@ -103,6 +140,7 @@ impl MarkdownRenderer {
 
         let md_theme = MarkdownTheme::from_app_theme(theme);
         let content_owned = content.to_owned();
+        let opts = opts.clone();
         let (tx, rx) = mpsc::channel();
 
         self.pending = Some(rx);
@@ -112,15 +150,8 @@ impl MarkdownRenderer {
                 return;
             }
 
-            let lines = builtin::render_builtin(
-                &content_owned,
-                cols,
-                &md_theme,
-                wrap,
-                syntax_hl,
-                icon_mode,
-                &cancel_token,
-            );
+            let lines =
+                builtin::render_builtin(&content_owned, cols, &md_theme, &opts, &cancel_token);
 
             let _ = tx.send(lines);
         });
@@ -215,14 +246,7 @@ mod tests {
         let content = "# Vault (Root)\n\n## Folders\n- Documents\n\n## Notes\n- hello\n";
         let mut renderer = MarkdownRenderer::new(80);
         let theme = AppThemeColors::default();
-        renderer.render_with(
-            content,
-            80,
-            &theme,
-            false,
-            true,
-            crate::config::IconMode::default(),
-        );
+        renderer.render_with(content, 80, &theme, &MdRenderOpts::default());
         // Poll until done (thread runs synchronously here due to simple input)
         let mut tries = 0;
         let mut completed = false;
@@ -249,14 +273,7 @@ mod tests {
     fn test_empty_input_returns_empty() {
         let mut renderer = MarkdownRenderer::new(80);
         let theme = AppThemeColors::default();
-        renderer.render_with(
-            "",
-            80,
-            &theme,
-            false,
-            true,
-            crate::config::IconMode::default(),
-        );
+        renderer.render_with("", 80, &theme, &MdRenderOpts::default());
         assert!(renderer.is_content_empty());
         assert!(!renderer.is_pending());
     }

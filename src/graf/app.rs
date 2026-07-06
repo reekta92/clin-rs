@@ -214,14 +214,8 @@ impl GrafAppState {
         if let Ok(note) = self.storage.load_note(&id) {
             let width = 80u16.saturating_sub(2).max(40);
             let mut renderer = MarkdownRenderer::new(width);
-            renderer.render_with(
-                &note.content,
-                width,
-                &self.app_theme,
-                config.core.syntax_highlighting,
-                config.core.preview_wrap,
-                config.ui.icon_mode,
-            );
+            let opts = crate::markdown::MdRenderOpts::from_config(config);
+            renderer.render_with(&note.content, width, &self.app_theme, &opts);
             self.preview_content = Some(PreviewContent::Markdown(Box::new(renderer)));
         } else {
             self.preview_content = None;

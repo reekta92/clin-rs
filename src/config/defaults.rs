@@ -21,6 +21,12 @@ pub fn default_edge_thickness() -> u16 {
 pub fn default_true() -> bool {
     true
 }
+pub fn default_code_theme() -> String {
+    "base16-ocean.dark".to_string()
+}
+pub fn default_link_url_max() -> usize {
+    80
+}
 pub fn default_ideal_distance() -> f64 {
     80.0
 }
