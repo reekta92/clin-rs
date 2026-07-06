@@ -2,6 +2,20 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.9.6] - 2026-07-06
+
+### CI
+
+- Fixed test checks
+
+### Fixed
+
+- Fixed custom themes not having transparent option
+## [0.9.5] - 2026-07-06
+
+### Release
+
+- V0.9.5
 ## [0.9.4] - 2026-07-06
 
 ### Added
