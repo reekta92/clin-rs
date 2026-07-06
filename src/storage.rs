@@ -10,6 +10,7 @@ use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroizing;
 
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
@@ -21,6 +22,21 @@ pub struct Note {
     pub updated_at: u64,
     #[serde(default)]
     pub tags: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SubNote {
+    pub id: String,
+    pub title: String,
+    pub content: String,
+    pub updated_at: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", content = "data")]
+pub enum SubNotePayload {
+    Plain(Vec<SubNote>),
+    Encrypted(Vec<u8>), // bincode + chacha20poly1305 ciphertext
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1171,6 +1187,93 @@ impl Storage {
             .map_err(|_| anyhow!("note decryption failed"))?;
         Ok(Zeroizing::new(plaintext))
     }
+
+    fn subnotes_db_path(&self) -> PathBuf {
+        if self.data_dir == self.notes_dir { // Vault mode
+            self.data_dir.join(".clin").join("subnotes.json")
+        } else { // Directory mode
+            self.notes_dir.join(".clin_subnotes.json")
+        }
+    }
+
+    pub fn get_subnotes(&mut self, parent_id: &str) -> Result<Vec<SubNote>> {
+        let path = self.subnotes_db_path();
+        if !path.exists() {
+            return Ok(Vec::new());
+        }
+        let content = fs::read_to_string(&path)
+            .context("failed to read subnotes database")?;
+        let db: HashMap<String, SubNotePayload> = serde_json::from_str(&content)
+            .unwrap_or_default();
+        if let Some(payload) = db.get(parent_id) {
+            match payload {
+                SubNotePayload::Plain(notes) => Ok(notes.clone()),
+                SubNotePayload::Encrypted(bytes) => {
+                    self.ensure_key()?;
+                    let plain = self.decrypt(bytes)
+                        .context("failed to decrypt subnotes payload")?;
+                    let (notes, _): (Vec<SubNote>, usize) = bincode::serde::decode_from_slice(
+                        plain.as_slice(),
+                        bincode::config::standard(),
+                    )
+                    .context("failed to decode encrypted subnotes")?;
+                    Ok(notes)
+                }
+            }
+        } else {
+            Ok(Vec::new())
+        }
+    }
+
+    pub fn set_subnotes(&mut self, parent_id: &str, subnotes: &[SubNote]) -> Result<()> {
+        let path = self.subnotes_db_path();
+        let mut db: HashMap<String, SubNotePayload> = if path.exists() {
+            let content = fs::read_to_string(&path)
+                .context("failed to read subnotes database")?;
+            serde_json::from_str(&content).unwrap_or_default()
+        } else {
+            HashMap::new()
+        };
+
+        if subnotes.is_empty() {
+            db.remove(parent_id);
+        } else if parent_id.ends_with(".clin") {
+            let bytes = bincode::serde::encode_to_vec(subnotes, bincode::config::standard())
+                .context("failed to encode subnotes")?;
+            self.ensure_key()?;
+            let encrypted = self.encrypt(&bytes)?;
+            db.insert(parent_id.to_string(), SubNotePayload::Encrypted(encrypted));
+        } else {
+            db.insert(parent_id.to_string(), SubNotePayload::Plain(subnotes.to_vec()));
+        }
+
+        if db.is_empty() {
+            if path.exists() {
+                let _ = fs::remove_file(&path);
+            }
+        } else {
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent).context("failed to create subnotes parent directory")?;
+            }
+            let content = serde_json::to_string_pretty(&db)
+                .context("failed to serialize subnotes database")?;
+            crate::fsutil::atomic_write_str(&path, &content)
+                .context("failed to write subnotes database")?;
+        }
+        Ok(())
+    }
+
+    pub fn get_notes_with_subnotes(&self) -> Result<HashSet<String>> {
+        let path = self.subnotes_db_path();
+        if !path.exists() {
+            return Ok(HashSet::new());
+        }
+        let content = fs::read_to_string(&path)
+            .context("failed to read subnotes database")?;
+        let db: HashMap<String, SubNotePayload> = serde_json::from_str(&content)
+            .unwrap_or_default();
+        Ok(db.keys().cloned().collect())
+    }
 }
 
 fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
@@ -1350,6 +1453,108 @@ mod tests {
                 );
             }
         }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_subnotes_storage() -> Result<()> {
+        let temp_dir = tempfile::tempdir()?;
+        let data_dir = temp_dir.path().join("data");
+        let config_dir = temp_dir.path().join("config");
+        let notes_dir = temp_dir.path().join("notes");
+        let templates_dir = temp_dir.path().join("templates");
+        fs::create_dir_all(&data_dir)?;
+        fs::create_dir_all(&config_dir)?;
+        fs::create_dir_all(&notes_dir)?;
+        fs::create_dir_all(&templates_dir)?;
+
+        let mut storage = Storage {
+            data_dir,
+            config_dir,
+            notes_dir,
+            templates_dir,
+            key: [2u8; 32],
+        };
+
+        // 1. Plain note subnotes
+        let plain_id = "test_note.md";
+        let subnotes = vec![
+            SubNote {
+                id: "1".to_string(),
+                title: "Plain Sub 1".to_string(),
+                content: "Plain Content 1".to_string(),
+                updated_at: 100,
+            },
+            SubNote {
+                id: "2".to_string(),
+                title: "Plain Sub 2".to_string(),
+                content: "Plain Content 2".to_string(),
+                updated_at: 200,
+            },
+        ];
+
+        storage.set_subnotes(plain_id, &subnotes)?;
+
+        // Retrieve and assert
+        let retrieved = storage.get_subnotes(plain_id)?;
+        assert_eq!(retrieved.len(), 2);
+        assert_eq!(retrieved[0].title, "Plain Sub 1");
+        assert_eq!(retrieved[1].content, "Plain Content 2");
+
+        let notes_with = storage.get_notes_with_subnotes()?;
+        assert!(notes_with.contains(plain_id));
+
+        // Verify JSON contents are plaintext
+        let db_path = storage.subnotes_db_path();
+        let db_contents = fs::read_to_string(&db_path)?;
+        assert!(db_contents.contains("Plain Sub 1"));
+        assert!(db_contents.contains("Plain Content 2"));
+        assert!(db_contents.contains("\"type\": \"Plain\""));
+
+        // 2. Encrypted note subnotes
+        let encrypted_id = "test_note.clin";
+        let enc_subnotes = vec![
+            SubNote {
+                id: "3".to_string(),
+                title: "Secret Sub 1".to_string(),
+                content: "Secret Content 1".to_string(),
+                updated_at: 300,
+            },
+        ];
+
+        storage.set_subnotes(encrypted_id, &enc_subnotes)?;
+
+        // Retrieve and assert
+        let retrieved_enc = storage.get_subnotes(encrypted_id)?;
+        assert_eq!(retrieved_enc.len(), 1);
+        assert_eq!(retrieved_enc[0].title, "Secret Sub 1");
+        assert_eq!(retrieved_enc[0].content, "Secret Content 1");
+
+        let notes_with2 = storage.get_notes_with_subnotes()?;
+        assert!(notes_with2.contains(encrypted_id));
+
+        // Verify JSON contents do NOT contain plaintext secret, but instead have Encrypted
+        let db_contents_after = fs::read_to_string(&db_path)?;
+        assert!(!db_contents_after.contains("Secret Sub 1"));
+        assert!(db_contents_after.contains("\"type\": \"Encrypted\""));
+
+        // 3. Deletion / Cleanup
+        storage.set_subnotes(plain_id, &[])?;
+        let retrieved_deleted = storage.get_subnotes(plain_id)?;
+        assert!(retrieved_deleted.is_empty());
+
+        let notes_with3 = storage.get_notes_with_subnotes()?;
+        assert!(!notes_with3.contains(plain_id));
+        assert!(notes_with3.contains(encrypted_id));
+
+        // Delete all
+        storage.set_subnotes(encrypted_id, &[])?;
+        let retrieved_deleted_enc = storage.get_subnotes(encrypted_id)?;
+        assert!(retrieved_deleted_enc.is_empty());
+
+        // The file should be completely deleted when empty
+        assert!(!db_path.exists());
 
         Ok(())
     }

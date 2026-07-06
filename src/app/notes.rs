@@ -40,6 +40,7 @@ impl App {
         self.notes = summaries;
         self.sort_notes();
         self.refresh_visual_list();
+        self.notes_with_subnotes = self.storage.get_notes_with_subnotes().unwrap_or_default();
 
         Ok(())
     }
@@ -1044,4 +1045,174 @@ impl App {
             self.set_temporary_status_static("Select a note to duplicate");
         }
     }
+    pub fn open_subnotes_popup(&mut self) {
+        let parent_id = match self.get_selected_note_id() {
+            Some(id) => id,
+            None => {
+                self.set_temporary_status_static("No note selected");
+                return;
+            }
+        };
+
+        let subnotes = self.storage.get_subnotes(&parent_id).unwrap_or_default();
+
+        let mut title_input = TextArea::default();
+        title_input.set_cursor_line_style(ratatui::style::Style::default());
+        title_input.set_style(self.app_theme.bg_style());
+
+        let mut content_input = TextArea::default();
+        content_input.set_cursor_line_style(ratatui::style::Style::default());
+        content_input.set_style(self.app_theme.bg_style());
+
+        if !subnotes.is_empty() {
+            title_input.insert_str(&subnotes[0].title);
+            content_input.insert_str(&subnotes[0].content);
+        }
+
+        let popup = crate::popups::SubnotesPopup {
+            parent_id,
+            subnotes,
+            selected: 0,
+            focus: crate::popups::SubnotesFocus::List,
+            title_input,
+            content_input,
+            is_dirty: false,
+        };
+
+        self.popups.active = Some(crate::popups::ActivePopup::Subnotes(popup));
+    }
+
+    pub fn close_subnotes_popup(&mut self) {
+        if let Some(crate::popups::ActivePopup::Subnotes(popup)) = self.popups.active.take() {
+            if popup.is_dirty {
+                if let Err(e) = self.storage.set_subnotes(&popup.parent_id, &popup.subnotes) {
+                    self.set_temporary_status(&format!("Failed to save sub-notes: {e}"));
+                }
+            }
+            self.notes_with_subnotes = self.storage.get_notes_with_subnotes().unwrap_or_default();
+        }
+        self.popups.active = None;
+    }
+    pub fn open_subnote_in_external_editor(&mut self) {
+        let mut popup = match self.popups.active.take() {
+            Some(crate::popups::ActivePopup::Subnotes(popup)) => popup,
+            other => {
+                self.popups.active = other;
+                return;
+            }
+        };
+
+        if popup.subnotes.is_empty() || popup.selected >= popup.subnotes.len() {
+            self.popups.active = Some(crate::popups::ActivePopup::Subnotes(popup));
+            return;
+        }
+
+        // Sync TUI inputs to subnote struct first
+        let cur_idx = popup.selected;
+        let new_title = popup.title_input.lines().join("");
+        let new_content_tui = popup.content_input.lines().join("\n");
+        if popup.subnotes[cur_idx].title != new_title || popup.subnotes[cur_idx].content != new_content_tui {
+            popup.subnotes[cur_idx].title = new_title;
+            popup.subnotes[cur_idx].content = new_content_tui;
+            popup.subnotes[cur_idx].updated_at = now_unix_secs();
+            popup.is_dirty = true;
+        }
+
+        let subnote = &popup.subnotes[cur_idx];
+        let temp_dir = std::env::temp_dir();
+        let temp_id = uuid::Uuid::new_v4().to_string();
+        let temp_file_path = temp_dir.join(format!("clin_subnote_{temp_id}.md"));
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            let file = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .mode(0o600)
+                .open(&temp_file_path);
+
+            match file {
+                Ok(mut f) => {
+                    use std::io::Write;
+                    if let Err(e) = f.write_all(subnote.content.as_bytes()) {
+                        self.set_temporary_status(&format!("Failed to write temp file: {e}"));
+                        self.popups.active = Some(crate::popups::ActivePopup::Subnotes(popup));
+                        return;
+                    }
+                }
+                Err(e) => {
+                    self.set_temporary_status(&format!("Failed to create temp file: {e}"));
+                    self.popups.active = Some(crate::popups::ActivePopup::Subnotes(popup));
+                    return;
+                }
+            }
+        }
+
+        #[cfg(not(unix))]
+        {
+            use std::io::Write;
+            match std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&temp_file_path)
+            {
+                Ok(mut f) => {
+                    if let Err(e) = f.write_all(subnote.content.as_bytes()) {
+                        self.set_temporary_status(&format!("Failed to write temp file: {e}"));
+                        self.popups.active = Some(crate::popups::ActivePopup::Subnotes(popup));
+                        return;
+                    }
+                }
+                Err(e) => {
+                    self.set_temporary_status(&format!("Failed to create temp file: {e}"));
+                    self.popups.active = Some(crate::popups::ActivePopup::Subnotes(popup));
+                    return;
+                }
+            }
+        }
+
+        let _secret = SecretTempFile::new(temp_file_path.clone());
+
+        let mut args: Vec<String> = Vec::new();
+        args.push(temp_file_path.to_string_lossy().into_owned());
+        let (result, editor_prog) = self.run_in_external_editor(&args);
+
+        match result {
+            Ok(status) if status.success() => {
+                if let Ok(new_content) = std::fs::read_to_string(&temp_file_path) {
+                    if new_content != subnote.content {
+                        popup.subnotes[cur_idx].content = new_content.clone();
+                        popup.subnotes[cur_idx].updated_at = now_unix_secs();
+                        popup.is_dirty = true;
+
+                        popup.content_input = TextArea::default();
+                        popup.content_input.set_cursor_line_style(ratatui::style::Style::default());
+                        popup.content_input.set_style(self.app_theme.bg_style());
+                        popup.content_input.insert_str(&new_content);
+
+                        self.set_temporary_status_static("Sub-note saved");
+                    } else {
+                        self.set_temporary_status_static("No changes made in external editor.");
+                    }
+                } else {
+                    self.set_temporary_status_static("Failed to read from temp file.");
+                }
+            }
+            Ok(status) => {
+                self.set_temporary_status(&format!(
+                    "Editor '{editor_prog}' exited with status: {status}"
+                ));
+            }
+            Err(e) => {
+                self.set_temporary_status(&format!(
+                    "Failed to launch editor '{editor_prog}': {e}"
+                ));
+            }
+        }
+
+        self.popups.active = Some(crate::popups::ActivePopup::Subnotes(popup));
+    }
+
+
 }

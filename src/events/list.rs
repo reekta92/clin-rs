@@ -241,6 +241,10 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 app.begin_manage_tags();
                 return false;
             }
+            ListAction::ManageSubnotes => {
+                app.open_subnotes_popup();
+                return false;
+            }
             ListAction::OpenCommandPalette => {
                 if let Some(crate::app::VisualItem::Note { summary_idx, .. }) =
                     app.list.visual_list.get(app.list.visual_index)

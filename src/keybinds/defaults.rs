@@ -230,6 +230,10 @@ impl Default for Keybinds {
             ListAction::RefreshNotes,
             vec![KeyCombo::ctrl(KeyCode::Char('r'))],
         );
+        list.insert(
+            ListAction::ManageSubnotes,
+            vec![KeyCombo::parse("Alt+s").expect("valid key combo")],
+        );
 
         let mut edit = HashMap::new();
         edit.insert(EditAction::Back, vec![KeyCombo::simple(KeyCode::Esc)]);
@@ -303,6 +307,10 @@ impl Default for Keybinds {
         edit.insert(
             EditAction::PreviewPageDown,
             vec![KeyCombo::simple(KeyCode::PageDown)],
+        );
+        edit.insert(
+            EditAction::ManageSubnotes,
+            vec![KeyCombo::parse("Alt+s").expect("valid key combo")],
         );
 
         let mut help = HashMap::new();

@@ -349,6 +349,7 @@ pub struct App {
     pub config: crate::config::ClinConfig,
     pub summary_cache: HashMap<String, NoteSummary>,
     pub summary_mtime: HashMap<String, u64>,
+    pub notes_with_subnotes: std::collections::HashSet<String>,
     pub initial_load_done: bool,
     pub load_cancel: Arc<AtomicBool>,
     pub loading_total: usize,
@@ -476,6 +477,7 @@ impl App {
             config: bootstrap_config,
             summary_cache: HashMap::new(),
             summary_mtime: HashMap::new(),
+            notes_with_subnotes: std::collections::HashSet::new(),
             initial_load_done: true,
             load_cancel: Arc::new(AtomicBool::new(false)),
             loading_total: 0,
@@ -601,6 +603,7 @@ impl App {
             config: bootstrap_config,
             summary_cache: HashMap::new(),
             summary_mtime: HashMap::new(),
+            notes_with_subnotes: std::collections::HashSet::new(),
             initial_load_done: false,
             load_cancel: Arc::new(AtomicBool::new(false)),
             loading_total: 0,
@@ -866,6 +869,18 @@ impl App {
                     let sanitized_title =
                         crate::sanitize::sanitize_for_terminal(summary.title.as_str()).into_owned();
                     spans.push(Span::styled(sanitized_title, text_style));
+
+                    if self.notes_with_subnotes.contains(&summary.id) {
+                        let sub_icon = match self.config.ui.icon_mode {
+                            crate::config::IconMode::Nerd => " ⧉",
+                            crate::config::IconMode::Unicode => " ⧉",
+                            crate::config::IconMode::None => " +",
+                        };
+                        spans.push(Span::styled(
+                            sub_icon.to_string(),
+                            Style::default().fg(self.app_theme.accent),
+                        ));
+                    }
 
                     for tag in &summary.tags {
                         spans.push(Span::raw(" "));

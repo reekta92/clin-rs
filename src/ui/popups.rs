@@ -904,3 +904,132 @@ pub fn fill_cursor_line_bg(frame: &mut Frame, editor: &TextArea, area: Rect, bg:
         }
     }
 }
+
+pub fn draw_subnotes_popup(
+    frame: &mut Frame,
+    popup: &crate::popups::SubnotesPopup,
+    area: Rect,
+    theme: &AppThemeColors,
+) {
+    let hint_line = popup_hint_line(
+        theme,
+        "Alt+N new · Ctrl+E ext edit · Esc back/close · Enter/l edit · d/Del delete · Tab/Enter/Shift+Tab navigate",
+    );
+    let content = draw_popup_frame(
+        frame,
+        area,
+        "SUB-NOTES",
+        PopupSize::Large,
+        &hint_line,
+        theme,
+    );
+
+    let main_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Length(34),
+            Constraint::Min(0),
+        ])
+        .split(content);
+
+    let list_style = if popup.focus == crate::popups::SubnotesFocus::List {
+        Style::default().fg(theme.heading)
+    } else {
+        Style::default().fg(theme.muted)
+    };
+
+    let list_block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(list_style)
+        .style(theme.bg_style());
+
+    if popup.subnotes.is_empty() {
+        frame.render_widget(list_block.clone(), main_chunks[0]);
+        let inner_area = list_block.inner(main_chunks[0]);
+        if inner_area.height > 0 {
+            let text_area = Rect::new(
+                inner_area.x + 2,
+                inner_area.y + (inner_area.height.saturating_sub(1) / 2),
+                inner_area.width.saturating_sub(4),
+                1,
+            );
+            let placeholder = Paragraph::new("press n to create a new note")
+                .style(Style::default().fg(theme.muted).add_modifier(Modifier::ITALIC))
+                .alignment(Alignment::Center);
+            frame.render_widget(placeholder, text_area);
+        }
+    } else {
+        let items: Vec<ListItem> = popup
+            .subnotes
+            .iter()
+            .map(|n| ListItem::new(n.title.as_str()))
+            .collect();
+
+        let list = List::new(items)
+            .block(list_block)
+            .style(theme.bg_style())
+            .highlight_style(
+                Style::default()
+                    .fg(theme.highlight_fg)
+                    .bg(theme.highlight_bg)
+                    .add_modifier(Modifier::BOLD),
+            )
+            .highlight_symbol(" ");
+
+        let mut list_state = ListState::default();
+        list_state.select(Some(popup.selected));
+        frame.render_stateful_widget(list, main_chunks[0], &mut list_state);
+    }
+
+    let edit_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(3),
+            Constraint::Min(0),
+        ])
+        .split(main_chunks[1]);
+
+    let title_border_style = if popup.focus == crate::popups::SubnotesFocus::EditTitle {
+        Style::default().fg(theme.heading)
+    } else {
+        Style::default().fg(theme.muted)
+    };
+
+    let content_border_style = if popup.focus == crate::popups::SubnotesFocus::EditContent {
+        Style::default().fg(theme.heading)
+    } else {
+        Style::default().fg(theme.muted)
+    };
+
+    let mut title_input = popup.title_input.clone();
+    title_input.set_placeholder_text("Title...");
+    title_input.set_placeholder_style(
+        Style::default()
+            .fg(theme.muted)
+            .add_modifier(Modifier::ITALIC),
+    );
+    title_input.set_style(theme.bg_style());
+    title_input.set_block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(title_border_style)
+            .style(theme.bg_style()),
+    );
+    frame.render_widget(&title_input, edit_chunks[0]);
+
+    let mut content_input = popup.content_input.clone();
+    content_input.set_placeholder_text("Content...");
+    content_input.set_placeholder_style(
+        Style::default()
+            .fg(theme.muted)
+            .add_modifier(Modifier::ITALIC),
+    );
+    content_input.set_style(theme.bg_style());
+    content_input.set_block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(content_border_style)
+            .style(theme.bg_style()),
+    );
+    frame.render_widget(&content_input, edit_chunks[1]);
+}

@@ -918,6 +918,11 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         draw_create_format_popup(frame, popup, frame.area(), &app.app_theme);
     }
 
+    // Sub-notes popup
+    if let Some(crate::popups::ActivePopup::Subnotes(popup)) = &app.popups.active {
+        draw_subnotes_popup(frame, popup, frame.area(), &app.app_theme);
+    }
+
     // Context menu (from edit view)
     if let Some(crate::popups::ActivePopup::ContextMenu(menu)) = &app.popups.active {
         let labels = [" Copy ", " Cut ", " Paste ", " Select All "];

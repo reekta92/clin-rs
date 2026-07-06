@@ -51,8 +51,9 @@ pub enum ListAction {
     CollapseAll,
     ExpandAll,
     ExpandToLevel,
-    RefreshNotes,
     ToggleFoldersFirst,
+    RefreshNotes,
+    ManageSubnotes,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -77,6 +78,7 @@ pub enum EditAction {
     TogglePreviewWrap,
     PreviewPageUp,
     PreviewPageDown,
+    ManageSubnotes,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
