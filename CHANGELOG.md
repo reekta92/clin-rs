@@ -2,7 +2,22 @@
 
 All notable changes to clin are documented in this file.
 
-## [0.9.4] - 2026-07-05
+## [0.9.4] - 2026-07-06
+
+### Added
+
+- Add modular custom theme support
+- Add 6 built-in themes
+- Use builtin markdown renderer in preview
+
+### CI
+
+- Added overwrite release
+
+### Fixed
+
+- Patch 8 bugs in wizard save, abort, display, and key handling
+## [0.9.4] - 2026-07-06
 
 ### Added
 
@@ -10,10 +25,12 @@ All notable changes to clin are documented in this file.
 - Add live preview panel and fix logo
 - Replace multi-step wizard with single centered screen
 - Overhaul setup wizard view
+- Add show-all-files toggle and external open for non-notes
 
 ### CI
 
 - Fixed fmt and clippy checks
+- Fixed deny check failing
 
 ### Documentation
 
@@ -22,22 +39,11 @@ All notable changes to clin are documented in this file.
 ### Fixed
 
 - Expand ~ and $VAR in storage paths
-## [0.9.3] - 2026-07-02
-
-### Added
-
-- Add show-all-files toggle and external open for non-notes
-
-### CI
-
-- Fixed deny check failing
-
-### Fixed
-
 - Set uniform icon-row style for contiguous text runs
 
 ### Release
 
+- V0.9.4
 - V0.9.3
 ## [0.9.2] - 2026-07-01
 
