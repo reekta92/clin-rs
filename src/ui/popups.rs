@@ -118,7 +118,14 @@ pub fn draw_theme_popup(frame: &mut Frame, popup: &ThemePopup, area: Rect, theme
     let items: Vec<ListItem> = popup
         .themes
         .iter()
-        .map(|t| ListItem::new(Line::from(Span::raw(t))))
+        .enumerate()
+        .map(|(i, t)| {
+            let mut spans = vec![Span::raw(t)];
+            if popup.is_custom.get(i).copied().unwrap_or(false) {
+                spans.push(Span::styled(" [custom]", Style::default().fg(theme.muted)));
+            }
+            ListItem::new(Line::from(spans))
+        })
         .collect();
 
     let list_style = if popup.focus == crate::app::ThemePopupFocus::ThemeList {

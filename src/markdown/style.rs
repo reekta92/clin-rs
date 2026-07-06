@@ -70,9 +70,7 @@ impl MarkdownTheme {
                 .fg(theme.muted)
                 .add_modifier(Modifier::ITALIC),
             paragraph: Style::default().fg(theme.text),
-            code_inline: Style::default()
-                .fg(theme.fg)
-                .bg(theme.bg.unwrap_or(Color::Black)),
+            code_inline: Style::default().fg(theme.fg).bg(theme.muted),
             code_block_bg: theme.bg,
             link_text: Style::default()
                 .fg(theme.accent)

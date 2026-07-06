@@ -474,22 +474,16 @@ template = """
     }
 
     pub fn begin_theme_selection(&mut self) {
-        let themes = vec![
-            "default".to_string(),
-            "tokyo_night".to_string(),
-            "catppuccin_mocha".to_string(),
-            "onedark".to_string(),
-            "gruvbox".to_string(),
-            "dracula".to_string(),
-            "nord".to_string(),
-            "rose_pine".to_string(),
-            "everforest".to_string(),
-            "kanagawa".to_string(),
-            "solarized".to_string(),
-        ];
+        let builtin_count = crate::config::Theme::BUILTIN_NAMES.len();
+        let mut themes: Vec<String> = crate::config::Theme::BUILTIN_NAMES
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        themes.extend(crate::config::custom_themes::list_custom_themes());
+        let is_custom: Vec<bool> = (0..themes.len()).map(|i| i >= builtin_count).collect();
 
         let config = crate::config::ClinConfig::load().unwrap_or_default();
-        let current = config.ui.theme.to_string();
+        let current = config.ui.theme.clone();
 
         let selected = themes.iter().position(|t| t == &current).unwrap_or(0);
         let general_is_solid = matches!(config.ui.background, crate::config::Background::Solid);
@@ -501,6 +495,7 @@ template = """
         self.popups.active = Some(crate::popups::ActivePopup::Theme(ThemePopup {
             themes,
             selected,
+            is_custom,
             focus: ThemePopupFocus::ThemeList,
             general_is_solid,
             graph_is_solid,
@@ -690,7 +685,7 @@ template = """
                 ThemePopupFocus::ThemeList => {
                     let next_theme = popup.themes[popup.selected].clone();
                     let mut config = crate::config::ClinConfig::load().unwrap_or_default();
-                    config.ui.theme = next_theme.parse().unwrap_or_default();
+                    config.ui.theme = next_theme.clone();
                     if let Err(e) = config.save() {
                         self.set_temporary_status(&format!("Failed to save theme: {e}"));
                         return;
@@ -790,5 +785,111 @@ template = """
                 }
             }
         }
+    }
+
+    pub fn apply_setup_live(&mut self) {
+        let mut visuals_changed = false;
+
+        {
+            let Some(state) = self.setup_state.as_ref() else {
+                return;
+            };
+
+            // 1. Theme
+            let name = crate::setup::SETUP_THEMES[state.theme];
+            if self.config.ui.theme != name {
+                self.config.ui.theme = name.to_string();
+                visuals_changed = true;
+            }
+
+            // 2. Background
+            let bg = if state.background_solid {
+                crate::config::Background::Solid
+            } else {
+                crate::config::Background::Transparent
+            };
+            if self.config.ui.background != bg {
+                self.config.ui.background = bg;
+                visuals_changed = true;
+            }
+
+            // 3. Keybind preset — only rebuild keybinds when the preset actually changed.
+            let preset = match state.keybind_preset {
+                1 => crate::config::KeybindPreset::Helix,
+                2 => crate::config::KeybindPreset::Vim,
+                3 => crate::config::KeybindPreset::Emacs,
+                _ => crate::config::KeybindPreset::Default,
+            };
+            if self.config.core.keybind_preset != preset {
+                self.config.core.keybind_preset = preset;
+                self.keybinds = self.storage.load_keybinds_with_preset(preset);
+                self.seq_matcher.clear();
+                visuals_changed = true;
+            }
+
+            // 4. Icon mode
+            let im = crate::setup::icon_mode_at(state.icon_mode);
+            if self.config.ui.icon_mode != im {
+                self.config.ui.icon_mode = im;
+                visuals_changed = true;
+            }
+
+            // 5. Hint bar style
+            let hbs = crate::setup::hint_style_at(state.hint_bar_style);
+            if self.config.ui.hint_bar_style != hbs {
+                self.config.ui.hint_bar_style = hbs;
+                visuals_changed = true;
+            }
+        }
+
+        // Preview theme/background immediately (in-memory; no disk write).
+        if visuals_changed {
+            self.refresh_theme_from_config();
+        }
+    }
+
+    /// Finish: live-apply + persist + seed templates/welcome note + close.
+    pub fn finish_setup(&mut self) {
+        self.apply_setup_live();
+        match self.config.save() {
+            Ok(()) => {
+                let _ = self.storage.template_manager().create_examples();
+                let _ = self.refresh_notes();
+                self.set_temporary_status_static("Setup complete");
+                self.setup_state = None;
+                self.mode = self
+                    .return_mode
+                    .take()
+                    .unwrap_or(crate::app::ViewMode::List);
+            }
+            Err(e) => {
+                // Keep the wizard open so the user can retry. Selections are
+                // preserved in setup_state; in-memory config already reflects them.
+                self.set_temporary_status(&format!("Setup failed to save: {e}"));
+                if let Some(state) = self.setup_state.as_mut() {
+                    state.confirm_exit = false;
+                }
+            }
+        }
+    }
+
+    /// Discard wizard mutations: reload config + keybinds from disk, close wizard.
+    pub fn abort_setup(&mut self) {
+        if let Ok(fresh) = crate::config::ClinConfig::load() {
+            self.config = fresh;
+        }
+        // Rebuild keybinds for the (now disk-truth) preset; clear any stale
+        // in-flight sequence buffered against the old binding set.
+        self.keybinds = self
+            .storage
+            .load_keybinds_with_preset(self.config.core.keybind_preset);
+        self.seq_matcher.clear();
+        self.refresh_theme_from_config();
+        self.set_temporary_status_static("Setup cancelled");
+        self.setup_state = None;
+        self.mode = self
+            .return_mode
+            .take()
+            .unwrap_or(crate::app::ViewMode::List);
     }
 }

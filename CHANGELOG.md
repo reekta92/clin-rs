@@ -2,6 +2,26 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.9.4] - 2026-07-05
+
+### Added
+
+- Small changes for the setup wizard
+- Add live preview panel and fix logo
+- Replace multi-step wizard with single centered screen
+- Overhaul setup wizard view
+
+### CI
+
+- Fixed fmt and clippy checks
+
+### Documentation
+
+- Fixes for config references
+
+### Fixed
+
+- Expand ~ and $VAR in storage paths
 ## [0.9.3] - 2026-07-02
 
 ### Added
@@ -15,6 +35,10 @@ All notable changes to clin are documented in this file.
 ### Fixed
 
 - Set uniform icon-row style for contiguous text runs
+
+### Release
+
+- V0.9.3
 ## [0.9.2] - 2026-07-01
 
 ### Added

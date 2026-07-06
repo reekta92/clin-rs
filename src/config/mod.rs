@@ -1,6 +1,6 @@
 use std::fs;
 use std::path::PathBuf;
-use std::sync::OnceLock;
+use std::sync::{OnceLock, RwLock};
 
 use anyhow::{Context, Result};
 use directories::ProjectDirs;
@@ -8,6 +8,7 @@ use directories::ProjectDirs;
 #[cfg(test)]
 use parking_lot::Mutex;
 
+pub mod custom_themes;
 pub mod de;
 pub mod defaults;
 pub mod merge;
@@ -15,21 +16,25 @@ pub mod path;
 pub mod structs;
 pub mod types;
 
-pub use {de::*, defaults::*, merge::*, path::*, structs::*, types::*};
+pub use {custom_themes::*, de::*, defaults::*, merge::*, path::*, structs::*, types::*};
 
 #[path = "../graf/themes.rs"]
 pub mod themes;
 
 // ── Path overrides ──────────────────────────────────────────────────────────
 
-static CONFIG_PATH_OVERRIDE: OnceLock<Option<PathBuf>> = OnceLock::new();
+static CONFIG_PATH_OVERRIDE: RwLock<Option<PathBuf>> = RwLock::new(None);
 
 #[cfg(test)]
 pub(crate) static CONFIG_TEST_MUTEX: Mutex<()> = Mutex::new(());
 
-/// Set once at startup from the parsed `--config` value. Panics-free: later calls are no-ops.
+/// Set (or reset) the config path override. Normally called once at startup
+/// from the parsed `--config` value. Tests may call it multiple times under
+/// [`CONFIG_TEST_MUTEX`].
 pub fn set_config_path_override(path: PathBuf) {
-    let _ = CONFIG_PATH_OVERRIDE.set(Some(path));
+    *CONFIG_PATH_OVERRIDE
+        .write()
+        .expect("config path lock poisoned") = Some(path);
 }
 
 static STORAGE_PATH_OVERRIDE: OnceLock<Option<PathBuf>> = OnceLock::new();
@@ -62,7 +67,11 @@ impl ClinConfig {
     }
 
     pub fn config_path() -> Result<PathBuf> {
-        if let Some(p) = CONFIG_PATH_OVERRIDE.get().and_then(|opt| opt.as_ref()) {
+        if let Some(p) = CONFIG_PATH_OVERRIDE
+            .read()
+            .expect("config path lock poisoned")
+            .as_ref()
+        {
             return Ok(p.clone());
         }
         let proj_dirs = ProjectDirs::from("com", "clin", "clin")
@@ -369,8 +378,15 @@ impl ClinConfig {
     }
 
     pub fn theme_colors(&self) -> ThemeColors {
-        let mut colors =
-            themes::theme_colors(&self.ui.theme, self.graf.visual.graph_background.clone());
+        let resolved = custom_themes::resolve_theme(&self.ui.theme);
+        let mut colors = match resolved {
+            custom_themes::ResolvedTheme::Custom(file) => {
+                themes::custom_theme_colors(&file.graph, self.graf.visual.graph_background.clone())
+            }
+            custom_themes::ResolvedTheme::Builtin(t) => {
+                themes::theme_colors(&t, self.graf.visual.graph_background.clone())
+            }
+        };
 
         if let Some(ref c) = self.graf.visual.colors.node_color {
             colors.node_colors = vec![*c];
@@ -740,7 +756,6 @@ show_status_bar = false
                 root.insert("ui".to_string(), toml::Value::Table(ui_table));
             }
         }
-
         let migrated_toml = toml::to_string(&value).unwrap();
         let config: ClinConfig = toml::from_str(&migrated_toml).unwrap();
         assert_eq!(config.list.default_view, NotesLayout::Tree);
@@ -748,8 +763,7 @@ show_status_bar = false
         assert_eq!(config.editor.external_command, Some("nvim".to_string()));
         assert_eq!(config.list.preview_position, PreviewPosition::Left);
         assert!(!config.core.mouse_enabled);
-        assert!(config.core.confirm_on_quit);
-        assert_eq!(config.ui.theme, Theme::TokyoNight);
+        assert_eq!(config.ui.theme, "tokyo_night");
         assert!(!config.ui.show_status_bar);
     }
 

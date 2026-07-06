@@ -1,8 +1,8 @@
 mod builtin;
 mod style;
 
-use style::MarkdownTheme;
-pub(crate) use style::RenderLine;
+pub(crate) use builtin::render_builtin;
+pub(crate) use style::{MarkdownTheme, RenderLine};
 
 use ratatui::style::{Color, Style};
 
@@ -25,6 +25,16 @@ pub struct MarkdownRenderer {
     current_page: usize,
     total_pages: usize,
     content_empty: bool,
+}
+
+impl std::fmt::Debug for MarkdownRenderer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MarkdownRenderer")
+            .field("current_page", &self.current_page)
+            .field("total_pages", &self.total_pages)
+            .field("content_empty", &self.content_empty)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Drop for MarkdownRenderer {

@@ -1,6 +1,6 @@
 use super::{
     BackupAction, CanvasAction, ContentTreeAction, DrawAction, EditAction, GraphAction, HelpAction,
-    KeyCombo, Keybinds, ListAction,
+    KeyCombo, Keybinds, ListAction, SetupAction,
 };
 use crate::config::KeybindPreset;
 use crossterm::event::KeyCode;
@@ -836,6 +836,42 @@ impl Default for Keybinds {
             ],
         );
 
+        let mut setup = HashMap::new();
+        setup.insert(
+            SetupAction::Up,
+            vec![
+                KeyCombo::simple(KeyCode::Up),
+                KeyCombo::simple(KeyCode::Char('k')),
+            ],
+        );
+        setup.insert(
+            SetupAction::Down,
+            vec![
+                KeyCombo::simple(KeyCode::Down),
+                KeyCombo::simple(KeyCode::Char('j')),
+            ],
+        );
+        setup.insert(
+            SetupAction::CycleNext,
+            vec![
+                KeyCombo::simple(KeyCode::Right),
+                KeyCombo::simple(KeyCode::Char('l')),
+                KeyCombo::simple(KeyCode::Char(' ')),
+            ],
+        );
+        setup.insert(
+            SetupAction::CyclePrev,
+            vec![
+                KeyCombo::simple(KeyCode::Left),
+                KeyCombo::simple(KeyCode::Char('h')),
+            ],
+        );
+        setup.insert(
+            SetupAction::Activate,
+            vec![KeyCombo::simple(KeyCode::Enter)],
+        );
+        setup.insert(SetupAction::Finish, vec![KeyCombo::simple(KeyCode::Esc)]);
+
         Self {
             list,
             edit,
@@ -845,6 +881,7 @@ impl Default for Keybinds {
             canvas,
             backup,
             content_tree,
+            setup,
         }
     }
 }
@@ -861,6 +898,7 @@ impl KeybindPreset {
             || Self::has_multi_seq(&kb.canvas)
             || Self::has_multi_seq(&kb.backup)
             || Self::has_multi_seq(&kb.content_tree)
+            || Self::has_multi_seq(&kb.setup)
     }
 
     fn has_multi_seq<A>(map: &std::collections::HashMap<A, Vec<super::KeyCombo>>) -> bool {

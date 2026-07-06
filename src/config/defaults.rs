@@ -1,4 +1,4 @@
-use super::types::{Background, Theme};
+use super::types::Background;
 
 pub fn default_preview_enabled() -> bool {
     true
@@ -51,8 +51,8 @@ pub fn default_search_max_visible() -> usize {
 pub fn default_graph_background() -> Background {
     Background::Solid
 }
-pub fn default_theme() -> Theme {
-    Theme::Default
+pub fn default_theme() -> String {
+    "default".to_string()
 }
 pub fn default_date_format() -> String {
     "%Y-%m-%d".to_string()

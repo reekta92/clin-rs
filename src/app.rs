@@ -226,6 +226,7 @@ pub enum ViewMode {
     Canvas,
     Backup,
     ContentTree,
+    Setup,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -343,6 +344,7 @@ pub struct App {
     pub draw_state: Option<crate::draw::app::DrawAppState>,
     pub backup_state: Option<crate::backup::state::BackupState>,
     pub content_tree_state: Option<crate::content_tree::state::ContentTreeState>,
+    pub setup_state: Option<crate::setup::SetupState>,
     pub canvas_state: Option<crate::pinstar::state::PinstarState>,
     pub config: crate::config::ClinConfig,
     pub summary_cache: HashMap<String, NoteSummary>,
@@ -460,6 +462,7 @@ impl App {
             draw_state: None,
             backup_state: None,
             content_tree_state: None,
+            setup_state: None,
             pinned_on_top: bootstrap_config.list.pinned_on_top,
             default_folder: bootstrap_config.core.default_folder.clone(),
             return_mode: None,
@@ -572,6 +575,7 @@ impl App {
             draw_state: None,
             backup_state: None,
             content_tree_state: None,
+            setup_state: None,
             pinned_on_top: bootstrap_config.list.pinned_on_top,
             default_folder: bootstrap_config.core.default_folder.clone(),
             return_mode: None,
@@ -1221,6 +1225,16 @@ impl App {
     pub fn reload_theme(&mut self) {
         let config = crate::config::ClinConfig::load().unwrap_or_default();
         self.app_theme = crate::app_theme::AppThemeColors::from_config(&config.ui);
+        self.build_display_lines();
+        if self.mode == ViewMode::Help {
+            self.list.help_text_cache = None;
+        }
+    }
+
+    /// Re-derive `app_theme` from the in-memory `self.config` (no disk read).
+    /// Used for live preview where config was mutated but not yet saved.
+    pub fn refresh_theme_from_config(&mut self) {
+        self.app_theme = crate::app_theme::AppThemeColors::from_config(&self.config.ui);
         self.build_display_lines();
         if self.mode == ViewMode::Help {
             self.list.help_text_cache = None;

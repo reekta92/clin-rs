@@ -610,4 +610,114 @@ mod tests {
         assert_eq!(app.list.sections.len(), 1);
         assert_eq!(app.list.sections[0], crate::config::NotesSection::Calendar);
     }
+
+    #[test]
+    fn apply_setup_live_writes_5_fields() {
+        let _lock = crate::config::CONFIG_TEST_MUTEX.lock();
+        let mut app = make_app();
+
+        app.setup_state = Some(crate::setup::SetupState {
+            theme: 4, // gruvbox
+            background_solid: true,
+            hint_bar_style: 2, // PowerlineSharp
+            icon_mode: 1,      // Unicode
+            keybind_preset: 2, // Vim
+            selected: 0,
+            confirm_exit: false,
+        });
+
+        app.finish_setup();
+
+        assert_eq!(app.config.ui.theme, "gruvbox");
+        assert_eq!(app.config.ui.background, crate::config::Background::Solid);
+        assert_eq!(
+            app.config.ui.hint_bar_style,
+            crate::config::HintBarStyle::PowerlineSharp
+        );
+        assert_eq!(app.config.ui.icon_mode, crate::config::IconMode::Unicode);
+        assert_eq!(
+            app.config.core.keybind_preset,
+            crate::config::KeybindPreset::Vim
+        );
+        // finish_setup tears down the view.
+        assert!(app.setup_state.is_none());
+        assert_eq!(app.mode, crate::app::ViewMode::List);
+    }
+
+    #[test]
+    fn setup_cycle_live_applies_theme() {
+        let _lock = crate::config::CONFIG_TEST_MUTEX.lock();
+        let mut app = make_app();
+
+        app.setup_state = Some(crate::setup::SetupState {
+            theme: 0,
+            background_solid: false,
+            hint_bar_style: 0,
+            icon_mode: 0,
+            keybind_preset: 0,
+            selected: 0, // Theme row
+            confirm_exit: false,
+        });
+
+        // Cycle theme forward → apply_setup_live writes it to config.
+        app.setup_state.as_mut().unwrap().cycle(true);
+        app.apply_setup_live();
+        assert_eq!(app.config.ui.theme, "tokyo_night");
+
+        // Flip background via row 1 → config mirrors it.
+        let state = app.setup_state.as_mut().unwrap();
+        state.selected = 1;
+        state.cycle(true);
+        app.apply_setup_live();
+        assert_eq!(app.config.ui.background, crate::config::Background::Solid);
+    }
+
+    #[test]
+    fn setup_esc_opens_confirm_then_y_finishes() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+        let _lock = crate::config::CONFIG_TEST_MUTEX.lock();
+        let mut app = make_app();
+
+        app.setup_state = Some(crate::setup::SetupState {
+            theme: 4, // gruvbox — non-default so we can confirm it propagates
+            background_solid: true,
+            hint_bar_style: 0,
+            icon_mode: 0,
+            keybind_preset: 0,
+            selected: 0,
+            confirm_exit: false,
+        });
+
+        let esc = KeyEvent {
+            code: KeyCode::Esc,
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::empty(),
+        };
+        crate::events::handle_setup_keys(&mut app, esc);
+        assert!(app.setup_state.as_ref().unwrap().confirm_exit);
+
+        // 'n' cancels the confirm overlay.
+        let n = KeyEvent {
+            code: KeyCode::Char('n'),
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::empty(),
+        };
+        crate::events::handle_setup_keys(&mut app, n);
+        assert!(!app.setup_state.as_ref().unwrap().confirm_exit);
+
+        // Re-open and confirm with 'y' → finish_setup saves + closes.
+        app.setup_state.as_mut().unwrap().confirm_exit = true;
+        let y = KeyEvent {
+            code: KeyCode::Char('y'),
+            modifiers: KeyModifiers::NONE,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::empty(),
+        };
+        crate::events::handle_setup_keys(&mut app, y);
+        assert!(app.setup_state.is_none());
+        assert_eq!(app.mode, crate::app::ViewMode::List);
+        assert_eq!(app.config.ui.theme, "gruvbox");
+    }
 }

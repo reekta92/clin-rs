@@ -33,6 +33,19 @@ impl App {
         self.set_default_status();
     }
 
+    pub fn open_setup_view(&mut self) {
+        if self.mode != ViewMode::Setup {
+            self.return_mode = Some(self.mode);
+        }
+        self.mode = ViewMode::Setup;
+        self.setup_state = Some(crate::setup::SetupState::from_config(
+            &self.config,
+            &self.app_theme,
+        ));
+        self.status = Cow::Borrowed("");
+        self.status_until = None;
+    }
+
     pub fn open_graph_view(&mut self) {
         if self.graph_state.is_none() {
             match crate::graf::app::GrafAppState::new(

@@ -104,25 +104,9 @@ pub fn draw_view_title_bar(
     );
 
     let (left_area, right_info) = if let Some(r) = right_text {
-        let right_width = r.width() as u16;
-        let chunks = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Min(0), Constraint::Length(right_width)])
-            .split(area);
-        (chunks[0], Some((chunks[1], r)))
-    } else {
-        (area, None)
-    };
-
-    let left_bar = Paragraph::new(Line::from(spans)).style(theme.title_bar_bg_style());
-    frame.render_widget(left_bar, left_area);
-
-    if let Some((r_area, r_text)) = right_info {
-        if is_powerline {
-            // Extract text and split into segments for powerline badges
-            let text: String = r_text.spans.iter().map(|s| s.content.as_ref()).collect();
+        let (right_width, right_line) = if is_powerline {
+            let text: String = r.spans.iter().map(|s| s.content.as_ref()).collect();
             let segments: Vec<&str> = text.split(" | ").collect();
-
             let bg_colors = [
                 theme.accent,
                 theme.folder,
@@ -136,8 +120,7 @@ pub fn draw_view_title_bar(
                 crate::config::HintBarStyle::PowerlineSlanted => "",
                 _ => unreachable!(),
             };
-
-            let mut badge_spans: Vec<Span> = Vec::new();
+            let mut badge_spans: Vec<Span> = Vec::with_capacity(segments.len() * 2);
             for (i, segment) in segments.iter().enumerate() {
                 let bg = bg_colors[i % bg_colors.len()];
                 let prev_bg = if i == 0 {
@@ -145,14 +128,11 @@ pub fn draw_view_title_bar(
                 } else {
                     Some(bg_colors[(i - 1) % bg_colors.len()])
                 };
-
-                // Separator on the left of each badge, bridging from previous element
                 let mut sep_style = Style::default().fg(bg);
                 if let Some(p_bg) = prev_bg {
                     sep_style = sep_style.bg(p_bg);
                 }
                 badge_spans.push(Span::styled(sep_char, sep_style));
-
                 badge_spans.push(Span::styled(
                     format!(" {} ", segment.trim()),
                     Style::default()
@@ -161,8 +141,27 @@ pub fn draw_view_title_bar(
                         .add_modifier(Modifier::BOLD),
                 ));
             }
+            let line = Line::from(badge_spans);
+            (line.width() as u16, Some(line))
+        } else {
+            (r.width() as u16, None)
+        };
+        let chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Min(0), Constraint::Length(right_width)])
+            .split(area);
+        let right_line: Line<'_> = right_line.unwrap_or(r);
+        (chunks[0], Some((chunks[1], right_line)))
+    } else {
+        (area, None)
+    };
 
-            let r_bar = Paragraph::new(Line::from(badge_spans))
+    let left_bar = Paragraph::new(Line::from(spans)).style(theme.title_bar_bg_style());
+    frame.render_widget(left_bar, left_area);
+
+    if let Some((r_area, r_text)) = right_info {
+        if is_powerline {
+            let r_bar = Paragraph::new(r_text)
                 .style(theme.hint_line_bg_style())
                 .alignment(Alignment::Left);
             frame.render_widget(r_bar, r_area);

@@ -34,6 +34,14 @@ pub enum Theme {
     Everforest,
     Kanagawa,
     Solarized,
+    CatppuccinFrappe,
+    CatppuccinMacchiato,
+    RosePineMoon,
+    GruvboxMaterial,
+    GithubDark,
+    AyuMirage,
+    Synthwave,
+    Material,
 }
 
 impl FromStr for Theme {
@@ -51,6 +59,14 @@ impl FromStr for Theme {
             "everforest" => Ok(Theme::Everforest),
             "kanagawa" => Ok(Theme::Kanagawa),
             "solarized" | "solarized_dark" | "solarizeddark" => Ok(Theme::Solarized),
+            "catppuccin_frappe" | "catppuccinfrappe" => Ok(Theme::CatppuccinFrappe),
+            "catppuccin_macchiato" | "catppuccinmacchiato" => Ok(Theme::CatppuccinMacchiato),
+            "rose_pine_moon" | "rosepinemoon" => Ok(Theme::RosePineMoon),
+            "gruvbox_material" | "gruvboxmaterial" => Ok(Theme::GruvboxMaterial),
+            "github_dark" | "githubdark" => Ok(Theme::GithubDark),
+            "ayu_mirage" | "ayumirage" => Ok(Theme::AyuMirage),
+            "synthwave" | "synthwave84" => Ok(Theme::Synthwave),
+            "material" | "material_theme" => Ok(Theme::Material),
             _ => Err(format!("Unknown theme: {s}")),
         }
     }
@@ -70,8 +86,41 @@ impl std::fmt::Display for Theme {
             Theme::Everforest => write!(f, "everforest"),
             Theme::Kanagawa => write!(f, "kanagawa"),
             Theme::Solarized => write!(f, "solarized"),
+            Theme::CatppuccinFrappe => write!(f, "catppuccin_frappe"),
+            Theme::CatppuccinMacchiato => write!(f, "catppuccin_macchiato"),
+            Theme::RosePineMoon => write!(f, "rose_pine_moon"),
+            Theme::GruvboxMaterial => write!(f, "gruvbox_material"),
+            Theme::GithubDark => write!(f, "github_dark"),
+            Theme::AyuMirage => write!(f, "ayu_mirage"),
+            Theme::Synthwave => write!(f, "synthwave"),
+            Theme::Material => write!(f, "material"),
         }
     }
+}
+
+impl Theme {
+    /// The canonical display order for the theme switcher UI.
+    pub const BUILTIN_NAMES: &'static [&'static str] = &[
+        "default",
+        "tokyo_night",
+        "catppuccin_mocha",
+        "catppuccin_frappe",
+        "catppuccin_macchiato",
+        "onedark",
+        "gruvbox",
+        "gruvbox_material",
+        "dracula",
+        "nord",
+        "rose_pine",
+        "rose_pine_moon",
+        "everforest",
+        "kanagawa",
+        "solarized",
+        "github_dark",
+        "ayu_mirage",
+        "synthwave",
+        "material",
+    ];
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
@@ -382,5 +431,38 @@ impl std::fmt::Display for NotesSection {
             NotesSection::Draw => write!(f, "draw"),
             NotesSection::Graf => write!(f, "graf"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::str::FromStr;
+
+    #[test]
+    fn new_themes_round_trip() {
+        let cases = [
+            ("catppuccin_frappe", Theme::CatppuccinFrappe),
+            ("catppuccin_macchiato", Theme::CatppuccinMacchiato),
+            ("rose_pine_moon", Theme::RosePineMoon),
+            ("gruvbox_material", Theme::GruvboxMaterial),
+            ("github_dark", Theme::GithubDark),
+            ("ayu_mirage", Theme::AyuMirage),
+            ("synthwave", Theme::Synthwave),
+            ("material", Theme::Material),
+        ];
+        for (s, variant) in cases {
+            assert_eq!(Theme::from_str(s).unwrap(), variant, "parse {s}");
+            assert_eq!(variant.to_string(), s, "display {s}");
+        }
+        // Concatenated aliases parse to the same variant.
+        assert_eq!(Theme::from_str("githubdark").unwrap(), Theme::GithubDark);
+        assert_eq!(Theme::from_str("synthwave84").unwrap(), Theme::Synthwave);
+        assert_eq!(Theme::from_str("material_theme").unwrap(), Theme::Material);
+    }
+
+    #[test]
+    fn unknown_theme_still_errors() {
+        assert!(Theme::from_str("not_a_theme").is_err());
     }
 }

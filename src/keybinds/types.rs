@@ -201,3 +201,14 @@ pub enum ContentTreeAction {
     Back,
     Help,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SetupAction {
+    Up,
+    Down,
+    CycleNext,
+    CyclePrev,
+    Activate,
+    Finish,
+}

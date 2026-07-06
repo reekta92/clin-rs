@@ -32,13 +32,13 @@ impl Default for AppThemeColors {
 
 impl AppThemeColors {
     pub fn from_config(config: &UiConfig) -> Self {
-        let theme_enum = config.theme.clone();
+        let resolved = crate::config::custom_themes::resolve_theme(&config.theme);
         let bg_enum = config.background.clone();
-
-        let t = theme_colors(&theme_enum, bg_enum.clone());
-
-        let mut colors = if matches!(theme_enum, Theme::Default) {
-            Self {
+        let mut colors = match &resolved {
+            crate::config::custom_themes::ResolvedTheme::Custom(file) => {
+                Self::from_custom_chrome(&file.chrome, &bg_enum)
+            }
+            crate::config::custom_themes::ResolvedTheme::Builtin(Theme::Default) => Self {
                 accent: Color::Cyan,
                 heading: Color::Yellow,
                 success: Color::Green,
@@ -57,27 +57,32 @@ impl AppThemeColors {
                 highlight_fg: Color::Black,
                 highlight_bg: Color::Cyan,
                 hint_bar_style: crate::config::HintBarStyle::default(),
-            }
-        } else {
-            Self {
-                accent: t.node_colors.first().copied().unwrap_or(Color::Cyan),
-                heading: t.node_colors.get(3).copied().unwrap_or(Color::Yellow),
-                success: t.node_colors.get(4).copied().unwrap_or(Color::Green),
-                warning: t.node_colors.get(3).copied().unwrap_or(Color::Yellow),
-                destructive: t.node_colors.get(5).copied().unwrap_or(Color::Red),
-                muted: t.border_color,
-                text: t.label_color,
-                fg: t.selected_indicator_color,
-                bg: t.background_color,
-                border: t.border_color,
-                tag: t.node_colors.get(1).copied().unwrap_or(Color::LightMagenta),
-                folder: t.node_colors.get(2).copied().unwrap_or(Color::Blue),
-                highlight_fg: t.background_color.unwrap_or(Color::Black),
-                highlight_bg: t.node_colors.first().copied().unwrap_or(Color::Cyan),
-                hint_bar_style: crate::config::HintBarStyle::default(),
+            },
+            crate::config::custom_themes::ResolvedTheme::Builtin(t) => {
+                let tc = theme_colors(t, bg_enum.clone());
+                Self {
+                    accent: tc.node_colors.first().copied().unwrap_or(Color::Cyan),
+                    heading: tc.node_colors.get(3).copied().unwrap_or(Color::Yellow),
+                    success: tc.node_colors.get(4).copied().unwrap_or(Color::Green),
+                    warning: tc.node_colors.get(3).copied().unwrap_or(Color::Yellow),
+                    destructive: tc.node_colors.get(5).copied().unwrap_or(Color::Red),
+                    muted: tc.border_color,
+                    text: tc.label_color,
+                    fg: tc.selected_indicator_color,
+                    bg: tc.background_color,
+                    border: tc.border_color,
+                    tag: tc
+                        .node_colors
+                        .get(1)
+                        .copied()
+                        .unwrap_or(Color::LightMagenta),
+                    folder: tc.node_colors.get(2).copied().unwrap_or(Color::Blue),
+                    highlight_fg: tc.background_color.unwrap_or(Color::Black),
+                    highlight_bg: tc.node_colors.first().copied().unwrap_or(Color::Cyan),
+                    hint_bar_style: crate::config::HintBarStyle::default(),
+                }
             }
         };
-
         if let Some(c) = config
             .accent
             .as_ref()
@@ -149,8 +154,30 @@ impl AppThemeColors {
             colors.bg = Some(c);
         }
         colors.hint_bar_style = config.hint_bar_style;
-
         colors
+    }
+
+    fn from_custom_chrome(c: &crate::config::CustomChrome, _bg: &Background) -> Self {
+        Self {
+            accent: crate::config::parse_hex_color(&c.accent).unwrap_or(Color::Cyan),
+            heading: crate::config::parse_hex_color(&c.heading).unwrap_or(Color::Reset),
+            success: crate::config::parse_hex_color(&c.success).unwrap_or(Color::Reset),
+            warning: crate::config::parse_hex_color(&c.warning).unwrap_or(Color::Reset),
+            destructive: crate::config::parse_hex_color(&c.destructive).unwrap_or(Color::Reset),
+            muted: crate::config::parse_hex_color(&c.muted).unwrap_or(Color::Reset),
+            text: crate::config::parse_hex_color(&c.text).unwrap_or(Color::Reset),
+            fg: crate::config::parse_hex_color(&c.fg).unwrap_or(Color::Reset),
+            bg: c
+                .background
+                .as_ref()
+                .and_then(|h| crate::config::parse_hex_color(h)),
+            border: crate::config::parse_hex_color(&c.border).unwrap_or(Color::Reset),
+            tag: crate::config::parse_hex_color(&c.tag).unwrap_or(Color::Reset),
+            folder: crate::config::parse_hex_color(&c.folder).unwrap_or(Color::Reset),
+            highlight_fg: crate::config::parse_hex_color(&c.highlight_fg).unwrap_or(Color::Reset),
+            highlight_bg: crate::config::parse_hex_color(&c.highlight_bg).unwrap_or(Color::Reset),
+            hint_bar_style: crate::config::HintBarStyle::default(),
+        }
     }
 
     pub fn bg_style(&self) -> Style {
@@ -206,4 +233,57 @@ fn derive_color(base: Option<Color>, delta: i16) -> Option<Color> {
         }
         other => other,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn custom_chrome_accent_parsed() {
+        let chrome = crate::config::CustomChrome {
+            accent: "#ff0000".to_string(),
+            heading: "#00ff00".to_string(),
+            success: "#0000ff".to_string(),
+            warning: "#ffff00".to_string(),
+            destructive: "#ff00ff".to_string(),
+            muted: "#888888".to_string(),
+            text: "#ffffff".to_string(),
+            fg: "#ffffff".to_string(),
+            border: "#444444".to_string(),
+            tag: "#ffa500".to_string(),
+            folder: "#00ffff".to_string(),
+            highlight_fg: "#000000".to_string(),
+            highlight_bg: "#ff0000".to_string(),
+            background: Some("#000000".to_string()),
+        };
+        let colors = AppThemeColors::from_custom_chrome(&chrome, &Background::Solid);
+        assert_eq!(colors.accent, Color::Rgb(255, 0, 0));
+        assert_eq!(colors.heading, Color::Rgb(0, 255, 0));
+        assert_eq!(colors.success, Color::Rgb(0, 0, 255));
+        assert_eq!(colors.bg, Some(Color::Rgb(0, 0, 0)));
+    }
+
+    #[test]
+    fn custom_chrome_missing_bg_transparent() {
+        let chrome = crate::config::CustomChrome {
+            accent: "#ff0000".to_string(),
+            heading: "#00ff00".to_string(),
+            success: "#0000ff".to_string(),
+            warning: "#ffff00".to_string(),
+            destructive: "#ff00ff".to_string(),
+            muted: "#888888".to_string(),
+            text: "#ffffff".to_string(),
+            fg: "#ffffff".to_string(),
+            border: "#444444".to_string(),
+            tag: "#ffa500".to_string(),
+            folder: "#00ffff".to_string(),
+            highlight_fg: "#000000".to_string(),
+            highlight_bg: "#ff0000".to_string(),
+            background: None,
+        };
+        let colors = AppThemeColors::from_custom_chrome(&chrome, &Background::Transparent);
+        assert_eq!(colors.accent, Color::Rgb(255, 0, 0));
+        assert_eq!(colors.bg, None);
+    }
 }

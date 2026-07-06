@@ -12,12 +12,14 @@ mod edit_view;
 mod help;
 mod list_view;
 mod popups;
+pub(crate) mod setup;
 mod title_bar;
 
 pub use edit_view::draw_edit_view;
 pub use help::*;
 pub(crate) use list_view::{draw_list_view, get_preview_info, list_view_layout, section_rects};
 pub use popups::*;
+pub use setup::draw_setup_view;
 pub use title_bar::*;
 
 use crate::config::IconMode;
@@ -67,6 +69,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         ViewMode::List => draw_list_view(frame, app),
         ViewMode::Edit => draw_edit_view(frame, app, focus),
         ViewMode::Help => draw_help_view(frame, app),
+        ViewMode::Setup => draw_setup_view(frame, app),
         ViewMode::Graph => {
             if let Some(graf) = &mut app.graph_state {
                 graf.overlay_render(

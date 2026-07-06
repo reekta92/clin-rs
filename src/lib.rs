@@ -24,6 +24,7 @@ pub mod pinstar;
 pub mod popups;
 pub mod preview;
 pub mod sanitize;
+pub mod setup;
 pub mod snapshot;
 pub mod templates;
 pub mod text_edit;
@@ -100,7 +101,7 @@ pub fn run() -> Result<()> {
     }
 
     match cli.command {
-        None => launch_tui(None),
+        None => launch_tui(None, cli.setup),
         Some(Command::Notes { action }) => run_notes(action),
         Some(Command::Storage { action }) => run_storage(action),
         Some(Command::Keybinds { action }) => run_keybinds(action),
@@ -108,9 +109,16 @@ pub fn run() -> Result<()> {
         Some(Command::Config { action }) => run_config(action),
     }
 }
-fn launch_tui(open_title: Option<String>) -> Result<()> {
+fn launch_tui(open_title: Option<String>, force_setup: bool) -> Result<()> {
+    // MUST check before Storage::init — Storage::init -> ClinConfig::load creates config.toml.
+    let first_run = crate::config::ClinConfig::config_path()
+        .map(|p| !p.exists())
+        .unwrap_or(false);
     let storage = Storage::init()?;
     let mut app = App::new_deferred(storage)?;
+    if first_run || force_setup {
+        app.open_setup_view();
+    }
     if let Some(title) = open_title
         && !app.open_note_by_title(&title)
     {
@@ -208,7 +216,7 @@ fn run_notes(action: NotesCmd) -> Result<()> {
             app.load_and_open_note(&saved_id, None);
             run_tui_session(&mut app)
         }
-        NotesCmd::Open { title } => launch_tui(Some(title)),
+        NotesCmd::Open { title } => launch_tui(Some(title), false),
         NotesCmd::Cat { title } => {
             let storage = Storage::init()?;
             let mut app = App::new(storage)?;
@@ -926,6 +934,10 @@ fn run_app(
                                     false
                                 }
                                 ViewMode::Edit => handle_edit_keys(app, key, &mut focus),
+                                ViewMode::Setup => {
+                                    crate::events::handle_setup_keys(app, key);
+                                    false
+                                }
                                 ViewMode::Graph => {
                                     if let Some(graf) = &mut app.graph_state {
                                         match graf.overlay_handle_event(
@@ -1252,6 +1264,9 @@ fn run_app(
                                             &mut app.config,
                                         )?;
                                     }
+                                }
+                                ViewMode::Setup => {
+                                    crate::events::handle_setup_mouse(app, mouse_event, area);
                                 }
                             }
                         }

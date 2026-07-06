@@ -147,6 +147,8 @@ enable_key_sequences = false
 
 [ui]
 # Theme to use ("default", "tokyo_night", "catppuccin_mocha", "onedark", "gruvbox", etc.)
+# Custom: drop ~/.config/clin/themes/<name>.toml and set theme = "<name>".
+# Built-in names always work; a custom file with the same name takes priority.
 theme = "default"
 
 # Background style ("transparent" or "solid")
