@@ -2006,6 +2006,8 @@ mod tests {
             depth: 1,
             is_expanded: false,
             note_count: 0,
+            recursive_count: 0,
+            stale: false,
         }];
         app.list.visual_index = 0;
         assert_eq!(
@@ -2037,6 +2039,8 @@ mod tests {
                 depth: 1,
                 is_expanded: true,
                 note_count: 1,
+                recursive_count: 1,
+                stale: false,
             },
             crate::list_view::VisualItem::Note {
                 summary_idx: 0,
@@ -2052,6 +2056,8 @@ mod tests {
                 depth: 1,
                 is_expanded: false,
                 note_count: 0,
+                recursive_count: 0,
+                stale: false,
             },
         ];
         app.list.visual_index = 1;

@@ -646,6 +646,8 @@ impl App {
                     depth,
                     is_expanded,
                     note_count,
+                    recursive_count,
+                    stale,
                 } => {
                     let indent = "  ".repeat(*depth);
                     let is_pinned = name == crate::app::VIRTUAL_PINNED_LABEL;
@@ -694,16 +696,23 @@ impl App {
                             crate::ui::get_icon("\u{f114}", "\u{1f4c2}", self.config.ui.icon_mode)
                         )
                     };
-                    let color = if is_pinned {
+                    let color = if *stale {
+                        self.app_theme.muted
+                    } else if is_pinned {
                         self.app_theme.heading
                     } else {
                         self.app_theme.folder
                     };
+                    let count_str = if *recursive_count > *note_count {
+                        format!("{} + {}", note_count, recursive_count - note_count)
+                    } else {
+                        format!("{}", note_count)
+                    };
                     let sanitized_name = crate::sanitize::sanitize_for_terminal(name);
                     let mut text = if icon.is_empty() {
-                        format!("{indent}{sanitized_name} ({note_count})")
+                        format!("{indent}{sanitized_name} ({count_str})")
                     } else {
-                        format!("{indent}{icon} {sanitized_name} ({note_count})")
+                        format!("{indent}{icon} {sanitized_name} ({count_str})")
                     };
                     if self.list.list_mode == crate::list_view::ListMode::Select {
                         let checkbox = if self.list.selected_indices.contains(&vi) {
@@ -712,15 +721,16 @@ impl App {
                             "[ ] "
                         };
                         text = if icon.is_empty() {
-                            format!("{indent}{checkbox}{sanitized_name} ({note_count})")
+                            format!("{indent}{checkbox}{sanitized_name} ({count_str})")
                         } else {
-                            format!("{indent}{checkbox}{icon} {sanitized_name} ({note_count})")
+                            format!("{indent}{checkbox}{icon} {sanitized_name} ({count_str})")
                         };
                     }
-                    let mut lines = vec![Line::from(vec![Span::styled(
-                        text,
-                        Style::default().add_modifier(Modifier::BOLD).fg(color),
-                    )])];
+                    let mut style = Style::default().add_modifier(Modifier::BOLD).fg(color);
+                    if *stale {
+                        style = style.add_modifier(Modifier::DIM);
+                    }
+                    let mut lines = vec![Line::from(vec![Span::styled(text, style)])];
                     if self.list.list_density == crate::config::ListDensity::Comfortable {
                         lines.push(Line::from(""));
                     }
@@ -1408,7 +1418,7 @@ mod tests {
             key: [0u8; 32],
         };
         let mut app = App::new(storage).expect("value is present");
-
+        app.editor.external_editor_enabled = false;
         // Initially no words written and no notes modified
         assert_eq!(app.goals_progress.words_written, 0);
         assert!(app.goals_progress.notes_modified.is_empty());

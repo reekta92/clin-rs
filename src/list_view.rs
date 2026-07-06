@@ -31,6 +31,8 @@ pub enum VisualItem {
         depth: usize,
         is_expanded: bool,
         note_count: usize,
+        recursive_count: usize,
+        stale: bool,
     },
     Note {
         summary_idx: usize,

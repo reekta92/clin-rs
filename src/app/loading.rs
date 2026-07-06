@@ -119,12 +119,64 @@ impl App {
             }
         }
 
+        let all_folders = if let Some(cache) = &self.list.folder_cache {
+            cache
+        } else {
+            let folders = self
+                .storage
+                .list_folders(self.list.show_hidden_files)
+                .unwrap_or_default();
+            self.list.folder_cache = Some(folders);
+            self.list
+                .folder_cache
+                .as_ref()
+                .expect("folder_cache populated above")
+        };
+
+        // Build subfolders map: group each folder by parent path for recursive traversal
+        let mut subfolders_map: std::collections::HashMap<&str, Vec<&String>> =
+            std::collections::HashMap::new();
+        for folder in all_folders {
+            let parent = if let Some(slash) = folder.rfind('/') {
+                &folder[..slash]
+            } else {
+                ""
+            };
+            subfolders_map.entry(parent).or_default().push(folder);
+        }
+
+        let mut recursive_count = std::collections::HashMap::new();
+
+        fn compute_subtree<'a>(
+            folder: &'a str,
+            subfolders_map: &std::collections::HashMap<&'a str, Vec<&'a String>>,
+            by_folder: &std::collections::HashMap<&'a str, Vec<(usize, &'a NoteSummary)>>,
+            recursive_count: &mut std::collections::HashMap<&'a str, usize>,
+        ) -> usize {
+            let direct_count = by_folder.get(folder).map_or(0, |v| v.len());
+            let mut total_count = direct_count;
+
+            if let Some(children) = subfolders_map.get(folder) {
+                for child in children {
+                    total_count +=
+                        compute_subtree(child.as_str(), subfolders_map, by_folder, recursive_count);
+                }
+            }
+
+            recursive_count.insert(folder, total_count);
+            total_count
+        }
+
+        compute_subtree("", &subfolders_map, &by_folder, &mut recursive_count);
+
         visual.push(VisualItem::Folder {
             path: VIRTUAL_PINNED_PATH.to_string(),
             name: VIRTUAL_PINNED_LABEL.to_string(),
             depth: 0,
             is_expanded: self.list.folder_expanded.contains(VIRTUAL_PINNED_PATH),
             note_count: pinned_notes.len(),
+            recursive_count: pinned_notes.len(),
+            stale: false,
         });
 
         if self.list.folder_expanded.contains(VIRTUAL_PINNED_PATH) {
@@ -140,41 +192,19 @@ impl App {
             }
         }
 
+        let vault_direct = by_folder.get("").map_or(0, |v| v.len());
+        let vault_recursive = recursive_count.get("").copied().unwrap_or(vault_direct);
         visual.push(VisualItem::Folder {
             path: String::new(),
             name: String::from("Vault"),
             depth: 0,
             is_expanded: self.list.folder_expanded.contains(""),
-            note_count: by_folder.get("").map_or(0, |v| v.len()),
+            note_count: vault_direct,
+            recursive_count: vault_recursive,
+            stale: false,
         });
 
-        let all_folders = if let Some(cache) = &self.list.folder_cache {
-            cache
-        } else {
-            let folders = self
-                .storage
-                .list_folders(self.list.show_hidden_files)
-                .unwrap_or_default();
-            self.list.folder_cache = Some(folders);
-            self.list
-                .folder_cache
-                .as_ref()
-                .expect("folder_cache populated above")
-        };
-
         if self.list.folder_expanded.contains("") {
-            // Build subfolders map: group each folder by parent path for recursive traversal
-            let mut subfolders_map: std::collections::HashMap<&str, Vec<&String>> =
-                std::collections::HashMap::new();
-            for folder in all_folders {
-                let parent = if let Some(slash) = folder.rfind('/') {
-                    &folder[..slash]
-                } else {
-                    ""
-                };
-                subfolders_map.entry(parent).or_default().push(folder);
-            }
-
             /// Recursive: push items for `current_folder` at `depth`, then recurse into expanded children.
             fn push_tree<'a>(
                 current_folder: &'a str,
@@ -184,6 +214,7 @@ impl App {
                 subfolders_map: &std::collections::HashMap<&'a str, Vec<&'a String>>,
                 by_folder: &std::collections::HashMap<&'a str, Vec<(usize, &'a NoteSummary)>>,
                 folders_first: bool,
+                recursive_count: &std::collections::HashMap<&'a str, usize>,
             ) {
                 let notes = by_folder.get(current_folder);
                 let subfolders = subfolders_map.get(current_folder);
@@ -195,12 +226,20 @@ impl App {
                             let parts: Vec<&str> = folder.split('/').collect();
                             let name = parts.last().unwrap_or(&"").to_string();
                             let is_expanded = expanded_folders.contains(folder.as_str());
+                            let direct = by_folder.get(folder.as_str()).map_or(0, |v| v.len());
+                            let rec_count = recursive_count
+                                .get(folder.as_str())
+                                .copied()
+                                .unwrap_or(direct);
+                            let stale = rec_count == 0;
                             visual.push(VisualItem::Folder {
                                 path: folder.to_string(),
                                 name,
                                 depth,
                                 is_expanded,
-                                note_count: by_folder.get(folder.as_str()).map_or(0, |v| v.len()),
+                                note_count: direct,
+                                recursive_count: rec_count,
+                                stale,
                             });
                             if is_expanded {
                                 push_tree(
@@ -211,6 +250,7 @@ impl App {
                                     subfolders_map,
                                     by_folder,
                                     folders_first,
+                                    recursive_count,
                                 );
                             }
                         }
@@ -254,12 +294,20 @@ impl App {
                             let parts: Vec<&str> = folder.split('/').collect();
                             let name = parts.last().unwrap_or(&"").to_string();
                             let is_expanded = expanded_folders.contains(folder.as_str());
+                            let direct = by_folder.get(folder.as_str()).map_or(0, |v| v.len());
+                            let rec_count = recursive_count
+                                .get(folder.as_str())
+                                .copied()
+                                .unwrap_or(direct);
+                            let stale = rec_count == 0;
                             visual.push(VisualItem::Folder {
                                 path: folder.to_string(),
                                 name,
                                 depth,
                                 is_expanded,
-                                note_count: by_folder.get(folder.as_str()).map_or(0, |v| v.len()),
+                                note_count: direct,
+                                recursive_count: rec_count,
+                                stale,
                             });
                             if is_expanded {
                                 push_tree(
@@ -270,6 +318,7 @@ impl App {
                                     subfolders_map,
                                     by_folder,
                                     folders_first,
+                                    recursive_count,
                                 );
                             }
                         }
@@ -285,6 +334,7 @@ impl App {
                 &subfolders_map,
                 &by_folder,
                 self.list.folders_first,
+                &recursive_count,
             );
         }
 
@@ -319,6 +369,8 @@ impl App {
                         depth: 0,
                         is_expanded: false,
                         note_count: 0,
+                        recursive_count: 0,
+                        stale: false,
                     });
                 }
 
@@ -333,12 +385,20 @@ impl App {
                         if parent_path == gf {
                             let parts: Vec<&str> = folder.split('/').collect();
                             let name = parts.last().unwrap_or(&"").to_string();
+                            let direct = by_folder.get(folder.as_str()).map_or(0, |v| v.len());
+                            let rec_count = recursive_count
+                                .get(folder.as_str())
+                                .copied()
+                                .unwrap_or(direct);
+                            let stale = rec_count == 0;
                             visual.push(VisualItem::Folder {
                                 path: folder.clone(),
                                 name,
                                 depth: 0,
                                 is_expanded: false,
-                                note_count: by_folder.get(folder.as_str()).map_or(0, |v| v.len()),
+                                note_count: direct,
+                                recursive_count: rec_count,
+                                stale,
                             });
                         }
                     }
@@ -376,12 +436,20 @@ impl App {
                         if parent_path == gf {
                             let parts: Vec<&str> = folder.split('/').collect();
                             let name = parts.last().unwrap_or(&"").to_string();
+                            let direct = by_folder.get(folder.as_str()).map_or(0, |v| v.len());
+                            let rec_count = recursive_count
+                                .get(folder.as_str())
+                                .copied()
+                                .unwrap_or(direct);
+                            let stale = rec_count == 0;
                             visual.push(VisualItem::Folder {
                                 path: folder.clone(),
                                 name,
                                 depth: 0,
                                 is_expanded: false,
-                                note_count: by_folder.get(folder.as_str()).map_or(0, |v| v.len()),
+                                note_count: direct,
+                                recursive_count: rec_count,
+                                stale,
                             });
                         }
                     }
