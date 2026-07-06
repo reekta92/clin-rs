@@ -360,6 +360,7 @@ theme = "redtest"
         // 2. AppThemeColors via from_config
         let ui_config = crate::config::UiConfig {
             theme: "redtest".to_string(),
+            background: crate::config::Background::Solid,
             ..Default::default()
         };
         let app_colors = crate::app_theme::AppThemeColors::from_config(&ui_config);
