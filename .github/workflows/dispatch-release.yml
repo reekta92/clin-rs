@@ -31,6 +31,11 @@ on:
         description: "Manually override the version number (e.g., 1.2.3-rc.0). If set, 'bump' is ignored."
         required: false
         type: string
+      overwrite_release:
+        description: "Overwrite an existing release at the current version (force-move tag, rebuild assets, flip prerelease flag). 'bump' is ignored."
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -86,26 +91,27 @@ jobs:
               major) NEXT_BASE="$((MAJ+1)).0.0";;
             esac
 
-            if [ "$PRERELEASE" = "true" ]; then
-              # We want to end up with a pre-release
-              if [ "$IS_CURRENTLY_PRERELEASE" = "true" ] && [ "$CURRENT_PRE" = "$PRE_ID" ]; then
-                # Case 1: Incrementing existing pre-release (e.g., beta.0 -> beta.1)
-                # Bump type is ignored. Base version is kept.
+            OVERWRITE="${{ inputs.overwrite_release }}"
+            if [ "$OVERWRITE" = "true" ]; then
+              # Overwrite: keep current base version; bump and identifier are ignored.
+              NEW="$CURRENT_BASE"
+            elif [ "$PRERELEASE" = "true" ]; then
+              if [ -z "$PRE_ID" ]; then
+                # Bare pre-release: no suffix, version stays at base, marked prerelease on GitHub.
+                NEW="$CURRENT_BASE"
+              elif [ "$IS_CURRENTLY_PRERELEASE" = "true" ] && [ "$CURRENT_PRE" = "$PRE_ID" ]; then
+                # Incrementing existing pre-release (e.g., beta.0 -> beta.1). Bump ignored, base kept.
                 NEW="$CURRENT_BASE-$PRE_ID.$((CURRENT_PRE_NUM+1))"
               else
-                # Case 2: Starting a new pre-release series (e.g., 0.9.0-beta.6 -> 0.9.0-rc.0)
-                # Bump type is ignored when pre-release is selected; base is kept.
+                # Starting a new pre-release series (e.g., 0.9.0-beta.6 -> 0.9.0-rc.0). Bump ignored, base kept.
                 NEW="$CURRENT_BASE-$PRE_ID.0"
               fi
             else
-              # We want to end up with a stable release
               if [ "$IS_CURRENTLY_PRERELEASE" = "true" ]; then
-                # Case 3: Graduating a pre-release (e.g., 1.2.3-rc.1 -> 1.2.3)
-                # Bump type is ignored. Base version is kept.
+                # Graduating a pre-release (e.g., 1.2.3-rc.1 -> 1.2.3). Bump ignored, base kept.
                 NEW="$CURRENT_BASE"
               else
-                # Case 4: Standard stable bump (e.g., 1.2.3 -> 1.2.4)
-                # Bump type is used.
+                # Standard stable bump (e.g., 1.2.3 -> 1.2.4). Bump used.
                 NEW="$NEXT_BASE"
               fi
             fi
@@ -121,7 +127,8 @@ jobs:
             --arg new "$NEW_VERSION" \
             --arg tag "v$NEW_VERSION" \
             --arg branch "${{ inputs.target_branch }}" \
-            '{old_version: $old, new_version: $new, tag: $tag, target_branch: $branch}' \
+            --arg overwrite "${{ inputs.overwrite_release }}" \
+            '{old_version: $old, new_version: $new, tag: $tag, target_branch: $branch, overwrite: $overwrite}' \
             > release-metadata.json
       - uses: actions/upload-artifact@v4
         with:
@@ -210,17 +217,24 @@ jobs:
           if ! git diff --staged --quiet; then
             git commit -m "release: $TAG"
           fi
-          git tag "$TAG"
           git push --force-with-lease origin HEAD:${{ inputs.target_branch }}
-          git push origin "$TAG"
+          if [ "${{ inputs.overwrite_release }}" = "true" ]; then
+            git tag -f "$TAG"
+            git push origin "$TAG" --force
+          else
+            git tag "$TAG"
+            git push origin "$TAG"
+          fi
 
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: "v${{ steps.bump.outputs.new_version }}"
+          PRERELEASE: "${{ inputs.prerelease }}"
         run: |
+          if [ "$PRERELEASE" = "true" ]; then PRE_FLAG="--prerelease"; else PRE_FLAG="--prerelease=false"; fi
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release edit "$TAG" --notes-file RELEASE_NOTES.md --title "$TAG"
+            gh release edit "$TAG" --notes-file RELEASE_NOTES.md --title "$TAG" $PRE_FLAG
           else
             gh release create "$TAG" \
               --title "$TAG" \
@@ -528,6 +542,7 @@ jobs:
   # ────────────────────────────────────────────
   aur:
     needs: [prepare, linux-packages, linux-x86_64]
+    if: ${{ !inputs.overwrite_release }}
     runs-on: ubuntu-latest
     env:
       AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
@@ -579,6 +594,7 @@ jobs:
   # ────────────────────────────────────────────
   crates-io:
     needs: prepare
+    if: ${{ !inputs.overwrite_release }}
     runs-on: ubuntu-latest
     env:
       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
@@ -701,16 +717,20 @@ jobs:
         run: |
           TAG="${{ fromJSON(steps.metadata.outputs.content).tag }}"
           BRANCH="${{ fromJSON(steps.metadata.outputs.content).target_branch }}"
+          OVERWRITE="${{ fromJSON(steps.metadata.outputs.content).overwrite }}"
+          if [ "$OVERWRITE" = "true" ]; then
+            echo "Overwrite run: leaving pre-existing release/tag in place. Reverting commits only."
+          else
+            echo "::group::Delete release $TAG"
+            gh release delete "$TAG" --yes 2>/dev/null && echo "Deleted release $TAG" \
+              || echo "Release $TAG not found (OK)"
+            echo "::endgroup::"
 
-          echo "::group::Delete release $TAG"
-          gh release delete "$TAG" --yes 2>/dev/null && echo "Deleted release $TAG" \
-            || echo "Release $TAG not found (OK)"
-          echo "::endgroup::"
-
-          echo "::group::Delete tag $TAG"
-          git push origin --delete "$TAG" 2>/dev/null && echo "Deleted tag $TAG" \
-            || echo "Tag $TAG not found (OK)"
-          echo "::endgroup::"
+            echo "::group::Delete tag $TAG"
+            git push origin --delete "$TAG" 2>/dev/null && echo "Deleted tag $TAG" \
+              || echo "Tag $TAG not found (OK)"
+            echo "::endgroup::"
+          fi
 
           echo "::group::Revert commits on $BRANCH"
           git fetch origin "$BRANCH" 2>/dev/null || {
