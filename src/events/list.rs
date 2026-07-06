@@ -17,40 +17,42 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         } else if key.code == KeyCode::Enter {
             let text = super::get_title_text(&app.editor.title_editor).into_owned();
             let text = text.trim().to_string();
-            if !text.is_empty() && let Some(target) = &app.list.rename_target {
-                    match target {
-                        crate::list_view::RenameTarget::Note => {
-                            if let Some(crate::app::VisualItem::Note { summary_idx, .. }) =
-                                app.list.visual_list.get(app.list.visual_index)
-                            {
-                                let id = app.notes[*summary_idx].id.clone();
-                                match app.storage.rename_note(&id, &text) {
-                                    Ok(_) => {
-                                        let _ = app.refresh_notes();
-                                        app.set_temporary_status_static("Note renamed");
-                                    }
-                                    Err(e) => {
-                                        app.set_temporary_status(&format!("Rename failed: {e}"));
-                                    }
+            if !text.is_empty()
+                && let Some(target) = &app.list.rename_target
+            {
+                match target {
+                    crate::list_view::RenameTarget::Note => {
+                        if let Some(crate::app::VisualItem::Note { summary_idx, .. }) =
+                            app.list.visual_list.get(app.list.visual_index)
+                        {
+                            let id = app.notes[*summary_idx].id.clone();
+                            match app.storage.rename_note(&id, &text) {
+                                Ok(_) => {
+                                    let _ = app.refresh_notes();
+                                    app.set_temporary_status_static("Note renamed");
+                                }
+                                Err(e) => {
+                                    app.set_temporary_status(&format!("Rename failed: {e}"));
                                 }
                             }
                         }
-                        crate::list_view::RenameTarget::Folder(old_path) => {
-                            if text != *old_path {
-                                match app.storage.rename_folder(old_path, &text) {
-                                    Ok(_) => {
-                                        app.list.folder_cache = None;
-                                        let _ = app.refresh_notes();
-                                        app.set_temporary_status_static("Folder renamed");
-                                    }
-                                    Err(e) => {
-                                        app.set_temporary_status(&format!("Rename failed: {e}"));
-                                    }
+                    }
+                    crate::list_view::RenameTarget::Folder(old_path) => {
+                        if text != *old_path {
+                            match app.storage.rename_folder(old_path, &text) {
+                                Ok(_) => {
+                                    app.list.folder_cache = None;
+                                    let _ = app.refresh_notes();
+                                    app.set_temporary_status_static("Folder renamed");
+                                }
+                                Err(e) => {
+                                    app.set_temporary_status(&format!("Rename failed: {e}"));
                                 }
                             }
                         }
                     }
                 }
+            }
             app.list.list_mode = ListMode::Normal;
             app.list.rename_target = None;
             app.refresh_visual_list();

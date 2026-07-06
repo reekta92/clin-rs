@@ -820,7 +820,11 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                             .saturating_sub(connector_width);
 
                         if overlay_x < list_area.x + list_area.width - 2 {
-                            let text = app.editor.title_editor.lines().join("");
+                            let mut text = app.editor.title_editor.lines().join("");
+                            let max_w = max_width as usize;
+                            if text.len() < max_w {
+                                text.push_str(&" ".repeat(max_w - text.len()));
+                            }
                             let rect = Rect {
                                 x: overlay_x,
                                 y: row_y,
