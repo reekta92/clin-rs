@@ -10,7 +10,7 @@ provides=("clin-rs" "clin")
 conflicts=("clin-rs")
 depends=("openssl" "gcc-libs")
 source=("https://github.com/reekta92/clin-rs/releases/download/v0.9.4/clin-rs-x86_64-unknown-linux-gnu.tar.xz")
-sha256sums=("d162fec3afe28e1fee2453abe15720c7c01eeba0201b1d7011066691ba493e13")
+sha256sums=("f2373ebd311d4f4bc0dbd47d7d8b2b45cb36d15e452ea4525d358b794742b9a7")
 
 package() {
     install -Dm755 "clin" -t "$pkgdir/usr/bin"
