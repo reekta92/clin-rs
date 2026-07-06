@@ -628,7 +628,7 @@ mod tests {
 
         app.finish_setup();
 
-        assert_eq!(app.config.ui.theme, crate::config::Theme::Gruvbox);
+        assert_eq!(app.config.ui.theme, "gruvbox");
         assert_eq!(app.config.ui.background, crate::config::Background::Solid);
         assert_eq!(
             app.config.ui.hint_bar_style,
@@ -662,7 +662,7 @@ mod tests {
         // Cycle theme forward → apply_setup_live writes it to config.
         app.setup_state.as_mut().unwrap().cycle(true);
         app.apply_setup_live();
-        assert_eq!(app.config.ui.theme, crate::config::Theme::TokyoNight);
+        assert_eq!(app.config.ui.theme, "tokyo_night");
 
         // Flip background via row 1 → config mirrors it.
         let state = app.setup_state.as_mut().unwrap();
@@ -718,6 +718,6 @@ mod tests {
         crate::events::handle_setup_keys(&mut app, y);
         assert!(app.setup_state.is_none());
         assert_eq!(app.mode, crate::app::ViewMode::List);
-        assert_eq!(app.config.ui.theme, crate::config::Theme::Gruvbox);
+        assert_eq!(app.config.ui.theme, "gruvbox");
     }
 }

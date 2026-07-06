@@ -2,10 +2,7 @@ use ratatui::style::Color;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-use super::de::{
-    deserialize_background, deserialize_optional_color, deserialize_theme, serialize_background,
-    serialize_theme,
-};
+use super::de::{deserialize_background, deserialize_optional_color, serialize_background};
 use super::defaults::*;
 use super::types::*;
 
@@ -224,12 +221,8 @@ impl Default for InteractionConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct UiConfig {
-    #[serde(
-        default = "default_theme",
-        serialize_with = "serialize_theme",
-        deserialize_with = "deserialize_theme"
-    )]
-    pub theme: Theme,
+    #[serde(default = "default_theme")]
+    pub theme: String,
     #[serde(
         default,
         serialize_with = "serialize_background",

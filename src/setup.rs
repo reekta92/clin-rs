@@ -106,7 +106,7 @@ impl SetupState {
         Self {
             theme: SETUP_THEMES
                 .iter()
-                .position(|t| *t == config.ui.theme.to_string())
+                .position(|t| config.ui.theme.as_str() == *t)
                 .unwrap_or(0),
             background_solid: matches!(config.ui.background, crate::config::Background::Solid),
             hint_bar_style: hint_style_index(config.ui.hint_bar_style),

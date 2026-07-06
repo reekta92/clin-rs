@@ -4,6 +4,60 @@ Technical docs for the theme and color system — 19 built-in themes, per-color 
 
 ---
 
+## Custom Themes
+
+Drop a TOML file into `~/.config/clin/themes/<name>.toml` to make `<name>` available
+as a theme. Set `theme = "<name>"` in `config.toml` to activate it.
+
+### File Schema
+
+```toml
+# ~/.config/clin/themes/my_theme.toml
+[chrome]
+accent = "#7aa2f7"
+heading = "#e0af68"
+success = "#9ece6a"
+warning = "#e0af68"
+destructive = "#f7768e"
+muted = "#565f89"
+text = "#c0caf5"
+fg = "#ffffff"
+border = "#414868"
+tag = "#bb9af7"
+folder = "#7dcfff"
+highlight_fg = "#1a1b26"
+highlight_bg = "#7aa2f7"
+background = "#1a1b26"   # optional → transparent when absent
+
+[graph]
+nodes = ["#7aa2f7","#bb9af7","#7dcfff","#e0af68","#9ece6a","#f7768e","#94e2d5","#ff9e64"]
+chrome = "#565f89"
+title  = "#bb9af7"
+text   = "#cbccd5"
+fg     = "#ffffff"
+grid   = "#383c5f"
+bg     = "#1a1b26"       # optional
+```
+
+### Lookup Order
+
+1. **Custom dir** — `<name>.toml` in `~/.config/clin/themes/` is checked first.
+2. **Built-in** — if no custom file found, the name is matched against built-in themes.
+3. **Fallback** — unknown names silently resolve to the Default theme.
+
+A custom theme with the same name as a built-in overrides it.
+
+### Switcher
+
+The theme switcher (Ctrl+P → "Switch Theme") lists built-in themes first, then
+appends any custom theme names found in the themes directory. Selecting a custom
+name applies it immediately.
+
+### No-Recompile Path
+
+To add a theme without recompiling, write a TOML file with the schema above and
+select it by name. This is the preferred way to introduce new themes.
+
 ## Overview
 
 clin has a flexible theme system with 19 built-in themes, transparent and solid background modes, and per-color overrides via config.toml. The theme affects all views: list, editor, graph, canvas, draw, and popups.

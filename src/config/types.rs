@@ -98,6 +98,31 @@ impl std::fmt::Display for Theme {
     }
 }
 
+impl Theme {
+    /// The canonical display order for the theme switcher UI.
+    pub const BUILTIN_NAMES: &'static [&'static str] = &[
+        "default",
+        "tokyo_night",
+        "catppuccin_mocha",
+        "catppuccin_frappe",
+        "catppuccin_macchiato",
+        "onedark",
+        "gruvbox",
+        "gruvbox_material",
+        "dracula",
+        "nord",
+        "rose_pine",
+        "rose_pine_moon",
+        "everforest",
+        "kanagawa",
+        "solarized",
+        "github_dark",
+        "ayu_mirage",
+        "synthwave",
+        "material",
+    ];
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum Background {

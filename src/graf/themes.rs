@@ -433,3 +433,55 @@ pub fn theme_colors(theme: &Theme, background: Background) -> ThemeColors {
         Theme::Material => PALETTES[17].build(background),
     }
 }
+
+/// Build [`ThemeColors`] from a custom theme's graph palette section.
+///
+/// Mirrors `GraphThemePalette::build()`. Missing or invalid hex values fall back
+/// to `Color::Reset` (or `Color::Cyan` for the first node color).
+pub fn custom_theme_colors(g: &crate::config::CustomGraph, background: Background) -> ThemeColors {
+    let parse = |s: &str| crate::config::parse_hex_color(s).unwrap_or(Color::Reset);
+
+    // Node colors: parse up to 8, pad with first-parsed or Cyan, truncate at 8.
+    let parsed: Vec<Color> = g
+        .nodes
+        .iter()
+        .filter_map(|h| crate::config::parse_hex_color(h))
+        .collect();
+    let default_node = parsed.first().copied().unwrap_or(Color::Cyan);
+    let node_colors: Vec<Color> = if parsed.len() >= 8 {
+        parsed[..8].to_vec()
+    } else {
+        let mut v = parsed;
+        v.resize(8, default_node);
+        v
+    };
+
+    let chrome = parse(&g.chrome);
+    let title = parse(&g.title);
+    let text = parse(&g.text);
+    let fg = parse(&g.fg);
+    let grid = parse(&g.grid);
+    let bg_color =
+        g.bg.as_ref()
+            .and_then(|h| crate::config::parse_hex_color(h));
+
+    ThemeColors {
+        node_colors,
+        edge_color: chrome,
+        border_color: chrome,
+        title_color: title,
+        label_color: text,
+        legend_text_color: text,
+        legend_border_color: chrome,
+        selected_indicator_color: fg,
+        grid_color: grid,
+        background_color: match background {
+            Background::Transparent => None,
+            Background::Solid => bg_color,
+        },
+        status_bar_color: chrome,
+        minimap_border_color: chrome,
+        minimap_viewport_color: fg,
+        minimap_bg_color: bg_color.or(Some(Color::Black)),
+    }
+}

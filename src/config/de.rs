@@ -1,7 +1,7 @@
 use ratatui::style::Color;
 use serde::{Deserialize, Deserializer, Serializer};
 
-use super::types::{Background, Theme};
+use super::types::Background;
 
 pub fn parse_hex_color(s: &str) -> Option<Color> {
     let s = s.strip_prefix('#')?;
@@ -26,21 +26,6 @@ where
             .map(Some)
             .ok_or_else(|| serde::de::Error::custom(format!("invalid hex color: {s}"))),
     }
-}
-
-pub fn serialize_theme<S>(theme: &Theme, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    serializer.serialize_str(&theme.to_string())
-}
-
-pub fn deserialize_theme<'de, D>(deserializer: D) -> Result<Theme, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let s = String::deserialize(deserializer)?;
-    s.parse::<Theme>().map_err(serde::de::Error::custom)
 }
 
 pub fn serialize_background<S>(bg: &Background, serializer: S) -> Result<S::Ok, S::Error>

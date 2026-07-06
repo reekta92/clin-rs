@@ -474,30 +474,16 @@ template = """
     }
 
     pub fn begin_theme_selection(&mut self) {
-        let themes = vec![
-            "default".to_string(),
-            "tokyo_night".to_string(),
-            "catppuccin_mocha".to_string(),
-            "catppuccin_frappe".to_string(),
-            "catppuccin_macchiato".to_string(),
-            "onedark".to_string(),
-            "gruvbox".to_string(),
-            "gruvbox_material".to_string(),
-            "dracula".to_string(),
-            "nord".to_string(),
-            "rose_pine".to_string(),
-            "rose_pine_moon".to_string(),
-            "everforest".to_string(),
-            "kanagawa".to_string(),
-            "solarized".to_string(),
-            "github_dark".to_string(),
-            "ayu_mirage".to_string(),
-            "synthwave".to_string(),
-            "material".to_string(),
-        ];
+        let builtin_count = crate::config::Theme::BUILTIN_NAMES.len();
+        let mut themes: Vec<String> = crate::config::Theme::BUILTIN_NAMES
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        themes.extend(crate::config::custom_themes::list_custom_themes());
+        let is_custom: Vec<bool> = (0..themes.len()).map(|i| i >= builtin_count).collect();
 
         let config = crate::config::ClinConfig::load().unwrap_or_default();
-        let current = config.ui.theme.to_string();
+        let current = config.ui.theme.clone();
 
         let selected = themes.iter().position(|t| t == &current).unwrap_or(0);
         let general_is_solid = matches!(config.ui.background, crate::config::Background::Solid);
@@ -509,6 +495,7 @@ template = """
         self.popups.active = Some(crate::popups::ActivePopup::Theme(ThemePopup {
             themes,
             selected,
+            is_custom,
             focus: ThemePopupFocus::ThemeList,
             general_is_solid,
             graph_is_solid,
@@ -698,7 +685,7 @@ template = """
                 ThemePopupFocus::ThemeList => {
                     let next_theme = popup.themes[popup.selected].clone();
                     let mut config = crate::config::ClinConfig::load().unwrap_or_default();
-                    config.ui.theme = next_theme.parse().unwrap_or_default();
+                    config.ui.theme = next_theme.clone();
                     if let Err(e) = config.save() {
                         self.set_temporary_status(&format!("Failed to save theme: {e}"));
                         return;
@@ -801,7 +788,6 @@ template = """
     }
 
     pub fn apply_setup_live(&mut self) {
-        use std::str::FromStr;
         let mut visuals_changed = false;
 
         {
@@ -810,10 +796,9 @@ template = """
             };
 
             // 1. Theme
-            if let Ok(t) = crate::config::Theme::from_str(crate::setup::SETUP_THEMES[state.theme])
-                && self.config.ui.theme != t
-            {
-                self.config.ui.theme = t;
+            let name = crate::setup::SETUP_THEMES[state.theme];
+            if self.config.ui.theme != name {
+                self.config.ui.theme = name.to_string();
                 visuals_changed = true;
             }
 

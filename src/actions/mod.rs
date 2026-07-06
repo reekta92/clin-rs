@@ -183,7 +183,7 @@ toggle_action!(
     begin_theme_selection,
     app,
     crate::config::ClinConfig::load()
-        .map(|c| c.ui.theme.to_string())
+        .map(|c| c.ui.theme.clone())
         .unwrap_or_else(|_| "default".to_string())
 );
 simple_action!(
