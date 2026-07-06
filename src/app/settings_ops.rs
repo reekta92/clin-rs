@@ -209,6 +209,15 @@ impl App {
         }
     }
 
+    pub(crate) fn persist_folder_state(&mut self) {
+        if let Ok(mut config) = crate::config::ClinConfig::load() {
+            config.list.expanded_folders = self.list.folder_expanded.iter().cloned().collect();
+            if let Err(e) = config.save() {
+                self.set_temporary_status(&format!("Failed to save folder state: {e}"));
+            }
+        }
+    }
+
     pub fn toggle_markdown_preview(&mut self) {
         self.editor.editor_preview_enabled = !self.editor.editor_preview_enabled;
         if self.editor.editor_preview_enabled {

@@ -86,7 +86,7 @@ impl Default for Keybinds {
         );
         list.insert(
             ListAction::ToggleExternalEditor,
-            vec![KeyCombo::simple(KeyCode::Char('e'))],
+            vec![KeyCombo::parse("Alt+e").expect("valid key combo")],
         );
         list.insert(
             ListAction::NewFromTemplate,
@@ -213,6 +213,14 @@ impl Default for Keybinds {
         list.insert(
             ListAction::CollapseAll,
             vec![KeyCombo::simple(KeyCode::Char('c'))],
+        );
+        list.insert(
+            ListAction::ExpandAll,
+            vec![KeyCombo::simple(KeyCode::Char('e'))],
+        );
+        list.insert(
+            ListAction::ExpandToLevel,
+            vec![KeyCombo::shift(KeyCode::Char('E'))],
         );
         list.insert(
             ListAction::RefreshNotes,
@@ -1482,7 +1490,7 @@ impl KeybindPreset {
                 );
                 kb.list.insert(
                     ListAction::ToggleExternalEditor,
-                    vec![KeyCombo::simple(KeyCode::Char('e'))],
+                    vec![KeyCombo::parse("Alt+e").expect("valid key combo")],
                 );
                 kb.list.insert(
                     ListAction::OpenGraph,

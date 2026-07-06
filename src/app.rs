@@ -490,6 +490,13 @@ impl App {
         };
         app.goals_progress = app.load_goals_progress();
         app.list.folder_expanded.insert(String::new());
+        if !app.config.list.expanded_folders.is_empty() {
+            for folder in &app.config.list.expanded_folders {
+                app.list.folder_expanded.insert(folder.clone());
+            }
+        } else if let Some(d) = app.config.list.default_expand_depth {
+            app.expand_folders_to_depth(d);
+        }
         app.refresh_notes()?;
         if app
             .list
@@ -603,6 +610,13 @@ impl App {
         };
         app.goals_progress = app.load_goals_progress();
         app.list.folder_expanded.insert(String::new());
+        if !app.config.list.expanded_folders.is_empty() {
+            for folder in &app.config.list.expanded_folders {
+                app.list.folder_expanded.insert(folder.clone());
+            }
+        } else if let Some(d) = app.config.list.default_expand_depth {
+            app.expand_folders_to_depth(d);
+        }
         Ok(app)
     }
     pub fn reload_config(&mut self) {
@@ -1255,6 +1269,7 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::set_config_path_override;
     use crate::storage::Storage;
     use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
     use ratatui::layout::Rect;
@@ -1833,5 +1848,128 @@ word_goal = 1200
         let prev_mode = app.return_mode.take().unwrap_or(ViewMode::List);
         app.mode = prev_mode;
         assert_eq!(app.mode, ViewMode::List);
+    }
+
+    #[test]
+    fn test_folder_expand_and_collapse_operations() {
+        let temp_dir = tempdir().expect("value is present");
+        let data_dir = temp_dir.path().join("data");
+        let config_dir = temp_dir.path().join("config");
+        let notes_dir = temp_dir.path().join("notes");
+        let templates_dir = temp_dir.path().join("templates");
+        std::fs::create_dir_all(&data_dir).expect("value is present");
+        std::fs::create_dir_all(&config_dir).expect("value is present");
+        std::fs::create_dir_all(&notes_dir).expect("value is present");
+        std::fs::create_dir_all(&templates_dir).expect("value is present");
+
+        let storage = Storage {
+            data_dir,
+            config_dir,
+            notes_dir,
+            templates_dir,
+            key: [0u8; 32],
+        };
+        let mut app = App::new(storage).expect("value is present");
+
+        // Mock folder cache
+        app.list.folder_cache = Some(vec![
+            "a".to_string(),
+            "a/b".to_string(),
+            "a/b/c".to_string(),
+            "other".to_string(),
+        ]);
+
+        // 1. Test expand_all_folders
+        app.expand_all_folders();
+        assert!(app.list.folder_expanded.contains(""));
+        assert!(app.list.folder_expanded.contains(VIRTUAL_PINNED_PATH));
+        assert!(app.list.folder_expanded.contains("a"));
+        assert!(app.list.folder_expanded.contains("a/b"));
+        assert!(app.list.folder_expanded.contains("a/b/c"));
+        assert!(app.list.folder_expanded.contains("other"));
+
+        // 2. Test collapse_all_folders
+        app.list.visual_index = 4;
+        app.collapse_all_folders();
+        assert_eq!(app.list.visual_index, 0);
+        assert!(app.list.folder_expanded.contains(""));
+        assert!(!app.list.folder_expanded.contains("a"));
+        assert!(!app.list.folder_expanded.contains("a/b"));
+
+        // 3. Test expand_to_level
+        app.expand_to_level(2); // Should expand depth < 2 (root = 0, "a" = 1, "other" = 1)
+        assert!(app.list.folder_expanded.contains(""));
+        assert!(app.list.folder_expanded.contains(VIRTUAL_PINNED_PATH));
+        assert!(app.list.folder_expanded.contains("a"));
+        assert!(app.list.folder_expanded.contains("other"));
+        assert!(!app.list.folder_expanded.contains("a/b")); // depth = 2 is not < 2
+
+        app.expand_to_level(3); // Should expand depth < 3 (includes "a/b" depth 2)
+        assert!(app.list.folder_expanded.contains("a/b"));
+        assert!(!app.list.folder_expanded.contains("a/b/c")); // depth = 3 is not < 3
+    }
+
+    #[test]
+    fn test_startup_folder_expansion_config_and_default_depth() {
+        let _lock = crate::config::CONFIG_TEST_MUTEX.lock();
+        let config_path = crate::config::ClinConfig::config_path().expect("value is present");
+        if let Some(parent) = config_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let _ = std::fs::remove_file(&config_path);
+
+        let temp_dir = tempdir().expect("value is present");
+        let data_dir = temp_dir.path().join("data");
+        let config_dir = temp_dir.path().join("config");
+        let notes_dir = temp_dir.path().join("notes");
+        let templates_dir = temp_dir.path().join("templates");
+        std::fs::create_dir_all(&data_dir).expect("value is present");
+        std::fs::create_dir_all(&config_dir).expect("value is present");
+        std::fs::create_dir_all(&notes_dir).expect("value is present");
+        std::fs::create_dir_all(&templates_dir).expect("value is present");
+
+        let storage = Storage {
+            data_dir,
+            config_dir: config_dir.clone(),
+            notes_dir,
+            templates_dir,
+            key: [0u8; 32],
+        };
+        let config_content = crate::config::merge::default_config_content().replace(
+            "preview_enabled = true",
+            "preview_enabled = true\nexpanded_folders = [\"a\", \"a/b\"]",
+        );
+        std::fs::write(&config_path, config_content).expect("value is present");
+        set_config_path_override(config_path.clone());
+
+        // Create App, should load folders
+        let app = App::new(storage.clone()).expect("value is present");
+        assert!(app.list.folder_expanded.contains("a"));
+        assert!(app.list.folder_expanded.contains("a/b"));
+        assert!(!app.list.folder_expanded.contains("other"));
+
+        // Write config with default_expand_depth = 2
+        let config_content = crate::config::merge::default_config_content().replace(
+            "preview_enabled = true",
+            "preview_enabled = true\ndefault_expand_depth = 2",
+        );
+        std::fs::write(&config_path, config_content).expect("value is present");
+
+        // Re-create App, should expand up to depth 2 (since expanded_folders is empty now)
+        let mut app2 = App::new(storage).expect("value is present");
+        // Mock folder cache
+        app2.list.folder_cache = Some(vec![
+            "a".to_string(),
+            "a/b".to_string(),
+            "a/b/c".to_string(),
+            "other".to_string(),
+        ]);
+        // Trigger expansion to depth
+        app2.expand_folders_to_depth(2);
+        assert!(app2.list.folder_expanded.contains("a"));
+        assert!(app2.list.folder_expanded.contains("other"));
+        assert!(!app2.list.folder_expanded.contains("a/b"));
+
+        let _ = std::fs::remove_file(&config_path);
     }
 }

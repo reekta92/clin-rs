@@ -298,6 +298,14 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 app.collapse_all_folders();
                 return false;
             }
+            ListAction::ExpandAll => {
+                app.expand_all_folders();
+                return false;
+            }
+            ListAction::ExpandToLevel => {
+                app.expand_to_level(count.unwrap_or(1) as usize);
+                return false;
+            }
             ListAction::RefreshNotes => {
                 app.list.folder_cache = None;
                 if let Err(e) = app.refresh_notes() {

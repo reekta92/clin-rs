@@ -376,6 +376,10 @@ pub struct ListConfig {
     pub week_start: WeekStart,
     #[serde(default = "default_sections")]
     pub sections: Vec<NotesSection>,
+    #[serde(default)]
+    pub expanded_folders: Vec<String>,
+    #[serde(default)]
+    pub default_expand_depth: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]

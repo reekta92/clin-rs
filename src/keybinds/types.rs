@@ -48,6 +48,8 @@ pub enum ListAction {
     ToggleSelectMode,
     ToggleSelectItem,
     CollapseAll,
+    ExpandAll,
+    ExpandToLevel,
     RefreshNotes,
     ToggleFoldersFirst,
 }
