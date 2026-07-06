@@ -1096,7 +1096,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
             // Vault/Pinned tabs
             if mouse_event.row == terminal_area.y {
-                let tabs = [
+                let mut tabs = vec![
                     (
                         "Vault",
                         Some(crate::ui::get_icon(
@@ -1114,6 +1114,16 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                         )),
                     ),
                 ];
+                if app.config.list.smart_folders_enabled {
+                    tabs.push((
+                        "Smart",
+                        Some(crate::ui::get_icon(
+                            "\u{f0e7}",
+                            "\u{26a1}",
+                            app.config.ui.icon_mode,
+                        )),
+                    ));
+                }
                 let region = crate::ui::title_bar_tabs_region(terminal_area, "Notes");
                 if let Some(i) = crate::ui::hit_test_tabs(
                     &tabs,
@@ -1126,6 +1136,8 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                 ) {
                     app.list.grid_folder = if i == 1 {
                         crate::app::VIRTUAL_PINNED_PATH.to_string()
+                    } else if i == 2 && app.config.list.smart_folders_enabled {
+                        crate::app::VIRTUAL_SMART_PATH.to_string()
                     } else {
                         String::new()
                     };
@@ -1136,37 +1148,50 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
             }
 
             // Breadcrumbs
-            if mouse_event.row == list_area.y + 1
-                && app.list.grid_folder != crate::app::VIRTUAL_PINNED_PATH
-            {
-                let mut offset = list_area.x;
-                let vault_text = " \u{f07b} Vault";
-                let vault_w = vault_text.chars().count() as u16;
-                if mouse_event.column >= offset && mouse_event.column < offset + vault_w {
-                    app.list.grid_folder = String::new();
-                    app.list.visual_index = 0;
-                    app.refresh_visual_list();
-                    return;
-                }
-                offset += vault_w;
-                if !app.list.grid_folder.is_empty() {
-                    let parts: Vec<&str> = app.list.grid_folder.split('/').collect();
-                    let mut current_path = String::new();
-                    for part in parts {
-                        // " / "
-                        offset += 3;
-                        let part_w = part.chars().count() as u16;
-                        if !current_path.is_empty() {
-                            current_path.push('/');
+            if mouse_event.row == list_area.y + 1 {
+                let is_smart = app.list.grid_folder == crate::app::VIRTUAL_SMART_PATH
+                    || app.list.grid_folder.starts_with('@');
+                if is_smart {
+                    let offset = list_area.x;
+                    let smart_icon = crate::ui::get_icon("\u{f0e7}", "\u{26a1}", app.config.ui.icon_mode);
+                    let smart_text = format!(" {smart_icon} Smart");
+                    let smart_w = smart_text.chars().count() as u16;
+                    if mouse_event.column >= offset && mouse_event.column < offset + smart_w {
+                        app.list.grid_folder = crate::app::VIRTUAL_SMART_PATH.to_string();
+                        app.list.visual_index = 0;
+                        app.refresh_visual_list();
+                        return;
+                    }
+                } else if app.list.grid_folder != crate::app::VIRTUAL_PINNED_PATH {
+                    let mut offset = list_area.x;
+                    let vault_text = " \u{f07b} Vault";
+                    let vault_w = vault_text.chars().count() as u16;
+                    if mouse_event.column >= offset && mouse_event.column < offset + vault_w {
+                        app.list.grid_folder = String::new();
+                        app.list.visual_index = 0;
+                        app.refresh_visual_list();
+                        return;
+                    }
+                    offset += vault_w;
+                    if !app.list.grid_folder.is_empty() {
+                        let parts: Vec<&str> = app.list.grid_folder.split('/').collect();
+                        let mut current_path = String::new();
+                        for part in parts {
+                            // " / "
+                            offset += 3;
+                            let part_w = part.chars().count() as u16;
+                            if !current_path.is_empty() {
+                                current_path.push('/');
+                            }
+                            current_path.push_str(part);
+                            if mouse_event.column >= offset && mouse_event.column < offset + part_w {
+                                app.list.grid_folder = current_path;
+                                app.list.visual_index = 0;
+                                app.refresh_visual_list();
+                                return;
+                            }
+                            offset += part_w;
                         }
-                        current_path.push_str(part);
-                        if mouse_event.column >= offset && mouse_event.column < offset + part_w {
-                            app.list.grid_folder = current_path;
-                            app.list.visual_index = 0;
-                            app.refresh_visual_list();
-                            return;
-                        }
-                        offset += part_w;
                     }
                 }
             }

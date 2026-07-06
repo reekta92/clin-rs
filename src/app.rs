@@ -39,6 +39,8 @@ use std::sync::mpsc;
 
 pub const VIRTUAL_PINNED_PATH: &str = "__clin_virtual__/pinned";
 pub const VIRTUAL_PINNED_LABEL: &str = "Pinned";
+pub const VIRTUAL_SMART_PATH: &str = "__clin_virtual__/smart";
+pub const VIRTUAL_SMART_LABEL: &str = "Smart";
 
 #[derive(Debug, Clone, Default)]
 pub struct SearchQuery {
@@ -970,6 +972,7 @@ impl App {
                         SmartFolderKind::ThisWeek => ("\u{f073}", "\u{1f5d3}"),
                         SmartFolderKind::Untagged => ("\u{f187}", "\u{1f4e5}"),
                         SmartFolderKind::Tag(_) => ("\u{f02c}", "\u{1f3f7}"),
+                        SmartFolderKind::Custom(_) => ("\u{f0e7}", "\u{26a1}"),
                     };
 
                     let arrow = if *is_expanded {
@@ -1079,7 +1082,7 @@ impl App {
         self.run_external_command(&editor_prog, extra_args)
     }
 
-    fn open_path_in_external_editor(&mut self, path: &std::path::Path) {
+    pub fn open_path_in_external_editor(&mut self, path: &std::path::Path) {
         let (result, editor_prog) =
             self.run_in_external_editor(&[path.to_string_lossy().into_owned()]);
 

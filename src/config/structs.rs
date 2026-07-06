@@ -333,6 +333,19 @@ pub struct BackupConfig {
     pub auto_backup_interval: Option<u64>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CustomSmartFolder {
+    pub name: String,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub title_contains: Option<String>,
+    #[serde(default)]
+    pub folder_prefix: Option<String>,
+    #[serde(default)]
+    pub updated_within_days: Option<u64>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[serde(default)]
 pub struct ListConfig {
@@ -384,6 +397,8 @@ pub struct ListConfig {
     pub expanded_folders: Vec<String>,
     #[serde(default)]
     pub default_expand_depth: Option<usize>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub custom_smart_folders: Vec<CustomSmartFolder>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]

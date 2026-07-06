@@ -4,7 +4,7 @@ use super::{
     draw_view_title_bar, draw_view_title_bar_with_tabs, ext_badge, format_keybind_hints,
     format_relative_time, list_state_selected, popup_block, popup_hint_line,
 };
-use crate::app::{App, VIRTUAL_PINNED_LABEL, VIRTUAL_PINNED_PATH, ViewMode};
+use crate::app::{App, ViewMode, VIRTUAL_PINNED_LABEL, VIRTUAL_PINNED_PATH, VIRTUAL_SMART_PATH};
 use crate::app_theme::AppThemeColors;
 use crate::keybinds::ListAction;
 use ratatui::{prelude::*, widgets::*};
@@ -282,7 +282,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             None,
         );
     } else if app.list.notes_layout == crate::config::NotesLayout::Grid {
-        let tabs = [
+        let mut tabs = vec![
             (
                 "Vault",
                 Some(crate::ui::get_icon(
@@ -300,10 +300,26 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 )),
             ),
         ];
-        let is_pinned = app.list.grid_folder == VIRTUAL_PINNED_PATH;
+        if app.config.list.smart_folders_enabled {
+            tabs.push((
+                "Smart",
+                Some(crate::ui::get_icon(
+                    "\u{f0e7}",
+                    "\u{26a1}",
+                    app.config.ui.icon_mode,
+                )),
+            ));
+        }
+        let selected_idx = if app.list.grid_folder == VIRTUAL_PINNED_PATH {
+            1
+        } else if app.list.grid_folder == VIRTUAL_SMART_PATH || app.list.grid_folder.starts_with('@') {
+            2
+        } else {
+            0
+        };
         let tab_spans = build_tab_spans(
             &tabs,
-            if is_pinned { 1 } else { 0 },
+            selected_idx,
             &app.app_theme,
             app.config.ui.tab_icons_only,
             app.config.ui.icon_mode,
@@ -432,6 +448,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
 
             // --- render directory breadcrumbs at the top of the list area ---
             let is_pinned = app.list.grid_folder == VIRTUAL_PINNED_PATH;
+            let is_smart = app.list.grid_folder == VIRTUAL_SMART_PATH || app.list.grid_folder.starts_with('@');
             let mut spans = Vec::new();
             if is_pinned {
                 spans.push(Span::styled(
@@ -443,6 +460,39 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                         .fg(app.app_theme.heading)
                         .add_modifier(Modifier::BOLD),
                 ));
+            } else if is_smart {
+                spans.push(Span::styled(
+                    format!(
+                        " {} Smart",
+                        crate::ui::get_icon("\u{f0e7}", "\u{26a1}", app.config.ui.icon_mode)
+                    ),
+                    Style::default()
+                        .fg(app.app_theme.tag)
+                        .add_modifier(Modifier::BOLD),
+                ));
+                if app.list.grid_folder.starts_with('@') {
+                    let label = if app.list.grid_folder == "@today" {
+                        "Today"
+                    } else if app.list.grid_folder == "@week" {
+                        "This Week"
+                    } else if app.list.grid_folder == "@untagged" {
+                        "Untagged"
+                    } else if let Some(tag) = app.list.grid_folder.strip_prefix("@tag:") {
+                        tag
+                    } else if let Some(custom) = app.list.grid_folder.strip_prefix("@custom:") {
+                        custom
+                    } else {
+                        &app.list.grid_folder
+                    };
+                    spans.push(Span::styled(
+                        " / ",
+                        Style::default().fg(app.app_theme.muted),
+                    ));
+                    spans.push(Span::styled(
+                        label.to_string(),
+                        Style::default().fg(app.app_theme.fg),
+                    ));
+                }
             } else {
                 spans.push(Span::styled(
                     format!(
@@ -591,6 +641,14 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                                     app.config.ui.icon_mode,
                                 ),
                                 "Tag",
+                            ),
+                            crate::list_view::SmartFolderKind::Custom(_) => (
+                                crate::ui::get_char(
+                                    '\u{f0e7}',
+                                    '\u{26a1}',
+                                    app.config.ui.icon_mode,
+                                ),
+                                "Custom",
                             ),
                         };
                         (ic, text_label, app.app_theme.tag, label.clone())
@@ -1898,6 +1956,8 @@ pub fn get_preview_info(app: &App) -> Option<PreviewHeaderInfo> {
                     ("Vault".to_string(), "Vault".to_string())
                 } else if path == VIRTUAL_PINNED_PATH {
                     ("Pinned".to_string(), "Pinned".to_string())
+                } else if path == VIRTUAL_SMART_PATH {
+                    ("Smart".to_string(), "Smart".to_string())
                 } else if let Some(slash_idx) = path.rfind('/') {
                     let parent = &path[..slash_idx];
                     (format!("Vault/{}", parent), name.clone())
@@ -1905,9 +1965,10 @@ pub fn get_preview_info(app: &App) -> Option<PreviewHeaderInfo> {
                     ("Vault".to_string(), name.clone())
                 }
             }
-            crate::list_view::VisualItem::SmartFolder { kind, label, .. } => {
-                (kind.virtual_path(), label.clone())
+            crate::list_view::VisualItem::SmartFolder { label, .. } => {
+                ("Smart".to_string(), label.clone())
             }
+
             crate::list_view::VisualItem::Note { summary_idx, .. } => {
                 if let Some(note) = app.notes.get(*summary_idx) {
                     let folder = if note.folder.is_empty() {

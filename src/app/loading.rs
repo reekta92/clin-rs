@@ -6,6 +6,12 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+
+struct SmartFolderData {
+    kind: SmartFolderKind,
+    label: String,
+    matches: Vec<usize>,
+}
 impl App {
     /// Spawns a background thread that streams note summaries in batches.
     /// Caller must drain the receiver in the main loop via merge_loaded.
@@ -366,6 +372,7 @@ impl App {
                 );
             }
         }
+        let mut computed_smart_folders = Vec::new();
         if self.config.list.smart_folders_enabled {
             let now = crate::ui::now_unix_secs();
             let mut today_notes = Vec::new();
@@ -389,29 +396,94 @@ impl App {
                 }
             }
 
-            let push_smart = |kind: SmartFolderKind,
-                              label: String,
-                              matching: Vec<usize>,
-                              visual: &mut Vec<VisualItem>,
-                              folder_expanded: &std::collections::HashSet<String>,
-                              notes: &[NoteSummary]| {
-                if matching.is_empty() {
-                    return;
+            if !today_notes.is_empty() {
+                computed_smart_folders.push(SmartFolderData {
+                    kind: SmartFolderKind::Today,
+                    label: "Today".to_string(),
+                    matches: today_notes,
+                });
+            }
+            if !week_notes.is_empty() {
+                computed_smart_folders.push(SmartFolderData {
+                    kind: SmartFolderKind::ThisWeek,
+                    label: "This Week".to_string(),
+                    matches: week_notes,
+                });
+            }
+            if !untagged_notes.is_empty() {
+                computed_smart_folders.push(SmartFolderData {
+                    kind: SmartFolderKind::Untagged,
+                    label: "Untagged".to_string(),
+                    matches: untagged_notes,
+                });
+            }
+
+            for rule in &self.config.list.custom_smart_folders {
+                let mut matches = Vec::new();
+                for (idx, note) in self.notes.iter().enumerate() {
+                    let mut ok = true;
+                    for t in &rule.tags {
+                        if !note.tags.contains(t) {
+                            ok = false;
+                            break;
+                        }
+                    }
+                    if let Some(txt) = &rule.title_contains {
+                        if !note.title.to_lowercase().contains(&txt.to_lowercase()) {
+                            ok = false;
+                        }
+                    }
+                    if let Some(prefix) = &rule.folder_prefix {
+                        if !note.folder.starts_with(prefix) {
+                            ok = false;
+                        }
+                    }
+                    if let Some(days) = rule.updated_within_days {
+                        let diff = now.saturating_sub(note.updated_at);
+                        if diff >= days * 86_400 {
+                            ok = false;
+                        }
+                    }
+                    if ok {
+                        matches.push(idx);
+                    }
                 }
-                let virtual_path = kind.virtual_path();
-                let is_expanded = folder_expanded.contains(&virtual_path);
+                if !matches.is_empty() {
+                    computed_smart_folders.push(SmartFolderData {
+                        kind: SmartFolderKind::Custom(rule.name.clone()),
+                        label: rule.name.clone(),
+                        matches,
+                    });
+                }
+            }
+
+            let mut sorted_tags: Vec<String> = tag_to_notes.keys().cloned().collect();
+            sorted_tags.sort();
+            for tag in sorted_tags {
+                if let Some(matching) = tag_to_notes.remove(&tag) {
+                    computed_smart_folders.push(SmartFolderData {
+                        kind: SmartFolderKind::Tag(tag.clone()),
+                        label: tag,
+                        matches: matching,
+                    });
+                }
+            }
+
+            for data in &computed_smart_folders {
+                let virtual_path = data.kind.virtual_path();
+                let is_expanded = self.list.folder_expanded.contains(&virtual_path);
                 visual.push(VisualItem::SmartFolder {
-                    kind,
-                    label,
+                    kind: data.kind.clone(),
+                    label: data.label.clone(),
                     depth: 0,
                     is_expanded,
-                    note_count: matching.len(),
+                    note_count: data.matches.len(),
                 });
                 if is_expanded {
-                    for idx in matching {
-                        let note = &notes[idx];
+                    for idx in &data.matches {
+                        let note = &self.notes[*idx];
                         visual.push(VisualItem::Note {
-                            summary_idx: idx,
+                            summary_idx: *idx,
                             depth: 1,
                             is_clin: note.id.ends_with(".clin"),
                             is_draw: note.id.ends_with(".draw"),
@@ -419,46 +491,6 @@ impl App {
                             in_virtual_pinned_folder: true,
                         });
                     }
-                }
-            };
-
-            push_smart(
-                SmartFolderKind::Today,
-                "Today".to_string(),
-                today_notes,
-                &mut visual,
-                &self.list.folder_expanded,
-                &self.notes,
-            );
-            push_smart(
-                SmartFolderKind::ThisWeek,
-                "This Week".to_string(),
-                week_notes,
-                &mut visual,
-                &self.list.folder_expanded,
-                &self.notes,
-            );
-            push_smart(
-                SmartFolderKind::Untagged,
-                "Untagged".to_string(),
-                untagged_notes,
-                &mut visual,
-                &self.list.folder_expanded,
-                &self.notes,
-            );
-
-            let mut sorted_tags: Vec<String> = tag_to_notes.keys().cloned().collect();
-            sorted_tags.sort();
-            for tag in sorted_tags {
-                if let Some(matching) = tag_to_notes.remove(&tag) {
-                    push_smart(
-                        SmartFolderKind::Tag(tag.clone()),
-                        tag,
-                        matching,
-                        &mut visual,
-                        &self.list.folder_expanded,
-                        &self.notes,
-                    );
                 }
             }
         }
@@ -504,6 +536,44 @@ impl App {
                         is_canvas: note.id.ends_with(".canvas"),
                         in_virtual_pinned_folder: true,
                     });
+                }
+            } else if gf == VIRTUAL_SMART_PATH {
+                // Smart Folders tab: show all smart folders as tiles, no ".." since it's the root of the tab
+                for data in &computed_smart_folders {
+                    visual.push(VisualItem::SmartFolder {
+                        kind: data.kind.clone(),
+                        label: data.label.clone(),
+                        depth: 0,
+                        is_expanded: false,
+                        note_count: data.matches.len(),
+                    });
+                }
+            } else if gf.starts_with('@') {
+                // User is inside a smart folder.
+                // 1. Push ".." pointing back to Smart tab root
+                visual.push(VisualItem::Folder {
+                    path: VIRTUAL_SMART_PATH.to_string(),
+                    name: "..".to_string(),
+                    depth: 0,
+                    is_expanded: false,
+                    note_count: 0,
+                    recursive_count: 0,
+                    stale: false,
+                    is_pinned: false,
+                });
+                // 2. Find the matching smart folder by virtual path and render its notes
+                if let Some(folder_data) = computed_smart_folders.iter().find(|d| d.kind.virtual_path() == *gf) {
+                    for idx in &folder_data.matches {
+                        let note = &self.notes[*idx];
+                        visual.push(VisualItem::Note {
+                            summary_idx: *idx,
+                            depth: 0,
+                            is_clin: note.id.ends_with(".clin"),
+                            is_draw: note.id.ends_with(".draw"),
+                            is_canvas: note.id.ends_with(".canvas"),
+                            in_virtual_pinned_folder: false,
+                        });
+                    }
                 }
             } else {
                 // Vault tab or a subfolder: show only the contents of this folder.

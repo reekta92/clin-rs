@@ -848,6 +848,64 @@ show_status_bar = false
     }
 
     #[test]
+    fn test_save_config_with_custom_smart_folders() {
+        let _lock = CONFIG_TEST_MUTEX.lock();
+        let temp_dir = tempfile::tempdir().unwrap();
+        let config_file_path = temp_dir.path().join("config.toml");
+
+        set_config_path_override(config_file_path.clone());
+
+        let mut config = ClinConfig::load().unwrap();
+        assert!(config_file_path.exists());
+
+        config.list.custom_smart_folders = vec![
+            super::structs::CustomSmartFolder {
+                name: "Work Projects".to_string(),
+                tags: vec!["work".to_string()],
+                title_contains: Some("todo".to_string()),
+                folder_prefix: Some("work/".to_string()),
+                updated_within_days: Some(5),
+            }
+        ];
+
+        config.save().unwrap();
+
+        let saved_content = fs::read_to_string(&config_file_path).unwrap();
+        assert!(saved_content.contains("name = \"Work Projects\""));
+        assert!(saved_content.contains("tags = [\"work\"]"));
+        assert!(saved_content.contains("title_contains = \"todo\""));
+        assert!(saved_content.contains("folder_prefix = \"work/\""));
+        assert!(saved_content.contains("updated_within_days = 5"));
+
+        // Reload and verify parsed struct values
+        let reloaded = ClinConfig::load().unwrap();
+        assert_eq!(reloaded.list.custom_smart_folders.len(), 1);
+        assert_eq!(reloaded.list.custom_smart_folders[0].name, "Work Projects");
+        assert_eq!(reloaded.list.custom_smart_folders[0].tags, vec!["work"]);
+        assert_eq!(reloaded.list.custom_smart_folders[0].title_contains, Some("todo".to_string()));
+        assert_eq!(reloaded.list.custom_smart_folders[0].folder_prefix, Some("work/".to_string()));
+        assert_eq!(reloaded.list.custom_smart_folders[0].updated_within_days, Some(5));
+    }
+
+    #[test]
+    fn test_empty_custom_smart_folders_not_written() {
+        let _lock = CONFIG_TEST_MUTEX.lock();
+        let temp_dir = tempfile::tempdir().unwrap();
+        let config_file_path = temp_dir.path().join("config.toml");
+
+        set_config_path_override(config_file_path.clone());
+
+        let mut config = ClinConfig::load().unwrap();
+        assert!(config_file_path.exists());
+
+        // Ensure custom_smart_folders is empty
+        config.list.custom_smart_folders = Vec::new();
+        config.save().unwrap();
+
+        let saved_content = fs::read_to_string(&config_file_path).unwrap();
+        assert!(!saved_content.contains("custom_smart_folders ="));
+    }
+    #[test]
     fn test_sections_default() {
         let toml_str = r#"
 [list]

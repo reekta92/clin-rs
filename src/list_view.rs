@@ -29,6 +29,7 @@ pub enum SmartFolderKind {
     ThisWeek,
     Untagged,
     Tag(String),
+    Custom(String),
 }
 
 impl SmartFolderKind {
@@ -38,6 +39,7 @@ impl SmartFolderKind {
             Self::ThisWeek => "@week".into(),
             Self::Untagged => "@untagged".into(),
             Self::Tag(t) => format!("@tag:{t}"),
+            Self::Custom(name) => format!("@custom:{name}"),
         }
     }
 }

@@ -1,4 +1,4 @@
-use crate::actions::ActionCategory;
+use crate::actions::{Action, ActionCategory};
 use crate::toggle_action;
 
 toggle_action!(
@@ -272,3 +272,31 @@ toggle_action!(
     app,
     if app.list.folders_first { "On" } else { "Off" }
 );
+
+toggle_action!(
+    ToggleSmartFoldersAction,
+    "settings.smart_folders",
+    "Toggle Smart Folders",
+    "Show or hide smart virtual folders in the notes list",
+    ActionCategory::Settings,
+    "\u{f0e7}",
+    "\u{26a1}",
+    toggle_smart_folders,
+    app,
+    if app.config.list.smart_folders_enabled { "On" } else { "Off" }
+);
+
+pub struct ConfigureSmartFoldersAction;
+impl Action for ConfigureSmartFoldersAction {
+    fn id(&self) -> std::borrow::Cow<'static, str> { "settings.configure_smart_folders".into() }
+    fn name(&self) -> std::borrow::Cow<'static, str> { "Configure Smart Folders".into() }
+    fn description(&self) -> std::borrow::Cow<'static, str> { "Open config.toml to edit custom smart folders".into() }
+    fn category(&self) -> ActionCategory { ActionCategory::Settings }
+    fn glyph(&self) -> (&'static str, &'static str) { ("\u{f0db}", "\u{1f4cb}") }
+    fn execute(&self, app: &mut crate::app::App, _ctx: Option<&str>) -> anyhow::Result<()> {
+        let path = crate::config::ClinConfig::config_path()?;
+        app.open_path_in_external_editor(&path);
+        app.reload_config();
+        Ok(())
+    }
+}

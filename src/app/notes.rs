@@ -196,7 +196,10 @@ impl App {
             }
             VisualItem::SmartFolder { kind, .. } => {
                 let p = kind.virtual_path();
-                if self.list.folder_expanded.contains(&p) {
+                if self.list.notes_layout == crate::config::NotesLayout::Grid {
+                    self.list.grid_folder = p;
+                    self.list.visual_index = 0;
+                } else if self.list.folder_expanded.contains(&p) {
                     self.list.folder_expanded.remove(&p);
                 } else {
                     self.list.folder_expanded.insert(p);
