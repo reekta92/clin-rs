@@ -23,7 +23,10 @@ The Grid layout displays notes as cards. It is optimized for visual recognition 
 
 ### 2. Tree Layout
 The Tree layout provides a hierarchical view of your folders and notes, similar to a traditional file explorer. It is ideal for navigating complex vault structures.
-
+- **Smart Virtual Folders**: Dynamic groups like *Today* (updated in last 24h), *This Week*, *Untagged*, and one folder per *Tag*. Toggle `smart_folders_enabled` in config to enable.
+- **Folder Pinning**: Pin folders to the top of the list for quick access by selecting a folder and pressing the pin key (`p`).
+- **Inline Rename**: Rename notes and folders directly in the tree list by pressing the rename key (`r`). Press `Enter` to commit, or `Esc` to cancel.
+- **Drag-to-Move**: Click and drag notes onto folders to move them. Alternatively, use the `g u` keyboard shortcut to move the selected note to its parent directory.
 ---
 
 ## Previews and Rendering

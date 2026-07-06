@@ -366,6 +366,10 @@ pub struct ListConfig {
     pub folders_first: bool,
     #[serde(default = "default_true")]
     pub calendar_enabled: bool,
+    #[serde(default)]
+    pub smart_folders_enabled: bool,
+    #[serde(default)]
+    pub pinned_folders: Vec<String>,
     #[serde(default = "default_preview_width_ratio")]
     pub preview_width_ratio: f32,
     #[serde(default = "default_calendar_height")]

@@ -365,6 +365,24 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             ));
             spans.push(Span::raw(" ")); // padding right
             Some(Line::from(spans))
+        } else if let Some(crate::app::VisualItem::SmartFolder { note_count, .. }) =
+            app.list.visual_list.get(app.list.visual_index)
+        {
+            let mut spans = Vec::new();
+            let suffix = if *note_count == 1 { "note" } else { "notes" };
+            spans.push(Span::styled(
+                format!(
+                    " {} ",
+                    crate::ui::get_icon("\u{f0ca}", "\u{1f4cb}", app.config.ui.icon_mode)
+                ),
+                Style::default().fg(app.app_theme.tag),
+            ));
+            spans.push(Span::styled(
+                format!("{note_count} {suffix}"),
+                Style::default().fg(app.app_theme.fg),
+            ));
+            spans.push(Span::raw(" ")); // padding right
+            Some(Line::from(spans))
         } else {
             None
         };
@@ -539,6 +557,43 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                             app.app_theme.folder
                         };
                         (ic, label, col, name.clone())
+                    }
+                    crate::app::VisualItem::SmartFolder { kind, label, .. } => {
+                        let (ic, text_label) = match kind {
+                            crate::list_view::SmartFolderKind::Today => (
+                                crate::ui::get_char(
+                                    '\u{f133}',
+                                    '\u{1f4c5}',
+                                    app.config.ui.icon_mode,
+                                ),
+                                "Today",
+                            ),
+                            crate::list_view::SmartFolderKind::ThisWeek => (
+                                crate::ui::get_char(
+                                    '\u{f073}',
+                                    '\u{1f5d3}',
+                                    app.config.ui.icon_mode,
+                                ),
+                                "Week",
+                            ),
+                            crate::list_view::SmartFolderKind::Untagged => (
+                                crate::ui::get_char(
+                                    '\u{f187}',
+                                    '\u{1f4e5}',
+                                    app.config.ui.icon_mode,
+                                ),
+                                "Untag",
+                            ),
+                            crate::list_view::SmartFolderKind::Tag(_) => (
+                                crate::ui::get_char(
+                                    '\u{f02c}',
+                                    '\u{1f3f7}',
+                                    app.config.ui.icon_mode,
+                                ),
+                                "Tag",
+                            ),
+                        };
+                        (ic, text_label, app.app_theme.tag, label.clone())
                     }
                     crate::app::VisualItem::Note {
                         summary_idx,
@@ -729,6 +784,73 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
 
             app.list.list_state.select(Some(app.list.visual_index));
             frame.render_stateful_widget(list, list_area, &mut app.list.list_state);
+
+            if app.list.list_mode == crate::list_view::ListMode::RenameInline {
+                let offset = app.list.list_state.offset();
+                let visual_index = app.list.visual_index;
+                if visual_index >= offset {
+                    let relative_idx = visual_index - offset;
+                    let row_pitch =
+                        if app.list.list_density == crate::config::ListDensity::Comfortable {
+                            2
+                        } else {
+                            1
+                        };
+                    let row_y = list_area.y + 1 + (relative_idx * row_pitch) as u16;
+
+                    if row_y < list_area.y + list_area.height - 1 {
+                        let depth = match app.list.visual_list.get(visual_index) {
+                            Some(crate::app::VisualItem::Folder { depth, .. }) => *depth,
+                            Some(crate::app::VisualItem::Note { depth, .. }) => *depth,
+                            _ => 0,
+                        };
+
+                        let indent_spaces = depth * 2;
+                        let extra_icons_width = match app.list.visual_list.get(visual_index) {
+                            Some(crate::app::VisualItem::Folder { .. }) => 6,
+                            Some(crate::app::VisualItem::Note { .. }) => 6,
+                            _ => 6,
+                        };
+                        let connector_width = (indent_spaces + extra_icons_width) as u16;
+
+                        let overlay_x = list_area.x + 2 + connector_width;
+                        let max_width = list_area
+                            .width
+                            .saturating_sub(4)
+                            .saturating_sub(connector_width);
+
+                        if overlay_x < list_area.x + list_area.width - 2 {
+                            let text = app.editor.title_editor.lines().join("");
+                            let rect = Rect {
+                                x: overlay_x,
+                                y: row_y,
+                                width: max_width,
+                                height: 1,
+                            };
+
+                            let block = Block::default()
+                                .style(Style::default().bg(app.app_theme.highlight_bg));
+                            let p = Paragraph::new(text)
+                                .block(block)
+                                .style(Style::default().fg(app.app_theme.highlight_fg));
+
+                            frame.render_widget(p, rect);
+
+                            let cursor_col = app.editor.title_editor.cursor().1;
+                            let cursor_x = overlay_x + cursor_col as u16;
+                            if cursor_x < overlay_x + max_width
+                                && let Some(cell) = frame.buffer_mut().cell_mut((cursor_x, row_y))
+                            {
+                                cell.set_style(
+                                    Style::default()
+                                        .bg(app.app_theme.accent)
+                                        .fg(app.app_theme.highlight_fg),
+                                );
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
     if let Some(preview_rect) = preview_area {
@@ -1740,6 +1862,7 @@ fn get_item_name(app: &App, idx: usize) -> Option<String> {
     if let Some(item) = app.list.visual_list.get(idx) {
         match item {
             crate::list_view::VisualItem::Folder { name, .. } => Some(name.clone()),
+            crate::list_view::VisualItem::SmartFolder { label, .. } => Some(label.clone()),
             crate::list_view::VisualItem::Note { summary_idx, .. } => {
                 app.notes.get(*summary_idx).map(|n| n.title.clone())
             }
@@ -1847,6 +1970,9 @@ pub fn get_preview_info(app: &App) -> Option<PreviewHeaderInfo> {
                 } else {
                     ("Vault".to_string(), name.clone())
                 }
+            }
+            crate::list_view::VisualItem::SmartFolder { kind, label, .. } => {
+                (kind.virtual_path(), label.clone())
             }
             crate::list_view::VisualItem::Note { summary_idx, .. } => {
                 if let Some(note) = app.notes.get(*summary_idx) {
@@ -2010,6 +2136,7 @@ mod tests {
             note_count: 0,
             recursive_count: 0,
             stale: false,
+            is_pinned: false,
         }];
         app.list.visual_index = 0;
         assert_eq!(
@@ -2043,6 +2170,7 @@ mod tests {
                 note_count: 1,
                 recursive_count: 1,
                 stale: false,
+                is_pinned: false,
             },
             crate::list_view::VisualItem::Note {
                 summary_idx: 0,
@@ -2060,6 +2188,7 @@ mod tests {
                 note_count: 0,
                 recursive_count: 0,
                 stale: false,
+                is_pinned: false,
             },
         ];
         app.list.visual_index = 1;

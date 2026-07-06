@@ -19,27 +19,34 @@ impl App {
     }
 
     pub fn toggle_pin(&mut self) {
-        if let Some(VisualItem::Note { summary_idx, .. }) =
-            self.list.visual_list.get(self.list.visual_index)
-        {
-            let id = self.notes[*summary_idx].id.clone();
-            match self.storage.toggle_pin(&id) {
-                Ok(pinned) => {
-                    if let Err(e) = self.refresh_notes() {
-                        self.set_temporary_status(&format!("Refresh failed: {e}"));
+        match self.list.visual_list.get(self.list.visual_index) {
+            Some(VisualItem::Note { summary_idx, .. }) => {
+                let id = self.notes[*summary_idx].id.clone();
+                match self.storage.toggle_pin(&id) {
+                    Ok(pinned) => {
+                        if let Err(e) = self.refresh_notes() {
+                            self.set_temporary_status(&format!("Refresh failed: {e}"));
+                        }
+                        if pinned {
+                            self.set_temporary_status_static("Note pinned");
+                        } else {
+                            self.set_temporary_status_static("Note unpinned");
+                        }
                     }
-                    if pinned {
-                        self.set_temporary_status_static("Note pinned");
-                    } else {
-                        self.set_temporary_status_static("Note unpinned");
+                    Err(e) => {
+                        self.set_temporary_status(&format!("Failed to toggle pin: {e}"));
                     }
-                }
-                Err(e) => {
-                    self.set_temporary_status(&format!("Failed to toggle pin: {e}"));
                 }
             }
-        } else {
-            self.set_temporary_status_static("Select a note to pin/unpin");
+            Some(VisualItem::Folder { path, .. }) => {
+                self.toggle_pin_folder(path.clone());
+            }
+            Some(VisualItem::SmartFolder { .. }) | Some(VisualItem::CreateNew { .. }) => {
+                self.set_temporary_status_static("Cannot pin virtual folders or actions");
+            }
+            None => {
+                self.set_temporary_status_static("Nothing selected");
+            }
         }
     }
 
@@ -212,6 +219,7 @@ impl App {
     pub(crate) fn persist_folder_state(&mut self) {
         if let Ok(mut config) = crate::config::ClinConfig::load() {
             config.list.expanded_folders = self.list.folder_expanded.iter().cloned().collect();
+            config.list.pinned_folders = self.list.pinned_folders.iter().cloned().collect();
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save folder state: {e}"));
             }

@@ -426,7 +426,12 @@ impl App {
         list.calendar_height = bootstrap_config.list.calendar_height;
         list.calendar_position = bootstrap_config.list.calendar_position;
         list.sections = bootstrap_config.list.sections.clone();
-
+        list.pinned_folders = bootstrap_config
+            .list
+            .pinned_folders
+            .iter()
+            .cloned()
+            .collect();
         let preview_wrap = bootstrap_config.core.preview_wrap;
         let config_path = crate::config::ClinConfig::config_path().ok();
         let config_mtime =
@@ -546,7 +551,12 @@ impl App {
         list.calendar_height = bootstrap_config.list.calendar_height;
         list.calendar_position = bootstrap_config.list.calendar_position;
         list.sections = bootstrap_config.list.sections.clone();
-
+        list.pinned_folders = bootstrap_config
+            .list
+            .pinned_folders
+            .iter()
+            .cloned()
+            .collect();
         let preview_wrap = bootstrap_config.core.preview_wrap;
         let config_path = crate::config::ClinConfig::config_path().ok();
         let config_mtime =
@@ -629,6 +639,7 @@ impl App {
         };
         self.preview_wrap = self.config.core.preview_wrap;
         self.app_theme = crate::app_theme::AppThemeColors::from_config(&self.config.ui);
+        self.list.pinned_folders = self.config.list.pinned_folders.iter().cloned().collect();
         self.build_display_lines();
     }
 
@@ -643,7 +654,7 @@ impl App {
         }
     }
 
-    fn is_virtual_pinned_path(path: &str) -> bool {
+    pub(crate) fn is_virtual_pinned_path(path: &str) -> bool {
         path == VIRTUAL_PINNED_PATH
     }
 
@@ -662,12 +673,13 @@ impl App {
                     note_count,
                     recursive_count,
                     stale,
+                    is_pinned,
                 } => {
                     let indent = "  ".repeat(*depth);
-                    let is_pinned = name == crate::app::VIRTUAL_PINNED_LABEL;
+                    let is_virtual_pinned = name == crate::app::VIRTUAL_PINNED_LABEL;
                     let icon = if self.config.ui.icon_mode == crate::config::IconMode::None {
                         String::new()
-                    } else if is_pinned {
+                    } else if is_virtual_pinned {
                         if *is_expanded {
                             format!(
                                 "{} {}",
@@ -710,10 +722,10 @@ impl App {
                             crate::ui::get_icon("\u{f114}", "\u{1f4c2}", self.config.ui.icon_mode)
                         )
                     };
-                    let color = if *stale {
-                        self.app_theme.muted
-                    } else if is_pinned {
+                    let color = if *is_pinned {
                         self.app_theme.heading
+                    } else if *stale {
+                        self.app_theme.muted
                     } else {
                         self.app_theme.folder
                     };
@@ -723,10 +735,18 @@ impl App {
                         format!("{}", note_count)
                     };
                     let sanitized_name = crate::sanitize::sanitize_for_terminal(name);
+                    let mut display_name = sanitized_name.into_owned();
+                    if *is_pinned {
+                        let pin_icon =
+                            crate::ui::get_icon("\u{f08d}", "\u{1f4cc}", self.config.ui.icon_mode);
+                        if !pin_icon.is_empty() {
+                            display_name = format!("{pin_icon} {display_name}");
+                        }
+                    }
                     let mut text = if icon.is_empty() {
-                        format!("{indent}{sanitized_name} ({count_str})")
+                        format!("{indent}{display_name} ({count_str})")
                     } else {
-                        format!("{indent}{icon} {sanitized_name} ({count_str})")
+                        format!("{indent}{icon} {display_name} ({count_str})")
                     };
                     if self.list.list_mode == crate::list_view::ListMode::Select {
                         let checkbox = if self.list.selected_indices.contains(&vi) {
@@ -735,14 +755,17 @@ impl App {
                             "[ ] "
                         };
                         text = if icon.is_empty() {
-                            format!("{indent}{checkbox}{sanitized_name} ({count_str})")
+                            format!("{indent}{checkbox}{display_name} ({count_str})")
                         } else {
-                            format!("{indent}{checkbox}{icon} {sanitized_name} ({count_str})")
+                            format!("{indent}{checkbox}{icon} {display_name} ({count_str})")
                         };
                     }
                     let mut style = Style::default().add_modifier(Modifier::BOLD).fg(color);
-                    if *stale {
+                    if *stale && !*is_pinned {
                         style = style.add_modifier(Modifier::DIM);
+                    }
+                    if self.list.drag_hover == Some(vi) {
+                        style = style.bg(self.app_theme.highlight_bg);
                     }
                     let mut lines = vec![Line::from(vec![Span::styled(text, style)])];
                     if self.list.list_density == crate::config::ListDensity::Comfortable {
@@ -918,6 +941,60 @@ impl App {
                     }
                     items.push(ListItem::new(lines));
                 }
+                VisualItem::SmartFolder {
+                    kind,
+                    label,
+                    depth,
+                    is_expanded,
+                    note_count,
+                } => {
+                    let indent = "  ".repeat(*depth);
+                    let icon_mode = self.config.ui.icon_mode;
+                    let (nerd, unicode) = match kind {
+                        SmartFolderKind::Today => ("\u{f133}", "\u{1f4c5}"),
+                        SmartFolderKind::ThisWeek => ("\u{f073}", "\u{1f5d3}"),
+                        SmartFolderKind::Untagged => ("\u{f187}", "\u{1f4e5}"),
+                        SmartFolderKind::Tag(_) => ("\u{f02c}", "\u{1f3f7}"),
+                    };
+
+                    let arrow = if *is_expanded {
+                        crate::ui::get_icon("\u{f078}", "\u{25bc}", icon_mode)
+                    } else {
+                        crate::ui::get_icon("\u{f054}", "\u{25b6}", icon_mode)
+                    };
+
+                    let folder_icon = crate::ui::get_icon(nerd, unicode, icon_mode);
+                    let icon = format!("{arrow} {folder_icon}");
+                    let color = self.app_theme.tag;
+                    let count_str = format!("{}", note_count);
+                    let sanitized_name = crate::sanitize::sanitize_for_terminal(label);
+
+                    let mut text = if icon.is_empty() {
+                        format!("{indent}{sanitized_name} ({count_str})")
+                    } else {
+                        format!("{indent}{icon} {sanitized_name} ({count_str})")
+                    };
+
+                    if self.list.list_mode == crate::list_view::ListMode::Select {
+                        let checkbox = if self.list.selected_indices.contains(&vi) {
+                            "[x] "
+                        } else {
+                            "[ ] "
+                        };
+                        text = if icon.is_empty() {
+                            format!("{indent}{checkbox}{sanitized_name} ({count_str})")
+                        } else {
+                            format!("{indent}{checkbox}{icon} {sanitized_name} ({count_str})")
+                        };
+                    }
+
+                    let style = Style::default().add_modifier(Modifier::BOLD).fg(color);
+                    let mut lines = vec![Line::from(vec![Span::styled(text, style)])];
+                    if self.list.list_density == crate::config::ListDensity::Comfortable {
+                        lines.push(Line::from(""));
+                    }
+                    items.push(ListItem::new(lines));
+                }
             }
         }
         self.list.display_items = items;
@@ -1044,7 +1121,8 @@ impl App {
                     note.content.clone()
                 }
                 crate::list_view::VisualItem::Folder { .. }
-                | crate::list_view::VisualItem::CreateNew { .. } => {
+                | crate::list_view::VisualItem::CreateNew { .. }
+                | crate::list_view::VisualItem::SmartFolder { .. } => {
                     self.set_temporary_status_static(
                         "External preview only supports markdown notes",
                     );

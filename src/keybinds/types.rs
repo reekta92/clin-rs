@@ -21,6 +21,7 @@ pub enum ListAction {
     CreateNote,
     RenameFolder,
     MoveNote,
+    MoveToParent,
     ManageTags,
     CollapseFolder,
     ExpandFolder,

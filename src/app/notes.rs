@@ -115,6 +115,7 @@ impl App {
                 .map(|n| n.folder.clone())
                 .unwrap_or_default(),
             Some(VisualItem::CreateNew { path, .. }) => path.clone(),
+            Some(VisualItem::SmartFolder { .. }) => String::new(),
             None => String::new(),
         };
 
@@ -186,6 +187,15 @@ impl App {
                     self.list.grid_folder = p;
                     self.list.visual_index = 0;
                 } else if self.list.folder_expanded.contains(&p) {
+                    self.list.folder_expanded.remove(&p);
+                } else {
+                    self.list.folder_expanded.insert(p);
+                }
+                self.refresh_visual_list();
+            }
+            VisualItem::SmartFolder { kind, .. } => {
+                let p = kind.virtual_path();
+                if self.list.folder_expanded.contains(&p) {
                     self.list.folder_expanded.remove(&p);
                 } else {
                     self.list.folder_expanded.insert(p);

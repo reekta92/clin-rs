@@ -39,6 +39,15 @@ impl App {
                     }
                 }
             }
+            VisualItem::SmartFolder {
+                kind, is_expanded, ..
+            } => {
+                if *is_expanded {
+                    self.list.folder_expanded.remove(&kind.virtual_path());
+                    self.refresh_visual_list();
+                    self.persist_folder_state();
+                }
+            }
             VisualItem::Note { .. } | VisualItem::CreateNew { .. } => {
                 let item_path = match &self.list.visual_list[self.list.visual_index] {
                     VisualItem::Note { summary_idx, .. } => &self.notes[*summary_idx].folder,
@@ -74,6 +83,17 @@ impl App {
             } => {
                 if !is_expanded {
                     self.list.folder_expanded.insert(path.clone());
+                    self.refresh_visual_list();
+                    self.persist_folder_state();
+                } else if self.list.visual_index + 1 < self.list.visual_list.len() {
+                    self.list.visual_index += 1;
+                }
+            }
+            VisualItem::SmartFolder {
+                kind, is_expanded, ..
+            } => {
+                if !is_expanded {
+                    self.list.folder_expanded.insert(kind.virtual_path());
                     self.refresh_visual_list();
                     self.persist_folder_state();
                 } else if self.list.visual_index + 1 < self.list.visual_list.len() {
@@ -596,5 +616,20 @@ impl App {
         self.list
             .folder_expanded
             .insert(crate::app::VIRTUAL_PINNED_PATH.to_string());
+    }
+    pub fn toggle_pin_folder(&mut self, path: String) {
+        if path.is_empty() || path == crate::app::VIRTUAL_PINNED_PATH {
+            self.set_temporary_status_static("Cannot pin Vault root or Pinned notes");
+            return;
+        }
+        if self.list.pinned_folders.contains(&path) {
+            self.list.pinned_folders.remove(&path);
+            self.set_temporary_status_static("Folder unpinned from top");
+        } else {
+            self.list.pinned_folders.insert(path);
+            self.set_temporary_status_static("Folder pinned to top");
+        }
+        self.refresh_visual_list();
+        self.persist_folder_state();
     }
 }

@@ -109,6 +109,10 @@ impl Default for Keybinds {
             vec![KeyCombo::simple(KeyCode::Char('m'))],
         );
         list.insert(
+            ListAction::MoveToParent,
+            vec![KeyCombo::simple(KeyCode::Char('U'))],
+        );
+        list.insert(
             ListAction::ManageTags,
             vec![KeyCombo::simple(KeyCode::Char('.'))],
         );
@@ -1015,6 +1019,10 @@ impl KeybindPreset {
                     vec![KeyCombo::parse("Space p").expect("valid key combo")],
                 );
                 kb.list.insert(
+                    ListAction::MoveToParent,
+                    vec![KeyCombo::parse("g u").expect("valid key combo")],
+                );
+                kb.list.insert(
                     ListAction::OpenGraph,
                     vec![KeyCombo::parse("Space g").expect("valid key combo")],
                 );
@@ -1487,6 +1495,10 @@ impl KeybindPreset {
                 kb.list.insert(
                     ListAction::MoveNote,
                     vec![KeyCombo::simple(KeyCode::Char('m'))],
+                );
+                kb.list.insert(
+                    ListAction::MoveToParent,
+                    vec![KeyCombo::parse("g u").expect("valid key combo")],
                 );
                 kb.list.insert(
                     ListAction::ToggleExternalEditor,

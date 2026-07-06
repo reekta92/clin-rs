@@ -8,6 +8,66 @@ use crate::list_view::ListMode;
 use super::{contains_cell, move_textarea_cursor_to_mouse};
 
 pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
+    if app.list.list_mode == ListMode::RenameInline {
+        if key.code == KeyCode::Esc {
+            app.list.list_mode = ListMode::Normal;
+            app.list.rename_target = None;
+            app.refresh_visual_list();
+            return false;
+        } else if key.code == KeyCode::Enter {
+            let text = super::get_title_text(&app.editor.title_editor).into_owned();
+            let text = text.trim().to_string();
+            if !text.is_empty() && let Some(target) = &app.list.rename_target {
+                    match target {
+                        crate::list_view::RenameTarget::Note => {
+                            if let Some(crate::app::VisualItem::Note { summary_idx, .. }) =
+                                app.list.visual_list.get(app.list.visual_index)
+                            {
+                                let id = app.notes[*summary_idx].id.clone();
+                                match app.storage.rename_note(&id, &text) {
+                                    Ok(_) => {
+                                        let _ = app.refresh_notes();
+                                        app.set_temporary_status_static("Note renamed");
+                                    }
+                                    Err(e) => {
+                                        app.set_temporary_status(&format!("Rename failed: {e}"));
+                                    }
+                                }
+                            }
+                        }
+                        crate::list_view::RenameTarget::Folder(old_path) => {
+                            if text != *old_path {
+                                match app.storage.rename_folder(old_path, &text) {
+                                    Ok(_) => {
+                                        app.list.folder_cache = None;
+                                        let _ = app.refresh_notes();
+                                        app.set_temporary_status_static("Folder renamed");
+                                    }
+                                    Err(e) => {
+                                        app.set_temporary_status(&format!("Rename failed: {e}"));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            app.list.list_mode = ListMode::Normal;
+            app.list.rename_target = None;
+            app.refresh_visual_list();
+            return false;
+        } else {
+            if !crate::text_edit::apply_text_shortcuts(
+                &app.keybinds,
+                &mut app.editor.title_editor,
+                key,
+            ) {
+                app.editor
+                    .title_editor
+                    .input(ratatui_textarea::Input::from(key));
+            }
+            return false;
+        }
+    }
     if app.layout_edit {
         match key.code {
             KeyCode::Esc => {
@@ -118,6 +178,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                         app.list.selected_indices.clear();
                         ListMode::Normal
                     }
+                    ListMode::RenameInline => ListMode::RenameInline,
                 };
                 return false;
             }
@@ -197,16 +258,86 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
             }
             ListAction::RenameFolder | ListAction::Rename => {
                 if let Some(item) = app.list.visual_list.get(app.list.visual_index) {
-                    match item {
-                        crate::app::VisualItem::Folder { .. } => app.begin_rename_folder(),
-                        crate::app::VisualItem::Note { .. } => app.begin_rename_note(),
-                        _ => app.set_temporary_status_static("Select a note or folder to rename"),
+                    if app.list.notes_layout == crate::config::NotesLayout::Tree {
+                        match item {
+                            crate::app::VisualItem::Folder { path, .. } => {
+                                if path.is_empty() {
+                                    app.set_temporary_status_static("Cannot rename Vault root");
+                                    return false;
+                                }
+                                if App::is_virtual_pinned_path(path) {
+                                    app.set_temporary_status_static(
+                                        "Cannot rename virtual Pinned folder",
+                                    );
+                                    return false;
+                                }
+                                app.editor.title_editor = super::make_title_editor(
+                                    path,
+                                    app.app_theme.highlight_fg,
+                                    app.app_theme.highlight_bg,
+                                );
+                                app.list.rename_target =
+                                    Some(crate::list_view::RenameTarget::Folder(path.clone()));
+                                app.list.list_mode = ListMode::RenameInline;
+                            }
+                            crate::app::VisualItem::Note { summary_idx, .. } => {
+                                let note = &app.notes[*summary_idx];
+                                app.editor.title_editor = super::make_title_editor(
+                                    &note.title,
+                                    app.app_theme.highlight_fg,
+                                    app.app_theme.highlight_bg,
+                                );
+                                app.list.rename_target = Some(crate::list_view::RenameTarget::Note);
+                                app.list.list_mode = ListMode::RenameInline;
+                            }
+                            _ => {
+                                app.set_temporary_status_static(
+                                    "Select a note or folder to rename",
+                                );
+                            }
+                        }
+                    } else {
+                        match item {
+                            crate::app::VisualItem::Folder { .. } => app.begin_rename_folder(),
+                            crate::app::VisualItem::Note { .. } => app.begin_rename_note(),
+                            _ => {
+                                app.set_temporary_status_static("Select a note or folder to rename")
+                            }
+                        }
                     }
                 }
                 return false;
             }
             ListAction::MoveNote => {
                 app.begin_move();
+                return false;
+            }
+            ListAction::MoveToParent => {
+                if let Some(crate::app::VisualItem::Note { summary_idx, .. }) =
+                    app.list.visual_list.get(app.list.visual_index)
+                {
+                    let note = &app.notes[*summary_idx];
+                    let current_folder = &note.folder;
+                    if !current_folder.is_empty() {
+                        let parent_folder = if let Some(slash) = current_folder.rfind('/') {
+                            &current_folder[..slash]
+                        } else {
+                            ""
+                        };
+                        let id = note.id.clone();
+                        match app.storage.move_note(&id, parent_folder) {
+                            Ok(_) => {
+                                let _ = app.refresh_notes();
+                                app.set_temporary_status_static("Note moved to parent folder");
+                            }
+                            Err(e) => {
+                                app.set_temporary_status(&format!("Failed to move: {e}"));
+                            }
+                        }
+                    } else {
+                        app.set_temporary_status_static("Note is already at Vault root");
+                    }
+                }
                 return false;
             }
             ListAction::ManageTags => {
@@ -1207,10 +1338,21 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
     }
 
     if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
-        let visual_row = mouse_event.row.saturating_sub(inner_list_area.y) as usize;
+        let pitch = if app.list.list_density == crate::config::ListDensity::Comfortable {
+            2
+        } else {
+            1
+        };
+        let visual_row = (mouse_event.row.saturating_sub(inner_list_area.y) as usize) / pitch;
         let clicked_visual_index = app.list.list_state.offset().saturating_add(visual_row);
 
         if clicked_visual_index < app.list.visual_list.len() {
+            if app.list.notes_layout == crate::config::NotesLayout::Tree
+                && let Some(crate::list_view::VisualItem::Note { .. }) =
+                    app.list.visual_list.get(clicked_visual_index)
+            {
+                app.list.note_drag = Some(clicked_visual_index);
+            }
             let is_select_mode = app.list.list_mode == crate::list_view::ListMode::Select
                 || app.list.tag_to_assign.is_some();
 
@@ -1262,6 +1404,65 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                 }
             }
         }
+    }
+    if mouse_event.kind == MouseEventKind::Drag(MouseButton::Left) {
+        if app.list.note_drag.is_some() && app.list.notes_layout == crate::config::NotesLayout::Tree
+        {
+            if contains_cell(inner_list_area, mouse_event.column, mouse_event.row) {
+                let pitch = if app.list.list_density == crate::config::ListDensity::Comfortable {
+                    2
+                } else {
+                    1
+                };
+                let visual_row =
+                    (mouse_event.row.saturating_sub(inner_list_area.y) as usize) / pitch;
+                let clicked_visual_index = app.list.list_state.offset().saturating_add(visual_row);
+                if clicked_visual_index < app.list.visual_list.len() {
+                    if let Some(crate::list_view::VisualItem::Folder { .. }) =
+                        app.list.visual_list.get(clicked_visual_index)
+                    {
+                        app.list.drag_hover = Some(clicked_visual_index);
+                    } else {
+                        app.list.drag_hover = None;
+                    }
+                } else {
+                    app.list.drag_hover = None;
+                }
+            } else {
+                app.list.drag_hover = None;
+            }
+        }
+        return;
+    }
+
+    if mouse_event.kind == MouseEventKind::Up(MouseButton::Left) {
+        if let Some(dragged_idx) = app.list.note_drag.take()
+            && let Some(hovered_idx) = app.list.drag_hover.take()
+            && app.list.notes_layout == crate::config::NotesLayout::Tree
+            && let Some(crate::list_view::VisualItem::Note { summary_idx, .. }) =
+                app.list.visual_list.get(dragged_idx)
+            && let Some(crate::list_view::VisualItem::Folder {
+                path: target_folder,
+                ..
+            }) = app.list.visual_list.get(hovered_idx)
+        {
+            let note = &app.notes[*summary_idx];
+            let note_id = note.id.clone();
+            if note.folder == *target_folder {
+                app.set_temporary_status_static("Note already in this folder");
+            } else {
+                match app.storage.move_note(&note_id, target_folder) {
+                    Ok(_) => {
+                        let _ = app.refresh_notes();
+                        app.set_temporary_status_static("Note moved");
+                    }
+                    Err(e) => {
+                        app.set_temporary_status(&format!("Failed to move note: {e}"));
+                    }
+                }
+            }
+        }
+        app.refresh_visual_list();
     }
 }
 

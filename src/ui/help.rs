@@ -359,6 +359,7 @@ fn notes_help_text(keybinds: &Keybinds, theme: &AppThemeColors) -> Vec<HelpRow> 
     let list_delete = keybinds.list_keys_display(ListAction::Delete);
     let list_duplicate = keybinds.list_keys_display(ListAction::Duplicate);
     let list_move_note = keybinds.list_keys_display(ListAction::MoveNote);
+    let list_move_to_parent = keybinds.list_keys_display(ListAction::MoveToParent);
     let list_manage_tags = keybinds.list_keys_display(ListAction::ManageTags);
     let list_pin = keybinds.list_keys_display(ListAction::TogglePin);
     let list_toggle_external = keybinds.list_keys_display(ListAction::ToggleExternalEditor);
@@ -447,6 +448,11 @@ fn notes_help_text(keybinds: &Keybinds, theme: &AppThemeColors) -> Vec<HelpRow> 
     rows.push(help_item_dyn(
         "Move note or folder",
         Some(&list_move_note),
+        theme,
+    ));
+    rows.push(help_item_dyn(
+        "Move note to parent folder",
+        Some(&list_move_to_parent),
         theme,
     ));
     rows.push(help_item_dyn("Manage tags", Some(&list_manage_tags), theme));
