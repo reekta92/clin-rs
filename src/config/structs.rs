@@ -434,6 +434,14 @@ pub struct CoreConfig {
     pub preview_command: Option<String>,
     #[serde(default = "default_true")]
     pub syntax_highlighting: bool,
+    #[serde(default = "default_code_theme")]
+    pub code_theme: String,
+    #[serde(default = "default_true")]
+    pub code_line_numbers: bool,
+    #[serde(default)]
+    pub preview_wrap_indicator: bool,
+    #[serde(default = "default_link_url_max")]
+    pub link_url_max_length: usize,
 }
 
 impl Default for CoreConfig {
@@ -451,6 +459,10 @@ impl Default for CoreConfig {
             preview_expand_mode: crate::config::PreviewExpandMode::default(),
             syntax_highlighting: default_true(),
             preview_command: None,
+            code_theme: default_code_theme(),
+            code_line_numbers: default_true(),
+            preview_wrap_indicator: false,
+            link_url_max_length: default_link_url_max(),
         }
     }
 }

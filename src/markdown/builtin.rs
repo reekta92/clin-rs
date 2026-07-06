@@ -14,7 +14,7 @@ use std::sync::LazyLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use comrak::nodes::{
-    AstNode, ListType, NodeCodeBlock, NodeHeading, NodeList, NodeTable, NodeValue,
+    AstNode, ListType, NodeCodeBlock, NodeHeading, NodeList, NodeTable, NodeValue, TableAlignment,
 };
 use comrak::{Arena, Options, parse_document};
 use ratatui::style::{Modifier, Style};
@@ -23,6 +23,7 @@ use unicode_width::UnicodeWidthChar;
 use syntect::highlighting::{FontStyle, ThemeSet};
 use syntect::parsing::SyntaxSet;
 
+use crate::markdown::MdRenderOpts;
 use crate::markdown::style::{MarkdownTheme, RenderLine};
 
 // ---------------------------------------------------------------------------
@@ -35,6 +36,10 @@ static THEME_SET: LazyLock<ThemeSet> = LazyLock::new(ThemeSet::load_defaults);
 
 /// Theme name for code-block syntax highlighting.
 const CODE_THEME: &str = "base16-ocean.dark";
+/// Default syntect theme name; also the default for `[core] code_theme`.
+pub(crate) fn default_code_theme() -> &'static str {
+    CODE_THEME
+}
 
 // ---------------------------------------------------------------------------
 // Public entry point
@@ -49,9 +54,7 @@ pub(crate) fn render_builtin(
     content: &str,
     cols: u16,
     theme: &MarkdownTheme,
-    wrap: bool,
-    syntax_hl: bool,
-    icon_mode: crate::config::IconMode,
+    opts: &MdRenderOpts,
     cancel_token: &AtomicBool,
 ) -> Vec<RenderLine> {
     if cancel_token.load(Ordering::Relaxed) {
@@ -79,13 +82,16 @@ pub(crate) fn render_builtin(
     let mut ctx = Ctx {
         lines: vec![Vec::with_capacity(cols as usize)],
         cols: cols as usize,
-        wrap,
+        wrap: opts.wrap,
         theme,
-        syntax_hl,
-        icon_mode,
+        syntax_hl: opts.syntax_hl,
+        icon_mode: opts.icon_mode,
+        code_theme: opts.code_theme.clone(),
+        line_numbers: opts.code_line_numbers,
+        wrap_indicator: opts.wrap_indicator,
+        link_url_max: opts.link_url_max,
         cancel_token,
     };
-
     for child in root.children() {
         if ctx.cancel_token.load(Ordering::Relaxed) {
             break;
@@ -119,9 +125,12 @@ struct Ctx<'a> {
     theme: &'a MarkdownTheme,
     syntax_hl: bool,
     icon_mode: crate::config::IconMode,
+    code_theme: String,
+    line_numbers: bool,
+    wrap_indicator: bool,
+    link_url_max: usize,
     cancel_token: &'a AtomicBool,
 }
-
 impl Ctx<'_> {
     fn cur_col(&self) -> usize {
         self.lines.last().map(|l| l.len()).unwrap_or(0)
@@ -167,6 +176,17 @@ impl Ctx<'_> {
         let col = self.cur_col();
         if col + w > self.cols {
             if self.wrap {
+                if self.wrap_indicator {
+                    let target = self.cols.saturating_sub(1);
+                    let cur = self.cur_col();
+                    if cur <= target {
+                        let glyph_st = self.theme.hr;
+                        for _ in cur..target {
+                            self.ensure_line().push((' ', Style::default()));
+                        }
+                        self.ensure_line().push(('┄', glyph_st));
+                    }
+                }
                 self.new_line(margin);
             } else {
                 return;
@@ -435,70 +455,158 @@ fn render_list<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, list: &NodeList, depth:
 // Code blocks
 // ---------------------------------------------------------------------------
 
+/// Visual display width of a string (sum of per-char Unicode widths).
+fn str_visual_width(s: &str) -> usize {
+    s.chars()
+        .map(|c| UnicodeWidthChar::width(c).unwrap_or(0))
+        .sum()
+}
+
+/// `(nerd_font_codepoint, unicode_glyph)` for a code-fence language, if known.
+fn lang_icon(lang: &str) -> Option<(&'static str, &'static str)> {
+    let l = lang.to_ascii_lowercase();
+    Some(match l.as_str() {
+        "rust" | "rs" => ("\u{e7a8}", "🦀"),
+        "python" | "py" | "python3" => ("\u{e73c}", "🐍"),
+        "javascript" | "js" => ("\u{e74e}", "📜"),
+        "typescript" | "ts" => ("\u{e628}", "🔷"),
+        "go" | "golang" => ("\u{e627}", "🐹"),
+        "java" => ("\u{e256}", "☕"),
+        "php" => ("\u{e608}", "🐘"),
+        "ruby" | "rb" => ("\u{e739}", "💎"),
+        "c" => ("\u{e61e}", "🅒"),
+        "cpp" | "c++" => ("\u{e61d}", "🅒"),
+        "html" => ("\u{e736}", "🌐"),
+        "css" => ("\u{e749}", "🎨"),
+        "json" | "yaml" | "yml" | "toml" => ("\u{e60b}", "📋"),
+        "sql" => ("\u{e7c4}", "🗄"),
+        "sh" | "bash" | "shell" | "zsh" => ("\u{e795}", "🖥"),
+        "dockerfile" | "docker" | "dockercompose" => ("\u{f308}", "🐳"),
+        "lua" => ("\u{e626}", "🌙"),
+        "diff" | "patch" => ("\u{e728}", "Δ"),
+        _ => return None,
+    })
+}
+
+/// Closing pill: `╰` + `inner`×`─` + `╯`, mirroring the opening label width.
+fn close_code_pill(ctx: &mut Ctx, margin: usize, inner: usize) {
+    ctx.push('╰', ctx.theme.table_border, margin);
+    for _ in 0..inner {
+        ctx.push('─', ctx.theme.table_border, margin);
+    }
+    ctx.push('╯', ctx.theme.table_border, margin);
+}
 fn render_code_block(ctx: &mut Ctx, cb: &NodeCodeBlock, depth: usize) {
     let margin = 2 + depth * 2;
-    let code_margin = margin + 4; // +4 indent
+    let code_margin = margin + 4; // legacy 4-space indent
 
-    // Language label for fenced blocks
-    if cb.fenced && !cb.info.is_empty() {
-        let lang = cb.info.split_whitespace().next().unwrap_or("");
-        if !lang.is_empty() {
-            ctx.ensure_margin(margin);
-            ctx.push_str("╭─ ", ctx.theme.table_border, margin);
-            ctx.push_str(lang, ctx.theme.code_inline, margin);
-            ctx.push_str(" ─╮", ctx.theme.table_border, margin);
-        }
-    }
-    if ctx.syntax_hl && cb.fenced && !cb.info.is_empty() {
-        let lang = cb.info.split_whitespace().next().unwrap_or("");
-        if !lang.is_empty()
-            && let Some(syntax) = SYNTAX_SET.find_syntax_by_token(lang)
-            && let Some(theme) = THEME_SET.themes.get(CODE_THEME)
+    // Line-number gutter geometry
+    let line_count = cb.literal.lines().count().max(1);
+    let digits = line_count.to_string().len().max(2);
+    let gutter_w = if ctx.line_numbers { digits + 3 } else { 0 }; // "{:>w} │ "
+    let code_indent = if ctx.line_numbers {
+        margin + gutter_w
+    } else {
+        code_margin
+    };
+
+    // Opening label + inner width (reused for the symmetric closing pill)
+    let has_label = cb.fenced && !cb.info.is_empty();
+    let lang = if has_label {
+        cb.info.split_whitespace().next().unwrap_or("").to_string()
+    } else {
+        String::new()
+    };
+    let mut inner: usize = 0;
+    if has_label && !lang.is_empty() {
+        let mut icon_seg = String::new();
+        let mut icon_w = 0usize;
+        if !matches!(ctx.icon_mode, crate::config::IconMode::None)
+            && let Some((nerd, uni)) = lang_icon(&lang)
         {
-            let mut highlighter = syntect::easy::HighlightLines::new(syntax, theme);
-
-            for line in cb.literal.lines() {
-                if ctx.cancel_token.load(Ordering::Relaxed) {
-                    return;
-                }
-                ctx.new_line(margin);
-                ctx.push_spaces(4, margin);
-
-                if let Ok(ranges) = highlighter.highlight_line(line, &SYNTAX_SET) {
-                    for (syn_style, text) in &ranges {
-                        let rt_style = syntect_style_to_ratatui(*syn_style);
-                        ctx.push_str(text, rt_style, code_margin);
-                    }
-                } else {
-                    ctx.push_str(line, ctx.theme.paragraph, code_margin);
-                }
-            }
-
-            ctx.new_line(margin);
-
-            ctx.new_line(0);
-            return;
+            let g = crate::ui::get_icon(nerd, uni, ctx.icon_mode);
+            icon_seg = format!("{g} ");
+            icon_w = str_visual_width(&icon_seg);
         }
+        inner = str_visual_width(&lang) + icon_w + 4; // "─ " + icon_seg + lang + " ─"
+
+        ctx.ensure_margin(margin);
+        ctx.push_str("╭─ ", ctx.theme.table_border, margin);
+        if !icon_seg.is_empty() {
+            ctx.push_str(&icon_seg, ctx.theme.blockquote, margin);
+        }
+        ctx.push_str(&lang, ctx.theme.code_inline, margin);
+        ctx.push_str(" ─╮", ctx.theme.table_border, margin);
     }
 
-    // Plain rendering (no syntect or no lang info)
-    for line in cb.literal.lines() {
+    // Highlighted path
+    if ctx.syntax_hl
+        && has_label
+        && !lang.is_empty()
+        && let Some(syntax) = SYNTAX_SET.find_syntax_by_token(&lang)
+        && let Some(theme) = THEME_SET.themes.get(&ctx.code_theme)
+    {
+        let mut highlighter = syntect::easy::HighlightLines::new(syntax, theme);
+        for (i, line) in cb.literal.lines().enumerate() {
+            if ctx.cancel_token.load(Ordering::Relaxed) {
+                return;
+            }
+            ctx.new_line(margin);
+            if ctx.line_numbers {
+                push_code_gutter(ctx, i + 1, digits, margin);
+            } else {
+                ctx.push_spaces(4, margin);
+            }
+            if let Ok(ranges) = highlighter.highlight_line(line, &SYNTAX_SET) {
+                for (syn_style, text) in &ranges {
+                    let rt_style = syntect_style_to_ratatui(*syn_style);
+                    ctx.push_str(text, rt_style, code_indent);
+                }
+            } else {
+                ctx.push_str(line, ctx.theme.paragraph, code_indent);
+            }
+        }
+        ctx.new_line(margin);
+        if has_label && !lang.is_empty() {
+            close_code_pill(ctx, margin, inner);
+        }
+        ctx.new_line(0);
+        ctx.new_line(0);
+        return;
+    }
+
+    // Plain path (no syntect, unknown lang, or unknown code theme)
+    for (i, line) in cb.literal.lines().enumerate() {
         if ctx.cancel_token.load(Ordering::Relaxed) {
             return;
         }
         ctx.new_line(margin);
-        ctx.push_spaces(4, margin);
-        ctx.push_str(line, ctx.theme.paragraph, code_margin);
+        if ctx.line_numbers {
+            push_code_gutter(ctx, i + 1, digits, margin);
+        } else {
+            ctx.push_spaces(4, margin);
+        }
+        ctx.push_str(line, ctx.theme.paragraph, code_indent);
     }
-
+    ctx.new_line(margin);
+    if has_label && !lang.is_empty() {
+        close_code_pill(ctx, margin, inner);
+    }
     ctx.new_line(0);
-
     ctx.new_line(0);
+}
+
+/// Push the right-justified line-number gutter `{:>w} │ ` in muted style.
+fn push_code_gutter(ctx: &mut Ctx, idx: usize, digits: usize, margin: usize) {
+    let s = format!("{:>width$} │ ", idx, width = digits);
+    ctx.push_str(&s, ctx.theme.blockquote, margin);
 }
 
 // ---------------------------------------------------------------------------
 // Blockquote
 // ---------------------------------------------------------------------------
+
+const BQ_BARS: [char; 3] = ['┃', '║', '┆'];
 
 fn render_blockquote<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, depth: usize) {
     let margin = 2 + depth * 2;
@@ -509,7 +617,8 @@ fn render_blockquote<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, depth: usize) {
             break;
         }
 
-        ctx.push_str("┃ ", ctx.theme.blockquote_bar, margin);
+        let bar = BQ_BARS[depth % 3];
+        ctx.push_str(&format!("{bar} "), ctx.theme.blockquote_bar, margin);
 
         let data = child.data.borrow();
         match &data.value {
@@ -518,20 +627,24 @@ fn render_blockquote<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, depth: usize) {
                 for inline in child.children() {
                     render_inline(ctx, inline, style, margin + 2);
                 }
+                ctx.new_line(margin);
             }
             _ => {
-                // Drop borrow before recursion
+                // Block-level children (nested blockquotes, lists, etc.)
+                // handle their own vertical spacing — no extra new_line here
+                // to avoid compounding gaps at every nesting level.
                 drop(data);
                 render_block(ctx, child, depth + 1);
             }
         }
-
-        ctx.new_line(margin);
     }
 
-    ctx.new_line(0);
-
-    ctx.new_line(0);
+    // Trailing blank-lines separator: only at the outermost blockquote
+    // to prevent compounding gaps from nested levels.
+    if depth == 0 {
+        ctx.new_line(0);
+        ctx.new_line(0);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -545,7 +658,16 @@ struct Row<'a> {
     cells: Vec<Vec<&'a AstNode<'a>>>,
 }
 
-fn render_table<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, _tbl: &NodeTable, depth: usize) {
+fn cell_leading_pad(align: TableAlignment, col_width: usize, content_w: usize) -> usize {
+    let slack = col_width.saturating_sub(content_w);
+    match align {
+        TableAlignment::Right => slack,
+        TableAlignment::Center => slack / 2,
+        _ => 0,
+    }
+}
+
+fn render_table<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, tbl: &NodeTable, depth: usize) {
     let margin = 2 + depth * 2;
     ctx.ensure_margin(margin);
 
@@ -627,6 +749,16 @@ fn render_table<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, _tbl: &NodeTable, dept
             if ci >= num_cols {
                 break;
             }
+            let align = tbl
+                .alignments
+                .get(ci)
+                .copied()
+                .unwrap_or(TableAlignment::None);
+            let content_w: usize = cell_inlines.iter().map(|n| inline_text_len(n)).sum();
+            ctx.push_spaces(
+                cell_leading_pad(align, col_widths[ci], content_w),
+                margin + 1,
+            );
             let header_style = ctx.theme.table_header;
             for inline in cell_inlines {
                 render_inline(ctx, inline, header_style, margin + 1);
@@ -656,6 +788,16 @@ fn render_table<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, _tbl: &NodeTable, dept
             if ci >= num_cols {
                 break;
             }
+            let align = tbl
+                .alignments
+                .get(ci)
+                .copied()
+                .unwrap_or(TableAlignment::None);
+            let content_w: usize = cell_inlines.iter().map(|n| inline_text_len(n)).sum();
+            ctx.push_spaces(
+                cell_leading_pad(align, col_widths[ci], content_w),
+                margin + 1,
+            );
             let cell_style = ctx.theme.table_cell;
             for inline in cell_inlines {
                 render_inline(ctx, inline, cell_style, margin + 1);
@@ -691,11 +833,13 @@ fn inline_text_len<'a>(node: &'a AstNode<'a>) -> usize {
             .chars()
             .map(|c| UnicodeWidthChar::width(c).unwrap_or(0))
             .sum(),
-        NodeValue::Code(c) => c
-            .literal
-            .chars()
-            .map(|c| UnicodeWidthChar::width(c).unwrap_or(0))
-            .sum(),
+        NodeValue::Code(c) => {
+            c.literal
+                .chars()
+                .map(|ch| UnicodeWidthChar::width(ch).unwrap_or(0))
+                .sum::<usize>()
+                + 2
+        }
         NodeValue::Link(_)
         | NodeValue::Image(_)
         | NodeValue::Strong
@@ -780,6 +924,20 @@ fn link_icon(url: &str, icon_mode: crate::config::IconMode) -> &'static str {
     }
 }
 
+fn truncate_url_middle(url: &str, max: usize) -> String {
+    let count = url.chars().count();
+    if max == 0 || count <= max {
+        return url.to_string();
+    }
+    let head = (max * 6 / 10).max(1);
+    let tail = max.saturating_sub(head).saturating_sub(1).max(1); // -1 for '…'
+    let chars: Vec<char> = url.chars().collect();
+    let mut s: String = chars.iter().take(head).collect();
+    s.push('…');
+    s.extend(chars.iter().rev().take(tail).rev()); // last `tail` chars, in order
+    s
+}
+
 // ---------------------------------------------------------------------------
 // Inline rendering
 // ---------------------------------------------------------------------------
@@ -791,7 +949,9 @@ fn render_inline<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, base_style: Style, ma
             ctx.push_str(t, base_style, margin);
         }
         NodeValue::Code(c) => {
+            ctx.push(' ', ctx.theme.code_inline, margin);
             ctx.push_str(&c.literal, ctx.theme.code_inline, margin);
+            ctx.push(' ', ctx.theme.code_inline, margin);
         }
         NodeValue::Strong => {
             let st = base_style.add_modifier(Modifier::BOLD);
@@ -821,7 +981,11 @@ fn render_inline<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, base_style: Style, ma
                 render_inline(ctx, child, ctx.theme.link_text, margin);
             }
             ctx.push(' ', base_style, margin);
-            ctx.push_str(&link.url, ctx.theme.link_url, margin);
+            ctx.push_str(
+                &truncate_url_middle(&link.url, ctx.link_url_max),
+                ctx.theme.link_url,
+                margin,
+            );
         }
         NodeValue::Image(img) => {
             let icon = crate::ui::get_icon("\u{f03e}", "\u{1f5bc}", ctx.icon_mode);
@@ -847,7 +1011,11 @@ fn render_inline<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, base_style: Style, ma
             }
             if !img.url.is_empty() {
                 ctx.push(' ', base_style, margin);
-                ctx.push_str(&img.url, ctx.theme.link_url, margin);
+                ctx.push_str(
+                    &truncate_url_middle(&img.url, ctx.link_url_max),
+                    ctx.theme.link_url,
+                    margin,
+                );
             }
         }
         NodeValue::WikiLink(wl) => {
@@ -914,19 +1082,26 @@ mod tests {
     use crate::app_theme::AppThemeColors;
     use std::sync::atomic::AtomicBool;
 
+    fn mk_opts(icon_mode: crate::config::IconMode) -> MdRenderOpts {
+        MdRenderOpts {
+            syntax_hl: true,
+            wrap: true,
+            icon_mode,
+            code_theme: default_code_theme().to_string(),
+            code_line_numbers: false,
+            wrap_indicator: false,
+            link_url_max: 0,
+        }
+    }
+
     fn render_test(content: &str, cols: u16, wrap: bool, syntax_hl: bool) -> Vec<RenderLine> {
         let theme_colors = AppThemeColors::default();
         let theme = MarkdownTheme::from_app_theme(&theme_colors);
         let cancel = AtomicBool::new(false);
-        render_builtin(
-            content,
-            cols,
-            &theme,
-            wrap,
-            syntax_hl,
-            crate::config::IconMode::default(),
-            &cancel,
-        )
+        let mut opts = mk_opts(crate::config::IconMode::default());
+        opts.wrap = wrap;
+        opts.syntax_hl = syntax_hl;
+        render_builtin(content, cols, &theme, &opts, &cancel)
     }
 
     fn line_text(line: &RenderLine) -> String {
@@ -1420,8 +1595,8 @@ mod tests {
         let lines = render_test("```rust\nfn main() {}\n```\n", 80, true, false);
         let text = lines.iter().map(line_text).collect::<Vec<_>>().join("\n");
         assert!(
-            text.contains("╭─ rust ─╮"),
-            "should contain language label line"
+            text.contains("╭─") && text.contains("rust") && text.contains("─╮"),
+            "should contain language label line with lang name"
         );
     }
 
@@ -1454,9 +1629,7 @@ mod tests {
             "[repo](https://github.com/user/repo)",
             80,
             &theme,
-            true,
-            false,
-            crate::config::IconMode::Unicode,
+            &mk_opts(crate::config::IconMode::Unicode),
             &cancel,
         );
         let text = lines.iter().map(line_text).collect::<Vec<_>>().join("\n");
@@ -1469,9 +1642,7 @@ mod tests {
             "[repo](https://github.com/user/repo)",
             80,
             &theme,
-            true,
-            false,
-            crate::config::IconMode::None,
+            &mk_opts(crate::config::IconMode::None),
             &cancel,
         );
         let text_none = lines_none
@@ -1494,9 +1665,7 @@ mod tests {
             "![alt](url.png)",
             80,
             &theme,
-            true,
-            false,
-            crate::config::IconMode::Unicode,
+            &mk_opts(crate::config::IconMode::Unicode),
             &cancel,
         );
         let text = lines.iter().map(line_text).collect::<Vec<_>>().join("\n");
@@ -1506,9 +1675,7 @@ mod tests {
             "![alt](url.png)",
             80,
             &theme,
-            true,
-            false,
-            crate::config::IconMode::None,
+            &mk_opts(crate::config::IconMode::None),
             &cancel,
         );
         let text_none = lines_none
@@ -1519,6 +1686,135 @@ mod tests {
         assert!(
             !text_none.contains("🖼"),
             "should not contain image unicode icon"
+        );
+    }
+
+    #[test]
+    fn code_block_has_closing_pill() {
+        let lines = render_test("```rust\nfn main(){}\n```\n", 80, true, false);
+        let text: Vec<String> = lines.iter().map(line_text).collect();
+        let open = text.iter().find(|l| l.contains('╭')).expect("open pill");
+        let close = text.iter().find(|l| l.contains('╰')).expect("close pill");
+        assert!(open.contains("─╮"));
+        assert!(close.contains("╰") && close.contains('╯'));
+        assert_eq!(
+            open.chars().count(),
+            close.chars().count(),
+            "pill widths equal"
+        );
+    }
+
+    #[test]
+    fn code_block_line_numbers() {
+        let theme = MarkdownTheme::from_app_theme(&AppThemeColors::default());
+        let cancel = AtomicBool::new(false);
+        let mut opts = mk_opts(crate::config::IconMode::default());
+        opts.code_line_numbers = true;
+        let lines = render_builtin("```txt\na\nb\nc\n```\n", 80, &theme, &opts, &cancel);
+        let text: Vec<String> = lines.iter().map(line_text).collect();
+        assert!(
+            text.iter().any(|l| l.trim_start().starts_with("1 │ a")),
+            "line 1 gutter"
+        );
+        assert!(
+            text.iter().any(|l| l.trim_start().starts_with("3 │ c")),
+            "line 3 gutter"
+        );
+    }
+
+    #[test]
+    fn code_block_lang_icon() {
+        let theme = MarkdownTheme::from_app_theme(&AppThemeColors::default());
+        let cancel = AtomicBool::new(false);
+        let lines = render_builtin(
+            "```rust\nx\n```\n",
+            80,
+            &theme,
+            &mk_opts(crate::config::IconMode::Unicode),
+            &cancel,
+        );
+        let text: Vec<String> = lines.iter().map(line_text).collect();
+        assert!(
+            text.iter().any(|l| l.contains('🦀')),
+            "rust unicode icon in pill"
+        );
+    }
+
+    #[test]
+    fn table_honors_alignment() {
+        let lines = render_test("| a | bbb |\n|:---|---:|\n|1|2|\n", 80, true, false);
+        let row = lines
+            .iter()
+            .find(|l| line_text(l).contains("2"))
+            .expect("data row");
+        let t = line_text(row);
+        let cell = t.split('┃').nth(2).unwrap_or("");
+        assert!(cell.starts_with(' '), "right-aligned cell has leading pad");
+        assert!(cell.trim_end().ends_with("2"), "value flush right");
+    }
+
+    #[test]
+    fn url_truncated_when_long() {
+        let theme = MarkdownTheme::from_app_theme(&AppThemeColors::default());
+        let cancel = AtomicBool::new(false);
+        let mut opts = mk_opts(crate::config::IconMode::None);
+        opts.link_url_max = 20;
+        let long = "[t](https://example.com/very/long/path/to/resource)";
+        let lines = render_builtin(long, 80, &theme, &opts, &cancel);
+        let text: Vec<String> = lines.iter().map(line_text).collect();
+        let joined = text.join("");
+        assert!(joined.contains('…'), "truncated");
+        assert!(
+            !joined.contains("/resource"),
+            "tail-after-cut removed or kept short; full url absent"
+        );
+    }
+
+    #[test]
+    fn inline_code_has_padding() {
+        let lines = render_test("a `x` b", 80, true, false);
+        let line = lines
+            .iter()
+            .find(|l| line_text(l).contains('x'))
+            .expect("code line");
+        let idx = line.cells.iter().position(|(c, _)| *c == 'x').expect("x");
+        assert_eq!(line.cells[idx - 1].0, ' ', "leading padding space");
+    }
+
+    #[test]
+    fn blockquote_depth_glyphs() {
+        let lines = render_test("> > > deep", 80, true, false);
+        let text: Vec<String> = lines.iter().map(line_text).collect();
+        assert!(text.iter().any(|l| l.contains('┆')), "depth-2 glyph");
+    }
+
+    #[test]
+    fn wrap_indicator_shown() {
+        let theme = MarkdownTheme::from_app_theme(&AppThemeColors::default());
+        let cancel = AtomicBool::new(false);
+        let mut opts = mk_opts(crate::config::IconMode::default());
+        opts.wrap = true;
+        opts.wrap_indicator = true;
+        let lines = render_builtin("aaaaaaa\u{4e00}bcdefghijklmnop", 10, &theme, &opts, &cancel);
+        let text: Vec<String> = lines.iter().map(line_text).collect();
+        assert!(
+            text.iter().any(|l| l.ends_with('┄')),
+            "wrapped line ends with continuation glyph"
+        );
+    }
+
+    #[test]
+    fn code_theme_unknown_falls_back_to_plain() {
+        let theme = MarkdownTheme::from_app_theme(&AppThemeColors::default());
+        let cancel = AtomicBool::new(false);
+        let mut opts = mk_opts(crate::config::IconMode::default());
+        opts.syntax_hl = true;
+        opts.code_theme = "does-not-exist".to_string();
+        let lines = render_builtin("```rust\nfn main(){}\n```\n", 80, &theme, &opts, &cancel);
+        let text: Vec<String> = lines.iter().map(line_text).collect();
+        assert!(
+            text.iter().any(|l| l.contains("fn main")),
+            "code still rendered (plain fallback)"
         );
     }
 }

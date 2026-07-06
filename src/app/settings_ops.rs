@@ -247,6 +247,7 @@ impl App {
 
     pub fn toggle_preview_wrap(&mut self) {
         self.preview_wrap = !self.preview_wrap;
+        self.config.core.preview_wrap = self.preview_wrap;
         if let Ok(mut config) = crate::config::ClinConfig::load() {
             config.core.preview_wrap = self.preview_wrap;
             if let Err(e) = config.save() {

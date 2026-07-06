@@ -237,15 +237,17 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
         let cols = inner.width;
         let md_theme = crate::markdown::MarkdownTheme::from_app_theme(theme);
         let cancel = std::sync::atomic::AtomicBool::new(false);
-        let lines = crate::markdown::render_builtin(
-            SETUP_PREVIEW_MD,
-            cols,
-            &md_theme,
-            true, // wrap
-            true, // syntax_hl
+        let opts = crate::markdown::MdRenderOpts {
+            syntax_hl: true,
+            wrap: true,
             icon_mode,
-            &cancel,
-        );
+            code_theme: crate::markdown::default_code_theme().to_string(),
+            code_line_numbers: true,
+            wrap_indicator: false,
+            link_url_max: 80,
+        };
+        let lines =
+            crate::markdown::render_builtin(SETUP_PREVIEW_MD, cols, &md_theme, &opts, &cancel);
         let grid: Vec<Vec<(char, ratatui::style::Style)>> =
             lines.iter().map(|l| l.cells.clone()).collect();
         frame.render_widget(crate::snapshot::RenderedSnapshot::new(&grid), inner);
