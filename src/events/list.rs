@@ -1153,7 +1153,8 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                     || app.list.grid_folder.starts_with('@');
                 if is_smart {
                     let offset = list_area.x;
-                    let smart_icon = crate::ui::get_icon("\u{f0e7}", "\u{26a1}", app.config.ui.icon_mode);
+                    let smart_icon =
+                        crate::ui::get_icon("\u{f0e7}", "\u{26a1}", app.config.ui.icon_mode);
                     let smart_text = format!(" {smart_icon} Smart");
                     let smart_w = smart_text.chars().count() as u16;
                     if mouse_event.column >= offset && mouse_event.column < offset + smart_w {
@@ -1184,7 +1185,8 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                                 current_path.push('/');
                             }
                             current_path.push_str(part);
-                            if mouse_event.column >= offset && mouse_event.column < offset + part_w {
+                            if mouse_event.column >= offset && mouse_event.column < offset + part_w
+                            {
                                 app.list.grid_folder = current_path;
                                 app.list.visual_index = 0;
                                 app.refresh_visual_list();

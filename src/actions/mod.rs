@@ -217,7 +217,6 @@ simple_action!(
     open_subnotes_popup
 );
 
-
 pub struct ActionInfo {
     pub id: String,
     pub name: String,

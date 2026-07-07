@@ -44,7 +44,6 @@ impl SmartFolderKind {
     }
 }
 
-
 #[derive(Debug, Clone)]
 pub enum VisualItem {
     Folder {

@@ -858,15 +858,13 @@ show_status_bar = false
         let mut config = ClinConfig::load().unwrap();
         assert!(config_file_path.exists());
 
-        config.list.custom_smart_folders = vec![
-            super::structs::CustomSmartFolder {
-                name: "Work Projects".to_string(),
-                tags: vec!["work".to_string()],
-                title_contains: Some("todo".to_string()),
-                folder_prefix: Some("work/".to_string()),
-                updated_within_days: Some(5),
-            }
-        ];
+        config.list.custom_smart_folders = vec![super::structs::CustomSmartFolder {
+            name: "Work Projects".to_string(),
+            tags: vec!["work".to_string()],
+            title_contains: Some("todo".to_string()),
+            folder_prefix: Some("work/".to_string()),
+            updated_within_days: Some(5),
+        }];
 
         config.save().unwrap();
 
@@ -882,9 +880,18 @@ show_status_bar = false
         assert_eq!(reloaded.list.custom_smart_folders.len(), 1);
         assert_eq!(reloaded.list.custom_smart_folders[0].name, "Work Projects");
         assert_eq!(reloaded.list.custom_smart_folders[0].tags, vec!["work"]);
-        assert_eq!(reloaded.list.custom_smart_folders[0].title_contains, Some("todo".to_string()));
-        assert_eq!(reloaded.list.custom_smart_folders[0].folder_prefix, Some("work/".to_string()));
-        assert_eq!(reloaded.list.custom_smart_folders[0].updated_within_days, Some(5));
+        assert_eq!(
+            reloaded.list.custom_smart_folders[0].title_contains,
+            Some("todo".to_string())
+        );
+        assert_eq!(
+            reloaded.list.custom_smart_folders[0].folder_prefix,
+            Some("work/".to_string())
+        );
+        assert_eq!(
+            reloaded.list.custom_smart_folders[0].updated_within_days,
+            Some(5)
+        );
     }
 
     #[test]

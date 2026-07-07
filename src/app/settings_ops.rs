@@ -765,7 +765,7 @@ mod tests {
         let mut app = make_app();
         let config_file_path = app.storage.config_dir.join("config.toml");
         crate::config::set_config_path_override(config_file_path);
-        
+
         app.config.list.smart_folders_enabled = false;
         app.toggle_smart_folders();
         assert!(app.config.list.smart_folders_enabled);
@@ -778,20 +778,18 @@ mod tests {
         let mut app = make_app();
         app.config.list.smart_folders_enabled = true;
         app.list.grid_folder = crate::app::VIRTUAL_SMART_PATH.to_string();
-        
+
         // Define custom rules
-        app.config.list.custom_smart_folders = vec![
-            crate::config::structs::CustomSmartFolder {
-                name: "Work Projects".to_string(),
-                tags: vec!["work".to_string()],
-                title_contains: Some("project".to_string()),
-                folder_prefix: Some("work/".to_string()),
-                updated_within_days: Some(7),
-            }
-        ];
+        app.config.list.custom_smart_folders = vec![crate::config::structs::CustomSmartFolder {
+            name: "Work Projects".to_string(),
+            tags: vec!["work".to_string()],
+            title_contains: Some("project".to_string()),
+            folder_prefix: Some("work/".to_string()),
+            updated_within_days: Some(7),
+        }];
 
         let now = crate::ui::now_unix_secs();
-        
+
         // Create mock notes
         app.notes = vec![
             // Matches all criteria
@@ -857,8 +855,11 @@ mod tests {
         let smart_folder = app.list.visual_list.iter().find(|item| {
             matches!(item, VisualItem::SmartFolder { label, .. } if label == "Work Projects")
         });
-        
-        assert!(smart_folder.is_some(), "Custom smart folder should be present");
+
+        assert!(
+            smart_folder.is_some(),
+            "Custom smart folder should be present"
+        );
         if let Some(VisualItem::SmartFolder { note_count, .. }) = smart_folder {
             assert_eq!(*note_count, 1, "Only one note should match all criteria");
         }

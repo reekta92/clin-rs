@@ -285,7 +285,7 @@ pub enum ActivePopup {
     ContextMenu(ContextMenu),
     TrashView(TrashView),
     Goals(GoalsPopup),
-    Subnotes(SubnotesPopup),
+    Subnotes(Box<SubnotesPopup>),
 }
 
 #[derive(Default)]

@@ -4,7 +4,7 @@ use super::{
     draw_view_title_bar, draw_view_title_bar_with_tabs, ext_badge, format_keybind_hints,
     format_relative_time, list_state_selected, popup_block, popup_hint_line,
 };
-use crate::app::{App, ViewMode, VIRTUAL_PINNED_LABEL, VIRTUAL_PINNED_PATH, VIRTUAL_SMART_PATH};
+use crate::app::{App, VIRTUAL_PINNED_LABEL, VIRTUAL_PINNED_PATH, VIRTUAL_SMART_PATH, ViewMode};
 use crate::app_theme::AppThemeColors;
 use crate::keybinds::ListAction;
 use ratatui::{prelude::*, widgets::*};
@@ -312,7 +312,9 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         }
         let selected_idx = if app.list.grid_folder == VIRTUAL_PINNED_PATH {
             1
-        } else if app.list.grid_folder == VIRTUAL_SMART_PATH || app.list.grid_folder.starts_with('@') {
+        } else if app.list.grid_folder == VIRTUAL_SMART_PATH
+            || app.list.grid_folder.starts_with('@')
+        {
             2
         } else {
             0
@@ -448,7 +450,8 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
 
             // --- render directory breadcrumbs at the top of the list area ---
             let is_pinned = app.list.grid_folder == VIRTUAL_PINNED_PATH;
-            let is_smart = app.list.grid_folder == VIRTUAL_SMART_PATH || app.list.grid_folder.starts_with('@');
+            let is_smart =
+                app.list.grid_folder == VIRTUAL_SMART_PATH || app.list.grid_folder.starts_with('@');
             let mut spans = Vec::new();
             if is_pinned {
                 spans.push(Span::styled(
@@ -842,7 +845,6 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
 
             app.list.list_state.select(Some(app.list.visual_index));
             frame.render_stateful_widget(list, list_area, &mut app.list.list_state);
-
         }
     }
     if let Some(preview_rect) = preview_area {

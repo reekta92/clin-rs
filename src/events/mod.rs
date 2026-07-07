@@ -518,7 +518,9 @@ impl crate::popups::ActivePopup {
                     if !popup.subnotes.is_empty() && cur_idx < popup.subnotes.len() {
                         let new_title = popup.title_input.lines().join("");
                         let new_content = popup.content_input.lines().join("\n");
-                        if popup.subnotes[cur_idx].title != new_title || popup.subnotes[cur_idx].content != new_content {
+                        if popup.subnotes[cur_idx].title != new_title
+                            || popup.subnotes[cur_idx].content != new_content
+                        {
                             popup.subnotes[cur_idx].title = new_title;
                             popup.subnotes[cur_idx].content = new_content;
                             popup.subnotes[cur_idx].updated_at = now_unix_secs();
@@ -535,11 +537,15 @@ impl crate::popups::ActivePopup {
                     popup.subnotes.push(new_subnote);
                     popup.selected = popup.subnotes.len() - 1;
                     popup.title_input = TextArea::default();
-                    popup.title_input.set_cursor_line_style(ratatui::style::Style::default());
+                    popup
+                        .title_input
+                        .set_cursor_line_style(ratatui::style::Style::default());
                     popup.title_input.set_style(app.app_theme.bg_style());
                     popup.title_input.insert_str("New Note");
                     popup.content_input = TextArea::default();
-                    popup.content_input.set_cursor_line_style(ratatui::style::Style::default());
+                    popup
+                        .content_input
+                        .set_cursor_line_style(ratatui::style::Style::default());
                     popup.content_input.set_style(app.app_theme.bg_style());
                     popup.is_dirty = true;
                     popup.focus = crate::popups::SubnotesFocus::EditTitle;
@@ -555,7 +561,9 @@ impl crate::popups::ActivePopup {
                                 if cur_idx < popup.subnotes.len() {
                                     let new_title = popup.title_input.lines().join("");
                                     let new_content = popup.content_input.lines().join("\n");
-                                    if popup.subnotes[cur_idx].title != new_title || popup.subnotes[cur_idx].content != new_content {
+                                    if popup.subnotes[cur_idx].title != new_title
+                                        || popup.subnotes[cur_idx].content != new_content
+                                    {
                                         popup.subnotes[cur_idx].title = new_title;
                                         popup.subnotes[cur_idx].content = new_content;
                                         popup.subnotes[cur_idx].updated_at = now_unix_secs();
@@ -564,13 +572,21 @@ impl crate::popups::ActivePopup {
                                 }
                                 popup.selected = popup.selected.saturating_sub(1);
                                 popup.title_input = TextArea::default();
-                                popup.title_input.set_cursor_line_style(ratatui::style::Style::default());
+                                popup
+                                    .title_input
+                                    .set_cursor_line_style(ratatui::style::Style::default());
                                 popup.title_input.set_style(app.app_theme.bg_style());
-                                popup.title_input.insert_str(&popup.subnotes[popup.selected].title);
+                                popup
+                                    .title_input
+                                    .insert_str(&popup.subnotes[popup.selected].title);
                                 popup.content_input = TextArea::default();
-                                popup.content_input.set_cursor_line_style(ratatui::style::Style::default());
+                                popup
+                                    .content_input
+                                    .set_cursor_line_style(ratatui::style::Style::default());
                                 popup.content_input.set_style(app.app_theme.bg_style());
-                                popup.content_input.insert_str(&popup.subnotes[popup.selected].content);
+                                popup
+                                    .content_input
+                                    .insert_str(&popup.subnotes[popup.selected].content);
                             }
                             app.popups.active = Some(ActivePopup::Subnotes(popup));
                         } else if key.code == KeyCode::Char('j') || key.code == KeyCode::Down {
@@ -579,7 +595,9 @@ impl crate::popups::ActivePopup {
                                 if cur_idx < popup.subnotes.len() {
                                     let new_title = popup.title_input.lines().join("");
                                     let new_content = popup.content_input.lines().join("\n");
-                                    if popup.subnotes[cur_idx].title != new_title || popup.subnotes[cur_idx].content != new_content {
+                                    if popup.subnotes[cur_idx].title != new_title
+                                        || popup.subnotes[cur_idx].content != new_content
+                                    {
                                         popup.subnotes[cur_idx].title = new_title;
                                         popup.subnotes[cur_idx].content = new_content;
                                         popup.subnotes[cur_idx].updated_at = now_unix_secs();
@@ -588,13 +606,21 @@ impl crate::popups::ActivePopup {
                                 }
                                 popup.selected = (popup.selected + 1).min(popup.subnotes.len() - 1);
                                 popup.title_input = TextArea::default();
-                                popup.title_input.set_cursor_line_style(ratatui::style::Style::default());
+                                popup
+                                    .title_input
+                                    .set_cursor_line_style(ratatui::style::Style::default());
                                 popup.title_input.set_style(app.app_theme.bg_style());
-                                popup.title_input.insert_str(&popup.subnotes[popup.selected].title);
+                                popup
+                                    .title_input
+                                    .insert_str(&popup.subnotes[popup.selected].title);
                                 popup.content_input = TextArea::default();
-                                popup.content_input.set_cursor_line_style(ratatui::style::Style::default());
+                                popup
+                                    .content_input
+                                    .set_cursor_line_style(ratatui::style::Style::default());
                                 popup.content_input.set_style(app.app_theme.bg_style());
-                                popup.content_input.insert_str(&popup.subnotes[popup.selected].content);
+                                popup
+                                    .content_input
+                                    .insert_str(&popup.subnotes[popup.selected].content);
                             }
                             app.popups.active = Some(ActivePopup::Subnotes(popup));
                         } else if key.code == KeyCode::Char('n') {
@@ -602,7 +628,9 @@ impl crate::popups::ActivePopup {
                             if !popup.subnotes.is_empty() && cur_idx < popup.subnotes.len() {
                                 let new_title = popup.title_input.lines().join("");
                                 let new_content = popup.content_input.lines().join("\n");
-                                if popup.subnotes[cur_idx].title != new_title || popup.subnotes[cur_idx].content != new_content {
+                                if popup.subnotes[cur_idx].title != new_title
+                                    || popup.subnotes[cur_idx].content != new_content
+                                {
                                     popup.subnotes[cur_idx].title = new_title;
                                     popup.subnotes[cur_idx].content = new_content;
                                     popup.subnotes[cur_idx].updated_at = now_unix_secs();
@@ -619,11 +647,15 @@ impl crate::popups::ActivePopup {
                             popup.subnotes.push(new_subnote);
                             popup.selected = popup.subnotes.len() - 1;
                             popup.title_input = TextArea::default();
-                            popup.title_input.set_cursor_line_style(ratatui::style::Style::default());
+                            popup
+                                .title_input
+                                .set_cursor_line_style(ratatui::style::Style::default());
                             popup.title_input.set_style(app.app_theme.bg_style());
                             popup.title_input.insert_str("New Note");
                             popup.content_input = TextArea::default();
-                            popup.content_input.set_cursor_line_style(ratatui::style::Style::default());
+                            popup
+                                .content_input
+                                .set_cursor_line_style(ratatui::style::Style::default());
                             popup.content_input.set_style(app.app_theme.bg_style());
                             popup.is_dirty = true;
                             popup.focus = crate::popups::SubnotesFocus::EditTitle;
@@ -636,14 +668,22 @@ impl crate::popups::ActivePopup {
                                     popup.selected = popup.subnotes.len().saturating_sub(1);
                                 }
                                 popup.title_input = TextArea::default();
-                                popup.title_input.set_cursor_line_style(ratatui::style::Style::default());
+                                popup
+                                    .title_input
+                                    .set_cursor_line_style(ratatui::style::Style::default());
                                 popup.title_input.set_style(app.app_theme.bg_style());
                                 popup.content_input = TextArea::default();
-                                popup.content_input.set_cursor_line_style(ratatui::style::Style::default());
+                                popup
+                                    .content_input
+                                    .set_cursor_line_style(ratatui::style::Style::default());
                                 popup.content_input.set_style(app.app_theme.bg_style());
                                 if !popup.subnotes.is_empty() {
-                                    popup.title_input.insert_str(&popup.subnotes[popup.selected].title);
-                                    popup.content_input.insert_str(&popup.subnotes[popup.selected].content);
+                                    popup
+                                        .title_input
+                                        .insert_str(&popup.subnotes[popup.selected].title);
+                                    popup
+                                        .content_input
+                                        .insert_str(&popup.subnotes[popup.selected].content);
                                 }
                             }
                             app.popups.active = Some(ActivePopup::Subnotes(popup));
@@ -657,7 +697,9 @@ impl crate::popups::ActivePopup {
                             if !popup.subnotes.is_empty() && cur_idx < popup.subnotes.len() {
                                 let new_title = popup.title_input.lines().join("");
                                 let new_content = popup.content_input.lines().join("\n");
-                                if popup.subnotes[cur_idx].title != new_title || popup.subnotes[cur_idx].content != new_content {
+                                if popup.subnotes[cur_idx].title != new_title
+                                    || popup.subnotes[cur_idx].content != new_content
+                                {
                                     popup.subnotes[cur_idx].title = new_title;
                                     popup.subnotes[cur_idx].content = new_content;
                                     popup.subnotes[cur_idx].updated_at = now_unix_secs();
@@ -696,7 +738,11 @@ impl crate::popups::ActivePopup {
                             popup.focus = crate::popups::SubnotesFocus::List;
                             app.popups.active = Some(ActivePopup::Subnotes(popup));
                         } else {
-                            crate::events::handle_popup_text_input(key, &mut popup.title_input, &app.keybinds);
+                            crate::events::handle_popup_text_input(
+                                key,
+                                &mut popup.title_input,
+                                &app.keybinds,
+                            );
                             app.popups.active = Some(ActivePopup::Subnotes(popup));
                         }
                     }
@@ -726,7 +772,11 @@ impl crate::popups::ActivePopup {
                             popup.focus = crate::popups::SubnotesFocus::List;
                             app.popups.active = Some(ActivePopup::Subnotes(popup));
                         } else {
-                            crate::events::handle_popup_text_input(key, &mut popup.content_input, &app.keybinds);
+                            crate::events::handle_popup_text_input(
+                                key,
+                                &mut popup.content_input,
+                                &app.keybinds,
+                            );
                             app.popups.active = Some(ActivePopup::Subnotes(popup));
                         }
                     }

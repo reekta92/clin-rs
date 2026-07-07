@@ -1082,15 +1082,15 @@ impl App {
             is_dirty: false,
         };
 
-        self.popups.active = Some(crate::popups::ActivePopup::Subnotes(popup));
+        self.popups.active = Some(crate::popups::ActivePopup::Subnotes(Box::new(popup)));
     }
 
     pub fn close_subnotes_popup(&mut self) {
         if let Some(crate::popups::ActivePopup::Subnotes(popup)) = self.popups.active.take() {
-            if popup.is_dirty {
-                if let Err(e) = self.storage.set_subnotes(&popup.parent_id, &popup.subnotes) {
-                    self.set_temporary_status(&format!("Failed to save sub-notes: {e}"));
-                }
+            if popup.is_dirty
+                && let Err(e) = self.storage.set_subnotes(&popup.parent_id, &popup.subnotes)
+            {
+                self.set_temporary_status(&format!("Failed to save sub-notes: {e}"));
             }
             self.notes_with_subnotes = self.storage.get_notes_with_subnotes().unwrap_or_default();
         }
@@ -1114,7 +1114,9 @@ impl App {
         let cur_idx = popup.selected;
         let new_title = popup.title_input.lines().join("");
         let new_content_tui = popup.content_input.lines().join("\n");
-        if popup.subnotes[cur_idx].title != new_title || popup.subnotes[cur_idx].content != new_content_tui {
+        if popup.subnotes[cur_idx].title != new_title
+            || popup.subnotes[cur_idx].content != new_content_tui
+        {
             popup.subnotes[cur_idx].title = new_title;
             popup.subnotes[cur_idx].content = new_content_tui;
             popup.subnotes[cur_idx].updated_at = now_unix_secs();
@@ -1177,8 +1179,7 @@ impl App {
 
         let _secret = SecretTempFile::new(temp_file_path.clone());
 
-        let mut args: Vec<String> = Vec::new();
-        args.push(temp_file_path.to_string_lossy().into_owned());
+        let args: Vec<String> = vec![temp_file_path.to_string_lossy().into_owned()];
         let (result, editor_prog) = self.run_in_external_editor(&args);
 
         match result {
@@ -1190,7 +1191,9 @@ impl App {
                         popup.is_dirty = true;
 
                         popup.content_input = TextArea::default();
-                        popup.content_input.set_cursor_line_style(ratatui::style::Style::default());
+                        popup
+                            .content_input
+                            .set_cursor_line_style(ratatui::style::Style::default());
                         popup.content_input.set_style(self.app_theme.bg_style());
                         popup.content_input.insert_str(&new_content);
 
@@ -1208,14 +1211,10 @@ impl App {
                 ));
             }
             Err(e) => {
-                self.set_temporary_status(&format!(
-                    "Failed to launch editor '{editor_prog}': {e}"
-                ));
+                self.set_temporary_status(&format!("Failed to launch editor '{editor_prog}': {e}"));
             }
         }
 
         self.popups.active = Some(crate::popups::ActivePopup::Subnotes(popup));
     }
-
-
 }

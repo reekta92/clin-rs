@@ -926,10 +926,7 @@ pub fn draw_subnotes_popup(
 
     let main_chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Length(34),
-            Constraint::Min(0),
-        ])
+        .constraints([Constraint::Length(34), Constraint::Min(0)])
         .split(content);
 
     let list_style = if popup.focus == crate::popups::SubnotesFocus::List {
@@ -954,7 +951,11 @@ pub fn draw_subnotes_popup(
                 1,
             );
             let placeholder = Paragraph::new("press n to create a new note")
-                .style(Style::default().fg(theme.muted).add_modifier(Modifier::ITALIC))
+                .style(
+                    Style::default()
+                        .fg(theme.muted)
+                        .add_modifier(Modifier::ITALIC),
+                )
                 .alignment(Alignment::Center);
             frame.render_widget(placeholder, text_area);
         }
@@ -983,10 +984,7 @@ pub fn draw_subnotes_popup(
 
     let edit_chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(3),
-            Constraint::Min(0),
-        ])
+        .constraints([Constraint::Length(3), Constraint::Min(0)])
         .split(main_chunks[1]);
 
     let title_border_style = if popup.focus == crate::popups::SubnotesFocus::EditTitle {

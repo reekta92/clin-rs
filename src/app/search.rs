@@ -12,7 +12,9 @@ impl App {
         self.list.grid_folder = if self.config.list.smart_folders_enabled {
             if self.list.grid_folder == VIRTUAL_PINNED_PATH {
                 VIRTUAL_SMART_PATH.to_string()
-            } else if self.list.grid_folder == VIRTUAL_SMART_PATH || self.list.grid_folder.starts_with('@') {
+            } else if self.list.grid_folder == VIRTUAL_SMART_PATH
+                || self.list.grid_folder.starts_with('@')
+            {
                 String::new()
             } else {
                 VIRTUAL_PINNED_PATH.to_string()

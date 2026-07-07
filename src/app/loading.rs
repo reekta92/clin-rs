@@ -6,7 +6,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-
 struct SmartFolderData {
     kind: SmartFolderKind,
     label: String,
@@ -428,15 +427,15 @@ impl App {
                             break;
                         }
                     }
-                    if let Some(txt) = &rule.title_contains {
-                        if !note.title.to_lowercase().contains(&txt.to_lowercase()) {
-                            ok = false;
-                        }
+                    if let Some(txt) = &rule.title_contains
+                        && !note.title.to_lowercase().contains(&txt.to_lowercase())
+                    {
+                        ok = false;
                     }
-                    if let Some(prefix) = &rule.folder_prefix {
-                        if !note.folder.starts_with(prefix) {
-                            ok = false;
-                        }
+                    if let Some(prefix) = &rule.folder_prefix
+                        && !note.folder.starts_with(prefix)
+                    {
+                        ok = false;
                     }
                     if let Some(days) = rule.updated_within_days {
                         let diff = now.saturating_sub(note.updated_at);
@@ -562,7 +561,10 @@ impl App {
                     is_pinned: false,
                 });
                 // 2. Find the matching smart folder by virtual path and render its notes
-                if let Some(folder_data) = computed_smart_folders.iter().find(|d| d.kind.virtual_path() == *gf) {
+                if let Some(folder_data) = computed_smart_folders
+                    .iter()
+                    .find(|d| d.kind.virtual_path() == *gf)
+                {
                     for idx in &folder_data.matches {
                         let note = &self.notes[*idx];
                         visual.push(VisualItem::Note {

@@ -1745,12 +1745,12 @@ mod tests {
         let lines = render_test("| a | bbb |\n|:---|---:|\n|1|2|\n", 80, true, false);
         let row = lines
             .iter()
-            .find(|l| line_text(l).contains("2"))
+            .find(|l| line_text(l).contains('2'))
             .expect("data row");
         let t = line_text(row);
         let cell = t.split('┃').nth(2).unwrap_or("");
         assert!(cell.starts_with(' '), "right-aligned cell has leading pad");
-        assert!(cell.trim_end().ends_with("2"), "value flush right");
+        assert!(cell.trim_end().ends_with('2'), "value flush right");
     }
 
     #[test]

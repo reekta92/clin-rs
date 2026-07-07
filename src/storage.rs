@@ -1187,9 +1187,11 @@ impl Storage {
         Ok(Zeroizing::new(plaintext))
     }
     fn subnotes_db_path(&self) -> PathBuf {
-        if self.data_dir == self.notes_dir { // Vault mode
+        if self.data_dir == self.notes_dir {
+            // Vault mode
             self.data_dir.join(".clin").join("subnotes.bin")
-        } else { // Directory mode
+        } else {
+            // Directory mode
             self.notes_dir.join(".clin_subnotes.bin")
         }
     }
@@ -1199,21 +1201,19 @@ impl Storage {
         if !path.exists() {
             return Ok(Vec::new());
         }
-        let mut bytes = fs::read(&path)
-            .context("failed to read subnotes database")?;
+        let mut bytes = fs::read(&path).context("failed to read subnotes database")?;
         obfuscate(&mut bytes);
-        let db: HashMap<String, SubNotePayload> = bincode::serde::decode_from_slice(
-            &bytes,
-            bincode::config::standard(),
-        )
-        .map(|(map, _)| map)
-        .unwrap_or_default();
+        let db: HashMap<String, SubNotePayload> =
+            bincode::serde::decode_from_slice(&bytes, bincode::config::standard())
+                .map(|(map, _)| map)
+                .unwrap_or_default();
         if let Some(payload) = db.get(parent_id) {
             match payload {
                 SubNotePayload::Plain(notes) => Ok(notes.clone()),
                 SubNotePayload::Encrypted(bytes) => {
                     self.ensure_key()?;
-                    let plain = self.decrypt(bytes)
+                    let plain = self
+                        .decrypt(bytes)
                         .context("failed to decrypt subnotes payload")?;
                     let (notes, _): (Vec<SubNote>, usize) = bincode::serde::decode_from_slice(
                         plain.as_slice(),
@@ -1231,8 +1231,7 @@ impl Storage {
     pub fn set_subnotes(&mut self, parent_id: &str, subnotes: &[SubNote]) -> Result<()> {
         let path = self.subnotes_db_path();
         let mut db: HashMap<String, SubNotePayload> = if path.exists() {
-            let mut bytes = fs::read(&path)
-                .context("failed to read subnotes database")?;
+            let mut bytes = fs::read(&path).context("failed to read subnotes database")?;
             obfuscate(&mut bytes);
             bincode::serde::decode_from_slice(&bytes, bincode::config::standard())
                 .map(|(map, _)| map)
@@ -1250,7 +1249,10 @@ impl Storage {
             let encrypted = self.encrypt(&bytes)?;
             db.insert(parent_id.to_string(), SubNotePayload::Encrypted(encrypted));
         } else {
-            db.insert(parent_id.to_string(), SubNotePayload::Plain(subnotes.to_vec()));
+            db.insert(
+                parent_id.to_string(),
+                SubNotePayload::Plain(subnotes.to_vec()),
+            );
         }
 
         if db.is_empty() {
@@ -1283,15 +1285,12 @@ impl Storage {
         if !path.exists() {
             return Ok(HashSet::new());
         }
-        let mut bytes = fs::read(&path)
-            .context("failed to read subnotes database")?;
+        let mut bytes = fs::read(&path).context("failed to read subnotes database")?;
         obfuscate(&mut bytes);
-        let db: HashMap<String, SubNotePayload> = bincode::serde::decode_from_slice(
-            &bytes,
-            bincode::config::standard(),
-        )
-        .map(|(map, _)| map)
-        .unwrap_or_default();
+        let db: HashMap<String, SubNotePayload> =
+            bincode::serde::decode_from_slice(&bytes, bincode::config::standard())
+                .map(|(map, _)| map)
+                .unwrap_or_default();
         Ok(db.keys().cloned().collect())
     }
 }
@@ -1556,14 +1555,12 @@ mod tests {
 
         // 2. Encrypted note subnotes
         let encrypted_id = "test_note.clin";
-        let enc_subnotes = vec![
-            SubNote {
-                id: "3".to_string(),
-                title: "Secret Sub 1".to_string(),
-                content: "Secret Content 1".to_string(),
-                updated_at: 300,
-            },
-        ];
+        let enc_subnotes = vec![SubNote {
+            id: "3".to_string(),
+            title: "Secret Sub 1".to_string(),
+            content: "Secret Content 1".to_string(),
+            updated_at: 300,
+        }];
 
         storage.set_subnotes(encrypted_id, &enc_subnotes)?;
 

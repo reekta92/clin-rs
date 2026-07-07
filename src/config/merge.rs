@@ -67,10 +67,10 @@ pub fn merge_toml_value(edit_item: &mut toml_edit::Item, toml_val: &toml::Value)
                     );
                 }
                 let mut new_item = toml_edit::Item::Value(toml_edit::Value::Array(edit_arr));
-                if let Some(d) = decor {
-                    if let Some(v) = new_item.as_value_mut() {
-                        *v.decor_mut() = d;
-                    }
+                if let Some(d) = decor
+                    && let Some(v) = new_item.as_value_mut()
+                {
+                    *v.decor_mut() = d;
                 }
                 *edit_item = new_item;
             }
