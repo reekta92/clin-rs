@@ -741,7 +741,7 @@ fn run_tui_session(app: &mut App) -> Result<()> {
         // Clone the notes path before the move closure
         let notes_path = app.storage.notes_dir.clone();
         let mut debouncer = new_debouncer(
-            std::time::Duration::from_secs(2),
+            std::time::Duration::from_millis(50),
             move |res: notify_debouncer_mini::DebounceEventResult| {
                 if let Ok(events) = res {
                     // Filter out .git changes and .clin files to avoid
@@ -859,6 +859,9 @@ fn run_app(
     } else {
         None
     };
+    let mut last_fs_refresh = std::time::Instant::now().checked_sub(std::time::Duration::from_secs(1)).unwrap();
+    let mut pending_fs_refresh = false;
+
 
     while !app.should_quit {
         // Check for external SIGINT/SIGTERM
@@ -884,11 +887,17 @@ fn run_app(
         // Drain file system watcher signals (non-blocking)
         // Multiple rapid signals collapse into a single refresh per frame.
         if let Some(rx) = &app.fs_event_rx {
-            let mut triggered = false;
-            while rx.try_recv().is_ok() {
-                triggered = true;
+            // Drain the entire channel queue so multiple rapid signals collapse
+            while let Ok(_) = rx.try_recv() {
+                pending_fs_refresh = true;
             }
-            if triggered {
+
+            // Throttle the heavy refresh to max 1 per 250ms to guarantee zero lag
+            // even during massive `git pull` checkouts
+            if pending_fs_refresh && last_fs_refresh.elapsed().as_millis() > 250 {
+                pending_fs_refresh = false;
+                last_fs_refresh = std::time::Instant::now();
+
                 app.list.folder_cache = None; // Invalidate folder cache so new/deleted folders appear
                 if let Err(e) = app.refresh_notes() {
                     app.set_temporary_status(&format!("Auto-refresh failed: {e}"));
