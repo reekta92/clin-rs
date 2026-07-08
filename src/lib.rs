@@ -742,25 +742,23 @@ fn run_tui_session(app: &mut App) -> Result<()> {
         let (tx, rx) = std::sync::mpsc::channel();
         app.fs_event_rx = Some(rx);
         let notes_path = app.storage.notes_dir.clone();
-        let mut watcher = notify::recommended_watcher(
-            move |res: notify::Result<notify::Event>| {
-                if let Ok(event) = res {
-                    // Prevent infinite loop: ignore Access events triggered by our
-                    // own `refresh_notes()` reads.
-                    if matches!(event.kind, EventKind::Access(_)) {
-                        return;
-                    }
-                    // Performance: aggressively filter out .git and temp lock files.
-                    let has_relevant_events = event.paths.iter().any(|p| {
-                        let path_str = p.to_string_lossy();
-                        !path_str.contains("/.git/") && !path_str.ends_with(".clin")
-                    });
-                    if has_relevant_events {
-                        let _ = tx.send(()); // Non-blocking send
-                    }
+        let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+            if let Ok(event) = res {
+                // Prevent infinite loop: ignore Access events triggered by our
+                // own `refresh_notes()` reads.
+                if matches!(event.kind, EventKind::Access(_)) {
+                    return;
                 }
-            },
-        )
+                // Performance: aggressively filter out .git and temp lock files.
+                let has_relevant_events = event.paths.iter().any(|p| {
+                    let path_str = p.to_string_lossy();
+                    !path_str.contains("/.git/") && !path_str.ends_with(".clin")
+                });
+                if has_relevant_events {
+                    let _ = tx.send(()); // Non-blocking send
+                }
+            }
+        })
         .ok();
 
         if let Some(ref mut w) = watcher {
@@ -864,9 +862,10 @@ fn run_app(
     } else {
         None
     };
-    let mut last_fs_refresh = std::time::Instant::now().checked_sub(std::time::Duration::from_secs(1)).expect("1s ago is always valid from just-created now");
+    let mut last_fs_refresh = std::time::Instant::now()
+        .checked_sub(std::time::Duration::from_secs(1))
+        .expect("1s ago is always valid from just-created now");
     let mut pending_fs_refresh = false;
-
 
     while !app.should_quit {
         // Check for external SIGINT/SIGTERM
@@ -907,7 +906,6 @@ fn run_app(
                 if let Err(e) = app.refresh_notes() {
                     app.set_temporary_status(&format!("Auto-refresh failed: {e}"));
                 }
-
             }
         }
 
