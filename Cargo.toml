@@ -123,6 +123,7 @@ zeroize = { version = "1.8.2", features = ["derive"] }
 unicode-width = "0.2"
 git2 = "0.21"
 mimalloc = "0.1"
+notify-debouncer-mini = "0.7.0"
 
 [profile.release]
 lto = "thin"

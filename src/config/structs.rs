@@ -438,6 +438,8 @@ pub struct CoreConfig {
     pub code_theme: String,
     #[serde(default = "default_true")]
     pub code_line_numbers: bool,
+    #[serde(default = "default_true")]
+    pub auto_refresh: bool,
     #[serde(default)]
     pub preview_wrap_indicator: bool,
     #[serde(default = "default_link_url_max")]
@@ -461,6 +463,7 @@ impl Default for CoreConfig {
             preview_command: None,
             code_theme: default_code_theme(),
             code_line_numbers: default_true(),
+            auto_refresh: default_true(),
             preview_wrap_indicator: false,
             link_url_max_length: default_link_url_max(),
         }

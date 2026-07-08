@@ -732,6 +732,40 @@ fn run_tui_session(app: &mut App) -> Result<()> {
 
     app.backup_tx = Some(tx);
 
+    // Initialize the optional file system watcher for auto-refreshing the
+    // notes list when external editors or sync tools modify files.
+    let _debouncer = if app.config.core.auto_refresh {
+        use notify_debouncer_mini::{new_debouncer, notify::RecursiveMode};
+        let (tx, rx) = std::sync::mpsc::channel();
+        app.fs_event_rx = Some(rx);
+        // Clone the notes path before the move closure
+        let notes_path = app.storage.notes_dir.clone();
+        let mut debouncer = new_debouncer(
+            std::time::Duration::from_secs(2),
+            move |res: notify_debouncer_mini::DebounceEventResult| {
+                if let Ok(events) = res {
+                    // Filter out .git changes and .clin files to avoid
+                    // spurious refreshes during backups and sync operations.
+                    let has_relevant_events = events.iter().any(|e| {
+                        let path_str = e.path.to_string_lossy();
+                        !path_str.contains("/.git/") && !path_str.ends_with(".clin")
+                    });
+                    if has_relevant_events {
+                        let _ = tx.send(());
+                    }
+                }
+            },
+        )
+        .ok();
+
+        if let Some(d) = &mut debouncer {
+            let _ = d.watcher().watch(&notes_path, RecursiveMode::Recursive);
+        }
+        debouncer
+    } else {
+        None
+    };
+
     // Run the TUI inside an inner block so `TerminalGuard` (raw mode + alt
     // screen) is dropped — restoring the terminal — BEFORE any blocking
     // quit-time backup. Any later signal/SIGKILL during the flush then leaves
@@ -843,6 +877,21 @@ fn run_app(
                 app.merge_loaded(batch);
             }
             if did_work {
+                app.needs_full_redraw = true;
+            }
+        }
+
+        // Drain file system watcher signals (non-blocking)
+        // Multiple rapid signals collapse into a single refresh per frame.
+        if let Some(rx) = &app.fs_event_rx {
+            let mut triggered = false;
+            while rx.try_recv().is_ok() {
+                triggered = true;
+            }
+            if triggered {
+                if let Err(e) = app.refresh_notes() {
+                    app.set_temporary_status(&format!("Auto-refresh failed: {e}"));
+                }
                 app.needs_full_redraw = true;
             }
         }
