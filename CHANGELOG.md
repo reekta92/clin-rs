@@ -2,6 +2,25 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.9.7] - 2026-07-08
+
+### Added
+
+- Replace notify-debouncer-mini with raw notify for Access event filtering
+- Auto-refresh notes list on external file changes
+- Add 9 config-gated renderer features
+
+### CI
+
+- Fixed multiple checks issues
+
+### Fixed
+
+- Invalidate folder cache on auto-refresh
+
+### Performance
+
+- Reduce debounce to 50ms, throttle refresh to 250ms
 ## [0.9.6] - 2026-07-06
 
 ### CI
@@ -11,6 +30,10 @@ All notable changes to clin are documented in this file.
 ### Fixed
 
 - Fixed custom themes not having transparent option
+
+### Release
+
+- V0.9.6
 ## [0.9.5] - 2026-07-06
 
 ### Release
