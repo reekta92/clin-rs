@@ -41,6 +41,27 @@ impl Action for ShowInfoAction {
             let words = note.content.split_whitespace().count();
             let reading_time_mins = (words as f64 / 200.0).ceil() as usize;
 
+            // Header count via outline parser (minus root node)
+            let header_count = crate::content_tree::parse::parse_outline(
+                &note.title,
+                &note.content,
+            )
+            .len()
+            .saturating_sub(1);
+
+            // Task count: lines matching - [ ], - [x], * [ ], * [x]
+            let task_count = note
+                .content
+                .lines()
+                .filter(|l| {
+                    let t = l.trim_start();
+                    t.starts_with("- [ ] ")
+                        || t.starts_with("- [x] ")
+                        || t.starts_with("* [ ] ")
+                        || t.starts_with("* [x] ")
+                })
+                .count();
+
             // Top Words Algorithm (no regex dependency)
             let stop_words: std::collections::HashSet<&str> = vec![
                 "the", "and", "a", "an", "is", "it", "to", "in", "of", "for", "on", "with",
@@ -68,22 +89,41 @@ impl Action for ShowInfoAction {
             let size_kb = summary.size_bytes as f64 / 1024.0;
             let modified = crate::ui::format_date(summary.updated_at, &app.date_format);
 
-            let lines_vec = vec![
-                format!("Total words: {}", words),
-                format!("Total characters: {}", chars),
-                format!("Total lines: {}", lines),
-                format!("Estimated reading time: ~{} min", reading_time_mins),
-                format!("Top words: {}", top_5.join(", ")),
-                String::new(),
-                format!("Size: {:.1} KB", size_kb),
-                format!("Modified: {}", modified),
-                format!("Tags: {}", summary.tags.len()),
-                format!("Links: {}", summary.links.len()),
+            use crate::popups::InfoItem;
+            let items = vec![
+                InfoItem::Metrics(vec![
+                    ("Total words".to_string(), format!("{}", words)),
+                    ("Characters".to_string(), format!("{}", chars)),
+                    ("Lines".to_string(), format!("{}", lines)),
+                    ("Reading time".to_string(), format!("~{} min", reading_time_mins)),
+                    ("Headers".to_string(), format!("{}", header_count)),
+                    ("Tasks".to_string(), format!("{}", task_count)),
+                ]),
+                InfoItem::Spacer,
+                InfoItem::Metrics(vec![
+                    ("Size".to_string(), format!("{:.1} KB", size_kb)),
+                    ("Modified".to_string(), modified),
+                    ("Tags".to_string(), format!("{}", summary.tags.len())),
+                    ("Links".to_string(), format!("{}", summary.links.len())),
+                ]),
+                InfoItem::Spacer,
+                InfoItem::Text {
+                    heading: "Note ID / File Path".to_string(),
+                    body: summary.id.clone(),
+                },
+                InfoItem::Text {
+                    heading: "Folder Path".to_string(),
+                    body: summary.folder.clone(),
+                },
+                InfoItem::Text {
+                    heading: "Top Words".to_string(),
+                    body: top_5.join(", "),
+                },
             ];
 
             app.popups.active = Some(crate::popups::ActivePopup::Info(crate::popups::InfoPopup {
                 title: format!("Info: {}", note.title),
-                lines: lines_vec,
+                items,
             }));
             return Ok(());
         }
@@ -114,18 +154,27 @@ impl Action for ShowInfoAction {
                 "N/A".to_string()
             };
 
-            let lines_vec = vec![
-                format!("Total notes: {}", total_notes),
-                format!("Total size: {:.1} KB", size_kb),
-                String::new(),
-                "Most recently modified:".to_string(),
-                format!("  \"{}\" ({})", latest_title, modified),
+            use crate::popups::InfoItem;
+            let items = vec![
+                InfoItem::Metrics(vec![
+                    ("Total notes".to_string(), format!("{}", total_notes)),
+                    ("Total size".to_string(), format!("{:.1} KB", size_kb)),
+                ]),
+                InfoItem::Spacer,
+                InfoItem::Text {
+                    heading: "Folder Path".to_string(),
+                    body: folder_path.to_string(),
+                },
+                InfoItem::Text {
+                    heading: "Most recently modified".to_string(),
+                    body: format!("\"{}\" ({})", latest_title, modified),
+                },
             ];
 
             let folder_name = folder_path.split('/').last().unwrap_or(&folder_path);
             app.popups.active = Some(crate::popups::ActivePopup::Info(crate::popups::InfoPopup {
                 title: format!("Info: {}", folder_name),
-                lines: lines_vec,
+                items,
             }));
             return Ok(());
         }

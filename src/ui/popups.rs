@@ -108,20 +108,108 @@ pub fn draw_info_popup(
     popup: &crate::popups::InfoPopup,
     theme: &crate::app_theme::AppThemeColors,
 ) {
-    let hints = popup_hint_line(theme, "enter/esc: close");
-    let inner = draw_popup_frame(
+    let hints = crate::ui::format_keybind_hints(
+        theme,
+        &[("Enter/Esc".to_string(), "close")],
+    );
+    let inner = crate::ui::draw_popup_frame(
         frame,
         area,
         &popup.title,
-        PopupSize::Medium,
+        crate::ui::PopupSize::Medium,
         &hints,
         theme,
     );
-    let paragraph = ratatui::widgets::Paragraph::new(
-        popup.lines.iter().map(|l| ratatui::text::Line::from(l.as_str())).collect::<Vec<_>>()
-    )
-    .style(theme.bg_style());
-    frame.render_widget(paragraph, inner);
+    // Inner border, background, and padding matching other popup styles
+    let block = Block::default()
+        .style(theme.bg_style())
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(theme.border))
+        .padding(Padding::new(1, 1, 0, 0));
+    let content_area = block.inner(inner);
+    frame.render_widget(block, inner);
+
+    // Available width for text word-wrapping (inside the padded content area)
+    let width = content_area.width.saturating_sub(2).max(1) as usize;
+    // Build vertical layout constraints matching each InfoItem
+    let mut constraints: Vec<Constraint> = Vec::with_capacity(popup.items.len() + 1);
+    for item in &popup.items {
+        match item {
+            crate::popups::InfoItem::Metrics(pairs) => {
+                constraints.push(Constraint::Length(pairs.len() as u16));
+            }
+            crate::popups::InfoItem::Spacer => {
+                constraints.push(Constraint::Length(1));
+            }
+            crate::popups::InfoItem::Text { heading: _, body } => {
+                let body_lines: u16 = body
+                    .lines()
+                    .map(|line| {
+                        let line_len = line.chars().count();
+                        if line_len == 0 {
+                            1u16
+                        } else {
+                            (line_len / width) as u16 + 1
+                        }
+                    })
+                    .sum();
+                constraints.push(Constraint::Length(1 + body_lines));
+            }
+        }
+    }
+    constraints.push(Constraint::Min(0)); // consume remaining space
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(constraints)
+        .split(content_area);
+
+    for (idx, item) in popup.items.iter().enumerate() {
+        let item_area = chunks[idx];
+        match item {
+            crate::popups::InfoItem::Metrics(pairs) => {
+                let max_key_len = pairs
+                    .iter()
+                    .map(|(k, _)| k.chars().count())
+                    .max()
+                    .unwrap_or(0) as u16;
+
+                let rows: Vec<Row> = pairs
+                    .iter()
+                    .map(|(key, value)| {
+                        Row::new(vec![
+                            Cell::from(key.as_str())
+                                .style(Style::default().fg(theme.accent)),
+                            Cell::from(value.as_str())
+                                .style(Style::default().fg(theme.fg)),
+                        ])
+                    })
+                    .collect();
+
+                let table = Table::new(rows, [
+                    Constraint::Length(max_key_len + 2),
+                    Constraint::Min(0),
+                ]);
+                frame.render_widget(table, item_area);
+            }
+            crate::popups::InfoItem::Spacer => {}
+            crate::popups::InfoItem::Text { heading, body } => {
+                let text_chunks = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([Constraint::Length(1), Constraint::Min(0)])
+                    .split(item_area);
+
+                let heading_para = Paragraph::new(heading.as_str())
+                    .style(Style::default().fg(theme.accent));
+                frame.render_widget(heading_para, text_chunks[0]);
+
+                let body_para = Paragraph::new(body.as_str())
+                    .style(Style::default().fg(theme.fg))
+                    .wrap(Wrap { trim: true });
+                frame.render_widget(body_para, text_chunks[1]);
+            }
+        }
+    }
 }
 
 pub fn draw_theme_popup(frame: &mut Frame, popup: &ThemePopup, area: Rect, theme: &AppThemeColors) {

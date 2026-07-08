@@ -206,9 +206,20 @@ pub struct SearchPopup {
 pub struct SortPopup {
     pub selected: usize,
 }
+/// A single item in the info popup layout.
+#[derive(Debug, Clone)]
+pub enum InfoItem {
+    /// Rendered as an aligned 2-column Table.
+    Metrics(Vec<(String, String)>),
+    /// Rendered as a wrapping Paragraph with a heading.
+    Text { heading: String, body: String },
+    /// Visual separation.
+    Spacer,
+}
+
 pub struct InfoPopup {
     pub title: String,
-    pub lines: Vec<String>,
+    pub items: Vec<InfoItem>,
 }
 
 
