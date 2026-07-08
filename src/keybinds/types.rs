@@ -54,6 +54,7 @@ pub enum ListAction {
     ToggleFoldersFirst,
     RefreshNotes,
     ManageSubnotes,
+    ShowInfo,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

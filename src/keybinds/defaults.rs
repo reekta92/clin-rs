@@ -234,6 +234,10 @@ impl Default for Keybinds {
             ListAction::ManageSubnotes,
             vec![KeyCombo::parse("Alt+s").expect("valid key combo")],
         );
+        list.insert(
+            ListAction::ShowInfo,
+            vec![KeyCombo::simple(KeyCode::Char('i'))],
+        );
 
         let mut edit = HashMap::new();
         edit.insert(EditAction::Back, vec![KeyCombo::simple(KeyCode::Esc)]);

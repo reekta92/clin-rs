@@ -102,6 +102,28 @@ pub fn draw_template_popup(
     frame.render_stateful_widget(list, chunks[1], &mut state);
 }
 
+pub fn draw_info_popup(
+    frame: &mut ratatui::Frame,
+    area: ratatui::layout::Rect,
+    popup: &crate::popups::InfoPopup,
+    theme: &crate::app_theme::AppThemeColors,
+) {
+    let hints = popup_hint_line(theme, "enter/esc: close");
+    let inner = draw_popup_frame(
+        frame,
+        area,
+        &popup.title,
+        PopupSize::Medium,
+        &hints,
+        theme,
+    );
+    let paragraph = ratatui::widgets::Paragraph::new(
+        popup.lines.iter().map(|l| ratatui::text::Line::from(l.as_str())).collect::<Vec<_>>()
+    )
+    .style(theme.bg_style());
+    frame.render_widget(paragraph, inner);
+}
+
 pub fn draw_theme_popup(frame: &mut Frame, popup: &ThemePopup, area: Rect, theme: &AppThemeColors) {
     let hint_line = popup_hint_line(theme, "Tab navigate · Enter select · Esc close");
     let content = draw_popup_frame(frame, area, "THEMES", PopupSize::Medium, &hint_line, theme);
@@ -531,6 +553,12 @@ pub fn format_relative_time(unix_ts: u64) -> Cow<'static, str> {
     let secs = UNIX_EPOCH + Duration::from_secs(unix_ts);
     let dt: chrono::DateTime<chrono::Local> = secs.into();
     Cow::Owned(dt.format("%Y-%m-%d %H:%M").to_string())
+}
+
+pub fn format_date(unix_ts: u64, date_format: &str) -> String {
+    let secs = std::time::UNIX_EPOCH + std::time::Duration::from_secs(unix_ts);
+    let dt: chrono::DateTime<chrono::Local> = secs.into();
+    dt.format(date_format).to_string()
 }
 
 pub fn format_size(bytes: u64) -> String {

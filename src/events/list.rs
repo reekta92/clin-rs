@@ -347,6 +347,12 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 }
                 return false;
             }
+            ListAction::ShowInfo => {
+                if let Err(e) = crate::actions::execute_action("info.show", app, None) {
+                    app.set_temporary_status(&format!("Info action failed: {}", e));
+                }
+                return false;
+            }
             ListAction::PreviewPageUp => match &mut app.list.preview_content {
                 Some(crate::list_view::PreviewContent::Markdown(renderer)) => {
                     renderer.prev_page();

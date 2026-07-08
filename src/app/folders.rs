@@ -632,4 +632,13 @@ impl App {
         self.refresh_visual_list();
         self.persist_folder_state();
     }
+
+    pub fn get_selected_folder_path(&self) -> Option<String> {
+        if self.mode == ViewMode::List {
+            if let Some(VisualItem::Folder { path, .. }) = self.list.visual_list.get(self.list.visual_index) {
+                return Some(path.clone());
+            }
+        }
+        None
+    }
 }

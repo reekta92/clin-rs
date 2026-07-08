@@ -4,6 +4,7 @@ pub mod encrypt;
 pub mod import;
 pub mod ocr;
 pub mod settings;
+pub mod info;
 
 use crate::app::App;
 use anyhow::Result;
@@ -261,6 +262,7 @@ pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyL
         Box::new(settings::SetNoteGoalAction),
         Box::new(settings::CycleIconModeAction),
         Box::new(settings::CycleHintBarStyleAction),
+        Box::new(info::ShowInfoAction),
         Box::new(import::ImportAction {
             source: crate::popups::ImportSource::File,
             target: crate::popups::ImportTarget::NewNote,

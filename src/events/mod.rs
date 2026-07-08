@@ -262,6 +262,15 @@ pub fn handle_global_popups_and_palette(
         return true;
     }
 
+
+    // Info popup (display-only; Enter/Esc closes, any other key traps)
+    if matches!(app.popups.active, Some(crate::popups::ActivePopup::Info(_))) {
+        if key.code == KeyCode::Enter || key.code == KeyCode::Esc {
+            app.popups.active = None;
+        }
+        return true;
+    }
+
     // Group A: popups that shadow the standalone confirm check.
     let group_a = matches!(
         app.popups.active,
@@ -1473,6 +1482,13 @@ impl crate::popups::ActivePopup {
                 // re-insert and report unconsumed so they receive the key.
                 app.popups.active = Some(ActivePopup::ContextMenu(menu));
                 false
+            }
+
+            ActivePopup::Info(popup) => {
+                // Info popup is handled in handle_global_popups_and_palette before
+                // reaching this match; this arm is for exhaustiveness only.
+                app.popups.active = Some(ActivePopup::Info(popup));
+                true
             }
         }
     }

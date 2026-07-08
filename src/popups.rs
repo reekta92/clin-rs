@@ -206,6 +206,11 @@ pub struct SearchPopup {
 pub struct SortPopup {
     pub selected: usize,
 }
+pub struct InfoPopup {
+    pub title: String,
+    pub lines: Vec<String>,
+}
+
 
 pub struct IconModePopup {
     pub selected: usize,
@@ -270,6 +275,7 @@ pub struct SubnotesPopup {
 pub enum ActivePopup {
     Template(TemplatePopup),
     Theme(ThemePopup),
+    Info(InfoPopup),
     Tag(TagPopup),
     IconMode(IconModePopup),
     HintBarStyle(HintBarStylePopup),
