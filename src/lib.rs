@@ -889,6 +889,7 @@ fn run_app(
                 triggered = true;
             }
             if triggered {
+                app.list.folder_cache = None; // Invalidate folder cache so new/deleted folders appear
                 if let Err(e) = app.refresh_notes() {
                     app.set_temporary_status(&format!("Auto-refresh failed: {e}"));
                 }
