@@ -2,6 +2,19 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.9.8] - 2026-07-10
+
+### Fixed
+
+- Restore auto_refresh field lost in merge
+
+### Miscellaneous
+
+- Fix clippy warnings and formatting
+
+### Performance
+
+- Skip full filesystem rescan on note delete
 ## [0.9.7] - 2026-07-08
 
 ### Added
@@ -21,19 +34,49 @@ All notable changes to clin are documented in this file.
 ### Performance
 
 - Reduce debounce to 50ms, throttle refresh to 250ms
+
+### Release
+
+- V0.9.7
 ## [0.9.6] - 2026-07-06
+
+### Added
+
+- Structured items, metric tables, text wrapping, border
+- Add Show Info popup with note/folder metrics
+- Add custom rules and grid layout tab
+- Add sub-notes overlay manager
+- Support smart/pinned folders, inline rename, drag-to-move
+- Add expand-all, expand-to-level, and state persistence
+- Add recursive counts and dim empty folders
+- Add 9 config-gated renderer features
 
 ### CI
 
+- Fixed multiple checks issues
 - Fixed test checks
+
+### Changed
+
+- XOR obfuscate the entire subnotes database
+- Secure subnotes file format and permissions
+
+### Documentation
+
+- Update ROADMAP.md
 
 ### Fixed
 
+- Clear old name characters in inline rename overlay
 - Fixed custom themes not having transparent option
 
 ### Release
 
 - V0.9.6
+
+### Revert
+
+- Remove inline rename support, restore popup renames
 ## [0.9.5] - 2026-07-06
 
 ### Release
