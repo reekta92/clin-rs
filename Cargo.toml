@@ -1,6 +1,6 @@
 [package]
 name = "clin-rs"
-version = "0.9.5"
+version = "0.9.7"
 edition = "2024"
 rust-version = "1.88.0"
 description = "Feature-packed terminal note management app inspired by Obsidian"
@@ -123,6 +123,7 @@ zeroize = { version = "1.8.2", features = ["derive"] }
 unicode-width = "0.2"
 git2 = "0.21"
 mimalloc = "0.1"
+notify = "8.2.0"
 
 [profile.release]
 lto = "thin"

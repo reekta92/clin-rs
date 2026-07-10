@@ -732,6 +732,43 @@ fn run_tui_session(app: &mut App) -> Result<()> {
 
     app.backup_tx = Some(tx);
 
+    // Initialize the optional file system watcher for auto-refreshing the
+    // notes list when external editors or sync tools modify files.
+    // Uses raw `notify` (not `notify-debouncer-mini`) so we can manually
+    // filter out `Access` events, preventing an infinite refresh loop caused
+    // by the app reading its own files during `refresh_notes()`.
+    let _watcher = if app.config.core.auto_refresh {
+        use notify::{EventKind, RecursiveMode, Watcher};
+        let (tx, rx) = std::sync::mpsc::channel();
+        app.fs_event_rx = Some(rx);
+        let notes_path = app.storage.notes_dir.clone();
+        let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+            if let Ok(event) = res {
+                // Prevent infinite loop: ignore Access events triggered by our
+                // own `refresh_notes()` reads.
+                if matches!(event.kind, EventKind::Access(_)) {
+                    return;
+                }
+                // Performance: aggressively filter out .git and temp lock files.
+                let has_relevant_events = event.paths.iter().any(|p| {
+                    let path_str = p.to_string_lossy();
+                    !path_str.contains("/.git/") && !path_str.ends_with(".clin")
+                });
+                if has_relevant_events {
+                    let _ = tx.send(()); // Non-blocking send
+                }
+            }
+        })
+        .ok();
+
+        if let Some(ref mut w) = watcher {
+            let _ = w.watch(&notes_path, RecursiveMode::Recursive);
+        }
+        watcher
+    } else {
+        None
+    };
+
     // Run the TUI inside an inner block so `TerminalGuard` (raw mode + alt
     // screen) is dropped — restoring the terminal — BEFORE any blocking
     // quit-time backup. Any later signal/SIGKILL during the flush then leaves
@@ -825,6 +862,10 @@ fn run_app(
     } else {
         None
     };
+    let mut last_fs_refresh = std::time::Instant::now()
+        .checked_sub(std::time::Duration::from_secs(1))
+        .expect("1s ago is always valid from just-created now");
+    let mut pending_fs_refresh = false;
 
     while !app.should_quit {
         // Check for external SIGINT/SIGTERM
@@ -844,6 +885,27 @@ fn run_app(
             }
             if did_work {
                 app.needs_full_redraw = true;
+            }
+        }
+
+        // Drain file system watcher signals (non-blocking)
+        // Multiple rapid signals collapse into a single refresh per frame.
+        if let Some(rx) = &app.fs_event_rx {
+            // Drain the entire channel queue so multiple rapid signals collapse
+            while rx.try_recv().is_ok() {
+                pending_fs_refresh = true;
+            }
+
+            // Throttle the heavy refresh to max 1 per 250ms to guarantee zero lag
+            // even during massive `git pull` checkouts
+            if pending_fs_refresh && last_fs_refresh.elapsed().as_millis() > 250 {
+                pending_fs_refresh = false;
+                last_fs_refresh = std::time::Instant::now();
+
+                app.list.folder_cache = None; // Invalidate folder cache so new/deleted folders appear
+                if let Err(e) = app.refresh_notes() {
+                    app.set_temporary_status(&format!("Auto-refresh failed: {e}"));
+                }
             }
         }
 
