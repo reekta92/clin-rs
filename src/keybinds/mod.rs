@@ -4,6 +4,7 @@ use std::collections::HashMap;
 mod api;
 mod combo;
 mod defaults;
+pub mod help_meta;
 mod matcher;
 mod types;
 

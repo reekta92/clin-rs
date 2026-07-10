@@ -1296,36 +1296,32 @@ impl App {
             _ => {}
         }
     }
-
-    pub fn get_help_rows(&mut self) -> &[crate::ui::HelpRow] {
-        let tab = self.help_tab;
+    pub fn get_help_rows(&mut self) -> Vec<crate::ui::HelpRow> {
         if self.list.help_text_cache.is_none() {
-            self.list.help_text_cache = Some(crate::ui::help_text_for_tab(
-                tab,
+            let rows = crate::ui::help_text_for_tab(
+                self.help_tab,
                 &self.keybinds,
                 &self.app_theme,
                 &self.config,
-            ));
+            );
+            self.list.help_text_cache = Some(rows);
         }
-        self.list
-            .help_text_cache
-            .as_deref()
-            .expect("help_text_cache populated above")
+        self.list.help_text_cache.clone().unwrap_or_default()
     }
 
     pub fn update_help_search(&mut self) {
         let query = self.help_search.query.to_lowercase();
-        if !query.is_empty() {
-            let results: Vec<(usize, String)> = self
-                .get_help_rows()
+        if query.is_empty() {
+            self.help_search.results.clear();
+        } else {
+            let rows = self.get_help_rows();
+            let results: Vec<_> = rows
                 .iter()
                 .enumerate()
-                .filter(|(_, hr)| hr.search_text.contains(&query))
-                .map(|(i, hr)| (i, hr.search_text.clone()))
+                .filter(|(_, hr)| hr.search_text.to_lowercase().contains(&query))
+                .map(|(i, hr)| (i, hr.display.clone()))
                 .collect();
             self.help_search.results = results;
-        } else {
-            self.help_search.results.clear();
         }
         if self.help_search.selected >= self.help_search.results.len() {
             self.help_search.selected = self.help_search.results.len().saturating_sub(1);

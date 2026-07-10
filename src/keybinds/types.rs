@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, strum::EnumIter)]
 #[serde(rename_all = "snake_case")]
 pub enum ListAction {
     MoveUp,
@@ -57,7 +57,7 @@ pub enum ListAction {
     ShowInfo,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, strum::EnumIter)]
 #[serde(rename_all = "snake_case")]
 pub enum EditAction {
     Quit,
@@ -93,7 +93,7 @@ pub enum HelpAction {
     Search,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, strum::EnumIter)]
 #[serde(rename_all = "snake_case")]
 pub enum GraphAction {
     Quit,
@@ -116,7 +116,7 @@ pub enum GraphAction {
     TogglePreview,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, strum::EnumIter)]
 #[serde(rename_all = "snake_case")]
 pub enum DrawAction {
     Quit,
@@ -134,7 +134,7 @@ pub enum DrawAction {
     ToggleGrid,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, strum::EnumIter)]
 #[serde(rename_all = "snake_case")]
 pub enum CanvasAction {
     Quit,
@@ -167,7 +167,7 @@ pub enum CanvasAction {
     EditorSyncRaw,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, strum::EnumIter)]
 #[serde(rename_all = "snake_case")]
 pub enum BackupAction {
     Back,
@@ -195,7 +195,7 @@ pub enum BackupAction {
     StageAll,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, strum::EnumIter)]
 #[serde(rename_all = "snake_case")]
 pub enum ContentTreeAction {
     MoveUp,
