@@ -2,7 +2,8 @@
 use ratatui::{prelude::*, widgets::*};
 
 use super::{
-    build_tab_spans, draw_status_bar, draw_view_title_bar_with_tabs, format_keybind_hints,
+    build_tab_spans, draw_dim_vline, draw_status_bar, draw_view_title_bar_with_tabs,
+    format_keybind_hints,
 };
 use crate::app::{App, HelpTab, ViewMode};
 use crate::app_theme::AppThemeColors;
@@ -10,44 +11,17 @@ use crate::keybinds::help_meta::{self, HelpMeta};
 use crate::keybinds::{HelpAction, Keybinds, ListAction};
 use strum::IntoEnumIterator;
 
-pub fn help_tab_names(icon_mode: crate::config::IconMode) -> [(&'static str, &'static str); 9] {
+pub fn help_tab_names() -> [&'static str; 9] {
     [
-        (
-            "Notes",
-            crate::ui::get_icon("\u{f24a}", "\u{1f4cc}", icon_mode),
-        ),
-        (
-            "Editor",
-            crate::ui::get_icon("\u{f040}", "\u{270f}", icon_mode),
-        ),
-        (
-            "Graph",
-            crate::ui::get_icon("\u{f0e8}", "\u{1f5fa}", icon_mode),
-        ),
-        (
-            "Draw",
-            crate::ui::get_icon("\u{f1fc}", "\u{270f}", icon_mode),
-        ),
-        (
-            "Canvas",
-            crate::ui::get_icon("\u{f00a}", "\u{1f4cb}", icon_mode),
-        ),
-        (
-            "Backup",
-            crate::ui::get_icon("\u{f0c7}", "\u{1f4be}", icon_mode),
-        ),
-        (
-            "Templates",
-            crate::ui::get_icon("\u{f0c5}", "\u{1f4c4}", icon_mode),
-        ),
-        (
-            "Content Tree",
-            crate::ui::get_icon("\u{f1bb}", "\u{1f333}", icon_mode),
-        ),
-        (
-            "About",
-            crate::ui::get_icon("\u{f05a}", "\u{2139}", icon_mode),
-        ),
+        "Notes",
+        "Editor",
+        "Graph",
+        "Draw",
+        "Canvas",
+        "Backup",
+        "Templates",
+        "Content Tree",
+        "About",
     ]
 }
 
@@ -61,8 +35,17 @@ pub struct HelpRow {
 }
 
 fn help_heading_row(title: &'static str, theme: &AppThemeColors, tab: HelpTab) -> HelpRow {
+    let style = Style::default()
+        .fg(theme.highlight_fg)
+        .bg(theme.highlight_bg)
+        .add_modifier(Modifier::BOLD);
+    let cell0 = Cell::from(Line::from(Span::styled(
+        format!(" {} ", title.to_uppercase()),
+        style,
+    )));
+    let cell1 = Cell::from(Line::from(Span::styled(" ", style)));
     HelpRow {
-        row: Row::new(vec![Cell::from(help_heading(title, theme))]),
+        row: Row::new(vec![cell0, cell1]).style(Style::default().bg(theme.highlight_bg)),
         search_text: title.to_lowercase(),
         display: title.to_string(),
         group: title,
@@ -160,10 +143,7 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
         ])
         .split(area);
 
-    let tabs: Vec<(&str, Option<&str>)> = help_tab_names(app.config.ui.icon_mode)
-        .iter()
-        .map(|&(l, g)| (l, Some(g)))
-        .collect();
+    let tabs: Vec<(&str, Option<&str>)> = help_tab_names().iter().map(|&l| (l, None)).collect();
     let tab_spans = build_tab_spans(
         &tabs,
         app.help_tab.index(),
@@ -190,13 +170,46 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
         Some(app.status.as_ref()),
     );
 
-    let scroll = app.help_scroll;
     let rows = app.get_help_rows();
     let theme = &app.app_theme;
+    let body_area = chunks[1];
+    let show_sides = body_area.width >= 100;
+    let (left_area, divider1_area, center_area, divider2_area, right_area) = if show_sides {
+        let panes = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Percentage(20),
+                Constraint::Length(1),
+                Constraint::Percentage(60),
+                Constraint::Length(1),
+                Constraint::Percentage(20),
+            ])
+            .split(body_area);
+        (panes[0], panes[1], panes[2], panes[3], panes[4])
+    } else {
+        (Rect::ZERO, Rect::ZERO, body_area, Rect::ZERO, Rect::ZERO)
+    };
+
+    // --- center pane: existing table + pagination, now scoped to center_area ---
+    let max_w: u16 = if show_sides { center_area.width } else { 96 };
+    let content_w = center_area.width.min(max_w);
+    let content_x = center_area.x + (center_area.width.saturating_sub(content_w)) / 2;
+    let content_area = Rect::new(content_x, center_area.y, content_w, center_area.height);
+
+    // Pagination: compute page from terminal height
+    let table_h = content_area.height.saturating_sub(1);
+    let page_size = table_h.saturating_sub(2).max(1);
+    app.help_page_size = page_size;
+    let total_pages = rows.len().div_ceil(page_size as usize);
+    let page = (app.help_page as usize).min(total_pages.saturating_sub(1));
+    app.help_page = page as u16;
+    let start_idx = page * page_size as usize;
+    let table_area = Rect::new(content_area.x, content_area.y, content_area.width, table_h);
     let visible_rows: Vec<Row<'static>> = rows
         .iter()
         .enumerate()
-        .skip(scroll as usize)
+        .skip(start_idx)
+        .take(page_size as usize)
         .map(|(abs_idx, hr)| {
             let mut row = hr.row.clone();
             if app.help_search.active && !app.help_search.results.is_empty() {
@@ -214,8 +227,8 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
                 if is_selected {
                     row = row.style(
                         Style::default()
-                            .bg(theme.highlight_bg)
-                            .fg(theme.highlight_fg),
+                            .bg(theme.highlight_fg)
+                            .fg(theme.highlight_bg),
                     );
                 } else if is_matched {
                     row =
@@ -226,20 +239,42 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
             {
                 row = row.style(
                     Style::default()
-                        .bg(theme.highlight_bg)
-                        .fg(theme.highlight_fg),
+                        .bg(theme.highlight_fg)
+                        .fg(theme.highlight_bg),
                 );
             }
             row
         })
         .collect();
+    frame.render_widget(Block::default().style(theme.bg_style()), body_area);
     let table = Table::new(visible_rows, [Constraint::Length(30), Constraint::Min(20)]).block(
         Block::default()
-            .style(app.app_theme.bg_style())
+            .style(theme.bg_style())
             .borders(Borders::NONE)
             .padding(Padding::new(2, 2, 1, 1)),
     );
-    frame.render_widget(table, chunks[1]);
+    frame.render_widget(table, table_area);
+    // Page indicator
+    let indicator_area = Rect::new(
+        content_area.x,
+        content_area.y + table_h,
+        content_area.width,
+        1,
+    );
+    let page_text = format!("Page {}/{}", page + 1, total_pages);
+    let page_indicator = Paragraph::new(Line::from(Span::styled(
+        page_text,
+        Style::default().fg(theme.highlight_fg),
+    )))
+    .alignment(Alignment::Right);
+    frame.render_widget(page_indicator, indicator_area);
+
+    if show_sides {
+        draw_help_info_pane(frame, left_area, app.help_tab, theme);
+        draw_dim_vline(frame, divider1_area, theme.border);
+        draw_dim_vline(frame, divider2_area, theme.border);
+        draw_help_tips_pane(frame, right_area, &app.help_suggestions, &app.keybinds, theme);
+    }
 
     let kb = &app.keybinds;
     let hints_items = vec![
@@ -260,6 +295,7 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
             "scroll",
         ),
         (kb.display_help(HelpAction::Search), "search"),
+        (kb.display_help(HelpAction::Reroll), "reroll tips"),
         (kb.display_help(HelpAction::Close), "close"),
     ];
     let hint = format_keybind_hints(&app.app_theme, &hints_items);
@@ -283,7 +319,7 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
     );
     draw_status_bar(frame, chunks[2], &app.app_theme, left_line, right_line);
     if app.help_search.active {
-        draw_help_search(frame, chunks[1], app);
+        draw_help_search(frame, content_area, app);
     }
 }
 
@@ -1060,5 +1096,356 @@ pub fn style_palette_name(name: &str, theme: &AppThemeColors) -> Vec<Span<'stati
             name.to_string(),
             Style::default().add_modifier(Modifier::BOLD),
         )]
+    }
+}
+fn draw_help_info_pane(frame: &mut Frame, area: Rect, tab: HelpTab, theme: &AppThemeColors) {
+    let title = tab_display_name(tab);
+    let mut lines = Vec::new();
+
+    // Title
+    lines.push(Line::from(Span::styled(
+        title.to_string(),
+        Style::default()
+            .fg(theme.heading)
+            .add_modifier(Modifier::BOLD),
+    )));
+    lines.push(Line::default());
+
+    // Description
+    lines.push(Line::from(Span::styled(
+        crate::ui::help_content::tab_description(tab).to_string(),
+        Style::default().fg(theme.text),
+    )));
+
+    let block = Block::default()
+        .borders(Borders::NONE)
+        .style(theme.preview_bg_style())
+        .padding(Padding::new(2, 2, 1, 1));
+    let body = Paragraph::new(lines)
+        .wrap(Wrap::default())
+        .style(theme.preview_bg_style())
+        .block(block)
+        .alignment(Alignment::Left);
+    frame.render_widget(body, area);
+}
+
+fn tab_display_name(tab: HelpTab) -> &'static str {
+    match tab {
+        HelpTab::Notes => "Notes",
+        HelpTab::Editor => "Editor",
+        HelpTab::Graph => "Graph",
+        HelpTab::Draw => "Draw",
+        HelpTab::Canvas => "Canvas",
+        HelpTab::Backup => "Backup",
+        HelpTab::Templates => "Templates",
+        HelpTab::ContentTree => "Content Tree",
+        HelpTab::About => "About",
+    }
+}
+
+fn draw_help_tips_pane(
+    frame: &mut Frame,
+    area: Rect,
+    suggestions: &[crate::ui::HelpSuggestion],
+    keybinds: &Keybinds,
+    theme: &AppThemeColors,
+) {
+    let block = Block::default()
+        .borders(Borders::NONE)
+        .style(theme.preview_bg_style())
+        .padding(Padding::new(2, 2, 1, 1));
+
+    let mut lines: Vec<Line> = Vec::new();
+    lines.push(Line::from(Span::styled(
+        "Tips",
+        Style::default()
+            .fg(theme.heading)
+            .add_modifier(Modifier::BOLD),
+    )));
+    lines.push(Line::default());
+
+    if suggestions.is_empty() {
+        lines.push(Line::styled(
+            "No suggestions",
+            Style::default().fg(theme.muted),
+        ));
+    } else {
+        for (i, s) in suggestions.iter().enumerate() {
+            if i > 0 {
+                lines.push(Line::default()); // blank separator between tips
+            }
+            lines.push(Line::from(Span::styled(
+                s.title.to_string(),
+                Style::default()
+                    .fg(theme.success)
+                    .add_modifier(Modifier::BOLD),
+            )));
+            let parsed_spans = render_tip_body(s.body, keybinds, theme);
+            lines.push(Line::from(parsed_spans));
+        }
+    }
+    let p = Paragraph::new(lines)
+        .wrap(Wrap::default())
+        .style(theme.preview_bg_style())
+        .block(block);
+    frame.render_widget(p, area);
+}
+
+fn render_tip_body(body: &str, kb: &Keybinds, theme: &AppThemeColors) -> Vec<Span<'static>> {
+    let mut spans = Vec::new();
+    let mut remaining = body;
+
+    while !remaining.is_empty() {
+        let next_brace = remaining.find('{');
+        let next_dbl_backtick = remaining.find("``");
+        let next_star = remaining.find("**");
+
+        let mut earliest = None;
+        let mut token_type = "";
+        let mut token_len = 0;
+
+        if let Some(idx) = next_brace {
+            earliest = Some(idx);
+            token_type = "brace";
+            token_len = 1;
+        }
+        if let Some(idx) = next_dbl_backtick {
+            if earliest.map_or(true, |e| idx < e) {
+                earliest = Some(idx);
+                token_type = "backtick";
+                token_len = 2;
+            }
+        }
+        if let Some(idx) = next_star {
+            if earliest.map_or(true, |e| idx < e) {
+                earliest = Some(idx);
+                token_type = "star";
+                token_len = 2;
+            }
+        }
+
+        if let Some(idx) = earliest {
+            if idx > 0 {
+                spans.push(Span::styled(
+                    remaining[..idx].to_string(),
+                    Style::default().fg(theme.text),
+                ));
+            }
+
+            remaining = &remaining[idx + token_len..];
+
+            match token_type {
+                "brace" => {
+                    if let Some(end_idx) = remaining.find('}') {
+                        let token = &remaining[..end_idx];
+                        let keybind_display = resolve_tip_key(token, kb);
+                        spans.push(Span::styled(
+                            keybind_display,
+                            Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+                        ));
+                        remaining = &remaining[end_idx + 1..];
+                    } else {
+                        spans.push(Span::styled(
+                            format!("{{{remaining}"),
+                            Style::default().fg(theme.text),
+                        ));
+                        break;
+                    }
+                }
+                "backtick" => {
+                    if let Some(end_idx) = remaining.find("``") {
+                        let literal = &remaining[..end_idx];
+                        spans.push(Span::styled(
+                            literal.to_string(),
+                            Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+                        ));
+                        remaining = &remaining[end_idx + 2..];
+                    } else {
+                        spans.push(Span::styled(
+                            format!("``{remaining}"),
+                            Style::default().fg(theme.text),
+                        ));
+                        break;
+                    }
+                }
+                "star" => {
+                    if let Some(end_idx) = remaining.find("**") {
+                        let emphasis = &remaining[..end_idx];
+                        spans.push(Span::styled(
+                            emphasis.to_string(),
+                            Style::default().fg(theme.heading).add_modifier(Modifier::BOLD),
+                        ));
+                        remaining = &remaining[end_idx + 2..];
+                    } else {
+                        spans.push(Span::styled(
+                            format!("**{remaining}"),
+                            Style::default().fg(theme.text),
+                        ));
+                        break;
+                    }
+                }
+                _ => unreachable!(),
+            }
+        } else {
+            spans.push(Span::styled(
+                remaining.to_string(),
+                Style::default().fg(theme.text),
+            ));
+            break;
+        }
+    }
+
+    spans
+}
+
+pub(crate) fn resolve_tip_key(token: &str, kb: &Keybinds) -> String {
+    use crate::keybinds::*;
+
+    let Some((scope, action)) = token.split_once(':') else {
+        return format!("[ERR:{}]", token);
+    };
+
+    match scope {
+        "list" => match action {
+            "ToggleSelectMode" => kb.list_keys_display(ListAction::ToggleSelectMode),
+            "ToggleSelectItem" => kb.list_keys_display(ListAction::ToggleSelectItem),
+            "Search" => kb.list_keys_display(ListAction::Search),
+            "NewFromTemplate" => kb.list_keys_display(ListAction::NewFromTemplate),
+            "CreateFolder" => kb.list_keys_display(ListAction::CreateFolder),
+            "CreateNote" => kb.list_keys_display(ListAction::CreateNote),
+            "ExpandToLevel" => kb.list_keys_display(ListAction::ExpandToLevel),
+            "ManageSubnotes" => kb.list_keys_display(ListAction::ManageSubnotes),
+            "TogglePin" => kb.list_keys_display(ListAction::TogglePin),
+            "CycleSort" => kb.list_keys_display(ListAction::CycleSort),
+            "TogglePreview" => kb.list_keys_display(ListAction::TogglePreview),
+            "OpenCommandPalette" => kb.list_keys_display(ListAction::OpenCommandPalette),
+            "ToggleFoldersFirst" => kb.list_keys_display(ListAction::ToggleFoldersFirst),
+            "Delete" => kb.list_keys_display(ListAction::Delete),
+            "ToggleExternalEditor" => kb.list_keys_display(ListAction::ToggleExternalEditor),
+            "OpenGraph" => kb.list_keys_display(ListAction::OpenGraph),
+            "OpenCanvas" => kb.list_keys_display(ListAction::OpenCanvas),
+            _ => format!("[ERR:{}]", token),
+        },
+        "edit" => match action {
+            "ToggleMarkdownPreview" => kb.edit_keys_display(EditAction::ToggleMarkdownPreview),
+            "TogglePreviewFullscreen" => kb.edit_keys_display(EditAction::TogglePreviewFullscreen),
+            "Undo" => kb.edit_keys_display(EditAction::Undo),
+            "Redo" => kb.edit_keys_display(EditAction::Redo),
+            "DeleteWord" => kb.edit_keys_display(EditAction::DeleteWord),
+            "DeleteNextWord" => kb.edit_keys_display(EditAction::DeleteNextWord),
+            "CycleFocus" => kb.edit_keys_display(EditAction::CycleFocus),
+            "Back" => kb.edit_keys_display(EditAction::Back),
+            _ => format!("[ERR:{}]", token),
+        },
+        "help" => match action {
+            "Reroll" => kb.help_keys_display(HelpAction::Reroll),
+            "Search" => kb.help_keys_display(HelpAction::Search),
+            "Close" => kb.help_keys_display(HelpAction::Close),
+            "NextTab" => kb.help_keys_display(HelpAction::NextTab),
+            "PrevTab" => kb.help_keys_display(HelpAction::PrevTab),
+            _ => format!("[ERR:{}]", token),
+        },
+        "graph" => match action {
+            "AutoFit" => kb.graph_keys_display(GraphAction::AutoFit),
+            "ToggleSearch" => kb.graph_keys_display(GraphAction::ToggleSearch),
+            "ToggleMinimap" => kb.graph_keys_display(GraphAction::ToggleMinimap),
+            "ToggleLegend" => kb.graph_keys_display(GraphAction::ToggleLegend),
+            "ToggleGrid" => kb.graph_keys_display(GraphAction::ToggleGrid),
+            "ReloadConfig" => kb.graph_keys_display(GraphAction::ReloadConfig),
+            "OpenNote" => kb.graph_keys_display(GraphAction::OpenNote),
+            "ZoomIn" => kb.graph_keys_display(GraphAction::ZoomIn),
+            "ZoomOut" => kb.graph_keys_display(GraphAction::ZoomOut),
+            _ => format!("[ERR:{}]", token),
+        },
+        "draw" => match action {
+            "ToggleShapeSelector" => kb.draw_keys_display(DrawAction::ToggleShapeSelector),
+            "SelectDrawTool" => kb.draw_keys_display(DrawAction::SelectDrawTool),
+            "SelectTextTool" => kb.draw_keys_display(DrawAction::SelectTextTool),
+            "SelectEraseTool" => kb.draw_keys_display(DrawAction::SelectEraseTool),
+            "ToggleGrid" => kb.draw_keys_display(DrawAction::ToggleGrid),
+            _ => format!("[ERR:{}]", token),
+        },
+        "canvas" => match action {
+            "OpenContextMenu" => kb.canvas_keys_display(CanvasAction::OpenContextMenu),
+            "EditOrConnect" => kb.canvas_keys_display(CanvasAction::EditOrConnect),
+            "ToggleGrid" => kb.canvas_keys_display(CanvasAction::ToggleGrid),
+            "ToggleEditorPane" => kb.canvas_keys_display(CanvasAction::ToggleEditorPane),
+            "ZoomIn" => kb.canvas_keys_display(CanvasAction::ZoomIn),
+            "ZoomOut" => kb.canvas_keys_display(CanvasAction::ZoomOut),
+            "ZoomFineIn" => kb.canvas_keys_display(CanvasAction::ZoomFineIn),
+            "ZoomFineOut" => kb.canvas_keys_display(CanvasAction::ZoomFineOut),
+            "Quit" => kb.canvas_keys_display(CanvasAction::Quit),
+            "CycleFocus" => kb.canvas_keys_display(CanvasAction::CycleFocus),
+            _ => format!("[ERR:{}]", token),
+        },
+        "backup" => match action {
+            "StageFile" => kb.backup_keys_display(BackupAction::StageFile),
+            "UnstageFile" => kb.backup_keys_display(BackupAction::UnstageFile),
+            "StageAll" => kb.backup_keys_display(BackupAction::StageAll),
+            "EnterCommit" => kb.backup_keys_display(BackupAction::EnterCommit),
+            "ConfirmCommit" => kb.backup_keys_display(BackupAction::ConfirmCommit),
+            "CancelCommit" => kb.backup_keys_display(BackupAction::CancelCommit),
+            "Push" => kb.backup_keys_display(BackupAction::Push),
+            "Pull" => kb.backup_keys_display(BackupAction::Pull),
+            "Refresh" => kb.backup_keys_display(BackupAction::Refresh),
+            "CycleSection" => kb.backup_keys_display(BackupAction::CycleSection),
+            "OpenSettings" => kb.backup_keys_display(BackupAction::OpenSettings),
+            _ => format!("[ERR:{}]", token),
+        },
+        "content_tree" => match action {
+            "Open" => kb.content_tree_keys_display(ContentTreeAction::Open),
+            "ToggleCollapse" => kb.content_tree_keys_display(ContentTreeAction::ToggleCollapse),
+            "ExpandAll" => kb.content_tree_keys_display(ContentTreeAction::ExpandAll),
+            "CollapseAll" => kb.content_tree_keys_display(ContentTreeAction::CollapseAll),
+            "Back" => kb.content_tree_keys_display(ContentTreeAction::Back),
+            "Help" => kb.content_tree_keys_display(ContentTreeAction::Help),
+            _ => format!("[ERR:{}]", token),
+        },
+        _ => format!("[ERR:{}]", token),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_render_tip_body_parsing() {
+        let kb = crate::keybinds::Keybinds::default();
+        let theme = crate::app_theme::AppThemeColors::default();
+
+        // Test plain text with no markup
+        let spans = render_tip_body("Hello world", &kb, &theme);
+        assert_eq!(spans.len(), 1);
+        assert!(spans[0].content.to_string().contains("Hello world"));
+
+        // Test keybind resolution (list:ToggleSelectMode should resolve to a non-ERR string)
+        let spans = render_tip_body("Press {list:ToggleSelectMode} to toggle", &kb, &theme);
+        assert_eq!(spans.len(), 3, "plain / keybind / plain should yield 3 spans");
+        assert!(spans[0].content.to_string().contains("Press "));
+        // Middle span is the resolved keybind (accent colored)
+        let key_text = spans[1].content.to_string();
+        assert!(!key_text.contains("[ERR:"), "keybind should resolve successfully, got: {key_text}");
+        assert!(!key_text.is_empty(), "resolved keybind should not be empty");
+
+        // Test double-backtick literal
+        let spans = render_tip_body("Use ``Tab`` to switch", &kb, &theme);
+        assert_eq!(spans.len(), 3, "plain / literal / plain");
+        assert_eq!(spans[1].content.to_string(), "Tab");
+
+        // Test bold emphasis
+        let spans = render_tip_body("This is **important** text", &kb, &theme);
+        assert_eq!(spans.len(), 3, "plain / bold / plain");
+        assert_eq!(spans[1].content.to_string(), "important");
+
+        // Test all three markup types in one body
+        let body = "Press {list:CreateNote} for a **new note** in ``Notes``";
+        let spans = render_tip_body(body, &kb, &theme);
+        assert!(spans.len() >= 5, "multiple markup types should produce multiple spans");
+
+        // Verify all resolved tokens are present (not ERR)
+        for span in &spans {
+            assert!(!span.content.to_string().contains("[ERR:"), "no ERR in any span");
+        }
     }
 }
