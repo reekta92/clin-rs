@@ -40,6 +40,7 @@
 - [X] **Smart folders** — virtual smart folders (Today, This Week, Untagged) with custom rules (tags, title, folder, age)
 - [X] **Sub-notes** — virtual encrypted notes attached to physical notes, with full management UI
 - [X] **Word frequency** — show most used words in note info popup
+- [X] **Word & character metrics** — writing statistics and goals
 
 ## Planned
 
@@ -49,7 +50,6 @@
 - [ ] **Image rendering** — image rendering logic throught the app using `sixel` or `kitty image protocol`
 
 #### Notes View
-- [ ] **Word & character metrics** — writing statistics and goals
 
 #### Editor
 - [ ] **Rework as side panel** — replace editor view with a feature-rich side panel
