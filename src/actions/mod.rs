@@ -2,9 +2,9 @@ pub mod content_tree;
 pub mod decrypt;
 pub mod encrypt;
 pub mod import;
+pub mod info;
 pub mod ocr;
 pub mod settings;
-pub mod info;
 
 use crate::app::App;
 use anyhow::Result;

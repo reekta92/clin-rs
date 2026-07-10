@@ -1126,12 +1126,7 @@ impl App {
             };
 
             match item {
-                crate::list_view::VisualItem::Note {
-                    summary_idx,
-                    is_draw: _,
-                    is_canvas: _,
-                    ..
-                } => {
+                crate::list_view::VisualItem::Note { summary_idx, .. } => {
                     let note = match self.storage.load_note(&self.notes[*summary_idx].id) {
                         Ok(note) => note,
                         Err(e) => {
@@ -1247,7 +1242,7 @@ impl App {
         };
         if let Ok(saved_id) = self.storage.save_note(&id, &note) {
             self.editor.editing_id = Some(saved_id.clone());
-            self.enqueue_backup(format!("auto: {}", &note.title));
+            self.enqueue_backup(format!("auto: {}", note.title));
 
             let current_words = crate::goals::count_words(&note.content);
             let mut diff = 0;

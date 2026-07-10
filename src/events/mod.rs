@@ -262,7 +262,6 @@ pub fn handle_global_popups_and_palette(
         return true;
     }
 
-
     // Info popup (display-only; Enter/Esc closes, any other key traps)
     if matches!(app.popups.active, Some(crate::popups::ActivePopup::Info(_))) {
         if key.code == KeyCode::Enter || key.code == KeyCode::Esc {

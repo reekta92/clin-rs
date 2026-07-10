@@ -1333,7 +1333,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             .iter()
             .map(|item| {
                 let mut spans = vec![Span::styled(
-                    format!("{} ", &item.glyph),
+                    format!("{} ", item.glyph),
                     Style::default()
                         .fg(app.app_theme.accent)
                         .add_modifier(Modifier::BOLD),
@@ -1972,16 +1972,13 @@ pub fn get_preview_info(app: &App) -> Option<PreviewHeaderInfo> {
             }
 
             crate::list_view::VisualItem::Note { summary_idx, .. } => {
-                if let Some(note) = app.notes.get(*summary_idx) {
-                    let folder = if note.folder.is_empty() {
-                        "Vault".to_string()
-                    } else {
-                        format!("Vault/{}", note.folder)
-                    };
-                    (folder, note.title.clone())
+                let note = app.notes.get(*summary_idx)?;
+                let folder = if note.folder.is_empty() {
+                    "Vault".to_string()
                 } else {
-                    return None;
-                }
+                    format!("Vault/{}", note.folder)
+                };
+                (folder, note.title.clone())
             }
             crate::list_view::VisualItem::CreateNew { path, .. } => {
                 let folder = if path.is_empty() {

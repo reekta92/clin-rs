@@ -108,10 +108,7 @@ pub fn draw_info_popup(
     popup: &crate::popups::InfoPopup,
     theme: &crate::app_theme::AppThemeColors,
 ) {
-    let hints = crate::ui::format_keybind_hints(
-        theme,
-        &[("Enter/Esc".to_string(), "close")],
-    );
+    let hints = crate::ui::format_keybind_hints(theme, &[("Enter/Esc".to_string(), "close")]);
     let inner = crate::ui::draw_popup_frame(
         frame,
         area,
@@ -178,18 +175,16 @@ pub fn draw_info_popup(
                     .iter()
                     .map(|(key, value)| {
                         Row::new(vec![
-                            Cell::from(key.as_str())
-                                .style(Style::default().fg(theme.accent)),
-                            Cell::from(value.as_str())
-                                .style(Style::default().fg(theme.fg)),
+                            Cell::from(key.as_str()).style(Style::default().fg(theme.accent)),
+                            Cell::from(value.as_str()).style(Style::default().fg(theme.fg)),
                         ])
                     })
                     .collect();
 
-                let table = Table::new(rows, [
-                    Constraint::Length(max_key_len + 2),
-                    Constraint::Min(0),
-                ]);
+                let table = Table::new(
+                    rows,
+                    [Constraint::Length(max_key_len + 2), Constraint::Min(0)],
+                );
                 frame.render_widget(table, item_area);
             }
             crate::popups::InfoItem::Spacer => {}
@@ -199,8 +194,8 @@ pub fn draw_info_popup(
                     .constraints([Constraint::Length(1), Constraint::Min(0)])
                     .split(item_area);
 
-                let heading_para = Paragraph::new(heading.as_str())
-                    .style(Style::default().fg(theme.accent));
+                let heading_para =
+                    Paragraph::new(heading.as_str()).style(Style::default().fg(theme.accent));
                 frame.render_widget(heading_para, text_chunks[0]);
 
                 let body_para = Paragraph::new(body.as_str())

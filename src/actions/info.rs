@@ -30,11 +30,10 @@ impl Action for ShowInfoAction {
         // Notes
         if let Some(note_id) = app.get_selected_note_id() {
             let note = app.storage.load_note(&note_id)?;
-            let summary = app
-                .summary_cache
-                .get(&note_id)
-                .cloned()
-                .unwrap_or_else(|| app.storage.load_note_summary(&note_id).unwrap());
+            let summary = match app.summary_cache.get(&note_id) {
+                Some(s) => s.clone(),
+                None => app.storage.load_note_summary(&note_id)?,
+            };
 
             let chars = note.content.chars().count();
             let lines = note.content.lines().count();
@@ -42,12 +41,10 @@ impl Action for ShowInfoAction {
             let reading_time_mins = (words as f64 / 200.0).ceil() as usize;
 
             // Header count via outline parser (minus root node)
-            let header_count = crate::content_tree::parse::parse_outline(
-                &note.title,
-                &note.content,
-            )
-            .len()
-            .saturating_sub(1);
+            let header_count =
+                crate::content_tree::parse::parse_outline(&note.title, &note.content)
+                    .len()
+                    .saturating_sub(1);
 
             // Task count: lines matching - [ ], - [x], * [ ], * [x]
             let task_count = note
@@ -64,9 +61,9 @@ impl Action for ShowInfoAction {
 
             // Top Words Algorithm (no regex dependency)
             let stop_words: std::collections::HashSet<&str> = vec![
-                "the", "and", "a", "an", "is", "it", "to", "in", "of", "for", "on", "with",
-                "that", "this", "as", "by", "at", "but", "not", "be", "are", "or", "from",
-                "was", "we", "you", "i",
+                "the", "and", "a", "an", "is", "it", "to", "in", "of", "for", "on", "with", "that",
+                "this", "as", "by", "at", "but", "not", "be", "are", "or", "from", "was", "we",
+                "you", "i",
             ]
             .into_iter()
             .collect();
@@ -79,7 +76,7 @@ impl Action for ShowInfoAction {
                 }
             }
             let mut top_words: Vec<_> = word_counts.into_iter().collect();
-            top_words.sort_by(|a, b| b.1.cmp(&a.1));
+            top_words.sort_by_key(|b| std::cmp::Reverse(b.1));
             let top_5: Vec<String> = top_words
                 .into_iter()
                 .take(5)
@@ -95,7 +92,10 @@ impl Action for ShowInfoAction {
                     ("Total words".to_string(), format!("{}", words)),
                     ("Characters".to_string(), format!("{}", chars)),
                     ("Lines".to_string(), format!("{}", lines)),
-                    ("Reading time".to_string(), format!("~{} min", reading_time_mins)),
+                    (
+                        "Reading time".to_string(),
+                        format!("~{} min", reading_time_mins),
+                    ),
                     ("Headers".to_string(), format!("{}", header_count)),
                     ("Tasks".to_string(), format!("{}", task_count)),
                 ]),
@@ -171,7 +171,7 @@ impl Action for ShowInfoAction {
                 },
             ];
 
-            let folder_name = folder_path.split('/').last().unwrap_or(&folder_path);
+            let folder_name = folder_path.split('/').next_back().unwrap_or(&folder_path);
             app.popups.active = Some(crate::popups::ActivePopup::Info(crate::popups::InfoPopup {
                 title: format!("Info: {}", folder_name),
                 items,

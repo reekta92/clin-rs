@@ -84,7 +84,7 @@ impl App {
                 if let Err(e) = self.storage.save_note(&popup.note_id, &note) {
                     self.set_temporary_status(&format!("Failed to save tags: {e}"));
                 } else {
-                    self.enqueue_backup(format!("auto: {}", &note.title));
+                    self.enqueue_backup(format!("auto: {}", note.title));
                     if let Err(e) = self.refresh_notes() {
                         self.set_temporary_status(&format!("Refresh failed: {e}"));
                     }
@@ -267,7 +267,7 @@ impl App {
                         loaded.tags.push(tag.clone());
                     }
                     if self.storage.save_note(&note_id, &loaded).is_ok() {
-                        self.enqueue_backup(format!("auto: {}", &note_title));
+                        self.enqueue_backup(format!("auto: {}", note_title));
                         count += 1;
                     }
                 }

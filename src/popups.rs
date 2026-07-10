@@ -222,7 +222,6 @@ pub struct InfoPopup {
     pub items: Vec<InfoItem>,
 }
 
-
 pub struct IconModePopup {
     pub selected: usize,
 }

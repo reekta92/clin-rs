@@ -325,7 +325,7 @@ impl App {
                             if let Err(e) = self.storage.save_note(note_id, &updated_note) {
                                 self.set_temporary_status(&format!("Failed to save note: {e}"));
                             } else {
-                                self.enqueue_backup(format!("auto: {}", &updated_note.title));
+                                self.enqueue_backup(format!("auto: {}", updated_note.title));
                                 self.set_temporary_status_static("Note saved");
                                 self.list.folder_cache = None;
                                 if let Err(e) = self.refresh_notes() {
@@ -411,7 +411,7 @@ impl App {
                 tags: Vec::new(),
             };
             if let Ok(saved_id) = self.storage.save_note(&id, &new_note) {
-                self.enqueue_backup(format!("auto: {}", &new_note.title));
+                self.enqueue_backup(format!("auto: {}", new_note.title));
                 if let Err(e) = self.refresh_notes() {
                     self.set_temporary_status(&format!("Refresh failed: {e}"));
                 }
@@ -463,7 +463,7 @@ impl App {
                 tags: Vec::new(),
             };
             if let Ok(saved_id) = self.storage.save_note(&new_id, &new_note) {
-                self.enqueue_backup(format!("auto: {}", &new_note.title));
+                self.enqueue_backup(format!("auto: {}", new_note.title));
                 if let Err(e) = self.refresh_notes() {
                     self.set_temporary_status(&format!("Refresh failed: {e}"));
                 }
@@ -519,7 +519,7 @@ impl App {
                 tags: Vec::new(),
             };
             if let Ok(saved_id) = self.storage.save_note(&new_id, &new_note) {
-                self.enqueue_backup(format!("auto: {}", &new_note.title));
+                self.enqueue_backup(format!("auto: {}", new_note.title));
                 if let Err(e) = self.refresh_notes() {
                     self.set_temporary_status(&format!("Refresh failed: {e}"));
                 }
@@ -959,7 +959,7 @@ impl App {
                 tags: vec![],
             };
             if let Ok(saved_id) = self.storage.save_note(&new_id, &note) {
-                self.enqueue_backup(format!("auto: {}", &note.title));
+                self.enqueue_backup(format!("auto: {}", note.title));
                 if let Err(e) = self.refresh_notes() {
                     self.set_temporary_status(&format!("Refresh failed: {e}"));
                 }
