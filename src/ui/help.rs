@@ -151,6 +151,14 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
         app.config.ui.tab_icons_only,
         app.config.ui.icon_mode,
     );
+    let rows = app.get_help_rows();
+    let theme = &app.app_theme;
+    // Pagination: compute page from terminal height
+    let page_size = chunks[1].height.saturating_sub(2).max(1);
+    app.help_page_size = page_size;
+    let total_pages = rows.len().div_ceil(page_size as usize);
+    let page = (app.help_page as usize).min(total_pages.saturating_sub(1));
+    app.help_page = page as u16;
     let mut ctx = crate::statusline::StatuslineContext::for_view(app, ViewMode::Help);
     ctx.area = Some(chunks[0]);
     let (left_line, right_line) = crate::statusline::render_header(
@@ -170,8 +178,6 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
         Some(app.status.as_ref()),
     );
 
-    let rows = app.get_help_rows();
-    let theme = &app.app_theme;
     let body_area = chunks[1];
     let show_sides = body_area.width >= 100;
     let (left_area, divider1_area, center_area, divider2_area, right_area) = if show_sides {
@@ -196,13 +202,7 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
     let content_x = center_area.x + (center_area.width.saturating_sub(content_w)) / 2;
     let content_area = Rect::new(content_x, center_area.y, content_w, center_area.height);
 
-    // Pagination: compute page from terminal height
-    let table_h = content_area.height.saturating_sub(1);
-    let page_size = table_h.saturating_sub(2).max(1);
-    app.help_page_size = page_size;
-    let total_pages = rows.len().div_ceil(page_size as usize);
-    let page = (app.help_page as usize).min(total_pages.saturating_sub(1));
-    app.help_page = page as u16;
+    let table_h = content_area.height;
     let start_idx = page * page_size as usize;
     let table_area = Rect::new(content_area.x, content_area.y, content_area.width, table_h);
     let visible_rows: Vec<Row<'static>> = rows
@@ -254,20 +254,6 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
             .padding(Padding::new(2, 2, 1, 1)),
     );
     frame.render_widget(table, table_area);
-    // Page indicator
-    let indicator_area = Rect::new(
-        content_area.x,
-        content_area.y + table_h,
-        content_area.width,
-        1,
-    );
-    let page_text = format!("Page {}/{}", page + 1, total_pages);
-    let page_indicator = Paragraph::new(Line::from(Span::styled(
-        page_text,
-        Style::default().fg(theme.highlight_fg),
-    )))
-    .alignment(Alignment::Right);
-    frame.render_widget(page_indicator, indicator_area);
 
     if show_sides {
         draw_help_info_pane(frame, left_area, app.help_tab, theme);

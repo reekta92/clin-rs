@@ -250,6 +250,19 @@ impl StatuslineContext<'_> {
                 Some(bg.into())
             }
 
+            "help_page" => Some(
+                self.app
+                    .map_or_else(|| "?".into(), |a| format!("{}", a.help_page + 1).into()),
+            ),
+            "help_total_pages" => Some(
+                self.app
+                    .map_or_else(|| "?".into(), |a| {
+                        let rows = a.list.help_text_cache.as_ref().map_or(0, |r| r.len());
+                        let ps = a.help_page_size.max(1) as usize;
+                        format!("{}", rows.div_ceil(ps)).into()
+                    }),
+            ),
+
             // Goals
             "goal_words" => Some(
                 self.app
@@ -1509,6 +1522,7 @@ fn default_template(view: ViewMode, field: &str) -> Cow<'static, str> {
                 ViewMode::Backup => "{branch} | ↑{ahead} ↓{behind} | {modified_text}".into(),
                 ViewMode::List => "{detail}".into(),
                 ViewMode::Setup => "{pinned_count} pinned".into(),
+                ViewMode::Help => "Page {help_page}/{help_total_pages}".into(),
                 _ => "".into(),
             }
         }
