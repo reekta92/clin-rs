@@ -4,15 +4,27 @@ use crate::popups::*;
 use ratatui_textarea::TextArea;
 
 impl App {
-    /// In grid layout, cycle between Pinned and Vault tabs.
+    /// In grid layout, cycle between Vault, Pinned, and Smart tabs.
     pub fn cycle_grid_tab(&mut self) {
         if self.list.notes_layout != crate::config::NotesLayout::Grid {
             return;
         }
-        self.list.grid_folder = if self.list.grid_folder == VIRTUAL_PINNED_PATH {
-            String::new()
+        self.list.grid_folder = if self.config.list.smart_folders_enabled {
+            if self.list.grid_folder == VIRTUAL_PINNED_PATH {
+                VIRTUAL_SMART_PATH.to_string()
+            } else if self.list.grid_folder == VIRTUAL_SMART_PATH
+                || self.list.grid_folder.starts_with('@')
+            {
+                String::new()
+            } else {
+                VIRTUAL_PINNED_PATH.to_string()
+            }
         } else {
-            VIRTUAL_PINNED_PATH.to_string()
+            if self.list.grid_folder == VIRTUAL_PINNED_PATH {
+                String::new()
+            } else {
+                VIRTUAL_PINNED_PATH.to_string()
+            }
         };
         self.list.visual_index = 0;
         self.refresh_visual_list();

@@ -39,6 +39,8 @@ use std::sync::mpsc;
 
 pub const VIRTUAL_PINNED_PATH: &str = "__clin_virtual__/pinned";
 pub const VIRTUAL_PINNED_LABEL: &str = "Pinned";
+pub const VIRTUAL_SMART_PATH: &str = "__clin_virtual__/smart";
+pub const VIRTUAL_SMART_LABEL: &str = "Smart";
 
 #[derive(Debug, Clone, Default)]
 pub struct SearchQuery {
@@ -349,6 +351,7 @@ pub struct App {
     pub config: crate::config::ClinConfig,
     pub summary_cache: HashMap<String, NoteSummary>,
     pub summary_mtime: HashMap<String, u64>,
+    pub notes_with_subnotes: std::collections::HashSet<String>,
     pub initial_load_done: bool,
     pub load_cancel: Arc<AtomicBool>,
     pub loading_total: usize,
@@ -427,7 +430,12 @@ impl App {
         list.calendar_height = bootstrap_config.list.calendar_height;
         list.calendar_position = bootstrap_config.list.calendar_position;
         list.sections = bootstrap_config.list.sections.clone();
-
+        list.pinned_folders = bootstrap_config
+            .list
+            .pinned_folders
+            .iter()
+            .cloned()
+            .collect();
         let preview_wrap = bootstrap_config.core.preview_wrap;
         let config_path = crate::config::ClinConfig::config_path().ok();
         let config_mtime =
@@ -472,6 +480,7 @@ impl App {
             config: bootstrap_config,
             summary_cache: HashMap::new(),
             summary_mtime: HashMap::new(),
+            notes_with_subnotes: std::collections::HashSet::new(),
             initial_load_done: true,
             load_cancel: Arc::new(AtomicBool::new(false)),
             loading_total: 0,
@@ -492,6 +501,13 @@ impl App {
         };
         app.goals_progress = app.load_goals_progress();
         app.list.folder_expanded.insert(String::new());
+        if !app.config.list.expanded_folders.is_empty() {
+            for folder in &app.config.list.expanded_folders {
+                app.list.folder_expanded.insert(folder.clone());
+            }
+        } else if let Some(d) = app.config.list.default_expand_depth {
+            app.expand_folders_to_depth(d);
+        }
         app.refresh_notes()?;
         if app
             .list
@@ -541,7 +557,12 @@ impl App {
         list.calendar_height = bootstrap_config.list.calendar_height;
         list.calendar_position = bootstrap_config.list.calendar_position;
         list.sections = bootstrap_config.list.sections.clone();
-
+        list.pinned_folders = bootstrap_config
+            .list
+            .pinned_folders
+            .iter()
+            .cloned()
+            .collect();
         let preview_wrap = bootstrap_config.core.preview_wrap;
         let config_path = crate::config::ClinConfig::config_path().ok();
         let config_mtime =
@@ -586,6 +607,7 @@ impl App {
             config: bootstrap_config,
             summary_cache: HashMap::new(),
             summary_mtime: HashMap::new(),
+            notes_with_subnotes: std::collections::HashSet::new(),
             initial_load_done: false,
             load_cancel: Arc::new(AtomicBool::new(false)),
             loading_total: 0,
@@ -606,6 +628,13 @@ impl App {
         };
         app.goals_progress = app.load_goals_progress();
         app.list.folder_expanded.insert(String::new());
+        if !app.config.list.expanded_folders.is_empty() {
+            for folder in &app.config.list.expanded_folders {
+                app.list.folder_expanded.insert(folder.clone());
+            }
+        } else if let Some(d) = app.config.list.default_expand_depth {
+            app.expand_folders_to_depth(d);
+        }
         Ok(app)
     }
     pub fn reload_config(&mut self) {
@@ -618,6 +647,7 @@ impl App {
         };
         self.preview_wrap = self.config.core.preview_wrap;
         self.app_theme = crate::app_theme::AppThemeColors::from_config(&self.config.ui);
+        self.list.pinned_folders = self.config.list.pinned_folders.iter().cloned().collect();
         self.build_display_lines();
     }
 
@@ -632,7 +662,7 @@ impl App {
         }
     }
 
-    fn is_virtual_pinned_path(path: &str) -> bool {
+    pub(crate) fn is_virtual_pinned_path(path: &str) -> bool {
         path == VIRTUAL_PINNED_PATH
     }
 
@@ -649,12 +679,15 @@ impl App {
                     depth,
                     is_expanded,
                     note_count,
+                    recursive_count,
+                    stale,
+                    is_pinned,
                 } => {
                     let indent = "  ".repeat(*depth);
-                    let is_pinned = name == crate::app::VIRTUAL_PINNED_LABEL;
+                    let is_virtual_pinned = name == crate::app::VIRTUAL_PINNED_LABEL;
                     let icon = if self.config.ui.icon_mode == crate::config::IconMode::None {
                         String::new()
-                    } else if is_pinned {
+                    } else if is_virtual_pinned {
                         if *is_expanded {
                             format!(
                                 "{} {}",
@@ -697,16 +730,31 @@ impl App {
                             crate::ui::get_icon("\u{f114}", "\u{1f4c2}", self.config.ui.icon_mode)
                         )
                     };
-                    let color = if is_pinned {
+                    let color = if *is_pinned {
                         self.app_theme.heading
+                    } else if *stale {
+                        self.app_theme.muted
                     } else {
                         self.app_theme.folder
                     };
-                    let sanitized_name = crate::sanitize::sanitize_for_terminal(name);
-                    let mut text = if icon.is_empty() {
-                        format!("{indent}{sanitized_name} ({note_count})")
+                    let count_str = if *recursive_count > *note_count {
+                        format!("{} + {}", note_count, recursive_count - note_count)
                     } else {
-                        format!("{indent}{icon} {sanitized_name} ({note_count})")
+                        format!("{}", note_count)
+                    };
+                    let sanitized_name = crate::sanitize::sanitize_for_terminal(name);
+                    let mut display_name = sanitized_name.into_owned();
+                    if *is_pinned {
+                        let pin_icon =
+                            crate::ui::get_icon("\u{f08d}", "\u{1f4cc}", self.config.ui.icon_mode);
+                        if !pin_icon.is_empty() {
+                            display_name = format!("{pin_icon} {display_name}");
+                        }
+                    }
+                    let mut text = if icon.is_empty() {
+                        format!("{indent}{display_name} ({count_str})")
+                    } else {
+                        format!("{indent}{icon} {display_name} ({count_str})")
                     };
                     if self.list.list_mode == crate::list_view::ListMode::Select {
                         let checkbox = if self.list.selected_indices.contains(&vi) {
@@ -715,15 +763,19 @@ impl App {
                             "[ ] "
                         };
                         text = if icon.is_empty() {
-                            format!("{indent}{checkbox}{sanitized_name} ({note_count})")
+                            format!("{indent}{checkbox}{display_name} ({count_str})")
                         } else {
-                            format!("{indent}{checkbox}{icon} {sanitized_name} ({note_count})")
+                            format!("{indent}{checkbox}{icon} {display_name} ({count_str})")
                         };
                     }
-                    let mut lines = vec![Line::from(vec![Span::styled(
-                        text,
-                        Style::default().add_modifier(Modifier::BOLD).fg(color),
-                    )])];
+                    let mut style = Style::default().add_modifier(Modifier::BOLD).fg(color);
+                    if *stale && !*is_pinned {
+                        style = style.add_modifier(Modifier::DIM);
+                    }
+                    if self.list.drag_hover == Some(vi) {
+                        style = style.bg(self.app_theme.highlight_bg);
+                    }
+                    let mut lines = vec![Line::from(vec![Span::styled(text, style)])];
                     if self.list.list_density == crate::config::ListDensity::Comfortable {
                         lines.push(Line::from(""));
                     }
@@ -823,6 +875,18 @@ impl App {
                         crate::sanitize::sanitize_for_terminal(summary.title.as_str()).into_owned();
                     spans.push(Span::styled(sanitized_title, text_style));
 
+                    if self.notes_with_subnotes.contains(&summary.id) {
+                        let sub_icon = match self.config.ui.icon_mode {
+                            crate::config::IconMode::Nerd => " ⧉",
+                            crate::config::IconMode::Unicode => " ⧉",
+                            crate::config::IconMode::None => " +",
+                        };
+                        spans.push(Span::styled(
+                            sub_icon.to_string(),
+                            Style::default().fg(self.app_theme.accent),
+                        ));
+                    }
+
                     for tag in &summary.tags {
                         spans.push(Span::raw(" "));
                         let sanitized_tag = crate::sanitize::sanitize_for_terminal(tag);
@@ -897,6 +961,61 @@ impl App {
                     }
                     items.push(ListItem::new(lines));
                 }
+                VisualItem::SmartFolder {
+                    kind,
+                    label,
+                    depth,
+                    is_expanded,
+                    note_count,
+                } => {
+                    let indent = "  ".repeat(*depth);
+                    let icon_mode = self.config.ui.icon_mode;
+                    let (nerd, unicode) = match kind {
+                        SmartFolderKind::Today => ("\u{f133}", "\u{1f4c5}"),
+                        SmartFolderKind::ThisWeek => ("\u{f073}", "\u{1f5d3}"),
+                        SmartFolderKind::Untagged => ("\u{f187}", "\u{1f4e5}"),
+                        SmartFolderKind::Tag(_) => ("\u{f02c}", "\u{1f3f7}"),
+                        SmartFolderKind::Custom(_) => ("\u{f0e7}", "\u{26a1}"),
+                    };
+
+                    let arrow = if *is_expanded {
+                        crate::ui::get_icon("\u{f078}", "\u{25bc}", icon_mode)
+                    } else {
+                        crate::ui::get_icon("\u{f054}", "\u{25b6}", icon_mode)
+                    };
+
+                    let folder_icon = crate::ui::get_icon(nerd, unicode, icon_mode);
+                    let icon = format!("{arrow} {folder_icon}");
+                    let color = self.app_theme.tag;
+                    let count_str = format!("{}", note_count);
+                    let sanitized_name = crate::sanitize::sanitize_for_terminal(label);
+
+                    let mut text = if icon.is_empty() {
+                        format!("{indent}{sanitized_name} ({count_str})")
+                    } else {
+                        format!("{indent}{icon} {sanitized_name} ({count_str})")
+                    };
+
+                    if self.list.list_mode == crate::list_view::ListMode::Select {
+                        let checkbox = if self.list.selected_indices.contains(&vi) {
+                            "[x] "
+                        } else {
+                            "[ ] "
+                        };
+                        text = if icon.is_empty() {
+                            format!("{indent}{checkbox}{sanitized_name} ({count_str})")
+                        } else {
+                            format!("{indent}{checkbox}{icon} {sanitized_name} ({count_str})")
+                        };
+                    }
+
+                    let style = Style::default().add_modifier(Modifier::BOLD).fg(color);
+                    let mut lines = vec![Line::from(vec![Span::styled(text, style)])];
+                    if self.list.list_density == crate::config::ListDensity::Comfortable {
+                        lines.push(Line::from(""));
+                    }
+                    items.push(ListItem::new(lines));
+                }
             }
         }
         self.list.display_items = items;
@@ -966,7 +1085,7 @@ impl App {
         self.run_external_command(&editor_prog, extra_args)
     }
 
-    fn open_path_in_external_editor(&mut self, path: &std::path::Path) {
+    pub fn open_path_in_external_editor(&mut self, path: &std::path::Path) {
         let (result, editor_prog) =
             self.run_in_external_editor(&[path.to_string_lossy().into_owned()]);
 
@@ -1007,12 +1126,7 @@ impl App {
             };
 
             match item {
-                crate::list_view::VisualItem::Note {
-                    summary_idx,
-                    is_draw: _,
-                    is_canvas: _,
-                    ..
-                } => {
+                crate::list_view::VisualItem::Note { summary_idx, .. } => {
                     let note = match self.storage.load_note(&self.notes[*summary_idx].id) {
                         Ok(note) => note,
                         Err(e) => {
@@ -1023,7 +1137,8 @@ impl App {
                     note.content.clone()
                 }
                 crate::list_view::VisualItem::Folder { .. }
-                | crate::list_view::VisualItem::CreateNew { .. } => {
+                | crate::list_view::VisualItem::CreateNew { .. }
+                | crate::list_view::VisualItem::SmartFolder { .. } => {
                     self.set_temporary_status_static(
                         "External preview only supports markdown notes",
                     );
@@ -1127,7 +1242,7 @@ impl App {
         };
         if let Ok(saved_id) = self.storage.save_note(&id, &note) {
             self.editor.editing_id = Some(saved_id.clone());
-            self.enqueue_backup(format!("auto: {}", &note.title));
+            self.enqueue_backup(format!("auto: {}", note.title));
 
             let current_words = crate::goals::count_words(&note.content);
             let mut diff = 0;
@@ -1248,6 +1363,7 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::set_config_path_override;
     use crate::storage::Storage;
     use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
     use ratatui::layout::Rect;
@@ -1411,7 +1527,7 @@ mod tests {
             key: [0u8; 32],
         };
         let mut app = App::new(storage).expect("value is present");
-
+        app.editor.external_editor_enabled = false;
         // Initially no words written and no notes modified
         assert_eq!(app.goals_progress.words_written, 0);
         assert!(app.goals_progress.notes_modified.is_empty());
@@ -1826,5 +1942,128 @@ word_goal = 1200
         let prev_mode = app.return_mode.take().unwrap_or(ViewMode::List);
         app.mode = prev_mode;
         assert_eq!(app.mode, ViewMode::List);
+    }
+
+    #[test]
+    fn test_folder_expand_and_collapse_operations() {
+        let temp_dir = tempdir().expect("value is present");
+        let data_dir = temp_dir.path().join("data");
+        let config_dir = temp_dir.path().join("config");
+        let notes_dir = temp_dir.path().join("notes");
+        let templates_dir = temp_dir.path().join("templates");
+        std::fs::create_dir_all(&data_dir).expect("value is present");
+        std::fs::create_dir_all(&config_dir).expect("value is present");
+        std::fs::create_dir_all(&notes_dir).expect("value is present");
+        std::fs::create_dir_all(&templates_dir).expect("value is present");
+
+        let storage = Storage {
+            data_dir,
+            config_dir,
+            notes_dir,
+            templates_dir,
+            key: [0u8; 32],
+        };
+        let mut app = App::new(storage).expect("value is present");
+
+        // Mock folder cache
+        app.list.folder_cache = Some(vec![
+            "a".to_string(),
+            "a/b".to_string(),
+            "a/b/c".to_string(),
+            "other".to_string(),
+        ]);
+
+        // 1. Test expand_all_folders
+        app.expand_all_folders();
+        assert!(app.list.folder_expanded.contains(""));
+        assert!(app.list.folder_expanded.contains(VIRTUAL_PINNED_PATH));
+        assert!(app.list.folder_expanded.contains("a"));
+        assert!(app.list.folder_expanded.contains("a/b"));
+        assert!(app.list.folder_expanded.contains("a/b/c"));
+        assert!(app.list.folder_expanded.contains("other"));
+
+        // 2. Test collapse_all_folders
+        app.list.visual_index = 4;
+        app.collapse_all_folders();
+        assert_eq!(app.list.visual_index, 0);
+        assert!(app.list.folder_expanded.contains(""));
+        assert!(!app.list.folder_expanded.contains("a"));
+        assert!(!app.list.folder_expanded.contains("a/b"));
+
+        // 3. Test expand_to_level
+        app.expand_to_level(2); // Should expand depth < 2 (root = 0, "a" = 1, "other" = 1)
+        assert!(app.list.folder_expanded.contains(""));
+        assert!(app.list.folder_expanded.contains(VIRTUAL_PINNED_PATH));
+        assert!(app.list.folder_expanded.contains("a"));
+        assert!(app.list.folder_expanded.contains("other"));
+        assert!(!app.list.folder_expanded.contains("a/b")); // depth = 2 is not < 2
+
+        app.expand_to_level(3); // Should expand depth < 3 (includes "a/b" depth 2)
+        assert!(app.list.folder_expanded.contains("a/b"));
+        assert!(!app.list.folder_expanded.contains("a/b/c")); // depth = 3 is not < 3
+    }
+
+    #[test]
+    fn test_startup_folder_expansion_config_and_default_depth() {
+        let _lock = crate::config::CONFIG_TEST_MUTEX.lock();
+        let config_path = crate::config::ClinConfig::config_path().expect("value is present");
+        if let Some(parent) = config_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let _ = std::fs::remove_file(&config_path);
+
+        let temp_dir = tempdir().expect("value is present");
+        let data_dir = temp_dir.path().join("data");
+        let config_dir = temp_dir.path().join("config");
+        let notes_dir = temp_dir.path().join("notes");
+        let templates_dir = temp_dir.path().join("templates");
+        std::fs::create_dir_all(&data_dir).expect("value is present");
+        std::fs::create_dir_all(&config_dir).expect("value is present");
+        std::fs::create_dir_all(&notes_dir).expect("value is present");
+        std::fs::create_dir_all(&templates_dir).expect("value is present");
+
+        let storage = Storage {
+            data_dir,
+            config_dir: config_dir.clone(),
+            notes_dir,
+            templates_dir,
+            key: [0u8; 32],
+        };
+        let config_content = crate::config::merge::default_config_content().replace(
+            "preview_enabled = true",
+            "preview_enabled = true\nexpanded_folders = [\"a\", \"a/b\"]",
+        );
+        std::fs::write(&config_path, config_content).expect("value is present");
+        set_config_path_override(config_path.clone());
+
+        // Create App, should load folders
+        let app = App::new(storage.clone()).expect("value is present");
+        assert!(app.list.folder_expanded.contains("a"));
+        assert!(app.list.folder_expanded.contains("a/b"));
+        assert!(!app.list.folder_expanded.contains("other"));
+
+        // Write config with default_expand_depth = 2
+        let config_content = crate::config::merge::default_config_content().replace(
+            "preview_enabled = true",
+            "preview_enabled = true\ndefault_expand_depth = 2",
+        );
+        std::fs::write(&config_path, config_content).expect("value is present");
+
+        // Re-create App, should expand up to depth 2 (since expanded_folders is empty now)
+        let mut app2 = App::new(storage).expect("value is present");
+        // Mock folder cache
+        app2.list.folder_cache = Some(vec![
+            "a".to_string(),
+            "a/b".to_string(),
+            "a/b/c".to_string(),
+            "other".to_string(),
+        ]);
+        // Trigger expansion to depth
+        app2.expand_folders_to_depth(2);
+        assert!(app2.list.folder_expanded.contains("a"));
+        assert!(app2.list.folder_expanded.contains("other"));
+        assert!(!app2.list.folder_expanded.contains("a/b"));
+
+        let _ = std::fs::remove_file(&config_path);
     }
 }

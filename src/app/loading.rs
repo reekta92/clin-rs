@@ -6,6 +6,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+struct SmartFolderData {
+    kind: SmartFolderKind,
+    label: String,
+    matches: Vec<usize>,
+}
 impl App {
     /// Spawns a background thread that streams note summaries in batches.
     /// Caller must drain the receiver in the main loop via merge_loaded.
@@ -119,12 +124,65 @@ impl App {
             }
         }
 
+        let all_folders = if let Some(cache) = &self.list.folder_cache {
+            cache
+        } else {
+            let folders = self
+                .storage
+                .list_folders(self.list.show_hidden_files)
+                .unwrap_or_default();
+            self.list.folder_cache = Some(folders);
+            self.list
+                .folder_cache
+                .as_ref()
+                .expect("folder_cache populated above")
+        };
+
+        // Build subfolders map: group each folder by parent path for recursive traversal
+        let mut subfolders_map: std::collections::HashMap<&str, Vec<&String>> =
+            std::collections::HashMap::new();
+        for folder in all_folders {
+            let parent = if let Some(slash) = folder.rfind('/') {
+                &folder[..slash]
+            } else {
+                ""
+            };
+            subfolders_map.entry(parent).or_default().push(folder);
+        }
+
+        let mut recursive_count = std::collections::HashMap::new();
+
+        fn compute_subtree<'a>(
+            folder: &'a str,
+            subfolders_map: &std::collections::HashMap<&'a str, Vec<&'a String>>,
+            by_folder: &std::collections::HashMap<&'a str, Vec<(usize, &'a NoteSummary)>>,
+            recursive_count: &mut std::collections::HashMap<&'a str, usize>,
+        ) -> usize {
+            let direct_count = by_folder.get(folder).map_or(0, |v| v.len());
+            let mut total_count = direct_count;
+
+            if let Some(children) = subfolders_map.get(folder) {
+                for child in children {
+                    total_count +=
+                        compute_subtree(child.as_str(), subfolders_map, by_folder, recursive_count);
+                }
+            }
+
+            recursive_count.insert(folder, total_count);
+            total_count
+        }
+
+        compute_subtree("", &subfolders_map, &by_folder, &mut recursive_count);
+
         visual.push(VisualItem::Folder {
             path: VIRTUAL_PINNED_PATH.to_string(),
             name: VIRTUAL_PINNED_LABEL.to_string(),
             depth: 0,
             is_expanded: self.list.folder_expanded.contains(VIRTUAL_PINNED_PATH),
             note_count: pinned_notes.len(),
+            recursive_count: pinned_notes.len(),
+            stale: false,
+            is_pinned: false,
         });
 
         if self.list.folder_expanded.contains(VIRTUAL_PINNED_PATH) {
@@ -140,143 +198,315 @@ impl App {
             }
         }
 
+        #[allow(clippy::too_many_arguments)]
+        fn push_tree<'a>(
+            current_folder: &'a str,
+            depth: usize,
+            visual: &mut Vec<VisualItem>,
+            expanded_folders: &std::collections::HashSet<String>,
+            subfolders_map: &std::collections::HashMap<&'a str, Vec<&'a String>>,
+            by_folder: &std::collections::HashMap<&'a str, Vec<(usize, &'a NoteSummary)>>,
+            folders_first: bool,
+            recursive_count: &std::collections::HashMap<&'a str, usize>,
+            pinned_folders: &'a std::collections::HashSet<String>,
+        ) {
+            let notes = by_folder.get(current_folder);
+            let subfolders = subfolders_map.get(current_folder);
+
+            if folders_first {
+                if let Some(folders) = subfolders {
+                    for folder in folders {
+                        let parts: Vec<&str> = folder.split('/').collect();
+                        let name = parts.last().unwrap_or(&"").to_string();
+                        let is_expanded = expanded_folders.contains(folder.as_str());
+                        let direct = by_folder.get(folder.as_str()).map_or(0, |v| v.len());
+                        let rec_count = recursive_count
+                            .get(folder.as_str())
+                            .copied()
+                            .unwrap_or(direct);
+                        let stale = rec_count == 0;
+                        visual.push(VisualItem::Folder {
+                            path: folder.to_string(),
+                            name,
+                            depth,
+                            is_expanded,
+                            note_count: direct,
+                            recursive_count: rec_count,
+                            stale,
+                            is_pinned: pinned_folders.contains(folder.as_str()),
+                        });
+                        if is_expanded {
+                            push_tree(
+                                folder,
+                                depth + 1,
+                                visual,
+                                expanded_folders,
+                                subfolders_map,
+                                by_folder,
+                                folders_first,
+                                recursive_count,
+                                pinned_folders,
+                            );
+                        }
+                    }
+                }
+                if let Some(notes) = notes {
+                    for (idx, note) in notes {
+                        visual.push(VisualItem::Note {
+                            summary_idx: *idx,
+                            depth,
+                            is_clin: note.id.ends_with(".clin"),
+                            is_draw: note.id.ends_with(".draw"),
+                            is_canvas: note.id.ends_with(".canvas"),
+                            in_virtual_pinned_folder: false,
+                        });
+                    }
+                }
+                visual.push(VisualItem::CreateNew {
+                    path: current_folder.to_string(),
+                    depth,
+                });
+            } else {
+                if let Some(notes) = notes {
+                    for (idx, note) in notes {
+                        visual.push(VisualItem::Note {
+                            summary_idx: *idx,
+                            depth,
+                            is_clin: note.id.ends_with(".clin"),
+                            is_draw: note.id.ends_with(".draw"),
+                            is_canvas: note.id.ends_with(".canvas"),
+                            in_virtual_pinned_folder: false,
+                        });
+                    }
+                }
+                visual.push(VisualItem::CreateNew {
+                    path: current_folder.to_string(),
+                    depth,
+                });
+                if let Some(folders) = subfolders {
+                    for folder in folders {
+                        let parts: Vec<&str> = folder.split('/').collect();
+                        let name = parts.last().unwrap_or(&"").to_string();
+                        let is_expanded = expanded_folders.contains(folder.as_str());
+                        let direct = by_folder.get(folder.as_str()).map_or(0, |v| v.len());
+                        let rec_count = recursive_count
+                            .get(folder.as_str())
+                            .copied()
+                            .unwrap_or(direct);
+                        let stale = rec_count == 0;
+                        visual.push(VisualItem::Folder {
+                            path: folder.to_string(),
+                            name,
+                            depth,
+                            is_expanded,
+                            note_count: direct,
+                            recursive_count: rec_count,
+                            stale,
+                            is_pinned: pinned_folders.contains(folder.as_str()),
+                        });
+                        if is_expanded {
+                            push_tree(
+                                folder,
+                                depth + 1,
+                                visual,
+                                expanded_folders,
+                                subfolders_map,
+                                by_folder,
+                                folders_first,
+                                recursive_count,
+                                pinned_folders,
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut sorted_pinned: Vec<String> = self
+            .list
+            .pinned_folders
+            .iter()
+            .filter(|p| !p.is_empty() && !p.starts_with('@'))
+            .cloned()
+            .collect();
+        sorted_pinned.sort();
+
+        for pinned_path in sorted_pinned {
+            let name = if let Some(slash) = pinned_path.rfind('/') {
+                pinned_path[slash + 1..].to_string()
+            } else {
+                pinned_path.clone()
+            };
+
+            let is_expanded = self.list.folder_expanded.contains(&pinned_path);
+            let direct = by_folder.get(pinned_path.as_str()).map_or(0, |v| v.len());
+            let rec_count = recursive_count
+                .get(pinned_path.as_str())
+                .copied()
+                .unwrap_or(direct);
+            let stale = rec_count == 0;
+
+            visual.push(VisualItem::Folder {
+                path: pinned_path.clone(),
+                name,
+                depth: 0,
+                is_expanded,
+                note_count: direct,
+                recursive_count: rec_count,
+                stale,
+                is_pinned: true,
+            });
+
+            if is_expanded {
+                push_tree(
+                    &pinned_path,
+                    1,
+                    &mut visual,
+                    &self.list.folder_expanded,
+                    &subfolders_map,
+                    &by_folder,
+                    self.list.folders_first,
+                    &recursive_count,
+                    &self.list.pinned_folders,
+                );
+            }
+        }
+        let mut computed_smart_folders = Vec::new();
+        if self.config.list.smart_folders_enabled {
+            let now = crate::ui::now_unix_secs();
+            let mut today_notes = Vec::new();
+            let mut week_notes = Vec::new();
+            let mut untagged_notes = Vec::new();
+            let mut tag_to_notes: HashMap<String, Vec<usize>> = HashMap::new();
+
+            for (idx, note) in self.notes.iter().enumerate() {
+                let diff = now.saturating_sub(note.updated_at);
+                if diff < 86_400 {
+                    today_notes.push(idx);
+                }
+                if diff < 604_800 {
+                    week_notes.push(idx);
+                }
+                if note.tags.is_empty() {
+                    untagged_notes.push(idx);
+                }
+                for tag in &note.tags {
+                    tag_to_notes.entry(tag.clone()).or_default().push(idx);
+                }
+            }
+
+            if !today_notes.is_empty() {
+                computed_smart_folders.push(SmartFolderData {
+                    kind: SmartFolderKind::Today,
+                    label: "Today".to_string(),
+                    matches: today_notes,
+                });
+            }
+            if !week_notes.is_empty() {
+                computed_smart_folders.push(SmartFolderData {
+                    kind: SmartFolderKind::ThisWeek,
+                    label: "This Week".to_string(),
+                    matches: week_notes,
+                });
+            }
+            if !untagged_notes.is_empty() {
+                computed_smart_folders.push(SmartFolderData {
+                    kind: SmartFolderKind::Untagged,
+                    label: "Untagged".to_string(),
+                    matches: untagged_notes,
+                });
+            }
+
+            for rule in &self.config.list.custom_smart_folders {
+                let mut matches = Vec::new();
+                for (idx, note) in self.notes.iter().enumerate() {
+                    let mut ok = true;
+                    for t in &rule.tags {
+                        if !note.tags.contains(t) {
+                            ok = false;
+                            break;
+                        }
+                    }
+                    if let Some(txt) = &rule.title_contains
+                        && !note.title.to_lowercase().contains(&txt.to_lowercase())
+                    {
+                        ok = false;
+                    }
+                    if let Some(prefix) = &rule.folder_prefix
+                        && !note.folder.starts_with(prefix)
+                    {
+                        ok = false;
+                    }
+                    if let Some(days) = rule.updated_within_days {
+                        let diff = now.saturating_sub(note.updated_at);
+                        if diff >= days * 86_400 {
+                            ok = false;
+                        }
+                    }
+                    if ok {
+                        matches.push(idx);
+                    }
+                }
+                if !matches.is_empty() {
+                    computed_smart_folders.push(SmartFolderData {
+                        kind: SmartFolderKind::Custom(rule.name.clone()),
+                        label: rule.name.clone(),
+                        matches,
+                    });
+                }
+            }
+
+            let mut sorted_tags: Vec<String> = tag_to_notes.keys().cloned().collect();
+            sorted_tags.sort();
+            for tag in sorted_tags {
+                if let Some(matching) = tag_to_notes.remove(&tag) {
+                    computed_smart_folders.push(SmartFolderData {
+                        kind: SmartFolderKind::Tag(tag.clone()),
+                        label: tag,
+                        matches: matching,
+                    });
+                }
+            }
+
+            for data in &computed_smart_folders {
+                let virtual_path = data.kind.virtual_path();
+                let is_expanded = self.list.folder_expanded.contains(&virtual_path);
+                visual.push(VisualItem::SmartFolder {
+                    kind: data.kind.clone(),
+                    label: data.label.clone(),
+                    depth: 0,
+                    is_expanded,
+                    note_count: data.matches.len(),
+                });
+                if is_expanded {
+                    for idx in &data.matches {
+                        let note = &self.notes[*idx];
+                        visual.push(VisualItem::Note {
+                            summary_idx: *idx,
+                            depth: 1,
+                            is_clin: note.id.ends_with(".clin"),
+                            is_draw: note.id.ends_with(".draw"),
+                            is_canvas: note.id.ends_with(".canvas"),
+                            in_virtual_pinned_folder: true,
+                        });
+                    }
+                }
+            }
+        }
+        let vault_direct = by_folder.get("").map_or(0, |v| v.len());
+        let vault_recursive = recursive_count.get("").copied().unwrap_or(vault_direct);
         visual.push(VisualItem::Folder {
             path: String::new(),
             name: String::from("Vault"),
             depth: 0,
             is_expanded: self.list.folder_expanded.contains(""),
-            note_count: by_folder.get("").map_or(0, |v| v.len()),
+            note_count: vault_direct,
+            recursive_count: vault_recursive,
+            stale: false,
+            is_pinned: false,
         });
 
-        let all_folders = if let Some(cache) = &self.list.folder_cache {
-            cache
-        } else {
-            let folders = self
-                .storage
-                .list_folders(self.list.show_hidden_files)
-                .unwrap_or_default();
-            self.list.folder_cache = Some(folders);
-            self.list
-                .folder_cache
-                .as_ref()
-                .expect("folder_cache populated above")
-        };
-
         if self.list.folder_expanded.contains("") {
-            // Build subfolders map: group each folder by parent path for recursive traversal
-            let mut subfolders_map: std::collections::HashMap<&str, Vec<&String>> =
-                std::collections::HashMap::new();
-            for folder in all_folders {
-                let parent = if let Some(slash) = folder.rfind('/') {
-                    &folder[..slash]
-                } else {
-                    ""
-                };
-                subfolders_map.entry(parent).or_default().push(folder);
-            }
-
-            /// Recursive: push items for `current_folder` at `depth`, then recurse into expanded children.
-            fn push_tree<'a>(
-                current_folder: &'a str,
-                depth: usize,
-                visual: &mut Vec<VisualItem>,
-                expanded_folders: &std::collections::HashSet<String>,
-                subfolders_map: &std::collections::HashMap<&'a str, Vec<&'a String>>,
-                by_folder: &std::collections::HashMap<&'a str, Vec<(usize, &'a NoteSummary)>>,
-                folders_first: bool,
-            ) {
-                let notes = by_folder.get(current_folder);
-                let subfolders = subfolders_map.get(current_folder);
-
-                if folders_first {
-                    // Subfolders first, then notes
-                    if let Some(folders) = subfolders {
-                        for folder in folders {
-                            let parts: Vec<&str> = folder.split('/').collect();
-                            let name = parts.last().unwrap_or(&"").to_string();
-                            let is_expanded = expanded_folders.contains(folder.as_str());
-                            visual.push(VisualItem::Folder {
-                                path: folder.to_string(),
-                                name,
-                                depth,
-                                is_expanded,
-                                note_count: by_folder.get(folder.as_str()).map_or(0, |v| v.len()),
-                            });
-                            if is_expanded {
-                                push_tree(
-                                    folder,
-                                    depth + 1,
-                                    visual,
-                                    expanded_folders,
-                                    subfolders_map,
-                                    by_folder,
-                                    folders_first,
-                                );
-                            }
-                        }
-                    }
-                    if let Some(notes) = notes {
-                        for (idx, note) in notes {
-                            visual.push(VisualItem::Note {
-                                summary_idx: *idx,
-                                depth,
-                                is_clin: note.id.ends_with(".clin"),
-                                is_draw: note.id.ends_with(".draw"),
-                                is_canvas: note.id.ends_with(".canvas"),
-                                in_virtual_pinned_folder: false,
-                            });
-                        }
-                    }
-                    visual.push(VisualItem::CreateNew {
-                        path: current_folder.to_string(),
-                        depth,
-                    });
-                } else {
-                    // Notes first, then subfolders
-                    if let Some(notes) = notes {
-                        for (idx, note) in notes {
-                            visual.push(VisualItem::Note {
-                                summary_idx: *idx,
-                                depth,
-                                is_clin: note.id.ends_with(".clin"),
-                                is_draw: note.id.ends_with(".draw"),
-                                is_canvas: note.id.ends_with(".canvas"),
-                                in_virtual_pinned_folder: false,
-                            });
-                        }
-                    }
-                    visual.push(VisualItem::CreateNew {
-                        path: current_folder.to_string(),
-                        depth,
-                    });
-                    if let Some(folders) = subfolders {
-                        for folder in folders {
-                            let parts: Vec<&str> = folder.split('/').collect();
-                            let name = parts.last().unwrap_or(&"").to_string();
-                            let is_expanded = expanded_folders.contains(folder.as_str());
-                            visual.push(VisualItem::Folder {
-                                path: folder.to_string(),
-                                name,
-                                depth,
-                                is_expanded,
-                                note_count: by_folder.get(folder.as_str()).map_or(0, |v| v.len()),
-                            });
-                            if is_expanded {
-                                push_tree(
-                                    folder,
-                                    depth + 1,
-                                    visual,
-                                    expanded_folders,
-                                    subfolders_map,
-                                    by_folder,
-                                    folders_first,
-                                );
-                            }
-                        }
-                    }
-                }
-            }
-
             push_tree(
                 "",
                 1,
@@ -285,6 +515,8 @@ impl App {
                 &subfolders_map,
                 &by_folder,
                 self.list.folders_first,
+                &recursive_count,
+                &self.list.pinned_folders,
             );
         }
 
@@ -304,6 +536,47 @@ impl App {
                         in_virtual_pinned_folder: true,
                     });
                 }
+            } else if gf == VIRTUAL_SMART_PATH {
+                // Smart Folders tab: show all smart folders as tiles, no ".." since it's the root of the tab
+                for data in &computed_smart_folders {
+                    visual.push(VisualItem::SmartFolder {
+                        kind: data.kind.clone(),
+                        label: data.label.clone(),
+                        depth: 0,
+                        is_expanded: false,
+                        note_count: data.matches.len(),
+                    });
+                }
+            } else if gf.starts_with('@') {
+                // User is inside a smart folder.
+                // 1. Push ".." pointing back to Smart tab root
+                visual.push(VisualItem::Folder {
+                    path: VIRTUAL_SMART_PATH.to_string(),
+                    name: "..".to_string(),
+                    depth: 0,
+                    is_expanded: false,
+                    note_count: 0,
+                    recursive_count: 0,
+                    stale: false,
+                    is_pinned: false,
+                });
+                // 2. Find the matching smart folder by virtual path and render its notes
+                if let Some(folder_data) = computed_smart_folders
+                    .iter()
+                    .find(|d| d.kind.virtual_path() == *gf)
+                {
+                    for idx in &folder_data.matches {
+                        let note = &self.notes[*idx];
+                        visual.push(VisualItem::Note {
+                            summary_idx: *idx,
+                            depth: 0,
+                            is_clin: note.id.ends_with(".clin"),
+                            is_draw: note.id.ends_with(".draw"),
+                            is_canvas: note.id.ends_with(".canvas"),
+                            in_virtual_pinned_folder: false,
+                        });
+                    }
+                }
             } else {
                 // Vault tab or a subfolder: show only the contents of this folder.
                 // ".." only appears when inside a subfolder (not at Vault root "").
@@ -319,6 +592,9 @@ impl App {
                         depth: 0,
                         is_expanded: false,
                         note_count: 0,
+                        recursive_count: 0,
+                        stale: false,
+                        is_pinned: false,
                     });
                 }
 
@@ -333,12 +609,20 @@ impl App {
                         if parent_path == gf {
                             let parts: Vec<&str> = folder.split('/').collect();
                             let name = parts.last().unwrap_or(&"").to_string();
+                            let direct = by_folder.get(folder.as_str()).map_or(0, |v| v.len());
+                            let rec_count = recursive_count
+                                .get(folder.as_str())
+                                .copied()
+                                .unwrap_or(direct);
                             visual.push(VisualItem::Folder {
                                 path: folder.clone(),
                                 name,
                                 depth: 0,
                                 is_expanded: false,
-                                note_count: by_folder.get(folder.as_str()).map_or(0, |v| v.len()),
+                                note_count: direct,
+                                recursive_count: rec_count,
+                                stale: false,
+                                is_pinned: false,
                             });
                         }
                     }
@@ -376,12 +660,20 @@ impl App {
                         if parent_path == gf {
                             let parts: Vec<&str> = folder.split('/').collect();
                             let name = parts.last().unwrap_or(&"").to_string();
+                            let direct = by_folder.get(folder.as_str()).map_or(0, |v| v.len());
+                            let rec_count = recursive_count
+                                .get(folder.as_str())
+                                .copied()
+                                .unwrap_or(direct);
                             visual.push(VisualItem::Folder {
                                 path: folder.clone(),
                                 name,
                                 depth: 0,
                                 is_expanded: false,
-                                note_count: by_folder.get(folder.as_str()).map_or(0, |v| v.len()),
+                                note_count: direct,
+                                recursive_count: rec_count,
+                                stale: false,
+                                is_pinned: false,
                             });
                         }
                     }

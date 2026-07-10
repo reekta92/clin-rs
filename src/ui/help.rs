@@ -359,6 +359,7 @@ fn notes_help_text(keybinds: &Keybinds, theme: &AppThemeColors) -> Vec<HelpRow> 
     let list_delete = keybinds.list_keys_display(ListAction::Delete);
     let list_duplicate = keybinds.list_keys_display(ListAction::Duplicate);
     let list_move_note = keybinds.list_keys_display(ListAction::MoveNote);
+    let list_move_to_parent = keybinds.list_keys_display(ListAction::MoveToParent);
     let list_manage_tags = keybinds.list_keys_display(ListAction::ManageTags);
     let list_pin = keybinds.list_keys_display(ListAction::TogglePin);
     let list_toggle_external = keybinds.list_keys_display(ListAction::ToggleExternalEditor);
@@ -384,6 +385,8 @@ fn notes_help_text(keybinds: &Keybinds, theme: &AppThemeColors) -> Vec<HelpRow> 
     let list_location = keybinds.list_keys_display(ListAction::OpenLocation);
     let list_trash = keybinds.list_keys_display(ListAction::OpenTrash);
     let list_collapse_all = keybinds.list_keys_display(ListAction::CollapseAll);
+    let list_expand_all = keybinds.list_keys_display(ListAction::ExpandAll);
+    let list_expand_to_level = keybinds.list_keys_display(ListAction::ExpandToLevel);
     let list_refresh = keybinds.list_keys_display(ListAction::RefreshNotes);
     let list_template = keybinds.list_keys_display(ListAction::NewFromTemplate);
     let list_help = keybinds.list_keys_display(ListAction::Help);
@@ -445,6 +448,11 @@ fn notes_help_text(keybinds: &Keybinds, theme: &AppThemeColors) -> Vec<HelpRow> 
     rows.push(help_item_dyn(
         "Move note or folder",
         Some(&list_move_note),
+        theme,
+    ));
+    rows.push(help_item_dyn(
+        "Move note to parent folder",
+        Some(&list_move_to_parent),
         theme,
     ));
     rows.push(help_item_dyn("Manage tags", Some(&list_manage_tags), theme));
@@ -532,6 +540,16 @@ fn notes_help_text(keybinds: &Keybinds, theme: &AppThemeColors) -> Vec<HelpRow> 
     rows.push(help_item_dyn(
         "Collapse all folders",
         Some(&list_collapse_all),
+        theme,
+    ));
+    rows.push(help_item_dyn(
+        "Expand all folders",
+        Some(&list_expand_all),
+        theme,
+    ));
+    rows.push(help_item_dyn(
+        "Expand folders to level (e.g. 3E)",
+        Some(&list_expand_to_level),
         theme,
     ));
     rows.push(help_item_dyn(

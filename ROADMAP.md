@@ -37,6 +37,9 @@
 - [X] **Show-all-files mode** — list every vault file, non-notes open in OS default app
 - [X] **Folders-first toggle** — folders_before_files config + Ctrl+H shortcut
 - [X] **Path expansion** — ~ and $VAR/${VAR} expansion in storage_path
+- [X] **Smart folders** — virtual smart folders (Today, This Week, Untagged) with custom rules (tags, title, folder, age)
+- [X] **Sub-notes** — virtual encrypted notes attached to physical notes, with full management UI
+- [X] **Word frequency** — show most used words in note info popup
 
 ## Planned
 
@@ -46,7 +49,6 @@
 - [ ] **Image rendering** — image rendering logic throught the app using `sixel` or `kitty image protocol`
 
 #### Notes View
-- [ ] **Smart folders** — auto-move tagged notes to specific folders
 - [ ] **Word & character metrics** — writing statistics and goals
 
 #### Editor
@@ -74,10 +76,8 @@
 - [ ] **Draw smoothing** — experimental draw smoothing using a algorithm to redraw the last drawed section
 
 #### Command Palette
-- [ ] **Sub-notes** — virtual encrypted notes attached to physical notes
 - [ ] **Merge/split notes** — combine or divide notes
 - [ ] **Advanced clipboard** — multi-selection copy/paste
-- [ ] **Word frequency** — show most used words
 - [ ] **Date calculator** — date/time calculator for doing operations like "today + 3 months" or "today <> 12/12/2026"(diff operation) etc.
 
 #### To-Do

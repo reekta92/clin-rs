@@ -2,6 +2,7 @@ pub mod content_tree;
 pub mod decrypt;
 pub mod encrypt;
 pub mod import;
+pub mod info;
 pub mod ocr;
 pub mod settings;
 
@@ -206,6 +207,16 @@ simple_action!(
     "\u{2699}",
     open_setup_view
 );
+simple_action!(
+    ManageSubnotesList,
+    "manage_subnotes_list",
+    "Manage Sub-notes",
+    "Open the sub-notes manager for the selected note.",
+    ActionCategory::Notes,
+    "\u{f022}",
+    "\u{1f4dd}",
+    open_subnotes_popup
+);
 
 pub struct ActionInfo {
     pub id: String,
@@ -219,6 +230,7 @@ pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyL
     vec![
         Box::new(encrypt::EncryptNoteAction),
         Box::new(decrypt::DecryptNoteAction),
+        Box::new(ManageSubnotesList),
         Box::new(OpenGraphAction),
         Box::new(content_tree::OpenContentTreeAction),
         Box::new(OpenBackupAction),
@@ -245,9 +257,12 @@ pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyL
         Box::new(settings::ToggleTabIconsOnlyAction),
         Box::new(settings::SetWordGoalAction),
         Box::new(settings::ToggleFoldersFirstAction),
+        Box::new(settings::ToggleSmartFoldersAction),
+        Box::new(settings::ConfigureSmartFoldersAction),
         Box::new(settings::SetNoteGoalAction),
         Box::new(settings::CycleIconModeAction),
         Box::new(settings::CycleHintBarStyleAction),
+        Box::new(info::ShowInfoAction),
         Box::new(import::ImportAction {
             source: crate::popups::ImportSource::File,
             target: crate::popups::ImportTarget::NewNote,

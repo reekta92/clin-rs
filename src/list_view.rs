@@ -23,11 +23,42 @@ pub enum SortOrder {
     Descending,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum SmartFolderKind {
+    Today,
+    ThisWeek,
+    Untagged,
+    Tag(String),
+    Custom(String),
+}
+
+impl SmartFolderKind {
+    pub fn virtual_path(&self) -> String {
+        match self {
+            Self::Today => "@today".into(),
+            Self::ThisWeek => "@week".into(),
+            Self::Untagged => "@untagged".into(),
+            Self::Tag(t) => format!("@tag:{t}"),
+            Self::Custom(name) => format!("@custom:{name}"),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum VisualItem {
     Folder {
         path: String,
         name: String,
+        depth: usize,
+        is_expanded: bool,
+        note_count: usize,
+        recursive_count: usize,
+        stale: bool,
+        is_pinned: bool,
+    },
+    SmartFolder {
+        kind: SmartFolderKind,
+        label: String,
         depth: usize,
         is_expanded: bool,
         note_count: usize,
@@ -91,6 +122,9 @@ pub struct ListView {
     pub calendar_height: u16,
     pub calendar_position: crate::config::CalendarPosition,
     pub sections: Vec<crate::config::NotesSection>,
+    pub pinned_folders: HashSet<String>,
+    pub note_drag: Option<usize>,
+    pub drag_hover: Option<usize>,
 }
 
 impl Default for ListView {
@@ -134,6 +168,9 @@ impl Default for ListView {
             calendar_height: 9,
             sections: crate::config::defaults::default_sections(),
             calendar_position: crate::config::CalendarPosition::default(),
+            pinned_folders: HashSet::new(),
+            note_drag: None,
+            drag_hover: None,
         }
     }
 }

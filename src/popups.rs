@@ -206,6 +206,21 @@ pub struct SearchPopup {
 pub struct SortPopup {
     pub selected: usize,
 }
+/// A single item in the info popup layout.
+#[derive(Debug, Clone)]
+pub enum InfoItem {
+    /// Rendered as an aligned 2-column Table.
+    Metrics(Vec<(String, String)>),
+    /// Rendered as a wrapping Paragraph with a heading.
+    Text { heading: String, body: String },
+    /// Visual separation.
+    Spacer,
+}
+
+pub struct InfoPopup {
+    pub title: String,
+    pub items: Vec<InfoItem>,
+}
 
 pub struct IconModePopup {
     pub selected: usize,
@@ -248,11 +263,29 @@ pub struct TrashView {
     pub selected: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SubnotesFocus {
+    List,
+    EditTitle,
+    EditContent,
+}
+
+pub struct SubnotesPopup {
+    pub parent_id: String,
+    pub subnotes: Vec<crate::storage::SubNote>,
+    pub selected: usize,
+    pub focus: SubnotesFocus,
+    pub title_input: TextArea<'static>,
+    pub content_input: TextArea<'static>,
+    pub is_dirty: bool,
+}
+
 /// The single active (non-confirm) popup. Only one is ever active at a time;
 /// a `ConfirmPopup` layers separately on top via [`PopupManager::confirm`].
 pub enum ActivePopup {
     Template(TemplatePopup),
     Theme(ThemePopup),
+    Info(InfoPopup),
     Tag(TagPopup),
     IconMode(IconModePopup),
     HintBarStyle(HintBarStylePopup),
@@ -268,6 +301,7 @@ pub enum ActivePopup {
     ContextMenu(ContextMenu),
     TrashView(TrashView),
     Goals(GoalsPopup),
+    Subnotes(Box<SubnotesPopup>),
 }
 
 #[derive(Default)]
@@ -286,19 +320,22 @@ impl PopupManager {
     /// True when a popup with a text input is active (and no confirm overlay
     /// is intercepting keys). Mirrors the prior text-input popup set.
     pub fn has_text_input(&self) -> bool {
-        self.confirm.is_none()
-            && matches!(
-                self.active,
-                Some(ActivePopup::CreateNote(..))
-                    | Some(ActivePopup::Import(_))
-                    | Some(ActivePopup::Folder(_))
-                    | Some(ActivePopup::FolderPicker(_))
-                    | Some(ActivePopup::NoteRename(_))
-                    | Some(ActivePopup::Search(_))
-                    | Some(ActivePopup::Template(_))
-                    | Some(ActivePopup::Tag(_))
-                    | Some(ActivePopup::Goals(_))
-            )
+        if self.confirm.is_some() {
+            return false;
+        }
+        match &self.active {
+            Some(ActivePopup::CreateNote(..))
+            | Some(ActivePopup::Import(_))
+            | Some(ActivePopup::Folder(_))
+            | Some(ActivePopup::FolderPicker(_))
+            | Some(ActivePopup::NoteRename(_))
+            | Some(ActivePopup::Search(_))
+            | Some(ActivePopup::Template(_))
+            | Some(ActivePopup::Tag(_))
+            | Some(ActivePopup::Goals(_)) => true,
+            Some(ActivePopup::Subnotes(popup)) => popup.focus != SubnotesFocus::List,
+            _ => false,
+        }
     }
 
     pub fn clear_all(&mut self) {

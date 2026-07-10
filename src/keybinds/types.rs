@@ -21,6 +21,7 @@ pub enum ListAction {
     CreateNote,
     RenameFolder,
     MoveNote,
+    MoveToParent,
     ManageTags,
     CollapseFolder,
     ExpandFolder,
@@ -48,8 +49,12 @@ pub enum ListAction {
     ToggleSelectMode,
     ToggleSelectItem,
     CollapseAll,
-    RefreshNotes,
+    ExpandAll,
+    ExpandToLevel,
     ToggleFoldersFirst,
+    RefreshNotes,
+    ManageSubnotes,
+    ShowInfo,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -74,6 +79,7 @@ pub enum EditAction {
     TogglePreviewWrap,
     PreviewPageUp,
     PreviewPageDown,
+    ManageSubnotes,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

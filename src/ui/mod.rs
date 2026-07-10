@@ -446,7 +446,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             .iter()
             .map(|item| {
                 let mut spans = vec![Span::styled(
-                    format!("{} ", &item.glyph),
+                    format!("{} ", item.glyph),
                     Style::default()
                         .fg(app.app_theme.accent)
                         .add_modifier(Modifier::BOLD),
@@ -916,6 +916,16 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     // Create format popup
     if let Some(crate::popups::ActivePopup::CreateFormat(popup)) = &app.popups.active {
         draw_create_format_popup(frame, popup, frame.area(), &app.app_theme);
+    }
+
+    // Sub-notes popup
+    if let Some(crate::popups::ActivePopup::Subnotes(popup)) = &app.popups.active {
+        draw_subnotes_popup(frame, popup, frame.area(), &app.app_theme);
+    }
+
+    // Info popup
+    if let Some(crate::popups::ActivePopup::Info(popup)) = &app.popups.active {
+        crate::ui::popups::draw_info_popup(frame, frame.area(), popup, &app.app_theme);
     }
 
     // Context menu (from edit view)

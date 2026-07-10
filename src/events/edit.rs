@@ -86,6 +86,10 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                     return false;
                 }
             }
+            EditAction::ManageSubnotes => {
+                app.open_subnotes_popup();
+                return false;
+            }
             _ => {}
         },
         crate::keybinds::MatchOutcome::Pending => return false,

@@ -19,27 +19,34 @@ impl App {
     }
 
     pub fn toggle_pin(&mut self) {
-        if let Some(VisualItem::Note { summary_idx, .. }) =
-            self.list.visual_list.get(self.list.visual_index)
-        {
-            let id = self.notes[*summary_idx].id.clone();
-            match self.storage.toggle_pin(&id) {
-                Ok(pinned) => {
-                    if let Err(e) = self.refresh_notes() {
-                        self.set_temporary_status(&format!("Refresh failed: {e}"));
+        match self.list.visual_list.get(self.list.visual_index) {
+            Some(VisualItem::Note { summary_idx, .. }) => {
+                let id = self.notes[*summary_idx].id.clone();
+                match self.storage.toggle_pin(&id) {
+                    Ok(pinned) => {
+                        if let Err(e) = self.refresh_notes() {
+                            self.set_temporary_status(&format!("Refresh failed: {e}"));
+                        }
+                        if pinned {
+                            self.set_temporary_status_static("Note pinned");
+                        } else {
+                            self.set_temporary_status_static("Note unpinned");
+                        }
                     }
-                    if pinned {
-                        self.set_temporary_status_static("Note pinned");
-                    } else {
-                        self.set_temporary_status_static("Note unpinned");
+                    Err(e) => {
+                        self.set_temporary_status(&format!("Failed to toggle pin: {e}"));
                     }
-                }
-                Err(e) => {
-                    self.set_temporary_status(&format!("Failed to toggle pin: {e}"));
                 }
             }
-        } else {
-            self.set_temporary_status_static("Select a note to pin/unpin");
+            Some(VisualItem::Folder { path, .. }) => {
+                self.toggle_pin_folder(path.clone());
+            }
+            Some(VisualItem::SmartFolder { .. }) | Some(VisualItem::CreateNew { .. }) => {
+                self.set_temporary_status_static("Cannot pin virtual folders or actions");
+            }
+            None => {
+                self.set_temporary_status_static("Nothing selected");
+            }
         }
     }
 
@@ -205,6 +212,16 @@ impl App {
             config.list.sections = self.list.sections.clone();
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save layout: {e}"));
+            }
+        }
+    }
+
+    pub(crate) fn persist_folder_state(&mut self) {
+        if let Ok(mut config) = crate::config::ClinConfig::load() {
+            config.list.expanded_folders = self.list.folder_expanded.iter().cloned().collect();
+            config.list.pinned_folders = self.list.pinned_folders.iter().cloned().collect();
+            if let Err(e) = config.save() {
+                self.set_temporary_status(&format!("Failed to save folder state: {e}"));
             }
         }
     }
@@ -402,6 +419,22 @@ impl App {
         self.set_temporary_status_static(msg);
         if let Ok(mut config) = crate::config::ClinConfig::load() {
             config.list.folders_first = self.list.folders_first;
+            if let Err(e) = config.save() {
+                self.set_temporary_status(&format!("Failed to save config: {e}"));
+            }
+        }
+    }
+
+    pub fn toggle_smart_folders(&mut self) {
+        self.config.list.smart_folders_enabled = !self.config.list.smart_folders_enabled;
+        self.refresh_visual_list();
+        self.set_temporary_status_static(if self.config.list.smart_folders_enabled {
+            "Smart folders enabled"
+        } else {
+            "Smart folders disabled"
+        });
+        if let Ok(mut config) = crate::config::ClinConfig::load() {
+            config.list.smart_folders_enabled = self.config.list.smart_folders_enabled;
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
             }
@@ -616,6 +649,8 @@ mod tests {
     fn apply_setup_live_writes_5_fields() {
         let _lock = crate::config::CONFIG_TEST_MUTEX.lock();
         let mut app = make_app();
+        let config_file_path = app.storage.config_dir.join("config.toml");
+        crate::config::set_config_path_override(config_file_path);
 
         app.setup_state = Some(crate::setup::SetupState {
             theme: 4, // gruvbox
@@ -678,6 +713,8 @@ mod tests {
         use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
         let _lock = crate::config::CONFIG_TEST_MUTEX.lock();
         let mut app = make_app();
+        let config_file_path = app.storage.config_dir.join("config.toml");
+        crate::config::set_config_path_override(config_file_path);
 
         app.setup_state = Some(crate::setup::SetupState {
             theme: 4, // gruvbox — non-default so we can confirm it propagates
@@ -720,5 +757,111 @@ mod tests {
         assert!(app.setup_state.is_none());
         assert_eq!(app.mode, crate::app::ViewMode::List);
         assert_eq!(app.config.ui.theme, "gruvbox");
+    }
+
+    #[test]
+    fn test_toggle_smart_folders() {
+        let _lock = crate::config::CONFIG_TEST_MUTEX.lock();
+        let mut app = make_app();
+        let config_file_path = app.storage.config_dir.join("config.toml");
+        crate::config::set_config_path_override(config_file_path);
+
+        app.config.list.smart_folders_enabled = false;
+        app.toggle_smart_folders();
+        assert!(app.config.list.smart_folders_enabled);
+        app.toggle_smart_folders();
+        assert!(!app.config.list.smart_folders_enabled);
+    }
+
+    #[test]
+    fn test_custom_smart_folders_rule_matching() {
+        let mut app = make_app();
+        app.config.list.smart_folders_enabled = true;
+        app.list.grid_folder = crate::app::VIRTUAL_SMART_PATH.to_string();
+
+        // Define custom rules
+        app.config.list.custom_smart_folders = vec![crate::config::structs::CustomSmartFolder {
+            name: "Work Projects".to_string(),
+            tags: vec!["work".to_string()],
+            title_contains: Some("project".to_string()),
+            folder_prefix: Some("work/".to_string()),
+            updated_within_days: Some(7),
+        }];
+
+        let now = crate::ui::now_unix_secs();
+
+        // Create mock notes
+        app.notes = vec![
+            // Matches all criteria
+            crate::storage::NoteSummary {
+                id: "1.md".to_string(),
+                title: "My work project".to_string(),
+                updated_at: now - 3600, // 1 hour ago
+                tags: vec!["work".to_string(), "active".to_string()],
+                folder: "work/active".to_string(),
+                pinned: false,
+                links: Vec::new(),
+                size_bytes: 0,
+            },
+            // Fails folder_prefix
+            crate::storage::NoteSummary {
+                id: "2.md".to_string(),
+                title: "My work project".to_string(),
+                updated_at: now - 3600,
+                tags: vec!["work".to_string()],
+                folder: "personal/".to_string(),
+                pinned: false,
+                links: Vec::new(),
+                size_bytes: 0,
+            },
+            // Fails title_contains
+            crate::storage::NoteSummary {
+                id: "3.md".to_string(),
+                title: "My work tasks".to_string(),
+                updated_at: now - 3600,
+                tags: vec!["work".to_string()],
+                folder: "work/active".to_string(),
+                pinned: false,
+                links: Vec::new(),
+                size_bytes: 0,
+            },
+            // Fails tags
+            crate::storage::NoteSummary {
+                id: "4.md".to_string(),
+                title: "My work project".to_string(),
+                updated_at: now - 3600,
+                tags: vec![],
+                folder: "work/active".to_string(),
+                pinned: false,
+                links: Vec::new(),
+                size_bytes: 0,
+            },
+            // Fails updated_within_days (8 days ago)
+            crate::storage::NoteSummary {
+                id: "5.md".to_string(),
+                title: "My work project".to_string(),
+                updated_at: now - 8 * 86400,
+                tags: vec!["work".to_string()],
+                folder: "work/active".to_string(),
+                pinned: false,
+                links: Vec::new(),
+                size_bytes: 0,
+            },
+        ];
+
+        app.refresh_visual_list();
+
+        // Find the SmartFolder in visual_list
+        let smart_folder = app.list.visual_list.iter().find(|item| {
+            matches!(item, VisualItem::SmartFolder { label, .. } if label == "Work Projects")
+        });
+
+        assert!(
+            smart_folder.is_some(),
+            "Custom smart folder should be present"
+        );
+        if let Some(VisualItem::SmartFolder { note_count, .. }) = smart_folder {
+            assert_eq!(*note_count, 1, "Only one note should match all criteria");
+        }
     }
 }

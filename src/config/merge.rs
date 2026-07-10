@@ -40,6 +40,41 @@ pub fn merge_toml_value(edit_item: &mut toml_edit::Item, toml_val: &toml::Value)
                 }
             }
         }
+        toml::Value::Array(toml_arr) => {
+            let is_existing_aot = matches!(edit_item, toml_edit::Item::ArrayOfTables(_));
+            let is_new_aot = toml_arr.iter().any(|v| v.is_table());
+            if is_existing_aot || is_new_aot {
+                let mut new_aot = toml_edit::ArrayOfTables::new();
+                for val in toml_arr {
+                    if let toml_edit::Item::Table(t) = toml_value_to_item(val) {
+                        new_aot.push(t);
+                    }
+                }
+                *edit_item = toml_edit::Item::ArrayOfTables(new_aot);
+            } else {
+                let decor = match edit_item {
+                    toml_edit::Item::Value(v) => Some(v.decor().clone()),
+                    toml_edit::Item::Table(t) => Some(t.decor().clone()),
+                    _ => None,
+                };
+                let mut edit_arr = toml_edit::Array::new();
+                for val in toml_arr {
+                    edit_arr.push(
+                        toml_value_to_item(val)
+                            .as_value()
+                            .expect("toml_value_to_item for non-table/non-array returns value")
+                            .clone(),
+                    );
+                }
+                let mut new_item = toml_edit::Item::Value(toml_edit::Value::Array(edit_arr));
+                if let Some(d) = decor
+                    && let Some(v) = new_item.as_value_mut()
+                {
+                    *v.decor_mut() = d;
+                }
+                *edit_item = new_item;
+            }
+        }
         _ => {
             let decor = match edit_item {
                 toml_edit::Item::Value(v) => Some(v.decor().clone()),
@@ -68,16 +103,28 @@ pub fn toml_value_to_item(v: &toml::Value) -> toml_edit::Item {
         toml::Value::Boolean(b) => toml_edit::value(*b),
         toml::Value::Datetime(dt) => toml_edit::value(dt.to_string()),
         toml::Value::Array(arr) => {
-            let mut edit_arr = toml_edit::Array::new();
-            for val in arr {
-                edit_arr.push(
-                    toml_value_to_item(val)
-                        .as_value()
-                        .expect("toml_value_to_item for non-table/non-array returns value")
-                        .clone(),
-                );
+            if arr.iter().any(|v| v.is_table()) {
+                let mut edit_aot = toml_edit::ArrayOfTables::new();
+                for val in arr {
+                    if let toml_edit::Item::Table(t) = toml_value_to_item(val) {
+                        edit_aot.push(t);
+                    } else {
+                        panic!("Expected table in array of tables");
+                    }
+                }
+                toml_edit::Item::ArrayOfTables(edit_aot)
+            } else {
+                let mut edit_arr = toml_edit::Array::new();
+                for val in arr {
+                    edit_arr.push(
+                        toml_value_to_item(val)
+                            .as_value()
+                            .expect("toml_value_to_item for non-table/non-array returns value")
+                            .clone(),
+                    );
+                }
+                toml_edit::Item::Value(toml_edit::Value::Array(edit_arr))
             }
-            toml_edit::Item::Value(toml_edit::Value::Array(edit_arr))
         }
         toml::Value::Table(tbl) => {
             let mut edit_tbl = toml_edit::Table::new();
@@ -221,8 +268,20 @@ show_hidden_files = false
 # Non-note files open in the OS default application.
 show_all_files = false
 
+
 # Show a month calendar (with note activity) at the bottom of the notes view.
 calendar_enabled = true
+
+# Enable smart virtual folders in the notes list (e.g. Today, Week, Untagged).
+smart_folders_enabled = false
+
+# Custom smart folder rules.
+# [[list.custom_smart_folders]]
+# name = "Active Projects"
+# tags = ["project", "active"]
+# title_contains = "draft"
+# folder_prefix = "work/"
+# updated_within_days = 7
 
 # Preview pane width ratio (0.2-0.8). Default 0.43.
 # preview_width_ratio = 0.43

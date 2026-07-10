@@ -209,8 +209,40 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 app.begin_move();
                 return false;
             }
+            ListAction::MoveToParent => {
+                if let Some(crate::app::VisualItem::Note { summary_idx, .. }) =
+                    app.list.visual_list.get(app.list.visual_index)
+                {
+                    let note = &app.notes[*summary_idx];
+                    let current_folder = &note.folder;
+                    if !current_folder.is_empty() {
+                        let parent_folder = if let Some(slash) = current_folder.rfind('/') {
+                            &current_folder[..slash]
+                        } else {
+                            ""
+                        };
+                        let id = note.id.clone();
+                        match app.storage.move_note(&id, parent_folder) {
+                            Ok(_) => {
+                                let _ = app.refresh_notes();
+                                app.set_temporary_status_static("Note moved to parent folder");
+                            }
+                            Err(e) => {
+                                app.set_temporary_status(&format!("Failed to move: {e}"));
+                            }
+                        }
+                    } else {
+                        app.set_temporary_status_static("Note is already at Vault root");
+                    }
+                }
+                return false;
+            }
             ListAction::ManageTags => {
                 app.begin_manage_tags();
+                return false;
+            }
+            ListAction::ManageSubnotes => {
+                app.open_subnotes_popup();
                 return false;
             }
             ListAction::OpenCommandPalette => {
@@ -298,12 +330,26 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 app.collapse_all_folders();
                 return false;
             }
+            ListAction::ExpandAll => {
+                app.expand_all_folders();
+                return false;
+            }
+            ListAction::ExpandToLevel => {
+                app.expand_to_level(count.unwrap_or(1) as usize);
+                return false;
+            }
             ListAction::RefreshNotes => {
                 app.list.folder_cache = None;
                 if let Err(e) = app.refresh_notes() {
                     app.set_temporary_status(&format!("Refresh failed: {e}"));
                 } else {
                     app.set_temporary_status_static("Notes refreshed");
+                }
+                return false;
+            }
+            ListAction::ShowInfo => {
+                if let Err(e) = crate::actions::execute_action("info.show", app, None) {
+                    app.set_temporary_status(&format!("Info action failed: {}", e));
                 }
                 return false;
             }
@@ -1056,7 +1102,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
             // Vault/Pinned tabs
             if mouse_event.row == terminal_area.y {
-                let tabs = [
+                let mut tabs = vec![
                     (
                         "Vault",
                         Some(crate::ui::get_icon(
@@ -1074,6 +1120,16 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                         )),
                     ),
                 ];
+                if app.config.list.smart_folders_enabled {
+                    tabs.push((
+                        "Smart",
+                        Some(crate::ui::get_icon(
+                            "\u{f0e7}",
+                            "\u{26a1}",
+                            app.config.ui.icon_mode,
+                        )),
+                    ));
+                }
                 let region = crate::ui::title_bar_tabs_region(terminal_area, "Notes");
                 if let Some(i) = crate::ui::hit_test_tabs(
                     &tabs,
@@ -1086,6 +1142,8 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                 ) {
                     app.list.grid_folder = if i == 1 {
                         crate::app::VIRTUAL_PINNED_PATH.to_string()
+                    } else if i == 2 && app.config.list.smart_folders_enabled {
+                        crate::app::VIRTUAL_SMART_PATH.to_string()
                     } else {
                         String::new()
                     };
@@ -1096,37 +1154,52 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
             }
 
             // Breadcrumbs
-            if mouse_event.row == list_area.y + 1
-                && app.list.grid_folder != crate::app::VIRTUAL_PINNED_PATH
-            {
-                let mut offset = list_area.x;
-                let vault_text = " \u{f07b} Vault";
-                let vault_w = vault_text.chars().count() as u16;
-                if mouse_event.column >= offset && mouse_event.column < offset + vault_w {
-                    app.list.grid_folder = String::new();
-                    app.list.visual_index = 0;
-                    app.refresh_visual_list();
-                    return;
-                }
-                offset += vault_w;
-                if !app.list.grid_folder.is_empty() {
-                    let parts: Vec<&str> = app.list.grid_folder.split('/').collect();
-                    let mut current_path = String::new();
-                    for part in parts {
-                        // " / "
-                        offset += 3;
-                        let part_w = part.chars().count() as u16;
-                        if !current_path.is_empty() {
-                            current_path.push('/');
+            if mouse_event.row == list_area.y + 1 {
+                let is_smart = app.list.grid_folder == crate::app::VIRTUAL_SMART_PATH
+                    || app.list.grid_folder.starts_with('@');
+                if is_smart {
+                    let offset = list_area.x;
+                    let smart_icon =
+                        crate::ui::get_icon("\u{f0e7}", "\u{26a1}", app.config.ui.icon_mode);
+                    let smart_text = format!(" {smart_icon} Smart");
+                    let smart_w = smart_text.chars().count() as u16;
+                    if mouse_event.column >= offset && mouse_event.column < offset + smart_w {
+                        app.list.grid_folder = crate::app::VIRTUAL_SMART_PATH.to_string();
+                        app.list.visual_index = 0;
+                        app.refresh_visual_list();
+                        return;
+                    }
+                } else if app.list.grid_folder != crate::app::VIRTUAL_PINNED_PATH {
+                    let mut offset = list_area.x;
+                    let vault_text = " \u{f07b} Vault";
+                    let vault_w = vault_text.chars().count() as u16;
+                    if mouse_event.column >= offset && mouse_event.column < offset + vault_w {
+                        app.list.grid_folder = String::new();
+                        app.list.visual_index = 0;
+                        app.refresh_visual_list();
+                        return;
+                    }
+                    offset += vault_w;
+                    if !app.list.grid_folder.is_empty() {
+                        let parts: Vec<&str> = app.list.grid_folder.split('/').collect();
+                        let mut current_path = String::new();
+                        for part in parts {
+                            // " / "
+                            offset += 3;
+                            let part_w = part.chars().count() as u16;
+                            if !current_path.is_empty() {
+                                current_path.push('/');
+                            }
+                            current_path.push_str(part);
+                            if mouse_event.column >= offset && mouse_event.column < offset + part_w
+                            {
+                                app.list.grid_folder = current_path;
+                                app.list.visual_index = 0;
+                                app.refresh_visual_list();
+                                return;
+                            }
+                            offset += part_w;
                         }
-                        current_path.push_str(part);
-                        if mouse_event.column >= offset && mouse_event.column < offset + part_w {
-                            app.list.grid_folder = current_path;
-                            app.list.visual_index = 0;
-                            app.refresh_visual_list();
-                            return;
-                        }
-                        offset += part_w;
                     }
                 }
             }
@@ -1199,10 +1272,21 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
     }
 
     if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
-        let visual_row = mouse_event.row.saturating_sub(inner_list_area.y) as usize;
+        let pitch = if app.list.list_density == crate::config::ListDensity::Comfortable {
+            2
+        } else {
+            1
+        };
+        let visual_row = (mouse_event.row.saturating_sub(inner_list_area.y) as usize) / pitch;
         let clicked_visual_index = app.list.list_state.offset().saturating_add(visual_row);
 
         if clicked_visual_index < app.list.visual_list.len() {
+            if app.list.notes_layout == crate::config::NotesLayout::Tree
+                && let Some(crate::list_view::VisualItem::Note { .. }) =
+                    app.list.visual_list.get(clicked_visual_index)
+            {
+                app.list.note_drag = Some(clicked_visual_index);
+            }
             let is_select_mode = app.list.list_mode == crate::list_view::ListMode::Select
                 || app.list.tag_to_assign.is_some();
 
@@ -1254,6 +1338,65 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                 }
             }
         }
+    }
+    if mouse_event.kind == MouseEventKind::Drag(MouseButton::Left) {
+        if app.list.note_drag.is_some() && app.list.notes_layout == crate::config::NotesLayout::Tree
+        {
+            if contains_cell(inner_list_area, mouse_event.column, mouse_event.row) {
+                let pitch = if app.list.list_density == crate::config::ListDensity::Comfortable {
+                    2
+                } else {
+                    1
+                };
+                let visual_row =
+                    (mouse_event.row.saturating_sub(inner_list_area.y) as usize) / pitch;
+                let clicked_visual_index = app.list.list_state.offset().saturating_add(visual_row);
+                if clicked_visual_index < app.list.visual_list.len() {
+                    if let Some(crate::list_view::VisualItem::Folder { .. }) =
+                        app.list.visual_list.get(clicked_visual_index)
+                    {
+                        app.list.drag_hover = Some(clicked_visual_index);
+                    } else {
+                        app.list.drag_hover = None;
+                    }
+                } else {
+                    app.list.drag_hover = None;
+                }
+            } else {
+                app.list.drag_hover = None;
+            }
+        }
+        return;
+    }
+
+    if mouse_event.kind == MouseEventKind::Up(MouseButton::Left) {
+        if let Some(dragged_idx) = app.list.note_drag.take()
+            && let Some(hovered_idx) = app.list.drag_hover.take()
+            && app.list.notes_layout == crate::config::NotesLayout::Tree
+            && let Some(crate::list_view::VisualItem::Note { summary_idx, .. }) =
+                app.list.visual_list.get(dragged_idx)
+            && let Some(crate::list_view::VisualItem::Folder {
+                path: target_folder,
+                ..
+            }) = app.list.visual_list.get(hovered_idx)
+        {
+            let note = &app.notes[*summary_idx];
+            let note_id = note.id.clone();
+            if note.folder == *target_folder {
+                app.set_temporary_status_static("Note already in this folder");
+            } else {
+                match app.storage.move_note(&note_id, target_folder) {
+                    Ok(_) => {
+                        let _ = app.refresh_notes();
+                        app.set_temporary_status_static("Note moved");
+                    }
+                    Err(e) => {
+                        app.set_temporary_status(&format!("Failed to move note: {e}"));
+                    }
+                }
+            }
+        }
+        app.refresh_visual_list();
     }
 }
 

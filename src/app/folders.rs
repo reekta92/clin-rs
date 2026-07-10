@@ -20,6 +20,7 @@ impl App {
                 if *is_expanded {
                     self.list.folder_expanded.remove(path);
                     self.refresh_visual_list();
+                    self.persist_folder_state();
                 } else if !path.is_empty() {
                     let parent_path = if let Some(slash) = path.rfind('/') {
                         &path[..slash]
@@ -36,6 +37,15 @@ impl App {
                     }) {
                         self.list.visual_index = idx;
                     }
+                }
+            }
+            VisualItem::SmartFolder {
+                kind, is_expanded, ..
+            } => {
+                if *is_expanded {
+                    self.list.folder_expanded.remove(&kind.virtual_path());
+                    self.refresh_visual_list();
+                    self.persist_folder_state();
                 }
             }
             VisualItem::Note { .. } | VisualItem::CreateNew { .. } => {
@@ -74,6 +84,18 @@ impl App {
                 if !is_expanded {
                     self.list.folder_expanded.insert(path.clone());
                     self.refresh_visual_list();
+                    self.persist_folder_state();
+                } else if self.list.visual_index + 1 < self.list.visual_list.len() {
+                    self.list.visual_index += 1;
+                }
+            }
+            VisualItem::SmartFolder {
+                kind, is_expanded, ..
+            } => {
+                if !is_expanded {
+                    self.list.folder_expanded.insert(kind.virtual_path());
+                    self.refresh_visual_list();
+                    self.persist_folder_state();
                 } else if self.list.visual_index + 1 < self.list.visual_list.len() {
                     self.list.visual_index += 1;
                 }
@@ -531,7 +553,93 @@ impl App {
     pub fn collapse_all_folders(&mut self) {
         self.list.folder_expanded.clear();
         self.list.folder_expanded.insert(String::new());
+        self.list.visual_index = 0;
         self.refresh_visual_list();
         self.request_preview_update();
+        self.persist_folder_state();
+    }
+
+    pub fn expand_all_folders(&mut self) {
+        let folders = if let Some(cache) = &self.list.folder_cache {
+            cache.clone()
+        } else {
+            let folders = self
+                .storage
+                .list_folders(self.list.show_hidden_files)
+                .unwrap_or_default();
+            self.list.folder_cache = Some(folders.clone());
+            folders
+        };
+
+        for path in folders {
+            self.list.folder_expanded.insert(path);
+        }
+        self.list.folder_expanded.insert(String::new());
+        self.list
+            .folder_expanded
+            .insert(crate::app::VIRTUAL_PINNED_PATH.to_string());
+        self.refresh_visual_list();
+        self.request_preview_update();
+        self.persist_folder_state();
+    }
+
+    pub fn expand_to_level(&mut self, level: usize) {
+        self.expand_folders_to_depth(level);
+        self.refresh_visual_list();
+        self.request_preview_update();
+        self.persist_folder_state();
+    }
+
+    pub fn expand_folders_to_depth(&mut self, level: usize) {
+        let folders = if let Some(cache) = &self.list.folder_cache {
+            cache.clone()
+        } else {
+            let folders = self
+                .storage
+                .list_folders(self.list.show_hidden_files)
+                .unwrap_or_default();
+            self.list.folder_cache = Some(folders.clone());
+            folders
+        };
+
+        for path in folders {
+            let depth = if path.is_empty() {
+                0
+            } else {
+                path.matches('/').count() + 1
+            };
+            if depth < level {
+                self.list.folder_expanded.insert(path);
+            }
+        }
+        self.list.folder_expanded.insert(String::new());
+        self.list
+            .folder_expanded
+            .insert(crate::app::VIRTUAL_PINNED_PATH.to_string());
+    }
+    pub fn toggle_pin_folder(&mut self, path: String) {
+        if path.is_empty() || path == crate::app::VIRTUAL_PINNED_PATH {
+            self.set_temporary_status_static("Cannot pin Vault root or Pinned notes");
+            return;
+        }
+        if self.list.pinned_folders.contains(&path) {
+            self.list.pinned_folders.remove(&path);
+            self.set_temporary_status_static("Folder unpinned from top");
+        } else {
+            self.list.pinned_folders.insert(path);
+            self.set_temporary_status_static("Folder pinned to top");
+        }
+        self.refresh_visual_list();
+        self.persist_folder_state();
+    }
+
+    pub fn get_selected_folder_path(&self) -> Option<String> {
+        if self.mode == ViewMode::List
+            && let Some(VisualItem::Folder { path, .. }) =
+                self.list.visual_list.get(self.list.visual_index)
+        {
+            return Some(path.clone());
+        }
+        None
     }
 }

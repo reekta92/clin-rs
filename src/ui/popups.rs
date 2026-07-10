@@ -102,6 +102,111 @@ pub fn draw_template_popup(
     frame.render_stateful_widget(list, chunks[1], &mut state);
 }
 
+pub fn draw_info_popup(
+    frame: &mut ratatui::Frame,
+    area: ratatui::layout::Rect,
+    popup: &crate::popups::InfoPopup,
+    theme: &crate::app_theme::AppThemeColors,
+) {
+    let hints = crate::ui::format_keybind_hints(theme, &[("Enter/Esc".to_string(), "close")]);
+    let inner = crate::ui::draw_popup_frame(
+        frame,
+        area,
+        &popup.title,
+        crate::ui::PopupSize::Medium,
+        &hints,
+        theme,
+    );
+    // Inner border, background, and padding matching other popup styles
+    let block = Block::default()
+        .style(theme.bg_style())
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(theme.border))
+        .padding(Padding::new(1, 1, 0, 0));
+    let content_area = block.inner(inner);
+    frame.render_widget(block, inner);
+
+    // Available width for text word-wrapping (inside the padded content area)
+    let width = content_area.width.saturating_sub(2).max(1) as usize;
+    // Build vertical layout constraints matching each InfoItem
+    let mut constraints: Vec<Constraint> = Vec::with_capacity(popup.items.len() + 1);
+    for item in &popup.items {
+        match item {
+            crate::popups::InfoItem::Metrics(pairs) => {
+                constraints.push(Constraint::Length(pairs.len() as u16));
+            }
+            crate::popups::InfoItem::Spacer => {
+                constraints.push(Constraint::Length(1));
+            }
+            crate::popups::InfoItem::Text { heading: _, body } => {
+                let body_lines: u16 = body
+                    .lines()
+                    .map(|line| {
+                        let line_len = line.chars().count();
+                        if line_len == 0 {
+                            1u16
+                        } else {
+                            (line_len / width) as u16 + 1
+                        }
+                    })
+                    .sum();
+                constraints.push(Constraint::Length(1 + body_lines));
+            }
+        }
+    }
+    constraints.push(Constraint::Min(0)); // consume remaining space
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(constraints)
+        .split(content_area);
+
+    for (idx, item) in popup.items.iter().enumerate() {
+        let item_area = chunks[idx];
+        match item {
+            crate::popups::InfoItem::Metrics(pairs) => {
+                let max_key_len = pairs
+                    .iter()
+                    .map(|(k, _)| k.chars().count())
+                    .max()
+                    .unwrap_or(0) as u16;
+
+                let rows: Vec<Row> = pairs
+                    .iter()
+                    .map(|(key, value)| {
+                        Row::new(vec![
+                            Cell::from(key.as_str()).style(Style::default().fg(theme.accent)),
+                            Cell::from(value.as_str()).style(Style::default().fg(theme.fg)),
+                        ])
+                    })
+                    .collect();
+
+                let table = Table::new(
+                    rows,
+                    [Constraint::Length(max_key_len + 2), Constraint::Min(0)],
+                );
+                frame.render_widget(table, item_area);
+            }
+            crate::popups::InfoItem::Spacer => {}
+            crate::popups::InfoItem::Text { heading, body } => {
+                let text_chunks = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([Constraint::Length(1), Constraint::Min(0)])
+                    .split(item_area);
+
+                let heading_para =
+                    Paragraph::new(heading.as_str()).style(Style::default().fg(theme.accent));
+                frame.render_widget(heading_para, text_chunks[0]);
+
+                let body_para = Paragraph::new(body.as_str())
+                    .style(Style::default().fg(theme.fg))
+                    .wrap(Wrap { trim: true });
+                frame.render_widget(body_para, text_chunks[1]);
+            }
+        }
+    }
+}
+
 pub fn draw_theme_popup(frame: &mut Frame, popup: &ThemePopup, area: Rect, theme: &AppThemeColors) {
     let hint_line = popup_hint_line(theme, "Tab navigate · Enter select · Esc close");
     let content = draw_popup_frame(frame, area, "THEMES", PopupSize::Medium, &hint_line, theme);
@@ -533,6 +638,12 @@ pub fn format_relative_time(unix_ts: u64) -> Cow<'static, str> {
     Cow::Owned(dt.format("%Y-%m-%d %H:%M").to_string())
 }
 
+pub fn format_date(unix_ts: u64, date_format: &str) -> String {
+    let secs = std::time::UNIX_EPOCH + std::time::Duration::from_secs(unix_ts);
+    let dt: chrono::DateTime<chrono::Local> = secs.into();
+    dt.format(date_format).to_string()
+}
+
 pub fn format_size(bytes: u64) -> String {
     const KB: u64 = 1024;
     const MB: u64 = KB * 1024;
@@ -903,4 +1014,131 @@ pub fn fill_cursor_line_bg(frame: &mut Frame, editor: &TextArea, area: Rect, bg:
             cell.set_bg(bg);
         }
     }
+}
+
+pub fn draw_subnotes_popup(
+    frame: &mut Frame,
+    popup: &crate::popups::SubnotesPopup,
+    area: Rect,
+    theme: &AppThemeColors,
+) {
+    let hint_line = popup_hint_line(
+        theme,
+        "Alt+N new · Ctrl+E ext edit · Esc back/close · Enter/l edit · d/Del delete · Tab/Enter/Shift+Tab navigate",
+    );
+    let content = draw_popup_frame(
+        frame,
+        area,
+        "SUB-NOTES",
+        PopupSize::Large,
+        &hint_line,
+        theme,
+    );
+
+    let main_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Length(34), Constraint::Min(0)])
+        .split(content);
+
+    let list_style = if popup.focus == crate::popups::SubnotesFocus::List {
+        Style::default().fg(theme.heading)
+    } else {
+        Style::default().fg(theme.muted)
+    };
+
+    let list_block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(list_style)
+        .style(theme.bg_style());
+
+    if popup.subnotes.is_empty() {
+        frame.render_widget(list_block.clone(), main_chunks[0]);
+        let inner_area = list_block.inner(main_chunks[0]);
+        if inner_area.height > 0 {
+            let text_area = Rect::new(
+                inner_area.x + 2,
+                inner_area.y + (inner_area.height.saturating_sub(1) / 2),
+                inner_area.width.saturating_sub(4),
+                1,
+            );
+            let placeholder = Paragraph::new("press n to create a new note")
+                .style(
+                    Style::default()
+                        .fg(theme.muted)
+                        .add_modifier(Modifier::ITALIC),
+                )
+                .alignment(Alignment::Center);
+            frame.render_widget(placeholder, text_area);
+        }
+    } else {
+        let items: Vec<ListItem> = popup
+            .subnotes
+            .iter()
+            .map(|n| ListItem::new(n.title.as_str()))
+            .collect();
+
+        let list = List::new(items)
+            .block(list_block)
+            .style(theme.bg_style())
+            .highlight_style(
+                Style::default()
+                    .fg(theme.highlight_fg)
+                    .bg(theme.highlight_bg)
+                    .add_modifier(Modifier::BOLD),
+            )
+            .highlight_symbol(" ");
+
+        let mut list_state = ListState::default();
+        list_state.select(Some(popup.selected));
+        frame.render_stateful_widget(list, main_chunks[0], &mut list_state);
+    }
+
+    let edit_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(3), Constraint::Min(0)])
+        .split(main_chunks[1]);
+
+    let title_border_style = if popup.focus == crate::popups::SubnotesFocus::EditTitle {
+        Style::default().fg(theme.heading)
+    } else {
+        Style::default().fg(theme.muted)
+    };
+
+    let content_border_style = if popup.focus == crate::popups::SubnotesFocus::EditContent {
+        Style::default().fg(theme.heading)
+    } else {
+        Style::default().fg(theme.muted)
+    };
+
+    let mut title_input = popup.title_input.clone();
+    title_input.set_placeholder_text("Title...");
+    title_input.set_placeholder_style(
+        Style::default()
+            .fg(theme.muted)
+            .add_modifier(Modifier::ITALIC),
+    );
+    title_input.set_style(theme.bg_style());
+    title_input.set_block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(title_border_style)
+            .style(theme.bg_style()),
+    );
+    frame.render_widget(&title_input, edit_chunks[0]);
+
+    let mut content_input = popup.content_input.clone();
+    content_input.set_placeholder_text("Content...");
+    content_input.set_placeholder_style(
+        Style::default()
+            .fg(theme.muted)
+            .add_modifier(Modifier::ITALIC),
+    );
+    content_input.set_style(theme.bg_style());
+    content_input.set_block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(content_border_style)
+            .style(theme.bg_style()),
+    );
+    frame.render_widget(&content_input, edit_chunks[1]);
 }

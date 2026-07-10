@@ -86,7 +86,7 @@ impl Default for Keybinds {
         );
         list.insert(
             ListAction::ToggleExternalEditor,
-            vec![KeyCombo::simple(KeyCode::Char('e'))],
+            vec![KeyCombo::parse("Alt+e").expect("valid key combo")],
         );
         list.insert(
             ListAction::NewFromTemplate,
@@ -107,6 +107,10 @@ impl Default for Keybinds {
         list.insert(
             ListAction::MoveNote,
             vec![KeyCombo::simple(KeyCode::Char('m'))],
+        );
+        list.insert(
+            ListAction::MoveToParent,
+            vec![KeyCombo::simple(KeyCode::Char('U'))],
         );
         list.insert(
             ListAction::ManageTags,
@@ -215,8 +219,24 @@ impl Default for Keybinds {
             vec![KeyCombo::simple(KeyCode::Char('c'))],
         );
         list.insert(
+            ListAction::ExpandAll,
+            vec![KeyCombo::simple(KeyCode::Char('e'))],
+        );
+        list.insert(
+            ListAction::ExpandToLevel,
+            vec![KeyCombo::shift(KeyCode::Char('E'))],
+        );
+        list.insert(
             ListAction::RefreshNotes,
             vec![KeyCombo::ctrl(KeyCode::Char('r'))],
+        );
+        list.insert(
+            ListAction::ManageSubnotes,
+            vec![KeyCombo::parse("Alt+s").expect("valid key combo")],
+        );
+        list.insert(
+            ListAction::ShowInfo,
+            vec![KeyCombo::simple(KeyCode::Char('i'))],
         );
 
         let mut edit = HashMap::new();
@@ -291,6 +311,10 @@ impl Default for Keybinds {
         edit.insert(
             EditAction::PreviewPageDown,
             vec![KeyCombo::simple(KeyCode::PageDown)],
+        );
+        edit.insert(
+            EditAction::ManageSubnotes,
+            vec![KeyCombo::parse("Alt+s").expect("valid key combo")],
         );
 
         let mut help = HashMap::new();
@@ -1007,6 +1031,10 @@ impl KeybindPreset {
                     vec![KeyCombo::parse("Space p").expect("valid key combo")],
                 );
                 kb.list.insert(
+                    ListAction::MoveToParent,
+                    vec![KeyCombo::parse("g u").expect("valid key combo")],
+                );
+                kb.list.insert(
                     ListAction::OpenGraph,
                     vec![KeyCombo::parse("Space g").expect("valid key combo")],
                 );
@@ -1481,8 +1509,12 @@ impl KeybindPreset {
                     vec![KeyCombo::simple(KeyCode::Char('m'))],
                 );
                 kb.list.insert(
+                    ListAction::MoveToParent,
+                    vec![KeyCombo::parse("g u").expect("valid key combo")],
+                );
+                kb.list.insert(
                     ListAction::ToggleExternalEditor,
-                    vec![KeyCombo::simple(KeyCode::Char('e'))],
+                    vec![KeyCombo::parse("Alt+e").expect("valid key combo")],
                 );
                 kb.list.insert(
                     ListAction::OpenGraph,
