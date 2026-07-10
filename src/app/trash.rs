@@ -61,9 +61,16 @@ impl App {
     pub fn confirm_delete_selected(&mut self, id: String) {
         match self.storage.trash_note(&id) {
             Ok(()) => {
-                if let Err(e) = self.refresh_notes() {
-                    self.set_temporary_status(&format!("Refresh failed: {e}"));
-                }
+                // Drop from in-memory caches without a full filesystem rescan.
+                self.summary_cache.remove(&id);
+                self.summary_mtime.remove(&id);
+                self.notes.retain(|n| n.id != id);
+                self.notes_with_subnotes =
+                    self.storage.get_notes_with_subnotes().unwrap_or_default();
+
+                self.sort_notes();
+                self.refresh_visual_list();
+
                 if self.list.visual_index >= self.list.visual_list.len()
                     && !self.list.visual_list.is_empty()
                 {
