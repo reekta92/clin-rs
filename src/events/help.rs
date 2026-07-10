@@ -12,7 +12,8 @@ pub fn handle_help_keys(app: &mut App, key: KeyEvent) {
             }
             KeyCode::Enter => {
                 if let Some(&(idx, _)) = app.help_search.results.get(app.help_search.selected) {
-                    app.help_scroll = idx as u16;
+                    let page_size = app.help_page_size.max(1) as usize;
+                    app.help_page = (idx / page_size) as u16;
                     app.help_search.highlight_row = Some(idx);
                 }
                 app.help_search.active = false;
@@ -162,10 +163,17 @@ pub fn handle_help_keys(app: &mut App, key: KeyEvent) {
                 app.close_help_page();
             }
             HelpAction::ScrollDown => {
-                app.help_scroll = app.help_scroll.saturating_add(1);
+                let page_size = app.help_page_size as usize;
+                let total = if page_size > 0 {
+                    app.get_help_rows().len().div_ceil(page_size)
+                } else {
+                    1
+                };
+                let max_page = total.saturating_sub(1) as u16;
+                app.help_page = app.help_page.saturating_add(1).min(max_page);
             }
             HelpAction::ScrollUp => {
-                app.help_scroll = app.help_scroll.saturating_sub(1);
+                app.help_page = app.help_page.saturating_sub(1);
             }
             HelpAction::NextTab => {
                 app.switch_help_tab(app.help_tab.next());
@@ -180,6 +188,9 @@ pub fn handle_help_keys(app: &mut App, key: KeyEvent) {
                 app.help_search.results.clear();
                 app.help_search.selected = 0;
                 app.help_search.highlight_row = None;
+            }
+            HelpAction::Reroll => {
+                app.reroll_help_suggestions();
             }
         },
         crate::keybinds::MatchOutcome::Pending => {}

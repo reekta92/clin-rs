@@ -365,6 +365,10 @@ impl Default for Keybinds {
                 KeyCombo::ctrl(KeyCode::Char('f')),
             ],
         );
+        help.insert(
+            HelpAction::Reroll,
+            vec![KeyCombo::simple(KeyCode::Char('r'))],
+        );
 
         let mut graph = HashMap::new();
         graph.insert(

@@ -1203,9 +1203,9 @@ fn run_app(
                                         && mouse_event.row == tab_bar_y
                                     {
                                         let tabs: Vec<(&str, Option<&str>)> =
-                                            crate::ui::help_tab_names(app.config.ui.icon_mode)
+                                            crate::ui::help_tab_names()
                                                 .iter()
-                                                .map(|&(l, g)| (l, Some(g)))
+                                                .map(|&l| (l, None))
                                                 .collect();
                                         let region = crate::ui::title_bar_tabs_region(area, "Help");
                                         if let Some(i) = crate::ui::hit_test_tabs(
@@ -1222,16 +1222,19 @@ fn run_app(
                                     } else if mouse_event.kind
                                         == ratatui::crossterm::event::MouseEventKind::ScrollUp
                                     {
-                                        app.help_scroll = app.help_scroll.saturating_sub(3);
+                                        app.help_page = app.help_page.saturating_sub(1);
                                     } else if mouse_event.kind
                                         == ratatui::crossterm::event::MouseEventKind::ScrollDown
                                     {
-                                        let max_scroll =
-                                            app.list.help_text_cache.as_ref().map_or(0, |rows| {
-                                                rows.len().saturating_sub(5) as u16
-                                            });
-                                        app.help_scroll =
-                                            app.help_scroll.saturating_add(3).min(max_scroll);
+                                        let page_size = app.help_page_size as usize;
+                                        let total = if page_size > 0 {
+                                            app.get_help_rows().len().div_ceil(page_size)
+                                        } else {
+                                            1
+                                        };
+                                        let max_page = total.saturating_sub(1) as u16;
+                                        app.help_page =
+                                            app.help_page.saturating_add(1).min(max_page);
                                     }
                                 }
                                 ViewMode::Graph => {

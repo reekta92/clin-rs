@@ -91,6 +91,7 @@ pub enum HelpAction {
     NextTab,
     PrevTab,
     Search,
+    Reroll,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, strum::EnumIter)]

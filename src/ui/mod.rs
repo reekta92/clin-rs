@@ -10,6 +10,7 @@ use crate::overlay::OverlayView;
 
 mod edit_view;
 mod help;
+mod help_content;
 mod list_view;
 mod popups;
 pub(crate) mod setup;
@@ -17,6 +18,7 @@ mod title_bar;
 
 pub use edit_view::draw_edit_view;
 pub use help::*;
+pub use help_content::{HelpSuggestion, roll_suggestions};
 pub(crate) use list_view::{
     draw_list_view, get_preview_info, list_detail_line, list_view_layout, section_rects,
 };

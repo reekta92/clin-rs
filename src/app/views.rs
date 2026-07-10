@@ -15,19 +15,19 @@ impl App {
         }
         self.mode = ViewMode::Help;
         self.help_tab = tab;
-        self.help_scroll = 0;
-        self.help_tab_scroll.insert(tab, 0);
+        self.help_page = 0;
+        self.help_tab_page.insert(tab, 0);
         self.status = Cow::Borrowed("");
         self.status_until = None;
         self.list.help_text_cache = None;
         self.help_search = crate::app::HelpSearchState::default();
+        self.reroll_help_suggestions();
     }
 
     pub fn close_help_page(&mut self) {
         self.mode = self.return_mode.take().unwrap_or(ViewMode::List);
-        self.help_scroll = 0;
-        self.help_tab = HelpTab::Notes;
-        self.help_tab_scroll.clear();
+        self.help_page = 0;
+        self.help_tab_page.clear();
         self.list.help_text_cache = None;
         self.help_search = crate::app::HelpSearchState::default();
         self.set_default_status();
@@ -188,12 +188,18 @@ impl App {
         if tab == self.help_tab {
             return;
         }
-        let current_scroll = self.help_scroll;
-        self.help_tab_scroll.insert(self.help_tab, current_scroll);
+        let current_page = self.help_page;
+        self.help_tab_page.insert(self.help_tab, current_page);
         self.help_tab = tab;
-        self.help_scroll = self.help_tab_scroll.get(&tab).copied().unwrap_or(0);
+        self.help_page = self.help_tab_page.get(&tab).copied().unwrap_or(0);
         self.list.help_text_cache = None;
         self.help_search = crate::app::HelpSearchState::default();
+        self.reroll_help_suggestions();
+    }
+
+    pub fn reroll_help_suggestions(&mut self) {
+        let rolled = crate::ui::roll_suggestions(self.help_tab, 3);
+        self.help_suggestions = rolled.into_iter().copied().collect();
     }
 
     pub fn begin_create_draw(&mut self) {
