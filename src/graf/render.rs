@@ -1,10 +1,12 @@
 use crate::keybinds::{GraphAction, Keybinds};
 use std::collections::{HashMap, HashSet};
 
+use crate::app::ViewMode;
 use fdg_sim::petgraph::graph::NodeIndex;
 use fdg_sim::petgraph::visit::{EdgeRef, IntoEdgeReferences};
 use ratatui::layout::Rect;
-use ratatui::style::Color;
+use ratatui::style::{Color, Style};
+use ratatui::text::Span;
 use ratatui::widgets::canvas::{Canvas, Line, Painter, Shape};
 
 use crate::config::{
@@ -655,15 +657,22 @@ pub fn draw_graph_view(
             (keybinds.display_graph(GraphAction::Quit), "quit"),
         ];
         let hint_line = crate::ui::format_keybind_hints(app_theme, &hints_items);
-        crate::ui::draw_status_bar(
-            frame,
-            status_area,
-            app_theme,
-            None,
-            hint_line,
-            None,
-            pending,
-        );
+        let mut ctx = crate::statusline::StatuslineContext::for_overlay(config, ViewMode::Graph);
+        ctx.area = Some(status_area);
+        ctx.graph = Some(state);
+        ctx.hints = Some(hint_line.spans);
+        if let Some(p) = pending {
+            ctx.pending = Some(vec![Span::styled(
+                format!("{} ", p),
+                Style::default()
+                    .fg(app_theme.highlight_fg)
+                    .bg(app_theme.accent),
+            )]);
+        }
+
+        let (left_line, right_line) =
+            crate::statusline::render_footer(&ctx, &config.statusline, ViewMode::Graph, app_theme);
+        crate::ui::draw_status_bar(frame, status_area, app_theme, left_line, right_line);
     }
 
     if flags.show_minimap {

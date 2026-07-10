@@ -5,7 +5,7 @@ use super::{
     draw_view_title_bar, fill_cursor_line_bg, format_keybind_hints, get_preview_info,
     get_textarea_scroll, line_number_gutter,
 };
-use crate::app::{App, EditFocus};
+use crate::app::{App, EditFocus, ViewMode};
 use crate::events::get_title_text;
 use crate::keybinds::EditAction;
 
@@ -22,15 +22,30 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         .split(area);
 
     let preview_info = get_preview_info(app);
+    let note = crate::statusline::active_note(app, ViewMode::Edit);
+    let mut ctx = crate::statusline::StatuslineContext::for_view(app, ViewMode::Edit);
+    ctx.area = Some(outer_chunks[0]);
+    ctx.note = note;
+    ctx.preview_info = preview_info.as_ref();
+    if let Some(pi) = &preview_info {
+        ctx.preview = Some(super::preview_spans(pi, &app.app_theme));
+    }
+
+    let (left_line, right_line) = crate::statusline::render_header(
+        &ctx,
+        &app.config.statusline,
+        ViewMode::Edit,
+        &app.app_theme,
+    );
     draw_view_title_bar(
         frame,
         outer_chunks[0],
-        "Editor",
         &app.app_theme,
-        preview_info,
+        left_line,
+        right_line,
         Some(app.status.as_ref()),
-        None,
     );
+
     let body_area = outer_chunks[1];
     let hint_area = outer_chunks[2];
 
@@ -325,15 +340,27 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     ];
     let default_hints = format_keybind_hints(&app.app_theme, &hints_items);
     let hint = default_hints;
-    draw_status_bar(
-        frame,
-        hint_area,
+    let note = crate::statusline::active_note(app, ViewMode::Edit);
+    let mut ctx = crate::statusline::StatuslineContext::for_view(app, ViewMode::Edit);
+    ctx.area = Some(hint_area);
+    ctx.note = note;
+    ctx.hints = Some(hint.spans);
+    if let Some(p) = &app.seq_matcher.pending_display() {
+        ctx.pending = Some(vec![Span::styled(
+            format!("{} ", p),
+            Style::default()
+                .fg(app.app_theme.highlight_fg)
+                .bg(app.app_theme.accent),
+        )]);
+    }
+
+    let (left_line, right_line) = crate::statusline::render_footer(
+        &ctx,
+        &app.config.statusline,
+        ViewMode::Edit,
         &app.app_theme,
-        None,
-        hint,
-        None,
-        app.seq_matcher.pending_display().as_deref(),
     );
+    draw_status_bar(frame, hint_area, &app.app_theme, left_line, right_line);
     draw_corner_watermark(frame, hint_area, app.app_theme.muted);
     if let Some(splitter_area) = splitter_area {
         draw_dim_vline(frame, splitter_area, app.app_theme.muted);

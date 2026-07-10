@@ -82,6 +82,167 @@ Full reference of all configuration options for clin-rs.
 | `folder` | `String` | — | Hex color override for folder labels |
 | `background_color` | `String` | — | Hex color override for solid background |
 
+### `[statusline]`
+
+Customizes the status lines (title bar at the top, status bar at the bottom) of the application.
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `header_left` | `String` | `"{title} {preview}"` | Default template for the left side of the title bar |
+| `header_right` | `String` | — | Default template for the right side of the title bar |
+| `footer_left` | `String` | `"{pending}{badge}{hints}"` | Default template for the left side of the status bar |
+| `footer_right` | `String` | — | Default template for the right side of the status bar |
+
+You can also customize these per-view by adding nested overrides:
+- `[statusline.list]` — overrides for the notes list view
+- `[statusline.edit]` — overrides for the editor view
+- `[statusline.help]` — overrides for the help view
+- `[statusline.graph]` — overrides for the graph view
+- `[statusline.draw]` — overrides for the drawing view
+- `[statusline.canvas]` — overrides for the canvas view
+- `[statusline.backup]` — overrides for the backup view
+- `[statusline.content_tree]` — overrides for the content tree view
+
+Each override sub-table accepts: `header_left`, `header_right`, `footer_left`, and `footer_right` fields.
+
+#### Template Interpolation Variables
+
+Variables are enclosed in `{}` (e.g. `{time}`). Escapes `{{` and `}}` render literal braces. Unknown variables render literally (e.g. `{bogus}`).
+
+##### Global / App (all views)
+- `{view}`: Active view name (`Notes`, `Editor`, `Help`, `Graph`, etc.)
+- `{status}`: Current status text or empty if "Ready"
+- `{vault}`: Base folder name of the vault directory
+- `{vault_path}`: Full absolute path to the vault directory
+- `{version}`: Application package version
+
+##### Date & Time (all views)
+- `{time}`: Current local time (`%H:%M`)
+- `{date}`: Current local date formatted per `date_format` configuration
+- `{datetime}`: Local date and time combined
+- `{weekday}`: Full weekday name (e.g., `Monday`)
+- `{year}`, `{month}`, `{day}`, `{hour}`, `{minute}`, `{second}`: Respective time parts
+
+##### Config Echo (all views)
+- `{theme}`: Active theme name
+- `{preset}`: Keybind preset (`default`, `helix`, `vim`, `emacs`)
+- `{icon_mode}`: Icon mode (`nerd`, `unicode`, `none`)
+- `{hint_bar_style}`: Style variant (`classic`, `accent`, `powerline_sharp`, `powerline_rounded`, `powerline_slanted`)
+- `{background}`: Background style (`transparent`, `solid`)
+
+##### Goals (all views)
+- `{goal_words}`: Words written today
+- `{goal_target}`: Daily word count goal
+- `{goal_notes}`: Notes modified today
+- `{goal_note_target}`: Daily note count goal
+- `{goal_date}`: Tracked date for goals progress
+
+##### List View (`Notes` view)
+- `{title}`: Header title text (e.g. `"Notes"`, `"Notes - Editing Layout"`)
+- `{sort_field}`: Current sorting field (`title`, `modified`)
+- `{sort_order}`: Current sorting order (`ascending`, `descending`)
+- `{layout}`: Active notes layout (`tree`, `grid`)
+- `{density}`: Active list density (`compact`, `comfortable`)
+- `{section}`: Active notes section (`vault`, `pinned`, `smart`)
+- `{folder}`: Active grid folder path
+- `{folder_count}`: Number of folders in the cache
+- `{tag_count}`: Number of unique live tags in the vault
+- `{note_count}`: Total notes in the notes directory
+- `{visual_index}`: 1-based cursor index in the list
+- `{visual_total}`: Total visible items in the list
+- `{selected_count}`: Number of selected notes
+- `{select_mode}`: `on`/`off` depending on selection mode
+- `{tag_to_assign}`: Name of tag to assign, or empty
+- `{search}`: Active search query text
+- `{grep}`: Search grep mode status (`on`/`off`)
+- `{tag_filter}`, `{folder_filter}`: Active query filter parameters
+- `{pinned_count}`: Total pinned notes
+- `{pinned_on_top}`, `{folders_first}`, `{list_preview}`, `{calendar}`, `{layout_edit}`: Config and view states (`on`/`off`)
+
+##### Note Context (List + Edit views)
+- `{note_title}`: Title of the selected/edited note
+- `{note_id}`: Filename/ID of the note
+- `{note_folder}`: Folder directory of the note
+- `{note_format}`: File format extension (`md`, `txt`, `clin`, `draw`, `canvas`)
+- `{note_size}`: Note file size formatted (e.g. `1.2 KB`)
+- `{note_links}`: Number of wikilinks in the note
+- `{tags}`: Comma-separated tags of the note
+- `{has_tags}`: `on`/`off` depending on tag presence
+- `{note_pinned}`: Note pinned status (`on`/`off`)
+- `{note_updated}`, `{note_updated_rel}`: Absolute date and relative time of last update
+- `{prev_note}`, `{next_note}`: Filenames of the previous and next notes in visual order
+
+##### Editor (`Editor` view)
+- `{word_count}`: Current word count
+- `{line_count}`: Total lines in the editor
+- `{char_count}`: Character count
+- `{cursor_line}`: 1-based cursor line row
+- `{cursor_col}`: 1-based cursor column
+- `{modified}`: `on`/`off` depending on unsaved changes
+- `{reading_time}`: Estimated reading time in minutes
+- `{header_count}`: Count of headings parsed in outline
+- `{task_count}`: Count of checkboxes parsed
+- `{has_tasks}`: `on`/`off` depending on task presence
+- `{has_frontmatter}`: `on`/`off` depending on YAML frontmatter presence
+- `{words_added}`: Net words added since opening the note
+- `{editing_id}`: Note ID being edited
+- `{editing_template}`: `on`/`off` if editing a template
+- `{line_numbers}`, `{editor_preview}`, `{ext_editor}`, `{ext_editor_enabled}`: Editor configuration/process states
+
+##### Graph View (`Graph` view)
+- `{node_count}`, `{edge_count}`: Graph nodes and edges
+- `{selected_node}`: Label of the selected node or `"none"`
+- `{viewport_size}`: Graph viewport coverage percentage (e.g. `"45%"`)
+- `{viewport_ratio}`: Graph zoom ratio (e.g. `"1.2x"`)
+- `{graph_settled}`: Force-directed simulation settlement status (`on`/`off`)
+- `{label_mode}`, `{node_color_mode}`, `{edge_color_mode}`, `{node_size_mode}`, `{zoom}`: Graph configuration and zoom status
+- `{show_grid}`, `{show_legend}`, `{show_minimap}`: Grid, legend, and minimap settings (`on`/`off`)
+
+##### Draw View (`Draw` view)
+- `{tool}`: Active draw tool (`draw`, `erase`, `text`, `shape`)
+- `{shape}`: Active shape type (`rect`, `ellipse`, `diamond`, `line`, `arrow`)
+- `{element_count}`: Total drawn elements
+- `{draw_width}`, `{draw_height}`: Canvas drawing boundaries
+- `{draw_grid}`, `{draw_zoom}`, `{text_editing}`: Grid status, zoom level, and text editing flags
+
+##### Canvas View (`Canvas` view)
+- `{canvas_nodes}`, `{canvas_edges}`: Total nodes and connections in canvas
+- `{canvas_zoom}`: Zoom level
+- `{canvas_pan_x}`, `{canvas_pan_y}`: Pan offset coordinates
+- `{canvas_selected}`: Selected connection or node ID
+- `{canvas_grid}`, `{canvas_editor}`: Grid and editor panel settings (`on`/`off`)
+
+##### Content Tree View (`Content Tree` view)
+- `{tree_nodes}`, `{tree_headers}`: Total outline nodes and headers
+- `{tree_visible}`, `{tree_cursor}`: Visible node count and cursor position
+- `{tree_depth}`, `{tree_max_depth}`, `{tree_expanded}`: Node depth and expansion states
+- `{tree_heading}`: Title text of the selected heading
+- `{tree_note}`: Title of parent note
+- `{tree_error}`: Load error text or empty
+
+##### Backup View (`Backup` view)
+- `{branch}`: Active git branch name
+- `{ahead}`, `{behind}`: Commit difference from remote tracking branch
+- `{staged}`, `{unstaged}`, `{untracked}`: File category modification counts
+- `{commit_count}`: Total commit log history entries
+- `{last_commit}`: Short 7-character commit hash of HEAD
+- `{last_commit_msg}`, `{last_commit_author}`, `{last_commit_time}`: Message, author name, and relative date of last commit
+- `{remote}`, `{remote_url}`: Configured remote repository name and URL
+- `{backup_section}`: Active section panel (`status` or `history`)
+- `{input_mode}`: Input mode (`normal`, `edit_commit`, `edit_settings`, `edit_settings_field`)
+- `{auto_push}`, `{repo_dirty}`: Auto push status and repository clean/dirty flags (`on`/`off`)
+- `{modified_text}`: Text string (`modified` or `clean`)
+
+##### Composites
+These inject pre-styled groups of cells (e.g., from tab/status systems) and remain opaque to powerline text splitting:
+- `{preview}`: Markdown preview breadcrumbs (path/name) and prev/next links
+- `{detail}`: Notes list item detail row (modification date/time and tags list)
+- `{hints}`: Active view mode keybind shortcuts help bar
+- `{badge}`: External editor status badge (`ext:on`/`ext:off`)
+- `{pending}`: Pending keybind sequence buffer indicator
+
+---
+
 ### `[graf]`
 
 | Option | Type | Default | Description |

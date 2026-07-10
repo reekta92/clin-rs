@@ -1,8 +1,8 @@
 use super::{
     PopupSize, PreviewHeaderInfo, build_list_widget, build_tab_spans, draw_confirm_popup,
     draw_corner_watermark, draw_dim_vline, draw_popup_frame, draw_status_bar, draw_template_popup,
-    draw_view_title_bar, draw_view_title_bar_with_tabs, ext_badge, format_keybind_hints,
-    format_relative_time, list_state_selected, popup_block, popup_hint_line,
+    draw_view_title_bar, draw_view_title_bar_with_tabs, format_keybind_hints, format_relative_time,
+    list_state_selected, popup_block, popup_hint_line, preview_spans,
 };
 use crate::app::{App, VIRTUAL_PINNED_LABEL, VIRTUAL_PINNED_PATH, VIRTUAL_SMART_PATH, ViewMode};
 use crate::app_theme::AppThemeColors;
@@ -270,160 +270,115 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         ))
         .alignment(Alignment::Center);
         frame.render_widget(bar, chunks[0]);
-    } else if app.preview_fullscreen {
+    } else {
         let preview_info = get_preview_info(app);
-        draw_view_title_bar(
-            frame,
-            chunks[0],
-            title,
-            &app.app_theme,
-            preview_info,
-            Some(app.status.as_ref()),
-            None,
-        );
-    } else if app.list.notes_layout == crate::config::NotesLayout::Grid {
-        let mut tabs = vec![
-            (
-                "Vault",
-                Some(crate::ui::get_icon(
-                    "\u{f07b}",
-                    "\u{1f4c1}",
-                    app.config.ui.icon_mode,
-                )),
-            ),
-            (
-                "Pinned",
-                Some(crate::ui::get_icon(
-                    "\u{f4cc}",
-                    "\u{1f4cc}",
-                    app.config.ui.icon_mode,
-                )),
-            ),
-        ];
-        if app.config.list.smart_folders_enabled {
-            tabs.push((
-                "Smart",
-                Some(crate::ui::get_icon(
-                    "\u{f0e7}",
-                    "\u{26a1}",
-                    app.config.ui.icon_mode,
-                )),
-            ));
+        let note = crate::statusline::active_note(app, ViewMode::List);
+        let mut ctx = crate::statusline::StatuslineContext::for_view(app, ViewMode::List);
+        ctx.area = Some(chunks[0]);
+        ctx.note = note;
+        ctx.preview_info = preview_info.as_ref();
+        if let Some(pi) = &preview_info {
+            ctx.preview = Some(preview_spans(pi, &app.app_theme));
         }
-        let selected_idx = if app.list.grid_folder == VIRTUAL_PINNED_PATH {
-            1
-        } else if app.list.grid_folder == VIRTUAL_SMART_PATH
-            || app.list.grid_folder.starts_with('@')
-        {
-            2
-        } else {
-            0
-        };
-        let tab_spans = build_tab_spans(
-            &tabs,
-            selected_idx,
-            &app.app_theme,
-            app.config.ui.tab_icons_only,
-            app.config.ui.icon_mode,
-        );
-        let detail_text = if let Some(crate::app::VisualItem::Note { summary_idx, .. }) =
-            app.list.visual_list.get(app.list.visual_index)
-        {
-            let s = &app.notes[*summary_idx];
-            let mut spans = Vec::new();
 
-            let when = format_relative_time(s.updated_at);
-            spans.push(Span::styled(
-                format!(
-                    " {} ",
-                    crate::ui::get_icon("\u{f017}", "\u{23f0}", app.config.ui.icon_mode)
+        if app.preview_fullscreen {
+            let (left_line, right_line) = crate::statusline::render_header(
+                &ctx,
+                &app.config.statusline,
+                ViewMode::List,
+                &app.app_theme,
+            );
+            draw_view_title_bar(
+                frame,
+                chunks[0],
+                &app.app_theme,
+                left_line,
+                right_line,
+                Some(app.status.as_ref()),
+            );
+        } else if app.list.notes_layout == crate::config::NotesLayout::Grid {
+            let mut tabs = vec![
+                (
+                    "Vault",
+                    Some(crate::ui::get_icon(
+                        "\u{f07b}",
+                        "\u{1f4c1}",
+                        app.config.ui.icon_mode,
+                    )),
                 ),
-                Style::default().fg(app.app_theme.muted),
-            ));
-            spans.push(Span::styled(
-                when.into_owned(),
-                Style::default().fg(app.app_theme.muted),
-            ));
-
-            if !s.tags.is_empty() {
-                spans.push(Span::raw(" | "));
-                spans.push(Span::styled(
-                    format!(
-                        "{} ",
-                        crate::ui::get_icon("\u{f02b}", "\u{1f3f7}", app.config.ui.icon_mode)
-                    ),
-                    Style::default()
-                        .fg(app.app_theme.tag)
-                        .add_modifier(Modifier::BOLD),
-                ));
-                spans.push(Span::styled(
-                    s.tags.join(", "),
-                    Style::default().fg(app.app_theme.fg),
+                (
+                    "Pinned",
+                    Some(crate::ui::get_icon(
+                        "\u{f4cc}",
+                        "\u{1f4cc}",
+                        app.config.ui.icon_mode,
+                    )),
+                ),
+            ];
+            if app.config.list.smart_folders_enabled {
+                tabs.push((
+                    "Smart",
+                    Some(crate::ui::get_icon(
+                        "\u{f0e7}",
+                        "\u{26a1}",
+                        app.config.ui.icon_mode,
+                    )),
                 ));
             }
-            spans.push(Span::raw(" ")); // padding right
-            Some(Line::from(spans))
-        } else if let Some(crate::app::VisualItem::Folder {
-            name, note_count, ..
-        }) = app.list.visual_list.get(app.list.visual_index)
-            && name != ".."
-        {
-            let mut spans = Vec::new();
-            let suffix = if *note_count == 1 { "note" } else { "notes" };
-            spans.push(Span::styled(
-                format!(
-                    " {} ",
-                    crate::ui::get_icon("\u{f0ca}", "\u{1f4cb}", app.config.ui.icon_mode)
-                ),
-                Style::default().fg(app.app_theme.folder),
-            ));
-            spans.push(Span::styled(
-                format!("{note_count} {suffix}"),
-                Style::default().fg(app.app_theme.fg),
-            ));
-            spans.push(Span::raw(" ")); // padding right
-            Some(Line::from(spans))
-        } else if let Some(crate::app::VisualItem::SmartFolder { note_count, .. }) =
-            app.list.visual_list.get(app.list.visual_index)
-        {
-            let mut spans = Vec::new();
-            let suffix = if *note_count == 1 { "note" } else { "notes" };
-            spans.push(Span::styled(
-                format!(
-                    " {} ",
-                    crate::ui::get_icon("\u{f0ca}", "\u{1f4cb}", app.config.ui.icon_mode)
-                ),
-                Style::default().fg(app.app_theme.tag),
-            ));
-            spans.push(Span::styled(
-                format!("{note_count} {suffix}"),
-                Style::default().fg(app.app_theme.fg),
-            ));
-            spans.push(Span::raw(" ")); // padding right
-            Some(Line::from(spans))
-        } else {
-            None
-        };
+            let selected_idx = if app.list.grid_folder == VIRTUAL_PINNED_PATH {
+                1
+            } else if app.list.grid_folder == VIRTUAL_SMART_PATH
+                || app.list.grid_folder.starts_with('@')
+            {
+                2
+            } else {
+                0
+            };
+            let tab_spans = build_tab_spans(
+                &tabs,
+                selected_idx,
+                &app.app_theme,
+                app.config.ui.tab_icons_only,
+                app.config.ui.icon_mode,
+            );
 
-        draw_view_title_bar_with_tabs(
-            frame,
-            chunks[0],
-            title,
-            tab_spans,
-            &app.app_theme,
-            Some(app.status.as_ref()),
-            detail_text,
-        );
-    } else {
-        draw_view_title_bar(
-            frame,
-            chunks[0],
-            title,
-            &app.app_theme,
-            None,
-            Some(app.status.as_ref()),
-            None,
-        );
+            let detail_line = crate::ui::list_detail_line(app);
+            if let Some(dl) = &detail_line {
+                ctx.detail = Some(dl.spans.clone());
+            }
+
+            let (left_line, right_line) = crate::statusline::render_header(
+                &ctx,
+                &app.config.statusline,
+                ViewMode::List,
+                &app.app_theme,
+            );
+            draw_view_title_bar_with_tabs(
+                frame,
+                chunks[0],
+                title,
+                &app.app_theme,
+                left_line,
+                tab_spans,
+                right_line,
+                Some(app.status.as_ref()),
+            );
+        } else {
+            let (left_line, right_line) = crate::statusline::render_header(
+                &ctx,
+                &app.config.statusline,
+                ViewMode::List,
+                &app.app_theme,
+            );
+            draw_view_title_bar(
+                frame,
+                chunks[0],
+                &app.app_theme,
+                left_line,
+                right_line,
+                Some(app.status.as_ref()),
+            );
+        }
     }
 
     let (list_area, preview_area, calendar_area) = list_view_layout(
@@ -982,19 +937,40 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     } else {
         default_hints
     };
-    let badge = Some(ext_badge(
-        app.editor.external_editor_enabled,
+    let badge_spans = if matches!(
+        app.app_theme.hint_bar_style,
+        crate::config::HintBarStyle::PowerlineSharp
+            | crate::config::HintBarStyle::PowerlineRounded
+            | crate::config::HintBarStyle::PowerlineSlanted
+    ) {
+        crate::ui::ext_badge_spans(
+            app.editor.external_editor_enabled,
+            &app.app_theme,
+            Some(app.app_theme.accent),
+        )
+    } else {
+        crate::ui::ext_badge_spans(app.editor.external_editor_enabled, &app.app_theme, None)
+    };
+    let mut ctx = crate::statusline::StatuslineContext::for_view(app, ViewMode::List);
+    ctx.area = Some(chunks[2]);
+    ctx.hints = Some(hint.spans);
+    ctx.badge = Some(badge_spans);
+    if let Some(p) = &app.seq_matcher.pending_display() {
+        ctx.pending = Some(vec![Span::styled(
+            format!("{} ", p),
+            Style::default()
+                .fg(app.app_theme.highlight_fg)
+                .bg(app.app_theme.accent),
+        )]);
+    }
+
+    let (left_line, right_line) = crate::statusline::render_footer(
+        &ctx,
+        &app.config.statusline,
+        ViewMode::List,
         &app.app_theme,
-    ));
-    draw_status_bar(
-        frame,
-        chunks[2],
-        &app.app_theme,
-        badge,
-        hint,
-        None,
-        app.seq_matcher.pending_display().as_deref(),
     );
+    draw_status_bar(frame, chunks[2], &app.app_theme, left_line, right_line);
     draw_corner_watermark(frame, chunks[2], app.app_theme.muted);
     if app.list.preview_enabled && !app.preview_fullscreen {
         let ratio_num = (app.list.preview_width_ratio.clamp(0.2, 0.8) * 100.0).round() as u32;
@@ -2008,6 +1984,90 @@ pub fn get_preview_info(app: &App) -> Option<PreviewHeaderInfo> {
             prev_name,
             next_name,
         })
+    } else {
+        None
+    }
+}
+
+pub fn list_detail_line(app: &App) -> Option<Line<'static>> {
+    if app.list.notes_layout != crate::config::NotesLayout::Grid {
+        return None;
+    }
+    if let Some(crate::app::VisualItem::Note { summary_idx, .. }) =
+        app.list.visual_list.get(app.list.visual_index)
+    {
+        let s = &app.notes[*summary_idx];
+        let mut spans = Vec::new();
+
+        let when = format_relative_time(s.updated_at);
+        spans.push(Span::styled(
+            format!(
+                " {} ",
+                crate::ui::get_icon("\u{f017}", "\u{23f0}", app.config.ui.icon_mode)
+            ),
+            Style::default().fg(app.app_theme.muted),
+        ));
+        spans.push(Span::styled(
+            when.into_owned(),
+            Style::default().fg(app.app_theme.muted),
+        ));
+
+        if !s.tags.is_empty() {
+            spans.push(Span::raw(" | "));
+            spans.push(Span::styled(
+                format!(
+                    "{} ",
+                    crate::ui::get_icon("\u{f02b}", "\u{1f3f7}", app.config.ui.icon_mode)
+                ),
+                Style::default()
+                    .fg(app.app_theme.tag)
+                    .add_modifier(Modifier::BOLD),
+            ));
+            spans.push(Span::styled(
+                s.tags.join(", "),
+                Style::default().fg(app.app_theme.fg),
+            ));
+        }
+        spans.push(Span::raw(" ")); // padding right
+        Some(Line::from(spans))
+    } else if let Some(crate::app::VisualItem::Folder {
+        name, note_count, ..
+    }) = app.list.visual_list.get(app.list.visual_index)
+        && name != ".."
+    {
+        let mut spans = Vec::new();
+        let suffix = if *note_count == 1 { "note" } else { "notes" };
+        spans.push(Span::styled(
+            format!(
+                " {} ",
+                crate::ui::get_icon("\u{f0ca}", "\u{1f4cb}", app.config.ui.icon_mode)
+            ),
+            Style::default().fg(app.app_theme.folder),
+        ));
+        spans.push(Span::styled(
+            format!("{note_count} {suffix}"),
+            Style::default().fg(app.app_theme.fg),
+        ));
+        spans.push(Span::raw(" ")); // padding right
+        Some(Line::from(spans))
+    } else if let Some(crate::app::VisualItem::SmartFolder { note_count, .. }) =
+        app.list.visual_list.get(app.list.visual_index)
+    {
+        let mut spans = Vec::new();
+        let suffix = if *note_count == 1 { "note" } else { "notes" };
+        spans.push(Span::styled(
+            format!(
+                " {} ",
+                crate::ui::get_icon("\u{f0ca}", "\u{1f4cb}", app.config.ui.icon_mode)
+            ),
+            Style::default().fg(app.app_theme.tag),
+        ));
+        spans.push(Span::styled(
+            format!("{note_count} {suffix}"),
+            Style::default().fg(app.app_theme.fg),
+        ));
+        spans.push(Span::raw(" ")); // padding right
+        Some(Line::from(spans))
     } else {
         None
     }

@@ -680,59 +680,51 @@ pub fn ext_badge(enabled: bool, theme: &AppThemeColors) -> StatusBarBadge {
     }
 }
 
+pub fn ext_badge_spans<'a>(
+    enabled: bool,
+    theme: &AppThemeColors,
+    next_bg: Option<Color>,
+) -> Vec<Span<'a>> {
+    let b = ext_badge(enabled, theme);
+    let mut spans = Vec::new();
+    match theme.hint_bar_style {
+        crate::config::HintBarStyle::PowerlineSharp
+        | crate::config::HintBarStyle::PowerlineRounded
+        | crate::config::HintBarStyle::PowerlineSlanted => {
+            let sep_char = match theme.hint_bar_style {
+                crate::config::HintBarStyle::PowerlineSharp => "",
+                crate::config::HintBarStyle::PowerlineRounded => "",
+                crate::config::HintBarStyle::PowerlineSlanted => "",
+                _ => unreachable!(),
+            };
+            let pwr_bg = b.style.fg.unwrap_or(theme.accent);
+            let pwr_style = Style::default()
+                .bg(pwr_bg)
+                .fg(theme.highlight_fg)
+                .add_modifier(b.style.add_modifier);
+            spans.push(Span::styled(b.label, pwr_style));
+
+            let mut sep_style = Style::default().fg(pwr_bg);
+            if let Some(bg) = next_bg {
+                sep_style = sep_style.bg(bg);
+            }
+            spans.push(Span::styled(sep_char, sep_style));
+        }
+        _ => {
+            spans.push(Span::styled(b.label, b.style));
+            spans.push(Span::raw(" "));
+        }
+    }
+    spans
+}
+
 pub fn draw_status_bar<'a>(
     frame: &mut Frame,
     area: Rect,
     theme: &AppThemeColors,
-    badge: Option<StatusBarBadge>,
-    hint: Line<'a>,
+    left: Line<'a>,
     right: Option<Line<'a>>,
-    pending: Option<&str>,
 ) {
-    let mut left_spans: Vec<Span> = Vec::new();
-    if let Some(p) = pending {
-        left_spans.push(Span::styled(
-            format!("{p} "),
-            Style::default().fg(theme.highlight_fg).bg(theme.accent),
-        ));
-    }
-    if let Some(b) = badge {
-        match theme.hint_bar_style {
-            crate::config::HintBarStyle::PowerlineSharp
-            | crate::config::HintBarStyle::PowerlineRounded
-            | crate::config::HintBarStyle::PowerlineSlanted => {
-                let sep_char = match theme.hint_bar_style {
-                    crate::config::HintBarStyle::PowerlineSharp => "",
-                    crate::config::HintBarStyle::PowerlineRounded => "",
-                    crate::config::HintBarStyle::PowerlineSlanted => "",
-                    _ => unreachable!(),
-                };
-                let pwr_bg = b.style.fg.unwrap_or(theme.accent);
-                let pwr_style = Style::default()
-                    .bg(pwr_bg)
-                    .fg(theme.highlight_fg)
-                    .add_modifier(b.style.add_modifier);
-                left_spans.push(Span::styled(b.label, pwr_style));
-
-                let next_bg = hint
-                    .spans
-                    .first()
-                    .and_then(|s| s.style.bg)
-                    .or(theme.hint_line_bg());
-                let mut sep_style = Style::default().fg(pwr_bg);
-                if let Some(bg) = next_bg {
-                    sep_style = sep_style.bg(bg);
-                }
-                left_spans.push(Span::styled(sep_char, sep_style));
-            }
-            _ => {
-                left_spans.push(Span::styled(b.label, b.style));
-                left_spans.push(Span::raw(" "));
-            }
-        }
-    }
-    left_spans.extend(hint.spans);
-
     if let Some(right_line) = right {
         let chunks = Layout::default()
             .direction(Direction::Horizontal)
@@ -742,7 +734,7 @@ pub fn draw_status_bar<'a>(
             ])
             .split(area);
 
-        let left_para = Paragraph::new(Line::from(left_spans)).style(theme.hint_line_bg_style());
+        let left_para = Paragraph::new(left).style(theme.hint_line_bg_style());
         frame.render_widget(left_para, chunks[0]);
 
         let right_para = Paragraph::new(right_line)
@@ -750,7 +742,7 @@ pub fn draw_status_bar<'a>(
             .style(theme.hint_line_bg_style());
         frame.render_widget(right_para, chunks[1]);
     } else {
-        let para = Paragraph::new(Line::from(left_spans)).style(theme.hint_line_bg_style());
+        let para = Paragraph::new(left).style(theme.hint_line_bg_style());
         frame.render_widget(para, area);
     }
 }

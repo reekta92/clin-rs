@@ -36,12 +36,12 @@ impl crate::overlay::OverlayView for ContentTreeState {
         frame: &mut ratatui::Frame,
         area: ratatui::layout::Rect,
         theme: &crate::app_theme::AppThemeColors,
-        _config: &crate::config::ClinConfig,
-        _app_status: Option<&str>,
+        config: &crate::config::ClinConfig,
+        app_status: Option<&str>,
     ) {
         self.last_area = area;
         let keybinds = self.keybinds.clone();
-        render::draw_content_tree(frame, area, self, theme, &keybinds);
+        render::draw_content_tree(frame, area, self, theme, &keybinds, config, app_status);
     }
 
     fn overlay_handle_event(

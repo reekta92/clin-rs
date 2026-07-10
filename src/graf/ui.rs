@@ -11,9 +11,7 @@ pub fn draw_ui(
     state: &GrafAppState,
     config: &ClinConfig,
     area: Rect,
-    header_area: Rect,
     theme: &crate::app_theme::AppThemeColors,
-    app_status: Option<&str>,
 ) {
     let (graph_area, preview_area) = if state.preview_enabled {
         let (constraints, main_idx, p_idx) = match config.list.preview_position {
@@ -44,25 +42,6 @@ pub fn draw_ui(
     } else {
         (area, None)
     };
-
-    let right_text = if let Some(graph_state) = &state.graph_state {
-        let guard = graph_state.read();
-        Some(ratatui::text::Line::from(
-            crate::graf::render::compute_status_string(&guard, graph_area),
-        ))
-    } else {
-        None
-    };
-
-    crate::ui::draw_view_title_bar(
-        frame,
-        header_area,
-        "Graph",
-        theme,
-        None,
-        app_status,
-        right_text,
-    );
 
     if !state.config_errors.is_empty() {
         draw_config_errors(frame, area, &state.config_errors, config);

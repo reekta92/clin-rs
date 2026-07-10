@@ -1,3 +1,4 @@
+use crate::app::ViewMode;
 use crate::backup::git_ops::FileChangeType;
 use crate::backup::state::{BackupInputMode, BackupState, SettingsField};
 use crate::keybinds::BackupAction;
@@ -8,11 +9,14 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, Padding, Paragraph, Wrap},
 };
+use std::path::Path;
 
 pub fn draw_dashboard(
     frame: &mut ratatui::Frame,
     state: &mut crate::backup::state::BackupState,
     area: Rect,
+    config: &crate::config::ClinConfig,
+    app_status: Option<&str>,
 ) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -58,15 +62,21 @@ pub fn draw_dashboard(
         (kb.display_backup(BackupAction::Back), "back"),
     ];
     let hint_line = crate::ui::format_keybind_hints(theme, &hints_items);
-    crate::ui::draw_status_bar(
-        frame,
-        footer_area,
-        theme,
-        None,
-        hint_line,
-        None,
-        state.seq_matcher.pending_display().as_deref(),
-    );
+    let mut ctx = crate::statusline::StatuslineContext::for_overlay(config, ViewMode::Backup);
+    ctx.area = Some(footer_area);
+    ctx.backup = Some(state);
+    ctx.app_status = app_status;
+    ctx.hints = Some(hint_line.spans);
+    if let Some(p) = &state.seq_matcher.pending_display() {
+        ctx.pending = Some(vec![Span::styled(
+            format!("{} ", p),
+            Style::default().fg(theme.highlight_fg).bg(theme.accent),
+        )]);
+    }
+
+    let (left_line, right_line) =
+        crate::statusline::render_footer(&ctx, &config.statusline, ViewMode::Backup, theme);
+    crate::ui::draw_status_bar(frame, footer_area, theme, left_line, right_line);
     if state.input_mode == BackupInputMode::EditCommitMessage {
         draw_commit_popup(frame, area, state);
     }
@@ -94,6 +104,10 @@ pub fn backup_tabs(icon_mode: crate::config::IconMode) -> [(&'static str, &'stat
 pub fn draw_header(
     frame: &mut Frame,
     area: Rect,
+    config: &crate::config::ClinConfig,
+    app_status: Option<&str>,
+    vault_path: &Path,
+    date_format: &str,
     state: &BackupState,
     icon_mode: crate::config::IconMode,
 ) {
@@ -109,21 +123,18 @@ pub fn draw_header(
         0
     };
     let spans = crate::ui::build_tab_spans(&tabs, active, theme, state.tab_icons_only, icon_mode);
-    let right_text = state.status.as_ref().map(|status| {
-        let modified_text = if !status.staged.is_empty()
-            || !status.unstaged.is_empty()
-            || !status.untracked.is_empty()
-        {
-            "modified"
-        } else {
-            "clean"
-        };
-        Line::from(format!(
-            "{} | ↑{} ↓{} | {}",
-            status.branch, status.ahead, status.behind, modified_text
-        ))
-    });
-    crate::ui::draw_view_title_bar_with_tabs(frame, area, "Backup", spans, theme, None, right_text);
+
+    let mut ctx = crate::statusline::StatuslineContext::for_overlay(config, ViewMode::Backup);
+    ctx.area = Some(area);
+    ctx.backup = Some(state);
+    ctx.app_status = app_status;
+    ctx.vault_path = Some(vault_path);
+    ctx.date_format = Some(date_format);
+    let (left_line, right_line) =
+        crate::statusline::render_header(&ctx, &config.statusline, ViewMode::Backup, theme);
+    crate::ui::draw_view_title_bar_with_tabs(
+        frame, area, "Backup", theme, left_line, spans, right_line, app_status,
+    );
 }
 
 fn draw_content(frame: &mut Frame, area: Rect, state: &mut BackupState) {

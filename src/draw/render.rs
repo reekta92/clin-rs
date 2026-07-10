@@ -1,3 +1,4 @@
+use crate::app::ViewMode;
 use crate::draw::app::DrawAppState;
 use crate::draw::state::{DrawElement, DrawShapeType, DrawTool, Shape, Stroke};
 use crate::keybinds::DrawAction;
@@ -5,6 +6,7 @@ use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 use ratatui::symbols::Marker;
+use ratatui::text::Span;
 use ratatui::widgets::canvas::{Canvas, Context, Line, Rectangle};
 use ratatui::widgets::{Block, List, ListItem};
 
@@ -51,7 +53,7 @@ pub fn draw_canvas(
     frame: &mut Frame,
     app: &DrawAppState,
     area: Rect,
-    _config: &crate::config::ClinConfig,
+    config: &crate::config::ClinConfig,
 ) {
     let x_bounds = [
         app.viewport.x - 100.0 / app.viewport.zoom,
@@ -155,15 +157,22 @@ pub fn draw_canvas(
         (app.keybinds.display_draw(DrawAction::Quit), "back"),
     ];
     let hint_line = crate::ui::format_keybind_hints(&app.theme, &hints_items);
-    crate::ui::draw_status_bar(
-        frame,
-        status_area,
-        &app.theme,
-        None,
-        hint_line,
-        None,
-        app.seq_matcher.pending_display().as_deref(),
-    );
+    let mut ctx = crate::statusline::StatuslineContext::for_overlay(config, ViewMode::Draw);
+    ctx.area = Some(status_area);
+    ctx.draw = Some(app);
+    ctx.hints = Some(hint_line.spans);
+    if let Some(p) = &app.seq_matcher.pending_display() {
+        ctx.pending = Some(vec![Span::styled(
+            format!("{} ", p),
+            Style::default()
+                .fg(app.theme.highlight_fg)
+                .bg(app.theme.accent),
+        )]);
+    }
+
+    let (left_line, right_line) =
+        crate::statusline::render_footer(&ctx, &config.statusline, ViewMode::Draw, &app.theme);
+    crate::ui::draw_status_bar(frame, status_area, &app.theme, left_line, right_line);
 
     if app.show_shape_selector {
         let hint_line = crate::ui::popup_hint_line(&app.theme, "Enter select · Esc cancel");

@@ -275,6 +275,13 @@ See [COMMAND_PALETTE.md](COMMAND_PALETTE.md) for action details.
 
 ---
 
+## Statusline and Powerline Interaction
+
+Custom statusline text (configured via `[statusline]` section in `config.toml`) interacts with the theme system depending on the `hint_bar_style` setting:
+- **Classic / Accent modes:** Text segments are formatted as plain strings. In `Accent` mode, text segments are tinted with the theme's `accent` color.
+- **Powerline modes:** If `hint_bar_style` is set to `powerline_sharp`, `powerline_rounded`, or `powerline_slanted`, segments separated by ` | ` in statusline templates are automatically converted to colored powerline cells. These cells use a rotating background palette built from the theme's colors: `[accent, folder, tag, warning, success]` (with `highlight_fg` text). Composite variables (like `{hints}`) are pre-rendered with their own styling and transition separators, remaining opaque to powerline splitting.
+
+---
 ## Connections
 
 - [CONFIG_REFERENCE.md](CONFIG_REFERENCE.md) — `[theme]` config section

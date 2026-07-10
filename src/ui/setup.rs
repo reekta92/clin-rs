@@ -272,18 +272,19 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
 
         // Header bar example — adapts to theme.hint_bar_style (powerline separators).
         let header_area = Rect::new(inner.x, inner.y, inner.width, 1);
+        let left_segs = vec![crate::statusline::Segment::Text("Notes".to_string())];
+        let left_line = crate::statusline::line_from_segments(&left_segs, theme, true, false);
+        let right_segs = vec![crate::statusline::Segment::Text(
+            "3 pinned | 5 notes".to_string(),
+        )];
+        let right_line = crate::statusline::line_from_segments(&right_segs, theme, true, true);
         crate::ui::draw_view_title_bar(
             frame,
             header_area,
-            "Notes",
             theme,
+            left_line,
+            Some(right_line),
             None,
-            None,
-            Some(Line::from(vec![
-                Span::styled("3 pinned", Style::default().fg(theme.accent)),
-                Span::raw(" | "),
-                Span::styled("5 notes", Style::default().fg(theme.folder)),
-            ])),
         );
 
         // Footer hint bar example — adapts to theme.hint_bar_style via format_keybind_hints.

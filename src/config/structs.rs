@@ -514,6 +514,32 @@ impl Default for GoalsConfig {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(default)]
+pub struct StatuslineConfig {
+    pub header_left: Option<String>,
+    pub header_right: Option<String>,
+    pub footer_left: Option<String>,
+    pub footer_right: Option<String>,
+    pub list: Option<StatuslineOverride>,
+    pub edit: Option<StatuslineOverride>,
+    pub help: Option<StatuslineOverride>,
+    pub graph: Option<StatuslineOverride>,
+    pub draw: Option<StatuslineOverride>,
+    pub canvas: Option<StatuslineOverride>,
+    pub backup: Option<StatuslineOverride>,
+    pub content_tree: Option<StatuslineOverride>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(default)]
+pub struct StatuslineOverride {
+    pub header_left: Option<String>,
+    pub header_right: Option<String>,
+    pub footer_left: Option<String>,
+    pub footer_right: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[serde(default)]
 pub struct ClinConfig {
@@ -532,6 +558,8 @@ pub struct ClinConfig {
     pub graf: GrafConfig,
     #[serde(default)]
     pub goals: GoalsConfig,
+    #[serde(default)]
+    pub statusline: StatuslineConfig,
 }
 
 /// Graph data-viz colors (node/edge/label). Distinct from

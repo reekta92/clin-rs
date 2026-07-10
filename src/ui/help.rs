@@ -4,7 +4,7 @@ use ratatui::{prelude::*, widgets::*};
 use super::{
     build_tab_spans, draw_status_bar, draw_view_title_bar_with_tabs, format_keybind_hints,
 };
-use crate::app::{App, HelpTab};
+use crate::app::{App, HelpTab, ViewMode};
 use crate::app_theme::AppThemeColors;
 use crate::keybinds::{
     BackupAction, CanvasAction, ContentTreeAction, DrawAction, EditAction, GraphAction, HelpAction,
@@ -120,14 +120,23 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
         app.config.ui.tab_icons_only,
         app.config.ui.icon_mode,
     );
+    let mut ctx = crate::statusline::StatuslineContext::for_view(app, ViewMode::Help);
+    ctx.area = Some(chunks[0]);
+    let (left_line, right_line) = crate::statusline::render_header(
+        &ctx,
+        &app.config.statusline,
+        ViewMode::Help,
+        &app.app_theme,
+    );
     draw_view_title_bar_with_tabs(
         frame,
         chunks[0],
         "Help",
-        tab_spans,
         &app.app_theme,
+        left_line,
+        tab_spans,
+        right_line,
         Some(app.status.as_ref()),
-        None,
     );
 
     let scroll = app.help_scroll;
@@ -208,15 +217,25 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
         (kb.display_help(HelpAction::Close), "close"),
     ];
     let hint = format_keybind_hints(&app.app_theme, &hints_items);
-    draw_status_bar(
-        frame,
-        chunks[2],
+    let mut ctx = crate::statusline::StatuslineContext::for_view(app, ViewMode::Help);
+    ctx.area = Some(chunks[2]);
+    ctx.hints = Some(hint.spans);
+    if let Some(p) = &app.seq_matcher.pending_display() {
+        ctx.pending = Some(vec![Span::styled(
+            format!("{} ", p),
+            Style::default()
+                .fg(app.app_theme.highlight_fg)
+                .bg(app.app_theme.accent),
+        )]);
+    }
+
+    let (left_line, right_line) = crate::statusline::render_footer(
+        &ctx,
+        &app.config.statusline,
+        ViewMode::Help,
         &app.app_theme,
-        None,
-        hint,
-        None,
-        app.seq_matcher.pending_display().as_deref(),
     );
+    draw_status_bar(frame, chunks[2], &app.app_theme, left_line, right_line);
     if app.help_search.active {
         draw_help_search(frame, chunks[1], app);
     }

@@ -1,3 +1,4 @@
+use crate::app::ViewMode;
 use crate::app_theme::AppThemeColors;
 use crate::keybinds::CanvasAction;
 use crate::pinstar::state::PinstarState;
@@ -30,6 +31,7 @@ pub fn draw_pinstar_view(
     state: &mut PinstarState,
     theme: &AppThemeColors,
     area: ratatui::layout::Rect,
+    config: &crate::config::ClinConfig,
 ) {
     let total_area = area;
     let mut area = area;
@@ -650,15 +652,20 @@ pub fn draw_pinstar_view(
             Style::default().fg(theme.muted),
         )])
     };
-    crate::ui::draw_status_bar(
-        frame,
-        hint_area,
-        theme,
-        None,
-        hint_line,
-        None,
-        state.seq_matcher.pending_display().as_deref(),
-    );
+    let mut ctx = crate::statusline::StatuslineContext::for_overlay(config, ViewMode::Canvas);
+    ctx.area = Some(hint_area);
+    ctx.canvas = Some(state);
+    ctx.hints = Some(hint_line.spans);
+    if let Some(p) = &state.seq_matcher.pending_display() {
+        ctx.pending = Some(vec![Span::styled(
+            format!("{} ", p),
+            Style::default().fg(theme.highlight_fg).bg(theme.accent),
+        )]);
+    }
+
+    let (left_line, right_line) =
+        crate::statusline::render_footer(&ctx, &config.statusline, ViewMode::Canvas, theme);
+    crate::ui::draw_status_bar(frame, hint_area, theme, left_line, right_line);
 
     if let Some(menu) = &state.context_menu {
         let menu_width = menu

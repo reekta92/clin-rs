@@ -17,7 +17,9 @@ mod title_bar;
 
 pub use edit_view::draw_edit_view;
 pub use help::*;
-pub(crate) use list_view::{draw_list_view, get_preview_info, list_view_layout, section_rects};
+pub(crate) use list_view::{
+    draw_list_view, get_preview_info, list_detail_line, list_view_layout, section_rects,
+};
 pub use popups::*;
 pub use setup::draw_setup_view;
 pub use title_bar::*;
@@ -72,15 +74,45 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         ViewMode::Setup => draw_setup_view(frame, app),
         ViewMode::Graph => {
             if let Some(graf) = &mut app.graph_state {
-                graf.overlay_render(
-                    frame,
-                    frame.area(),
-                    &app.app_theme,
-                    &app.config,
-                    Some(app.status.as_ref()),
-                );
+                let outer = Layout::default()
+                    .direction(Direction::Vertical)
+                    .constraints([Constraint::Length(1), Constraint::Min(0)])
+                    .split(frame.area());
+
+                {
+                    let guard;
+                    let mut ctx = crate::statusline::StatuslineContext::for_overlay(
+                        &app.config,
+                        ViewMode::Graph,
+                    );
+                    ctx.area = Some(outer[0]);
+                    ctx.app_status = Some(app.status.as_ref());
+                    ctx.vault_path = Some(&app.storage.data_dir);
+                    ctx.date_format = Some(&app.date_format);
+                    if let Some(graph_state) = &graf.graph_state {
+                        guard = graph_state.read();
+                        ctx.graph = Some(&guard);
+                    }
+                    let (left_line, right_line) = crate::statusline::render_header(
+                        &ctx,
+                        &app.config.statusline,
+                        ViewMode::Graph,
+                        &app.app_theme,
+                    );
+                    draw_view_title_bar(
+                        frame,
+                        outer[0],
+                        &app.app_theme,
+                        left_line,
+                        right_line,
+                        Some(app.status.as_ref()),
+                    );
+                }
+
+                graf.overlay_render(frame, outer[1], &app.app_theme, &app.config, None);
             }
         }
+
         ViewMode::Draw => {
             if let Some(draw) = &mut app.draw_state {
                 let outer = Layout::default()
@@ -93,14 +125,28 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     tabs_arr.iter().map(|&(l, g)| (l, Some(g))).collect();
                 let active = crate::draw::render::draw_tool_tab_index(draw.active_tool);
                 let spans = build_tab_spans(&tabs, active, &app.app_theme, false, icon_mode);
+                let mut ctx =
+                    crate::statusline::StatuslineContext::for_overlay(&app.config, ViewMode::Draw);
+                ctx.area = Some(outer[0]);
+                ctx.app_status = Some(app.status.as_ref());
+                ctx.vault_path = Some(&app.storage.data_dir);
+                ctx.date_format = Some(&app.date_format);
+                ctx.draw = Some(draw);
+                let (left_line, right_line) = crate::statusline::render_header(
+                    &ctx,
+                    &app.config.statusline,
+                    ViewMode::Draw,
+                    &app.app_theme,
+                );
                 draw_view_title_bar_with_tabs(
                     frame,
                     outer[0],
                     "Draw",
-                    spans,
                     &app.app_theme,
+                    left_line,
+                    spans,
+                    right_line,
                     Some(app.status.as_ref()),
-                    None,
                 );
                 draw.overlay_render(frame, outer[1], &app.app_theme, &app.config, None);
             }
@@ -111,14 +157,28 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     .direction(Direction::Vertical)
                     .constraints([Constraint::Length(1), Constraint::Min(0)])
                     .split(frame.area());
+                let mut ctx = crate::statusline::StatuslineContext::for_overlay(
+                    &app.config,
+                    ViewMode::Canvas,
+                );
+                ctx.area = Some(outer[0]);
+                ctx.app_status = Some(app.status.as_ref());
+                ctx.vault_path = Some(&app.storage.data_dir);
+                ctx.date_format = Some(&app.date_format);
+                ctx.canvas = Some(canvas);
+                let (left_line, right_line) = crate::statusline::render_header(
+                    &ctx,
+                    &app.config.statusline,
+                    ViewMode::Canvas,
+                    &app.app_theme,
+                );
                 draw_view_title_bar(
                     frame,
                     outer[0],
-                    "Canvas",
                     &app.app_theme,
-                    None,
+                    left_line,
+                    right_line,
                     Some(app.status.as_ref()),
-                    None,
                 );
                 canvas.overlay_render(frame, outer[1], &app.app_theme, &app.config, None);
             }
@@ -133,6 +193,10 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 crate::backup::render::draw_header(
                     frame,
                     outer[0],
+                    &app.config,
+                    Some(app.status.as_ref()),
+                    &app.storage.data_dir,
+                    &app.date_format,
                     backup,
                     app.config.ui.icon_mode,
                 );
@@ -145,15 +209,28 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     .direction(Direction::Vertical)
                     .constraints([Constraint::Length(1), Constraint::Min(0)])
                     .split(frame.area());
-                let title = format!("CONTENT TREE — {}", tree.note_title);
+                let mut ctx = crate::statusline::StatuslineContext::for_overlay(
+                    &app.config,
+                    ViewMode::ContentTree,
+                );
+                ctx.area = Some(outer[0]);
+                ctx.app_status = Some(app.status.as_ref());
+                ctx.vault_path = Some(&app.storage.data_dir);
+                ctx.date_format = Some(&app.date_format);
+                ctx.content_tree = Some(tree);
+                let (left_line, right_line) = crate::statusline::render_header(
+                    &ctx,
+                    &app.config.statusline,
+                    ViewMode::ContentTree,
+                    &app.app_theme,
+                );
                 draw_view_title_bar(
                     frame,
                     outer[0],
-                    &title,
                     &app.app_theme,
-                    None,
+                    left_line,
+                    right_line,
                     Some(app.status.as_ref()),
-                    None,
                 );
                 tree.overlay_render(frame, outer[1], &app.app_theme, &app.config, None);
             }

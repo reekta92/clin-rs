@@ -5,11 +5,10 @@ use ratatui::{prelude::*, widgets::*};
 pub fn draw_view_title_bar(
     frame: &mut Frame,
     area: Rect,
-    title: &str,
     theme: &AppThemeColors,
-    preview_info: Option<PreviewHeaderInfo>,
+    left: Line<'_>,
+    right: Option<Line<'_>>,
     status: Option<&str>,
-    right_text: Option<Line<'_>>,
 ) {
     // Override header when there's an active status notification
     if let Some(st) = status
@@ -29,137 +28,27 @@ pub fn draw_view_title_bar(
         frame.render_widget(bar, area);
         return;
     }
-    let display_text = format!(" {} ", title.to_uppercase());
-    let title_span = Span::styled(
-        display_text,
-        Style::default()
-            .fg(theme.highlight_fg)
-            .bg(theme.heading)
-            .add_modifier(Modifier::BOLD),
-    );
-    let mut spans = vec![title_span];
 
-    // Powerline separator after title
-    match theme.hint_bar_style {
-        crate::config::HintBarStyle::PowerlineSharp
-        | crate::config::HintBarStyle::PowerlineRounded
-        | crate::config::HintBarStyle::PowerlineSlanted => {
-            let sep_char = match theme.hint_bar_style {
-                crate::config::HintBarStyle::PowerlineSharp => "",
-                crate::config::HintBarStyle::PowerlineRounded => "",
-                crate::config::HintBarStyle::PowerlineSlanted => "",
-                _ => unreachable!(),
-            };
-            let sep_style = Style::default()
-                .fg(theme.heading)
-                .bg(theme.title_bar_bg().unwrap_or(Color::Reset));
-            spans.push(Span::styled(sep_char, sep_style));
-        }
-        _ => {}
-    }
-
-    if let Some(info) = preview_info {
-        spans.push(Span::styled("  ", Style::default()));
-        let parts: Vec<&str> = info.path.split('/').collect();
-        for (i, part) in parts.iter().enumerate() {
-            if i > 0 {
-                spans.push(Span::styled(" / ", Style::default().fg(theme.fg)));
-            }
-            spans.push(Span::styled(
-                part.to_string(),
-                Style::default().fg(theme.fg).add_modifier(Modifier::BOLD),
-            ));
-        }
-        spans.push(Span::styled(" ❯ ", Style::default().fg(theme.accent)));
-        spans.push(Span::styled(
-            info.item_name,
-            Style::default()
-                .fg(theme.accent)
-                .add_modifier(Modifier::BOLD),
-        ));
-
-        if info.prev_name.is_some() || info.next_name.is_some() {
-            spans.push(Span::styled("  (", Style::default().fg(theme.fg)));
-            let mut added = false;
-            if let Some(prev) = info.prev_name {
-                spans.push(Span::styled("prev: ", Style::default().fg(theme.fg)));
-                spans.push(Span::styled(prev, Style::default().fg(theme.heading)));
-                added = true;
-            }
-            if let Some(next) = info.next_name {
-                if added {
-                    spans.push(Span::styled(" · ", Style::default().fg(theme.fg)));
-                }
-                spans.push(Span::styled("next: ", Style::default().fg(theme.fg)));
-                spans.push(Span::styled(next, Style::default().fg(theme.heading)));
-            }
-            spans.push(Span::styled(")", Style::default().fg(theme.fg)));
-        }
-    }
-    let is_powerline = matches!(
-        theme.hint_bar_style,
-        crate::config::HintBarStyle::PowerlineSharp
-            | crate::config::HintBarStyle::PowerlineRounded
-            | crate::config::HintBarStyle::PowerlineSlanted
-    );
-
-    let (left_area, right_info) = if let Some(r) = right_text {
-        let (right_width, right_line) = if is_powerline {
-            let text: String = r.spans.iter().map(|s| s.content.as_ref()).collect();
-            let segments: Vec<&str> = text.split(" | ").collect();
-            let bg_colors = [
-                theme.accent,
-                theme.folder,
-                theme.tag,
-                theme.warning,
-                theme.success,
-            ];
-            let sep_char = match theme.hint_bar_style {
-                crate::config::HintBarStyle::PowerlineSharp => "",
-                crate::config::HintBarStyle::PowerlineRounded => "",
-                crate::config::HintBarStyle::PowerlineSlanted => "",
-                _ => unreachable!(),
-            };
-            let mut badge_spans: Vec<Span> = Vec::with_capacity(segments.len() * 2);
-            for (i, segment) in segments.iter().enumerate() {
-                let bg = bg_colors[i % bg_colors.len()];
-                let prev_bg = if i == 0 {
-                    theme.title_bar_bg()
-                } else {
-                    Some(bg_colors[(i - 1) % bg_colors.len()])
-                };
-                let mut sep_style = Style::default().fg(bg);
-                if let Some(p_bg) = prev_bg {
-                    sep_style = sep_style.bg(p_bg);
-                }
-                badge_spans.push(Span::styled(sep_char, sep_style));
-                badge_spans.push(Span::styled(
-                    format!(" {} ", segment.trim()),
-                    Style::default()
-                        .bg(bg)
-                        .fg(theme.highlight_fg)
-                        .add_modifier(Modifier::BOLD),
-                ));
-            }
-            let line = Line::from(badge_spans);
-            (line.width() as u16, Some(line))
-        } else {
-            (r.width() as u16, None)
-        };
+    let (left_area, right_info) = if let Some(r) = right {
         let chunks = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Min(0), Constraint::Length(right_width)])
+            .constraints([Constraint::Min(0), Constraint::Length(r.width() as u16)])
             .split(area);
-        let right_line: Line<'_> = right_line.unwrap_or(r);
-        (chunks[0], Some((chunks[1], right_line)))
+        (chunks[0], Some((chunks[1], r)))
     } else {
         (area, None)
     };
 
-    let left_bar = Paragraph::new(Line::from(spans)).style(theme.title_bar_bg_style());
+    let left_bar = Paragraph::new(left).style(theme.title_bar_bg_style());
     frame.render_widget(left_bar, left_area);
 
     if let Some((r_area, r_text)) = right_info {
+        let is_powerline = matches!(
+            theme.hint_bar_style,
+            crate::config::HintBarStyle::PowerlineSharp
+                | crate::config::HintBarStyle::PowerlineRounded
+                | crate::config::HintBarStyle::PowerlineSlanted
+        );
         if is_powerline {
             let r_bar = Paragraph::new(r_text)
                 .style(theme.hint_line_bg_style())
@@ -182,11 +71,12 @@ pub fn draw_view_title_bar(
 pub fn draw_view_title_bar_with_tabs(
     frame: &mut Frame,
     area: Rect,
-    title: &str,
-    tab_spans: Vec<Span<'static>>,
+    default_title: &str,
     theme: &AppThemeColors,
+    left: Line<'_>,
+    tab_spans: Vec<Span<'static>>,
+    right: Option<Line<'_>>,
     status: Option<&str>,
-    right_text: Option<Line<'_>>,
 ) {
     // Override header when there's an active status notification
     if let Some(st) = status
@@ -208,7 +98,7 @@ pub fn draw_view_title_bar_with_tabs(
     }
     frame.render_widget(Paragraph::new("").style(theme.title_bar_bg_style()), area);
 
-    let tabs_region = title_bar_tabs_region(area, title);
+    let tabs_region = title_bar_tabs_region(area, default_title);
     use unicode_width::UnicodeWidthStr;
     let total: u16 = tab_spans
         .iter()
@@ -223,44 +113,11 @@ pub fn draw_view_title_bar_with_tabs(
         tabs_area,
     );
 
-    let display_text = format!(" {} ", title.to_uppercase());
-    let title_span = Span::styled(
-        display_text,
-        Style::default()
-            .fg(theme.highlight_fg)
-            .bg(theme.heading)
-            .add_modifier(Modifier::BOLD),
-    );
-    let mut title_spans = vec![title_span];
-
-    match theme.hint_bar_style {
-        crate::config::HintBarStyle::PowerlineSharp
-        | crate::config::HintBarStyle::PowerlineRounded
-        | crate::config::HintBarStyle::PowerlineSlanted => {
-            let sep_char = match theme.hint_bar_style {
-                crate::config::HintBarStyle::PowerlineSharp => "",
-                crate::config::HintBarStyle::PowerlineRounded => "",
-                crate::config::HintBarStyle::PowerlineSlanted => "",
-                _ => unreachable!(),
-            };
-            let sep_style = Style::default()
-                .fg(theme.heading)
-                .bg(theme.title_bar_bg().unwrap_or(Color::Reset));
-            title_spans.push(Span::styled(sep_char, sep_style));
-        }
-        _ => {}
-    }
-
-    let title_w = title_spans
-        .iter()
-        .map(|s| s.content.width() as u16)
-        .sum::<u16>()
-        .min(area.width);
+    let title_w = left.width() as u16;
     let title_area = Rect::new(area.x, area.y, title_w, area.height);
-    frame.render_widget(Paragraph::new(Line::from(title_spans)), title_area);
+    frame.render_widget(Paragraph::new(left), title_area);
 
-    // Right-aligned text with hint_bar_style
-    if let Some(r_text) = right_text {
+    if let Some(r_text) = right {
         let is_powerline = matches!(
             theme.hint_bar_style,
             crate::config::HintBarStyle::PowerlineSharp
@@ -269,51 +126,7 @@ pub fn draw_view_title_bar_with_tabs(
         );
 
         if is_powerline {
-            let text: String = r_text.spans.iter().map(|s| s.content.as_ref()).collect();
-            let segments: Vec<&str> = text.split(" | ").collect();
-
-            let bg_colors = [
-                theme.accent,
-                theme.folder,
-                theme.tag,
-                theme.warning,
-                theme.success,
-            ];
-            let sep_char = match theme.hint_bar_style {
-                crate::config::HintBarStyle::PowerlineSharp => "",
-                crate::config::HintBarStyle::PowerlineRounded => "",
-                crate::config::HintBarStyle::PowerlineSlanted => "",
-                _ => unreachable!(),
-            };
-
-            let mut badge_spans: Vec<Span> = Vec::new();
-            for (i, segment) in segments.iter().enumerate() {
-                let bg = bg_colors[i % bg_colors.len()];
-                let prev_bg = if i == 0 {
-                    theme.title_bar_bg()
-                } else {
-                    Some(bg_colors[(i - 1) % bg_colors.len()])
-                };
-
-                let mut sep_style = Style::default().fg(bg);
-                if let Some(p_bg) = prev_bg {
-                    sep_style = sep_style.bg(p_bg);
-                }
-                badge_spans.push(Span::styled(sep_char, sep_style));
-
-                badge_spans.push(Span::styled(
-                    format!(" {} ", segment.trim()),
-                    Style::default()
-                        .bg(bg)
-                        .fg(theme.highlight_fg)
-                        .add_modifier(Modifier::BOLD),
-                ));
-            }
-
-            frame.render_widget(
-                Paragraph::new(Line::from(badge_spans)).alignment(Alignment::Right),
-                area,
-            );
+            frame.render_widget(Paragraph::new(r_text).alignment(Alignment::Right), area);
         } else if theme.hint_bar_style == crate::config::HintBarStyle::Accent {
             frame.render_widget(
                 Paragraph::new(r_text)
@@ -444,4 +257,51 @@ pub fn hit_test_tabs(
         offset = offset.saturating_add(*w).saturating_add(1);
     }
     None
+}
+
+pub fn preview_spans<'a>(info: &PreviewHeaderInfo, theme: &AppThemeColors) -> Vec<Span<'a>> {
+    let mut spans = Vec::new();
+    spans.push(Span::styled("  ", Style::default()));
+    let parts: Vec<&str> = info.path.split('/').collect();
+    for (i, part) in parts.iter().enumerate() {
+        if i > 0 {
+            spans.push(Span::styled(" / ", Style::default().fg(theme.fg)));
+        }
+        spans.push(Span::styled(
+            part.to_string(),
+            Style::default().fg(theme.fg).add_modifier(Modifier::BOLD),
+        ));
+    }
+    spans.push(Span::styled(" ❯ ", Style::default().fg(theme.accent)));
+    spans.push(Span::styled(
+        info.item_name.clone(),
+        Style::default()
+            .fg(theme.accent)
+            .add_modifier(Modifier::BOLD),
+    ));
+
+    if info.prev_name.is_some() || info.next_name.is_some() {
+        spans.push(Span::styled("  (", Style::default().fg(theme.fg)));
+        let mut added = false;
+        if let Some(prev) = &info.prev_name {
+            spans.push(Span::styled("prev: ", Style::default().fg(theme.fg)));
+            spans.push(Span::styled(
+                prev.clone(),
+                Style::default().fg(theme.heading),
+            ));
+            added = true;
+        }
+        if let Some(next) = &info.next_name {
+            if added {
+                spans.push(Span::styled(" · ", Style::default().fg(theme.fg)));
+            }
+            spans.push(Span::styled("next: ", Style::default().fg(theme.fg)));
+            spans.push(Span::styled(
+                next.clone(),
+                Style::default().fg(theme.heading),
+            ));
+        }
+        spans.push(Span::styled(")", Style::default().fg(theme.fg)));
+    }
+    spans
 }

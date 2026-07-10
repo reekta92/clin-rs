@@ -10,11 +10,11 @@ impl crate::overlay::OverlayView for BackupState {
         frame: &mut ratatui::Frame,
         area: ratatui::layout::Rect,
         _theme: &crate::app_theme::AppThemeColors,
-        _config: &crate::config::ClinConfig,
-        _app_status: Option<&str>,
+        config: &crate::config::ClinConfig,
+        app_status: Option<&str>,
     ) {
         self.last_area = Some(area);
-        render::draw_dashboard(frame, self, area);
+        render::draw_dashboard(frame, self, area, config, app_status);
     }
 
     fn overlay_handle_event(

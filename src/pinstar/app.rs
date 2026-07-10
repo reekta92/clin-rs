@@ -10,11 +10,11 @@ impl crate::overlay::OverlayView for PinstarState {
         frame: &mut ratatui::Frame,
         area: ratatui::layout::Rect,
         theme: &crate::app_theme::AppThemeColors,
-        _config: &crate::config::ClinConfig,
+        config: &crate::config::ClinConfig,
         _app_status: Option<&str>,
     ) {
         self.last_area = area;
-        draw_pinstar_view(frame, self, theme, area);
+        draw_pinstar_view(frame, self, theme, area, config);
     }
 
     fn overlay_handle_event(

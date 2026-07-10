@@ -1,3 +1,4 @@
+use crate::app::ViewMode;
 use crate::app_theme::AppThemeColors;
 use crate::content_tree::state::ContentTreeState;
 use crate::keybinds::{ContentTreeAction, Keybinds};
@@ -67,6 +68,8 @@ pub fn draw_content_tree(
     state: &ContentTreeState,
     theme: &AppThemeColors,
     keybinds: &Keybinds,
+    config: &crate::config::ClinConfig,
+    app_status: Option<&str>,
 ) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -235,13 +238,19 @@ pub fn draw_content_tree(
         ),
     ];
     let hint = crate::ui::format_keybind_hints(theme, &hints_items);
-    crate::ui::draw_status_bar(
-        frame,
-        hint_area,
-        theme,
-        None,
-        hint,
-        None,
-        state.seq_matcher.pending_display().as_deref(),
-    );
+    let mut ctx = crate::statusline::StatuslineContext::for_overlay(config, ViewMode::ContentTree);
+    ctx.area = Some(hint_area);
+    ctx.content_tree = Some(state);
+    ctx.app_status = app_status;
+    ctx.hints = Some(hint.spans);
+    if let Some(p) = &state.seq_matcher.pending_display() {
+        ctx.pending = Some(vec![Span::styled(
+            format!("{} ", p),
+            Style::default().fg(theme.highlight_fg).bg(theme.accent),
+        )]);
+    }
+
+    let (left_line, right_line) =
+        crate::statusline::render_footer(&ctx, &config.statusline, ViewMode::ContentTree, theme);
+    crate::ui::draw_status_bar(frame, hint_area, theme, left_line, right_line);
 }

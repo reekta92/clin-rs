@@ -26,6 +26,7 @@ pub mod preview;
 pub mod sanitize;
 pub mod setup;
 pub mod snapshot;
+pub mod statusline;
 pub mod templates;
 pub mod text_edit;
 
