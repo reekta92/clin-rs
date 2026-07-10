@@ -108,7 +108,8 @@ pub fn draw_info_popup(
     popup: &crate::popups::InfoPopup,
     theme: &crate::app_theme::AppThemeColors,
 ) {
-    let hints = crate::ui::format_keybind_hints(theme, &[("Enter/Esc".to_string(), "close")]);
+    let hints =
+        crate::ui::format_keybind_hints_classic(theme, &[("Enter/Esc".to_string(), "close")]);
     let inner = crate::ui::draw_popup_frame(
         frame,
         area,
@@ -747,30 +748,36 @@ pub fn draw_status_bar<'a>(
     }
 }
 
+/// Always renders hints in the classic muted ` · `-joined style, ignoring `hint_bar_style`.
+/// Used by popups so they don't inherit powerline styling.
+pub fn format_keybind_hints_classic<'a>(
+    theme: &'a AppThemeColors,
+    items: &[(String, &'static str)],
+) -> Line<'a> {
+    let mut spans = Vec::new();
+    for (i, (key, action)) in items.iter().enumerate() {
+        if i > 0 {
+            spans.push(Span::styled(" · ", Style::default().fg(theme.muted)));
+        }
+        spans.push(Span::styled(
+            key.clone(),
+            Style::default()
+                .fg(theme.muted)
+                .add_modifier(Modifier::BOLD),
+        ));
+        spans.push(Span::styled(
+            format!(" {}", action),
+            Style::default().fg(theme.muted),
+        ));
+    }
+    Line::from(spans)
+}
 pub fn format_keybind_hints<'a>(
     theme: &'a AppThemeColors,
     items: &[(String, &'static str)],
 ) -> Line<'a> {
     match theme.hint_bar_style {
-        crate::config::HintBarStyle::Classic => {
-            let mut spans = Vec::new();
-            for (i, (key, action)) in items.iter().enumerate() {
-                if i > 0 {
-                    spans.push(Span::styled(" · ", Style::default().fg(theme.muted)));
-                }
-                spans.push(Span::styled(
-                    key.clone(),
-                    Style::default()
-                        .fg(theme.muted)
-                        .add_modifier(Modifier::BOLD),
-                ));
-                spans.push(Span::styled(
-                    format!(" {}", action),
-                    Style::default().fg(theme.muted),
-                ));
-            }
-            Line::from(spans)
-        }
+        crate::config::HintBarStyle::Classic => format_keybind_hints_classic(theme, items),
         crate::config::HintBarStyle::Accent => {
             let mut spans = Vec::new();
             for (i, (key, action)) in items.iter().enumerate() {

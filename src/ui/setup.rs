@@ -294,7 +294,7 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
             ("q".to_string(), "quit"),
             ("?".to_string(), "help"),
         ];
-        let hint_line = crate::ui::format_keybind_hints(theme, &sample_hints);
+        let hint_line = crate::ui::format_keybind_hints_classic(theme, &sample_hints);
         let footer_area = Rect::new(inner.x, inner.bottom().saturating_sub(1), inner.width, 1);
         frame.render_widget(Paragraph::new(hint_line), footer_area);
     }
@@ -420,7 +420,7 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
 }
 
 fn draw_setup_confirm(frame: &mut Frame, area: Rect, theme: &AppThemeColors) {
-    let hints = crate::ui::format_keybind_hints(
+    let hints = crate::ui::format_keybind_hints_classic(
         theme,
         &[
             ("y".to_string(), "save & exit"),
