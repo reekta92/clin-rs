@@ -1362,7 +1362,7 @@ impl crate::popups::ActivePopup {
                         app.select_hint_bar_style();
                     }
                     KeyCode::Down | KeyCode::Char('j') => {
-                        if popup.selected < 4 {
+                        if popup.selected < 3 {
                             popup.selected += 1;
                         }
                         app.popups.active = Some(ActivePopup::HintBarStyle(popup));

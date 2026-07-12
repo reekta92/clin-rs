@@ -259,7 +259,13 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
         draw_help_info_pane(frame, left_area, app.help_tab, theme);
         draw_dim_vline(frame, divider1_area, theme.border);
         draw_dim_vline(frame, divider2_area, theme.border);
-        draw_help_tips_pane(frame, right_area, &app.help_suggestions, &app.keybinds, theme);
+        draw_help_tips_pane(
+            frame,
+            right_area,
+            &app.help_suggestions,
+            &app.keybinds,
+            theme,
+        );
     }
 
     let kb = &app.keybinds;
@@ -1195,19 +1201,19 @@ fn render_tip_body(body: &str, kb: &Keybinds, theme: &AppThemeColors) -> Vec<Spa
             token_type = "brace";
             token_len = 1;
         }
-        if let Some(idx) = next_dbl_backtick {
-            if earliest.map_or(true, |e| idx < e) {
-                earliest = Some(idx);
-                token_type = "backtick";
-                token_len = 2;
-            }
+        if let Some(idx) = next_dbl_backtick
+            && earliest.is_none_or(|e| idx < e)
+        {
+            earliest = Some(idx);
+            token_type = "backtick";
+            token_len = 2;
         }
-        if let Some(idx) = next_star {
-            if earliest.map_or(true, |e| idx < e) {
-                earliest = Some(idx);
-                token_type = "star";
-                token_len = 2;
-            }
+        if let Some(idx) = next_star
+            && earliest.is_none_or(|e| idx < e)
+        {
+            earliest = Some(idx);
+            token_type = "star";
+            token_len = 2;
         }
 
         if let Some(idx) = earliest {
@@ -1227,7 +1233,9 @@ fn render_tip_body(body: &str, kb: &Keybinds, theme: &AppThemeColors) -> Vec<Spa
                         let keybind_display = resolve_tip_key(token, kb);
                         spans.push(Span::styled(
                             keybind_display,
-                            Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+                            Style::default()
+                                .fg(theme.accent)
+                                .add_modifier(Modifier::BOLD),
                         ));
                         remaining = &remaining[end_idx + 1..];
                     } else {
@@ -1243,7 +1251,9 @@ fn render_tip_body(body: &str, kb: &Keybinds, theme: &AppThemeColors) -> Vec<Spa
                         let literal = &remaining[..end_idx];
                         spans.push(Span::styled(
                             literal.to_string(),
-                            Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+                            Style::default()
+                                .fg(theme.accent)
+                                .add_modifier(Modifier::BOLD),
                         ));
                         remaining = &remaining[end_idx + 2..];
                     } else {
@@ -1259,7 +1269,9 @@ fn render_tip_body(body: &str, kb: &Keybinds, theme: &AppThemeColors) -> Vec<Spa
                         let emphasis = &remaining[..end_idx];
                         spans.push(Span::styled(
                             emphasis.to_string(),
-                            Style::default().fg(theme.heading).add_modifier(Modifier::BOLD),
+                            Style::default()
+                                .fg(theme.heading)
+                                .add_modifier(Modifier::BOLD),
                         ));
                         remaining = &remaining[end_idx + 2..];
                     } else {
@@ -1407,11 +1419,18 @@ mod tests {
 
         // Test keybind resolution (list:ToggleSelectMode should resolve to a non-ERR string)
         let spans = render_tip_body("Press {list:ToggleSelectMode} to toggle", &kb, &theme);
-        assert_eq!(spans.len(), 3, "plain / keybind / plain should yield 3 spans");
+        assert_eq!(
+            spans.len(),
+            3,
+            "plain / keybind / plain should yield 3 spans"
+        );
         assert!(spans[0].content.to_string().contains("Press "));
         // Middle span is the resolved keybind (accent colored)
         let key_text = spans[1].content.to_string();
-        assert!(!key_text.contains("[ERR:"), "keybind should resolve successfully, got: {key_text}");
+        assert!(
+            !key_text.contains("[ERR:"),
+            "keybind should resolve successfully, got: {key_text}"
+        );
         assert!(!key_text.is_empty(), "resolved keybind should not be empty");
 
         // Test double-backtick literal
@@ -1427,11 +1446,17 @@ mod tests {
         // Test all three markup types in one body
         let body = "Press {list:CreateNote} for a **new note** in ``Notes``";
         let spans = render_tip_body(body, &kb, &theme);
-        assert!(spans.len() >= 5, "multiple markup types should produce multiple spans");
+        assert!(
+            spans.len() >= 5,
+            "multiple markup types should produce multiple spans"
+        );
 
         // Verify all resolved tokens are present (not ERR)
         for span in &spans {
-            assert!(!span.content.to_string().contains("[ERR:"), "no ERR in any span");
+            assert!(
+                !span.content.to_string().contains("[ERR:"),
+                "no ERR in any span"
+            );
         }
     }
 }

@@ -655,7 +655,7 @@ mod tests {
         app.setup_state = Some(crate::setup::SetupState {
             theme: 4, // gruvbox
             background_solid: true,
-            hint_bar_style: 2, // PowerlineSharp
+            hint_bar_style: 1, // Sharp
             icon_mode: 1,      // Unicode
             keybind_preset: 2, // Vim
             selected: 0,
@@ -668,7 +668,7 @@ mod tests {
         assert_eq!(app.config.ui.background, crate::config::Background::Solid);
         assert_eq!(
             app.config.ui.hint_bar_style,
-            crate::config::HintBarStyle::PowerlineSharp
+            crate::config::HintBarStyle::Sharp
         );
         assert_eq!(app.config.ui.icon_mode, crate::config::IconMode::Unicode);
         assert_eq!(

@@ -124,6 +124,21 @@ impl ClinConfig {
         }
 
         let content = fs::read_to_string(&config_path).context("failed to read config")?;
+        // Check if the original config had hint_bar_style = "accent" (migration scan)
+        let had_accent = {
+            let mut found = false;
+            for line in content.lines() {
+                let trimmed = line.trim();
+                if trimmed.starts_with("hint_bar_style")
+                    && let Some(rhs) = trimmed.split('=').nth(1)
+                    && rhs.trim().trim_matches('"').trim() == "accent"
+                {
+                    found = true;
+                    break;
+                }
+            }
+            found
+        };
 
         // Phase E: Migration (visual.notes_layout -> default_view, and flat graf/list/editor keys to nested namespaces)
         let mut value: toml::Value =
@@ -301,11 +316,13 @@ impl ClinConfig {
             let mut config: ClinConfig =
                 toml::from_str(&migrated_content).context("failed to parse migrated config")?;
             config.normalize_sections();
+            config.accent_hint_migrated = had_accent;
             return Ok(config);
         }
 
         let mut config: ClinConfig = toml::from_str(&content).context("failed to parse config")?;
         config.normalize_sections();
+        config.accent_hint_migrated = had_accent;
         Ok(config)
     }
 
@@ -775,6 +792,11 @@ show_status_bar = false
         assert!(config.list.calendar_enabled);
         // Sanity: a few other shipped defaults still hold.
         assert!(config.list.preview_enabled);
+        // [statusline] section is present but fields are commented → parsed as None.
+        assert!(
+            config.statusline.header_left.is_none(),
+            "statusline fields must be commented in default template (runtime defaults apply)"
+        );
     }
 
     #[test]

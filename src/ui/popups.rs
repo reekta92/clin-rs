@@ -451,10 +451,9 @@ pub fn draw_hint_bar_style_popup(
 
     let options = [
         "Classic",
-        "Accent",
-        "Powerline Sharp",
-        "Powerline Rounded",
-        "Powerline Slanted",
+        "Sharp",
+        "Rounded",
+        "Slanted",
     ];
     let items: Vec<ListItem> = options
         .iter()
@@ -689,13 +688,13 @@ pub fn ext_badge_spans<'a>(
     let b = ext_badge(enabled, theme);
     let mut spans = Vec::new();
     match theme.hint_bar_style {
-        crate::config::HintBarStyle::PowerlineSharp
-        | crate::config::HintBarStyle::PowerlineRounded
-        | crate::config::HintBarStyle::PowerlineSlanted => {
+        crate::config::HintBarStyle::Sharp
+        | crate::config::HintBarStyle::Rounded
+        | crate::config::HintBarStyle::Slanted => {
             let sep_char = match theme.hint_bar_style {
-                crate::config::HintBarStyle::PowerlineSharp => "",
-                crate::config::HintBarStyle::PowerlineRounded => "",
-                crate::config::HintBarStyle::PowerlineSlanted => "",
+                crate::config::HintBarStyle::Sharp => "\u{e0b0}",
+                crate::config::HintBarStyle::Rounded => "\u{e0b4}",
+                crate::config::HintBarStyle::Slanted => "\u{e0bc}",
                 _ => unreachable!(),
             };
             let pwr_bg = b.style.fg.unwrap_or(theme.accent);
@@ -778,32 +777,13 @@ pub fn format_keybind_hints<'a>(
 ) -> Line<'a> {
     match theme.hint_bar_style {
         crate::config::HintBarStyle::Classic => format_keybind_hints_classic(theme, items),
-        crate::config::HintBarStyle::Accent => {
-            let mut spans = Vec::new();
-            for (i, (key, action)) in items.iter().enumerate() {
-                if i > 0 {
-                    spans.push(Span::styled(" · ", Style::default().fg(theme.muted)));
-                }
-                spans.push(Span::styled(
-                    key.clone(),
-                    Style::default()
-                        .fg(theme.accent)
-                        .add_modifier(Modifier::BOLD),
-                ));
-                spans.push(Span::styled(
-                    format!(" {}", action),
-                    Style::default().fg(theme.muted),
-                ));
-            }
-            Line::from(spans)
-        }
-        style @ (crate::config::HintBarStyle::PowerlineSharp
-        | crate::config::HintBarStyle::PowerlineRounded
-        | crate::config::HintBarStyle::PowerlineSlanted) => {
+        style @ (crate::config::HintBarStyle::Sharp
+        | crate::config::HintBarStyle::Rounded
+        | crate::config::HintBarStyle::Slanted) => {
             let sep_char = match style {
-                crate::config::HintBarStyle::PowerlineSharp => "",
-                crate::config::HintBarStyle::PowerlineRounded => "",
-                crate::config::HintBarStyle::PowerlineSlanted => "",
+                crate::config::HintBarStyle::Sharp => "\u{e0b0}",
+                crate::config::HintBarStyle::Rounded => "\u{e0b4}",
+                crate::config::HintBarStyle::Slanted => "\u{e0bc}",
                 _ => unreachable!(),
             };
 

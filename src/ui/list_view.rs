@@ -939,9 +939,9 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     };
     let badge_spans = if matches!(
         app.app_theme.hint_bar_style,
-        crate::config::HintBarStyle::PowerlineSharp
-            | crate::config::HintBarStyle::PowerlineRounded
-            | crate::config::HintBarStyle::PowerlineSlanted
+        crate::config::HintBarStyle::Sharp
+            | crate::config::HintBarStyle::Rounded
+            | crate::config::HintBarStyle::Slanted
     ) {
         crate::ui::ext_badge_spans(
             app.editor.external_editor_enabled,

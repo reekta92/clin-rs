@@ -210,8 +210,7 @@ icon_mode = "nerd"
 # Show only Nerd Font icons (no text) on tab bars (Help, Notes, Backup, Palette).
 tab_icons_only = false
 #
-# Hint bar style ("classic", "accent", "powerline_sharp", "powerline_rounded", "powerline_slanted")
-hint_bar_style = "classic"
+# Hint bar style ("classic", "sharp", "rounded", "slanted")
 
 # Color overrides (hex strings like "#ffffff").
 # accent = "#ff0000"
@@ -224,6 +223,26 @@ hint_bar_style = "classic"
 # tag = "#ffa500"
 # folder = "#00ffff"
 # background_color = "#000000"
+
+
+# ── Statusline ───────────────────────────────────────────────────────────────
+
+# Customize the title bar (header, top) and status bar (footer, bottom) text.
+# Templates interpolate {variables} — e.g. {time}, {word_count}, {note_count}.
+# Unknown variables render literally; use {{ }} for literal braces.
+# Full variable list: docs/CONFIG_REFERENCE.md → "Template Interpolation Variables".
+[statusline]
+# Built-in defaults shown below (commented). Uncomment a line to override.
+# header_left = "{title} {preview}"
+# header_right = ""
+# footer_left = "{pending}{badge}{hints}"
+# footer_right = ""
+
+# Per-view overrides — each sub-table accepts the same four fields:
+#   list, edit, help, graph, draw, canvas, backup, content_tree
+# Example:
+# [statusline.list]
+# footer_right = "{note_count} notes ({selected_count} selected)"
 
 # ── List View ─────────────────────────────────────────────────────────────────
 

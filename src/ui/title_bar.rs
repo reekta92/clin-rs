@@ -45,19 +45,14 @@ pub fn draw_view_title_bar(
     if let Some((r_area, r_text)) = right_info {
         let is_powerline = matches!(
             theme.hint_bar_style,
-            crate::config::HintBarStyle::PowerlineSharp
-                | crate::config::HintBarStyle::PowerlineRounded
-                | crate::config::HintBarStyle::PowerlineSlanted
+            crate::config::HintBarStyle::Sharp
+                | crate::config::HintBarStyle::Rounded
+                | crate::config::HintBarStyle::Slanted
         );
         if is_powerline {
             let r_bar = Paragraph::new(r_text)
                 .style(theme.hint_line_bg_style())
                 .alignment(Alignment::Left);
-            frame.render_widget(r_bar, r_area);
-        } else if theme.hint_bar_style == crate::config::HintBarStyle::Accent {
-            let r_bar = Paragraph::new(r_text)
-                .style(theme.title_bar_bg_style().fg(theme.accent))
-                .alignment(Alignment::Right);
             frame.render_widget(r_bar, r_area);
         } else {
             let r_bar = Paragraph::new(r_text)
@@ -118,25 +113,7 @@ pub fn draw_view_title_bar_with_tabs(
     frame.render_widget(Paragraph::new(left), title_area);
 
     if let Some(r_text) = right {
-        let is_powerline = matches!(
-            theme.hint_bar_style,
-            crate::config::HintBarStyle::PowerlineSharp
-                | crate::config::HintBarStyle::PowerlineRounded
-                | crate::config::HintBarStyle::PowerlineSlanted
-        );
-
-        if is_powerline {
-            frame.render_widget(Paragraph::new(r_text).alignment(Alignment::Right), area);
-        } else if theme.hint_bar_style == crate::config::HintBarStyle::Accent {
-            frame.render_widget(
-                Paragraph::new(r_text)
-                    .style(Style::default().fg(theme.accent))
-                    .alignment(Alignment::Right),
-                area,
-            );
-        } else {
-            frame.render_widget(Paragraph::new(r_text).alignment(Alignment::Right), area);
-        }
+        frame.render_widget(Paragraph::new(r_text).alignment(Alignment::Right), area);
     }
 }
 
@@ -203,9 +180,7 @@ pub fn build_tab_spans(
     let active_style = Style::default()
         .fg(theme.accent)
         .add_modifier(Modifier::BOLD);
-    let inactive_style = Style::default()
-        .fg(theme.muted)
-        .add_modifier(Modifier::BOLD);
+    let inactive_style = Style::default().fg(theme.muted);
     let mut spans = Vec::with_capacity(tabs.len() * 2);
     for (i, (label, glyph)) in tabs.iter().enumerate() {
         if i > 0 {

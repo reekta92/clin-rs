@@ -367,11 +367,14 @@ pub enum PreviewPosition {
 #[serde(rename_all = "snake_case")]
 pub enum HintBarStyle {
     #[default]
+    #[serde(alias = "accent")]
     Classic,
-    Accent,
-    PowerlineSharp,
-    PowerlineRounded,
-    PowerlineSlanted,
+    #[serde(alias = "powerline_sharp")]
+    Sharp,
+    #[serde(alias = "powerline_rounded")]
+    Rounded,
+    #[serde(alias = "powerline_slanted")]
+    Slanted,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]

@@ -34,13 +34,7 @@ pub const SETUP_THEMES: &[&str] = &[
 ];
 pub const SETUP_PRESETS: &[&str] = &["default", "helix", "vim", "emacs"];
 pub const SETUP_ICON_MODES: &[&str] = &["nerd_font", "unicode", "none"];
-pub const SETUP_HINT_STYLES: &[&str] = &[
-    "Classic",
-    "Accent",
-    "Powerline Sharp",
-    "Powerline Rounded",
-    "Powerline Slanted",
-];
+pub const SETUP_HINT_STYLES: &[&str] = &["Classic", "Sharp", "Rounded", "Slanted"];
 
 pub const CLIN_ASCII: &str = "\
  ██████╗██╗     ██╗███╗   ██╗
@@ -67,20 +61,18 @@ pub fn icon_mode_index(m: crate::config::IconMode) -> usize {
 
 pub fn hint_style_at(idx: usize) -> crate::config::HintBarStyle {
     match idx {
-        1 => crate::config::HintBarStyle::Accent,
-        2 => crate::config::HintBarStyle::PowerlineSharp,
-        3 => crate::config::HintBarStyle::PowerlineRounded,
-        4 => crate::config::HintBarStyle::PowerlineSlanted,
+        1 => crate::config::HintBarStyle::Sharp,
+        2 => crate::config::HintBarStyle::Rounded,
+        3 => crate::config::HintBarStyle::Slanted,
         _ => crate::config::HintBarStyle::Classic,
     }
 }
 pub fn hint_style_index(s: crate::config::HintBarStyle) -> usize {
     match s {
         crate::config::HintBarStyle::Classic => 0,
-        crate::config::HintBarStyle::Accent => 1,
-        crate::config::HintBarStyle::PowerlineSharp => 2,
-        crate::config::HintBarStyle::PowerlineRounded => 3,
-        crate::config::HintBarStyle::PowerlineSlanted => 4,
+        crate::config::HintBarStyle::Sharp => 1,
+        crate::config::HintBarStyle::Rounded => 2,
+        crate::config::HintBarStyle::Slanted => 3,
     }
 }
 

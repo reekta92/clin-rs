@@ -235,10 +235,9 @@ impl StatuslineContext<'_> {
             "hint_bar_style" => {
                 let hbs = match self.config.ui.hint_bar_style {
                     crate::config::HintBarStyle::Classic => "classic",
-                    crate::config::HintBarStyle::Accent => "accent",
-                    crate::config::HintBarStyle::PowerlineSharp => "powerline_sharp",
-                    crate::config::HintBarStyle::PowerlineRounded => "powerline_rounded",
-                    crate::config::HintBarStyle::PowerlineSlanted => "powerline_slanted",
+                    crate::config::HintBarStyle::Sharp => "sharp",
+                    crate::config::HintBarStyle::Rounded => "rounded",
+                    crate::config::HintBarStyle::Slanted => "slanted",
                 };
                 Some(hbs.into())
             }
@@ -254,14 +253,14 @@ impl StatuslineContext<'_> {
                 self.app
                     .map_or_else(|| "?".into(), |a| format!("{}", a.help_page + 1).into()),
             ),
-            "help_total_pages" => Some(
-                self.app
-                    .map_or_else(|| "?".into(), |a| {
-                        let rows = a.list.help_text_cache.as_ref().map_or(0, |r| r.len());
-                        let ps = a.help_page_size.max(1) as usize;
-                        format!("{}", rows.div_ceil(ps)).into()
-                    }),
-            ),
+            "help_total_pages" => Some(self.app.map_or_else(
+                || "?".into(),
+                |a| {
+                    let rows = a.list.help_text_cache.as_ref().map_or(0, |r| r.len());
+                    let ps = a.help_page_size.max(1) as usize;
+                    format!("{}", rows.div_ceil(ps)).into()
+                },
+            )),
 
             // Goals
             "goal_words" => Some(
@@ -1096,20 +1095,35 @@ impl StatuslineContext<'_> {
     }
 }
 
+#[allow(unused_assignments)]
 pub fn render_segments<'a>(
     template: &str,
     ctx: &StatuslineContext<'a>,
     _theme: &AppThemeColors,
 ) -> Vec<Segment<'a>> {
     let mut segments = Vec::new();
-    let mut current_text = String::new();
-    let mut chars = template.chars().peekable();
 
+    // Cell assembler state.
+    let mut cur = String::new();
+    let mut cur_has_var = false;
+
+    macro_rules! flush_cell {
+        () => {{
+            let trimmed = cur.trim();
+            if !trimmed.is_empty() {
+                segments.push(Segment::Text(trimmed.to_string()));
+            }
+            cur.clear();
+            cur_has_var = false;
+        }};
+    }
+
+    let mut chars = template.chars().peekable();
     while let Some(c) = chars.next() {
         if c == '{' {
             if chars.peek() == Some(&'{') {
                 chars.next();
-                current_text.push('{');
+                cur.push('{');
             } else {
                 let mut name = String::new();
                 let mut found_close = false;
@@ -1128,77 +1142,77 @@ pub fn render_segments<'a>(
 
                 if found_close {
                     match name.as_str() {
-                        "preview" => {
-                            if !current_text.is_empty() {
-                                segments.push(Segment::Text(std::mem::take(&mut current_text)));
-                            }
-                            if let Some(spans) = &ctx.preview {
-                                segments.push(Segment::Composite(spans.clone()));
-                            }
-                        }
-                        "detail" => {
-                            if !current_text.is_empty() {
-                                segments.push(Segment::Text(std::mem::take(&mut current_text)));
-                            }
-                            if let Some(spans) = &ctx.detail {
-                                segments.push(Segment::CompositeSplittable(spans.clone()));
-                            }
-                        }
-                        "hints" => {
-                            if !current_text.is_empty() {
-                                segments.push(Segment::Text(std::mem::take(&mut current_text)));
-                            }
-                            if let Some(spans) = &ctx.hints {
-                                segments.push(Segment::Composite(spans.clone()));
-                            }
-                        }
-                        "badge" => {
-                            if !current_text.is_empty() {
-                                segments.push(Segment::Text(std::mem::take(&mut current_text)));
-                            }
-                            if let Some(spans) = &ctx.badge {
-                                segments.push(Segment::Composite(spans.clone()));
-                            }
-                        }
-                        "pending" => {
-                            if !current_text.is_empty() {
-                                segments.push(Segment::Text(std::mem::take(&mut current_text)));
-                            }
-                            if let Some(spans) = &ctx.pending {
-                                segments.push(Segment::Composite(spans.clone()));
+                        "preview" | "detail" | "hints" | "badge" | "pending" => {
+                            // Composites are their own segments: flush any pending
+                            // text cell first, then push the composite directly.
+                            flush_cell!();
+                            let spans = match name.as_str() {
+                                "preview" => ctx.preview.clone(),
+                                "detail" => ctx.detail.clone(),
+                                "hints" => ctx.hints.clone(),
+                                "badge" => ctx.badge.clone(),
+                                "pending" => ctx.pending.clone(),
+                                _ => None,
+                            };
+                            if let Some(spans) = spans {
+                                if name == "detail" {
+                                    segments.push(Segment::CompositeSplittable(spans));
+                                } else {
+                                    segments.push(Segment::Composite(spans));
+                                }
                             }
                         }
                         _ => {
+                            // Boundary: a var cell is open and a whitespace run
+                            // separates it from this new var → close the old cell.
+                            if cur_has_var
+                                && cur.chars().last().is_some_and(|ch| ch.is_whitespace())
+                            {
+                                flush_cell!();
+                            }
                             if let Some(val) = ctx.resolve(&name) {
-                                current_text.push_str(&val);
+                                cur.push_str(&val);
+                                cur_has_var = true;
                             } else {
-                                current_text.push('{');
-                                current_text.push_str(&name);
-                                current_text.push('}');
+                                // Unresolved name → literal text (not a var anchor).
+                                cur.push('{');
+                                cur.push_str(&name);
+                                cur.push('}');
                             }
                         }
                     }
                 } else {
-                    current_text.push('{');
-                    current_text.push_str(&name);
+                    // Unclosed '{' → literal.
+                    cur.push('{');
+                    cur.push_str(&name);
                 }
             }
         } else if c == '}' {
             if chars.peek() == Some(&'}') {
                 chars.next();
-                current_text.push('}');
+                cur.push('}');
             } else {
-                current_text.push('}');
+                cur.push('}');
             }
         } else {
-            current_text.push(c);
+            // Detect explicit " | " separator when a var cell is open: it forces a
+            // cell boundary and is consumed (not rendered). Backtrack-safe via clone
+            // (std::str::Chars: Clone; Peekable<I>: Clone when I: Clone).
+            if c == ' ' && cur_has_var && chars.peek() == Some(&'|') {
+                let mut probe = chars.clone();
+                probe.next(); // consume '|'
+                if probe.peek() == Some(&' ') {
+                    chars.next(); // consume '|'
+                    chars.next(); // consume ' '
+                    flush_cell!();
+                    continue;
+                }
+            }
+            cur.push(c);
         }
     }
 
-    if !current_text.is_empty() {
-        segments.push(Segment::Text(current_text));
-    }
-
+    flush_cell!();
     segments
 }
 
@@ -1212,11 +1226,9 @@ pub fn line_from_segments<'a>(
     for seg in segs {
         match seg {
             Segment::Text(text) => {
-                for part in text.split(" | ") {
-                    let trimmed = part.trim();
-                    if !trimmed.is_empty() {
-                        flat.push(FlatSegment::Cell(trimmed.to_string()));
-                    }
+                let trimmed = text.trim();
+                if !trimmed.is_empty() {
+                    flat.push(FlatSegment::Cell(trimmed.to_string()));
                 }
             }
             Segment::Composite(spans) => {
@@ -1238,9 +1250,9 @@ pub fn line_from_segments<'a>(
 
     let is_powerline = matches!(
         theme.hint_bar_style,
-        crate::config::HintBarStyle::PowerlineSharp
-            | crate::config::HintBarStyle::PowerlineRounded
-            | crate::config::HintBarStyle::PowerlineSlanted
+        crate::config::HintBarStyle::Sharp
+            | crate::config::HintBarStyle::Rounded
+            | crate::config::HintBarStyle::Slanted
     );
 
     let flat: Vec<FlatSegment> = if is_powerline {
@@ -1273,25 +1285,25 @@ pub fn line_from_segments<'a>(
 
     if is_powerline {
         let sep_char = match theme.hint_bar_style {
-            crate::config::HintBarStyle::PowerlineSharp => {
+            crate::config::HintBarStyle::Sharp => {
                 if is_right {
-                    ""
+                    "\u{e0b2}"
                 } else {
-                    ""
+                    "\u{e0b0}"
                 }
             }
-            crate::config::HintBarStyle::PowerlineRounded => {
+            crate::config::HintBarStyle::Rounded => {
                 if is_right {
-                    ""
+                    "\u{e0b6}"
                 } else {
-                    ""
+                    "\u{e0b4}"
                 }
             }
-            crate::config::HintBarStyle::PowerlineSlanted => {
+            crate::config::HintBarStyle::Slanted => {
                 if is_right {
-                    ""
+                    "\u{e0be}"
                 } else {
-                    ""
+                    "\u{e0bc}"
                 }
             }
             _ => unreachable!(),
@@ -1404,32 +1416,51 @@ pub fn line_from_segments<'a>(
             }
         }
     } else {
+        let palette = [
+            theme.accent,
+            theme.folder,
+            theme.tag,
+            theme.warning,
+            theme.success,
+        ];
+        // header_left (the title) uses uniform pre-fix styling — no rotation, no separators.
+        let is_header_left = is_header && !is_right;
         let mut cell_idx = 0;
+        let mut prev_was_cell = false;
         for seg in flat {
             match seg {
                 FlatSegment::Cell(text) => {
-                    let style = if is_header && !is_right && cell_idx == 0 {
+                    let style = if is_header_left && cell_idx == 0 {
+                        // Title heading badge (unchanged).
                         Style::default()
                             .fg(theme.highlight_fg)
                             .bg(theme.heading)
                             .add_modifier(Modifier::BOLD)
-                    } else if theme.hint_bar_style == crate::config::HintBarStyle::Accent {
-                        Style::default().fg(theme.accent)
-                    } else {
+                    } else if is_header_left {
+                        // Header-left additional cells: pre-fix uniform color.
                         Style::default().fg(theme.fg)
+                    } else {
+                        // Header-right + footer: rotating palette.
+                        Style::default()
+                            .fg(palette[cell_idx % palette.len()])
+                            .add_modifier(Modifier::BOLD)
                     };
-
-                    let text_to_render = if is_header && !is_right && cell_idx == 0 {
+                    // " · " separators appear only between rotating cells, never in header-left.
+                    if !is_header_left && prev_was_cell {
+                        spans.push(Span::styled(" · ", Style::default().fg(theme.muted)));
+                    }
+                    let text_to_render = if is_header_left && cell_idx == 0 {
                         format!(" {} ", text.trim())
                     } else {
                         text
                     };
-
                     spans.push(Span::styled(text_to_render, style));
                     cell_idx += 1;
+                    prev_was_cell = true;
                 }
                 FlatSegment::Composite(comp_spans) => {
                     spans.extend(comp_spans);
+                    prev_was_cell = false;
                 }
                 FlatSegment::Splittable(_) => unreachable!(),
             }
@@ -1580,6 +1611,15 @@ mod tests {
     use super::*;
     use crate::config::ClinConfig;
 
+    fn text_cells(segs: Vec<Segment>) -> Vec<String> {
+        segs.into_iter()
+            .filter_map(|s| match s {
+                Segment::Text(t) => Some(t),
+                _ => None,
+            })
+            .collect()
+    }
+
     #[test]
     fn test_render_segments_escapes() {
         let config = ClinConfig::default();
@@ -1587,14 +1627,52 @@ mod tests {
         let theme = AppThemeColors::default();
 
         let segs = render_segments("hello {{world}} {view} {invalid_var}", &ctx, &theme);
-        let mut text = String::new();
-        for seg in segs {
-            match seg {
-                Segment::Text(t) => text.push_str(&t),
-                _ => {}
-            }
-        }
-        assert_eq!(text, "hello {world} Notes {invalid_var}");
+        assert_eq!(
+            text_cells(segs),
+            vec![
+                "hello {world} Notes".to_string(),
+                "{invalid_var}".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn test_statusline_per_variable_cells() {
+        let config = ClinConfig::default();
+        let ctx = StatuslineContext::for_overlay(&config, ViewMode::List);
+        let theme = AppThemeColors::default();
+
+        // Each whitespace-separated variable is its own cell.
+        let segs = render_segments("{view} {preset}", &ctx, &theme);
+        assert_eq!(
+            text_cells(segs),
+            vec!["Notes".to_string(), "default".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_statusline_label_glues_to_var() {
+        let config = ClinConfig::default();
+        let ctx = StatuslineContext::for_overlay(&config, ViewMode::List);
+        let theme = AppThemeColors::default();
+
+        // A literal label before a var stays in the same cell.
+        let segs = render_segments("Notes: {view}", &ctx, &theme);
+        assert_eq!(text_cells(segs), vec!["Notes: Notes".to_string()]);
+    }
+
+    #[test]
+    fn test_statusline_pipe_separator() {
+        let config = ClinConfig::default();
+        let ctx = StatuslineContext::for_overlay(&config, ViewMode::List);
+        let theme = AppThemeColors::default();
+
+        // Explicit " | " forces a boundary; the pipe is consumed, not rendered.
+        let segs = render_segments("{view} | {preset}", &ctx, &theme);
+        assert_eq!(
+            text_cells(segs),
+            vec!["Notes".to_string(), "default".to_string()]
+        );
     }
 
     #[test]

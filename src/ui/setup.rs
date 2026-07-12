@@ -274,9 +274,10 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
         let header_area = Rect::new(inner.x, inner.y, inner.width, 1);
         let left_segs = vec![crate::statusline::Segment::Text("Notes".to_string())];
         let left_line = crate::statusline::line_from_segments(&left_segs, theme, true, false);
-        let right_segs = vec![crate::statusline::Segment::Text(
-            "3 pinned | 5 notes".to_string(),
-        )];
+        let right_segs = vec![
+            crate::statusline::Segment::Text("3 pinned".to_string()),
+            crate::statusline::Segment::Text("5 notes".to_string()),
+        ];
         let right_line = crate::statusline::line_from_segments(&right_segs, theme, true, true);
         crate::ui::draw_view_title_bar(
             frame,

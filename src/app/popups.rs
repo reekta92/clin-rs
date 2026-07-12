@@ -590,10 +590,9 @@ template = """
     pub fn begin_hint_bar_style_selection(&mut self) {
         let current_idx = match self.config.ui.hint_bar_style {
             crate::config::HintBarStyle::Classic => 0,
-            crate::config::HintBarStyle::Accent => 1,
-            crate::config::HintBarStyle::PowerlineSharp => 2,
-            crate::config::HintBarStyle::PowerlineRounded => 3,
-            crate::config::HintBarStyle::PowerlineSlanted => 4,
+            crate::config::HintBarStyle::Sharp => 1,
+            crate::config::HintBarStyle::Rounded => 2,
+            crate::config::HintBarStyle::Slanted => 3,
         };
         self.popups.active = Some(crate::popups::ActivePopup::HintBarStyle(
             crate::popups::HintBarStylePopup {
@@ -606,23 +605,17 @@ template = """
         if let Some(crate::popups::ActivePopup::HintBarStyle(popup)) = self.popups.active.take() {
             let style = match popup.selected {
                 0 => crate::config::HintBarStyle::Classic,
-                1 => crate::config::HintBarStyle::Accent,
-                2 => crate::config::HintBarStyle::PowerlineSharp,
-                3 => crate::config::HintBarStyle::PowerlineRounded,
-                _ => crate::config::HintBarStyle::PowerlineSlanted,
+                1 => crate::config::HintBarStyle::Sharp,
+                2 => crate::config::HintBarStyle::Rounded,
+                _ => crate::config::HintBarStyle::Slanted,
             };
             self.config.ui.hint_bar_style = style;
             self.app_theme.hint_bar_style = style;
             let status = match style {
                 crate::config::HintBarStyle::Classic => "Hint bar style: Classic",
-                crate::config::HintBarStyle::Accent => "Hint bar style: Accent",
-                crate::config::HintBarStyle::PowerlineSharp => "Hint bar style: Powerline Sharp",
-                crate::config::HintBarStyle::PowerlineRounded => {
-                    "Hint bar style: Powerline Rounded"
-                }
-                crate::config::HintBarStyle::PowerlineSlanted => {
-                    "Hint bar style: Powerline Slanted"
-                }
+                crate::config::HintBarStyle::Sharp => "Hint bar style: Sharp",
+                crate::config::HintBarStyle::Rounded => "Hint bar style: Rounded",
+                crate::config::HintBarStyle::Slanted => "Hint bar style: Slanted",
             };
             self.set_temporary_status_static(status);
             if let Ok(mut config) = crate::config::ClinConfig::load() {

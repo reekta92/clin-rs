@@ -560,6 +560,8 @@ pub struct ClinConfig {
     pub goals: GoalsConfig,
     #[serde(default)]
     pub statusline: StatuslineConfig,
+    #[serde(skip)]
+    pub accent_hint_migrated: bool,
 }
 
 /// Graph data-viz colors (node/edge/label). Distinct from

@@ -641,6 +641,13 @@ impl App {
         } else if let Some(d) = app.config.list.default_expand_depth {
             app.expand_folders_to_depth(d);
         }
+        if app.config.accent_hint_migrated {
+            app.set_temporary_status(
+                "Hint bar style \u{2018}Accent\u{2019} was removed; using Classic.",
+            );
+            app.config.accent_hint_migrated = false;
+            let _ = app.config.save();
+        }
         Ok(app)
     }
     pub fn reload_config(&mut self) {

@@ -253,10 +253,9 @@ toggle_action!(
     app,
     match app.config.ui.hint_bar_style {
         crate::config::HintBarStyle::Classic => "Classic",
-        crate::config::HintBarStyle::Accent => "Accent",
-        crate::config::HintBarStyle::PowerlineSharp => "Powerline Sharp",
-        crate::config::HintBarStyle::PowerlineRounded => "Powerline Rounded",
-        crate::config::HintBarStyle::PowerlineSlanted => "Powerline Slanted",
+        crate::config::HintBarStyle::Sharp => "Sharp",
+        crate::config::HintBarStyle::Rounded => "Rounded",
+        crate::config::HintBarStyle::Slanted => "Slanted",
     }
 );
 
