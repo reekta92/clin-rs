@@ -449,12 +449,7 @@ pub fn draw_hint_bar_style_popup(
         theme,
     );
 
-    let options = [
-        "Classic",
-        "Sharp",
-        "Rounded",
-        "Slanted",
-    ];
+    let options = ["Classic", "Sharp", "Rounded", "Slanted"];
     let items: Vec<ListItem> = options
         .iter()
         .map(|&opt| ListItem::new(Line::from(Span::raw(opt))))
@@ -775,50 +770,47 @@ pub fn format_keybind_hints<'a>(
     theme: &'a AppThemeColors,
     items: &[(String, &'static str)],
 ) -> Line<'a> {
-    match theme.hint_bar_style {
-        crate::config::HintBarStyle::Classic => format_keybind_hints_classic(theme, items),
-        style @ (crate::config::HintBarStyle::Sharp
-        | crate::config::HintBarStyle::Rounded
-        | crate::config::HintBarStyle::Slanted) => {
-            let sep_char = match style {
-                crate::config::HintBarStyle::Sharp => "\u{e0b0}",
-                crate::config::HintBarStyle::Rounded => "\u{e0b4}",
-                crate::config::HintBarStyle::Slanted => "\u{e0bc}",
-                _ => unreachable!(),
-            };
+    let style = match theme.hint_bar_style {
+        crate::config::HintBarStyle::Classic => crate::config::HintBarStyle::Sharp,
+        s => s,
+    };
+    let sep_char = match style {
+        crate::config::HintBarStyle::Sharp => "\u{e0b0}",
+        crate::config::HintBarStyle::Rounded => "\u{e0b4}",
+        crate::config::HintBarStyle::Slanted => "\u{e0bc}",
+        _ => unreachable!(),
+    };
 
-            let bg_colors = [
-                theme.accent,
-                theme.folder,
-                theme.tag,
-                theme.warning,
-                theme.success,
-            ];
-            let fg = theme.highlight_fg;
-            let mut spans = Vec::new();
+    let bg_colors = [
+        theme.accent,
+        theme.folder,
+        theme.tag,
+        theme.warning,
+        theme.success,
+    ];
+    let fg = theme.highlight_fg;
+    let mut spans = Vec::new();
 
-            for (i, (key, action)) in items.iter().enumerate() {
-                let bg = bg_colors[i % bg_colors.len()];
-                let next_bg = if i == items.len() - 1 {
-                    theme.hint_line_bg()
-                } else {
-                    Some(bg_colors[(i + 1) % bg_colors.len()])
-                };
+    for (i, (key, action)) in items.iter().enumerate() {
+        let bg = bg_colors[i % bg_colors.len()];
+        let next_bg = if i == items.len() - 1 {
+            theme.hint_line_bg()
+        } else {
+            Some(bg_colors[(i + 1) % bg_colors.len()])
+        };
 
-                spans.push(Span::styled(
-                    format!(" {} {} ", key, action),
-                    Style::default().bg(bg).fg(fg).add_modifier(Modifier::BOLD),
-                ));
+        spans.push(Span::styled(
+            format!(" {} {} ", key, action),
+            Style::default().bg(bg).fg(fg).add_modifier(Modifier::BOLD),
+        ));
 
-                let mut sep_style = Style::default().fg(bg);
-                if let Some(n_bg) = next_bg {
-                    sep_style = sep_style.bg(n_bg);
-                }
-                spans.push(Span::styled(sep_char, sep_style));
-            }
-            Line::from(spans)
+        let mut sep_style = Style::default().fg(bg);
+        if let Some(n_bg) = next_bg {
+            sep_style = sep_style.bg(n_bg);
         }
+        spans.push(Span::styled(sep_char, sep_style));
     }
+    Line::from(spans)
 }
 
 pub fn draw_popup_footer(frame: &mut Frame, area: Rect, theme: &AppThemeColors, hints: &Line<'_>) {
