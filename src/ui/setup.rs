@@ -293,11 +293,13 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
             ("j/k".to_string(), "navigate"),
             ("Enter".to_string(), "select"),
             ("q".to_string(), "quit"),
-            ("?".to_string(), "help"),
         ];
-        let hint_line = crate::ui::format_keybind_hints_classic(theme, &sample_hints);
+        let hint_line = crate::ui::format_keybind_hints(theme, &sample_hints);
         let footer_area = Rect::new(inner.x, inner.bottom().saturating_sub(1), inner.width, 1);
-        frame.render_widget(Paragraph::new(hint_line), footer_area);
+        frame.render_widget(
+            Paragraph::new(hint_line).style(theme.hint_line_bg_style()),
+            footer_area,
+        );
     }
 
     fn draw_preview_icons(

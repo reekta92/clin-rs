@@ -449,12 +449,7 @@ pub fn draw_hint_bar_style_popup(
         theme,
     );
 
-    let options = [
-        "Classic",
-        "Sharp",
-        "Rounded",
-        "Slanted",
-    ];
+    let options = ["Classic", "Sharp", "Rounded", "Slanted"];
     let items: Vec<ListItem> = options
         .iter()
         .map(|&opt| ListItem::new(Line::from(Span::raw(opt))))
@@ -761,7 +756,7 @@ pub fn format_keybind_hints_classic<'a>(
         spans.push(Span::styled(
             key.clone(),
             Style::default()
-                .fg(theme.muted)
+                .fg(theme.accent)
                 .add_modifier(Modifier::BOLD),
         ));
         spans.push(Span::styled(
@@ -1120,4 +1115,30 @@ pub fn draw_subnotes_popup(
             .style(theme.bg_style()),
     );
     frame.render_widget(&content_input, edit_chunks[1]);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::style::Modifier;
+
+    fn has_mod(st: Style, m: Modifier) -> bool {
+        st.add_modifier.contains(m)
+    }
+
+    #[test]
+    fn classic_keybind_hints_pop_key_color() {
+        let theme = AppThemeColors::default();
+        let line = format_keybind_hints_classic(&theme, &[("j/k".into(), "nav")]);
+        let key_span = &line.spans[0];
+        assert_eq!(
+            key_span.style.fg,
+            Some(theme.accent),
+            "keybind key fg should be accent color"
+        );
+        assert!(
+            has_mod(key_span.style, Modifier::BOLD),
+            "keybind key should be bold"
+        );
+    }
 }
