@@ -80,7 +80,7 @@ pub fn draw_ui(
     }
 
     if let Some(ref msg) = state.config_reload_msg {
-        draw_reload_notification(frame, area, msg, &colors);
+        draw_reload_notification(frame, area, msg, &colors, theme);
     }
 }
 
@@ -220,9 +220,7 @@ fn draw_search(
             let is_selected = i == state.search_selected;
             let style = if is_selected {
                 ratatui::style::Style::default()
-                    .fg(colors
-                        .background_color
-                        .unwrap_or(ratatui::style::Color::Black))
+                    .fg(colors.background_color.unwrap_or(colors.label_color))
                     .bg(colors
                         .node_colors
                         .first()
@@ -256,6 +254,7 @@ fn draw_reload_notification(
     area: Rect,
     msg: &str,
     colors: &crate::config::ThemeColors,
+    theme: &crate::app_theme::AppThemeColors,
 ) {
     let width = (msg.len() as u16 + 4).min(area.width);
     let height = 3u16;
@@ -266,7 +265,7 @@ fn draw_reload_notification(
 
     let is_error = msg.starts_with("Config error");
     let border_color = if is_error {
-        ratatui::style::Color::Red
+        theme.destructive
     } else {
         colors.border_color
     };

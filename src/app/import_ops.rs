@@ -1,6 +1,5 @@
 use super::*;
 use crate::popups::*;
-use ratatui_textarea::TextArea;
 
 impl App {
     pub fn enqueue_backup(&self, message: impl Into<String>) {
@@ -28,9 +27,7 @@ impl App {
             ImportSource::Clipboard => "Clipboard - Esc cancel, Enter import",
         };
 
-        let mut input = TextArea::default();
-        input.set_cursor_line_style(ratatui::style::Style::default());
-        input.set_style(self.app_theme.bg_style());
+        let mut input = crate::ui::make_popup_textarea(&self.app_theme, "");
         input.set_block(
             ratatui::widgets::Block::default()
                 .style(self.app_theme.bg_style())

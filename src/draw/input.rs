@@ -176,8 +176,7 @@ fn handle_mouse(
             let header_y = area.y.saturating_sub(1);
             if ev.row == header_y {
                 let tabs_arr = crate::draw::render::draw_tool_tabs(icon_mode);
-                let tabs: Vec<(&str, Option<&str>)> =
-                    tabs_arr.iter().map(|&(l, g)| (l, Some(g))).collect();
+                let tabs = crate::ui::tab_vec_from_array(&tabs_arr);
                 let region = crate::ui::title_bar_tabs_region(area, "Draw");
                 if let Some(i) = crate::ui::hit_test_tabs(
                     &tabs, area.x, area.width, region.x, ev.column, false, icon_mode,

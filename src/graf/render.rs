@@ -29,7 +29,7 @@ fn link_count_color(count: usize, max_count: usize, colors: &[Color]) -> Color {
     if max_count == 0 {
         return colors.first().copied().unwrap_or(Color::Gray);
     }
-    let idx = (count as f64 / max_count as f64 * (colors.len() - 1) as f64) as usize;
+    let idx = (count as f64 / max_count as f64 * colors.len().saturating_sub(1) as f64) as usize;
     colors.get(idx).copied().unwrap_or(Color::Gray)
 }
 

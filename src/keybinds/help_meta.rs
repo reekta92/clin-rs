@@ -716,53 +716,41 @@ mod tests {
     use super::*;
     use strum::IntoEnumIterator;
 
+    macro_rules! assert_meta_nonempty {
+        ($a:ty, $f:path) => {
+            for a in <$a>::iter() {
+                let m = $f(a);
+                assert!(!m.group.is_empty() && !m.description.is_empty(), "{:?}", a);
+            }
+        };
+    }
+
     #[test]
     fn list_meta_nonempty() {
-        for a in ListAction::iter() {
-            let m = list_action_meta(a);
-            assert!(!m.group.is_empty() && !m.description.is_empty(), "{:?}", a);
-        }
+        assert_meta_nonempty!(ListAction, list_action_meta);
     }
     #[test]
     fn edit_meta_nonempty() {
-        for a in EditAction::iter() {
-            let m = edit_action_meta(a);
-            assert!(!m.group.is_empty() && !m.description.is_empty(), "{:?}", a);
-        }
+        assert_meta_nonempty!(EditAction, edit_action_meta);
     }
     #[test]
     fn graph_meta_nonempty() {
-        for a in GraphAction::iter() {
-            let m = graph_action_meta(a);
-            assert!(!m.group.is_empty() && !m.description.is_empty(), "{:?}", a);
-        }
+        assert_meta_nonempty!(GraphAction, graph_action_meta);
     }
     #[test]
     fn draw_meta_nonempty() {
-        for a in DrawAction::iter() {
-            let m = draw_action_meta(a);
-            assert!(!m.group.is_empty() && !m.description.is_empty(), "{:?}", a);
-        }
+        assert_meta_nonempty!(DrawAction, draw_action_meta);
     }
     #[test]
     fn canvas_meta_nonempty() {
-        for a in CanvasAction::iter() {
-            let m = canvas_action_meta(a);
-            assert!(!m.group.is_empty() && !m.description.is_empty(), "{:?}", a);
-        }
+        assert_meta_nonempty!(CanvasAction, canvas_action_meta);
     }
     #[test]
     fn backup_meta_nonempty() {
-        for a in BackupAction::iter() {
-            let m = backup_action_meta(a);
-            assert!(!m.group.is_empty() && !m.description.is_empty(), "{:?}", a);
-        }
+        assert_meta_nonempty!(BackupAction, backup_action_meta);
     }
     #[test]
     fn ct_meta_nonempty() {
-        for a in ContentTreeAction::iter() {
-            let m = content_tree_action_meta(a);
-            assert!(!m.group.is_empty() && !m.description.is_empty(), "{:?}", a);
-        }
+        assert_meta_nonempty!(ContentTreeAction, content_tree_action_meta);
     }
 }

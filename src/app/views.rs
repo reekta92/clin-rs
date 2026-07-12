@@ -1,7 +1,6 @@
 use super::*;
 use crate::list_view::*;
 use crate::popups::*;
-use ratatui_textarea::TextArea;
 use std::borrow::Cow;
 
 impl App {
@@ -104,10 +103,7 @@ impl App {
     }
 
     pub fn open_backup_view(&mut self) {
-        let vault_path = self
-            .config
-            .effective_storage_path()
-            .unwrap_or_else(|_| std::path::PathBuf::from("."));
+        let vault_path = crate::config::vault_path_or_dot(&self.config);
         let config = &self.config;
 
         self.backup_state = Some(crate::backup::state::BackupState::new(
@@ -217,9 +213,7 @@ impl App {
         } else {
             folder
         };
-        let mut input = TextArea::default();
-        input.set_cursor_line_style(ratatui::style::Style::default());
-        input.set_style(self.app_theme.bg_style());
+        let mut input = crate::ui::make_popup_textarea(&self.app_theme, "");
         input.set_block(
             ratatui::widgets::Block::default()
                 .style(self.app_theme.bg_style())
@@ -247,9 +241,7 @@ impl App {
         } else {
             folder
         };
-        let mut input = TextArea::default();
-        input.set_cursor_line_style(ratatui::style::Style::default());
-        input.set_style(self.app_theme.bg_style());
+        let mut input = crate::ui::make_popup_textarea(&self.app_theme, "");
         input.set_block(
             ratatui::widgets::Block::default()
                 .style(self.app_theme.bg_style())

@@ -1,7 +1,6 @@
 use super::*;
 use crate::list_view::*;
 use crate::popups::*;
-use ratatui_textarea::TextArea;
 
 impl App {
     /// In grid layout, cycle between Vault, Pinned, and Smart tabs.
@@ -31,10 +30,7 @@ impl App {
     }
 
     pub fn begin_search(&mut self) {
-        let mut input = TextArea::default();
-        input.set_style(self.app_theme.bg_style());
-        input.set_cursor_line_style(Style::default());
-        input.set_placeholder_text("Search notes...");
+        let input = crate::ui::make_popup_textarea(&self.app_theme, "Search notes...");
 
         self.popups.active = Some(crate::popups::ActivePopup::Search(SearchPopup {
             input,
@@ -206,11 +202,7 @@ impl App {
                     .filter(|(_, line)| line.to_lowercase().contains(&grep_query))
                 {
                     let trimmed = line.trim();
-                    let snippet: String = if trimmed.chars().count() > 56 {
-                        trimmed.chars().take(56).collect::<String>() + "…"
-                    } else {
-                        trimmed.to_string()
-                    };
+                    let snippet = crate::ui::truncate_with_ellipsis(trimmed, 56);
                     grep_results.push(format!("  L{}: {}", line_no + 1, snippet));
                     grep_result_indices.push(note_idx);
                     grep_is_header.push(false);
@@ -392,7 +384,11 @@ impl App {
         let len = self.list.visual_list.len();
         if is_grid {
             if len > 0 {
-                self.list.visual_index = (self.list.visual_index + 1).min(len - 1);
+                self.list.visual_index = self
+                    .list
+                    .visual_index
+                    .saturating_add(1)
+                    .min(len.saturating_sub(1));
             }
             self.request_preview_update();
         } else {

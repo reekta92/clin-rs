@@ -110,10 +110,30 @@ fn worker_loop(
 /// `perform`. Config is read per job (not cached) so runtime changes made in
 /// the Backup view's settings are picked up.
 fn run_backup(git_lock: &Arc<Mutex<()>>, status: &Arc<Mutex<Option<String>>>, message: &str) {
-    let config = ClinConfig::load().unwrap_or_default();
-    let vault_path = config
-        .effective_storage_path()
-        .unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let config = match ClinConfig::load() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!(
+                "{}",
+                crate::console::error(&format!("backup skipped: config load failed: {e}"))
+            );
+            *status.lock() = Some("backup skipped: config unreadable".to_string());
+            return;
+        }
+    };
+    let vault_path = match config.effective_storage_path() {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!(
+                "{}",
+                crate::console::error(&format!(
+                    "backup skipped: vault path resolution failed: {e}"
+                ))
+            );
+            *status.lock() = Some("backup skipped: vault path invalid".to_string());
+            return;
+        }
+    };
     perform(git_lock, status, &vault_path, &config.backup, message);
 }
 
@@ -134,8 +154,10 @@ pub(crate) fn perform(
     let result = (|| -> anyhow::Result<String> {
         let _guard = git_lock.lock();
         let git_ops = GitOps::init(vault_path)?;
-        if !git_ops.has_changes().unwrap_or(false) {
-            return Ok(String::new());
+        match git_ops.has_changes() {
+            Ok(true) => {}
+            Ok(false) => return Ok(String::new()),
+            Err(e) => return Err(anyhow::anyhow!("backup skipped: status check failed: {e}")),
         }
         git_ops.add_all()?;
         git_ops.commit(message)?;
@@ -270,5 +292,22 @@ mod tests {
             received.is_ok(),
             "worker should signal shutdown: {received:?}"
         );
+    }
+
+    #[test]
+    fn test_run_backup_corrupt_config() {
+        let _guard = crate::config::CONFIG_TEST_MUTEX.lock();
+
+        let tmp = tempdir().expect("tempdir");
+        let corrupt_config = tmp.path().join("config.toml");
+        fs::write(&corrupt_config, "invalid toml [[ [[]").expect("write");
+        crate::config::set_config_path_override(corrupt_config);
+
+        let (git_lock, status) = locks();
+        run_backup(&git_lock, &status, "Test auto commit");
+
+        let status_val = status.lock().clone();
+        assert!(status_val.is_some());
+        assert_eq!(status_val.unwrap(), "backup skipped: config unreadable");
     }
 }

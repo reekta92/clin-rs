@@ -26,6 +26,83 @@ pub fn handle_popup_text_input(
     true
 }
 
+pub fn dismiss_popup_on_outside_click(
+    app: &mut crate::app::App,
+    mouse: &crossterm::event::MouseEvent,
+    area: Rect,
+) -> bool {
+    if mouse.kind == crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left)
+        && !contains_cell(area, mouse.column, mouse.row)
+    {
+        app.popups.active = None;
+        return true;
+    }
+    false
+}
+
+pub fn hit_test_list_row(mouse_row: u16, list_top_y: u16, len: usize) -> Option<usize> {
+    if len > 0 {
+        let row = mouse_row.saturating_sub(list_top_y) as usize;
+        Some(row.min(len.saturating_sub(1)))
+    } else {
+        None
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SelListAction {
+    Up,
+    Down,
+    Confirm,
+    Cancel,
+    Other,
+}
+
+pub(crate) fn route_selection_list(
+    key: &KeyEvent,
+    kb: &Keybinds,
+    selected: &mut usize,
+    max: usize,
+) -> SelListAction {
+    if kb.matches_list(crate::keybinds::ListAction::Confirm, key) {
+        SelListAction::Confirm
+    } else if crate::events::is_cancel_popup(kb, key, false) {
+        SelListAction::Cancel
+    } else if key.code == KeyCode::Up || key.code == KeyCode::Char('k') {
+        *selected = selected.saturating_sub(1);
+        SelListAction::Up
+    } else if key.code == KeyCode::Down || key.code == KeyCode::Char('j') {
+        if *selected < max {
+            *selected += 1;
+        }
+        SelListAction::Down
+    } else {
+        SelListAction::Other
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TextInputPopupAction {
+    Cancel,
+    Submit,
+    Edited,
+}
+
+pub(crate) fn route_text_input_popup(
+    key: &KeyEvent,
+    kb: &Keybinds,
+    input: &mut TextArea<'static>,
+) -> TextInputPopupAction {
+    if is_cancel_popup(kb, key, true) {
+        TextInputPopupAction::Cancel
+    } else if key.code == KeyCode::Enter {
+        TextInputPopupAction::Submit
+    } else {
+        handle_popup_text_input(*key, input, kb);
+        TextInputPopupAction::Edited
+    }
+}
+
 pub fn move_textarea_cursor_to_mouse(
     textarea: &mut TextArea,
     body_inner: Rect,
@@ -328,38 +405,41 @@ impl crate::popups::ActivePopup {
         use crate::popups::ActivePopup;
         match self {
             ActivePopup::CreateNote(mut popup, format) => {
-                if crate::events::is_cancel_popup(&app.keybinds, &key, true) {
-                    // close: drop
-                } else if key.code == KeyCode::Enter {
-                    app.popups.active = Some(ActivePopup::CreateNote(popup, format));
-                    app.confirm_create_note();
-                } else {
-                    crate::events::handle_popup_text_input(key, &mut popup.input, &app.keybinds);
-                    app.popups.active = Some(ActivePopup::CreateNote(popup, format));
+                match route_text_input_popup(&key, &app.keybinds, &mut popup.input) {
+                    TextInputPopupAction::Cancel => {}
+                    TextInputPopupAction::Submit => {
+                        app.popups.active = Some(ActivePopup::CreateNote(popup, format));
+                        app.confirm_create_note();
+                    }
+                    TextInputPopupAction::Edited => {
+                        app.popups.active = Some(ActivePopup::CreateNote(popup, format));
+                    }
                 }
                 true
             }
             ActivePopup::Import(mut popup) => {
-                if crate::events::is_cancel_popup(&app.keybinds, &key, true) {
-                    // drop
-                } else if key.code == KeyCode::Enter {
-                    app.popups.active = Some(ActivePopup::Import(popup));
-                    app.confirm_import();
-                } else {
-                    crate::events::handle_popup_text_input(key, &mut popup.input, &app.keybinds);
-                    app.popups.active = Some(ActivePopup::Import(popup));
+                match route_text_input_popup(&key, &app.keybinds, &mut popup.input) {
+                    TextInputPopupAction::Cancel => {}
+                    TextInputPopupAction::Submit => {
+                        app.popups.active = Some(ActivePopup::Import(popup));
+                        app.confirm_import();
+                    }
+                    TextInputPopupAction::Edited => {
+                        app.popups.active = Some(ActivePopup::Import(popup));
+                    }
                 }
                 true
             }
             ActivePopup::Folder(mut popup) => {
-                if crate::events::is_cancel_popup(&app.keybinds, &key, true) {
-                    // drop
-                } else if key.code == KeyCode::Enter {
-                    app.popups.active = Some(ActivePopup::Folder(popup));
-                    app.confirm_folder_popup();
-                } else {
-                    crate::events::handle_popup_text_input(key, &mut popup.input, &app.keybinds);
-                    app.popups.active = Some(ActivePopup::Folder(popup));
+                match route_text_input_popup(&key, &app.keybinds, &mut popup.input) {
+                    TextInputPopupAction::Cancel => {}
+                    TextInputPopupAction::Submit => {
+                        app.popups.active = Some(ActivePopup::Folder(popup));
+                        app.confirm_folder_popup();
+                    }
+                    TextInputPopupAction::Edited => {
+                        app.popups.active = Some(ActivePopup::Folder(popup));
+                    }
                 }
                 true
             }
@@ -490,14 +570,15 @@ impl crate::popups::ActivePopup {
                 true
             }
             ActivePopup::Goals(mut popup) => {
-                if crate::events::is_cancel_popup(&app.keybinds, &key, true) {
-                    // drop
-                } else if key.code == KeyCode::Enter {
-                    app.popups.active = Some(ActivePopup::Goals(popup));
-                    app.confirm_goals_popup();
-                } else {
-                    crate::events::handle_popup_text_input(key, &mut popup.input, &app.keybinds);
-                    app.popups.active = Some(ActivePopup::Goals(popup));
+                match route_text_input_popup(&key, &app.keybinds, &mut popup.input) {
+                    TextInputPopupAction::Cancel => {}
+                    TextInputPopupAction::Submit => {
+                        app.popups.active = Some(ActivePopup::Goals(popup));
+                        app.confirm_goals_popup();
+                    }
+                    TextInputPopupAction::Edited => {
+                        app.popups.active = Some(ActivePopup::Goals(popup));
+                    }
                 }
                 true
             }
@@ -543,18 +624,10 @@ impl crate::popups::ActivePopup {
                         updated_at: now_unix_secs(),
                     };
                     popup.subnotes.push(new_subnote);
-                    popup.selected = popup.subnotes.len() - 1;
-                    popup.title_input = TextArea::default();
-                    popup
-                        .title_input
-                        .set_cursor_line_style(ratatui::style::Style::default());
-                    popup.title_input.set_style(app.app_theme.bg_style());
+                    popup.selected = popup.subnotes.len().saturating_sub(1);
+                    popup.title_input = crate::ui::make_popup_textarea(&app.app_theme, "");
                     popup.title_input.insert_str("New Note");
-                    popup.content_input = TextArea::default();
-                    popup
-                        .content_input
-                        .set_cursor_line_style(ratatui::style::Style::default());
-                    popup.content_input.set_style(app.app_theme.bg_style());
+                    popup.content_input = crate::ui::make_popup_textarea(&app.app_theme, "");
                     popup.is_dirty = true;
                     popup.focus = crate::popups::SubnotesFocus::EditTitle;
                     app.popups.active = Some(ActivePopup::Subnotes(popup));
@@ -579,19 +652,13 @@ impl crate::popups::ActivePopup {
                                     }
                                 }
                                 popup.selected = popup.selected.saturating_sub(1);
-                                popup.title_input = TextArea::default();
-                                popup
-                                    .title_input
-                                    .set_cursor_line_style(ratatui::style::Style::default());
-                                popup.title_input.set_style(app.app_theme.bg_style());
+                                popup.title_input =
+                                    crate::ui::make_popup_textarea(&app.app_theme, "");
                                 popup
                                     .title_input
                                     .insert_str(&popup.subnotes[popup.selected].title);
-                                popup.content_input = TextArea::default();
-                                popup
-                                    .content_input
-                                    .set_cursor_line_style(ratatui::style::Style::default());
-                                popup.content_input.set_style(app.app_theme.bg_style());
+                                popup.content_input =
+                                    crate::ui::make_popup_textarea(&app.app_theme, "");
                                 popup
                                     .content_input
                                     .insert_str(&popup.subnotes[popup.selected].content);
@@ -612,20 +679,17 @@ impl crate::popups::ActivePopup {
                                         popup.is_dirty = true;
                                     }
                                 }
-                                popup.selected = (popup.selected + 1).min(popup.subnotes.len() - 1);
-                                popup.title_input = TextArea::default();
-                                popup
-                                    .title_input
-                                    .set_cursor_line_style(ratatui::style::Style::default());
-                                popup.title_input.set_style(app.app_theme.bg_style());
+                                popup.selected = popup
+                                    .selected
+                                    .saturating_add(1)
+                                    .min(popup.subnotes.len().saturating_sub(1));
+                                popup.title_input =
+                                    crate::ui::make_popup_textarea(&app.app_theme, "");
                                 popup
                                     .title_input
                                     .insert_str(&popup.subnotes[popup.selected].title);
-                                popup.content_input = TextArea::default();
-                                popup
-                                    .content_input
-                                    .set_cursor_line_style(ratatui::style::Style::default());
-                                popup.content_input.set_style(app.app_theme.bg_style());
+                                popup.content_input =
+                                    crate::ui::make_popup_textarea(&app.app_theme, "");
                                 popup
                                     .content_input
                                     .insert_str(&popup.subnotes[popup.selected].content);
@@ -653,18 +717,11 @@ impl crate::popups::ActivePopup {
                                 updated_at: now_unix_secs(),
                             };
                             popup.subnotes.push(new_subnote);
-                            popup.selected = popup.subnotes.len() - 1;
-                            popup.title_input = TextArea::default();
-                            popup
-                                .title_input
-                                .set_cursor_line_style(ratatui::style::Style::default());
-                            popup.title_input.set_style(app.app_theme.bg_style());
+                            popup.selected = popup.subnotes.len().saturating_sub(1);
+                            popup.title_input = crate::ui::make_popup_textarea(&app.app_theme, "");
                             popup.title_input.insert_str("New Note");
-                            popup.content_input = TextArea::default();
-                            popup
-                                .content_input
-                                .set_cursor_line_style(ratatui::style::Style::default());
-                            popup.content_input.set_style(app.app_theme.bg_style());
+                            popup.content_input =
+                                crate::ui::make_popup_textarea(&app.app_theme, "");
                             popup.is_dirty = true;
                             popup.focus = crate::popups::SubnotesFocus::EditTitle;
                             app.popups.active = Some(ActivePopup::Subnotes(popup));
@@ -675,16 +732,10 @@ impl crate::popups::ActivePopup {
                                 if popup.selected >= popup.subnotes.len() {
                                     popup.selected = popup.subnotes.len().saturating_sub(1);
                                 }
-                                popup.title_input = TextArea::default();
-                                popup
-                                    .title_input
-                                    .set_cursor_line_style(ratatui::style::Style::default());
-                                popup.title_input.set_style(app.app_theme.bg_style());
-                                popup.content_input = TextArea::default();
-                                popup
-                                    .content_input
-                                    .set_cursor_line_style(ratatui::style::Style::default());
-                                popup.content_input.set_style(app.app_theme.bg_style());
+                                popup.title_input =
+                                    crate::ui::make_popup_textarea(&app.app_theme, "");
+                                popup.content_input =
+                                    crate::ui::make_popup_textarea(&app.app_theme, "");
                                 if !popup.subnotes.is_empty() {
                                     popup
                                         .title_input
@@ -792,17 +843,15 @@ impl crate::popups::ActivePopup {
                 true
             }
             ActivePopup::NoteRename(mut popup) => {
-                if crate::events::is_cancel_popup(&app.keybinds, &key, true) {
-                    // drop
-                } else if key.code == KeyCode::Enter {
-                    app.popups.active = Some(ActivePopup::NoteRename(popup));
-                    app.confirm_rename_note();
-                } else {
-                    if !crate::text_edit::apply_text_shortcuts(&app.keybinds, &mut popup.input, key)
-                    {
-                        popup.input.input(ratatui_textarea::Input::from(key));
+                match route_text_input_popup(&key, &app.keybinds, &mut popup.input) {
+                    TextInputPopupAction::Cancel => {}
+                    TextInputPopupAction::Submit => {
+                        app.popups.active = Some(ActivePopup::NoteRename(popup));
+                        app.confirm_rename_note();
                     }
-                    app.popups.active = Some(ActivePopup::NoteRename(popup));
+                    TextInputPopupAction::Edited => {
+                        app.popups.active = Some(ActivePopup::NoteRename(popup));
+                    }
                 }
                 true
             }
@@ -1326,25 +1375,12 @@ impl crate::popups::ActivePopup {
             }
             ActivePopup::IconMode(mut popup) => {
                 app.seq_matcher.clear();
-                match key.code {
-                    KeyCode::Up | KeyCode::Char('k') => {
-                        popup.selected = popup.selected.saturating_sub(1);
-                        app.popups.active = Some(ActivePopup::IconMode(popup));
-                    }
-                    KeyCode::Down | KeyCode::Char('j') => {
-                        if popup.selected < 2 {
-                            popup.selected += 1;
-                        }
-                        app.popups.active = Some(ActivePopup::IconMode(popup));
-                    }
-                    _ if app
-                        .keybinds
-                        .matches_list(crate::keybinds::ListAction::Confirm, &key) =>
-                    {
+                match route_selection_list(&key, &app.keybinds, &mut popup.selected, 2) {
+                    SelListAction::Confirm => {
                         app.popups.active = Some(ActivePopup::IconMode(popup));
                         app.select_icon_mode();
                     }
-                    _ if crate::events::is_cancel_popup(&app.keybinds, &key, false) => {
+                    SelListAction::Cancel => {
                         app.close_icon_mode_popup();
                     }
                     _ => {
@@ -1355,28 +1391,17 @@ impl crate::popups::ActivePopup {
             }
             ActivePopup::HintBarStyle(mut popup) => {
                 app.seq_matcher.clear();
-                match key.code {
-                    KeyCode::Up | KeyCode::Char('k') => {
-                        popup.selected = popup.selected.saturating_sub(1);
-                        app.popups.active = Some(ActivePopup::HintBarStyle(popup));
+                match route_selection_list(&key, &app.keybinds, &mut popup.selected, 3) {
+                    SelListAction::Up | SelListAction::Down => {
                         app.select_hint_bar_style();
-                    }
-                    KeyCode::Down | KeyCode::Char('j') => {
-                        if popup.selected < 3 {
-                            popup.selected += 1;
-                        }
                         app.popups.active = Some(ActivePopup::HintBarStyle(popup));
-                        app.select_hint_bar_style();
                     }
-                    _ if app
-                        .keybinds
-                        .matches_list(crate::keybinds::ListAction::Confirm, &key) =>
-                    {
+                    SelListAction::Confirm => {
                         app.popups.active = Some(ActivePopup::HintBarStyle(popup));
                         app.select_hint_bar_style();
                         app.close_hint_bar_style_popup();
                     }
-                    _ if crate::events::is_cancel_popup(&app.keybinds, &key, false) => {
+                    SelListAction::Cancel => {
                         app.close_hint_bar_style_popup();
                     }
                     _ => {
@@ -1387,28 +1412,17 @@ impl crate::popups::ActivePopup {
             }
             ActivePopup::KeybindPreset(mut popup) => {
                 app.seq_matcher.clear();
-                match key.code {
-                    KeyCode::Up | KeyCode::Char('k') => {
-                        popup.selected = popup.selected.saturating_sub(1);
-                        app.popups.active = Some(ActivePopup::KeybindPreset(popup));
+                match route_selection_list(&key, &app.keybinds, &mut popup.selected, 3) {
+                    SelListAction::Up | SelListAction::Down => {
                         app.select_keybind_preset();
-                    }
-                    KeyCode::Down | KeyCode::Char('j') => {
-                        if popup.selected < 3 {
-                            popup.selected += 1;
-                        }
                         app.popups.active = Some(ActivePopup::KeybindPreset(popup));
-                        app.select_keybind_preset();
                     }
-                    _ if app
-                        .keybinds
-                        .matches_list(crate::keybinds::ListAction::Confirm, &key) =>
-                    {
+                    SelListAction::Confirm => {
                         app.popups.active = Some(ActivePopup::KeybindPreset(popup));
                         app.select_keybind_preset();
                         app.close_keybind_preset_popup();
                     }
-                    _ if crate::events::is_cancel_popup(&app.keybinds, &key, false) => {
+                    SelListAction::Cancel => {
                         app.close_keybind_preset_popup();
                     }
                     _ => {
@@ -1419,25 +1433,12 @@ impl crate::popups::ActivePopup {
             }
             ActivePopup::Sort(mut popup) => {
                 app.seq_matcher.clear();
-                match key.code {
-                    KeyCode::Up | KeyCode::Char('k') => {
-                        popup.selected = popup.selected.saturating_sub(1);
-                        app.popups.active = Some(ActivePopup::Sort(popup));
-                    }
-                    KeyCode::Down | KeyCode::Char('j') => {
-                        if popup.selected < 3 {
-                            popup.selected += 1;
-                        }
-                        app.popups.active = Some(ActivePopup::Sort(popup));
-                    }
-                    _ if app
-                        .keybinds
-                        .matches_list(crate::keybinds::ListAction::Confirm, &key) =>
-                    {
+                match route_selection_list(&key, &app.keybinds, &mut popup.selected, 3) {
+                    SelListAction::Confirm => {
                         app.popups.active = Some(ActivePopup::Sort(popup));
                         app.select_sort();
                     }
-                    _ if crate::events::is_cancel_popup(&app.keybinds, &key, false) => {
+                    SelListAction::Cancel => {
                         app.close_sort_popup();
                     }
                     _ => {
@@ -1448,25 +1449,12 @@ impl crate::popups::ActivePopup {
             }
             ActivePopup::CreateFormat(mut popup) => {
                 app.seq_matcher.clear();
-                match key.code {
-                    KeyCode::Up | KeyCode::Char('k') => {
-                        popup.selected = popup.selected.saturating_sub(1);
-                        app.popups.active = Some(ActivePopup::CreateFormat(popup));
-                    }
-                    KeyCode::Down | KeyCode::Char('j') => {
-                        if popup.selected < 3 {
-                            popup.selected += 1;
-                        }
-                        app.popups.active = Some(ActivePopup::CreateFormat(popup));
-                    }
-                    _ if app
-                        .keybinds
-                        .matches_list(crate::keybinds::ListAction::Confirm, &key) =>
-                    {
+                match route_selection_list(&key, &app.keybinds, &mut popup.selected, 3) {
+                    SelListAction::Confirm => {
                         app.popups.active = Some(ActivePopup::CreateFormat(popup));
                         app.confirm_create_format();
                     }
-                    _ if crate::events::is_cancel_popup(&app.keybinds, &key, false) => {
+                    SelListAction::Cancel => {
                         app.close_create_format_popup();
                     }
                     _ => {

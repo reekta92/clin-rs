@@ -1,7 +1,6 @@
 use super::*;
 use crate::list_view::*;
 use crate::popups::*;
-use ratatui_textarea::TextArea;
 
 impl App {
     pub fn collapse_selected_folder(&mut self) {
@@ -121,9 +120,7 @@ impl App {
         });
         let mut all_folders = vec![String::new()]; // "" = vault root, always present and selectable
         all_folders.extend(folders);
-        let mut input = TextArea::default();
-        input.set_cursor_line_style(ratatui::style::Style::default());
-        input.set_placeholder_text("Search folders...");
+        let input = crate::ui::make_popup_textarea(&self.app_theme, "Search folders...");
         self.popups.active = Some(crate::popups::ActivePopup::FolderPicker(FolderPicker {
             mode,
             filtered_folders: all_folders.clone(),
@@ -302,7 +299,7 @@ impl App {
         if self.list.visual_index >= self.list.visual_list.len()
             && !self.list.visual_list.is_empty()
         {
-            self.list.visual_index = self.list.visual_list.len() - 1;
+            self.list.visual_index = self.list.visual_list.len().saturating_sub(1);
         } else if self.list.visual_list.is_empty() {
             self.list.visual_index = 0;
         }

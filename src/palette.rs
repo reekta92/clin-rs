@@ -62,10 +62,7 @@ pub struct CommandPalette {
 }
 impl CommandPalette {
     pub fn new(context_note_id: Option<String>, app: &crate::app::App) -> Self {
-        let mut input = TextArea::default();
-        input.set_cursor_line_style(Style::default());
-        input.set_placeholder_text("Search commands...");
-        input.set_style(app.app_theme.bg_style());
+        let mut input = crate::ui::make_popup_textarea(&app.app_theme, "Search commands...");
         input.set_block(
             Block::default()
                 .style(app.app_theme.bg_style())
@@ -146,7 +143,9 @@ impl CommandPalette {
             }
             KeyCode::BackTab => {
                 if self.active_tab == 0 {
-                    self.active_tab = palette_tabs(app.config.ui.icon_mode).len() - 1;
+                    self.active_tab = palette_tabs(app.config.ui.icon_mode)
+                        .len()
+                        .saturating_sub(1);
                 } else {
                     self.active_tab -= 1;
                 }

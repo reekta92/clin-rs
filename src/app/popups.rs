@@ -2,17 +2,13 @@ use super::*;
 use crate::list_view::*;
 use crate::popups::*;
 use crate::templates::Template;
-use ratatui_textarea::TextArea;
 
 impl App {
     pub fn open_template_popup(&mut self) {
         let template_manager = self.storage.template_manager();
         match template_manager.list() {
             Ok(templates) => {
-                let mut input = TextArea::default();
-                input.set_style(self.app_theme.bg_style());
-                input.set_cursor_line_style(Style::default());
-                input.set_placeholder_text("Search templates...");
+                let input = crate::ui::make_popup_textarea(&self.app_theme, "Search templates...");
                 self.popups.active = Some(crate::popups::ActivePopup::Template(TemplatePopup {
                     all_templates: templates.clone(),
                     filtered_templates: templates,
@@ -193,7 +189,8 @@ impl App {
                         if popup.filtered_templates.is_empty() {
                             popup.selected = 0;
                         } else {
-                            popup.selected = selected.min(popup.filtered_templates.len() - 1);
+                            popup.selected =
+                                selected.min(popup.filtered_templates.len().saturating_sub(1));
                         }
                     }
                 }
@@ -713,9 +710,8 @@ template = """
     }
 
     pub fn begin_set_word_goal(&mut self) {
-        let mut input = TextArea::default();
-        input.set_cursor_line_style(ratatui::style::Style::default());
-        input.set_placeholder_text("Enter daily word goal (e.g. 500)");
+        let mut input =
+            crate::ui::make_popup_textarea(&self.app_theme, "Enter daily word goal (e.g. 500)");
         if self.config.goals.word_goal > 0 {
             input.insert_str(self.config.goals.word_goal.to_string());
         }
@@ -728,9 +724,8 @@ template = """
     }
 
     pub fn begin_set_note_goal(&mut self) {
-        let mut input = TextArea::default();
-        input.set_cursor_line_style(ratatui::style::Style::default());
-        input.set_placeholder_text("Enter daily note goal (e.g. 3)");
+        let mut input =
+            crate::ui::make_popup_textarea(&self.app_theme, "Enter daily note goal (e.g. 3)");
         if self.config.goals.note_goal > 0 {
             input.insert_str(self.config.goals.note_goal.to_string());
         }

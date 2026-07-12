@@ -4,16 +4,20 @@ use super::structs::{
     FilterConfig, InteractionConfig, PhysicsConfig, SearchConfig, UiConfig, VisualConfig,
 };
 
+fn extract_decor(item: &toml_edit::Item) -> Option<toml_edit::Decor> {
+    match item {
+        toml_edit::Item::Value(v) => Some(v.decor().clone()),
+        toml_edit::Item::Table(t) => Some(t.decor().clone()),
+        _ => None,
+    }
+}
+
 /// Merge a `toml::Value` into a `toml_edit::Item`, preserving comments/decor.
 pub fn merge_toml_value(edit_item: &mut toml_edit::Item, toml_val: &toml::Value) {
     match toml_val {
         toml::Value::Table(toml_tbl) => {
             if !edit_item.is_table() {
-                let decor = match edit_item {
-                    toml_edit::Item::Value(v) => Some(v.decor().clone()),
-                    toml_edit::Item::Table(t) => Some(t.decor().clone()),
-                    _ => None,
-                };
+                let decor = extract_decor(edit_item);
                 let mut new_table = toml_edit::Table::new();
                 if let Some(d) = decor {
                     *new_table.decor_mut() = d;
@@ -52,11 +56,7 @@ pub fn merge_toml_value(edit_item: &mut toml_edit::Item, toml_val: &toml::Value)
                 }
                 *edit_item = toml_edit::Item::ArrayOfTables(new_aot);
             } else {
-                let decor = match edit_item {
-                    toml_edit::Item::Value(v) => Some(v.decor().clone()),
-                    toml_edit::Item::Table(t) => Some(t.decor().clone()),
-                    _ => None,
-                };
+                let decor = extract_decor(edit_item);
                 let mut edit_arr = toml_edit::Array::new();
                 for val in toml_arr {
                     edit_arr.push(
@@ -76,11 +76,7 @@ pub fn merge_toml_value(edit_item: &mut toml_edit::Item, toml_val: &toml::Value)
             }
         }
         _ => {
-            let decor = match edit_item {
-                toml_edit::Item::Value(v) => Some(v.decor().clone()),
-                toml_edit::Item::Table(t) => Some(t.decor().clone()),
-                _ => None,
-            };
+            let decor = extract_decor(edit_item);
             let mut new_item = toml_value_to_item(toml_val);
             if let Some(d) = decor {
                 match &mut new_item {

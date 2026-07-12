@@ -325,13 +325,10 @@ fn execute_menu_action(
     }
 
     if menu_type == PinstarMenuType::ColorPicker {
-        match selected_index {
-            0 => state.set_node_color(None),
-            1 => state.set_node_color(Some("#ff5252".to_string())),
-            2 => state.set_node_color(Some("#4caf50".to_string())),
-            3 => state.set_node_color(Some("#ffeb3b".to_string())),
-            4 => state.set_node_color(Some("#00bcd4".to_string())),
-            _ => {}
+        if selected_index == 0 {
+            state.set_node_color(None);
+        } else if let Some(entry) = crate::pinstar::COLOR_PICKER_PALETTE.get(selected_index - 1) {
+            state.set_node_color(Some(entry.1.to_string()));
         }
         return;
     }
@@ -354,13 +351,17 @@ fn execute_menu_action(
             }
             3 => state.start_resize(),
             4 => {
-                let items = vec![
-                    "Default".to_string(),
-                    "Red".to_string(),
-                    "Green".to_string(),
-                    "Yellow".to_string(),
-                    "Blue".to_string(),
-                ];
+                let mut items = vec!["Default".to_string()];
+                for (name, _, _) in crate::pinstar::COLOR_PICKER_PALETTE {
+                    let capitalized = name
+                        .chars()
+                        .next()
+                        .unwrap_or(' ')
+                        .to_uppercase()
+                        .to_string()
+                        + &name[1..];
+                    items.push(capitalized);
+                }
                 state.context_menu = Some(crate::pinstar::state::PinstarContextMenu {
                     x: menu_x,
                     y: menu_y,
@@ -434,7 +435,7 @@ pub fn handle_pinstar_event(
                 menu.selected = menu.selected.saturating_sub(1);
             }
             _ if keybinds.matches_canvas(CanvasAction::MenuDown, &key) => {
-                if menu.selected < menu.items.len() - 1 {
+                if menu.selected + 1 < menu.items.len() {
                     menu.selected += 1;
                 }
             }

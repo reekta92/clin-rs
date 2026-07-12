@@ -1,7 +1,6 @@
 use super::*;
 use crate::list_view::*;
 use crate::popups::*;
-use ratatui_textarea::TextArea;
 use std::collections::HashSet;
 
 impl App {
@@ -37,10 +36,7 @@ impl App {
             let current_tags = note.tags.clone();
             let all_tags = self.collect_live_tags();
 
-            let mut input = TextArea::default();
-            input.set_cursor_line_style(ratatui::style::Style::default());
-            input.set_style(self.app_theme.bg_style());
-            input.set_placeholder_text("Add tags...");
+            let mut input = crate::ui::make_popup_textarea(&self.app_theme, "Add tags...");
             input.insert_str(current_tags.join(", "));
 
             self.popups.active = Some(crate::popups::ActivePopup::Tag(TagPopup {

@@ -304,6 +304,36 @@ pub enum ActivePopup {
     Subnotes(Box<SubnotesPopup>),
 }
 
+impl ActivePopup {
+    pub fn draw(
+        &self,
+        frame: &mut ratatui::Frame,
+        area: ratatui::layout::Rect,
+        theme: &crate::app_theme::AppThemeColors,
+        keybinds: &crate::keybinds::Keybinds,
+    ) {
+        match self {
+            ActivePopup::Theme(p) => crate::ui::draw_theme_popup(frame, p, area, theme, keybinds),
+            ActivePopup::IconMode(p) => {
+                crate::ui::draw_icon_mode_popup(frame, p, area, theme, keybinds)
+            }
+            ActivePopup::HintBarStyle(p) => {
+                crate::ui::draw_hint_bar_style_popup(frame, p, area, theme, keybinds)
+            }
+            ActivePopup::KeybindPreset(p) => {
+                crate::ui::draw_keybind_preset_popup(frame, p, area, theme, keybinds)
+            }
+            ActivePopup::Sort(p) => crate::ui::draw_sort_popup(frame, p, area, theme, keybinds),
+            ActivePopup::CreateFormat(p) => {
+                crate::ui::draw_create_format_popup(frame, p, area, theme, keybinds)
+            }
+            ActivePopup::Subnotes(p) => crate::ui::draw_subnotes_popup(frame, p, area, theme),
+            ActivePopup::Info(p) => crate::ui::draw_info_popup(frame, area, p, theme),
+            _ => {}
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct PopupManager {
     /// Layered confirm dialog drawn on top of `active` when present.

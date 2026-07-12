@@ -619,14 +619,12 @@ impl App {
             self.set_temporary_status_static("Cannot create folder inside virtual Pinned");
             return;
         }
-        let mut input = TextArea::default();
-        input.set_cursor_line_style(ratatui::style::Style::default());
+        let mut input = crate::ui::make_popup_textarea(&self.app_theme, "");
         let title = if parent_path.is_empty() {
             "Create Folder - Esc to cancel, Enter to save".to_string()
         } else {
             format!("Create Folder in '{parent_path}' - Esc to cancel, Enter to save")
         };
-        input.set_style(self.app_theme.bg_style());
         input.set_block(
             ratatui::widgets::Block::default()
                 .style(self.app_theme.bg_style())
@@ -651,10 +649,8 @@ impl App {
                 self.set_temporary_status_static("Cannot rename virtual Pinned folder");
                 return;
             }
-            let mut input = TextArea::default();
-            input.set_cursor_line_style(ratatui::style::Style::default());
+            let mut input = crate::ui::make_popup_textarea(&self.app_theme, "");
             input.insert_str(path);
-            input.set_style(self.app_theme.bg_style());
             input.set_block(
                 ratatui::widgets::Block::default()
                     .style(self.app_theme.bg_style())
@@ -786,9 +782,7 @@ impl App {
         } else {
             folder
         };
-        let mut input = TextArea::default();
-        input.set_cursor_line_style(ratatui::style::Style::default());
-        input.set_style(self.app_theme.bg_style());
+        let mut input = crate::ui::make_popup_textarea(&self.app_theme, "");
         input.set_block(
             ratatui::widgets::Block::default()
                 .style(self.app_theme.bg_style())
@@ -807,9 +801,7 @@ impl App {
         } else {
             folder
         };
-        let mut input = TextArea::default();
-        input.set_cursor_line_style(ratatui::style::Style::default());
-        input.set_style(self.app_theme.bg_style());
+        let mut input = crate::ui::make_popup_textarea(&self.app_theme, "");
         input.set_block(
             ratatui::widgets::Block::default()
                 .style(self.app_theme.bg_style())
@@ -997,10 +989,8 @@ impl App {
             let summary_idx = *summary_idx;
             let id = self.notes[summary_idx].id.clone();
             let note = &self.notes[summary_idx];
-            let mut input = TextArea::default();
-            input.set_cursor_line_style(ratatui::style::Style::default());
+            let mut input = crate::ui::make_popup_textarea(&self.app_theme, "");
             input.insert_str(&note.title);
-            input.set_style(self.app_theme.bg_style());
             input.set_block(
                 ratatui::widgets::Block::default()
                     .style(self.app_theme.bg_style())
@@ -1059,13 +1049,8 @@ impl App {
 
         let subnotes = self.storage.get_subnotes(&parent_id).unwrap_or_default();
 
-        let mut title_input = TextArea::default();
-        title_input.set_cursor_line_style(ratatui::style::Style::default());
-        title_input.set_style(self.app_theme.bg_style());
-
-        let mut content_input = TextArea::default();
-        content_input.set_cursor_line_style(ratatui::style::Style::default());
-        content_input.set_style(self.app_theme.bg_style());
+        let mut title_input = crate::ui::make_popup_textarea(&self.app_theme, "");
+        let mut content_input = crate::ui::make_popup_textarea(&self.app_theme, "");
 
         if !subnotes.is_empty() {
             title_input.insert_str(&subnotes[0].title);
@@ -1190,11 +1175,7 @@ impl App {
                         popup.subnotes[cur_idx].updated_at = now_unix_secs();
                         popup.is_dirty = true;
 
-                        popup.content_input = TextArea::default();
-                        popup
-                            .content_input
-                            .set_cursor_line_style(ratatui::style::Style::default());
-                        popup.content_input.set_style(self.app_theme.bg_style());
+                        popup.content_input = crate::ui::make_popup_textarea(&self.app_theme, "");
                         popup.content_input.insert_str(&new_content);
 
                         self.set_temporary_status_static("Sub-note saved");

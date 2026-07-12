@@ -49,10 +49,7 @@ pub fn draw_template_popup(
     frame.render_widget(&input, chunks[0]);
 
     let items: Vec<ListItem> = if popup.filtered_templates.is_empty() {
-        vec![ListItem::new(Span::styled(
-            "(no matching templates)",
-            Style::default().fg(theme.muted),
-        ))]
+        empty_list_item(theme, "(no matching templates)")
     } else {
         popup
             .filtered_templates
@@ -208,8 +205,30 @@ pub fn draw_info_popup(
     }
 }
 
-pub fn draw_theme_popup(frame: &mut Frame, popup: &ThemePopup, area: Rect, theme: &AppThemeColors) {
-    let hint_line = popup_hint_line(theme, "Tab navigate · Enter select · Esc close");
+pub fn draw_theme_popup(
+    frame: &mut Frame,
+    popup: &ThemePopup,
+    area: Rect,
+    theme: &AppThemeColors,
+    keybinds: &crate::keybinds::Keybinds,
+) {
+    let hint_line = format_keybind_hints(
+        theme,
+        &[
+            (
+                keybinds.display_list(crate::keybinds::ListAction::CycleFocus),
+                "navigate",
+            ),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::Confirm),
+                "select",
+            ),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::Cancel),
+                "close",
+            ),
+        ],
+    );
     let content = draw_popup_frame(frame, area, "THEMES", PopupSize::Medium, &hint_line, theme);
 
     let chunks = Layout::default()
@@ -254,8 +273,7 @@ pub fn draw_theme_popup(frame: &mut Frame, popup: &ThemePopup, area: Rect, theme
                 .add_modifier(Modifier::BOLD),
         );
 
-    let mut state = list_state_selected(Some(popup.selected));
-    frame.render_stateful_widget(list, chunks[0], &mut state);
+    render_list_with_selection(frame, list, chunks[0], Some(popup.selected));
 
     let gen_label = if popup.general_is_solid {
         "General Background Color: ON"
@@ -314,8 +332,29 @@ pub fn draw_sort_popup(
     popup: &crate::popups::SortPopup,
     area: Rect,
     theme: &AppThemeColors,
+    keybinds: &crate::keybinds::Keybinds,
 ) {
-    let hint_line = popup_hint_line(theme, "↑↓: Navigate • Enter: Select • Esc: Cancel");
+    let hint_line = format_keybind_hints(
+        theme,
+        &[
+            (
+                keybinds.display_list(crate::keybinds::ListAction::MoveUp),
+                "up",
+            ),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::MoveDown),
+                "down",
+            ),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::Confirm),
+                "select",
+            ),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::Cancel),
+                "cancel",
+            ),
+        ],
+    );
     let content_area =
         draw_popup_frame(frame, area, "SORT BY", PopupSize::Medium, &hint_line, theme);
 
@@ -344,8 +383,7 @@ pub fn draw_sort_popup(
                 .add_modifier(Modifier::BOLD),
         );
 
-    let mut state = list_state_selected(Some(popup.selected));
-    frame.render_stateful_widget(list, content_area, &mut state);
+    render_list_with_selection(frame, list, content_area, Some(popup.selected));
 }
 
 pub fn draw_icon_mode_popup(
@@ -353,8 +391,29 @@ pub fn draw_icon_mode_popup(
     popup: &crate::popups::IconModePopup,
     area: Rect,
     theme: &AppThemeColors,
+    keybinds: &crate::keybinds::Keybinds,
 ) {
-    let hint_line = popup_hint_line(theme, "↑↓: Navigate • Enter: Select • Esc: Cancel");
+    let hint_line = format_keybind_hints(
+        theme,
+        &[
+            (
+                keybinds.display_list(crate::keybinds::ListAction::MoveUp),
+                "up",
+            ),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::MoveDown),
+                "down",
+            ),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::Confirm),
+                "select",
+            ),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::Cancel),
+                "cancel",
+            ),
+        ],
+    );
     let content_area = draw_popup_frame(
         frame,
         area,
@@ -384,8 +443,7 @@ pub fn draw_icon_mode_popup(
                 .add_modifier(Modifier::BOLD),
         );
 
-    let mut state = list_state_selected(Some(popup.selected));
-    frame.render_stateful_widget(list, content_area, &mut state);
+    render_list_with_selection(frame, list, content_area, Some(popup.selected));
 }
 
 pub fn draw_create_format_popup(
@@ -393,8 +451,29 @@ pub fn draw_create_format_popup(
     popup: &crate::popups::CreateFormatPopup,
     area: Rect,
     theme: &AppThemeColors,
+    keybinds: &crate::keybinds::Keybinds,
 ) {
-    let hint_line = popup_hint_line(theme, "↑↓: Navigate • Enter: Select • Esc: Cancel");
+    let hint_line = format_keybind_hints(
+        theme,
+        &[
+            (
+                keybinds.display_list(crate::keybinds::ListAction::MoveUp),
+                "up",
+            ),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::MoveDown),
+                "down",
+            ),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::Confirm),
+                "select",
+            ),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::Cancel),
+                "cancel",
+            ),
+        ],
+    );
     let content_area = draw_popup_frame(
         frame,
         area,
@@ -429,8 +508,7 @@ pub fn draw_create_format_popup(
                 .add_modifier(Modifier::BOLD),
         );
 
-    let mut state = list_state_selected(Some(popup.selected));
-    frame.render_stateful_widget(list, content_area, &mut state);
+    render_list_with_selection(frame, list, content_area, Some(popup.selected));
 }
 
 pub fn draw_hint_bar_style_popup(
@@ -438,8 +516,29 @@ pub fn draw_hint_bar_style_popup(
     popup: &crate::popups::HintBarStylePopup,
     area: Rect,
     theme: &AppThemeColors,
+    keybinds: &crate::keybinds::Keybinds,
 ) {
-    let hint_line = popup_hint_line(theme, "↑↓: Navigate • Enter: Select • Esc: Cancel");
+    let hint_line = format_keybind_hints(
+        theme,
+        &[
+            (
+                keybinds.display_list(crate::keybinds::ListAction::MoveUp),
+                "up",
+            ),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::MoveDown),
+                "down",
+            ),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::Confirm),
+                "select",
+            ),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::Cancel),
+                "cancel",
+            ),
+        ],
+    );
     let content_area = draw_popup_frame(
         frame,
         area,
@@ -469,8 +568,7 @@ pub fn draw_hint_bar_style_popup(
                 .add_modifier(Modifier::BOLD),
         );
 
-    let mut state = list_state_selected(Some(popup.selected));
-    frame.render_stateful_widget(list, content_area, &mut state);
+    render_list_with_selection(frame, list, content_area, Some(popup.selected));
 }
 
 pub fn draw_keybind_preset_popup(
@@ -478,10 +576,28 @@ pub fn draw_keybind_preset_popup(
     popup: &crate::popups::KeybindPresetPopup,
     area: Rect,
     theme: &AppThemeColors,
+    keybinds: &crate::keybinds::Keybinds,
 ) {
-    let hint_line = popup_hint_line(
+    let hint_line = format_keybind_hints(
         theme,
-        "\u{2191}\u{2193}: Navigate \u{2022} Enter: Select \u{2022} Esc: Cancel",
+        &[
+            (
+                keybinds.display_list(crate::keybinds::ListAction::MoveUp),
+                "up",
+            ),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::MoveDown),
+                "down",
+            ),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::Confirm),
+                "select",
+            ),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::Cancel),
+                "cancel",
+            ),
+        ],
     );
     let content_area = draw_popup_frame(
         frame,
@@ -517,8 +633,7 @@ pub fn draw_keybind_preset_popup(
                 .add_modifier(Modifier::BOLD),
         );
 
-    let mut state = list_state_selected(Some(popup.selected));
-    frame.render_stateful_widget(list, content_area, &mut state);
+    render_list_with_selection(frame, list, content_area, Some(popup.selected));
 }
 
 pub fn draw_popup_banner(frame: &mut Frame, popup_area: Rect, title: &str, theme: &AppThemeColors) {
@@ -598,6 +713,49 @@ pub fn list_state_selected(selected: Option<usize>) -> ListState {
     s
 }
 
+pub fn make_popup_textarea(theme: &AppThemeColors, placeholder: &str) -> TextArea<'static> {
+    let mut input = TextArea::default();
+    input.set_cursor_line_style(Style::default());
+    input.set_style(theme.bg_style());
+    if !placeholder.is_empty() {
+        input.set_placeholder_text(placeholder);
+        input.set_placeholder_style(Style::default().fg(theme.muted));
+    }
+    input
+}
+
+pub fn empty_list_item(theme: &AppThemeColors, label: &str) -> Vec<ListItem<'static>> {
+    vec![ListItem::new(Span::styled(
+        label.to_string(),
+        Style::default().fg(theme.muted),
+    ))]
+}
+
+pub fn render_list_with_selection(
+    frame: &mut Frame,
+    list: List,
+    area: Rect,
+    selected: Option<usize>,
+) {
+    let mut state = list_state_selected(selected);
+    frame.render_stateful_widget(list, area, &mut state);
+}
+
+pub fn unix_ts_to_local(unix_ts: u64) -> chrono::DateTime<chrono::Local> {
+    let secs = UNIX_EPOCH + Duration::from_secs(unix_ts);
+    secs.into()
+}
+
+pub fn truncate_with_ellipsis(s: &str, max_chars: usize) -> String {
+    if s.chars().count() > max_chars {
+        let mut t: String = s.chars().take(max_chars).collect();
+        t.push('…');
+        t
+    } else {
+        s.to_string()
+    }
+}
+
 pub fn text_area_from_content(content: &str) -> TextArea<'static> {
     if content.is_empty() {
         TextArea::default()
@@ -628,14 +786,12 @@ pub fn format_relative_time(unix_ts: u64) -> Cow<'static, str> {
         return Cow::Owned(format!("{}h ago", diff / 3600));
     }
 
-    let secs = UNIX_EPOCH + Duration::from_secs(unix_ts);
-    let dt: chrono::DateTime<chrono::Local> = secs.into();
+    let dt = unix_ts_to_local(unix_ts);
     Cow::Owned(dt.format("%Y-%m-%d %H:%M").to_string())
 }
 
 pub fn format_date(unix_ts: u64, date_format: &str) -> String {
-    let secs = std::time::UNIX_EPOCH + std::time::Duration::from_secs(unix_ts);
-    let dt: chrono::DateTime<chrono::Local> = secs.into();
+    let dt = unix_ts_to_local(unix_ts);
     dt.format(date_format).to_string()
 }
 

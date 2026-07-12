@@ -29,7 +29,7 @@ pub fn handle_help_keys(app: &mut App, key: KeyEvent) {
             }
             KeyCode::Down => {
                 if !app.help_search.results.is_empty()
-                    && app.help_search.selected < app.help_search.results.len() - 1
+                    && app.help_search.selected + 1 < app.help_search.results.len()
                 {
                     app.help_search.selected += 1;
                 }
@@ -40,7 +40,7 @@ pub fn handle_help_keys(app: &mut App, key: KeyEvent) {
                         .help_search
                         .selected
                         .checked_sub(1)
-                        .unwrap_or(app.help_search.results.len() - 1);
+                        .unwrap_or(app.help_search.results.len().saturating_sub(1));
                 }
             }
             KeyCode::Tab => {

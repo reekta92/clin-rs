@@ -16,12 +16,22 @@ fn get_node_color(color_code: Option<&str>, theme: &AppThemeColors) -> Color {
                 theme.accent
             }
         }
-        Some("1") | Some("red") => Color::Rgb(255, 82, 82),
-        Some("2") | Some("orange") => Color::Rgb(255, 152, 0),
-        Some("3") | Some("yellow") => Color::Rgb(255, 235, 59),
-        Some("4") | Some("green") => Color::Rgb(76, 175, 80),
-        Some("5") | Some("cyan") => Color::Rgb(0, 188, 212),
-        Some("6") | Some("purple") => Color::Rgb(156, 39, 176),
+        Some(s) => {
+            if let Ok(idx) = s.parse::<usize>()
+                && idx >= 1
+                && idx <= crate::pinstar::COLOR_PICKER_PALETTE.len()
+            {
+                return crate::pinstar::COLOR_PICKER_PALETTE[idx - 1].2;
+            }
+            if let Some(entry) = crate::pinstar::COLOR_PICKER_PALETTE
+                .iter()
+                .find(|e| e.0 == s)
+            {
+                entry.2
+            } else {
+                theme.accent
+            }
+        }
         _ => theme.accent,
     }
 }
@@ -710,7 +720,23 @@ pub fn draw_pinstar_view(
     }
 
     if let Some(textarea) = &mut state.rename_popup {
-        let hint_line = crate::ui::popup_hint_line(theme, "Enter confirm · Esc cancel");
+        let hint_line = crate::ui::format_keybind_hints(
+            theme,
+            &[
+                (
+                    state
+                        .keybinds
+                        .display_canvas(crate::keybinds::CanvasAction::RenameConfirm),
+                    "confirm",
+                ),
+                (
+                    state
+                        .keybinds
+                        .display_canvas(crate::keybinds::CanvasAction::RenameCancel),
+                    "cancel",
+                ),
+            ],
+        );
         let content = crate::ui::draw_popup_frame(
             frame,
             area,

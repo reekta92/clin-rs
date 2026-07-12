@@ -95,7 +95,7 @@ fn handle_normal_input(
                         if state.selected_section == BackupSection::History {
                             if !state.commits.is_empty() {
                                 state.selected_commit_index = if state.selected_commit_index == 0 {
-                                    state.commits.len() - 1
+                                    state.commits.len().saturating_sub(1)
                                 } else {
                                     state.selected_commit_index - 1
                                 };
@@ -103,7 +103,7 @@ fn handle_normal_input(
                             }
                         } else if !state.selectable_files.is_empty() {
                             state.selected_index = if state.selected_index == 0 {
-                                state.selectable_files.len() - 1
+                                state.selectable_files.len().saturating_sub(1)
                             } else {
                                 state.selected_index - 1
                             };
@@ -412,13 +412,17 @@ pub fn handle_mouse(
             if event.column < area.x + list_width {
                 if is_history {
                     if !state.commits.is_empty() {
-                        state.selected_commit_index =
-                            (state.selected_commit_index + 1).min(state.commits.len() - 1);
+                        state.selected_commit_index = state
+                            .selected_commit_index
+                            .saturating_add(1)
+                            .min(state.commits.len().saturating_sub(1));
                         state.load_commit_diff();
                     }
                 } else if !state.selectable_files.is_empty() {
-                    state.selected_index =
-                        (state.selected_index + 1).min(state.selectable_files.len() - 1);
+                    state.selected_index = state
+                        .selected_index
+                        .saturating_add(1)
+                        .min(state.selectable_files.len().saturating_sub(1));
                     state.selected_file =
                         Some(state.selectable_files[state.selected_index].clone());
                     state.load_selected_diff();

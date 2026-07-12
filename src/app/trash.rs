@@ -71,11 +71,7 @@ impl App {
                 self.sort_notes();
                 self.refresh_visual_list();
 
-                if self.list.visual_index >= self.list.visual_list.len()
-                    && !self.list.visual_list.is_empty()
-                {
-                    self.list.visual_index = self.list.visual_list.len() - 1;
-                }
+                self.clamp_visual_index();
                 self.set_temporary_status_static("Note moved to trash");
             }
             Err(err) => {
@@ -94,11 +90,7 @@ impl App {
                 if let Err(e) = self.refresh_notes() {
                     self.set_temporary_status(&format!("Refresh failed: {e}"));
                 }
-                if self.list.visual_index >= self.list.visual_list.len()
-                    && !self.list.visual_list.is_empty()
-                {
-                    self.list.visual_index = self.list.visual_list.len() - 1;
-                }
+                self.clamp_visual_index();
                 self.set_temporary_status_static("Folder moved to trash");
             }
             Err(e) => {

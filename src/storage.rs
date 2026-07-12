@@ -205,7 +205,15 @@ impl Storage {
                     let mut perms = metadata.permissions();
                     if perms.mode() & 0o777 != 0o400 {
                         perms.set_mode(0o400);
-                        let _ = fs::set_permissions(&key_path, perms);
+                        if let Err(e) = fs::set_permissions(&key_path, perms) {
+                            eprintln!(
+                                "{}",
+                                crate::console::warning(&format!(
+                                    "set_permissions failed for {}: {e}",
+                                    key_path.display()
+                                ))
+                            );
+                        }
                     }
                 }
             }
@@ -308,7 +316,7 @@ impl Storage {
         let target_path = self.note_path(&target_id);
 
         if let Some(parent) = target_path.parent() {
-            fs::create_dir_all(parent).unwrap_or_default();
+            fs::create_dir_all(parent).context("failed to create note directory")?;
         }
 
         let original_ext = old_path
@@ -375,7 +383,7 @@ impl Storage {
         let target_path = self.note_path(&target_id);
 
         if let Some(parent) = target_path.parent() {
-            fs::create_dir_all(parent).unwrap_or_default();
+            fs::create_dir_all(parent).context("failed to create note directory")?;
         }
 
         let is_raw = orig_ext == "canvas" || orig_ext == "draw";
@@ -616,7 +624,19 @@ impl Storage {
                 size_bytes: path.metadata().map(|m| m.len()).unwrap_or(0),
             })
         } else {
-            let content = fs::read_to_string(&path).unwrap_or_default();
+            let content = match fs::read_to_string(&path) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!(
+                        "{}",
+                        crate::console::error(&format!(
+                            "load_note_summary read failed for {}: {e}",
+                            path.display()
+                        ))
+                    );
+                    String::new()
+                }
+            };
             let (fm, plain_content) = frontmatter::parse(&content);
 
             let title = if let Some(t) = fm.title {
@@ -744,7 +764,7 @@ impl Storage {
 
         let target_path = self.note_path(&target_id);
         if let Some(parent) = target_path.parent() {
-            fs::create_dir_all(parent).unwrap_or_default();
+            fs::create_dir_all(parent).context("failed to create note directory")?;
         }
 
         if target_ext == "clin" {
@@ -1204,9 +1224,16 @@ impl Storage {
         let mut bytes = fs::read(&path).context("failed to read subnotes database")?;
         obfuscate(&mut bytes);
         let db: HashMap<String, SubNotePayload> =
-            bincode::serde::decode_from_slice(&bytes, bincode::config::standard())
-                .map(|(map, _)| map)
-                .unwrap_or_default();
+            match bincode::serde::decode_from_slice(&bytes, bincode::config::standard()) {
+                Ok((map, _)) => map,
+                Err(e) => {
+                    eprintln!(
+                        "{}",
+                        crate::console::error(&format!("subnotes decode failed: {e}"))
+                    );
+                    HashMap::new()
+                }
+            };
         if let Some(payload) = db.get(parent_id) {
             match payload {
                 SubNotePayload::Plain(notes) => Ok(notes.clone()),
@@ -1233,9 +1260,16 @@ impl Storage {
         let mut db: HashMap<String, SubNotePayload> = if path.exists() {
             let mut bytes = fs::read(&path).context("failed to read subnotes database")?;
             obfuscate(&mut bytes);
-            bincode::serde::decode_from_slice(&bytes, bincode::config::standard())
-                .map(|(map, _)| map)
-                .unwrap_or_default()
+            match bincode::serde::decode_from_slice(&bytes, bincode::config::standard()) {
+                Ok((map, _)) => map,
+                Err(e) => {
+                    eprintln!(
+                        "{}",
+                        crate::console::error(&format!("subnotes decode failed: {e}"))
+                    );
+                    HashMap::new()
+                }
+            }
         } else {
             HashMap::new()
         };
@@ -1288,9 +1322,16 @@ impl Storage {
         let mut bytes = fs::read(&path).context("failed to read subnotes database")?;
         obfuscate(&mut bytes);
         let db: HashMap<String, SubNotePayload> =
-            bincode::serde::decode_from_slice(&bytes, bincode::config::standard())
-                .map(|(map, _)| map)
-                .unwrap_or_default();
+            match bincode::serde::decode_from_slice(&bytes, bincode::config::standard()) {
+                Ok((map, _)) => map,
+                Err(e) => {
+                    eprintln!(
+                        "{}",
+                        crate::console::error(&format!("subnotes decode failed: {e}"))
+                    );
+                    HashMap::new()
+                }
+            };
         Ok(db.keys().cloned().collect())
     }
 }
@@ -1594,6 +1635,40 @@ mod tests {
 
         // The file should be completely deleted when empty
         assert!(!db_path.exists());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_corrupt_subnotes() -> Result<()> {
+        let temp_dir = tempfile::tempdir()?;
+        let data_dir = temp_dir.path().join("data");
+        let config_dir = temp_dir.path().join("config");
+        let notes_dir = temp_dir.path().join("notes");
+        let templates_dir = temp_dir.path().join("templates");
+        fs::create_dir_all(&data_dir)?;
+        fs::create_dir_all(&config_dir)?;
+        fs::create_dir_all(&notes_dir)?;
+        fs::create_dir_all(&templates_dir)?;
+
+        let mut storage = Storage {
+            data_dir,
+            config_dir,
+            notes_dir,
+            templates_dir,
+            key: [2u8; 32],
+        };
+
+        // Write corrupt bytes directly to subnotes db file path
+        let db_path = storage.subnotes_db_path();
+        std::fs::write(&db_path, b"garbage data that is not a valid bincode map")?;
+
+        // Retrieve subnotes - should return empty vec instead of panicking
+        let retrieved = storage.get_subnotes("some_note.md")?;
+        assert!(retrieved.is_empty());
+
+        let notes_with = storage.get_notes_with_subnotes()?;
+        assert!(notes_with.is_empty());
 
         Ok(())
     }

@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::time::{Duration, UNIX_EPOCH};
 
 use chrono::Datelike;
 use ratatui::Frame;
@@ -54,8 +53,7 @@ pub fn draw_calendar(
     // Aggregate counts per date within the window.
     let mut counts: HashMap<chrono::NaiveDate, usize> = HashMap::new();
     for n in notes {
-        let secs = UNIX_EPOCH + Duration::from_secs(n.updated_at);
-        let dt: chrono::DateTime<chrono::Local> = secs.into();
+        let dt = crate::ui::unix_ts_to_local(n.updated_at);
         let d = dt.date_naive();
         if d >= first_col_start && d <= today {
             *counts.entry(d).or_insert(0) += 1;

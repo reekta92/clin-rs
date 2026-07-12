@@ -2,7 +2,7 @@ use super::{
     PopupSize, PreviewHeaderInfo, build_list_widget, build_tab_spans, draw_confirm_popup,
     draw_corner_watermark, draw_dim_vline, draw_popup_frame, draw_status_bar, draw_template_popup,
     draw_view_title_bar, draw_view_title_bar_with_tabs, format_keybind_hints, format_relative_time,
-    list_state_selected, popup_block, popup_hint_line, preview_spans,
+    popup_block, popup_hint_line, preview_spans,
 };
 use crate::app::{App, VIRTUAL_PINNED_LABEL, VIRTUAL_PINNED_PATH, VIRTUAL_SMART_PATH, ViewMode};
 use crate::app_theme::AppThemeColors;
@@ -185,7 +185,7 @@ fn draw_strip_graf(
                     .node_own_color
                     .get(&idx)
                     .copied()
-                    .unwrap_or(Color::Gray);
+                    .unwrap_or(app.app_theme.muted);
                 let col = world_to_col(node.location.x as f64);
                 let sub_row = world_to_subrow(node.location.y as f64);
                 grid[sub_row * iw + col] = Some(color);
@@ -497,7 +497,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 if sel_row > last_visible {
                     app.list.grid_scroll = sel_row.saturating_sub(rows.saturating_sub(1));
                 }
-                let max_scroll = (len - 1) / cols;
+                let max_scroll = len.saturating_sub(1) / cols;
                 if app.list.grid_scroll > max_scroll {
                     app.list.grid_scroll = max_scroll;
                 }
@@ -908,7 +908,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         if app.list.tag_to_assign.is_some() {
             let tag_items = vec![
                 (kb.display_list(ListAction::ToggleSelectItem), "toggle"),
-                ("Enter".to_string(), "apply tag"),
+                (kb.display_list(ListAction::Confirm), "apply tag"),
                 (kb.display_list(ListAction::Cancel), "cancel"),
             ];
             format_keybind_hints(&app.app_theme, &tag_items)
@@ -1038,7 +1038,13 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             crate::popups::FolderPopupMode::Create { .. } => "NEW FOLDER",
             crate::popups::FolderPopupMode::Rename { .. } => "RENAME FOLDER",
         };
-        let hint_line = popup_hint_line(&app.app_theme, "Enter confirm · Esc cancel");
+        let hint_line = format_keybind_hints(
+            &app.app_theme,
+            &[
+                (kb.display_list(ListAction::Confirm), "confirm"),
+                (kb.display_list(ListAction::Cancel), "cancel"),
+            ],
+        );
         let content = draw_popup_frame(
             frame,
             area,
@@ -1138,10 +1144,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         };
         let tag_empty = popup.all_tags.is_empty();
         let tag_items: Vec<ListItem> = if tag_empty {
-            vec![ListItem::new(Span::styled(
-                "No tags found",
-                Style::default().fg(app.app_theme.muted),
-            ))]
+            crate::ui::empty_list_item(&app.app_theme, "No tags found")
         } else {
             popup
                 .all_tags
@@ -1165,12 +1168,14 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             )
             .highlight_symbol("  ");
 
-        let mut tags_state = list_state_selected(
+        crate::ui::render_list_with_selection(
+            frame,
+            tags_list,
+            chunks[1],
             (popup.focus == crate::popups::TagPopupFocus::AllTagsList
                 && !popup.all_tags.is_empty())
             .then_some(popup.all_tags_selected),
         );
-        frame.render_stateful_widget(tags_list, chunks[1], &mut tags_state);
     }
 
     if let Some(crate::popups::ActivePopup::FolderPicker(picker)) = &mut app.popups.active {
@@ -1181,7 +1186,14 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             | crate::popups::FolderPickerMode::BulkCopyMixed { .. } => "COPY",
             _ => "MOVE",
         };
-        let hint_line = popup_hint_line(&app.app_theme, "Tab switch  Enter confirm  Esc cancel");
+        let hint_line = format_keybind_hints(
+            &app.app_theme,
+            &[
+                (kb.display_list(ListAction::CycleFocus), "switch"),
+                (kb.display_list(ListAction::Confirm), "confirm"),
+                (kb.display_list(ListAction::Cancel), "cancel"),
+            ],
+        );
         let content = draw_popup_frame(
             frame,
             area,
@@ -1211,10 +1223,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         frame.render_widget(&picker.input, chunks[0]);
 
         let items: Vec<ListItem> = if picker.filtered_folders.is_empty() {
-            vec![ListItem::new(Span::styled(
-                "(no matching folders)",
-                Style::default().fg(app.app_theme.muted),
-            ))]
+            crate::ui::empty_list_item(&app.app_theme, "(no matching folders)")
         } else {
             picker
                 .filtered_folders
@@ -1247,13 +1256,14 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             )
             .highlight_symbol("  ");
 
-        let mut state = list_state_selected(
+        crate::ui::render_list_with_selection(
+            frame,
+            list,
+            chunks[1],
             (picker.focus == crate::app::FolderPickerFocus::Results
                 && !picker.filtered_folders.is_empty())
             .then_some(picker.selected),
         );
-
-        frame.render_stateful_widget(list, chunks[1], &mut state);
     }
 
     if let Some(palette) = &mut app.command_palette {
@@ -1345,7 +1355,13 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     }
 
     if let Some(crate::popups::ActivePopup::NoteRename(popup)) = &mut app.popups.active {
-        let hint_line = popup_hint_line(&app.app_theme, "Enter rename · Esc cancel");
+        let hint_line = format_keybind_hints(
+            &app.app_theme,
+            &[
+                (kb.display_list(ListAction::Confirm), "rename"),
+                (kb.display_list(ListAction::Cancel), "cancel"),
+            ],
+        );
         let content = draw_popup_frame(
             frame,
             area,
@@ -1399,7 +1415,13 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             crate::popups::NoteFormat::Canvas => "NEW CANVAS",
             crate::popups::NoteFormat::PlainText => "NEW TEXT FILE",
         };
-        let hint_line = popup_hint_line(&app.app_theme, "Enter create · Esc cancel");
+        let hint_line = format_keybind_hints(
+            &app.app_theme,
+            &[
+                (kb.display_list(ListAction::Confirm), "create"),
+                (kb.display_list(ListAction::Cancel), "cancel"),
+            ],
+        );
         let content = draw_popup_frame(
             frame,
             area,
@@ -1420,7 +1442,13 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             crate::popups::ImportSource::Url => "IMPORT URL",
             crate::popups::ImportSource::Clipboard => "IMPORT CLIPBOARD",
         };
-        let hint_line = popup_hint_line(&app.app_theme, "Enter import · Esc cancel");
+        let hint_line = format_keybind_hints(
+            &app.app_theme,
+            &[
+                (kb.display_list(ListAction::Confirm), "import"),
+                (kb.display_list(ListAction::Cancel), "cancel"),
+            ],
+        );
         let content = draw_popup_frame(
             frame,
             area,
@@ -1738,9 +1766,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             )
             .highlight_symbol("  ");
 
-        let mut state = list_state_selected(Some(trash.selected));
-
-        frame.render_stateful_widget(list, content, &mut state);
+        crate::ui::render_list_with_selection(frame, list, content, Some(trash.selected));
     }
 
     if let Some(popup) = &app.popups.confirm {

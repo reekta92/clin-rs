@@ -46,6 +46,10 @@ pub fn get_char(nerd: char, unicode: char, mode: IconMode) -> char {
     }
 }
 
+pub fn tab_vec_from_array<'a>(arr: &[(&'a str, &'a str)]) -> Vec<(&'a str, Option<&'a str>)> {
+    arr.iter().map(|&(l, g)| (l, Some(g))).collect()
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum PopupSize {
     Small,   // 40% width, 40% height. Max bounds: 60 cols x 20 rows
@@ -123,8 +127,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     .split(frame.area());
                 let icon_mode = app.config.ui.icon_mode;
                 let tabs_arr = crate::draw::render::draw_tool_tabs(icon_mode);
-                let tabs: Vec<(&str, Option<&str>)> =
-                    tabs_arr.iter().map(|&(l, g)| (l, Some(g))).collect();
+                let tabs = tab_vec_from_array(&tabs_arr);
                 let active = crate::draw::render::draw_tool_tab_index(draw.active_tool);
                 let spans = build_tab_spans(&tabs, active, &app.app_theme, false, icon_mode);
                 let mut ctx =
@@ -251,7 +254,21 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             crate::popups::FolderPopupMode::Create { .. } => "NEW FOLDER",
             crate::popups::FolderPopupMode::Rename { .. } => "RENAME FOLDER",
         };
-        let hint_line = popup_hint_line(&app.app_theme, "Enter confirm · Esc cancel");
+        let hint_line = format_keybind_hints(
+            &app.app_theme,
+            &[
+                (
+                    app.keybinds
+                        .display_list(crate::keybinds::ListAction::Confirm),
+                    "confirm",
+                ),
+                (
+                    app.keybinds
+                        .display_list(crate::keybinds::ListAction::Cancel),
+                    "cancel",
+                ),
+            ],
+        );
         let content = draw_popup_frame(
             frame,
             frame.area(),
@@ -351,10 +368,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         };
         let tag_empty = popup.all_tags.is_empty();
         let tag_items: Vec<ListItem> = if tag_empty {
-            vec![ListItem::new(Span::styled(
-                "No tags found",
-                Style::default().fg(app.app_theme.muted),
-            ))]
+            crate::ui::empty_list_item(&app.app_theme, "No tags found")
         } else {
             popup
                 .all_tags
@@ -378,12 +392,14 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             )
             .highlight_symbol("  ");
 
-        let mut tags_state = list_state_selected(
+        crate::ui::render_list_with_selection(
+            frame,
+            tags_list,
+            chunks[1],
             (popup.focus == crate::popups::TagPopupFocus::AllTagsList
                 && !popup.all_tags.is_empty())
             .then_some(popup.all_tags_selected),
         );
-        frame.render_stateful_widget(tags_list, chunks[1], &mut tags_state);
     }
 
     // Folder picker popup
@@ -395,7 +411,26 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             | crate::popups::FolderPickerMode::BulkCopyMixed { .. } => "COPY",
             _ => "MOVE",
         };
-        let hint_line = popup_hint_line(&app.app_theme, "Tab switch  Enter confirm  Esc cancel");
+        let hint_line = format_keybind_hints(
+            &app.app_theme,
+            &[
+                (
+                    app.keybinds
+                        .display_list(crate::keybinds::ListAction::CycleFocus),
+                    "switch",
+                ),
+                (
+                    app.keybinds
+                        .display_list(crate::keybinds::ListAction::Confirm),
+                    "confirm",
+                ),
+                (
+                    app.keybinds
+                        .display_list(crate::keybinds::ListAction::Cancel),
+                    "cancel",
+                ),
+            ],
+        );
         let content = draw_popup_frame(
             frame,
             frame.area(),
@@ -425,10 +460,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         frame.render_widget(&picker.input, chunks[0]);
 
         let items: Vec<ListItem> = if picker.filtered_folders.is_empty() {
-            vec![ListItem::new(Span::styled(
-                "(no matching folders)",
-                Style::default().fg(app.app_theme.muted),
-            ))]
+            crate::ui::empty_list_item(&app.app_theme, "(no matching folders)")
         } else {
             picker
                 .filtered_folders
@@ -461,13 +493,14 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             )
             .highlight_symbol("  ");
 
-        let mut state = list_state_selected(
+        crate::ui::render_list_with_selection(
+            frame,
+            list,
+            chunks[1],
             (picker.focus == crate::app::FolderPickerFocus::Results
                 && !picker.filtered_folders.is_empty())
             .then_some(picker.selected),
         );
-
-        frame.render_stateful_widget(list, chunks[1], &mut state);
     }
 
     // Command palette
@@ -562,7 +595,21 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
 
     // Note rename popup
     if let Some(crate::popups::ActivePopup::NoteRename(popup)) = &mut app.popups.active {
-        let hint_line = popup_hint_line(&app.app_theme, "Enter rename · Esc cancel");
+        let hint_line = format_keybind_hints(
+            &app.app_theme,
+            &[
+                (
+                    app.keybinds
+                        .display_list(crate::keybinds::ListAction::Confirm),
+                    "rename",
+                ),
+                (
+                    app.keybinds
+                        .display_list(crate::keybinds::ListAction::Cancel),
+                    "cancel",
+                ),
+            ],
+        );
         let content = draw_popup_frame(
             frame,
             frame.area(),
@@ -618,7 +665,21 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             crate::popups::NoteFormat::Canvas => "NEW CANVAS",
             crate::popups::NoteFormat::PlainText => "NEW TEXT FILE",
         };
-        let hint_line = popup_hint_line(&app.app_theme, "Enter create · Esc cancel");
+        let hint_line = format_keybind_hints(
+            &app.app_theme,
+            &[
+                (
+                    app.keybinds
+                        .display_list(crate::keybinds::ListAction::Confirm),
+                    "create",
+                ),
+                (
+                    app.keybinds
+                        .display_list(crate::keybinds::ListAction::Cancel),
+                    "cancel",
+                ),
+            ],
+        );
         let content = draw_popup_frame(
             frame,
             frame.area(),
@@ -640,7 +701,21 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             crate::popups::ImportSource::Url => "IMPORT URL",
             crate::popups::ImportSource::Clipboard => "IMPORT CLIPBOARD",
         };
-        let hint_line = popup_hint_line(&app.app_theme, "Enter import · Esc cancel");
+        let hint_line = format_keybind_hints(
+            &app.app_theme,
+            &[
+                (
+                    app.keybinds
+                        .display_list(crate::keybinds::ListAction::Confirm),
+                    "import",
+                ),
+                (
+                    app.keybinds
+                        .display_list(crate::keybinds::ListAction::Cancel),
+                    "cancel",
+                ),
+            ],
+        );
         let content = draw_popup_frame(
             frame,
             frame.area(),
@@ -957,9 +1032,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             )
             .highlight_symbol("  ");
 
-        let mut state = list_state_selected(Some(trash.selected));
-
-        frame.render_stateful_widget(list, content, &mut state);
+        crate::ui::render_list_with_selection(frame, list, content, Some(trash.selected));
     }
 
     // Confirm popup
@@ -967,44 +1040,8 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         draw_confirm_popup(frame, popup, frame.area(), &app.app_theme);
     }
 
-    // Theme popup
-    if let Some(crate::popups::ActivePopup::Theme(popup)) = &app.popups.active {
-        draw_theme_popup(frame, popup, frame.area(), &app.app_theme);
-    }
-
-    // Sort popup
-    // Icon mode popup
-    if let Some(crate::popups::ActivePopup::IconMode(popup)) = &app.popups.active {
-        draw_icon_mode_popup(frame, popup, frame.area(), &app.app_theme);
-    }
-
-    // Hint bar style popup
-    if let Some(crate::popups::ActivePopup::HintBarStyle(popup)) = &app.popups.active {
-        draw_hint_bar_style_popup(frame, popup, frame.area(), &app.app_theme);
-    }
-
-    // Keybind preset popup
-    if let Some(crate::popups::ActivePopup::KeybindPreset(popup)) = &app.popups.active {
-        draw_keybind_preset_popup(frame, popup, frame.area(), &app.app_theme);
-    }
-
-    if let Some(crate::popups::ActivePopup::Sort(popup)) = &app.popups.active {
-        draw_sort_popup(frame, popup, frame.area(), &app.app_theme);
-    }
-
-    // Create format popup
-    if let Some(crate::popups::ActivePopup::CreateFormat(popup)) = &app.popups.active {
-        draw_create_format_popup(frame, popup, frame.area(), &app.app_theme);
-    }
-
-    // Sub-notes popup
-    if let Some(crate::popups::ActivePopup::Subnotes(popup)) = &app.popups.active {
-        draw_subnotes_popup(frame, popup, frame.area(), &app.app_theme);
-    }
-
-    // Info popup
-    if let Some(crate::popups::ActivePopup::Info(popup)) = &app.popups.active {
-        crate::ui::popups::draw_info_popup(frame, frame.area(), popup, &app.app_theme);
+    if let Some(popup) = &app.popups.active {
+        popup.draw(frame, frame.area(), &app.app_theme, &app.keybinds);
     }
 
     // Context menu (from edit view)
@@ -1026,10 +1063,8 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         let y = menu.y.min(frame.area().height.saturating_sub(menu_height));
         let menu_area = Rect::new(x, y, menu_width, menu_height);
 
-        let mut state = list_state_selected(Some(menu.selected));
-
         frame.render_widget(Clear, menu_area);
-        frame.render_stateful_widget(list, menu_area, &mut state);
+        crate::ui::render_list_with_selection(frame, list, menu_area, Some(menu.selected));
     }
 }
 

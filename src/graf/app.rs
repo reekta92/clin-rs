@@ -488,7 +488,7 @@ fn handle_search_keys(
         }
         KeyCode::Down => {
             if !app_state.search_results.is_empty()
-                && app_state.search_selected < app_state.search_results.len() - 1
+                && app_state.search_selected + 1 < app_state.search_results.len()
             {
                 app_state.search_selected += 1;
             }
@@ -498,7 +498,7 @@ fn handle_search_keys(
                 app_state.search_selected = app_state
                     .search_selected
                     .checked_sub(1)
-                    .unwrap_or(app_state.search_results.len() - 1);
+                    .unwrap_or(app_state.search_results.len().saturating_sub(1));
             }
         }
         KeyCode::Tab => {

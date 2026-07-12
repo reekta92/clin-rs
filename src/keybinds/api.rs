@@ -70,6 +70,31 @@ macro_rules! keybind_scope {
     };
 }
 
+macro_rules! keybind_resolve {
+    ($field:ident, $Action:ty, $resolve:ident, $counts:literal) => {
+        impl Keybinds {
+            pub fn $resolve(
+                &self,
+                m: &mut KeyMatcher,
+                event: KeyEvent,
+                seq: bool,
+                _counts: bool,
+            ) -> MatchOutcome<$Action> {
+                m.resolve(event, &self.$field, seq, $counts)
+            }
+        }
+    };
+}
+
+keybind_resolve!(edit, EditAction, resolve_edit, false);
+keybind_resolve!(help, HelpAction, resolve_help, false);
+keybind_resolve!(graph, GraphAction, resolve_graph, true);
+keybind_resolve!(draw, DrawAction, resolve_draw, true);
+keybind_resolve!(canvas, CanvasAction, resolve_canvas, true);
+keybind_resolve!(backup, BackupAction, resolve_backup, true);
+keybind_resolve!(content_tree, ContentTreeAction, resolve_content_tree, true);
+keybind_resolve!(setup, SetupAction, resolve_setup, false);
+
 impl Keybinds {
     pub fn load(path: &Path) -> Result<Self> {
         Self::load_layered(path, Self::default())
@@ -138,81 +163,6 @@ impl Keybinds {
         filtered.remove(&ListAction::Confirm);
         filtered.remove(&ListAction::Cancel);
         m.resolve(event, &filtered, seq, counts)
-    }
-    pub fn resolve_edit(
-        &self,
-        m: &mut KeyMatcher,
-        event: KeyEvent,
-        seq: bool,
-        _counts: bool,
-    ) -> MatchOutcome<EditAction> {
-        // Edit view never accepts count - digits are text input
-        m.resolve(event, self.bindings_for_edit(), seq, false)
-    }
-    pub fn resolve_help(
-        &self,
-        m: &mut KeyMatcher,
-        event: KeyEvent,
-        seq: bool,
-        _counts: bool,
-    ) -> MatchOutcome<HelpAction> {
-        // Help view never accepts count - digits are tab-switchers
-        m.resolve(event, self.bindings_for_help(), seq, false)
-    }
-    pub fn resolve_graph(
-        &self,
-        m: &mut KeyMatcher,
-        event: KeyEvent,
-        seq: bool,
-        counts: bool,
-    ) -> MatchOutcome<GraphAction> {
-        m.resolve(event, self.bindings_for_graph(), seq, counts)
-    }
-    pub fn resolve_draw(
-        &self,
-        m: &mut KeyMatcher,
-        event: KeyEvent,
-        seq: bool,
-        counts: bool,
-    ) -> MatchOutcome<DrawAction> {
-        m.resolve(event, self.bindings_for_draw(), seq, counts)
-    }
-    pub fn resolve_canvas(
-        &self,
-        m: &mut KeyMatcher,
-        event: KeyEvent,
-        seq: bool,
-        counts: bool,
-    ) -> MatchOutcome<CanvasAction> {
-        m.resolve(event, self.bindings_for_canvas(), seq, counts)
-    }
-    pub fn resolve_backup(
-        &self,
-        m: &mut KeyMatcher,
-        event: KeyEvent,
-        seq: bool,
-        counts: bool,
-    ) -> MatchOutcome<BackupAction> {
-        m.resolve(event, self.bindings_for_backup(), seq, counts)
-    }
-    pub fn resolve_content_tree(
-        &self,
-        m: &mut KeyMatcher,
-        event: KeyEvent,
-        seq: bool,
-        counts: bool,
-    ) -> MatchOutcome<ContentTreeAction> {
-        m.resolve(event, self.bindings_for_content_tree(), seq, counts)
-    }
-
-    pub fn resolve_setup(
-        &self,
-        m: &mut KeyMatcher,
-        event: KeyEvent,
-        seq: bool,
-        _counts: bool,
-    ) -> MatchOutcome<SetupAction> {
-        m.resolve(event, self.bindings_for_setup(), seq, false)
     }
 
     /// Pick the best key combo to display in hint bars.
@@ -988,4 +938,52 @@ fn test_matches_help_coverage_gap_closed() {
         matched,
         "matches_help should fire for a bound single-key Help action"
     );
+}
+
+#[test]
+fn test_macro_resolve_parity() {
+    use crossterm::event::KeyCode;
+    let kb = Keybinds::default();
+    let mut matcher = KeyMatcher::new();
+    let event = KeyEvent::new(KeyCode::Char('k'), crossterm::event::KeyModifiers::NONE);
+
+    // Edit
+    let outcome1 = kb.resolve_edit(&mut matcher, event, false, false);
+    let outcome2 = matcher.resolve(event, &kb.edit, false, false);
+    assert_eq!(outcome1, outcome2);
+
+    // Help
+    let outcome1 = kb.resolve_help(&mut matcher, event, false, false);
+    let outcome2 = matcher.resolve(event, &kb.help, false, false);
+    assert_eq!(outcome1, outcome2);
+
+    // Graph
+    let outcome1 = kb.resolve_graph(&mut matcher, event, false, true);
+    let outcome2 = matcher.resolve(event, &kb.graph, false, true);
+    assert_eq!(outcome1, outcome2);
+
+    // Draw
+    let outcome1 = kb.resolve_draw(&mut matcher, event, false, true);
+    let outcome2 = matcher.resolve(event, &kb.draw, false, true);
+    assert_eq!(outcome1, outcome2);
+
+    // Canvas
+    let outcome1 = kb.resolve_canvas(&mut matcher, event, false, true);
+    let outcome2 = matcher.resolve(event, &kb.canvas, false, true);
+    assert_eq!(outcome1, outcome2);
+
+    // Backup
+    let outcome1 = kb.resolve_backup(&mut matcher, event, false, true);
+    let outcome2 = matcher.resolve(event, &kb.backup, false, true);
+    assert_eq!(outcome1, outcome2);
+
+    // ContentTree
+    let outcome1 = kb.resolve_content_tree(&mut matcher, event, false, true);
+    let outcome2 = matcher.resolve(event, &kb.content_tree, false, true);
+    assert_eq!(outcome1, outcome2);
+
+    // Setup
+    let outcome1 = kb.resolve_setup(&mut matcher, event, false, false);
+    let outcome2 = matcher.resolve(event, &kb.setup, false, false);
+    assert_eq!(outcome1, outcome2);
 }

@@ -175,7 +175,21 @@ pub fn draw_canvas(
     crate::ui::draw_status_bar(frame, status_area, &app.theme, left_line, right_line);
 
     if app.show_shape_selector {
-        let hint_line = crate::ui::popup_hint_line(&app.theme, "Enter select · Esc cancel");
+        let hint_line = crate::ui::format_keybind_hints(
+            &app.theme,
+            &[
+                (
+                    app.keybinds
+                        .display_draw(crate::keybinds::DrawAction::ShapeSelectorConfirm),
+                    "select",
+                ),
+                (
+                    app.keybinds
+                        .display_draw(crate::keybinds::DrawAction::ShapeSelectorCancel),
+                    "cancel",
+                ),
+            ],
+        );
         let content = crate::ui::draw_popup_frame(
             frame,
             area,
@@ -217,7 +231,21 @@ pub fn draw_canvas(
     }
 
     if let Some((_, textarea)) = &app.text_editor {
-        let hint_line = crate::ui::popup_hint_line(&app.theme, "Enter save · Esc cancel");
+        let hint_line = crate::ui::format_keybind_hints(
+            &app.theme,
+            &[
+                (
+                    app.keybinds
+                        .display_draw(crate::keybinds::DrawAction::TextEditorConfirm),
+                    "save",
+                ),
+                (
+                    app.keybinds
+                        .display_draw(crate::keybinds::DrawAction::TextEditorCancel),
+                    "cancel",
+                ),
+            ],
+        );
         let content = crate::ui::draw_popup_frame(
             frame,
             area,

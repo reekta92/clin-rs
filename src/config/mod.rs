@@ -1,6 +1,7 @@
+use parking_lot::RwLock;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::{OnceLock, RwLock};
+use std::sync::OnceLock;
 
 use anyhow::{Context, Result};
 use directories::ProjectDirs;
@@ -32,9 +33,7 @@ pub(crate) static CONFIG_TEST_MUTEX: Mutex<()> = Mutex::new(());
 /// from the parsed `--config` value. Tests may call it multiple times under
 /// [`CONFIG_TEST_MUTEX`].
 pub fn set_config_path_override(path: PathBuf) {
-    *CONFIG_PATH_OVERRIDE
-        .write()
-        .expect("config path lock poisoned") = Some(path);
+    *CONFIG_PATH_OVERRIDE.write() = Some(path);
 }
 
 static STORAGE_PATH_OVERRIDE: OnceLock<Option<PathBuf>> = OnceLock::new();
@@ -67,11 +66,7 @@ impl ClinConfig {
     }
 
     pub fn config_path() -> Result<PathBuf> {
-        if let Some(p) = CONFIG_PATH_OVERRIDE
-            .read()
-            .expect("config path lock poisoned")
-            .as_ref()
-        {
+        if let Some(p) = CONFIG_PATH_OVERRIDE.read().as_ref() {
             return Ok(p.clone());
         }
         let proj_dirs = ProjectDirs::from("com", "clin", "clin")
@@ -109,7 +104,12 @@ impl ClinConfig {
                     config.graf.filter = graf_config.filter;
                     config.graf.search = graf_config.search;
                 }
-                let _ = fs::rename(&graf_path, graf_path.with_extension("toml.migrated"));
+                if let Err(e) = fs::rename(&graf_path, graf_path.with_extension("toml.migrated")) {
+                    eprintln!(
+                        "{}",
+                        crate::console::warning(&format!("graf path migration rename failed: {e}"))
+                    );
+                }
             }
 
             let content = merge::default_config_content();
@@ -340,20 +340,21 @@ impl ClinConfig {
         } else {
             merge::default_config_content()
                 .parse::<toml_edit::DocumentMut>()
-                .expect("default config must be valid TOML")
+                .context("default config must be valid TOML")?
         };
 
         let self_toml_str = toml::to_string(self).context("failed to serialize config")?;
         let self_value: toml::Value =
-            toml::from_str(&self_toml_str).expect("serialized config must be valid TOML");
+            toml::from_str(&self_toml_str).context("serialized config must be valid TOML")?;
 
         if let toml::Value::Table(toml_tbl) = self_value {
             for (k, v) in toml_tbl {
                 if doc.contains_key(&k) {
-                    merge::merge_toml_value(
-                        doc.get_mut(&k).expect("key presence already checked"),
-                        &v,
-                    );
+                    if let Some(item) = doc.get_mut(&k) {
+                        merge::merge_toml_value(item, &v);
+                    } else {
+                        continue;
+                    }
                 } else {
                     doc.insert(&k, merge::toml_value_to_item(&v));
                 }
@@ -491,6 +492,12 @@ impl ClinConfig {
         }
         errs
     }
+}
+
+pub fn vault_path_or_dot(config: &ClinConfig) -> PathBuf {
+    config
+        .effective_storage_path()
+        .unwrap_or_else(|_| PathBuf::from("."))
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
