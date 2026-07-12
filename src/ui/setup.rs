@@ -423,23 +423,15 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
 }
 
 fn draw_setup_confirm(frame: &mut Frame, area: Rect, theme: &AppThemeColors) {
-    let hints = crate::ui::format_keybind_hints_classic(
-        theme,
-        &[
-            ("y".to_string(), "save & exit"),
-            ("q".to_string(), "discard"),
-            ("n".to_string(), "back"),
-        ],
-    );
     let inner = crate::ui::draw_confirm_popup_frame(
         frame,
         area,
         "Exit setup?",
         crate::ui::PopupSize::Confirm,
         false,
+        crate::ui::PopupHints::Text(""),
         theme,
     );
-    let _ = hints; // footer drawn manually below to control layout
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .margin(1)

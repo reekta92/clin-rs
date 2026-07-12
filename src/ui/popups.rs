@@ -13,16 +13,20 @@ pub fn draw_template_popup(
     area: Rect,
     theme: &AppThemeColors,
 ) {
-    let hint_line = popup_hint_line(
-        theme,
-        "Tab switch · Enter use template · n create · d delete · Space edit · ? help · Esc cancel",
-    );
     let content = draw_popup_frame(
         frame,
         area,
         "TEMPLATES",
         PopupSize::Large,
-        &hint_line,
+        PopupHints::Keybinds(&[
+            ("Tab".to_string(), "switch"),
+            ("Enter".to_string(), "use template"),
+            ("n".to_string(), "create"),
+            ("d".to_string(), "delete"),
+            ("Space".to_string(), "edit"),
+            ("?".to_string(), "help"),
+            ("Esc".to_string(), "cancel"),
+        ]),
         theme,
     );
 
@@ -105,14 +109,12 @@ pub fn draw_info_popup(
     popup: &crate::popups::InfoPopup,
     theme: &crate::app_theme::AppThemeColors,
 ) {
-    let hints =
-        crate::ui::format_keybind_hints_classic(theme, &[("Enter/Esc".to_string(), "close")]);
     let inner = crate::ui::draw_popup_frame(
         frame,
         area,
         &popup.title,
         crate::ui::PopupSize::Medium,
-        &hints,
+        PopupHints::Keybinds(&[("Enter/Esc".to_string(), "close")]),
         theme,
     );
     // Inner border, background, and padding matching other popup styles
@@ -212,24 +214,20 @@ pub fn draw_theme_popup(
     theme: &AppThemeColors,
     keybinds: &crate::keybinds::Keybinds,
 ) {
-    let hint_line = format_keybind_hints(
-        theme,
-        &[
-            (
-                keybinds.display_list(crate::keybinds::ListAction::CycleFocus),
-                "navigate",
-            ),
-            (
-                keybinds.display_list(crate::keybinds::ListAction::Confirm),
-                "select",
-            ),
-            (
-                keybinds.display_list(crate::keybinds::ListAction::Cancel),
-                "close",
-            ),
-        ],
-    );
-    let content = draw_popup_frame(frame, area, "THEMES", PopupSize::Medium, &hint_line, theme);
+    let content = draw_popup_frame(frame, area, "THEMES", PopupSize::Medium, PopupHints::Keybinds(&[
+        (
+            keybinds.display_list(crate::keybinds::ListAction::CycleFocus),
+            "navigate",
+        ),
+        (
+            keybinds.display_list(crate::keybinds::ListAction::Confirm),
+            "select",
+        ),
+        (
+            keybinds.display_list(crate::keybinds::ListAction::Cancel),
+            "close",
+        ),
+    ]), theme);
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -334,9 +332,8 @@ pub fn draw_sort_popup(
     theme: &AppThemeColors,
     keybinds: &crate::keybinds::Keybinds,
 ) {
-    let hint_line = format_keybind_hints(
-        theme,
-        &[
+    let content_area =
+        draw_popup_frame(frame, area, "SORT BY", PopupSize::Medium, PopupHints::Keybinds(&[
             (
                 keybinds.display_list(crate::keybinds::ListAction::MoveUp),
                 "up",
@@ -353,10 +350,7 @@ pub fn draw_sort_popup(
                 keybinds.display_list(crate::keybinds::ListAction::Cancel),
                 "cancel",
             ),
-        ],
-    );
-    let content_area =
-        draw_popup_frame(frame, area, "SORT BY", PopupSize::Medium, &hint_line, theme);
+        ]), theme);
 
     let options = [
         "Title (A-Z)",
@@ -393,33 +387,17 @@ pub fn draw_icon_mode_popup(
     theme: &AppThemeColors,
     keybinds: &crate::keybinds::Keybinds,
 ) {
-    let hint_line = format_keybind_hints(
-        theme,
-        &[
-            (
-                keybinds.display_list(crate::keybinds::ListAction::MoveUp),
-                "up",
-            ),
-            (
-                keybinds.display_list(crate::keybinds::ListAction::MoveDown),
-                "down",
-            ),
-            (
-                keybinds.display_list(crate::keybinds::ListAction::Confirm),
-                "select",
-            ),
-            (
-                keybinds.display_list(crate::keybinds::ListAction::Cancel),
-                "cancel",
-            ),
-        ],
-    );
     let content_area = draw_popup_frame(
         frame,
         area,
         "ICON MODE",
         PopupSize::Medium,
-        &hint_line,
+        PopupHints::Keybinds(&[
+            (keybinds.display_list(crate::keybinds::ListAction::MoveUp), "up"),
+            (keybinds.display_list(crate::keybinds::ListAction::MoveDown), "down"),
+            (keybinds.display_list(crate::keybinds::ListAction::Confirm), "select"),
+            (keybinds.display_list(crate::keybinds::ListAction::Cancel), "cancel"),
+        ]),
         theme,
     );
 
@@ -453,33 +431,17 @@ pub fn draw_create_format_popup(
     theme: &AppThemeColors,
     keybinds: &crate::keybinds::Keybinds,
 ) {
-    let hint_line = format_keybind_hints(
-        theme,
-        &[
-            (
-                keybinds.display_list(crate::keybinds::ListAction::MoveUp),
-                "up",
-            ),
-            (
-                keybinds.display_list(crate::keybinds::ListAction::MoveDown),
-                "down",
-            ),
-            (
-                keybinds.display_list(crate::keybinds::ListAction::Confirm),
-                "select",
-            ),
-            (
-                keybinds.display_list(crate::keybinds::ListAction::Cancel),
-                "cancel",
-            ),
-        ],
-    );
     let content_area = draw_popup_frame(
         frame,
         area,
         "CREATE NEW",
         PopupSize::Medium,
-        &hint_line,
+        PopupHints::Keybinds(&[
+            (keybinds.display_list(crate::keybinds::ListAction::MoveUp), "up"),
+            (keybinds.display_list(crate::keybinds::ListAction::MoveDown), "down"),
+            (keybinds.display_list(crate::keybinds::ListAction::Confirm), "select"),
+            (keybinds.display_list(crate::keybinds::ListAction::Cancel), "cancel"),
+        ]),
         theme,
     );
 
@@ -518,33 +480,17 @@ pub fn draw_hint_bar_style_popup(
     theme: &AppThemeColors,
     keybinds: &crate::keybinds::Keybinds,
 ) {
-    let hint_line = format_keybind_hints(
-        theme,
-        &[
-            (
-                keybinds.display_list(crate::keybinds::ListAction::MoveUp),
-                "up",
-            ),
-            (
-                keybinds.display_list(crate::keybinds::ListAction::MoveDown),
-                "down",
-            ),
-            (
-                keybinds.display_list(crate::keybinds::ListAction::Confirm),
-                "select",
-            ),
-            (
-                keybinds.display_list(crate::keybinds::ListAction::Cancel),
-                "cancel",
-            ),
-        ],
-    );
     let content_area = draw_popup_frame(
         frame,
         area,
         "HINT BAR STYLE",
         PopupSize::Medium,
-        &hint_line,
+        PopupHints::Keybinds(&[
+            (keybinds.display_list(crate::keybinds::ListAction::MoveUp), "up"),
+            (keybinds.display_list(crate::keybinds::ListAction::MoveDown), "down"),
+            (keybinds.display_list(crate::keybinds::ListAction::Confirm), "select"),
+            (keybinds.display_list(crate::keybinds::ListAction::Cancel), "cancel"),
+        ]),
         theme,
     );
 
@@ -578,33 +524,17 @@ pub fn draw_keybind_preset_popup(
     theme: &AppThemeColors,
     keybinds: &crate::keybinds::Keybinds,
 ) {
-    let hint_line = format_keybind_hints(
-        theme,
-        &[
-            (
-                keybinds.display_list(crate::keybinds::ListAction::MoveUp),
-                "up",
-            ),
-            (
-                keybinds.display_list(crate::keybinds::ListAction::MoveDown),
-                "down",
-            ),
-            (
-                keybinds.display_list(crate::keybinds::ListAction::Confirm),
-                "select",
-            ),
-            (
-                keybinds.display_list(crate::keybinds::ListAction::Cancel),
-                "cancel",
-            ),
-        ],
-    );
     let content_area = draw_popup_frame(
         frame,
         area,
         "KEYBIND PRESET",
         PopupSize::Medium,
-        &hint_line,
+        PopupHints::Keybinds(&[
+            (keybinds.display_list(crate::keybinds::ListAction::MoveUp), "up"),
+            (keybinds.display_list(crate::keybinds::ListAction::MoveDown), "down"),
+            (keybinds.display_list(crate::keybinds::ListAction::Confirm), "select"),
+            (keybinds.display_list(crate::keybinds::ListAction::Cancel), "cancel"),
+        ]),
         theme,
     );
 
@@ -902,7 +832,7 @@ pub fn draw_status_bar<'a>(
 /// Used by popups so they don't inherit powerline styling.
 pub fn format_keybind_hints_classic<'a>(
     theme: &'a AppThemeColors,
-    items: &[(String, &'static str)],
+    items: &[(String, &'a str)],
 ) -> Line<'a> {
     let mut spans = Vec::new();
     for (i, (key, action)) in items.iter().enumerate() {
@@ -972,6 +902,26 @@ pub fn format_keybind_hints<'a>(
     }
 }
 
+
+/// Describes the content of a popup footer hint line.
+pub enum PopupHints<'a> {
+    /// Key-action pairs: each key rendered in accent+bold, actions in muted, joined by ` · `.
+    Keybinds(&'a [(String, &'a str)]),
+    /// Plain text hint rendered entirely in muted.
+    Text(&'a str),
+}
+
+/// Build a popup footer `Line` from either keybind pairs or plain text.
+/// Always uses classic muted style — never inherits `hint_bar_style`.
+pub fn popup_footer_hints<'a>(theme: &'a AppThemeColors, hints: PopupHints<'a>) -> Line<'a> {
+    match hints {
+        PopupHints::Keybinds(items) => format_keybind_hints_classic(theme, items),
+        PopupHints::Text(text) => Line::from(Span::styled(
+            text.to_string(),
+            Style::default().fg(theme.muted),
+        )),
+    }
+}
 pub fn draw_popup_footer(frame: &mut Frame, area: Rect, theme: &AppThemeColors, hints: &Line<'_>) {
     let footer = Paragraph::new(hints.clone())
         .alignment(Alignment::Center)
@@ -984,7 +934,7 @@ pub fn draw_popup_frame(
     area: Rect,
     title: &str,
     size: PopupSize,
-    hints: &Line<'_>,
+    hints: PopupHints<'_>,
     theme: &AppThemeColors,
 ) -> Rect {
     let popup_area = centered_rect(size, area);
@@ -994,7 +944,8 @@ pub fn draw_popup_frame(
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(1), Constraint::Length(1)])
         .split(popup_area);
-    draw_popup_footer(frame, chunks[1], theme, hints);
+    let hint_line = popup_footer_hints(theme, hints);
+    draw_popup_footer(frame, chunks[1], theme, &hint_line);
     chunks[0]
 }
 
@@ -1011,11 +962,21 @@ pub fn draw_confirm_popup_frame(
     title: &str,
     size: PopupSize,
     is_destructive: bool,
+    hints: PopupHints<'_>,
     theme: &AppThemeColors,
 ) -> Rect {
     let popup_area = centered_rect(size, area);
     frame.render_widget(Clear, popup_area);
     draw_popup_banner(frame, popup_area, title, theme);
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(1), Constraint::Length(1)])
+        .split(popup_area);
+
+    let hint_line = popup_footer_hints(theme, hints);
+    draw_popup_footer(frame, chunks[1], theme, &hint_line);
+
     let border_color = if is_destructive {
         theme.destructive
     } else {
@@ -1025,8 +986,8 @@ pub fn draw_confirm_popup_frame(
         .style(theme.bg_style())
         .borders(Borders::ALL)
         .border_style(Style::default().fg(border_color));
-    let inner = block.inner(popup_area);
-    frame.render_widget(block, popup_area);
+    let inner = block.inner(chunks[0]);
+    frame.render_widget(block, chunks[0]);
     inner
 }
 
@@ -1042,6 +1003,10 @@ pub fn draw_confirm_popup(
         "CONFIRM",
         PopupSize::Confirm,
         popup.is_destructive,
+        PopupHints::Keybinds(&[
+            ("y".to_string(), &popup.confirm_label),
+            ("n".to_string(), "cancel"),
+        ]),
         theme,
     );
 
@@ -1152,16 +1117,19 @@ pub fn draw_subnotes_popup(
     area: Rect,
     theme: &AppThemeColors,
 ) {
-    let hint_line = popup_hint_line(
-        theme,
-        "Alt+N new · Ctrl+E ext edit · Esc back/close · Enter/l edit · d/Del delete · Tab/Enter/Shift+Tab navigate",
-    );
     let content = draw_popup_frame(
         frame,
         area,
         "SUB-NOTES",
         PopupSize::Large,
-        &hint_line,
+        PopupHints::Keybinds(&[
+            ("Alt+N".to_string(), "new"),
+            ("Ctrl+E".to_string(), "ext edit"),
+            ("Esc".to_string(), "back/close"),
+            ("Enter/l".to_string(), "edit"),
+            ("d/Del".to_string(), "delete"),
+            ("Tab/Enter/Shift+Tab".to_string(), "navigate"),
+        ]),
         theme,
     );
 

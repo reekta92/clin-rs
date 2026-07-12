@@ -720,29 +720,26 @@ pub fn draw_pinstar_view(
     }
 
     if let Some(textarea) = &mut state.rename_popup {
-        let hint_line = crate::ui::format_keybind_hints(
-            theme,
-            &[
-                (
-                    state
-                        .keybinds
-                        .display_canvas(crate::keybinds::CanvasAction::RenameConfirm),
-                    "confirm",
-                ),
-                (
-                    state
-                        .keybinds
-                        .display_canvas(crate::keybinds::CanvasAction::RenameCancel),
-                    "cancel",
-                ),
-            ],
-        );
+        let hints_items = &[
+            (
+                state
+                    .keybinds
+                    .display_canvas(crate::keybinds::CanvasAction::RenameConfirm),
+                "confirm",
+            ),
+            (
+                state
+                    .keybinds
+                    .display_canvas(crate::keybinds::CanvasAction::RenameCancel),
+                "cancel",
+            ),
+        ];
         let content = crate::ui::draw_popup_frame(
             frame,
             area,
             "RENAME NODE",
             crate::ui::PopupSize::Prompt,
-            &hint_line,
+            crate::ui::PopupHints::Keybinds(hints_items),
             theme,
         );
 

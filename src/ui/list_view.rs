@@ -1,7 +1,8 @@
 use super::{
-    PopupSize, PreviewHeaderInfo, build_list_widget, build_tab_spans, draw_confirm_popup,
+    PopupSize, PopupHints, PreviewHeaderInfo, build_list_widget, build_tab_spans, draw_confirm_popup,
     draw_corner_watermark, draw_dim_vline, draw_popup_frame, draw_status_bar, draw_template_popup,
-    draw_view_title_bar, draw_view_title_bar_with_tabs, format_keybind_hints, format_relative_time,
+    draw_view_title_bar, draw_view_title_bar_with_tabs, format_keybind_hints,
+    format_relative_time,
     popup_block, popup_hint_line, preview_spans,
 };
 use crate::app::{App, VIRTUAL_PINNED_LABEL, VIRTUAL_PINNED_PATH, VIRTUAL_SMART_PATH, ViewMode};
@@ -1038,19 +1039,15 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             crate::popups::FolderPopupMode::Create { .. } => "NEW FOLDER",
             crate::popups::FolderPopupMode::Rename { .. } => "RENAME FOLDER",
         };
-        let hint_line = format_keybind_hints(
-            &app.app_theme,
-            &[
-                (kb.display_list(ListAction::Confirm), "confirm"),
-                (kb.display_list(ListAction::Cancel), "cancel"),
-            ],
-        );
         let content = draw_popup_frame(
             frame,
             area,
             title,
             PopupSize::Prompt,
-            &hint_line,
+            PopupHints::Keybinds(&[
+                (kb.display_list(ListAction::Confirm), "confirm"),
+                (kb.display_list(ListAction::Cancel), "cancel"),
+            ]),
             &app.app_theme,
         );
 
@@ -1069,16 +1066,18 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         } else {
             (popup.suggestions.len() as u16).clamp(1, 5)
         };
-        let hint_line = popup_hint_line(
-            &app.app_theme,
-            "Ctrl+S batch assign · Tab accept · Enter save · d delete from all · Esc cancel",
-        );
         let content = draw_popup_frame(
             frame,
             area,
             "TAGS",
             PopupSize::Large,
-            &hint_line,
+            PopupHints::Keybinds(&[
+                ("Ctrl+S".to_string(), "batch assign"),
+                ("Tab".to_string(), "accept"),
+                ("Enter".to_string(), "save"),
+                ("d".to_string(), "delete from all"),
+                ("Esc".to_string(), "cancel"),
+            ]),
             &app.app_theme,
         );
 
@@ -1186,20 +1185,16 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             | crate::popups::FolderPickerMode::BulkCopyMixed { .. } => "COPY",
             _ => "MOVE",
         };
-        let hint_line = format_keybind_hints(
-            &app.app_theme,
-            &[
-                (kb.display_list(ListAction::CycleFocus), "switch"),
-                (kb.display_list(ListAction::Confirm), "confirm"),
-                (kb.display_list(ListAction::Cancel), "cancel"),
-            ],
-        );
         let content = draw_popup_frame(
             frame,
             area,
             title,
             PopupSize::Large,
-            &hint_line,
+            PopupHints::Keybinds(&[
+                (kb.display_list(ListAction::CycleFocus), "switch"),
+                (kb.display_list(ListAction::Confirm), "confirm"),
+                (kb.display_list(ListAction::Cancel), "cancel"),
+            ]),
             &app.app_theme,
         );
 
@@ -1267,16 +1262,17 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     }
 
     if let Some(palette) = &mut app.command_palette {
-        let hint_line = popup_hint_line(
-            &app.app_theme,
-            "Tab category · Enter run · ↑/↓ select · Esc close",
-        );
         let content = draw_popup_frame(
             frame,
             area,
             "COMMANDS",
             PopupSize::Large,
-            &hint_line,
+            PopupHints::Keybinds(&[
+                ("Tab".to_string(), "category"),
+                ("Enter".to_string(), "run"),
+                ("↑/↓".to_string(), "select"),
+                ("Esc".to_string(), "close"),
+            ]),
             &app.app_theme,
         );
 
@@ -1355,19 +1351,15 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     }
 
     if let Some(crate::popups::ActivePopup::NoteRename(popup)) = &mut app.popups.active {
-        let hint_line = format_keybind_hints(
-            &app.app_theme,
-            &[
-                (kb.display_list(ListAction::Confirm), "rename"),
-                (kb.display_list(ListAction::Cancel), "cancel"),
-            ],
-        );
         let content = draw_popup_frame(
             frame,
             area,
             "RENAME",
             PopupSize::Prompt,
-            &hint_line,
+            PopupHints::Keybinds(&[
+                (kb.display_list(ListAction::Confirm), "rename"),
+                (kb.display_list(ListAction::Cancel), "cancel"),
+            ]),
             &app.app_theme,
         );
 
@@ -1381,21 +1373,22 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     }
 
     if let Some(crate::popups::ActivePopup::Goals(popup)) = &mut app.popups.active {
-        let (title, sub) = match popup.mode {
-            crate::popups::GoalsPopupMode::WordGoal => {
-                ("DAILY WORD GOAL", "Enter word count · Esc cancel")
-            }
-            crate::popups::GoalsPopupMode::NoteGoal => {
-                ("DAILY NOTE GOAL", "Enter note count · Esc cancel")
-            }
+        let items: Vec<(String, &str)> = match popup.mode {
+            crate::popups::GoalsPopupMode::WordGoal => vec![
+                ("Enter".to_string(), "word count"),
+                ("Esc".to_string(), "cancel"),
+            ],
+            crate::popups::GoalsPopupMode::NoteGoal => vec![
+                ("Enter".to_string(), "note count"),
+                ("Esc".to_string(), "cancel"),
+            ],
         };
-        let hint_line = popup_hint_line(&app.app_theme, sub);
         let content = draw_popup_frame(
             frame,
             area,
             title,
             PopupSize::Prompt,
-            &hint_line,
+            PopupHints::Keybinds(&items),
             &app.app_theme,
         );
 
@@ -1415,19 +1408,15 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             crate::popups::NoteFormat::Canvas => "NEW CANVAS",
             crate::popups::NoteFormat::PlainText => "NEW TEXT FILE",
         };
-        let hint_line = format_keybind_hints(
-            &app.app_theme,
-            &[
-                (kb.display_list(ListAction::Confirm), "create"),
-                (kb.display_list(ListAction::Cancel), "cancel"),
-            ],
-        );
         let content = draw_popup_frame(
             frame,
             area,
             title,
             PopupSize::Prompt,
-            &hint_line,
+            PopupHints::Keybinds(&[
+                (kb.display_list(ListAction::Confirm), "create"),
+                (kb.display_list(ListAction::Cancel), "cancel"),
+            ]),
             &app.app_theme,
         );
         popup.input.set_block(popup_block("", &app.app_theme));
@@ -1442,19 +1431,15 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             crate::popups::ImportSource::Url => "IMPORT URL",
             crate::popups::ImportSource::Clipboard => "IMPORT CLIPBOARD",
         };
-        let hint_line = format_keybind_hints(
-            &app.app_theme,
-            &[
-                (kb.display_list(ListAction::Confirm), "import"),
-                (kb.display_list(ListAction::Cancel), "cancel"),
-            ],
-        );
         let content = draw_popup_frame(
             frame,
             area,
             title,
             PopupSize::Large,
-            &hint_line,
+            PopupHints::Keybinds(&[
+                (kb.display_list(ListAction::Confirm), "import"),
+                (kb.display_list(ListAction::Cancel), "cancel"),
+            ]),
             &app.app_theme,
         );
         popup.input.set_block(
@@ -1467,16 +1452,18 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     }
 
     if let Some(crate::popups::ActivePopup::Search(popup)) = &mut app.popups.active {
-        let hint_line = popup_hint_line(
-            &app.app_theme,
-            "Tab switch · Enter open · Esc cancel · f:folder p:pinned t:tag g:text · \\e\\ escapes filters",
-        );
         let content = draw_popup_frame(
             frame,
             area,
             "SEARCH",
             PopupSize::Large,
-            &hint_line,
+            PopupHints::Keybinds(&[
+                ("f:".to_string(), "folder"),
+                ("p:".to_string(), "pinned"),
+                ("t:".to_string(), "tag"),
+                ("g:".to_string(), "text"),
+                ("\\e\\".to_string(), "escapes filters"),
+            ]),
             &app.app_theme,
         );
 
@@ -1718,13 +1705,17 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     }
 
     if let Some(crate::popups::ActivePopup::TrashView(trash)) = &app.popups.active {
-        let hint_line = popup_hint_line(&app.app_theme, "r restore · d delete · E empty · q close");
         let content = draw_popup_frame(
             frame,
             area,
             "TRASH",
             PopupSize::Large,
-            &hint_line,
+            PopupHints::Keybinds(&[
+                ("r".to_string(), "restore"),
+                ("d".to_string(), "delete"),
+                ("E".to_string(), "empty"),
+                ("q".to_string(), "close"),
+            ]),
             &app.app_theme,
         );
 

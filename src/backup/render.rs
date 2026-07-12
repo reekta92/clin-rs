@@ -409,13 +409,12 @@ fn draw_commit_popup(frame: &mut Frame, area: Rect, state: &BackupState) {
             "cancel",
         ),
     ];
-    let hint_line = crate::ui::format_keybind_hints(theme, &hints_items);
     let content = crate::ui::draw_popup_frame(
         frame,
         area,
         "COMMIT",
         crate::ui::PopupSize::Prompt,
-        &hint_line,
+        crate::ui::PopupHints::Keybinds(&hints_items),
         theme,
     );
 
@@ -459,16 +458,14 @@ fn draw_settings_popup(frame: &mut Frame, area: Rect, state: &BackupState) {
             "close",
         ),
     ];
-    let hint_line = crate::ui::format_keybind_hints(theme, &hints_items);
     let content = crate::ui::draw_popup_frame(
         frame,
         area,
         "BACKUP SETTINGS",
         crate::ui::PopupSize::Large,
-        &hint_line,
+        crate::ui::PopupHints::Keybinds(&hints_items),
         theme,
     );
-
     let outer_block = Block::default()
         .style(theme.bg_style())
         .borders(Borders::ALL)
