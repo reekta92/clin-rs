@@ -1,4 +1,4 @@
-use crossterm::event::{KeyCode, KeyEvent, MouseButton, MouseEvent, MouseEventKind};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui_textarea::Input;
 
@@ -10,6 +10,14 @@ use super::{
     contains_cell, edit_view_input_areas, edit_view_md_preview_area, get_title_text,
     make_title_editor, move_textarea_cursor_to_mouse,
 };
+
+fn leave_editor(app: &mut App, focus: &mut EditFocus) {
+    let prev_id = app.editor.editing_id.clone();
+    app.autosave();
+    let new_id = app.editor.editing_id.clone();
+    app.back_to_list(prev_id.as_deref(), new_id.as_deref());
+    *focus = EditFocus::Body;
+}
 
 pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> bool {
     if let Some(crate::popups::ActivePopup::ContextMenu(mut menu)) = app.popups.active.take() {
@@ -46,6 +54,12 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
         }
         return false;
     }
+    // Universal back (override-proof): bare Esc leaves the editor. q types a letter.
+    if key.modifiers == KeyModifiers::NONE && key.code == KeyCode::Esc {
+        leave_editor(app, focus);
+        return false;
+    }
+
 
     let seq = app.config.sequences_enabled();
     let counts = app.config.counts_enabled();
@@ -62,12 +76,7 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 return false;
             }
             EditAction::Back => {
-                let prev_id = app.editor.editing_id.clone();
-                app.autosave();
-                let new_id = app.editor.editing_id.clone();
-                app.back_to_list(prev_id.as_deref(), new_id.as_deref());
-
-                *focus = EditFocus::Body;
+                leave_editor(app, focus);
                 return false;
             }
             EditAction::ToggleMarkdownPreview => {

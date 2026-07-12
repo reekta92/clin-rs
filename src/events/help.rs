@@ -150,6 +150,12 @@ pub fn handle_help_keys(app: &mut App, key: KeyEvent) {
         }
         return;
     }
+    // Universal back/quit (override-proof): bare q/Esc closes help.
+    if crate::events::is_universal_quit_key(&key) {
+        app.close_help_page();
+        return;
+    }
+
 
     let seq = app.config.sequences_enabled();
     let counts = app.config.counts_enabled();

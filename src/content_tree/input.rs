@@ -84,6 +84,10 @@ pub fn handle_input(
     keybinds: &Keybinds,
     config: &ClinConfig,
 ) -> ContentTreeInput {
+    if crate::events::is_universal_quit_key(&key) {
+        return ContentTreeInput::Back;
+    }
+
     let seq = config.sequences_enabled();
     let counts = config.counts_enabled();
     match keybinds.resolve_content_tree(&mut state.seq_matcher, key, seq, counts) {
