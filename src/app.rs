@@ -54,11 +54,7 @@ pub struct SearchQuery {
 
 #[derive(Debug, Clone, Default)]
 pub struct HelpSearchState {
-    pub active: bool,
-    pub query: String,
-    pub results: Vec<(usize, String)>,
-    pub selected: usize,
-    pub cursor: usize,
+    pub popup: Option<crate::ui::quick_search::QuickSearch<(usize, String)>>,
     pub highlight_row: Option<usize>,
 }
 
@@ -1332,44 +1328,31 @@ impl App {
     }
 
     pub fn update_help_search(&mut self) {
-        let query = self.help_search.query.to_lowercase();
+        let query = match &self.help_search.popup {
+            Some(popup) => popup.query().to_lowercase(),
+            None => return,
+        };
+        let rows = self.get_help_rows();
+        let popup = match &mut self.help_search.popup {
+            Some(popup) => popup,
+            None => return,
+        };
         if query.is_empty() {
-            self.help_search.results.clear();
+            popup.results.clear();
         } else {
-            let rows = self.get_help_rows();
             let results: Vec<_> = rows
                 .iter()
                 .enumerate()
                 .filter(|(_, hr)| hr.search_text.to_lowercase().contains(&query))
                 .map(|(i, hr)| (i, hr.display.clone()))
                 .collect();
-            self.help_search.results = results;
+            popup.results = results;
         }
-        if self.help_search.selected >= self.help_search.results.len() {
-            self.help_search.selected = self.help_search.results.len().saturating_sub(1);
+        if popup.selected >= popup.results.len() {
+            popup.selected = popup.results.len().saturating_sub(1);
         }
     }
 
-    pub fn update_find_results(&mut self) {
-        let query = self.editor.find_query.to_lowercase();
-        if query.is_empty() {
-            self.editor.find_results.clear();
-        } else {
-            let results: Vec<_> = self
-                .editor
-                .editor
-                .lines()
-                .iter()
-                .enumerate()
-                .filter(|(_, line)| line.to_lowercase().contains(&query))
-                .map(|(i, line)| (i, line.to_string()))
-                .collect();
-            self.editor.find_results = results;
-        }
-        if self.editor.find_selected >= self.editor.find_results.len() {
-            self.editor.find_selected = self.editor.find_results.len().saturating_sub(1);
-        }
-    }
 
     pub fn initiate_quit(&mut self) {
         if self.confirm_on_quit {

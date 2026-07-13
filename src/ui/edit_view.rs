@@ -409,81 +409,26 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             .wrap(Wrap { trim: true });
         frame.render_widget(text, popup);
     }
-
-    if app.editor.find_active {
-        draw_find(frame, area, app);
+    if let Some(ref popup) = app.editor.find_popup {
+        let theme = &app.app_theme;
+        let max_visible = 10usize;
+        crate::ui::quick_search::draw_quick_search(
+            frame,
+            area,
+            popup,
+            theme,
+            max_visible,
+            |(_, display): &(usize, String), is_selected, theme| {
+                let style = if is_selected {
+                    Style::default()
+                        .fg(theme.highlight_fg)
+                        .bg(theme.highlight_bg)
+                } else {
+                    Style::default().fg(theme.text)
+                };
+                let prefix = if is_selected { "▸ " } else { "  " };
+                Line::from(Span::styled(format!("{}{}", prefix, display), style))
+            },
+        );
     }
-}
-
-fn draw_find(frame: &mut Frame, area: Rect, app: &App) {
-    let theme = &app.app_theme;
-    let max_visible = 10usize;
-    let result_count = app.editor.find_results.len();
-
-    let popup_width = 50u16.min(area.width.saturating_sub(4));
-    let popup_height = 3u16 + (max_visible as u16).min(result_count as u16).min(12);
-    let popup_x = area.x + (area.width.saturating_sub(popup_width)) / 2;
-    let popup_y = area.y + 1;
-    let popup_area = Rect::new(popup_x, popup_y, popup_width, popup_height);
-
-    let input_display = if app.editor.find_query.is_empty() {
-        "Search…".to_string()
-    } else {
-        app.editor.find_query.clone()
-    };
-    let text_style = Style::default().fg(theme.text);
-    let input_line = Line::from(vec![
-        Span::styled("> ", text_style),
-        Span::styled(input_display, text_style),
-    ]);
-
-    let mut lines: Vec<Line> = vec![input_line];
-
-    if result_count == 0 && !app.editor.find_query.is_empty() {
-        lines.push(Line::styled(
-            "  No matches",
-            Style::default().fg(theme.muted),
-        ));
-    } else {
-        let scroll_offset = app
-            .editor
-            .find_selected
-            .saturating_sub(max_visible.saturating_sub(1));
-        for (i, (_, display)) in app
-            .editor
-            .find_results
-            .iter()
-            .enumerate()
-            .skip(scroll_offset)
-            .take(max_visible)
-        {
-            let is_selected = i == app.editor.find_selected;
-            let display_width = (popup_width as usize).saturating_sub(6);
-            let display = if display.len() > display_width {
-                format!("{}…", &display[..display_width.saturating_sub(1)])
-            } else {
-                display.clone()
-            };
-            let prefix = if is_selected { "▸ " } else { "  " };
-            let style = if is_selected {
-                Style::default()
-                    .fg(theme.highlight_fg)
-                    .bg(theme.highlight_bg)
-            } else {
-                text_style
-            };
-            lines.push(Line::from(Span::styled(
-                format!("{}{}", prefix, display),
-                style,
-            )));
-        }
-    }
-
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title(" Find ")
-        .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(theme.border));
-    let paragraph = Paragraph::new(lines).block(block);
-    frame.render_widget(paragraph, popup_area);
 }

@@ -12,9 +12,7 @@ use super::{
 };
 
 fn leave_editor(app: &mut App, focus: &mut EditFocus) {
-    app.editor.find_active = false;
-    app.editor.find_query.clear();
-    app.editor.find_cursor = 0;
+    app.editor.find_popup = None;
     app.editor
         .editor
         .set_search_style(ratatui::style::Style::default());
@@ -60,9 +58,49 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
         }
         return false;
     }
-    if app.editor.find_active {
+    if let Some(ref mut popup) = app.editor.find_popup {
         app.seq_matcher.clear();
-        handle_find_keys(app, key, focus);
+        match crate::ui::quick_search::handle_quick_search_keys(popup, key, &app.keybinds) {
+            crate::ui::quick_search::QuickSearchAction::Submit => {
+                if let Some(&(line_idx, _)) = popup.results.get(popup.selected) {
+                    app.editor
+                        .editor
+                        .move_cursor(ratatui_textarea::CursorMove::Jump(line_idx as u16, 0));
+                    let _ = app.editor.editor.search_forward(false);
+                }
+                app.editor.editor.set_search_style(ratatui::style::Style::default());
+                app.editor.find_popup = None;
+            }
+            crate::ui::quick_search::QuickSearchAction::Cancel => {
+                app.editor.editor.set_search_style(ratatui::style::Style::default());
+                app.editor.find_popup = None;
+            }
+            crate::ui::quick_search::QuickSearchAction::Edited => {
+                let query_lower = popup.query().to_lowercase();
+                if query_lower.is_empty() {
+                    popup.results.clear();
+                } else {
+                    popup.results = app
+                        .editor
+                        .editor
+                        .lines()
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, line)| line.to_lowercase().contains(&query_lower))
+                        .map(|(i, line)| (i, line.to_string()))
+                        .collect();
+                }
+                if popup.selected >= popup.results.len() {
+                    popup.selected = popup.results.len().saturating_sub(1);
+                }
+                let query = popup.query();
+                let result = app.editor.editor.set_search_pattern(&query);
+                if result.is_ok() && !query.is_empty() {
+                    let _ = app.editor.editor.search_forward(true);
+                }
+            }
+            _ => {}
+        }
         return false;
     }
 
@@ -144,19 +182,16 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 return false;
             }
             EditAction::Find => {
-                app.editor.find_active = !app.editor.find_active;
-                if app.editor.find_active {
-                    app.editor.editor.set_search_style(
-                        ratatui::style::Style::default().bg(app.app_theme.highlight_bg),
-                    );
-                    if !app.editor.find_query.is_empty() {
-                        let _ = app.editor.editor.set_search_pattern(&app.editor.find_query);
-                        let _ = app.editor.editor.search_forward(true);
-                    }
+                let theme = &app.app_theme;
+                if app.editor.find_popup.is_some() {
+                    app.editor.editor.set_search_style(ratatui::style::Style::default());
+                    app.editor.find_popup = None;
                 } else {
-                    app.editor
-                        .editor
-                        .set_search_style(ratatui::style::Style::default());
+                    app.editor.editor.set_search_style(
+                        ratatui::style::Style::default().bg(theme.highlight_bg),
+                    );
+                    app.editor.find_popup =
+                        Some(crate::ui::quick_search::QuickSearch::new(" Find ", theme));
                 }
                 return false;
             }
@@ -423,169 +458,3 @@ pub fn handle_edit_mouse(
     }
 }
 
-fn handle_find_keys(app: &mut App, key: KeyEvent, _focus: &mut EditFocus) {
-    let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
-    let shift = key.modifiers.contains(KeyModifiers::SHIFT);
-    match key.code {
-        _ if crate::events::is_cancel_popup(&app.keybinds, &key, true) => {
-            app.editor.find_active = false;
-            app.editor.find_query.clear();
-            app.editor.find_results.clear();
-            app.editor.find_selected = 0;
-            app.editor.find_cursor = 0;
-            app.editor
-                .editor
-                .set_search_style(ratatui::style::Style::default());
-        }
-        KeyCode::Enter => {
-            if let Some(&(line_idx, _)) = app.editor.find_results.get(app.editor.find_selected) {
-                app.editor
-                    .editor
-                    .move_cursor(ratatui_textarea::CursorMove::Jump(line_idx as u16, 0));
-                let _ = app.editor.editor.search_forward(false);
-            }
-            app.editor.find_active = false;
-            app.editor.find_query.clear();
-            app.editor.find_results.clear();
-            app.editor.find_selected = 0;
-            app.editor.find_cursor = 0;
-            app.editor
-                .editor
-                .set_search_style(ratatui::style::Style::default());
-        }
-        KeyCode::Up => {
-            if app.editor.find_selected > 0 {
-                app.editor.find_selected -= 1;
-            }
-        }
-        KeyCode::Down => {
-            if !app.editor.find_results.is_empty()
-                && app.editor.find_selected + 1 < app.editor.find_results.len()
-            {
-                app.editor.find_selected += 1;
-            }
-        }
-        KeyCode::BackTab | KeyCode::Tab if shift => {
-            if !app.editor.find_results.is_empty() {
-                app.editor.find_selected = app
-                    .editor
-                    .find_selected
-                    .checked_sub(1)
-                    .unwrap_or(app.editor.find_results.len().saturating_sub(1));
-            }
-        }
-        KeyCode::Tab => {
-            if !app.editor.find_results.is_empty() {
-                app.editor.find_selected =
-                    (app.editor.find_selected + 1) % app.editor.find_results.len();
-            }
-        }
-        KeyCode::Backspace => {
-            if app.editor.find_cursor > 0 {
-                let prev = app.editor.find_query[..app.editor.find_cursor]
-                    .char_indices()
-                    .last()
-                    .map(|(i, _)| i)
-                    .unwrap_or(0);
-                app.editor
-                    .find_query
-                    .replace_range(prev..app.editor.find_cursor, "");
-                app.editor.find_cursor = prev;
-                update_find_search(app);
-            }
-        }
-        KeyCode::Delete => {
-            if app.editor.find_cursor < app.editor.find_query.len() {
-                let next = app.editor.find_query[app.editor.find_cursor..]
-                    .char_indices()
-                    .nth(1)
-                    .map(|(i, _)| app.editor.find_cursor + i)
-                    .unwrap_or(app.editor.find_query.len());
-                app.editor
-                    .find_query
-                    .replace_range(app.editor.find_cursor..next, "");
-                update_find_search(app);
-            }
-        }
-        KeyCode::Left => {
-            if app.editor.find_cursor > 0 {
-                app.editor.find_cursor = app.editor.find_query[..app.editor.find_cursor]
-                    .char_indices()
-                    .last()
-                    .map(|(i, _)| i)
-                    .unwrap_or(0);
-            }
-        }
-        KeyCode::Right => {
-            if app.editor.find_cursor < app.editor.find_query.len() {
-                app.editor.find_cursor = app.editor.find_query[app.editor.find_cursor..]
-                    .char_indices()
-                    .nth(1)
-                    .map(|(i, _)| app.editor.find_cursor + i)
-                    .unwrap_or(app.editor.find_query.len());
-            }
-        }
-        KeyCode::Home => {
-            app.editor.find_cursor = 0;
-        }
-        KeyCode::End => {
-            app.editor.find_cursor = app.editor.find_query.len();
-        }
-        KeyCode::Char('h') if ctrl => {
-            if app.editor.find_cursor > 0 {
-                let prev = app.editor.find_query[..app.editor.find_cursor]
-                    .char_indices()
-                    .last()
-                    .map(|(i, _)| i)
-                    .unwrap_or(0);
-                app.editor
-                    .find_query
-                    .replace_range(prev..app.editor.find_cursor, "");
-                app.editor.find_cursor = prev;
-                update_find_search(app);
-            }
-        }
-        KeyCode::Char('w') if ctrl => {
-            if app.editor.find_cursor > 0 {
-                let prev = app.editor.find_query[..app.editor.find_cursor]
-                    .char_indices()
-                    .last()
-                    .map(|(i, _)| i)
-                    .unwrap_or(0);
-                app.editor
-                    .find_query
-                    .replace_range(prev..app.editor.find_cursor, "");
-                app.editor.find_cursor = prev;
-                update_find_search(app);
-            }
-        }
-        KeyCode::Char('u') if ctrl => {
-            app.editor.find_query.clear();
-            app.editor.find_cursor = 0;
-            update_find_search(app);
-        }
-        KeyCode::Char('a') if ctrl => {
-            app.editor.find_cursor = 0;
-        }
-        KeyCode::Char('e') if ctrl => {
-            app.editor.find_cursor = app.editor.find_query.len();
-        }
-        KeyCode::Char(c) if !ctrl => {
-            const MAX_FIND_LEN: usize = 256;
-            if app.editor.find_query.len() < MAX_FIND_LEN {
-                app.editor.find_query.insert(app.editor.find_cursor, c);
-                app.editor.find_cursor += c.len_utf8();
-                update_find_search(app);
-            }
-        }
-        _ => {}
-    }
-}
-
-fn update_find_search(app: &mut App) {
-    app.update_find_results();
-    let result = app.editor.editor.set_search_pattern(&app.editor.find_query);
-    if result.is_ok() && !app.editor.find_query.is_empty() {
-        let _ = app.editor.editor.search_forward(true);
-    }
-}

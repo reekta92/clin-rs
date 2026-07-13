@@ -19,11 +19,7 @@ pub struct GrafAppState {
     pub graph_mouse_state: GraphMouseState,
     pub storage: Storage,
     pub config_errors: Vec<String>,
-    pub search_active: bool,
-    pub search_query: String,
-    pub search_results: Vec<(NodeIndex, String)>,
-    pub search_selected: usize,
-    pub search_cursor: usize,
+    pub search_popup: Option<crate::ui::quick_search::QuickSearch<(NodeIndex, String)>>,
     pub show_minimap: bool,
     pub show_legend: bool,
     pub show_grid: bool,
@@ -64,11 +60,7 @@ impl GrafAppState {
             storage,
 
             config_errors,
-            search_active: false,
-            search_query: String::new(),
-            search_results: Vec::new(),
-            search_selected: 0,
-            search_cursor: 0,
+            search_popup: None,
             show_minimap: config.graf.visual.show_minimap,
             show_legend: config.graf.visual.show_legend,
             show_grid: config.graf.visual.show_grid,
@@ -94,8 +86,7 @@ impl GrafAppState {
             crate::graf::physics::start_physics(state.clone(), config, kill_rx);
             self.graph_state = Some(state);
             self.graph_kill_tx = Some(kill_tx);
-            self.search_results.clear();
-            self.search_selected = 0;
+            self.search_popup = None;
         }
     }
 
@@ -285,7 +276,7 @@ fn handle_event(
 ) -> anyhow::Result<Option<EventAction>> {
     match ev {
         crossterm::event::Event::Key(key) => {
-            if app_state.search_active {
+            if app_state.search_popup.is_some() {
                 app_state.seq_matcher.clear();
                 handle_search_keys(app_state, key, config, keybinds);
                 return Ok(None);
@@ -314,7 +305,6 @@ fn handle_event(
                     _ => {}
                 }
             }
-
             if let Some(graph_state) = &app_state.graph_state
                 && let Some(action) = crate::graf::input::handle_graph_keys(
                     graph_state,
@@ -331,7 +321,11 @@ fn handle_event(
                         return Ok(Some(EventAction::OpenHelp));
                     }
                     GraphInputAction::ToggleSearch => {
-                        app_state.search_active = true;
+                        app_state.search_popup =
+                            Some(crate::ui::quick_search::QuickSearch::new(
+                                "Search",
+                                &app_state.app_theme,
+                            ));
                         return Ok(None);
                     }
                     GraphInputAction::ToggleMinimap => {
@@ -375,7 +369,7 @@ fn handle_event(
             Ok(None)
         }
         crossterm::event::Event::Mouse(mouse_event) => {
-            if app_state.search_active {
+            if app_state.search_popup.is_some() {
                 return Ok(None);
             }
             if let Some(graph_state) = &app_state.graph_state {
@@ -442,22 +436,13 @@ fn handle_search_keys(
     config: &crate::config::ClinConfig,
     keybinds: &crate::keybinds::Keybinds,
 ) {
-    use crossterm::event::{KeyCode, KeyModifiers};
-
-    let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
-    let shift = key.modifiers.contains(KeyModifiers::SHIFT);
-
-    if crate::events::is_cancel_popup(keybinds, &key, true) {
-        app_state.search_active = false;
-        app_state.search_query.clear();
-        app_state.search_results.clear();
-        app_state.search_selected = 0;
-        app_state.search_cursor = 0;
-        return;
-    }
-    match key.code {
-        KeyCode::Enter => {
-            if let Some(&(idx, _)) = app_state.search_results.get(app_state.search_selected) {
+    let popup = match &mut app_state.search_popup {
+        Some(popup) => popup,
+        None => return,
+    };
+    match crate::ui::quick_search::handle_quick_search_keys(popup, key, keybinds) {
+        crate::ui::quick_search::QuickSearchAction::Submit => {
+            if let Some(&(idx, _)) = popup.results.get(popup.selected) {
                 let (nx, ny) = if let Some(graph_state) = &app_state.graph_state {
                     let guard = graph_state.read();
                     let graph = guard.simulation.get_graph();
@@ -475,144 +460,31 @@ fn handle_search_keys(
                     guard.viewport.center_on_node(nx as f32, ny as f32);
                 }
             }
-            app_state.search_active = false;
-            app_state.search_query.clear();
-            app_state.search_results.clear();
-            app_state.search_selected = 0;
-            app_state.search_cursor = 0;
+            app_state.search_popup = None;
         }
-        KeyCode::Up => {
-            if app_state.search_selected > 0 {
-                app_state.search_selected -= 1;
-            }
+        crate::ui::quick_search::QuickSearchAction::Cancel => {
+            app_state.search_popup = None;
         }
-        KeyCode::Down => {
-            if !app_state.search_results.is_empty()
-                && app_state.search_selected + 1 < app_state.search_results.len()
-            {
-                app_state.search_selected += 1;
-            }
-        }
-        KeyCode::BackTab | KeyCode::Tab if shift => {
-            if !app_state.search_results.is_empty() {
-                app_state.search_selected = app_state
-                    .search_selected
-                    .checked_sub(1)
-                    .unwrap_or(app_state.search_results.len().saturating_sub(1));
-            }
-        }
-        KeyCode::Tab => {
-            if !app_state.search_results.is_empty() {
-                app_state.search_selected =
-                    (app_state.search_selected + 1) % app_state.search_results.len();
-            }
-        }
-        KeyCode::Backspace => {
-            if app_state.search_cursor > 0 {
-                let prev = app_state.search_query[..app_state.search_cursor]
-                    .char_indices()
-                    .last()
-                    .map(|(i, _)| i)
-                    .unwrap_or(0);
-                app_state
-                    .search_query
-                    .replace_range(prev..app_state.search_cursor, "");
-                app_state.search_cursor = prev;
-                run_search(app_state, config);
-            }
-        }
-        KeyCode::Delete => {
-            if app_state.search_cursor < app_state.search_query.len() {
-                let next = app_state.search_query[app_state.search_cursor..]
-                    .char_indices()
-                    .nth(1)
-                    .map(|(i, _)| app_state.search_cursor + i)
-                    .unwrap_or(app_state.search_query.len());
-                app_state
-                    .search_query
-                    .replace_range(app_state.search_cursor..next, "");
-                run_search(app_state, config);
-            }
-        }
-        KeyCode::Left => {
-            if app_state.search_cursor > 0 {
-                app_state.search_cursor = app_state.search_query[..app_state.search_cursor]
-                    .char_indices()
-                    .last()
-                    .map(|(i, _)| i)
-                    .unwrap_or(0);
-            }
-        }
-        KeyCode::Right => {
-            if app_state.search_cursor < app_state.search_query.len() {
-                app_state.search_cursor = app_state.search_query[app_state.search_cursor..]
-                    .char_indices()
-                    .nth(1)
-                    .map(|(i, _)| app_state.search_cursor + i)
-                    .unwrap_or(app_state.search_query.len());
-            }
-        }
-        KeyCode::Home => {
-            app_state.search_cursor = 0;
-        }
-        KeyCode::End => {
-            app_state.search_cursor = app_state.search_query.len();
-        }
-        KeyCode::Char('h') if ctrl => {
-            delete_word_back(app_state);
+        crate::ui::quick_search::QuickSearchAction::Edited => {
             run_search(app_state, config);
-        }
-        KeyCode::Char('w') if ctrl => {
-            delete_word_back(app_state);
-            run_search(app_state, config);
-        }
-        KeyCode::Char('u') if ctrl => {
-            app_state.search_query.clear();
-            app_state.search_cursor = 0;
-            run_search(app_state, config);
-        }
-        KeyCode::Char('a') if ctrl => {
-            app_state.search_cursor = 0;
-        }
-        KeyCode::Char('e') if ctrl => {
-            app_state.search_cursor = app_state.search_query.len();
-        }
-        KeyCode::Char(c) if !ctrl => {
-            const MAX_SEARCH_LEN: usize = 256;
-            if app_state.search_query.len() < MAX_SEARCH_LEN {
-                app_state.search_query.insert(app_state.search_cursor, c);
-                app_state.search_cursor += c.len_utf8();
-                run_search(app_state, config);
-            }
         }
         _ => {}
     }
 }
 
-fn delete_word_back(app_state: &mut GrafAppState) {
-    if app_state.search_cursor == 0 {
-        return;
-    }
-    let query = &app_state.search_query[..app_state.search_cursor];
-    let trimmed = query.trim_end_matches(|c: char| c.is_whitespace());
-    let cut_to = trimmed
-        .rfind(|c: char| c.is_whitespace())
-        .map(|i| i + 1)
-        .unwrap_or(0);
-    app_state
-        .search_query
-        .replace_range(cut_to..app_state.search_cursor, "");
-    app_state.search_cursor = cut_to;
-}
-
 fn run_search(app_state: &mut GrafAppState, config: &crate::config::ClinConfig) {
+    let popup = match &mut app_state.search_popup {
+        Some(popup) => popup,
+        None => return,
+    };
+    let query = popup.query();
     if let Some(graph_state) = &app_state.graph_state {
         let guard = graph_state.read();
-        app_state.search_results = crate::graf::graph::search_nodes(
+        popup.results = crate::graf::graph::search_nodes(
             &guard.simulation,
-            &app_state.search_query,
+            &query,
             config.graf.search.max_results,
         );
     }
-    app_state.search_selected = 0;
+    popup.selected = 0;
 }

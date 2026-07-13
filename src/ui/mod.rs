@@ -13,6 +13,7 @@ mod help;
 pub(crate) mod help_content;
 mod list_view;
 mod popups;
+pub(crate) mod quick_search;
 pub(crate) mod setup;
 mod title_bar;
 

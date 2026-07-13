@@ -75,8 +75,33 @@ pub fn draw_ui(
         draw_dim_vline(frame, sep_area, state.app_theme.muted);
     }
 
-    if state.search_active {
-        draw_search(frame, area, state, config, &colors);
+    if state.search_popup.is_some() {
+        let popup = state.search_popup.as_ref().unwrap();
+        let max_visible = config.graf.search.max_visible;
+        let theme = &state.app_theme;
+        let popup_width = (50u16).min(area.width.saturating_sub(4));
+        crate::ui::quick_search::draw_quick_search(
+            frame,
+            area,
+            popup,
+            theme,
+            max_visible,
+            move |(_, title), is_selected, theme| {
+                let style = if is_selected {
+                    ratatui::style::Style::default()
+                        .fg(theme.highlight_fg)
+                        .bg(theme.highlight_bg)
+                } else {
+                    ratatui::style::Style::default().fg(theme.text)
+                };
+                let prefix = if is_selected { "▸ " } else { "  " };
+                let display = crate::graf::util::truncate(
+                    title,
+                    (popup_width as usize).saturating_sub(6),
+                );
+                ratatui::text::Line::styled(format!("{prefix}{display}"), style)
+            },
+        );
     }
 
     if let Some(ref msg) = state.config_reload_msg {
@@ -148,106 +173,6 @@ fn suggest_fix(err: &str) -> Option<String> {
     None
 }
 
-fn draw_search(
-    frame: &mut Frame,
-    area: Rect,
-    state: &GrafAppState,
-    config: &ClinConfig,
-    colors: &crate::config::ThemeColors,
-) {
-    let max_visible = config.graf.search.max_visible;
-    let result_count = state.search_results.len();
-    let visible_count = result_count.min(max_visible);
-    let popup_width = (50u16).min(area.width.saturating_sub(4));
-    let popup_height = (visible_count + 3).min(area.height.saturating_sub(4) as usize) as u16;
-
-    let popup_x = (area.width.saturating_sub(popup_width)) / 2;
-    let popup_y = 3;
-
-    let popup_area = ratatui::layout::Rect::new(popup_x, popup_y, popup_width, popup_height);
-
-    let before = &state.search_query[..state.search_cursor];
-    let after = &state.search_query[state.search_cursor..];
-    let label_style = ratatui::style::Style::default().fg(colors.label_color);
-    let cursor_style = ratatui::style::Style::default()
-        .fg(colors.border_color)
-        .add_modifier(ratatui::style::Modifier::REVERSED);
-    let input_line = ratatui::text::Line::from(vec![
-        ratatui::text::Span::styled(before.to_string(), label_style),
-        ratatui::text::Span::styled(
-            after
-                .chars()
-                .next()
-                .map(|c| c.to_string())
-                .unwrap_or_else(|| " ".to_string()),
-            cursor_style,
-        ),
-        ratatui::text::Span::styled(
-            after
-                .chars()
-                .next()
-                .map(|_| {
-                    after[after
-                        .char_indices()
-                        .nth(1)
-                        .map(|(i, _)| i)
-                        .unwrap_or(after.len())..]
-                        .to_string()
-                })
-                .unwrap_or_default(),
-            label_style,
-        ),
-    ]);
-
-    let mut lines: Vec<ratatui::text::Line> = vec![input_line];
-
-    if result_count == 0 && !state.search_query.is_empty() {
-        lines.push(ratatui::text::Line::styled(
-            "  No matches",
-            ratatui::style::Style::default().fg(colors.status_bar_color),
-        ));
-    } else {
-        let scroll_offset = state
-            .search_selected
-            .saturating_sub(max_visible.saturating_sub(1));
-        for (i, (_, title)) in state
-            .search_results
-            .iter()
-            .enumerate()
-            .skip(scroll_offset)
-            .take(max_visible)
-        {
-            let is_selected = i == state.search_selected;
-            let style = if is_selected {
-                ratatui::style::Style::default()
-                    .fg(colors.background_color.unwrap_or(colors.label_color))
-                    .bg(colors
-                        .node_colors
-                        .first()
-                        .copied()
-                        .unwrap_or(colors.label_color))
-            } else {
-                ratatui::style::Style::default().fg(colors.label_color)
-            };
-            let prefix = "  ";
-            let display =
-                crate::graf::util::truncate(title, (popup_width as usize).saturating_sub(6));
-            lines.push(ratatui::text::Line::styled(
-                format!("{prefix}{display}"),
-                style,
-            ));
-        }
-    }
-
-    let block = ratatui::widgets::Block::default()
-        .borders(ratatui::widgets::Borders::ALL)
-        .title("Search")
-        .border_type(ratatui::widgets::BorderType::Rounded)
-        .border_style(ratatui::style::Style::default().fg(colors.border_color));
-
-    let paragraph = ratatui::widgets::Paragraph::new(lines).block(block);
-    frame.render_widget(paragraph, popup_area);
-}
 
 fn draw_reload_notification(
     frame: &mut Frame,

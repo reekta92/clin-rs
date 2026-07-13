@@ -211,27 +211,23 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
         .take(page_size as usize)
         .map(|(abs_idx, hr)| {
             let mut row = hr.row.clone();
-            if app.help_search.active && !app.help_search.results.is_empty() {
-                let selected_row = app
-                    .help_search
-                    .results
-                    .get(app.help_search.selected)
-                    .map(|(idx, _)| *idx);
-                let is_selected = Some(abs_idx) == selected_row;
-                let is_matched = app
-                    .help_search
-                    .results
-                    .iter()
-                    .any(|(idx, _)| *idx == abs_idx);
-                if is_selected {
-                    row = row.style(
-                        Style::default()
-                            .bg(theme.highlight_fg)
-                            .fg(theme.highlight_bg),
-                    );
-                } else if is_matched {
-                    row =
-                        row.style(Style::default().bg(theme.preview_bg().unwrap_or(Color::Reset)));
+            if let Some(ref popup) = app.help_search.popup {
+                let has_results = !popup.results.is_empty();
+                if has_results {
+                    let selected_row = popup.results.get(popup.selected).map(|(idx, _)| *idx);
+                    let is_selected = Some(abs_idx) == selected_row;
+                    let is_matched = popup.results.iter().any(|(idx, _)| *idx == abs_idx);
+                    if is_selected {
+                        row = row.style(
+                            Style::default()
+                                .bg(theme.highlight_fg)
+                                .fg(theme.highlight_bg),
+                        );
+                    } else if is_matched {
+                        row = row.style(
+                            Style::default().bg(theme.preview_bg().unwrap_or(Color::Reset)),
+                        );
+                    }
                 }
             } else if let Some(hl_idx) = app.help_search.highlight_row
                 && abs_idx == hl_idx
@@ -320,86 +316,28 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
         &app.app_theme,
     );
     draw_status_bar(frame, chunks[2], &app.app_theme, left_line, right_line);
-    if app.help_search.active {
-        draw_help_search(frame, content_area, app);
+    if let Some(ref popup) = app.help_search.popup {
+        let theme = &app.app_theme;
+        let max_visible = 10usize;
+        crate::ui::quick_search::draw_quick_search(
+            frame,
+            content_area,
+            popup,
+            theme,
+            max_visible,
+            |(_, display): &(usize, String), is_selected, theme| {
+                let style = if is_selected {
+                    Style::default()
+                        .fg(theme.highlight_fg)
+                        .bg(theme.highlight_bg)
+                } else {
+                    Style::default().fg(theme.text)
+                };
+                let prefix = if is_selected { "▸ " } else { "  " };
+                Line::from(Span::styled(format!("{}{}", prefix, display), style))
+            },
+        );
     }
-}
-
-fn draw_help_search(frame: &mut Frame, area: Rect, app: &App) {
-    let theme = &app.app_theme;
-    let max_visible = 10usize;
-    let result_count = app.help_search.results.len();
-
-    let popup_width = 50u16.min(area.width.saturating_sub(4));
-    let popup_height = 3u16 + (max_visible as u16).min(result_count as u16).min(12);
-    let popup_x = area.x + (area.width.saturating_sub(popup_width)) / 2;
-    let popup_y = if area.height >= popup_height + 2 {
-        area.y + 1
-    } else {
-        area.y
-    };
-    let popup_area = Rect::new(popup_x, popup_y, popup_width, popup_height);
-
-    let input_display = if app.help_search.query.is_empty() {
-        "Search…".to_string()
-    } else {
-        app.help_search.query.clone()
-    };
-    let text_style = Style::default().fg(theme.text);
-    let input_line = Line::from(vec![
-        Span::styled("> ", text_style),
-        Span::styled(input_display, text_style),
-    ]);
-
-    let mut lines: Vec<Line> = vec![input_line];
-
-    if result_count == 0 && !app.help_search.query.is_empty() {
-        lines.push(Line::styled(
-            "  No matches",
-            Style::default().fg(theme.muted),
-        ));
-    } else {
-        let scroll_offset = app
-            .help_search
-            .selected
-            .saturating_sub(max_visible.saturating_sub(1));
-        for (i, (_, display)) in app
-            .help_search
-            .results
-            .iter()
-            .enumerate()
-            .skip(scroll_offset)
-            .take(max_visible)
-        {
-            let is_selected = i == app.help_search.selected;
-            let display_width = (popup_width as usize).saturating_sub(6);
-            let display = if display.len() > display_width {
-                format!("{}…", &display[..display_width.saturating_sub(1)])
-            } else {
-                display.clone()
-            };
-            let prefix = if is_selected { "▸ " } else { "  " };
-            let style = if is_selected {
-                Style::default()
-                    .fg(theme.highlight_fg)
-                    .bg(theme.highlight_bg)
-            } else {
-                text_style
-            };
-            lines.push(Line::from(Span::styled(
-                format!("{}{}", prefix, display),
-                style,
-            )));
-        }
-    }
-
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title("Search")
-        .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(theme.border));
-    let paragraph = Paragraph::new(lines).block(block);
-    frame.render_widget(paragraph, popup_area);
 }
 
 pub fn help_text_for_tab(
