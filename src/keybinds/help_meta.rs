@@ -316,6 +316,14 @@ pub fn edit_action_meta(a: EditAction) -> HelpMeta {
             group: "Preview",
             description: "Page preview down",
         },
+        EditAction::PasteImage => HelpMeta {
+            group: "Editing",
+            description: "Paste image from clipboard",
+        },
+        EditAction::InsertImageFromFile => HelpMeta {
+            group: "Editing",
+            description: "Insert image from file",
+        },
         EditAction::Quit => HelpMeta {
             group: "General",
             description: "Quit",

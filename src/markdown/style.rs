@@ -6,6 +6,11 @@ use ratatui::style::{Color, Modifier, Style};
 #[derive(Debug, Clone)]
 pub(crate) struct RenderLine {
     pub cells: Vec<(char, Style)>,
+    /// If this line represents a markdown image (`![]()`), contains the
+    /// raw URL string so the UI can resolve, decode, and overlay the image.
+    /// The `cells` should contain blank/whitespace cells for the reserved rows.
+    #[allow(dead_code)]
+    pub image_url: Option<String>,
 }
 
 /// Theme-derived styles for every markdown element type.

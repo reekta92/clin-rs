@@ -9,6 +9,7 @@ use crate::app::{App, EditFocus, ViewMode};
 use crate::events::get_title_text;
 use crate::keybinds::EditAction;
 
+#[allow(clippy::collapsible_if)]
 pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     let area = frame.area();
 
@@ -203,8 +204,8 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             }
         }
 
-        match &app.editor.md_preview_renderer {
-            Some(renderer) if !renderer.is_pending() && renderer.pages_built() => {
+        if let Some(renderer) = &app.editor.md_preview_renderer {
+            if !renderer.is_pending() && renderer.pages_built() {
                 if let Some(page_grid) = renderer.current_page_grid() {
                     let snapshot = crate::snapshot::RenderedSnapshot::new(page_grid).block(
                         Block::default()
@@ -233,29 +234,54 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                             frame.render_widget(ind_widget, ind_area);
                         }
                     }
+
+                    // Overlay decoded images on their reserved lines
+                    if let (Some(picker), Some(decode_tx)) =
+                        (&app.editor.image_picker, &app.editor.image_decode_tx)
+                    {
+                        let inner_pad = 2_u16; // left padding of snapshot
+                        let col_width = preview_area_rect.width.saturating_sub(2 * inner_pad);
+                        let slots = renderer.current_page_image_slots();
+                        for (line_idx, url) in slots {
+                            let resolved = app.storage.resolve_attachment(url);
+                            let path = resolved.unwrap_or_else(|| app.storage.notes_dir.join(url));
+                            if !path.exists() {
+                                continue;
+                            }
+                            let key = crate::image_render::ImageKey {
+                                path,
+                                mtime: 0,
+                            };
+                            if app.editor.image_cache.get_proto(&key).is_none() {
+                                app.editor.image_cache.request(
+                                    key.clone(),
+                                    2048,
+                                    decode_tx,
+                                    picker,
+                                );
+                            }
+                            if let Some(proto) = app.editor.image_cache.get_proto(&key) {
+                                let row = preview_area_rect.y + 1 + *line_idx as u16;
+                                let max_h = app.config.image.preview_rows as u16;
+                                let img_rect = Rect::new(
+                                    preview_area_rect.x + inner_pad,
+                                    row,
+                                    col_width.min(preview_area_rect.width.saturating_sub(2)),
+                                    max_h.min(preview_area_rect.bottom().saturating_sub(row)),
+                                );
+                                if img_rect.width > 1 && img_rect.height > 1 {
+                                    frame.render_widget(Clear, img_rect);
+                                    frame.render_stateful_widget(
+                                        ratatui_image::StatefulImage::default()
+                                            .resize(ratatui_image::Resize::Fit(None)),
+                                        img_rect,
+                                        proto,
+                                    );
+                                }
+                            }
+                        }
+                    }
                 }
-            }
-            Some(_) => {
-                let loading = Paragraph::new("Rendering preview...")
-                    .style(Style::default().fg(app.app_theme.muted))
-                    .block(
-                        Block::default()
-                            .style(app.app_theme.preview_bg_style())
-                            .borders(Borders::NONE)
-                            .padding(Padding::new(2, 2, 1, 1)),
-                    );
-                frame.render_widget(loading, preview_area_rect);
-            }
-            None => {
-                let placeholder = Paragraph::new("Press Ctrl+P to render preview")
-                    .style(app.app_theme.preview_bg_style())
-                    .block(
-                        Block::default()
-                            .style(app.app_theme.preview_bg_style())
-                            .borders(Borders::NONE)
-                            .padding(Padding::new(2, 2, 1, 1)),
-                    );
-                frame.render_widget(placeholder, preview_area_rect);
             }
         }
     } else {

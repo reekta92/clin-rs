@@ -139,10 +139,40 @@ pub fn draw_canvas(
     frame.render_widget(canvas, area);
 
     // Second pass: render Image elements as StatefulImage overlays above the canvas
-    if let Some(picker) = &app.image_picker {
+    if app.is_view_transforming() {
+        // During pan/zoom/resize, suppress pixel images — show a placeholder border block.
         let x_range = x_bounds[1] - x_bounds[0];
         let y_range = y_bounds[1] - y_bounds[0];
-
+        for element in &app.data.elements {
+            let img = match element {
+                DrawElement::Image(img) => img,
+                _ => continue,
+            };
+            let cell_x =
+                (area.x as f64 + (img.x - x_bounds[0]) / x_range * area.width as f64) as u16;
+            let cell_y =
+                (area.y as f64 + (y_bounds[1] - img.y) / y_range * area.height as f64) as u16;
+            let cell_w = ((img.width / x_range) * area.width as f64).max(1.0) as u16;
+            let cell_h = ((img.height / y_range) * area.height as f64).max(1.0) as u16;
+            if cell_w == 0 || cell_h == 0 {
+                continue;
+            }
+            let r = Rect::new(cell_x, cell_y, cell_w, cell_h);
+            let block = ratatui::widgets::Block::default()
+                .borders(ratatui::widgets::Borders::ALL)
+                .border_style(ratatui::style::Style::default().fg(app.theme.muted))
+                .title(ratatui::text::Span::styled(
+                    std::path::Path::new(&img.path)
+                        .file_name()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("?"),
+                    ratatui::style::Style::default().fg(app.theme.muted),
+                ));
+            frame.render_widget(block, r);
+        }
+    } else if let Some(picker) = &app.image_picker {
+        let x_range = x_bounds[1] - x_bounds[0];
+        let y_range = y_bounds[1] - y_bounds[0];
         // Collect world rects first to avoid borrow conflict
         let images: Vec<(std::path::PathBuf, Rect)> = app
             .data
@@ -179,7 +209,7 @@ pub fn draw_canvas(
                     proto,
                 );
             } else {
-                // Not cached — request decode
+                // Not cached — request decode even during transform so it's ready on settle.
                 if let Some(tx) = &app.image_decode_tx {
                     app.image_cache.request(key, 4096, tx, picker);
                 }

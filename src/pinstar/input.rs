@@ -56,10 +56,12 @@ pub fn handle_pinstar_mouse(
             true
         }
         MouseEventKind::Up(MouseButton::Middle) => {
+            state.is_panning = false;
             state.last_mouse_pos = None;
             true
         }
         MouseEventKind::Drag(MouseButton::Middle) => {
+            state.is_panning = true;
             if let Some((lx, ly)) = state.last_mouse_pos {
                 let dx = mouse.column as f64 - lx as f64;
                 let dy = mouse.row as f64 - ly as f64;
@@ -213,6 +215,7 @@ pub fn handle_pinstar_mouse(
             true
         }
         MouseEventKind::Up(MouseButton::Left) => {
+            state.is_panning = false;
             if state.mouse_selecting && !state.mouse_dragged {
                 state.raw_editor.cancel_selection();
             }
@@ -267,6 +270,7 @@ pub fn handle_pinstar_mouse(
                 state.drag_start_pos = Some((cx, cy));
                 true
             } else if let Some((lx, ly)) = state.last_mouse_pos {
+                state.is_panning = true;
                 let dx = mouse.column as f64 - lx as f64;
                 let dy = mouse.row as f64 - ly as f64;
                 state.pan(-dx, -dy);

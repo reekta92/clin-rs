@@ -1,9 +1,9 @@
+use crate::keybinds::EditAction;
+use crate::actions::Action;
+use crate::app::{App, ContextMenu, EditFocus};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui_textarea::Input;
-
-use crate::app::{App, ContextMenu, EditFocus};
-use crate::keybinds::EditAction;
 use crate::text_edit::apply_text_shortcuts;
 
 use super::{
@@ -96,6 +96,20 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
             }
             EditAction::ManageSubnotes => {
                 app.open_subnotes_popup();
+                return false;
+            }
+            EditAction::PasteImage => {
+                let action = &crate::actions::ocr::PasteImageAction;
+                if let Err(e) = action.execute(app, None) {
+                    app.set_temporary_status(&format!("Paste image failed: {e}"));
+                }
+                return false;
+            }
+            EditAction::InsertImageFromFile => {
+                let action = &crate::actions::ocr::InsertImageFromFileAction;
+                if let Err(e) = action.execute(app, None) {
+                    app.set_temporary_status(&format!("Insert image failed: {e}"));
+                }
                 return false;
             }
             _ => {}

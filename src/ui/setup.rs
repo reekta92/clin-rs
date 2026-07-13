@@ -246,7 +246,7 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
             wrap_indicator: false,
             link_url_max: 80,
         };
-        let lines =
+        let (lines, _slots) =
             crate::markdown::render_builtin(SETUP_PREVIEW_MD, cols, &md_theme, &opts, &cancel);
         let grid: Vec<Vec<(char, ratatui::style::Style)>> =
             lines.iter().map(|l| l.cells.clone()).collect();

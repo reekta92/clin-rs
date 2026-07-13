@@ -59,9 +59,14 @@ impl MdRenderOpts {
 ///
 /// Internally uses **comrak** for GFM parsing and **syntect** for optional
 /// code-block syntax highlighting, all in a cancelable background thread.
+#[allow(clippy::type_complexity)]
 pub struct MarkdownRenderer {
-    pending: Option<mpsc::Receiver<Vec<RenderLine>>>,
+    pending: Option<mpsc::Receiver<(Vec<RenderLine>, Vec<(usize, String)>)>>,
     lines: Vec<RenderLine>,
+    /// Image slots: Vec<(rendered_line_idx, url)> from the background render.
+    image_slots: Vec<(usize, String)>,
+    /// Image slots per-page, derived from image_slots by build_pages.
+    page_image_slots: Vec<Vec<(usize, String)>>,
     cancel_token: Arc<AtomicBool>,
     pages: Vec<Vec<Vec<(char, Style)>>>,
     current_page: usize,
@@ -90,6 +95,8 @@ impl MarkdownRenderer {
         Self {
             pending: None,
             lines: Vec::new(),
+            image_slots: Vec::new(),
+            page_image_slots: Vec::new(),
             cancel_token: Arc::new(AtomicBool::new(false)),
             pages: Vec::new(),
             current_page: 0,
@@ -142,7 +149,6 @@ impl MarkdownRenderer {
         let content_owned = content.to_owned();
         let opts = opts.clone();
         let (tx, rx) = mpsc::channel();
-
         self.pending = Some(rx);
 
         std::thread::spawn(move || {
@@ -150,10 +156,10 @@ impl MarkdownRenderer {
                 return;
             }
 
-            let lines =
+            let (lines, slots) =
                 builtin::render_builtin(&content_owned, cols, &md_theme, &opts, &cancel_token);
 
-            let _ = tx.send(lines);
+            let _ = tx.send((lines, slots));
         });
     }
 
@@ -166,19 +172,16 @@ impl MarkdownRenderer {
         };
 
         match rx.try_recv() {
-            Ok(lines) => {
+            Ok((lines, slots)) => {
                 self.lines = lines;
+                self.image_slots = slots;
                 self.pending = None;
                 true
             }
-            Err(mpsc::TryRecvError::Empty) => false,
-            Err(mpsc::TryRecvError::Disconnected) => {
-                self.pending = None;
-                true
-            }
+            Err(_) => false,
         }
-    }
 
+    }
     pub fn is_pending(&self) -> bool {
         self.pending.is_some()
     }
@@ -208,17 +211,36 @@ impl MarkdownRenderer {
             .chunks(page_height)
             .map(|chunk| chunk.iter().map(|l| l.cells.clone()).collect())
             .collect();
+        // Build page image slots: map global line indices to page-local indices
+        // Rebuild per-page slots from flat image_slots
+        let mut page_slots: Vec<Vec<(usize, String)>> = Vec::new();
+        for (global_line, url) in &self.image_slots {
+            if *global_line > last_non_empty {
+                continue;
+            }
+            let page_idx = *global_line / page_height;
+            let local_line = *global_line % page_height;
+            while page_slots.len() <= page_idx {
+                page_slots.push(Vec::new());
+            }
+            page_slots[page_idx].push((local_line, url.clone()));
+        }
+        self.page_image_slots = page_slots;
 
         self.total_pages = self.pages.len().max(1);
         self.current_page = 0;
     }
 
-    pub fn current_page_grid(&self) -> Option<&Vec<Vec<(char, Style)>>> {
-        self.pages.get(self.current_page)
-    }
-
     pub fn current_page(&self) -> usize {
         self.current_page
+    }
+
+    pub fn current_page_image_slots(&self) -> &[(usize, String)] {
+        self.page_image_slots.get(self.current_page).map(|v| v.as_slice()).unwrap_or(&[])
+    }
+
+    pub fn current_page_grid(&self) -> Option<&[Vec<(char, Style)>]> {
+        self.pages.get(self.current_page).map(|v| v.as_slice())
     }
 
     pub fn total_pages(&self) -> usize {

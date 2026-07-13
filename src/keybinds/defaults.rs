@@ -316,7 +316,14 @@ impl Default for Keybinds {
             EditAction::ManageSubnotes,
             vec![KeyCombo::parse("Alt+s").expect("valid key combo")],
         );
-
+        edit.insert(
+            EditAction::PasteImage,
+            vec![KeyCombo::parse("Ctrl+g Ctrl+i").expect("valid key combo")],
+        );
+        edit.insert(
+            EditAction::InsertImageFromFile,
+            vec![KeyCombo::parse("Ctrl+g Ctrl+f").expect("valid key combo")],
+        );
         let mut help = HashMap::new();
         help.insert(
             HelpAction::Close,

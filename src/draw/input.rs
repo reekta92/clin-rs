@@ -309,13 +309,16 @@ fn handle_mouse(
             }
         }
         MouseEventKind::Up(_) => {
+            app.is_panning = false;
             app.last_mouse_pos = None;
         }
         MouseEventKind::ScrollUp => {
             app.viewport.zoom *= 1.1;
+            app.last_zoom_at = Some(std::time::Instant::now());
         }
         MouseEventKind::ScrollDown => {
             app.viewport.zoom /= 1.1;
+            app.last_zoom_at = Some(std::time::Instant::now());
         }
         _ => {}
     }
@@ -427,6 +430,7 @@ fn line_dist(x1: f64, y1: f64, x2: f64, y2: f64, px: f64, py: f64) -> f64 {
 }
 
 fn panning(x: u16, y: u16, app: &mut DrawAppState) {
+    app.is_panning = true;
     if let Some((lx, ly)) = app.last_mouse_pos {
         let area = app.last_area;
         if area.width > 0 && area.height > 0 {

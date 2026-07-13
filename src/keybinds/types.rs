@@ -80,6 +80,8 @@ pub enum EditAction {
     PreviewPageUp,
     PreviewPageDown,
     ManageSubnotes,
+    PasteImage,
+    InsertImageFromFile,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

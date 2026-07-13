@@ -232,6 +232,10 @@ impl App {
                 ));
             }
             self.editor.editor = editor;
+            // Clone image infrastructure into the editor so markdown images
+            // can be decoded and rendered in the preview pane.
+            self.editor.image_picker = self.image_picker.clone();
+            self.editor.image_decode_tx = self.image_decode_tx.clone();
             self.mode = ViewMode::Edit;
 
             if self.editor.editor_preview_enabled {

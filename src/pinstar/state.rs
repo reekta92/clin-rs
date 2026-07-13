@@ -37,6 +37,8 @@ pub struct PinstarState {
     pub image_cache: crate::image_render::cache::ImageCache,
     pub image_picker: Option<ratatui_image::picker::Picker>,
     pub image_decode_tx: Option<std::sync::mpsc::Sender<crate::image_render::worker::ImageJob>>,
+    pub is_panning: bool,
+    pub last_zoom_at: Option<std::time::Instant>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -99,6 +101,8 @@ impl PinstarState {
             image_cache: crate::image_render::cache::ImageCache::new(32),
             image_picker: None,
             image_decode_tx: None,
+            is_panning: false,
+            last_zoom_at: None,
         })
     }
 
@@ -106,6 +110,21 @@ impl PinstarState {
         let content = serde_json::to_string_pretty(&self.data)?;
         crate::fsutil::atomic_write_str(&self.path, &content)?;
         Ok(())
+    }
+
+    /// Returns true while the view is undergoing continuous transforms
+    /// (pan, zoom, node resize, connection drawing). During these states
+    /// the pixel image render is suppressed to avoid churning the encode
+    /// worker; cheap placeholder text is shown instead.
+    pub fn is_view_transforming(&self) -> bool {
+        use crate::image_render::TRANSFORM_SETTLE;
+        self.resizing_node_id.is_some()
+            || self.is_dragging_resize_handle
+            || self.drag_start_pos.is_some()
+            || self.is_panning
+            || self.connection_source_id.is_some()
+            || self.deleting_connection_source_id.is_some()
+            || self.last_zoom_at.is_some_and(|t| t.elapsed() < TRANSFORM_SETTLE)
     }
 
     pub fn sync_from_raw_editor(&mut self) -> Result<()> {
@@ -126,10 +145,19 @@ impl PinstarState {
                 .set_cursor_line_style(ratatui::style::Style::default());
         }
     }
-
     pub fn pan(&mut self, dx: f64, dy: f64) {
         self.viewport_x += dx / self.zoom;
         self.viewport_y += dy / self.zoom;
+    }
+
+    pub fn zoom_in(&mut self) {
+        self.zoom *= 1.1;
+        self.last_zoom_at = Some(std::time::Instant::now());
+    }
+
+    pub fn zoom_out(&mut self) {
+        self.zoom /= 1.1;
+        self.last_zoom_at = Some(std::time::Instant::now());
     }
 
     pub fn center_on_selected(&mut self) {
@@ -141,14 +169,6 @@ impl PinstarState {
             self.viewport_x = nx + nw / 2.0;
             self.viewport_y = ny + nh / 2.0;
         }
-    }
-
-    pub fn zoom_in(&mut self) {
-        self.zoom *= 1.1;
-    }
-
-    pub fn zoom_out(&mut self) {
-        self.zoom /= 1.1;
     }
 
     pub fn screen_to_canvas(&self, sx: u16, sy: u16, area: ratatui::layout::Rect) -> (f64, f64) {

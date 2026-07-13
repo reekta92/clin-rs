@@ -144,3 +144,139 @@ impl Action for OcrPasteAction {
         Ok(())
     }
 }
+
+/// Paste an image from the clipboard into the active view.
+/// Saves the image as a PNG attachment and inserts the appropriate reference.
+pub struct PasteImageAction;
+
+impl Action for PasteImageAction {
+    fn id(&self) -> Cow<'static, str> {
+        Cow::Borrowed("paste_image")
+    }
+
+    fn name(&self) -> Cow<'static, str> {
+        Cow::Borrowed("Paste Image")
+    }
+
+    fn description(&self) -> Cow<'static, str> {
+        Cow::Borrowed("Paste an image from the clipboard into the active view as an attachment")
+    }
+
+    fn category(&self) -> super::ActionCategory {
+        super::ActionCategory::General
+    }
+
+    fn glyph(&self) -> (&'static str, &'static str) {
+        ("\u{f03e}", "\u{1f5bc}")
+    }
+
+    fn execute(&self, app: &mut App, _context_note_id: Option<&str>) -> Result<()> {
+        // Get image from clipboard
+        let dynamic_image = if is_wayland() {
+            get_clipboard_image_wayland().or_else(|e| {
+                eprintln!("Wayland clipboard failed: {e}. Falling back to arboard.");
+                get_clipboard_image_arboard()
+            })?
+        } else {
+            get_clipboard_image_arboard()?
+        };
+
+        // Save to temp file then import
+        let temp_file = NamedTempFile::new().context("Failed to create temporary file")?;
+        let temp_path = temp_file.path().to_owned();
+        dynamic_image
+            .save_with_format(&temp_path, image::ImageFormat::Png)
+            .context("Failed to save clipboard image to temp PNG")?;
+
+        let rel_path = app.storage.import_attachment(&temp_path)?;
+        insert_image_reference(app, &rel_path);
+        Ok(())
+    }
+}
+
+/// Insert an image from a file picker dialog into the active view.
+pub struct InsertImageFromFileAction;
+
+impl Action for InsertImageFromFileAction {
+    fn id(&self) -> Cow<'static, str> {
+        Cow::Borrowed("insert_image_from_file")
+    }
+
+    fn name(&self) -> Cow<'static, str> {
+        Cow::Borrowed("Insert Image from File")
+    }
+
+    fn description(&self) -> Cow<'static, str> {
+        Cow::Borrowed("Pick an image file and insert it into the active view as an attachment")
+    }
+
+    fn category(&self) -> super::ActionCategory {
+        super::ActionCategory::General
+    }
+
+    fn glyph(&self) -> (&'static str, &'static str) {
+        ("\u{f15c}", "\u{1f4c1}")
+    }
+
+    fn execute(&self, app: &mut App, _context_note_id: Option<&str>) -> Result<()> {
+        let picked = crate::ui::pick_file("Image", "png;jpg;jpeg;gif;webp;bmp")?;
+        if let Some(path_str) = picked {
+            let src = std::path::Path::new(&path_str);
+            let rel_path = app.storage.import_attachment(src)?;
+            insert_image_reference(app, &rel_path);
+        }
+        Ok(())
+    }
+}
+
+/// Shared helper: insert an attachment reference into the currently active view.
+fn insert_image_reference(app: &mut App, rel_path: &str) {
+    match app.mode {
+        crate::app::ViewMode::Edit => {
+            // Insert `![](path)` at cursor in the editor body
+            let ref_text = format!("![]({rel_path})");
+            app.editor.editor.insert_str(&ref_text);
+            app.editor.pending_editor_preview_update = true;
+            app.editor.last_editor_change = Some(std::time::Instant::now());
+        }
+        crate::app::ViewMode::Canvas => {
+            if let Some(state) = &mut app.canvas_state {
+                let (cx, cy) = (state.viewport_x, state.viewport_y);
+                let id = format!("img_{}", uuid::Uuid::new_v4().to_string().split('-').next().unwrap_or("0"));
+                state.data.nodes.push(crate::pinstar::data::CanvasNode::File(
+                    crate::pinstar::data::FileNode {
+                        id,
+                        x: cx,
+                        y: cy,
+                        width: 200.0,
+                        height: 150.0,
+                        file: rel_path.to_string(),
+                        subpath: None,
+                        color: None,
+                    },
+                ));
+                let _ = state.save();
+            }
+        }
+        crate::app::ViewMode::Draw => {
+            if let Some(state) = &mut app.draw_state {
+                let vp = &state.viewport;
+                let id = format!("img_{}", uuid::Uuid::new_v4().to_string().split('-').next().unwrap_or("0"));
+                state.data.elements.push(crate::draw::state::DrawElement::Image(
+                    crate::draw::state::ImageElement {
+                        id,
+                        path: rel_path.to_string(),
+                        x: vp.x,
+                        y: vp.y,
+                        width: 40.0,
+                        height: 30.0,
+                    },
+                ));
+                let _ = state.save_draw();
+            }
+        }
+        _ => {
+            app.set_temporary_status("Image pasting not supported in this view");
+        }
+    }
+}

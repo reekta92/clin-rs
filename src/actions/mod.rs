@@ -237,6 +237,8 @@ pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyL
         Box::new(CreateDrawAction),
         Box::new(CreateCanvasAction),
         Box::new(ocr::OcrPasteAction),
+        Box::new(ocr::PasteImageAction),
+        Box::new(ocr::InsertImageFromFileAction),
         Box::new(SwitchThemeAction),
         Box::new(OpenSetupWizardAction),
         Box::new(SwitchKeybindPresetAction),

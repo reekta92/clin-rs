@@ -56,9 +56,9 @@ pub(crate) fn render_builtin(
     theme: &MarkdownTheme,
     opts: &MdRenderOpts,
     cancel_token: &AtomicBool,
-) -> Vec<RenderLine> {
+) -> (Vec<RenderLine>, Vec<(usize, String)>) {
     if cancel_token.load(Ordering::Relaxed) {
-        return Vec::new();
+        return (Vec::new(), Vec::new());
     }
 
     // --- Parse -----------------------------------------------------------
@@ -75,12 +75,13 @@ pub(crate) fn render_builtin(
     let root = parse_document(&arena, content, &options);
 
     if cancel_token.load(Ordering::Relaxed) {
-        return Vec::new();
+        return (Vec::new(), Vec::new());
     }
 
     // --- Walk ------------------------------------------------------------
     let mut ctx = Ctx {
         lines: vec![Vec::with_capacity(cols as usize)],
+        image_slots: Vec::new(),
         cols: cols as usize,
         wrap: opts.wrap,
         theme,
@@ -108,18 +109,29 @@ pub(crate) fn render_builtin(
         }
     }
 
-    ctx.lines
+    // Convert Ctx lines to RenderLines, attaching image_url from image_slots
+    let slot_map: std::collections::HashMap<usize, String> =
+        ctx.image_slots.iter().map(|(i, url)| (*i, url.clone())).collect();
+    let lines: Vec<RenderLine> = ctx
+        .lines
         .into_iter()
-        .map(|cells| RenderLine { cells })
-        .collect()
+        .enumerate()
+        .map(|(i, cells)| RenderLine {
+            cells,
+            image_url: slot_map.get(&i).cloned(),
+        })
+        .collect();
+    let slots = ctx.image_slots;
+    (lines, slots)
 }
-
-// ---------------------------------------------------------------------------
 // Internal rendering state
 // ---------------------------------------------------------------------------
 
 struct Ctx<'a> {
     lines: Vec<Vec<(char, Style)>>,
+    /// Tracks which rendered line index contains a markdown image
+    /// and the URL string for that image.
+    image_slots: Vec<(usize, String)>,
     cols: usize,
     wrap: bool,
     theme: &'a MarkdownTheme,
@@ -1017,6 +1029,11 @@ fn render_inline<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, base_style: Style, ma
                     margin,
                 );
             }
+            // Record image slot for UI overlay
+            if !img.url.is_empty() && !ctx.lines.is_empty() {
+                let line_idx = ctx.lines.len() - 1;
+                ctx.image_slots.push((line_idx, img.url.clone()));
+            }
         }
         NodeValue::WikiLink(wl) => {
             ctx.push_str(&format!("[[{}]]", wl.url), ctx.theme.wikilink, margin);
@@ -1101,7 +1118,7 @@ mod tests {
         let mut opts = mk_opts(crate::config::IconMode::default());
         opts.wrap = wrap;
         opts.syntax_hl = syntax_hl;
-        render_builtin(content, cols, &theme, &opts, &cancel)
+        render_builtin(content, cols, &theme, &opts, &cancel).0
     }
 
     fn line_text(line: &RenderLine) -> String {
@@ -1625,7 +1642,7 @@ mod tests {
         let theme_colors = AppThemeColors::default();
         let theme = MarkdownTheme::from_app_theme(&theme_colors);
         let cancel = AtomicBool::new(false);
-        let lines = render_builtin(
+        let (lines, _) = render_builtin(
             "[repo](https://github.com/user/repo)",
             80,
             &theme,
@@ -1638,7 +1655,7 @@ mod tests {
             "should contain github unicode icon"
         );
 
-        let lines_none = render_builtin(
+        let (lines_none, _) = render_builtin(
             "[repo](https://github.com/user/repo)",
             80,
             &theme,
@@ -1661,7 +1678,7 @@ mod tests {
         let theme_colors = AppThemeColors::default();
         let theme = MarkdownTheme::from_app_theme(&theme_colors);
         let cancel = AtomicBool::new(false);
-        let lines = render_builtin(
+        let (lines, _) = render_builtin(
             "![alt](url.png)",
             80,
             &theme,
@@ -1671,7 +1688,7 @@ mod tests {
         let text = lines.iter().map(line_text).collect::<Vec<_>>().join("\n");
         assert!(text.contains("🖼 alt"), "should contain image unicode icon");
 
-        let lines_none = render_builtin(
+        let (lines_none, _) = render_builtin(
             "![alt](url.png)",
             80,
             &theme,
@@ -1710,7 +1727,7 @@ mod tests {
         let cancel = AtomicBool::new(false);
         let mut opts = mk_opts(crate::config::IconMode::default());
         opts.code_line_numbers = true;
-        let lines = render_builtin("```txt\na\nb\nc\n```\n", 80, &theme, &opts, &cancel);
+        let (lines, _) = render_builtin("```txt\na\nb\nc\n```\n", 80, &theme, &opts, &cancel);
         let text: Vec<String> = lines.iter().map(line_text).collect();
         assert!(
             text.iter().any(|l| l.trim_start().starts_with("1 │ a")),
@@ -1726,7 +1743,7 @@ mod tests {
     fn code_block_lang_icon() {
         let theme = MarkdownTheme::from_app_theme(&AppThemeColors::default());
         let cancel = AtomicBool::new(false);
-        let lines = render_builtin(
+        let (lines, _) = render_builtin(
             "```rust\nx\n```\n",
             80,
             &theme,
@@ -1760,7 +1777,7 @@ mod tests {
         let mut opts = mk_opts(crate::config::IconMode::None);
         opts.link_url_max = 20;
         let long = "[t](https://example.com/very/long/path/to/resource)";
-        let lines = render_builtin(long, 80, &theme, &opts, &cancel);
+        let (lines, _) = render_builtin(long, 80, &theme, &opts, &cancel);
         let text: Vec<String> = lines.iter().map(line_text).collect();
         let joined = text.join("");
         assert!(joined.contains('…'), "truncated");
@@ -1795,7 +1812,7 @@ mod tests {
         let mut opts = mk_opts(crate::config::IconMode::default());
         opts.wrap = true;
         opts.wrap_indicator = true;
-        let lines = render_builtin("aaaaaaa\u{4e00}bcdefghijklmnop", 10, &theme, &opts, &cancel);
+        let (lines, _) = render_builtin("aaaaaaa\u{4e00}bcdefghijklmnop", 10, &theme, &opts, &cancel);
         let text: Vec<String> = lines.iter().map(line_text).collect();
         assert!(
             text.iter().any(|l| l.ends_with('┄')),
@@ -1810,7 +1827,7 @@ mod tests {
         let mut opts = mk_opts(crate::config::IconMode::default());
         opts.syntax_hl = true;
         opts.code_theme = "does-not-exist".to_string();
-        let lines = render_builtin("```rust\nfn main(){}\n```\n", 80, &theme, &opts, &cancel);
+        let (lines, _) = render_builtin("```rust\nfn main(){}\n```\n", 80, &theme, &opts, &cancel);
         let text: Vec<String> = lines.iter().map(line_text).collect();
         assert!(
             text.iter().any(|l| l.contains("fn main")),

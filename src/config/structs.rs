@@ -339,6 +339,7 @@ pub struct ImageConfig {
     pub enabled: bool,
     pub max_dimension: u32,
     pub cache_size: usize,
+    pub preview_rows: u8,
     pub attachments_subdir: String,
 }
 
@@ -348,6 +349,7 @@ impl Default for ImageConfig {
             enabled: true,
             max_dimension: 2048,
             cache_size: 32,
+            preview_rows: 8,
             attachments_subdir: "attachments".into(),
         }
     }

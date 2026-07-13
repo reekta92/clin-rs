@@ -525,11 +525,21 @@ pub fn draw_pinstar_view(
             block = block.border_type(border_type);
         }
 
-        // For image FileNodes with an available picker, render the actual image
         let is_image_file = matches!(node, crate::pinstar::data::CanvasNode::File(n) if is_image_ext(&n.file))
             && state.image_picker.is_some();
 
-        let rendered_image = if is_image_file {
+        // Short-circuit: during transforms, skip pixel decode and render plain text
+        if state.is_view_transforming() {
+            let text = Paragraph::new(node.text())
+                .block(block)
+                .style(Style::default().fg(theme.text))
+                .wrap(Wrap { trim: false });
+            frame.render_widget(text, node_rect);
+            continue;
+        }
+
+        // Render pixel image if available
+        if is_image_file {
             let file_path = match node {
                 crate::pinstar::data::CanvasNode::File(n) => n.file.clone(),
                 _ => String::new(),
@@ -542,27 +552,30 @@ pub fn draw_pinstar_view(
             if let Some(tx) = &state.image_decode_tx {
                 state.image_cache.request(key.clone(), 2048, tx, picker);
             }
-            state.image_cache.get_proto(&key)
-        } else {
-            None
-        };
-
-        if let Some(proto) = rendered_image
-            && node_rect.width > 2
-            && node_rect.height > 2
-        {
-            let inner_area = Rect::new(
-                node_rect.x + 1,
-                node_rect.y + 1,
-                node_rect.width.saturating_sub(2),
-                node_rect.height.saturating_sub(2),
-            );
-            frame.render_widget(block, node_rect);
-            frame.render_stateful_widget(
-                ratatui_image::StatefulImage::default().resize(ratatui_image::Resize::Fit(None)),
-                inner_area,
-                proto,
-            );
+            if let Some(proto) = state.image_cache.get_proto(&key)
+                && node_rect.width > 2
+                && node_rect.height > 2
+            {
+                let inner_area = Rect::new(
+                    node_rect.x + 1,
+                    node_rect.y + 1,
+                    node_rect.width.saturating_sub(2),
+                    node_rect.height.saturating_sub(2),
+                );
+                frame.render_widget(block, node_rect);
+                frame.render_stateful_widget(
+                    ratatui_image::StatefulImage::default().resize(ratatui_image::Resize::Fit(None)),
+                    inner_area,
+                    proto,
+                );
+            } else {
+                // No proto yet: render placeholder
+                let text = Paragraph::new(node.text())
+                    .block(block)
+                    .style(Style::default().fg(theme.text))
+                    .wrap(Wrap { trim: false });
+                frame.render_widget(text, node_rect);
+            }
         } else {
             let text = Paragraph::new(node.text())
                 .block(block)
