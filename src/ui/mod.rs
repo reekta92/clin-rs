@@ -1158,7 +1158,11 @@ pub fn pick_file(filter_name: &str, filter_ext: &str) -> Result<Option<String>> 
         }
     } else if cfg!(target_os = "macos") {
         // macOS expects UTIs, not extensions. Use first extension as fallback.
-        let first = ext_list.first().copied().unwrap_or("").trim_start_matches('.');
+        let first = ext_list
+            .first()
+            .copied()
+            .unwrap_or("")
+            .trim_start_matches('.');
         let posix_script = format!(
             "POSIX path of (choose file with prompt \"Select a {} file\" of type {{\"{}\"}})",
             filter_name, first,

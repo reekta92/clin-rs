@@ -105,7 +105,9 @@ impl DrawAppState {
             || self.creation_origin.is_some()
             || self.preview_element.is_some()
             || self.is_transforming_element
-            || self.last_zoom_at.is_some_and(|t| t.elapsed() < TRANSFORM_SETTLE)
+            || self
+                .last_zoom_at
+                .is_some_and(|t| t.elapsed() < TRANSFORM_SETTLE)
     }
 }
 

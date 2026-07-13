@@ -768,6 +768,9 @@ impl App {
             crate::app::ViewMode::Edit => {
                 self.editor.image_cache.install_decoded(decoded, picker);
             }
+            crate::app::ViewMode::List => {
+                self.list.image_cache.install_decoded(decoded, picker);
+            }
             _ => {}
         }
     }

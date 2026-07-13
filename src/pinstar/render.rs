@@ -564,7 +564,8 @@ pub fn draw_pinstar_view(
                 );
                 frame.render_widget(block, node_rect);
                 frame.render_stateful_widget(
-                    ratatui_image::StatefulImage::default().resize(ratatui_image::Resize::Fit(None)),
+                    ratatui_image::StatefulImage::default()
+                        .resize(ratatui_image::Resize::Fit(None)),
                     inner_area,
                     proto,
                 );

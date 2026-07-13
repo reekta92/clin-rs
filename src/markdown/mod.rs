@@ -180,7 +180,6 @@ impl MarkdownRenderer {
             }
             Err(_) => false,
         }
-
     }
     pub fn is_pending(&self) -> bool {
         self.pending.is_some()
@@ -236,7 +235,10 @@ impl MarkdownRenderer {
     }
 
     pub fn current_page_image_slots(&self) -> &[(usize, String)] {
-        self.page_image_slots.get(self.current_page).map(|v| v.as_slice()).unwrap_or(&[])
+        self.page_image_slots
+            .get(self.current_page)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[])
     }
 
     pub fn current_page_grid(&self) -> Option<&[Vec<(char, Style)>]> {

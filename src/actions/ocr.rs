@@ -242,36 +242,56 @@ fn insert_image_reference(app: &mut App, rel_path: &str) {
         crate::app::ViewMode::Canvas => {
             if let Some(state) = &mut app.canvas_state {
                 let (cx, cy) = (state.viewport_x, state.viewport_y);
-                let id = format!("img_{}", uuid::Uuid::new_v4().to_string().split('-').next().unwrap_or("0"));
-                state.data.nodes.push(crate::pinstar::data::CanvasNode::File(
-                    crate::pinstar::data::FileNode {
-                        id,
-                        x: cx,
-                        y: cy,
-                        width: 200.0,
-                        height: 150.0,
-                        file: rel_path.to_string(),
-                        subpath: None,
-                        color: None,
-                    },
-                ));
+                let id = format!(
+                    "img_{}",
+                    uuid::Uuid::new_v4()
+                        .to_string()
+                        .split('-')
+                        .next()
+                        .unwrap_or("0")
+                );
+                state
+                    .data
+                    .nodes
+                    .push(crate::pinstar::data::CanvasNode::File(
+                        crate::pinstar::data::FileNode {
+                            id,
+                            x: cx,
+                            y: cy,
+                            width: 200.0,
+                            height: 150.0,
+                            file: rel_path.to_string(),
+                            subpath: None,
+                            color: None,
+                        },
+                    ));
                 let _ = state.save();
             }
         }
         crate::app::ViewMode::Draw => {
             if let Some(state) = &mut app.draw_state {
                 let vp = &state.viewport;
-                let id = format!("img_{}", uuid::Uuid::new_v4().to_string().split('-').next().unwrap_or("0"));
-                state.data.elements.push(crate::draw::state::DrawElement::Image(
-                    crate::draw::state::ImageElement {
-                        id,
-                        path: rel_path.to_string(),
-                        x: vp.x,
-                        y: vp.y,
-                        width: 40.0,
-                        height: 30.0,
-                    },
-                ));
+                let id = format!(
+                    "img_{}",
+                    uuid::Uuid::new_v4()
+                        .to_string()
+                        .split('-')
+                        .next()
+                        .unwrap_or("0")
+                );
+                state
+                    .data
+                    .elements
+                    .push(crate::draw::state::DrawElement::Image(
+                        crate::draw::state::ImageElement {
+                            id,
+                            path: rel_path.to_string(),
+                            x: vp.x,
+                            y: vp.y,
+                            width: 40.0,
+                            height: 30.0,
+                        },
+                    ));
                 let _ = state.save_draw();
             }
         }

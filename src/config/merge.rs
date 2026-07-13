@@ -474,4 +474,3 @@ enabled = true
 # preview_rows = 8
 "###
 }
-

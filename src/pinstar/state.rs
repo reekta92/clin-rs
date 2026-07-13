@@ -124,7 +124,9 @@ impl PinstarState {
             || self.is_panning
             || self.connection_source_id.is_some()
             || self.deleting_connection_source_id.is_some()
-            || self.last_zoom_at.is_some_and(|t| t.elapsed() < TRANSFORM_SETTLE)
+            || self
+                .last_zoom_at
+                .is_some_and(|t| t.elapsed() < TRANSFORM_SETTLE)
     }
 
     pub fn sync_from_raw_editor(&mut self) -> Result<()> {
@@ -302,7 +304,11 @@ impl PinstarState {
                 "Delete Node".to_string(),
             ]
         } else {
-            vec!["Add Text Node".to_string(), "Add Group".to_string(), "Add Image Node".to_string()]
+            vec![
+                "Add Text Node".to_string(),
+                "Add Group".to_string(),
+                "Add Image Node".to_string(),
+            ]
         };
 
         self.context_menu_pos = (canvas_x, canvas_y);

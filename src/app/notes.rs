@@ -901,8 +901,9 @@ impl App {
                         self.keybinds.clone(),
                         self.seq_matcher.clone(),
                     ) {
-                        state.image_cache =
-                            crate::image_render::cache::ImageCache::new(self.config.image.cache_size);
+                        state.image_cache = crate::image_render::cache::ImageCache::new(
+                            self.config.image.cache_size,
+                        );
                         state.image_picker = self.image_picker.clone();
                         state.image_decode_tx = self.image_decode_tx.clone();
                         self.canvas_state = Some(state);

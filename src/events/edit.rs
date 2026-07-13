@@ -1,10 +1,10 @@
-use crate::keybinds::EditAction;
 use crate::actions::Action;
 use crate::app::{App, ContextMenu, EditFocus};
+use crate::keybinds::EditAction;
+use crate::text_edit::apply_text_shortcuts;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui_textarea::Input;
-use crate::text_edit::apply_text_shortcuts;
 
 use super::{
     contains_cell, edit_view_input_areas, edit_view_md_preview_area, get_title_text,

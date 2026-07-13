@@ -110,8 +110,11 @@ pub(crate) fn render_builtin(
     }
 
     // Convert Ctx lines to RenderLines, attaching image_url from image_slots
-    let slot_map: std::collections::HashMap<usize, String> =
-        ctx.image_slots.iter().map(|(i, url)| (*i, url.clone())).collect();
+    let slot_map: std::collections::HashMap<usize, String> = ctx
+        .image_slots
+        .iter()
+        .map(|(i, url)| (*i, url.clone()))
+        .collect();
     let lines: Vec<RenderLine> = ctx
         .lines
         .into_iter()
@@ -1812,7 +1815,8 @@ mod tests {
         let mut opts = mk_opts(crate::config::IconMode::default());
         opts.wrap = true;
         opts.wrap_indicator = true;
-        let (lines, _) = render_builtin("aaaaaaa\u{4e00}bcdefghijklmnop", 10, &theme, &opts, &cancel);
+        let (lines, _) =
+            render_builtin("aaaaaaa\u{4e00}bcdefghijklmnop", 10, &theme, &opts, &cancel);
         let text: Vec<String> = lines.iter().map(line_text).collect();
         assert!(
             text.iter().any(|l| l.ends_with('┄')),
