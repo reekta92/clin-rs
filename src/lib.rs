@@ -781,10 +781,15 @@ fn run_tui_session(app: &mut App) -> Result<()> {
         let backend = ratatui::backend::CrosstermBackend::new(io::stdout());
         let mut terminal = Terminal::new(backend).context("failed to create terminal")?;
         // Detect terminal graphics protocol while inside alt-screen+raw mode.
-        app.image_picker = Some(
-            ratatui_image::picker::Picker::from_query_stdio()
-                .unwrap_or_else(|_| ratatui_image::picker::Picker::halfblocks()),
-        );
+        // Skip detection entirely when image rendering is disabled in config.
+        app.image_picker = if app.config.image.enabled {
+            Some(
+                ratatui_image::picker::Picker::from_query_stdio()
+                    .unwrap_or_else(|_| ratatui_image::picker::Picker::halfblocks()),
+            )
+        } else {
+            None
+        };
 
         let mut terminal_safe = std::panic::AssertUnwindSafe(&mut terminal);
         let mut app_safe = std::panic::AssertUnwindSafe(&mut *app);
