@@ -389,6 +389,7 @@ fn execute_menu_action(
         match selected_index {
             0 => state.add_text_node(state.context_menu_pos.0, state.context_menu_pos.1),
             1 => state.add_group(state.context_menu_pos.0, state.context_menu_pos.1),
+            2 => state.add_image_node(state.context_menu_pos.0, state.context_menu_pos.1),
             _ => {}
         }
     }

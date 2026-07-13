@@ -1113,12 +1113,31 @@ pub fn open_with_default_application(path: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Open a file-pick dialog. `filter_ext` supports semicolon-separated
+/// extensions (e.g. `"png;jpg"`) which are formatted per-platform.
 pub fn pick_file(filter_name: &str, filter_ext: &str) -> Result<Option<String>> {
+    // Build per-platform filter string from semicolon-separated extensions
+    let ext_list: Vec<&str> = filter_ext.split(';').collect();
+    let zenity_glob = ext_list
+        .iter()
+        .map(|e| format!("*.{}", e.trim_start_matches('.')))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let kdialog_glob = if ext_list.len() == 1 {
+        format!("*.{}", ext_list[0].trim_start_matches('.'))
+    } else {
+        let exts: Vec<&str> = ext_list.iter().map(|e| e.trim_start_matches('.')).collect();
+        let mut s = String::from("*.{");
+        s.push_str(&exts.join(","));
+        s.push('}');
+        s
+    };
+
     if cfg!(target_os = "linux") {
         if which::which("zenity").is_ok() {
             let output = Command::new("zenity")
                 .arg("--file-selection")
-                .arg(format!("--file-filter={filter_name} | *{filter_ext}"))
+                .arg(format!("--file-filter={filter_name} | {zenity_glob}"))
                 .output()?;
             if output.status.success() {
                 return Ok(Some(
@@ -1129,7 +1148,7 @@ pub fn pick_file(filter_name: &str, filter_ext: &str) -> Result<Option<String>> 
             let output = Command::new("kdialog")
                 .arg("--getopenfilename")
                 .arg(".")
-                .arg(format!("*{filter_ext}"))
+                .arg(&kdialog_glob)
                 .output()?;
             if output.status.success() {
                 return Ok(Some(
@@ -1138,10 +1157,11 @@ pub fn pick_file(filter_name: &str, filter_ext: &str) -> Result<Option<String>> 
             }
         }
     } else if cfg!(target_os = "macos") {
+        // macOS expects UTIs, not extensions. Use first extension as fallback.
+        let first = ext_list.first().copied().unwrap_or("").trim_start_matches('.');
         let posix_script = format!(
             "POSIX path of (choose file with prompt \"Select a {} file\" of type {{\"{}\"}})",
-            filter_name,
-            filter_ext.trim_start_matches('.')
+            filter_name, first,
         );
         let output = Command::new("osascript")
             .arg("-e")
@@ -1153,8 +1173,16 @@ pub fn pick_file(filter_name: &str, filter_ext: &str) -> Result<Option<String>> 
             ));
         }
     } else if cfg!(target_os = "windows") {
+        let win_filter = ext_list
+            .iter()
+            .map(|e| format!("*.{}", e.trim_start_matches('.')))
+            .collect::<Vec<_>>()
+            .join(";");
         let ps_script = format!(
-            "Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.OpenFileDialog; $f.Filter = '{filter_name} (*{filter_ext})|*{filter_ext}'; $f.ShowDialog() | Out-Null; $f.FileName"
+            "Add-Type -AssemblyName System.Windows.Forms; \
+             $f = New-Object System.Windows.Forms.OpenFileDialog; \
+             $f.Filter = '{filter_name} ({win_filter})|{win_filter}'; \
+             $f.ShowDialog() | Out-Null; $f.FileName"
         );
         let output = Command::new("powershell")
             .arg("-Command")

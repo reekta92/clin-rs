@@ -282,7 +282,7 @@ impl PinstarState {
                 "Delete Node".to_string(),
             ]
         } else {
-            vec!["Add Text Node".to_string(), "Add Group".to_string()]
+            vec!["Add Text Node".to_string(), "Add Group".to_string(), "Add Image Node".to_string()]
         };
 
         self.context_menu_pos = (canvas_x, canvas_y);
@@ -436,6 +436,28 @@ impl PinstarState {
         );
         self.selected_node_id = Some(id.clone());
         self.resizing_node_id = Some(id);
+        let _ = self.save();
+        self.sync_to_raw_editor();
+    }
+    pub fn add_image_node(&mut self, x: f64, y: f64) {
+        let path = match crate::ui::pick_file("Image", "png;jpg;jpeg;gif;webp;bmp") {
+            Ok(Some(p)) => p,
+            _ => return,
+        };
+        let id = format!("node_{}", &uuid::Uuid::new_v4().to_string()[..8]);
+        self.data.nodes.push(crate::pinstar::data::CanvasNode::File(
+            crate::pinstar::data::FileNode {
+                id: id.clone(),
+                x,
+                y,
+                width: 300.0,
+                height: 200.0,
+                file: path,
+                subpath: None,
+                color: None,
+            },
+        ));
+        self.selected_node_id = Some(id.clone());
         let _ = self.save();
         self.sync_to_raw_editor();
     }

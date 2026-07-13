@@ -851,16 +851,18 @@ impl App {
                         format!("{}/{}.draw", popup.folder, title)
                     };
                     self.return_mode = Some(self.mode);
-
                     self.mode = ViewMode::Draw;
                     self.editor.editing_id = Some(canvas_id.clone());
-                    self.draw_state = Some(crate::draw::app::DrawAppState::new(
+                    let mut state = crate::draw::app::DrawAppState::new(
                         self.storage.clone(),
                         Some(canvas_id),
                         self.app_theme.clone(),
                         self.keybinds.clone(),
                         self.seq_matcher.clone(),
-                    ));
+                    );
+                    state.image_picker = self.image_picker.clone();
+                    state.image_decode_tx = self.image_decode_tx.clone();
+                    self.draw_state = Some(state);
                 }
                 crate::popups::NoteFormat::Canvas => {
                     if title.is_empty() {
@@ -888,14 +890,17 @@ impl App {
                         }
                     }
                     self.return_mode = Some(self.mode);
-
                     self.mode = ViewMode::Canvas;
                     self.editor.editing_id = Some(canvas_id);
-                    if let Ok(state) = crate::pinstar::state::PinstarState::load(
+                    if let Ok(mut state) = crate::pinstar::state::PinstarState::load(
                         &path,
                         self.keybinds.clone(),
                         self.seq_matcher.clone(),
                     ) {
+                        state.image_cache =
+                            crate::image_render::cache::ImageCache::new(self.config.image.cache_size);
+                        state.image_picker = self.image_picker.clone();
+                        state.image_decode_tx = self.image_decode_tx.clone();
                         self.canvas_state = Some(state);
                     }
                     self.set_default_status();
