@@ -1350,6 +1350,27 @@ impl App {
         }
     }
 
+    pub fn update_find_results(&mut self) {
+        let query = self.editor.find_query.to_lowercase();
+        if query.is_empty() {
+            self.editor.find_results.clear();
+        } else {
+            let results: Vec<_> = self
+                .editor
+                .editor
+                .lines()
+                .iter()
+                .enumerate()
+                .filter(|(_, line)| line.to_lowercase().contains(&query))
+                .map(|(i, line)| (i, line.to_string()))
+                .collect();
+            self.editor.find_results = results;
+        }
+        if self.editor.find_selected >= self.editor.find_results.len() {
+            self.editor.find_selected = self.editor.find_results.len().saturating_sub(1);
+        }
+    }
+
     pub fn initiate_quit(&mut self) {
         if self.confirm_on_quit {
             self.show_confirm(ConfirmAction::QuitApp);

@@ -324,6 +324,18 @@ pub fn edit_action_meta(a: EditAction) -> HelpMeta {
             group: "Editing",
             description: "Insert image from file",
         },
+        EditAction::Find => HelpMeta {
+            group: "Editing",
+            description: "Find in document",
+        },
+        EditAction::InsertDate => HelpMeta {
+            group: "Editing",
+            description: "Insert date/time",
+        },
+        EditAction::ToggleSoftWrap => HelpMeta {
+            group: "Editing",
+            description: "Toggle soft wrap",
+        },
         EditAction::Quit => HelpMeta {
             group: "General",
             description: "Quit",

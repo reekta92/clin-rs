@@ -114,7 +114,7 @@ tempfile = "3.27.0"
 toml = "1.1"
 toml_edit = "0.25"
 trash = "5"
-ratatui-textarea = "0.9"
+ratatui-textarea = { version = "0.9", features = ["search"] }
 uuid = { version = "1.8", features = ["v4"] }
 fdg-sim = "0.9"
 which = "8.0.2"

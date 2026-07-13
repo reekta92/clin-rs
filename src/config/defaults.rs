@@ -61,7 +61,7 @@ pub fn default_theme() -> String {
     "default".to_string()
 }
 pub fn default_date_format() -> String {
-    "%Y-%m-%d".to_string()
+    "%Y-%m-%d %H:%M".to_string()
 }
 pub fn default_word_goal() -> usize {
     500

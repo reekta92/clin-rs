@@ -179,11 +179,11 @@ impl Default for Keybinds {
         );
         list.insert(
             ListAction::TogglePreviewFullscreen,
-            vec![KeyCombo::ctrl(KeyCode::Char('e'))],
+            vec![KeyCombo::ctrl_shift(KeyCode::Char('e'))],
         );
         list.insert(
             ListAction::TogglePreviewWrap,
-            vec![KeyCombo::ctrl(KeyCode::Char('w'))],
+            vec![KeyCombo::ctrl_shift(KeyCode::Char('w'))],
         );
         // Preview paging; inherited by all presets (none override Shift+Up/Down).
         list.insert(
@@ -297,11 +297,11 @@ impl Default for Keybinds {
         );
         edit.insert(
             EditAction::TogglePreviewFullscreen,
-            vec![KeyCombo::ctrl(KeyCode::Char('e'))],
+            vec![KeyCombo::ctrl_shift(KeyCode::Char('e'))],
         );
         edit.insert(
             EditAction::TogglePreviewWrap,
-            vec![KeyCombo::ctrl(KeyCode::Char('w'))],
+            vec![KeyCombo::ctrl_shift(KeyCode::Char('w'))],
         );
         // Preview paging; inherited by all presets (none override PageUp/Down).
         edit.insert(
@@ -323,6 +323,15 @@ impl Default for Keybinds {
         edit.insert(
             EditAction::InsertImageFromFile,
             vec![KeyCombo::parse("Ctrl+g Ctrl+f").expect("valid key combo")],
+        );
+        edit.insert(EditAction::Find, vec![KeyCombo::ctrl(KeyCode::Char('f'))]);
+        edit.insert(
+            EditAction::InsertDate,
+            vec![KeyCombo::ctrl(KeyCode::Char(';'))],
+        );
+        edit.insert(
+            EditAction::ToggleSoftWrap,
+            vec![KeyCombo::ctrl(KeyCode::Char('\\'))],
         );
         let mut help = HashMap::new();
         help.insert(

@@ -282,6 +282,41 @@ impl App {
         });
     }
 
+    pub fn toggle_editor_soft_wrap(&mut self) {
+        self.config.editor.soft_wrap = !self.config.editor.soft_wrap;
+        let mode = if self.config.editor.soft_wrap {
+            ratatui_textarea::WrapMode::WordOrGlyph
+        } else {
+            ratatui_textarea::WrapMode::None
+        };
+        self.editor.editor.set_wrap_mode(mode);
+        self.editor.title_editor.set_wrap_mode(mode);
+        if let Ok(mut config) = crate::config::ClinConfig::load() {
+            config.editor.soft_wrap = self.config.editor.soft_wrap;
+            if let Err(e) = config.save() {
+                self.set_temporary_status(&format!("Failed to save config: {e}"));
+            }
+        }
+        self.set_temporary_status_static(if self.config.editor.soft_wrap {
+            "Editor wrap on"
+        } else {
+            "Editor wrap off"
+        });
+    }
+
+    pub fn apply_editor_prefs(&mut self) {
+        let mode = if self.config.editor.soft_wrap {
+            ratatui_textarea::WrapMode::WordOrGlyph
+        } else {
+            ratatui_textarea::WrapMode::None
+        };
+        self.editor.editor.set_wrap_mode(mode);
+        self.editor.title_editor.set_wrap_mode(mode);
+        self.editor
+            .editor
+            .set_search_style(ratatui::style::Style::default().bg(self.app_theme.highlight_bg));
+    }
+
     pub fn toggle_show_line_numbers(&mut self) {
         self.editor.show_line_numbers = !self.editor.show_line_numbers;
         let msg: &'static str = if self.editor.show_line_numbers {

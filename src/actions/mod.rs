@@ -3,6 +3,7 @@ pub mod decrypt;
 pub mod encrypt;
 pub mod import;
 pub mod info;
+pub mod insert_date;
 pub mod ocr;
 pub mod settings;
 
@@ -231,6 +232,7 @@ pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyL
         Box::new(encrypt::EncryptNoteAction),
         Box::new(decrypt::DecryptNoteAction),
         Box::new(ManageSubnotesList),
+        Box::new(insert_date::InsertDateAction),
         Box::new(OpenGraphAction),
         Box::new(content_tree::OpenContentTreeAction),
         Box::new(OpenBackupAction),

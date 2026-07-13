@@ -232,6 +232,7 @@ impl App {
                 ));
             }
             self.editor.editor = editor;
+            self.apply_editor_prefs();
             // Clone image infrastructure into the editor so markdown images
             // can be decoded and rendered in the preview pane.
             self.editor.image_picker = self.image_picker.clone();
@@ -434,6 +435,7 @@ impl App {
             self.app_theme.highlight_bg,
         );
         self.editor.editor = TextArea::from(content.lines());
+        self.apply_editor_prefs();
         self.editor.editor.set_cursor_style(
             Style::default()
                 .fg(self.app_theme.highlight_fg)
@@ -486,6 +488,7 @@ impl App {
             self.app_theme.highlight_bg,
         );
         self.editor.editor = text_area_from_content(&rendered.content);
+        self.apply_editor_prefs();
 
         self.editor.editor.set_cursor_style(
             Style::default()
@@ -542,6 +545,7 @@ impl App {
             self.app_theme.highlight_bg,
         );
         self.editor.editor = text_area_from_content(&rendered.content);
+        self.apply_editor_prefs();
 
         self.editor.editor.set_cursor_style(
             Style::default()
@@ -568,6 +572,7 @@ impl App {
             self.editor.title_editor =
                 make_title_editor("", self.app_theme.highlight_fg, self.app_theme.highlight_bg);
             self.editor.editor = TextArea::default();
+            self.apply_editor_prefs();
             self.popups.confirm = None;
             self.editor.md_preview_renderer = None;
             if return_to == ViewMode::Graph && self.graph_state.is_none() {
@@ -602,6 +607,7 @@ impl App {
         self.editor.title_editor =
             make_title_editor("", self.app_theme.highlight_fg, self.app_theme.highlight_bg);
         self.editor.editor = TextArea::default();
+        self.apply_editor_prefs();
         self.popups.confirm = None;
         self.editor.md_preview_renderer = None;
         if let Some(id) = new_id {
@@ -979,6 +985,7 @@ impl App {
             self.app_theme.highlight_bg,
         );
         self.editor.editor = text_area_from_content(&content);
+        self.apply_editor_prefs();
         self.editor.editor.set_cursor_style(
             Style::default()
                 .fg(self.app_theme.highlight_fg)

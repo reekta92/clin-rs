@@ -82,6 +82,9 @@ pub enum EditAction {
     ManageSubnotes,
     PasteImage,
     InsertImageFromFile,
+    Find,
+    InsertDate,
+    ToggleSoftWrap,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

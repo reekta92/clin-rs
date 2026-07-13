@@ -22,7 +22,16 @@ impl KeyStroke {
     /// shift was held.  We strip `SHIFT` from both sides when the
     /// bound code is an uppercase letter, matching real terminal input.
     pub fn matches_event(&self, event: &KeyEvent) -> bool {
-        if self.code != event.code {
+        // Canonicalize terminal-variant Ctrl+Backspace encodings.
+        let event_code = if event.modifiers.contains(KeyModifiers::CONTROL) {
+            match event.code {
+                KeyCode::Char('\x08') | KeyCode::Char('\x7f') => KeyCode::Backspace,
+                c => c,
+            }
+        } else {
+            event.code
+        };
+        if self.code != event_code {
             return false;
         }
         let self_mods = match self.code {
@@ -272,5 +281,55 @@ fn key_code_to_string(code: &KeyCode) -> Cow<'static, str> {
         KeyCode::Char(' ') => Cow::Borrowed("Space"),
         KeyCode::Char(c) => Cow::Owned(c.to_string()),
         _ => Cow::Borrowed("?"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    /// Ctrl+Backspace delivered as Char('\x08')+CONTROL should match Backspace+CONTROL.
+    #[test]
+    fn ctrl_backspace_via_0x08() {
+        let stroke = KeyStroke {
+            code: KeyCode::Backspace,
+            modifiers: KeyModifiers::CONTROL,
+        };
+        let event = KeyEvent::new(KeyCode::Char('\x08'), KeyModifiers::CONTROL);
+        assert!(stroke.matches_event(&event));
+    }
+
+    /// Ctrl+Backspace delivered as Char('\x7f')+CONTROL should match Backspace+CONTROL.
+    #[test]
+    fn ctrl_backspace_via_0x7f() {
+        let stroke = KeyStroke {
+            code: KeyCode::Backspace,
+            modifiers: KeyModifiers::CONTROL,
+        };
+        let event = KeyEvent::new(KeyCode::Char('\x7f'), KeyModifiers::CONTROL);
+        assert!(stroke.matches_event(&event));
+    }
+
+    /// Plain Char('\x08') without CONTROL must NOT match — normal typing of that char works.
+    #[test]
+    fn plain_0x08_does_not_match_backspace() {
+        let stroke = KeyStroke {
+            code: KeyCode::Backspace,
+            modifiers: KeyModifiers::CONTROL,
+        };
+        let event = KeyEvent::new(KeyCode::Char('\x08'), KeyModifiers::NONE);
+        assert!(!stroke.matches_event(&event));
+    }
+
+    /// Plain Backspace (delete char) still works when no CONTROL modifier.
+    #[test]
+    fn plain_backspace_still_matches() {
+        let stroke = KeyStroke {
+            code: KeyCode::Backspace,
+            modifiers: KeyModifiers::NONE,
+        };
+        let event = KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE);
+        assert!(stroke.matches_event(&event));
     }
 }

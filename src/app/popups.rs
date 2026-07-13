@@ -96,6 +96,7 @@ impl App {
             self.app_theme.highlight_bg,
         );
         self.editor.editor = text_area_from_content(&content);
+        self.apply_editor_prefs();
         self.editor.editor.set_cursor_style(
             Style::default()
                 .fg(self.app_theme.highlight_fg)

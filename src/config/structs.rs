@@ -423,7 +423,7 @@ pub struct ListConfig {
     pub custom_smart_folders: Vec<CustomSmartFolder>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct EditorConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -434,6 +434,23 @@ pub struct EditorConfig {
     pub preview_enabled: bool,
     #[serde(default = "default_true")]
     pub show_line_numbers: bool,
+    #[serde(default = "default_date_format")]
+    pub date_format: String,
+    #[serde(default)]
+    pub soft_wrap: bool,
+}
+
+impl Default for EditorConfig {
+    fn default() -> Self {
+        Self {
+            external_command: None,
+            external_enabled: false,
+            preview_enabled: false,
+            show_line_numbers: true,
+            date_format: "%Y-%m-%d %H:%M".to_string(),
+            soft_wrap: false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]

@@ -1382,6 +1382,9 @@ pub(crate) fn resolve_tip_key(token: &str, kb: &Keybinds) -> String {
             "CycleFocus" => kb.edit_keys_display(EditAction::CycleFocus),
             "Back" => kb.edit_keys_display(EditAction::Back),
             "ManageSubnotes" => kb.edit_keys_display(EditAction::ManageSubnotes),
+            "Find" => kb.edit_keys_display(EditAction::Find),
+            "InsertDate" => kb.edit_keys_display(EditAction::InsertDate),
+            "ToggleSoftWrap" => kb.edit_keys_display(EditAction::ToggleSoftWrap),
             _ => format!("[ERR:{}]", token),
         },
         "help" => match action {
