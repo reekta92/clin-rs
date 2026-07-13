@@ -224,9 +224,8 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
                                 .fg(theme.highlight_bg),
                         );
                     } else if is_matched {
-                        row = row.style(
-                            Style::default().bg(theme.preview_bg().unwrap_or(Color::Reset)),
-                        );
+                        row = row
+                            .style(Style::default().bg(theme.preview_bg().unwrap_or(Color::Reset)));
                     }
                 }
             } else if let Some(hl_idx) = app.help_search.highlight_row
@@ -325,10 +324,11 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
             popup,
             theme,
             max_visible,
-            |(_, display): &(usize, String), is_selected, theme: &crate::app_theme::AppThemeColors| {
+            |(_, display): &(usize, String),
+             is_selected,
+             theme: &crate::app_theme::AppThemeColors| {
                 let style = if is_selected {
-                    Style::default()
-                        .fg(theme.fg)
+                    Style::default().fg(theme.fg)
                 } else {
                     Style::default().fg(theme.highlight_fg)
                 };
@@ -1323,6 +1323,9 @@ pub(crate) fn resolve_tip_key(token: &str, kb: &Keybinds) -> String {
             "Find" => kb.edit_keys_display(EditAction::Find),
             "InsertDate" => kb.edit_keys_display(EditAction::InsertDate),
             "ToggleSoftWrap" => kb.edit_keys_display(EditAction::ToggleSoftWrap),
+            "ToggleOutline" => kb.edit_keys_display(EditAction::ToggleOutline),
+            "ToggleBacklinks" => kb.edit_keys_display(EditAction::ToggleBacklinks),
+            "PreviewLink" => kb.edit_keys_display(EditAction::PreviewLink),
             _ => format!("[ERR:{}]", token),
         },
         "help" => match action {

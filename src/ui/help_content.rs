@@ -195,6 +195,18 @@ const EDITOR_SUGGESTIONS: &[HelpSuggestion] = &[
         "External editor workflow",
         "For heavy editing tasks, mark a note to open in your external `` $EDITOR `` via the list's {list:ToggleExternalEditor} action.",
     ),
+    tip(
+        "Outline pane",
+        "Press {edit:ToggleOutline} to dock a sidebar listing the note's markdown headers. Use {edit:CycleFocus} to move focus into the pane, select a header, and press Enter to jump the cursor to that line.",
+    ),
+    tip(
+        "Backlinks pane",
+        "Press {edit:ToggleBacklinks} to dock a sidebar listing notes that link to the current one. Select a backlink and press Enter to open that note in the editor.",
+    ),
+    tip(
+        "Linked-note preview",
+        "Place the cursor on a [[wikilink]] and press {edit:PreviewLink} to pop up a rendered preview of the target note. Press Esc to close without navigating.",
+    ),
 ];
 const GRAPH_SUGGESTIONS: &[HelpSuggestion] = &[
     tip(

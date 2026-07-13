@@ -669,19 +669,8 @@ impl Storage {
                 size_bytes: path.metadata().map(|m| m.len()).unwrap_or(0),
             })
         } else {
-            let content = match fs::read_to_string(&path) {
-                Ok(s) => s,
-                Err(e) => {
-                    eprintln!(
-                        "{}",
-                        crate::console::error(&format!(
-                            "load_note_summary read failed for {}: {e}",
-                            path.display()
-                        ))
-                    );
-                    String::new()
-                }
-            };
+            let content = fs::read_to_string(&path)
+                .with_context(|| format!("load_note_summary read failed for {}", path.display()))?;
             let (fm, plain_content) = frontmatter::parse(&content);
 
             let title = if let Some(t) = fm.title {
@@ -1271,13 +1260,7 @@ impl Storage {
         let db: HashMap<String, SubNotePayload> =
             match bincode::serde::decode_from_slice(&bytes, bincode::config::standard()) {
                 Ok((map, _)) => map,
-                Err(e) => {
-                    eprintln!(
-                        "{}",
-                        crate::console::error(&format!("subnotes decode failed: {e}"))
-                    );
-                    HashMap::new()
-                }
+                Err(_) => HashMap::new(),
             };
         if let Some(payload) = db.get(parent_id) {
             match payload {
@@ -1307,13 +1290,7 @@ impl Storage {
             obfuscate(&mut bytes);
             match bincode::serde::decode_from_slice(&bytes, bincode::config::standard()) {
                 Ok((map, _)) => map,
-                Err(e) => {
-                    eprintln!(
-                        "{}",
-                        crate::console::error(&format!("subnotes decode failed: {e}"))
-                    );
-                    HashMap::new()
-                }
+                Err(_) => HashMap::new(),
             }
         } else {
             HashMap::new()
@@ -1369,13 +1346,7 @@ impl Storage {
         let db: HashMap<String, SubNotePayload> =
             match bincode::serde::decode_from_slice(&bytes, bincode::config::standard()) {
                 Ok((map, _)) => map,
-                Err(e) => {
-                    eprintln!(
-                        "{}",
-                        crate::console::error(&format!("subnotes decode failed: {e}"))
-                    );
-                    HashMap::new()
-                }
+                Err(_) => HashMap::new(),
             };
         Ok(db.keys().cloned().collect())
     }
@@ -1714,6 +1685,51 @@ mod tests {
 
         let notes_with = storage.get_notes_with_subnotes()?;
         assert!(notes_with.is_empty());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_load_note_summary_unreadable_file() -> Result<()> {
+        let temp_dir = tempfile::tempdir()?;
+        let data_dir = temp_dir.path().join("data");
+        let config_dir = temp_dir.path().join("config");
+        let notes_dir = temp_dir.path().join("notes");
+        let templates_dir = temp_dir.path().join("templates");
+        fs::create_dir_all(&data_dir)?;
+        fs::create_dir_all(&config_dir)?;
+        fs::create_dir_all(&notes_dir)?;
+        fs::create_dir_all(&templates_dir)?;
+
+        let storage = Storage {
+            data_dir,
+            config_dir,
+            notes_dir: notes_dir.clone(),
+            templates_dir,
+            key: [0u8; 32],
+        };
+
+        // Create an unreadable .md file
+        let note_path = notes_dir.join("unreadable.md");
+        fs::write(&note_path, "some content")?;
+
+        // Make it unreadable
+        let mut perms = note_path.metadata()?.permissions();
+        perms.set_readonly(true);
+        // On Unix, remove read permission for owner
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            perms.set_mode(0o000);
+        }
+        fs::set_permissions(&note_path, perms)?;
+
+        // Should return Err, not silently succeed with empty content
+        let result = storage.load_note_summary("unreadable.md");
+        assert!(
+            result.is_err(),
+            "load_note_summary should fail for unreadable file"
+        );
 
         Ok(())
     }

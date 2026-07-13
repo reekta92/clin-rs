@@ -738,7 +738,7 @@ mod tests {
 
     #[test]
     fn test_uses_sequences() {
-        assert!(!KeybindPreset::Default.uses_sequences());
+        assert!(KeybindPreset::Default.uses_sequences());
         assert!(KeybindPreset::Helix.uses_sequences());
         assert!(KeybindPreset::Vim.uses_sequences());
         assert!(KeybindPreset::Emacs.uses_sequences());

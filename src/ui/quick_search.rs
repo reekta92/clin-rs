@@ -1,10 +1,10 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
+    Frame,
     layout::Rect,
     style::Style,
     text::{Line, Span},
     widgets::{Block, Clear, List, ListItem, Paragraph},
-    Frame,
 };
 
 use crate::app_theme::AppThemeColors;
@@ -93,15 +93,11 @@ pub fn handle_quick_search_keys<T>(
             }
             QuickSearchAction::Navigated
         }
-        KeyCode::Char('a') if ctrl => {
-            return QuickSearchAction::Edited;
-        }
-        KeyCode::Char('e') if ctrl => {
-            return QuickSearchAction::Edited;
-        }
+        KeyCode::Char('a') if ctrl => QuickSearchAction::Edited,
+        KeyCode::Char('e') if ctrl => QuickSearchAction::Edited,
         _ => {
             handle_popup_text_input(key, &mut popup.input, keybinds);
-            return QuickSearchAction::Edited;
+            QuickSearchAction::Edited
         }
     }
 }
@@ -150,9 +146,7 @@ pub fn draw_quick_search<T, F>(
     frame.render_widget(find_label, label_area);
     let mut input_widget = popup.input.clone();
     input_widget.set_block(Block::default());
-    let input_style = Style::default()
-        .bg(theme.accent)
-        .fg(theme.highlight_fg);
+    let input_style = Style::default().bg(theme.accent).fg(theme.highlight_fg);
     input_widget.set_style(input_style);
     input_widget.set_cursor_line_style(input_style);
     frame.render_widget(&input_widget, input_area);
@@ -178,7 +172,10 @@ pub fn draw_quick_search<T, F>(
         // Clear the area behind the dropdown
         frame.render_widget(Clear, dropdown_area);
         // Fill dropdown area with accent to match header bar
-        frame.render_widget(Block::default().style(Style::default().bg(theme.accent)), dropdown_area);
+        frame.render_widget(
+            Block::default().style(Style::default().bg(theme.accent)),
+            dropdown_area,
+        );
 
         if result_count == 0 {
             let no_match = Paragraph::new(Line::styled(

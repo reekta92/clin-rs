@@ -12,7 +12,7 @@ pub fn list_group_order() -> &'static [&'static str] {
     &["Navigation", "Actions", "Display", "General"]
 }
 pub fn edit_group_order() -> &'static [&'static str] {
-    &["Navigation", "Editing", "Preview", "General"]
+    &["Navigation", "Editing", "Preview", "Panels", "General"]
 }
 pub fn graph_group_order() -> &'static [&'static str] {
     &["Navigation", "Display", "System"]
@@ -335,6 +335,18 @@ pub fn edit_action_meta(a: EditAction) -> HelpMeta {
         EditAction::ToggleSoftWrap => HelpMeta {
             group: "Editing",
             description: "Toggle soft wrap",
+        },
+        EditAction::ToggleOutline => HelpMeta {
+            group: "Panels",
+            description: "Toggle outline pane",
+        },
+        EditAction::ToggleBacklinks => HelpMeta {
+            group: "Panels",
+            description: "Toggle backlinks pane",
+        },
+        EditAction::PreviewLink => HelpMeta {
+            group: "Panels",
+            description: "Preview linked note under cursor",
         },
         EditAction::Quit => HelpMeta {
             group: "General",

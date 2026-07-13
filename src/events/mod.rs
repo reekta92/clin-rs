@@ -131,7 +131,9 @@ pub fn edit_view_input_areas(
     md_preview: bool,
     line_count: usize,
     show_line_numbers: bool,
-) -> (Rect, Rect) {
+    sidebar: crate::editor::EditSidebar,
+    sidebar_position: crate::config::PreviewPosition,
+) -> (Rect, Rect, Option<Rect>) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -149,7 +151,33 @@ pub fn edit_view_input_areas(
         chunks[1].height.saturating_sub(2),
     );
 
-    let body_area = if md_preview {
+    let (body_area, sidebar_area) = if sidebar != crate::editor::EditSidebar::None {
+        let (constraints, main_idx, sb_idx) = match sidebar_position {
+            crate::config::PreviewPosition::Left => (
+                [
+                    Constraint::Ratio(30, 100),
+                    Constraint::Length(1),
+                    Constraint::Min(0),
+                ],
+                2,
+                0,
+            ),
+            crate::config::PreviewPosition::Right => (
+                [
+                    Constraint::Min(0),
+                    Constraint::Length(1),
+                    Constraint::Ratio(30, 100),
+                ],
+                0,
+                2,
+            ),
+        };
+        let cols = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints(constraints)
+            .split(chunks[2]);
+        (cols[main_idx], Some(cols[sb_idx]))
+    } else if md_preview {
         let content_chunks = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
@@ -159,14 +187,17 @@ pub fn edit_view_input_areas(
             ])
             .split(area);
 
-        Rect::new(
-            content_chunks[0].x,
-            chunks[2].y,
-            content_chunks[0].width,
-            chunks[2].height,
+        (
+            Rect::new(
+                content_chunks[0].x,
+                chunks[2].y,
+                content_chunks[0].width,
+                chunks[2].height,
+            ),
+            None,
         )
     } else {
-        chunks[2]
+        (chunks[2], None)
     };
 
     let gutter_width = if show_line_numbers {
@@ -182,7 +213,7 @@ pub fn edit_view_input_areas(
         body_area.height,
     );
 
-    (title_inner, body_inner)
+    (title_inner, body_inner, sidebar_area)
 }
 
 pub fn edit_view_md_preview_area(area: Rect) -> Option<Rect> {

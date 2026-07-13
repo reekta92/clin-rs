@@ -229,6 +229,7 @@ impl App {
     pub fn toggle_markdown_preview(&mut self) {
         self.editor.editor_preview_enabled = !self.editor.editor_preview_enabled;
         if self.editor.editor_preview_enabled {
+            self.editor.sidebar = EditSidebar::None;
             self.update_editor_markdown_preview();
             self.set_temporary_status_static("Markdown preview enabled");
         } else {

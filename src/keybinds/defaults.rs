@@ -297,11 +297,11 @@ impl Default for Keybinds {
         );
         edit.insert(
             EditAction::TogglePreviewFullscreen,
-            vec![KeyCombo::ctrl_shift(KeyCode::Char('e'))],
+            vec![KeyCombo::simple(KeyCode::F(11))],
         );
         edit.insert(
             EditAction::TogglePreviewWrap,
-            vec![KeyCombo::ctrl_shift(KeyCode::Char('w'))],
+            vec![KeyCombo::simple(KeyCode::F(12))],
         );
         // Preview paging; inherited by all presets (none override PageUp/Down).
         edit.insert(
@@ -331,7 +331,19 @@ impl Default for Keybinds {
         );
         edit.insert(
             EditAction::ToggleSoftWrap,
-            vec![KeyCombo::ctrl(KeyCode::Char('\\'))],
+            vec![KeyCombo::simple(KeyCode::F(10))],
+        );
+        edit.insert(
+            EditAction::ToggleOutline,
+            vec![KeyCombo::ctrl(KeyCode::Char('o'))],
+        );
+        edit.insert(
+            EditAction::ToggleBacklinks,
+            vec![KeyCombo::ctrl(KeyCode::Char('b'))],
+        );
+        edit.insert(
+            EditAction::PreviewLink,
+            vec![KeyCombo::parse("Alt+l").expect("valid key combo")],
         );
         let mut help = HashMap::new();
         help.insert(

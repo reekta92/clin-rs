@@ -75,8 +75,7 @@ pub fn draw_ui(
         draw_dim_vline(frame, sep_area, state.app_theme.muted);
     }
 
-    if state.search_popup.is_some() {
-        let popup = state.search_popup.as_ref().unwrap();
+    if let Some(popup) = &state.search_popup {
         let max_visible = config.graf.search.max_visible;
         let theme = &state.app_theme;
         let popup_width = (50u16).min(area.width.saturating_sub(4));
@@ -88,16 +87,13 @@ pub fn draw_ui(
             max_visible,
             move |(_, title), is_selected, theme: &crate::app_theme::AppThemeColors| {
                 let style = if is_selected {
-                    ratatui::style::Style::default()
-                        .fg(theme.fg)
+                    ratatui::style::Style::default().fg(theme.fg)
                 } else {
                     ratatui::style::Style::default().fg(theme.highlight_fg)
                 };
                 let prefix = if is_selected { "▸ " } else { "  " };
-                let display = crate::graf::util::truncate(
-                    title,
-                    (popup_width as usize).saturating_sub(6),
-                );
+                let display =
+                    crate::graf::util::truncate(title, (popup_width as usize).saturating_sub(6));
                 ratatui::text::Line::styled(format!("{prefix}{display}"), style)
             },
             config.ui.icon_mode,
@@ -172,7 +168,6 @@ fn suggest_fix(err: &str) -> Option<String> {
     }
     None
 }
-
 
 fn draw_reload_notification(
     frame: &mut Frame,

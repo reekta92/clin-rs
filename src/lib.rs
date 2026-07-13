@@ -1439,6 +1439,7 @@ fn run_app(
                         app.status = Cow::Borrowed("Pasted body text");
                         app.request_editor_preview_update();
                     }
+                    EditFocus::Sidebar => {}
                 },
                 Event::Resize(_, _) => {
                     terminal.autoresize()?;

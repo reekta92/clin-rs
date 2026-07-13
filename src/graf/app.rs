@@ -321,11 +321,10 @@ fn handle_event(
                         return Ok(Some(EventAction::OpenHelp));
                     }
                     GraphInputAction::ToggleSearch => {
-                        app_state.search_popup =
-                            Some(crate::ui::quick_search::QuickSearch::new(
-                                "Search",
-                                &app_state.app_theme,
-                            ));
+                        app_state.search_popup = Some(crate::ui::quick_search::QuickSearch::new(
+                            "Search",
+                            &app_state.app_theme,
+                        ));
                         return Ok(None);
                     }
                     GraphInputAction::ToggleMinimap => {

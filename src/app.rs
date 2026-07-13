@@ -1,3 +1,4 @@
+mod edit_panes;
 mod folders;
 mod import_ops;
 mod loading;
@@ -1286,6 +1287,7 @@ impl App {
                 EditFocus::Body => {
                     self.editor.editor.copy();
                 }
+                EditFocus::Sidebar => {}
             },
             1 => match focus {
                 EditFocus::Title => {
@@ -1294,6 +1296,7 @@ impl App {
                 EditFocus::Body => {
                     self.editor.editor.cut();
                 }
+                EditFocus::Sidebar => {}
             },
             2 => match focus {
                 EditFocus::Title => {
@@ -1302,6 +1305,7 @@ impl App {
                 EditFocus::Body => {
                     self.editor.editor.paste();
                 }
+                EditFocus::Sidebar => {}
             },
             3 => match focus {
                 EditFocus::Title => {
@@ -1310,6 +1314,7 @@ impl App {
                 EditFocus::Body => {
                     self.editor.editor.select_all();
                 }
+                EditFocus::Sidebar => {}
             },
             _ => {}
         }
@@ -1352,7 +1357,6 @@ impl App {
             popup.selected = popup.results.len().saturating_sub(1);
         }
     }
-
 
     pub fn initiate_quit(&mut self) {
         if self.confirm_on_quit {

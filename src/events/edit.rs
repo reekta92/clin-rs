@@ -1,5 +1,5 @@
 use crate::actions::Action;
-use crate::app::{App, ContextMenu, EditFocus};
+use crate::app::{App, ContextMenu, EditFocus, EditSidebar};
 use crate::keybinds::EditAction;
 use crate::text_edit::apply_text_shortcuts;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
@@ -68,11 +68,15 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                         .move_cursor(ratatui_textarea::CursorMove::Jump(line_idx as u16, 0));
                     let _ = app.editor.editor.search_forward(false);
                 }
-                app.editor.editor.set_search_style(ratatui::style::Style::default());
+                app.editor
+                    .editor
+                    .set_search_style(ratatui::style::Style::default());
                 app.editor.find_popup = None;
             }
             crate::ui::quick_search::QuickSearchAction::Cancel => {
-                app.editor.editor.set_search_style(ratatui::style::Style::default());
+                app.editor
+                    .editor
+                    .set_search_style(ratatui::style::Style::default());
                 app.editor.find_popup = None;
             }
             crate::ui::quick_search::QuickSearchAction::Edited => {
@@ -103,6 +107,10 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
         }
         return false;
     }
+    if app.editor.link_preview && crate::events::is_cancel_popup(&app.keybinds, &key, false) {
+        app.close_link_preview();
+        return false;
+    }
 
     // Universal back (override-proof): bare Esc leaves the editor. q types a letter.
     if key.modifiers == KeyModifiers::NONE && key.code == KeyCode::Esc {
@@ -120,7 +128,14 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
             EditAction::CycleFocus => {
                 *focus = match *focus {
                     EditFocus::Title => EditFocus::Body,
-                    EditFocus::Body => EditFocus::Title,
+                    EditFocus::Body => {
+                        if app.editor.sidebar != EditSidebar::None {
+                            EditFocus::Sidebar
+                        } else {
+                            EditFocus::Title
+                        }
+                    }
+                    EditFocus::Sidebar => EditFocus::Title,
                 };
                 return false;
             }
@@ -130,6 +145,27 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
             }
             EditAction::ToggleMarkdownPreview => {
                 app.toggle_markdown_preview();
+                if *focus == EditFocus::Sidebar {
+                    *focus = EditFocus::Body;
+                }
+                return false;
+            }
+            EditAction::ToggleOutline => {
+                app.toggle_outline_pane();
+                if app.editor.sidebar == EditSidebar::None && *focus == EditFocus::Sidebar {
+                    *focus = EditFocus::Body;
+                }
+                return false;
+            }
+            EditAction::ToggleBacklinks => {
+                app.toggle_backlinks_pane();
+                if app.editor.sidebar == EditSidebar::None && *focus == EditFocus::Sidebar {
+                    *focus = EditFocus::Body;
+                }
+                return false;
+            }
+            EditAction::PreviewLink => {
+                app.open_link_preview();
                 return false;
             }
             EditAction::PreviewPageUp => {
@@ -173,6 +209,7 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                     EditFocus::Body => {
                         let _ = app.editor.editor.insert_str(&s);
                     }
+                    EditFocus::Sidebar => {}
                 }
                 app.request_editor_preview_update();
                 return false;
@@ -184,12 +221,14 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
             EditAction::Find => {
                 let theme = &app.app_theme;
                 if app.editor.find_popup.is_some() {
-                    app.editor.editor.set_search_style(ratatui::style::Style::default());
+                    app.editor
+                        .editor
+                        .set_search_style(ratatui::style::Style::default());
                     app.editor.find_popup = None;
                 } else {
-                    app.editor.editor.set_search_style(
-                        ratatui::style::Style::default().bg(theme.highlight_bg),
-                    );
+                    app.editor
+                        .editor
+                        .set_search_style(ratatui::style::Style::default().bg(theme.highlight_bg));
                     app.editor.find_popup =
                         Some(crate::ui::quick_search::QuickSearch::new(" Find ", theme));
                 }
@@ -216,6 +255,37 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
     }
 
     match *focus {
+        EditFocus::Sidebar => {
+            app.seq_matcher.clear();
+            if app
+                .keybinds
+                .matches_list(crate::keybinds::ListAction::MoveUp, &key)
+            {
+                app.sidebar_move(-1);
+                return false;
+            }
+            if app
+                .keybinds
+                .matches_list(crate::keybinds::ListAction::MoveDown, &key)
+            {
+                app.sidebar_move(1);
+                return false;
+            }
+            if app
+                .keybinds
+                .matches_list(crate::keybinds::ListAction::Confirm, &key)
+            {
+                app.sidebar_activate(focus);
+                return false;
+            }
+            // Bare Esc / Back leaves sidebar focus → returns to Body (pane stays visible).
+            if key.modifiers == KeyModifiers::NONE && key.code == KeyCode::Esc {
+                *focus = EditFocus::Body;
+                return false;
+            }
+            // Any other key is swallowed (no editor insertion while sidebar focused).
+            return false;
+        }
         EditFocus::Title => {
             app.seq_matcher.clear();
             if key.code == KeyCode::Enter {
@@ -307,11 +377,13 @@ pub fn handle_edit_mouse(
     }
 
     if mouse_event.kind == MouseEventKind::Down(MouseButton::Right) {
-        let (title_inner, body_inner) = edit_view_input_areas(
+        let (title_inner, body_inner, _sidebar_inner) = edit_view_input_areas(
             terminal_area,
             app.editor.editor_preview_enabled,
             app.editor.editor.lines().len(),
             app.editor.show_line_numbers,
+            app.editor.sidebar,
+            app.preview_position,
         );
 
         if contains_cell(title_inner, mouse_event.column, mouse_event.row) {
@@ -342,11 +414,13 @@ pub fn handle_edit_mouse(
         return;
     }
 
-    let (title_inner, body_inner) = edit_view_input_areas(
+    let (title_inner, body_inner, sidebar_inner) = edit_view_input_areas(
         terminal_area,
         app.editor.editor_preview_enabled,
         app.editor.editor.lines().len(),
         app.editor.show_line_numbers,
+        app.editor.sidebar,
+        app.preview_position,
     );
 
     let md_area = if app.preview_fullscreen {
@@ -384,6 +458,21 @@ pub fn handle_edit_mouse(
             _ => {}
         }
     }
+    if let Some(sb) = sidebar_inner
+        && contains_cell(sb, mouse_event.column, mouse_event.row)
+    {
+        match mouse_event.kind {
+            MouseEventKind::ScrollUp => {
+                app.sidebar_move(-1);
+                return;
+            }
+            MouseEventKind::ScrollDown => {
+                app.sidebar_move(1);
+                return;
+            }
+            _ => {}
+        }
+    }
 
     if app.preview_fullscreen {
         return;
@@ -393,6 +482,20 @@ pub fn handle_edit_mouse(
         MouseEventKind::Down(MouseButton::Left) => {
             *mouse_selecting = false;
             *mouse_dragged = false;
+            if let Some(sb) = sidebar_inner
+                && contains_cell(sb, mouse_event.column, mouse_event.row)
+            {
+                *focus = EditFocus::Sidebar;
+                let clicked_row = mouse_event.row as i32 - sb.y as i32 - 3;
+                if clicked_row >= 0 {
+                    let clicked = clicked_row as usize;
+                    let len = app.sidebar_len();
+                    if clicked < len {
+                        app.editor.sidebar_selected = clicked;
+                    }
+                }
+                return;
+            }
             if contains_cell(body_inner, mouse_event.column, mouse_event.row) {
                 *focus = EditFocus::Body;
                 move_textarea_cursor_to_mouse(
@@ -457,4 +560,3 @@ pub fn handle_edit_mouse(
         _ => {}
     }
 }
-

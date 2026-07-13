@@ -1,11 +1,11 @@
 use ratatui::{prelude::*, widgets::*};
 
 use super::{
-    PopupSize, centered_rect, draw_corner_watermark, draw_dim_vline, draw_status_bar,
-    draw_view_title_bar, fill_cursor_line_bg, format_keybind_hints, get_preview_info,
-    get_textarea_scroll, line_number_gutter,
+    PopupHints, PopupSize, centered_rect, draw_corner_watermark, draw_dim_vline, draw_popup_frame,
+    draw_status_bar, draw_view_title_bar, fill_cursor_line_bg, format_keybind_hints,
+    get_preview_info, get_textarea_scroll, line_number_gutter,
 };
-use crate::app::{App, EditFocus, ViewMode};
+use crate::app::{App, EditFocus, EditSidebar, ViewMode};
 use crate::events::get_title_text;
 use crate::keybinds::EditAction;
 
@@ -50,10 +50,38 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     let body_area = outer_chunks[1];
     let hint_area = outer_chunks[2];
 
+    let mut sidebar_area = None;
     let (edit_area, preview_area_rect, splitter_area) = if app.preview_fullscreen {
         app.editor.last_preview_pane_width = body_area.width;
         app.editor.last_preview_pane_height = body_area.height;
         (body_area, Some(body_area), None)
+    } else if app.editor.sidebar != EditSidebar::None {
+        let (constraints, main_idx, sb_idx) = match app.preview_position {
+            crate::config::PreviewPosition::Left => (
+                [
+                    Constraint::Ratio(30, 100),
+                    Constraint::Length(1),
+                    Constraint::Min(0),
+                ],
+                2,
+                0,
+            ),
+            crate::config::PreviewPosition::Right => (
+                [
+                    Constraint::Min(0),
+                    Constraint::Length(1),
+                    Constraint::Ratio(30, 100),
+                ],
+                0,
+                2,
+            ),
+        };
+        let cols = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints(constraints)
+            .split(body_area);
+        sidebar_area = Some(cols[sb_idx]);
+        (cols[main_idx], None, Some(cols[1]))
     } else if app.editor.editor_preview_enabled {
         let (constraints, main_idx, p_idx) = match app.preview_position {
             crate::config::PreviewPosition::Left => (
@@ -131,6 +159,13 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         }
     }
 
+    if let Some(sb) = sidebar_area {
+        match app.editor.sidebar {
+            EditSidebar::Outline => draw_outline_pane(frame, sb, app, focus),
+            EditSidebar::Backlinks => draw_backlinks_pane(frame, sb, app, focus),
+            EditSidebar::None => {}
+        }
+    }
     if let Some(preview_area_rect) = preview_area_rect {
         let content_area = editor_container;
 
@@ -364,6 +399,9 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             kb.display_edit(EditAction::ToggleMarkdownPreview),
             "preview",
         ),
+        (kb.display_edit(EditAction::ToggleOutline), "outline"),
+        (kb.display_edit(EditAction::ToggleBacklinks), "backlinks"),
+        (kb.display_edit(EditAction::PreviewLink), "peek link"),
         (kb.display_edit(EditAction::Find), "find"),
         (kb.display_edit(EditAction::InsertDate), "date"),
         (kb.display_edit(EditAction::ToggleSoftWrap), "wrap"),
@@ -409,6 +447,9 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             .wrap(Wrap { trim: true });
         frame.render_widget(text, popup);
     }
+    if app.editor.link_preview {
+        draw_link_preview_popup(frame, area, app);
+    }
     if let Some(ref popup) = app.editor.find_popup {
         let theme = &app.app_theme;
         let max_visible = 10usize;
@@ -418,10 +459,11 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             popup,
             theme,
             max_visible,
-            |(_, display): &(usize, String), is_selected, theme: &crate::app_theme::AppThemeColors| {
+            |(_, display): &(usize, String),
+             is_selected,
+             theme: &crate::app_theme::AppThemeColors| {
                 let style = if is_selected {
-                    Style::default()
-                        .fg(theme.fg)
+                    Style::default().fg(theme.fg)
                 } else {
                     Style::default().fg(theme.highlight_fg)
                 };
@@ -430,5 +472,171 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             },
             app.config.ui.icon_mode,
         );
+    }
+}
+fn draw_outline_pane(frame: &mut Frame, area: Rect, app: &mut App, focus: EditFocus) {
+    let theme = &app.app_theme;
+
+    // Fill the background of the sidebar area
+    frame.render_widget(Block::default().style(theme.preview_bg_style()), area);
+
+    let sb_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1), // Top padding
+            Constraint::Length(1), // Title
+            Constraint::Length(1), // Spacer
+            Constraint::Min(0),    // List
+        ])
+        .split(area);
+
+    // Draw Title
+    let title_style = if focus == EditFocus::Sidebar {
+        Style::default()
+            .fg(theme.accent)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default()
+            .fg(theme.heading)
+            .add_modifier(Modifier::BOLD)
+    };
+    let title = Paragraph::new(format!("  OUTLINE ({})", app.editor.outline_nodes.len()))
+        .style(title_style);
+    frame.render_widget(title, sb_chunks[1]);
+
+    // Draw List
+    let items: Vec<ListItem> = app
+        .editor
+        .outline_nodes
+        .iter()
+        .map(|node| {
+            let text = match &node.kind {
+                crate::content_tree::parse::NodeKind::Header { level, title } => {
+                    let indent = "  ".repeat((*level as usize).saturating_sub(1));
+                    let marker = if *level == 1 { "▸ " } else { "" };
+                    format!("{}{}{}", indent, marker, title)
+                }
+                _ => node.full_text().to_string(),
+            };
+            ListItem::new(text).style(Style::default().fg(theme.fg))
+        })
+        .collect();
+
+    if items.is_empty() {
+        let p = Paragraph::new("  No headers").style(Style::default().fg(theme.muted));
+        frame.render_widget(p, sb_chunks[3]);
+    } else {
+        let list = List::new(items).block(Block::default()).highlight_style(
+            Style::default()
+                .bg(theme.highlight_bg)
+                .fg(theme.highlight_fg),
+        );
+        let mut state = ListState::default();
+        state.select(Some(app.editor.sidebar_selected));
+
+        // Add left padding to the list rect to align items nicely
+        let list_area = Rect::new(
+            sb_chunks[3].x + 2,
+            sb_chunks[3].y,
+            sb_chunks[3].width.saturating_sub(2),
+            sb_chunks[3].height,
+        );
+        frame.render_stateful_widget(list, list_area, &mut state);
+    }
+}
+
+fn draw_backlinks_pane(frame: &mut Frame, area: Rect, app: &mut App, focus: EditFocus) {
+    let theme = &app.app_theme;
+
+    // Fill the background of the sidebar area
+    frame.render_widget(Block::default().style(theme.preview_bg_style()), area);
+
+    let sb_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1), // Top padding
+            Constraint::Length(1), // Title
+            Constraint::Length(1), // Spacer
+            Constraint::Min(0),    // List
+        ])
+        .split(area);
+
+    // Draw Title
+    let title_style = if focus == EditFocus::Sidebar {
+        Style::default()
+            .fg(theme.accent)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default()
+            .fg(theme.heading)
+            .add_modifier(Modifier::BOLD)
+    };
+    let title =
+        Paragraph::new(format!("  BACKLINKS ({})", app.editor.backlinks.len())).style(title_style);
+    frame.render_widget(title, sb_chunks[1]);
+
+    // Draw List
+    let items: Vec<ListItem> = app
+        .editor
+        .backlinks
+        .iter()
+        .map(|(_, title)| ListItem::new(title.as_str()).style(Style::default().fg(theme.fg)))
+        .collect();
+
+    if items.is_empty() {
+        let p = Paragraph::new("  No backlinks").style(Style::default().fg(theme.muted));
+        frame.render_widget(p, sb_chunks[3]);
+    } else {
+        let list = List::new(items).block(Block::default()).highlight_style(
+            Style::default()
+                .bg(theme.highlight_bg)
+                .fg(theme.highlight_fg),
+        );
+        let mut state = ListState::default();
+        state.select(Some(app.editor.sidebar_selected));
+
+        // Add left padding to the list rect to align items nicely
+        let list_area = Rect::new(
+            sb_chunks[3].x + 2,
+            sb_chunks[3].y,
+            sb_chunks[3].width.saturating_sub(2),
+            sb_chunks[3].height,
+        );
+        frame.render_stateful_widget(list, list_area, &mut state);
+    }
+}
+fn draw_link_preview_popup(frame: &mut Frame, area: Rect, app: &mut App) {
+    let title = format!(
+        " Preview: {} ",
+        app.editor.link_preview_target.as_deref().unwrap_or("?")
+    );
+    let hints = PopupHints::Keybinds(&[("Esc".to_string(), "close")]);
+    let inner = draw_popup_frame(frame, area, &title, PopupSize::Large, hints, &app.app_theme);
+    if let Some(err) = &app.editor.link_preview_error {
+        let p = Paragraph::new(err.as_str())
+            .style(Style::default().fg(app.app_theme.destructive))
+            .wrap(Wrap { trim: true });
+        frame.render_widget(p, inner);
+        return;
+    }
+    let Some(renderer) = &mut app.editor.link_preview_renderer else {
+        return;
+    };
+    if renderer.is_pending() {
+        let p = Paragraph::new("Loading…").style(Style::default().fg(app.app_theme.muted));
+        frame.render_widget(p, inner);
+        return;
+    }
+    if !renderer.pages_built() {
+        return;
+    }
+    if let Some(grid) = renderer.current_page_grid() {
+        let snapshot = crate::snapshot::RenderedSnapshot::new(grid).block(
+            Block::default()
+                .style(app.app_theme.preview_bg_style())
+                .borders(Borders::NONE)
+                .padding(Padding::new(1, 1, 0, 0)),
+        );
+        frame.render_widget(snapshot, inner);
     }
 }

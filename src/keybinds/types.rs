@@ -85,6 +85,9 @@ pub enum EditAction {
     Find,
     InsertDate,
     ToggleSoftWrap,
+    ToggleOutline,
+    ToggleBacklinks,
+    PreviewLink,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
