@@ -248,10 +248,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                             if !path.exists() {
                                 continue;
                             }
-                            let key = crate::image_render::ImageKey {
-                                path,
-                                mtime: 0,
-                            };
+                            let key = crate::image_render::ImageKey { path, mtime: 0 };
                             if app.editor.image_cache.get_proto(&key).is_none() {
                                 app.editor.image_cache.request(
                                     key.clone(),
@@ -271,6 +268,10 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                                 );
                                 if img_rect.width > 1 && img_rect.height > 1 {
                                     frame.render_widget(Clear, img_rect);
+                                    frame.render_widget(
+                                        Block::default().style(app.app_theme.preview_bg_style()),
+                                        img_rect,
+                                    );
                                     frame.render_stateful_widget(
                                         ratatui_image::StatefulImage::default()
                                             .resize(ratatui_image::Resize::Fit(None)),
