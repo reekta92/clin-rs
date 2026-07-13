@@ -197,7 +197,11 @@ pub fn draw_quick_search<T, F>(
                 .map(|(i, item)| {
                     let is_selected = i == popup.selected;
                     let line = render_item(item, is_selected, theme);
-                    ListItem::new(line)
+                    let mut list_item = ListItem::new(line);
+                    if is_selected {
+                        list_item = list_item.style(Style::default().bg(theme.highlight_fg));
+                    }
+                    list_item
                 })
                 .collect();
 
