@@ -256,7 +256,7 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
     frame.render_widget(table, table_area);
 
     if show_sides {
-        draw_help_info_pane(frame, left_area, app.help_tab, theme);
+        draw_help_info_pane(frame, left_area, app.help_tab, &app.keybinds, theme);
         draw_dim_vline(frame, divider1_area, theme.border);
         draw_dim_vline(frame, divider2_area, theme.border);
         draw_help_tips_pane(
@@ -1090,7 +1090,7 @@ pub fn style_palette_name(name: &str, theme: &AppThemeColors) -> Vec<Span<'stati
         )]
     }
 }
-fn draw_help_info_pane(frame: &mut Frame, area: Rect, tab: HelpTab, theme: &AppThemeColors) {
+fn draw_help_info_pane(frame: &mut Frame, area: Rect, tab: HelpTab, keybinds: &Keybinds, theme: &AppThemeColors) {
     let title = tab_display_name(tab);
     let mut lines = Vec::new();
 
@@ -1108,6 +1108,26 @@ fn draw_help_info_pane(frame: &mut Frame, area: Rect, tab: HelpTab, theme: &AppT
         crate::ui::help_content::tab_description(tab).to_string(),
         Style::default().fg(theme.text),
     )));
+
+    // Popups & Overlays section (only for tabs that have them)
+    let popups = crate::ui::help_content::tab_popup_descriptions(tab);
+    if !popups.is_empty() {
+        lines.push(Line::default());
+        lines.push(Line::from(Span::styled(
+            "Popups & Overlays",
+            Style::default().fg(theme.heading).add_modifier(Modifier::BOLD),
+        )));
+        for (i, p) in popups.iter().enumerate() {
+            if i > 0 {
+                lines.push(Line::default()); // blank separator between popups
+            }
+            lines.push(Line::from(Span::styled(
+                p.name.to_string(),
+                Style::default().fg(theme.success).add_modifier(Modifier::BOLD),
+            )));
+            lines.push(Line::from(render_tip_body(p.body, keybinds, theme)));
+        }
+    }
 
     let block = Block::default()
         .borders(Borders::NONE)
@@ -1322,6 +1342,8 @@ pub(crate) fn resolve_tip_key(token: &str, kb: &Keybinds) -> String {
             "ToggleExternalEditor" => kb.list_keys_display(ListAction::ToggleExternalEditor),
             "OpenGraph" => kb.list_keys_display(ListAction::OpenGraph),
             "OpenCanvas" => kb.list_keys_display(ListAction::OpenCanvas),
+            "ManageTags" => kb.list_keys_display(ListAction::ManageTags),
+            "OpenTrash" => kb.list_keys_display(ListAction::OpenTrash),
             _ => format!("[ERR:{}]", token),
         },
         "edit" => match action {
@@ -1456,6 +1478,29 @@ mod tests {
             assert!(
                 !span.content.to_string().contains("[ERR:"),
                 "no ERR in any span"
+            );
+        }
+    }
+
+    #[test]
+    fn test_popup_key_resolution() {
+        let kb = crate::keybinds::Keybinds::default();
+        let open_keys = [
+            "list:ManageTags",
+            "list:ManageSubnotes",
+            "list:OpenCommandPalette",
+            "list:Search",
+            "list:OpenTrash",
+        ];
+        for &token in &open_keys {
+            let resolved = crate::ui::help::resolve_tip_key(token, &kb);
+            assert!(
+                !resolved.starts_with("[ERR:"),
+                "Token '{token}' should resolve without error, got: {resolved}"
+            );
+            assert!(
+                !resolved.is_empty(),
+                "Token '{token}' should resolve to a non-empty string"
             );
         }
     }

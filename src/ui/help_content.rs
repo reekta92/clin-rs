@@ -370,6 +370,44 @@ pub fn roll_suggestions(tab: HelpTab, count: usize) -> Vec<&'static HelpSuggesti
     let mut rng = rand::thread_rng();
     pool.choose_multiple(&mut rng, count).collect()
 }
+
+#[derive(Debug, Clone, Copy)]
+pub struct PopupHelp {
+    pub name: &'static str,
+    pub body: &'static str,
+}
+
+/// Per-tab popup/overlay guides rendered in the help info pane.
+/// Only `Notes` returns entries; all other tabs return empty.
+pub fn tab_popup_descriptions(tab: HelpTab) -> &'static [PopupHelp] {
+    match tab {
+        HelpTab::Notes => NOTES_POPUPS,
+        _ => &[],
+    }
+}
+
+const NOTES_POPUPS: &[PopupHelp] = &[
+    PopupHelp {
+        name: "Command Palette",
+        body: "Press {list:OpenCommandPalette} to open the **Command Palette** — a fuzzy launcher that runs any action by name without remembering its key. Type to filter the list; ``Tab`` / ``Shift+Tab`` cycle the category tabs (General, Notes, Import, Append, Views, Settings). Move with ``Up`` / ``Down`` (wraps around) and run the highlighted action with ``Enter``; ``Esc`` closes. The palette opens scoped to the selected note, so note-specific actions apply to it.",
+    },
+    PopupHelp {
+        name: "Tags",
+        body: "Press {list:ManageTags} to open the **Tag Manager** for the selected note. Add tags as a comma-separated list in the input; ``Tab`` accepts the current suggestion or, once the list is empty, moves focus to the all-tags list (``Shift+Tab`` reverses). In the all-tags list, ``k`` / ``j`` or arrows move and ``d`` / ``Delete`` removes a tag. ``Ctrl+s`` enters **tag mode**: pick multiple notes, then ``Enter`` to apply the tag to all of them. Removing a tag asks for confirmation first.",
+    },
+    PopupHelp {
+        name: "Subnotes",
+        body: "Press {list:ManageSubnotes} to open the **Subnotes** manager — encrypted child notes attached to the selected note. In the list pane, ``j`` / ``k`` or arrows move, ``n`` (or ``Alt+n``) adds a subnote, ``d`` / ``Delete`` removes one, and ``Enter`` edits it; ``Tab`` cycles focus list → title → content. ``Ctrl+e`` hands the current subnote to your external editor. Notes that carry subnotes show a ⧉ marker in the notes list. Closing the popup auto-saves whenever anything changed.",
+    },
+    PopupHelp {
+        name: "Search",
+        body: "Press {list:Search} for **full-vault search** — it matches note titles and also greps note bodies, grouping content hits per note. Type to search live; ``Tab`` toggles between the input and the results. In the results, ``j`` / ``k`` or arrows move, ``l`` / ``Space`` expands a note's matched lines, and ``Enter`` jumps to the selected note. ``Esc`` cancels and returns to the list.",
+    },
+    PopupHelp {
+        name: "Trash",
+        body: "Press {list:OpenTrash} to open the **Trash** view and recover or permanently destroy deleted notes. Move with ``k`` / ``Up`` and ``j`` / ``Down``; ``r`` or ``Enter`` restores the selected note, ``d`` / ``Delete`` deletes it permanently, and ``E`` empties the whole trash. Restore, permanent delete, and empty each ask for confirmation before acting. ``Esc`` closes the view; restoring into an otherwise-empty trash closes it automatically.",
+    },
+];
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -476,6 +514,46 @@ mod tests {
                     }
                 }
             }
+        }
+    }
+
+    #[test]
+    fn test_popup_descriptions() {
+        let tabs = [
+            HelpTab::Notes,
+            HelpTab::Editor,
+            HelpTab::Graph,
+            HelpTab::Draw,
+            HelpTab::Canvas,
+            HelpTab::Backup,
+            HelpTab::Templates,
+            HelpTab::ContentTree,
+            HelpTab::About,
+        ];
+
+        for &tab in &tabs {
+            let popups = tab_popup_descriptions(tab);
+            if tab == HelpTab::Notes {
+                assert_eq!(
+                    popups.len(),
+                    5,
+                    "Notes tab should have exactly 5 popup descriptions, got {}",
+                    popups.len()
+                );
+            } else {
+                assert!(
+                    popups.is_empty(),
+                    "{:?} tab should have no popup descriptions, got {}",
+                    tab,
+                    popups.len()
+                );
+            }
+        }
+
+        // Verify all popup names and bodies are non-empty
+        for popup in tab_popup_descriptions(HelpTab::Notes) {
+            assert!(!popup.name.is_empty(), "Popup name should not be empty");
+            assert!(!popup.body.is_empty(), "Popup body for '{}' should not be empty", popup.name);
         }
     }
 }
