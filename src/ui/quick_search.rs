@@ -120,6 +120,7 @@ pub fn draw_quick_search<T, F>(
     theme: &AppThemeColors,
     max_visible: usize,
     render_item: F,
+    icon_mode: crate::config::IconMode,
 ) where
     F: Fn(&T, bool, &AppThemeColors) -> Line<'static>,
 {
@@ -134,8 +135,10 @@ pub fn draw_quick_search<T, F>(
     frame.render_widget(Clear, header_rect);
     frame.render_widget(&header_block, header_rect);
 
-    // --- "Find:" label + centered input field ---
-    let label_width = 6u16; // "Find: "
+    // --- Icon + "Find:" label + centered input field ---
+    let icon = crate::ui::get_icon("\u{f002}", "\u{1f50d}", icon_mode);
+    let label_text = format!("{} Find: ", icon);
+    let label_width = label_text.chars().count() as u16;
     let input_width = 50u16.min(frame_area.width.saturating_sub(label_width));
     let combo_width = label_width + input_width;
     let start_x = frame_area.x + (frame_area.width.saturating_sub(combo_width)) / 2;
@@ -143,9 +146,8 @@ pub fn draw_quick_search<T, F>(
     let input_area = Rect::new(start_x + label_width, frame_area.y, input_width, 1);
 
     let label_style = Style::default().fg(theme.highlight_fg);
-    let find_label = Paragraph::new(Line::from(Span::styled("Find: ", label_style)));
+    let find_label = Paragraph::new(Line::from(Span::styled(label_text, label_style)));
     frame.render_widget(find_label, label_area);
-
     let mut input_widget = popup.input.clone();
     input_widget.set_block(Block::default());
     let input_style = Style::default()
@@ -181,7 +183,7 @@ pub fn draw_quick_search<T, F>(
         if result_count == 0 {
             let no_match = Paragraph::new(Line::styled(
                 "  No matches",
-                Style::default().fg(theme.text),
+                Style::default().fg(theme.highlight_fg),
             ));
             frame.render_widget(no_match, dropdown_area);
         } else {

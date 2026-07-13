@@ -418,17 +418,18 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             popup,
             theme,
             max_visible,
-            |(_, display): &(usize, String), is_selected, theme| {
+            |(_, display): &(usize, String), is_selected, theme: &crate::app_theme::AppThemeColors| {
                 let style = if is_selected {
                     Style::default()
-                        .fg(theme.highlight_fg)
-                        .bg(theme.highlight_bg)
+                        .fg(theme.fg)
+                        .bg(theme.highlight_fg)
                 } else {
-                    Style::default().fg(theme.text)
+                    Style::default().fg(theme.highlight_fg)
                 };
                 let prefix = if is_selected { "▸ " } else { "  " };
                 Line::from(Span::styled(format!("{}{}", prefix, display), style))
             },
+            app.config.ui.icon_mode,
         );
     }
 }

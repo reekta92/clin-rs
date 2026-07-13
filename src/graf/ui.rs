@@ -86,13 +86,13 @@ pub fn draw_ui(
             popup,
             theme,
             max_visible,
-            move |(_, title), is_selected, theme| {
+            move |(_, title), is_selected, theme: &crate::app_theme::AppThemeColors| {
                 let style = if is_selected {
                     ratatui::style::Style::default()
-                        .fg(theme.highlight_fg)
-                        .bg(theme.highlight_bg)
+                        .fg(theme.fg)
+                        .bg(theme.highlight_fg)
                 } else {
-                    ratatui::style::Style::default().fg(theme.text)
+                    ratatui::style::Style::default().fg(theme.highlight_fg)
                 };
                 let prefix = if is_selected { "▸ " } else { "  " };
                 let display = crate::graf::util::truncate(
@@ -101,6 +101,7 @@ pub fn draw_ui(
                 );
                 ratatui::text::Line::styled(format!("{prefix}{display}"), style)
             },
+            config.ui.icon_mode,
         );
     }
 
