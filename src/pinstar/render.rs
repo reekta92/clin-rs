@@ -528,13 +528,17 @@ pub fn draw_pinstar_view(
         let is_image_file = matches!(node, crate::pinstar::data::CanvasNode::File(n) if is_image_ext(&n.file))
             && state.image_picker.is_some();
 
-        // Short-circuit: during transforms, skip pixel decode and render plain text
+        // Short-circuit: during transforms (pan/zoom/resize), render a lightweight
+        // marker instead of the full Paragraph with borders. This keeps the view
+        // responsive during continuous interaction.
         if state.is_view_transforming() {
-            let text = Paragraph::new(node.text())
-                .block(block)
-                .style(Style::default().fg(theme.text))
-                .wrap(Wrap { trim: false });
-            frame.render_widget(text, node_rect);
+            let cx = (left + right) / 2.0;
+            let cy = (top + bottom) / 2.0;
+            let marker = Paragraph::new(Span::styled(
+                "●",
+                Style::default().fg(border_color).add_modifier(Modifier::DIM),
+            ));
+            frame.render_widget(marker, Rect::new(cx as u16, cy as u16, 1, 1));
             continue;
         }
 
