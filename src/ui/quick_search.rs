@@ -175,6 +175,8 @@ pub fn draw_quick_search<T, F>(
 
         // Clear the area behind the dropdown
         frame.render_widget(Clear, dropdown_area);
+        // Fill dropdown area with theme background
+        frame.render_widget(Block::default().style(theme.bg_style()), dropdown_area);
 
         if result_count == 0 {
             let no_match = Paragraph::new(Line::styled(
