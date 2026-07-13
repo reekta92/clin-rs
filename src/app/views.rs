@@ -196,7 +196,7 @@ impl App {
     }
 
     pub fn reroll_help_suggestions(&mut self) {
-        let rolled = crate::ui::roll_suggestions(self.help_tab, 3);
+        let rolled = crate::ui::roll_suggestions(self.help_tab, 4);
         self.help_suggestions = rolled.into_iter().copied().collect();
     }
 

@@ -1,9 +1,47 @@
+use crate::config::{ClinConfig, KeybindPreset};
 use crate::app::HelpTab;
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum TipRequirement {
+    #[default]
+    None,
+    /// Needs a numeric count prefix (only parsed when counts_enabled -> Vim/Helix).
+    Counts,
+    /// Needs multi-key sequence support (enable_key_sequences, or a preset that uses them).
+    Sequences,
+    /// Exists only under a specific preset.
+    Preset(KeybindPreset),
+}
+
+impl TipRequirement {
+    /// Returns a human-readable caveat string iff the current config does NOT satisfy this.
+    /// None when satisfied (or no requirement) -> nothing rendered.
+    pub fn caveat_if_unsatisfied(&self, config: &ClinConfig) -> Option<String> {
+        match self {
+            TipRequirement::None => None,
+            TipRequirement::Counts if config.counts_enabled() => None,
+            TipRequirement::Counts => Some("needs Vim/Helix preset for the count prefix".into()),
+            TipRequirement::Sequences if config.sequences_enabled() => None,
+            TipRequirement::Sequences => Some("needs enable_key_sequences = true".into()),
+            TipRequirement::Preset(want) if config.core.keybind_preset == *want => None,
+            TipRequirement::Preset(want) => Some(format!("needs {want} preset")),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct HelpSuggestion {
     pub title: &'static str,
     pub body: &'static str,
+    pub requires: TipRequirement,
+}
+
+const fn tip(title: &'static str, body: &'static str) -> HelpSuggestion {
+    HelpSuggestion { title, body, requires: TipRequirement::None }
+}
+
+const fn tip_req(title: &'static str, body: &'static str, requires: TipRequirement) -> HelpSuggestion {
+    HelpSuggestion { title, body, requires }
 }
 
 /// 2–4 sentence static paragraph describing what the tab's view is and does.
@@ -30,9 +68,6 @@ pub fn tab_description(tab: HelpTab) -> &'static str {
         HelpTab::Templates => {
             "Create reusable note templates with frontmatter and date variables. Pick a template from the notes view, search by name, and auto-fill date tokens when generating a new note. Drop .toml files in the templates directory to add your own."
         }
-        HelpTab::ContentTree => {
-            "Navigate the active note as an outline of its markdown headers. Collapse and expand sections, jump straight to a heading, and expand or collapse all to get a bird's-eye outline of long documents."
-        }
         HelpTab::About => {
             "Application metadata: version, configuration file paths, and the full command-line interface reference. Use this tab to find config locations and CLI subcommands for notes, storage, keybinds, templates, and config management."
         }
@@ -40,326 +75,132 @@ pub fn tab_description(tab: HelpTab) -> &'static str {
 }
 
 /// Curated suggestion pool per tab (min 5 entries; most have 6–7 for variety).
+const NOTES_SUGGESTIONS: &[HelpSuggestion] = &[
+    tip("Command palette", "Press {list:OpenCommandPalette} to open the **Command Palette** and execute any action by typing its name."),
+    tip("Select mode", "Press {list:ToggleSelectMode} to toggle **Select Mode** and start selecting multiple notes in the list."),
+    tip("Select item", "Use {list:ToggleSelectItem} in **Select Mode** to select or deselect the currently focused note or folder."),
+    tip_req("Expand to depth", "Press {list:ExpandToLevel} to expand folders one level, or type a number first (e.g. `` 3 `` then {list:ExpandToLevel}) to expand to that depth.", TipRequirement::Counts),
+    tip("Preview pane", "Toggle the right-side preview pane using {list:TogglePreview} to view notes without opening them."),
+    tip("Sort order", "Cycle the note sorting order using {list:CycleSort} to sort by title, modified time, or size."),
+    tip("Folders first", "Press {list:ToggleFoldersFirst} to choose whether **folders** should always stay pinned to the top of the list."),
+    tip("Manage subnotes", "Press {list:ManageSubnotes} to view, attach, or manage **subnotes** associated with the selected note."),
+    tip("Create new folder", "Use {list:CreateFolder} to create a new **folder** in the currently active path."),
+    tip("Create new note", "Press {list:CreateNote} to create a new **note** inside the highlighted folder."),
+    tip("Pin a note", "Press {list:TogglePin} to **pin** a note so it stays pinned at the top of the list."),
+    tip("Manage tags", "Press {list:ManageTags} to add, rename, or remove **tags** from the selected note."),
+    tip("Open trash", "Press {list:OpenTrash} to view and recover deleted notes from the **trash**."),
+    tip("Search notes", "Press {list:Search} to jump to the **search bar** and filter notes by title or content."),
+];
+const EDITOR_SUGGESTIONS: &[HelpSuggestion] = &[
+    tip("Markdown preview", "Press {edit:ToggleMarkdownPreview} to toggle a side-by-side **live preview** of your rendered markdown note."),
+    tip("External editor", "Press {list:ToggleExternalEditor} from the list to launch your external `` $EDITOR `` (like Vim or Nano) for heavy editing."),
+    tip("Delete word", "Use {edit:DeleteWord} to quickly delete the **word** directly preceding your cursor."),
+    tip("Delete next word", "Press {edit:DeleteNextWord} to erase the **word** directly following your cursor."),
+    tip("Undo history", "Press {edit:Undo} to revert your last text modification; full edit history is kept for your session."),
+    tip("Redo changes", "Use {edit:Redo} to re-apply any text modifications that you previously reverted."),
+    tip("Cycle focus", "Use {edit:CycleFocus} to quickly tab between editing the note's **title** and the markdown **body**."),
+    tip("Go back", "Press {edit:Back} to save your changes and return to the main notes list."),
+    tip("Fullscreen preview", "Press {edit:TogglePreviewFullscreen} to expand the markdown **preview** to fill the entire screen."),
+    tip("Manage subnotes", "Press {edit:ManageSubnotes} to attach or manage **subnotes** while editing."),
+    tip("Auto-save", "Your note is **automatically saved** when you press {edit:Back} to leave the editor — no manual save required."),
+    tip("External editor workflow", "For heavy editing tasks, mark a note to open in your external `` $EDITOR `` via the list's {list:ToggleExternalEditor} action."),
+];
+const GRAPH_SUGGESTIONS: &[HelpSuggestion] = &[
+    tip("Auto-fit graph", "Press {graph:AutoFit} to recenter and rescale the whole graph to perfectly fit the viewport."),
+    tip("Search nodes", "Press {graph:ToggleSearch} to toggle a **search box** for filtering and locating nodes on the graph."),
+    tip("Toggle minimap", "Use {graph:ToggleMinimap} to show or hide the small **minimap** in the bottom corner of the viewport."),
+    tip("Toggle legend", "Press {graph:ToggleLegend} to display or hide the color-coded **legend** for nodes and links."),
+    tip("Toggle grid background", "Toggle the background grid overlay on the canvas using {graph:ToggleGrid}."),
+    tip("Open from graph", "Press {graph:OpenNote} to open the currently selected node directly in the note editor."),
+    tip("Zoom controls", "Use {graph:ZoomIn} to zoom closer into nodes, or {graph:ZoomOut} to zoom out for a wider view."),
+    tip("Reload configuration", "Press {graph:ReloadConfig} to reload graph visualization configurations from the configuration file."),
+    tip("Toggle status bar", "Press {graph:ToggleStatus} to show or hide the **status bar** at the bottom of the graph view."),
+    tip("Toggle preview", "Use {graph:TogglePreview} to toggle a **preview pane** that displays node content inline."),
+    tip("Refresh physics", "Press {graph:Refresh} to reset and re-run the physics simulation to reorganize node layout."),
+    tip("Graph help", "Press {graph:Help} to jump to the help page from the graph view, or {graph:Quit} to close the graph."),
+];
+const DRAW_SUGGESTIONS: &[HelpSuggestion] = &[
+    tip("Shape selector", "Press {draw:ToggleShapeSelector} to open the **Shape Selector** menu and drop rectangles, circles, or lines."),
+    tip("Pen tool", "Press {draw:SelectDrawTool} to activate the **Pen tool** and draw smooth freehand lines by dragging."),
+    tip("Text labels", "Use {draw:SelectTextTool} to select the **Text tool** and type custom text annotations anywhere on the canvas."),
+    tip("Eraser tool", "Press {draw:SelectEraseTool} to select the **Eraser tool** and rub out existing lines or shapes."),
+    tip("Toggle grid alignment", "Press {draw:ToggleGrid} to toggle the alignment grid to help you position your shapes."),
+    tip("Shape menu up", "Use the `` Up `` arrow key inside the shape selector to move the highlighted option up."),
+    tip("Shape menu down", "Use the `` Down `` arrow key inside the shape selector to move the highlighted option down."),
+    tip("Shape selection confirm", "Press `` Enter `` to confirm and select the highlighted shape type from the menu."),
+    tip("Drawing workflow", "Select a **tool** first, then click and drag on the canvas to place shapes, lines, or freehand strokes."),
+    tip("Grid alignment", "Enable the alignment **grid** to snap elements into position as you draw or move them."),
+    tip("Undo drawings", "Use {edit:Undo} to revert the last drawing action if you make a mistake."),
+    tip("Tool shortcuts", "Quickly switch between **drawing**, **text**, and **eraser** tools using their dedicated keybinds without opening menus."),
+];
+const CANVAS_SUGGESTIONS: &[HelpSuggestion] = &[
+    tip("Context menu", "Press {canvas:OpenContextMenu} to toggle a popup **context menu** on the selected node."),
+    tip("Edit or connect", "Press {canvas:EditOrConnect} to edit the selected canvas node or start wiring connections."),
+    tip("Toggle editor", "Press {canvas:ToggleEditorPane} to toggle a side editor pane to edit note bodies inline."),
+    tip("Canvas grid", "Toggle the background alignment grid on the infinite canvas using {canvas:ToggleGrid}."),
+    tip("Zoom controls", "Press {canvas:ZoomIn} or {canvas:ZoomOut} to adjust the zoom level of the infinite workspace."),
+    tip("Fine zoom", "Press {canvas:ZoomFineIn} or {canvas:ZoomFineOut} to perform very fine, detailed zooming."),
+    tip("Quit canvas", "Press {canvas:Quit} to save all changes and exit the infinite canvas mode."),
+    tip("Cycle editor focus", "Use {canvas:CycleFocus} to shift focus between the canvas and the sidebar editor pane."),
+    tip("Save canvas", "Press {canvas:Save} to save the current canvas state at any time."),
+    tip("Close context menu", "Press {canvas:MenuClose} to dismiss the open context menu without selecting an action."),
+    tip("Editor unfocus", "Press {canvas:EditorUnfocus} to move focus back to the canvas from the editor pane."),
+    tip("Sync raw editor", "Use {canvas:EditorSyncRaw} to save and sync any pending editor changes to the canvas."),
+];
+const BACKUP_SUGGESTIONS: &[HelpSuggestion] = &[
+    tip("Stage changes", "Press {backup:StageFile} to stage the currently highlighted git file modification."),
+    tip("Unstage changes", "Press {backup:UnstageFile} to unstage the highlighted file from the next commit."),
+    tip("Stage all files", "Press {backup:StageAll} to stage all modified and untracked files in the repository."),
+    tip("Enter commit mode", "Press {backup:EnterCommit} to focus the commit message field and prepare to commit staged files."),
+    tip("Confirm commit", "Press {backup:ConfirmCommit} to confirm the typed commit message and record the changes."),
+    tip("Cancel commit", "Press {backup:CancelCommit} to discard the typed commit message and exit commit mode."),
+    tip("Push commits", "Use {backup:Push} to push all your local commits to the configured remote repository."),
+    tip("Pull changes", "Use {backup:Pull} to pull the latest changes from your remote repository."),
+    tip("Git status refresh", "Press {backup:Refresh} to run a fresh git status and update the modifications pane."),
+    tip("Cycle sections", "Press {backup:CycleSection} to quickly jump between **Staged**, **Unstaged**, and **Untracked** sections."),
+    tip("Open settings", "Press {backup:OpenSettings} to configure git author name, email, and remote URL from within the app."),
+    tip("Settings fields", "Use {backup:NextField} or {backup:PrevField} to navigate between git settings fields in the settings popup."),
+    tip("Close settings", "Press {backup:CloseSettings} to dismiss the settings popup and return to the backup view."),
+];
+const TEMPLATES_SUGGESTIONS: &[HelpSuggestion] = &[
+    tip("Note templates", "Press {list:NewFromTemplate} from the main list to open the template picker for generating new notes."),
+    tip("Date variables", "Insert `` {date} ``, `` {datetime} ``, or `` {time} `` in your template to auto-insert timestamps."),
+    tip("Date components", "Use `` {year} ``, `` {month} ``, `` {day} ``, or `` {weekday} `` to customize note filenames dynamically."),
+    tip("Default template", "Place a file named `` default.toml `` in your templates directory to act as the default new-note template."),
+    tip("Template path", "Drop any custom template `.toml` files in the directory `` ~/.config/clin/templates/ `` to load them."),
+    tip("Command line template helper", "Run the command `` clin templates init `` in your terminal to scaffold example templates."),
+    tip("Picker search", "Type search characters inside the template picker list to filter templates by name instantly."),
+    tip("Template fields", "Note templates can define frontmatter, custom titles, and template body placeholders."),
+    tip("Frontmatter generation", "Templates can include `` +++ `` frontmatter blocks with default values for **title**, **tags**, and custom fields."),
+    tip("Variables list", "Available template variables: `` {title} ``, `` {name} ``, `` {folder} ``, `` {id} ``, plus all date components."),
+    tip("Picker layout", "The template picker shows the template **name** and **description** — use the description to hint at what the template creates."),
+    tip("Template inheritance", "You can nest templates by referencing other template files in the `` template `` field of a `.toml` template."),
+];
+const ABOUT_SUGGESTIONS: &[HelpSuggestion] = &[
+    tip("Config edit shortcut", "Type `` clin config edit `` in your terminal to open config.toml in your default editor."),
+    tip("CLI quick capture", "Run `` clin notes quick <text> `` to append a brief thought directly to your default inbox note."),
+    tip("Dump keybinds configuration", "Run `` clin keybinds export `` to dump the current active keybinding config as editable TOML."),
+    tip("Run database migrations", "Run `` clin storage migrate `` in your terminal if you need to migrate your database or note directory."),
+    tip("Check version", "Run `` clin --version `` in your shell to display the current build information and metadata."),
+    tip("Help commands", "Use {help:Search} to query command actions on the help page, or {help:Close} to exit help view."),
+    tip("Reroll suggestion tips", "Press {help:Reroll} to roll a fresh randomized selection of tip suggestions for the active tab."),
+    tip("Switch tabs", "Press {help:NextTab} or {help:PrevTab} to cycle through the help tabs for different application views."),
+    tip("List notes via CLI", "Run `` clin notes ls `` to list all notes in your vault from the command line."),
+    tip("Config key overrides", "Run `` clin config set key value `` to change a single config option from the terminal."),
+    tip("Graph view CLI", "Use `` clin graph `` from your terminal to open the graph visualization directly."),
+    tip("Version upgrade info", "Run `` clin upgrade check `` to see if a new version of clin is available."),
+];
+
 pub fn tab_suggestions(tab: HelpTab) -> &'static [HelpSuggestion] {
     match tab {
-        HelpTab::Notes => &[
-            HelpSuggestion {
-                title: "Command palette",
-                body: "Press {list:OpenCommandPalette} to open the **Command Palette** and execute any action by typing its name.",
-            },
-            HelpSuggestion {
-                title: "Select mode",
-                body: "Press {list:ToggleSelectMode} to toggle **Select Mode** and start selecting multiple notes in the list.",
-            },
-            HelpSuggestion {
-                title: "Select item",
-                body: "Use {list:ToggleSelectItem} in **Select Mode** to select or deselect the currently focused note or folder.",
-            },
-            HelpSuggestion {
-                title: "Expand to depth",
-                body: "Press {list:ExpandToLevel} followed by a number to expand all folders in the hierarchy to that specific depth.",
-            },
-            HelpSuggestion {
-                title: "Preview pane",
-                body: "Toggle the right-side preview pane using {list:TogglePreview} to view notes without opening them.",
-            },
-            HelpSuggestion {
-                title: "Sort order",
-                body: "Cycle the note sorting order using {list:CycleSort} to sort by title, modified time, or size.",
-            },
-            HelpSuggestion {
-                title: "Folders first",
-                body: "Press {list:ToggleFoldersFirst} to choose whether **folders** should always stay pinned to the top of the list.",
-            },
-            HelpSuggestion {
-                title: "Manage subnotes",
-                body: "Press {list:ManageSubnotes} to view, attach, or manage **subnotes** associated with the selected note.",
-            },
-            HelpSuggestion {
-                title: "Create new folder",
-                body: "Use {list:CreateFolder} to create a new **folder** in the currently active path.",
-            },
-            HelpSuggestion {
-                title: "Create new note",
-                body: "Press {list:CreateNote} to create a new **note** inside the highlighted folder.",
-            },
-        ],
-        HelpTab::Editor => &[
-            HelpSuggestion {
-                title: "Markdown preview",
-                body: "Press {edit:ToggleMarkdownPreview} to toggle a side-by-side **live preview** of your rendered markdown note.",
-            },
-            HelpSuggestion {
-                title: "External editor",
-                body: "Press {list:ToggleExternalEditor} from the list to launch your external `` $EDITOR `` (like Vim or Nano) for heavy editing.",
-            },
-            HelpSuggestion {
-                title: "Delete word",
-                body: "Use {edit:DeleteWord} to quickly delete the **word** directly preceding your cursor.",
-            },
-            HelpSuggestion {
-                title: "Delete next word",
-                body: "Press {edit:DeleteNextWord} to erase the **word** directly following your cursor.",
-            },
-            HelpSuggestion {
-                title: "Undo history",
-                body: "Press {edit:Undo} to revert your last text modification; full edit history is kept for your session.",
-            },
-            HelpSuggestion {
-                title: "Redo changes",
-                body: "Use {edit:Redo} to re-apply any text modifications that you previously reverted.",
-            },
-            HelpSuggestion {
-                title: "Cycle focus",
-                body: "Use {edit:CycleFocus} to quickly tab between editing the note's **title** and the markdown **body**.",
-            },
-            HelpSuggestion {
-                title: "Go back",
-                body: "Press {edit:Back} to save your changes and return to the main notes list.",
-            },
-        ],
-        HelpTab::Graph => &[
-            HelpSuggestion {
-                title: "Auto-fit graph",
-                body: "Press {graph:AutoFit} to recenter and rescale the whole graph to perfectly fit the viewport.",
-            },
-            HelpSuggestion {
-                title: "Search nodes",
-                body: "Press {graph:ToggleSearch} to toggle a **search box** for filtering and locating nodes on the graph.",
-            },
-            HelpSuggestion {
-                title: "Toggle minimap",
-                body: "Use {graph:ToggleMinimap} to show or hide the small **minimap** in the bottom corner of the viewport.",
-            },
-            HelpSuggestion {
-                title: "Toggle legend",
-                body: "Press {graph:ToggleLegend} to display or hide the color-coded **legend** for nodes and links.",
-            },
-            HelpSuggestion {
-                title: "Toggle grid background",
-                body: "Toggle the background grid overlay on the canvas using {graph:ToggleGrid}.",
-            },
-            HelpSuggestion {
-                title: "Open from graph",
-                body: "Press {graph:OpenNote} to open the currently selected node directly in the note editor.",
-            },
-            HelpSuggestion {
-                title: "Zoom controls",
-                body: "Use {graph:ZoomIn} to zoom closer into nodes, or {graph:ZoomOut} to zoom out for a wider view.",
-            },
-            HelpSuggestion {
-                title: "Reload configuration",
-                body: "Press {graph:ReloadConfig} to reload graph visualization configurations from the configuration file.",
-            },
-        ],
-        HelpTab::Draw => &[
-            HelpSuggestion {
-                title: "Shape selector",
-                body: "Press {draw:ToggleShapeSelector} to open the **Shape Selector** menu and drop rectangles, circles, or lines.",
-            },
-            HelpSuggestion {
-                title: "Pen tool",
-                body: "Press {draw:SelectDrawTool} to activate the **Pen tool** and draw smooth freehand lines by dragging.",
-            },
-            HelpSuggestion {
-                title: "Text labels",
-                body: "Use {draw:SelectTextTool} to select the **Text tool** and type custom text annotations anywhere on the canvas.",
-            },
-            HelpSuggestion {
-                title: "Eraser tool",
-                body: "Press {draw:SelectEraseTool} to select the **Eraser tool** and rub out existing lines or shapes.",
-            },
-            HelpSuggestion {
-                title: "Toggle grid alignment",
-                body: "Press {draw:ToggleGrid} to toggle the alignment grid to help you position your shapes.",
-            },
-            HelpSuggestion {
-                title: "Shape menu up",
-                body: "Use the `` Up `` arrow key inside the shape selector to move the highlighted option up.",
-            },
-            HelpSuggestion {
-                title: "Shape menu down",
-                body: "Use the `` Down `` arrow key inside the shape selector to move the highlighted option down.",
-            },
-            HelpSuggestion {
-                title: "Shape selection confirm",
-                body: "Press `` Enter `` to confirm and select the highlighted shape type from the menu.",
-            },
-        ],
-        HelpTab::Canvas => &[
-            HelpSuggestion {
-                title: "Context menu",
-                body: "Press {canvas:OpenContextMenu} to toggle a popup **context menu** on the selected node.",
-            },
-            HelpSuggestion {
-                title: "Edit or connect",
-                body: "Press {canvas:EditOrConnect} to edit the selected canvas node or start wiring connections.",
-            },
-            HelpSuggestion {
-                title: "Toggle editor",
-                body: "Press {canvas:ToggleEditorPane} to toggle a side editor pane to edit note bodies inline.",
-            },
-            HelpSuggestion {
-                title: "Canvas grid",
-                body: "Toggle the background alignment grid on the infinite canvas using {canvas:ToggleGrid}.",
-            },
-            HelpSuggestion {
-                title: "Zoom controls",
-                body: "Press {canvas:ZoomIn} or {canvas:ZoomOut} to adjust the zoom level of the infinite workspace.",
-            },
-            HelpSuggestion {
-                title: "Fine zoom",
-                body: "Press {canvas:ZoomFineIn} or {canvas:ZoomFineOut} to perform very fine, detailed zooming.",
-            },
-            HelpSuggestion {
-                title: "Quit canvas",
-                body: "Press {canvas:Quit} to save all changes and exit the infinite canvas mode.",
-            },
-            HelpSuggestion {
-                title: "Cycle editor focus",
-                body: "Use {canvas:CycleFocus} to shift focus between the canvas and the sidebar editor pane.",
-            },
-        ],
-        HelpTab::Backup => &[
-            HelpSuggestion {
-                title: "Stage changes",
-                body: "Press {backup:StageFile} to stage the currently highlighted git file modification.",
-            },
-            HelpSuggestion {
-                title: "Unstage changes",
-                body: "Press {backup:UnstageFile} to unstage the highlighted file from the next commit.",
-            },
-            HelpSuggestion {
-                title: "Stage all files",
-                body: "Press {backup:StageAll} to stage all modified and untracked files in the repository.",
-            },
-            HelpSuggestion {
-                title: "Enter commit mode",
-                body: "Press {backup:EnterCommit} to focus the commit message field and prepare to commit staged files.",
-            },
-            HelpSuggestion {
-                title: "Confirm commit",
-                body: "Press {backup:ConfirmCommit} to confirm the typed commit message and record the changes.",
-            },
-            HelpSuggestion {
-                title: "Cancel commit",
-                body: "Press {backup:CancelCommit} to discard the typed commit message and exit commit mode.",
-            },
-            HelpSuggestion {
-                title: "Push commits",
-                body: "Use {backup:Push} to push all your local commits to the configured remote repository.",
-            },
-            HelpSuggestion {
-                title: "Pull changes",
-                body: "Use {backup:Pull} to pull the latest changes from your remote repository.",
-            },
-            HelpSuggestion {
-                title: "Git status refresh",
-                body: "Press {backup:Refresh} to run a fresh git status and update the modifications pane.",
-            },
-        ],
-        HelpTab::Templates => &[
-            HelpSuggestion {
-                title: "Note templates",
-                body: "Press {list:NewFromTemplate} from the main list to open the template picker for generating new notes.",
-            },
-            HelpSuggestion {
-                title: "Date variables",
-                body: "Insert `` {date} ``, `` {datetime} ``, or `` {time} `` in your template to auto-insert timestamps.",
-            },
-            HelpSuggestion {
-                title: "Date components",
-                body: "Use `` {year} ``, `` {month} ``, `` {day} ``, or `` {weekday} `` to customize note filenames dynamically.",
-            },
-            HelpSuggestion {
-                title: "Default template",
-                body: "Place a file named `` default.toml `` in your templates directory to act as the default new-note template.",
-            },
-            HelpSuggestion {
-                title: "Template path",
-                body: "Drop any custom template `.toml` files in the directory `` ~/.config/clin/templates/ `` to load them.",
-            },
-            HelpSuggestion {
-                title: "Command line template helper",
-                body: "Run the command `` clin templates init `` in your terminal to scaffold example templates.",
-            },
-            HelpSuggestion {
-                title: "Picker search",
-                body: "Type search characters inside the template picker list to filter templates by name instantly.",
-            },
-            HelpSuggestion {
-                title: "Template fields",
-                body: "Note templates can define frontmatter, custom titles, and template body placeholders.",
-            },
-        ],
-        HelpTab::ContentTree => &[
-            HelpSuggestion {
-                title: "Outline navigation",
-                body: "Use `` Up `` and `` Down `` arrow keys to move focus between different markdown header nodes.",
-            },
-            HelpSuggestion {
-                title: "Jump to section",
-                body: "Press {content_tree:Open} on a header node to jump straight to that line in the editor.",
-            },
-            HelpSuggestion {
-                title: "Toggle collapse",
-                body: "Use {content_tree:ToggleCollapse} to expand or collapse the outline sub-tree of the selected heading.",
-            },
-            HelpSuggestion {
-                title: "Expand all outline",
-                body: "Press {content_tree:ExpandAll} to recursively expand all headings in the outline tree.",
-            },
-            HelpSuggestion {
-                title: "Collapse all outline",
-                body: "Press {content_tree:CollapseAll} to collapse every heading in the tree for a top-level view.",
-            },
-            HelpSuggestion {
-                title: "Go back to editor",
-                body: "Press {content_tree:Back} to exit the outline navigation view and return to the editor.",
-            },
-            HelpSuggestion {
-                title: "Content tree help",
-                body: "Press {content_tree:Help} to display the keyboard commands helper within the outline pane.",
-            },
-            HelpSuggestion {
-                title: "Realtime sync",
-                body: "The heading outline tree updates in real-time as you write and edit the active note's body.",
-            },
-        ],
-        HelpTab::About => &[
-            HelpSuggestion {
-                title: "Config edit shortcut",
-                body: "Type `` clin config edit `` in your terminal to open config.toml in your default editor.",
-            },
-            HelpSuggestion {
-                title: "CLI quick capture",
-                body: "Run `` clin notes quick <text> `` to append a brief thought directly to your default inbox note.",
-            },
-            HelpSuggestion {
-                title: "Dump keybinds configuration",
-                body: "Run `` clin keybinds export `` to dump the current active keybinding config as editable TOML.",
-            },
-            HelpSuggestion {
-                title: "Run database migrations",
-                body: "Run `` clin storage migrate `` in your terminal if you need to migrate your database or note directory.",
-            },
-            HelpSuggestion {
-                title: "Check version",
-                body: "Run `` clin --version `` in your shell to display the current build information and metadata.",
-            },
-            HelpSuggestion {
-                title: "Help commands",
-                body: "Use {help:Search} to query command actions on the help page, or {help:Close} to exit help view.",
-            },
-            HelpSuggestion {
-                title: "Reroll suggestion tips",
-                body: "Press {help:Reroll} to roll a fresh randomized selection of tip suggestions for the active tab.",
-            },
-            HelpSuggestion {
-                title: "Switch tabs",
-                body: "Press {help:NextTab} or {help:PrevTab} to cycle through the help tabs for different application views.",
-            },
-        ],
+        HelpTab::Notes => NOTES_SUGGESTIONS,
+        HelpTab::Editor => EDITOR_SUGGESTIONS,
+        HelpTab::Graph => GRAPH_SUGGESTIONS,
+        HelpTab::Draw => DRAW_SUGGESTIONS,
+        HelpTab::Canvas => CANVAS_SUGGESTIONS,
+        HelpTab::Backup => BACKUP_SUGGESTIONS,
+        HelpTab::Templates => TEMPLATES_SUGGESTIONS,
+        HelpTab::About => ABOUT_SUGGESTIONS,
     }
 }
 /// Pick `count` random suggestions for `tab`. Returns fewer (or empty) if the
@@ -378,11 +219,17 @@ pub struct PopupHelp {
 }
 
 /// Per-tab popup/overlay guides rendered in the help info pane.
-/// Only `Notes` returns entries; all other tabs return empty.
+/// Each tab with notable popups returns its own slice; About has no popups and returns empty.
 pub fn tab_popup_descriptions(tab: HelpTab) -> &'static [PopupHelp] {
     match tab {
         HelpTab::Notes => NOTES_POPUPS,
-        _ => &[],
+        HelpTab::Editor => EDITOR_POPUPS,
+        HelpTab::Graph => GRAPH_POPUPS,
+        HelpTab::Draw => DRAW_POPUPS,
+        HelpTab::Canvas => CANVAS_POPUPS,
+        HelpTab::Backup => BACKUP_POPUPS,
+        HelpTab::Templates => TEMPLATES_POPUPS,
+        HelpTab::About => &[],
     }
 }
 
@@ -407,6 +254,72 @@ const NOTES_POPUPS: &[PopupHelp] = &[
         name: "Trash",
         body: "Press {list:OpenTrash} to open the **Trash** view and recover or permanently destroy deleted notes. Move with ``k`` / ``Up`` and ``j`` / ``Down``; ``r`` or ``Enter`` restores the selected note, ``d`` / ``Delete`` deletes it permanently, and ``E`` empties the whole trash. Restore, permanent delete, and empty each ask for confirmation before acting. ``Esc`` closes the view; restoring into an otherwise-empty trash closes it automatically.",
     },
+    PopupHelp {
+        name: "Outline",
+        body: "Open the note's **Outline** to browse its markdown headers as a collapsible tree. Move with {content_tree:MoveUp} / {content_tree:MoveDown}, fold or unfold a section with {content_tree:ToggleCollapse}, and expand or collapse every heading at once with {content_tree:ExpandAll} / {content_tree:CollapseAll}. Press {content_tree:Open} on a heading to jump straight to that line in the editor, {content_tree:Back} to return to the note, or {content_tree:Help} for an in-view key guide.",
+    },
+];
+
+const EDITOR_POPUPS: &[PopupHelp] = &[
+    PopupHelp {
+        name: "Subnotes",
+        body: "Press {edit:ManageSubnotes} while editing to open the **Subnotes** manager without leaving the editor — attach encrypted child notes to the note you are editing. In the list pane ``j`` / ``k`` or arrows move, ``n`` (or ``Alt+n``) adds a subnote, ``d`` / ``Delete`` removes one, and ``Enter`` edits; ``Tab`` cycles focus list → title → content and ``Ctrl+e`` hands the current subnote to your external editor. Closing the popup auto-saves whenever anything changed; notes carrying subnotes show a ⧉ marker in the list.",
+    },
+    PopupHelp {
+        name: "Context Menu",
+        body: "``Right-click`` the title or body to open the **Context Menu** with clipboard actions — Copy, Cut, Paste, Select All — applied to whichever field is focused. Move with ``k`` / ``j`` or arrows, run an item with ``Enter``, and ``Esc`` closes. The markdown preview is an inline toggle pane, not a popup.",
+    },
+];
+
+const GRAPH_POPUPS: &[PopupHelp] = &[
+    PopupHelp {
+        name: "Search",
+        body: "Press {graph:ToggleSearch} to open the **Search** overlay and jump to any node by title or tag. Type to filter live (``Backspace`` / ``Delete`` edit, ``Ctrl+u`` clears, arrows move the cursor); ``Up`` / ``Down`` or ``Tab`` / ``Shift+Tab`` move between matches and ``Enter`` centers the canvas on the selected node and closes the overlay. ``Esc`` cancels. The minimap, legend, grid, status bar, and preview are separate inline toggles, each with its own key in the table.",
+    },
+];
+
+const DRAW_POPUPS: &[PopupHelp] = &[
+    PopupHelp {
+        name: "Shape Selector",
+        body: "Press {draw:ToggleShapeSelector} to open the **Shape Selector** and choose a shape. ``Up`` / ``Down`` cycle the shape types, ``Enter`` confirms and switches to the Shape tool (then click-drag on the canvas to draw it), and ``Esc`` cancels. The pen, text, and eraser tools each have their own key in the table.",
+    },
+    PopupHelp {
+        name: "Text Editor",
+        body: "``Right-click`` an existing text label to open the **Text Editor** and change its content. Type to edit, ``Enter`` saves the change and writes the ``.draw`` file, ``Esc`` discards. To create new text instead, pick the Text tool and left-click an empty spot on the canvas.",
+    },
+];
+
+const CANVAS_POPUPS: &[PopupHelp] = &[
+    PopupHelp {
+        name: "Context Menu",
+        body: "Press {canvas:OpenContextMenu} to open the **Context Menu** for the selected node — or for the canvas when nothing is selected. ``k`` / ``j`` or arrows move, ``Enter`` runs the item, ``Esc`` closes. Actions include editing, renaming, connecting, recoloring, and deleting the focused node.",
+    },
+    PopupHelp {
+        name: "Node Editor",
+        body: "Press {canvas:EditOrConnect} on a selected node to open its **floating editor** and edit the node's text in place — every keystroke autosaves. Close it with ``Esc`` (the CloseEditor key). If a connection is already in progress, this same key completes the edge to the target node instead.",
+    },
+    PopupHelp {
+        name: "Editor Pane & Rename",
+        body: "Press {canvas:ToggleEditorPane} to toggle a side **editor pane** showing the selected node's full raw text; ``CycleFocus`` moves the cursor into it. A **rename popup** (type a new node ID, ``Enter`` confirms, ``Esc`` cancels) is reached from the context menu.",
+    },
+];
+
+const BACKUP_POPUPS: &[PopupHelp] = &[
+    PopupHelp {
+        name: "Commit Message",
+        body: "Press {backup:EnterCommit} to open the **commit-message editor** and describe the staged changes. Type your message, then ``Enter`` (ConfirmCommit) commits — empty messages are rejected. ``Esc`` (CancelCommit) returns to the dashboard without committing. The diff pane beside it scrolls with its own keys.",
+    },
+    PopupHelp {
+        name: "Settings",
+        body: "Press {backup:OpenSettings} to open the **backup settings** editor and toggle auto-backup inline. ``Tab`` / ``Shift+Tab`` (NextField / PrevField) move between fields; ``Enter`` (ActivateField) flips a toggle or opens a text field (remote URL / name) for typing. Choose **Save** to persist and close, or ``Esc`` (CloseSettings) to discard.",
+    },
+];
+
+const TEMPLATES_POPUPS: &[PopupHelp] = &[
+    PopupHelp {
+        name: "Template Picker",
+        body: "Press {list:NewFromTemplate} to open the **template picker** and start a new note from a template. Type to search (``Tab`` swaps focus between the search box and the results); in the results ``Up`` / ``Down`` move and ``Enter`` generates a new note with date tokens filled. From the results, ``Space`` edits a template, ``d`` deletes one (asks confirmation), ``n`` creates a new template, and ``?`` jumps to template help.",
+    },
 ];
 #[cfg(test)]
 mod tests {
@@ -422,7 +335,6 @@ mod tests {
             HelpTab::Canvas,
             HelpTab::Backup,
             HelpTab::Templates,
-            HelpTab::ContentTree,
             HelpTab::About,
         ];
 
@@ -435,30 +347,31 @@ mod tests {
                 tab
             );
 
-            // 2. Verify we have at least 8 suggestions per tab
+            // 2. Verify we have at least 12 suggestions per tab
             let suggestions = tab_suggestions(tab);
             assert!(
-                suggestions.len() >= 8,
-                "Tab {:?} has only {} suggestions, need at least 8",
+                suggestions.len() >= 12,
+                "Tab {:?} has only {} suggestions, need at least 12",
                 tab,
                 suggestions.len()
             );
 
-            // 3. Verify rolling exactly 3 suggestions works
-            let rolled = roll_suggestions(tab, 3);
+            // 3. Verify rolling exactly 4 suggestions works
+            let rolled = roll_suggestions(tab, 4);
             assert_eq!(
                 rolled.len(),
-                3,
-                "Rolled suggestions for {:?} should be 3",
+                4,
+                "Rolled suggestions for {:?} should be 4",
                 tab
             );
 
-            // 4. Verify all 3 suggestions are unique
+            // 4. Verify all 4 suggestions are unique
             let title0 = rolled[0].title;
             let title1 = rolled[1].title;
             let title2 = rolled[2].title;
+            let title3 = rolled[3].title;
             assert!(
-                title0 != title1 && title1 != title2 && title0 != title2,
+                title0 != title1 && title1 != title2 && title0 != title2 && title0 != title3 && title1 != title3 && title2 != title3,
                 "Rolled suggestions for {:?} contain duplicates: {:?}",
                 tab,
                 rolled
@@ -481,7 +394,6 @@ mod tests {
             HelpTab::Canvas,
             HelpTab::Backup,
             HelpTab::Templates,
-            HelpTab::ContentTree,
             HelpTab::About,
         ];
 
@@ -518,7 +430,57 @@ mod tests {
     }
 
     #[test]
+    fn test_tip_requirement_caveats() {
+        // None variant always returns None
+        assert_eq!(TipRequirement::None.caveat_if_unsatisfied(&ClinConfig::default()), None);
+
+        // Counts with default config (preset=Default) -> Some
+        let default_config = ClinConfig::default();
+        assert_eq!(
+            TipRequirement::Counts.caveat_if_unsatisfied(&default_config),
+            Some("needs Vim/Helix preset for the count prefix".to_string())
+        );
+
+        // Counts with Vim preset -> None
+        let mut vim_config = ClinConfig::default();
+        vim_config.core.keybind_preset = KeybindPreset::Vim;
+        assert_eq!(TipRequirement::Counts.caveat_if_unsatisfied(&vim_config), None);
+
+        // Preset(Vim) with default config -> Some
+        assert_eq!(
+            TipRequirement::Preset(KeybindPreset::Vim).caveat_if_unsatisfied(&default_config),
+            Some("needs vim preset".to_string())
+        );
+
+        // Preset(Vim) with Vim config -> None
+        assert_eq!(TipRequirement::Preset(KeybindPreset::Vim).caveat_if_unsatisfied(&vim_config), None);
+
+        // Verify the ExpandToLevel tip carries Counts requirement
+        let notes = tab_suggestions(HelpTab::Notes);
+        let expand = notes.iter().find(|s| s.title == "Expand to depth").expect("Expand to depth tip missing");
+        assert_eq!(expand.requires, TipRequirement::Counts);
+        assert_eq!(
+            expand.requires.caveat_if_unsatisfied(&ClinConfig::default()),
+            Some("needs Vim/Helix preset for the count prefix".to_string())
+        );
+    }
+
+    #[test]
     fn test_popup_descriptions() {
+        // Expected per-tab popup counts — About has no popups.
+        fn expected_count(tab: HelpTab) -> usize {
+            match tab {
+                HelpTab::Notes => 6,
+                HelpTab::Editor => 2,
+                HelpTab::Graph => 1,
+                HelpTab::Draw => 2,
+                HelpTab::Canvas => 3,
+                HelpTab::Backup => 2,
+                HelpTab::Templates => 1,
+                HelpTab::About => 0,
+            }
+        }
+
         let tabs = [
             HelpTab::Notes,
             HelpTab::Editor,
@@ -527,33 +489,28 @@ mod tests {
             HelpTab::Canvas,
             HelpTab::Backup,
             HelpTab::Templates,
-            HelpTab::ContentTree,
             HelpTab::About,
         ];
 
         for &tab in &tabs {
             let popups = tab_popup_descriptions(tab);
-            if tab == HelpTab::Notes {
-                assert_eq!(
-                    popups.len(),
-                    5,
-                    "Notes tab should have exactly 5 popup descriptions, got {}",
-                    popups.len()
-                );
-            } else {
-                assert!(
-                    popups.is_empty(),
-                    "{:?} tab should have no popup descriptions, got {}",
-                    tab,
-                    popups.len()
-                );
-            }
+            let want = expected_count(tab);
+            assert_eq!(
+                popups.len(),
+                want,
+                "{:?} tab should have exactly {} popup descriptions, got {}",
+                tab,
+                want,
+                popups.len()
+            );
         }
 
-        // Verify all popup names and bodies are non-empty
-        for popup in tab_popup_descriptions(HelpTab::Notes) {
-            assert!(!popup.name.is_empty(), "Popup name should not be empty");
-            assert!(!popup.body.is_empty(), "Popup body for '{}' should not be empty", popup.name);
+        // Verify all popup names and bodies are non-empty across all tabs
+        for &tab in &tabs {
+            for popup in tab_popup_descriptions(tab) {
+                assert!(!popup.name.is_empty(), "Popup name should not be empty for {:?}", tab);
+                assert!(!popup.body.is_empty(), "Popup body for '{:?}:{}' should not be empty", tab, popup.name);
+            }
         }
     }
 }

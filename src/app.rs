@@ -240,7 +240,6 @@ pub enum HelpTab {
     Canvas,
     Backup,
     Templates,
-    ContentTree,
     About,
 }
 
@@ -263,8 +262,7 @@ impl HelpTab {
             HelpTab::Canvas => HelpTab::Draw,
             HelpTab::Backup => HelpTab::Canvas,
             HelpTab::Templates => HelpTab::Backup,
-            HelpTab::ContentTree => HelpTab::Templates,
-            HelpTab::About => HelpTab::ContentTree,
+            HelpTab::About => HelpTab::Templates,
         }
     }
 
@@ -277,8 +275,7 @@ impl HelpTab {
             HelpTab::Draw => HelpTab::Canvas,
             HelpTab::Canvas => HelpTab::Backup,
             HelpTab::Backup => HelpTab::Templates,
-            HelpTab::Templates => HelpTab::ContentTree,
-            HelpTab::ContentTree => HelpTab::About,
+            HelpTab::Templates => HelpTab::About,
             HelpTab::About => HelpTab::Notes,
         }
     }
@@ -292,7 +289,6 @@ impl HelpTab {
             4 => HelpTab::Canvas,
             5 => HelpTab::Backup,
             6 => HelpTab::Templates,
-            7 => HelpTab::ContentTree,
             _ => HelpTab::About,
         }
     }
@@ -306,8 +302,7 @@ impl HelpTab {
             HelpTab::Canvas => 4,
             HelpTab::Backup => 5,
             HelpTab::Templates => 6,
-            HelpTab::ContentTree => 7,
-            HelpTab::About => 8,
+            HelpTab::About => 7,
         }
     }
 }

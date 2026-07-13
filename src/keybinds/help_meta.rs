@@ -1,5 +1,5 @@
 use crate::keybinds::types::{
-    BackupAction, CanvasAction, ContentTreeAction, DrawAction, EditAction, GraphAction, ListAction,
+    BackupAction, CanvasAction, DrawAction, EditAction, GraphAction, ListAction,
 };
 
 #[derive(Clone, Copy)]
@@ -31,9 +31,6 @@ pub fn canvas_group_order() -> &'static [&'static str] {
 }
 pub fn backup_group_order() -> &'static [&'static str] {
     &["Navigation", "Actions", "Settings Fields", "General"]
-}
-pub fn content_tree_group_order() -> &'static [&'static str] {
-    &["Navigation", "Actions"]
 }
 
 pub fn list_action_meta(a: ListAction) -> HelpMeta {
@@ -674,43 +671,6 @@ pub fn backup_action_meta(a: BackupAction) -> HelpMeta {
     }
 }
 
-pub fn content_tree_action_meta(a: ContentTreeAction) -> HelpMeta {
-    match a {
-        ContentTreeAction::MoveUp => HelpMeta {
-            group: "Navigation",
-            description: "Move up",
-        },
-        ContentTreeAction::MoveDown => HelpMeta {
-            group: "Navigation",
-            description: "Move down",
-        },
-        ContentTreeAction::ToggleCollapse => HelpMeta {
-            group: "Navigation",
-            description: "Toggle collapse/expand",
-        },
-        ContentTreeAction::ExpandAll => HelpMeta {
-            group: "Navigation",
-            description: "Expand all",
-        },
-        ContentTreeAction::CollapseAll => HelpMeta {
-            group: "Navigation",
-            description: "Collapse all",
-        },
-        ContentTreeAction::Open => HelpMeta {
-            group: "Actions",
-            description: "Jump to section",
-        },
-        ContentTreeAction::Back => HelpMeta {
-            group: "Actions",
-            description: "Back",
-        },
-        ContentTreeAction::Help => HelpMeta {
-            group: "Actions",
-            description: "Help",
-        },
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -748,9 +708,5 @@ mod tests {
     #[test]
     fn backup_meta_nonempty() {
         assert_meta_nonempty!(BackupAction, backup_action_meta);
-    }
-    #[test]
-    fn ct_meta_nonempty() {
-        assert_meta_nonempty!(ContentTreeAction, content_tree_action_meta);
     }
 }

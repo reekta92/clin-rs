@@ -11,7 +11,7 @@ use crate::keybinds::help_meta::{self, HelpMeta};
 use crate::keybinds::{HelpAction, Keybinds, ListAction};
 use strum::IntoEnumIterator;
 
-pub fn help_tab_names() -> [&'static str; 9] {
+pub fn help_tab_names() -> [&'static str; 8] {
     [
         "Notes",
         "Editor",
@@ -20,7 +20,6 @@ pub fn help_tab_names() -> [&'static str; 9] {
         "Canvas",
         "Backup",
         "Templates",
-        "Content Tree",
         "About",
     ]
 }
@@ -264,8 +263,9 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
             right_area,
             &app.help_suggestions,
             &app.keybinds,
+            &app.config,
             theme,
-        );
+        )
     }
 
     let kb = &app.keybinds;
@@ -409,7 +409,6 @@ pub fn help_text_for_tab(
         HelpTab::Canvas => canvas_help_text(keybinds, theme),
         HelpTab::Backup => backup_help_text(keybinds, theme),
         HelpTab::Templates => templates_help_text(keybinds, theme, tab),
-        HelpTab::ContentTree => content_tree_help_text(keybinds, theme),
         HelpTab::About => about_help_text(keybinds, theme, config, tab),
     }
 }
@@ -545,16 +544,6 @@ fn backup_help_text(keybinds: &Keybinds, theme: &AppThemeColors) -> Vec<HelpRow>
         help_meta::backup_group_order(),
         help_meta::backup_action_meta,
         |kb, a| kb.backup_keys_display(a),
-    )
-}
-fn content_tree_help_text(keybinds: &Keybinds, theme: &AppThemeColors) -> Vec<HelpRow> {
-    generate_scope_help(
-        keybinds,
-        theme,
-        HelpTab::ContentTree,
-        help_meta::content_tree_group_order(),
-        help_meta::content_tree_action_meta,
-        |kb, a| kb.content_tree_keys_display(a),
     )
 }
 
@@ -1167,7 +1156,6 @@ fn tab_display_name(tab: HelpTab) -> &'static str {
         HelpTab::Canvas => "Canvas",
         HelpTab::Backup => "Backup",
         HelpTab::Templates => "Templates",
-        HelpTab::ContentTree => "Content Tree",
         HelpTab::About => "About",
     }
 }
@@ -1177,6 +1165,7 @@ fn draw_help_tips_pane(
     area: Rect,
     suggestions: &[crate::ui::HelpSuggestion],
     keybinds: &Keybinds,
+    config: &crate::config::ClinConfig,
     theme: &AppThemeColors,
 ) {
     let block = Block::default()
@@ -1211,6 +1200,12 @@ fn draw_help_tips_pane(
             )));
             let parsed_spans = render_tip_body(s.body, keybinds, theme);
             lines.push(Line::from(parsed_spans));
+            if let Some(note) = s.requires.caveat_if_unsatisfied(config) {
+                lines.push(Line::from(Span::styled(
+                    format!("  \u{26a0} {note}"),
+                    Style::default().fg(theme.warning),
+                )));
+            }
         }
     }
     let p = Paragraph::new(lines)
@@ -1372,6 +1367,7 @@ pub(crate) fn resolve_tip_key(token: &str, kb: &Keybinds) -> String {
             "DeleteNextWord" => kb.edit_keys_display(EditAction::DeleteNextWord),
             "CycleFocus" => kb.edit_keys_display(EditAction::CycleFocus),
             "Back" => kb.edit_keys_display(EditAction::Back),
+            "ManageSubnotes" => kb.edit_keys_display(EditAction::ManageSubnotes),
             _ => format!("[ERR:{}]", token),
         },
         "help" => match action {
@@ -1392,6 +1388,11 @@ pub(crate) fn resolve_tip_key(token: &str, kb: &Keybinds) -> String {
             "OpenNote" => kb.graph_keys_display(GraphAction::OpenNote),
             "ZoomIn" => kb.graph_keys_display(GraphAction::ZoomIn),
             "ZoomOut" => kb.graph_keys_display(GraphAction::ZoomOut),
+            "ToggleStatus" => kb.graph_keys_display(GraphAction::ToggleStatus),
+            "TogglePreview" => kb.graph_keys_display(GraphAction::TogglePreview),
+            "Refresh" => kb.graph_keys_display(GraphAction::Refresh),
+            "Help" => kb.graph_keys_display(GraphAction::Help),
+            "Quit" => kb.graph_keys_display(GraphAction::Quit),
             _ => format!("[ERR:{}]", token),
         },
         "draw" => match action {
@@ -1413,6 +1414,10 @@ pub(crate) fn resolve_tip_key(token: &str, kb: &Keybinds) -> String {
             "ZoomFineOut" => kb.canvas_keys_display(CanvasAction::ZoomFineOut),
             "Quit" => kb.canvas_keys_display(CanvasAction::Quit),
             "CycleFocus" => kb.canvas_keys_display(CanvasAction::CycleFocus),
+            "Save" => kb.canvas_keys_display(CanvasAction::Save),
+            "MenuClose" => kb.canvas_keys_display(CanvasAction::MenuClose),
+            "EditorUnfocus" => kb.canvas_keys_display(CanvasAction::EditorUnfocus),
+            "EditorSyncRaw" => kb.canvas_keys_display(CanvasAction::EditorSyncRaw),
             _ => format!("[ERR:{}]", token),
         },
         "backup" => match action {
@@ -1427,10 +1432,15 @@ pub(crate) fn resolve_tip_key(token: &str, kb: &Keybinds) -> String {
             "Refresh" => kb.backup_keys_display(BackupAction::Refresh),
             "CycleSection" => kb.backup_keys_display(BackupAction::CycleSection),
             "OpenSettings" => kb.backup_keys_display(BackupAction::OpenSettings),
+            "CloseSettings" => kb.backup_keys_display(BackupAction::CloseSettings),
+            "NextField" => kb.backup_keys_display(BackupAction::NextField),
+            "PrevField" => kb.backup_keys_display(BackupAction::PrevField),
             _ => format!("[ERR:{}]", token),
         },
         "content_tree" => match action {
             "Open" => kb.content_tree_keys_display(ContentTreeAction::Open),
+            "MoveUp" => kb.content_tree_keys_display(ContentTreeAction::MoveUp),
+            "MoveDown" => kb.content_tree_keys_display(ContentTreeAction::MoveDown),
             "ToggleCollapse" => kb.content_tree_keys_display(ContentTreeAction::ToggleCollapse),
             "ExpandAll" => kb.content_tree_keys_display(ContentTreeAction::ExpandAll),
             "CollapseAll" => kb.content_tree_keys_display(ContentTreeAction::CollapseAll),
@@ -1508,6 +1518,15 @@ mod tests {
             "list:OpenCommandPalette",
             "list:Search",
             "list:OpenTrash",
+            "edit:ManageSubnotes",
+            "content_tree:MoveUp",
+            "content_tree:MoveDown",
+            "content_tree:ToggleCollapse",
+            "content_tree:ExpandAll",
+            "content_tree:CollapseAll",
+            "content_tree:Open",
+            "content_tree:Back",
+            "content_tree:Help",
         ];
         for &token in &open_keys {
             let resolved = crate::ui::help::resolve_tip_key(token, &kb);

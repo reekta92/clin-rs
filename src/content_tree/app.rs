@@ -13,7 +13,7 @@ fn map_input_result(
     match res {
         input::ContentTreeInput::Back => Some(OverlayResult::Exit),
         input::ContentTreeInput::Help => {
-            Some(OverlayResult::OpenHelp(crate::app::HelpTab::ContentTree))
+            Some(OverlayResult::OpenHelp(crate::app::HelpTab::Notes))
         }
         input::ContentTreeInput::Open => {
             if !state.load_error && state.selected < state.nodes.len() {
