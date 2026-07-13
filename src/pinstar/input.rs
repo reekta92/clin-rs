@@ -35,6 +35,7 @@ pub fn handle_pinstar_mouse(
         MouseEventKind::Down(MouseButton::Right) => {
             if state.resizing_node_id.is_some() {
                 state.resizing_node_id = None;
+                state.is_dragging_resize_handle = false;
                 let _ = state.save();
                 return true;
             }
@@ -217,9 +218,6 @@ pub fn handle_pinstar_mouse(
         MouseEventKind::Up(MouseButton::Left) => {
             state.is_panning = false;
             state.is_dragging_resize_handle = false;
-            if state.resizing_node_id.take().is_some() {
-                let _ = state.save();
-            }
             if state.mouse_selecting && !state.mouse_dragged {
                 state.raw_editor.cancel_selection();
             }
@@ -508,6 +506,7 @@ pub fn handle_pinstar_event(
                 || keybinds.matches_canvas(CanvasAction::CancelResize, &key) =>
             {
                 state.resizing_node_id = None;
+                state.is_dragging_resize_handle = false;
                 let _ = state.save();
                 return true;
             }
