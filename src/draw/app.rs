@@ -22,6 +22,7 @@ pub struct DrawAppState {
     pub current_stroke: Option<crate::draw::state::Stroke>,
     pub last_area: Rect,
     pub last_mouse_pos: Option<(u16, u16)>,
+    pub mouse_pos: Option<(u16, u16)>,
     pub text_editor: Option<(usize, TextArea<'static>)>,
     pub theme: crate::app_theme::AppThemeColors,
     pub active_shape_type: crate::draw::state::DrawShapeType,
@@ -67,6 +68,7 @@ impl DrawAppState {
             active_tool: crate::draw::state::DrawTool::Draw,
             current_stroke: None,
             last_area: Rect::default(),
+            mouse_pos: None,
             last_mouse_pos: None,
             text_editor: None,
             theme,
@@ -121,7 +123,7 @@ impl crate::overlay::OverlayView for DrawAppState {
         _app_status: Option<&str>,
     ) {
         self.last_area = area;
-        draw_canvas(frame, self, area, _config);
+        draw_canvas(frame, self, area, _config, self.mouse_pos);
     }
 
     fn overlay_handle_event(

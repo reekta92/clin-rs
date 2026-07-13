@@ -90,6 +90,7 @@ pub struct NodeRenderData {
     pub radius: f64,
     pub extra_tag_colors: Vec<Color>,
     pub is_selected: bool,
+    pub is_hovered: bool,
     pub selection_ring_color: Color,
     pub shape: NodeShape,
 }
@@ -196,6 +197,19 @@ fn draw_outlined_shape(
 impl Shape for GraphNodesShape<'_> {
     fn draw(&self, painter: &mut Painter) {
         for node in self.nodes {
+            // Draw hover highlight ring (if hovered and not selected)
+            if node.is_hovered && !node.is_selected {
+                let hover_radius = node.radius + 1.0;
+                draw_outlined_shape(
+                    painter,
+                    node.x,
+                    node.y,
+                    hover_radius,
+                    node.shape,
+                    Color::White,
+                );
+            }
+
             draw_outlined_shape(painter, node.x, node.y, node.radius, node.shape, node.color);
 
             let indicator_radius = 1.2;
@@ -419,6 +433,7 @@ impl RenderCache {
         config: &ClinConfig,
         selected_node: Option<NodeIndex>,
         selection_ring_color: Color,
+        hovered_node: Option<NodeIndex>,
     ) {
         self.nodes.clear();
         for idx in graph.node_indices() {
@@ -457,6 +472,7 @@ impl RenderCache {
                 radius,
                 extra_tag_colors,
                 is_selected: selected_node == Some(idx),
+                is_hovered: hovered_node == Some(idx),
                 selection_ring_color,
                 shape: config.graf.visual.node_shape,
             });
@@ -518,6 +534,7 @@ pub fn draw_graph_view(
     app_theme: &crate::app_theme::AppThemeColors,
     keybinds: &Keybinds,
     pending: Option<&str>,
+    mouse_pos: Option<(u16, u16)>,
 ) {
     let aspect = area.width as f64 / area.height as f64;
     let viewport = &state.viewport;
@@ -530,14 +547,20 @@ pub fn draw_graph_view(
         cache.rebuild_topology(graph, config, &colors, flags.show_legend);
     }
 
+    // Compute hovered node from mouse_pos
+    let hovered_node = mouse_pos.and_then(|(col, row)| {
+        let (wx, wy) = viewport.screen_to_world(col, row, area);
+        viewport.hit_test(wx, wy, state)
+    });
+
     cache.fill_edges(graph, config, colors.edge_color);
     cache.fill_nodes(
         graph,
         config,
         state.selected_node,
         colors.selected_indicator_color,
+        hovered_node,
     );
-    cache.fill_labels(graph, config, state.selected_node);
 
     let edges = cache.edges.clone();
     let nodes = cache.nodes.clone();

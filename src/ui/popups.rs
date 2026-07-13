@@ -12,6 +12,7 @@ pub fn draw_template_popup(
     popup: &TemplatePopup,
     area: Rect,
     theme: &AppThemeColors,
+    mouse_pos: Option<(u16, u16)>,
 ) {
     let content = draw_popup_frame(
         frame,
@@ -52,20 +53,39 @@ pub fn draw_template_popup(
     );
     frame.render_widget(&input, chunks[0]);
 
+    let hovered_idx = mouse_pos.and_then(|(col, row)| {
+        let inner_y = chunks[1].y + 1;
+        if !popup.filtered_templates.is_empty()
+            && row >= inner_y
+            && row < inner_y + popup.filtered_templates.len() as u16
+            && col >= chunks[1].x + 1
+            && col < chunks[1].x + chunks[1].width - 1
+        {
+            Some((row - inner_y) as usize)
+        } else {
+            None
+        }
+    });
+
     let items: Vec<ListItem> = if popup.filtered_templates.is_empty() {
         empty_list_item(theme, "(no matching templates)")
     } else {
         popup
             .filtered_templates
             .iter()
-            .map(|t| {
-                ListItem::new(Line::from(vec![
+            .enumerate()
+            .map(|(i, t)| {
+                let mut item = ListItem::new(Line::from(vec![
                     Span::styled(&t.name, Style::default().add_modifier(Modifier::BOLD)),
                     Span::styled(
                         format!("  ({})", t.filename),
                         Style::default().fg(theme.muted),
                     ),
-                ]))
+                ]));
+                if Some(i) == hovered_idx {
+                    item = item.style(theme.hover_style());
+                }
+                item
             })
             .collect()
     };
@@ -213,6 +233,7 @@ pub fn draw_theme_popup(
     area: Rect,
     theme: &AppThemeColors,
     keybinds: &crate::keybinds::Keybinds,
+    mouse_pos: Option<(u16, u16)>,
 ) {
     let content = draw_popup_frame(
         frame,
@@ -245,16 +266,32 @@ pub fn draw_theme_popup(
         ])
         .split(content);
 
+    let hovered_theme_idx = mouse_pos.and_then(|(col, row)| {
+        let inner_y = chunks[0].y + 1;
+        if row >= inner_y && row < inner_y + popup.themes.len() as u16
+            && col >= chunks[0].x + 1 && col < chunks[0].x + chunks[0].width - 1
+        {
+            Some((row - inner_y) as usize)
+        } else {
+            None
+        }
+    });
     let items: Vec<ListItem> = popup
         .themes
         .iter()
         .enumerate()
         .map(|(i, t)| {
-            let mut spans = vec![Span::raw(t)];
-            if popup.is_custom.get(i).copied().unwrap_or(false) {
-                spans.push(Span::styled(" [custom]", Style::default().fg(theme.muted)));
+            let mut list_item = {
+                let mut spans = vec![Span::raw(t)];
+                if popup.is_custom.get(i).copied().unwrap_or(false) {
+                    spans.push(Span::styled(" [custom]", Style::default().fg(theme.muted)));
+                }
+                ListItem::new(Line::from(spans))
+            };
+            if Some(i) == hovered_theme_idx {
+                list_item = list_item.style(theme.hover_style());
             }
-            ListItem::new(Line::from(spans))
+            list_item
         })
         .collect();
 
@@ -291,13 +328,25 @@ pub fn draw_theme_popup(
         "Graph Background Color: OFF"
     };
 
+    let gen_hovered = mouse_pos.is_some_and(|(col, row)| {
+        crate::events::contains_cell(chunks[1], col, row)
+    });
+    let graph_hovered = mouse_pos.is_some_and(|(col, row)| {
+        crate::events::contains_cell(chunks[2], col, row)
+    });
+
     let gen_style = if popup.general_is_solid {
         Style::default().fg(theme.success)
     } else {
         Style::default().fg(theme.destructive)
     };
+    let gen_block_style = if gen_hovered {
+        theme.hover_style()
+    } else {
+        theme.bg_style()
+    };
     let gen_block = Block::default()
-        .style(theme.bg_style())
+        .style(gen_block_style)
         .borders(Borders::ALL)
         .border_style(if popup.focus == crate::app::ThemePopupFocus::GeneralBg {
             Style::default().fg(theme.heading)
@@ -316,8 +365,13 @@ pub fn draw_theme_popup(
     } else {
         Style::default().fg(theme.destructive)
     };
+    let graph_block_style = if graph_hovered {
+        theme.hover_style()
+    } else {
+        theme.bg_style()
+    };
     let graph_block = Block::default()
-        .style(theme.bg_style())
+        .style(graph_block_style)
         .borders(Borders::ALL)
         .border_style(if popup.focus == crate::app::ThemePopupFocus::GraphBg {
             Style::default().fg(theme.heading)
@@ -331,13 +385,13 @@ pub fn draw_theme_popup(
     frame.render_widget(graph_block, chunks[2]);
     frame.render_widget(graph_para, graph_inner);
 }
-
 pub fn draw_sort_popup(
     frame: &mut Frame,
     popup: &crate::popups::SortPopup,
     area: Rect,
     theme: &AppThemeColors,
     keybinds: &crate::keybinds::Keybinds,
+    mouse_pos: Option<(u16, u16)>,
 ) {
     let content_area = draw_popup_frame(
         frame,
@@ -371,9 +425,26 @@ pub fn draw_sort_popup(
         "Modified (newest)",
         "Modified (oldest)",
     ];
+    let hovered_index = mouse_pos.and_then(|(col, row)| {
+        let inner_y = content_area.y + 1;
+        if row >= inner_y && row < inner_y + options.len() as u16
+            && col >= content_area.x + 1 && col < content_area.x + content_area.width - 1
+        {
+            Some((row - inner_y) as usize)
+        } else {
+            None
+        }
+    });
     let items: Vec<ListItem> = options
         .iter()
-        .map(|&opt| ListItem::new(Line::from(Span::raw(opt))))
+        .enumerate()
+        .map(|(i, &opt)| {
+            let mut item = ListItem::new(Line::from(Span::raw(opt)));
+            if Some(i) == hovered_index {
+                item = item.style(theme.hover_style());
+            }
+            item
+        })
         .collect();
 
     let list = List::new(items)
@@ -399,6 +470,7 @@ pub fn draw_icon_mode_popup(
     area: Rect,
     theme: &AppThemeColors,
     keybinds: &crate::keybinds::Keybinds,
+    mouse_pos: Option<(u16, u16)>,
 ) {
     let content_area = draw_popup_frame(
         frame,
@@ -427,9 +499,26 @@ pub fn draw_icon_mode_popup(
     );
 
     let options = ["Nerd Font", "Unicode", "None"];
+    let hovered_index = mouse_pos.and_then(|(col, row)| {
+        let inner_y = content_area.y + 1;
+        if row >= inner_y && row < inner_y + options.len() as u16
+            && col >= content_area.x + 1 && col < content_area.x + content_area.width - 1
+        {
+            Some((row - inner_y) as usize)
+        } else {
+            None
+        }
+    });
     let items: Vec<ListItem> = options
         .iter()
-        .map(|&opt| ListItem::new(Line::from(Span::raw(opt))))
+        .enumerate()
+        .map(|(i, &opt)| {
+            let mut item = ListItem::new(Line::from(Span::raw(opt)));
+            if Some(i) == hovered_index {
+                item = item.style(theme.hover_style());
+            }
+            item
+        })
         .collect();
 
     let list = List::new(items)
@@ -455,6 +544,7 @@ pub fn draw_create_format_popup(
     area: Rect,
     theme: &AppThemeColors,
     keybinds: &crate::keybinds::Keybinds,
+    mouse_pos: Option<(u16, u16)>,
 ) {
     let content_area = draw_popup_frame(
         frame,
@@ -488,9 +578,26 @@ pub fn draw_create_format_popup(
         "Drawing (.draw)",
         "Canvas (.canvas)",
     ];
+    let hovered_index = mouse_pos.and_then(|(col, row)| {
+        let inner_y = content_area.y + 1;
+        if row >= inner_y && row < inner_y + options.len() as u16
+            && col >= content_area.x + 1 && col < content_area.x + content_area.width - 1
+        {
+            Some((row - inner_y) as usize)
+        } else {
+            None
+        }
+    });
     let items: Vec<ListItem> = options
         .iter()
-        .map(|&opt| ListItem::new(Line::from(Span::raw(opt))))
+        .enumerate()
+        .map(|(i, &opt)| {
+            let mut item = ListItem::new(Line::from(Span::raw(opt)));
+            if Some(i) == hovered_index {
+                item = item.style(theme.hover_style());
+            }
+            item
+        })
         .collect();
 
     let list = List::new(items)
@@ -516,6 +623,7 @@ pub fn draw_hint_bar_style_popup(
     area: Rect,
     theme: &AppThemeColors,
     keybinds: &crate::keybinds::Keybinds,
+    mouse_pos: Option<(u16, u16)>,
 ) {
     let content_area = draw_popup_frame(
         frame,
@@ -544,9 +652,26 @@ pub fn draw_hint_bar_style_popup(
     );
 
     let options = ["Classic", "Sharp", "Rounded", "Slanted"];
+    let hovered_index = mouse_pos.and_then(|(col, row)| {
+        let inner_y = content_area.y + 1;
+        if row >= inner_y && row < inner_y + options.len() as u16
+            && col >= content_area.x + 1 && col < content_area.x + content_area.width - 1
+        {
+            Some((row - inner_y) as usize)
+        } else {
+            None
+        }
+    });
     let items: Vec<ListItem> = options
         .iter()
-        .map(|&opt| ListItem::new(Line::from(Span::raw(opt))))
+        .enumerate()
+        .map(|(i, &opt)| {
+            let mut item = ListItem::new(Line::from(Span::raw(opt)));
+            if Some(i) == hovered_index {
+                item = item.style(theme.hover_style());
+            }
+            item
+        })
         .collect();
 
     let list = List::new(items)
@@ -572,6 +697,7 @@ pub fn draw_keybind_preset_popup(
     area: Rect,
     theme: &AppThemeColors,
     keybinds: &crate::keybinds::Keybinds,
+    mouse_pos: Option<(u16, u16)>,
 ) {
     let content_area = draw_popup_frame(
         frame,
@@ -605,9 +731,26 @@ pub fn draw_keybind_preset_popup(
         "vim \u{2014} : commands",
         "emacs \u{2014} Ctrl-x prefix",
     ];
+    let hovered_index = mouse_pos.and_then(|(col, row)| {
+        let inner_y = content_area.y + 1;
+        if row >= inner_y && row < inner_y + options.len() as u16
+            && col >= content_area.x + 1 && col < content_area.x + content_area.width - 1
+        {
+            Some((row - inner_y) as usize)
+        } else {
+            None
+        }
+    });
     let items: Vec<ListItem> = options
         .iter()
-        .map(|&opt| ListItem::new(Line::from(Span::raw(opt))))
+        .enumerate()
+        .map(|(i, &opt)| {
+            let mut item = ListItem::new(Line::from(Span::raw(opt)));
+            if Some(i) == hovered_index {
+                item = item.style(theme.hover_style());
+            }
+            item
+        })
         .collect();
 
     let list = List::new(items)

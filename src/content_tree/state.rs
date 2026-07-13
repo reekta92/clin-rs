@@ -11,6 +11,7 @@ pub struct ContentTreeState {
     pub keybinds: crate::keybinds::Keybinds,
     pub seq_matcher: crate::keybinds::KeyMatcher,
     pub last_area: ratatui::layout::Rect,
+    pub mouse_pos: Option<(u16, u16)>,
 }
 
 impl ContentTreeState {
@@ -30,6 +31,7 @@ impl ContentTreeState {
             keybinds,
             seq_matcher,
             last_area: ratatui::layout::Rect::default(),
+            mouse_pos: None,
         }
     }
 
@@ -57,6 +59,7 @@ impl ContentTreeState {
             keybinds,
             seq_matcher,
             last_area: ratatui::layout::Rect::default(),
+            mouse_pos: None,
         }
     }
 

@@ -32,6 +32,7 @@ pub struct BackupState {
     pub list_state: ratatui::widgets::ListState,
     pub history_list_state: ratatui::widgets::ListState,
     pub selected_commit_index: usize,
+    pub mouse_pos: Option<(u16, u16)>,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BackupSection {
@@ -152,6 +153,7 @@ impl BackupState {
             list_state: ratatui::widgets::ListState::default(),
             history_list_state: ratatui::widgets::ListState::default(),
             selected_commit_index: 0,
+            mouse_pos: None,
         };
 
         state.refresh_git_info();

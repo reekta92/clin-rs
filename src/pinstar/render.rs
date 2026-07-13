@@ -1,5 +1,6 @@
 use crate::app::ViewMode;
 use crate::app_theme::AppThemeColors;
+use crate::events::contains_cell;
 use crate::keybinds::CanvasAction;
 use crate::pinstar::state::PinstarState;
 use ratatui::{prelude::*, widgets::*};
@@ -53,6 +54,7 @@ pub fn draw_pinstar_view(
     theme: &AppThemeColors,
     area: ratatui::layout::Rect,
     config: &crate::config::ClinConfig,
+    mouse_pos: Option<(u16, u16)>,
 ) {
     let total_area = area;
     let mut area = area;
@@ -242,6 +244,13 @@ pub fn draw_pinstar_view(
                 label = format!("[EDITING] {label}");
             }
 
+            let is_hovered = !is_selected
+                && mouse_pos.is_some_and(|(col, row)| contains_cell(node_rect, col, row));
+            let bg_style = if is_hovered {
+                theme.hover_style()
+            } else {
+                theme.bg_style()
+            };
             let mut block = Block::default()
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(border_color))
@@ -249,7 +258,7 @@ pub fn draw_pinstar_view(
                     label,
                     Style::default().fg(if is_editing { theme.accent } else { base_color }),
                 ))
-                .style(theme.bg_style());
+                .style(bg_style);
 
             if is_selected && !is_editing {
                 block = block.border_set(ratatui::symbols::border::Set {
@@ -500,7 +509,13 @@ pub fn draw_pinstar_view(
         if is_editing {
             node_title = format!("[EDITING] {node_title}");
         }
-
+        let is_hovered = !is_selected
+            && mouse_pos.is_some_and(|(col, row)| contains_cell(node_rect, col, row));
+        let bg_style = if is_hovered {
+            theme.hover_style()
+        } else {
+            theme.bg_style()
+        };
         let mut block = Block::default()
             .borders(Borders::ALL)
             .border_style(Style::default().fg(border_color))
@@ -508,7 +523,7 @@ pub fn draw_pinstar_view(
                 node_title,
                 Style::default().fg(if is_editing { theme.accent } else { base_color }),
             ))
-            .style(theme.bg_style());
+            .style(bg_style);
 
         if is_selected && !is_editing {
             block = block.border_set(ratatui::symbols::border::Set {

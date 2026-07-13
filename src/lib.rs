@@ -1035,6 +1035,9 @@ fn run_app(
                     crate::force_quit();
                 }
                 ev @ (Event::Key(_) | Event::Mouse(_)) => {
+                    if let Event::Mouse(mouse_event) = &ev {
+                        app.mouse_pos = Some((mouse_event.column, mouse_event.row));
+                    }
                     // Global popups & palette get first chance to consume
                     let size = terminal.size().context("failed to get terminal size")?;
                     let area = Rect::new(0, 0, size.width, size.height);

@@ -67,6 +67,7 @@ pub fn draw_ui(
             theme,
             &state.keybinds,
             state.seq_matcher.pending_display().as_deref(),
+            state.mouse_pos,
         );
     }
 

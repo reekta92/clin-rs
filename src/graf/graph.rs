@@ -24,6 +24,7 @@ pub struct GraphState {
     pub is_settled: bool,
     pub graph_bounds: (f64, f64, f64, f64),
     pub render_cache: Mutex<super::render::RenderCache>,
+    pub mouse_pos: Option<(u16, u16)>,
 }
 
 pub fn build_graph(
@@ -123,6 +124,7 @@ impl GraphState {
             is_settled: false,
             graph_bounds: (0.0, 0.0, 0.0, 0.0),
             render_cache: Mutex::new(super::render::RenderCache::new()),
+            mouse_pos: None,
         };
         state.viewport = state
             .viewport

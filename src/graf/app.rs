@@ -32,6 +32,7 @@ pub struct GrafAppState {
     pub app_theme: crate::app_theme::AppThemeColors,
     pub keybinds: Keybinds,
     pub seq_matcher: crate::keybinds::KeyMatcher,
+    pub mouse_pos: Option<(u16, u16)>,
 }
 
 impl Drop for GrafAppState {
@@ -73,6 +74,7 @@ impl GrafAppState {
             app_theme: crate::app_theme::AppThemeColors::from_config(&config.ui),
             keybinds,
             seq_matcher,
+            mouse_pos: None,
         })
     }
 
@@ -368,6 +370,10 @@ fn handle_event(
             Ok(None)
         }
         crossterm::event::Event::Mouse(mouse_event) => {
+            app_state.mouse_pos = Some((mouse_event.column, mouse_event.row));
+            if let Some(graph_state) = &app_state.graph_state {
+                graph_state.write().mouse_pos = Some((mouse_event.column, mouse_event.row));
+            }
             if app_state.search_popup.is_some() {
                 return Ok(None);
             }

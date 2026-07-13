@@ -14,7 +14,7 @@ impl crate::overlay::OverlayView for PinstarState {
         _app_status: Option<&str>,
     ) {
         self.last_area = area;
-        draw_pinstar_view(frame, self, theme, area, config);
+        draw_pinstar_view(frame, self, theme, area, config, self.mouse_pos);
     }
 
     fn overlay_handle_event(
@@ -31,6 +31,7 @@ impl crate::overlay::OverlayView for PinstarState {
                 let _ = handle_pinstar_event(self, key, &mut running, area, &keybinds, config);
             }
             Event::Mouse(mouse) => {
+                self.mouse_pos = Some((mouse.column, mouse.row));
                 handle_pinstar_mouse(self, mouse, area);
             }
             _ => {}

@@ -115,14 +115,29 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
     frame.render_widget(logo, layout.logo);
 
     // Option rows.
+    let hovered_row = app.mouse_pos.and_then(|(col, row)| {
+        if !state.is_done_selected()
+            && col >= layout.options.x
+            && col < layout.options.x + layout.options.width
+            && row >= layout.options.y
+            && row < layout.options.y + OPTION_ROWS as u16
+        {
+            Some((row - layout.options.y) as usize)
+        } else {
+            None
+        }
+    });
     let mut lines: Vec<Line> = Vec::with_capacity(OPTION_ROWS);
     for row in 0..OPTION_ROWS {
         let active = state.selected == row;
+        let is_hovered = !active && Some(row) == hovered_row;
         let base = if active {
             Style::default()
                 .fg(theme.highlight_fg)
                 .bg(theme.highlight_bg)
                 .add_modifier(Modifier::BOLD)
+        } else if is_hovered {
+            theme.hover_style()
         } else {
             Style::default().fg(theme.text)
         };
@@ -130,6 +145,8 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
             Style::default()
                 .fg(theme.highlight_fg)
                 .bg(theme.highlight_bg)
+        } else if is_hovered {
+            theme.hover_style()
         } else {
             Style::default().fg(theme.muted)
         };
@@ -156,13 +173,28 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
 
     // Done button.
     let done_active = state.is_done_selected();
+    let btn_w = 14u16.min(layout.done.width);
+    let btn_area = Rect::new(
+        layout.done.x + (layout.done.width - btn_w) / 2,
+        layout.done.y,
+        btn_w,
+        layout.done.height,
+    );
+    let done_hovered = !done_active
+        && app.mouse_pos.is_some_and(|(col, row)| {
+            crate::events::contains_cell(btn_area, col, row)
+        });
     let done_border_style = if done_active {
         Style::default().fg(theme.accent)
+    } else if done_hovered {
+        theme.hover_style()
     } else {
         Style::default().fg(theme.muted)
     };
     let done_style = if done_active {
         Style::default().fg(theme.fg).add_modifier(Modifier::BOLD)
+    } else if done_hovered {
+        theme.hover_style()
     } else {
         Style::default().fg(theme.muted)
     };
@@ -173,13 +205,6 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
     let done = Paragraph::new(Line::from(Span::styled("  Done  ", done_style)))
         .block(done_block)
         .alignment(Alignment::Center);
-    let btn_w = 14u16.min(layout.done.width);
-    let btn_area = Rect::new(
-        layout.done.x + (layout.done.width - btn_w) / 2,
-        layout.done.y,
-        btn_w,
-        layout.done.height,
-    );
     frame.render_widget(done, btn_area);
 
     if layout.preview.width > 0 && layout.preview.height > 0 {

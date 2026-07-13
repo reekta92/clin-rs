@@ -143,9 +143,26 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
         .split(area);
 
     let tabs: Vec<(&str, Option<&str>)> = help_tab_names().iter().map(|&l| (l, None)).collect();
+    let hovered = app.mouse_pos.and_then(|(col, row)| {
+        if row == chunks[0].y {
+            let region = crate::ui::title_bar_tabs_region(chunks[0], "Help");
+            crate::ui::hit_test_tabs(
+                &tabs,
+                chunks[0].x,
+                chunks[0].width,
+                region.x,
+                col,
+                app.config.ui.tab_icons_only,
+                app.config.ui.icon_mode,
+            )
+        } else {
+            None
+        }
+    });
     let tab_spans = build_tab_spans(
         &tabs,
         app.help_tab.index(),
+        hovered,
         &app.app_theme,
         app.config.ui.tab_icons_only,
         app.config.ui.icon_mode,

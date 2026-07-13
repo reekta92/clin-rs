@@ -59,6 +59,7 @@ pub fn draw_canvas(
     app: &mut DrawAppState,
     area: Rect,
     config: &crate::config::ClinConfig,
+    mouse_pos: Option<(u16, u16)>,
 ) {
     let x_bounds = [
         app.viewport.x - 100.0 / app.viewport.zoom,
@@ -289,14 +290,30 @@ pub fn draw_canvas(
             (DrawShapeType::Line, "Line"),
             (DrawShapeType::Arrow, "Arrow"),
         ];
+        let hovered_idx = mouse_pos.and_then(|(col, row)| {
+            let items_top = content.y + 1;
+            let items_bottom = items_top + shapes.len() as u16;
+            if row >= items_top
+                && row < items_bottom
+                && col >= content.x + 1
+                && col < content.x + content.width - 1
+            {
+                Some((row - items_top) as usize)
+            } else {
+                None
+            }
+        });
 
         let items: Vec<ListItem> = shapes
             .iter()
-            .map(|(st, name)| {
+            .enumerate()
+            .map(|(i, (st, name))| {
                 let style = if app.active_shape_type == *st {
                     Style::default()
                         .fg(app.theme.highlight_fg)
                         .bg(app.theme.highlight_bg)
+                } else if hovered_idx == Some(i) {
+                    app.theme.hover_style()
                 } else {
                     Style::default().fg(app.theme.fg)
                 };

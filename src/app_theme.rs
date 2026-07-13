@@ -222,6 +222,20 @@ impl AppThemeColors {
             None => Style::default(),
         }
     }
+
+    pub fn hover_style(&self) -> Style {
+        match self.bg {
+            Some(c) => match c {
+                Color::Rgb(r, g, b) => {
+                    let luminance = (r as f32 * 0.299) + (g as f32 * 0.587) + (b as f32 * 0.114);
+                    let delta = if luminance > 128.0 { -15 } else { 15 };
+                    Style::default().bg(derive_color(Some(c), delta).unwrap_or(c))
+                }
+                _ => Style::default().bg(Color::DarkGray),
+            },
+            None => Style::default().bg(Color::DarkGray),
+        }
+    }
 }
 
 fn derive_color(base: Option<Color>, delta: i16) -> Option<Color> {

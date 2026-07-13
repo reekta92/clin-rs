@@ -173,6 +173,7 @@ fn tab_display_width(
 pub fn build_tab_spans(
     tabs: &[(&str, Option<&str>)],
     active: usize,
+    hovered: Option<usize>,
     theme: &AppThemeColors,
     icons_only: bool,
     icon_mode: crate::config::IconMode,
@@ -188,6 +189,8 @@ pub fn build_tab_spans(
         }
         let style = if i == active {
             active_style
+        } else if Some(i) == hovered {
+            theme.hover_style()
         } else {
             inactive_style
         };

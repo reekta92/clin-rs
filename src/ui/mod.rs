@@ -130,7 +130,23 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 let tabs_arr = crate::draw::render::draw_tool_tabs(icon_mode);
                 let tabs = tab_vec_from_array(&tabs_arr);
                 let active = crate::draw::render::draw_tool_tab_index(draw.active_tool);
-                let spans = build_tab_spans(&tabs, active, &app.app_theme, false, icon_mode);
+                let hovered = app.mouse_pos.and_then(|(col, row)| {
+                    if row == outer[0].y {
+                        let region = crate::ui::title_bar_tabs_region(outer[0], "Draw");
+                        crate::ui::hit_test_tabs(
+                            &tabs,
+                            outer[0].x,
+                            outer[0].width,
+                            region.x,
+                            col,
+                            false,
+                            icon_mode,
+                        )
+                    } else {
+                        None
+                    }
+                });
+                let spans = build_tab_spans(&tabs, active, hovered, &app.app_theme, false, icon_mode);
                 let mut ctx =
                     crate::statusline::StatuslineContext::for_overlay(&app.config, ViewMode::Draw);
                 ctx.area = Some(outer[0]);
@@ -154,6 +170,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     right_line,
                     Some(app.status.as_ref()),
                 );
+                draw.mouse_pos = app.mouse_pos;
                 draw.overlay_render(frame, outer[1], &app.app_theme, &app.config, None);
             }
         }
@@ -205,7 +222,9 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     &app.date_format,
                     backup,
                     app.config.ui.icon_mode,
+                    app.mouse_pos,
                 );
+                backup.mouse_pos = app.mouse_pos;
                 backup.overlay_render(frame, outer[1], &app.app_theme, &app.config, None);
             }
         }
@@ -238,6 +257,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     right_line,
                     Some(app.status.as_ref()),
                 );
+                tree.mouse_pos = app.mouse_pos;
                 tree.overlay_render(frame, outer[1], &app.app_theme, &app.config, None);
             }
         }
@@ -246,7 +266,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     // Global popups — rendered on top of the active view
     // Template popup
     if let Some(crate::popups::ActivePopup::Template(popup)) = &app.popups.active {
-        draw_template_popup(frame, popup, frame.area(), &app.app_theme);
+        draw_template_popup(frame, popup, frame.area(), &app.app_theme, app.mouse_pos);
     }
 
     // Folder popup
@@ -454,15 +474,34 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         );
         frame.render_widget(&picker.input, chunks[0]);
 
+        let hovered_idx = app.mouse_pos.and_then(|(col, row)| {
+            let inner_y = chunks[1].y + 1;
+            if !picker.filtered_folders.is_empty()
+                && row >= inner_y
+                && row < inner_y + picker.filtered_folders.len() as u16
+                && col >= chunks[1].x + 1
+                && col < chunks[1].x + chunks[1].width - 1
+            {
+                Some((row - inner_y) as usize)
+            } else {
+                None
+            }
+        });
+
         let items: Vec<ListItem> = if picker.filtered_folders.is_empty() {
             crate::ui::empty_list_item(&app.app_theme, "(no matching folders)")
         } else {
             picker
                 .filtered_folders
                 .iter()
-                .map(|f| {
+                .enumerate()
+                .map(|(i, f)| {
                     let label = if f.is_empty() { "Vault (Root)" } else { f };
-                    ListItem::new(label)
+                    let mut item = ListItem::new(label);
+                    if Some(i) == hovered_idx {
+                        item = item.style(app.app_theme.hover_style());
+                    }
+                    item
                 })
                 .collect()
         };
@@ -537,9 +576,25 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             .iter()
             .map(|(l, g, _)| (*l, Some(*g)))
             .collect();
+        let hovered = app.mouse_pos.and_then(|(col, row)| {
+            if row == chunks[1].y {
+                crate::ui::hit_test_tabs(
+                    &tabs,
+                    chunks[1].x,
+                    chunks[1].width,
+                    chunks[1].x,
+                    col,
+                    app.config.ui.tab_icons_only,
+                    app.config.ui.icon_mode,
+                )
+            } else {
+                None
+            }
+        });
         let tab_spans = build_tab_spans(
             &tabs,
             palette.active_tab,
+            hovered,
             &app.app_theme,
             app.config.ui.tab_icons_only,
             app.config.ui.icon_mode,
@@ -549,10 +604,24 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             .style(app.app_theme.hint_line_bg_style());
         frame.render_widget(tabs_w, chunks[1]);
 
+        let hovered_cmd_idx = app.mouse_pos.and_then(|(col, row)| {
+            let inner_y = chunks[2].y + 1;
+            if !palette.items.is_empty()
+                && row >= inner_y
+                && row < inner_y + palette.items.len() as u16
+                && col >= chunks[2].x + 1
+                && col < chunks[2].x + chunks[2].width - 1
+            {
+                Some((row - inner_y) as usize)
+            } else {
+                None
+            }
+        });
         let items: Vec<ListItem> = palette
             .items
             .iter()
-            .map(|item| {
+            .enumerate()
+            .map(|(i, item)| {
                 let mut spans = vec![Span::styled(
                     format!("{} ", item.glyph),
                     Style::default()
@@ -560,13 +629,17 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                         .add_modifier(Modifier::BOLD),
                 )];
                 spans.extend(crate::ui::style_palette_name(&item.name, &app.app_theme));
-                ListItem::new(vec![
+                let mut list_item = ListItem::new(vec![
                     Line::from(spans),
                     Line::from(Span::styled(
                         &item.description,
                         Style::default().fg(app.app_theme.muted),
                     )),
-                ])
+                ]);
+                if Some(i) == hovered_cmd_idx {
+                    list_item = list_item.style(app.app_theme.hover_style());
+                }
+                list_item
             })
             .collect();
 
@@ -895,27 +968,63 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     }
                 }
             }
+            let grep_hovered = app.mouse_pos.and_then(|(col, row)| {
+                let inner_y = results_chunk.y + 1;
+                if !visible.is_empty()
+                    && row >= inner_y
+                    && row < inner_y + visible.len() as u16
+                    && col >= results_chunk.x + 1
+                    && col < results_chunk.x + results_chunk.width - 1
+                {
+                    Some((row - inner_y) as usize)
+                } else {
+                    None
+                }
+            });
             let items: Vec<ListItem> = visible
                 .iter()
-                .map(|(_, t)| {
-                    ListItem::new(crate::ui::styled_result_line(
+                .enumerate()
+                .map(|(vi, (_, t))| {
+                    let mut item = ListItem::new(crate::ui::styled_result_line(
                         t,
                         &app.app_theme,
                         app.config.ui.icon_mode,
-                    ))
+                    ));
+                    if Some(vi) == grep_hovered {
+                        item = item.style(app.app_theme.hover_style());
+                    }
+                    item
                 })
                 .collect();
             (items, "")
         } else if has_title {
+            let title_hovered = app.mouse_pos.and_then(|(col, row)| {
+                let inner_y = results_chunk.y + 1;
+                if !popup.title_results.is_empty()
+                    && row >= inner_y
+                    && row < inner_y + popup.title_results.len() as u16
+                    && col >= results_chunk.x + 1
+                    && col < results_chunk.x + results_chunk.width - 1
+                {
+                    Some((row - inner_y) as usize)
+                } else {
+                    None
+                }
+            });
             let items: Vec<ListItem> = popup
                 .title_results
                 .iter()
-                .map(|entry| {
-                    ListItem::new(crate::ui::styled_result_line(
+                .enumerate()
+                .map(|(i, entry)| {
+                    let mut item = ListItem::new(crate::ui::styled_result_line(
                         entry,
                         &app.app_theme,
                         app.config.ui.icon_mode,
-                    ))
+                    ));
+                    if Some(i) == title_hovered {
+                        item = item.style(app.app_theme.hover_style());
+                    }
+                    item
                 })
                 .collect();
             (items, "")
@@ -996,19 +1105,38 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             app.app_theme.heading
         };
 
+        let hovered_idx = app.mouse_pos.and_then(|(col, row)| {
+            let inner_y = content.y + 1;
+            if !trash.items.is_empty()
+                && row >= inner_y
+                && row < inner_y + trash.items.len() as u16
+                && col >= content.x + 1
+                && col < content.x + content.width - 1
+            {
+                Some((row - inner_y) as usize)
+            } else {
+                None
+            }
+        });
+
         let items: Vec<ListItem> = trash
             .items
             .iter()
-            .map(|item| {
+            .enumerate()
+            .map(|(i, item)| {
                 let name = item.name.to_string_lossy();
                 let when = crate::ui::format_relative_time(item.time_deleted as u64);
-                ListItem::new(Line::from(vec![
+                let mut list_item = ListItem::new(Line::from(vec![
                     Span::raw(name.to_string()),
                     Span::styled(
                         format!("  ({when})"),
                         Style::default().fg(app.app_theme.muted),
                     ),
-                ]))
+                ]));
+                if Some(i) == hovered_idx {
+                    list_item = list_item.style(app.app_theme.hover_style());
+                }
+                list_item
             })
             .collect();
 
@@ -1037,15 +1165,34 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     }
 
     if let Some(popup) = &app.popups.active {
-        popup.draw(frame, frame.area(), &app.app_theme, &app.keybinds);
+    popup.draw(frame, frame.area(), &app.app_theme, &app.keybinds, app.mouse_pos);
     }
 
     // Context menu (from edit view)
     if let Some(crate::popups::ActivePopup::ContextMenu(menu)) = &app.popups.active {
         let labels = [" Copy ", " Cut ", " Paste ", " Select All "];
-        let items: Vec<ListItem> = labels.iter().map(|l| ListItem::new(*l)).collect();
         let menu_width = labels.iter().map(|l| l.len() as u16).max().unwrap_or(0);
         let menu_height = labels.len() as u16;
+
+        let x = menu.x.min(frame.area().width.saturating_sub(menu_width));
+        let y = menu.y.min(frame.area().height.saturating_sub(menu_height));
+        let menu_area = Rect::new(x, y, menu_width, menu_height);
+
+        let hovered_idx = app.mouse_pos.and_then(|(col, row)| {
+            if col >= x && col < x + menu_width && row >= y && row < y + menu_height {
+                Some((row - y) as usize)
+            } else {
+                None
+            }
+        });
+
+        let items: Vec<ListItem> = labels.iter().enumerate().map(|(i, l)| {
+            let mut item = ListItem::new(*l);
+            if Some(i) == hovered_idx {
+                item = item.style(app.app_theme.hover_style());
+            }
+            item
+        }).collect();
 
         let list = List::new(items)
             .block(
@@ -1054,10 +1201,6 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     .borders(Borders::NONE),
             )
             .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
-
-        let x = menu.x.min(frame.area().width.saturating_sub(menu_width));
-        let y = menu.y.min(frame.area().height.saturating_sub(menu_height));
-        let menu_area = Rect::new(x, y, menu_width, menu_height);
 
         frame.render_widget(Clear, menu_area);
         crate::ui::render_list_with_selection(frame, list, menu_area, Some(menu.selected));

@@ -334,9 +334,26 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             } else {
                 0
             };
+            let hovered = app.mouse_pos.and_then(|(col, row)| {
+                if row == chunks[0].y {
+                    let region = crate::ui::title_bar_tabs_region(chunks[0], title);
+                    crate::ui::hit_test_tabs(
+                        &tabs,
+                        chunks[0].x,
+                        chunks[0].width,
+                        region.x,
+                        col,
+                        app.config.ui.tab_icons_only,
+                        app.config.ui.icon_mode,
+                    )
+                } else {
+                    None
+                }
+            });
             let tab_spans = build_tab_spans(
                 &tabs,
                 selected_idx,
+                hovered,
                 &app.app_theme,
                 app.config.ui.tab_icons_only,
                 app.config.ui.icon_mode,
@@ -419,14 +436,25 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                         .add_modifier(Modifier::BOLD),
                 ));
             } else if is_smart {
+                let smart_icon =
+                    crate::ui::get_icon("\u{f0e7}", "\u{26a1}", app.config.ui.icon_mode);
+                let smart_text = format!(" {smart_icon} Smart");
+                let smart_w = smart_text.chars().count() as u16;
+                let is_hovered = app.mouse_pos.is_some_and(|(col, row)| {
+                    row == list_area.y + 1
+                        && col >= list_area.x
+                        && col < list_area.x + smart_w
+                        && app.list.grid_folder != VIRTUAL_SMART_PATH
+                });
                 spans.push(Span::styled(
-                    format!(
-                        " {} Smart",
-                        crate::ui::get_icon("\u{f0e7}", "\u{26a1}", app.config.ui.icon_mode)
-                    ),
-                    Style::default()
-                        .fg(app.app_theme.tag)
-                        .add_modifier(Modifier::BOLD),
+                    smart_text,
+                    if is_hovered {
+                        app.app_theme.hover_style()
+                    } else {
+                        Style::default()
+                            .fg(app.app_theme.tag)
+                            .add_modifier(Modifier::BOLD)
+                    },
                 ));
                 if app.list.grid_folder.starts_with('@') {
                     let label = if app.list.grid_folder == "@today" {
@@ -452,25 +480,58 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     ));
                 }
             } else {
+                let vault_icon =
+                    crate::ui::get_icon("\u{f07b}", "\u{1f4c1}", app.config.ui.icon_mode);
+                let vault_text = format!(" {vault_icon} Vault");
+                let vault_w = vault_text.chars().count() as u16;
+                let is_hovered = app.mouse_pos.is_some_and(|(col, row)| {
+                    row == list_area.y + 1
+                        && col >= list_area.x
+                        && col < list_area.x + vault_w
+                        && !app.list.grid_folder.is_empty()
+                });
                 spans.push(Span::styled(
-                    format!(
-                        " {} Vault",
-                        crate::ui::get_icon("\u{f07b}", "\u{1f4c1}", app.config.ui.icon_mode)
-                    ),
-                    Style::default()
-                        .fg(app.app_theme.folder)
-                        .add_modifier(Modifier::BOLD),
+                    vault_text,
+                    if is_hovered {
+                        app.app_theme.hover_style()
+                    } else {
+                        Style::default()
+                            .fg(app.app_theme.folder)
+                            .add_modifier(Modifier::BOLD)
+                    },
                 ));
                 if !app.list.grid_folder.is_empty() {
-                    for part in app.list.grid_folder.split('/') {
+                    let parts: Vec<&str> = app.list.grid_folder.split('/').collect();
+                    let mut current_path = String::new();
+                    let mut offset = list_area.x + vault_w;
+                    for (part_idx, part) in parts.iter().enumerate() {
                         spans.push(Span::styled(
                             " / ",
                             Style::default().fg(app.app_theme.muted),
                         ));
+                        offset += 3;
+                        let part_w = part.chars().count() as u16;
+                        if !current_path.is_empty() {
+                            current_path.push('/');
+                        }
+                        current_path.push_str(part);
+                        
+                        let is_part_hovered = app.mouse_pos.is_some_and(|(col, row)| {
+                            row == list_area.y + 1
+                                && col >= offset
+                                && col < offset + part_w
+                                && part_idx < parts.len() - 1
+                        });
+                        
                         spans.push(Span::styled(
                             part.to_string(),
-                            Style::default().fg(app.app_theme.fg),
+                            if is_part_hovered {
+                                app.app_theme.hover_style()
+                            } else {
+                                Style::default().fg(app.app_theme.fg)
+                            },
                         ));
+                        offset += part_w;
                     }
                 }
             }
@@ -524,6 +585,9 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 );
                 let is_selected = vi == app.list.visual_index;
                 let in_selection = app.list.selected_indices.contains(&vi);
+                let is_hovered = app.mouse_pos.is_some_and(|(col, row)| {
+                    crate::events::contains_cell(tile_rect, col, row)
+                });
 
                 // --- resolve (icon char, glyph color, display name): SAME mapping the old code used ---
                 let item = &app.list.visual_list[vi];
@@ -667,6 +731,8 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 // that is both selected and cursor stays distinguishable.
                 if in_selection {
                     block = block.style(Style::default().bg(app.app_theme.accent));
+                } else if is_hovered && !is_selected {
+                    block = block.style(app.app_theme.hover_style());
                 }
                 let border_fg = if is_selected {
                     app.app_theme.highlight_bg
@@ -685,6 +751,8 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 };
                 let base_style = if in_selection {
                     Style::default().bg(app.app_theme.accent)
+                } else if is_hovered && !is_selected {
+                    app.app_theme.hover_style()
                 } else {
                     Style::default()
                 };
@@ -760,6 +828,8 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     } else {
                         Style::default().add_modifier(Modifier::BOLD)
                     }
+                } else if is_hovered {
+                    app.app_theme.hover_style()
                 } else {
                     Style::default()
                 };
@@ -780,9 +850,32 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             }
             // do NOT render a List widget here; do NOT touch list_state (tree view still uses it).
         } else {
+            let hovered_visual_index = app.mouse_pos.and_then(|(col, row)| {
+                let inner_y = list_area.y + 1;
+                let inner_h = list_area.height.saturating_sub(2);
+                let inner_x = list_area.x + 2;
+                let inner_w = list_area.width.saturating_sub(4);
+                
+                if col >= inner_x && col < inner_x + inner_w && row >= inner_y && row < inner_y + inner_h {
+                    let mouse_y_offset = row - inner_y;
+                    let offset = app.list.list_state.offset();
+                    let idx = mouse_y_offset as usize + offset;
+                    if idx < app.list.display_items.len() {
+                        Some(idx)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            });
             items.reserve(app.list.display_items.len());
-            for item in &app.list.display_items {
-                items.push(item.clone());
+            for (idx, item) in app.list.display_items.iter().enumerate() {
+                if Some(idx) == hovered_visual_index && idx != app.list.visual_index {
+                    items.push(item.clone().style(app.app_theme.hover_style()));
+                } else {
+                    items.push(item.clone());
+                }
             }
             let list = List::new(items)
                 .block(
@@ -1083,7 +1176,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     }
 
     if let Some(crate::popups::ActivePopup::Template(popup)) = &app.popups.active {
-        draw_template_popup(frame, popup, area, &app.app_theme);
+        draw_template_popup(frame, popup, area, &app.app_theme, app.mouse_pos);
     }
 
     if let Some(crate::popups::ActivePopup::Folder(popup)) = &mut app.popups.active {
@@ -1194,13 +1287,33 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             Style::default().fg(app.app_theme.muted)
         };
         let tag_empty = popup.all_tags.is_empty();
+        let hovered_tag_idx = app.mouse_pos.and_then(|(col, row)| {
+            let inner_y = chunks[1].y + 1;
+            if !popup.all_tags.is_empty()
+                && row >= inner_y
+                && row < inner_y + popup.all_tags.len() as u16
+                && col >= chunks[1].x + 1
+                && col < chunks[1].x + chunks[1].width - 1
+            {
+                Some((row - inner_y) as usize)
+            } else {
+                None
+            }
+        });
         let tag_items: Vec<ListItem> = if tag_empty {
             crate::ui::empty_list_item(&app.app_theme, "No tags found")
         } else {
             popup
                 .all_tags
                 .iter()
-                .map(|tag| ListItem::new(tag.to_string()))
+                .enumerate()
+                .map(|(i, tag)| {
+                    let mut item = ListItem::new(tag.to_string());
+                    if Some(i) == hovered_tag_idx {
+                        item = item.style(app.app_theme.hover_style());
+                    }
+                    item
+                })
                 .collect()
         };
 
@@ -1254,30 +1367,33 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(3), Constraint::Min(1)])
             .split(content);
-
-        let search_border = if picker.focus == crate::app::FolderPickerFocus::Search {
-            Style::default().fg(app.app_theme.heading)
-        } else {
-            Style::default().fg(app.app_theme.muted)
-        };
-        picker.input.set_block(
-            Block::default()
-                .style(app.app_theme.bg_style())
-                .borders(Borders::ALL)
-                .border_style(search_border)
-                .title(""),
-        );
-        frame.render_widget(&picker.input, chunks[0]);
-
+        let hovered_fp_idx = app.mouse_pos.and_then(|(col, row)| {
+            let inner_y = chunks[1].y + 1;
+            if !picker.filtered_folders.is_empty()
+                && row >= inner_y
+                && row < inner_y + picker.filtered_folders.len() as u16
+                && col >= chunks[1].x + 1
+                && col < chunks[1].x + chunks[1].width - 1
+            {
+                Some((row - inner_y) as usize)
+            } else {
+                None
+            }
+        });
         let items: Vec<ListItem> = if picker.filtered_folders.is_empty() {
             crate::ui::empty_list_item(&app.app_theme, "(no matching folders)")
         } else {
             picker
                 .filtered_folders
                 .iter()
-                .map(|f| {
+                .enumerate()
+                .map(|(i, f)| {
                     let label = if f.is_empty() { "Vault (Root)" } else { f };
-                    ListItem::new(label)
+                    let mut item = ListItem::new(label);
+                    if Some(i) == hovered_fp_idx {
+                        item = item.style(app.app_theme.hover_style());
+                    }
+                    item
                 })
                 .collect()
         };
@@ -1350,9 +1466,25 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             .iter()
             .map(|(l, g, _)| (*l, Some(*g)))
             .collect();
+        let hovered = app.mouse_pos.and_then(|(col, row)| {
+            if row == chunks[1].y {
+                crate::ui::hit_test_tabs(
+                    &tabs,
+                    chunks[1].x,
+                    chunks[1].width,
+                    chunks[1].x,
+                    col,
+                    app.config.ui.tab_icons_only,
+                    app.config.ui.icon_mode,
+                )
+            } else {
+                None
+            }
+        });
         let tab_spans = build_tab_spans(
             &tabs,
             palette.active_tab,
+            hovered,
             &app.app_theme,
             app.config.ui.tab_icons_only,
             app.config.ui.icon_mode,
@@ -1362,10 +1494,24 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             .style(app.app_theme.hint_line_bg_style());
         frame.render_widget(tabs_w, chunks[1]);
 
+        let hovered_cmd_idx = app.mouse_pos.and_then(|(col, row)| {
+            let inner_y = chunks[2].y + 1;
+            if !palette.items.is_empty()
+                && row >= inner_y
+                && row < inner_y + palette.items.len() as u16
+                && col >= chunks[2].x + 1
+                && col < chunks[2].x + chunks[2].width - 1
+            {
+                Some((row - inner_y) as usize)
+            } else {
+                None
+            }
+        });
         let items: Vec<ListItem> = palette
             .items
             .iter()
-            .map(|item| {
+            .enumerate()
+            .map(|(i, item)| {
                 let mut spans = vec![Span::styled(
                     format!("{} ", item.glyph),
                     Style::default()
@@ -1373,13 +1519,17 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                         .add_modifier(Modifier::BOLD),
                 )];
                 spans.extend(crate::ui::style_palette_name(&item.name, &app.app_theme));
-                ListItem::new(vec![
+                let mut list_item = ListItem::new(vec![
                     Line::from(spans),
                     Line::from(Span::styled(
                         &item.description,
                         Style::default().fg(app.app_theme.muted),
                     )),
-                ])
+                ]);
+                if Some(i) == hovered_cmd_idx {
+                    list_item = list_item.style(app.app_theme.hover_style());
+                }
+                list_item
             })
             .collect();
 
@@ -1678,27 +1828,63 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     }
                 }
             }
+            let grep_hovered = app.mouse_pos.and_then(|(col, row)| {
+                let inner_y = results_chunk.y + 1;
+                if !visible.is_empty()
+                    && row >= inner_y
+                    && row < inner_y + visible.len() as u16
+                    && col >= results_chunk.x + 1
+                    && col < results_chunk.x + results_chunk.width - 1
+                {
+                    Some((row - inner_y) as usize)
+                } else {
+                    None
+                }
+            });
             let items: Vec<ListItem> = visible
                 .iter()
-                .map(|(_, t)| {
-                    ListItem::new(crate::ui::styled_result_line(
+                .enumerate()
+                .map(|(vi, (_, t))| {
+                    let mut item = ListItem::new(crate::ui::styled_result_line(
                         t,
                         &app.app_theme,
                         app.config.ui.icon_mode,
-                    ))
+                    ));
+                    if Some(vi) == grep_hovered {
+                        item = item.style(app.app_theme.hover_style());
+                    }
+                    item
                 })
                 .collect();
             (items, "")
         } else if has_title {
+            let title_hovered = app.mouse_pos.and_then(|(col, row)| {
+                let inner_y = results_chunk.y + 1;
+                if !popup.title_results.is_empty()
+                    && row >= inner_y
+                    && row < inner_y + popup.title_results.len() as u16
+                    && col >= results_chunk.x + 1
+                    && col < results_chunk.x + results_chunk.width - 1
+                {
+                    Some((row - inner_y) as usize)
+                } else {
+                    None
+                }
+            });
             let items: Vec<ListItem> = popup
                 .title_results
                 .iter()
-                .map(|entry| {
-                    ListItem::new(crate::ui::styled_result_line(
+                .enumerate()
+                .map(|(i, entry)| {
+                    let mut item = ListItem::new(crate::ui::styled_result_line(
                         entry,
                         &app.app_theme,
                         app.config.ui.icon_mode,
-                    ))
+                    ));
+                    if Some(i) == title_hovered {
+                        item = item.style(app.app_theme.hover_style());
+                    }
+                    item
                 })
                 .collect();
             (items, "")
@@ -1777,19 +1963,38 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             app.app_theme.heading
         };
 
+        let hovered_idx = app.mouse_pos.and_then(|(col, row)| {
+            let inner_y = content.y + 1;
+            if !trash.items.is_empty()
+                && row >= inner_y
+                && row < inner_y + trash.items.len() as u16
+                && col >= content.x + 1
+                && col < content.x + content.width - 1
+            {
+                Some((row - inner_y) as usize)
+            } else {
+                None
+            }
+        });
+
         let items: Vec<ListItem> = trash
             .items
             .iter()
-            .map(|item| {
+            .enumerate()
+            .map(|(i, item)| {
                 let name = item.name.to_string_lossy();
                 let when = format_relative_time(item.time_deleted as u64);
-                ListItem::new(Line::from(vec![
+                let mut list_item = ListItem::new(Line::from(vec![
                     Span::raw(name.to_string()),
                     Span::styled(
                         format!("  ({when})"),
                         Style::default().fg(app.app_theme.muted),
                     ),
-                ]))
+                ]));
+                if Some(i) == hovered_idx {
+                    list_item = list_item.style(app.app_theme.hover_style());
+                }
+                list_item
             })
             .collect();
 
