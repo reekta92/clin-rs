@@ -849,6 +849,30 @@ fn run_tui_session(app: &mut App) -> Result<()> {
     }
 }
 
+/// Drain mouse events already sitting in the crossterm queue and feed each to the
+/// overlay view, collapsing a burst of drag events into one later render.
+/// Called only after the loop has already dispatched a `Drag` event, so during an
+/// active pan the queue contains only further `Drag`/`Up` mouse events.
+/// Non-mouse events break the loop (vanishingly rare during an active drag; the
+/// single read event is dropped rather than re-queued because crossterm cannot
+/// push back). Results from drained events are discarded — a mouse Drag/Up never
+/// returns Exit/NoteOpened/OpenHelp.
+fn drain_queued_mouse_events<V: OverlayView>(
+    view: &mut V,
+    terminal: &Terminal<ratatui::backend::CrosstermBackend<Stdout>>,
+    config: &mut ClinConfig,
+) -> Result<()> {
+    while event::poll(Duration::ZERO)? {
+        match event::read()? {
+            ev @ Event::Mouse(_) => {
+                let _ = view.overlay_handle_event(ev, terminal, config)?;
+            }
+            _ => break,
+        }
+    }
+    Ok(())
+}
+
 fn run_app(
     terminal: &mut Terminal<ratatui::backend::CrosstermBackend<Stdout>>,
     app: &mut App,
@@ -1238,12 +1262,20 @@ fn run_app(
                                     }
                                 }
                                 ViewMode::Graph => {
-                                    if let Some(graf) = &mut app.graph_state {
-                                        match graf.overlay_handle_event(
+                                    let mut is_drag = false;
+                                    let result = app.graph_state.as_mut().map(|graf| {
+                                        is_drag = matches!(
+                                            mouse_event.kind,
+                                            ratatui::crossterm::event::MouseEventKind::Drag(_)
+                                        );
+                                        graf.overlay_handle_event(
                                             Event::Mouse(mouse_event),
                                             terminal,
                                             &mut app.config,
-                                        )? {
+                                        )
+                                    });
+                                    if let Some(result) = result {
+                                        match result? {
                                             crate::overlay::OverlayResult::NoteOpened(note_id) => {
                                                 if let Err(e) = app.config.save() {
                                                     app.set_temporary_status(&format!(
@@ -1282,14 +1314,25 @@ fn run_app(
                                             _ => {}
                                         }
                                     }
+                                    if is_drag && let Some(graf) = &mut app.graph_state {
+                                        drain_queued_mouse_events(graf, terminal, &mut app.config)?;
+                                    }
                                 }
                                 ViewMode::Draw => {
-                                    if let Some(draw) = &mut app.draw_state {
-                                        match draw.overlay_handle_event(
+                                    let mut is_drag = false;
+                                    let result = app.draw_state.as_mut().map(|draw| {
+                                        is_drag = matches!(
+                                            mouse_event.kind,
+                                            ratatui::crossterm::event::MouseEventKind::Drag(_)
+                                        );
+                                        draw.overlay_handle_event(
                                             Event::Mouse(mouse_event),
                                             terminal,
                                             &mut app.config,
-                                        )? {
+                                        )
+                                    });
+                                    if let Some(result) = result {
+                                        match result? {
                                             crate::overlay::OverlayResult::Exit => {
                                                 app.draw_state = None;
                                                 app.close_draw_view();
@@ -1302,6 +1345,9 @@ fn run_app(
                                             }
                                             _ => {}
                                         }
+                                    }
+                                    if is_drag && let Some(draw) = &mut app.draw_state {
+                                        drain_queued_mouse_events(draw, terminal, &mut app.config)?;
                                     }
                                 }
                                 ViewMode::Canvas => {

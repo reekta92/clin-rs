@@ -214,20 +214,27 @@ pub fn draw_theme_popup(
     theme: &AppThemeColors,
     keybinds: &crate::keybinds::Keybinds,
 ) {
-    let content = draw_popup_frame(frame, area, "THEMES", PopupSize::Medium, PopupHints::Keybinds(&[
-        (
-            keybinds.display_list(crate::keybinds::ListAction::CycleFocus),
-            "navigate",
-        ),
-        (
-            keybinds.display_list(crate::keybinds::ListAction::Confirm),
-            "select",
-        ),
-        (
-            keybinds.display_list(crate::keybinds::ListAction::Cancel),
-            "close",
-        ),
-    ]), theme);
+    let content = draw_popup_frame(
+        frame,
+        area,
+        "THEMES",
+        PopupSize::Medium,
+        PopupHints::Keybinds(&[
+            (
+                keybinds.display_list(crate::keybinds::ListAction::CycleFocus),
+                "navigate",
+            ),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::Confirm),
+                "select",
+            ),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::Cancel),
+                "close",
+            ),
+        ]),
+        theme,
+    );
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -332,8 +339,12 @@ pub fn draw_sort_popup(
     theme: &AppThemeColors,
     keybinds: &crate::keybinds::Keybinds,
 ) {
-    let content_area =
-        draw_popup_frame(frame, area, "SORT BY", PopupSize::Medium, PopupHints::Keybinds(&[
+    let content_area = draw_popup_frame(
+        frame,
+        area,
+        "SORT BY",
+        PopupSize::Medium,
+        PopupHints::Keybinds(&[
             (
                 keybinds.display_list(crate::keybinds::ListAction::MoveUp),
                 "up",
@@ -350,7 +361,9 @@ pub fn draw_sort_popup(
                 keybinds.display_list(crate::keybinds::ListAction::Cancel),
                 "cancel",
             ),
-        ]), theme);
+        ]),
+        theme,
+    );
 
     let options = [
         "Title (A-Z)",
@@ -393,10 +406,22 @@ pub fn draw_icon_mode_popup(
         "ICON MODE",
         PopupSize::Medium,
         PopupHints::Keybinds(&[
-            (keybinds.display_list(crate::keybinds::ListAction::MoveUp), "up"),
-            (keybinds.display_list(crate::keybinds::ListAction::MoveDown), "down"),
-            (keybinds.display_list(crate::keybinds::ListAction::Confirm), "select"),
-            (keybinds.display_list(crate::keybinds::ListAction::Cancel), "cancel"),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::MoveUp),
+                "up",
+            ),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::MoveDown),
+                "down",
+            ),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::Confirm),
+                "select",
+            ),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::Cancel),
+                "cancel",
+            ),
         ]),
         theme,
     );
@@ -437,10 +462,22 @@ pub fn draw_create_format_popup(
         "CREATE NEW",
         PopupSize::Medium,
         PopupHints::Keybinds(&[
-            (keybinds.display_list(crate::keybinds::ListAction::MoveUp), "up"),
-            (keybinds.display_list(crate::keybinds::ListAction::MoveDown), "down"),
-            (keybinds.display_list(crate::keybinds::ListAction::Confirm), "select"),
-            (keybinds.display_list(crate::keybinds::ListAction::Cancel), "cancel"),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::MoveUp),
+                "up",
+            ),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::MoveDown),
+                "down",
+            ),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::Confirm),
+                "select",
+            ),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::Cancel),
+                "cancel",
+            ),
         ]),
         theme,
     );
@@ -486,10 +523,22 @@ pub fn draw_hint_bar_style_popup(
         "HINT BAR STYLE",
         PopupSize::Medium,
         PopupHints::Keybinds(&[
-            (keybinds.display_list(crate::keybinds::ListAction::MoveUp), "up"),
-            (keybinds.display_list(crate::keybinds::ListAction::MoveDown), "down"),
-            (keybinds.display_list(crate::keybinds::ListAction::Confirm), "select"),
-            (keybinds.display_list(crate::keybinds::ListAction::Cancel), "cancel"),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::MoveUp),
+                "up",
+            ),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::MoveDown),
+                "down",
+            ),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::Confirm),
+                "select",
+            ),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::Cancel),
+                "cancel",
+            ),
         ]),
         theme,
     );
@@ -530,10 +579,22 @@ pub fn draw_keybind_preset_popup(
         "KEYBIND PRESET",
         PopupSize::Medium,
         PopupHints::Keybinds(&[
-            (keybinds.display_list(crate::keybinds::ListAction::MoveUp), "up"),
-            (keybinds.display_list(crate::keybinds::ListAction::MoveDown), "down"),
-            (keybinds.display_list(crate::keybinds::ListAction::Confirm), "select"),
-            (keybinds.display_list(crate::keybinds::ListAction::Cancel), "cancel"),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::MoveUp),
+                "up",
+            ),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::MoveDown),
+                "down",
+            ),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::Confirm),
+                "select",
+            ),
+            (
+                keybinds.display_list(crate::keybinds::ListAction::Cancel),
+                "cancel",
+            ),
         ]),
         theme,
     );
@@ -901,7 +962,6 @@ pub fn format_keybind_hints<'a>(
         }
     }
 }
-
 
 /// Describes the content of a popup footer hint line.
 pub enum PopupHints<'a> {

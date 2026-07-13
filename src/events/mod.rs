@@ -1393,8 +1393,8 @@ impl crate::popups::ActivePopup {
                 app.seq_matcher.clear();
                 match route_selection_list(&key, &app.keybinds, &mut popup.selected, 3) {
                     SelListAction::Up | SelListAction::Down => {
-                        app.select_hint_bar_style();
                         app.popups.active = Some(ActivePopup::HintBarStyle(popup));
+                        app.select_hint_bar_style();
                     }
                     SelListAction::Confirm => {
                         app.popups.active = Some(ActivePopup::HintBarStyle(popup));
@@ -1414,8 +1414,8 @@ impl crate::popups::ActivePopup {
                 app.seq_matcher.clear();
                 match route_selection_list(&key, &app.keybinds, &mut popup.selected, 3) {
                     SelListAction::Up | SelListAction::Down => {
-                        app.select_keybind_preset();
                         app.popups.active = Some(ActivePopup::KeybindPreset(popup));
+                        app.select_keybind_preset();
                     }
                     SelListAction::Confirm => {
                         app.popups.active = Some(ActivePopup::KeybindPreset(popup));

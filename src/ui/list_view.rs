@@ -1,9 +1,8 @@
 use super::{
-    PopupSize, PopupHints, PreviewHeaderInfo, build_list_widget, build_tab_spans, draw_confirm_popup,
-    draw_corner_watermark, draw_dim_vline, draw_popup_frame, draw_status_bar, draw_template_popup,
-    draw_view_title_bar, draw_view_title_bar_with_tabs, format_keybind_hints,
-    format_relative_time,
-    popup_block, popup_hint_line, preview_spans,
+    PopupHints, PopupSize, PreviewHeaderInfo, build_list_widget, build_tab_spans,
+    draw_confirm_popup, draw_corner_watermark, draw_dim_vline, draw_popup_frame, draw_status_bar,
+    draw_template_popup, draw_view_title_bar, draw_view_title_bar_with_tabs, format_keybind_hints,
+    format_relative_time, popup_block, popup_hint_line, preview_spans,
 };
 use crate::app::{App, VIRTUAL_PINNED_LABEL, VIRTUAL_PINNED_PATH, VIRTUAL_SMART_PATH, ViewMode};
 use crate::app_theme::AppThemeColors;
