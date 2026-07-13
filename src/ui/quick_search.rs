@@ -2,8 +2,8 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
     layout::Rect,
     style::Style,
-    text::Line,
-    widgets::{self, Block, Borders, Clear, List, ListItem, Paragraph},
+    text::{Line, Span},
+    widgets::{Block, Clear, List, ListItem, Paragraph},
     Frame,
 };
 
@@ -134,10 +134,17 @@ pub fn draw_quick_search<T, F>(
     frame.render_widget(Clear, header_rect);
     frame.render_widget(&header_block, header_rect);
 
-    // --- Centered input field ---
-    let input_width = 50u16.min(frame_area.width);
-    let input_x = frame_area.x + (frame_area.width.saturating_sub(input_width)) / 2;
-    let input_area = Rect::new(input_x, frame_area.y, input_width, 1);
+    // --- "Find:" label + centered input field ---
+    let label_width = 6u16; // "Find: "
+    let input_width = 50u16.min(frame_area.width.saturating_sub(label_width));
+    let combo_width = label_width + input_width;
+    let start_x = frame_area.x + (frame_area.width.saturating_sub(combo_width)) / 2;
+    let label_area = Rect::new(start_x, frame_area.y, label_width, 1);
+    let input_area = Rect::new(start_x + label_width, frame_area.y, input_width, 1);
+
+    let label_style = Style::default().fg(theme.highlight_fg);
+    let find_label = Paragraph::new(Line::from(Span::styled("Find: ", label_style)));
+    frame.render_widget(find_label, label_area);
 
     let mut input_widget = popup.input.clone();
     input_widget.set_block(Block::default());
@@ -159,32 +166,22 @@ pub fn draw_quick_search<T, F>(
     };
 
     if dropdown_height > 0 {
-        // Include 1 line for border bottom inset — the block border is drawn
-        // around the dropdown body.
         let dropdown_area = Rect::new(
-            input_x,
+            start_x,
             frame_area.y + 1,
-            input_width,
-            dropdown_height as u16 + 2, // +2 for top/bottom inner padding
+            combo_width,
+            dropdown_height as u16,
         );
 
         // Clear the area behind the dropdown
         frame.render_widget(Clear, dropdown_area);
-
-        // Border: LEFT | RIGHT | BOTTOM only (no top border), connects to header
-        let dropdown_block = Block::default()
-            .borders(Borders::LEFT | Borders::RIGHT | Borders::BOTTOM)
-            .border_type(widgets::BorderType::Rounded)
-            .border_style(Style::default().fg(theme.border));
-
-        let inner = dropdown_block.inner(dropdown_area);
 
         if result_count == 0 {
             let no_match = Paragraph::new(Line::styled(
                 "  No matches",
                 Style::default().fg(theme.muted),
             ));
-            frame.render_widget(no_match, inner);
+            frame.render_widget(no_match, dropdown_area);
         } else {
             let scroll_offset = popup.selected.saturating_sub(max_visible.saturating_sub(1));
             let items: Vec<ListItem<'static>> = popup
@@ -201,10 +198,7 @@ pub fn draw_quick_search<T, F>(
                 .collect();
 
             let list = List::new(items);
-            frame.render_widget(list, inner);
+            frame.render_widget(list, dropdown_area);
         }
-
-        // Render block border on top
-        frame.render_widget(dropdown_block, dropdown_area);
     }
 }
