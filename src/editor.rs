@@ -15,7 +15,14 @@ pub enum EditSidebar {
     #[default]
     None,
     Outline,
-    Backlinks,
+    Links,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LinkItem {
+    pub id: String,
+    pub title: String,
+    pub is_backlink: bool,
 }
 
 pub struct NoteEditor {
@@ -41,7 +48,7 @@ pub struct NoteEditor {
     pub sidebar: EditSidebar,
     pub sidebar_selected: usize,
     pub outline_nodes: Vec<crate::content_tree::parse::TreeNode>,
-    pub backlinks: Vec<(String, String)>, // (note_id, title)
+    pub links: Vec<LinkItem>,
     pub link_preview: bool,
     pub link_preview_renderer: Option<MarkdownRenderer>,
     pub link_preview_target: Option<String>,
@@ -73,7 +80,7 @@ impl Default for NoteEditor {
             sidebar: EditSidebar::None,
             sidebar_selected: 0,
             outline_nodes: Vec::new(),
-            backlinks: Vec::new(),
+            links: Vec::new(),
             link_preview: false,
             link_preview_renderer: None,
             link_preview_target: None,

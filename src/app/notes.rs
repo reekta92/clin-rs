@@ -234,7 +234,7 @@ impl App {
             self.editor.editor = editor;
             self.apply_editor_prefs();
             self.rebuild_outline();
-            self.editor.backlinks = self.compute_backlinks();
+            self.editor.links = self.compute_links();
             // Clone image infrastructure into the editor so markdown images
             // can be decoded and rendered in the preview pane.
             self.editor.image_picker = self.image_picker.clone();

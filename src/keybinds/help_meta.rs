@@ -340,9 +340,9 @@ pub fn edit_action_meta(a: EditAction) -> HelpMeta {
             group: "Panels",
             description: "Toggle outline pane",
         },
-        EditAction::ToggleBacklinks => HelpMeta {
+        EditAction::ToggleLinks => HelpMeta {
             group: "Panels",
-            description: "Toggle backlinks pane",
+            description: "Toggle links pane",
         },
         EditAction::PreviewLink => HelpMeta {
             group: "Panels",

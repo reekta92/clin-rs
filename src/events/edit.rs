@@ -157,8 +157,8 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 }
                 return false;
             }
-            EditAction::ToggleBacklinks => {
-                app.toggle_backlinks_pane();
+            EditAction::ToggleLinks => {
+                app.toggle_links_pane();
                 if app.editor.sidebar == EditSidebar::None && *focus == EditFocus::Sidebar {
                     *focus = EditFocus::Body;
                 }

@@ -86,7 +86,7 @@ pub enum EditAction {
     InsertDate,
     ToggleSoftWrap,
     ToggleOutline,
-    ToggleBacklinks,
+    ToggleLinks,
     PreviewLink,
 }
 

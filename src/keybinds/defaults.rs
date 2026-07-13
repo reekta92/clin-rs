@@ -338,7 +338,7 @@ impl Default for Keybinds {
             vec![KeyCombo::ctrl(KeyCode::Char('o'))],
         );
         edit.insert(
-            EditAction::ToggleBacklinks,
+            EditAction::ToggleLinks,
             vec![KeyCombo::ctrl(KeyCode::Char('b'))],
         );
         edit.insert(

@@ -1,5 +1,5 @@
 use super::*;
-use crate::editor::{EditFocus, EditSidebar};
+use crate::editor::{EditFocus, EditSidebar, LinkItem};
 
 impl App {
     /// Length of the active sidebar list (for bounds clamping).
@@ -7,7 +7,7 @@ impl App {
         match self.editor.sidebar {
             EditSidebar::None => 0,
             EditSidebar::Outline => self.editor.outline_nodes.len(),
-            EditSidebar::Backlinks => self.editor.backlinks.len(),
+            EditSidebar::Links => self.editor.links.len(),
         }
     }
 
@@ -25,17 +25,17 @@ impl App {
         }
     }
 
-    pub fn toggle_backlinks_pane(&mut self) {
-        if self.editor.sidebar == EditSidebar::Backlinks {
+    pub fn toggle_links_pane(&mut self) {
+        if self.editor.sidebar == EditSidebar::Links {
             self.editor.sidebar = EditSidebar::None;
-            self.set_temporary_status_static("Backlinks pane disabled");
+            self.set_temporary_status_static("Links pane disabled");
         } else {
-            self.editor.sidebar = EditSidebar::Backlinks;
+            self.editor.sidebar = EditSidebar::Links;
             self.editor.editor_preview_enabled = false;
             self.editor.md_preview_renderer = None;
-            self.editor.backlinks = self.compute_backlinks();
+            self.editor.links = self.compute_links();
             self.editor.sidebar_selected = 0;
-            self.set_temporary_status_static("Backlinks pane enabled");
+            self.set_temporary_status_static("Links pane enabled");
         }
     }
 
@@ -55,26 +55,60 @@ impl App {
         }
     }
 
-    /// Notes whose `links` (lowercased) contain the current note's title (lowercased)
-    /// or id. Excludes the current note itself. Matches the graph view's title-based
-    /// wikilink resolution (src/graf/graph.rs:78-97 lowercases both sides).
-    pub fn compute_backlinks(&self) -> Vec<(String, String)> {
+    /// Outgoing/Forward links AND Incoming/Backlinks.
+    pub fn compute_links(&self) -> Vec<LinkItem> {
+        let mut items = Vec::new();
+
+        // 1. Outgoing/Forward links
+        let content = self.editor.editor.lines().join("\n");
+        let forward_targets = crate::storage::extract_wikilinks(&content);
+
+        let mut forward_notes = Vec::new();
+        for target in forward_targets {
+            if let Some(id) = self.resolve_wikilink_target(&target)
+                && let Some(n) = self.notes.iter().find(|n| n.id == id)
+                && !forward_notes.iter().any(|(f_id, _)| f_id == &n.id)
+            {
+                forward_notes.push((n.id.clone(), n.title.clone()));
+            }
+        }
+
+        // 2. Incoming/Backlinks
         let cur_id = match &self.editor.editing_id {
             Some(id) => id.clone(),
-            None => return Vec::new(),
+            None => return items,
         };
         let cur_title = crate::events::get_title_text(&self.editor.title_editor).to_lowercase();
-        self.notes
-            .iter()
-            .filter(|n| n.id != cur_id)
-            .filter(|n| {
-                let title_hit =
-                    !cur_title.is_empty() && n.links.iter().any(|l| l.to_lowercase() == cur_title);
-                let id_hit = n.links.iter().any(|l| l == &cur_id);
-                title_hit || id_hit
-            })
-            .map(|n| (n.id.clone(), n.title.clone()))
-            .collect()
+        let mut incoming_notes = Vec::new();
+        for n in &self.notes {
+            if n.id == cur_id {
+                continue;
+            }
+            let title_hit =
+                !cur_title.is_empty() && n.links.iter().any(|l| l.to_lowercase() == cur_title);
+            let id_hit = n.links.iter().any(|l| l == &cur_id);
+            if (title_hit || id_hit) && !incoming_notes.iter().any(|(i_id, _)| i_id == &n.id) {
+                incoming_notes.push((n.id.clone(), n.title.clone()));
+            }
+        }
+
+        // 3. Combine them
+        for (id, title) in forward_notes {
+            items.push(LinkItem {
+                id,
+                title,
+                is_backlink: false,
+            });
+        }
+        for (id, title) in incoming_notes {
+            items.push(LinkItem {
+                id,
+                title,
+                is_backlink: true,
+            });
+        }
+
+        items
     }
 
     /// Move sidebar selection by `delta` (-1 up, +1 down), saturating clamped.
@@ -89,8 +123,8 @@ impl App {
     }
 
     /// Activate the selected sidebar item. Outline → jump cursor to that line,
-    /// return focus to Body. Backlinks → autosave current note, open the linking
-    /// note. Returns true if the note was switched (backlinks).
+    /// return focus to Body. Links → autosave current note, open the linking
+    /// or linked note. Returns true if the note was switched.
     pub fn sidebar_activate(&mut self, focus: &mut EditFocus) -> bool {
         match self.editor.sidebar {
             EditSidebar::Outline => {
@@ -104,15 +138,10 @@ impl App {
                 *focus = EditFocus::Body;
                 false
             }
-            EditSidebar::Backlinks => {
-                if let Some((id, _title)) = self
-                    .editor
-                    .backlinks
-                    .get(self.editor.sidebar_selected)
-                    .cloned()
-                {
+            EditSidebar::Links => {
+                if let Some(item) = self.editor.links.get(self.editor.sidebar_selected).cloned() {
                     self.autosave();
-                    self.open_note_at_line(&id, None);
+                    self.open_note_at_line(&item.id, None);
                     true
                 } else {
                     false

@@ -162,7 +162,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     if let Some(sb) = sidebar_area {
         match app.editor.sidebar {
             EditSidebar::Outline => draw_outline_pane(frame, sb, app, focus),
-            EditSidebar::Backlinks => draw_backlinks_pane(frame, sb, app, focus),
+            EditSidebar::Links => draw_links_pane(frame, sb, app, focus),
             EditSidebar::None => {}
         }
     }
@@ -400,7 +400,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             "preview",
         ),
         (kb.display_edit(EditAction::ToggleOutline), "outline"),
-        (kb.display_edit(EditAction::ToggleBacklinks), "backlinks"),
+        (kb.display_edit(EditAction::ToggleLinks), "links"),
         (kb.display_edit(EditAction::PreviewLink), "peek link"),
         (kb.display_edit(EditAction::Find), "find"),
         (kb.display_edit(EditAction::InsertDate), "date"),
@@ -545,7 +545,7 @@ fn draw_outline_pane(frame: &mut Frame, area: Rect, app: &mut App, focus: EditFo
     }
 }
 
-fn draw_backlinks_pane(frame: &mut Frame, area: Rect, app: &mut App, focus: EditFocus) {
+fn draw_links_pane(frame: &mut Frame, area: Rect, app: &mut App, focus: EditFocus) {
     let theme = &app.app_theme;
 
     // Fill the background of the sidebar area
@@ -571,20 +571,26 @@ fn draw_backlinks_pane(frame: &mut Frame, area: Rect, app: &mut App, focus: Edit
             .fg(theme.heading)
             .add_modifier(Modifier::BOLD)
     };
-    let title =
-        Paragraph::new(format!("  BACKLINKS ({})", app.editor.backlinks.len())).style(title_style);
+    let title = Paragraph::new(format!("  LINKS ({})", app.editor.links.len())).style(title_style);
     frame.render_widget(title, sb_chunks[1]);
 
     // Draw List
     let items: Vec<ListItem> = app
         .editor
-        .backlinks
+        .links
         .iter()
-        .map(|(_, title)| ListItem::new(title.as_str()).style(Style::default().fg(theme.fg)))
+        .map(|item| {
+            let text = if item.is_backlink {
+                format!("←  {}", item.title)
+            } else {
+                format!("→  {}", item.title)
+            };
+            ListItem::new(text).style(Style::default().fg(theme.fg))
+        })
         .collect();
 
     if items.is_empty() {
-        let p = Paragraph::new("  No backlinks").style(Style::default().fg(theme.muted));
+        let p = Paragraph::new("  No links").style(Style::default().fg(theme.muted));
         frame.render_widget(p, sb_chunks[3]);
     } else {
         let list = List::new(items).block(Block::default()).highlight_style(
