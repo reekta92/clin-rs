@@ -525,6 +525,7 @@ impl RenderCache {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn draw_graph_view(
     frame: &mut ratatui::Frame,
     area: Rect,

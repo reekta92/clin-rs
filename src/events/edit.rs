@@ -488,7 +488,7 @@ pub fn handle_edit_mouse(
                 *focus = EditFocus::Sidebar;
                 let clicked_row = mouse_event.row as i32 - sb.y as i32 - 3;
                 if clicked_row >= 0 {
-                    let clicked = clicked_row as usize;
+                    let clicked = clicked_row as usize + app.editor.sidebar_scroll_offset;
                     let len = app.sidebar_len();
                     if clicked < len {
                         app.editor.sidebar_selected = clicked;

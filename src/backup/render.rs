@@ -101,6 +101,7 @@ pub fn backup_tabs(icon_mode: crate::config::IconMode) -> [(&'static str, &'stat
     ]
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn draw_header(
     frame: &mut Frame,
     area: Rect,
@@ -139,7 +140,14 @@ pub fn draw_header(
             None
         }
     });
-    let spans = crate::ui::build_tab_spans(&tabs, active, hovered, theme, state.tab_icons_only, icon_mode);
+    let spans = crate::ui::build_tab_spans(
+        &tabs,
+        active,
+        hovered,
+        theme,
+        state.tab_icons_only,
+        icon_mode,
+    );
 
     let mut ctx = crate::statusline::StatuslineContext::for_overlay(config, ViewMode::Backup);
     ctx.area = Some(area);
@@ -260,7 +268,11 @@ fn draw_content(frame: &mut Frame, area: Rect, state: &mut BackupState) {
             let inner_h = area.height.saturating_sub(2);
             let inner_x = area.x + 2;
             let inner_w = area.width.saturating_sub(4);
-            if col >= inner_x && col < inner_x + inner_w && row >= inner_y && row < inner_y + inner_h {
+            if col >= inner_x
+                && col < inner_x + inner_w
+                && row >= inner_y
+                && row < inner_y + inner_h
+            {
                 let mouse_y_offset = row - inner_y;
                 let offset = state.list_state.offset();
                 let idx = mouse_y_offset as usize + offset;
@@ -273,7 +285,9 @@ fn draw_content(frame: &mut Frame, area: Rect, state: &mut BackupState) {
                 None
             }
         });
-        if let Some(h_idx) = hovered_idx && Some(h_idx) != state.list_state.selected() {
+        if let Some(h_idx) = hovered_idx
+            && Some(h_idx) != state.list_state.selected()
+        {
             items[h_idx] = items[h_idx].clone().style(theme.hover_style());
         }
 
@@ -336,7 +350,11 @@ fn draw_content(frame: &mut Frame, area: Rect, state: &mut BackupState) {
             let inner_h = area.height.saturating_sub(2);
             let inner_x = area.x + 2;
             let inner_w = area.width.saturating_sub(4);
-            if col >= inner_x && col < inner_x + inner_w && row >= inner_y && row < inner_y + inner_h {
+            if col >= inner_x
+                && col < inner_x + inner_w
+                && row >= inner_y
+                && row < inner_y + inner_h
+            {
                 let mouse_y_offset = row - inner_y;
                 let offset = state.history_list_state.offset();
                 let idx = mouse_y_offset as usize + offset;
@@ -349,7 +367,9 @@ fn draw_content(frame: &mut Frame, area: Rect, state: &mut BackupState) {
                 None
             }
         });
-        if let Some(h_idx) = hovered_idx && Some(h_idx) != state.history_list_state.selected() {
+        if let Some(h_idx) = hovered_idx
+            && Some(h_idx) != state.history_list_state.selected()
+        {
             items[h_idx] = items[h_idx].clone().style(theme.hover_style());
         }
 
@@ -563,9 +583,9 @@ fn draw_settings_popup(frame: &mut Frame, area: Rect, state: &BackupState) {
                 theme.muted
             };
 
-            let is_hovered = state.mouse_pos.is_some_and(|(col, row)| {
-                crate::events::contains_cell(area, col, row)
-            });
+            let is_hovered = state
+                .mouse_pos
+                .is_some_and(|(col, row)| crate::events::contains_cell(area, col, row));
             let block_style = if is_hovered && state.settings.focused_field != field {
                 theme.hover_style()
             } else {
@@ -636,9 +656,9 @@ fn draw_settings_popup(frame: &mut Frame, area: Rect, state: &BackupState) {
     ];
 
     for (area, field, placeholder, textarea) in text_fields {
-        let is_hovered = state.mouse_pos.is_some_and(|(col, row)| {
-            crate::events::contains_cell(area, col, row)
-        });
+        let is_hovered = state
+            .mouse_pos
+            .is_some_and(|(col, row)| crate::events::contains_cell(area, col, row));
         let block_style = if is_hovered && state.settings.focused_field != field {
             theme.hover_style()
         } else {
@@ -679,9 +699,9 @@ fn draw_settings_popup(frame: &mut Frame, area: Rect, state: &BackupState) {
 
     // Save Button
     let is_save_focused = state.settings.focused_field == SettingsField::SaveButton;
-    let is_save_hovered = state.mouse_pos.is_some_and(|(col, row)| {
-        crate::events::contains_cell(chunks[7], col, row)
-    });
+    let is_save_hovered = state
+        .mouse_pos
+        .is_some_and(|(col, row)| crate::events::contains_cell(chunks[7], col, row));
     let save_style = if is_save_focused {
         Style::default()
             .fg(theme.highlight_fg)

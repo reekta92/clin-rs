@@ -164,29 +164,7 @@ pub fn draw_content_tree(
         let selected_pos = visible.iter().position(|&x| x == state.selected);
         let mut list_state = crate::ui::list_state_selected(selected_pos);
 
-        let hovered_idx = state.mouse_pos.and_then(|(col, row)| {
-            if col >= left_area.x
-                && col < left_area.x + left_area.width
-                && row >= left_area.y
-                && row < left_area.y + left_area.height
-            {
-                let mouse_y_offset = row - left_area.y;
-                let offset = list_state.offset();
-                let idx = mouse_y_offset as usize + offset;
-                if idx < items.len() {
-                    Some(idx)
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        });
-
-        if let Some(h_idx) = hovered_idx && Some(h_idx) != list_state.selected() {
-            items[h_idx] = items[h_idx].clone().style(theme.hover_style());
-        }
-
+        let item_count = items.len();
         let list = List::new(items)
             .block(Block::default().style(theme.bg_style()))
             .highlight_style(
@@ -196,8 +174,15 @@ pub fn draw_content_tree(
                     .add_modifier(Modifier::BOLD),
             )
             .highlight_symbol("> ");
-
         frame.render_stateful_widget(list, left_area, &mut list_state);
+        crate::ui::paint_list_hover(
+            frame,
+            left_area,
+            &list_state,
+            item_count,
+            state.mouse_pos,
+            theme.hover_style(),
+        );
 
         // Draw vertical separator
         crate::ui::draw_dim_vline(frame, sep_area, theme.muted);

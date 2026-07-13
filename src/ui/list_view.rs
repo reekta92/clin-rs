@@ -519,14 +519,14 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                             current_path.push('/');
                         }
                         current_path.push_str(part);
-                        
+
                         let is_part_hovered = app.mouse_pos.is_some_and(|(col, row)| {
                             row == list_area.y + 1
                                 && col >= offset
                                 && col < offset + part_w
                                 && part_idx < parts.len() - 1
                         });
-                        
+
                         spans.push(Span::styled(
                             part.to_string(),
                             if is_part_hovered {
@@ -589,9 +589,9 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 );
                 let is_selected = vi == app.list.visual_index;
                 let in_selection = app.list.selected_indices.contains(&vi);
-                let is_hovered = app.mouse_pos.is_some_and(|(col, row)| {
-                    crate::events::contains_cell(tile_rect, col, row)
-                });
+                let is_hovered = app
+                    .mouse_pos
+                    .is_some_and(|(col, row)| crate::events::contains_cell(tile_rect, col, row));
 
                 // --- resolve (icon char, glyph color, display name): SAME mapping the old code used ---
                 let item = &app.list.visual_list[vi];
@@ -859,8 +859,12 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 let inner_h = list_area.height.saturating_sub(2);
                 let inner_x = list_area.x + 2;
                 let inner_w = list_area.width.saturating_sub(4);
-                
-                if col >= inner_x && col < inner_x + inner_w && row >= inner_y && row < inner_y + inner_h {
+
+                if col >= inner_x
+                    && col < inner_x + inner_w
+                    && row >= inner_y
+                    && row < inner_y + inner_h
+                {
                     let mouse_y_offset = row - inner_y;
                     let offset = app.list.list_state.offset();
                     let idx = mouse_y_offset as usize + offset;
@@ -1293,32 +1297,14 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             Style::default().fg(app.app_theme.muted)
         };
         let tag_empty = popup.all_tags.is_empty();
-        let hovered_tag_idx = app.mouse_pos.and_then(|(col, row)| {
-            let inner_y = chunks[1].y + 1;
-            if !popup.all_tags.is_empty()
-                && row >= inner_y
-                && row < inner_y + popup.all_tags.len() as u16
-                && col >= chunks[1].x + 1
-                && col < chunks[1].x + chunks[1].width - 1
-            {
-                Some((row - inner_y) as usize)
-            } else {
-                None
-            }
-        });
         let tag_items: Vec<ListItem> = if tag_empty {
             crate::ui::empty_list_item(&app.app_theme, "No tags found")
         } else {
             popup
                 .all_tags
                 .iter()
-                .enumerate()
-                .map(|(i, tag)| {
-                    let mut item = ListItem::new(tag.to_string());
-                    if Some(i) == hovered_tag_idx {
-                        item = item.style(app.app_theme.hover_style());
-                    }
-                    item
+                .map(|tag| {
+                    ListItem::new(tag.to_string())
                 })
                 .collect()
         };
@@ -1338,13 +1324,27 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             )
             .highlight_symbol("  ");
 
-        crate::ui::render_list_with_selection(
+        let state = crate::ui::render_list_with_selection(
             frame,
             tags_list,
             chunks[1],
             (popup.focus == crate::popups::TagPopupFocus::AllTagsList
                 && !popup.all_tags.is_empty())
             .then_some(popup.all_tags_selected),
+        );
+        let inner_tags = Rect {
+            x: chunks[1].x + 1,
+            y: chunks[1].y + 1,
+            width: chunks[1].width.saturating_sub(2),
+            height: chunks[1].height.saturating_sub(2),
+        };
+        crate::ui::paint_list_hover(
+            frame,
+            inner_tags,
+            &state,
+            popup.all_tags.len(),
+            app.mouse_pos,
+            app.app_theme.hover_style(),
         );
     }
 
@@ -1373,33 +1373,15 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(3), Constraint::Min(1)])
             .split(content);
-        let hovered_fp_idx = app.mouse_pos.and_then(|(col, row)| {
-            let inner_y = chunks[1].y + 1;
-            if !picker.filtered_folders.is_empty()
-                && row >= inner_y
-                && row < inner_y + picker.filtered_folders.len() as u16
-                && col >= chunks[1].x + 1
-                && col < chunks[1].x + chunks[1].width - 1
-            {
-                Some((row - inner_y) as usize)
-            } else {
-                None
-            }
-        });
         let items: Vec<ListItem> = if picker.filtered_folders.is_empty() {
             crate::ui::empty_list_item(&app.app_theme, "(no matching folders)")
         } else {
             picker
                 .filtered_folders
                 .iter()
-                .enumerate()
-                .map(|(i, f)| {
+                .map(|f| {
                     let label = if f.is_empty() { "Vault (Root)" } else { f };
-                    let mut item = ListItem::new(label);
-                    if Some(i) == hovered_fp_idx {
-                        item = item.style(app.app_theme.hover_style());
-                    }
-                    item
+                    ListItem::new(label)
                 })
                 .collect()
         };
@@ -1425,13 +1407,27 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             )
             .highlight_symbol("  ");
 
-        crate::ui::render_list_with_selection(
+        let state = crate::ui::render_list_with_selection(
             frame,
             list,
             chunks[1],
             (picker.focus == crate::app::FolderPickerFocus::Results
                 && !picker.filtered_folders.is_empty())
             .then_some(picker.selected),
+        );
+        let inner_fp = Rect {
+            x: chunks[1].x + 1,
+            y: chunks[1].y + 1,
+            width: chunks[1].width.saturating_sub(2),
+            height: chunks[1].height.saturating_sub(2),
+        };
+        crate::ui::paint_list_hover(
+            frame,
+            inner_fp,
+            &state,
+            picker.filtered_folders.len(),
+            app.mouse_pos,
+            app.app_theme.hover_style(),
         );
     }
 
@@ -1504,7 +1500,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             let inner_y = chunks[2].y + 1;
             if !palette.items.is_empty()
                 && row >= inner_y
-                && col >= chunks[2].x + 1
+                && col > chunks[2].x
                 && col < chunks[2].x + chunks[2].width - 1
             {
                 let scroll_offset = palette.state.offset();
@@ -1821,6 +1817,24 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             Style::default().fg(app.app_theme.muted)
         };
 
+        let search_item_count = if has_grep {
+            let mut count = 0;
+            let mut i = 0;
+            while i < popup.grep_results.len() {
+                count += 1;
+                if popup.grep_is_header[i] && !popup.grep_expanded.contains(&i) {
+                    while i < popup.grep_results.len() && !popup.grep_is_header[i] {
+                        i += 1;
+                    }
+                }
+                i += 1;
+            }
+            count
+        } else if has_title {
+            popup.title_results.len()
+        } else {
+            0
+        };
         let (all_items, results_title) = if has_grep {
             let mut visible: Vec<(usize, String)> = Vec::new();
             let mut i = 0;
@@ -1839,63 +1853,27 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     }
                 }
             }
-            let grep_hovered = app.mouse_pos.and_then(|(col, row)| {
-                let inner_y = results_chunk.y + 1;
-                if !visible.is_empty()
-                    && row >= inner_y
-                    && row < inner_y + visible.len() as u16
-                    && col >= results_chunk.x + 1
-                    && col < results_chunk.x + results_chunk.width - 1
-                {
-                    Some((row - inner_y) as usize)
-                } else {
-                    None
-                }
-            });
             let items: Vec<ListItem> = visible
                 .iter()
-                .enumerate()
-                .map(|(vi, (_, t))| {
-                    let mut item = ListItem::new(crate::ui::styled_result_line(
+                .map(|(_, t)| {
+                    ListItem::new(crate::ui::styled_result_line(
                         t,
                         &app.app_theme,
                         app.config.ui.icon_mode,
-                    ));
-                    if Some(vi) == grep_hovered {
-                        item = item.style(app.app_theme.hover_style());
-                    }
-                    item
+                    ))
                 })
                 .collect();
             (items, "")
         } else if has_title {
-            let title_hovered = app.mouse_pos.and_then(|(col, row)| {
-                let inner_y = results_chunk.y + 1;
-                if !popup.title_results.is_empty()
-                    && row >= inner_y
-                    && row < inner_y + popup.title_results.len() as u16
-                    && col >= results_chunk.x + 1
-                    && col < results_chunk.x + results_chunk.width - 1
-                {
-                    Some((row - inner_y) as usize)
-                } else {
-                    None
-                }
-            });
             let items: Vec<ListItem> = popup
                 .title_results
                 .iter()
-                .enumerate()
-                .map(|(i, entry)| {
-                    let mut item = ListItem::new(crate::ui::styled_result_line(
+                .map(|entry| {
+                    ListItem::new(crate::ui::styled_result_line(
                         entry,
                         &app.app_theme,
                         app.config.ui.icon_mode,
-                    ));
-                    if Some(i) == title_hovered {
-                        item = item.style(app.app_theme.hover_style());
-                    }
-                    item
+                    ))
                 })
                 .collect();
             (items, "")
@@ -1951,6 +1929,20 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             list_state.select(Some(popup.title_selected));
         }
         frame.render_stateful_widget(results_list, results_chunk, &mut list_state);
+        let inner_results = Rect {
+            x: results_chunk.x + 1,
+            y: results_chunk.y + 1,
+            width: results_chunk.width.saturating_sub(2),
+            height: results_chunk.height.saturating_sub(2),
+        };
+        crate::ui::paint_list_hover(
+            frame,
+            inner_results,
+            &list_state,
+            search_item_count,
+            app.mouse_pos,
+            app.app_theme.hover_style(),
+        );
     }
 
     if let Some(crate::popups::ActivePopup::TrashView(trash)) = &app.popups.active {
@@ -1974,38 +1966,19 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             app.app_theme.heading
         };
 
-        let hovered_idx = app.mouse_pos.and_then(|(col, row)| {
-            let inner_y = content.y + 1;
-            if !trash.items.is_empty()
-                && row >= inner_y
-                && row < inner_y + trash.items.len() as u16
-                && col >= content.x + 1
-                && col < content.x + content.width - 1
-            {
-                Some((row - inner_y) as usize)
-            } else {
-                None
-            }
-        });
-
         let items: Vec<ListItem> = trash
             .items
             .iter()
-            .enumerate()
-            .map(|(i, item)| {
+            .map(|item| {
                 let name = item.name.to_string_lossy();
                 let when = format_relative_time(item.time_deleted as u64);
-                let mut list_item = ListItem::new(Line::from(vec![
+                ListItem::new(Line::from(vec![
                     Span::raw(name.to_string()),
                     Span::styled(
                         format!("  ({when})"),
                         Style::default().fg(app.app_theme.muted),
                     ),
-                ]));
-                if Some(i) == hovered_idx {
-                    list_item = list_item.style(app.app_theme.hover_style());
-                }
-                list_item
+                ]))
             })
             .collect();
 
@@ -2025,7 +1998,22 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             )
             .highlight_symbol("  ");
 
-        crate::ui::render_list_with_selection(frame, list, content, Some(trash.selected));
+        let state =
+            crate::ui::render_list_with_selection(frame, list, content, Some(trash.selected));
+        let inner_content = Rect {
+            x: content.x + 1,
+            y: content.y + 1,
+            width: content.width.saturating_sub(2),
+            height: content.height.saturating_sub(2),
+        };
+        crate::ui::paint_list_hover(
+            frame,
+            inner_content,
+            &state,
+            trash.items.len(),
+            app.mouse_pos,
+            app.app_theme.hover_style(),
+        );
     }
 
     if let Some(popup) = &app.popups.confirm {

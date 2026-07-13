@@ -53,39 +53,20 @@ pub fn draw_template_popup(
     );
     frame.render_widget(&input, chunks[0]);
 
-    let hovered_idx = mouse_pos.and_then(|(col, row)| {
-        let inner_y = chunks[1].y + 1;
-        if !popup.filtered_templates.is_empty()
-            && row >= inner_y
-            && row < inner_y + popup.filtered_templates.len() as u16
-            && col >= chunks[1].x + 1
-            && col < chunks[1].x + chunks[1].width - 1
-        {
-            Some((row - inner_y) as usize)
-        } else {
-            None
-        }
-    });
-
     let items: Vec<ListItem> = if popup.filtered_templates.is_empty() {
         empty_list_item(theme, "(no matching templates)")
     } else {
         popup
             .filtered_templates
             .iter()
-            .enumerate()
-            .map(|(i, t)| {
-                let mut item = ListItem::new(Line::from(vec![
+            .map(|t| {
+                ListItem::new(Line::from(vec![
                     Span::styled(&t.name, Style::default().add_modifier(Modifier::BOLD)),
                     Span::styled(
                         format!("  ({})", t.filename),
                         Style::default().fg(theme.muted),
                     ),
-                ]));
-                if Some(i) == hovered_idx {
-                    item = item.style(theme.hover_style());
-                }
-                item
+                ]))
             })
             .collect()
     };
@@ -121,6 +102,19 @@ pub fn draw_template_popup(
     );
 
     frame.render_stateful_widget(list, chunks[1], &mut state);
+    paint_list_hover(
+        frame,
+        Rect {
+            x: chunks[1].x + 1,
+            y: chunks[1].y + 1,
+            width: chunks[1].width.saturating_sub(2),
+            height: chunks[1].height.saturating_sub(2),
+        },
+        &state,
+        popup.filtered_templates.len(),
+        mouse_pos,
+        theme.hover_style(),
+    );
 }
 
 pub fn draw_info_popup(
@@ -266,32 +260,16 @@ pub fn draw_theme_popup(
         ])
         .split(content);
 
-    let hovered_theme_idx = mouse_pos.and_then(|(col, row)| {
-        let inner_y = chunks[0].y + 1;
-        if row >= inner_y && row < inner_y + popup.themes.len() as u16
-            && col >= chunks[0].x + 1 && col < chunks[0].x + chunks[0].width - 1
-        {
-            Some((row - inner_y) as usize)
-        } else {
-            None
-        }
-    });
     let items: Vec<ListItem> = popup
         .themes
         .iter()
         .enumerate()
         .map(|(i, t)| {
-            let mut list_item = {
-                let mut spans = vec![Span::raw(t)];
-                if popup.is_custom.get(i).copied().unwrap_or(false) {
-                    spans.push(Span::styled(" [custom]", Style::default().fg(theme.muted)));
-                }
-                ListItem::new(Line::from(spans))
-            };
-            if Some(i) == hovered_theme_idx {
-                list_item = list_item.style(theme.hover_style());
+            let mut spans = vec![Span::raw(t)];
+            if popup.is_custom.get(i).copied().unwrap_or(false) {
+                spans.push(Span::styled(" [custom]", Style::default().fg(theme.muted)));
             }
-            list_item
+            ListItem::new(Line::from(spans))
         })
         .collect();
 
@@ -315,7 +293,20 @@ pub fn draw_theme_popup(
                 .add_modifier(Modifier::BOLD),
         );
 
-    render_list_with_selection(frame, list, chunks[0], Some(popup.selected));
+    let state = render_list_with_selection(frame, list, chunks[0], Some(popup.selected));
+    paint_list_hover(
+        frame,
+        Rect {
+            x: chunks[0].x + 1,
+            y: chunks[0].y + 1,
+            width: chunks[0].width.saturating_sub(2),
+            height: chunks[0].height.saturating_sub(2),
+        },
+        &state,
+        popup.themes.len(),
+        mouse_pos,
+        theme.hover_style(),
+    );
 
     let gen_label = if popup.general_is_solid {
         "General Background Color: ON"
@@ -328,12 +319,10 @@ pub fn draw_theme_popup(
         "Graph Background Color: OFF"
     };
 
-    let gen_hovered = mouse_pos.is_some_and(|(col, row)| {
-        crate::events::contains_cell(chunks[1], col, row)
-    });
-    let graph_hovered = mouse_pos.is_some_and(|(col, row)| {
-        crate::events::contains_cell(chunks[2], col, row)
-    });
+    let gen_hovered =
+        mouse_pos.is_some_and(|(col, row)| crate::events::contains_cell(chunks[1], col, row));
+    let graph_hovered =
+        mouse_pos.is_some_and(|(col, row)| crate::events::contains_cell(chunks[2], col, row));
 
     let gen_style = if popup.general_is_solid {
         Style::default().fg(theme.success)
@@ -425,26 +414,9 @@ pub fn draw_sort_popup(
         "Modified (newest)",
         "Modified (oldest)",
     ];
-    let hovered_index = mouse_pos.and_then(|(col, row)| {
-        let inner_y = content_area.y + 1;
-        if row >= inner_y && row < inner_y + options.len() as u16
-            && col >= content_area.x + 1 && col < content_area.x + content_area.width - 1
-        {
-            Some((row - inner_y) as usize)
-        } else {
-            None
-        }
-    });
     let items: Vec<ListItem> = options
         .iter()
-        .enumerate()
-        .map(|(i, &opt)| {
-            let mut item = ListItem::new(Line::from(Span::raw(opt)));
-            if Some(i) == hovered_index {
-                item = item.style(theme.hover_style());
-            }
-            item
-        })
+        .map(|&opt| ListItem::new(Line::from(Span::raw(opt))))
         .collect();
 
     let list = List::new(items)
@@ -461,9 +433,21 @@ pub fn draw_sort_popup(
                 .add_modifier(Modifier::BOLD),
         );
 
-    render_list_with_selection(frame, list, content_area, Some(popup.selected));
+    let state = render_list_with_selection(frame, list, content_area, Some(popup.selected));
+    paint_list_hover(
+        frame,
+        Rect {
+            x: content_area.x + 1,
+            y: content_area.y + 1,
+            width: content_area.width.saturating_sub(2),
+            height: content_area.height.saturating_sub(2),
+        },
+        &state,
+        options.len(),
+        mouse_pos,
+        theme.hover_style(),
+    );
 }
-
 pub fn draw_icon_mode_popup(
     frame: &mut Frame,
     popup: &crate::popups::IconModePopup,
@@ -499,26 +483,9 @@ pub fn draw_icon_mode_popup(
     );
 
     let options = ["Nerd Font", "Unicode", "None"];
-    let hovered_index = mouse_pos.and_then(|(col, row)| {
-        let inner_y = content_area.y + 1;
-        if row >= inner_y && row < inner_y + options.len() as u16
-            && col >= content_area.x + 1 && col < content_area.x + content_area.width - 1
-        {
-            Some((row - inner_y) as usize)
-        } else {
-            None
-        }
-    });
     let items: Vec<ListItem> = options
         .iter()
-        .enumerate()
-        .map(|(i, &opt)| {
-            let mut item = ListItem::new(Line::from(Span::raw(opt)));
-            if Some(i) == hovered_index {
-                item = item.style(theme.hover_style());
-            }
-            item
-        })
+        .map(|&opt| ListItem::new(Line::from(Span::raw(opt))))
         .collect();
 
     let list = List::new(items)
@@ -535,9 +502,21 @@ pub fn draw_icon_mode_popup(
                 .add_modifier(Modifier::BOLD),
         );
 
-    render_list_with_selection(frame, list, content_area, Some(popup.selected));
+    let state = render_list_with_selection(frame, list, content_area, Some(popup.selected));
+    paint_list_hover(
+        frame,
+        Rect {
+            x: content_area.x + 1,
+            y: content_area.y + 1,
+            width: content_area.width.saturating_sub(2),
+            height: content_area.height.saturating_sub(2),
+        },
+        &state,
+        options.len(),
+        mouse_pos,
+        theme.hover_style(),
+    );
 }
-
 pub fn draw_create_format_popup(
     frame: &mut Frame,
     popup: &crate::popups::CreateFormatPopup,
@@ -578,26 +557,9 @@ pub fn draw_create_format_popup(
         "Drawing (.draw)",
         "Canvas (.canvas)",
     ];
-    let hovered_index = mouse_pos.and_then(|(col, row)| {
-        let inner_y = content_area.y + 1;
-        if row >= inner_y && row < inner_y + options.len() as u16
-            && col >= content_area.x + 1 && col < content_area.x + content_area.width - 1
-        {
-            Some((row - inner_y) as usize)
-        } else {
-            None
-        }
-    });
     let items: Vec<ListItem> = options
         .iter()
-        .enumerate()
-        .map(|(i, &opt)| {
-            let mut item = ListItem::new(Line::from(Span::raw(opt)));
-            if Some(i) == hovered_index {
-                item = item.style(theme.hover_style());
-            }
-            item
-        })
+        .map(|&opt| ListItem::new(Line::from(Span::raw(opt))))
         .collect();
 
     let list = List::new(items)
@@ -614,9 +576,21 @@ pub fn draw_create_format_popup(
                 .add_modifier(Modifier::BOLD),
         );
 
-    render_list_with_selection(frame, list, content_area, Some(popup.selected));
+    let state = render_list_with_selection(frame, list, content_area, Some(popup.selected));
+    paint_list_hover(
+        frame,
+        Rect {
+            x: content_area.x + 1,
+            y: content_area.y + 1,
+            width: content_area.width.saturating_sub(2),
+            height: content_area.height.saturating_sub(2),
+        },
+        &state,
+        options.len(),
+        mouse_pos,
+        theme.hover_style(),
+    );
 }
-
 pub fn draw_hint_bar_style_popup(
     frame: &mut Frame,
     popup: &crate::popups::HintBarStylePopup,
@@ -652,26 +626,9 @@ pub fn draw_hint_bar_style_popup(
     );
 
     let options = ["Classic", "Sharp", "Rounded", "Slanted"];
-    let hovered_index = mouse_pos.and_then(|(col, row)| {
-        let inner_y = content_area.y + 1;
-        if row >= inner_y && row < inner_y + options.len() as u16
-            && col >= content_area.x + 1 && col < content_area.x + content_area.width - 1
-        {
-            Some((row - inner_y) as usize)
-        } else {
-            None
-        }
-    });
     let items: Vec<ListItem> = options
         .iter()
-        .enumerate()
-        .map(|(i, &opt)| {
-            let mut item = ListItem::new(Line::from(Span::raw(opt)));
-            if Some(i) == hovered_index {
-                item = item.style(theme.hover_style());
-            }
-            item
-        })
+        .map(|&opt| ListItem::new(Line::from(Span::raw(opt))))
         .collect();
 
     let list = List::new(items)
@@ -688,9 +645,21 @@ pub fn draw_hint_bar_style_popup(
                 .add_modifier(Modifier::BOLD),
         );
 
-    render_list_with_selection(frame, list, content_area, Some(popup.selected));
+    let state = render_list_with_selection(frame, list, content_area, Some(popup.selected));
+    paint_list_hover(
+        frame,
+        Rect {
+            x: content_area.x + 1,
+            y: content_area.y + 1,
+            width: content_area.width.saturating_sub(2),
+            height: content_area.height.saturating_sub(2),
+        },
+        &state,
+        options.len(),
+        mouse_pos,
+        theme.hover_style(),
+    );
 }
-
 pub fn draw_keybind_preset_popup(
     frame: &mut Frame,
     popup: &crate::popups::KeybindPresetPopup,
@@ -731,26 +700,9 @@ pub fn draw_keybind_preset_popup(
         "vim \u{2014} : commands",
         "emacs \u{2014} Ctrl-x prefix",
     ];
-    let hovered_index = mouse_pos.and_then(|(col, row)| {
-        let inner_y = content_area.y + 1;
-        if row >= inner_y && row < inner_y + options.len() as u16
-            && col >= content_area.x + 1 && col < content_area.x + content_area.width - 1
-        {
-            Some((row - inner_y) as usize)
-        } else {
-            None
-        }
-    });
     let items: Vec<ListItem> = options
         .iter()
-        .enumerate()
-        .map(|(i, &opt)| {
-            let mut item = ListItem::new(Line::from(Span::raw(opt)));
-            if Some(i) == hovered_index {
-                item = item.style(theme.hover_style());
-            }
-            item
-        })
+        .map(|&opt| ListItem::new(Line::from(Span::raw(opt))))
         .collect();
 
     let list = List::new(items)
@@ -767,7 +719,20 @@ pub fn draw_keybind_preset_popup(
                 .add_modifier(Modifier::BOLD),
         );
 
-    render_list_with_selection(frame, list, content_area, Some(popup.selected));
+    let state = render_list_with_selection(frame, list, content_area, Some(popup.selected));
+    paint_list_hover(
+        frame,
+        Rect {
+            x: content_area.x + 1,
+            y: content_area.y + 1,
+            width: content_area.width.saturating_sub(2),
+            height: content_area.height.saturating_sub(2),
+        },
+        &state,
+        options.len(),
+        mouse_pos,
+        theme.hover_style(),
+    );
 }
 
 pub fn draw_popup_banner(frame: &mut Frame, popup_area: Rect, title: &str, theme: &AppThemeColors) {
@@ -847,6 +812,48 @@ pub fn list_state_selected(selected: Option<usize>) -> ListState {
     s
 }
 
+/// Paint hover highlight onto the list row under the mouse.
+///
+/// MUST be called AFTER the list was rendered with `state` (render is what makes
+/// `state.offset()` reflect the real scroll). `inner` is the rect where item rows
+/// actually live — pass the list block's inner rect (border already removed).
+/// Single-row items assumed (index = row - inner.y + offset).
+pub fn paint_list_hover(
+    frame: &mut Frame,
+    inner: Rect,
+    state: &ListState,
+    item_count: usize,
+    mouse_pos: Option<(u16, u16)>,
+    hover_style: Style,
+) {
+    let Some((col, row)) = mouse_pos else {
+        return;
+    };
+    if inner.width == 0 || inner.height == 0 || item_count == 0 {
+        return;
+    }
+    if col < inner.x || col >= inner.x + inner.width {
+        return;
+    }
+    if row < inner.y || row >= inner.y + inner.height {
+        return;
+    }
+    let idx = (row - inner.y) as usize + state.offset();
+    if idx >= item_count {
+        return;
+    }
+    if Some(idx) == state.selected() {
+        return;
+    }
+    let row_rect = Rect {
+        x: inner.x,
+        y: row,
+        width: inner.width,
+        height: 1,
+    };
+    frame.buffer_mut().set_style(row_rect, hover_style);
+}
+
 pub fn make_popup_textarea(theme: &AppThemeColors, placeholder: &str) -> TextArea<'static> {
     let mut input = TextArea::default();
     input.set_cursor_line_style(Style::default());
@@ -870,9 +877,10 @@ pub fn render_list_with_selection(
     list: List,
     area: Rect,
     selected: Option<usize>,
-) {
+) -> ListState {
     let mut state = list_state_selected(selected);
     frame.render_stateful_widget(list, area, &mut state);
+    state
 }
 
 pub fn unix_ts_to_local(unix_ts: u64) -> chrono::DateTime<chrono::Local> {

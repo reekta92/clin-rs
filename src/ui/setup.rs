@@ -181,9 +181,9 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
         layout.done.height,
     );
     let done_hovered = !done_active
-        && app.mouse_pos.is_some_and(|(col, row)| {
-            crate::events::contains_cell(btn_area, col, row)
-        });
+        && app
+            .mouse_pos
+            .is_some_and(|(col, row)| crate::events::contains_cell(btn_area, col, row));
     let done_border_style = if done_active {
         Style::default().fg(theme.accent)
     } else if done_hovered {

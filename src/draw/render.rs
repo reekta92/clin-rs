@@ -295,7 +295,7 @@ pub fn draw_canvas(
             let items_bottom = items_top + shapes.len() as u16;
             if row >= items_top
                 && row < items_bottom
-                && col >= content.x + 1
+                && col > content.x
                 && col < content.x + content.width - 1
             {
                 Some((row - items_top) as usize)

@@ -505,7 +505,7 @@ fn draw_outline_pane(frame: &mut Frame, area: Rect, app: &mut App, focus: EditFo
     frame.render_widget(title, sb_chunks[1]);
 
     // Draw List
-    let mut items: Vec<ListItem> = app
+    let items: Vec<ListItem> = app
         .editor
         .outline_nodes
         .iter()
@@ -537,35 +537,22 @@ fn draw_outline_pane(frame: &mut Frame, area: Rect, app: &mut App, focus: EditFo
             sb_chunks[3].height,
         );
 
-        let hovered_idx = app.mouse_pos.and_then(|(col, row)| {
-            if col >= list_area.x
-                && col < list_area.x + list_area.width
-                && row >= list_area.y
-                && row < list_area.y + list_area.height
-            {
-                let mouse_y_offset = row - list_area.y;
-                let offset = state.offset();
-                let idx = mouse_y_offset as usize + offset;
-                if idx < items.len() {
-                    Some(idx)
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        });
-
-        if let Some(h_idx) = hovered_idx && Some(h_idx) != state.selected() {
-            items[h_idx] = items[h_idx].clone().style(theme.hover_style());
-        }
-
+        let item_count = items.len();
         let list = List::new(items).block(Block::default()).highlight_style(
             Style::default()
                 .bg(theme.highlight_bg)
                 .fg(theme.highlight_fg),
         );
         frame.render_stateful_widget(list, list_area, &mut state);
+        app.editor.sidebar_scroll_offset = state.offset();
+        crate::ui::paint_list_hover(
+            frame,
+            list_area,
+            &state,
+            item_count,
+            app.mouse_pos,
+            theme.hover_style(),
+        );
     }
 }
 
@@ -599,7 +586,7 @@ fn draw_links_pane(frame: &mut Frame, area: Rect, app: &mut App, focus: EditFocu
     frame.render_widget(title, sb_chunks[1]);
 
     // Draw List
-    let mut items: Vec<ListItem> = app
+    let items: Vec<ListItem> = app
         .editor
         .links
         .iter()
@@ -628,35 +615,22 @@ fn draw_links_pane(frame: &mut Frame, area: Rect, app: &mut App, focus: EditFocu
             sb_chunks[3].height,
         );
 
-        let hovered_idx = app.mouse_pos.and_then(|(col, row)| {
-            if col >= list_area.x
-                && col < list_area.x + list_area.width
-                && row >= list_area.y
-                && row < list_area.y + list_area.height
-            {
-                let mouse_y_offset = row - list_area.y;
-                let offset = state.offset();
-                let idx = mouse_y_offset as usize + offset;
-                if idx < items.len() {
-                    Some(idx)
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        });
-
-        if let Some(h_idx) = hovered_idx && Some(h_idx) != state.selected() {
-            items[h_idx] = items[h_idx].clone().style(theme.hover_style());
-        }
-
+        let item_count = items.len();
         let list = List::new(items).block(Block::default()).highlight_style(
             Style::default()
                 .bg(theme.highlight_bg)
                 .fg(theme.highlight_fg),
         );
         frame.render_stateful_widget(list, list_area, &mut state);
+        app.editor.sidebar_scroll_offset = state.offset();
+        crate::ui::paint_list_hover(
+            frame,
+            list_area,
+            &state,
+            item_count,
+            app.mouse_pos,
+            theme.hover_style(),
+        );
     }
 }
 fn draw_link_preview_popup(frame: &mut Frame, area: Rect, app: &mut App) {

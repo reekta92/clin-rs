@@ -179,11 +179,11 @@ impl Default for Keybinds {
         );
         list.insert(
             ListAction::TogglePreviewFullscreen,
-            vec![KeyCombo::ctrl_shift(KeyCode::Char('e'))],
+            vec![KeyCombo::ctrl(KeyCode::Char('e'))],
         );
         list.insert(
             ListAction::TogglePreviewWrap,
-            vec![KeyCombo::ctrl_shift(KeyCode::Char('w'))],
+            vec![KeyCombo::ctrl(KeyCode::Char('w'))],
         );
         // Preview paging; inherited by all presets (none override Shift+Up/Down).
         list.insert(

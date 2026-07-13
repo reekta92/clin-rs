@@ -509,8 +509,8 @@ pub fn draw_pinstar_view(
         if is_editing {
             node_title = format!("[EDITING] {node_title}");
         }
-        let is_hovered = !is_selected
-            && mouse_pos.is_some_and(|(col, row)| contains_cell(node_rect, col, row));
+        let is_hovered =
+            !is_selected && mouse_pos.is_some_and(|(col, row)| contains_cell(node_rect, col, row));
         let bg_style = if is_hovered {
             theme.hover_style()
         } else {
