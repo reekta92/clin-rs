@@ -90,7 +90,6 @@ pub fn draw_ui(
                 let style = if is_selected {
                     ratatui::style::Style::default()
                         .fg(theme.fg)
-                        .bg(theme.highlight_fg)
                 } else {
                     ratatui::style::Style::default().fg(theme.highlight_fg)
                 };

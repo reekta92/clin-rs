@@ -422,7 +422,6 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 let style = if is_selected {
                     Style::default()
                         .fg(theme.fg)
-                        .bg(theme.highlight_fg)
                 } else {
                     Style::default().fg(theme.highlight_fg)
                 };

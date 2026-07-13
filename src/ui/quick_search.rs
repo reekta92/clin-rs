@@ -199,7 +199,7 @@ pub fn draw_quick_search<T, F>(
                     let line = render_item(item, is_selected, theme);
                     let mut list_item = ListItem::new(line);
                     if is_selected {
-                        list_item = list_item.style(Style::default().bg(theme.highlight_fg));
+                        list_item = list_item.style(Style::default().bg(theme.heading));
                     }
                     list_item
                 })
