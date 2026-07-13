@@ -172,11 +172,23 @@ pub fn edit_view_input_areas(
                 2,
             ),
         };
+        let full_body_area = Rect::new(
+            area.x,
+            chunks[1].y,
+            area.width,
+            chunks[1].height + chunks[2].height,
+        );
         let cols = Layout::default()
             .direction(Direction::Horizontal)
             .constraints(constraints)
-            .split(chunks[2]);
-        (cols[main_idx], Some(cols[sb_idx]))
+            .split(full_body_area);
+        let editor_col = Rect::new(
+            cols[main_idx].x,
+            chunks[2].y,
+            cols[main_idx].width,
+            chunks[2].height,
+        );
+        (editor_col, Some(cols[sb_idx]))
     } else if md_preview {
         let content_chunks = Layout::default()
             .direction(Direction::Horizontal)
