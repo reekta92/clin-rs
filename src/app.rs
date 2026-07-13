@@ -341,6 +341,7 @@ pub struct App {
     pub backup_state: Option<crate::backup::state::BackupState>,
     pub content_tree_state: Option<crate::content_tree::state::ContentTreeState>,
     pub setup_state: Option<crate::setup::SetupState>,
+    pub config_errors: Vec<String>,
     pub canvas_state: Option<crate::pinstar::state::PinstarState>,
     pub config: crate::config::ClinConfig,
     pub summary_cache: HashMap<String, NoteSummary>,
@@ -391,11 +392,10 @@ impl App {
     pub fn desired_editor_preview_width(&self) -> u16 {
         preview_render_cols(self.editor.last_preview_pane_width, self.preview_wrap)
     }
+
     pub fn new(storage: Storage) -> Result<Self> {
         let bootstrap_config = crate::config::ClinConfig::load().unwrap_or_default();
-        for w in bootstrap_config.validate() {
-            eprintln!("[clin] config warning: {w}");
-        }
+        let config_errors = bootstrap_config.validate();
         let keybinds = storage.load_keybinds_with_preset(bootstrap_config.core.keybind_preset);
         let app_theme = crate::app_theme::AppThemeColors::from_config(&bootstrap_config.ui);
 
@@ -469,6 +469,7 @@ impl App {
             last_auto_backup: None,
             preview_position: bootstrap_config.list.preview_position,
             calendar_position: bootstrap_config.list.calendar_position,
+            config_errors,
             graph_state: None,
             draw_state: None,
             backup_state: None,
@@ -526,9 +527,7 @@ impl App {
 
     pub fn new_deferred(storage: Storage) -> Result<Self> {
         let bootstrap_config = crate::config::ClinConfig::load().unwrap_or_default();
-        for w in bootstrap_config.validate() {
-            eprintln!("[clin] config warning: {w}");
-        }
+        let config_errors = bootstrap_config.validate();
         let keybinds = storage.load_keybinds_with_preset(bootstrap_config.core.keybind_preset);
         let app_theme = crate::app_theme::AppThemeColors::from_config(&bootstrap_config.ui);
 
@@ -602,6 +601,7 @@ impl App {
             last_auto_backup: None,
             preview_position: bootstrap_config.list.preview_position,
             calendar_position: bootstrap_config.list.calendar_position,
+            config_errors,
             graph_state: None,
             draw_state: None,
             backup_state: None,

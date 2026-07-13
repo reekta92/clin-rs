@@ -51,7 +51,7 @@ impl App {
             match crate::graf::app::GrafAppState::new(
                 &self.config,
                 self.storage.clone(),
-                vec![],
+                self.config_errors.clone(),
                 self.keybinds.clone(),
                 self.seq_matcher.clone(),
             ) {
