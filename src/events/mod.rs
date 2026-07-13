@@ -301,7 +301,10 @@ pub fn is_cancel_popup(
 /// must exclude q (text entry: Edit) check Esc inline instead.
 pub fn is_universal_quit_key(key: &crossterm::event::KeyEvent) -> bool {
     key.modifiers == crossterm::event::KeyModifiers::NONE
-        && matches!(key.code, crossterm::event::KeyCode::Char('q') | crossterm::event::KeyCode::Esc)
+        && matches!(
+            key.code,
+            crossterm::event::KeyCode::Char('q') | crossterm::event::KeyCode::Esc
+        )
 }
 
 /// Handle global popups (tag, search, create_note, folder, goals, import,
@@ -1500,31 +1503,49 @@ mod tests {
 
     #[test]
     fn test_is_universal_quit_key_true_for_bare_q() {
-        assert!(is_universal_quit_key(&key(KeyCode::Char('q'), KeyModifiers::NONE)));
+        assert!(is_universal_quit_key(&key(
+            KeyCode::Char('q'),
+            KeyModifiers::NONE
+        )));
     }
 
     #[test]
     fn test_is_universal_quit_key_true_for_bare_esc() {
-        assert!(is_universal_quit_key(&key(KeyCode::Esc, KeyModifiers::NONE)));
+        assert!(is_universal_quit_key(&key(
+            KeyCode::Esc,
+            KeyModifiers::NONE
+        )));
     }
 
     #[test]
     fn test_is_universal_quit_key_false_for_shift_q() {
-        assert!(!is_universal_quit_key(&key(KeyCode::Char('Q'), KeyModifiers::NONE)));
+        assert!(!is_universal_quit_key(&key(
+            KeyCode::Char('Q'),
+            KeyModifiers::NONE
+        )));
     }
 
     #[test]
     fn test_is_universal_quit_key_false_for_ctrl_q() {
-        assert!(!is_universal_quit_key(&key(KeyCode::Char('q'), KeyModifiers::CONTROL)));
+        assert!(!is_universal_quit_key(&key(
+            KeyCode::Char('q'),
+            KeyModifiers::CONTROL
+        )));
     }
 
     #[test]
     fn test_is_universal_quit_key_false_for_ctrl_esc() {
-        assert!(!is_universal_quit_key(&key(KeyCode::Esc, KeyModifiers::CONTROL)));
+        assert!(!is_universal_quit_key(&key(
+            KeyCode::Esc,
+            KeyModifiers::CONTROL
+        )));
     }
 
     #[test]
     fn test_is_universal_quit_key_false_for_bare_x() {
-        assert!(!is_universal_quit_key(&key(KeyCode::Char('x'), KeyModifiers::NONE)));
+        assert!(!is_universal_quit_key(&key(
+            KeyCode::Char('x'),
+            KeyModifiers::NONE
+        )));
     }
 }

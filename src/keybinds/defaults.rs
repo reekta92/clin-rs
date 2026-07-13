@@ -1060,7 +1060,7 @@ impl KeybindPreset {
                 );
                 kb.list.insert(
                     ListAction::CollapseAll,
-                    vec![KeyCombo::simple(KeyCode::Char('c'))]
+                    vec![KeyCombo::simple(KeyCode::Char('c'))],
                 );
                 // ── Graph view ──
                 kb.graph.insert(
@@ -1940,7 +1940,7 @@ impl KeybindPreset {
                 );
                 kb.list.insert(
                     ListAction::CollapseAll,
-                    vec![KeyCombo::simple(KeyCode::Char('c'))]
+                    vec![KeyCombo::simple(KeyCode::Char('c'))],
                 );
                 // ── Graph view ──
                 kb.graph.insert(

@@ -60,7 +60,6 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
         return false;
     }
 
-
     let seq = app.config.sequences_enabled();
     let counts = app.config.counts_enabled();
     match app

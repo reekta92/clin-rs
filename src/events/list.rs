@@ -86,7 +86,6 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
-
     let seq = app.config.sequences_enabled();
     let counts = app.config.counts_enabled();
     match app
