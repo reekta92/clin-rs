@@ -1,5 +1,8 @@
 use anyhow::{Result, anyhow};
-use git2::{DiffOptions, IndexAddOption, Oid, Repository, StatusOptions};
+use git2::{
+    Cred, CredentialType, DiffOptions, FetchOptions, IndexAddOption, Oid,
+    PushOptions, Repository, StatusOptions,
+};
 use std::path::Path;
 
 pub struct GitOps {
@@ -271,10 +274,56 @@ impl GitOps {
         Ok(lines)
     }
 
+    /// Build `RemoteCallbacks` that answer libgit2 authentication challenges
+    /// using the system's configured credentials:
+    /// - ssh-agent for SSH remotes (`git@github.com:...`),
+    /// - the git credential helper (`credential.helper` — store/cache/
+    ///   osxkeychain/manager) for HTTPS remotes.
+    ///
+    /// No secrets are stored in clin's config; auth is delegated entirely to the
+    /// user's existing git setup. libgit2 re-invokes this callback whenever a
+    /// credential is rejected, so an attempt guard bails after a few tries to
+    /// avoid an infinite loop of returning the same rejected credential.
+    fn auth_callbacks(&self) -> git2::RemoteCallbacks<'_> {
+        let repo = &self.repo;
+        let mut attempts = 0u32;
+        let mut callbacks = git2::RemoteCallbacks::new();
+        callbacks.credentials(move |url, username_from_url, allowed_types| {
+            attempts += 1;
+            if attempts >= 3 {
+                return Err(git2::Error::from_str(
+                    "git authentication failed: credentials rejected after repeated attempts",
+                ));
+            }
+            let user = username_from_url.unwrap_or("git");
+            if allowed_types.contains(CredentialType::SSH_KEY) {
+                // SSH remote: resolve keys via the ssh-agent (standard discovery).
+                Cred::ssh_key_from_agent(user)
+            } else if allowed_types.contains(CredentialType::USER_PASS_PLAINTEXT) {
+                // HTTPS remote: delegate to git's configured credential helper.
+                // Prefer the repo config (a local credential.helper wins); fall
+                // back to the global/default config if the repo has none.
+                let config = repo
+                    .config()
+                    .or_else(|_| git2::Config::open_default())?;
+                Cred::credential_helper(&config, url, username_from_url)
+            } else if allowed_types.contains(CredentialType::USERNAME) {
+                // libgit2's initial SSH username probe: supply the username so the
+                // next invocation is asked for the concrete SSH_KEY type.
+                Cred::username(user)
+            } else {
+                // DEFAULT: Negotiate/Kerberos (e.g. corporate HTTPS proxies).
+                Cred::default()
+            }
+        });
+        callbacks
+    }
     pub fn pull(&self, remote_name: &str) -> Result<()> {
         let mut remote = self.repo.find_remote(remote_name)?;
         let branch = self.repo.head()?.shorthand().unwrap_or("main").to_string();
-        remote.fetch(&[&branch], None, None)?;
+        let mut fetch_options = FetchOptions::new();
+        fetch_options.remote_callbacks(self.auth_callbacks());
+        remote.fetch(&[&branch], Some(&mut fetch_options), None)?;
         let tracking_branch = format!("refs/remotes/{}/{}", remote_name, branch);
         let fetch_head = self.repo.find_reference(&tracking_branch)?;
         let fetch_commit = self.repo.reference_to_annotated_commit(&fetch_head)?;
@@ -343,7 +392,9 @@ impl GitOps {
         let head = self.repo.head()?;
         let refname = head.name()?;
 
-        remote.push(&[format!("{refname}:{refname}")], None)?;
+        let mut push_options = PushOptions::new();
+        push_options.remote_callbacks(self.auth_callbacks());
+        remote.push(&[format!("{refname}:{refname}")], Some(&mut push_options))?;
         Ok(())
     }
 }
@@ -375,6 +426,40 @@ mod tests {
         assert!(content.contains("another-file"));
         assert!(content.contains("key.bin"));
         assert!(!content.contains("clin.key"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_push_to_file_remote_roundtrip() -> Result<()> {
+        // Network-free proof that wiring PushOptions + RemoteCallbacks does not
+        // regress the no-auth (file://) happy path. Does NOT exercise the auth
+        // callback — that needs a live auth-challenging remote (see step 3).
+        let work = tempdir()?;
+        let bare = tempdir()?;
+
+        // Bare target the work repo will push to.
+        let _bare_repo = git2::Repository::init_bare(bare.path())?;
+        let bare_url = format!("file://{}", bare.path().to_string_lossy());
+
+        // Work repo (non-bare) via the real GitOps::init path.
+        let git_ops = GitOps::init(work.path())?;
+        fs::write(work.path().join("note.md"), "hello")?;
+        let oid = git_ops.add_all().and_then(|_| git_ops.commit("initial"))?;
+
+        git_ops.set_remote("origin", &bare_url)?;
+        // Must succeed. Previously push used `None` options; passing real
+        // PushOptions with RemoteCallbacks must not break local file:// pushes.
+        git_ops.push("origin")?;
+
+        // The pushed commit must exist as a ref in the bare remote. Assert by
+        // oid so the test is independent of the default branch name.
+        let bare_repo = git2::Repository::open(bare.path())?;
+        let found = bare_repo
+            .references()?
+            .filter_map(Result::ok)
+            .any(|rf| rf.target().map(|t| t == oid).unwrap_or(false));
+        assert!(found, "pushed commit {oid} must exist as a ref in bare remote");
 
         Ok(())
     }
