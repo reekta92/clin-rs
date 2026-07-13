@@ -47,6 +47,10 @@ fn handle_normal_input(
     keybinds: &Keybinds,
     config: &ClinConfig,
 ) -> InputResult {
+    if crate::events::is_universal_quit_key(&event) {
+        return InputResult::Back;
+    }
+
     let seq = config.sequences_enabled();
     let counts = config.counts_enabled();
     match keybinds.resolve_backup(&mut state.seq_matcher, event, seq, counts) {

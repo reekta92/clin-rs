@@ -526,6 +526,15 @@ pub fn handle_pinstar_event(
 
     let seq = config.sequences_enabled();
     let counts = config.counts_enabled();
+    if crate::events::is_universal_quit_key(&key) {
+        if state.connection_source_id.is_some() {
+            state.connection_source_id = None;
+        } else {
+            *running = false;
+        }
+        return true;
+    }
+
     match keybinds.resolve_canvas(&mut state.seq_matcher, key, seq, counts) {
         crate::keybinds::MatchOutcome::Matched(action, count) => match action {
             CanvasAction::Quit => {

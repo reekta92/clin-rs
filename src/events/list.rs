@@ -80,6 +80,12 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
             return false;
         }
     }
+    // Universal back/quit (override-proof): bare q/Esc quits from the list root.
+    if crate::events::is_universal_quit_key(&key) {
+        app.initiate_quit();
+        return false;
+    }
+
 
     let seq = app.config.sequences_enabled();
     let counts = app.config.counts_enabled();

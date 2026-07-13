@@ -296,6 +296,14 @@ pub fn is_cancel_popup(
         || (!has_text_input && keybinds.matches_list(crate::keybinds::ListAction::Quit, key))
 }
 
+// True for a bare (no-modifier) q or Esc — the universal back/quit keys.
+/// Used by the override-proof intercept in each view handler. Callers that
+/// must exclude q (text entry: Edit) check Esc inline instead.
+pub fn is_universal_quit_key(key: &crossterm::event::KeyEvent) -> bool {
+    key.modifiers == crossterm::event::KeyModifiers::NONE
+        && matches!(key.code, crossterm::event::KeyCode::Char('q') | crossterm::event::KeyCode::Esc)
+}
+
 /// Handle global popups (tag, search, create_note, folder, goals, import,
 /// trash_view, confirm, folder_picker, template, note_rename, theme, sort,
 /// create_format) and command palette input.
@@ -1478,5 +1486,45 @@ impl crate::popups::ActivePopup {
                 true
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+    fn key(code: KeyCode, modifiers: KeyModifiers) -> KeyEvent {
+        KeyEvent::new(code, modifiers)
+    }
+
+    #[test]
+    fn test_is_universal_quit_key_true_for_bare_q() {
+        assert!(is_universal_quit_key(&key(KeyCode::Char('q'), KeyModifiers::NONE)));
+    }
+
+    #[test]
+    fn test_is_universal_quit_key_true_for_bare_esc() {
+        assert!(is_universal_quit_key(&key(KeyCode::Esc, KeyModifiers::NONE)));
+    }
+
+    #[test]
+    fn test_is_universal_quit_key_false_for_shift_q() {
+        assert!(!is_universal_quit_key(&key(KeyCode::Char('Q'), KeyModifiers::NONE)));
+    }
+
+    #[test]
+    fn test_is_universal_quit_key_false_for_ctrl_q() {
+        assert!(!is_universal_quit_key(&key(KeyCode::Char('q'), KeyModifiers::CONTROL)));
+    }
+
+    #[test]
+    fn test_is_universal_quit_key_false_for_ctrl_esc() {
+        assert!(!is_universal_quit_key(&key(KeyCode::Esc, KeyModifiers::CONTROL)));
+    }
+
+    #[test]
+    fn test_is_universal_quit_key_false_for_bare_x() {
+        assert!(!is_universal_quit_key(&key(KeyCode::Char('x'), KeyModifiers::NONE)));
     }
 }
