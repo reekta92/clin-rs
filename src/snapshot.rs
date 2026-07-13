@@ -200,8 +200,14 @@ pub fn render_draw_snapshot_with_size(
                                     .style(Style::default().fg(color)),
                             );
                         }
-                        DrawElement::Image(_) => {
-                            // Images rendered as StatefulImage pass (not available in snapshot)
+                        DrawElement::Image(img) => {
+                            ctx.draw(&Rectangle {
+                                x: img.x,
+                                y: img.y,
+                                width: img.width,
+                                height: img.height,
+                                color: theme.muted,
+                            });
                         }
                     }
                 }
@@ -617,6 +623,7 @@ fn draw_shape_on_canvas(ctx: &mut Context, shape: &Shape) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::draw::state::ImageElement;
     use ratatui::backend::TestBackend;
 
     /// Regression guard: a grid cell containing a control char must not
@@ -638,5 +645,41 @@ mod tests {
         let buffer = terminal.backend().buffer();
         let cell = buffer.cell((0, 0)).unwrap();
         assert_eq!(cell.symbol(), " ", "control char replaced by space");
+    }
+
+    /// Draw preview renders a muted-outline rectangle for Image elements.
+    #[test]
+    fn draw_preview_shows_image_indicator() {
+        let data = DrawData {
+            version: 1,
+            width: 1000.0,
+            height: 1000.0,
+            background: None,
+            elements: vec![DrawElement::Image(ImageElement {
+                id: "test".into(),
+                path: "img.png".into(),
+                x: 0.0,
+                y: 0.0,
+                width: 10.0,
+                height: 5.0,
+            })],
+        };
+        let theme = AppThemeColors::default();
+        let grid = render_draw_snapshot_with_size(&data, &theme, 40, 20);
+        let muted = theme.muted;
+
+        // At least one cell on the image's outline must have fg = muted.
+        let has_outline = grid
+            .iter()
+            .flatten()
+            .any(|(ch, style)| style.fg == Some(muted) && *ch != ' ');
+        assert!(
+            has_outline,
+            "draw preview must render an image element as a muted-outline rectangle, \
+             but no cell with fg={muted:?} and non-space char was found in the {w}x{h} grid",
+            muted = muted,
+            w = grid.first().map_or(0, |r| r.len()),
+            h = grid.len(),
+        );
     }
 }

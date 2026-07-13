@@ -1381,9 +1381,21 @@ fn run_app(
                                     }
                                 }
                                 ViewMode::Canvas => {
+                                    let mut is_drag = false;
                                     if let Some(canvas) = &mut app.canvas_state {
+                                        is_drag = matches!(
+                                            mouse_event.kind,
+                                            ratatui::crossterm::event::MouseEventKind::Drag(_)
+                                        );
                                         let _ = canvas.overlay_handle_event(
                                             Event::Mouse(mouse_event),
+                                            terminal,
+                                            &mut app.config,
+                                        )?;
+                                    }
+                                    if is_drag && let Some(canvas) = &mut app.canvas_state {
+                                        drain_queued_mouse_events(
+                                            canvas,
                                             terminal,
                                             &mut app.config,
                                         )?;
