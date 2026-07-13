@@ -256,7 +256,7 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
     frame.render_widget(table, table_area);
 
     if show_sides {
-        draw_help_info_pane(frame, left_area, app.help_tab, &app.keybinds, theme);
+        draw_help_info_pane(frame, left_area, app.help_tab, &app.keybinds, app.help_info_active, theme);
         draw_dim_vline(frame, divider1_area, theme.border);
         draw_dim_vline(frame, divider2_area, theme.border);
         draw_help_tips_pane(
@@ -269,7 +269,7 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
     }
 
     let kb = &app.keybinds;
-    let hints_items = vec![
+    let mut hints_items = vec![
         (
             format!(
                 "{}/{}",
@@ -290,6 +290,9 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
         (kb.display_help(HelpAction::Reroll), "reroll tips"),
         (kb.display_help(HelpAction::Close), "close"),
     ];
+    if !crate::ui::help_content::tab_popup_descriptions(app.help_tab).is_empty() {
+        hints_items.push(("n/N".to_string(), "cycle popup"));
+    }
     let hint = format_keybind_hints(&app.app_theme, &hints_items);
     let mut ctx = crate::statusline::StatuslineContext::for_view(app, ViewMode::Help);
     ctx.area = Some(chunks[2]);
@@ -1090,7 +1093,14 @@ pub fn style_palette_name(name: &str, theme: &AppThemeColors) -> Vec<Span<'stati
         )]
     }
 }
-fn draw_help_info_pane(frame: &mut Frame, area: Rect, tab: HelpTab, keybinds: &Keybinds, theme: &AppThemeColors) {
+fn draw_help_info_pane(
+    frame: &mut Frame,
+    area: Rect,
+    tab: HelpTab,
+    keybinds: &Keybinds,
+    active: usize,
+    theme: &AppThemeColors,
+) {
     let title = tab_display_name(tab);
     let mut lines = Vec::new();
 
@@ -1109,24 +1119,31 @@ fn draw_help_info_pane(frame: &mut Frame, area: Rect, tab: HelpTab, keybinds: &K
         Style::default().fg(theme.text),
     )));
 
-    // Popups & Overlays section (only for tabs that have them)
+    // Popup accordion (only for tabs that have them)
     let popups = crate::ui::help_content::tab_popup_descriptions(tab);
     if !popups.is_empty() {
+        let active = active.min(popups.len() - 1);
         lines.push(Line::default());
         lines.push(Line::from(Span::styled(
             "Popups & Overlays",
             Style::default().fg(theme.heading).add_modifier(Modifier::BOLD),
         )));
+        lines.push(Line::default());
+        // Name list — all names always visible; active marked and highlighted.
         for (i, p) in popups.iter().enumerate() {
-            if i > 0 {
-                lines.push(Line::default()); // blank separator between popups
-            }
-            lines.push(Line::from(Span::styled(
-                p.name.to_string(),
-                Style::default().fg(theme.success).add_modifier(Modifier::BOLD),
-            )));
-            lines.push(Line::from(render_tip_body(p.body, keybinds, theme)));
+            let is_active = i == active;
+            let marker = if is_active { "▼ " } else { "› " };
+            let style = if is_active {
+                Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(theme.muted)
+            };
+            lines.push(Line::from(Span::styled(format!("{marker}{}", p.name), style)));
         }
+        lines.push(Line::default());
+        // Only the active popup's description renders.
+        let p = &popups[active];
+        lines.push(Line::from(render_tip_body(p.body, keybinds, theme)));
     }
 
     let block = Block::default()

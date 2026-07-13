@@ -204,6 +204,18 @@ pub fn handle_help_keys(app: &mut App, key: KeyEvent) {
             KeyCode::Char('7') => app.switch_help_tab(HelpTab::Templates),
             KeyCode::Char('8') => app.switch_help_tab(HelpTab::ContentTree),
             KeyCode::Char('9') => app.switch_help_tab(HelpTab::About),
+            KeyCode::Char('n') => {
+                let len = crate::ui::help_content::tab_popup_descriptions(app.help_tab).len();
+                if len > 0 {
+                    app.help_info_active = (app.help_info_active + 1) % len;
+                }
+            }
+            KeyCode::Char('N') => {
+                let len = crate::ui::help_content::tab_popup_descriptions(app.help_tab).len();
+                if len > 0 {
+                    app.help_info_active = (app.help_info_active + len - 1) % len;
+                }
+            }
             _ => {}
         },
     }

@@ -15,6 +15,7 @@ impl App {
         self.mode = ViewMode::Help;
         self.help_tab = tab;
         self.help_page = 0;
+        self.help_info_active = 0;
         self.help_tab_page.insert(tab, 0);
         self.status = Cow::Borrowed("");
         self.status_until = None;
@@ -187,6 +188,7 @@ impl App {
         let current_page = self.help_page;
         self.help_tab_page.insert(self.help_tab, current_page);
         self.help_tab = tab;
+        self.help_info_active = 0;
         self.help_page = self.help_tab_page.get(&tab).copied().unwrap_or(0);
         self.list.help_text_cache = None;
         self.help_search = crate::app::HelpSearchState::default();

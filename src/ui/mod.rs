@@ -10,7 +10,7 @@ use crate::overlay::OverlayView;
 
 mod edit_view;
 mod help;
-mod help_content;
+pub(crate) mod help_content;
 mod list_view;
 mod popups;
 pub(crate) mod setup;
