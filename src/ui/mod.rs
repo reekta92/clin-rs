@@ -69,6 +69,12 @@ pub struct PreviewHeaderInfo {
 }
 
 pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
+    // Suppress background element hover when a popup is active
+    let popup_hover_pos = app.mouse_pos;
+    if app.popups.active.is_some() {
+        app.mouse_pos = None;
+    }
+
     if let Some(_bg) = app.app_theme.bg {
         let block = Block::default().style(app.app_theme.bg_style());
         frame.render_widget(block, frame.area());
@@ -262,6 +268,8 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             }
         }
     }
+    // Restore mouse_pos for popup hover detection
+    app.mouse_pos = popup_hover_pos;
 
     // Global popups — rendered on top of the active view
     // Template popup
@@ -608,11 +616,16 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             let inner_y = chunks[2].y + 1;
             if !palette.items.is_empty()
                 && row >= inner_y
-                && row < inner_y + palette.items.len() as u16
                 && col >= chunks[2].x + 1
                 && col < chunks[2].x + chunks[2].width - 1
             {
-                Some((row - inner_y) as usize)
+                let scroll_offset = palette.state.offset();
+                let idx = ((row - inner_y) / 2) as usize + scroll_offset;
+                if idx < palette.items.len() {
+                    Some(idx)
+                } else {
+                    None
+                }
             } else {
                 None
             }

@@ -234,6 +234,10 @@ fn draw_strip_graf(
 }
 
 pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
+    let saved_mouse_pos = app.mouse_pos;
+    if app.popups.active.is_some() {
+        app.mouse_pos = None;
+    }
     let area = frame.area();
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -1175,6 +1179,8 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         }
     }
 
+    app.mouse_pos = saved_mouse_pos;
+
     if let Some(crate::popups::ActivePopup::Template(popup)) = &app.popups.active {
         draw_template_popup(frame, popup, area, &app.app_theme, app.mouse_pos);
     }
@@ -1498,11 +1504,16 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             let inner_y = chunks[2].y + 1;
             if !palette.items.is_empty()
                 && row >= inner_y
-                && row < inner_y + palette.items.len() as u16
                 && col >= chunks[2].x + 1
                 && col < chunks[2].x + chunks[2].width - 1
             {
-                Some((row - inner_y) as usize)
+                let scroll_offset = palette.state.offset();
+                let idx = ((row - inner_y) / 2) as usize + scroll_offset;
+                if idx < palette.items.len() {
+                    Some(idx)
+                } else {
+                    None
+                }
             } else {
                 None
             }
