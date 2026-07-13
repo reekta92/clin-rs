@@ -131,6 +131,7 @@ pub fn draw_quick_search<T, F>(
     // --- Header bar: full-width accent background ---
     let header_rect = Rect::new(frame_area.x, frame_area.y, frame_area.width, 1);
     let header_block = Block::default().style(Style::default().bg(theme.accent));
+    frame.render_widget(Clear, header_rect);
     frame.render_widget(&header_block, header_rect);
 
     // --- Centered input field ---
