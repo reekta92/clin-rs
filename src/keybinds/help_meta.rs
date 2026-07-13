@@ -418,10 +418,6 @@ pub fn draw_action_meta(a: DrawAction) -> HelpMeta {
             group: "Tools",
             description: "Erase elements",
         },
-        DrawAction::ToggleGrid => HelpMeta {
-            group: "Tools",
-            description: "Toggle background grid",
-        },
         DrawAction::ShapeSelectorUp => HelpMeta {
             group: "Shape Selector",
             description: "Select previous shape",
@@ -445,6 +441,14 @@ pub fn draw_action_meta(a: DrawAction) -> HelpMeta {
         DrawAction::TextEditorCancel => HelpMeta {
             group: "Text Editor",
             description: "Cancel text edit",
+        },
+        DrawAction::ToggleGrid => HelpMeta {
+            group: "Tools",
+            description: "Toggle grid overlay",
+        },
+        DrawAction::SelectImageTool => HelpMeta {
+            group: "Tools",
+            description: "Image tool (place images on canvas)",
         },
         DrawAction::Help => HelpMeta {
             group: "General",

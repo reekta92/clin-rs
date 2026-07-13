@@ -31,6 +31,9 @@ pub struct DrawAppState {
     pub keybinds: Keybinds,
     pub show_grid: bool,
     pub seq_matcher: crate::keybinds::KeyMatcher,
+    pub image_cache: crate::image_render::cache::ImageCache,
+    pub image_picker: Option<ratatui_image::picker::Picker>,
+    pub image_decode_tx: Option<std::sync::mpsc::Sender<crate::image_render::worker::ImageJob>>,
 }
 
 impl DrawAppState {
@@ -67,8 +70,11 @@ impl DrawAppState {
             active_shape_type: crate::draw::state::DrawShapeType::Rect,
             show_shape_selector: false,
             creation_origin: None,
-            show_grid: true,
             preview_element: None,
+            show_grid: true,
+            image_cache: crate::image_render::cache::ImageCache::new(32),
+            image_picker: None,
+            image_decode_tx: None,
             keybinds,
             seq_matcher,
         }

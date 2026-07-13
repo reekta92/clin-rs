@@ -133,6 +133,7 @@ pub enum DrawAction {
     TextEditorConfirm,
     TextEditorCancel,
     ToggleGrid,
+    SelectImageTool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, strum::EnumIter)]

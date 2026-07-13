@@ -1,5 +1,5 @@
 use crate::draw::app::{DrawAppState, DrawEventAction};
-use crate::draw::state::{DrawElement, DrawShapeType, DrawTool, Shape, Stroke, Text};
+use crate::draw::state::{DrawElement, DrawShapeType, DrawTool, ImageElement, Shape, Stroke, Text};
 use crate::keybinds::{DrawAction, Keybinds};
 use crate::text_edit::apply_text_shortcuts;
 use crossterm::event::{Event, MouseButton, MouseEvent, MouseEventKind};
@@ -88,6 +88,10 @@ pub fn handle_event(
                 }
                 DrawAction::SelectEraseTool => {
                     app.active_tool = DrawTool::Erase;
+                    return Ok(None);
+                }
+                DrawAction::SelectImageTool => {
+                    app.active_tool = DrawTool::Image;
                     return Ok(None);
                 }
                 DrawAction::Help => {
@@ -218,6 +222,32 @@ fn handle_mouse(
                 DrawTool::Erase => {
                     erase_at(cx, cy, app);
                 }
+                DrawTool::Image => {
+                    // File-pick dialog to import an image
+                    let picked = crate::ui::pick_file("Image", "png;jpg;jpeg;gif;webp;bmp");
+                    match picked {
+                        Ok(Some(path)) => {
+                            let ts = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_millis() as i64;
+                            let id = format!("{}_{ts}", app.data.elements.len());
+                            app.data.elements.push(DrawElement::Image(ImageElement {
+                                id,
+                                path,
+                                x: cx,
+                                y: cy,
+                                width: 20.0,
+                                height: 15.0,
+                            }));
+                            return Ok(Some(DrawEventAction::Save));
+                        }
+                        Ok(None) => { /* user cancelled */ }
+                        Err(e) => {
+                            eprintln!("Failed to pick image: {e}");
+                        }
+                    }
+                }
             }
         }
         MouseEventKind::Down(MouseButton::Right) => {
@@ -254,6 +284,7 @@ fn handle_mouse(
                     }
                 }
                 DrawTool::Text => {}
+                DrawTool::Image => {}
             }
         }
         MouseEventKind::Drag(MouseButton::Right) | MouseEventKind::Drag(MouseButton::Middle) => {
@@ -381,6 +412,7 @@ fn erase_at(cx: f64, cy: f64, app: &mut DrawAppState) {
             }
         },
         DrawElement::Text(t) => (t.x - cx).abs() > threshold || (t.y - cy).abs() > threshold,
+        DrawElement::Image(i) => cx < i.x || cx > i.x + i.width || cy < i.y || cy > i.y + i.height,
     });
 }
 

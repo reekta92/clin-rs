@@ -25,6 +25,9 @@ pub struct NoteEditor {
     pub last_preview_pane_width: u16,
     pub last_preview_pane_height: u16,
     pub preview_content_width: Option<u16>,
+    pub image_cache: crate::image_render::cache::ImageCache,
+    pub image_picker: Option<ratatui_image::picker::Picker>,
+    pub image_decode_tx: Option<std::sync::mpsc::Sender<crate::image_render::worker::ImageJob>>,
 }
 
 impl Default for NoteEditor {
@@ -45,6 +48,9 @@ impl Default for NoteEditor {
             last_preview_pane_width: 0,
             last_preview_pane_height: 36,
             preview_content_width: None,
+            image_cache: crate::image_render::cache::ImageCache::new(32),
+            image_picker: None,
+            image_decode_tx: None,
         }
     }
 }

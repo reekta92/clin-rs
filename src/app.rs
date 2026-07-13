@@ -367,6 +367,11 @@ pub struct App {
     pub preview_fullscreen: bool,
     pub layout_edit: bool,
     pub layout_drag: Option<LayoutDrag>,
+    pub image_picker: Option<ratatui_image::picker::Picker>,
+    pub image_decode_tx: Option<std::sync::mpsc::Sender<crate::image_render::worker::ImageJob>>,
+    pub image_decode_rx: Option<
+        std::sync::mpsc::Receiver<anyhow::Result<crate::image_render::worker::DecodedImage>>,
+    >,
 }
 
 const PREVIEW_INNER_PAD: u16 = 4;
@@ -499,6 +504,9 @@ impl App {
             preview_fullscreen: false,
             layout_edit: false,
             layout_drag: None,
+            image_picker: None,
+            image_decode_tx: None,
+            image_decode_rx: None,
         };
         app.goals_progress = app.load_goals_progress();
         app.list.folder_expanded.insert(String::new());
@@ -623,12 +631,15 @@ impl App {
             goals_progress: crate::goals::DailyProgress::default(),
             draw_preview: None,
             graph_preview: None,
-            graph_preview_sig: 0,
             graph_preview_steps: 0,
+            graph_preview_sig: 0,
             preview_wrap,
             preview_fullscreen: false,
             layout_edit: false,
             layout_drag: None,
+            image_picker: None,
+            image_decode_tx: None,
+            image_decode_rx: None,
         };
         app.goals_progress = app.load_goals_progress();
         app.list.folder_expanded.insert(String::new());

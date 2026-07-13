@@ -533,6 +533,10 @@ impl Default for Keybinds {
             DrawAction::ToggleGrid,
             vec![KeyCombo::shift(KeyCode::Char('G'))],
         );
+        draw.insert(
+            DrawAction::SelectImageTool,
+            vec![KeyCombo::simple(KeyCode::Char('i'))],
+        );
 
         let mut canvas = HashMap::new();
         canvas.insert(

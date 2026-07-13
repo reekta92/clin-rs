@@ -4,6 +4,17 @@ use crate::keybinds::CanvasAction;
 use crate::pinstar::state::PinstarState;
 use ratatui::{prelude::*, widgets::*};
 
+fn is_image_ext(path: &str) -> bool {
+    let ext = std::path::Path::new(path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase())
+        .unwrap_or_default();
+    matches!(
+        ext.as_str(),
+        "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp"
+    )
+}
 fn get_node_color(color_code: Option<&str>, theme: &AppThemeColors) -> Color {
     match color_code {
         Some(s) if s.starts_with('#') => {
@@ -514,11 +525,51 @@ pub fn draw_pinstar_view(
             block = block.border_type(border_type);
         }
 
-        let text = Paragraph::new(node.text())
-            .block(block)
-            .style(Style::default().fg(theme.text))
-            .wrap(Wrap { trim: false });
-        frame.render_widget(text, node_rect);
+        // For image FileNodes with an available picker, render the actual image
+        let is_image_file = matches!(node, crate::pinstar::data::CanvasNode::File(n) if is_image_ext(&n.file))
+            && state.image_picker.is_some();
+
+        let rendered_image = if is_image_file {
+            let file_path = match node {
+                crate::pinstar::data::CanvasNode::File(n) => n.file.clone(),
+                _ => String::new(),
+            };
+            let picker = state.image_picker.as_ref().expect("checked above");
+            let key = crate::image_render::ImageKey {
+                path: std::path::PathBuf::from(&file_path),
+                mtime: 0,
+            };
+            if let Some(tx) = &state.image_decode_tx {
+                state.image_cache.request(key.clone(), 2048, tx, picker);
+            }
+            state.image_cache.get_proto(&key)
+        } else {
+            None
+        };
+
+        if let Some(proto) = rendered_image
+            && node_rect.width > 2
+            && node_rect.height > 2
+        {
+            let inner_area = Rect::new(
+                node_rect.x + 1,
+                node_rect.y + 1,
+                node_rect.width.saturating_sub(2),
+                node_rect.height.saturating_sub(2),
+            );
+            frame.render_widget(block, node_rect);
+            frame.render_stateful_widget(
+                ratatui_image::StatefulImage::default().resize(ratatui_image::Resize::Fit(None)),
+                inner_area,
+                proto,
+            );
+        } else {
+            let text = Paragraph::new(node.text())
+                .block(block)
+                .style(Style::default().fg(theme.text))
+                .wrap(Wrap { trim: false });
+            frame.render_widget(text, node_rect);
+        }
 
         if is_selected {
             let corner_style = Style::default()

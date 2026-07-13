@@ -14,6 +14,7 @@ pub mod frontmatter;
 pub mod fsutil;
 pub mod goals;
 pub mod graf;
+pub mod image_render;
 pub mod keybinds;
 pub mod list_view;
 pub mod markdown;
@@ -733,6 +734,11 @@ fn run_tui_session(app: &mut App) -> Result<()> {
 
     app.backup_tx = Some(tx);
 
+    // Spawn the background image decode worker.
+    let (decode_tx, decode_rx) = crate::image_render::worker::spawn();
+    app.image_decode_tx = Some(decode_tx);
+    app.image_decode_rx = Some(decode_rx);
+
     // Initialize the optional file system watcher for auto-refreshing the
     // notes list when external editors or sync tools modify files.
     // Uses raw `notify` (not `notify-debouncer-mini`) so we can manually
@@ -770,14 +776,15 @@ fn run_tui_session(app: &mut App) -> Result<()> {
         None
     };
 
-    // Run the TUI inside an inner block so `TerminalGuard` (raw mode + alt
-    // screen) is dropped — restoring the terminal — BEFORE any blocking
-    // quit-time backup. Any later signal/SIGKILL during the flush then leaves
-    // the terminal clean.
     let result = {
         let _guard = TerminalGuard::enter(app.mouse_enabled)?;
         let backend = ratatui::backend::CrosstermBackend::new(io::stdout());
         let mut terminal = Terminal::new(backend).context("failed to create terminal")?;
+        // Detect terminal graphics protocol while inside alt-screen+raw mode.
+        app.image_picker = Some(
+            ratatui_image::picker::Picker::from_query_stdio()
+                .unwrap_or_else(|_| ratatui_image::picker::Picker::halfblocks()),
+        );
 
         let mut terminal_safe = std::panic::AssertUnwindSafe(&mut terminal);
         let mut app_safe = std::panic::AssertUnwindSafe(&mut *app);
@@ -974,7 +981,25 @@ fn run_app(
             Duration::from_millis(200)
         };
 
-        let need_redraw = app.poll_renderers();
+        let mut need_redraw = app.poll_renderers();
+
+        // Drain completed image decode jobs into local Vec to avoid borrow conflict
+        let decoded_results: Vec<anyhow::Result<crate::image_render::worker::DecodedImage>> =
+            match &app.image_decode_rx {
+                Some(rx) => std::iter::from_fn(|| rx.try_recv().ok()).collect(),
+                None => Vec::new(),
+            };
+        for res in decoded_results {
+            match res {
+                Ok(img) => {
+                    app.install_image(img);
+                }
+                Err(e) => {
+                    app.set_temporary_status(&format!("Image decode failed: {e}"));
+                }
+            }
+            need_redraw = true;
+        }
 
         // Auto-backup check
         if let Some(interval_mins) = app.config.backup.auto_backup_interval {

@@ -152,17 +152,20 @@ impl App {
             self.list.visual_list.get(self.list.visual_index)
         {
             let path = self.storage.note_path(&self.notes[*summary_idx].id);
-            if let Ok(state) = crate::pinstar::state::PinstarState::load(
+            if let Ok(mut state) = crate::pinstar::state::PinstarState::load(
                 &path,
                 self.keybinds.clone(),
                 self.seq_matcher.clone(),
             ) {
+                state.image_cache =
+                    crate::image_render::cache::ImageCache::new(self.config.image.cache_size);
+                state.image_picker = self.image_picker.clone();
+                state.image_decode_tx = self.image_decode_tx.clone();
                 self.canvas_state = Some(state);
                 if self.mode != ViewMode::Canvas {
                     self.return_mode = Some(self.mode);
                     self.mode = ViewMode::Canvas;
                 }
-
                 self.editor.editing_id = Some(self.notes[*summary_idx].id.clone());
                 self.set_default_status();
             } else {

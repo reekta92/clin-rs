@@ -472,6 +472,51 @@ impl Storage {
             .unwrap_or(0)
     }
 
+    pub fn attachments_dir(&self) -> PathBuf {
+        let base = if self.data_dir == self.notes_dir {
+            self.data_dir.join(".clin")
+        } else {
+            self.notes_dir.clone()
+        };
+        base.join("attachments")
+    }
+
+    pub fn import_attachment(&self, src: &Path) -> anyhow::Result<String> {
+        let dir = self.attachments_dir();
+        fs::create_dir_all(&dir).context("failed to create attachments directory")?;
+
+        let ext = src
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| format!(".{e}"))
+            .unwrap_or_default();
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
+        let short_id = &Uuid::new_v4().to_string()[..8];
+        let filename = format!("{ts}_{short_id}{ext}");
+        let dest = dir.join(&filename);
+        fs::copy(src, &dest).context("failed to copy attachment")?;
+        Ok(format!("attachments/{filename}"))
+    }
+
+    pub fn resolve_attachment(&self, id: &str) -> Option<PathBuf> {
+        // First try via validate_path_within_notes_dir (handles path traversal checks)
+        if let Some(p) = self.validate_path_within_notes_dir(id)
+            && p.exists()
+        {
+            return Some(p);
+        }
+        // Fallback: resolve as relative to notes_dir (for legacy absolute/relative paths)
+        let fallback = self.notes_dir.join(id);
+        if fallback.exists() {
+            Some(fallback)
+        } else {
+            None
+        }
+    }
+
     fn validate_path_within_notes_dir(&self, rel_path: &str) -> Option<PathBuf> {
         let path = std::path::Path::new(rel_path);
         let mut normalized = PathBuf::new();

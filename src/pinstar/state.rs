@@ -34,6 +34,9 @@ pub struct PinstarState {
     pub keybinds: crate::keybinds::Keybinds,
     pub seq_matcher: crate::keybinds::KeyMatcher,
     pub last_area: ratatui::layout::Rect,
+    pub image_cache: crate::image_render::cache::ImageCache,
+    pub image_picker: Option<ratatui_image::picker::Picker>,
+    pub image_decode_tx: Option<std::sync::mpsc::Sender<crate::image_render::worker::ImageJob>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -93,6 +96,9 @@ impl PinstarState {
             keybinds,
             seq_matcher,
             last_area: ratatui::layout::Rect::default(),
+            image_cache: crate::image_render::cache::ImageCache::new(32),
+            image_picker: None,
+            image_decode_tx: None,
         })
     }
 

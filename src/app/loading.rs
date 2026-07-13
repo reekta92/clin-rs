@@ -747,6 +747,31 @@ impl App {
         updated
     }
 
+    /// Install a completed decode into the active view's image cache.
+    pub fn install_image(&mut self, decoded: crate::image_render::worker::DecodedImage) {
+        let picker = match self.image_picker.as_ref() {
+            Some(p) => p,
+            None => return,
+        };
+
+        match self.mode {
+            crate::app::ViewMode::Canvas => {
+                if let Some(state) = &mut self.canvas_state {
+                    state.image_cache.install_decoded(decoded, picker);
+                }
+            }
+            crate::app::ViewMode::Draw => {
+                if let Some(state) = &mut self.draw_state {
+                    state.image_cache.install_decoded(decoded, picker);
+                }
+            }
+            crate::app::ViewMode::Edit => {
+                self.editor.image_cache.install_decoded(decoded, picker);
+            }
+            _ => {}
+        }
+    }
+
     pub fn request_preview_update(&mut self) {
         if !(self.list.preview_enabled || self.preview_fullscreen) {
             return;

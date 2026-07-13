@@ -113,10 +113,22 @@ impl<'de> Deserialize<'de> for DrawData {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImageElement {
+    pub id: String,
+    pub path: String,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DrawElement {
     Stroke(Stroke),
     Shape(Shape),
     Text(Text),
+    Image(ImageElement),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -180,13 +192,13 @@ pub struct Text {
     pub y: f64,
     pub color: (u8, u8, u8),
 }
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DrawTool {
     Draw,
     Erase,
     Text,
     Shape,
+    Image,
 }
 
 #[derive(Debug, Clone)]

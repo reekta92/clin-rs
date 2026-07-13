@@ -200,6 +200,9 @@ pub fn render_draw_snapshot_with_size(
                                     .style(Style::default().fg(color)),
                             );
                         }
+                        DrawElement::Image(_) => {
+                            // Images rendered as StatefulImage pass (not available in snapshot)
+                        }
                     }
                 }
             });
@@ -403,6 +406,12 @@ fn draw_bounds(data: &DrawData) -> (f64, f64, f64, f64) {
                 min_y = min_y.min(t.y);
                 max_x = max_x.max(t.x + t.content.len() as f64 * 8.0);
                 max_y = max_y.max(t.y + 12.0);
+            }
+            DrawElement::Image(i) => {
+                min_x = min_x.min(i.x);
+                min_y = min_y.min(i.y);
+                max_x = max_x.max(i.x + i.width);
+                max_y = max_y.max(i.y + i.height);
             }
         }
     }

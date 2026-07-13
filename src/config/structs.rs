@@ -333,6 +333,26 @@ pub struct BackupConfig {
     pub auto_backup_interval: Option<u64>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct ImageConfig {
+    pub enabled: bool,
+    pub max_dimension: u32,
+    pub cache_size: usize,
+    pub attachments_subdir: String,
+}
+
+impl Default for ImageConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            max_dimension: 2048,
+            cache_size: 32,
+            attachments_subdir: "attachments".into(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CustomSmartFolder {
     pub name: String,
@@ -558,6 +578,7 @@ pub struct ClinConfig {
     pub graf: GrafConfig,
     #[serde(default)]
     pub goals: GoalsConfig,
+    pub image: ImageConfig,
     #[serde(default)]
     pub statusline: StatuslineConfig,
     #[serde(skip)]
