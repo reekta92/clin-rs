@@ -175,13 +175,13 @@ pub fn draw_quick_search<T, F>(
 
         // Clear the area behind the dropdown
         frame.render_widget(Clear, dropdown_area);
-        // Fill dropdown area with theme background
-        frame.render_widget(Block::default().style(theme.bg_style()), dropdown_area);
+        // Fill dropdown area with accent to match header bar
+        frame.render_widget(Block::default().style(Style::default().bg(theme.accent)), dropdown_area);
 
         if result_count == 0 {
             let no_match = Paragraph::new(Line::styled(
                 "  No matches",
-                Style::default().fg(theme.muted),
+                Style::default().fg(theme.text),
             ));
             frame.render_widget(no_match, dropdown_area);
         } else {
