@@ -255,7 +255,14 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
     frame.render_widget(table, table_area);
 
     if show_sides {
-        draw_help_info_pane(frame, left_area, app.help_tab, &app.keybinds, app.help_info_active, theme);
+        draw_help_info_pane(
+            frame,
+            left_area,
+            app.help_tab,
+            &app.keybinds,
+            app.help_info_active,
+            theme,
+        );
         draw_dim_vline(frame, divider1_area, theme.border);
         draw_dim_vline(frame, divider2_area, theme.border);
         draw_help_tips_pane(
@@ -1115,7 +1122,9 @@ fn draw_help_info_pane(
         lines.push(Line::default());
         lines.push(Line::from(Span::styled(
             "Popups & Overlays",
-            Style::default().fg(theme.heading).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(theme.heading)
+                .add_modifier(Modifier::BOLD),
         )));
         lines.push(Line::default());
         // Name list — all names always visible; active marked and highlighted.
@@ -1123,11 +1132,16 @@ fn draw_help_info_pane(
             let is_active = i == active;
             let marker = if is_active { "▼ " } else { "› " };
             let style = if is_active {
-                Style::default().fg(theme.accent).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(theme.muted)
             };
-            lines.push(Line::from(Span::styled(format!("{marker}{}", p.name), style)));
+            lines.push(Line::from(Span::styled(
+                format!("{marker}{}", p.name),
+                style,
+            )));
         }
         lines.push(Line::default());
         // Only the active popup's description renders.

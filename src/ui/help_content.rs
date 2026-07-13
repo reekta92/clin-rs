@@ -1,5 +1,5 @@
-use crate::config::{ClinConfig, KeybindPreset};
 use crate::app::HelpTab;
+use crate::config::{ClinConfig, KeybindPreset};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum TipRequirement {
@@ -37,11 +37,23 @@ pub struct HelpSuggestion {
 }
 
 const fn tip(title: &'static str, body: &'static str) -> HelpSuggestion {
-    HelpSuggestion { title, body, requires: TipRequirement::None }
+    HelpSuggestion {
+        title,
+        body,
+        requires: TipRequirement::None,
+    }
 }
 
-const fn tip_req(title: &'static str, body: &'static str, requires: TipRequirement) -> HelpSuggestion {
-    HelpSuggestion { title, body, requires }
+const fn tip_req(
+    title: &'static str,
+    body: &'static str,
+    requires: TipRequirement,
+) -> HelpSuggestion {
+    HelpSuggestion {
+        title,
+        body,
+        requires,
+    }
 }
 
 /// 2–4 sentence static paragraph describing what the tab's view is and does.
@@ -76,119 +88,417 @@ pub fn tab_description(tab: HelpTab) -> &'static str {
 
 /// Curated suggestion pool per tab (min 5 entries; most have 6–7 for variety).
 const NOTES_SUGGESTIONS: &[HelpSuggestion] = &[
-    tip("Command palette", "Press {list:OpenCommandPalette} to open the **Command Palette** and execute any action by typing its name."),
-    tip("Select mode", "Press {list:ToggleSelectMode} to toggle **Select Mode** and start selecting multiple notes in the list."),
-    tip("Select item", "Use {list:ToggleSelectItem} in **Select Mode** to select or deselect the currently focused note or folder."),
-    tip_req("Expand to depth", "Press {list:ExpandToLevel} to expand folders one level, or type a number first (e.g. `` 3 `` then {list:ExpandToLevel}) to expand to that depth.", TipRequirement::Counts),
-    tip("Preview pane", "Toggle the right-side preview pane using {list:TogglePreview} to view notes without opening them."),
-    tip("Sort order", "Cycle the note sorting order using {list:CycleSort} to sort by title, modified time, or size."),
-    tip("Folders first", "Press {list:ToggleFoldersFirst} to choose whether **folders** should always stay pinned to the top of the list."),
-    tip("Manage subnotes", "Press {list:ManageSubnotes} to view, attach, or manage **subnotes** associated with the selected note."),
-    tip("Create new folder", "Use {list:CreateFolder} to create a new **folder** in the currently active path."),
-    tip("Create new note", "Press {list:CreateNote} to create a new **note** inside the highlighted folder."),
-    tip("Pin a note", "Press {list:TogglePin} to **pin** a note so it stays pinned at the top of the list."),
-    tip("Manage tags", "Press {list:ManageTags} to add, rename, or remove **tags** from the selected note."),
-    tip("Open trash", "Press {list:OpenTrash} to view and recover deleted notes from the **trash**."),
-    tip("Search notes", "Press {list:Search} to jump to the **search bar** and filter notes by title or content."),
+    tip(
+        "Command palette",
+        "Press {list:OpenCommandPalette} to open the **Command Palette** and execute any action by typing its name.",
+    ),
+    tip(
+        "Select mode",
+        "Press {list:ToggleSelectMode} to toggle **Select Mode** and start selecting multiple notes in the list.",
+    ),
+    tip(
+        "Select item",
+        "Use {list:ToggleSelectItem} in **Select Mode** to select or deselect the currently focused note or folder.",
+    ),
+    tip_req(
+        "Expand to depth",
+        "Press {list:ExpandToLevel} to expand folders one level, or type a number first (e.g. `` 3 `` then {list:ExpandToLevel}) to expand to that depth.",
+        TipRequirement::Counts,
+    ),
+    tip(
+        "Preview pane",
+        "Toggle the right-side preview pane using {list:TogglePreview} to view notes without opening them.",
+    ),
+    tip(
+        "Sort order",
+        "Cycle the note sorting order using {list:CycleSort} to sort by title, modified time, or size.",
+    ),
+    tip(
+        "Folders first",
+        "Press {list:ToggleFoldersFirst} to choose whether **folders** should always stay pinned to the top of the list.",
+    ),
+    tip(
+        "Manage subnotes",
+        "Press {list:ManageSubnotes} to view, attach, or manage **subnotes** associated with the selected note.",
+    ),
+    tip(
+        "Create new folder",
+        "Use {list:CreateFolder} to create a new **folder** in the currently active path.",
+    ),
+    tip(
+        "Create new note",
+        "Press {list:CreateNote} to create a new **note** inside the highlighted folder.",
+    ),
+    tip(
+        "Pin a note",
+        "Press {list:TogglePin} to **pin** a note so it stays pinned at the top of the list.",
+    ),
+    tip(
+        "Manage tags",
+        "Press {list:ManageTags} to add, rename, or remove **tags** from the selected note.",
+    ),
+    tip(
+        "Open trash",
+        "Press {list:OpenTrash} to view and recover deleted notes from the **trash**.",
+    ),
+    tip(
+        "Search notes",
+        "Press {list:Search} to jump to the **search bar** and filter notes by title or content.",
+    ),
 ];
 const EDITOR_SUGGESTIONS: &[HelpSuggestion] = &[
-    tip("Markdown preview", "Press {edit:ToggleMarkdownPreview} to toggle a side-by-side **live preview** of your rendered markdown note."),
-    tip("External editor", "Press {list:ToggleExternalEditor} from the list to launch your external `` $EDITOR `` (like Vim or Nano) for heavy editing."),
-    tip("Delete word", "Use {edit:DeleteWord} to quickly delete the **word** directly preceding your cursor."),
-    tip("Delete next word", "Press {edit:DeleteNextWord} to erase the **word** directly following your cursor."),
-    tip("Undo history", "Press {edit:Undo} to revert your last text modification; full edit history is kept for your session."),
-    tip("Redo changes", "Use {edit:Redo} to re-apply any text modifications that you previously reverted."),
-    tip("Cycle focus", "Use {edit:CycleFocus} to quickly tab between editing the note's **title** and the markdown **body**."),
-    tip("Go back", "Press {edit:Back} to save your changes and return to the main notes list."),
-    tip("Fullscreen preview", "Press {edit:TogglePreviewFullscreen} to expand the markdown **preview** to fill the entire screen."),
-    tip("Manage subnotes", "Press {edit:ManageSubnotes} to attach or manage **subnotes** while editing."),
-    tip("Auto-save", "Your note is **automatically saved** when you press {edit:Back} to leave the editor — no manual save required."),
-    tip("External editor workflow", "For heavy editing tasks, mark a note to open in your external `` $EDITOR `` via the list's {list:ToggleExternalEditor} action."),
+    tip(
+        "Markdown preview",
+        "Press {edit:ToggleMarkdownPreview} to toggle a side-by-side **live preview** of your rendered markdown note.",
+    ),
+    tip(
+        "External editor",
+        "Press {list:ToggleExternalEditor} from the list to launch your external `` $EDITOR `` (like Vim or Nano) for heavy editing.",
+    ),
+    tip(
+        "Delete word",
+        "Use {edit:DeleteWord} to quickly delete the **word** directly preceding your cursor.",
+    ),
+    tip(
+        "Delete next word",
+        "Press {edit:DeleteNextWord} to erase the **word** directly following your cursor.",
+    ),
+    tip(
+        "Undo history",
+        "Press {edit:Undo} to revert your last text modification; full edit history is kept for your session.",
+    ),
+    tip(
+        "Redo changes",
+        "Use {edit:Redo} to re-apply any text modifications that you previously reverted.",
+    ),
+    tip(
+        "Cycle focus",
+        "Use {edit:CycleFocus} to quickly tab between editing the note's **title** and the markdown **body**.",
+    ),
+    tip(
+        "Go back",
+        "Press {edit:Back} to save your changes and return to the main notes list.",
+    ),
+    tip(
+        "Fullscreen preview",
+        "Press {edit:TogglePreviewFullscreen} to expand the markdown **preview** to fill the entire screen.",
+    ),
+    tip(
+        "Manage subnotes",
+        "Press {edit:ManageSubnotes} to attach or manage **subnotes** while editing.",
+    ),
+    tip(
+        "Auto-save",
+        "Your note is **automatically saved** when you press {edit:Back} to leave the editor — no manual save required.",
+    ),
+    tip(
+        "External editor workflow",
+        "For heavy editing tasks, mark a note to open in your external `` $EDITOR `` via the list's {list:ToggleExternalEditor} action.",
+    ),
 ];
 const GRAPH_SUGGESTIONS: &[HelpSuggestion] = &[
-    tip("Auto-fit graph", "Press {graph:AutoFit} to recenter and rescale the whole graph to perfectly fit the viewport."),
-    tip("Search nodes", "Press {graph:ToggleSearch} to toggle a **search box** for filtering and locating nodes on the graph."),
-    tip("Toggle minimap", "Use {graph:ToggleMinimap} to show or hide the small **minimap** in the bottom corner of the viewport."),
-    tip("Toggle legend", "Press {graph:ToggleLegend} to display or hide the color-coded **legend** for nodes and links."),
-    tip("Toggle grid background", "Toggle the background grid overlay on the canvas using {graph:ToggleGrid}."),
-    tip("Open from graph", "Press {graph:OpenNote} to open the currently selected node directly in the note editor."),
-    tip("Zoom controls", "Use {graph:ZoomIn} to zoom closer into nodes, or {graph:ZoomOut} to zoom out for a wider view."),
-    tip("Reload configuration", "Press {graph:ReloadConfig} to reload graph visualization configurations from the configuration file."),
-    tip("Toggle status bar", "Press {graph:ToggleStatus} to show or hide the **status bar** at the bottom of the graph view."),
-    tip("Toggle preview", "Use {graph:TogglePreview} to toggle a **preview pane** that displays node content inline."),
-    tip("Refresh physics", "Press {graph:Refresh} to reset and re-run the physics simulation to reorganize node layout."),
-    tip("Graph help", "Press {graph:Help} to jump to the help page from the graph view, or {graph:Quit} to close the graph."),
+    tip(
+        "Auto-fit graph",
+        "Press {graph:AutoFit} to recenter and rescale the whole graph to perfectly fit the viewport.",
+    ),
+    tip(
+        "Search nodes",
+        "Press {graph:ToggleSearch} to toggle a **search box** for filtering and locating nodes on the graph.",
+    ),
+    tip(
+        "Toggle minimap",
+        "Use {graph:ToggleMinimap} to show or hide the small **minimap** in the bottom corner of the viewport.",
+    ),
+    tip(
+        "Toggle legend",
+        "Press {graph:ToggleLegend} to display or hide the color-coded **legend** for nodes and links.",
+    ),
+    tip(
+        "Toggle grid background",
+        "Toggle the background grid overlay on the canvas using {graph:ToggleGrid}.",
+    ),
+    tip(
+        "Open from graph",
+        "Press {graph:OpenNote} to open the currently selected node directly in the note editor.",
+    ),
+    tip(
+        "Zoom controls",
+        "Use {graph:ZoomIn} to zoom closer into nodes, or {graph:ZoomOut} to zoom out for a wider view.",
+    ),
+    tip(
+        "Reload configuration",
+        "Press {graph:ReloadConfig} to reload graph visualization configurations from the configuration file.",
+    ),
+    tip(
+        "Toggle status bar",
+        "Press {graph:ToggleStatus} to show or hide the **status bar** at the bottom of the graph view.",
+    ),
+    tip(
+        "Toggle preview",
+        "Use {graph:TogglePreview} to toggle a **preview pane** that displays node content inline.",
+    ),
+    tip(
+        "Refresh physics",
+        "Press {graph:Refresh} to reset and re-run the physics simulation to reorganize node layout.",
+    ),
+    tip(
+        "Graph help",
+        "Press {graph:Help} to jump to the help page from the graph view, or {graph:Quit} to close the graph.",
+    ),
 ];
 const DRAW_SUGGESTIONS: &[HelpSuggestion] = &[
-    tip("Shape selector", "Press {draw:ToggleShapeSelector} to open the **Shape Selector** menu and drop rectangles, circles, or lines."),
-    tip("Pen tool", "Press {draw:SelectDrawTool} to activate the **Pen tool** and draw smooth freehand lines by dragging."),
-    tip("Text labels", "Use {draw:SelectTextTool} to select the **Text tool** and type custom text annotations anywhere on the canvas."),
-    tip("Eraser tool", "Press {draw:SelectEraseTool} to select the **Eraser tool** and rub out existing lines or shapes."),
-    tip("Toggle grid alignment", "Press {draw:ToggleGrid} to toggle the alignment grid to help you position your shapes."),
-    tip("Shape menu up", "Use the `` Up `` arrow key inside the shape selector to move the highlighted option up."),
-    tip("Shape menu down", "Use the `` Down `` arrow key inside the shape selector to move the highlighted option down."),
-    tip("Shape selection confirm", "Press `` Enter `` to confirm and select the highlighted shape type from the menu."),
-    tip("Drawing workflow", "Select a **tool** first, then click and drag on the canvas to place shapes, lines, or freehand strokes."),
-    tip("Grid alignment", "Enable the alignment **grid** to snap elements into position as you draw or move them."),
-    tip("Undo drawings", "Use {edit:Undo} to revert the last drawing action if you make a mistake."),
-    tip("Tool shortcuts", "Quickly switch between **drawing**, **text**, and **eraser** tools using their dedicated keybinds without opening menus."),
+    tip(
+        "Shape selector",
+        "Press {draw:ToggleShapeSelector} to open the **Shape Selector** menu and drop rectangles, circles, or lines.",
+    ),
+    tip(
+        "Pen tool",
+        "Press {draw:SelectDrawTool} to activate the **Pen tool** and draw smooth freehand lines by dragging.",
+    ),
+    tip(
+        "Text labels",
+        "Use {draw:SelectTextTool} to select the **Text tool** and type custom text annotations anywhere on the canvas.",
+    ),
+    tip(
+        "Eraser tool",
+        "Press {draw:SelectEraseTool} to select the **Eraser tool** and rub out existing lines or shapes.",
+    ),
+    tip(
+        "Toggle grid alignment",
+        "Press {draw:ToggleGrid} to toggle the alignment grid to help you position your shapes.",
+    ),
+    tip(
+        "Shape menu up",
+        "Use the `` Up `` arrow key inside the shape selector to move the highlighted option up.",
+    ),
+    tip(
+        "Shape menu down",
+        "Use the `` Down `` arrow key inside the shape selector to move the highlighted option down.",
+    ),
+    tip(
+        "Shape selection confirm",
+        "Press `` Enter `` to confirm and select the highlighted shape type from the menu.",
+    ),
+    tip(
+        "Drawing workflow",
+        "Select a **tool** first, then click and drag on the canvas to place shapes, lines, or freehand strokes.",
+    ),
+    tip(
+        "Grid alignment",
+        "Enable the alignment **grid** to snap elements into position as you draw or move them.",
+    ),
+    tip(
+        "Undo drawings",
+        "Use {edit:Undo} to revert the last drawing action if you make a mistake.",
+    ),
+    tip(
+        "Tool shortcuts",
+        "Quickly switch between **drawing**, **text**, and **eraser** tools using their dedicated keybinds without opening menus.",
+    ),
 ];
 const CANVAS_SUGGESTIONS: &[HelpSuggestion] = &[
-    tip("Context menu", "Press {canvas:OpenContextMenu} to toggle a popup **context menu** on the selected node."),
-    tip("Edit or connect", "Press {canvas:EditOrConnect} to edit the selected canvas node or start wiring connections."),
-    tip("Toggle editor", "Press {canvas:ToggleEditorPane} to toggle a side editor pane to edit note bodies inline."),
-    tip("Canvas grid", "Toggle the background alignment grid on the infinite canvas using {canvas:ToggleGrid}."),
-    tip("Zoom controls", "Press {canvas:ZoomIn} or {canvas:ZoomOut} to adjust the zoom level of the infinite workspace."),
-    tip("Fine zoom", "Press {canvas:ZoomFineIn} or {canvas:ZoomFineOut} to perform very fine, detailed zooming."),
-    tip("Quit canvas", "Press {canvas:Quit} to save all changes and exit the infinite canvas mode."),
-    tip("Cycle editor focus", "Use {canvas:CycleFocus} to shift focus between the canvas and the sidebar editor pane."),
-    tip("Save canvas", "Press {canvas:Save} to save the current canvas state at any time."),
-    tip("Close context menu", "Press {canvas:MenuClose} to dismiss the open context menu without selecting an action."),
-    tip("Editor unfocus", "Press {canvas:EditorUnfocus} to move focus back to the canvas from the editor pane."),
-    tip("Sync raw editor", "Use {canvas:EditorSyncRaw} to save and sync any pending editor changes to the canvas."),
+    tip(
+        "Context menu",
+        "Press {canvas:OpenContextMenu} to toggle a popup **context menu** on the selected node.",
+    ),
+    tip(
+        "Edit or connect",
+        "Press {canvas:EditOrConnect} to edit the selected canvas node or start wiring connections.",
+    ),
+    tip(
+        "Toggle editor",
+        "Press {canvas:ToggleEditorPane} to toggle a side editor pane to edit note bodies inline.",
+    ),
+    tip(
+        "Canvas grid",
+        "Toggle the background alignment grid on the infinite canvas using {canvas:ToggleGrid}.",
+    ),
+    tip(
+        "Zoom controls",
+        "Press {canvas:ZoomIn} or {canvas:ZoomOut} to adjust the zoom level of the infinite workspace.",
+    ),
+    tip(
+        "Fine zoom",
+        "Press {canvas:ZoomFineIn} or {canvas:ZoomFineOut} to perform very fine, detailed zooming.",
+    ),
+    tip(
+        "Quit canvas",
+        "Press {canvas:Quit} to save all changes and exit the infinite canvas mode.",
+    ),
+    tip(
+        "Cycle editor focus",
+        "Use {canvas:CycleFocus} to shift focus between the canvas and the sidebar editor pane.",
+    ),
+    tip(
+        "Save canvas",
+        "Press {canvas:Save} to save the current canvas state at any time.",
+    ),
+    tip(
+        "Close context menu",
+        "Press {canvas:MenuClose} to dismiss the open context menu without selecting an action.",
+    ),
+    tip(
+        "Editor unfocus",
+        "Press {canvas:EditorUnfocus} to move focus back to the canvas from the editor pane.",
+    ),
+    tip(
+        "Sync raw editor",
+        "Use {canvas:EditorSyncRaw} to save and sync any pending editor changes to the canvas.",
+    ),
 ];
 const BACKUP_SUGGESTIONS: &[HelpSuggestion] = &[
-    tip("Stage changes", "Press {backup:StageFile} to stage the currently highlighted git file modification."),
-    tip("Unstage changes", "Press {backup:UnstageFile} to unstage the highlighted file from the next commit."),
-    tip("Stage all files", "Press {backup:StageAll} to stage all modified and untracked files in the repository."),
-    tip("Enter commit mode", "Press {backup:EnterCommit} to focus the commit message field and prepare to commit staged files."),
-    tip("Confirm commit", "Press {backup:ConfirmCommit} to confirm the typed commit message and record the changes."),
-    tip("Cancel commit", "Press {backup:CancelCommit} to discard the typed commit message and exit commit mode."),
-    tip("Push commits", "Use {backup:Push} to push all your local commits to the configured remote repository."),
-    tip("Pull changes", "Use {backup:Pull} to pull the latest changes from your remote repository."),
-    tip("Git status refresh", "Press {backup:Refresh} to run a fresh git status and update the modifications pane."),
-    tip("Cycle sections", "Press {backup:CycleSection} to quickly jump between **Staged**, **Unstaged**, and **Untracked** sections."),
-    tip("Open settings", "Press {backup:OpenSettings} to configure git author name, email, and remote URL from within the app."),
-    tip("Settings fields", "Use {backup:NextField} or {backup:PrevField} to navigate between git settings fields in the settings popup."),
-    tip("Close settings", "Press {backup:CloseSettings} to dismiss the settings popup and return to the backup view."),
+    tip(
+        "Stage changes",
+        "Press {backup:StageFile} to stage the currently highlighted git file modification.",
+    ),
+    tip(
+        "Unstage changes",
+        "Press {backup:UnstageFile} to unstage the highlighted file from the next commit.",
+    ),
+    tip(
+        "Stage all files",
+        "Press {backup:StageAll} to stage all modified and untracked files in the repository.",
+    ),
+    tip(
+        "Enter commit mode",
+        "Press {backup:EnterCommit} to focus the commit message field and prepare to commit staged files.",
+    ),
+    tip(
+        "Confirm commit",
+        "Press {backup:ConfirmCommit} to confirm the typed commit message and record the changes.",
+    ),
+    tip(
+        "Cancel commit",
+        "Press {backup:CancelCommit} to discard the typed commit message and exit commit mode.",
+    ),
+    tip(
+        "Push commits",
+        "Use {backup:Push} to push all your local commits to the configured remote repository.",
+    ),
+    tip(
+        "Pull changes",
+        "Use {backup:Pull} to pull the latest changes from your remote repository.",
+    ),
+    tip(
+        "Git status refresh",
+        "Press {backup:Refresh} to run a fresh git status and update the modifications pane.",
+    ),
+    tip(
+        "Cycle sections",
+        "Press {backup:CycleSection} to quickly jump between **Staged**, **Unstaged**, and **Untracked** sections.",
+    ),
+    tip(
+        "Open settings",
+        "Press {backup:OpenSettings} to configure git author name, email, and remote URL from within the app.",
+    ),
+    tip(
+        "Settings fields",
+        "Use {backup:NextField} or {backup:PrevField} to navigate between git settings fields in the settings popup.",
+    ),
+    tip(
+        "Close settings",
+        "Press {backup:CloseSettings} to dismiss the settings popup and return to the backup view.",
+    ),
 ];
 const TEMPLATES_SUGGESTIONS: &[HelpSuggestion] = &[
-    tip("Note templates", "Press {list:NewFromTemplate} from the main list to open the template picker for generating new notes."),
-    tip("Date variables", "Insert `` {date} ``, `` {datetime} ``, or `` {time} `` in your template to auto-insert timestamps."),
-    tip("Date components", "Use `` {year} ``, `` {month} ``, `` {day} ``, or `` {weekday} `` to customize note filenames dynamically."),
-    tip("Default template", "Place a file named `` default.toml `` in your templates directory to act as the default new-note template."),
-    tip("Template path", "Drop any custom template `.toml` files in the directory `` ~/.config/clin/templates/ `` to load them."),
-    tip("Command line template helper", "Run the command `` clin templates init `` in your terminal to scaffold example templates."),
-    tip("Picker search", "Type search characters inside the template picker list to filter templates by name instantly."),
-    tip("Template fields", "Note templates can define frontmatter, custom titles, and template body placeholders."),
-    tip("Frontmatter generation", "Templates can include `` +++ `` frontmatter blocks with default values for **title**, **tags**, and custom fields."),
-    tip("Variables list", "Available template variables: `` {title} ``, `` {name} ``, `` {folder} ``, `` {id} ``, plus all date components."),
-    tip("Picker layout", "The template picker shows the template **name** and **description** — use the description to hint at what the template creates."),
-    tip("Template inheritance", "You can nest templates by referencing other template files in the `` template `` field of a `.toml` template."),
+    tip(
+        "Note templates",
+        "Press {list:NewFromTemplate} from the main list to open the template picker for generating new notes.",
+    ),
+    tip(
+        "Date variables",
+        "Insert `` {date} ``, `` {datetime} ``, or `` {time} `` in your template to auto-insert timestamps.",
+    ),
+    tip(
+        "Date components",
+        "Use `` {year} ``, `` {month} ``, `` {day} ``, or `` {weekday} `` to customize note filenames dynamically.",
+    ),
+    tip(
+        "Default template",
+        "Place a file named `` default.toml `` in your templates directory to act as the default new-note template.",
+    ),
+    tip(
+        "Template path",
+        "Drop any custom template `.toml` files in the directory `` ~/.config/clin/templates/ `` to load them.",
+    ),
+    tip(
+        "Command line template helper",
+        "Run the command `` clin templates init `` in your terminal to scaffold example templates.",
+    ),
+    tip(
+        "Picker search",
+        "Type search characters inside the template picker list to filter templates by name instantly.",
+    ),
+    tip(
+        "Template fields",
+        "Note templates can define frontmatter, custom titles, and template body placeholders.",
+    ),
+    tip(
+        "Frontmatter generation",
+        "Templates can include `` +++ `` frontmatter blocks with default values for **title**, **tags**, and custom fields.",
+    ),
+    tip(
+        "Variables list",
+        "Available template variables: `` {title} ``, `` {name} ``, `` {folder} ``, `` {id} ``, plus all date components.",
+    ),
+    tip(
+        "Picker layout",
+        "The template picker shows the template **name** and **description** — use the description to hint at what the template creates.",
+    ),
+    tip(
+        "Template inheritance",
+        "You can nest templates by referencing other template files in the `` template `` field of a `.toml` template.",
+    ),
 ];
 const ABOUT_SUGGESTIONS: &[HelpSuggestion] = &[
-    tip("Config edit shortcut", "Type `` clin config edit `` in your terminal to open config.toml in your default editor."),
-    tip("CLI quick capture", "Run `` clin notes quick <text> `` to append a brief thought directly to your default inbox note."),
-    tip("Dump keybinds configuration", "Run `` clin keybinds export `` to dump the current active keybinding config as editable TOML."),
-    tip("Run database migrations", "Run `` clin storage migrate `` in your terminal if you need to migrate your database or note directory."),
-    tip("Check version", "Run `` clin --version `` in your shell to display the current build information and metadata."),
-    tip("Help commands", "Use {help:Search} to query command actions on the help page, or {help:Close} to exit help view."),
-    tip("Reroll suggestion tips", "Press {help:Reroll} to roll a fresh randomized selection of tip suggestions for the active tab."),
-    tip("Switch tabs", "Press {help:NextTab} or {help:PrevTab} to cycle through the help tabs for different application views."),
-    tip("List notes via CLI", "Run `` clin notes ls `` to list all notes in your vault from the command line."),
-    tip("Config key overrides", "Run `` clin config set key value `` to change a single config option from the terminal."),
-    tip("Graph view CLI", "Use `` clin graph `` from your terminal to open the graph visualization directly."),
-    tip("Version upgrade info", "Run `` clin upgrade check `` to see if a new version of clin is available."),
+    tip(
+        "Config edit shortcut",
+        "Type `` clin config edit `` in your terminal to open config.toml in your default editor.",
+    ),
+    tip(
+        "CLI quick capture",
+        "Run `` clin notes quick <text> `` to append a brief thought directly to your default inbox note.",
+    ),
+    tip(
+        "Dump keybinds configuration",
+        "Run `` clin keybinds export `` to dump the current active keybinding config as editable TOML.",
+    ),
+    tip(
+        "Run database migrations",
+        "Run `` clin storage migrate `` in your terminal if you need to migrate your database or note directory.",
+    ),
+    tip(
+        "Check version",
+        "Run `` clin --version `` in your shell to display the current build information and metadata.",
+    ),
+    tip(
+        "Help commands",
+        "Use {help:Search} to query command actions on the help page, or {help:Close} to exit help view.",
+    ),
+    tip(
+        "Reroll suggestion tips",
+        "Press {help:Reroll} to roll a fresh randomized selection of tip suggestions for the active tab.",
+    ),
+    tip(
+        "Switch tabs",
+        "Press {help:NextTab} or {help:PrevTab} to cycle through the help tabs for different application views.",
+    ),
+    tip(
+        "List notes via CLI",
+        "Run `` clin notes ls `` to list all notes in your vault from the command line.",
+    ),
+    tip(
+        "Config key overrides",
+        "Run `` clin config set key value `` to change a single config option from the terminal.",
+    ),
+    tip(
+        "Graph view CLI",
+        "Use `` clin graph `` from your terminal to open the graph visualization directly.",
+    ),
+    tip(
+        "Version upgrade info",
+        "Run `` clin upgrade check `` to see if a new version of clin is available.",
+    ),
 ];
 
 pub fn tab_suggestions(tab: HelpTab) -> &'static [HelpSuggestion] {
@@ -271,12 +581,10 @@ const EDITOR_POPUPS: &[PopupHelp] = &[
     },
 ];
 
-const GRAPH_POPUPS: &[PopupHelp] = &[
-    PopupHelp {
-        name: "Search",
-        body: "Press {graph:ToggleSearch} to open the **Search** overlay and jump to any node by title or tag. Type to filter live (``Backspace`` / ``Delete`` edit, ``Ctrl+u`` clears, arrows move the cursor); ``Up`` / ``Down`` or ``Tab`` / ``Shift+Tab`` move between matches and ``Enter`` centers the canvas on the selected node and closes the overlay. ``Esc`` cancels. The minimap, legend, grid, status bar, and preview are separate inline toggles, each with its own key in the table.",
-    },
-];
+const GRAPH_POPUPS: &[PopupHelp] = &[PopupHelp {
+    name: "Search",
+    body: "Press {graph:ToggleSearch} to open the **Search** overlay and jump to any node by title or tag. Type to filter live (``Backspace`` / ``Delete`` edit, ``Ctrl+u`` clears, arrows move the cursor); ``Up`` / ``Down`` or ``Tab`` / ``Shift+Tab`` move between matches and ``Enter`` centers the canvas on the selected node and closes the overlay. ``Esc`` cancels. The minimap, legend, grid, status bar, and preview are separate inline toggles, each with its own key in the table.",
+}];
 
 const DRAW_POPUPS: &[PopupHelp] = &[
     PopupHelp {
@@ -315,12 +623,10 @@ const BACKUP_POPUPS: &[PopupHelp] = &[
     },
 ];
 
-const TEMPLATES_POPUPS: &[PopupHelp] = &[
-    PopupHelp {
-        name: "Template Picker",
-        body: "Press {list:NewFromTemplate} to open the **template picker** and start a new note from a template. Type to search (``Tab`` swaps focus between the search box and the results); in the results ``Up`` / ``Down`` move and ``Enter`` generates a new note with date tokens filled. From the results, ``Space`` edits a template, ``d`` deletes one (asks confirmation), ``n`` creates a new template, and ``?`` jumps to template help.",
-    },
-];
+const TEMPLATES_POPUPS: &[PopupHelp] = &[PopupHelp {
+    name: "Template Picker",
+    body: "Press {list:NewFromTemplate} to open the **template picker** and start a new note from a template. Type to search (``Tab`` swaps focus between the search box and the results); in the results ``Up`` / ``Down`` move and ``Enter`` generates a new note with date tokens filled. From the results, ``Space`` edits a template, ``d`` deletes one (asks confirmation), ``n`` creates a new template, and ``?`` jumps to template help.",
+}];
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -371,7 +677,12 @@ mod tests {
             let title2 = rolled[2].title;
             let title3 = rolled[3].title;
             assert!(
-                title0 != title1 && title1 != title2 && title0 != title2 && title0 != title3 && title1 != title3 && title2 != title3,
+                title0 != title1
+                    && title1 != title2
+                    && title0 != title2
+                    && title0 != title3
+                    && title1 != title3
+                    && title2 != title3,
                 "Rolled suggestions for {:?} contain duplicates: {:?}",
                 tab,
                 rolled
@@ -432,7 +743,10 @@ mod tests {
     #[test]
     fn test_tip_requirement_caveats() {
         // None variant always returns None
-        assert_eq!(TipRequirement::None.caveat_if_unsatisfied(&ClinConfig::default()), None);
+        assert_eq!(
+            TipRequirement::None.caveat_if_unsatisfied(&ClinConfig::default()),
+            None
+        );
 
         // Counts with default config (preset=Default) -> Some
         let default_config = ClinConfig::default();
@@ -444,7 +758,10 @@ mod tests {
         // Counts with Vim preset -> None
         let mut vim_config = ClinConfig::default();
         vim_config.core.keybind_preset = KeybindPreset::Vim;
-        assert_eq!(TipRequirement::Counts.caveat_if_unsatisfied(&vim_config), None);
+        assert_eq!(
+            TipRequirement::Counts.caveat_if_unsatisfied(&vim_config),
+            None
+        );
 
         // Preset(Vim) with default config -> Some
         assert_eq!(
@@ -453,14 +770,22 @@ mod tests {
         );
 
         // Preset(Vim) with Vim config -> None
-        assert_eq!(TipRequirement::Preset(KeybindPreset::Vim).caveat_if_unsatisfied(&vim_config), None);
+        assert_eq!(
+            TipRequirement::Preset(KeybindPreset::Vim).caveat_if_unsatisfied(&vim_config),
+            None
+        );
 
         // Verify the ExpandToLevel tip carries Counts requirement
         let notes = tab_suggestions(HelpTab::Notes);
-        let expand = notes.iter().find(|s| s.title == "Expand to depth").expect("Expand to depth tip missing");
+        let expand = notes
+            .iter()
+            .find(|s| s.title == "Expand to depth")
+            .expect("Expand to depth tip missing");
         assert_eq!(expand.requires, TipRequirement::Counts);
         assert_eq!(
-            expand.requires.caveat_if_unsatisfied(&ClinConfig::default()),
+            expand
+                .requires
+                .caveat_if_unsatisfied(&ClinConfig::default()),
             Some("needs Vim/Helix preset for the count prefix".to_string())
         );
     }
@@ -508,8 +833,17 @@ mod tests {
         // Verify all popup names and bodies are non-empty across all tabs
         for &tab in &tabs {
             for popup in tab_popup_descriptions(tab) {
-                assert!(!popup.name.is_empty(), "Popup name should not be empty for {:?}", tab);
-                assert!(!popup.body.is_empty(), "Popup body for '{:?}:{}' should not be empty", tab, popup.name);
+                assert!(
+                    !popup.name.is_empty(),
+                    "Popup name should not be empty for {:?}",
+                    tab
+                );
+                assert!(
+                    !popup.body.is_empty(),
+                    "Popup body for '{:?}:{}' should not be empty",
+                    tab,
+                    popup.name
+                );
             }
         }
     }

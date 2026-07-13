@@ -12,9 +12,7 @@ fn map_input_result(
     use crate::overlay::OverlayResult;
     match res {
         input::ContentTreeInput::Back => Some(OverlayResult::Exit),
-        input::ContentTreeInput::Help => {
-            Some(OverlayResult::OpenHelp(crate::app::HelpTab::Notes))
-        }
+        input::ContentTreeInput::Help => Some(OverlayResult::OpenHelp(crate::app::HelpTab::Notes)),
         input::ContentTreeInput::Open => {
             if !state.load_error && state.selected < state.nodes.len() {
                 let line = state.nodes[state.selected].line;
