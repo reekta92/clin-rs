@@ -216,6 +216,10 @@ pub fn handle_pinstar_mouse(
         }
         MouseEventKind::Up(MouseButton::Left) => {
             state.is_panning = false;
+            state.is_dragging_resize_handle = false;
+            if state.resizing_node_id.take().is_some() {
+                let _ = state.save();
+            }
             if state.mouse_selecting && !state.mouse_dragged {
                 state.raw_editor.cancel_selection();
             }
