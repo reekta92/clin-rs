@@ -454,5 +454,24 @@ word_goal = 500
 
 # Daily target note count (edited or created). Set to 0 to disable.
 note_goal = 3
+
+# ── Image Rendering ────────────────────────────────────────────────────────────
+
+[image]
+# Enable pixel image rendering in canvas, draw, and note preview.
+enabled = true
+
+# Maximum pixel dimension for decoded images (larger images are downscaled).
+# max_dimension = 2048
+
+# Maximum number of decoded images cached per view.
+# cache_size = 32
+
+# Subdirectory within the vault for storing attached image files.
+# attachments_subdir = "attachments"
+
+# Number of terminal rows reserved for inline image previews in notes.
+# preview_rows = 8
 "###
 }
+
