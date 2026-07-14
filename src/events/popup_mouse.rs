@@ -533,8 +533,12 @@ impl crate::popups::ActivePopup {
                 if super::dismiss_popup_on_outside_click(app, mouse, popup_area) {
                     return true;
                 }
-                let has_filter =
-                    p.focus != SearchFocus::Input || !p.input.lines().join("").trim().is_empty();
+                let query_text = p.input.lines().join("");
+                let parsed = crate::app::parse_search_query(&query_text);
+                let has_filter = parsed.folder_filter.is_some()
+                    || parsed.pinned_only
+                    || parsed.tag_filter.is_some()
+                    || parsed.grep_mode;
                 let constraints = if has_filter {
                     vec![
                         Constraint::Length(3),
@@ -556,6 +560,69 @@ impl crate::popups::ActivePopup {
                 let results_chunk_idx = if has_filter { 2 } else { 1 };
                 let has_title = !p.title_results.is_empty();
                 let has_grep = !p.grep_results.is_empty();
+                // Scroll over results chunk
+                if contains_cell(chunks[results_chunk_idx], mouse.column, mouse.row) {
+                    match mouse.kind {
+                        MouseEventKind::ScrollUp => {
+                            p.focus = SearchFocus::Results;
+                            if has_grep {
+                                if p.grep_selected > 0 {
+                                    // skip collapsed header children
+                                    let mut i = p.grep_selected - 1;
+                                    p.grep_selected = loop {
+                                        if p.grep_is_header[i] {
+                                            break i;
+                                        }
+                                        let mut parent = i;
+                                        while parent > 0 && !p.grep_is_header[parent] {
+                                            parent -= 1;
+                                        }
+                                        if p.grep_expanded.contains(&parent) {
+                                            break i;
+                                        }
+                                        if i == 0 {
+                                            break 0;
+                                        }
+                                        i -= 1;
+                                    };
+                                }
+                            } else if has_title {
+                                p.title_selected = p.title_selected.saturating_sub(1);
+                            }
+                            app.popups.active = Some(Search(p));
+                            return true;
+                        }
+                        MouseEventKind::ScrollDown => {
+                            p.focus = SearchFocus::Results;
+                            if has_grep {
+                                if p.grep_selected + 1 < p.grep_results.len() {
+                                    let mut i = p.grep_selected + 1;
+                                    p.grep_selected = loop {
+                                        if p.grep_is_header[i] {
+                                            break i;
+                                        }
+                                        let mut parent = i;
+                                        while parent > 0 && !p.grep_is_header[parent] {
+                                            parent -= 1;
+                                        }
+                                        if p.grep_expanded.contains(&parent) {
+                                            break i;
+                                        }
+                                        i += 1;
+                                        if i >= p.grep_results.len() {
+                                            break p.grep_selected;
+                                        }
+                                    };
+                                }
+                            } else if has_title && p.title_selected + 1 < p.title_results.len() {
+                                p.title_selected += 1;
+                            }
+                            app.popups.active = Some(Search(p));
+                            return true;
+                        }
+                        _ => {}
+                    }
+                }
                 let mut open_selected = false;
                 if mouse.kind == MouseEventKind::Down(MouseButton::Left)
                     && contains_cell(chunks[0], mouse.column, mouse.row)
