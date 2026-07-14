@@ -153,9 +153,16 @@ impl App {
         if let Some(crate::popups::ActivePopup::Tag(popup)) = &mut self.popups.active
             && let Some(tag) = popup.all_tags.get(popup.all_tags_selected).cloned()
         {
+            let text = popup.input.lines().join("");
+            let trimmed = text.trim().trim_end_matches(',').trim();
+            let new_text = if trimmed.is_empty() {
+                format!("{tag}, ")
+            } else {
+                format!("{trimmed}, {tag}, ")
+            };
             popup.input.select_all();
             popup.input.cut();
-            popup.input.insert_str(format!("{tag}, "));
+            popup.input.insert_str(&new_text);
         }
     }
 

@@ -466,6 +466,7 @@ impl crate::popups::ActivePopup {
                     && (mouse.kind == MouseEventKind::Down(MouseButton::Left)
                         || mouse.kind == MouseEventKind::Down(MouseButton::Right))
                 {
+                    let old_focus = p.focus;
                     p.focus = crate::popups::TemplatePopupFocus::Results;
                     if !p.filtered_templates.is_empty() {
                         let row = mouse.row.saturating_sub(chunks[1].y.saturating_add(1)) as usize;
@@ -473,6 +474,7 @@ impl crate::popups::ActivePopup {
                             .min(p.filtered_templates.len().saturating_sub(1));
                         if mouse.kind == MouseEventKind::Down(MouseButton::Left)
                             && clicked == p.selected
+                            && old_focus == crate::popups::TemplatePopupFocus::Results
                         {
                             open_selected = true;
                         }
