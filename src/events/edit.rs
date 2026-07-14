@@ -464,8 +464,8 @@ pub fn handle_edit_mouse(
                     if result.is_ok() && !query.is_empty() {
                         let _ = app.editor.editor.search_forward(true);
                     }
-                    popup.info =
-                        find_match_stats(&app.editor.editor).map(|(n, total)| format!("{n}/{total}"));
+                    popup.info = find_match_stats(&app.editor.editor)
+                        .map(|(n, total)| format!("{n}/{total}"));
                 }
                 crate::ui::quick_search::QuickSearchAction::Navigated => {}
             }

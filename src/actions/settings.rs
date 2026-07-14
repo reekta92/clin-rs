@@ -114,11 +114,7 @@ toggle_action!(
     "\u{2699}",
     toggle_inline_info,
     app,
-    if app.list.inline_info {
-        "On"
-    } else {
-        "Off"
-    }
+    if app.list.inline_info { "On" } else { "Off" }
 );
 
 toggle_action!(

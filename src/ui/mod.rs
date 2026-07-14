@@ -1136,8 +1136,13 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             )
             .highlight_symbol("  ");
 
-        let state =
-            crate::ui::render_list_with_selection(frame, list, content, Some(trash.selected), trash.scroll_offset);
+        let state = crate::ui::render_list_with_selection(
+            frame,
+            list,
+            content,
+            Some(trash.selected),
+            trash.scroll_offset,
+        );
         trash.scroll_offset = state.offset();
         let inner = Rect {
             x: content.x + 1,

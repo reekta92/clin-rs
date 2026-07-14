@@ -494,7 +494,12 @@ fn handle_search_keys(
         Some(popup) => popup,
         None => return,
     };
-    match crate::ui::quick_search::handle_quick_search_keys(popup, key, keybinds, config.graf.search.max_visible) {
+    match crate::ui::quick_search::handle_quick_search_keys(
+        popup,
+        key,
+        keybinds,
+        config.graf.search.max_visible,
+    ) {
         crate::ui::quick_search::QuickSearchAction::Submit => {
             if let Some(&(idx, _)) = popup.results.get(popup.selected) {
                 let (nx, ny) = if let Some(graph_state) = &app_state.graph_state {

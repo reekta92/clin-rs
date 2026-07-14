@@ -672,11 +672,18 @@ impl crate::popups::ActivePopup {
                     return true;
                 }
                 match mouse.kind {
-                    MouseEventKind::ScrollUp if contains_cell(popup_area, mouse.column, mouse.row) => {
+                    MouseEventKind::ScrollUp
+                        if contains_cell(popup_area, mouse.column, mouse.row) =>
+                    {
                         trash.selected = trash.selected.saturating_sub(1);
                     }
-                    MouseEventKind::ScrollDown if contains_cell(popup_area, mouse.column, mouse.row) => {
-                        trash.selected = trash.selected.saturating_add(1).min(trash.items.len().saturating_sub(1));
+                    MouseEventKind::ScrollDown
+                        if contains_cell(popup_area, mouse.column, mouse.row) =>
+                    {
+                        trash.selected = trash
+                            .selected
+                            .saturating_add(1)
+                            .min(trash.items.len().saturating_sub(1));
                     }
                     _ => {}
                 }

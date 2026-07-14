@@ -128,10 +128,7 @@ pub fn handle_help_mouse(app: &mut App, mouse_event: MouseEvent, area: Rect) {
     }
 
     let tab_bar_y = area.y;
-    if mouse_event.kind
-        == MouseEventKind::Down(MouseButton::Left)
-        && mouse_event.row == tab_bar_y
-    {
+    if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) && mouse_event.row == tab_bar_y {
         let tabs: Vec<(&str, Option<&str>)> = crate::ui::help_tab_names()
             .iter()
             .map(|&l| (l, None))

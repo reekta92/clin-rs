@@ -903,69 +903,68 @@ impl App {
                         crate::sanitize::sanitize_for_terminal(summary.title.as_str()).into_owned();
                     spans.push(Span::styled(sanitized_title, text_style));
                     if self.list.inline_info {
+                        if self.notes_with_subnotes.contains(&summary.id) {
+                            let sub_icon = match self.config.ui.icon_mode {
+                                crate::config::IconMode::Nerd => " ⧉",
+                                crate::config::IconMode::Unicode => " ⧉",
+                                crate::config::IconMode::None => " +",
+                            };
+                            spans.push(Span::styled(
+                                sub_icon.to_string(),
+                                Style::default().fg(self.app_theme.accent),
+                            ));
+                        }
 
-                    if self.notes_with_subnotes.contains(&summary.id) {
-                        let sub_icon = match self.config.ui.icon_mode {
-                            crate::config::IconMode::Nerd => " ⧉",
-                            crate::config::IconMode::Unicode => " ⧉",
-                            crate::config::IconMode::None => " +",
-                        };
-                        spans.push(Span::styled(
-                            sub_icon.to_string(),
-                            Style::default().fg(self.app_theme.accent),
-                        ));
-                    }
+                        for tag in &summary.tags {
+                            spans.push(Span::raw(" "));
+                            let sanitized_tag = crate::sanitize::sanitize_for_terminal(tag);
+                            spans.push(Span::styled(
+                                format!("[{sanitized_tag}]"),
+                                Style::default().fg(self.app_theme.tag),
+                            ));
+                        }
 
-                    for tag in &summary.tags {
-                        spans.push(Span::raw(" "));
-                        let sanitized_tag = crate::sanitize::sanitize_for_terminal(tag);
-                        spans.push(Span::styled(
-                            format!("[{sanitized_tag}]"),
-                            Style::default().fg(self.app_theme.tag),
-                        ));
-                    }
+                        if *in_virtual_pinned_folder {
+                            let source = if summary.folder.is_empty() {
+                                "Vault".to_string()
+                            } else {
+                                summary.folder.clone()
+                            };
+                            spans.push(Span::styled(
+                                format!(
+                                    "  (from {})",
+                                    crate::sanitize::sanitize_for_terminal(&source)
+                                ),
+                                Style::default().fg(self.app_theme.muted),
+                            ));
+                        }
+                        if self.list.show_file_size {
+                            let size = crate::ui::format_size(summary.size_bytes);
+                            spans.push(Span::raw(" "));
+                            spans.push(Span::styled(
+                                format!("[{size}]"),
+                                Style::default().fg(self.app_theme.muted),
+                            ));
+                        }
 
-                    if *in_virtual_pinned_folder {
-                        let source = if summary.folder.is_empty() {
-                            "Vault".to_string()
-                        } else {
-                            summary.folder.clone()
-                        };
-                        spans.push(Span::styled(
-                            format!(
-                                "  (from {})",
-                                crate::sanitize::sanitize_for_terminal(&source)
-                            ),
-                            Style::default().fg(self.app_theme.muted),
-                        ));
-                    }
-                    if self.list.show_file_size {
-                        let size = crate::ui::format_size(summary.size_bytes);
-                        spans.push(Span::raw(" "));
-                        spans.push(Span::styled(
-                            format!("[{size}]"),
-                            Style::default().fg(self.app_theme.muted),
-                        ));
-                    }
+                        if self.list.show_date_in_list {
+                            let secs = std::time::UNIX_EPOCH
+                                + std::time::Duration::from_secs(summary.updated_at);
+                            let dt: chrono::DateTime<chrono::Local> = secs.into();
+                            let formatted = dt.format(&self.date_format).to_string();
+                            spans.push(Span::raw(" "));
+                            spans.push(Span::styled(
+                                format!("({formatted})"),
+                                Style::default().fg(self.app_theme.muted),
+                            ));
+                        }
 
-                    if self.list.show_date_in_list {
-                        let secs = std::time::UNIX_EPOCH
-                            + std::time::Duration::from_secs(summary.updated_at);
-                        let dt: chrono::DateTime<chrono::Local> = secs.into();
-                        let formatted = dt.format(&self.date_format).to_string();
-                        spans.push(Span::raw(" "));
-                        spans.push(Span::styled(
-                            format!("({formatted})"),
-                            Style::default().fg(self.app_theme.muted),
-                        ));
-                    }
-
-                    if vi == self.list.visual_index && !self.list.show_date_in_list {
-                        spans.push(Span::styled(
-                            format!("  ({when})"),
-                            Style::default().fg(self.app_theme.muted),
-                        ));
-                    }
+                        if vi == self.list.visual_index && !self.list.show_date_in_list {
+                            spans.push(Span::styled(
+                                format!("  ({when})"),
+                                Style::default().fg(self.app_theme.muted),
+                            ));
+                        }
                     }
                     let mut lines = vec![Line::from(spans)];
                     if self.list.list_density == crate::config::ListDensity::Comfortable {
