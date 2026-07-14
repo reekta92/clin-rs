@@ -252,9 +252,7 @@ preview_position = "right"
 # Hide previews of encrypted notes.
 preview_encryption = false
 
-# Show modification date in the notes list.
-# Show inline metadata (tags, file size, date) next to note titles.
-show_date_in_list = true
+# Show inline metadata (tags, file size, date, folder counts) next to note titles.
 inline_info = true
 
 # Show file size in the notes list.

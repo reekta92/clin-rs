@@ -253,7 +253,6 @@ impl ClinConfig {
             ("date_format", "date_format"),
             ("list_density", "density"),
             ("show_file_size", "show_file_size"),
-            ("show_date_in_list", "show_date_in_list"),
             ("default_view", "default_view"),
             ("default_sort_field", "default_sort_field"),
             ("default_sort_order", "default_sort_order"),
@@ -586,7 +585,7 @@ unknown_field = "ignore me"
         config.list.date_format = "%d/%m/%Y".to_string();
         config.list.density = ListDensity::Compact;
         config.list.show_file_size = true;
-        config.list.show_date_in_list = false;
+        config.list.inline_info = false;
         config.list.default_view = NotesLayout::Tree;
         config.list.calendar_enabled = false;
         config.backup.auto_backup_interval = Some(60);
@@ -598,7 +597,7 @@ unknown_field = "ignore me"
         assert_eq!(parsed.list.date_format, "%d/%m/%Y");
         assert_eq!(parsed.list.density, ListDensity::Compact);
         assert!(parsed.list.show_file_size);
-        assert!(!parsed.list.show_date_in_list);
+        assert!(!parsed.list.inline_info);
         assert_eq!(parsed.list.default_view, NotesLayout::Tree);
         assert!(!parsed.list.calendar_enabled);
         assert_eq!(parsed.backup.auto_backup_interval, Some(60));
@@ -608,7 +607,6 @@ unknown_field = "ignore me"
     fn calendar_defaults_enabled_when_key_omitted() {
         // A [list] section that omits calendar_enabled must deserialize to true
         // (visible by default), matching #[serde(default = "default_true")].
-        // (Like preview_enabled/show_date_in_list, ListConfig's derived Default
         // yields false for bools — the on-disk/serde path is what users hit.)
         let cfg: ClinConfig = toml::from_str("[list]\npreview_enabled = false\n").unwrap();
         assert!(cfg.list.calendar_enabled);

@@ -423,7 +423,6 @@ impl App {
         list.list_density = bootstrap_config.list.density.clone();
         list.inline_info = bootstrap_config.list.inline_info;
         list.show_file_size = bootstrap_config.list.show_file_size;
-        list.show_date_in_list = bootstrap_config.list.show_date_in_list;
         list.folders_first = bootstrap_config.list.folders_first;
         list.show_hidden_files = bootstrap_config.list.show_hidden_files;
         list.show_all_files = bootstrap_config.list.show_all_files;
@@ -556,7 +555,6 @@ impl App {
         list.list_density = bootstrap_config.list.density.clone();
         list.inline_info = bootstrap_config.list.inline_info;
         list.show_file_size = bootstrap_config.list.show_file_size;
-        list.show_date_in_list = bootstrap_config.list.show_date_in_list;
         list.folders_first = bootstrap_config.list.folders_first;
         list.show_all_files = bootstrap_config.list.show_all_files;
         list.show_hidden_files = bootstrap_config.list.show_hidden_files;
@@ -779,23 +777,11 @@ impl App {
                             display_name = format!("{pin_icon} {display_name}");
                         }
                     }
-                    let mut text = if icon.is_empty() {
+                    let text = if icon.is_empty() {
                         format!("{indent}{display_name}{count_suffix}")
                     } else {
                         format!("{indent}{icon} {display_name}{count_suffix}")
                     };
-                    if self.list.list_mode == crate::list_view::ListMode::Select {
-                        let checkbox = if self.list.selected_indices.contains(&vi) {
-                            "[x] "
-                        } else {
-                            "[ ] "
-                        };
-                        text = if icon.is_empty() {
-                            format!("{indent}{checkbox}{display_name}{count_suffix}")
-                        } else {
-                            format!("{indent}{checkbox}{icon} {display_name}{count_suffix}")
-                        };
-                    }
                     let mut style = Style::default().add_modifier(Modifier::BOLD).fg(color);
                     if *stale && !*is_pinned {
                         style = style.add_modifier(Modifier::DIM);
@@ -826,24 +812,6 @@ impl App {
 
                     let mut spans = Vec::new();
                     spans.push(Span::raw(indent));
-
-                    if self.list.list_mode == crate::list_view::ListMode::Select {
-                        let checkbox = if self.list.selected_indices.contains(&vi) {
-                            "[x] "
-                        } else {
-                            "[ ] "
-                        };
-                        spans.push(Span::styled(
-                            checkbox,
-                            if self.list.selected_indices.contains(&vi) {
-                                Style::default()
-                                    .fg(self.app_theme.accent)
-                                    .add_modifier(Modifier::BOLD)
-                            } else {
-                                Style::default().fg(self.app_theme.muted)
-                            },
-                        ));
-                    }
 
                     spans.push(Span::raw("  "));
                     if summary.pinned {
@@ -947,24 +915,22 @@ impl App {
                             ));
                         }
 
-                        if self.list.show_date_in_list {
-                            let secs = std::time::UNIX_EPOCH
-                                + std::time::Duration::from_secs(summary.updated_at);
-                            let dt: chrono::DateTime<chrono::Local> = secs.into();
-                            let formatted = dt.format(&self.date_format).to_string();
-                            spans.push(Span::raw(" "));
-                            spans.push(Span::styled(
-                                format!("({formatted})"),
-                                Style::default().fg(self.app_theme.muted),
-                            ));
-                        }
+                        let secs = std::time::UNIX_EPOCH
+                            + std::time::Duration::from_secs(summary.updated_at);
+                        let dt: chrono::DateTime<chrono::Local> = secs.into();
+                        let formatted = dt.format(&self.date_format).to_string();
+                        spans.push(Span::raw(" "));
+                        spans.push(Span::styled(
+                            format!("({formatted})"),
+                            Style::default().fg(self.app_theme.muted),
+                        ));
+                    }
 
-                        if vi == self.list.visual_index && !self.list.show_date_in_list {
-                            spans.push(Span::styled(
-                                format!("  ({when})"),
-                                Style::default().fg(self.app_theme.muted),
-                            ));
-                        }
+                    if vi == self.list.visual_index && !self.list.inline_info {
+                        spans.push(Span::styled(
+                            format!("  ({when})"),
+                            Style::default().fg(self.app_theme.muted),
+                        ));
                     }
                     let mut lines = vec![Line::from(spans)];
                     if self.list.list_density == crate::config::ListDensity::Comfortable {
@@ -1024,24 +990,11 @@ impl App {
                     };
                     let sanitized_name = crate::sanitize::sanitize_for_terminal(label);
 
-                    let mut text = if icon.is_empty() {
+                    let text = if icon.is_empty() {
                         format!("{indent}{sanitized_name}{count_suffix}")
                     } else {
                         format!("{indent}{icon} {sanitized_name}{count_suffix}")
                     };
-
-                    if self.list.list_mode == crate::list_view::ListMode::Select {
-                        let checkbox = if self.list.selected_indices.contains(&vi) {
-                            "[x] "
-                        } else {
-                            "[ ] "
-                        };
-                        text = if icon.is_empty() {
-                            format!("{indent}{checkbox}{sanitized_name}{count_suffix}")
-                        } else {
-                            format!("{indent}{checkbox}{icon} {sanitized_name}{count_suffix}")
-                        };
-                    }
 
                     let style = Style::default().add_modifier(Modifier::BOLD).fg(color);
                     let mut lines = vec![Line::from(vec![Span::styled(text, style)])];

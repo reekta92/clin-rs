@@ -377,8 +377,6 @@ pub struct ListConfig {
     pub preview_position: PreviewPosition,
     #[serde(default)]
     pub preview_encryption: bool,
-    #[serde(default = "default_true")]
-    pub show_date_in_list: bool,
     #[serde(default)]
     pub show_file_size: bool,
     #[serde(default = "default_date_format")]
