@@ -1,11 +1,12 @@
 use crate::app::{App, HelpTab};
 use crate::keybinds::HelpAction;
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, MouseButton, MouseEvent, MouseEventKind};
+use ratatui::layout::Rect;
 
 pub fn handle_help_keys(app: &mut App, key: KeyEvent) {
     if let Some(ref mut popup) = app.help_search.popup {
         app.seq_matcher.clear();
-        match crate::ui::quick_search::handle_quick_search_keys(popup, key, &app.keybinds) {
+        match crate::ui::quick_search::handle_quick_search_keys(popup, key, &app.keybinds, 10) {
             crate::ui::quick_search::QuickSearchAction::Submit => {
                 if let Some(&(idx, _)) = popup.results.get(popup.selected) {
                     let page_size = app.help_page_size.max(1) as usize;
@@ -93,5 +94,70 @@ pub fn handle_help_keys(app: &mut App, key: KeyEvent) {
             }
             _ => {}
         },
+    }
+}
+
+pub fn handle_help_mouse(app: &mut App, mouse_event: MouseEvent, area: Rect) {
+    if let Some(ref mut popup) = app.help_search.popup {
+        if let Some(action) = crate::ui::quick_search::handle_quick_search_mouse(
+            popup,
+            mouse_event,
+            area,
+            10,
+            app.config.ui.icon_mode,
+        ) {
+            match action {
+                crate::ui::quick_search::QuickSearchAction::Submit => {
+                    if let Some(&(idx, _)) = popup.results.get(popup.selected) {
+                        let page_size = app.help_page_size.max(1) as usize;
+                        app.help_page = (idx / page_size) as u16;
+                        app.help_search.highlight_row = Some(idx);
+                    }
+                    app.help_search.popup = None;
+                }
+                crate::ui::quick_search::QuickSearchAction::Cancel => {
+                    app.help_search.popup = None;
+                }
+                crate::ui::quick_search::QuickSearchAction::Edited => {
+                    app.update_help_search();
+                }
+                crate::ui::quick_search::QuickSearchAction::Navigated => {}
+            }
+        }
+        return;
+    }
+
+    let tab_bar_y = area.y;
+    if mouse_event.kind
+        == MouseEventKind::Down(MouseButton::Left)
+        && mouse_event.row == tab_bar_y
+    {
+        let tabs: Vec<(&str, Option<&str>)> = crate::ui::help_tab_names()
+            .iter()
+            .map(|&l| (l, None))
+            .collect();
+        let region = crate::ui::title_bar_tabs_region(area, "Help");
+        if let Some(i) = crate::ui::hit_test_tabs(
+            &tabs,
+            area.x,
+            area.width,
+            region.x,
+            mouse_event.column,
+            app.config.ui.tab_icons_only,
+            app.config.ui.icon_mode,
+        ) {
+            app.switch_help_tab(crate::app::HelpTab::from_index(i));
+        }
+    } else if mouse_event.kind == MouseEventKind::ScrollUp {
+        app.help_page = app.help_page.saturating_sub(1);
+    } else if mouse_event.kind == MouseEventKind::ScrollDown {
+        let page_size = app.help_page_size as usize;
+        let total = if page_size > 0 {
+            app.get_help_rows().len().div_ceil(page_size)
+        } else {
+            1
+        };
+        let max_page = total.saturating_sub(1) as u16;
+        app.help_page = app.help_page.saturating_add(1).min(max_page);
     }
 }

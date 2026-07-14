@@ -1555,11 +1555,11 @@ fn default_template(view: ViewMode, field: &str) -> Cow<'static, str> {
                 ViewMode::List => "{detail}".into(),
                 ViewMode::Setup => "{pinned_count} pinned".into(),
                 ViewMode::Help => "Page {help_page}/{help_total_pages}".into(),
+                ViewMode::Edit => "{word_count}w {char_count}c {cursor_line}:{cursor_col}".into(),
                 _ => "".into(),
             }
         }
         "footer_right" => match view {
-            ViewMode::Edit => "{word_count}w {char_count}c {cursor_line}:{cursor_col}".into(),
             _ => "".into(),
         },
         _ => "".into(),

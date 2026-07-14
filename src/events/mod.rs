@@ -14,7 +14,7 @@ mod setup;
 pub use popup_mouse::handle_global_popup_mouse;
 
 pub use edit::{handle_edit_keys, handle_edit_mouse};
-pub use help::handle_help_keys;
+pub use help::{handle_help_keys, handle_help_mouse};
 pub use list::{handle_list_keys, handle_list_mouse};
 pub use setup::{handle_setup_keys, handle_setup_mouse};
 

@@ -128,7 +128,7 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
 
     if let Some(popup) = &mut app.editor.find_popup {
         app.seq_matcher.clear();
-        match crate::ui::quick_search::handle_quick_search_keys(popup, key, &app.keybinds) {
+        match crate::ui::quick_search::handle_quick_search_keys(popup, key, &app.keybinds, 10) {
             crate::ui::quick_search::QuickSearchAction::Submit => {
                 if let Some(&(line_idx, _)) = popup.results.get(popup.selected) {
                     app.editor
@@ -165,6 +165,7 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 if popup.selected >= popup.results.len() {
                     popup.selected = popup.results.len().saturating_sub(1);
                 }
+                popup.scroll_to_selected(10);
                 let query = popup.query();
                 let result = app.editor.editor.set_search_pattern(&query);
                 if result.is_ok() && !query.is_empty() {
@@ -412,6 +413,65 @@ pub fn handle_edit_mouse(
     mouse_selecting: &mut bool,
     mouse_dragged: &mut bool,
 ) {
+    if let Some(popup) = &mut app.editor.find_popup {
+        if let Some(action) = crate::ui::quick_search::handle_quick_search_mouse(
+            popup,
+            mouse_event,
+            terminal_area,
+            10,
+            app.config.ui.icon_mode,
+        ) {
+            match action {
+                crate::ui::quick_search::QuickSearchAction::Submit => {
+                    if let Some(&(line_idx, _)) = popup.results.get(popup.selected) {
+                        app.editor
+                            .editor
+                            .move_cursor(ratatui_textarea::CursorMove::Jump(line_idx as u16, 0));
+                        let _ = app.editor.editor.search_forward(false);
+                    }
+                    app.editor
+                        .editor
+                        .set_search_style(ratatui::style::Style::default());
+                    app.editor.find_popup = None;
+                }
+                crate::ui::quick_search::QuickSearchAction::Cancel => {
+                    app.editor
+                        .editor
+                        .set_search_style(ratatui::style::Style::default());
+                    app.editor.find_popup = None;
+                }
+                crate::ui::quick_search::QuickSearchAction::Edited => {
+                    let query_lower = popup.query().to_lowercase();
+                    if query_lower.is_empty() {
+                        popup.results.clear();
+                    } else {
+                        popup.results = app
+                            .editor
+                            .editor
+                            .lines()
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, line)| line.to_lowercase().contains(&query_lower))
+                            .map(|(i, line)| (i, line.to_string()))
+                            .collect();
+                    }
+                    if popup.selected >= popup.results.len() {
+                        popup.selected = popup.results.len().saturating_sub(1);
+                    }
+                    popup.scroll_to_selected(10);
+                    let query = popup.query();
+                    let result = app.editor.editor.set_search_pattern(&query);
+                    if result.is_ok() && !query.is_empty() {
+                        let _ = app.editor.editor.search_forward(true);
+                    }
+                    popup.info =
+                        find_match_stats(&app.editor.editor).map(|(n, total)| format!("{n}/{total}"));
+                }
+                crate::ui::quick_search::QuickSearchAction::Navigated => {}
+            }
+        }
+        return;
+    }
     if let Some(crate::popups::ActivePopup::ContextMenu(menu)) = &app.popups.active {
         // Only handle left-clicks inside the menu (needs EditFocus).
         // Scroll and outside-dismiss are handled centrally in handle_global_popup_mouse.

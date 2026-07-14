@@ -1259,47 +1259,7 @@ fn run_app(
                                     );
                                 }
                                 ViewMode::Help => {
-                                    let tab_bar_y = area.y;
-                                    if mouse_event.kind
-                                        == ratatui::crossterm::event::MouseEventKind::Down(
-                                            ratatui::crossterm::event::MouseButton::Left,
-                                        )
-                                        && mouse_event.row == tab_bar_y
-                                    {
-                                        let tabs: Vec<(&str, Option<&str>)> =
-                                            crate::ui::help_tab_names()
-                                                .iter()
-                                                .map(|&l| (l, None))
-                                                .collect();
-                                        let region = crate::ui::title_bar_tabs_region(area, "Help");
-                                        if let Some(i) = crate::ui::hit_test_tabs(
-                                            &tabs,
-                                            area.x,
-                                            area.width,
-                                            region.x,
-                                            mouse_event.column,
-                                            app.config.ui.tab_icons_only,
-                                            app.config.ui.icon_mode,
-                                        ) {
-                                            app.switch_help_tab(crate::app::HelpTab::from_index(i));
-                                        }
-                                    } else if mouse_event.kind
-                                        == ratatui::crossterm::event::MouseEventKind::ScrollUp
-                                    {
-                                        app.help_page = app.help_page.saturating_sub(1);
-                                    } else if mouse_event.kind
-                                        == ratatui::crossterm::event::MouseEventKind::ScrollDown
-                                    {
-                                        let page_size = app.help_page_size as usize;
-                                        let total = if page_size > 0 {
-                                            app.get_help_rows().len().div_ceil(page_size)
-                                        } else {
-                                            1
-                                        };
-                                        let max_page = total.saturating_sub(1) as u16;
-                                        app.help_page =
-                                            app.help_page.saturating_add(1).min(max_page);
-                                    }
+                                    handle_help_mouse(app, mouse_event, area);
                                 }
                                 ViewMode::Graph => {
                                     let mut is_drag = false;

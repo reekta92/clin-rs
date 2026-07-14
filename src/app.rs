@@ -1360,6 +1360,7 @@ impl App {
         if popup.selected >= popup.results.len() {
             popup.selected = popup.results.len().saturating_sub(1);
         }
+        popup.scroll_to_selected(10);
     }
 
     pub fn initiate_quit(&mut self) {

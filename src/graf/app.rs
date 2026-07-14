@@ -374,7 +374,56 @@ fn handle_event(
             if let Some(graph_state) = &app_state.graph_state {
                 graph_state.write().mouse_pos = Some((mouse_event.column, mouse_event.row));
             }
-            if app_state.search_popup.is_some() {
+            if let Some(popup) = &mut app_state.search_popup {
+                let max_visible = config.graf.search.max_visible;
+                let size = terminal.size().context("failed to get terminal size")?;
+                let full_area = ratatui::layout::Rect::new(0, 0, size.width, size.height);
+                let outer = ratatui::layout::Layout::default()
+                    .direction(ratatui::layout::Direction::Vertical)
+                    .constraints([
+                        ratatui::layout::Constraint::Length(1),
+                        ratatui::layout::Constraint::Min(0),
+                    ])
+                    .split(full_area);
+                let content_area = outer[1];
+                if let Some(action) = crate::ui::quick_search::handle_quick_search_mouse(
+                    popup,
+                    mouse_event,
+                    content_area,
+                    max_visible,
+                    config.ui.icon_mode,
+                ) {
+                    match action {
+                        crate::ui::quick_search::QuickSearchAction::Submit => {
+                            if let Some(&(idx, _)) = popup.results.get(popup.selected) {
+                                let (nx, ny) = if let Some(graph_state) = &app_state.graph_state {
+                                    let guard = graph_state.read();
+                                    let graph = guard.simulation.get_graph();
+                                    if let Some(node) = graph.node_weight(idx) {
+                                        (node.location.x as f64, node.location.y as f64)
+                                    } else {
+                                        (0.0, 0.0)
+                                    }
+                                } else {
+                                    (0.0, 0.0)
+                                };
+                                if let Some(graph_state) = &app_state.graph_state {
+                                    let mut guard = graph_state.write();
+                                    guard.selected_node = Some(idx);
+                                    guard.viewport.center_on_node(nx as f32, ny as f32);
+                                }
+                            }
+                            app_state.search_popup = None;
+                        }
+                        crate::ui::quick_search::QuickSearchAction::Cancel => {
+                            app_state.search_popup = None;
+                        }
+                        crate::ui::quick_search::QuickSearchAction::Edited => {
+                            run_search(app_state, config);
+                        }
+                        crate::ui::quick_search::QuickSearchAction::Navigated => {}
+                    }
+                }
                 return Ok(None);
             }
             if let Some(graph_state) = &app_state.graph_state {
@@ -445,7 +494,7 @@ fn handle_search_keys(
         Some(popup) => popup,
         None => return,
     };
-    match crate::ui::quick_search::handle_quick_search_keys(popup, key, keybinds) {
+    match crate::ui::quick_search::handle_quick_search_keys(popup, key, keybinds, config.graf.search.max_visible) {
         crate::ui::quick_search::QuickSearchAction::Submit => {
             if let Some(&(idx, _)) = popup.results.get(popup.selected) {
                 let (nx, ny) = if let Some(graph_state) = &app_state.graph_state {
@@ -492,4 +541,5 @@ fn run_search(app_state: &mut GrafAppState, config: &crate::config::ClinConfig) 
         );
     }
     popup.selected = 0;
+    popup.scroll_offset = 0;
 }
