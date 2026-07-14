@@ -285,6 +285,11 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             ctx.preview = Some(preview_spans(pi, &app.app_theme));
         }
 
+
+        let detail_line = crate::ui::list_detail_line(app);
+        if let Some(dl) = &detail_line {
+            ctx.detail = Some(dl.spans.clone());
+        }
         if app.preview_fullscreen {
             let (left_line, right_line) = crate::statusline::render_header(
                 &ctx,
@@ -363,10 +368,6 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 app.config.ui.icon_mode,
             );
 
-            let detail_line = crate::ui::list_detail_line(app);
-            if let Some(dl) = &detail_line {
-                ctx.detail = Some(dl.spans.clone());
-            }
 
             let (left_line, right_line) = crate::statusline::render_header(
                 &ctx,
@@ -2218,9 +2219,6 @@ pub fn get_preview_info(app: &App) -> Option<PreviewHeaderInfo> {
 }
 
 pub fn list_detail_line(app: &App) -> Option<Line<'static>> {
-    if app.list.notes_layout != crate::config::NotesLayout::Grid {
-        return None;
-    }
     if let Some(crate::app::VisualItem::Note { summary_idx, .. }) =
         app.list.visual_list.get(app.list.visual_index)
     {
