@@ -57,6 +57,11 @@ pub fn draw_pinstar_view(
     mouse_pos: Option<(u16, u16)>,
 ) {
     let total_area = area;
+    let canvas_mouse_pos = if state.context_menu.is_some() {
+        None
+    } else {
+        mouse_pos
+    };
     let mut area = area;
     area.height = area.height.saturating_sub(1);
 
@@ -245,7 +250,7 @@ pub fn draw_pinstar_view(
             }
 
             let is_hovered = !is_selected
-                && mouse_pos.is_some_and(|(col, row)| contains_cell(node_rect, col, row));
+                && canvas_mouse_pos.is_some_and(|(col, row)| contains_cell(node_rect, col, row));
             let bg_style = if is_hovered {
                 theme.hover_style()
             } else {
@@ -509,8 +514,8 @@ pub fn draw_pinstar_view(
         if is_editing {
             node_title = format!("[EDITING] {node_title}");
         }
-        let is_hovered =
-            !is_selected && mouse_pos.is_some_and(|(col, row)| contains_cell(node_rect, col, row));
+        let is_hovered = !is_selected
+            && canvas_mouse_pos.is_some_and(|(col, row)| contains_cell(node_rect, col, row));
         let bg_style = if is_hovered {
             theme.hover_style()
         } else {
@@ -796,7 +801,16 @@ pub fn draw_pinstar_view(
                 .borders(Borders::NONE)
                 .style(theme.preview_bg_style()),
         );
-        frame.render_widget(list, menu_rect);
+        let list_state =
+            crate::ui::render_list_with_selection(frame, list, menu_rect, Some(menu.selected));
+        crate::ui::paint_list_hover(
+            frame,
+            menu_rect,
+            &list_state,
+            menu.items.len(),
+            mouse_pos,
+            theme.hover_style(),
+        );
     }
 
     if let Some(textarea) = &mut state.rename_popup {
