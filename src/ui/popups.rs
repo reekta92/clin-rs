@@ -3,7 +3,7 @@ use ratatui_textarea::TextArea;
 use std::borrow::Cow;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use super::{PopupSize, get_textarea_scroll};
+use super::PopupSize;
 use crate::app::{ConfirmPopup, TemplatePopup, ThemePopup};
 use crate::app_theme::AppThemeColors;
 
@@ -1304,17 +1304,27 @@ pub fn fill_cursor_line_bg(frame: &mut Frame, editor: &TextArea, area: Rect, bg:
     if editor.selection_range().is_some() {
         return;
     }
-    let (scroll_row, _) = get_textarea_scroll(editor);
-    let screen_row = editor.screen_cursor().row.saturating_sub(scroll_row) as u16;
-    let inner_y = editor.block().map(|b| b.inner(area).y).unwrap_or(area.y);
-    let y = inner_y + screen_row;
-    if y < area.y || y >= area.bottom() {
-        return;
-    }
+    let inner_area = editor.block().map(|b| b.inner(area)).unwrap_or(area);
+    let mut cursor_y = None;
     let buf = frame.buffer_mut();
-    for x in area.left()..area.right() {
-        if let Some(cell) = buf.cell_mut((x, y)) {
-            cell.set_bg(bg);
+    for y in inner_area.top()..inner_area.bottom() {
+        for x in inner_area.left()..inner_area.right() {
+            if let Some(cell) = buf.cell_mut((x, y)) {
+                if cell.style().add_modifier.contains(Modifier::REVERSED) {
+                    cursor_y = Some(y);
+                    break;
+                }
+            }
+        }
+        if cursor_y.is_some() {
+            break;
+        }
+    }
+    if let Some(y) = cursor_y {
+        for x in area.left()..area.right() {
+            if let Some(cell) = buf.cell_mut((x, y)) {
+                cell.set_bg(bg);
+            }
         }
     }
 }
@@ -1473,5 +1483,61 @@ mod tests {
             has_mod(key_span.style, Modifier::BOLD),
             "keybind key should be bold"
         );
+    }
+
+    #[test]
+    fn test_fill_cursor_line_bg() {
+        use ratatui::backend::TestBackend;
+        use ratatui::Terminal;
+
+        let mut textarea = TextArea::new(vec![
+            "line 1".to_string(),
+            "line 2".to_string(),
+            "line 3".to_string(),
+        ]);
+
+        let backend = TestBackend::new(20, 5);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let area = Rect::new(0, 0, 20, 5);
+
+        // 1. Without selection, cursor on line 1 (y = 0)
+        terminal.draw(|frame| {
+            frame.render_widget(&textarea, area);
+            fill_cursor_line_bg(frame, &textarea, area, Color::Red);
+        }).unwrap();
+
+        let buffer = terminal.backend().buffer();
+        for x in 0..20 {
+            assert_eq!(buffer.get(x, 0).bg, Color::Red, "row 0, col {} should be highlighted", x);
+            assert_ne!(buffer.get(x, 1).bg, Color::Red, "row 1, col {} should not be highlighted", x);
+        }
+
+        // 2. Move cursor to line 2 (y = 1)
+        textarea.move_cursor(ratatui_textarea::CursorMove::Down);
+        terminal.draw(|frame| {
+            frame.render_widget(&textarea, area);
+            fill_cursor_line_bg(frame, &textarea, area, Color::Red);
+        }).unwrap();
+
+        let buffer = terminal.backend().buffer();
+        for x in 0..20 {
+            assert_ne!(buffer.get(x, 0).bg, Color::Red, "row 0, col {} should not be highlighted", x);
+            assert_eq!(buffer.get(x, 1).bg, Color::Red, "row 1, col {} should be highlighted", x);
+        }
+
+        // 3. With selection active, fill_cursor_line_bg should return early
+        textarea.start_selection();
+        textarea.move_cursor(ratatui_textarea::CursorMove::Down);
+        terminal.draw(|frame| {
+            frame.render_widget(&textarea, area);
+            fill_cursor_line_bg(frame, &textarea, area, Color::Red);
+        }).unwrap();
+
+        let buffer = terminal.backend().buffer();
+        for x in 0..20 {
+            assert_ne!(buffer.get(x, 0).bg, Color::Red);
+            assert_ne!(buffer.get(x, 1).bg, Color::Red);
+            assert_ne!(buffer.get(x, 2).bg, Color::Red);
+        }
     }
 }
