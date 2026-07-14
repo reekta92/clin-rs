@@ -431,6 +431,20 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             popup.scroll_offset,
         );
         popup.scroll_offset = state.offset();
+        let inner_tags = Rect {
+            x: chunks[1].x + 1,
+            y: chunks[1].y + 1,
+            width: chunks[1].width.saturating_sub(2),
+            height: chunks[1].height.saturating_sub(2),
+        };
+        crate::ui::paint_list_hover(
+            frame,
+            inner_tags,
+            &state,
+            popup.all_tags.len(),
+            app.mouse_pos,
+            app.app_theme.hover_style(),
+        );
     }
 
     // Folder picker popup

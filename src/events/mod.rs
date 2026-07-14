@@ -723,6 +723,10 @@ impl crate::popups::ActivePopup {
                                 }
                                 app.popups.active = Some(ActivePopup::Tag(popup));
                             }
+                            KeyCode::Enter => {
+                                app.popups.active = Some(ActivePopup::Tag(popup));
+                                app.accept_tag_from_all_tags();
+                            }
                             KeyCode::Char('d') | KeyCode::Delete => {
                                 if let Some(tag) =
                                     popup.all_tags.get(popup.all_tags_selected).cloned()

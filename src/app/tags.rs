@@ -149,6 +149,16 @@ impl App {
         }
     }
 
+    pub fn accept_tag_from_all_tags(&mut self) {
+        if let Some(crate::popups::ActivePopup::Tag(popup)) = &mut self.popups.active
+            && let Some(tag) = popup.all_tags.get(popup.all_tags_selected).cloned()
+        {
+            popup.input.select_all();
+            popup.input.cut();
+            popup.input.insert_str(format!("{tag}, "));
+        }
+    }
+
     pub fn begin_delete_tag_with_name(&mut self, tag: String) {
         let count = self
             .storage

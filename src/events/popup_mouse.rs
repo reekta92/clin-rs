@@ -354,9 +354,16 @@ impl crate::popups::ActivePopup {
                         if !p.all_tags.is_empty() {
                             let row =
                                 mouse.row.saturating_sub(chunks[1].y).saturating_sub(1) as usize;
-                            p.all_tags_selected =
+                            let clicked =
                                 (row + p.scroll_offset).min(p.all_tags.len().saturating_sub(1));
+                            let open_selected = clicked == p.all_tags_selected;
+                            p.all_tags_selected = clicked;
                             p.focus = TagPopupFocus::AllTagsList;
+                            if open_selected {
+                                app.popups.active = Some(Tag(p));
+                                app.accept_tag_from_all_tags();
+                                return true;
+                            }
                         }
                     } else if !p.suggestions.is_empty()
                         && contains_cell(input_chunks[1], mouse.column, mouse.row)
@@ -475,6 +482,7 @@ impl crate::popups::ActivePopup {
                         }
                     }
                 }
+                app.popups.active = Some(Template(p));
                 if edit_selected {
                     app.edit_selected_template_from_popup();
                     return true;
@@ -483,7 +491,6 @@ impl crate::popups::ActivePopup {
                     app.select_template();
                     return true;
                 }
-                app.popups.active = Some(Template(p));
                 true
             }
 
@@ -661,6 +668,15 @@ impl crate::popups::ActivePopup {
                     crate::ui::centered_rect(crate::ui::PopupSize::Large, terminal_area);
                 if super::dismiss_popup_on_outside_click(app, mouse, popup_area) {
                     return true;
+                }
+                match mouse.kind {
+                    MouseEventKind::ScrollUp if contains_cell(popup_area, mouse.column, mouse.row) => {
+                        trash.selected = trash.selected.saturating_sub(1);
+                    }
+                    MouseEventKind::ScrollDown if contains_cell(popup_area, mouse.column, mouse.row) => {
+                        trash.selected = trash.selected.saturating_add(1).min(trash.items.len().saturating_sub(1));
+                    }
+                    _ => {}
                 }
                 let mut restore_selected = false;
                 if mouse.kind == MouseEventKind::Down(MouseButton::Left)
