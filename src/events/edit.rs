@@ -504,20 +504,24 @@ pub fn handle_edit_mouse(
 
         if contains_cell(title_inner, mouse_event.column, mouse_event.row) {
             *focus = EditFocus::Title;
-            move_textarea_cursor_to_mouse(
-                &mut app.editor.title_editor,
-                title_inner,
-                mouse_event.column,
-                mouse_event.row,
-            );
+            if app.editor.title_editor.selection_range().is_none() {
+                move_textarea_cursor_to_mouse(
+                    &mut app.editor.title_editor,
+                    title_inner,
+                    mouse_event.column,
+                    mouse_event.row,
+                );
+            }
         } else if contains_cell(body_inner, mouse_event.column, mouse_event.row) {
             *focus = EditFocus::Body;
-            move_textarea_cursor_to_mouse(
-                &mut app.editor.editor,
-                body_inner,
-                mouse_event.column,
-                mouse_event.row,
-            );
+            if app.editor.editor.selection_range().is_none() {
+                move_textarea_cursor_to_mouse(
+                    &mut app.editor.editor,
+                    body_inner,
+                    mouse_event.column,
+                    mouse_event.row,
+                );
+            }
         }
         let has_selection = match focus {
             EditFocus::Title => app.editor.title_editor.selection_range(),

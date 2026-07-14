@@ -438,17 +438,6 @@ impl App {
         );
         self.editor.editor = TextArea::from(content.lines());
         self.apply_editor_prefs();
-        self.editor.editor.set_cursor_style(
-            Style::default()
-                .fg(self.app_theme.highlight_fg)
-                .bg(self.app_theme.highlight_bg),
-        );
-        self.editor.editor.set_selection_style(
-            Style::default()
-                .fg(self.app_theme.highlight_fg)
-                .bg(self.app_theme.highlight_bg),
-        );
-        self.editor.editor.set_cursor_line_style(Style::default());
         self.set_default_status();
     }
 
@@ -491,18 +480,6 @@ impl App {
         );
         self.editor.editor = text_area_from_content(&rendered.content);
         self.apply_editor_prefs();
-
-        self.editor.editor.set_cursor_style(
-            Style::default()
-                .fg(self.app_theme.highlight_fg)
-                .bg(self.app_theme.highlight_bg),
-        );
-        self.editor.editor.set_selection_style(
-            Style::default()
-                .fg(self.app_theme.highlight_fg)
-                .bg(self.app_theme.highlight_bg),
-        );
-        self.editor.editor.set_cursor_line_style(Style::default());
 
         self.set_default_status();
     }
@@ -548,18 +525,6 @@ impl App {
         );
         self.editor.editor = text_area_from_content(&rendered.content);
         self.apply_editor_prefs();
-
-        self.editor.editor.set_cursor_style(
-            Style::default()
-                .fg(self.app_theme.highlight_fg)
-                .bg(self.app_theme.highlight_bg),
-        );
-        self.editor.editor.set_selection_style(
-            Style::default()
-                .fg(self.app_theme.highlight_fg)
-                .bg(self.app_theme.highlight_bg),
-        );
-        self.editor.editor.set_cursor_line_style(Style::default());
 
         self.set_default_status();
     }
@@ -988,17 +953,6 @@ impl App {
         );
         self.editor.editor = text_area_from_content(&content);
         self.apply_editor_prefs();
-        self.editor.editor.set_cursor_style(
-            Style::default()
-                .fg(self.app_theme.highlight_fg)
-                .bg(self.app_theme.highlight_bg),
-        );
-        self.editor.editor.set_selection_style(
-            Style::default()
-                .fg(self.app_theme.highlight_fg)
-                .bg(self.app_theme.highlight_bg),
-        );
-        self.editor.editor.set_cursor_line_style(Style::default());
         self.set_default_status();
     }
     pub fn begin_rename_note(&mut self) {

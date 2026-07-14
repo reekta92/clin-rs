@@ -115,7 +115,6 @@ pub fn move_textarea_cursor_to_mouse(
     if textarea.lines().is_empty() || body_inner.width == 0 || body_inner.height == 0 {
         return;
     }
-
     // viewport top in SCREEN coordinates (0-based absolute document screen grid)
     let (scroll_row, scroll_col) = crate::ui::get_textarea_scroll(textarea);
 
@@ -1826,5 +1825,119 @@ mod tests {
 
         assert_eq!(focus, EditFocus::Body);
         assert_eq!(app.editor.editor.cursor(), (41, 0));
+    }
+    #[test]
+    fn test_right_click_selection_behavior() {
+        use crate::app::{App, EditFocus};
+        use crate::storage::Storage;
+        use crossterm::event::{MouseButton, MouseEvent, MouseEventKind, KeyModifiers};
+        use ratatui::layout::Rect;
+        use tempfile::tempdir;
+
+        let temp_dir = tempdir().expect("value is present");
+        let data_dir = temp_dir.path().join("data");
+        let config_dir = temp_dir.path().join("config");
+        let notes_dir = temp_dir.path().join("notes");
+        let templates_dir = temp_dir.path().join("templates");
+        std::fs::create_dir_all(&data_dir).expect("value is present");
+        std::fs::create_dir_all(&config_dir).expect("value is present");
+        std::fs::create_dir_all(&notes_dir).expect("value is present");
+        std::fs::create_dir_all(&templates_dir).expect("value is present");
+
+        let storage = Storage {
+            data_dir,
+            config_dir,
+            notes_dir,
+            templates_dir,
+            key: [0u8; 32],
+        };
+        let mut app = App::new(storage).expect("value is present");
+        app.editor.editor.insert_str("Hello world\nThis is a test\nSome more text\n");
+
+        let terminal_area = Rect::new(0, 0, 80, 24);
+        let mut focus = EditFocus::Body;
+        let mut selecting = false;
+        let mut dragged = false;
+
+        let (_, body_inner, _) = crate::events::edit_view_input_areas(
+            terminal_area,
+            app.editor.editor_preview_enabled,
+            app.editor.editor.lines().len(),
+            app.editor.show_line_numbers,
+            app.editor.sidebar,
+            app.preview_position,
+            app.editor.header_title_rect,
+        );
+
+        // Put cursor at the start
+        app.editor.editor.move_cursor(ratatui_textarea::CursorMove::Top);
+
+        let backend = ratatui::backend::TestBackend::new(80, 24);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+
+        // Scenario 1: Right-click without selection.
+        // It should move the cursor and open the context menu.
+        let click_col = body_inner.x + 5;
+        let click_row = body_inner.y + 1; // "This is a test" line
+        let mouse_event = MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Right),
+            column: click_col,
+            row: click_row,
+            modifiers: KeyModifiers::NONE,
+        };
+
+        terminal.draw(|frame| {
+            frame.render_widget(&app.editor.editor, body_inner);
+        }).unwrap();
+
+        super::edit::handle_edit_mouse(
+            &mut app,
+            mouse_event,
+            terminal_area,
+            &mut focus,
+            &mut selecting,
+            &mut dragged,
+        );
+        assert_eq!(app.editor.editor.cursor(), (1, 5));
+        assert!(app.popups.active.is_some());
+
+        // Clear popup for the next scenario
+        app.popups.active = None;
+
+        // Reset cursor to (0, 0)
+        app.editor.editor.move_cursor(ratatui_textarea::CursorMove::Top);
+
+        // Scenario 2: Right-click with selection.
+        // Start selection, move cursor to create a selection.
+        app.editor.editor.start_selection();
+        app.editor.editor.move_cursor(ratatui_textarea::CursorMove::WordForward);
+        assert!(app.editor.editor.selection_range().is_some());
+        let orig_cursor = app.editor.editor.cursor();
+
+        // Right-click inside the body_inner area
+        let mouse_event_with_sel = MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Right),
+            column: body_inner.x + 8,
+            row: body_inner.y + 1,
+            modifiers: KeyModifiers::NONE,
+        };
+
+        terminal.draw(|frame| {
+            frame.render_widget(&app.editor.editor, body_inner);
+        }).unwrap();
+
+        super::edit::handle_edit_mouse(
+            &mut app,
+            mouse_event_with_sel,
+            terminal_area,
+            &mut focus,
+            &mut selecting,
+            &mut dragged,
+        );
+
+        // Cursor should NOT have moved, and selection should still be active.
+        assert_eq!(app.editor.editor.cursor(), orig_cursor);
+        assert!(app.editor.editor.selection_range().is_some());
+        assert!(app.popups.active.is_some());
     }
 }
