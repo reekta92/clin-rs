@@ -58,10 +58,11 @@ impl App {
     pub fn confirm_manage_tags(&mut self) {
         if let Some(crate::popups::ActivePopup::Tag(popup)) = self.popups.active.take() {
             let text = popup.input.lines().join("");
+            let mut seen = std::collections::HashSet::new();
             let tags: Vec<String> = text
                 .split(',')
                 .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
+                .filter(|s| !s.is_empty() && seen.insert(s.clone()))
                 .collect();
 
             let ext = std::path::Path::new(&popup.note_id)
