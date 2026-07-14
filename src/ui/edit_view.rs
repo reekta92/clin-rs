@@ -1,9 +1,8 @@
 use ratatui::{prelude::*, widgets::*};
 
 use super::{
-    PopupHints, PopupSize, centered_rect, draw_corner_watermark, draw_dim_vline, draw_popup_frame,
-    draw_status_bar, draw_view_title_bar, fill_cursor_line_bg, format_keybind_hints,
-    get_preview_info,
+    PopupHints, PopupSize, centered_rect, draw_dim_vline, draw_popup_frame, draw_status_bar,
+    draw_view_title_bar, fill_cursor_line_bg, format_keybind_hints, get_preview_info,
 };
 use crate::app::{App, EditFocus, EditSidebar, ViewMode};
 use crate::content_tree::parse::NodeKind;
@@ -301,7 +300,6 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         &app.app_theme,
     );
     draw_status_bar(frame, hint_area, &app.app_theme, left_line, right_line);
-    draw_corner_watermark(frame, hint_area, app.app_theme.muted);
     if let Some(splitter_area) = splitter_area {
         draw_dim_vline(frame, splitter_area, app.app_theme.muted);
     }

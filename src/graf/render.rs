@@ -537,7 +537,11 @@ pub fn draw_graph_view(
     pending: Option<&str>,
     mouse_pos: Option<(u16, u16)>,
 ) {
-    let aspect = area.width as f64 / area.height as f64;
+    let mut canvas_area = area;
+    if flags.show_status_bar {
+        canvas_area.height = canvas_area.height.saturating_sub(1);
+    }
+    let aspect = canvas_area.width as f64 / canvas_area.height as f64;
     let viewport = &state.viewport;
     let colors = config.theme_colors();
     let graph = state.simulation.get_graph();
@@ -550,7 +554,7 @@ pub fn draw_graph_view(
 
     // Compute hovered node from mouse_pos
     let hovered_node = mouse_pos.and_then(|(col, row)| {
-        let (wx, wy) = viewport.screen_to_world(col, row, area);
+        let (wx, wy) = viewport.screen_to_world(col, row, canvas_area);
         viewport.hit_test(wx, wy, state)
     });
 
@@ -605,7 +609,7 @@ pub fn draw_graph_view(
             }
         });
 
-    frame.render_widget(canvas, area);
+    frame.render_widget(canvas, canvas_area);
 
     if flags.show_legend
         && let Some(ref items) = cache.legend_data
@@ -618,15 +622,18 @@ pub fn draw_graph_view(
         let legend_width = (max_len + 4) as u16;
         let legend_height = (items.len() as u16).min(10) + 2;
         let (legend_x, legend_y) = match LegendPosition::BottomRight {
-            LegendPosition::TopLeft => (area.x, area.y),
-            LegendPosition::TopRight => (area.x + area.width.saturating_sub(legend_width), area.y),
+            LegendPosition::TopLeft => (canvas_area.x, canvas_area.y),
+            LegendPosition::TopRight => (
+                canvas_area.x + canvas_area.width.saturating_sub(legend_width),
+                canvas_area.y,
+            ),
             LegendPosition::BottomLeft => (
-                area.x,
-                area.y + area.height.saturating_sub(legend_height + 1),
+                canvas_area.x,
+                canvas_area.y + canvas_area.height.saturating_sub(legend_height + 1),
             ),
             LegendPosition::BottomRight => (
-                area.x + area.width.saturating_sub(legend_width),
-                area.y + area.height.saturating_sub(legend_height + 1),
+                canvas_area.x + canvas_area.width.saturating_sub(legend_width),
+                canvas_area.y + canvas_area.height.saturating_sub(legend_height + 1),
             ),
         };
         let legend_area =
@@ -700,7 +707,7 @@ pub fn draw_graph_view(
     }
 
     if flags.show_minimap {
-        let minimap_area = compute_minimap_area(area, config);
+        let minimap_area = compute_minimap_area(canvas_area, config);
 
         let mut minimap_grid = std::mem::take(&mut cache.minimap_grid);
         draw_minimap(

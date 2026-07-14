@@ -1,8 +1,8 @@
 use super::{
     PopupHints, PopupSize, PreviewHeaderInfo, build_list_widget, build_tab_spans,
-    draw_confirm_popup, draw_corner_watermark, draw_dim_vline, draw_popup_frame, draw_status_bar,
-    draw_template_popup, draw_view_title_bar, draw_view_title_bar_with_tabs, format_keybind_hints,
-    format_relative_time, popup_block, popup_hint_line, preview_spans,
+    draw_confirm_popup, draw_dim_vline, draw_popup_frame, draw_status_bar, draw_template_popup,
+    draw_view_title_bar, draw_view_title_bar_with_tabs, format_keybind_hints, format_relative_time,
+    popup_block, popup_hint_line, preview_spans,
 };
 use crate::app::{App, VIRTUAL_PINNED_LABEL, VIRTUAL_PINNED_PATH, VIRTUAL_SMART_PATH, ViewMode};
 use crate::app_theme::AppThemeColors;
@@ -285,7 +285,6 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             ctx.preview = Some(preview_spans(pi, &app.app_theme));
         }
 
-
         let detail_line = crate::ui::list_detail_line(app);
         if let Some(dl) = &detail_line {
             ctx.detail = Some(dl.spans.clone());
@@ -367,7 +366,6 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 app.config.ui.tab_icons_only,
                 app.config.ui.icon_mode,
             );
-
 
             let (left_line, right_line) = crate::statusline::render_header(
                 &ctx,
@@ -1126,7 +1124,6 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         &app.app_theme,
     );
     draw_status_bar(frame, chunks[2], &app.app_theme, left_line, right_line);
-    draw_corner_watermark(frame, chunks[2], app.app_theme.muted);
     if app.list.preview_enabled && !app.preview_fullscreen {
         let ratio_num = (app.list.preview_width_ratio.clamp(0.2, 0.8) * 100.0).round() as u32;
         let constraints = match app.preview_position {
@@ -1195,13 +1192,17 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             crate::popups::FolderPopupMode::Create { .. } => "NEW FOLDER",
             crate::popups::FolderPopupMode::Rename { .. } => "RENAME FOLDER",
         };
-        let content = draw_popup_frame(frame, frame.area(), title,
-        PopupSize::Prompt,
-        PopupHints::Keybinds(&[
-            (kb.display_list(ListAction::Confirm), "confirm"),
-            (kb.display_list(ListAction::Cancel), "cancel"),
-        ]),
-        &app.app_theme,);
+        let content = draw_popup_frame(
+            frame,
+            frame.area(),
+            title,
+            PopupSize::Prompt,
+            PopupHints::Keybinds(&[
+                (kb.display_list(ListAction::Confirm), "confirm"),
+                (kb.display_list(ListAction::Cancel), "cancel"),
+            ]),
+            &app.app_theme,
+        );
 
         popup.input.set_block(
             Block::default()
@@ -1218,16 +1219,20 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         } else {
             (popup.suggestions.len() as u16).clamp(1, 5)
         };
-        let content = draw_popup_frame(frame, frame.area(), "TAGS",
-        PopupSize::Large,
-        PopupHints::Keybinds(&[
-            ("Ctrl+S".to_string(), "batch assign"),
-            ("Tab".to_string(), "accept"),
-            ("Enter".to_string(), "save"),
-            ("d".to_string(), "delete from all"),
-            ("Esc".to_string(), "cancel"),
-        ]),
-        &app.app_theme,);
+        let content = draw_popup_frame(
+            frame,
+            frame.area(),
+            "TAGS",
+            PopupSize::Large,
+            PopupHints::Keybinds(&[
+                ("Ctrl+S".to_string(), "batch assign"),
+                ("Tab".to_string(), "accept"),
+                ("Enter".to_string(), "save"),
+                ("d".to_string(), "delete from all"),
+                ("Esc".to_string(), "cancel"),
+            ]),
+            &app.app_theme,
+        );
 
         let chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -1349,14 +1354,18 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             | crate::popups::FolderPickerMode::BulkCopyMixed { .. } => "COPY",
             _ => "MOVE",
         };
-        let content = draw_popup_frame(frame, frame.area(), title,
-        PopupSize::Large,
-        PopupHints::Keybinds(&[
-            (kb.display_list(ListAction::CycleFocus), "switch"),
-            (kb.display_list(ListAction::Confirm), "confirm"),
-            (kb.display_list(ListAction::Cancel), "cancel"),
-        ]),
-        &app.app_theme,);
+        let content = draw_popup_frame(
+            frame,
+            frame.area(),
+            title,
+            PopupSize::Large,
+            PopupHints::Keybinds(&[
+                (kb.display_list(ListAction::CycleFocus), "switch"),
+                (kb.display_list(ListAction::Confirm), "confirm"),
+                (kb.display_list(ListAction::Cancel), "cancel"),
+            ]),
+            &app.app_theme,
+        );
 
         let chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -1423,15 +1432,19 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     }
 
     if let Some(palette) = &mut app.command_palette {
-        let content = draw_popup_frame(frame, frame.area(), "COMMANDS",
-        PopupSize::Large,
-        PopupHints::Keybinds(&[
-            ("Tab".to_string(), "category"),
-            ("Enter".to_string(), "run"),
-            ("↑/↓".to_string(), "select"),
-            ("Esc".to_string(), "close"),
-        ]),
-        &app.app_theme,);
+        let content = draw_popup_frame(
+            frame,
+            frame.area(),
+            "COMMANDS",
+            PopupSize::Large,
+            PopupHints::Keybinds(&[
+                ("Tab".to_string(), "category"),
+                ("Enter".to_string(), "run"),
+                ("↑/↓".to_string(), "select"),
+                ("Esc".to_string(), "close"),
+            ]),
+            &app.app_theme,
+        );
 
         let chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -1547,13 +1560,17 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     }
 
     if let Some(crate::popups::ActivePopup::NoteRename(popup)) = &mut app.popups.active {
-        let content = draw_popup_frame(frame, frame.area(), "RENAME",
-        PopupSize::Prompt,
-        PopupHints::Keybinds(&[
-            (kb.display_list(ListAction::Confirm), "rename"),
-            (kb.display_list(ListAction::Cancel), "cancel"),
-        ]),
-        &app.app_theme,);
+        let content = draw_popup_frame(
+            frame,
+            frame.area(),
+            "RENAME",
+            PopupSize::Prompt,
+            PopupHints::Keybinds(&[
+                (kb.display_list(ListAction::Confirm), "rename"),
+                (kb.display_list(ListAction::Cancel), "cancel"),
+            ]),
+            &app.app_theme,
+        );
 
         popup.input.set_block(
             Block::default()
@@ -1575,10 +1592,14 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 ("Esc".to_string(), "cancel"),
             ],
         };
-        let content = draw_popup_frame(frame, frame.area(), title,
-        PopupSize::Prompt,
-        PopupHints::Keybinds(&items),
-        &app.app_theme,);
+        let content = draw_popup_frame(
+            frame,
+            frame.area(),
+            title,
+            PopupSize::Prompt,
+            PopupHints::Keybinds(&items),
+            &app.app_theme,
+        );
 
         popup.input.set_block(
             Block::default()
@@ -1596,13 +1617,17 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             crate::popups::NoteFormat::Canvas => "NEW CANVAS",
             crate::popups::NoteFormat::PlainText => "NEW TEXT FILE",
         };
-        let content = draw_popup_frame(frame, frame.area(), title,
-        PopupSize::Prompt,
-        PopupHints::Keybinds(&[
-            (kb.display_list(ListAction::Confirm), "create"),
-            (kb.display_list(ListAction::Cancel), "cancel"),
-        ]),
-        &app.app_theme,);
+        let content = draw_popup_frame(
+            frame,
+            frame.area(),
+            title,
+            PopupSize::Prompt,
+            PopupHints::Keybinds(&[
+                (kb.display_list(ListAction::Confirm), "create"),
+                (kb.display_list(ListAction::Cancel), "cancel"),
+            ]),
+            &app.app_theme,
+        );
         popup.input.set_block(popup_block("", &app.app_theme));
         frame.render_widget(&popup.input, content);
     }
@@ -1615,13 +1640,17 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             crate::popups::ImportSource::Url => "IMPORT URL",
             crate::popups::ImportSource::Clipboard => "IMPORT CLIPBOARD",
         };
-        let content = draw_popup_frame(frame, frame.area(), title,
-        PopupSize::Large,
-        PopupHints::Keybinds(&[
-            (kb.display_list(ListAction::Confirm), "import"),
-            (kb.display_list(ListAction::Cancel), "cancel"),
-        ]),
-        &app.app_theme,);
+        let content = draw_popup_frame(
+            frame,
+            frame.area(),
+            title,
+            PopupSize::Large,
+            PopupHints::Keybinds(&[
+                (kb.display_list(ListAction::Confirm), "import"),
+                (kb.display_list(ListAction::Cancel), "cancel"),
+            ]),
+            &app.app_theme,
+        );
         popup.input.set_block(
             Block::default()
                 .style(app.app_theme.bg_style())
@@ -1632,16 +1661,20 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     }
 
     if let Some(crate::popups::ActivePopup::Search(popup)) = &mut app.popups.active {
-        let content = draw_popup_frame(frame, frame.area(), "SEARCH",
-        PopupSize::Large,
-        PopupHints::Keybinds(&[
-            ("f:".to_string(), "folder"),
-            ("p:".to_string(), "pinned"),
-            ("t:".to_string(), "tag"),
-            ("g:".to_string(), "text"),
-            ("\\e\\".to_string(), "escapes filters"),
-        ]),
-        &app.app_theme,);
+        let content = draw_popup_frame(
+            frame,
+            frame.area(),
+            "SEARCH",
+            PopupSize::Large,
+            PopupHints::Keybinds(&[
+                ("f:".to_string(), "folder"),
+                ("p:".to_string(), "pinned"),
+                ("t:".to_string(), "tag"),
+                ("g:".to_string(), "text"),
+                ("\\e\\".to_string(), "escapes filters"),
+            ]),
+            &app.app_theme,
+        );
 
         let query_text = popup.input.lines().join("");
         let parsed = crate::app::parse_search_query(&query_text);
@@ -1905,15 +1938,19 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     }
 
     if let Some(crate::popups::ActivePopup::TrashView(trash)) = &mut app.popups.active {
-        let content = draw_popup_frame(frame, frame.area(), "TRASH",
-        PopupSize::Large,
-        PopupHints::Keybinds(&[
-            ("r".to_string(), "restore"),
-            ("d".to_string(), "delete"),
-            ("E".to_string(), "empty"),
-            ("q".to_string(), "close"),
-        ]),
-        &app.app_theme,);
+        let content = draw_popup_frame(
+            frame,
+            frame.area(),
+            "TRASH",
+            PopupSize::Large,
+            PopupHints::Keybinds(&[
+                ("r".to_string(), "restore"),
+                ("d".to_string(), "delete"),
+                ("E".to_string(), "empty"),
+                ("q".to_string(), "close"),
+            ]),
+            &app.app_theme,
+        );
 
         let border_color = if trash.items.is_empty() {
             app.app_theme.muted
@@ -1953,8 +1990,13 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             )
             .highlight_symbol("  ");
 
-        let state =
-            crate::ui::render_list_with_selection(frame, list, content, Some(trash.selected), trash.scroll_offset);
+        let state = crate::ui::render_list_with_selection(
+            frame,
+            list,
+            content,
+            Some(trash.selected),
+            trash.scroll_offset,
+        );
         trash.scroll_offset = state.offset();
         let inner_content = Rect {
             x: content.x + 1,
@@ -2257,14 +2299,21 @@ pub fn list_detail_line(app: &App) -> Option<Line<'static>> {
         spans.push(Span::raw(" ")); // padding right
         Some(Line::from(spans))
     } else if let Some(crate::app::VisualItem::Folder {
-        name, note_count, recursive_count, ..
+        name,
+        note_count,
+        recursive_count,
+        ..
     }) = app.list.visual_list.get(app.list.visual_index)
         && name != ".."
     {
         let mut spans = Vec::new();
         let count_suffix = if *recursive_count > *note_count {
             let sub = recursive_count - note_count;
-            let suffix = if *recursive_count == 1 { "note" } else { "notes" };
+            let suffix = if *recursive_count == 1 {
+                "note"
+            } else {
+                "notes"
+            };
             format!("{} + {} {}", note_count, sub, suffix)
         } else {
             let suffix = if *note_count == 1 { "note" } else { "notes" };

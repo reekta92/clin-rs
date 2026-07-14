@@ -295,7 +295,13 @@ pub fn draw_theme_popup(
                 .add_modifier(Modifier::BOLD),
         );
 
-    let state = render_list_with_selection(frame, list, chunks[0], Some(popup.selected), popup.scroll_offset);
+    let state = render_list_with_selection(
+        frame,
+        list,
+        chunks[0],
+        Some(popup.selected),
+        popup.scroll_offset,
+    );
     popup.scroll_offset = state.offset();
     paint_list_hover(
         frame,
@@ -1292,18 +1298,6 @@ pub fn draw_dim_vline(frame: &mut Frame, area: Rect, color: Color) {
             cell.set_fg(color);
         }
     }
-}
-
-pub fn draw_corner_watermark(frame: &mut Frame, area: Rect, color: Color) {
-    let version = env!("CARGO_PKG_VERSION");
-    let text = format!("clin v{version}");
-    let width = text.len() as u16;
-    if area.width < width + 2 || area.height < 1 {
-        return;
-    }
-    let wm_area = Rect::new(area.x + area.width - width - 1, area.y, width, 1);
-    let para = Paragraph::new(text).style(Style::default().fg(color));
-    frame.render_widget(para, wm_area);
 }
 
 pub fn fill_cursor_line_bg(frame: &mut Frame, editor: &TextArea, area: Rect, bg: Color) {

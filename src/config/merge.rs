@@ -232,13 +232,13 @@ tab_icons_only = false
 # header_left = "{title} {preview}"
 # header_right = ""
 # footer_left = "{pending}{badge}{hints}"
-# footer_right = ""
+# footer_right = "{version}"
 
 # Per-view overrides — each sub-table accepts the same four fields:
 #   list, edit, help, graph, draw, canvas, backup, content_tree
 # Example:
 # [statusline.list]
-# footer_right = "{note_count} notes ({selected_count} selected)"
+# footer_right = "{note_count} notes ({selected_count} selected) | {version}"
 
 # ── List View ─────────────────────────────────────────────────────────────────
 

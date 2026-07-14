@@ -61,6 +61,8 @@ pub fn draw_canvas(
     config: &crate::config::ClinConfig,
     mouse_pos: Option<(u16, u16)>,
 ) {
+    let mut canvas_area = area;
+    canvas_area.height = canvas_area.height.saturating_sub(1);
     let x_bounds = [
         app.viewport.x - 100.0 / app.viewport.zoom,
         app.viewport.x + 100.0 / app.viewport.zoom,
@@ -85,7 +87,7 @@ pub fn draw_canvas(
                     grid_step_y *= 2.0;
                 }
                 // compensate for terminal cell aspect ratio (~2:1 height:width) so grid appears even
-                grid_step_y *= area.width as f64 / (2.0 * area.height as f64);
+                grid_step_y *= canvas_area.width as f64 / (2.0 * canvas_area.height as f64);
                 let start_x = (x_bounds[0] / grid_step_x).floor() * grid_step_x;
                 let end_x = (x_bounds[1] / grid_step_x).ceil() * grid_step_x;
                 let start_y = (y_bounds[0] / grid_step_y).floor() * grid_step_y;
@@ -137,7 +139,7 @@ pub fn draw_canvas(
             }
         });
 
-    frame.render_widget(canvas, area);
+    frame.render_widget(canvas, canvas_area);
 
     // Second pass: render Image elements as StatefulImage overlays above the canvas
     if app.is_view_transforming() {
@@ -149,12 +151,14 @@ pub fn draw_canvas(
                 DrawElement::Image(img) => img,
                 _ => continue,
             };
-            let cell_x =
-                (area.x as f64 + (img.x - x_bounds[0]) / x_range * area.width as f64) as u16;
-            let cell_y =
-                (area.y as f64 + (y_bounds[1] - img.y) / y_range * area.height as f64) as u16;
-            let cell_w = ((img.width / x_range) * area.width as f64).max(1.0) as u16;
-            let cell_h = ((img.height / y_range) * area.height as f64).max(1.0) as u16;
+            let cell_x = (canvas_area.x as f64
+                + (img.x - x_bounds[0]) / x_range * canvas_area.width as f64)
+                as u16;
+            let cell_y = (canvas_area.y as f64
+                + (y_bounds[1] - img.y) / y_range * canvas_area.height as f64)
+                as u16;
+            let cell_w = ((img.width / x_range) * canvas_area.width as f64).max(1.0) as u16;
+            let cell_h = ((img.height / y_range) * canvas_area.height as f64).max(1.0) as u16;
             if cell_w == 0 || cell_h == 0 {
                 continue;
             }
@@ -184,12 +188,14 @@ pub fn draw_canvas(
                     DrawElement::Image(img) => img,
                     _ => return None,
                 };
-                let cell_x =
-                    (area.x as f64 + (img.x - x_bounds[0]) / x_range * area.width as f64) as u16;
-                let cell_y =
-                    (area.y as f64 + (y_bounds[1] - img.y) / y_range * area.height as f64) as u16;
-                let cell_w = ((img.width / x_range) * area.width as f64).max(1.0) as u16;
-                let cell_h = ((img.height / y_range) * area.height as f64).max(1.0) as u16;
+                let cell_x = (canvas_area.x as f64
+                    + (img.x - x_bounds[0]) / x_range * canvas_area.width as f64)
+                    as u16;
+                let cell_y = (canvas_area.y as f64
+                    + (y_bounds[1] - img.y) / y_range * canvas_area.height as f64)
+                    as u16;
+                let cell_w = ((img.width / x_range) * canvas_area.width as f64).max(1.0) as u16;
+                let cell_h = ((img.height / y_range) * canvas_area.height as f64).max(1.0) as u16;
                 let r = Rect::new(cell_x, cell_y, cell_w, cell_h);
                 if r.width == 0 || r.height == 0 {
                     return None;

@@ -187,7 +187,7 @@ impl StatuslineContext<'_> {
                 };
                 Some(path.into())
             }
-            "version" => Some(env!("CARGO_PKG_VERSION").into()),
+            "version" => Some(format!("clin v{}", env!("CARGO_PKG_VERSION")).into()),
 
             // Date / Time
             "time" | "date" | "datetime" | "weekday" | "year" | "month" | "day" | "hour"
@@ -1560,7 +1560,8 @@ fn default_template(view: ViewMode, field: &str) -> Cow<'static, str> {
             }
         }
         "footer_right" => match view {
-            _ => "".into(),
+            ViewMode::List => "{note_count} notes ({selected_count} selected) | {version}".into(),
+            _ => "{version}".into(),
         },
         _ => "".into(),
     }
