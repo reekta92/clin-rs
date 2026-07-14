@@ -1303,9 +1303,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             popup
                 .all_tags
                 .iter()
-                .map(|tag| {
-                    ListItem::new(tag.to_string())
-                })
+                .map(|tag| ListItem::new(tag.to_string()))
                 .collect()
         };
 

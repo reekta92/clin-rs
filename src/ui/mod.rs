@@ -1340,12 +1340,20 @@ pub fn get_textarea_scroll(textarea: &TextArea) -> (usize, usize) {
     let debug_str = format!("{textarea:?}");
     if let Some(start) = debug_str.find("viewport: Viewport(") {
         let after_start = &debug_str[start + "viewport: Viewport(".len()..];
-        if let Some(end) = after_start.find(')') {
-            let number_str = &after_start[..end];
-            if let Ok(number) = number_str.parse::<u64>() {
-                scroll_row = ((number >> 16) & 0xFFFF) as usize;
-                scroll_col = (number & 0xFFFF) as usize;
+        let number_str = if let Some(inner) = after_start.strip_prefix("AtomicU64(") {
+            if let Some(end) = inner.find(')') {
+                &inner[..end]
+            } else {
+                ""
             }
+        } else if let Some(end) = after_start.find(')') {
+            &after_start[..end]
+        } else {
+            ""
+        };
+        if let Ok(number) = number_str.parse::<u64>() {
+            scroll_row = ((number >> 16) & 0xFFFF) as usize;
+            scroll_col = (number & 0xFFFF) as usize;
         }
     }
     (scroll_row, scroll_col)

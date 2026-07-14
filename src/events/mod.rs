@@ -113,17 +113,44 @@ pub fn move_textarea_cursor_to_mouse(
         return;
     }
 
+    // viewport top in SCREEN coordinates (0-based absolute document screen grid)
     let (scroll_row, scroll_col) = crate::ui::get_textarea_scroll(textarea);
 
-    let row = mouse_row.saturating_sub(body_inner.y) as usize + scroll_row;
-    let col = mouse_col.saturating_sub(body_inner.x) as usize + scroll_col;
+    let target_row = (mouse_row.saturating_sub(body_inner.y) as usize).saturating_add(scroll_row);
+    let target_col = (mouse_col.saturating_sub(body_inner.x) as usize).saturating_add(scroll_col);
 
-    let max_row = textarea.lines().len().saturating_sub(1);
-    let target_row = row.min(max_row);
-    let max_col = textarea.lines()[target_row].chars().count();
-    let target_col = col.min(max_col);
-
-    textarea.move_cursor(CursorMove::Jump(target_row as u16, target_col as u16));
+    let cur = textarea.screen_cursor();
+    // vertical: move by screen lines
+    let drow = target_row as i64 - cur.row as i64;
+    let vmove = if drow >= 0 {
+        CursorMove::Down
+    } else {
+        CursorMove::Up
+    };
+    for _ in 0..drow.unsigned_abs() {
+        textarea.move_cursor(vmove);
+    }
+    // horizontal: move by screen cells, clamped to the current screen line
+    let cur = textarea.screen_cursor();
+    let dcol = target_col as i64 - cur.col as i64;
+    let hmove = if dcol >= 0 {
+        CursorMove::Forward
+    } else {
+        CursorMove::Back
+    };
+    for _ in 0..dcol.unsigned_abs() {
+        let before = textarea.screen_cursor().row;
+        textarea.move_cursor(hmove);
+        if textarea.screen_cursor().row != before {
+            // stepped across a wrapped screen-line boundary: revert + stop
+            textarea.move_cursor(if matches!(hmove, CursorMove::Forward) {
+                CursorMove::Back
+            } else {
+                CursorMove::Forward
+            });
+            break;
+        }
+    }
 }
 
 pub fn edit_view_input_areas(
@@ -213,7 +240,7 @@ pub fn edit_view_input_areas(
     };
 
     let gutter_width = if show_line_numbers {
-        (line_count.max(1).to_string().len() as u16) + 1
+        (line_count.max(1).to_string().len() as u16) + 2
     } else {
         0
     };
@@ -1590,5 +1617,179 @@ mod tests {
             KeyCode::Char('x'),
             KeyModifiers::NONE
         )));
+    }
+
+    #[test]
+    fn test_sidebar_double_click() {
+        use crate::app::{App, EditFocus, EditSidebar};
+        use crate::editor::LinkItem;
+        use crate::storage::Storage;
+        use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+        use ratatui::layout::Rect;
+        use tempfile::tempdir;
+
+        let temp_dir = tempdir().expect("value is present");
+        let data_dir = temp_dir.path().join("data");
+        let config_dir = temp_dir.path().join("config");
+        let notes_dir = temp_dir.path().join("notes");
+        let templates_dir = temp_dir.path().join("templates");
+        std::fs::create_dir_all(&data_dir).expect("value is present");
+        std::fs::create_dir_all(&config_dir).expect("value is present");
+        std::fs::create_dir_all(&notes_dir).expect("value is present");
+        std::fs::create_dir_all(&templates_dir).expect("value is present");
+
+        let storage = Storage {
+            data_dir,
+            config_dir,
+            notes_dir,
+            templates_dir,
+            key: [0u8; 32],
+        };
+        let mut app = App::new(storage).expect("value is present");
+        app.editor.sidebar = EditSidebar::Links;
+        app.editor.links = vec![LinkItem {
+            id: "test_note.md".to_string(),
+            title: "Test Note".to_string(),
+            is_backlink: false,
+        }];
+        std::fs::write(app.storage.notes_dir.join("test_note.md"), "# Test Note\n")
+            .expect("value is present");
+
+        let terminal_area = Rect::new(0, 0, 100, 40);
+        let mut focus = EditFocus::Body;
+        let mut selecting = false;
+        let mut dragged = false;
+
+        let (_, _, sidebar_inner) = crate::events::edit_view_input_areas(
+            terminal_area,
+            false,
+            1,
+            false,
+            EditSidebar::Links,
+            crate::config::PreviewPosition::Right,
+        );
+        let sb = sidebar_inner.unwrap();
+
+        let mouse_event = MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: sb.x + 1,
+            row: sb.y + 3,
+            modifiers: KeyModifiers::NONE,
+        };
+
+        super::edit::handle_edit_mouse(
+            &mut app,
+            mouse_event,
+            terminal_area,
+            &mut focus,
+            &mut selecting,
+            &mut dragged,
+        );
+
+        assert_eq!(focus, EditFocus::Sidebar);
+        assert_eq!(app.editor.sidebar_selected, 0);
+        assert!(app.editor.last_sidebar_click.is_some());
+
+        super::edit::handle_edit_mouse(
+            &mut app,
+            mouse_event,
+            terminal_area,
+            &mut focus,
+            &mut selecting,
+            &mut dragged,
+        );
+
+        assert_eq!(app.editor.editing_id.as_deref(), Some("test_note.md"));
+    }
+
+    #[test]
+    fn test_sidebar_double_click_outline() {
+        use crate::app::{App, EditFocus, EditSidebar};
+        use crate::content_tree::parse::TreeNode;
+        use crate::storage::Storage;
+        use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+        use ratatui::layout::Rect;
+        use tempfile::tempdir;
+
+        let temp_dir = tempdir().expect("value is present");
+        let data_dir = temp_dir.path().join("data");
+        let config_dir = temp_dir.path().join("config");
+        let notes_dir = temp_dir.path().join("notes");
+        let templates_dir = temp_dir.path().join("templates");
+        std::fs::create_dir_all(&data_dir).expect("value is present");
+        std::fs::create_dir_all(&config_dir).expect("value is present");
+        std::fs::create_dir_all(&notes_dir).expect("value is present");
+        std::fs::create_dir_all(&templates_dir).expect("value is present");
+
+        let storage = Storage {
+            data_dir,
+            config_dir,
+            notes_dir,
+            templates_dir,
+            key: [0u8; 32],
+        };
+        let mut app = App::new(storage).expect("value is present");
+        app.editor.sidebar = EditSidebar::Outline;
+        app.editor.outline_nodes = vec![TreeNode {
+            kind: crate::content_tree::parse::NodeKind::Header {
+                level: 1,
+                title: "Heading 1".to_string(),
+            },
+            depth: 1,
+            line: 42,
+            has_children: false,
+        }];
+
+        let mut content = String::new();
+        for i in 1..=50 {
+            content.push_str(&format!("Line {i}\n"));
+        }
+        app.editor.editor.insert_str(&content);
+
+        let terminal_area = Rect::new(0, 0, 100, 40);
+        let mut focus = EditFocus::Body;
+        let mut selecting = false;
+        let mut dragged = false;
+
+        let (_, _, sidebar_inner) = crate::events::edit_view_input_areas(
+            terminal_area,
+            false,
+            1,
+            false,
+            EditSidebar::Outline,
+            crate::config::PreviewPosition::Right,
+        );
+        let sb = sidebar_inner.unwrap();
+
+        let mouse_event = MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: sb.x + 1,
+            row: sb.y + 3,
+            modifiers: KeyModifiers::NONE,
+        };
+
+        super::edit::handle_edit_mouse(
+            &mut app,
+            mouse_event,
+            terminal_area,
+            &mut focus,
+            &mut selecting,
+            &mut dragged,
+        );
+
+        assert_eq!(focus, EditFocus::Sidebar);
+        assert_eq!(app.editor.sidebar_selected, 0);
+
+        super::edit::handle_edit_mouse(
+            &mut app,
+            mouse_event,
+            terminal_area,
+            &mut focus,
+            &mut selecting,
+            &mut dragged,
+        );
+
+        assert_eq!(focus, EditFocus::Body);
+        assert_eq!(app.editor.editor.cursor(), (41, 0));
     }
 }

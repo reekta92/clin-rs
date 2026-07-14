@@ -54,6 +54,7 @@ pub struct NoteEditor {
     pub link_preview_renderer: Option<MarkdownRenderer>,
     pub link_preview_target: Option<String>,
     pub link_preview_error: Option<String>,
+    pub last_sidebar_click: Option<(u16, u16, Instant)>,
 }
 
 impl Default for NoteEditor {
@@ -87,6 +88,7 @@ impl Default for NoteEditor {
             link_preview_renderer: None,
             link_preview_target: None,
             link_preview_error: None,
+            last_sidebar_click: None,
         }
     }
 }

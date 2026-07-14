@@ -3,7 +3,7 @@ use ratatui::{prelude::*, widgets::*};
 use super::{
     PopupHints, PopupSize, centered_rect, draw_corner_watermark, draw_dim_vline, draw_popup_frame,
     draw_status_bar, draw_view_title_bar, fill_cursor_line_bg, format_keybind_hints,
-    get_preview_info, get_textarea_scroll, line_number_gutter,
+    get_preview_info,
 };
 use crate::app::{App, EditFocus, EditSidebar, ViewMode};
 use crate::events::get_title_text;
@@ -170,37 +170,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         let content_area = editor_container;
 
         if !app.preview_fullscreen {
-            let line_count = app.editor.editor.lines().len();
-            let cursor_row = app.editor.editor.cursor().0;
-            let scroll_row = get_textarea_scroll(&app.editor.editor).0;
-
-            let editor_area = if app.editor.show_line_numbers {
-                let digits = line_count.max(1).to_string().len() as u16;
-                let gutter_width = digits + 1;
-                let gutter_area = Rect::new(
-                    content_area.x,
-                    content_area.y,
-                    gutter_width.min(content_area.width),
-                    content_area.height,
-                );
-                let gutter = line_number_gutter(
-                    line_count,
-                    cursor_row,
-                    scroll_row,
-                    content_area.height,
-                    &app.app_theme,
-                    0,
-                );
-                frame.render_widget(gutter, gutter_area);
-                Rect::new(
-                    content_area.x + gutter_area.width,
-                    content_area.y,
-                    content_area.width.saturating_sub(gutter_area.width),
-                    content_area.height,
-                )
-            } else {
-                content_area
-            };
+            let editor_area = content_area;
 
             app.editor.editor.set_block(
                 Block::default()
@@ -229,6 +199,17 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 } else {
                     Style::default()
                 });
+            let want_ln = if app.editor.show_line_numbers {
+                Some(Style::default().fg(app.app_theme.muted))
+            } else {
+                None
+            };
+            if app.editor.editor.line_number_style() != want_ln {
+                match want_ln {
+                    Some(s) => app.editor.editor.set_line_number_style(s),
+                    None => app.editor.editor.remove_line_number(),
+                }
+            }
             frame.render_widget(&app.editor.editor, editor_area);
             if focus == EditFocus::Body {
                 let cursor_bg = app
@@ -321,38 +302,8 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             }
         }
     } else {
-        let line_count = app.editor.editor.lines().len();
-        let cursor_row = app.editor.editor.cursor().0;
-        let scroll_row = get_textarea_scroll(&app.editor.editor).0;
         let content_area = editor_container;
-
-        let editor_area = if app.editor.show_line_numbers {
-            let digits = line_count.max(1).to_string().len() as u16;
-            let gutter_width = digits + 1;
-            let gutter_area = Rect::new(
-                content_area.x,
-                content_area.y,
-                gutter_width.min(content_area.width),
-                content_area.height,
-            );
-            let gutter = line_number_gutter(
-                line_count,
-                cursor_row,
-                scroll_row,
-                content_area.height,
-                &app.app_theme,
-                0,
-            );
-            frame.render_widget(gutter, gutter_area);
-            Rect::new(
-                content_area.x + gutter_area.width,
-                content_area.y,
-                content_area.width.saturating_sub(gutter_area.width),
-                content_area.height,
-            )
-        } else {
-            content_area
-        };
+        let editor_area = content_area;
 
         app.editor.editor.set_block(
             Block::default()
@@ -381,6 +332,17 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             } else {
                 Style::default()
             });
+        let want_ln = if app.editor.show_line_numbers {
+            Some(Style::default().fg(app.app_theme.muted))
+        } else {
+            None
+        };
+        if app.editor.editor.line_number_style() != want_ln {
+            match want_ln {
+                Some(s) => app.editor.editor.set_line_number_style(s),
+                None => app.editor.editor.remove_line_number(),
+            }
+        }
         frame.render_widget(&app.editor.editor, editor_area);
         if focus == EditFocus::Body {
             let cursor_bg = app

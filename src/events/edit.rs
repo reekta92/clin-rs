@@ -491,11 +491,30 @@ pub fn handle_edit_mouse(
                     let clicked = clicked_row as usize + app.editor.sidebar_scroll_offset;
                     let len = app.sidebar_len();
                     if clicked < len {
+                        let is_double_click =
+                            if let Some((lx, ly, lt)) = app.editor.last_sidebar_click {
+                                lx == mouse_event.column
+                                    && ly == mouse_event.row
+                                    && lt.elapsed().as_millis() < 500
+                            } else {
+                                false
+                            };
                         app.editor.sidebar_selected = clicked;
+                        if is_double_click {
+                            app.sidebar_activate(focus);
+                            app.editor.last_sidebar_click = None;
+                        } else {
+                            app.editor.last_sidebar_click = Some((
+                                mouse_event.column,
+                                mouse_event.row,
+                                std::time::Instant::now(),
+                            ));
+                        }
                     }
                 }
                 return;
             }
+            app.editor.last_sidebar_click = None;
             if contains_cell(body_inner, mouse_event.column, mouse_event.row) {
                 *focus = EditFocus::Body;
                 move_textarea_cursor_to_mouse(

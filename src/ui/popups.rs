@@ -1307,8 +1307,7 @@ pub fn fill_cursor_line_bg(frame: &mut Frame, editor: &TextArea, area: Rect, bg:
         return;
     }
     let (scroll_row, _) = get_textarea_scroll(editor);
-    let cursor_row = editor.cursor().0;
-    let screen_row = cursor_row.saturating_sub(scroll_row) as u16;
+    let screen_row = editor.screen_cursor().row.saturating_sub(scroll_row) as u16;
     let inner_y = editor.block().map(|b| b.inner(area).y).unwrap_or(area.y);
     let y = inner_y + screen_row;
     if y < area.y || y >= area.bottom() {
