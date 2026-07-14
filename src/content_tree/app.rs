@@ -33,20 +33,19 @@ impl crate::overlay::OverlayView for ContentTreeState {
         &mut self,
         frame: &mut ratatui::Frame,
         area: ratatui::layout::Rect,
-        theme: &crate::app_theme::AppThemeColors,
-        config: &crate::config::ClinConfig,
-        app_status: Option<&str>,
+        app: &mut crate::app::App,
     ) {
         self.last_area = area;
         let keybinds = self.keybinds.clone();
-        render::draw_content_tree(frame, area, self, theme, &keybinds, config, app_status);
+        let app_status = app.status.as_ref();
+        render::draw_content_tree(frame, area, self, &app.app_theme, &keybinds, &app.config, Some(app_status));
     }
 
     fn overlay_handle_event(
         &mut self,
         event: crossterm::event::Event,
+        app: &mut crate::app::App,
         _terminal: &ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
-        config: &mut crate::config::ClinConfig,
     ) -> anyhow::Result<crate::overlay::OverlayResult> {
         let keybinds = self.keybinds.clone();
         match event {
@@ -54,7 +53,7 @@ impl crate::overlay::OverlayView for ContentTreeState {
                 if key.kind == crossterm::event::KeyEventKind::Release {
                     return Ok(crate::overlay::OverlayResult::Continue);
                 }
-                let r = input::handle_input(self, key, &keybinds, config);
+                let r = input::handle_input(self, key, &keybinds, &mut app.config);
                 if let Some(result) = map_input_result(self, r) {
                     return Ok(result);
                 }

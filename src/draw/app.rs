@@ -118,22 +118,20 @@ impl crate::overlay::OverlayView for DrawAppState {
         &mut self,
         frame: &mut ratatui::Frame,
         area: ratatui::layout::Rect,
-        _theme: &crate::app_theme::AppThemeColors,
-        _config: &crate::config::ClinConfig,
-        _app_status: Option<&str>,
+        app: &mut crate::app::App,
     ) {
         self.last_area = area;
-        draw_canvas(frame, self, area, _config, self.mouse_pos);
+        draw_canvas(frame, self, area, &app.config, self.mouse_pos);
     }
 
     fn overlay_handle_event(
         &mut self,
         event: crossterm::event::Event,
+        app: &mut crate::app::App,
         _terminal: &ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
-        config: &mut crate::config::ClinConfig,
     ) -> anyhow::Result<crate::overlay::OverlayResult> {
         let keybinds = self.keybinds.clone();
-        if let Some(action) = handle_event(event, self, &keybinds, config)? {
+        if let Some(action) = handle_event(event, self, &keybinds, &mut app.config)? {
             match action {
                 DrawEventAction::Quit => {
                     self.running = false;

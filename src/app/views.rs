@@ -154,7 +154,20 @@ impl App {
         if let Some(VisualItem::Note { summary_idx, .. }) =
             self.list.visual_list.get(self.list.visual_index)
         {
-            let path = self.storage.note_path(&self.notes[*summary_idx].id);
+            let note_id = self.notes[*summary_idx].id.clone();
+            let path = self.storage.note_path(&note_id);
+            let prev_mode = self.mode;
+            self.load_and_open_note(&note_id, None);
+            if self.mode == ViewMode::Edit {
+                if prev_mode != ViewMode::Canvas {
+                    self.return_mode = Some(prev_mode);
+                }
+                self.mode = ViewMode::Canvas;
+            } else {
+                self.set_temporary_status_static("Failed to load .canvas file!");
+                return;
+            }
+
             if let Ok(mut state) = crate::pinstar::state::PinstarState::load(
                 &path,
                 self.keybinds.clone(),
@@ -165,11 +178,6 @@ impl App {
                 state.image_picker = self.image_picker.clone();
                 state.image_decode_tx = self.image_decode_tx.clone();
                 self.canvas_state = Some(state);
-                if self.mode != ViewMode::Canvas {
-                    self.return_mode = Some(self.mode);
-                    self.mode = ViewMode::Canvas;
-                }
-                self.editor.editing_id = Some(self.notes[*summary_idx].id.clone());
                 self.set_default_status();
             } else {
                 self.set_temporary_status_static("Failed to load .canvas file!");

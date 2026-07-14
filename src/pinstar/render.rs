@@ -51,11 +51,12 @@ fn get_node_color(color_code: Option<&str>, theme: &AppThemeColors) -> Color {
 pub fn draw_pinstar_view(
     frame: &mut Frame,
     state: &mut PinstarState,
-    theme: &AppThemeColors,
+    app: &mut crate::app::App,
     area: ratatui::layout::Rect,
-    config: &crate::config::ClinConfig,
     mouse_pos: Option<(u16, u16)>,
 ) {
+    let theme_val = app.app_theme.clone();
+    let theme = &theme_val;
     let total_area = area;
     let canvas_mouse_pos = if state.context_menu.is_some() {
         None
@@ -85,60 +86,18 @@ pub fn draw_pinstar_view(
             .borders(Borders::RIGHT)
             .border_style(Style::default().fg(editor_border_color))
             .title(" Source (JSON) ")
-            .style(theme.preview_bg_style());
+            .style(theme.bg_style());
 
-        let line_count = state.raw_editor.lines().len();
-        let cursor_row = state.raw_editor.cursor().0;
-        let scroll_row = crate::ui::get_textarea_scroll(&state.raw_editor).0;
-
-        let content_area = editor_area;
-        let digits = line_count.max(1).to_string().len() as u16;
-        let gutter_width = digits + 1;
-        let gutter_area = Rect::new(
-            content_area.x,
-            content_area.y,
-            gutter_width.min(content_area.width),
-            content_area.height,
+        crate::ui::render_editor_widget(
+            frame,
+            app,
+            if state.editor_focus { crate::app::EditFocus::Body } else { crate::app::EditFocus::Sidebar },
+            editor_area,
+            Some(editor_block),
+            Some(theme.bg_style()),
         );
-        let gutter = crate::ui::line_number_gutter(
-            line_count,
-            cursor_row,
-            scroll_row,
-            content_area.height,
-            theme,
-            1,
-        );
-        frame.render_widget(gutter, gutter_area);
-
-        let editor_rect = Rect::new(
-            content_area.x + gutter_area.width,
-            content_area.y,
-            content_area.width.saturating_sub(gutter_area.width),
-            content_area.height,
-        );
-
-        state.raw_editor.set_block(editor_block);
-        state.raw_editor.set_style(theme.preview_bg_style());
-        state
-            .raw_editor
-            .set_cursor_line_style(if state.editor_focus {
-                if let Some(bg) = theme.preview_bg() {
-                    Style::default().bg(bg)
-                } else {
-                    Style::default()
-                        .bg(theme.highlight_bg)
-                        .fg(theme.highlight_fg)
-                }
-            } else {
-                Style::default()
-            });
-        frame.render_widget(&state.raw_editor, editor_rect);
-
-        if state.editor_focus {
-            let cursor_bg = theme.preview_bg().unwrap_or(theme.highlight_bg);
-            crate::ui::fill_cursor_line_bg(frame, &state.raw_editor, editor_rect, cursor_bg);
-        }
     }
+    let config = &app.config;
 
     let canvas_border_color = if !state.editor_focus || !state.show_editor_pane {
         theme.accent
@@ -860,4 +819,70 @@ fn is_generated_id(id: &str) -> bool {
         return true;
     }
     false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::backend::TestBackend;
+    use crate::pinstar::state::PinstarState;
+    use crate::app_theme::AppThemeColors;
+    use crate::keybinds::Keybinds;
+    use crate::keybinds::KeyMatcher;
+    use std::fs::File;
+    use std::io::Write;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_draw_pinstar_view_with_editor() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("test.canvas");
+        {
+            let mut file = File::create(&path).unwrap();
+            file.write_all(b"{\"nodes\":[],\"edges\":[]}").unwrap();
+        }
+
+        let keybinds = Keybinds::default();
+        let seq_matcher = KeyMatcher::default();
+        let mut state = PinstarState::load(&path, keybinds, seq_matcher).unwrap();
+        state.show_editor_pane = true;
+        state.editor_focus = true;
+
+        let backend = TestBackend::new(100, 30);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        let data_dir = dir.path().join("data");
+        let config_dir = dir.path().join("config");
+        let notes_dir = dir.path().join("notes");
+        let templates_dir = dir.path().join("templates");
+        std::fs::create_dir_all(&data_dir).unwrap();
+        std::fs::create_dir_all(&config_dir).unwrap();
+        std::fs::create_dir_all(&notes_dir).unwrap();
+        std::fs::create_dir_all(&templates_dir).unwrap();
+
+        let storage = crate::storage::Storage {
+            data_dir,
+            config_dir,
+            notes_dir,
+            templates_dir,
+            key: [0u8; 32],
+        };
+        let mut app = crate::app::App::new(storage).unwrap();
+
+        terminal
+            .draw(|f| {
+                let area = f.area();
+                draw_pinstar_view(f, &mut state, &mut app, area, None);
+            })
+            .unwrap();
+
+        // Confirm we can also render with editor_focus = false
+        state.editor_focus = false;
+        terminal
+            .draw(|f| {
+                let area = f.area();
+                draw_pinstar_view(f, &mut state, &mut app, area, None);
+            })
+            .unwrap();
+    }
 }

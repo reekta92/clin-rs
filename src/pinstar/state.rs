@@ -11,7 +11,6 @@ pub struct PinstarState {
     pub zoom: f64,
     pub selected_node_id: Option<String>,
     pub floating_editor: Option<TextArea<'static>>,
-    pub raw_editor: TextArea<'static>,
     pub editor_focus: bool,
     pub last_mouse_pos: Option<(u16, u16)>,
     pub mouse_pos: Option<(u16, u16)>,
@@ -65,9 +64,6 @@ impl PinstarState {
     ) -> Result<Self> {
         let content = std::fs::read_to_string(path)?;
         let data: CanvasData = serde_json::from_str(&content)?;
-        let mut raw_editor = TextArea::from(content.lines().map(String::from).collect::<Vec<_>>());
-        raw_editor.set_cursor_line_style(ratatui::style::Style::default());
-
         Ok(Self {
             path: path.to_path_buf(),
             data,
@@ -76,7 +72,6 @@ impl PinstarState {
             zoom: 0.1,
             selected_node_id: None,
             floating_editor: None,
-            raw_editor,
             editor_focus: false,
             mouse_pos: None,
             last_mouse_pos: None,
@@ -131,8 +126,8 @@ impl PinstarState {
                 .is_some_and(|t| t.elapsed() < TRANSFORM_SETTLE)
     }
 
-    pub fn sync_from_raw_editor(&mut self) -> Result<()> {
-        let content = self.raw_editor.lines().join("\n");
+    pub fn sync_from_raw_editor(&mut self, app: &mut crate::app::App) -> Result<()> {
+        let content = app.editor.editor.lines().join("\n");
         if let Ok(data) = serde_json::from_str::<CanvasData>(&content) {
             self.data = data;
             let _ = self.save();
@@ -142,10 +137,10 @@ impl PinstarState {
         }
     }
 
-    pub fn sync_to_raw_editor(&mut self) {
+    pub fn sync_to_raw_editor(&mut self, app: &mut crate::app::App) {
         if let Ok(content) = serde_json::to_string_pretty(&self.data) {
-            self.raw_editor = TextArea::from(content.lines().map(String::from).collect::<Vec<_>>());
-            self.raw_editor
+            app.editor.editor = TextArea::from(content.lines().map(String::from).collect::<Vec<_>>());
+            app.editor.editor
                 .set_cursor_line_style(ratatui::style::Style::default());
         }
     }
@@ -396,7 +391,6 @@ impl PinstarState {
 
             self.selected_node_id = Some(new_id);
             let _ = self.save();
-            self.sync_to_raw_editor();
         }
     }
 
@@ -407,7 +401,6 @@ impl PinstarState {
                 .edges
                 .retain(|e| e.from_node != id_clone && e.to_node != id_clone);
             let _ = self.save();
-            self.sync_to_raw_editor();
         }
     }
 
@@ -425,7 +418,6 @@ impl PinstarState {
                 }
             }
             let _ = self.save();
-            self.sync_to_raw_editor();
         }
     }
 
@@ -445,7 +437,6 @@ impl PinstarState {
         self.selected_node_id = Some(id.clone());
         self.resizing_node_id = Some(id);
         let _ = self.save();
-        self.sync_to_raw_editor();
     }
 
     pub fn add_group(&mut self, x: f64, y: f64) {
@@ -465,7 +456,6 @@ impl PinstarState {
         self.selected_node_id = Some(id.clone());
         self.resizing_node_id = Some(id);
         let _ = self.save();
-        self.sync_to_raw_editor();
     }
     pub fn add_image_node(&mut self, x: f64, y: f64) {
         let path = match crate::ui::pick_file("Image", "png;jpg;jpeg;gif;webp;bmp") {
@@ -487,7 +477,6 @@ impl PinstarState {
         ));
         self.selected_node_id = Some(id.clone());
         let _ = self.save();
-        self.sync_to_raw_editor();
     }
 
     pub fn start_connection(&mut self) {
@@ -518,7 +507,6 @@ impl PinstarState {
                     color: None,
                 });
                 let _ = self.save();
-                self.sync_to_raw_editor();
             }
         }
     }
@@ -531,7 +519,6 @@ impl PinstarState {
                 .edges
                 .retain(|e| !(e.from_node == source_id && e.to_node == target_id));
             let _ = self.save();
-            self.sync_to_raw_editor();
         }
     }
 
@@ -560,7 +547,6 @@ impl PinstarState {
                     break;
                 }
             }
-            self.sync_to_raw_editor();
         }
     }
 
@@ -618,7 +604,6 @@ impl PinstarState {
                     }
                 }
             }
-            self.sync_to_raw_editor();
         }
     }
 }

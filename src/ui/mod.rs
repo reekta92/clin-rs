@@ -18,6 +18,7 @@ pub(crate) mod setup;
 mod title_bar;
 
 pub use edit_view::draw_edit_view;
+pub(crate) use edit_view::render_editor_widget;
 pub use help::*;
 pub use help_content::{HelpSuggestion, roll_suggestions};
 pub(crate) use list_view::{
@@ -87,7 +88,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         ViewMode::Help => draw_help_view(frame, app),
         ViewMode::Setup => draw_setup_view(frame, app),
         ViewMode::Graph => {
-            if let Some(graf) = &mut app.graph_state {
+            if let Some(mut graf) = app.graph_state.take() {
                 let outer = Layout::default()
                     .direction(Direction::Vertical)
                     .constraints([Constraint::Length(1), Constraint::Min(0)])
@@ -123,12 +124,13 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     );
                 }
 
-                graf.overlay_render(frame, outer[1], &app.app_theme, &app.config, None);
+                graf.overlay_render(frame, outer[1], app);
+                app.graph_state = Some(graf);
             }
         }
 
         ViewMode::Draw => {
-            if let Some(draw) = &mut app.draw_state {
+            if let Some(mut draw) = app.draw_state.take() {
                 let outer = Layout::default()
                     .direction(Direction::Vertical)
                     .constraints([Constraint::Length(1), Constraint::Min(0)])
@@ -161,7 +163,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 ctx.app_status = Some(app.status.as_ref());
                 ctx.vault_path = Some(&app.storage.data_dir);
                 ctx.date_format = Some(&app.date_format);
-                ctx.draw = Some(draw);
+                ctx.draw = Some(&draw);
                 let (left_line, right_line) = crate::statusline::render_header(
                     &ctx,
                     &app.config.statusline,
@@ -179,11 +181,12 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     Some(app.status.as_ref()),
                 );
                 draw.mouse_pos = app.mouse_pos;
-                draw.overlay_render(frame, outer[1], &app.app_theme, &app.config, None);
+                draw.overlay_render(frame, outer[1], app);
+                app.draw_state = Some(draw);
             }
         }
         ViewMode::Canvas => {
-            if let Some(canvas) = &mut app.canvas_state {
+            if let Some(mut canvas) = app.canvas_state.take() {
                 let outer = Layout::default()
                     .direction(Direction::Vertical)
                     .constraints([Constraint::Length(1), Constraint::Min(0)])
@@ -196,7 +199,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 ctx.app_status = Some(app.status.as_ref());
                 ctx.vault_path = Some(&app.storage.data_dir);
                 ctx.date_format = Some(&app.date_format);
-                ctx.canvas = Some(canvas);
+                ctx.canvas = Some(&canvas);
                 let (left_line, right_line) = crate::statusline::render_header(
                     &ctx,
                     &app.config.statusline,
@@ -211,11 +214,12 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     right_line,
                     Some(app.status.as_ref()),
                 );
-                canvas.overlay_render(frame, outer[1], &app.app_theme, &app.config, None);
+                canvas.overlay_render(frame, outer[1], app);
+                app.canvas_state = Some(canvas);
             }
         }
         ViewMode::Backup => {
-            if let Some(backup) = &mut app.backup_state {
+            if let Some(mut backup) = app.backup_state.take() {
                 let outer = Layout::default()
                     .direction(Direction::Vertical)
                     .constraints([Constraint::Length(1), Constraint::Min(0)])
@@ -228,16 +232,17 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     Some(app.status.as_ref()),
                     &app.storage.data_dir,
                     &app.date_format,
-                    backup,
+                    &backup,
                     app.config.ui.icon_mode,
                     app.mouse_pos,
                 );
                 backup.mouse_pos = app.mouse_pos;
-                backup.overlay_render(frame, outer[1], &app.app_theme, &app.config, None);
+                backup.overlay_render(frame, outer[1], app);
+                app.backup_state = Some(backup);
             }
         }
         ViewMode::ContentTree => {
-            if let Some(tree) = &mut app.content_tree_state {
+            if let Some(mut tree) = app.content_tree_state.take() {
                 let outer = Layout::default()
                     .direction(Direction::Vertical)
                     .constraints([Constraint::Length(1), Constraint::Min(0)])
@@ -250,7 +255,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 ctx.app_status = Some(app.status.as_ref());
                 ctx.vault_path = Some(&app.storage.data_dir);
                 ctx.date_format = Some(&app.date_format);
-                ctx.content_tree = Some(tree);
+                ctx.content_tree = Some(&tree);
                 let (left_line, right_line) = crate::statusline::render_header(
                     &ctx,
                     &app.config.statusline,
@@ -266,7 +271,8 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     Some(app.status.as_ref()),
                 );
                 tree.mouse_pos = app.mouse_pos;
-                tree.overlay_render(frame, outer[1], &app.app_theme, &app.config, None);
+                tree.overlay_render(frame, outer[1], app);
+                app.content_tree_state = Some(tree);
             }
         }
     }
@@ -1406,4 +1412,50 @@ pub fn line_number_gutter(
                 .padding(Padding::new(0, 0, top_padding, 0))
                 .style(theme.preview_bg_style()),
         )
+}
+
+pub fn render_textarea_with_theme(
+    frame: &mut Frame,
+    textarea: &mut TextArea,
+    area: Rect,
+    theme: &AppThemeColors,
+    has_focus: bool,
+    show_line_numbers: bool,
+    block: Block<'static>,
+    base_style: Style,
+) {
+    textarea.set_block(block);
+    textarea.set_style(base_style);
+    textarea.set_cursor_style(if has_focus {
+        Style::default().add_modifier(Modifier::REVERSED)
+    } else {
+        Style::default()
+    });
+    textarea.set_cursor_line_style(if has_focus {
+        if let Some(bg) = theme.preview_bg() {
+            Style::default().bg(bg)
+        } else {
+            Style::default()
+                .bg(theme.highlight_bg)
+                .fg(theme.highlight_fg)
+        }
+    } else {
+        Style::default()
+    });
+    let want_ln = if show_line_numbers {
+        Some(Style::default().fg(theme.muted))
+    } else {
+        None
+    };
+    if textarea.line_number_style() != want_ln {
+        match want_ln {
+            Some(s) => textarea.set_line_number_style(s),
+            None => textarea.remove_line_number(),
+        }
+    }
+    frame.render_widget(&*textarea, area);
+    if has_focus {
+        let cursor_bg = theme.preview_bg().unwrap_or(theme.highlight_bg);
+        fill_cursor_line_bg(frame, textarea, area, cursor_bg);
+    }
 }

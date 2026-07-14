@@ -9,24 +9,23 @@ impl crate::overlay::OverlayView for BackupState {
         &mut self,
         frame: &mut ratatui::Frame,
         area: ratatui::layout::Rect,
-        _theme: &crate::app_theme::AppThemeColors,
-        config: &crate::config::ClinConfig,
-        app_status: Option<&str>,
+        app: &mut crate::app::App,
     ) {
         self.last_area = Some(area);
-        render::draw_dashboard(frame, self, area, config, app_status);
+        let app_status = app.status.as_ref();
+        render::draw_dashboard(frame, self, area, &app.config, Some(app_status));
     }
 
     fn overlay_handle_event(
         &mut self,
         event: crossterm::event::Event,
+        app: &mut crate::app::App,
         _terminal: &ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
-        config: &mut crate::config::ClinConfig,
     ) -> anyhow::Result<crate::overlay::OverlayResult> {
         match event {
             Event::Key(key) => {
                 let keybinds = self.keybinds.clone();
-                match input::handle_input(self, key, &keybinds, config) {
+                match input::handle_input(self, key, &keybinds, &mut app.config) {
                     InputResult::Back => {
                         return Ok(crate::overlay::OverlayResult::Exit);
                     }
@@ -40,7 +39,7 @@ impl crate::overlay::OverlayView for BackupState {
                 }
             }
             Event::Mouse(mouse) => {
-                if let InputResult::Refresh = input::handle_mouse(self, mouse, config.ui.icon_mode)
+                if let InputResult::Refresh = input::handle_mouse(self, mouse, app.config.ui.icon_mode)
                 {
                     self.refresh_git_info();
                 }

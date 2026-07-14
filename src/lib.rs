@@ -871,13 +871,13 @@ fn run_tui_session(app: &mut App) -> Result<()> {
 /// returns Exit/NoteOpened/OpenHelp.
 fn drain_queued_mouse_events<V: OverlayView>(
     view: &mut V,
+    app: &mut App,
     terminal: &Terminal<ratatui::backend::CrosstermBackend<Stdout>>,
-    config: &mut ClinConfig,
 ) -> Result<()> {
     while event::poll(Duration::ZERO)? {
         match event::read()? {
             ev @ Event::Mouse(_) => {
-                let _ = view.overlay_handle_event(ev, terminal, config)?;
+                let _ = view.overlay_handle_event(ev, app, terminal)?;
             }
             _ => break,
         }
@@ -1066,12 +1066,14 @@ fn run_app(
                                     false
                                 }
                                 ViewMode::Graph => {
-                                    if let Some(graf) = &mut app.graph_state {
-                                        match graf.overlay_handle_event(
+                                    if let Some(mut graf) = app.graph_state.take() {
+                                        let res = graf.overlay_handle_event(
                                             Event::Key(key),
+                                            app,
                                             terminal,
-                                            &mut app.config,
-                                        )? {
+                                        );
+                                        app.graph_state = Some(graf);
+                                        match res? {
                                             crate::overlay::OverlayResult::NoteOpened(note_id) => {
                                                 if let Err(e) = app.config.save() {
                                                     app.set_temporary_status(&format!(
@@ -1115,12 +1117,14 @@ fn run_app(
                                     }
                                 }
                                 ViewMode::Draw => {
-                                    if let Some(draw) = &mut app.draw_state {
-                                        match draw.overlay_handle_event(
+                                    if let Some(mut draw) = app.draw_state.take() {
+                                        let res = draw.overlay_handle_event(
                                             Event::Key(key),
+                                            app,
                                             terminal,
-                                            &mut app.config,
-                                        )? {
+                                        );
+                                        app.draw_state = Some(draw);
+                                        match res? {
                                             crate::overlay::OverlayResult::Exit => {
                                                 app.draw_state = None;
                                                 app.close_draw_view();
@@ -1139,12 +1143,14 @@ fn run_app(
                                     }
                                 }
                                 ViewMode::Canvas => {
-                                    if let Some(canvas) = &mut app.canvas_state {
-                                        match canvas.overlay_handle_event(
+                                    if let Some(mut canvas) = app.canvas_state.take() {
+                                        let res = canvas.overlay_handle_event(
                                             Event::Key(key),
+                                            app,
                                             terminal,
-                                            &mut app.config,
-                                        )? {
+                                        );
+                                        app.canvas_state = Some(canvas);
+                                        match res? {
                                             crate::overlay::OverlayResult::OpenHelp(tab) => {
                                                 app.reload_theme();
                                                 app.open_help_page_with_tab(tab);
@@ -1162,13 +1168,14 @@ fn run_app(
                                     }
                                 }
                                 ViewMode::Backup => {
-                                    if let Some(backup) = &mut app.backup_state {
-                                        let result = backup.overlay_handle_event(
+                                    if let Some(mut backup) = app.backup_state.take() {
+                                        let res = backup.overlay_handle_event(
                                             Event::Key(key),
+                                            app,
                                             terminal,
-                                            &mut app.config,
-                                        )?;
-                                        match result {
+                                        );
+                                        app.backup_state = Some(backup);
+                                        match res? {
                                             crate::overlay::OverlayResult::Exit => {
                                                 app.reload_config();
                                                 app.backup_state = None;
@@ -1193,13 +1200,14 @@ fn run_app(
                                     }
                                 }
                                 ViewMode::ContentTree => {
-                                    if let Some(tree) = &mut app.content_tree_state {
-                                        let result = tree.overlay_handle_event(
+                                    if let Some(mut tree) = app.content_tree_state.take() {
+                                        let res = tree.overlay_handle_event(
                                             Event::Key(key),
+                                            app,
                                             terminal,
-                                            &mut app.config,
-                                        )?;
-                                        match result {
+                                        );
+                                        app.content_tree_state = Some(tree);
+                                        match res? {
                                             crate::overlay::OverlayResult::Exit => {
                                                 app.content_tree_state = None;
                                                 app.mode = app
@@ -1263,18 +1271,17 @@ fn run_app(
                                 }
                                 ViewMode::Graph => {
                                     let mut is_drag = false;
-                                    let result = app.graph_state.as_mut().map(|graf| {
+                                    if let Some(mut graf) = app.graph_state.take() {
                                         is_drag = matches!(
                                             mouse_event.kind,
                                             ratatui::crossterm::event::MouseEventKind::Drag(_)
                                         );
-                                        graf.overlay_handle_event(
+                                        let result = graf.overlay_handle_event(
                                             Event::Mouse(mouse_event),
+                                            app,
                                             terminal,
-                                            &mut app.config,
-                                        )
-                                    });
-                                    if let Some(result) = result {
+                                        );
+                                        app.graph_state = Some(graf);
                                         match result? {
                                             crate::overlay::OverlayResult::NoteOpened(note_id) => {
                                                 if let Err(e) = app.config.save() {
@@ -1314,24 +1321,24 @@ fn run_app(
                                             _ => {}
                                         }
                                     }
-                                    if is_drag && let Some(graf) = &mut app.graph_state {
-                                        drain_queued_mouse_events(graf, terminal, &mut app.config)?;
+                                    if is_drag && let Some(mut graf) = app.graph_state.take() {
+                                        drain_queued_mouse_events(&mut graf, app, terminal)?;
+                                        app.graph_state = Some(graf);
                                     }
                                 }
                                 ViewMode::Draw => {
                                     let mut is_drag = false;
-                                    let result = app.draw_state.as_mut().map(|draw| {
+                                    if let Some(mut draw) = app.draw_state.take() {
                                         is_drag = matches!(
                                             mouse_event.kind,
                                             ratatui::crossterm::event::MouseEventKind::Drag(_)
                                         );
-                                        draw.overlay_handle_event(
+                                        let result = draw.overlay_handle_event(
                                             Event::Mouse(mouse_event),
+                                            app,
                                             terminal,
-                                            &mut app.config,
-                                        )
-                                    });
-                                    if let Some(result) = result {
+                                        );
+                                        app.draw_state = Some(draw);
                                         match result? {
                                             crate::overlay::OverlayResult::Exit => {
                                                 app.draw_state = None;
@@ -1346,47 +1353,48 @@ fn run_app(
                                             _ => {}
                                         }
                                     }
-                                    if is_drag && let Some(draw) = &mut app.draw_state {
-                                        drain_queued_mouse_events(draw, terminal, &mut app.config)?;
+                                    if is_drag && let Some(mut draw) = app.draw_state.take() {
+                                        drain_queued_mouse_events(&mut draw, app, terminal)?;
+                                        app.draw_state = Some(draw);
                                     }
                                 }
                                 ViewMode::Canvas => {
                                     let mut is_drag = false;
-                                    if let Some(canvas) = &mut app.canvas_state {
+                                    if let Some(mut canvas) = app.canvas_state.take() {
                                         is_drag = matches!(
                                             mouse_event.kind,
                                             ratatui::crossterm::event::MouseEventKind::Drag(_)
                                         );
                                         let _ = canvas.overlay_handle_event(
                                             Event::Mouse(mouse_event),
+                                            app,
                                             terminal,
-                                            &mut app.config,
                                         )?;
+                                        app.canvas_state = Some(canvas);
                                     }
-                                    if is_drag && let Some(canvas) = &mut app.canvas_state {
-                                        drain_queued_mouse_events(
-                                            canvas,
-                                            terminal,
-                                            &mut app.config,
-                                        )?;
+                                    if is_drag && let Some(mut canvas) = app.canvas_state.take() {
+                                        drain_queued_mouse_events(&mut canvas, app, terminal)?;
+                                        app.canvas_state = Some(canvas);
                                     }
                                 }
                                 ViewMode::Backup => {
-                                    if let Some(backup) = &mut app.backup_state {
+                                    if let Some(mut backup) = app.backup_state.take() {
                                         let _ = backup.overlay_handle_event(
                                             Event::Mouse(mouse_event),
+                                            app,
                                             terminal,
-                                            &mut app.config,
                                         )?;
+                                        app.backup_state = Some(backup);
                                     }
                                 }
                                 ViewMode::ContentTree => {
-                                    if let Some(tree) = &mut app.content_tree_state {
+                                    if let Some(mut tree) = app.content_tree_state.take() {
                                         let _ = tree.overlay_handle_event(
                                             Event::Mouse(mouse_event),
+                                            app,
                                             terminal,
-                                            &mut app.config,
                                         )?;
+                                        app.content_tree_state = Some(tree);
                                     }
                                 }
                                 ViewMode::Setup => {

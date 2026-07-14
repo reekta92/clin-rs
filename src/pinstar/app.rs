@@ -9,30 +9,28 @@ impl crate::overlay::OverlayView for PinstarState {
         &mut self,
         frame: &mut ratatui::Frame,
         area: ratatui::layout::Rect,
-        theme: &crate::app_theme::AppThemeColors,
-        config: &crate::config::ClinConfig,
-        _app_status: Option<&str>,
+        app: &mut crate::app::App,
     ) {
         self.last_area = area;
-        draw_pinstar_view(frame, self, theme, area, config, self.mouse_pos);
+        draw_pinstar_view(frame, self, app, area, self.mouse_pos);
     }
 
     fn overlay_handle_event(
         &mut self,
         event: crossterm::event::Event,
+        app: &mut crate::app::App,
         _terminal: &ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
-        config: &mut crate::config::ClinConfig,
     ) -> anyhow::Result<crate::overlay::OverlayResult> {
         let area = self.last_area;
         let keybinds = self.keybinds.clone();
         let mut running = true;
         match event {
             Event::Key(key) => {
-                let _ = handle_pinstar_event(self, key, &mut running, area, &keybinds, config);
+                let _ = handle_pinstar_event(self, key, &mut running, area, &keybinds, app);
             }
             Event::Mouse(mouse) => {
                 self.mouse_pos = Some((mouse.column, mouse.row));
-                handle_pinstar_mouse(self, mouse, area);
+                handle_pinstar_mouse(self, mouse, area, app);
             }
             _ => {}
         }

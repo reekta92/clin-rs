@@ -2,7 +2,7 @@ use ratatui::{prelude::*, widgets::*};
 
 use super::{
     PopupHints, PopupSize, centered_rect, draw_dim_vline, draw_popup_frame, draw_status_bar,
-    draw_view_title_bar, fill_cursor_line_bg, format_keybind_hints, get_preview_info,
+    draw_view_title_bar, format_keybind_hints, get_preview_info,
 };
 use crate::app::{App, EditFocus, EditSidebar, ViewMode};
 use crate::content_tree::parse::NodeKind;
@@ -11,53 +11,31 @@ use crate::keybinds::EditAction;
 
 /// Render the body editor widget with proper style, cursor, line numbers, and cursor-line fill.
 /// Called from both the preview and non-preview paths to eliminate a ~50‑line duplication.
-fn render_editor_widget(frame: &mut Frame, app: &mut App, focus: EditFocus, area: Rect) {
-    app.editor.editor.set_block(
+pub(crate) fn render_editor_widget(
+    frame: &mut Frame,
+    app: &mut App,
+    focus: EditFocus,
+    area: Rect,
+    custom_block: Option<Block<'static>>,
+    custom_style: Option<Style>,
+) {
+    let block = custom_block.unwrap_or_else(|| {
         Block::default()
             .style(app.app_theme.bg_style())
             .borders(Borders::NONE)
-            .padding(Padding::new(0, 2, 0, 0)),
+            .padding(Padding::new(0, 2, 0, 0))
+    });
+    let base_style = custom_style.unwrap_or_else(|| app.app_theme.bg_style());
+    super::render_textarea_with_theme(
+        frame,
+        &mut app.editor.editor,
+        area,
+        &app.app_theme,
+        focus == EditFocus::Body,
+        app.editor.show_line_numbers,
+        block,
+        base_style,
     );
-    app.editor.editor.set_style(app.app_theme.bg_style());
-    app.editor
-        .editor
-        .set_cursor_style(if focus == EditFocus::Body {
-            Style::default().add_modifier(Modifier::REVERSED)
-        } else {
-            Style::default()
-        });
-    app.editor
-        .editor
-        .set_cursor_line_style(if focus == EditFocus::Body {
-            if let Some(bg) = app.app_theme.preview_bg() {
-                Style::default().bg(bg)
-            } else {
-                Style::default()
-                    .bg(app.app_theme.highlight_bg)
-                    .fg(app.app_theme.highlight_fg)
-            }
-        } else {
-            Style::default()
-        });
-    let want_ln = if app.editor.show_line_numbers {
-        Some(Style::default().fg(app.app_theme.muted))
-    } else {
-        None
-    };
-    if app.editor.editor.line_number_style() != want_ln {
-        match want_ln {
-            Some(s) => app.editor.editor.set_line_number_style(s),
-            None => app.editor.editor.remove_line_number(),
-        }
-    }
-    frame.render_widget(&app.editor.editor, area);
-    if focus == EditFocus::Body {
-        let cursor_bg = app
-            .app_theme
-            .preview_bg()
-            .unwrap_or(app.app_theme.highlight_bg);
-        fill_cursor_line_bg(frame, &app.editor.editor, area, cursor_bg);
-    }
 }
 
 #[allow(clippy::collapsible_if)]
@@ -251,7 +229,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     }
     if let Some(preview_area_rect) = preview_area_rect {
         if !app.preview_fullscreen {
-            render_editor_widget(frame, app, focus, editor_container);
+            render_editor_widget(frame, app, focus, editor_container, None, None);
         }
 
         if let Some(renderer) = &app.editor.md_preview_renderer {
@@ -336,7 +314,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             } // closes if !renderer.is_pending()
         } // closes if let Some(renderer)
     } else {
-        render_editor_widget(frame, app, focus, editor_container);
+        render_editor_widget(frame, app, focus, editor_container, None, None);
     }
     let kb = &app.keybinds;
     let hints_items = vec![

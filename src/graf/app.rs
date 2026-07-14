@@ -234,21 +234,19 @@ impl crate::overlay::OverlayView for GrafAppState {
         &mut self,
         frame: &mut ratatui::Frame,
         area: ratatui::layout::Rect,
-        theme: &crate::app_theme::AppThemeColors,
-        config: &crate::config::ClinConfig,
-        _app_status: Option<&str>,
+        app: &mut crate::app::App,
     ) {
-        crate::graf::ui::draw_ui(frame, self, config, area, theme);
+        crate::graf::ui::draw_ui(frame, self, &app.config, area, &app.app_theme);
     }
 
     fn overlay_handle_event(
         &mut self,
         event: crossterm::event::Event,
+        app: &mut crate::app::App,
         terminal: &ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
-        config: &mut crate::config::ClinConfig,
     ) -> anyhow::Result<crate::overlay::OverlayResult> {
         let keybinds = self.keybinds.clone();
-        if let Some(action) = handle_event(event, self, config, &keybinds, terminal)? {
+        if let Some(action) = handle_event(event, self, &app.config, &keybinds, terminal)? {
             match action {
                 EventAction::Quit => {
                     self.shutdown();
