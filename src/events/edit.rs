@@ -334,44 +334,17 @@ pub fn handle_edit_mouse(
     mouse_dragged: &mut bool,
 ) {
     if let Some(crate::popups::ActivePopup::ContextMenu(menu)) = &app.popups.active {
+        // Only handle left-clicks inside the menu (needs EditFocus).
+        // Scroll and outside-dismiss are handled centrally in handle_global_popup_mouse.
         let menu_rect = Rect::new(menu.x, menu.y, 14, 4);
-        if contains_cell(menu_rect, mouse_event.column, mouse_event.row) {
-            if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
-                let clicked_idx = mouse_event.row.saturating_sub(menu.y) as usize;
-                if clicked_idx < 4 {
-                    app.handle_menu_action(clicked_idx, focus);
-                }
-                app.popups.active = None;
-            } else if mouse_event.kind == MouseEventKind::ScrollUp {
-                let mut menu_taken = app
-                    .popups
-                    .active
-                    .take()
-                    .expect("context_menu Some — guarded by enclosing if-let");
-                if let crate::popups::ActivePopup::ContextMenu(menu) = &mut menu_taken {
-                    menu.selected = menu.selected.saturating_sub(1);
-                }
-                app.popups.active = Some(menu_taken);
-            } else if mouse_event.kind == MouseEventKind::ScrollDown {
-                let mut menu_taken = app
-                    .popups
-                    .active
-                    .take()
-                    .expect("context_menu Some — guarded by enclosing if-let");
-                if let crate::popups::ActivePopup::ContextMenu(menu) = &mut menu_taken
-                    && menu.selected < 3
-                {
-                    menu.selected += 1;
-                }
-                app.popups.active = Some(menu_taken);
+        if contains_cell(menu_rect, mouse_event.column, mouse_event.row)
+            && mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
+        {
+            let clicked_idx = mouse_event.row.saturating_sub(menu.y) as usize;
+            if clicked_idx < 4 {
+                app.handle_menu_action(clicked_idx, focus);
             }
-            return;
-        } else if matches!(mouse_event.kind, MouseEventKind::Down(_)) {
             app.popups.active = None;
-            if mouse_event.kind != MouseEventKind::Down(MouseButton::Right) {
-                return;
-            }
-        } else {
             return;
         }
     }

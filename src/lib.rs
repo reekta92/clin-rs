@@ -1045,6 +1045,13 @@ fn run_app(
                         continue;
                     }
 
+                    // Popup mouse handling (runs for all views)
+                    if let Event::Mouse(ref mouse_event) = ev
+                        && crate::events::handle_global_popup_mouse(app, mouse_event, area)
+                    {
+                        continue;
+                    }
+
                     match ev {
                         Event::Key(key) if key.kind == KeyEventKind::Press => {
                             let handled = match app.mode {

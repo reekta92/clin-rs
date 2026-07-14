@@ -8,7 +8,10 @@ use std::borrow::Cow;
 mod edit;
 mod help;
 mod list;
+mod popup_mouse;
 mod setup;
+
+pub use popup_mouse::handle_global_popup_mouse;
 
 pub use edit::{handle_edit_keys, handle_edit_mouse};
 pub use help::handle_help_keys;
