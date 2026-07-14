@@ -5,6 +5,12 @@
 
 **A TUI reimagination of [Obsidian](https://obsidian.md/) — feature-packed note management in your terminal.**
 
+<div align="center">
+
+[![Patreon](https://img.shields.io/badge/Patreon-Support%20clin-f96854.svg?logo=patreon&logoColor=white)](https://www.patreon.com/MehmetDag/posts/clin-rs-project-163784358)
+
+</div>
+
 [![CI](https://github.com/reekta92/clin-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/reekta92/clin-rs/actions/workflows/ci.yml)
 [![Release](https://github.com/reekta92/clin-rs/actions/workflows/dispatch-release.yml/badge.svg)](https://github.com/reekta92/clin-rs/actions/workflows/dispatch-release.yml)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
@@ -22,7 +28,26 @@
 
 Drop an existing Obsidian vault into `clin` and it works out of the box. Image rendering, databases, and Obsidian plugins are not supported.
 
-## Screenshots
+## Screenshots21
+test ui::list_view::tests::test_get_preview_info ... ok
+test ui::list_view::tests::preview_width_ratio_controls_preview_width ... ok
+test markdown::builtin::tests::code_block_lang_icon ... ok
+test markdown::builtin::tests::renders_code_block_highlighted_when_lang ... ok
+
+failures:
+
+---- backup::git_ops::tests::test_push_to_file_remote_roundtrip stdout ----
+Error: config value 'user.name' was not found; class=Config (7); code=NotFound (-3)
+
+
+failures:
+    backup::git_ops::tests::test_push_to_file_remote_roundtrip
+
+test result: FAILED. 189 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.38s
+
+error: test failed, to rerun pass `--lib`
+Error: Process completed with exit code 101.
+
 
 <table>
   <tr>
@@ -491,6 +516,12 @@ Full detail in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 ## Contributing
 
 Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+## Support
+
+`clin` is free and open-source. If it's useful to you, consider supporting its development on Patreon:
+
+[![Patreon](https://img.shields.io/badge/Patreon-Support%20clin-f96854.svg?logo=patreon&logoColor=white)](https://www.patreon.com/MehmetDag/posts/clin-rs-project-163784358)
 
 ## License
 
