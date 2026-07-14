@@ -354,7 +354,8 @@ impl crate::popups::ActivePopup {
                         if !p.all_tags.is_empty() {
                             let row =
                                 mouse.row.saturating_sub(chunks[1].y).saturating_sub(1) as usize;
-                            p.all_tags_selected = row.min(p.all_tags.len().saturating_sub(1));
+                            p.all_tags_selected =
+                                (row + p.scroll_offset).min(p.all_tags.len().saturating_sub(1));
                             p.focus = TagPopupFocus::AllTagsList;
                         }
                     } else if !p.suggestions.is_empty()
@@ -404,7 +405,8 @@ impl crate::popups::ActivePopup {
                     if contains_cell(chunks[0], mouse.column, mouse.row) {
                         let row = mouse.row.saturating_sub(chunks[0].y).saturating_sub(1) as usize;
                         if !p.themes.is_empty() {
-                            let clicked = row.min(p.themes.len().saturating_sub(1));
+                            let clicked =
+                                (row + p.scroll_offset).min(p.themes.len().saturating_sub(1));
                             let was_selected = p.selected == clicked
                                 && matches!(p.focus, crate::app::ThemePopupFocus::ThemeList);
                             p.selected = clicked;
@@ -460,7 +462,8 @@ impl crate::popups::ActivePopup {
                     p.focus = crate::popups::TemplatePopupFocus::Results;
                     if !p.filtered_templates.is_empty() {
                         let row = mouse.row.saturating_sub(chunks[1].y.saturating_add(1)) as usize;
-                        let clicked = row.min(p.filtered_templates.len().saturating_sub(1));
+                        let clicked = (row + p.scroll_offset)
+                            .min(p.filtered_templates.len().saturating_sub(1));
                         if mouse.kind == MouseEventKind::Down(MouseButton::Left)
                             && clicked == p.selected
                         {
@@ -511,7 +514,8 @@ impl crate::popups::ActivePopup {
                     p.focus = crate::app::FolderPickerFocus::Results;
                     if !p.filtered_folders.is_empty() {
                         let row = mouse.row.saturating_sub(chunks[1].y.saturating_add(1)) as usize;
-                        let clicked = row.min(p.filtered_folders.len().saturating_sub(1));
+                        let clicked =
+                            (row + p.scroll_offset).min(p.filtered_folders.len().saturating_sub(1));
                         if clicked == p.selected {
                             confirm_selected = true;
                         }
@@ -567,7 +571,10 @@ impl crate::popups::ActivePopup {
                             p.focus = SearchFocus::Results;
                             if has_grep {
                                 p.grep_selected = crate::popups::grep_prev_visible(
-                                    &p.grep_is_header, &p.grep_expanded, p.grep_selected);
+                                    &p.grep_is_header,
+                                    &p.grep_expanded,
+                                    p.grep_selected,
+                                );
                             } else if has_title {
                                 p.title_selected = p.title_selected.saturating_sub(1);
                             }
@@ -578,7 +585,10 @@ impl crate::popups::ActivePopup {
                             p.focus = SearchFocus::Results;
                             if has_grep {
                                 p.grep_selected = crate::popups::grep_next_visible(
-                                    &p.grep_is_header, &p.grep_expanded, p.grep_selected);
+                                    &p.grep_is_header,
+                                    &p.grep_expanded,
+                                    p.grep_selected,
+                                );
                             } else if has_title && p.title_selected + 1 < p.title_results.len() {
                                 p.title_selected += 1;
                             }
@@ -603,8 +613,10 @@ impl crate::popups::ActivePopup {
                         + p.results_scroll_offset;
                     if has_grep {
                         if let Some(flat) = crate::popups::grep_visible_to_flat(
-                            &p.grep_is_header, &p.grep_expanded, target_vis)
-                        {
+                            &p.grep_is_header,
+                            &p.grep_expanded,
+                            target_vis,
+                        ) {
                             let already_selected = flat == p.grep_selected;
                             p.grep_selected = flat;
                             if already_selected
@@ -627,8 +639,7 @@ impl crate::popups::ActivePopup {
                         let flat = target_vis.min(p.title_results.len().saturating_sub(1));
                         let already_selected = flat == p.title_selected;
                         p.title_selected = flat;
-                        if already_selected
-                            && mouse.kind == MouseEventKind::Down(MouseButton::Left)
+                        if already_selected && mouse.kind == MouseEventKind::Down(MouseButton::Left)
                         {
                             open_result = true;
                         }
@@ -657,7 +668,8 @@ impl crate::popups::ActivePopup {
                     && !trash.items.is_empty()
                 {
                     let row = mouse.row.saturating_sub(popup_area.y.saturating_add(1)) as usize;
-                    let clicked = row.min(trash.items.len().saturating_sub(1));
+                    let clicked =
+                        (row + trash.scroll_offset).min(trash.items.len().saturating_sub(1));
                     if clicked == trash.selected {
                         restore_selected = true;
                     }
@@ -719,7 +731,8 @@ impl crate::popups::ActivePopup {
                         if !p.subnotes.is_empty() {
                             let row = mouse.row.saturating_sub(main_chunks[0].y).saturating_sub(1)
                                 as usize;
-                            let clicked = row.min(p.subnotes.len().saturating_sub(1));
+                            let clicked =
+                                (row + p.scroll_offset).min(p.subnotes.len().saturating_sub(1));
                             if clicked == p.selected && p.focus == SubnotesFocus::List {
                                 p.focus = SubnotesFocus::EditTitle;
                             } else {

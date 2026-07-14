@@ -74,6 +74,7 @@ pub struct ThemePopup {
     pub is_custom: Vec<bool>,
     pub selected: usize,
     pub scroll_offset: usize,
+    pub focus: ThemePopupFocus,
     pub general_is_solid: bool,
     pub graph_is_solid: bool,
 }
@@ -290,6 +291,7 @@ pub struct SubnotesPopup {
 
 /// 0-based flat index of the `vis_pos`-th visible grep item.
 /// Children of collapsed headers are skipped. None if out of range.
+#[allow(clippy::implicit_hasher)]
 pub fn grep_visible_to_flat(
     is_header: &[bool],
     expanded: &HashSet<usize>,
@@ -314,6 +316,7 @@ pub fn grep_visible_to_flat(
 }
 
 /// 0-based visible position of flat index `flat`; None if hidden under a collapsed header.
+#[allow(clippy::implicit_hasher)]
 pub fn grep_flat_to_visible(
     is_header: &[bool],
     expanded: &HashSet<usize>,
@@ -340,6 +343,7 @@ pub fn grep_flat_to_visible(
     None
 }
 
+#[allow(clippy::implicit_hasher)]
 /// Previous visible flat index from `cur`; returns `cur` if none.
 pub fn grep_prev_visible(is_header: &[bool], expanded: &HashSet<usize>, cur: usize) -> usize {
     if cur == 0 {
@@ -363,7 +367,7 @@ pub fn grep_prev_visible(is_header: &[bool], expanded: &HashSet<usize>, cur: usi
         i -= 1;
     }
 }
-
+#[allow(clippy::implicit_hasher)]
 /// Next visible flat index from `cur`; returns `cur` if none.
 pub fn grep_next_visible(is_header: &[bool], expanded: &HashSet<usize>, cur: usize) -> usize {
     let mut i = cur + 1;
@@ -409,7 +413,7 @@ pub enum ActivePopup {
 
 impl ActivePopup {
     pub fn draw(
-        &self,
+        &mut self,
         frame: &mut ratatui::Frame,
         area: ratatui::layout::Rect,
         theme: &crate::app_theme::AppThemeColors,

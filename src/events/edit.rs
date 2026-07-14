@@ -171,8 +171,8 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                     let _ = app.editor.editor.search_forward(true);
                 }
                 // Update match-count display
-                popup.info = find_match_stats(&app.editor.editor)
-                    .map(|(n, total)| format!("{n}/{total}"));
+                popup.info =
+                    find_match_stats(&app.editor.editor).map(|(n, total)| format!("{n}/{total}"));
             }
             _ => {}
         }
@@ -468,7 +468,9 @@ pub fn handle_edit_mouse(
         } else {
             vec![" Paste ", " Select All "]
         };
-        let max_x = terminal_area.width.saturating_sub(items.iter().map(|i| i.len() as u16).max().unwrap_or(14));
+        let max_x = terminal_area
+            .width
+            .saturating_sub(items.iter().map(|i| i.len() as u16).max().unwrap_or(14));
         let max_y = terminal_area.height.saturating_sub(items.len() as u16 + 2);
         app.popups.active = Some(crate::popups::ActivePopup::ContextMenu(ContextMenu {
             x: mouse_event.column.min(max_x),

@@ -6,9 +6,9 @@ use super::{
     get_preview_info,
 };
 use crate::app::{App, EditFocus, EditSidebar, ViewMode};
+use crate::content_tree::parse::NodeKind;
 use crate::events::get_title_text;
 use crate::keybinds::EditAction;
-use crate::content_tree::parse::NodeKind;
 
 /// Render the body editor widget with proper style, cursor, line numbers, and cursor-line fill.
 /// Called from both the preview and non-preview paths to eliminate a ~50‑line duplication.
@@ -113,7 +113,8 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     if app.preview_fullscreen {
         app.editor.last_preview_pane_width = body_area.width;
         app.editor.last_preview_pane_height = body_area.height;
-    } else if app.editor.editor_preview_enabled && app.editor.sidebar == EditSidebar::None
+    } else if app.editor.editor_preview_enabled
+        && app.editor.sidebar == EditSidebar::None
         && let Some(p) = layout.preview
     {
         app.editor.last_preview_pane_width = p.width;
@@ -256,9 +257,9 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                             }
                         }
                     }
-                }   // closes if let Some(page_grid)
-            }   // closes if !renderer.is_pending()
-        }   // closes if let Some(renderer)
+                } // closes if let Some(page_grid)
+            } // closes if !renderer.is_pending()
+        } // closes if let Some(renderer)
     } else {
         render_editor_widget(frame, app, focus, editor_container);
     }
@@ -347,7 +348,8 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     // --- Go-to-line popup ---
     if let Some(input) = &app.editor.go_to_line_input {
         let theme = &app.app_theme;
-        let popup_area = crate::ui::popups::centered_rect(crate::ui::PopupSize::Prompt, frame.area());
+        let popup_area =
+            crate::ui::popups::centered_rect(crate::ui::PopupSize::Prompt, frame.area());
         let text = if input.is_empty() { "Line #" } else { input };
         let (title, hints) = ("GO TO LINE", &[("Enter", "jump"), ("Esc", "cancel")][..]);
         let clear = Clear;
@@ -361,19 +363,28 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         frame.render_widget(&block, popup_area);
         let inner = block.inner(popup_area);
         let input_style = Style::default().fg(theme.highlight_fg).bg(theme.accent);
-        let paragraph = Paragraph::new(Span::styled(text.to_string(), input_style))
-            .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(theme.border)));
+        let paragraph = Paragraph::new(Span::styled(text.to_string(), input_style)).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(theme.border)),
+        );
         frame.render_widget(paragraph, inner);
         // Render hints
         if inner.height >= 1 {
             let hint_y = inner.y + inner.height.saturating_sub(1);
             let hint_area = Rect::new(inner.x, hint_y, inner.width, 1);
             let hint_line = Line::from(
-                hints.iter().flat_map(|(k, v)| {
-                    let key = Span::styled(format!(" {k} "), Style::default().fg(theme.highlight_fg).bg(theme.accent));
-                    let desc = Span::styled(format!(" {v} "), Style::default().fg(theme.text));
-                    [key, desc].into_iter()
-                }).collect::<Vec<_>>(),
+                hints
+                    .iter()
+                    .flat_map(|(k, v)| {
+                        let key = Span::styled(
+                            format!(" {k} "),
+                            Style::default().fg(theme.highlight_fg).bg(theme.accent),
+                        );
+                        let desc = Span::styled(format!(" {v} "), Style::default().fg(theme.text));
+                        [key, desc].into_iter()
+                    })
+                    .collect::<Vec<_>>(),
             );
             frame.render_widget(hint_line, hint_area);
         }

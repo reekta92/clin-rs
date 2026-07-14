@@ -275,7 +275,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
 
     // Global popups — rendered on top of the active view
     // Template popup
-    if let Some(crate::popups::ActivePopup::Template(popup)) = &app.popups.active {
+    if let Some(crate::popups::ActivePopup::Template(popup)) = &mut app.popups.active {
         draw_template_popup(frame, popup, frame.area(), &app.app_theme, app.mouse_pos);
     }
 
@@ -421,7 +421,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             )
             .highlight_symbol("  ");
 
-        crate::ui::render_list_with_selection(
+        let state = crate::ui::render_list_with_selection(
             frame,
             tags_list,
             chunks[1],
@@ -429,6 +429,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 && !popup.all_tags.is_empty())
             .then_some(popup.all_tags_selected),
         );
+        popup.scroll_offset = state.offset();
     }
 
     // Folder picker popup
@@ -526,6 +527,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 && !picker.filtered_folders.is_empty())
             .then_some(picker.selected),
         );
+        picker.scroll_offset = state.offset();
         let inner = Rect {
             x: chunks[1].x + 1,
             y: chunks[1].y + 1,
@@ -1064,7 +1066,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     }
 
     // Trash view popup
-    if let Some(crate::popups::ActivePopup::TrashView(trash)) = &app.popups.active {
+    if let Some(crate::popups::ActivePopup::TrashView(trash)) = &mut app.popups.active {
         let area = frame.area();
         let content = draw_popup_frame(
             frame,
@@ -1120,6 +1122,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
 
         let state =
             crate::ui::render_list_with_selection(frame, list, content, Some(trash.selected));
+        trash.scroll_offset = state.offset();
         let inner = Rect {
             x: content.x + 1,
             y: content.y + 1,
@@ -1141,7 +1144,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         draw_confirm_popup(frame, popup, frame.area(), &app.app_theme);
     }
 
-    if let Some(popup) = &app.popups.active {
+    if let Some(popup) = &mut app.popups.active {
         popup.draw(
             frame,
             frame.area(),

@@ -15,6 +15,7 @@ impl App {
                     input,
                     selected: 0,
                     scroll_offset: 0,
+                    focus: crate::popups::TemplatePopupFocus::Search,
                 }));
             }
             Err(_) => {

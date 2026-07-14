@@ -325,7 +325,10 @@ impl Default for Keybinds {
             vec![KeyCombo::parse("Ctrl+g Ctrl+f").expect("valid key combo")],
         );
         edit.insert(EditAction::Find, vec![KeyCombo::ctrl(KeyCode::Char('f'))]);
-        edit.insert(EditAction::GoToLine, vec![KeyCombo::ctrl(KeyCode::Char('g'))]);
+        edit.insert(
+            EditAction::GoToLine,
+            vec![KeyCombo::ctrl(KeyCode::Char('g'))],
+        );
         edit.insert(
             EditAction::InsertDate,
             vec![KeyCombo::ctrl(KeyCode::Char(';'))],

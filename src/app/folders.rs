@@ -127,6 +127,7 @@ impl App {
             all_folders,
             selected: 0,
             input,
+            focus: FolderPickerFocus::Search,
             scroll_offset: 0,
         }));
     }

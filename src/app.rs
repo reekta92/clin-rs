@@ -1281,7 +1281,12 @@ impl App {
         }
     }
 
-    pub fn handle_menu_action(&mut self, action: usize, focus: &mut EditFocus, items: &[&'static str]) {
+    pub fn handle_menu_action(
+        &mut self,
+        action: usize,
+        focus: &mut EditFocus,
+        items: &[&'static str],
+    ) {
         let textarea = match focus {
             EditFocus::Title => &mut self.editor.title_editor,
             EditFocus::Body => &mut self.editor.editor,
@@ -1289,10 +1294,18 @@ impl App {
         };
         if let Some(label) = items.get(action) {
             match *label {
-                " Copy " => { textarea.copy(); }
-                " Cut " => { textarea.cut(); }
-                " Paste " => { textarea.paste(); }
-                " Select All " => { textarea.select_all(); }
+                " Copy " => {
+                    textarea.copy();
+                }
+                " Cut " => {
+                    textarea.cut();
+                }
+                " Paste " => {
+                    textarea.paste();
+                }
+                " Select All " => {
+                    textarea.select_all();
+                }
                 _ => {}
             }
         }

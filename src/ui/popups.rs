@@ -9,7 +9,7 @@ use crate::app_theme::AppThemeColors;
 
 pub fn draw_template_popup(
     frame: &mut Frame,
-    popup: &TemplatePopup,
+    popup: &mut TemplatePopup,
     area: Rect,
     theme: &AppThemeColors,
     mouse_pos: Option<(u16, u16)>,
@@ -102,6 +102,7 @@ pub fn draw_template_popup(
     );
 
     frame.render_stateful_widget(list, chunks[1], &mut state);
+    popup.scroll_offset = state.offset();
     paint_list_hover(
         frame,
         Rect {
@@ -223,7 +224,7 @@ pub fn draw_info_popup(
 
 pub fn draw_theme_popup(
     frame: &mut Frame,
-    popup: &ThemePopup,
+    popup: &mut ThemePopup,
     area: Rect,
     theme: &AppThemeColors,
     keybinds: &crate::keybinds::Keybinds,
@@ -294,6 +295,7 @@ pub fn draw_theme_popup(
         );
 
     let state = render_list_with_selection(frame, list, chunks[0], Some(popup.selected));
+    popup.scroll_offset = state.offset();
     paint_list_hover(
         frame,
         Rect {
@@ -1323,7 +1325,7 @@ pub fn fill_cursor_line_bg(frame: &mut Frame, editor: &TextArea, area: Rect, bg:
 
 pub fn draw_subnotes_popup(
     frame: &mut Frame,
-    popup: &crate::popups::SubnotesPopup,
+    popup: &mut crate::popups::SubnotesPopup,
     area: Rect,
     theme: &AppThemeColors,
 ) {
@@ -1399,6 +1401,7 @@ pub fn draw_subnotes_popup(
         let mut list_state = ListState::default();
         list_state.select(Some(popup.selected));
         frame.render_stateful_widget(list, main_chunks[0], &mut list_state);
+        popup.scroll_offset = list_state.offset();
     }
 
     let edit_chunks = Layout::default()

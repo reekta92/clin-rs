@@ -156,8 +156,8 @@ pub fn move_textarea_cursor_to_mouse(
     }
 }
 
-use crate::editor::EditSidebar;
 use crate::config::PreviewPosition;
+use crate::editor::EditSidebar;
 use ratatui::layout::{Constraint, Direction, Layout};
 
 /// Shared layout rects for the edit view.
@@ -346,7 +346,11 @@ pub fn edit_view_input_areas(
     (layout.title, body_inner, layout.sidebar)
 }
 
-pub fn edit_view_md_preview_area(area: Rect, sidebar: crate::editor::EditSidebar, preview_position: crate::config::PreviewPosition) -> Option<Rect> {
+pub fn edit_view_md_preview_area(
+    area: Rect,
+    sidebar: crate::editor::EditSidebar,
+    preview_position: crate::config::PreviewPosition,
+) -> Option<Rect> {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -1026,7 +1030,6 @@ impl crate::popups::ActivePopup {
                 let has_grep = !popup.grep_results.is_empty();
                 let has_results = has_title || has_grep;
 
-
                 if crate::events::is_cancel_popup(&app.keybinds, &key, true) {
                     app.popups.active = Some(ActivePopup::Search(popup));
                     app.cancel_search();
@@ -1099,7 +1102,10 @@ impl crate::popups::ActivePopup {
                             app.update_search();
                         } else if has_grep {
                             popup.grep_selected = crate::popups::grep_prev_visible(
-                                &popup.grep_is_header, &popup.grep_expanded, popup.grep_selected);
+                                &popup.grep_is_header,
+                                &popup.grep_expanded,
+                                popup.grep_selected,
+                            );
                             app.popups.active = Some(reinsert(popup));
                         } else if has_title {
                             popup.title_selected = popup.title_selected.saturating_sub(1);
@@ -1119,7 +1125,10 @@ impl crate::popups::ActivePopup {
                             app.update_search();
                         } else if has_grep {
                             popup.grep_selected = crate::popups::grep_next_visible(
-                                &popup.grep_is_header, &popup.grep_expanded, popup.grep_selected);
+                                &popup.grep_is_header,
+                                &popup.grep_expanded,
+                                popup.grep_selected,
+                            );
                             app.popups.active = Some(reinsert(popup));
                         } else if has_title {
                             if popup.title_selected + 1 < popup.title_results.len() {
