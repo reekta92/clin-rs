@@ -161,12 +161,8 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             let raw_x_offset = (outer_chunks[0].width.saturating_sub(display_width)) / 2;
             let start_x = (outer_chunks[0].x + raw_x_offset).max(left_area.right());
             let end_x = right_area.x;
-            let title_rect = Rect::new(
-                start_x,
-                outer_chunks[0].y,
-                end_x.saturating_sub(start_x),
-                1,
-            );
+            let title_rect =
+                Rect::new(start_x, outer_chunks[0].y, end_x.saturating_sub(start_x), 1);
 
             app.editor
                 .title_editor
@@ -190,11 +186,9 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             } else {
                 (title_str.as_str(), Style::default().fg(theme.heading))
             };
-            let center_paragraph = Paragraph::new(Line::from(vec![
-                Span::styled(span, style)
-            ]))
-            .style(theme.title_bar_bg_style())
-            .alignment(Alignment::Center);
+            let center_paragraph = Paragraph::new(Line::from(vec![Span::styled(span, style)]))
+                .style(theme.title_bar_bg_style())
+                .alignment(Alignment::Center);
             frame.render_widget(center_paragraph, outer_chunks[0]);
 
             // Render left and right bars on top of the centered title
@@ -251,7 +245,6 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     let splitter_area = layout.splitter;
 
     let editor_container = layout.body;
-
 
     if let Some(sb) = sidebar_area {
         draw_sidebar_pane(frame, sb, app, focus);

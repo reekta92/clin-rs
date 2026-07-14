@@ -881,12 +881,14 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 let in_selection = app.list.selected_indices.contains(&idx);
                 if in_selection {
                     // Full-line accent highlight for selected items — matches grid layout behavior
-                    items.push(item.clone().style(
-                        Style::default()
-                            .bg(app.app_theme.accent)
-                            .fg(app.app_theme.highlight_fg)
-                            .add_modifier(Modifier::BOLD),
-                    ));
+                    items.push(
+                        item.clone().style(
+                            Style::default()
+                                .bg(app.app_theme.accent)
+                                .fg(app.app_theme.highlight_fg)
+                                .add_modifier(Modifier::BOLD),
+                        ),
+                    );
                 } else if Some(idx) == hovered_visual_index && idx != app.list.visual_index {
                     items.push(item.clone().style(app.app_theme.hover_style()));
                 } else {

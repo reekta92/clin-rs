@@ -484,6 +484,7 @@ impl RenderCache {
         graph: &fdg_sim::ForceGraph<super::graph::GraphNodeData, ()>,
         config: &ClinConfig,
         selected_node: Option<NodeIndex>,
+        min_offset_y: f64,
     ) {
         self.labels.clear();
         let should_show = |idx: NodeIndex| -> bool {
@@ -515,7 +516,7 @@ impl RenderCache {
             let radius = self.nodes.get(idx.index()).map(|n| n.radius).unwrap_or(2.0);
             self.labels.push(LabelData {
                 x: node.location.x as f64,
-                y: node.location.y as f64 + radius + config.graf.visual.label_offset,
+                y: node.location.y as f64 + radius + config.graf.visual.label_offset.max(min_offset_y),
                 text: crate::graf::util::truncate(
                     &node.data.title,
                     config.graf.visual.label_max_length,
@@ -566,13 +567,13 @@ pub fn draw_graph_view(
         colors.selected_indicator_color,
         hovered_node,
     );
-
+    let x_bounds = viewport.x_bounds(aspect);
+    let y_bounds = viewport.y_bounds(aspect);
+    let cell_world_height = (y_bounds[1] - y_bounds[0]).abs() / (canvas_area.height as f64).max(1.0);
+    cache.fill_labels(graph, config, state.selected_node, cell_world_height * 1.5);
     let edges = cache.edges.clone();
     let nodes = cache.nodes.clone();
     let labels = cache.labels.clone();
-
-    let x_bounds = viewport.x_bounds(aspect);
-    let y_bounds = viewport.y_bounds(aspect);
 
     let block = ratatui::widgets::Block::default().style(
         ratatui::style::Style::default().bg(colors.background_color.unwrap_or(Color::Reset)),
@@ -727,13 +728,9 @@ pub fn draw_graph_view(
     }
 }
 
-pub fn compute_status_string(state: &GraphState, area: Rect) -> String {
-    let aspect = area.width as f64 / area.height as f64;
+pub fn compute_status_string(state: &GraphState, _area: Rect) -> String {
     let viewport = &state.viewport;
     let graph = state.simulation.get_graph();
-
-    let x_bounds = viewport.x_bounds(aspect);
-    let y_bounds = viewport.y_bounds(aspect);
 
     let node_count = graph.node_count();
     let edge_count = graph.edge_count();
@@ -743,31 +740,20 @@ pub fn compute_status_string(state: &GraphState, area: Rect) -> String {
         .and_then(|idx| graph.node_weight(idx))
         .map(|n| n.data.title.clone());
 
-    let (viewport_size_pct, viewport_ratio) = {
+    let viewport_ratio = {
         let (gx_min, gx_max, gy_min, gy_max) = state.graph_bounds;
         let graph_w = gx_max - gx_min;
         let graph_h = gy_max - gy_min;
-        let vp_w = x_bounds[1] - x_bounds[0];
-        let vp_h = y_bounds[1] - y_bounds[0];
-        let graph_area = graph_w * graph_h;
-        let vp_area = vp_w * vp_h;
-        let size_pct = if graph_area > 0.0 {
-            (vp_area / graph_area * 100.0).clamp(0.0, 100.0)
-        } else {
-            100.0
-        };
         let range = graph_w.max(graph_h).max(1.0) * 1.4;
         let full_zoom = 200.0 / range;
-        let ratio = viewport.zoom / full_zoom;
-        (size_pct, ratio)
+        viewport.zoom / full_zoom
     };
 
     format!(
-        "Nodes: {} | Edges: {} | Selected: {} | Size: {:.0}% | Ratio: {:.1}x   ",
+        "Nodes: {} | Edges: {} | Selected: {} | Ratio: {:.1}x   ",
         node_count,
         edge_count,
         selected_info.as_deref().unwrap_or("none"),
-        viewport_size_pct.clamp(0.0, 100.0),
         viewport_ratio
     )
 }
@@ -1031,5 +1017,118 @@ fn draw_minimap(
             cell.set_symbol(sym);
             cell.set_style(vp_style);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::ClinConfig;
+    use crate::graf::graph::GraphNodeData;
+    use fdg_sim::{ForceGraph, ForceGraphHelper};
+
+    #[test]
+    fn test_fill_labels() {
+        let mut graph: ForceGraph<GraphNodeData, ()> = ForceGraph::default();
+
+        let n1_data = GraphNodeData {
+            note_id: "1".to_string(),
+            title: "Node 1".to_string(),
+            tags: vec![],
+            link_count: 0,
+            folder: "".to_string(),
+        };
+        let n2_data = GraphNodeData {
+            note_id: "2".to_string(),
+            title: "Node 2".to_string(),
+            tags: vec![],
+            link_count: 0,
+            folder: "".to_string(),
+        };
+        let n3_data = GraphNodeData {
+            note_id: "3".to_string(),
+            title: "Node 3".to_string(),
+            tags: vec![],
+            link_count: 0,
+            folder: "".to_string(),
+        };
+
+        let idx1 = graph.add_force_node("Node 1", n1_data);
+        let idx2 = graph.add_force_node("Node 2", n2_data);
+        let idx3 = graph.add_force_node("Node 3", n3_data);
+
+        // Add edge: idx1 - idx2 (idx3 is isolated)
+        graph.add_edge(idx1, idx2, ());
+
+        let mut cache = RenderCache::new();
+        let mut config = ClinConfig::default();
+
+        // 1. LabelMode::None
+        config.graf.visual.label_mode = crate::config::LabelMode::None;
+        cache.fill_nodes(
+            &graph,
+            &config,
+            Some(idx1),
+            ratatui::style::Color::Red,
+            None,
+        );
+        cache.fill_labels(&graph, &config, Some(idx1), 0.0);
+        assert!(cache.labels.is_empty());
+
+        // 2. LabelMode::All
+        config.graf.visual.label_mode = crate::config::LabelMode::All;
+        cache.fill_nodes(
+            &graph,
+            &config,
+            Some(idx1),
+            ratatui::style::Color::Red,
+            None,
+        );
+        cache.fill_labels(&graph, &config, Some(idx1), 0.0);
+        assert_eq!(cache.labels.len(), 3);
+
+        // 3. LabelMode::Selected
+        config.graf.visual.label_mode = crate::config::LabelMode::Selected;
+        cache.fill_nodes(
+            &graph,
+            &config,
+            Some(idx1),
+            ratatui::style::Color::Red,
+            None,
+        );
+        cache.fill_labels(&graph, &config, Some(idx1), 0.0);
+        assert_eq!(cache.labels.len(), 1);
+        assert_eq!(cache.labels[0].text, "Node 1");
+
+        // 4. LabelMode::Neighbors
+        config.graf.visual.label_mode = crate::config::LabelMode::Neighbors;
+        cache.fill_nodes(
+            &graph,
+            &config,
+            Some(idx1),
+            ratatui::style::Color::Red,
+            None,
+        );
+        cache.fill_labels(&graph, &config, Some(idx1), 0.0);
+        // Node 1 (selected) and Node 2 (neighbor) should have labels. Node 3 (distant) should not.
+        assert_eq!(cache.labels.len(), 2);
+        let mut names: Vec<String> = cache.labels.iter().map(|l| l.text.clone()).collect();
+        names.sort();
+        assert_eq!(names, vec!["Node 1".to_string(), "Node 2".to_string()]);
+
+        // 5. Test min_offset_y parameter
+        config.graf.visual.label_mode = crate::config::LabelMode::Selected;
+        cache.fill_labels(&graph, &config, Some(idx1), 10.0);
+        assert_eq!(cache.labels.len(), 1);
+        let label = &cache.labels[0];
+        let node_y = graph[idx1].location.y as f64;
+        let radius = cache.nodes.get(idx1.index()).map(|n| n.radius).unwrap_or(2.0);
+        // The default label_offset is 4.0, but min_offset_y is 10.0. The actual offset should be 10.0.
+        assert_eq!(label.y, node_y + radius + 10.0);
+
+        cache.fill_labels(&graph, &config, Some(idx1), 1.0);
+        let label = &cache.labels[0];
+        // The default label_offset is 4.0, which is larger than min_offset_y of 1.0. The actual offset should be 4.0.
+        assert_eq!(label.y, node_y + radius + 4.0);
     }
 }

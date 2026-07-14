@@ -283,9 +283,8 @@ pub fn handle_quick_search_mouse<T>(
     };
 
     let over_header = crate::events::contains_cell(header_rect, event.column, event.row);
-    let over_dropdown = dropdown_area.is_some_and(|area| {
-        crate::events::contains_cell(area, event.column, event.row)
-    });
+    let over_dropdown = dropdown_area
+        .is_some_and(|area| crate::events::contains_cell(area, event.column, event.row));
 
     match event.kind {
         crossterm::event::MouseEventKind::Moved => {

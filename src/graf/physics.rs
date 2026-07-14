@@ -12,6 +12,15 @@ pub fn simulation_step(state: &mut GraphState, gravity: f32, timestep: f32) {
             n.velocity.y -= n.location.y * gravity;
         }
     }
+    if let Some((tx, ty)) = state.drag_target {
+        if let Some(idx) = state.dragging_node {
+            if let Some(node) = state.simulation.get_graph_mut().node_weight_mut(idx) {
+                node.location.x = tx;
+                node.location.y = ty;
+                node.velocity = fdg_sim::glam::Vec3::ZERO;
+            }
+        }
+    }
     let graph = state.simulation.get_graph();
     let energy: f32 = graph.node_weights().map(|n| n.velocity.length()).sum();
     if energy < 0.05 * graph.node_count() as f32 {
@@ -118,7 +127,45 @@ mod tests {
             assert!(node.location.x.is_finite(), "x should be finite");
             assert!(node.location.y.is_finite(), "y should be finite");
         }
-        // Should have settled (or at least made progress toward settling)
         assert!(gs.is_settled || gs.graph_bounds != (0.0, 0.0, 0.0, 0.0));
+    }
+
+    #[test]
+    fn test_simulation_step_enforces_drag_target() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let notes_dir = temp_dir.path().join("notes");
+        let config_dir = temp_dir.path().join("config");
+        std::fs::create_dir_all(&notes_dir).unwrap();
+        std::fs::create_dir_all(&config_dir).unwrap();
+
+        std::fs::write(notes_dir.join("a.md"), "[[b]]").unwrap();
+        std::fs::write(notes_dir.join("b.md"), "[[a]]").unwrap();
+
+        let storage = crate::storage::Storage {
+            data_dir: temp_dir.path().join("data"),
+            config_dir,
+            notes_dir,
+            templates_dir: temp_dir.path().join("templates"),
+            key: [0u8; 32],
+        };
+        std::fs::create_dir_all(&storage.data_dir).unwrap();
+        std::fs::create_dir_all(&storage.templates_dir).unwrap();
+
+        let config = crate::config::ClinConfig::default();
+        let mut gs = GraphState::new(&storage, &config).expect("GraphState::new");
+
+        let node_indices: Vec<_> = gs.simulation.get_graph().node_indices().collect();
+        assert!(!node_indices.is_empty());
+        let dragging_idx = node_indices[0];
+
+        gs.dragging_node = Some(dragging_idx);
+        gs.drag_target = Some((100.0, 200.0));
+
+        simulation_step(&mut gs, 0.01, 0.016);
+
+        let node = gs.simulation.get_graph().node_weight(dragging_idx).unwrap();
+        assert_eq!(node.location.x, 100.0);
+        assert_eq!(node.location.y, 200.0);
+        assert_eq!(node.velocity, fdg_sim::glam::Vec3::ZERO);
     }
 }
