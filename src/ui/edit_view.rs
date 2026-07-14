@@ -89,15 +89,141 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         ViewMode::Edit,
         &app.app_theme,
     );
-    draw_view_title_bar(
-        frame,
-        outer_chunks[0],
-        &app.app_theme,
-        left_line,
-        right_line,
-        Some(app.status.as_ref()),
-    );
+    let status_val = Some(app.status.as_ref());
+    let has_status = if let Some(st) = status_val {
+        !st.trim().is_empty() && st != "Ready"
+    } else {
+        false
+    };
 
+    if has_status {
+        draw_view_title_bar(
+            frame,
+            outer_chunks[0],
+            &app.app_theme,
+            left_line,
+            right_line,
+            status_val,
+        );
+        app.editor.header_title_rect = Rect::default();
+    } else {
+        let left_width = left_line.width() as u16;
+        let right_width = right_line.as_ref().map(|r| r.width() as u16).unwrap_or(0);
+
+        let header_chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Length(left_width),
+                Constraint::Min(0),
+                Constraint::Length(right_width),
+            ])
+            .split(outer_chunks[0]);
+
+        let left_area = header_chunks[0];
+        let center_area = header_chunks[1];
+        let right_area = header_chunks[2];
+
+        let theme = &app.app_theme;
+        let title_str = get_title_text(&app.editor.title_editor).into_owned();
+
+        if focus == EditFocus::Title {
+            // Render background/blank bar first
+            let background_bar = Paragraph::new("").style(theme.title_bar_bg_style());
+            frame.render_widget(background_bar, outer_chunks[0]);
+
+            // Render left and right bars on top of the background
+            let left_bar = Paragraph::new(left_line).style(theme.title_bar_bg_style());
+            frame.render_widget(left_bar, left_area);
+
+            if let Some(r_text) = right_line {
+                let is_powerline = matches!(
+                    theme.hint_bar_style,
+                    crate::config::HintBarStyle::Sharp
+                        | crate::config::HintBarStyle::Rounded
+                        | crate::config::HintBarStyle::Slanted
+                );
+                if is_powerline {
+                    let r_bar = Paragraph::new(r_text)
+                        .style(theme.hint_line_bg_style())
+                        .alignment(Alignment::Left);
+                    frame.render_widget(r_bar, right_area);
+                } else {
+                    let r_bar = Paragraph::new(r_text)
+                        .style(theme.title_bar_bg_style())
+                        .alignment(Alignment::Right);
+                    frame.render_widget(r_bar, right_area);
+                }
+            }
+
+            // Render TextArea centered relative to the screen width, clamped to left/right bars
+            let text_width = title_str.len() as u16;
+            let display_width = text_width.min(outer_chunks[0].width);
+            let raw_x_offset = (outer_chunks[0].width.saturating_sub(display_width)) / 2;
+            let start_x = (outer_chunks[0].x + raw_x_offset).max(left_area.right());
+            let end_x = right_area.x;
+            let title_rect = Rect::new(
+                start_x,
+                outer_chunks[0].y,
+                end_x.saturating_sub(start_x),
+                1,
+            );
+
+            app.editor
+                .title_editor
+                .set_style(theme.title_bar_bg_style().fg(theme.heading));
+            app.editor.title_editor.set_block(
+                Block::default()
+                    .style(theme.title_bar_bg_style())
+                    .borders(Borders::NONE),
+            );
+            app.editor
+                .title_editor
+                .set_cursor_style(Style::default().add_modifier(Modifier::REVERSED));
+            app.editor
+                .title_editor
+                .set_cursor_line_style(Style::default());
+            frame.render_widget(&app.editor.title_editor, title_rect);
+        } else {
+            // Render background + centered title Paragraph on outer_chunks[0]
+            let (span, style) = if title_str.is_empty() {
+                ("Untitled note", Style::default().fg(theme.muted))
+            } else {
+                (title_str.as_str(), Style::default().fg(theme.heading))
+            };
+            let center_paragraph = Paragraph::new(Line::from(vec![
+                Span::styled(span, style)
+            ]))
+            .style(theme.title_bar_bg_style())
+            .alignment(Alignment::Center);
+            frame.render_widget(center_paragraph, outer_chunks[0]);
+
+            // Render left and right bars on top of the centered title
+            let left_bar = Paragraph::new(left_line).style(theme.title_bar_bg_style());
+            frame.render_widget(left_bar, left_area);
+
+            if let Some(r_text) = right_line {
+                let is_powerline = matches!(
+                    theme.hint_bar_style,
+                    crate::config::HintBarStyle::Sharp
+                        | crate::config::HintBarStyle::Rounded
+                        | crate::config::HintBarStyle::Slanted
+                );
+                if is_powerline {
+                    let r_bar = Paragraph::new(r_text)
+                        .style(theme.hint_line_bg_style())
+                        .alignment(Alignment::Left);
+                    frame.render_widget(r_bar, right_area);
+                } else {
+                    let r_bar = Paragraph::new(r_text)
+                        .style(theme.title_bar_bg_style())
+                        .alignment(Alignment::Right);
+                    frame.render_widget(r_bar, right_area);
+                }
+            }
+        }
+
+        app.editor.header_title_rect = center_area;
+    }
     let body_area = outer_chunks[1];
     let hint_area = outer_chunks[2];
 
@@ -124,51 +250,8 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     let preview_area_rect = layout.preview;
     let splitter_area = layout.splitter;
 
-    // Reconstruct outer title area (layout.title is the inner padded rect)
-    let title_area = Rect::new(
-        layout.title.x.saturating_sub(2),
-        layout.title.y.saturating_sub(1),
-        layout.title.width + 4,
-        layout.title.height + 2,
-    );
     let editor_container = layout.body;
 
-    if !app.preview_fullscreen {
-        app.editor
-            .title_editor
-            .set_style(app.app_theme.title_bar_bg_style().fg(app.app_theme.heading));
-        app.editor.title_editor.set_block(
-            Block::default()
-                .style(app.app_theme.title_bar_bg_style())
-                .borders(Borders::NONE)
-                .padding(Padding::new(2, 1, 1, 1)),
-        );
-        app.editor
-            .title_editor
-            .set_cursor_style(if focus == EditFocus::Title {
-                Style::default().add_modifier(Modifier::REVERSED)
-            } else {
-                Style::default()
-            });
-        app.editor
-            .title_editor
-            .set_cursor_line_style(Style::default());
-        frame.render_widget(&app.editor.title_editor, title_area);
-
-        if get_title_text(&app.editor.title_editor).is_empty() {
-            let title_inner = Rect::new(
-                title_area.x + 3,
-                title_area.y + 1,
-                title_area.width.saturating_sub(4),
-                1,
-            );
-            let placeholder = Paragraph::new(Line::from(Span::styled(
-                "Untitled note",
-                Style::default().fg(app.app_theme.muted),
-            )));
-            frame.render_widget(placeholder, title_inner);
-        }
-    }
 
     if let Some(sb) = sidebar_area {
         draw_sidebar_pane(frame, sb, app, focus);

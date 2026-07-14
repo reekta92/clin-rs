@@ -56,6 +56,7 @@ pub struct NoteEditor {
     pub link_preview_target: Option<String>,
     pub link_preview_error: Option<String>,
     pub last_sidebar_click: Option<(u16, u16, Instant)>,
+    pub header_title_rect: ratatui::layout::Rect,
 }
 
 impl Default for NoteEditor {
@@ -91,6 +92,7 @@ impl Default for NoteEditor {
             link_preview_target: None,
             link_preview_error: None,
             last_sidebar_click: None,
+            header_title_rect: ratatui::layout::Rect::default(),
         }
     }
 }

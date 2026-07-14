@@ -499,6 +499,7 @@ pub fn handle_edit_mouse(
             app.editor.show_line_numbers,
             app.editor.sidebar,
             app.preview_position,
+            app.editor.header_title_rect,
         );
 
         if contains_cell(title_inner, mouse_event.column, mouse_event.row) {
@@ -547,6 +548,7 @@ pub fn handle_edit_mouse(
         app.editor.show_line_numbers,
         app.editor.sidebar,
         app.preview_position,
+        app.editor.header_title_rect,
     );
 
     let md_area = if app.preview_fullscreen {

@@ -2336,7 +2336,7 @@ pub fn list_detail_line(app: &App) -> Option<Line<'static>> {
             Style::default().fg(app.app_theme.folder),
         ));
         spans.push(Span::styled(
-            format!("{count_suffix}"),
+            count_suffix,
             Style::default().fg(app.app_theme.fg),
         ));
         spans.push(Span::raw(" ")); // padding right

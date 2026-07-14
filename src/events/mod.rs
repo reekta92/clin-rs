@@ -192,22 +192,8 @@ pub fn compute_edit_layout(
     sidebar: EditSidebar,
     preview_position: PreviewPosition,
 ) -> EditLayout {
-    // Vertical split: title (3 rows) | editor (rest)
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Length(3), Constraint::Min(0)])
-        .split(body_area);
-
-    let title_outer = chunks[0];
-    let editor_area = chunks[1];
-
-    // Inner title rect for hit-testing (matches the padding on the widget)
-    let title = Rect::new(
-        title_outer.x + 2,
-        title_outer.y + 1,
-        title_outer.width.saturating_sub(4),
-        title_outer.height.saturating_sub(2),
-    );
+    let editor_area = body_area;
+    let title = Rect::default();
 
     if fullscreen {
         // Fullscreen preview — editor is hidden
@@ -306,29 +292,22 @@ pub fn edit_view_input_areas(
     show_line_numbers: bool,
     sidebar: crate::editor::EditSidebar,
     sidebar_position: crate::config::PreviewPosition,
+    header_title_rect: Rect,
 ) -> (Rect, Rect, Option<Rect>) {
-    // Outer vertical split (pad / title+body / footer) to find the body area.
+    // Outer vertical split (pad / body / footer) to find the body area.
     // This matches the layout used by draw_edit_view.
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(1),
-            Constraint::Length(3),
             Constraint::Min(8),
             Constraint::Length(1),
         ])
         .split(area);
 
-    // The body area spans the title row (chunks[1]) and the body row (chunks[2]).
-    let body_area = Rect::new(
-        area.x,
-        chunks[1].y,
-        area.width,
-        chunks[1].height + chunks[2].height,
-    );
+    let body_area = chunks[1];
 
     let layout = compute_edit_layout(body_area, false, md_preview, sidebar, sidebar_position);
-
     // Apply gutter offset to the body rect for mouse hit-testing
     let gutter_width = if show_line_numbers {
         (line_count.max(1).to_string().len() as u16) + 2
@@ -343,7 +322,7 @@ pub fn edit_view_input_areas(
         layout.body.height,
     );
 
-    (layout.title, body_inner, layout.sidebar)
+    (header_title_rect, body_inner, layout.sidebar)
 }
 
 pub fn edit_view_md_preview_area(
@@ -355,21 +334,14 @@ pub fn edit_view_md_preview_area(
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(1),
-            Constraint::Length(3),
             Constraint::Min(8),
             Constraint::Length(1),
         ])
         .split(area);
 
-    let body_area = Rect::new(
-        area.x,
-        chunks[1].y,
-        area.width,
-        chunks[1].height + chunks[2].height,
-    );
+    let body_area = chunks[1];
 
     let layout = compute_edit_layout(body_area, false, true, sidebar, preview_position);
-
     layout.preview.map(|r| {
         Rect::new(
             r.x + 2,
@@ -1728,6 +1700,7 @@ mod tests {
             false,
             EditSidebar::Links,
             crate::config::PreviewPosition::Right,
+            Rect::default(),
         );
         let sb = sidebar_inner.unwrap();
 
@@ -1819,6 +1792,7 @@ mod tests {
             false,
             EditSidebar::Outline,
             crate::config::PreviewPosition::Right,
+            Rect::default(),
         );
         let sb = sidebar_inner.unwrap();
 

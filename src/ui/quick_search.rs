@@ -283,14 +283,16 @@ pub fn handle_quick_search_mouse<T>(
     };
 
     let over_header = crate::events::contains_cell(header_rect, event.column, event.row);
-    let over_dropdown = dropdown_area.map_or(false, |area| {
+    let over_dropdown = dropdown_area.is_some_and(|area| {
         crate::events::contains_cell(area, event.column, event.row)
     });
 
     match event.kind {
         crossterm::event::MouseEventKind::Moved => {
-            if over_dropdown && result_count > 0 {
-                let dropdown_rect = dropdown_area.unwrap();
+            if let Some(dropdown_rect) = dropdown_area
+                && over_dropdown
+                && result_count > 0
+            {
                 let visual_row = event.row.saturating_sub(dropdown_rect.y) as usize;
                 let target_index = popup.scroll_offset + visual_row;
                 if target_index < result_count && popup.selected != target_index {
@@ -300,26 +302,24 @@ pub fn handle_quick_search_mouse<T>(
             }
         }
         crossterm::event::MouseEventKind::ScrollUp => {
-            if over_dropdown && result_count > 0 {
-                if popup.selected > 0 {
-                    popup.selected -= 1;
-                    popup.scroll_to_selected(max_visible);
-                    return Some(QuickSearchAction::Navigated);
-                }
+            if over_dropdown && result_count > 0 && popup.selected > 0 {
+                popup.selected -= 1;
+                popup.scroll_to_selected(max_visible);
+                return Some(QuickSearchAction::Navigated);
             }
         }
         crossterm::event::MouseEventKind::ScrollDown => {
-            if over_dropdown && result_count > 0 {
-                if popup.selected + 1 < result_count {
-                    popup.selected += 1;
-                    popup.scroll_to_selected(max_visible);
-                    return Some(QuickSearchAction::Navigated);
-                }
+            if over_dropdown && result_count > 0 && popup.selected + 1 < result_count {
+                popup.selected += 1;
+                popup.scroll_to_selected(max_visible);
+                return Some(QuickSearchAction::Navigated);
             }
         }
         crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left) => {
-            if over_dropdown && result_count > 0 {
-                let dropdown_rect = dropdown_area.unwrap();
+            if let Some(dropdown_rect) = dropdown_area
+                && over_dropdown
+                && result_count > 0
+            {
                 let visual_row = event.row.saturating_sub(dropdown_rect.y) as usize;
                 let target_index = popup.scroll_offset + visual_row;
                 if target_index < result_count {
