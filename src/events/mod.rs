@@ -156,34 +156,72 @@ pub fn move_textarea_cursor_to_mouse(
     }
 }
 
-pub fn edit_view_input_areas(
-    area: Rect,
-    md_preview: bool,
-    line_count: usize,
-    show_line_numbers: bool,
-    sidebar: crate::editor::EditSidebar,
-    sidebar_position: crate::config::PreviewPosition,
-) -> (Rect, Rect, Option<Rect>) {
+use crate::editor::EditSidebar;
+use crate::config::PreviewPosition;
+use ratatui::layout::{Constraint, Direction, Layout};
+
+/// Shared layout rects for the edit view.
+/// All rects are computed from the `body_area` (the area between
+/// the status bar and the footer/hint bar).
+pub struct EditLayout {
+    /// Inner title rect with 2-col, 1-row padding (for hit-testing).
+    pub title: Rect,
+    /// Editor body container (before gutter offset, for rendering).
+    pub body: Rect,
+    /// Preview pane rect (outer, for rendering the snapshot widget).
+    pub preview: Option<Rect>,
+    /// Sidebar pane rect.
+    pub sidebar: Option<Rect>,
+    /// Vertical splitter line rect between main pane and sidebar/preview.
+    pub splitter: Option<Rect>,
+}
+
+/// Single source of truth for edit-view layout.
+///
+/// Splits `body_area` (the region between the header status bar and the
+/// footer hint bar) into a 3‑row title area and an editor body, then
+/// sub‑divides horizontally based on sidebar, preview, and fullscreen.
+///
+/// Preview ratio: `Percentage(50)` per user decision (the correct ratio;
+/// the old inline render code used `Ratio(43,100)`, causing the hit‑test
+/// and render to disagree).
+pub fn compute_edit_layout(
+    body_area: Rect,
+    fullscreen: bool,
+    preview_enabled: bool,
+    sidebar: EditSidebar,
+    preview_position: PreviewPosition,
+) -> EditLayout {
+    // Vertical split: title (3 rows) | editor (rest)
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(1),
-            Constraint::Length(3),
-            Constraint::Min(8),
-            Constraint::Length(1),
-        ])
-        .split(area);
+        .constraints([Constraint::Length(3), Constraint::Min(0)])
+        .split(body_area);
 
-    let title_inner = Rect::new(
-        chunks[1].x + 2,
-        chunks[1].y + 1,
-        chunks[1].width.saturating_sub(4),
-        chunks[1].height.saturating_sub(2),
+    let title_outer = chunks[0];
+    let editor_area = chunks[1];
+
+    // Inner title rect for hit-testing (matches the padding on the widget)
+    let title = Rect::new(
+        title_outer.x + 2,
+        title_outer.y + 1,
+        title_outer.width.saturating_sub(4),
+        title_outer.height.saturating_sub(2),
     );
 
-    let (body_area, sidebar_area) = if sidebar != crate::editor::EditSidebar::None {
-        let (constraints, main_idx, sb_idx) = match sidebar_position {
-            crate::config::PreviewPosition::Left => (
+    if fullscreen {
+        // Fullscreen preview — editor is hidden
+        return EditLayout {
+            title,
+            body: editor_area,
+            preview: Some(editor_area),
+            sidebar: None,
+            splitter: None,
+        };
+    }
+    if sidebar != EditSidebar::None {
+        let (constraints, main_idx, sb_idx) = match preview_position {
+            PreviewPosition::Left => (
                 [
                     Constraint::Ratio(30, 100),
                     Constraint::Length(1),
@@ -192,7 +230,7 @@ pub fn edit_view_input_areas(
                 2,
                 0,
             ),
-            crate::config::PreviewPosition::Right => (
+            PreviewPosition::Right => (
                 [
                     Constraint::Min(0),
                     Constraint::Length(1),
@@ -202,63 +240,75 @@ pub fn edit_view_input_areas(
                 2,
             ),
         };
-        let full_body_area = Rect::new(
-            area.x,
-            chunks[1].y,
-            area.width,
-            chunks[1].height + chunks[2].height,
-        );
         let cols = Layout::default()
             .direction(Direction::Horizontal)
             .constraints(constraints)
-            .split(full_body_area);
-        let editor_col = Rect::new(
-            cols[main_idx].x,
-            chunks[2].y,
-            cols[main_idx].width,
-            chunks[2].height,
-        );
-        (editor_col, Some(cols[sb_idx]))
-    } else if md_preview {
-        let content_chunks = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([
-                Constraint::Percentage(50),
-                Constraint::Length(1),
-                Constraint::Percentage(50),
-            ])
-            .split(area);
+            .split(editor_area);
+        return EditLayout {
+            title,
+            body: cols[main_idx],
+            preview: None,
+            sidebar: Some(cols[sb_idx]),
+            splitter: Some(cols[1]),
+        };
+    }
 
-        (
-            Rect::new(
-                content_chunks[0].x,
-                chunks[2].y,
-                content_chunks[0].width,
-                chunks[2].height,
+    if preview_enabled {
+        let (constraints, main_idx, p_idx) = match preview_position {
+            // Preview on left, editor on right
+            PreviewPosition::Left => (
+                [
+                    Constraint::Percentage(50),
+                    Constraint::Length(1),
+                    Constraint::Percentage(50),
+                ],
+                2,
+                0,
             ),
-            None,
-        )
-    } else {
-        (chunks[2], None)
-    };
+            // Editor on left, preview on right
+            PreviewPosition::Right => (
+                [
+                    Constraint::Percentage(50),
+                    Constraint::Length(1),
+                    Constraint::Percentage(50),
+                ],
+                0,
+                2,
+            ),
+        };
+        let cols = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints(constraints)
+            .split(editor_area);
+        return EditLayout {
+            title,
+            body: cols[main_idx],
+            preview: Some(cols[p_idx]),
+            sidebar: None,
+            splitter: Some(cols[1]),
+        };
+    }
 
-    let gutter_width = if show_line_numbers {
-        (line_count.max(1).to_string().len() as u16) + 2
-    } else {
-        0
-    };
-
-    let body_inner = Rect::new(
-        body_area.x + gutter_width,
-        body_area.y,
-        body_area.width.saturating_sub(gutter_width + 2),
-        body_area.height,
-    );
-
-    (title_inner, body_inner, sidebar_area)
+    // Plain editor — no sidebar, no preview, no fullscreen
+    EditLayout {
+        title,
+        body: editor_area,
+        preview: None,
+        sidebar: None,
+        splitter: None,
+    }
 }
 
-pub fn edit_view_md_preview_area(area: Rect) -> Option<Rect> {
+pub fn edit_view_input_areas(
+    area: Rect,
+    md_preview: bool,
+    line_count: usize,
+    show_line_numbers: bool,
+    sidebar: crate::editor::EditSidebar,
+    sidebar_position: crate::config::PreviewPosition,
+) -> (Rect, Rect, Option<Rect>) {
+    // Outer vertical split (pad / title+body / footer) to find the body area.
+    // This matches the layout used by draw_edit_view.
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -269,30 +319,62 @@ pub fn edit_view_md_preview_area(area: Rect) -> Option<Rect> {
         ])
         .split(area);
 
-    let content_chunks = Layout::default()
-        .direction(Direction::Horizontal)
+    // The body area spans the title row (chunks[1]) and the body row (chunks[2]).
+    let body_area = Rect::new(
+        area.x,
+        chunks[1].y,
+        area.width,
+        chunks[1].height + chunks[2].height,
+    );
+
+    let layout = compute_edit_layout(body_area, false, md_preview, sidebar, sidebar_position);
+
+    // Apply gutter offset to the body rect for mouse hit-testing
+    let gutter_width = if show_line_numbers {
+        (line_count.max(1).to_string().len() as u16) + 2
+    } else {
+        0
+    };
+
+    let body_inner = Rect::new(
+        layout.body.x + gutter_width,
+        layout.body.y,
+        layout.body.width.saturating_sub(gutter_width + 2),
+        layout.body.height,
+    );
+
+    (layout.title, body_inner, layout.sidebar)
+}
+
+pub fn edit_view_md_preview_area(area: Rect, sidebar: crate::editor::EditSidebar, preview_position: crate::config::PreviewPosition) -> Option<Rect> {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
         .constraints([
-            Constraint::Percentage(50),
             Constraint::Length(1),
-            Constraint::Percentage(50),
+            Constraint::Length(3),
+            Constraint::Min(8),
+            Constraint::Length(1),
         ])
         .split(area);
 
-    let preview_area = Rect::new(
-        content_chunks[2].x,
-        chunks[2].y,
-        content_chunks[2].width,
-        chunks[2].height,
+    let body_area = Rect::new(
+        area.x,
+        chunks[1].y,
+        area.width,
+        chunks[1].height + chunks[2].height,
     );
 
-    Some(Rect::new(
-        preview_area.x + 2,
-        preview_area.y + 1,
-        preview_area.width.saturating_sub(4),
-        preview_area.height.saturating_sub(2),
-    ))
-}
+    let layout = compute_edit_layout(body_area, false, true, sidebar, preview_position);
 
+    layout.preview.map(|r| {
+        Rect::new(
+            r.x + 2,
+            r.y + 1,
+            r.width.saturating_sub(4),
+            r.height.saturating_sub(2),
+        )
+    })
+}
 pub fn contains_cell(rect: Rect, col: u16, row: u16) -> bool {
     rect.width > 0
         && rect.height > 0
@@ -944,45 +1026,6 @@ impl crate::popups::ActivePopup {
                 let has_grep = !popup.grep_results.is_empty();
                 let has_results = has_title || has_grep;
 
-                let grep_prev_visible = |p: &crate::popups::SearchPopup, cur: usize| -> usize {
-                    if cur == 0 {
-                        return 0;
-                    }
-                    let mut i = cur - 1;
-                    loop {
-                        if p.grep_is_header[i] {
-                            return i;
-                        }
-                        let mut parent = i;
-                        while parent > 0 && !p.grep_is_header[parent] {
-                            parent -= 1;
-                        }
-                        if p.grep_expanded.contains(&parent) {
-                            return i;
-                        }
-                        if i == 0 {
-                            return 0;
-                        }
-                        i -= 1;
-                    }
-                };
-                let grep_next_visible = |p: &crate::popups::SearchPopup, cur: usize| -> usize {
-                    let mut i = cur + 1;
-                    while i < p.grep_results.len() {
-                        if p.grep_is_header[i] {
-                            return i;
-                        }
-                        let mut parent = i;
-                        while parent > 0 && !p.grep_is_header[parent] {
-                            parent -= 1;
-                        }
-                        if p.grep_expanded.contains(&parent) {
-                            return i;
-                        }
-                        i += 1;
-                    }
-                    cur
-                };
 
                 if crate::events::is_cancel_popup(&app.keybinds, &key, true) {
                     app.popups.active = Some(ActivePopup::Search(popup));
@@ -1055,7 +1098,8 @@ impl crate::popups::ActivePopup {
                             app.popups.active = Some(reinsert(popup));
                             app.update_search();
                         } else if has_grep {
-                            popup.grep_selected = grep_prev_visible(&popup, popup.grep_selected);
+                            popup.grep_selected = crate::popups::grep_prev_visible(
+                                &popup.grep_is_header, &popup.grep_expanded, popup.grep_selected);
                             app.popups.active = Some(reinsert(popup));
                         } else if has_title {
                             popup.title_selected = popup.title_selected.saturating_sub(1);
@@ -1074,7 +1118,8 @@ impl crate::popups::ActivePopup {
                             app.popups.active = Some(reinsert(popup));
                             app.update_search();
                         } else if has_grep {
-                            popup.grep_selected = grep_next_visible(&popup, popup.grep_selected);
+                            popup.grep_selected = crate::popups::grep_next_visible(
+                                &popup.grep_is_header, &popup.grep_expanded, popup.grep_selected);
                             app.popups.active = Some(reinsert(popup));
                         } else if has_title {
                             if popup.title_selected + 1 < popup.title_results.len() {

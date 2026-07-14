@@ -566,26 +566,8 @@ impl crate::popups::ActivePopup {
                         MouseEventKind::ScrollUp => {
                             p.focus = SearchFocus::Results;
                             if has_grep {
-                                if p.grep_selected > 0 {
-                                    // skip collapsed header children
-                                    let mut i = p.grep_selected - 1;
-                                    p.grep_selected = loop {
-                                        if p.grep_is_header[i] {
-                                            break i;
-                                        }
-                                        let mut parent = i;
-                                        while parent > 0 && !p.grep_is_header[parent] {
-                                            parent -= 1;
-                                        }
-                                        if p.grep_expanded.contains(&parent) {
-                                            break i;
-                                        }
-                                        if i == 0 {
-                                            break 0;
-                                        }
-                                        i -= 1;
-                                    };
-                                }
+                                p.grep_selected = crate::popups::grep_prev_visible(
+                                    &p.grep_is_header, &p.grep_expanded, p.grep_selected);
                             } else if has_title {
                                 p.title_selected = p.title_selected.saturating_sub(1);
                             }
@@ -595,25 +577,8 @@ impl crate::popups::ActivePopup {
                         MouseEventKind::ScrollDown => {
                             p.focus = SearchFocus::Results;
                             if has_grep {
-                                if p.grep_selected + 1 < p.grep_results.len() {
-                                    let mut i = p.grep_selected + 1;
-                                    p.grep_selected = loop {
-                                        if p.grep_is_header[i] {
-                                            break i;
-                                        }
-                                        let mut parent = i;
-                                        while parent > 0 && !p.grep_is_header[parent] {
-                                            parent -= 1;
-                                        }
-                                        if p.grep_expanded.contains(&parent) {
-                                            break i;
-                                        }
-                                        i += 1;
-                                        if i >= p.grep_results.len() {
-                                            break p.grep_selected;
-                                        }
-                                    };
-                                }
+                                p.grep_selected = crate::popups::grep_next_visible(
+                                    &p.grep_is_header, &p.grep_expanded, p.grep_selected);
                             } else if has_title && p.title_selected + 1 < p.title_results.len() {
                                 p.title_selected += 1;
                             }
@@ -623,7 +588,7 @@ impl crate::popups::ActivePopup {
                         _ => {}
                     }
                 }
-                let mut open_selected = false;
+                let mut open_result = false;
                 if mouse.kind == MouseEventKind::Down(MouseButton::Left)
                     && contains_cell(chunks[0], mouse.column, mouse.row)
                 {
@@ -633,25 +598,44 @@ impl crate::popups::ActivePopup {
                         || mouse.kind == MouseEventKind::Down(MouseButton::Right))
                 {
                     p.focus = SearchFocus::Results;
-                    let row = mouse
-                        .row
-                        .saturating_sub(chunks[results_chunk_idx].y.saturating_add(1))
-                        as usize;
+                    let results_inner_y = chunks[results_chunk_idx].y.saturating_add(1);
+                    let target_vis = (mouse.row.saturating_sub(results_inner_y)) as usize
+                        + p.results_scroll_offset;
                     if has_grep {
-                        let clicked = row.min(p.grep_results.len().saturating_sub(1));
-                        if clicked == p.grep_selected {
-                            open_selected = true;
+                        if let Some(flat) = crate::popups::grep_visible_to_flat(
+                            &p.grep_is_header, &p.grep_expanded, target_vis)
+                        {
+                            let already_selected = flat == p.grep_selected;
+                            p.grep_selected = flat;
+                            if already_selected
+                                && mouse.kind == MouseEventKind::Down(MouseButton::Left)
+                            {
+                                let is_header =
+                                    p.grep_is_header.get(flat).copied().unwrap_or(false);
+                                if is_header {
+                                    if p.grep_expanded.contains(&flat) {
+                                        p.grep_expanded.remove(&flat);
+                                    } else {
+                                        p.grep_expanded.insert(flat);
+                                    }
+                                } else {
+                                    open_result = true;
+                                }
+                            }
                         }
-                        p.grep_selected = clicked;
                     } else if has_title {
-                        let clicked = row.min(p.title_results.len().saturating_sub(1));
-                        if clicked == p.title_selected {
-                            open_selected = true;
+                        let flat = target_vis.min(p.title_results.len().saturating_sub(1));
+                        let already_selected = flat == p.title_selected;
+                        p.title_selected = flat;
+                        if already_selected
+                            && mouse.kind == MouseEventKind::Down(MouseButton::Left)
+                        {
+                            open_result = true;
                         }
-                        p.title_selected = clicked;
                     }
                 }
-                if open_selected {
+                if open_result {
+                    app.popups.active = Some(Search(p));
                     app.jump_to_selected_result();
                     app.confirm_search();
                     return true;
@@ -816,7 +800,9 @@ pub fn handle_global_popup_mouse(app: &mut App, mouse: &MouseEvent, terminal_are
             let Some(ActivePopup::ContextMenu(menu)) = &app.popups.active else {
                 unreachable!()
             };
-            Rect::new(menu.x, menu.y, 14, 4)
+            let w = menu.items.iter().map(|l| l.len() as u16).max().unwrap_or(0);
+            let h = menu.items.len() as u16;
+            Rect::new(menu.x, menu.y, w, h)
         };
         return match mouse.kind {
             MouseEventKind::ScrollUp if contains_cell(menu_rect, mouse.column, mouse.row) => {
@@ -830,7 +816,7 @@ pub fn handle_global_popup_mouse(app: &mut App, mouse: &MouseEvent, terminal_are
             MouseEventKind::ScrollDown if contains_cell(menu_rect, mouse.column, mouse.row) => {
                 let mut m = app.popups.active.take().expect("ContextMenu must be Some");
                 if let ActivePopup::ContextMenu(m) = &mut m
-                    && m.selected < 3
+                    && m.selected + 1 < m.items.len()
                 {
                     m.selected += 1;
                 }

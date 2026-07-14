@@ -60,7 +60,6 @@ pub enum ListAction {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, strum::EnumIter)]
 #[serde(rename_all = "snake_case")]
 pub enum EditAction {
-    Quit,
     Back,
     CycleFocus,
 
@@ -88,6 +87,7 @@ pub enum EditAction {
     ToggleOutline,
     ToggleLinks,
     PreviewLink,
+    GoToLine,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

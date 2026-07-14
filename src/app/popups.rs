@@ -14,7 +14,7 @@ impl App {
                     filtered_templates: templates,
                     input,
                     selected: 0,
-                    focus: crate::popups::TemplatePopupFocus::Search,
+                    scroll_offset: 0,
                 }));
             }
             Err(_) => {
@@ -495,6 +495,7 @@ template = """
             selected,
             is_custom,
             focus: ThemePopupFocus::ThemeList,
+            scroll_offset: 0,
             general_is_solid,
             graph_is_solid,
         }));

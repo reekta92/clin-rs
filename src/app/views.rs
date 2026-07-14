@@ -272,6 +272,7 @@ impl App {
                 self.popups.active = Some(crate::popups::ActivePopup::TrashView(TrashView {
                     items,
                     selected: 0,
+                    scroll_offset: 0,
                 }));
             }
             Err(e) => {

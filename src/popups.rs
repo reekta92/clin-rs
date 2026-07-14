@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use crate::templates::TemplateSummary;
 use ratatui_textarea::TextArea;
 
@@ -42,6 +44,7 @@ pub struct ContextMenu {
     pub x: u16,
     pub y: u16,
     pub selected: usize,
+    pub items: Vec<&'static str>,
 }
 
 pub struct TemplatePopup {
@@ -49,6 +52,7 @@ pub struct TemplatePopup {
     pub filtered_templates: Vec<TemplateSummary>,
     pub input: TextArea<'static>,
     pub selected: usize,
+    pub scroll_offset: usize,
     pub focus: TemplatePopupFocus,
 }
 
@@ -69,7 +73,7 @@ pub struct ThemePopup {
     pub themes: Vec<String>,
     pub is_custom: Vec<bool>,
     pub selected: usize,
-    pub focus: ThemePopupFocus,
+    pub scroll_offset: usize,
     pub general_is_solid: bool,
     pub graph_is_solid: bool,
 }
@@ -88,6 +92,7 @@ pub struct TagPopup {
     pub suggestion_index: usize,
     pub focus: TagPopupFocus,
     pub all_tags_selected: usize,
+    pub scroll_offset: usize,
 }
 
 pub enum FolderPopupMode {
@@ -145,6 +150,7 @@ pub struct FolderPicker {
     pub selected: usize,
     pub input: TextArea<'static>,
     pub focus: FolderPickerFocus,
+    pub scroll_offset: usize,
 }
 
 pub struct NoteRenamePopup {
@@ -200,6 +206,7 @@ pub struct SearchPopup {
     pub grep_expanded: std::collections::HashSet<usize>,
 
     pub grep_selected: usize,
+    pub results_scroll_offset: usize,
     pub original_index: usize,
     pub original_folder_expanded: std::collections::HashSet<String>,
 }
@@ -225,7 +232,6 @@ pub struct InfoPopup {
 pub struct IconModePopup {
     pub selected: usize,
 }
-
 pub struct HintBarStylePopup {
     pub selected: usize,
 }
@@ -261,6 +267,7 @@ pub struct GoalsPopup {
 pub struct TrashView {
     pub items: Vec<trash::TrashItem>,
     pub selected: usize,
+    pub scroll_offset: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -275,9 +282,105 @@ pub struct SubnotesPopup {
     pub subnotes: Vec<crate::storage::SubNote>,
     pub selected: usize,
     pub focus: SubnotesFocus,
+    pub scroll_offset: usize,
     pub title_input: TextArea<'static>,
     pub content_input: TextArea<'static>,
     pub is_dirty: bool,
+}
+
+/// 0-based flat index of the `vis_pos`-th visible grep item.
+/// Children of collapsed headers are skipped. None if out of range.
+pub fn grep_visible_to_flat(
+    is_header: &[bool],
+    expanded: &HashSet<usize>,
+    vis_pos: usize,
+) -> Option<usize> {
+    let mut count = 0;
+    let mut i = 0;
+    while i < is_header.len() {
+        let is_collapsed = is_header[i] && !expanded.contains(&i);
+        if count == vis_pos {
+            return Some(i);
+        }
+        count += 1;
+        i += 1;
+        if is_collapsed {
+            while i < is_header.len() && !is_header[i] {
+                i += 1;
+            }
+        }
+    }
+    None
+}
+
+/// 0-based visible position of flat index `flat`; None if hidden under a collapsed header.
+pub fn grep_flat_to_visible(
+    is_header: &[bool],
+    expanded: &HashSet<usize>,
+    flat: usize,
+) -> Option<usize> {
+    let mut vis_pos = 0;
+    let mut i = 0;
+    while i < is_header.len() && i <= flat {
+        let is_collapsed = is_header[i] && !expanded.contains(&i);
+        if i == flat {
+            return Some(vis_pos);
+        }
+        vis_pos += 1;
+        i += 1;
+        if is_collapsed {
+            while i < is_header.len() && !is_header[i] {
+                if i == flat {
+                    return None;
+                }
+                i += 1;
+            }
+        }
+    }
+    None
+}
+
+/// Previous visible flat index from `cur`; returns `cur` if none.
+pub fn grep_prev_visible(is_header: &[bool], expanded: &HashSet<usize>, cur: usize) -> usize {
+    if cur == 0 {
+        return 0;
+    }
+    let mut i = cur - 1;
+    loop {
+        if is_header[i] {
+            return i;
+        }
+        let mut parent = i;
+        while parent > 0 && !is_header[parent] {
+            parent -= 1;
+        }
+        if expanded.contains(&parent) {
+            return i;
+        }
+        if i == 0 {
+            return 0;
+        }
+        i -= 1;
+    }
+}
+
+/// Next visible flat index from `cur`; returns `cur` if none.
+pub fn grep_next_visible(is_header: &[bool], expanded: &HashSet<usize>, cur: usize) -> usize {
+    let mut i = cur + 1;
+    while i < is_header.len() {
+        if is_header[i] {
+            return i;
+        }
+        let mut parent = i;
+        while parent > 0 && !is_header[parent] {
+            parent -= 1;
+        }
+        if expanded.contains(&parent) {
+            return i;
+        }
+        i += 1;
+    }
+    cur
 }
 
 /// The single active (non-confirm) popup. Only one is ever active at a time;

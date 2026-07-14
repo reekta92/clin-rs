@@ -46,7 +46,7 @@ impl App {
                 suggestions: Vec::new(),
                 suggestion_index: 0,
                 focus: crate::popups::TagPopupFocus::Input,
-                all_tags_selected: 0,
+                scroll_offset: 0,
             }));
             self.update_tag_suggestions();
         } else {

@@ -20,6 +20,9 @@ pub struct QuickSearch<T> {
     pub input: ratatui_textarea::TextArea<'static>,
     pub results: Vec<T>,
     pub selected: usize,
+    /// Optional match-count info rendered right-aligned in the header bar,
+    /// e.g. "3/7". Populated by the find-popup Edited handler.
+    pub info: Option<String>,
 }
 
 /// Actions returned by `handle_quick_search_keys`.
@@ -42,6 +45,7 @@ impl<T> QuickSearch<T> {
             input,
             results: Vec::new(),
             selected: 0,
+            info: None,
         }
     }
 
@@ -150,6 +154,17 @@ pub fn draw_quick_search<T, F>(
     input_widget.set_style(input_style);
     input_widget.set_cursor_line_style(input_style);
     frame.render_widget(&input_widget, input_area);
+    // --- Match-count info (right-aligned after input) ---
+    if let Some(info) = &popup.info {
+        let info_style = Style::default().fg(theme.text).bg(theme.accent);
+        let info_span = Span::styled(format!(" {}", info), info_style);
+        let info_width = info.len() as u16 + 1;
+        let info_x = start_x + combo_width + 1;
+        if info_x + info_width <= frame_area.right() {
+            let info_area = Rect::new(info_x, frame_area.y, info_width, 1);
+            frame.render_widget(Paragraph::new(Line::from(info_span)), info_area);
+        }
+    }
 
     // --- Dropdown results list ---
     let visible_count = result_count.min(max_visible);

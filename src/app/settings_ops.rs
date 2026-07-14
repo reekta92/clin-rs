@@ -2,6 +2,17 @@ use super::*;
 use crate::list_view::*;
 
 impl App {
+    /// Load, patch, and save an editor config field.  Replaces the
+    /// `ClinConfig::load() → set → save()` boilerplate used by toggle methods.
+    fn persist_editor_config(&mut self, field_update: impl FnOnce(&mut crate::config::ClinConfig)) {
+        if let Ok(mut config) = crate::config::ClinConfig::load() {
+            field_update(&mut config);
+            if let Err(e) = config.save() {
+                self.set_temporary_status(&format!("Failed to save config: {e}"));
+            }
+        }
+    }
+
     pub fn toggle_external_editor_mode(&mut self) {
         self.editor.external_editor_enabled = !self.editor.external_editor_enabled;
         let msg = if self.editor.external_editor_enabled {
@@ -236,12 +247,8 @@ impl App {
             self.editor.md_preview_renderer = None;
             self.set_temporary_status_static("Markdown preview disabled");
         }
-        if let Ok(mut config) = crate::config::ClinConfig::load() {
-            config.editor.preview_enabled = self.editor.editor_preview_enabled;
-            if let Err(e) = config.save() {
-                self.set_temporary_status(&format!("Failed to save config: {e}"));
-            }
-        }
+        let val = self.editor.editor_preview_enabled;
+        self.persist_editor_config(|c| c.editor.preview_enabled = val);
     }
     pub fn toggle_preview_fullscreen(&mut self) {
         if matches!(
@@ -266,12 +273,8 @@ impl App {
     pub fn toggle_preview_wrap(&mut self) {
         self.preview_wrap = !self.preview_wrap;
         self.config.core.preview_wrap = self.preview_wrap;
-        if let Ok(mut config) = crate::config::ClinConfig::load() {
-            config.core.preview_wrap = self.preview_wrap;
-            if let Err(e) = config.save() {
-                self.set_temporary_status(&format!("Failed to save config: {e}"));
-            }
-        }
+        let val = self.preview_wrap;
+        self.persist_editor_config(|c| c.core.preview_wrap = val);
         match self.mode {
             ViewMode::Edit => self.update_editor_markdown_preview(),
             _ => self.update_preview(),
@@ -292,12 +295,8 @@ impl App {
         };
         self.editor.editor.set_wrap_mode(mode);
         self.editor.title_editor.set_wrap_mode(mode);
-        if let Ok(mut config) = crate::config::ClinConfig::load() {
-            config.editor.soft_wrap = self.config.editor.soft_wrap;
-            if let Err(e) = config.save() {
-                self.set_temporary_status(&format!("Failed to save config: {e}"));
-            }
-        }
+        let val = self.config.editor.soft_wrap;
+        self.persist_editor_config(|c| c.editor.soft_wrap = val);
         self.set_temporary_status_static(if self.config.editor.soft_wrap {
             "Editor wrap on"
         } else {
@@ -326,12 +325,8 @@ impl App {
             "Line numbers disabled"
         };
         self.set_temporary_status_static(msg);
-        if let Ok(mut config) = crate::config::ClinConfig::load() {
-            config.editor.show_line_numbers = self.editor.show_line_numbers;
-            if let Err(e) = config.save() {
-                self.set_temporary_status(&format!("Failed to save config: {e}"));
-            }
-        }
+        let val = self.editor.show_line_numbers;
+        self.persist_editor_config(|c| c.editor.show_line_numbers = val);
     }
 
     pub fn toggle_confirm_on_delete(&mut self) {

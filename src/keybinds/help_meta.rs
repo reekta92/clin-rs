@@ -348,9 +348,9 @@ pub fn edit_action_meta(a: EditAction) -> HelpMeta {
             group: "Panels",
             description: "Preview linked note under cursor",
         },
-        EditAction::Quit => HelpMeta {
-            group: "General",
-            description: "Quit",
+        EditAction::GoToLine => HelpMeta {
+            group: "Editor",
+            description: "Go to line number",
         },
     }
 }

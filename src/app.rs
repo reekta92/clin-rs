@@ -1281,45 +1281,20 @@ impl App {
         }
     }
 
-    pub fn handle_menu_action(&mut self, action: usize, focus: &mut EditFocus) {
-        match action {
-            0 => match focus {
-                EditFocus::Title => {
-                    self.editor.title_editor.copy();
-                }
-                EditFocus::Body => {
-                    self.editor.editor.copy();
-                }
-                EditFocus::Sidebar => {}
-            },
-            1 => match focus {
-                EditFocus::Title => {
-                    self.editor.title_editor.cut();
-                }
-                EditFocus::Body => {
-                    self.editor.editor.cut();
-                }
-                EditFocus::Sidebar => {}
-            },
-            2 => match focus {
-                EditFocus::Title => {
-                    self.editor.title_editor.paste();
-                }
-                EditFocus::Body => {
-                    self.editor.editor.paste();
-                }
-                EditFocus::Sidebar => {}
-            },
-            3 => match focus {
-                EditFocus::Title => {
-                    self.editor.title_editor.select_all();
-                }
-                EditFocus::Body => {
-                    self.editor.editor.select_all();
-                }
-                EditFocus::Sidebar => {}
-            },
-            _ => {}
+    pub fn handle_menu_action(&mut self, action: usize, focus: &mut EditFocus, items: &[&'static str]) {
+        let textarea = match focus {
+            EditFocus::Title => &mut self.editor.title_editor,
+            EditFocus::Body => &mut self.editor.editor,
+            EditFocus::Sidebar => return,
+        };
+        if let Some(label) = items.get(action) {
+            match *label {
+                " Copy " => { textarea.copy(); }
+                " Cut " => { textarea.cut(); }
+                " Paste " => { textarea.paste(); }
+                " Select All " => { textarea.select_all(); }
+                _ => {}
+            }
         }
     }
     pub fn get_help_rows(&mut self) -> Vec<crate::ui::HelpRow> {

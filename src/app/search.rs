@@ -43,6 +43,7 @@ impl App {
             grep_is_header: Vec::new(),
             grep_expanded: std::collections::HashSet::new(),
             grep_selected: 0,
+            results_scroll_offset: 0,
             original_index: self.list.visual_index,
             original_folder_expanded: self.list.folder_expanded.clone(),
         }));

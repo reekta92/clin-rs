@@ -1081,6 +1081,7 @@ impl App {
             subnotes,
             selected: 0,
             focus: crate::popups::SubnotesFocus::List,
+            scroll_offset: 0,
             title_input,
             content_input,
             is_dirty: false,

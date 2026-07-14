@@ -23,6 +23,32 @@ fn leave_editor(app: &mut App, focus: &mut EditFocus) {
     *focus = EditFocus::Body;
 }
 
+/// Count total matches and current-match index (1-based) for the editor's
+/// active search pattern.  Returns `None` when there is no pattern or zero matches.
+///
+/// **Unicode caveat:** `regex::Match.start()` is a byte offset;
+/// `cursor().1` (col) is a char index.  For ASCII text they coincide;
+/// multibyte content may be off‑by‑one.  Acceptable for a count display.
+fn find_match_stats(editor: &ratatui_textarea::TextArea<'static>) -> Option<(usize, usize)> {
+    let re = editor.search_pattern()?;
+    let cursor = editor.cursor();
+    let (row, col) = (cursor.0, cursor.1);
+    let lines = editor.lines();
+    let mut current = 0usize;
+    let mut total = 0usize;
+    for (i, line) in lines.iter().enumerate() {
+        let matches: Vec<_> = re.find_iter(line).collect();
+        total += matches.len();
+        if i == row {
+            current = total - matches.iter().rev().take_while(|m| m.start() > col).count();
+        }
+    }
+    if total == 0 {
+        return None;
+    }
+    Some((current.min(total), total))
+}
+
 pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> bool {
     if let Some(crate::popups::ActivePopup::ContextMenu(mut menu)) = app.popups.active.take() {
         if crate::events::is_cancel_popup(&app.keybinds, &key, false) {
@@ -41,7 +67,7 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 .keybinds
                 .matches_list(crate::keybinds::ListAction::MoveDown, &key) =>
             {
-                if menu.selected < 3 {
+                if menu.selected + 1 < menu.items.len() {
                     menu.selected += 1;
                 }
                 app.popups.active = Some(crate::popups::ActivePopup::ContextMenu(menu));
@@ -50,7 +76,8 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 .keybinds
                 .matches_list(crate::keybinds::ListAction::Confirm, &key) =>
             {
-                app.handle_menu_action(menu.selected, focus);
+                app.handle_menu_action(menu.selected, focus, &menu.items);
+                app.popups.active = None;
             }
             _ => {
                 app.popups.active = Some(crate::popups::ActivePopup::ContextMenu(menu));
@@ -58,7 +85,48 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
         }
         return false;
     }
-    if let Some(ref mut popup) = app.editor.find_popup {
+    // --- Go-to-line input popup ---
+    if app.editor.go_to_line_input.is_some() {
+        app.seq_matcher.clear();
+        let input = app.editor.go_to_line_input.take();
+        match key.code {
+            KeyCode::Esc => {}
+            KeyCode::Enter => {
+                if let Some(line_str) = &input
+                    && let Ok(line) = line_str.parse::<usize>()
+                {
+                    let target = line.saturating_sub(1); // 1-based → 0-based
+                    let max = app.editor.editor.lines().len().saturating_sub(1);
+                    let row = target.min(max);
+                    app.editor
+                        .editor
+                        .move_cursor(ratatui_textarea::CursorMove::Jump(row as u16, 0));
+                    app.request_editor_preview_update();
+                }
+            }
+            KeyCode::Char(c) if c.is_ascii_digit() => {
+                let mut s = input.unwrap_or_default();
+                s.push(c);
+                app.editor.go_to_line_input = Some(s);
+            }
+            KeyCode::Backspace => {
+                let mut s = input.unwrap_or_default();
+                s.pop();
+                if !s.is_empty() {
+                    app.editor.go_to_line_input = Some(s);
+                }
+            }
+            _ => {
+                // Re-insert unhandled input
+                if let Some(s) = input {
+                    app.editor.go_to_line_input = Some(s);
+                }
+            }
+        }
+        return false;
+    }
+
+    if let Some(popup) = &mut app.editor.find_popup {
         app.seq_matcher.clear();
         match crate::ui::quick_search::handle_quick_search_keys(popup, key, &app.keybinds) {
             crate::ui::quick_search::QuickSearchAction::Submit => {
@@ -102,6 +170,9 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 if result.is_ok() && !query.is_empty() {
                     let _ = app.editor.editor.search_forward(true);
                 }
+                // Update match-count display
+                popup.info = find_match_stats(&app.editor.editor)
+                    .map(|(n, total)| format!("{n}/{total}"));
             }
             _ => {}
         }
@@ -196,6 +267,14 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 if let Err(e) = action.execute(app, None) {
                     app.set_temporary_status(&format!("Insert image failed: {e}"));
                 }
+                return false;
+            }
+            EditAction::GoToLine => {
+                app.editor.go_to_line_input = if app.editor.go_to_line_input.is_some() {
+                    None
+                } else {
+                    Some(String::new())
+                };
                 return false;
             }
             EditAction::InsertDate => {
@@ -336,13 +415,16 @@ pub fn handle_edit_mouse(
     if let Some(crate::popups::ActivePopup::ContextMenu(menu)) = &app.popups.active {
         // Only handle left-clicks inside the menu (needs EditFocus).
         // Scroll and outside-dismiss are handled centrally in handle_global_popup_mouse.
-        let menu_rect = Rect::new(menu.x, menu.y, 14, 4);
+        let w = menu.items.iter().map(|l| l.len() as u16).max().unwrap_or(0);
+        let h = menu.items.len() as u16;
+        let menu_rect = Rect::new(menu.x, menu.y, w, h);
         if contains_cell(menu_rect, mouse_event.column, mouse_event.row)
             && mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
         {
             let clicked_idx = mouse_event.row.saturating_sub(menu.y) as usize;
-            if clicked_idx < 4 {
-                app.handle_menu_action(clicked_idx, focus);
+            if clicked_idx < menu.items.len() {
+                let items = menu.items.clone();
+                app.handle_menu_action(clicked_idx, focus, &items);
             }
             app.popups.active = None;
             return;
@@ -376,15 +458,24 @@ pub fn handle_edit_mouse(
                 mouse_event.row,
             );
         }
-
-        let max_x = terminal_area.width.saturating_sub(14);
-        let max_y = terminal_area.height.saturating_sub(4);
+        let has_selection = match focus {
+            EditFocus::Title => app.editor.title_editor.selection_range(),
+            EditFocus::Body => app.editor.editor.selection_range(),
+            EditFocus::Sidebar => None,
+        };
+        let items: Vec<&'static str> = if has_selection.is_some() {
+            vec![" Copy ", " Cut ", " Paste ", " Select All "]
+        } else {
+            vec![" Paste ", " Select All "]
+        };
+        let max_x = terminal_area.width.saturating_sub(items.iter().map(|i| i.len() as u16).max().unwrap_or(14));
+        let max_y = terminal_area.height.saturating_sub(items.len() as u16 + 2);
         app.popups.active = Some(crate::popups::ActivePopup::ContextMenu(ContextMenu {
             x: mouse_event.column.min(max_x),
             y: mouse_event.row.min(max_y),
             selected: 0,
+            items,
         }));
-        return;
     }
 
     let (title_inner, body_inner, sidebar_inner) = edit_view_input_areas(
@@ -407,7 +498,7 @@ pub fn handle_edit_mouse(
             .split(terminal_area);
         Some(chunks[1])
     } else if app.editor.editor_preview_enabled {
-        edit_view_md_preview_area(terminal_area)
+        edit_view_md_preview_area(terminal_area, app.editor.sidebar, app.preview_position)
     } else {
         None
     };

@@ -1907,26 +1907,18 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             .highlight_symbol("  ");
         let mut list_state = ListState::default();
         if results_focused && has_grep {
-            let mut vis_pos = 0;
-            let mut i = 0;
-            while i < popup.grep_results.len() && i <= popup.grep_selected {
-                let is_collapsed = popup.grep_is_header[i] && !popup.grep_expanded.contains(&i);
-                if i == popup.grep_selected {
-                    list_state.select(Some(vis_pos));
-                    break;
-                }
-                vis_pos += 1;
-                i += 1;
-                if is_collapsed {
-                    while i < popup.grep_results.len() && !popup.grep_is_header[i] {
-                        i += 1;
-                    }
-                }
+            if let Some(vis_pos) = crate::popups::grep_flat_to_visible(
+                &popup.grep_is_header,
+                &popup.grep_expanded,
+                popup.grep_selected,
+            ) {
+                list_state.select(Some(vis_pos));
             }
         } else if results_focused && has_title {
             list_state.select(Some(popup.title_selected));
         }
         frame.render_stateful_widget(results_list, results_chunk, &mut list_state);
+        popup.results_scroll_offset = list_state.offset();
         let inner_results = Rect {
             x: results_chunk.x + 1,
             y: results_chunk.y + 1,

@@ -1035,26 +1035,18 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             .highlight_symbol("  ");
         let mut list_state = ListState::default();
         if results_focused && has_grep {
-            let mut vis_pos = 0;
-            let mut i = 0;
-            while i < popup.grep_results.len() && i <= popup.grep_selected {
-                let is_collapsed = popup.grep_is_header[i] && !popup.grep_expanded.contains(&i);
-                if i == popup.grep_selected {
-                    list_state.select(Some(vis_pos));
-                    break;
-                }
-                vis_pos += 1;
-                i += 1;
-                if is_collapsed {
-                    while i < popup.grep_results.len() && !popup.grep_is_header[i] {
-                        i += 1;
-                    }
-                }
+            if let Some(vis_pos) = crate::popups::grep_flat_to_visible(
+                &popup.grep_is_header,
+                &popup.grep_expanded,
+                popup.grep_selected,
+            ) {
+                list_state.select(Some(vis_pos));
             }
         } else if results_focused && has_title {
             list_state.select(Some(popup.title_selected));
         }
         frame.render_stateful_widget(results_list, results_chunk, &mut list_state);
+        popup.results_scroll_offset = list_state.offset();
         let inner_results = Rect {
             x: results_chunk.x + 1,
             y: results_chunk.y + 1,
@@ -1161,16 +1153,12 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
 
     // Context menu (from edit view)
     if let Some(crate::popups::ActivePopup::ContextMenu(menu)) = &app.popups.active {
-        let labels = [" Copy ", " Cut ", " Paste ", " Select All "];
-        let menu_width = labels.iter().map(|l| l.len() as u16).max().unwrap_or(0);
-        let menu_height = labels.len() as u16;
-
+        let menu_width = menu.items.iter().map(|l| l.len() as u16).max().unwrap_or(0);
+        let menu_height = menu.items.len() as u16;
         let x = menu.x.min(frame.area().width.saturating_sub(menu_width));
         let y = menu.y.min(frame.area().height.saturating_sub(menu_height));
         let menu_area = Rect::new(x, y, menu_width, menu_height);
-
-        let items: Vec<ListItem> = labels.iter().map(|l| ListItem::new(*l)).collect();
-
+        let items: Vec<ListItem> = menu.items.iter().map(|l| ListItem::new(*l)).collect();
         let list = List::new(items)
             .block(
                 Block::default()
@@ -1178,7 +1166,6 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     .borders(Borders::NONE),
             )
             .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
-
         frame.render_widget(Clear, menu_area);
         let state =
             crate::ui::render_list_with_selection(frame, list, menu_area, Some(menu.selected));
@@ -1186,7 +1173,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             frame,
             menu_area,
             &state,
-            labels.len(),
+            menu.items.len(),
             app.mouse_pos,
             app.app_theme.hover_style(),
         );

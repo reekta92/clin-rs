@@ -11,32 +11,41 @@ impl App {
         }
     }
 
-    pub fn toggle_outline_pane(&mut self) {
-        if self.editor.sidebar == EditSidebar::Outline {
+    /// Common sidebar toggle: if `target` is already active, disable it;
+    /// otherwise enable it, disable preview, rebuild data, and reset selection.
+    fn set_sidebar(&mut self, target: EditSidebar) {
+        if self.editor.sidebar == target {
             self.editor.sidebar = EditSidebar::None;
-            self.set_temporary_status_static("Outline pane disabled");
+            match target {
+                EditSidebar::Outline => self.set_temporary_status_static("Outline pane disabled"),
+                EditSidebar::Links => self.set_temporary_status_static("Links pane disabled"),
+                EditSidebar::None => {}
+            }
         } else {
-            self.editor.sidebar = EditSidebar::Outline;
+            self.editor.sidebar = target;
             self.editor.editor_preview_enabled = false;
             self.editor.md_preview_renderer = None;
-            self.rebuild_outline();
+            match target {
+                EditSidebar::Outline => {
+                    self.rebuild_outline();
+                    self.set_temporary_status_static("Outline pane enabled");
+                }
+                EditSidebar::Links => {
+                    self.editor.links = self.compute_links();
+                    self.set_temporary_status_static("Links pane enabled");
+                }
+                EditSidebar::None => {}
+            }
             self.editor.sidebar_selected = 0;
-            self.set_temporary_status_static("Outline pane enabled");
         }
     }
 
+    pub fn toggle_outline_pane(&mut self) {
+        self.set_sidebar(EditSidebar::Outline);
+    }
+
     pub fn toggle_links_pane(&mut self) {
-        if self.editor.sidebar == EditSidebar::Links {
-            self.editor.sidebar = EditSidebar::None;
-            self.set_temporary_status_static("Links pane disabled");
-        } else {
-            self.editor.sidebar = EditSidebar::Links;
-            self.editor.editor_preview_enabled = false;
-            self.editor.md_preview_renderer = None;
-            self.editor.links = self.compute_links();
-            self.editor.sidebar_selected = 0;
-            self.set_temporary_status_static("Links pane enabled");
-        }
+        self.set_sidebar(EditSidebar::Links);
     }
 
     /// Reparse the current note into header-only outline_nodes.

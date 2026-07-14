@@ -8,6 +8,58 @@ use super::{
 use crate::app::{App, EditFocus, EditSidebar, ViewMode};
 use crate::events::get_title_text;
 use crate::keybinds::EditAction;
+use crate::content_tree::parse::NodeKind;
+
+/// Render the body editor widget with proper style, cursor, line numbers, and cursor-line fill.
+/// Called from both the preview and non-preview paths to eliminate a ~50‑line duplication.
+fn render_editor_widget(frame: &mut Frame, app: &mut App, focus: EditFocus, area: Rect) {
+    app.editor.editor.set_block(
+        Block::default()
+            .style(app.app_theme.bg_style())
+            .borders(Borders::NONE)
+            .padding(Padding::new(0, 2, 0, 0)),
+    );
+    app.editor.editor.set_style(app.app_theme.bg_style());
+    app.editor
+        .editor
+        .set_cursor_style(if focus == EditFocus::Body {
+            Style::default().add_modifier(Modifier::REVERSED)
+        } else {
+            Style::default()
+        });
+    app.editor
+        .editor
+        .set_cursor_line_style(if focus == EditFocus::Body {
+            if let Some(bg) = app.app_theme.preview_bg() {
+                Style::default().bg(bg)
+            } else {
+                Style::default()
+                    .bg(app.app_theme.highlight_bg)
+                    .fg(app.app_theme.highlight_fg)
+            }
+        } else {
+            Style::default()
+        });
+    let want_ln = if app.editor.show_line_numbers {
+        Some(Style::default().fg(app.app_theme.muted))
+    } else {
+        None
+    };
+    if app.editor.editor.line_number_style() != want_ln {
+        match want_ln {
+            Some(s) => app.editor.editor.set_line_number_style(s),
+            None => app.editor.editor.remove_line_number(),
+        }
+    }
+    frame.render_widget(&app.editor.editor, area);
+    if focus == EditFocus::Body {
+        let cursor_bg = app
+            .app_theme
+            .preview_bg()
+            .unwrap_or(app.app_theme.highlight_bg);
+        fill_cursor_line_bg(frame, &app.editor.editor, area, cursor_bg);
+    }
+}
 
 #[allow(clippy::collapsible_if)]
 pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
@@ -50,77 +102,36 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     let body_area = outer_chunks[1];
     let hint_area = outer_chunks[2];
 
-    let mut sidebar_area = None;
-    let (edit_area, preview_area_rect, splitter_area) = if app.preview_fullscreen {
+    let layout = crate::events::compute_edit_layout(
+        body_area,
+        app.preview_fullscreen,
+        app.editor.editor_preview_enabled,
+        app.editor.sidebar,
+        app.preview_position,
+    );
+
+    if app.preview_fullscreen {
         app.editor.last_preview_pane_width = body_area.width;
         app.editor.last_preview_pane_height = body_area.height;
-        (body_area, Some(body_area), None)
-    } else if app.editor.sidebar != EditSidebar::None {
-        let (constraints, main_idx, sb_idx) = match app.preview_position {
-            crate::config::PreviewPosition::Left => (
-                [
-                    Constraint::Ratio(30, 100),
-                    Constraint::Length(1),
-                    Constraint::Min(0),
-                ],
-                2,
-                0,
-            ),
-            crate::config::PreviewPosition::Right => (
-                [
-                    Constraint::Min(0),
-                    Constraint::Length(1),
-                    Constraint::Ratio(30, 100),
-                ],
-                0,
-                2,
-            ),
-        };
-        let cols = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints(constraints)
-            .split(body_area);
-        sidebar_area = Some(cols[sb_idx]);
-        (cols[main_idx], None, Some(cols[1]))
-    } else if app.editor.editor_preview_enabled {
-        let (constraints, main_idx, p_idx) = match app.preview_position {
-            crate::config::PreviewPosition::Left => (
-                [
-                    Constraint::Ratio(43, 100),
-                    Constraint::Length(1),
-                    Constraint::Min(0),
-                ],
-                2,
-                0,
-            ),
-            crate::config::PreviewPosition::Right => (
-                [
-                    Constraint::Min(0),
-                    Constraint::Length(1),
-                    Constraint::Ratio(43, 100),
-                ],
-                0,
-                2,
-            ),
-        };
-        let cols = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints(constraints)
-            .split(body_area);
-        app.editor.last_preview_pane_width = cols[p_idx].width;
-        app.editor.last_preview_pane_height = cols[p_idx].height;
-        (cols[main_idx], Some(cols[p_idx]), Some(cols[1]))
-    } else {
-        (body_area, None, None)
-    };
+    } else if app.editor.editor_preview_enabled && app.editor.sidebar == EditSidebar::None
+        && let Some(p) = layout.preview
+    {
+        app.editor.last_preview_pane_width = p.width;
+        app.editor.last_preview_pane_height = p.height;
+    }
 
-    let inner_chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Length(3), Constraint::Min(0)])
-        .split(edit_area);
+    let sidebar_area = layout.sidebar;
+    let preview_area_rect = layout.preview;
+    let splitter_area = layout.splitter;
 
-    let title_area = inner_chunks[0];
-    let editor_container = inner_chunks[1];
+    // Reconstruct outer title area (layout.title is the inner padded rect)
+    let title_area = Rect::new(
+        layout.title.x.saturating_sub(2),
+        layout.title.y.saturating_sub(1),
+        layout.title.width + 4,
+        layout.title.height + 2,
+    );
+    let editor_container = layout.body;
 
     if !app.preview_fullscreen {
         app.editor
@@ -160,64 +171,11 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     }
 
     if let Some(sb) = sidebar_area {
-        match app.editor.sidebar {
-            EditSidebar::Outline => draw_outline_pane(frame, sb, app, focus),
-            EditSidebar::Links => draw_links_pane(frame, sb, app, focus),
-            EditSidebar::None => {}
-        }
+        draw_sidebar_pane(frame, sb, app, focus);
     }
     if let Some(preview_area_rect) = preview_area_rect {
-        let content_area = editor_container;
-
         if !app.preview_fullscreen {
-            let editor_area = content_area;
-
-            app.editor.editor.set_block(
-                Block::default()
-                    .style(app.app_theme.bg_style())
-                    .borders(Borders::NONE)
-                    .padding(Padding::new(0, 2, 0, 0)),
-            );
-            app.editor.editor.set_style(app.app_theme.bg_style());
-            app.editor
-                .editor
-                .set_cursor_style(if focus == EditFocus::Body {
-                    Style::default().add_modifier(Modifier::REVERSED)
-                } else {
-                    Style::default()
-                });
-            app.editor
-                .editor
-                .set_cursor_line_style(if focus == EditFocus::Body {
-                    if let Some(bg) = app.app_theme.preview_bg() {
-                        Style::default().bg(bg)
-                    } else {
-                        Style::default()
-                            .bg(app.app_theme.highlight_bg)
-                            .fg(app.app_theme.highlight_fg)
-                    }
-                } else {
-                    Style::default()
-                });
-            let want_ln = if app.editor.show_line_numbers {
-                Some(Style::default().fg(app.app_theme.muted))
-            } else {
-                None
-            };
-            if app.editor.editor.line_number_style() != want_ln {
-                match want_ln {
-                    Some(s) => app.editor.editor.set_line_number_style(s),
-                    None => app.editor.editor.remove_line_number(),
-                }
-            }
-            frame.render_widget(&app.editor.editor, editor_area);
-            if focus == EditFocus::Body {
-                let cursor_bg = app
-                    .app_theme
-                    .preview_bg()
-                    .unwrap_or(app.app_theme.highlight_bg);
-                fill_cursor_line_bg(frame, &app.editor.editor, editor_area, cursor_bg);
-            }
+            render_editor_widget(frame, app, focus, editor_container);
         }
 
         if let Some(renderer) = &app.editor.md_preview_renderer {
@@ -298,61 +256,12 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                             }
                         }
                     }
-                }
-            }
-        }
+                }   // closes if let Some(page_grid)
+            }   // closes if !renderer.is_pending()
+        }   // closes if let Some(renderer)
     } else {
-        let content_area = editor_container;
-        let editor_area = content_area;
-
-        app.editor.editor.set_block(
-            Block::default()
-                .style(app.app_theme.bg_style())
-                .borders(Borders::NONE)
-                .padding(Padding::new(0, 2, 0, 0)),
-        );
-        app.editor.editor.set_style(app.app_theme.bg_style());
-        app.editor
-            .editor
-            .set_cursor_style(if focus == EditFocus::Body {
-                Style::default().add_modifier(Modifier::REVERSED)
-            } else {
-                Style::default()
-            });
-        app.editor
-            .editor
-            .set_cursor_line_style(if focus == EditFocus::Body {
-                if let Some(bg) = app.app_theme.preview_bg() {
-                    Style::default().bg(bg)
-                } else {
-                    Style::default()
-                        .bg(app.app_theme.highlight_bg)
-                        .fg(app.app_theme.highlight_fg)
-                }
-            } else {
-                Style::default()
-            });
-        let want_ln = if app.editor.show_line_numbers {
-            Some(Style::default().fg(app.app_theme.muted))
-        } else {
-            None
-        };
-        if app.editor.editor.line_number_style() != want_ln {
-            match want_ln {
-                Some(s) => app.editor.editor.set_line_number_style(s),
-                None => app.editor.editor.remove_line_number(),
-            }
-        }
-        frame.render_widget(&app.editor.editor, editor_area);
-        if focus == EditFocus::Body {
-            let cursor_bg = app
-                .app_theme
-                .preview_bg()
-                .unwrap_or(app.app_theme.highlight_bg);
-            fill_cursor_line_bg(frame, &app.editor.editor, editor_area, cursor_bg);
-        }
+        render_editor_widget(frame, app, focus, editor_container);
     }
-
     let kb = &app.keybinds;
     let hints_items = vec![
         (kb.display_edit(EditAction::CycleFocus), "focus"),
@@ -412,7 +321,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     if app.editor.link_preview {
         draw_link_preview_popup(frame, area, app);
     }
-    if let Some(ref popup) = app.editor.find_popup {
+    if let Some(popup) = &app.editor.find_popup {
         let theme = &app.app_theme;
         let max_visible = 10usize;
         crate::ui::quick_search::draw_quick_search(
@@ -435,90 +344,42 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             app.config.ui.icon_mode,
         );
     }
-}
-fn draw_outline_pane(frame: &mut Frame, area: Rect, app: &mut App, focus: EditFocus) {
-    let theme = &app.app_theme;
-
-    // Fill the background of the sidebar area
-    frame.render_widget(Block::default().style(theme.preview_bg_style()), area);
-
-    let sb_chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(1), // Top padding
-            Constraint::Length(1), // Title
-            Constraint::Length(1), // Spacer
-            Constraint::Min(0),    // List
-        ])
-        .split(area);
-
-    // Draw Title
-    let title_style = if focus == EditFocus::Sidebar {
-        Style::default()
-            .fg(theme.accent)
-            .add_modifier(Modifier::BOLD)
-    } else {
-        Style::default()
-            .fg(theme.heading)
-            .add_modifier(Modifier::BOLD)
-    };
-    let title = Paragraph::new(format!("  OUTLINE ({})", app.editor.outline_nodes.len()))
-        .style(title_style);
-    frame.render_widget(title, sb_chunks[1]);
-
-    // Draw List
-    let items: Vec<ListItem> = app
-        .editor
-        .outline_nodes
-        .iter()
-        .map(|node| {
-            let text = match &node.kind {
-                crate::content_tree::parse::NodeKind::Header { level, title } => {
-                    let indent = "  ".repeat((*level as usize).saturating_sub(1));
-                    let marker = if *level == 1 { "▸ " } else { "" };
-                    format!("{}{}{}", indent, marker, title)
-                }
-                _ => node.full_text().to_string(),
-            };
-            ListItem::new(text).style(Style::default().fg(theme.fg))
-        })
-        .collect();
-
-    if items.is_empty() {
-        let p = Paragraph::new("  No headers").style(Style::default().fg(theme.muted));
-        frame.render_widget(p, sb_chunks[3]);
-    } else {
-        let mut state = ListState::default();
-        state.select(Some(app.editor.sidebar_selected));
-
-        // Add left padding to the list rect to align items nicely
-        let list_area = Rect::new(
-            sb_chunks[3].x + 2,
-            sb_chunks[3].y,
-            sb_chunks[3].width.saturating_sub(2),
-            sb_chunks[3].height,
-        );
-
-        let item_count = items.len();
-        let list = List::new(items).block(Block::default()).highlight_style(
-            Style::default()
-                .bg(theme.highlight_bg)
-                .fg(theme.highlight_fg),
-        );
-        frame.render_stateful_widget(list, list_area, &mut state);
-        app.editor.sidebar_scroll_offset = state.offset();
-        crate::ui::paint_list_hover(
-            frame,
-            list_area,
-            &state,
-            item_count,
-            app.mouse_pos,
-            theme.hover_style(),
-        );
+    // --- Go-to-line popup ---
+    if let Some(input) = &app.editor.go_to_line_input {
+        let theme = &app.app_theme;
+        let popup_area = crate::ui::popups::centered_rect(crate::ui::PopupSize::Prompt, frame.area());
+        let text = if input.is_empty() { "Line #" } else { input };
+        let (title, hints) = ("GO TO LINE", &[("Enter", "jump"), ("Esc", "cancel")][..]);
+        let clear = Clear;
+        frame.render_widget(clear, popup_area);
+        let block = Block::default()
+            .title(format!(" {title} "))
+            .title_alignment(Alignment::Center)
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(theme.highlight_fg))
+            .style(theme.bg_style());
+        frame.render_widget(&block, popup_area);
+        let inner = block.inner(popup_area);
+        let input_style = Style::default().fg(theme.highlight_fg).bg(theme.accent);
+        let paragraph = Paragraph::new(Span::styled(text.to_string(), input_style))
+            .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(theme.border)));
+        frame.render_widget(paragraph, inner);
+        // Render hints
+        if inner.height >= 1 {
+            let hint_y = inner.y + inner.height.saturating_sub(1);
+            let hint_area = Rect::new(inner.x, hint_y, inner.width, 1);
+            let hint_line = Line::from(
+                hints.iter().flat_map(|(k, v)| {
+                    let key = Span::styled(format!(" {k} "), Style::default().fg(theme.highlight_fg).bg(theme.accent));
+                    let desc = Span::styled(format!(" {v} "), Style::default().fg(theme.text));
+                    [key, desc].into_iter()
+                }).collect::<Vec<_>>(),
+            );
+            frame.render_widget(hint_line, hint_area);
+        }
     }
 }
-
-fn draw_links_pane(frame: &mut Frame, area: Rect, app: &mut App, focus: EditFocus) {
+fn draw_sidebar_pane(frame: &mut Frame, area: Rect, app: &mut App, focus: EditFocus) {
     let theme = &app.app_theme;
 
     // Fill the background of the sidebar area
@@ -544,26 +405,58 @@ fn draw_links_pane(frame: &mut Frame, area: Rect, app: &mut App, focus: EditFocu
             .fg(theme.heading)
             .add_modifier(Modifier::BOLD)
     };
-    let title = Paragraph::new(format!("  LINKS ({})", app.editor.links.len())).style(title_style);
-    frame.render_widget(title, sb_chunks[1]);
 
-    // Draw List
-    let items: Vec<ListItem> = app
-        .editor
-        .links
-        .iter()
-        .map(|item| {
-            let text = if item.is_backlink {
-                format!("←  {}", item.title)
-            } else {
-                format!("→  {}", item.title)
-            };
-            ListItem::new(text).style(Style::default().fg(theme.fg))
-        })
-        .collect();
+    let (title, items) = match app.editor.sidebar {
+        EditSidebar::Outline => {
+            let title = format!("  OUTLINE ({})", app.editor.outline_nodes.len());
+            let items: Vec<ListItem> = app
+                .editor
+                .outline_nodes
+                .iter()
+                .map(|node| {
+                    let text = match &node.kind {
+                        NodeKind::Header { level, title } => {
+                            let indent = "  ".repeat((*level as usize).saturating_sub(1));
+                            let marker = if *level == 1 { "▸ " } else { "" };
+                            format!("{}{}{}", indent, marker, title)
+                        }
+                        _ => node.full_text().to_string(),
+                    };
+                    ListItem::new(text).style(Style::default().fg(theme.fg))
+                })
+                .collect();
+            (title, items)
+        }
+        EditSidebar::Links => {
+            let title = format!("  LINKS ({})", app.editor.links.len());
+            let items: Vec<ListItem> = app
+                .editor
+                .links
+                .iter()
+                .map(|item| {
+                    let text = if item.is_backlink {
+                        format!("←  {}", item.title)
+                    } else {
+                        format!("→  {}", item.title)
+                    };
+                    ListItem::new(text).style(Style::default().fg(theme.fg))
+                })
+                .collect();
+            (title, items)
+        }
+        EditSidebar::None => return,
+    };
+
+    let title_widget = Paragraph::new(title).style(title_style);
+    frame.render_widget(title_widget, sb_chunks[1]);
 
     if items.is_empty() {
-        let p = Paragraph::new("  No links").style(Style::default().fg(theme.muted));
+        let empty_msg = match app.editor.sidebar {
+            EditSidebar::Outline => "  No headers",
+            EditSidebar::Links => "  No links",
+            EditSidebar::None => "",
+        };
+        let p = Paragraph::new(empty_msg).style(Style::default().fg(theme.muted));
         frame.render_widget(p, sb_chunks[3]);
     } else {
         let mut state = ListState::default();
