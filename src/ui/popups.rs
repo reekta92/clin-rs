@@ -99,6 +99,7 @@ pub fn draw_template_popup(
         } else {
             None
         },
+        popup.scroll_offset,
     );
 
     frame.render_stateful_widget(list, chunks[1], &mut state);
@@ -294,7 +295,7 @@ pub fn draw_theme_popup(
                 .add_modifier(Modifier::BOLD),
         );
 
-    let state = render_list_with_selection(frame, list, chunks[0], Some(popup.selected));
+    let state = render_list_with_selection(frame, list, chunks[0], Some(popup.selected), popup.scroll_offset);
     popup.scroll_offset = state.offset();
     paint_list_hover(
         frame,
@@ -435,7 +436,7 @@ pub fn draw_sort_popup(
                 .add_modifier(Modifier::BOLD),
         );
 
-    let state = render_list_with_selection(frame, list, content_area, Some(popup.selected));
+    let state = render_list_with_selection(frame, list, content_area, Some(popup.selected), 0);
     paint_list_hover(
         frame,
         Rect {
@@ -504,7 +505,7 @@ pub fn draw_icon_mode_popup(
                 .add_modifier(Modifier::BOLD),
         );
 
-    let state = render_list_with_selection(frame, list, content_area, Some(popup.selected));
+    let state = render_list_with_selection(frame, list, content_area, Some(popup.selected), 0);
     paint_list_hover(
         frame,
         Rect {
@@ -578,7 +579,7 @@ pub fn draw_create_format_popup(
                 .add_modifier(Modifier::BOLD),
         );
 
-    let state = render_list_with_selection(frame, list, content_area, Some(popup.selected));
+    let state = render_list_with_selection(frame, list, content_area, Some(popup.selected), 0);
     paint_list_hover(
         frame,
         Rect {
@@ -647,7 +648,7 @@ pub fn draw_hint_bar_style_popup(
                 .add_modifier(Modifier::BOLD),
         );
 
-    let state = render_list_with_selection(frame, list, content_area, Some(popup.selected));
+    let state = render_list_with_selection(frame, list, content_area, Some(popup.selected), 0);
     paint_list_hover(
         frame,
         Rect {
@@ -721,7 +722,7 @@ pub fn draw_keybind_preset_popup(
                 .add_modifier(Modifier::BOLD),
         );
 
-    let state = render_list_with_selection(frame, list, content_area, Some(popup.selected));
+    let state = render_list_with_selection(frame, list, content_area, Some(popup.selected), 0);
     paint_list_hover(
         frame,
         Rect {
@@ -808,8 +809,8 @@ pub fn build_list_widget<'a>(
 }
 
 /// Initialize a [`ListState`] with an optional selection.
-pub fn list_state_selected(selected: Option<usize>) -> ListState {
-    let mut s = ListState::default();
+pub fn list_state_selected(selected: Option<usize>, offset: usize) -> ListState {
+    let mut s = ListState::default().with_offset(offset);
     s.select(selected);
     s
 }
@@ -879,8 +880,9 @@ pub fn render_list_with_selection(
     list: List,
     area: Rect,
     selected: Option<usize>,
+    offset: usize,
 ) -> ListState {
-    let mut state = list_state_selected(selected);
+    let mut state = list_state_selected(selected, offset);
     frame.render_stateful_widget(list, area, &mut state);
     state
 }

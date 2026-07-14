@@ -802,7 +802,7 @@ pub fn draw_pinstar_view(
                 .style(theme.preview_bg_style()),
         );
         let list_state =
-            crate::ui::render_list_with_selection(frame, list, menu_rect, Some(menu.selected));
+            crate::ui::render_list_with_selection(frame, list, menu_rect, Some(menu.selected), 0);
         crate::ui::paint_list_hover(
             frame,
             menu_rect,

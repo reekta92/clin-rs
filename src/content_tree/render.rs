@@ -162,7 +162,7 @@ pub fn draw_content_tree(
         }
 
         let selected_pos = visible.iter().position(|&x| x == state.selected);
-        let mut list_state = crate::ui::list_state_selected(selected_pos);
+        let mut list_state = crate::ui::list_state_selected(selected_pos, 0);
 
         let item_count = items.len();
         let list = List::new(items)

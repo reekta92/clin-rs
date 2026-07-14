@@ -428,6 +428,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             (popup.focus == crate::popups::TagPopupFocus::AllTagsList
                 && !popup.all_tags.is_empty())
             .then_some(popup.all_tags_selected),
+            popup.scroll_offset,
         );
         popup.scroll_offset = state.offset();
     }
@@ -526,6 +527,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             (picker.focus == crate::app::FolderPickerFocus::Results
                 && !picker.filtered_folders.is_empty())
             .then_some(picker.selected),
+            picker.scroll_offset,
         );
         picker.scroll_offset = state.offset();
         let inner = Rect {
@@ -1035,7 +1037,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     .add_modifier(Modifier::BOLD),
             )
             .highlight_symbol("  ");
-        let mut list_state = ListState::default();
+        let mut list_state = ListState::default().with_offset(popup.results_scroll_offset);
         if results_focused && has_grep {
             if let Some(vis_pos) = crate::popups::grep_flat_to_visible(
                 &popup.grep_is_header,
@@ -1121,7 +1123,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             .highlight_symbol("  ");
 
         let state =
-            crate::ui::render_list_with_selection(frame, list, content, Some(trash.selected));
+            crate::ui::render_list_with_selection(frame, list, content, Some(trash.selected), trash.scroll_offset);
         trash.scroll_offset = state.offset();
         let inner = Rect {
             x: content.x + 1,
@@ -1171,7 +1173,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
         frame.render_widget(Clear, menu_area);
         let state =
-            crate::ui::render_list_with_selection(frame, list, menu_area, Some(menu.selected));
+            crate::ui::render_list_with_selection(frame, list, menu_area, Some(menu.selected), 0);
         crate::ui::paint_list_hover(
             frame,
             menu_area,
