@@ -2257,12 +2257,19 @@ pub fn list_detail_line(app: &App) -> Option<Line<'static>> {
         spans.push(Span::raw(" ")); // padding right
         Some(Line::from(spans))
     } else if let Some(crate::app::VisualItem::Folder {
-        name, note_count, ..
+        name, note_count, recursive_count, ..
     }) = app.list.visual_list.get(app.list.visual_index)
         && name != ".."
     {
         let mut spans = Vec::new();
-        let suffix = if *note_count == 1 { "note" } else { "notes" };
+        let count_suffix = if *recursive_count > *note_count {
+            let sub = recursive_count - note_count;
+            let suffix = if *recursive_count == 1 { "note" } else { "notes" };
+            format!("{} + {} {}", note_count, sub, suffix)
+        } else {
+            let suffix = if *note_count == 1 { "note" } else { "notes" };
+            format!("{} {}", note_count, suffix)
+        };
         spans.push(Span::styled(
             format!(
                 " {} ",
@@ -2271,7 +2278,7 @@ pub fn list_detail_line(app: &App) -> Option<Line<'static>> {
             Style::default().fg(app.app_theme.folder),
         ));
         spans.push(Span::styled(
-            format!("{note_count} {suffix}"),
+            format!("{count_suffix}"),
             Style::default().fg(app.app_theme.fg),
         ));
         spans.push(Span::raw(" ")); // padding right
