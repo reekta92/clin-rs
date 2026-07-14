@@ -421,6 +421,7 @@ impl App {
         list.page_size = 10;
         list.notes_layout = bootstrap_config.list.default_view.clone();
         list.list_density = bootstrap_config.list.density.clone();
+        list.inline_info = bootstrap_config.list.inline_info;
         list.show_file_size = bootstrap_config.list.show_file_size;
         list.show_date_in_list = bootstrap_config.list.show_date_in_list;
         list.folders_first = bootstrap_config.list.folders_first;
@@ -551,9 +552,9 @@ impl App {
             .default_sort_order
             .unwrap_or(SortOrder::Ascending);
         list.preview_enabled = bootstrap_config.list.preview_enabled;
-        list.page_size = 10;
         list.notes_layout = bootstrap_config.list.default_view.clone();
         list.list_density = bootstrap_config.list.density.clone();
+        list.inline_info = bootstrap_config.list.inline_info;
         list.show_file_size = bootstrap_config.list.show_file_size;
         list.show_date_in_list = bootstrap_config.list.show_date_in_list;
         list.folders_first = bootstrap_config.list.folders_first;
@@ -764,6 +765,11 @@ impl App {
                     } else {
                         format!("{}", note_count)
                     };
+                    let count_suffix = if self.list.inline_info {
+                        format!(" ({count_str})")
+                    } else {
+                        String::new()
+                    };
                     let sanitized_name = crate::sanitize::sanitize_for_terminal(name);
                     let mut display_name = sanitized_name.into_owned();
                     if *is_pinned {
@@ -774,9 +780,9 @@ impl App {
                         }
                     }
                     let mut text = if icon.is_empty() {
-                        format!("{indent}{display_name} ({count_str})")
+                        format!("{indent}{display_name}{count_suffix}")
                     } else {
-                        format!("{indent}{icon} {display_name} ({count_str})")
+                        format!("{indent}{icon} {display_name}{count_suffix}")
                     };
                     if self.list.list_mode == crate::list_view::ListMode::Select {
                         let checkbox = if self.list.selected_indices.contains(&vi) {
@@ -785,9 +791,9 @@ impl App {
                             "[ ] "
                         };
                         text = if icon.is_empty() {
-                            format!("{indent}{checkbox}{display_name} ({count_str})")
+                            format!("{indent}{checkbox}{display_name}{count_suffix}")
                         } else {
-                            format!("{indent}{checkbox}{icon} {display_name} ({count_str})")
+                            format!("{indent}{checkbox}{icon} {display_name}{count_suffix}")
                         };
                     }
                     let mut style = Style::default().add_modifier(Modifier::BOLD).fg(color);
@@ -896,6 +902,7 @@ impl App {
                     let sanitized_title =
                         crate::sanitize::sanitize_for_terminal(summary.title.as_str()).into_owned();
                     spans.push(Span::styled(sanitized_title, text_style));
+                    if self.list.inline_info {
 
                     if self.notes_with_subnotes.contains(&summary.id) {
                         let sub_icon = match self.config.ui.icon_mode {
@@ -959,6 +966,7 @@ impl App {
                             Style::default().fg(self.app_theme.muted),
                         ));
                     }
+                    }
                     let mut lines = vec![Line::from(spans)];
                     if self.list.list_density == crate::config::ListDensity::Comfortable {
                         lines.push(Line::from(""));
@@ -1010,12 +1018,17 @@ impl App {
                     let icon = format!("{arrow} {folder_icon}");
                     let color = self.app_theme.tag;
                     let count_str = format!("{}", note_count);
+                    let count_suffix = if self.list.inline_info {
+                        format!(" ({count_str})")
+                    } else {
+                        String::new()
+                    };
                     let sanitized_name = crate::sanitize::sanitize_for_terminal(label);
 
                     let mut text = if icon.is_empty() {
-                        format!("{indent}{sanitized_name} ({count_str})")
+                        format!("{indent}{sanitized_name}{count_suffix}")
                     } else {
-                        format!("{indent}{icon} {sanitized_name} ({count_str})")
+                        format!("{indent}{icon} {sanitized_name}{count_suffix}")
                     };
 
                     if self.list.list_mode == crate::list_view::ListMode::Select {
@@ -1025,9 +1038,9 @@ impl App {
                             "[ ] "
                         };
                         text = if icon.is_empty() {
-                            format!("{indent}{checkbox}{sanitized_name} ({count_str})")
+                            format!("{indent}{checkbox}{sanitized_name}{count_suffix}")
                         } else {
-                            format!("{indent}{checkbox}{icon} {sanitized_name} ({count_str})")
+                            format!("{indent}{checkbox}{icon} {sanitized_name}{count_suffix}")
                         };
                     }
 

@@ -93,6 +93,23 @@ impl App {
         }
     }
 
+    pub fn toggle_inline_info(&mut self) {
+        self.list.inline_info = !self.list.inline_info;
+        self.build_display_lines();
+        let msg: &'static str = if self.list.inline_info {
+            "Inline info shown"
+        } else {
+            "Inline info hidden"
+        };
+        self.set_temporary_status_static(msg);
+        if let Ok(mut config) = crate::config::ClinConfig::load() {
+            config.list.inline_info = self.list.inline_info;
+            if let Err(e) = config.save() {
+                self.set_temporary_status(&format!("Failed to save config: {e}"));
+            }
+        }
+    }
+
     pub fn toggle_layout_edit(&mut self) {
         self.layout_edit = !self.layout_edit;
         self.layout_drag = None;

@@ -261,6 +261,7 @@ pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyL
         Box::new(settings::ToggleTabIconsOnlyAction),
         Box::new(settings::SetWordGoalAction),
         Box::new(settings::ToggleFoldersFirstAction),
+        Box::new(settings::ToggleInlineInfoAction),
         Box::new(settings::ToggleSmartFoldersAction),
         Box::new(settings::ConfigureSmartFoldersAction),
         Box::new(settings::SetNoteGoalAction),

@@ -105,6 +105,23 @@ toggle_action!(
 );
 
 toggle_action!(
+    ToggleInlineInfoAction,
+    "settings.inline_info",
+    "Toggle Inline Info",
+    "Show or hide inline metadata (tags, dates, sizes, folder counts) in the notes list",
+    ActionCategory::Settings,
+    "\u{f0b0}",
+    "\u{2699}",
+    toggle_inline_info,
+    app,
+    if app.list.inline_info {
+        "On"
+    } else {
+        "Off"
+    }
+);
+
+toggle_action!(
     TogglePreviewEncryptionAction,
     "settings.preview_encryption",
     "Toggle Encrypted Note Preview",

@@ -391,6 +391,8 @@ pub struct ListConfig {
     pub default_sort_field: Option<crate::app::SortField>,
     #[serde(default)]
     pub default_sort_order: Option<crate::app::SortOrder>,
+    #[serde(default = "default_true")]
+    pub inline_info: bool,
     #[serde(default)]
     pub pinned_on_top: bool,
     #[serde(default)]
