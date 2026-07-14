@@ -1,7 +1,7 @@
 use anyhow::{Result, anyhow};
 use git2::{
-    Cred, CredentialType, DiffOptions, FetchOptions, IndexAddOption, Oid,
-    PushOptions, Repository, StatusOptions,
+    Cred, CredentialType, DiffOptions, FetchOptions, IndexAddOption, Oid, PushOptions, Repository,
+    StatusOptions,
 };
 use std::path::Path;
 
@@ -303,9 +303,7 @@ impl GitOps {
                 // HTTPS remote: delegate to git's configured credential helper.
                 // Prefer the repo config (a local credential.helper wins); fall
                 // back to the global/default config if the repo has none.
-                let config = repo
-                    .config()
-                    .or_else(|_| git2::Config::open_default())?;
+                let config = repo.config().or_else(|_| git2::Config::open_default())?;
                 Cred::credential_helper(&config, url, username_from_url)
             } else if allowed_types.contains(CredentialType::USERNAME) {
                 // libgit2's initial SSH username probe: supply the username so the
@@ -444,6 +442,12 @@ mod tests {
 
         // Work repo (non-bare) via the real GitOps::init path.
         let git_ops = GitOps::init(work.path())?;
+        // Set identity config — CI environments lack a global git config.
+        {
+            let mut cfg = git_ops.repo.config()?;
+            cfg.set_str("user.name", "test")?;
+            cfg.set_str("user.email", "test@test")?;
+        }
         fs::write(work.path().join("note.md"), "hello")?;
         let oid = git_ops.add_all().and_then(|_| git_ops.commit("initial"))?;
 
@@ -459,7 +463,10 @@ mod tests {
             .references()?
             .filter_map(Result::ok)
             .any(|rf| rf.target().map(|t| t == oid).unwrap_or(false));
-        assert!(found, "pushed commit {oid} must exist as a ref in bare remote");
+        assert!(
+            found,
+            "pushed commit {oid} must exist as a ref in bare remote"
+        );
 
         Ok(())
     }

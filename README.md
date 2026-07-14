@@ -492,6 +492,16 @@ Full detail in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
+## Support
+
+`clin` is free and open-source. If it's useful to you, consider supporting its development on Patreon:
+
+<div align="center">
+
+[![Patreon](https://img.shields.io/badge/Patreon-Support%20clin-f96854.svg?logo=patreon&logoColor=white)](https://www.patreon.com/MehmetDag/posts/clin-rs-project-163784358)
+
+</div>
+
 ## License
 
 Licensed under the [GNU General Public License v3.0](LICENSE).

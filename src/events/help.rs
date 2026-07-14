@@ -156,7 +156,6 @@ pub fn handle_help_keys(app: &mut App, key: KeyEvent) {
         return;
     }
 
-
     let seq = app.config.sequences_enabled();
     let counts = app.config.counts_enabled();
     match app
