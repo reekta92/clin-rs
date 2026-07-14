@@ -2,6 +2,16 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.9.9] - 2026-07-14
+
+### Fixed
+
+- Wire libgit2 auth callbacks into push/pull
+- Add universal q/Esc back/quit intercepts, override-proof
+
+### Miscellaneous
+
+- Add support section to the readme
 ## [0.9.8] - 2026-07-10
 
 ### Fixed
@@ -15,6 +25,10 @@ All notable changes to clin are documented in this file.
 ### Performance
 
 - Skip full filesystem rescan on note delete
+
+### Release
+
+- V0.9.8
 ## [0.9.7] - 2026-07-08
 
 ### Added
