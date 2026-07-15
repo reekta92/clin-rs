@@ -16,6 +16,7 @@ const PREVIEW_ROWS: u16 = 38;
 pub fn render_canvas_snapshot(
     data: &CanvasData,
     theme: &AppThemeColors,
+    icon_mode: crate::config::IconMode,
     width: u16,
     height: u16,
     scale: f64,
@@ -132,33 +133,61 @@ pub fn render_canvas_snapshot(
             } else {
                 inner_text.to_string()
             };
+            let is_image = matches!(node, CanvasNode::File(n) if is_image_ext(&n.file));
 
-            let block = Block::default()
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(node_color))
-                .title(title)
-                .style(theme.bg_style());
+            if is_image {
+                let icon = crate::ui::get_icon("\u{f03e}", "\u{1f5bc}", icon_mode);
+                let filled_block = Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(node_color))
+                    .title(title)
+                    .style(Style::default().bg(node_color).fg(theme.bg.unwrap_or(Color::Reset)));
 
-            let text = Paragraph::new(display_text)
-                .block(block)
-                .style(Style::default().fg(theme.fg))
-                .wrap(Wrap { trim: false });
+                let icon_line = Line::from(
+                    Span::styled(icon, Style::default().fg(theme.bg.unwrap_or(Color::Reset)))
+                ).alignment(Alignment::Center);
 
-            frame.render_widget(Clear, node_rect);
-            frame.render_widget(text, node_rect);
+                let content_height = node_rect.height.saturating_sub(2);
+                let empty_count = content_height / 2;
+
+                let mut lines: Vec<Line> = Vec::new();
+                for _ in 0..empty_count {
+                    lines.push(Line::from(""));
+                }
+                lines.push(icon_line);
+
+                let text = Paragraph::new(lines).block(filled_block);
+                frame.render_widget(Clear, node_rect);
+                frame.render_widget(text, node_rect);
+            } else {
+                let block = Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(node_color))
+                    .title(title)
+                    .style(theme.bg_style());
+
+                let text = Paragraph::new(display_text)
+                    .block(block)
+                    .style(Style::default().fg(theme.fg))
+                    .wrap(Wrap { trim: false });
+
+                frame.render_widget(Clear, node_rect);
+                frame.render_widget(text, node_rect);
+            }
         }
     });
 
     extract_grid(terminal, width, height)
 }
 
-pub fn render_draw_snapshot(data: &DrawData, theme: &AppThemeColors) -> Vec<Vec<(char, Style)>> {
-    render_draw_snapshot_with_size(data, theme, PREVIEW_COLS, PREVIEW_ROWS, 1.0, 0.0, 0.0)
+pub fn render_draw_snapshot(data: &DrawData, theme: &AppThemeColors, icon_mode: crate::config::IconMode) -> Vec<Vec<(char, Style)>> {
+    render_draw_snapshot_with_size(data, theme, icon_mode, PREVIEW_COLS, PREVIEW_ROWS, 1.0, 0.0, 0.0)
 }
 
 pub fn render_draw_snapshot_with_size(
     data: &DrawData,
     theme: &AppThemeColors,
+    icon_mode: crate::config::IconMode,
     width: u16,
     height: u16,
     scale: f64,
@@ -215,13 +244,25 @@ pub fn render_draw_snapshot_with_size(
                             );
                         }
                         DrawElement::Image(img) => {
-                            ctx.draw(&Rectangle {
-                                x: img.x,
-                                y: img.y,
-                                width: img.width,
-                                height: img.height,
-                                color: theme.muted,
-                            });
+                            let step = (ratio_y / 4.0).max(0.01);
+                            let mut y = img.y;
+                            while y < img.y + img.height {
+                                ctx.draw(&CanvasLine {
+                                    x1: img.x,
+                                    y1: y,
+                                    x2: img.x + img.width,
+                                    y2: y,
+                                    color: theme.muted,
+                                });
+                                y += step;
+                            }
+                            let icon = crate::ui::get_icon("\u{f03e}", "\u{1f5bc}", icon_mode);
+                            ctx.print(
+                                img.x + img.width / 2.0,
+                                img.y + img.height / 2.0,
+                                ratatui::text::Line::from(icon)
+                                    .style(Style::default().bg(theme.muted).fg(theme.bg.unwrap_or(Color::Reset))),
+                            );
                         }
                     }
                 }
@@ -460,6 +501,18 @@ fn canvas_color_to_style(color: Option<&str>, theme: &AppThemeColors) -> Color {
     }
 }
 
+/// Check if a file path has a common image extension.
+fn is_image_ext(file: &str) -> bool {
+    let ext = match std::path::Path::new(file).extension().and_then(|e| e.to_str()) {
+        Some(e) => e.to_ascii_lowercase(),
+        None => return false,
+    };
+    matches!(
+        ext.as_str(),
+        "png" | "jpg" | "jpeg" | "gif" | "bmp" | "webp" | "svg" | "ico" | "tiff" | "tif" | "avif"
+    )
+}
+
 fn draw_braille_line(buf: &mut Buffer, mut x1: f64, mut y1: f64, x2: f64, y2: f64, color: Color) {
     let dx = x2 - x1;
     let dy = y2 - y1;
@@ -679,7 +732,7 @@ mod tests {
             })],
         };
         let theme = AppThemeColors::default();
-        let grid = render_draw_snapshot_with_size(&data, &theme, 40, 20, 1.0, 0.0, 0.0);
+        let grid = render_draw_snapshot_with_size(&data, &theme, crate::config::IconMode::Nerd, 40, 20, 1.0, 0.0, 0.0);
         let muted = theme.muted;
 
         // At least one cell on the image's outline must have fg = muted.

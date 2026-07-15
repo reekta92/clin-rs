@@ -847,6 +847,7 @@ impl App {
                         let grid = crate::snapshot::render_draw_snapshot_with_size(
                             &data,
                             &self.app_theme,
+                            self.config.ui.icon_mode,
                             width,
                             height,
                             scale,
@@ -876,6 +877,7 @@ impl App {
                                     let grid = crate::snapshot::render_draw_snapshot_with_size(
                                         &data,
                                         &self.app_theme,
+                                        self.config.ui.icon_mode,
                                         width,
                                         height,
                                         scale,
@@ -916,6 +918,7 @@ impl App {
                         let grid = crate::snapshot::render_canvas_snapshot(
                             &data,
                             &self.app_theme,
+                            self.config.ui.icon_mode,
                             width,
                             height,
                             scale,
@@ -946,6 +949,7 @@ impl App {
                                     let grid = crate::snapshot::render_canvas_snapshot(
                                         &data,
                                         &self.app_theme,
+                                        self.config.ui.icon_mode,
                                         width,
                                         height,
                                         scale,

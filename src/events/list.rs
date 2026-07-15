@@ -371,7 +371,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                     let width = app.list.preview_content_width.unwrap_or(40);
                     let height = app.list.preview_content_height.unwrap_or(40);
                     *grid = crate::snapshot::render_canvas_snapshot(
-                        data, &app.app_theme, width, height, app.list.preview_scale, app.list.preview_offset_x, app.list.preview_offset_y
+                        data, &app.app_theme, app.config.ui.icon_mode, width, height, app.list.preview_scale, app.list.preview_offset_x, app.list.preview_offset_y
                     );
                     app.list.preview_content_scale = Some(app.list.preview_scale);
                     app.list.preview_content_offset_x = Some(app.list.preview_offset_x);
@@ -386,7 +386,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                     let width = app.list.preview_content_width.unwrap_or(40);
                     let height = app.list.preview_content_height.unwrap_or(40);
                     *grid = crate::snapshot::render_draw_snapshot_with_size(
-                        data, &app.app_theme, width, height, app.list.preview_scale, app.list.preview_offset_x, app.list.preview_offset_y
+                        data, &app.app_theme, app.config.ui.icon_mode, width, height, app.list.preview_scale, app.list.preview_offset_x, app.list.preview_offset_y
                     );
                     app.list.preview_content_scale = Some(app.list.preview_scale);
                     app.list.preview_content_offset_x = Some(app.list.preview_offset_x);
@@ -407,7 +407,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                     let width = app.list.preview_content_width.unwrap_or(40);
                     let height = app.list.preview_content_height.unwrap_or(40);
                     *grid = crate::snapshot::render_canvas_snapshot(
-                        data, &app.app_theme, width, height, app.list.preview_scale, app.list.preview_offset_x, app.list.preview_offset_y
+                        data, &app.app_theme, app.config.ui.icon_mode, width, height, app.list.preview_scale, app.list.preview_offset_x, app.list.preview_offset_y
                     );
                     app.list.preview_content_scale = Some(app.list.preview_scale);
                     app.list.preview_content_offset_x = Some(app.list.preview_offset_x);
@@ -422,7 +422,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                     let width = app.list.preview_content_width.unwrap_or(40);
                     let height = app.list.preview_content_height.unwrap_or(40);
                     *grid = crate::snapshot::render_draw_snapshot_with_size(
-                        data, &app.app_theme, width, height, app.list.preview_scale, app.list.preview_offset_x, app.list.preview_offset_y
+                        data, &app.app_theme, app.config.ui.icon_mode, width, height, app.list.preview_scale, app.list.preview_offset_x, app.list.preview_offset_y
                     );
                     app.list.preview_content_scale = Some(app.list.preview_scale);
                     app.list.preview_content_offset_x = Some(app.list.preview_offset_x);
@@ -535,7 +535,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                     let width = app.list.preview_content_width.unwrap_or(40);
                     let height = app.list.preview_content_height.unwrap_or(40);
                     *grid = crate::snapshot::render_canvas_snapshot(
-                        data, &app.app_theme, width, height, app.list.preview_scale, app.list.preview_offset_x, app.list.preview_offset_y
+                        data, &app.app_theme, app.config.ui.icon_mode, width, height, app.list.preview_scale, app.list.preview_offset_x, app.list.preview_offset_y
                     );
                     app.list.preview_content_scale = Some(app.list.preview_scale);
                     app.list.preview_content_offset_x = Some(app.list.preview_offset_x);
@@ -555,7 +555,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                     let width = app.list.preview_content_width.unwrap_or(40);
                     let height = app.list.preview_content_height.unwrap_or(40);
                     *grid = crate::snapshot::render_canvas_snapshot(
-                        data, &app.app_theme, width, height, app.list.preview_scale, app.list.preview_offset_x, app.list.preview_offset_y
+                        data, &app.app_theme, app.config.ui.icon_mode, width, height, app.list.preview_scale, app.list.preview_offset_x, app.list.preview_offset_y
                     );
                     app.list.preview_content_scale = Some(app.list.preview_scale);
                     app.list.preview_content_offset_x = Some(app.list.preview_offset_x);
@@ -595,7 +595,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                     let width = app.list.preview_content_width.unwrap_or(40);
                     let height = app.list.preview_content_height.unwrap_or(40);
                     *grid = crate::snapshot::render_draw_snapshot_with_size(
-                        data, &app.app_theme, width, height, app.list.preview_scale, app.list.preview_offset_x, app.list.preview_offset_y
+                        data, &app.app_theme, app.config.ui.icon_mode, width, height, app.list.preview_scale, app.list.preview_offset_x, app.list.preview_offset_y
                     );
                     app.list.preview_content_scale = Some(app.list.preview_scale);
                     app.list.preview_content_offset_x = Some(app.list.preview_offset_x);
@@ -615,7 +615,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                     let width = app.list.preview_content_width.unwrap_or(40);
                     let height = app.list.preview_content_height.unwrap_or(40);
                     *grid = crate::snapshot::render_draw_snapshot_with_size(
-                        data, &app.app_theme, width, height, app.list.preview_scale, app.list.preview_offset_x, app.list.preview_offset_y
+                        data, &app.app_theme, app.config.ui.icon_mode, width, height, app.list.preview_scale, app.list.preview_offset_x, app.list.preview_offset_y
                     );
                     app.list.preview_content_scale = Some(app.list.preview_scale);
                     app.list.preview_content_offset_x = Some(app.list.preview_offset_x);

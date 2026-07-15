@@ -83,6 +83,7 @@ fn draw_strip_draw(
     let grid = crate::snapshot::render_draw_snapshot_with_size(
         data,
         &app.app_theme,
+        app.config.ui.icon_mode,
         content_area.width,
         content_area.height,
         1.0,
