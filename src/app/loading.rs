@@ -979,6 +979,22 @@ impl App {
                     return;
                 }
 
+                let ext = std::path::Path::new(id)
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .unwrap_or("");
+                if crate::storage::is_image_ext(ext) {
+                    let path = self.storage.note_path(id);
+                    self.list.preview_content = Some(PreviewContent::Image(path));
+                    self.list.preview_content_width = Some(self.desired_list_preview_width());
+                    self.list.preview_content_height = Some(self.desired_list_preview_height());
+                    self.list.preview_content_scale = Some(self.list.preview_scale);
+                    self.list.preview_content_offset_x = Some(self.list.preview_offset_x);
+                    self.list.preview_content_offset_y = Some(self.list.preview_offset_y);
+                    self.list.preview_content_index = Some(self.list.visual_index);
+                    return;
+                }
+
                 if let Ok(note) = self.storage.load_note(id) {
                     let width = self.desired_list_preview_width();
                     let mut renderer = MarkdownRenderer::new(width);

@@ -209,6 +209,7 @@ pub enum PreviewContent {
         data: Box<crate::draw::state::DrawData>,
         grid: Vec<Vec<(char, Style)>>,
     },
+    Image(std::path::PathBuf),
 }
 
 impl std::fmt::Debug for PreviewContent {
@@ -217,6 +218,7 @@ impl std::fmt::Debug for PreviewContent {
             Self::Markdown(_) => f.debug_tuple("Markdown").finish(),
             Self::CanvasGrid { grid, .. } => f.debug_tuple("CanvasGrid").field(&grid.len()).finish(),
             Self::DrawGrid { grid, .. } => f.debug_tuple("DrawGrid").field(&grid.len()).finish(),
+            Self::Image(_) => f.debug_tuple("Image").finish(),
         }
     }
 }

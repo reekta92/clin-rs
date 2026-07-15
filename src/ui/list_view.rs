@@ -690,6 +690,10 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                         ..
                     } => {
                         let s = &app.notes[*summary_idx];
+                        let is_image = std::path::Path::new(&s.id)
+                            .extension()
+                            .and_then(|e| e.to_str())
+                            .is_some_and(|e| crate::storage::is_image_ext(e));
                         let col = if s.pinned {
                             app.app_theme.heading
                         } else if *is_clin {
@@ -698,6 +702,8 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                             app.app_theme.success
                         } else if *is_canvas {
                             app.app_theme.accent
+                        } else if is_image {
+                            app.app_theme.warning
                         } else {
                             app.app_theme.text
                         };
@@ -709,6 +715,8 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                             crate::ui::get_char('\u{f1fc}', '\u{270f}', app.config.ui.icon_mode)
                         } else if *is_canvas {
                             crate::ui::get_char('\u{f005}', '\u{2b50}', app.config.ui.icon_mode)
+                        } else if is_image {
+                            crate::ui::get_char('\u{f1c5}', '\u{1f5bc}', app.config.ui.icon_mode)
                         } else {
                             crate::ui::get_char('\u{f15c}', '\u{1f4c4}', app.config.ui.icon_mode)
                         };
@@ -718,6 +726,8 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                             "D"
                         } else if *is_canvas {
                             "C"
+                        } else if is_image {
+                            "IMG"
                         } else {
                             "MD"
                         };
@@ -966,7 +976,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 if app.list.image_cache.get_proto(&key).is_none() {
                     app.list
                         .image_cache
-                        .request(key.clone(), 2048, decode_tx, picker);
+                        .request(key.clone(), 512, decode_tx, picker);
                 }
                 if let Some(proto) = app.list.image_cache.get_proto(&key) {
                     let row = preview_rect.y + 1 + *line_idx as u16 - scroll;
@@ -993,6 +1003,62 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                             proto,
                         );
                     }
+                }
+            }
+        }
+
+        // Overlay standalone image file on the preview pane
+        if (content_is_current || app.list.pending_preview_update)
+            && let Some(crate::list_view::PreviewContent::Image(path)) = &app.list.preview_content
+            && let (Some(picker), Some(decode_tx)) = (&app.image_picker, &app.image_decode_tx)
+        {
+            let inner_pad = 2_u16;
+            let col_width = preview_rect.width.saturating_sub(2 * inner_pad);
+            let key = crate::image_render::ImageKey { path: path.clone(), mtime: 0 };
+            if app.list.image_cache.get_proto(&key).is_none() {
+                app.list
+                    .image_cache
+                    .request(key.clone(), 512, decode_tx, picker);
+            }
+            if let Some(proto) = app.list.image_cache.get_proto(&key) {
+                // available area (full preview minus padding) — the bounding box
+                let max_w = col_width.min(preview_rect.width.saturating_sub(2));
+                let max_h = preview_rect.height.saturating_sub(2);
+                let bound_rect = Rect::new(
+                    preview_rect.x + inner_pad,
+                    preview_rect.y + 1,
+                    max_w,
+                    max_h,
+                );
+                // clear the full bounding box (removes any "Image loading..." text)
+                if bound_rect.width > 1 && bound_rect.height > 1 {
+                    frame.render_widget(Clear, bound_rect);
+                    frame.render_widget(
+                        Block::default().style(app.app_theme.preview_bg_style()),
+                        bound_rect,
+                    );
+                }
+                // get actual rendered image size after Fit scaling
+                let rendered = proto.size_for(
+                    ratatui_image::Resize::Fit(None),
+                    ratatui::layout::Size::new(max_w, max_h),
+                );
+                // center the image within the available area
+                let offset_x = (max_w.saturating_sub(rendered.width)) / 2;
+                let offset_y = (max_h.saturating_sub(rendered.height)) / 2;
+                let img_rect = Rect::new(
+                    bound_rect.x + offset_x,
+                    bound_rect.y + offset_y,
+                    rendered.width.min(max_w),
+                    rendered.height.min(max_h),
+                );
+                if img_rect.width > 1 && img_rect.height > 1 {
+                    frame.render_stateful_widget(
+                        ratatui_image::StatefulImage::default()
+                            .resize(ratatui_image::Resize::Fit(None)),
+                        img_rect,
+                        proto,
+                    );
                 }
             }
         }

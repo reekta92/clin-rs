@@ -392,6 +392,8 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                     app.list.preview_content_offset_x = Some(app.list.preview_offset_x);
                     app.list.preview_content_offset_y = Some(app.list.preview_offset_y);
                 }
+                Some(crate::list_view::PreviewContent::Image(_)) => {}
+
                 None => {}
             },
             ListAction::PreviewPageDown => match &mut app.list.preview_content {
@@ -428,6 +430,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                     app.list.preview_content_offset_x = Some(app.list.preview_offset_x);
                     app.list.preview_content_offset_y = Some(app.list.preview_offset_y);
                 }
+                Some(crate::list_view::PreviewContent::Image(_)) => {}
                 None => {}
             },
             _ => {}
@@ -641,6 +644,8 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                     return;
                 }
             }
+            Some(crate::list_view::PreviewContent::Image(_)) => {}
+
             None => {}
         }
     }

@@ -117,6 +117,18 @@ pub fn draw_preview_pane(
                     );
                 frame.render_widget(snapshot, rect);
             }
+            Some(PreviewContent::Image(_)) => {
+                let loading = Paragraph::new("Image loading...")
+                    .style(Style::default().fg(theme.muted))
+                    .block(
+                        Block::default()
+                            .style(theme.preview_bg_style())
+                            .borders(Borders::NONE)
+                            .padding(Padding::new(2, 2, 1, 1)),
+                    );
+                frame.render_widget(loading, rect);
+            }
+
             None => {
                 let placeholder = Paragraph::new("Select a note to preview")
                     .style(theme.preview_bg_style())

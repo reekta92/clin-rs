@@ -75,6 +75,13 @@ pub fn extract_wikilinks(content: &str) -> Vec<String> {
     }
     links
 }
+pub fn is_image_ext(ext: &str) -> bool {
+    matches!(
+        ext,
+        "png" | "jpg" | "jpeg" | "gif" | "webp"
+    )
+}
+
 
 #[derive(Clone, Debug, zeroize::Zeroize, zeroize::ZeroizeOnDrop)]
 pub struct Storage {
@@ -291,6 +298,14 @@ impl Storage {
         if id.ends_with(".clin") {
             anyhow::bail!("Note is already encrypted");
         }
+        let ext = std::path::Path::new(id)
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("");
+        if crate::storage::is_image_ext(ext) {
+            anyhow::bail!("Cannot encrypt image files");
+        }
+
 
         self.ensure_key()?;
 
@@ -573,6 +588,7 @@ impl Storage {
                             .and_then(|e| e.to_str())
                             .is_some_and(|ext| {
                                 matches!(ext, "clin" | "md" | "txt" | "draw" | "canvas")
+                                    || crate::storage::is_image_ext(ext)
                             })
                     };
                     if accepted
@@ -674,6 +690,25 @@ impl Storage {
                 tags,
                 pinned,
                 links,
+                size_bytes: path.metadata().map(|m| m.len()).unwrap_or(0),
+            })
+        } else if crate::storage::is_image_ext(ext) {
+            let updated_at = fs::metadata(&path)
+                .and_then(|m| m.modified())
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map_or(0, |d| d.as_secs());
+            Ok(NoteSummary {
+                id: id.to_string(),
+                title: path.file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("Untitled note")
+                    .to_string(),
+                updated_at,
+                folder,
+                tags: Vec::new(),
+                pinned: false,
+                links: Vec::new(),
                 size_bytes: path.metadata().map(|m| m.len()).unwrap_or(0),
             })
         } else {
@@ -840,6 +875,23 @@ impl Storage {
     }
 
     pub fn rename_note(&self, id: &str, new_title: &str) -> Result<String> {
+        let old_ext = std::path::Path::new(id)
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("");
+
+        if crate::storage::is_image_ext(old_ext) {
+            let preferred_stem = self.note_file_stem_from_title(new_title);
+            let target_id = self.unique_note_id(&preferred_stem, old_ext, id);
+            let old_path = self.note_path(id);
+            let target_path = self.note_path(&target_id);
+            if let Some(parent) = target_path.parent() {
+                fs::create_dir_all(parent).context("failed to create note directory")?;
+            }
+            fs::rename(&old_path, &target_path).context("failed to rename image")?;
+            return Ok(target_id);
+        }
+
         let mut note = self.load_note(id)?;
         note.title = new_title.to_string();
         note.updated_at = crate::ui::now_unix_secs();
@@ -848,6 +900,27 @@ impl Storage {
     }
 
     pub fn duplicate_note(&self, id: &str, target_folder: &str) -> Result<String> {
+        let source_ext = Path::new(id)
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("md");
+
+        if crate::storage::is_image_ext(source_ext) {
+            let new_id = self.new_note_id();
+            let initial_id = if target_folder.is_empty() {
+                format!("{}.{}", new_id, source_ext)
+            } else {
+                format!("{}/{}.{}", target_folder, new_id, source_ext)
+            };
+            let source_path = self.note_path(id);
+            let target_path = self.note_path(&initial_id);
+            if let Some(parent) = target_path.parent() {
+                fs::create_dir_all(parent).context("failed to create note directory")?;
+            }
+            fs::copy(&source_path, &target_path).context("failed to copy image")?;
+            return Ok(initial_id);
+        }
+
         let note = self.load_note(id)?;
         let new_title = format!("{} (Copy)", note.title);
         let mut new_note = note;
@@ -855,10 +928,6 @@ impl Storage {
         new_note.updated_at = crate::ui::now_unix_secs();
 
         let new_id = self.new_note_id();
-        let source_ext = Path::new(id)
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("md");
 
         let initial_id = if target_folder.is_empty() {
             format!("{}.{}", new_id, source_ext)
@@ -968,6 +1037,10 @@ impl Storage {
     pub fn toggle_pin(&self, id: &str) -> Result<bool> {
         let path = self.note_path(id);
         let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        if crate::storage::is_image_ext(ext) {
+            anyhow::bail!("Cannot pin image files");
+        }
+
 
         if ext == "clin" {
             let file_content = fs::read(&path).context("failed to read note")?;

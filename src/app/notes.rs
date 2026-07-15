@@ -694,6 +694,22 @@ impl App {
             self.set_temporary_status_static("Cannot open encrypted notes. Decrypt first.");
             return;
         }
+        let ext = std::path::Path::new(note_id)
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("");
+        if ext != "md" && ext != "txt" {
+            let path = self.storage.note_path(note_id);
+            match crate::ui::open_with_default_application(&path) {
+                Ok(()) => {
+                    self.status =
+                        Cow::Owned(format!("Opened in default application: {}", path.display()))
+                }
+                Err(e) => self.set_temporary_status(&format!("Failed to open file: {e}")),
+            }
+            return;
+        }
+
         self.return_mode = Some(ViewMode::Graph);
         if self.editor.external_editor_enabled {
             self.open_note_in_external_editor(note_id, None);
