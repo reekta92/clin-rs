@@ -292,7 +292,8 @@ fn handle_mouse(
         }
         MouseEventKind::Up(MouseButton::Left) => {
             let mut changed = false;
-            if let Some(stroke) = app.current_stroke.take() {
+            if let Some(mut stroke) = app.current_stroke.take() {
+                stroke.points = crate::draw::render::smooth_points(&stroke.points);
                 app.data.elements.push(DrawElement::Stroke(stroke));
                 changed = true;
             }

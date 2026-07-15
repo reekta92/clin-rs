@@ -131,7 +131,7 @@ pub fn draw_canvas(
             }
 
             if let Some(stroke) = &app.current_stroke {
-                draw_stroke(ctx, stroke);
+                draw_smoothed_stroke(ctx, stroke);
             }
 
             if let Some(DrawElement::Shape(shape)) = &app.preview_element {
@@ -372,6 +372,48 @@ pub fn draw_canvas(
 fn draw_stroke(ctx: &mut Context, stroke: &Stroke) {
     let color = Color::Rgb(stroke.color.0, stroke.color.1, stroke.color.2);
     for window in stroke.points.windows(2) {
+        if let [p1, p2] = window {
+            ctx.draw(&Line {
+                x1: p1.0,
+                y1: p1.1,
+                x2: p2.0,
+                y2: p2.1,
+                color,
+            });
+        }
+    }
+}
+/// Binomial filter smoothing (discrete Gaussian blur).
+/// Applies a 3-point moving average with weights [0.25, 0.5, 0.25]
+/// for 10 iterations. Acts as a powerful low-pass filter that
+/// eliminates stair-step quantization noise.
+pub fn smooth_points(points: &[(f64, f64)]) -> Vec<(f64, f64)> {
+    if points.len() <= 2 {
+        return points.to_vec();
+    }
+    let n = points.len();
+    let mut xs: Vec<f64> = points.iter().map(|p| p.0).collect();
+    let mut ys: Vec<f64> = points.iter().map(|p| p.1).collect();
+    for _ in 0..10 {
+        let prev_xs = xs.clone();
+        let prev_ys = ys.clone();
+        xs[0] = prev_xs[0];
+        ys[0] = prev_ys[0];
+        for i in 1..n - 1 {
+            xs[i] = 0.25 * prev_xs[i - 1] + 0.5 * prev_xs[i] + 0.25 * prev_xs[i + 1];
+            ys[i] = 0.25 * prev_ys[i - 1] + 0.5 * prev_ys[i] + 0.25 * prev_ys[i + 1];
+        }
+        xs[n - 1] = prev_xs[n - 1];
+        ys[n - 1] = prev_ys[n - 1];
+    }
+    xs.into_iter().zip(ys).collect()
+}
+
+/// Draw a stroke after applying binomial smoothing.
+fn draw_smoothed_stroke(ctx: &mut Context, stroke: &Stroke) {
+    let smoothed = smooth_points(&stroke.points);
+    let color = Color::Rgb(stroke.color.0, stroke.color.1, stroke.color.2);
+    for window in smoothed.windows(2) {
         if let [p1, p2] = window {
             ctx.draw(&Line {
                 x1: p1.0,
