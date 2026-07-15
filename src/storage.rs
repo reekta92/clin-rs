@@ -76,12 +76,8 @@ pub fn extract_wikilinks(content: &str) -> Vec<String> {
     links
 }
 pub fn is_image_ext(ext: &str) -> bool {
-    matches!(
-        ext,
-        "png" | "jpg" | "jpeg" | "gif" | "webp"
-    )
+    matches!(ext, "png" | "jpg" | "jpeg" | "gif" | "webp")
 }
-
 
 #[derive(Clone, Debug, zeroize::Zeroize, zeroize::ZeroizeOnDrop)]
 pub struct Storage {
@@ -305,7 +301,6 @@ impl Storage {
         if crate::storage::is_image_ext(ext) {
             anyhow::bail!("Cannot encrypt image files");
         }
-
 
         self.ensure_key()?;
 
@@ -700,7 +695,8 @@ impl Storage {
                 .map_or(0, |d| d.as_secs());
             Ok(NoteSummary {
                 id: id.to_string(),
-                title: path.file_stem()
+                title: path
+                    .file_stem()
                     .and_then(|s| s.to_str())
                     .unwrap_or("Untitled note")
                     .to_string(),
@@ -1040,7 +1036,6 @@ impl Storage {
         if crate::storage::is_image_ext(ext) {
             anyhow::bail!("Cannot pin image files");
         }
-
 
         if ext == "clin" {
             let file_content = fs::read(&path).context("failed to read note")?;

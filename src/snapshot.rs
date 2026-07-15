@@ -66,10 +66,16 @@ pub fn render_canvas_snapshot(
                 let ay = fy + fh / 2.0;
                 let bx = tx + tw / 2.0;
                 let by = ty + th / 2.0;
-                let sfx = ((ax - center_x) * zoom) + (area.x as f64 + area.width as f64 / 2.0) + offset_x;
-                let sfy = ((ay - center_y) * zoom) + (area.y as f64 + area.height as f64 / 2.0) + offset_y;
-                let stx = ((bx - center_x) * zoom) + (area.x as f64 + area.width as f64 / 2.0) + offset_x;
-                let sty = ((by - center_y) * zoom) + (area.y as f64 + area.height as f64 / 2.0) + offset_y;
+                let sfx =
+                    ((ax - center_x) * zoom) + (area.x as f64 + area.width as f64 / 2.0) + offset_x;
+                let sfy = ((ay - center_y) * zoom)
+                    + (area.y as f64 + area.height as f64 / 2.0)
+                    + offset_y;
+                let stx =
+                    ((bx - center_x) * zoom) + (area.x as f64 + area.width as f64 / 2.0) + offset_x;
+                let sty = ((by - center_y) * zoom)
+                    + (area.y as f64 + area.height as f64 / 2.0)
+                    + offset_y;
                 draw_braille_line(buf, sfx, sfy, stx, sty, theme.muted);
             }
         }
@@ -77,8 +83,10 @@ pub fn render_canvas_snapshot(
         for node in &data.nodes {
             let (nx, ny) = node.pos();
             let (nw, nh) = node.size();
-            let sx = ((nx - center_x) * zoom) + (area.x as f64 + area.width as f64 / 2.0) + offset_x;
-            let sy = ((ny - center_y) * zoom) + (area.y as f64 + area.height as f64 / 2.0) + offset_y;
+            let sx =
+                ((nx - center_x) * zoom) + (area.x as f64 + area.width as f64 / 2.0) + offset_x;
+            let sy =
+                ((ny - center_y) * zoom) + (area.y as f64 + area.height as f64 / 2.0) + offset_y;
             let sw = (nw * zoom).max(4.0);
             let sh = (nh * zoom).max(2.0);
 
@@ -127,7 +135,10 @@ pub fn render_canvas_snapshot(
             let max_text_len = (node_rect.width.saturating_sub(2) as usize)
                 * (node_rect.height.saturating_sub(2) as usize);
             let display_text = if inner_text.chars().count() > max_text_len && max_text_len > 10 {
-                let mut s: String = inner_text.chars().take(max_text_len.saturating_sub(1)).collect();
+                let mut s: String = inner_text
+                    .chars()
+                    .take(max_text_len.saturating_sub(1))
+                    .collect();
                 s.push('…');
                 s
             } else {
@@ -141,11 +152,17 @@ pub fn render_canvas_snapshot(
                     .borders(Borders::ALL)
                     .border_style(Style::default().fg(node_color))
                     .title(title)
-                    .style(Style::default().bg(node_color).fg(theme.bg.unwrap_or(Color::Reset)));
+                    .style(
+                        Style::default()
+                            .bg(node_color)
+                            .fg(theme.bg.unwrap_or(Color::Reset)),
+                    );
 
-                let icon_line = Line::from(
-                    Span::styled(icon, Style::default().fg(theme.bg.unwrap_or(Color::Reset)))
-                ).alignment(Alignment::Center);
+                let icon_line = Line::from(Span::styled(
+                    icon,
+                    Style::default().fg(theme.bg.unwrap_or(Color::Reset)),
+                ))
+                .alignment(Alignment::Center);
 
                 let content_height = node_rect.height.saturating_sub(2);
                 let empty_count = content_height / 2;
@@ -180,8 +197,21 @@ pub fn render_canvas_snapshot(
     extract_grid(terminal, width, height)
 }
 
-pub fn render_draw_snapshot(data: &DrawData, theme: &AppThemeColors, icon_mode: crate::config::IconMode) -> Vec<Vec<(char, Style)>> {
-    render_draw_snapshot_with_size(data, theme, icon_mode, PREVIEW_COLS, PREVIEW_ROWS, 1.0, 0.0, 0.0)
+pub fn render_draw_snapshot(
+    data: &DrawData,
+    theme: &AppThemeColors,
+    icon_mode: crate::config::IconMode,
+) -> Vec<Vec<(char, Style)>> {
+    render_draw_snapshot_with_size(
+        data,
+        theme,
+        icon_mode,
+        PREVIEW_COLS,
+        PREVIEW_ROWS,
+        1.0,
+        0.0,
+        0.0,
+    )
 }
 
 pub fn render_draw_snapshot_with_size(
@@ -478,7 +508,10 @@ fn canvas_color_to_style(color: Option<&str>, theme: &AppThemeColors) -> Color {
 
 /// Check if a file path has a common image extension.
 fn is_image_ext(file: &str) -> bool {
-    let ext = match std::path::Path::new(file).extension().and_then(|e| e.to_str()) {
+    let ext = match std::path::Path::new(file)
+        .extension()
+        .and_then(|e| e.to_str())
+    {
         Some(e) => e.to_ascii_lowercase(),
         None => return false,
     };
@@ -687,5 +720,4 @@ mod tests {
         let cell = buffer.cell((0, 0)).unwrap();
         assert_eq!(cell.symbol(), " ", "control char replaced by space");
     }
-
 }

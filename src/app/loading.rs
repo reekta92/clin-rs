@@ -832,7 +832,8 @@ impl App {
                 if is_draw {
                     // Reuse cached DrawData for in-memory re-render (avoids disk I/O)
                     if self.list.preview_content_index == Some(self.list.visual_index)
-                        && let Some(PreviewContent::DrawGrid { data, .. }) = self.list.preview_content.take()
+                        && let Some(PreviewContent::DrawGrid { data, .. }) =
+                            self.list.preview_content.take()
                     {
                         let width = self.desired_list_preview_width();
                         let height = self.desired_list_preview_height();
@@ -849,8 +850,7 @@ impl App {
                             offset_x,
                             offset_y,
                         );
-                        self.list.preview_content =
-                            Some(PreviewContent::DrawGrid { data, grid });
+                        self.list.preview_content = Some(PreviewContent::DrawGrid { data, grid });
                         self.list.preview_content_width = Some(width);
                         self.list.preview_content_height = Some(height);
                         self.list.preview_content_scale = Some(scale);
@@ -879,8 +879,10 @@ impl App {
                                         offset_x,
                                         offset_y,
                                     );
-                                    self.list.preview_content =
-                                        Some(PreviewContent::DrawGrid { data: Box::new(data), grid });
+                                    self.list.preview_content = Some(PreviewContent::DrawGrid {
+                                        data: Box::new(data),
+                                        grid,
+                                    });
                                     self.list.preview_content_width = Some(width);
                                     self.list.preview_content_height = Some(height);
                                     self.list.preview_content_scale = Some(scale);
@@ -903,7 +905,8 @@ impl App {
                 if is_canvas {
                     // Reuse cached CanvasData for in-memory re-render (avoids disk I/O)
                     if self.list.preview_content_index == Some(self.list.visual_index)
-                        && let Some(PreviewContent::CanvasGrid { data, .. }) = self.list.preview_content.take()
+                        && let Some(PreviewContent::CanvasGrid { data, .. }) =
+                            self.list.preview_content.take()
                     {
                         let width = self.desired_list_preview_width();
                         let height = self.desired_list_preview_height();
@@ -920,8 +923,7 @@ impl App {
                             offset_x,
                             offset_y,
                         );
-                        self.list.preview_content =
-                            Some(PreviewContent::CanvasGrid { data, grid });
+                        self.list.preview_content = Some(PreviewContent::CanvasGrid { data, grid });
                         self.list.preview_content_width = Some(width);
                         self.list.preview_content_height = Some(height);
                         self.list.preview_content_scale = Some(scale);
@@ -951,8 +953,10 @@ impl App {
                                         offset_x,
                                         offset_y,
                                     );
-                                    self.list.preview_content =
-                                        Some(PreviewContent::CanvasGrid { data: Box::new(data), grid });
+                                    self.list.preview_content = Some(PreviewContent::CanvasGrid {
+                                        data: Box::new(data),
+                                        grid,
+                                    });
                                     self.list.preview_content_width = Some(width);
                                     self.list.preview_content_height = Some(height);
                                     self.list.preview_content_scale = Some(scale);

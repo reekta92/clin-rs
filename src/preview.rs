@@ -106,7 +106,9 @@ pub fn draw_preview_pane(
                     );
                 frame.render_widget(loading, rect);
             }
-            Some(PreviewContent::CanvasGrid { grid, .. } | PreviewContent::DrawGrid { grid, .. }) => {
+            Some(
+                PreviewContent::CanvasGrid { grid, .. } | PreviewContent::DrawGrid { grid, .. },
+            ) => {
                 let snapshot = crate::snapshot::RenderedSnapshot::new(grid)
                     .scroll_offset(scroll_offset)
                     .block(

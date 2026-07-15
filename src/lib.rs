@@ -1263,7 +1263,8 @@ fn run_app(
                                         while event::poll(Duration::ZERO)? {
                                             match event::read()? {
                                                 Event::Mouse(next_mouse) => {
-                                                    app.mouse_pos = Some((next_mouse.column, next_mouse.row));
+                                                    app.mouse_pos =
+                                                        Some((next_mouse.column, next_mouse.row));
                                                     handle_list_mouse(app, next_mouse, area);
                                                 }
                                                 _ => break,

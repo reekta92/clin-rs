@@ -810,7 +810,6 @@ pub fn draw_pinstar_view(
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -824,6 +823,7 @@ mod tests {
 
     #[test]
     fn test_draw_pinstar_view_with_editor() {
+        let _lock = crate::config::ConfigTestGuard::lock();
         let dir = tempdir().unwrap();
         let path = dir.path().join("test.canvas");
         {

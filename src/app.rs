@@ -402,7 +402,6 @@ impl App {
         self.editor.last_preview_pane_height
     }
 
-
     pub fn new(storage: Storage) -> Result<Self> {
         let bootstrap_config = crate::config::ClinConfig::load().unwrap_or_default();
         let config_errors = bootstrap_config.validate();
@@ -1371,6 +1370,7 @@ mod tests {
     }
     #[test]
     fn test_refresh_visual_list_requests_preview_update() {
+        let _lock = crate::config::ConfigTestGuard::lock();
         let temp_dir = tempdir().expect("value is present");
         let data_dir = temp_dir.path().join("data");
         let config_dir = temp_dir.path().join("config");
@@ -1408,6 +1408,7 @@ mod tests {
 
     #[test]
     fn test_y_inserts_in_create_note_popup() {
+        let _lock = crate::config::ConfigTestGuard::lock();
         let temp_dir = tempdir().expect("value is present");
         let data_dir = temp_dir.path().join("data");
         let config_dir = temp_dir.path().join("config");
@@ -1466,6 +1467,7 @@ mod tests {
 
     #[test]
     fn test_external_editor_uses_saved_id() {
+        let _lock = crate::config::ConfigTestGuard::lock();
         let temp_dir = tempdir().expect("value is present");
         let data_dir = temp_dir.path().join("data");
         let config_dir = temp_dir.path().join("config");
@@ -1500,6 +1502,7 @@ mod tests {
 
     #[test]
     fn test_goals_progress_tracking_autosave() {
+        let _lock = crate::config::ConfigTestGuard::lock();
         let temp_dir = tempdir().expect("value is present");
         let data_dir = temp_dir.path().join("data");
         let config_dir = temp_dir.path().join("config");
@@ -1570,6 +1573,7 @@ mod tests {
 
     #[test]
     fn test_incremental_refresh_on_back_to_list() {
+        let _lock = crate::config::ConfigTestGuard::lock();
         let temp_dir = tempdir().expect("value is present");
         let data_dir = temp_dir.path().join("data");
         let config_dir = temp_dir.path().join("config");
@@ -1664,7 +1668,7 @@ mod tests {
 
     #[test]
     fn test_theme_reload_updates_cached_display_items() {
-        let _lock = crate::config::CONFIG_TEST_MUTEX.lock();
+        let _lock = crate::config::ConfigTestGuard::lock();
         let config_path = crate::config::ClinConfig::config_path().expect("value is present");
         if let Some(parent) = config_path.parent() {
             let _ = std::fs::create_dir_all(parent);
@@ -1701,7 +1705,7 @@ mod tests {
 
     #[test]
     fn test_set_goals_actions() {
-        let _lock = crate::config::CONFIG_TEST_MUTEX.lock();
+        let _lock = crate::config::ConfigTestGuard::lock();
         let config_path = crate::config::ClinConfig::config_path().expect("value is present");
         if let Some(parent) = config_path.parent() {
             let _ = std::fs::create_dir_all(parent);
@@ -1786,7 +1790,7 @@ mod tests {
 
     #[test]
     fn test_auto_reload_config_on_disk_change() {
-        let _lock = crate::config::CONFIG_TEST_MUTEX.lock();
+        let _lock = crate::config::ConfigTestGuard::lock();
         let config_path = crate::config::ClinConfig::config_path().expect("value is present");
         if let Some(parent) = config_path.parent() {
             let _ = std::fs::create_dir_all(parent);
@@ -1832,6 +1836,7 @@ word_goal = 1200
 
     #[test]
     fn adjust_preview_width_to_clamps_to_max() {
+        let _lock = crate::config::ConfigTestGuard::lock();
         let temp_dir = tempfile::tempdir().expect("value is present");
         let data_dir = temp_dir.path().join("data");
         let config_dir = temp_dir.path().join("config");
@@ -1868,6 +1873,7 @@ word_goal = 1200
 
     #[test]
     fn adjust_calendar_height_clamps() {
+        let _lock = crate::config::ConfigTestGuard::lock();
         let temp_dir = tempfile::tempdir().expect("value is present");
         let data_dir = temp_dir.path().join("data");
         let config_dir = temp_dir.path().join("config");
@@ -1896,6 +1902,7 @@ word_goal = 1200
 
     #[test]
     fn test_view_mode_transitions_prevent_zombie_state() {
+        let _lock = crate::config::ConfigTestGuard::lock();
         let temp_dir = tempdir().expect("value is present");
         let data_dir = temp_dir.path().join("data");
         let config_dir = temp_dir.path().join("config");
@@ -1937,6 +1944,7 @@ word_goal = 1200
 
     #[test]
     fn test_folder_expand_and_collapse_operations() {
+        let _lock = crate::config::ConfigTestGuard::lock();
         let temp_dir = tempdir().expect("value is present");
         let data_dir = temp_dir.path().join("data");
         let config_dir = temp_dir.path().join("config");
@@ -1996,7 +2004,7 @@ word_goal = 1200
 
     #[test]
     fn test_startup_folder_expansion_config_and_default_depth() {
-        let _lock = crate::config::CONFIG_TEST_MUTEX.lock();
+        let _lock = crate::config::ConfigTestGuard::lock();
         let config_path = crate::config::ClinConfig::config_path().expect("value is present");
         if let Some(parent) = config_path.parent() {
             let _ = std::fs::create_dir_all(parent);

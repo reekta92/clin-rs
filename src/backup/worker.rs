@@ -296,7 +296,7 @@ mod tests {
 
     #[test]
     fn test_run_backup_corrupt_config() {
-        let _guard = crate::config::CONFIG_TEST_MUTEX.lock();
+        let _guard = crate::config::ConfigTestGuard::lock();
 
         let tmp = tempdir().expect("tempdir");
         let corrupt_config = tmp.path().join("config.toml");

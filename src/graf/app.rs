@@ -209,7 +209,10 @@ impl GrafAppState {
                                 offset_x,
                                 offset_y,
                             );
-                            self.preview_content = Some(PreviewContent::DrawGrid { data: Box::new(data), grid });
+                            self.preview_content = Some(PreviewContent::DrawGrid {
+                                data: Box::new(data),
+                                grid,
+                            });
                             self.preview_content_width = Some(width);
                             self.preview_content_height = Some(height);
                             self.preview_content_scale = Some(scale);
@@ -248,7 +251,10 @@ impl GrafAppState {
                                 offset_x,
                                 offset_y,
                             );
-                            self.preview_content = Some(PreviewContent::CanvasGrid { data: Box::new(data), grid });
+                            self.preview_content = Some(PreviewContent::CanvasGrid {
+                                data: Box::new(data),
+                                grid,
+                            });
                             self.preview_content_width = Some(width);
                             self.preview_content_height = Some(height);
                             self.preview_content_scale = Some(scale);

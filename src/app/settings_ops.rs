@@ -667,6 +667,7 @@ mod tests {
 
     #[test]
     fn test_swap_section_order_reverses() {
+        let _lock = crate::config::ConfigTestGuard::lock();
         let mut app = make_app();
         app.list.sections = vec![
             crate::config::NotesSection::Calendar,
@@ -679,6 +680,7 @@ mod tests {
 
     #[test]
     fn test_swap_section_order_noop_on_single() {
+        let _lock = crate::config::ConfigTestGuard::lock();
         let mut app = make_app();
         app.list.sections = vec![crate::config::NotesSection::Calendar];
         app.swap_section_order();
@@ -688,6 +690,7 @@ mod tests {
 
     #[test]
     fn test_cycle_section_calendar_to_goals() {
+        let _lock = crate::config::ConfigTestGuard::lock();
         let mut app = make_app();
         app.list.sections = vec![crate::config::NotesSection::Calendar];
         app.cycle_section(0);
@@ -696,6 +699,7 @@ mod tests {
 
     #[test]
     fn test_cycle_section_graf_wraps_to_calendar() {
+        let _lock = crate::config::ConfigTestGuard::lock();
         let mut app = make_app();
         app.list.sections = vec![crate::config::NotesSection::Graf];
         app.cycle_section(0);
@@ -704,6 +708,7 @@ mod tests {
 
     #[test]
     fn test_cycle_section_out_of_range_noop() {
+        let _lock = crate::config::ConfigTestGuard::lock();
         let mut app = make_app();
         app.list.sections = vec![crate::config::NotesSection::Calendar];
         app.cycle_section(5); // out of range
@@ -713,7 +718,7 @@ mod tests {
 
     #[test]
     fn apply_setup_live_writes_5_fields() {
-        let _lock = crate::config::CONFIG_TEST_MUTEX.lock();
+        let _lock = crate::config::ConfigTestGuard::lock();
         let mut app = make_app();
         let config_file_path = app.storage.config_dir.join("config.toml");
         crate::config::set_config_path_override(config_file_path);
@@ -748,7 +753,7 @@ mod tests {
 
     #[test]
     fn setup_cycle_live_applies_theme() {
-        let _lock = crate::config::CONFIG_TEST_MUTEX.lock();
+        let _lock = crate::config::ConfigTestGuard::lock();
         let mut app = make_app();
 
         app.setup_state = Some(crate::setup::SetupState {
@@ -777,7 +782,7 @@ mod tests {
     #[test]
     fn setup_esc_opens_confirm_then_y_finishes() {
         use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
-        let _lock = crate::config::CONFIG_TEST_MUTEX.lock();
+        let _lock = crate::config::ConfigTestGuard::lock();
         let mut app = make_app();
         let config_file_path = app.storage.config_dir.join("config.toml");
         crate::config::set_config_path_override(config_file_path);
@@ -827,7 +832,7 @@ mod tests {
 
     #[test]
     fn test_toggle_smart_folders() {
-        let _lock = crate::config::CONFIG_TEST_MUTEX.lock();
+        let _lock = crate::config::ConfigTestGuard::lock();
         let mut app = make_app();
         let config_file_path = app.storage.config_dir.join("config.toml");
         crate::config::set_config_path_override(config_file_path);

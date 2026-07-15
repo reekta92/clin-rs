@@ -208,7 +208,7 @@ pub fn resolve_theme(name: &str) -> ResolvedTheme {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::CONFIG_TEST_MUTEX;
+    use crate::config::ConfigTestGuard;
     use crate::config::set_config_path_override;
 
     /// Filesystem-dependent tests are combined in one function because
@@ -217,7 +217,7 @@ mod tests {
     /// same override temp directory.
     #[test]
     fn custom_theme_resolve_and_list() {
-        let _lock = CONFIG_TEST_MUTEX.lock();
+        let _lock = ConfigTestGuard::lock();
 
         let dir = tempfile::tempdir().expect("temp dir");
         let config_path = dir.path().join("config.toml");
@@ -289,7 +289,7 @@ background = "#000000"
     #[test]
     fn custom_theme_appearance_end_to_end() {
         // Full pipeline: custom theme file → AppThemeColors → ThemeColors
-        let _lock = CONFIG_TEST_MUTEX.lock();
+        let _lock = ConfigTestGuard::lock();
         let dir = tempfile::tempdir().expect("temp dir");
         let config_path = dir.path().join("config.toml");
         std::fs::write(&config_path, b"[ui]\ntheme = \"redtest\"\n").unwrap();

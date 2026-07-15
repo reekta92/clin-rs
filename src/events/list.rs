@@ -371,7 +371,14 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                     let width = app.list.preview_content_width.unwrap_or(40);
                     let height = app.list.preview_content_height.unwrap_or(40);
                     *grid = crate::snapshot::render_canvas_snapshot(
-                        data, &app.app_theme, app.config.ui.icon_mode, width, height, app.list.preview_scale, app.list.preview_offset_x, app.list.preview_offset_y
+                        data,
+                        &app.app_theme,
+                        app.config.ui.icon_mode,
+                        width,
+                        height,
+                        app.list.preview_scale,
+                        app.list.preview_offset_x,
+                        app.list.preview_offset_y,
                     );
                     app.list.preview_content_scale = Some(app.list.preview_scale);
                     app.list.preview_content_offset_x = Some(app.list.preview_offset_x);
@@ -386,7 +393,14 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                     let width = app.list.preview_content_width.unwrap_or(40);
                     let height = app.list.preview_content_height.unwrap_or(40);
                     *grid = crate::snapshot::render_draw_snapshot_with_size(
-                        data, &app.app_theme, app.config.ui.icon_mode, width, height, app.list.preview_scale, app.list.preview_offset_x, app.list.preview_offset_y
+                        data,
+                        &app.app_theme,
+                        app.config.ui.icon_mode,
+                        width,
+                        height,
+                        app.list.preview_scale,
+                        app.list.preview_offset_x,
+                        app.list.preview_offset_y,
                     );
                     app.list.preview_content_scale = Some(app.list.preview_scale);
                     app.list.preview_content_offset_x = Some(app.list.preview_offset_x);
@@ -409,7 +423,14 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                     let width = app.list.preview_content_width.unwrap_or(40);
                     let height = app.list.preview_content_height.unwrap_or(40);
                     *grid = crate::snapshot::render_canvas_snapshot(
-                        data, &app.app_theme, app.config.ui.icon_mode, width, height, app.list.preview_scale, app.list.preview_offset_x, app.list.preview_offset_y
+                        data,
+                        &app.app_theme,
+                        app.config.ui.icon_mode,
+                        width,
+                        height,
+                        app.list.preview_scale,
+                        app.list.preview_offset_x,
+                        app.list.preview_offset_y,
                     );
                     app.list.preview_content_scale = Some(app.list.preview_scale);
                     app.list.preview_content_offset_x = Some(app.list.preview_offset_x);
@@ -424,7 +445,14 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                     let width = app.list.preview_content_width.unwrap_or(40);
                     let height = app.list.preview_content_height.unwrap_or(40);
                     *grid = crate::snapshot::render_draw_snapshot_with_size(
-                        data, &app.app_theme, app.config.ui.icon_mode, width, height, app.list.preview_scale, app.list.preview_offset_x, app.list.preview_offset_y
+                        data,
+                        &app.app_theme,
+                        app.config.ui.icon_mode,
+                        width,
+                        height,
+                        app.list.preview_scale,
+                        app.list.preview_offset_x,
+                        app.list.preview_offset_y,
                     );
                     app.list.preview_content_scale = Some(app.list.preview_scale);
                     app.list.preview_content_offset_x = Some(app.list.preview_offset_x);
@@ -528,8 +556,10 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                 if mouse_event.kind == MouseEventKind::ScrollUp {
                     let old_scale = app.list.preview_scale;
                     let new_scale = (old_scale * 1.1).clamp(0.1, 10.0);
-                    let dx = mouse_event.column as f64 - (p_area.x as f64 + p_area.width as f64 / 2.0);
-                    let dy = mouse_event.row as f64 - (p_area.y as f64 + p_area.height as f64 / 2.0);
+                    let dx =
+                        mouse_event.column as f64 - (p_area.x as f64 + p_area.width as f64 / 2.0);
+                    let dy =
+                        mouse_event.row as f64 - (p_area.y as f64 + p_area.height as f64 / 2.0);
                     app.list.preview_offset_x = app.list.preview_offset_x * (new_scale / old_scale)
                         + dx * (1.0 - new_scale / old_scale);
                     app.list.preview_offset_y = app.list.preview_offset_y * (new_scale / old_scale)
@@ -538,7 +568,14 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                     let width = app.list.preview_content_width.unwrap_or(40);
                     let height = app.list.preview_content_height.unwrap_or(40);
                     *grid = crate::snapshot::render_canvas_snapshot(
-                        data, &app.app_theme, app.config.ui.icon_mode, width, height, app.list.preview_scale, app.list.preview_offset_x, app.list.preview_offset_y
+                        data,
+                        &app.app_theme,
+                        app.config.ui.icon_mode,
+                        width,
+                        height,
+                        app.list.preview_scale,
+                        app.list.preview_offset_x,
+                        app.list.preview_offset_y,
                     );
                     app.list.preview_content_scale = Some(app.list.preview_scale);
                     app.list.preview_content_offset_x = Some(app.list.preview_offset_x);
@@ -548,8 +585,10 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                 if mouse_event.kind == MouseEventKind::ScrollDown {
                     let old_scale = app.list.preview_scale;
                     let new_scale = (old_scale / 1.1).clamp(0.1, 10.0);
-                    let dx = mouse_event.column as f64 - (p_area.x as f64 + p_area.width as f64 / 2.0);
-                    let dy = mouse_event.row as f64 - (p_area.y as f64 + p_area.height as f64 / 2.0);
+                    let dx =
+                        mouse_event.column as f64 - (p_area.x as f64 + p_area.width as f64 / 2.0);
+                    let dy =
+                        mouse_event.row as f64 - (p_area.y as f64 + p_area.height as f64 / 2.0);
                     app.list.preview_offset_x = app.list.preview_offset_x * (new_scale / old_scale)
                         + dx * (1.0 - new_scale / old_scale);
                     app.list.preview_offset_y = app.list.preview_offset_y * (new_scale / old_scale)
@@ -558,7 +597,14 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                     let width = app.list.preview_content_width.unwrap_or(40);
                     let height = app.list.preview_content_height.unwrap_or(40);
                     *grid = crate::snapshot::render_canvas_snapshot(
-                        data, &app.app_theme, app.config.ui.icon_mode, width, height, app.list.preview_scale, app.list.preview_offset_x, app.list.preview_offset_y
+                        data,
+                        &app.app_theme,
+                        app.config.ui.icon_mode,
+                        width,
+                        height,
+                        app.list.preview_scale,
+                        app.list.preview_offset_x,
+                        app.list.preview_offset_y,
                     );
                     app.list.preview_content_scale = Some(app.list.preview_scale);
                     app.list.preview_content_offset_x = Some(app.list.preview_offset_x);
@@ -575,7 +621,8 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                         let dy = mouse_event.row as f64 - last_y as f64;
                         app.list.preview_offset_x += dx;
                         app.list.preview_offset_y += dy;
-                        app.list.preview_drag_last_pos = Some((mouse_event.column, mouse_event.row));
+                        app.list.preview_drag_last_pos =
+                            Some((mouse_event.column, mouse_event.row));
                     }
                     return;
                 }
@@ -588,8 +635,10 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                 if mouse_event.kind == MouseEventKind::ScrollUp {
                     let old_scale = app.list.preview_scale;
                     let new_scale = (old_scale * 1.1).clamp(0.1, 10.0);
-                    let dx = mouse_event.column as f64 - (p_area.x as f64 + p_area.width as f64 / 2.0);
-                    let dy = mouse_event.row as f64 - (p_area.y as f64 + p_area.height as f64 / 2.0);
+                    let dx =
+                        mouse_event.column as f64 - (p_area.x as f64 + p_area.width as f64 / 2.0);
+                    let dy =
+                        mouse_event.row as f64 - (p_area.y as f64 + p_area.height as f64 / 2.0);
                     app.list.preview_offset_x = app.list.preview_offset_x * (new_scale / old_scale)
                         + dx * (1.0 - new_scale / old_scale);
                     app.list.preview_offset_y = app.list.preview_offset_y * (new_scale / old_scale)
@@ -598,7 +647,14 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                     let width = app.list.preview_content_width.unwrap_or(40);
                     let height = app.list.preview_content_height.unwrap_or(40);
                     *grid = crate::snapshot::render_draw_snapshot_with_size(
-                        data, &app.app_theme, app.config.ui.icon_mode, width, height, app.list.preview_scale, app.list.preview_offset_x, app.list.preview_offset_y
+                        data,
+                        &app.app_theme,
+                        app.config.ui.icon_mode,
+                        width,
+                        height,
+                        app.list.preview_scale,
+                        app.list.preview_offset_x,
+                        app.list.preview_offset_y,
                     );
                     app.list.preview_content_scale = Some(app.list.preview_scale);
                     app.list.preview_content_offset_x = Some(app.list.preview_offset_x);
@@ -608,8 +664,10 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                 if mouse_event.kind == MouseEventKind::ScrollDown {
                     let old_scale = app.list.preview_scale;
                     let new_scale = (old_scale / 1.1).clamp(0.1, 10.0);
-                    let dx = mouse_event.column as f64 - (p_area.x as f64 + p_area.width as f64 / 2.0);
-                    let dy = mouse_event.row as f64 - (p_area.y as f64 + p_area.height as f64 / 2.0);
+                    let dx =
+                        mouse_event.column as f64 - (p_area.x as f64 + p_area.width as f64 / 2.0);
+                    let dy =
+                        mouse_event.row as f64 - (p_area.y as f64 + p_area.height as f64 / 2.0);
                     app.list.preview_offset_x = app.list.preview_offset_x * (new_scale / old_scale)
                         + dx * (1.0 - new_scale / old_scale);
                     app.list.preview_offset_y = app.list.preview_offset_y * (new_scale / old_scale)
@@ -618,7 +676,14 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                     let width = app.list.preview_content_width.unwrap_or(40);
                     let height = app.list.preview_content_height.unwrap_or(40);
                     *grid = crate::snapshot::render_draw_snapshot_with_size(
-                        data, &app.app_theme, app.config.ui.icon_mode, width, height, app.list.preview_scale, app.list.preview_offset_x, app.list.preview_offset_y
+                        data,
+                        &app.app_theme,
+                        app.config.ui.icon_mode,
+                        width,
+                        height,
+                        app.list.preview_scale,
+                        app.list.preview_offset_x,
+                        app.list.preview_offset_y,
                     );
                     app.list.preview_content_scale = Some(app.list.preview_scale);
                     app.list.preview_content_offset_x = Some(app.list.preview_offset_x);
@@ -635,7 +700,8 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                         let dy = mouse_event.row as f64 - last_y as f64;
                         app.list.preview_offset_x += dx;
                         app.list.preview_offset_y += dy;
-                        app.list.preview_drag_last_pos = Some((mouse_event.column, mouse_event.row));
+                        app.list.preview_drag_last_pos =
+                            Some((mouse_event.column, mouse_event.row));
                     }
                     return;
                 }

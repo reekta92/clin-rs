@@ -1014,7 +1014,10 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         {
             let inner_pad = 2_u16;
             let col_width = preview_rect.width.saturating_sub(2 * inner_pad);
-            let key = crate::image_render::ImageKey { path: path.clone(), mtime: 0 };
+            let key = crate::image_render::ImageKey {
+                path: path.clone(),
+                mtime: 0,
+            };
             if app.list.image_cache.get_proto(&key).is_none() {
                 app.list
                     .image_cache
@@ -1024,12 +1027,8 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 // available area (full preview minus padding) — the bounding box
                 let max_w = col_width.min(preview_rect.width.saturating_sub(2));
                 let max_h = preview_rect.height.saturating_sub(2);
-                let bound_rect = Rect::new(
-                    preview_rect.x + inner_pad,
-                    preview_rect.y + 1,
-                    max_w,
-                    max_h,
-                );
+                let bound_rect =
+                    Rect::new(preview_rect.x + inner_pad, preview_rect.y + 1, max_w, max_h);
                 // clear the full bounding box (removes any "Image loading..." text)
                 if bound_rect.width > 1 && bound_rect.height > 1 {
                     frame.render_widget(Clear, bound_rect);
@@ -2514,6 +2513,7 @@ mod tests {
 
     #[test]
     fn test_get_preview_info() {
+        let _lock = crate::config::ConfigTestGuard::lock();
         let temp_dir = tempfile::tempdir().unwrap();
         let data_dir = temp_dir.path().join("data");
         let config_dir = temp_dir.path().join("config");

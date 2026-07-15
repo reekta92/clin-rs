@@ -86,7 +86,6 @@ impl DrawAppState {
         }
         Ok(())
     }
-
 }
 
 impl crate::overlay::OverlayView for DrawAppState {

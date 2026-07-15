@@ -29,6 +29,25 @@ static CONFIG_PATH_OVERRIDE: RwLock<Option<PathBuf>> = RwLock::new(None);
 #[cfg(test)]
 pub(crate) static CONFIG_TEST_MUTEX: Mutex<()> = Mutex::new(());
 
+#[cfg(test)]
+pub struct ConfigTestGuard {
+    _lock: parking_lot::MutexGuard<'static, ()>,
+}
+
+#[cfg(test)]
+impl ConfigTestGuard {
+    pub fn lock() -> Self {
+        let lock = CONFIG_TEST_MUTEX.lock();
+        Self { _lock: lock }
+    }
+}
+
+#[cfg(test)]
+impl Drop for ConfigTestGuard {
+    fn drop(&mut self) {
+        *CONFIG_PATH_OVERRIDE.write() = None;
+    }
+}
 /// Set (or reset) the config path override. Normally called once at startup
 /// from the parsed `--config` value. Tests may call it multiple times under
 /// [`CONFIG_TEST_MUTEX`].
@@ -853,7 +872,7 @@ show_status_bar = false
 
     #[test]
     fn test_actual_save_preserves_comments() {
-        let _lock = CONFIG_TEST_MUTEX.lock();
+        let _lock = ConfigTestGuard::lock();
         let temp_dir = tempfile::tempdir().unwrap();
         let config_file_path = temp_dir.path().join("config.toml");
 
@@ -876,7 +895,7 @@ show_status_bar = false
 
     #[test]
     fn test_save_config_with_custom_smart_folders() {
-        let _lock = CONFIG_TEST_MUTEX.lock();
+        let _lock = ConfigTestGuard::lock();
         let temp_dir = tempfile::tempdir().unwrap();
         let config_file_path = temp_dir.path().join("config.toml");
 
@@ -923,7 +942,7 @@ show_status_bar = false
 
     #[test]
     fn test_empty_custom_smart_folders_not_written() {
-        let _lock = CONFIG_TEST_MUTEX.lock();
+        let _lock = ConfigTestGuard::lock();
         let temp_dir = tempfile::tempdir().unwrap();
         let config_file_path = temp_dir.path().join("config.toml");
 

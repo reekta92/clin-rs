@@ -135,7 +135,6 @@ pub fn draw_canvas(
 
     frame.render_widget(canvas, canvas_area);
 
-
     let status_area = Rect::new(
         area.x,
         area.y + area.height.saturating_sub(1),

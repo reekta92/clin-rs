@@ -1653,6 +1653,7 @@ mod tests {
 
     #[test]
     fn test_sidebar_double_click() {
+        let _lock = crate::config::ConfigTestGuard::lock();
         use crate::app::{App, EditFocus, EditSidebar};
         use crate::editor::LinkItem;
         use crate::storage::Storage;
@@ -1737,6 +1738,7 @@ mod tests {
 
     #[test]
     fn test_sidebar_double_click_outline() {
+        let _lock = crate::config::ConfigTestGuard::lock();
         use crate::app::{App, EditFocus, EditSidebar};
         use crate::content_tree::parse::TreeNode;
         use crate::storage::Storage;
@@ -1828,6 +1830,7 @@ mod tests {
     }
     #[test]
     fn test_right_click_selection_behavior() {
+        let _lock = crate::config::ConfigTestGuard::lock();
         use crate::app::{App, EditFocus};
         use crate::storage::Storage;
         use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};

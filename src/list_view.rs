@@ -216,7 +216,9 @@ impl std::fmt::Debug for PreviewContent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Markdown(_) => f.debug_tuple("Markdown").finish(),
-            Self::CanvasGrid { grid, .. } => f.debug_tuple("CanvasGrid").field(&grid.len()).finish(),
+            Self::CanvasGrid { grid, .. } => {
+                f.debug_tuple("CanvasGrid").field(&grid.len()).finish()
+            }
             Self::DrawGrid { grid, .. } => f.debug_tuple("DrawGrid").field(&grid.len()).finish(),
             Self::Image(_) => f.debug_tuple("Image").finish(),
         }
