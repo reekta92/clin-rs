@@ -2,16 +2,144 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.10.0-beta.3] - 2026-07-15
+
+### Added
+
+- Replace DP+Chaikin smoothing with binomial filter
+- Add image file support
+- Render image nodes with filled block and icon
+- Add mouse-drag panning and fix canvas text wrap
+- Zoom previews toward cursor, fix scroll direction
+- Scale snapshots to fill expanded pane
+- Add draggable scrollbars to all scrollable panes
+
+### CI
+
+- Dispatch release issue revert
+- Fix arm64 apt sources for release workflow
+- Forced ipv4 in dispatch release
+- Fixed format checks
+
+### Changed
+
+- Removed image support from the draw view
+- Refactored source editor pane to use the same code as the edit view
+
+### Documentation
+
+- Update README.md, ROADMAP.md and new config references
+
+### Fixed
+
+- Separate node display title from internal ID
+- Preserve pin status through encrypt/decrypt
+
+### Miscellaneous
+
+- Lock file regenerate
+- Check fix
+- Update readme about version bump
+- Bump version to 1.90
+- Cleanup project dir
+- Sort Cargo.lock alphabetically
+
+### Performance
+
+- Decouple preview drag state from rendering
+- Cache parsed data and re-render grids in-memory
+
+### Release
+
+- V0.10.0-beta.0
 ## [0.9.9] - 2026-07-14
+
+### Added
+
+- Redesigned title bar and merged it into the header bar
+- Add mouse support to quick search
+- Show recursive folder count in header bar
+- Add inline_info toggle for notes list metadata
+- Centralize popup mouse handling
+- Add hover highlight to canvas context menu
+- Add hover highlights to all interactive elements
+- Rename backlinks to links pane and show forward links
+- Add sidebars and wikilink previews
+- Add find popup, insert-date, soft-wrap toggle
+- Add images.enabled config option to disable pixel rendering
+- Add pixel image rendering across Canvas, Notes, Draw
+- Add ratatui-image rendering across canvas, draw, and notes views
+- Add preset-aware tip caveats and expand tip pools
+- Add popup accordion with n/N cycle in Notes info pane
+- Add popup descriptions to Notes info pane
+- Always render {hints} with powerline colors regardless of hint_bar_style
+- Restructure help view into 3-pane layout
+- Render live keybinds and styled markup in tips pane
+- Auto-generate entries from exhaustive action meta
+
+### CI
+
+- Fix remaining format warnings in events and keybinds
+- Fixed format warnings
+
+### Changed
+
+- Refactored edit view line highlight code
+- Deduplicate layout, add UX features, context menu
+- Remove dropdown border, add "Find:" label before input
+- Rename QuickPopup→QuickSearch, render in header bar
+- Apply fmt, canvas ocr image insertion, cleanup
+- Unify popup footer rendering through PopupHints enum
+- Unify UI helpers and improve safety
+- Remove Accent style, rename Powerline variants, fix tab highlight
+- Move page indicator to title bar via statusline
 
 ### Fixed
 
 - Wire libgit2 auth callbacks into push/pull
+- Fix selection styling and right-click jump
+- Fixed jittering when moving nodes
+- Merged inline_info with show_date_in_notes
+- Fixed mouse interaction with quick search
+- Resolve canvas overlap and template version
+- Show file detail header in tree layout too
+- Deduplicate tags on save
+- Append tag from all_tags without double commas
+- Add scroll/click/hover to trash, template, tags popups
+- Fixed mouse scrolling breaks mouse accuracy in list popups
+- Add scroll-offset to mouse row→index mapping in all list popups
+- Fix mouse click off-by-one, add scroll, fix double-click
+- Fix line numbers and mouse under soft-wrap
+- Fix list hovers and sidebar click offset
+- Account for scroll offset in command palette hover
+- Correct sidebar mouse click offset
+- Surface config validation errors in graph view overlay
+- Use heading color for selection highlight row bg
+- Fill full row width with selection highlight
+- Add search glyph, improve readability on accent bg
+- Use accent color for dropdown background, fix no-match fg
+- Fill dropdown background with theme bg_style
+- Clear header text before drawing search overlay
+- Add preview-bg fill under small images
+- 3 preview/canvas bugs — bg fill, pan drain, image indicator
+- Render images in list view preview pane
+- Include [image] section in shipped default config template
+- Clear is_dragging_resize_handle on drop and resize-exit
+- Clear resize state on Left Up so image renders after resize
+- Wire image fields, fix file picker, add canvas image node
 - Add universal q/Esc back/quit intercepts, override-proof
+- Coalesce queued drag events; fix instant-apply popup cycle
+- Hint bar preview dispatches on hint_bar_style
+- Popup footers ignore hint_bar_style setting
+- Split detail into powerline cells; fix right-side junction bg
 
 ### Miscellaneous
 
 - Add support section to the readme
+
+### Performance
+
+- Render lightweight dot markers during pan/zoom transforms
 
 ### Release
 
