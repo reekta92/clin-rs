@@ -277,50 +277,26 @@ jobs:
   # ────────────────────────────────────────────
   linux-aarch64:
     needs: prepare
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-22.04-arm
     steps:
       - uses: actions/checkout@v7
         with:
           ref: "v${{ needs.prepare.outputs.new_version }}"
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-unknown-linux-gnu
       - uses: Swatinem/rust-cache@v2
-      - name: Install cross deps
-        run: |
-          sudo dpkg --add-architecture arm64
-          # Pin .list files to amd64 (skip lines that already have arch restriction)
-          sudo find /etc/apt/ -name '*.list' -exec sed -i '/^deb /{/\[arch=/!s/^deb /deb [arch=amd64] /}' {} +
-          # Pin .sources files to amd64 (skip if file already has Architectures: set)
-          sudo find /etc/apt/ -name '*.sources' -exec sh -c '
-            grep -q "^Architectures:" "$1" 2>/dev/null || \
-              sed -i "/^Types: deb/a Architectures: amd64" "$1"
-          ' _ {} \;
-          # Add arm64 repos from ports.ubuntu.com (official Ubuntu archive for non-x86 architectures)
-          printf '%s\n' \
-            "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy main restricted universe multiverse" \
-            "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-updates main restricted universe multiverse" \
-            "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-backports main restricted universe multiverse" \
-            "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-security main restricted universe multiverse" \
-            | sudo tee /etc/apt/sources.list.d/arm64.list > /dev/null
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu libssl-dev:arm64 pkg-config
-        env:
-          DEBIAN_FRONTEND: noninteractive
+      - name: Install build deps
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
       - name: Build
-        run: cargo build --release --locked --target aarch64-unknown-linux-gnu
-        env:
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
-          PKG_CONFIG_ALLOW_CROSS: 1
+        run: cargo build --release --locked
       - name: Verify binary architecture
         run: |
-          readelf -h target/aarch64-unknown-linux-gnu/release/clin | grep -q "AArch64" && \
+          readelf -h target/release/clin | grep -q "AArch64" && \
           echo "Binary is ARM64 (AArch64)" && \
-          file target/aarch64-unknown-linux-gnu/release/clin
+          file target/release/clin
       - name: Package
         run: |
           mkdir -p dist
-          cp target/aarch64-unknown-linux-gnu/release/clin .
+          cp target/release/clin .
           tar -cJf "dist/clin-rs-aarch64-unknown-linux-gnu.tar.xz" clin LICENSE README.md
           tar -czf "dist/clin-rs-aarch64-unknown-linux-gnu.tar.gz" clin LICENSE README.md
       - name: Upload
@@ -328,7 +304,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: "v${{ needs.prepare.outputs.new_version }}"
         run: gh release upload "$TAG" dist/* --clobber
-  # 5. Build Windows x86_64 binary
   # 6. Build Windows x86_64 binary
   windows-x86_64:
     needs: prepare
@@ -357,7 +332,6 @@ jobs:
         shell: bash
         run: gh release upload "$TAG" dist/* --clobber
 
-  # 6. Build macOS ARM (Apple Silicon) binary
   # 7. Build macOS ARM (Apple Silicon) binary
   macos-arm:
     needs: prepare
@@ -391,7 +365,6 @@ jobs:
           TAG: "v${{ needs.prepare.outputs.new_version }}"
         run: gh release upload "$TAG" dist/* --clobber
 
-  # 7. Build .deb and .rpm
   # 8. Build .deb and .rpm
   linux-packages:
     needs: prepare
@@ -428,58 +401,34 @@ jobs:
   # ────────────────────────────────────────────
   linux-packages-aarch64:
     needs: prepare
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-22.04-arm
     steps:
       - uses: actions/checkout@v7
         with:
           ref: "v${{ needs.prepare.outputs.new_version }}"
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-unknown-linux-gnu
       - uses: Swatinem/rust-cache@v2
-      - name: Install cross deps
-        run: |
-          sudo dpkg --add-architecture arm64
-          # Pin .list files to amd64 (skip lines that already have arch restriction)
-          sudo find /etc/apt/ -name '*.list' -exec sed -i '/^deb /{/\[arch=/!s/^deb /deb [arch=amd64] /}' {} +
-          # Pin .sources files to amd64 (skip if file already has Architectures: set)
-          sudo find /etc/apt/ -name '*.sources' -exec sh -c '
-            grep -q "^Architectures:" "$1" 2>/dev/null || \
-              sed -i "/^Types: deb/a Architectures: amd64" "$1"
-          ' _ {} \;
-          # Add arm64 repos from ports.ubuntu.com (official Ubuntu archive for non-x86 architectures)
-          printf '%s\n' \
-            "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy main restricted universe multiverse" \
-            "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-updates main restricted universe multiverse" \
-            "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-backports main restricted universe multiverse" \
-            "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-security main restricted universe multiverse" \
-            | sudo tee /etc/apt/sources.list.d/arm64.list > /dev/null
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu libssl-dev:arm64 pkg-config
-        env:
-          DEBIAN_FRONTEND: noninteractive
+      - name: Install build deps
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
       - name: Build release binary
-        run: cargo build --release --locked --target aarch64-unknown-linux-gnu
-        env:
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
-          PKG_CONFIG_ALLOW_CROSS: 1
+        run: cargo build --release --locked
       - name: Build packages
         run: |
           cargo install cargo-deb cargo-generate-rpm --locked
           VERSION=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
           if [[ "$VERSION" == *"-"* ]]; then
             SAFE_VERSION=$(echo "$VERSION" | sed 's/-/~/g')
-            cargo deb --no-build --target aarch64-unknown-linux-gnu --deb-version "$SAFE_VERSION"
-            cargo generate-rpm --target aarch64-unknown-linux-gnu --set-metadata "version = '$SAFE_VERSION'"
+            cargo deb --no-build --deb-version "$SAFE_VERSION"
+            cargo generate-rpm --set-metadata "version = '$SAFE_VERSION'"
           else
-            cargo deb --no-build --target aarch64-unknown-linux-gnu
-            cargo generate-rpm --target aarch64-unknown-linux-gnu
+            cargo deb --no-build
+            cargo generate-rpm
           fi
       - name: Upload
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: "v${{ needs.prepare.outputs.new_version }}"
-        run: gh release upload "$TAG" target/debian/*.deb target/aarch64-unknown-linux-gnu/generate-rpm/*.rpm --clobber
+        run: gh release upload "$TAG" target/debian/*.deb target/generate-rpm/*.rpm --clobber
 
   # ────────────────────────────────────────────
   # 10. Build AppImage
