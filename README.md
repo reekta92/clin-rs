@@ -26,7 +26,7 @@
 ## About
 `clin` is a free, open-source terminal note manager inspired by Obsidian. It packs Obsidian's core features — markdown editing and rendering, `.canvas` files, and a force-directed graph view — into a roughly 2-5 MB Rust binary with minimal resource use, while keeping the UI approachable.
 
-Drop an existing Obsidian vault into `clin` and it works out of the box. Image rendering, databases, and Obsidian plugins are not supported.
+Drop an existing Obsidian vault into `clin` and it works out of the box. Native image rendering, databases, and Obsidian plugins are not supported (though image files are recognized and rendered as placeholder blocks/icons).
 
 ## Screenshots21
 test ui::list_view::tests::test_get_preview_info ... ok
@@ -89,19 +89,20 @@ Error: Process completed with exit code 101.
 
 ## Highlights
 
-- **Notes view** — folder tree, tags, markdown preview pane (built-in renderer), search, filter, sort, pin, multi-select, trash management, file management (copy, paste, delete, rename, move), customizable bottom strip with activity heatmap, goals, and widget previews.
-- **Editor view** — built-in text editor with mouse support, line numbers, undo/redo, and **external editor** integration (VISUAL/EDITOR env or config). Markdown preview pane alongside editor.
+- **Notes view** — folder tree with recursive folder counts in the header, tags, markdown preview pane (built-in renderer), search, filter, sort, pin, multi-select, `inline_info` toggle to control metadata rendering, trash management, file management (copy, paste, delete, rename, move), customizable bottom strip with activity heatmap, goals, and widget previews.
+- **Editor view** — built-in text editor with mouse support, line numbers, undo/redo, editor context menu, global hover highlights, and **external editor** integration (VISUAL/EDITOR env or config). Markdown preview pane alongside editor.
 - **Graph view** — fully integrated force-directed graph visualization of your note corpus. Edges from `[[wikilinks]]`. Physics simulation, minimap, legend, search, configurable colors and layout. See [GRAPH_VIEW.md](docs/GRAPH_VIEW.md).
-- **Canvas view** — Obsidian-compatible `.canvas` file format. Place text/file/link/group nodes on an infinite 2D canvas, connect them with edges. Right-click context menu, drag, resize, zoom. See [CANVAS.md](docs/CANVAS.md).
-- **Draw view** — freehand drawing canvas with shapes (rect, ellipse, diamond, line, arrow), text, and eraser tool. `.draw` file format. See [DRAW.md](docs/DRAW.md).
+- **Canvas view** — Obsidian-compatible `.canvas` file format. Place text/file/link/group/image nodes on an infinite 2D canvas, connect them with edges. Right-click context menu, mouse-drag panning, zoom-to-cursor, drag, resize, zoom. See [CANVAS.md](docs/CANVAS.md).
+- **Draw view** — freehand drawing canvas with shapes (rect, ellipse, diamond, line, arrow), text, draw smoothing (binomial filter), mouse-drag panning, zoom-to-cursor, and eraser tool. `.draw` file format. See [DRAW.md](docs/DRAW.md).
 - **Content tree view** — view to see the content of a `.md` file as a tree with headers being the parents and content being the children.
 - **Git backup** — backup system using `git` as backend, initialize a repository and backup your notes automatically.
 - **Command palette** (Ctrl+P) — extensible action system with encrypt/decrypt, theme switcher, OCR paste, canvas/draw creation, graph view. See [COMMAND_PALETTE.md](docs/COMMAND_PALETTE.md).
 - **Theme system** — 19 built-in themes (default, TokyoNight, CatppuccinMocha, OneDark, Gruvbox, Dracula, Nord, RosePine, Everforest, Kanagawa, Solarized, Catppuccin Frappé, Catppuccin Macchiato, Rose Pine Moon, Gruvbox Material, GitHub Dark, Ayu Mirage, Synthwave '84, Material), transparent/solid backgrounds, per-color overrides. See [THEME_SYSTEM.md](docs/THEME_SYSTEM.md).
 - **Custom themes** — drop-in TOML themes in `~/.config/clin/themes/`, no recompile needed. See [THEME_SYSTEM.md](docs/THEME_SYSTEM.md).
+- **Status line customization** — fully configurable status headers and footers per view layout via the `[statusline]` configuration section. See [CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md).
 
 - **Encryption** — on-demand ChaCha20-Poly1305 AEAD per-note encryption. `.clin` files with plaintext frontmatter for fast summary loading. See [ENCRYPTION.md](docs/ENCRYPTION.md).
-- **Obsidian .canvas import** — existing Obsidian canvas files are read and rendered, **except for images**.
+- **Obsidian .canvas import** — existing Obsidian canvas files are read and rendered, with image nodes supported as placeholder blocks.
 - **Templates** — TOML-based note templates with variable substitution (`{date}`, `{time}`, `{weekday}`, etc.). See [TEMPLATES.md](docs/TEMPLATES.md).
 - **Goals system** — daily word-count and note-count goals with in-app progress bars. Configurable via `[goals]` config section and command palette.
 - **Import & conversion** — import File/CSV/JSON/URL/Clipboard content as a new note or append to the current note. PDF, DOCX, HTML converted via external tools.

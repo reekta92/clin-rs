@@ -41,13 +41,18 @@
 - [X] **Sub-notes** — virtual encrypted notes attached to physical notes, with full management UI
 - [X] **Word frequency** — show most used words in note info popup
 - [X] **Word & character metrics** — writing statistics and goals
+- [X] **Draw smoothing** — drawing canvas stroke smoothing implemented via a binomial filter
+- [X] **Status line customization** — fully customizable headers and footers per view layout via `[statusline]`
+- [X] **Canvas navigation** — mouse-drag panning and zoom-to-cursor for canvas and draw previews
+- [X] **Global UI hover highlights** — mouse hover highlights for TUI panels and interactive lists
+- [X] **Editor enhancements** — right-click editor context menu and merged title bar
 
 ## Planned
 
 #### General
 - [ ] **Consistent UI/UX** — literally hardest part of making a TUI, the UI/UX must be consistent accross the app
 - [ ] **More filtypes** — more text filetypes(`org-mode`, `.gv`, `.puml`, `.md` mermaid, `.dot`) support to edit/view
-- [ ] **Image rendering** — image rendering logic throught the app using `sixel` or `kitty image protocol`
+- [ ] **Image rendering** — native image rendering logic throughout the app using `sixel` or `kitty image protocol` (placeholder rendering is implemented)
 
 #### Notes View
 
@@ -68,12 +73,11 @@
 - [ ] **Group titlebar** — add clickable titlebar for group nodes for easier navigation
 - [ ] **Connection properties** — more properties for connections between nodes; color, type, text etc.
 - [ ] **Node properties** — more properties for nodes like shapes(as tags), border type etc.
-- [ ] **New node types** — more node types like link nodes, image nodes etc.
+- [ ] **New node types** — more node types like link nodes, etc. (image nodes implemented as placeholders)
 
 #### Draw
 - [ ] **Text size** — changable text size
 - [ ] **UI indicators** — indicators like how big is the canvas, the scale etc.
-- [ ] **Draw smoothing** — experimental draw smoothing using a algorithm to redraw the last drawed section
 
 #### Command Palette
 - [ ] **Merge/split notes** — combine or divide notes
@@ -90,7 +94,6 @@
 - [ ] **Database view** — database feature similar to Obsidian's databases
 
 #### Configuration
-- [ ] **Status line customization** — `status_format = "{title} | {word_count} words"`
 - [ ] **Plugin support** — Lua scripting
 
 #### Other

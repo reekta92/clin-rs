@@ -38,6 +38,7 @@ Canvas files are JSON with a `.canvas` extension. Schema:
 | `file` | `FileNode` | References a note file by path; opens on activation |
 | `link` | `LinkNode` | URL link; opens on activation |
 | `group` | `GroupNode` | Container with label; visually groups child nodes |
+| `image` | `FileNode` | References an image file by path (rendered as a `file` type node in JSON); renders using terminal graphics (Sixel/Kitty) if supported, or as a filled block/icon placeholder |
 
 All nodes share fields: `id` (UUID), `x`, `y`, `width`, `height`, `color` (optional hex/rgb/named).
 
@@ -90,8 +91,8 @@ The `.canvas` format matches Obsidian's canvas JSON spec exactly. Files created 
 | Select node | Left-click on node |
 | Select group | Left-click on empty area, drag rectangle |
 | Move node | Left-click-drag on node body |
-| Pan canvas | Middle-click-drag (or Ctrl+left-drag) |
-| Zoom | Scroll wheel |
+| Pan canvas | Left-click-drag on empty space (or Middle-click-drag, or Ctrl+left-drag) |
+| Zoom | Scroll wheel (zooms to cursor) |
 | Resize node | Drag bottom-right corner handle |
 | Context menu | Right-click on node or empty space |
 | Edit text | Double-click text node |

@@ -41,6 +41,7 @@ Full reference of all configuration options for clin-rs.
 | `default_view` | `enum` | `"grid"` | Default view mode for the notes list: `"grid"` or `"tree"` |
 | `default_sort_field` | `enum` | `"title"` | Default sort field: `"title"` or `"modified"` |
 | `default_sort_order` | `enum` | `"ascending"` | Default sort order: `"ascending"` or `"descending"` |
+| `inline_info` | `bool` | `true` | Show inline metadata info (modification date, tags) in the notes list |
 | `pinned_on_top` | `bool` | `true` | Keep pinned notes at the top of the list |
 | `calendar_enabled` | `bool` | `true` | Show a month calendar with note activity at the bottom of the notes list |
 | `show_hidden_files` | `bool` | `false` | Show hidden files and folders (starting with ".") in the notes list |
