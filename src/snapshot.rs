@@ -16,10 +16,9 @@ const PREVIEW_ROWS: u16 = 38;
 pub fn render_canvas_snapshot(
     data: &CanvasData,
     theme: &AppThemeColors,
+    width: u16,
+    height: u16,
 ) -> Vec<Vec<(char, Style)>> {
-    let width = PREVIEW_COLS;
-    let height = PREVIEW_ROWS;
-
     if data.nodes.is_empty() || width == 0 || height == 0 {
         return empty_grid(width, height);
     }

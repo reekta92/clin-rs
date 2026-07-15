@@ -394,6 +394,14 @@ impl App {
     pub fn desired_editor_preview_width(&self) -> u16 {
         preview_render_cols(self.editor.last_preview_pane_width, self.preview_wrap)
     }
+    pub fn desired_list_preview_height(&self) -> u16 {
+        self.list.last_preview_pane_height
+    }
+
+    pub fn desired_editor_preview_height(&self) -> u16 {
+        self.editor.last_preview_pane_height
+    }
+
 
     pub fn new(storage: Storage) -> Result<Self> {
         let bootstrap_config = crate::config::ClinConfig::load().unwrap_or_default();

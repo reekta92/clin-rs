@@ -709,14 +709,17 @@ impl App {
         }
 
         let list_active = self.list.preview_enabled || self.preview_fullscreen;
-        if list_active && self.list.preview_content_width != Some(self.desired_list_preview_width())
+        if list_active
+            && (self.list.preview_content_width != Some(self.desired_list_preview_width())
+                || self.list.preview_content_height != Some(self.desired_list_preview_height()))
         {
             self.update_preview();
             updated = true;
         }
         let edit_active = self.editor.editor_preview_enabled || self.preview_fullscreen;
         if edit_active
-            && self.editor.preview_content_width != Some(self.desired_editor_preview_width())
+            && (self.editor.preview_content_width != Some(self.desired_editor_preview_width())
+                || self.editor.preview_content_height != Some(self.desired_editor_preview_height()))
         {
             self.update_editor_markdown_preview();
             updated = true;
@@ -834,12 +837,18 @@ impl App {
                         Ok(content) => {
                             match serde_json::from_str::<crate::draw::state::DrawData>(&content) {
                                 Ok(data) => {
-                                    let grid = crate::snapshot::render_draw_snapshot(
+                                    let width = self.desired_list_preview_width();
+                                    let height = self.desired_list_preview_height();
+                                    let grid = crate::snapshot::render_draw_snapshot_with_size(
                                         &data,
                                         &self.app_theme,
+                                        width,
+                                        height,
                                     );
                                     self.list.preview_content =
                                         Some(PreviewContent::DrawGrid(grid));
+                                    self.list.preview_content_width = Some(width);
+                                    self.list.preview_content_height = Some(height);
                                 }
                                 Err(e) => {
                                     self.list.preview_content = None;
@@ -854,7 +863,6 @@ impl App {
                     self.list.preview_content_index = Some(self.list.visual_index);
                     return;
                 }
-
                 if is_canvas {
                     let path = self.storage.note_path(id);
                     match std::fs::read_to_string(&path) {
@@ -862,12 +870,18 @@ impl App {
                             match serde_json::from_str::<crate::pinstar::data::CanvasData>(&content)
                             {
                                 Ok(data) => {
+                                    let width = self.desired_list_preview_width();
+                                    let height = self.desired_list_preview_height();
                                     let grid = crate::snapshot::render_canvas_snapshot(
                                         &data,
                                         &self.app_theme,
+                                        width,
+                                        height,
                                     );
                                     self.list.preview_content =
                                         Some(PreviewContent::CanvasGrid(grid));
+                                    self.list.preview_content_width = Some(width);
+                                    self.list.preview_content_height = Some(height);
                                 }
                                 Err(e) => {
                                     self.list.preview_content = None;
@@ -891,6 +905,7 @@ impl App {
                     renderer.render_with(&note.content, width, &self.app_theme, &opts);
                     self.list.preview_content = Some(PreviewContent::Markdown(Box::new(renderer)));
                     self.list.preview_content_width = Some(width);
+                    self.list.preview_content_height = Some(self.desired_list_preview_height());
                 } else {
                     self.list.preview_content = None;
                 }
@@ -982,6 +997,7 @@ impl App {
                 renderer.render_with(&md, width, &self.app_theme, &opts);
                 self.list.preview_content = Some(PreviewContent::Markdown(Box::new(renderer)));
                 self.list.preview_content_width = Some(width);
+                self.list.preview_content_height = Some(self.desired_list_preview_height());
                 self.list.preview_content_index = Some(self.list.visual_index);
             }
             _ => {
@@ -1003,5 +1019,6 @@ impl App {
         renderer.render_with(&content, width, &self.app_theme, &opts);
         self.editor.md_preview_renderer = Some(renderer);
         self.editor.preview_content_width = Some(width);
+        self.editor.preview_content_height = Some(self.desired_editor_preview_height());
     }
 }

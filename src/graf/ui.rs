@@ -8,7 +8,7 @@ use crate::graf::app::GrafAppState;
 
 pub fn draw_ui(
     frame: &mut Frame,
-    state: &GrafAppState,
+    state: &mut GrafAppState,
     config: &ClinConfig,
     area: Rect,
     theme: &crate::app_theme::AppThemeColors,
@@ -38,7 +38,10 @@ pub fn draw_ui(
             .direction(Direction::Horizontal)
             .constraints(constraints)
             .split(area);
-        (full_cols[main_idx], Some((full_cols[p_idx], full_cols[1])))
+        let p_area = full_cols[p_idx];
+        state.last_preview_pane_width = p_area.width;
+        state.last_preview_pane_height = p_area.height;
+        (full_cols[main_idx], Some((p_area, full_cols[1])))
     } else {
         (area, None)
     };

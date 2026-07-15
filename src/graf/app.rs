@@ -29,6 +29,10 @@ pub struct GrafAppState {
     pub preview_enabled: bool,
     pub preview_content: Option<PreviewContent>,
     pub preview_note_id: Option<String>,
+    pub last_preview_pane_width: u16,
+    pub last_preview_pane_height: u16,
+    pub preview_content_width: Option<u16>,
+    pub preview_content_height: Option<u16>,
     pub app_theme: crate::app_theme::AppThemeColors,
     pub keybinds: Keybinds,
     pub seq_matcher: crate::keybinds::KeyMatcher,
@@ -71,6 +75,10 @@ impl GrafAppState {
             preview_enabled: config.graf.preview_enabled,
             preview_content: None,
             preview_note_id: None,
+            last_preview_pane_width: 0,
+            last_preview_pane_height: 0,
+            preview_content_width: None,
+            preview_content_height: None,
             app_theme: crate::app_theme::AppThemeColors::from_config(&config.ui),
             keybinds,
             seq_matcher,
@@ -134,7 +142,10 @@ impl GrafAppState {
             None
         };
 
-        if selected_note_id != self.preview_note_id {
+        let size_changed = self.preview_content_width != Some(self.last_preview_pane_width)
+            || self.preview_content_height != Some(self.last_preview_pane_height);
+
+        if selected_note_id != self.preview_note_id || size_changed {
             self.preview_note_id = selected_note_id;
             self.update_preview(config);
         }
@@ -166,9 +177,17 @@ impl GrafAppState {
                 Ok(content) => {
                     match serde_json::from_str::<crate::draw::state::DrawData>(&content) {
                         Ok(data) => {
-                            let grid =
-                                crate::snapshot::render_draw_snapshot(&data, &self.app_theme);
+                            let width = self.last_preview_pane_width;
+                            let height = self.last_preview_pane_height;
+                            let grid = crate::snapshot::render_draw_snapshot_with_size(
+                                &data,
+                                &self.app_theme,
+                                width,
+                                height,
+                            );
                             self.preview_content = Some(PreviewContent::DrawGrid(grid));
+                            self.preview_content_width = Some(width);
+                            self.preview_content_height = Some(height);
                         }
                         Err(_) => {
                             self.preview_content = None;
@@ -188,9 +207,17 @@ impl GrafAppState {
                 Ok(content) => {
                     match serde_json::from_str::<crate::pinstar::data::CanvasData>(&content) {
                         Ok(data) => {
-                            let grid =
-                                crate::snapshot::render_canvas_snapshot(&data, &self.app_theme);
+                            let width = self.last_preview_pane_width;
+                            let height = self.last_preview_pane_height;
+                            let grid = crate::snapshot::render_canvas_snapshot(
+                                &data,
+                                &self.app_theme,
+                                width,
+                                height,
+                            );
                             self.preview_content = Some(PreviewContent::CanvasGrid(grid));
+                            self.preview_content_width = Some(width);
+                            self.preview_content_height = Some(height);
                         }
                         Err(_) => {
                             self.preview_content = None;
@@ -205,11 +232,13 @@ impl GrafAppState {
         }
 
         if let Ok(note) = self.storage.load_note(&id) {
-            let width = 80u16.saturating_sub(2).max(40);
+            let width = self.last_preview_pane_width.saturating_sub(2).max(40);
             let mut renderer = MarkdownRenderer::new(width);
             let opts = crate::markdown::MdRenderOpts::from_config(config);
             renderer.render_with(&note.content, width, &self.app_theme, &opts);
             self.preview_content = Some(PreviewContent::Markdown(Box::new(renderer)));
+            self.preview_content_width = Some(width);
+            self.preview_content_height = Some(self.last_preview_pane_height);
         } else {
             self.preview_content = None;
         }
