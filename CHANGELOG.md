@@ -12,6 +12,10 @@ All notable changes to clin are documented in this file.
 ### Miscellaneous
 
 - Add support section to the readme
+
+### Release
+
+- V0.9.9
 ## [0.9.8] - 2026-07-10
 
 ### Fixed
