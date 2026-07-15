@@ -323,11 +323,15 @@ impl Storage {
             .extension()
             .and_then(|e| e.to_str())
             .map(|e| e.to_string());
+        let existing_pinned = self
+            .load_note_summary(id)
+            .map(|s| s.pinned)
+            .unwrap_or(false);
         let fm = frontmatter::Frontmatter {
             title: Some(note.title.clone()),
             updated_at: Some(note.updated_at),
             tags: note.tags.clone(),
-            pinned: false,
+            pinned: existing_pinned,
             links: Some(extract_wikilinks(&note.content)),
             original_ext,
         };
@@ -385,6 +389,10 @@ impl Storage {
         if let Some(parent) = target_path.parent() {
             fs::create_dir_all(parent).context("failed to create note directory")?;
         }
+        let existing_pinned = self
+            .load_note_summary(id)
+            .map(|s| s.pinned)
+            .unwrap_or(false);
 
         let is_raw = orig_ext == "canvas" || orig_ext == "draw";
         if is_raw {
@@ -395,7 +403,7 @@ impl Storage {
                 title: Some(note.title.clone()),
                 updated_at: Some(note.updated_at),
                 tags: note.tags.clone(),
-                pinned: false,
+            pinned: existing_pinned,
                 links: Some(extract_wikilinks(&note.content)),
                 original_ext: None,
             };
