@@ -868,7 +868,6 @@ impl StatuslineContext<'_> {
                             crate::draw::state::DrawTool::Draw => "draw",
                             crate::draw::state::DrawTool::Erase => "erase",
                             crate::draw::state::DrawTool::Text => "text",
-                            crate::draw::state::DrawTool::Image => "image",
                             crate::draw::state::DrawTool::Shape => "shape",
                         };
                         t.to_string()

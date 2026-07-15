@@ -846,15 +846,13 @@ impl App {
                     self.return_mode = Some(self.mode);
                     self.mode = ViewMode::Draw;
                     self.editor.editing_id = Some(canvas_id.clone());
-                    let mut state = crate::draw::app::DrawAppState::new(
+                    let state = crate::draw::app::DrawAppState::new(
                         self.storage.clone(),
                         Some(canvas_id),
                         self.app_theme.clone(),
                         self.keybinds.clone(),
                         self.seq_matcher.clone(),
                     );
-                    state.image_picker = self.image_picker.clone();
-                    state.image_decode_tx = self.image_decode_tx.clone();
                     self.draw_state = Some(state);
                 }
                 crate::popups::NoteFormat::Canvas => {

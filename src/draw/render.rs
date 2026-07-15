@@ -13,7 +13,7 @@ use ratatui::widgets::{Block, List, ListItem};
 /// Draw-view tool tab (label, glyph) pairs, in toolbar order. Shared by
 /// `draw_canvas` header render (via `ui/mod.rs`) and the draw mouse hit-test
 /// so they never drift — same pattern as `backup::render::backup_tabs`.
-pub fn draw_tool_tabs(icon_mode: crate::config::IconMode) -> [(&'static str, &'static str); 5] {
+pub fn draw_tool_tabs(icon_mode: crate::config::IconMode) -> [(&'static str, &'static str); 4] {
     [
         (
             "Draw",
@@ -28,24 +28,18 @@ pub fn draw_tool_tabs(icon_mode: crate::config::IconMode) -> [(&'static str, &'s
             crate::ui::get_icon("\u{f031}", "\u{1f4dd}", icon_mode),
         ),
         (
-            "Image",
-            crate::ui::get_icon("\u{f03e}", "\u{1f5bc}", icon_mode),
-        ),
-        (
             "Erase",
             crate::ui::get_icon("\u{f1f8}", "\u{1f5d1}", icon_mode),
         ),
     ]
 }
-
-/// Tab order is fixed (Draw, Shape, Text, Image, Erase) and intentionally NOT the
-/// `DrawTool` enum ordinal (enum is Draw, Erase, Text, Shape, Image). Keep this array
+/// Tab order is fixed (Draw, Shape, Text, Erase) and intentionally NOT the
+/// `DrawTool` enum ordinal (enum is Draw, Erase, Text, Shape). Keep this array
 /// the single source of truth for index<->tool.
-pub const DRAW_TAB_TOOLS: [DrawTool; 5] = [
+pub const DRAW_TAB_TOOLS: [DrawTool; 4] = [
     DrawTool::Draw,
     DrawTool::Shape,
     DrawTool::Text,
-    DrawTool::Image,
     DrawTool::Erase,
 ];
 
@@ -141,88 +135,6 @@ pub fn draw_canvas(
 
     frame.render_widget(canvas, canvas_area);
 
-    // Second pass: render Image elements as StatefulImage overlays above the canvas
-    if app.is_view_transforming() {
-        // During pan/zoom/resize, suppress pixel images — show a placeholder border block.
-        let x_range = x_bounds[1] - x_bounds[0];
-        let y_range = y_bounds[1] - y_bounds[0];
-        for element in &app.data.elements {
-            let img = match element {
-                DrawElement::Image(img) => img,
-                _ => continue,
-            };
-            let cell_x = (canvas_area.x as f64
-                + (img.x - x_bounds[0]) / x_range * canvas_area.width as f64)
-                as u16;
-            let cell_y = (canvas_area.y as f64
-                + (y_bounds[1] - img.y) / y_range * canvas_area.height as f64)
-                as u16;
-            let cell_w = ((img.width / x_range) * canvas_area.width as f64).max(1.0) as u16;
-            let cell_h = ((img.height / y_range) * canvas_area.height as f64).max(1.0) as u16;
-            if cell_w == 0 || cell_h == 0 {
-                continue;
-            }
-            let r = Rect::new(cell_x, cell_y, cell_w, cell_h);
-            let block = ratatui::widgets::Block::default()
-                .borders(ratatui::widgets::Borders::ALL)
-                .border_style(ratatui::style::Style::default().fg(app.theme.muted))
-                .title(ratatui::text::Span::styled(
-                    std::path::Path::new(&img.path)
-                        .file_name()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("?"),
-                    ratatui::style::Style::default().fg(app.theme.muted),
-                ));
-            frame.render_widget(block, r);
-        }
-    } else if let Some(picker) = &app.image_picker {
-        let x_range = x_bounds[1] - x_bounds[0];
-        let y_range = y_bounds[1] - y_bounds[0];
-        // Collect world rects first to avoid borrow conflict
-        let images: Vec<(std::path::PathBuf, Rect)> = app
-            .data
-            .elements
-            .iter()
-            .filter_map(|element| {
-                let img = match element {
-                    DrawElement::Image(img) => img,
-                    _ => return None,
-                };
-                let cell_x = (canvas_area.x as f64
-                    + (img.x - x_bounds[0]) / x_range * canvas_area.width as f64)
-                    as u16;
-                let cell_y = (canvas_area.y as f64
-                    + (y_bounds[1] - img.y) / y_range * canvas_area.height as f64)
-                    as u16;
-                let cell_w = ((img.width / x_range) * canvas_area.width as f64).max(1.0) as u16;
-                let cell_h = ((img.height / y_range) * canvas_area.height as f64).max(1.0) as u16;
-                let r = Rect::new(cell_x, cell_y, cell_w, cell_h);
-                if r.width == 0 || r.height == 0 {
-                    return None;
-                }
-                Some((std::path::PathBuf::from(&img.path), r))
-            })
-            .collect();
-        for (path, img_rect) in &images {
-            let key = crate::image_render::ImageKey {
-                path: path.clone(),
-                mtime: 0,
-            };
-            if let Some(proto) = app.image_cache.get_proto(&key) {
-                frame.render_stateful_widget(
-                    ratatui_image::StatefulImage::default()
-                        .resize(ratatui_image::Resize::Fit(None)),
-                    *img_rect,
-                    proto,
-                );
-            } else {
-                // Not cached — request decode even during transform so it's ready on settle.
-                if let Some(tx) = &app.image_decode_tx {
-                    app.image_cache.request(key, 4096, tx, picker);
-                }
-            }
-        }
-    }
 
     let status_area = Rect::new(
         area.x,

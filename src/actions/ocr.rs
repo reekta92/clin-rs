@@ -270,31 +270,7 @@ fn insert_image_reference(app: &mut App, rel_path: &str) {
             }
         }
         crate::app::ViewMode::Draw => {
-            if let Some(state) = &mut app.draw_state {
-                let vp = &state.viewport;
-                let id = format!(
-                    "img_{}",
-                    uuid::Uuid::new_v4()
-                        .to_string()
-                        .split('-')
-                        .next()
-                        .unwrap_or("0")
-                );
-                state
-                    .data
-                    .elements
-                    .push(crate::draw::state::DrawElement::Image(
-                        crate::draw::state::ImageElement {
-                            id,
-                            path: rel_path.to_string(),
-                            x: vp.x,
-                            y: vp.y,
-                            width: 40.0,
-                            height: 30.0,
-                        },
-                    ));
-                let _ = state.save_draw();
-            }
+            app.set_temporary_status("Image pasting not supported in this view");
         }
         _ => {
             app.set_temporary_status("Image pasting not supported in this view");

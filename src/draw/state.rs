@@ -198,7 +198,6 @@ pub enum DrawTool {
     Erase,
     Text,
     Shape,
-    Image,
 }
 
 #[derive(Debug, Clone)]

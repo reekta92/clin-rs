@@ -32,12 +32,7 @@ pub struct DrawAppState {
     pub keybinds: Keybinds,
     pub show_grid: bool,
     pub seq_matcher: crate::keybinds::KeyMatcher,
-    pub image_cache: crate::image_render::cache::ImageCache,
-    pub image_picker: Option<ratatui_image::picker::Picker>,
-    pub image_decode_tx: Option<std::sync::mpsc::Sender<crate::image_render::worker::ImageJob>>,
     pub is_panning: bool,
-    pub last_zoom_at: Option<std::time::Instant>,
-    pub is_transforming_element: bool,
 }
 
 impl DrawAppState {
@@ -79,12 +74,7 @@ impl DrawAppState {
             keybinds,
             show_grid: true,
             seq_matcher,
-            image_cache: crate::image_render::cache::ImageCache::new(32),
-            image_picker: None,
-            image_decode_tx: None,
             is_panning: false,
-            last_zoom_at: None,
-            is_transforming_element: false,
         }
     }
 
@@ -97,20 +87,6 @@ impl DrawAppState {
         Ok(())
     }
 
-    /// Returns true while the view is undergoing continuous transforms
-    /// (pan, zoom, drawing). During these states the pixel image render is
-    /// suppressed to avoid churning the encode worker.
-    pub fn is_view_transforming(&self) -> bool {
-        use crate::image_render::TRANSFORM_SETTLE;
-        self.is_panning
-            || self.current_stroke.is_some()
-            || self.creation_origin.is_some()
-            || self.preview_element.is_some()
-            || self.is_transforming_element
-            || self
-                .last_zoom_at
-                .is_some_and(|t| t.elapsed() < TRANSFORM_SETTLE)
-    }
 }
 
 impl crate::overlay::OverlayView for DrawAppState {

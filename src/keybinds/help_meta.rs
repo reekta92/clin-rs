@@ -478,10 +478,6 @@ pub fn draw_action_meta(a: DrawAction) -> HelpMeta {
             group: "Tools",
             description: "Toggle grid overlay",
         },
-        DrawAction::SelectImageTool => HelpMeta {
-            group: "Tools",
-            description: "Image tool (place images on canvas)",
-        },
         DrawAction::Help => HelpMeta {
             group: "General",
             description: "Help",

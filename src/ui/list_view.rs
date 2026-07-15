@@ -693,7 +693,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                         let is_image = std::path::Path::new(&s.id)
                             .extension()
                             .and_then(|e| e.to_str())
-                            .is_some_and(|e| crate::storage::is_image_ext(e));
+                            .is_some_and(crate::storage::is_image_ext);
                         let col = if s.pinned {
                             app.app_theme.heading
                         } else if *is_clin {

@@ -124,15 +124,13 @@ impl App {
 
     pub fn open_draw_view(&mut self) {
         let note_id = self.get_selected_note_id();
-        let mut state = crate::draw::app::DrawAppState::new(
+        let state = crate::draw::app::DrawAppState::new(
             self.storage.clone(),
             note_id,
             self.app_theme.clone(),
             self.keybinds.clone(),
             self.seq_matcher.clone(),
         );
-        state.image_picker = self.image_picker.clone();
-        state.image_decode_tx = self.image_decode_tx.clone();
         self.draw_state = Some(state);
         if self.mode != ViewMode::Draw {
             self.return_mode = Some(self.mode);

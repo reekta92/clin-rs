@@ -187,7 +187,7 @@ pub fn render_draw_snapshot(data: &DrawData, theme: &AppThemeColors, icon_mode: 
 pub fn render_draw_snapshot_with_size(
     data: &DrawData,
     theme: &AppThemeColors,
-    icon_mode: crate::config::IconMode,
+    _icon_mode: crate::config::IconMode,
     width: u16,
     height: u16,
     scale: f64,
@@ -243,26 +243,9 @@ pub fn render_draw_snapshot_with_size(
                                     .style(Style::default().fg(color)),
                             );
                         }
-                        DrawElement::Image(img) => {
-                            let step = (ratio_y / 4.0).max(0.01);
-                            let mut y = img.y;
-                            while y < img.y + img.height {
-                                ctx.draw(&CanvasLine {
-                                    x1: img.x,
-                                    y1: y,
-                                    x2: img.x + img.width,
-                                    y2: y,
-                                    color: theme.muted,
-                                });
-                                y += step;
-                            }
-                            let icon = crate::ui::get_icon("\u{f03e}", "\u{1f5bc}", icon_mode);
-                            ctx.print(
-                                img.x + img.width / 2.0,
-                                img.y + img.height / 2.0,
-                                ratatui::text::Line::from(icon)
-                                    .style(Style::default().bg(theme.muted).fg(theme.bg.unwrap_or(Color::Reset))),
-                            );
+                        DrawElement::Image(_) => {
+                            // Image elements are inert — kept for backward compat
+                            // with older .draw files, not rendered.
                         }
                     }
                 }
@@ -468,11 +451,9 @@ fn draw_bounds(data: &DrawData) -> (f64, f64, f64, f64) {
                 max_x = max_x.max(t.x + t.content.len() as f64 * 8.0);
                 max_y = max_y.max(t.y + 12.0);
             }
-            DrawElement::Image(i) => {
-                min_x = min_x.min(i.x);
-                min_y = min_y.min(i.y);
-                max_x = max_x.max(i.x + i.width);
-                max_y = max_y.max(i.y + i.height);
+            DrawElement::Image(_) => {
+                // Image elements are inert — kept for backward compat
+                // with older .draw files, not included in bounds.
             }
         }
     }
@@ -485,12 +466,6 @@ fn draw_bounds(data: &DrawData) -> (f64, f64, f64, f64) {
 
 fn canvas_color_to_style(color: Option<&str>, theme: &AppThemeColors) -> Color {
     match color {
-        Some(s) if s.starts_with('#') && s.len() == 7 => {
-            let r = u8::from_str_radix(&s[1..3], 16).unwrap_or(0);
-            let g = u8::from_str_radix(&s[3..5], 16).unwrap_or(0);
-            let b = u8::from_str_radix(&s[5..7], 16).unwrap_or(0);
-            Color::Rgb(r, g, b)
-        }
         Some("1") | Some("red") => Color::Rgb(255, 82, 82),
         Some("2") | Some("orange") => Color::Rgb(255, 152, 0),
         Some("3") | Some("yellow") => Color::Rgb(255, 235, 59),
@@ -690,7 +665,6 @@ fn draw_shape_on_canvas(ctx: &mut Context, shape: &Shape) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::draw::state::ImageElement;
     use ratatui::backend::TestBackend;
 
     /// Regression guard: a grid cell containing a control char must not
@@ -714,39 +688,4 @@ mod tests {
         assert_eq!(cell.symbol(), " ", "control char replaced by space");
     }
 
-    /// Draw preview renders a muted-outline rectangle for Image elements.
-    #[test]
-    fn draw_preview_shows_image_indicator() {
-        let data = DrawData {
-            version: 1,
-            width: 1000.0,
-            height: 1000.0,
-            background: None,
-            elements: vec![DrawElement::Image(ImageElement {
-                id: "test".into(),
-                path: "img.png".into(),
-                x: 0.0,
-                y: 0.0,
-                width: 10.0,
-                height: 5.0,
-            })],
-        };
-        let theme = AppThemeColors::default();
-        let grid = render_draw_snapshot_with_size(&data, &theme, crate::config::IconMode::Nerd, 40, 20, 1.0, 0.0, 0.0);
-        let muted = theme.muted;
-
-        // At least one cell on the image's outline must have fg = muted.
-        let has_outline = grid
-            .iter()
-            .flatten()
-            .any(|(ch, style)| style.fg == Some(muted) && *ch != ' ');
-        assert!(
-            has_outline,
-            "draw preview must render an image element as a muted-outline rectangle, \
-             but no cell with fg={muted:?} and non-space char was found in the {w}x{h} grid",
-            muted = muted,
-            w = grid.first().map_or(0, |r| r.len()),
-            h = grid.len(),
-        );
-    }
 }

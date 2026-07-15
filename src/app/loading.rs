@@ -766,11 +766,6 @@ impl App {
                     state.image_cache.install_decoded(decoded, picker);
                 }
             }
-            crate::app::ViewMode::Draw => {
-                if let Some(state) = &mut self.draw_state {
-                    state.image_cache.install_decoded(decoded, picker);
-                }
-            }
             crate::app::ViewMode::Edit => {
                 self.editor.image_cache.install_decoded(decoded, picker);
             }
