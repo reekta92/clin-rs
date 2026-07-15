@@ -16,6 +16,7 @@ All notable changes to clin are documented in this file.
 
 ### CI
 
+- Modernize arm runners to use native arm
 - Dispatch release issue revert
 - Fix arm64 apt sources for release workflow
 - Forced ipv4 in dispatch release
@@ -51,6 +52,7 @@ All notable changes to clin are documented in this file.
 
 ### Release
 
+- V0.10.0-beta.3
 - V0.10.0-beta.0
 ## [0.9.9] - 2026-07-14
 
