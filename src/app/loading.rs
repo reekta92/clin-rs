@@ -855,7 +855,7 @@ impl App {
                                         offset_y,
                                     );
                                     self.list.preview_content =
-                                        Some(PreviewContent::DrawGrid(grid));
+                                        Some(PreviewContent::DrawGrid { data: Box::new(data), grid });
                                     self.list.preview_content_width = Some(width);
                                     self.list.preview_content_height = Some(height);
                                     self.list.preview_content_scale = Some(scale);
@@ -897,7 +897,7 @@ impl App {
                                         offset_y,
                                     );
                                     self.list.preview_content =
-                                        Some(PreviewContent::CanvasGrid(grid));
+                                        Some(PreviewContent::CanvasGrid { data: Box::new(data), grid });
                                     self.list.preview_content_width = Some(width);
                                     self.list.preview_content_height = Some(height);
                                     self.list.preview_content_scale = Some(scale);

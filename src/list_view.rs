@@ -201,16 +201,22 @@ impl ListView {
 
 pub enum PreviewContent {
     Markdown(Box<MarkdownRenderer>),
-    CanvasGrid(Vec<Vec<(char, Style)>>),
-    DrawGrid(Vec<Vec<(char, Style)>>),
+    CanvasGrid {
+        data: Box<crate::pinstar::data::CanvasData>,
+        grid: Vec<Vec<(char, Style)>>,
+    },
+    DrawGrid {
+        data: Box<crate::draw::state::DrawData>,
+        grid: Vec<Vec<(char, Style)>>,
+    },
 }
 
 impl std::fmt::Debug for PreviewContent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Markdown(_) => f.debug_tuple("Markdown").finish(),
-            Self::CanvasGrid(g) => f.debug_tuple("CanvasGrid").field(&g.len()).finish(),
-            Self::DrawGrid(g) => f.debug_tuple("DrawGrid").field(&g.len()).finish(),
+            Self::CanvasGrid { grid, .. } => f.debug_tuple("CanvasGrid").field(&grid.len()).finish(),
+            Self::DrawGrid { grid, .. } => f.debug_tuple("DrawGrid").field(&grid.len()).finish(),
         }
     }
 }
