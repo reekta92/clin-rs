@@ -340,6 +340,57 @@ pub fn handle_mouse(
         }
     }
 
+    // Draggable scrollbar — consume before item-click / tab-switch logic
+    if let Some(area) = state.last_area {
+        let has_diff = !state.diff_lines.is_empty();
+        let list_width = if has_diff {
+            (area.width as f32 * 0.43) as u16
+        } else {
+            area.width
+        };
+
+        let list_area = Rect::new(area.x, area.y + 1, list_width, area.height.saturating_sub(2));
+        let diff_area = Rect::new(
+            area.x + list_width,
+            area.y + 1,
+            area.width.saturating_sub(list_width),
+            area.height.saturating_sub(2),
+        );
+
+        if state.selected_section == BackupSection::Status {
+            if let Some(new_offset) = crate::ui::handle_scrollbar_mouse(
+                &event,
+                list_area,
+                state.last_status_length,
+                state.list_state.offset(),
+            ) {
+                state.list_state.select(Some(new_offset));
+                return InputResult::None;
+            }
+        } else if state.selected_section == BackupSection::History {
+            if let Some(new_offset) = crate::ui::handle_scrollbar_mouse(
+                &event,
+                list_area,
+                state.last_history_length,
+                state.history_list_state.offset(),
+            ) {
+                state.history_list_state.select(Some(new_offset));
+                return InputResult::None;
+            }
+        }
+        if !state.diff_lines.is_empty() {
+            if let Some(new_offset) = crate::ui::handle_scrollbar_mouse(
+                &event,
+                diff_area,
+                state.diff_lines.len(),
+                state.diff_scroll as usize,
+            ) {
+                state.diff_scroll = new_offset as u16;
+                return InputResult::None;
+            }
+        }
+    }
+
     if let MouseEventKind::Down(MouseButton::Left) = event.kind {
         let x = event.column;
         let y = event.row;

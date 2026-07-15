@@ -39,6 +39,18 @@ pub fn handle_content_tree_mouse(
 
     let left_area = content_chunks[0];
 
+    // Draggable scrollbar — consume before any item-click logic
+    if let Some(new_offset) = crate::ui::handle_scrollbar_mouse(
+        &mouse,
+        left_area,
+        state.visible_indices().len(),
+        state.list_state.offset(),
+    ) {
+        let max_idx = state.visible_indices().len().saturating_sub(1);
+        state.selected = state.visible_indices()[new_offset.min(max_idx)];
+        return ContentTreeInput::None;
+    }
+
     match mouse.kind {
         MouseEventKind::ScrollUp => {
             state.move_up();

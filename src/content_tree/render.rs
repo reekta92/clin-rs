@@ -7,7 +7,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, List, ListItem, Paragraph},
+    widgets::{Block, List, ListItem, Paragraph, Scrollbar, ScrollbarState, ScrollbarOrientation},
 };
 
 fn get_tree_prefix(state: &ContentTreeState, visible: &[usize], p: usize) -> String {
@@ -65,7 +65,7 @@ fn get_tree_prefix(state: &ContentTreeState, visible: &[usize], p: usize) -> Str
 pub fn draw_content_tree(
     frame: &mut Frame,
     area: Rect,
-    state: &ContentTreeState,
+    state: &mut ContentTreeState,
     theme: &AppThemeColors,
     keybinds: &Keybinds,
     config: &crate::config::ClinConfig,
@@ -162,7 +162,7 @@ pub fn draw_content_tree(
         }
 
         let selected_pos = visible.iter().position(|&x| x == state.selected);
-        let mut list_state = crate::ui::list_state_selected(selected_pos, 0);
+        state.list_state.select(selected_pos);
 
         let item_count = items.len();
         let list = List::new(items)
@@ -174,14 +174,25 @@ pub fn draw_content_tree(
                     .add_modifier(Modifier::BOLD),
             )
             .highlight_symbol("> ");
-        frame.render_stateful_widget(list, left_area, &mut list_state);
+        frame.render_stateful_widget(list, left_area, &mut state.list_state);
         crate::ui::paint_list_hover(
             frame,
             left_area,
-            &list_state,
+            &state.list_state,
             item_count,
             state.mouse_pos,
             theme.hover_style(),
+        );
+
+        // Draggable scrollbar
+        let mut sb_state = ScrollbarState::new(visible.len())
+            .position(state.list_state.offset());
+        frame.render_stateful_widget(
+            Scrollbar::default()
+                .orientation(ScrollbarOrientation::VerticalRight)
+                .style(Style::default().fg(theme.accent)),
+            left_area,
+            &mut sb_state,
         );
 
         // Draw vertical separator

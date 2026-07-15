@@ -911,6 +911,16 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
 
             app.list.list_state.select(Some(app.list.visual_index));
             frame.render_stateful_widget(list, list_area, &mut app.list.list_state);
+            // Draggable scrollbar
+            let mut sb_state = ratatui::widgets::ScrollbarState::new(app.list.display_items.len())
+                .position(app.list.list_state.offset());
+            frame.render_stateful_widget(
+                ratatui::widgets::Scrollbar::default()
+                    .orientation(ratatui::widgets::ScrollbarOrientation::VerticalRight)
+                    .style(ratatui::style::Style::default().fg(app.app_theme.accent)),
+                list_area,
+                &mut sb_state,
+            );
         }
     }
     if let Some(preview_rect) = preview_area {

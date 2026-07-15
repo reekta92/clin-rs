@@ -7,7 +7,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, Padding, Paragraph, Wrap},
+    widgets::{Block, Borders, List, ListItem, Padding, Paragraph, Scrollbar, ScrollbarState, ScrollbarOrientation, Wrap},
 };
 use std::path::Path;
 
@@ -291,6 +291,8 @@ fn draw_content(frame: &mut Frame, area: Rect, state: &mut BackupState) {
             items[h_idx] = items[h_idx].clone().style(theme.hover_style());
         }
 
+        state.last_status_length = items.len();
+
         let list = List::new(items)
             .block(
                 Block::default()
@@ -312,6 +314,16 @@ fn draw_content(frame: &mut Frame, area: Rect, state: &mut BackupState) {
             state.list_state.select(None);
         }
         frame.render_stateful_widget(list, area, &mut state.list_state);
+        // Draggable scrollbar for status list
+        let mut sb_state = ScrollbarState::new(state.last_status_length)
+            .position(state.list_state.offset());
+        frame.render_stateful_widget(
+            Scrollbar::default()
+                .orientation(ScrollbarOrientation::VerticalRight)
+                .style(Style::default().fg(theme.accent)),
+            area,
+            &mut sb_state,
+        );
     } else if state.selected_section == crate::backup::state::BackupSection::History {
         let mut items = Vec::new();
         items.push(ListItem::new(Line::from(Span::styled(
@@ -373,6 +385,8 @@ fn draw_content(frame: &mut Frame, area: Rect, state: &mut BackupState) {
             items[h_idx] = items[h_idx].clone().style(theme.hover_style());
         }
 
+        state.last_history_length = items.len();
+
         let list = List::new(items)
             .block(
                 Block::default()
@@ -395,6 +409,16 @@ fn draw_content(frame: &mut Frame, area: Rect, state: &mut BackupState) {
             state.history_list_state.select(None);
         }
         frame.render_stateful_widget(list, area, &mut state.history_list_state);
+        // Draggable scrollbar for history list
+        let mut sb_state = ScrollbarState::new(state.last_history_length)
+            .position(state.history_list_state.offset());
+        frame.render_stateful_widget(
+            Scrollbar::default()
+                .orientation(ScrollbarOrientation::VerticalRight)
+                .style(Style::default().fg(theme.accent)),
+            area,
+            &mut sb_state,
+        );
     }
 
     // Status Message Flash
@@ -474,6 +498,19 @@ fn draw_diff_pane(frame: &mut Frame, area: Rect, state: &mut BackupState) {
             .wrap(Wrap { trim: false })
             .scroll((state.diff_scroll, 0));
         frame.render_widget(paragraph, area);
+
+        // Draggable scrollbar for diff pane
+        if !state.diff_lines.is_empty() {
+            let mut sb_state = ScrollbarState::new(state.diff_lines.len())
+                .position(state.diff_scroll as usize);
+            frame.render_stateful_widget(
+                Scrollbar::default()
+                    .orientation(ScrollbarOrientation::VerticalRight)
+                    .style(Style::default().fg(theme.accent)),
+                area,
+                &mut sb_state,
+            );
+        }
     }
     state.last_diff_height = area.height;
 }
