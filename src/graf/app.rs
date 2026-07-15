@@ -33,7 +33,13 @@ pub struct GrafAppState {
     pub last_preview_pane_height: u16,
     pub preview_content_width: Option<u16>,
     pub preview_content_height: Option<u16>,
+    pub preview_scale: f64,
+    pub preview_content_scale: Option<f64>,
     pub app_theme: crate::app_theme::AppThemeColors,
+    pub preview_offset_x: f64,
+    pub preview_offset_y: f64,
+    pub preview_content_offset_x: Option<f64>,
+    pub preview_content_offset_y: Option<f64>,
     pub keybinds: Keybinds,
     pub seq_matcher: crate::keybinds::KeyMatcher,
     pub mouse_pos: Option<(u16, u16)>,
@@ -79,6 +85,12 @@ impl GrafAppState {
             last_preview_pane_height: 0,
             preview_content_width: None,
             preview_content_height: None,
+            preview_scale: 1.0,
+            preview_content_scale: None,
+            preview_offset_x: 0.0,
+            preview_offset_y: 0.0,
+            preview_content_offset_x: None,
+            preview_content_offset_y: None,
             app_theme: crate::app_theme::AppThemeColors::from_config(&config.ui),
             keybinds,
             seq_matcher,
@@ -143,7 +155,10 @@ impl GrafAppState {
         };
 
         let size_changed = self.preview_content_width != Some(self.last_preview_pane_width)
-            || self.preview_content_height != Some(self.last_preview_pane_height);
+            || self.preview_content_height != Some(self.last_preview_pane_height)
+            || self.preview_content_scale != Some(self.preview_scale)
+            || self.preview_content_offset_x != Some(self.preview_offset_x)
+            || self.preview_content_offset_y != Some(self.preview_offset_y);
 
         if selected_note_id != self.preview_note_id || size_changed {
             self.preview_note_id = selected_note_id;
@@ -179,15 +194,24 @@ impl GrafAppState {
                         Ok(data) => {
                             let width = self.last_preview_pane_width;
                             let height = self.last_preview_pane_height;
+                            let scale = self.preview_scale;
+                            let offset_x = self.preview_offset_x;
+                            let offset_y = self.preview_offset_y;
                             let grid = crate::snapshot::render_draw_snapshot_with_size(
                                 &data,
                                 &self.app_theme,
                                 width,
                                 height,
+                                scale,
+                                offset_x,
+                                offset_y,
                             );
                             self.preview_content = Some(PreviewContent::DrawGrid(grid));
                             self.preview_content_width = Some(width);
                             self.preview_content_height = Some(height);
+                            self.preview_content_scale = Some(scale);
+                            self.preview_content_offset_x = Some(offset_x);
+                            self.preview_content_offset_y = Some(offset_y);
                         }
                         Err(_) => {
                             self.preview_content = None;
@@ -200,7 +224,6 @@ impl GrafAppState {
             }
             return;
         }
-
         if is_canvas {
             let path = self.storage.note_path(&id);
             match std::fs::read_to_string(path) {
@@ -209,15 +232,24 @@ impl GrafAppState {
                         Ok(data) => {
                             let width = self.last_preview_pane_width;
                             let height = self.last_preview_pane_height;
+                            let scale = self.preview_scale;
+                            let offset_x = self.preview_offset_x;
+                            let offset_y = self.preview_offset_y;
                             let grid = crate::snapshot::render_canvas_snapshot(
                                 &data,
                                 &self.app_theme,
                                 width,
                                 height,
+                                scale,
+                                offset_x,
+                                offset_y,
                             );
                             self.preview_content = Some(PreviewContent::CanvasGrid(grid));
                             self.preview_content_width = Some(width);
                             self.preview_content_height = Some(height);
+                            self.preview_content_scale = Some(scale);
+                            self.preview_content_offset_x = Some(offset_x);
+                            self.preview_content_offset_y = Some(offset_y);
                         }
                         Err(_) => {
                             self.preview_content = None;
@@ -239,6 +271,9 @@ impl GrafAppState {
             self.preview_content = Some(PreviewContent::Markdown(Box::new(renderer)));
             self.preview_content_width = Some(width);
             self.preview_content_height = Some(self.last_preview_pane_height);
+            self.preview_content_scale = Some(self.preview_scale);
+            self.preview_content_offset_x = Some(self.preview_offset_x);
+            self.preview_content_offset_y = Some(self.preview_offset_y);
         } else {
             self.preview_content = None;
         }

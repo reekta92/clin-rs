@@ -18,6 +18,9 @@ pub fn render_canvas_snapshot(
     theme: &AppThemeColors,
     width: u16,
     height: u16,
+    scale: f64,
+    offset_x: f64,
+    offset_y: f64,
 ) -> Vec<Vec<(char, Style)>> {
     if data.nodes.is_empty() || width == 0 || height == 0 {
         return empty_grid(width, height);
@@ -35,7 +38,7 @@ pub fn render_canvas_snapshot(
 
     let zoom_x = (width as f64 - 4.0) / content_w;
     let zoom_y = (height as f64 - 4.0) / content_h;
-    let zoom = zoom_x.min(zoom_y).clamp(0.01, 10.0);
+    let zoom = (zoom_x.min(zoom_y) * scale).clamp(0.01, 10.0);
 
     let center_x = (min_x + max_x) / 2.0;
     let center_y = (min_y + max_y) / 2.0;
@@ -62,12 +65,10 @@ pub fn render_canvas_snapshot(
                 let ay = fy + fh / 2.0;
                 let bx = tx + tw / 2.0;
                 let by = ty + th / 2.0;
-
-                let sfx = ((ax - center_x) * zoom) + (area.x as f64 + area.width as f64 / 2.0);
-                let sfy = ((ay - center_y) * zoom) + (area.y as f64 + area.height as f64 / 2.0);
-                let stx = ((bx - center_x) * zoom) + (area.x as f64 + area.width as f64 / 2.0);
-                let sty = ((by - center_y) * zoom) + (area.y as f64 + area.height as f64 / 2.0);
-
+                let sfx = ((ax - center_x) * zoom) + (area.x as f64 + area.width as f64 / 2.0) + offset_x;
+                let sfy = ((ay - center_y) * zoom) + (area.y as f64 + area.height as f64 / 2.0) + offset_y;
+                let stx = ((bx - center_x) * zoom) + (area.x as f64 + area.width as f64 / 2.0) + offset_x;
+                let sty = ((by - center_y) * zoom) + (area.y as f64 + area.height as f64 / 2.0) + offset_y;
                 draw_braille_line(buf, sfx, sfy, stx, sty, theme.muted);
             }
         }
@@ -75,9 +76,8 @@ pub fn render_canvas_snapshot(
         for node in &data.nodes {
             let (nx, ny) = node.pos();
             let (nw, nh) = node.size();
-
-            let sx = ((nx - center_x) * zoom) + (area.x as f64 + area.width as f64 / 2.0);
-            let sy = ((ny - center_y) * zoom) + (area.y as f64 + area.height as f64 / 2.0);
+            let sx = ((nx - center_x) * zoom) + (area.x as f64 + area.width as f64 / 2.0) + offset_x;
+            let sy = ((ny - center_y) * zoom) + (area.y as f64 + area.height as f64 / 2.0) + offset_y;
             let sw = (nw * zoom).max(4.0);
             let sh = (nh * zoom).max(2.0);
 
@@ -153,7 +153,7 @@ pub fn render_canvas_snapshot(
 }
 
 pub fn render_draw_snapshot(data: &DrawData, theme: &AppThemeColors) -> Vec<Vec<(char, Style)>> {
-    render_draw_snapshot_with_size(data, theme, PREVIEW_COLS, PREVIEW_ROWS)
+    render_draw_snapshot_with_size(data, theme, PREVIEW_COLS, PREVIEW_ROWS, 1.0, 0.0, 0.0)
 }
 
 pub fn render_draw_snapshot_with_size(
@@ -161,6 +161,9 @@ pub fn render_draw_snapshot_with_size(
     theme: &AppThemeColors,
     width: u16,
     height: u16,
+    scale: f64,
+    offset_x: f64,
+    offset_y: f64,
 ) -> Vec<Vec<(char, Style)>> {
     if width == 0 || height == 0 {
         return empty_grid(width, height);
@@ -168,8 +171,16 @@ pub fn render_draw_snapshot_with_size(
 
     let (min_x, min_y, max_x, max_y) = draw_bounds(data);
     let padding = 20.0;
-    let x_bounds = [min_x - padding, max_x + padding];
-    let y_bounds = [min_y - padding, max_y + padding];
+    let cx = (min_x + max_x) / 2.0;
+    let cy = (min_y + max_y) / 2.0;
+    let hw = ((max_x - min_x) / 2.0 + padding).max(10.0) / scale;
+    let hh = ((max_y - min_y) / 2.0 + padding).max(10.0) / scale;
+    let ratio_x = (2.0 * hw) / width as f64;
+    let ratio_y = (2.0 * hh) / height as f64;
+    let cx_shifted = cx - offset_x * ratio_x;
+    let cy_shifted = cy + offset_y * ratio_y;
+    let x_bounds = [cx_shifted - hw, cx_shifted + hw];
+    let y_bounds = [cy_shifted - hh, cy_shifted + hh];
 
     let backend = TestBackend::new(width, height);
     let mut terminal = Terminal::new(backend).unwrap();
@@ -668,7 +679,7 @@ mod tests {
             })],
         };
         let theme = AppThemeColors::default();
-        let grid = render_draw_snapshot_with_size(&data, &theme, 40, 20);
+        let grid = render_draw_snapshot_with_size(&data, &theme, 40, 20, 1.0, 0.0, 0.0);
         let muted = theme.muted;
 
         // At least one cell on the image's outline must have fg = muted.

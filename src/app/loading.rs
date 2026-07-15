@@ -711,7 +711,10 @@ impl App {
         let list_active = self.list.preview_enabled || self.preview_fullscreen;
         if list_active
             && (self.list.preview_content_width != Some(self.desired_list_preview_width())
-                || self.list.preview_content_height != Some(self.desired_list_preview_height()))
+                || self.list.preview_content_height != Some(self.desired_list_preview_height())
+                || self.list.preview_content_scale != Some(self.list.preview_scale)
+                || self.list.preview_content_offset_x != Some(self.list.preview_offset_x)
+                || self.list.preview_content_offset_y != Some(self.list.preview_offset_y))
         {
             self.update_preview();
             updated = true;
@@ -839,16 +842,25 @@ impl App {
                                 Ok(data) => {
                                     let width = self.desired_list_preview_width();
                                     let height = self.desired_list_preview_height();
+                                    let scale = self.list.preview_scale;
+                                    let offset_x = self.list.preview_offset_x;
+                                    let offset_y = self.list.preview_offset_y;
                                     let grid = crate::snapshot::render_draw_snapshot_with_size(
                                         &data,
                                         &self.app_theme,
                                         width,
                                         height,
+                                        scale,
+                                        offset_x,
+                                        offset_y,
                                     );
                                     self.list.preview_content =
                                         Some(PreviewContent::DrawGrid(grid));
                                     self.list.preview_content_width = Some(width);
                                     self.list.preview_content_height = Some(height);
+                                    self.list.preview_content_scale = Some(scale);
+                                    self.list.preview_content_offset_x = Some(offset_x);
+                                    self.list.preview_content_offset_y = Some(offset_y);
                                 }
                                 Err(e) => {
                                     self.list.preview_content = None;
@@ -872,16 +884,25 @@ impl App {
                                 Ok(data) => {
                                     let width = self.desired_list_preview_width();
                                     let height = self.desired_list_preview_height();
+                                    let scale = self.list.preview_scale;
+                                    let offset_x = self.list.preview_offset_x;
+                                    let offset_y = self.list.preview_offset_y;
                                     let grid = crate::snapshot::render_canvas_snapshot(
                                         &data,
                                         &self.app_theme,
                                         width,
                                         height,
+                                        scale,
+                                        offset_x,
+                                        offset_y,
                                     );
                                     self.list.preview_content =
                                         Some(PreviewContent::CanvasGrid(grid));
                                     self.list.preview_content_width = Some(width);
                                     self.list.preview_content_height = Some(height);
+                                    self.list.preview_content_scale = Some(scale);
+                                    self.list.preview_content_offset_x = Some(offset_x);
+                                    self.list.preview_content_offset_y = Some(offset_y);
                                 }
                                 Err(e) => {
                                     self.list.preview_content = None;
@@ -906,6 +927,9 @@ impl App {
                     self.list.preview_content = Some(PreviewContent::Markdown(Box::new(renderer)));
                     self.list.preview_content_width = Some(width);
                     self.list.preview_content_height = Some(self.desired_list_preview_height());
+                    self.list.preview_content_scale = Some(self.list.preview_scale);
+                    self.list.preview_content_offset_x = Some(self.list.preview_offset_x);
+                    self.list.preview_content_offset_y = Some(self.list.preview_offset_y);
                 } else {
                     self.list.preview_content = None;
                 }
@@ -998,6 +1022,9 @@ impl App {
                 self.list.preview_content = Some(PreviewContent::Markdown(Box::new(renderer)));
                 self.list.preview_content_width = Some(width);
                 self.list.preview_content_height = Some(self.desired_list_preview_height());
+                self.list.preview_content_scale = Some(self.list.preview_scale);
+                self.list.preview_content_offset_x = Some(self.list.preview_offset_x);
+                self.list.preview_content_offset_y = Some(self.list.preview_offset_y);
                 self.list.preview_content_index = Some(self.list.visual_index);
             }
             _ => {

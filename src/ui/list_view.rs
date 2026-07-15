@@ -85,6 +85,9 @@ fn draw_strip_draw(
         &app.app_theme,
         content_area.width,
         content_area.height,
+        1.0,
+        0.0,
+        0.0,
     );
     frame.render_widget(crate::snapshot::RenderedSnapshot::new(&grid), content_area);
 }

@@ -366,8 +366,12 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                     crate::list_view::PreviewContent::CanvasGrid(_)
                     | crate::list_view::PreviewContent::DrawGrid(_),
                 ) => {
-                    app.list.snapshot_scroll_offset =
-                        app.list.snapshot_scroll_offset.saturating_sub(3);
+                    let old_scale = app.list.preview_scale;
+                    let new_scale = (old_scale * 1.1).clamp(0.1, 10.0);
+                    app.list.preview_offset_x *= new_scale / old_scale;
+                    app.list.preview_offset_y *= new_scale / old_scale;
+                    app.list.preview_scale = new_scale;
+                    app.list.pending_preview_update = true;
                 }
                 None => {}
             },
@@ -379,8 +383,12 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                     crate::list_view::PreviewContent::CanvasGrid(_)
                     | crate::list_view::PreviewContent::DrawGrid(_),
                 ) => {
-                    app.list.snapshot_scroll_offset =
-                        app.list.snapshot_scroll_offset.saturating_add(3);
+                    let old_scale = app.list.preview_scale;
+                    let new_scale = (old_scale / 1.1).clamp(0.1, 10.0);
+                    app.list.preview_offset_x *= new_scale / old_scale;
+                    app.list.preview_offset_y *= new_scale / old_scale;
+                    app.list.preview_scale = new_scale;
+                    app.list.pending_preview_update = true;
                 }
                 None => {}
             },
@@ -480,13 +488,29 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                 | crate::list_view::PreviewContent::DrawGrid(_),
             ) => {
                 if mouse_event.kind == MouseEventKind::ScrollUp {
-                    app.list.snapshot_scroll_offset =
-                        app.list.snapshot_scroll_offset.saturating_sub(3);
+                    let old_scale = app.list.preview_scale;
+                    let new_scale = (old_scale * 1.1).clamp(0.1, 10.0);
+                    let dx = mouse_event.column as f64 - (p_area.x as f64 + p_area.width as f64 / 2.0);
+                    let dy = mouse_event.row as f64 - (p_area.y as f64 + p_area.height as f64 / 2.0);
+                    app.list.preview_offset_x = app.list.preview_offset_x * (new_scale / old_scale)
+                        + dx * (1.0 - new_scale / old_scale);
+                    app.list.preview_offset_y = app.list.preview_offset_y * (new_scale / old_scale)
+                        + dy * (1.0 - new_scale / old_scale);
+                    app.list.preview_scale = new_scale;
+                    app.list.pending_preview_update = true;
                     return;
                 }
                 if mouse_event.kind == MouseEventKind::ScrollDown {
-                    app.list.snapshot_scroll_offset =
-                        app.list.snapshot_scroll_offset.saturating_add(3);
+                    let old_scale = app.list.preview_scale;
+                    let new_scale = (old_scale / 1.1).clamp(0.1, 10.0);
+                    let dx = mouse_event.column as f64 - (p_area.x as f64 + p_area.width as f64 / 2.0);
+                    let dy = mouse_event.row as f64 - (p_area.y as f64 + p_area.height as f64 / 2.0);
+                    app.list.preview_offset_x = app.list.preview_offset_x * (new_scale / old_scale)
+                        + dx * (1.0 - new_scale / old_scale);
+                    app.list.preview_offset_y = app.list.preview_offset_y * (new_scale / old_scale)
+                        + dy * (1.0 - new_scale / old_scale);
+                    app.list.preview_scale = new_scale;
+                    app.list.pending_preview_update = true;
                     return;
                 }
             }
