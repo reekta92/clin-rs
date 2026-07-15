@@ -8,7 +8,6 @@ pub struct ContentTreeState {
     pub selected: usize,          // index into `nodes`
     pub expanded: HashSet<usize>, // header node-indices that are expanded
     pub load_error: bool,
-    pub list_state: ratatui::widgets::ListState,
     pub keybinds: crate::keybinds::Keybinds,
     pub seq_matcher: crate::keybinds::KeyMatcher,
     pub last_area: ratatui::layout::Rect,
@@ -29,7 +28,6 @@ impl ContentTreeState {
             selected: 0,
             expanded: HashSet::new(),
             load_error: true,
-            list_state: ratatui::widgets::ListState::default(),
             keybinds,
             seq_matcher,
             last_area: ratatui::layout::Rect::default(),
@@ -57,7 +55,6 @@ impl ContentTreeState {
             nodes,
             selected: 0,
             expanded,
-            list_state: ratatui::widgets::ListState::default(),
             load_error: false,
             keybinds,
             seq_matcher,

@@ -661,19 +661,6 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         return; // grid never uses the row-based mapping below
     }
 
-    // Draggable scrollbar — consume before any list-click logic
-    if app.list.list_mode == crate::list_view::ListMode::Normal {
-        if let Some(new_offset) = crate::ui::handle_scrollbar_mouse(
-            &mouse_event,
-            list_area,
-            app.list.display_items.len(),
-            app.list.list_state.offset(),
-        ) {
-            app.list.list_state.select(Some(new_offset));
-            return;
-        }
-    }
-
     if !contains_cell(inner_list_area, mouse_event.column, mouse_event.row) {
         return;
     }

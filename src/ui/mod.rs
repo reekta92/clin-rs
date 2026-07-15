@@ -52,48 +52,6 @@ pub fn tab_vec_from_array<'a>(arr: &[(&'a str, &'a str)]) -> Vec<(&'a str, Optio
     arr.iter().map(|&(l, g)| (l, Some(g))).collect()
 }
 
-/// Handle mouse interaction with a scrollbar widget.
-/// Returns the new scroll offset if the mouse event targets the rightmost column
-/// of `area` and is a left-click or left-drag.
-pub fn handle_scrollbar_mouse(
-    mouse_event: &crossterm::event::MouseEvent,
-    area: ratatui::layout::Rect,
-    content_length: usize,
-    current_offset: usize,
-) -> Option<usize> {
-    use crossterm::event::{MouseEventKind, MouseButton};
-
-    if !matches!(mouse_event.kind, MouseEventKind::Down(MouseButton::Left) | MouseEventKind::Drag(MouseButton::Left)) {
-        return None;
-    }
-
-    if mouse_event.column != area.right().saturating_sub(1) || mouse_event.row < area.top() || mouse_event.row >= area.bottom() {
-        return None;
-    }
-
-    let max_scroll = content_length.saturating_sub(area.height as usize);
-    if max_scroll == 0 {
-        return None;
-    }
-
-    if mouse_event.row == area.top() {
-        return Some(current_offset.saturating_sub(1));
-    } else if mouse_event.row == area.bottom().saturating_sub(1) {
-        return Some(current_offset.saturating_add(1).min(max_scroll));
-    }
-
-    let track_height = area.height.saturating_sub(2);
-    if track_height == 0 {
-        return None;
-    }
-
-    let track_y = mouse_event.row.saturating_sub(area.top() + 1);
-    let percentage = track_y as f64 / track_height as f64;
-    let new_offset = (percentage * max_scroll as f64).round() as usize;
-
-    Some(new_offset.min(max_scroll))
-}
-
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum PopupSize {
     Small,   // 40% width, 40% height. Max bounds: 60 cols x 20 rows
