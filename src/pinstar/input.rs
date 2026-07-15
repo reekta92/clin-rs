@@ -372,12 +372,20 @@ fn execute_menu_action(
             0 => state.start_connection(),
             1 => state.start_delete_connection(),
             2 => {
-                let mut textarea = TextArea::from(vec![id.clone()]);
+                let current_title = state
+                    .data
+                    .nodes
+                    .iter()
+                    .find(|n| n.id() == id)
+                    .and_then(|n| n.title())
+                    .unwrap_or("")
+                    .to_string();
+                let mut textarea = TextArea::from(vec![current_title]);
                 textarea.set_cursor_line_style(ratatui::style::Style::default());
                 textarea.set_block(
                     ratatui::widgets::Block::default()
                         .borders(ratatui::widgets::Borders::ALL)
-                        .title(" Rename Node (ID) - Enter to confirm, Esc to cancel "),
+                        .title(" Rename Node - Enter to confirm, Esc to cancel "),
                 );
                 state.rename_popup = Some(textarea);
             }

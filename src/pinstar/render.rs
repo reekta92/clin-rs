@@ -458,20 +458,18 @@ pub fn draw_pinstar_view(
             border_type = BorderType::Double;
         }
 
-        let mut node_title = match node {
-            crate::pinstar::data::CanvasNode::File(n) => std::path::Path::new(&n.file)
-                .file_name()
-                .and_then(|s| s.to_str())
-                .unwrap_or(&n.file)
-                .to_string(),
-            crate::pinstar::data::CanvasNode::Link(n) => n.url.clone(),
-            _ => {
-                if is_generated_id(node.id()) {
-                    "".to_string()
-                } else {
-                    node.id().to_string()
-                }
-            }
+        let mut node_title = match node.title() {
+            Some(t) => t.to_string(),
+            None => match node {
+                crate::pinstar::data::CanvasNode::File(n) => std::path::Path::new(&n.file)
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or(&n.file)
+                    .to_string(),
+                crate::pinstar::data::CanvasNode::Link(n) => n.url.clone(),
+                crate::pinstar::data::CanvasNode::Group(n) => n.label.clone().unwrap_or_default(),
+                crate::pinstar::data::CanvasNode::Text(_) => "".to_string(),
+            },
         };
 
         if is_editing {
@@ -812,18 +810,6 @@ pub fn draw_pinstar_view(
     }
 }
 
-fn is_generated_id(id: &str) -> bool {
-    if id.starts_with("node_") && id.len() <= 16 {
-        return true;
-    }
-    if id.len() == 16 && id.chars().all(|c| c.is_ascii_hexdigit()) {
-        return true;
-    }
-    if id.len() == 36 && id.chars().all(|c| c.is_ascii_hexdigit() || c == '-') {
-        return true;
-    }
-    false
-}
 
 #[cfg(test)]
 mod tests {

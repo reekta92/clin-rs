@@ -25,6 +25,8 @@ pub struct TextNode {
     pub width: f64,
     pub height: f64,
     pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
     pub color: Option<String>,
 }
 
@@ -38,6 +40,8 @@ pub struct FileNode {
     pub height: f64,
     pub file: String,
     pub subpath: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
     pub color: Option<String>,
 }
 
@@ -50,6 +54,8 @@ pub struct LinkNode {
     pub width: f64,
     pub height: f64,
     pub url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
     pub color: Option<String>,
 }
 
@@ -120,6 +126,24 @@ impl CanvasNode {
             CanvasNode::File(n) => n.file = text,
             CanvasNode::Link(n) => n.url = text,
             CanvasNode::Group(n) => n.label = Some(text),
+        }
+    }
+
+    pub fn title(&self) -> Option<&str> {
+        match self {
+            CanvasNode::Text(n) => n.title.as_deref(),
+            CanvasNode::File(n) => n.title.as_deref(),
+            CanvasNode::Link(n) => n.title.as_deref(),
+            CanvasNode::Group(n) => n.label.as_deref(),
+        }
+    }
+
+    pub fn set_title(&mut self, title: Option<String>) {
+        match self {
+            CanvasNode::Text(n) => n.title = title,
+            CanvasNode::File(n) => n.title = title,
+            CanvasNode::Link(n) => n.title = title,
+            CanvasNode::Group(n) => n.label = title,
         }
     }
 }

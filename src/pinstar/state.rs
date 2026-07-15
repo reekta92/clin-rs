@@ -351,47 +351,22 @@ impl PinstarState {
         }
     }
 
-    pub fn rename_node(&mut self, new_id: String) {
-        if let Some(old_id) = self.selected_node_id.take() {
-            if old_id == new_id {
-                self.selected_node_id = Some(old_id);
-                return;
-            }
-            let final_id = if new_id.is_empty() {
-                uuid::Uuid::new_v4().to_string()
+    pub fn rename_node(&mut self, new_title: String) {
+        if let Some(node_id) = &self.selected_node_id {
+            let trimmed = new_title.trim().to_string();
+            let title = if trimmed.is_empty() {
+                None
             } else {
-                new_id
+                Some(trimmed)
             };
-            let new_id = final_id;
 
             for node in &mut self.data.nodes {
-                match node {
-                    crate::pinstar::data::CanvasNode::Text(n) if n.id == old_id => {
-                        n.id = new_id.clone()
-                    }
-                    crate::pinstar::data::CanvasNode::File(n) if n.id == old_id => {
-                        n.id = new_id.clone()
-                    }
-                    crate::pinstar::data::CanvasNode::Link(n) if n.id == old_id => {
-                        n.id = new_id.clone()
-                    }
-                    crate::pinstar::data::CanvasNode::Group(n) if n.id == old_id => {
-                        n.id = new_id.clone()
-                    }
-                    _ => {}
+                if node.id() == node_id {
+                    node.set_title(title.clone());
+                    break;
                 }
             }
 
-            for edge in &mut self.data.edges {
-                if edge.from_node == old_id {
-                    edge.from_node = new_id.clone();
-                }
-                if edge.to_node == old_id {
-                    edge.to_node = new_id.clone();
-                }
-            }
-
-            self.selected_node_id = Some(new_id);
             let _ = self.save();
         }
     }
@@ -433,6 +408,7 @@ impl PinstarState {
                 width: 200.0,
                 height: 100.0,
                 text: "".to_string(),
+                title: None,
                 color: None,
             },
         ));
@@ -474,6 +450,7 @@ impl PinstarState {
                 height: 200.0,
                 file: path,
                 subpath: None,
+                title: None,
                 color: None,
             },
         ));

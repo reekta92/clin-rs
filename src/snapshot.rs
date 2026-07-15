@@ -108,14 +108,18 @@ pub fn render_canvas_snapshot(
             };
             let node_color = canvas_color_to_style(color_str, theme);
 
-            let title = match node {
-                CanvasNode::File(n) => std::path::Path::new(&n.file)
-                    .file_name()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or(&n.file)
-                    .to_string(),
-                CanvasNode::Link(n) => n.url.clone(),
-                _ => node.id().to_string(),
+            let title = match node.title() {
+                Some(t) => t.to_string(),
+                None => match node {
+                    CanvasNode::File(n) => std::path::Path::new(&n.file)
+                        .file_name()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or(&n.file)
+                        .to_string(),
+                    CanvasNode::Link(n) => n.url.clone(),
+                    CanvasNode::Group(n) => n.label.clone().unwrap_or_default(),
+                    CanvasNode::Text(_) => "".to_string(),
+                },
             };
 
             let inner_text = node.text();
