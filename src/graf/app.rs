@@ -43,6 +43,7 @@ pub struct GrafAppState {
     pub keybinds: Keybinds,
     pub seq_matcher: crate::keybinds::KeyMatcher,
     pub mouse_pos: Option<(u16, u16)>,
+    pub preview_drag_last_pos: Option<(u16, u16)>,
 }
 
 impl Drop for GrafAppState {
@@ -94,6 +95,7 @@ impl GrafAppState {
             app_theme: crate::app_theme::AppThemeColors::from_config(&config.ui),
             keybinds,
             seq_matcher,
+            preview_drag_last_pos: None,
             mouse_pos: None,
         })
     }

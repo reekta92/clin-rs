@@ -123,12 +123,12 @@ pub fn render_canvas_snapshot(
 
             let inner_text = node.text();
 
-            let max_text_len = (node_rect.width.saturating_sub(2) as usize).min(
-                node_rect.height.saturating_sub(2) as usize
-                    * node_rect.width.saturating_sub(2) as usize,
-            );
-            let display_text = if inner_text.len() > max_text_len && max_text_len > 10 {
-                format!("{}…", &inner_text[..max_text_len.saturating_sub(1)])
+            let max_text_len = (node_rect.width.saturating_sub(2) as usize)
+                * (node_rect.height.saturating_sub(2) as usize);
+            let display_text = if inner_text.chars().count() > max_text_len && max_text_len > 10 {
+                let mut s: String = inner_text.chars().take(max_text_len.saturating_sub(1)).collect();
+                s.push('…');
+                s
             } else {
                 inner_text.to_string()
             };

@@ -132,6 +132,7 @@ pub struct ListView {
     pub sections: Vec<crate::config::NotesSection>,
     pub pinned_folders: HashSet<String>,
     pub note_drag: Option<usize>,
+    pub preview_drag_last_pos: Option<(u16, u16)>,
     pub drag_hover: Option<usize>,
 }
 
@@ -187,6 +188,7 @@ impl Default for ListView {
             pinned_folders: HashSet::new(),
             note_drag: None,
             drag_hover: None,
+            preview_drag_last_pos: None,
         }
     }
 }

@@ -513,6 +513,25 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                     app.list.pending_preview_update = true;
                     return;
                 }
+                if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
+                    app.list.preview_drag_last_pos = Some((mouse_event.column, mouse_event.row));
+                    return;
+                }
+                if mouse_event.kind == MouseEventKind::Drag(MouseButton::Left) {
+                    if let Some((last_x, last_y)) = app.list.preview_drag_last_pos {
+                        let dx = mouse_event.column as f64 - last_x as f64;
+                        let dy = mouse_event.row as f64 - last_y as f64;
+                        app.list.preview_offset_x += dx;
+                        app.list.preview_offset_y += dy;
+                        app.list.preview_drag_last_pos = Some((mouse_event.column, mouse_event.row));
+                        app.list.pending_preview_update = true;
+                    }
+                    return;
+                }
+                if mouse_event.kind == MouseEventKind::Up(MouseButton::Left) {
+                    app.list.preview_drag_last_pos = None;
+                    return;
+                }
             }
             None => {}
         }
