@@ -303,7 +303,7 @@ jobs:
             "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-backports main restricted universe multiverse" \
             "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-security main restricted universe multiverse" \
             | sudo tee /etc/apt/sources.list.d/arm64.list > /dev/null
-          sudo apt-get -o Acquire::ForceIPv4=true update
+          sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu libssl-dev:arm64 pkg-config
         env:
           DEBIAN_FRONTEND: noninteractive
@@ -454,7 +454,7 @@ jobs:
             "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-backports main restricted universe multiverse" \
             "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-security main restricted universe multiverse" \
             | sudo tee /etc/apt/sources.list.d/arm64.list > /dev/null
-          sudo apt-get -o Acquire::ForceIPv4=true update
+          sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu libssl-dev:arm64 pkg-config
         env:
           DEBIAN_FRONTEND: noninteractive
