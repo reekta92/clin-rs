@@ -1255,6 +1255,21 @@ fn run_app(
                             match app.mode {
                                 ViewMode::List => {
                                     handle_list_mouse(app, mouse_event, area);
+                                    let is_drag = matches!(
+                                        mouse_event.kind,
+                                        ratatui::crossterm::event::MouseEventKind::Drag(_)
+                                    );
+                                    if is_drag {
+                                        while event::poll(Duration::ZERO)? {
+                                            match event::read()? {
+                                                Event::Mouse(next_mouse) => {
+                                                    app.mouse_pos = Some((next_mouse.column, next_mouse.row));
+                                                    handle_list_mouse(app, next_mouse, area);
+                                                }
+                                                _ => break,
+                                            }
+                                        }
+                                    }
                                 }
                                 ViewMode::Edit => {
                                     handle_edit_mouse(

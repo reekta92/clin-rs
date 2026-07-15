@@ -835,6 +835,34 @@ impl App {
                 }
 
                 if is_draw {
+                    // Reuse cached DrawData for in-memory re-render (avoids disk I/O)
+                    if self.list.preview_content_index == Some(self.list.visual_index)
+                        && let Some(PreviewContent::DrawGrid { data, .. }) = self.list.preview_content.take()
+                    {
+                        let width = self.desired_list_preview_width();
+                        let height = self.desired_list_preview_height();
+                        let scale = self.list.preview_scale;
+                        let offset_x = self.list.preview_offset_x;
+                        let offset_y = self.list.preview_offset_y;
+                        let grid = crate::snapshot::render_draw_snapshot_with_size(
+                            &data,
+                            &self.app_theme,
+                            width,
+                            height,
+                            scale,
+                            offset_x,
+                            offset_y,
+                        );
+                        self.list.preview_content =
+                            Some(PreviewContent::DrawGrid { data, grid });
+                        self.list.preview_content_width = Some(width);
+                        self.list.preview_content_height = Some(height);
+                        self.list.preview_content_scale = Some(scale);
+                        self.list.preview_content_offset_x = Some(offset_x);
+                        self.list.preview_content_offset_y = Some(offset_y);
+                        self.list.preview_content_index = Some(self.list.visual_index);
+                        return;
+                    }
                     let path = self.storage.note_path(id);
                     match std::fs::read_to_string(&path) {
                         Ok(content) => {
@@ -876,6 +904,34 @@ impl App {
                     return;
                 }
                 if is_canvas {
+                    // Reuse cached CanvasData for in-memory re-render (avoids disk I/O)
+                    if self.list.preview_content_index == Some(self.list.visual_index)
+                        && let Some(PreviewContent::CanvasGrid { data, .. }) = self.list.preview_content.take()
+                    {
+                        let width = self.desired_list_preview_width();
+                        let height = self.desired_list_preview_height();
+                        let scale = self.list.preview_scale;
+                        let offset_x = self.list.preview_offset_x;
+                        let offset_y = self.list.preview_offset_y;
+                        let grid = crate::snapshot::render_canvas_snapshot(
+                            &data,
+                            &self.app_theme,
+                            width,
+                            height,
+                            scale,
+                            offset_x,
+                            offset_y,
+                        );
+                        self.list.preview_content =
+                            Some(PreviewContent::CanvasGrid { data, grid });
+                        self.list.preview_content_width = Some(width);
+                        self.list.preview_content_height = Some(height);
+                        self.list.preview_content_scale = Some(scale);
+                        self.list.preview_content_offset_x = Some(offset_x);
+                        self.list.preview_content_offset_y = Some(offset_y);
+                        self.list.preview_content_index = Some(self.list.visual_index);
+                        return;
+                    }
                     let path = self.storage.note_path(id);
                     match std::fs::read_to_string(&path) {
                         Ok(content) => {

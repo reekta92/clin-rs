@@ -573,14 +573,6 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                         app.list.preview_offset_x += dx;
                         app.list.preview_offset_y += dy;
                         app.list.preview_drag_last_pos = Some((mouse_event.column, mouse_event.row));
-                        let width = app.list.preview_content_width.unwrap_or(40);
-                        let height = app.list.preview_content_height.unwrap_or(40);
-                        *grid = crate::snapshot::render_canvas_snapshot(
-                            data, &app.app_theme, width, height, app.list.preview_scale, app.list.preview_offset_x, app.list.preview_offset_y
-                        );
-                        app.list.preview_content_scale = Some(app.list.preview_scale);
-                        app.list.preview_content_offset_x = Some(app.list.preview_offset_x);
-                        app.list.preview_content_offset_y = Some(app.list.preview_offset_y);
                     }
                     return;
                 }
@@ -641,14 +633,6 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                         app.list.preview_offset_x += dx;
                         app.list.preview_offset_y += dy;
                         app.list.preview_drag_last_pos = Some((mouse_event.column, mouse_event.row));
-                        let width = app.list.preview_content_width.unwrap_or(40);
-                        let height = app.list.preview_content_height.unwrap_or(40);
-                        *grid = crate::snapshot::render_draw_snapshot_with_size(
-                            data, &app.app_theme, width, height, app.list.preview_scale, app.list.preview_offset_x, app.list.preview_offset_y
-                        );
-                        app.list.preview_content_scale = Some(app.list.preview_scale);
-                        app.list.preview_content_offset_x = Some(app.list.preview_offset_x);
-                        app.list.preview_content_offset_y = Some(app.list.preview_offset_y);
                     }
                     return;
                 }
