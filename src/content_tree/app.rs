@@ -38,7 +38,15 @@ impl crate::overlay::OverlayView for ContentTreeState {
         self.last_area = area;
         let keybinds = self.keybinds.clone();
         let app_status = app.status.as_ref();
-        render::draw_content_tree(frame, area, self, &app.app_theme, &keybinds, &app.config, Some(app_status));
+        render::draw_content_tree(
+            frame,
+            area,
+            self,
+            &app.app_theme,
+            &keybinds,
+            &app.config,
+            Some(app_status),
+        );
     }
 
     fn overlay_handle_event(
@@ -53,7 +61,7 @@ impl crate::overlay::OverlayView for ContentTreeState {
                 if key.kind == crossterm::event::KeyEventKind::Release {
                     return Ok(crate::overlay::OverlayResult::Continue);
                 }
-                let r = input::handle_input(self, key, &keybinds, &mut app.config);
+                let r = input::handle_input(self, key, &keybinds, &app.config);
                 if let Some(result) = map_input_result(self, r) {
                     return Ok(result);
                 }

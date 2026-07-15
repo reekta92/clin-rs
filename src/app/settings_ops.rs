@@ -339,11 +339,17 @@ impl App {
 
         self.editor.editor.set_cursor_style(highlight_style);
         self.editor.editor.set_selection_style(highlight_style);
-        self.editor.editor.set_cursor_line_style(ratatui::style::Style::default());
+        self.editor
+            .editor
+            .set_cursor_line_style(ratatui::style::Style::default());
 
         self.editor.title_editor.set_cursor_style(highlight_style);
-        self.editor.title_editor.set_selection_style(highlight_style);
-        self.editor.title_editor.set_cursor_line_style(ratatui::style::Style::default());
+        self.editor
+            .title_editor
+            .set_selection_style(highlight_style);
+        self.editor
+            .title_editor
+            .set_cursor_line_style(ratatui::style::Style::default());
     }
 
     pub fn toggle_show_line_numbers(&mut self) {

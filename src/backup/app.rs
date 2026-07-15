@@ -25,7 +25,7 @@ impl crate::overlay::OverlayView for BackupState {
         match event {
             Event::Key(key) => {
                 let keybinds = self.keybinds.clone();
-                match input::handle_input(self, key, &keybinds, &mut app.config) {
+                match input::handle_input(self, key, &keybinds, &app.config) {
                     InputResult::Back => {
                         return Ok(crate::overlay::OverlayResult::Exit);
                     }
@@ -39,7 +39,8 @@ impl crate::overlay::OverlayView for BackupState {
                 }
             }
             Event::Mouse(mouse) => {
-                if let InputResult::Refresh = input::handle_mouse(self, mouse, app.config.ui.icon_mode)
+                if let InputResult::Refresh =
+                    input::handle_mouse(self, mouse, app.config.ui.icon_mode)
                 {
                     self.refresh_git_info();
                 }

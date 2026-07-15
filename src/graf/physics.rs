@@ -12,14 +12,13 @@ pub fn simulation_step(state: &mut GraphState, gravity: f32, timestep: f32) {
             n.velocity.y -= n.location.y * gravity;
         }
     }
-    if let Some((tx, ty)) = state.drag_target {
-        if let Some(idx) = state.dragging_node {
-            if let Some(node) = state.simulation.get_graph_mut().node_weight_mut(idx) {
-                node.location.x = tx;
-                node.location.y = ty;
-                node.velocity = fdg_sim::glam::Vec3::ZERO;
-            }
-        }
+    if let Some((tx, ty)) = state.drag_target
+        && let Some(idx) = state.dragging_node
+        && let Some(node) = state.simulation.get_graph_mut().node_weight_mut(idx)
+    {
+        node.location.x = tx;
+        node.location.y = ty;
+        node.velocity = fdg_sim::glam::Vec3::ZERO;
     }
     let graph = state.simulation.get_graph();
     let energy: f32 = graph.node_weights().map(|n| n.velocity.length()).sum();

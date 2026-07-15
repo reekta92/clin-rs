@@ -139,8 +139,10 @@ impl PinstarState {
 
     pub fn sync_to_raw_editor(&mut self, app: &mut crate::app::App) {
         if let Ok(content) = serde_json::to_string_pretty(&self.data) {
-            app.editor.editor = TextArea::from(content.lines().map(String::from).collect::<Vec<_>>());
-            app.editor.editor
+            app.editor.editor =
+                TextArea::from(content.lines().map(String::from).collect::<Vec<_>>());
+            app.editor
+                .editor
                 .set_cursor_line_style(ratatui::style::Style::default());
         }
     }

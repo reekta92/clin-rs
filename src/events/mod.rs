@@ -1830,7 +1830,7 @@ mod tests {
     fn test_right_click_selection_behavior() {
         use crate::app::{App, EditFocus};
         use crate::storage::Storage;
-        use crossterm::event::{MouseButton, MouseEvent, MouseEventKind, KeyModifiers};
+        use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
         use ratatui::layout::Rect;
         use tempfile::tempdir;
 
@@ -1852,7 +1852,9 @@ mod tests {
             key: [0u8; 32],
         };
         let mut app = App::new(storage).expect("value is present");
-        app.editor.editor.insert_str("Hello world\nThis is a test\nSome more text\n");
+        app.editor
+            .editor
+            .insert_str("Hello world\nThis is a test\nSome more text\n");
 
         let terminal_area = Rect::new(0, 0, 80, 24);
         let mut focus = EditFocus::Body;
@@ -1870,7 +1872,9 @@ mod tests {
         );
 
         // Put cursor at the start
-        app.editor.editor.move_cursor(ratatui_textarea::CursorMove::Top);
+        app.editor
+            .editor
+            .move_cursor(ratatui_textarea::CursorMove::Top);
 
         let backend = ratatui::backend::TestBackend::new(80, 24);
         let mut terminal = ratatui::Terminal::new(backend).unwrap();
@@ -1886,9 +1890,11 @@ mod tests {
             modifiers: KeyModifiers::NONE,
         };
 
-        terminal.draw(|frame| {
-            frame.render_widget(&app.editor.editor, body_inner);
-        }).unwrap();
+        terminal
+            .draw(|frame| {
+                frame.render_widget(&app.editor.editor, body_inner);
+            })
+            .unwrap();
 
         super::edit::handle_edit_mouse(
             &mut app,
@@ -1905,12 +1911,16 @@ mod tests {
         app.popups.active = None;
 
         // Reset cursor to (0, 0)
-        app.editor.editor.move_cursor(ratatui_textarea::CursorMove::Top);
+        app.editor
+            .editor
+            .move_cursor(ratatui_textarea::CursorMove::Top);
 
         // Scenario 2: Right-click with selection.
         // Start selection, move cursor to create a selection.
         app.editor.editor.start_selection();
-        app.editor.editor.move_cursor(ratatui_textarea::CursorMove::WordForward);
+        app.editor
+            .editor
+            .move_cursor(ratatui_textarea::CursorMove::WordForward);
         assert!(app.editor.editor.selection_range().is_some());
         let orig_cursor = app.editor.editor.cursor();
 
@@ -1922,9 +1932,11 @@ mod tests {
             modifiers: KeyModifiers::NONE,
         };
 
-        terminal.draw(|frame| {
-            frame.render_widget(&app.editor.editor, body_inner);
-        }).unwrap();
+        terminal
+            .draw(|frame| {
+                frame.render_widget(&app.editor.editor, body_inner);
+            })
+            .unwrap();
 
         super::edit::handle_edit_mouse(
             &mut app,

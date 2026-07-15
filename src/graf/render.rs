@@ -516,7 +516,9 @@ impl RenderCache {
             let radius = self.nodes.get(idx.index()).map(|n| n.radius).unwrap_or(2.0);
             self.labels.push(LabelData {
                 x: node.location.x as f64,
-                y: node.location.y as f64 + radius + config.graf.visual.label_offset.max(min_offset_y),
+                y: node.location.y as f64
+                    + radius
+                    + config.graf.visual.label_offset.max(min_offset_y),
                 text: crate::graf::util::truncate(
                     &node.data.title,
                     config.graf.visual.label_max_length,
@@ -569,7 +571,8 @@ pub fn draw_graph_view(
     );
     let x_bounds = viewport.x_bounds(aspect);
     let y_bounds = viewport.y_bounds(aspect);
-    let cell_world_height = (y_bounds[1] - y_bounds[0]).abs() / (canvas_area.height as f64).max(1.0);
+    let cell_world_height =
+        (y_bounds[1] - y_bounds[0]).abs() / (canvas_area.height as f64).max(1.0);
     cache.fill_labels(graph, config, state.selected_node, cell_world_height * 1.5);
     let edges = cache.edges.clone();
     let nodes = cache.nodes.clone();
@@ -1055,7 +1058,7 @@ mod tests {
 
         let idx1 = graph.add_force_node("Node 1", n1_data);
         let idx2 = graph.add_force_node("Node 2", n2_data);
-        let idx3 = graph.add_force_node("Node 3", n3_data);
+        let _idx3 = graph.add_force_node("Node 3", n3_data);
 
         // Add edge: idx1 - idx2 (idx3 is isolated)
         graph.add_edge(idx1, idx2, ());
@@ -1122,7 +1125,11 @@ mod tests {
         assert_eq!(cache.labels.len(), 1);
         let label = &cache.labels[0];
         let node_y = graph[idx1].location.y as f64;
-        let radius = cache.nodes.get(idx1.index()).map(|n| n.radius).unwrap_or(2.0);
+        let radius = cache
+            .nodes
+            .get(idx1.index())
+            .map(|n| n.radius)
+            .unwrap_or(2.0);
         // The default label_offset is 4.0, but min_offset_y is 10.0. The actual offset should be 10.0.
         assert_eq!(label.y, node_y + radius + 10.0);
 

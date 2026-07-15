@@ -403,7 +403,7 @@ impl Storage {
                 title: Some(note.title.clone()),
                 updated_at: Some(note.updated_at),
                 tags: note.tags.clone(),
-            pinned: existing_pinned,
+                pinned: existing_pinned,
                 links: Some(extract_wikilinks(&note.content)),
                 original_ext: None,
             };

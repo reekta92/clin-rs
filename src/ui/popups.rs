@@ -1309,11 +1309,11 @@ pub fn fill_cursor_line_bg(frame: &mut Frame, editor: &TextArea, area: Rect, bg:
     let buf = frame.buffer_mut();
     for y in inner_area.top()..inner_area.bottom() {
         for x in inner_area.left()..inner_area.right() {
-            if let Some(cell) = buf.cell_mut((x, y)) {
-                if cell.style().add_modifier.contains(Modifier::REVERSED) {
-                    cursor_y = Some(y);
-                    break;
-                }
+            if let Some(cell) = buf.cell_mut((x, y))
+                && cell.style().add_modifier.contains(Modifier::REVERSED)
+            {
+                cursor_y = Some(y);
+                break;
             }
         }
         if cursor_y.is_some() {
@@ -1487,8 +1487,8 @@ mod tests {
 
     #[test]
     fn test_fill_cursor_line_bg() {
-        use ratatui::backend::TestBackend;
         use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
 
         let mut textarea = TextArea::new(vec![
             "line 1".to_string(),
@@ -1501,43 +1501,69 @@ mod tests {
         let area = Rect::new(0, 0, 20, 5);
 
         // 1. Without selection, cursor on line 1 (y = 0)
-        terminal.draw(|frame| {
-            frame.render_widget(&textarea, area);
-            fill_cursor_line_bg(frame, &textarea, area, Color::Red);
-        }).unwrap();
+        terminal
+            .draw(|frame| {
+                frame.render_widget(&textarea, area);
+                fill_cursor_line_bg(frame, &textarea, area, Color::Red);
+            })
+            .unwrap();
 
         let buffer = terminal.backend().buffer();
         for x in 0..20 {
-            assert_eq!(buffer.get(x, 0).bg, Color::Red, "row 0, col {} should be highlighted", x);
-            assert_ne!(buffer.get(x, 1).bg, Color::Red, "row 1, col {} should not be highlighted", x);
+            assert_eq!(
+                buffer[(x, 0)].bg,
+                Color::Red,
+                "row 0, col {} should be highlighted",
+                x
+            );
+            assert_ne!(
+                buffer[(x, 1)].bg,
+                Color::Red,
+                "row 1, col {} should not be highlighted",
+                x
+            );
         }
 
         // 2. Move cursor to line 2 (y = 1)
         textarea.move_cursor(ratatui_textarea::CursorMove::Down);
-        terminal.draw(|frame| {
-            frame.render_widget(&textarea, area);
-            fill_cursor_line_bg(frame, &textarea, area, Color::Red);
-        }).unwrap();
+        terminal
+            .draw(|frame| {
+                frame.render_widget(&textarea, area);
+                fill_cursor_line_bg(frame, &textarea, area, Color::Red);
+            })
+            .unwrap();
 
         let buffer = terminal.backend().buffer();
         for x in 0..20 {
-            assert_ne!(buffer.get(x, 0).bg, Color::Red, "row 0, col {} should not be highlighted", x);
-            assert_eq!(buffer.get(x, 1).bg, Color::Red, "row 1, col {} should be highlighted", x);
+            assert_ne!(
+                buffer[(x, 0)].bg,
+                Color::Red,
+                "row 0, col {} should not be highlighted",
+                x
+            );
+            assert_eq!(
+                buffer[(x, 1)].bg,
+                Color::Red,
+                "row 1, col {} should be highlighted",
+                x
+            );
         }
 
         // 3. With selection active, fill_cursor_line_bg should return early
         textarea.start_selection();
         textarea.move_cursor(ratatui_textarea::CursorMove::Down);
-        terminal.draw(|frame| {
-            frame.render_widget(&textarea, area);
-            fill_cursor_line_bg(frame, &textarea, area, Color::Red);
-        }).unwrap();
+        terminal
+            .draw(|frame| {
+                frame.render_widget(&textarea, area);
+                fill_cursor_line_bg(frame, &textarea, area, Color::Red);
+            })
+            .unwrap();
 
         let buffer = terminal.backend().buffer();
         for x in 0..20 {
-            assert_ne!(buffer.get(x, 0).bg, Color::Red);
-            assert_ne!(buffer.get(x, 1).bg, Color::Red);
-            assert_ne!(buffer.get(x, 2).bg, Color::Red);
+            assert_ne!(buffer[(x, 0)].bg, Color::Red);
+            assert_ne!(buffer[(x, 1)].bg, Color::Red);
+            assert_ne!(buffer[(x, 2)].bg, Color::Red);
         }
     }
 }

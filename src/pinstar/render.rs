@@ -91,7 +91,11 @@ pub fn draw_pinstar_view(
         crate::ui::render_editor_widget(
             frame,
             app,
-            if state.editor_focus { crate::app::EditFocus::Body } else { crate::app::EditFocus::Sidebar },
+            if state.editor_focus {
+                crate::app::EditFocus::Body
+            } else {
+                crate::app::EditFocus::Sidebar
+            },
             editor_area,
             Some(editor_block),
             Some(theme.bg_style()),
@@ -824,11 +828,10 @@ fn is_generated_id(id: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ratatui::backend::TestBackend;
-    use crate::pinstar::state::PinstarState;
-    use crate::app_theme::AppThemeColors;
-    use crate::keybinds::Keybinds;
     use crate::keybinds::KeyMatcher;
+    use crate::keybinds::Keybinds;
+    use crate::pinstar::state::PinstarState;
+    use ratatui::backend::TestBackend;
     use std::fs::File;
     use std::io::Write;
     use tempfile::tempdir;
