@@ -120,6 +120,25 @@ fn handle_command_palette_mouse(app: &mut App, mouse: &MouseEvent, terminal_area
         ])
         .split(content);
 
+    // --- Scrollbar handling ---
+    if app.config.ui.scrollbars
+        && let Some(meta) = palette.last_scroll
+    {
+        let max_pos = meta.content_len.saturating_sub(1);
+        let frac = palette.state.selected().unwrap_or(0) as f32 / max_pos.max(1) as f32;
+        if let Some(new_frac) = crate::ui::scrollbar::handle_scrollbar_mouse(
+            mouse,
+            meta,
+            frac,
+            &mut palette.scroll_drag,
+        ) {
+            let pos = (new_frac * max_pos as f32).round() as usize;
+            palette.state.select(Some(pos.min(max_pos)));
+            app.command_palette = Some(palette);
+            return true;
+        }
+    }
+
     match mouse.kind {
         MouseEventKind::Down(MouseButton::Left) => {
             if !contains_cell(popup_area, mouse.column, mouse.row) {
@@ -190,11 +209,80 @@ fn handle_command_palette_mouse(app: &mut App, mouse: &MouseEvent, terminal_area
     app.command_palette = Some(palette);
     true
 }
-
 // ---------------------------------------------------------------------------
-// ActivePopup::handle_mouse
+// Scrollbar helpers
 // ---------------------------------------------------------------------------
 
+fn handle_popup_scrollbar(
+    last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
+    scroll_drag: &mut Option<crate::ui::scrollbar::ScrollDrag>,
+    selected: &mut usize,
+    content_len: usize,
+    mouse: &MouseEvent,
+) -> bool {
+    if let Some(meta) = last_scroll
+        && content_len > meta.viewport_len
+    {
+        let max_pos = content_len.saturating_sub(1);
+        let frac = *selected as f32 / max_pos.max(1) as f32;
+        if let Some(new_frac) =
+            crate::ui::scrollbar::handle_scrollbar_mouse(mouse, meta, frac, scroll_drag)
+        {
+            *selected = (new_frac * max_pos as f32).round() as usize;
+            true
+        } else {
+            false
+        }
+    } else {
+        false
+    }
+}
+
+fn handle_search_popup_scrollbar(
+    popup: &mut crate::popups::SearchPopup,
+    scroll_drag: &mut Option<crate::ui::scrollbar::ScrollDrag>,
+    mouse: &MouseEvent,
+) -> bool {
+    if let Some(meta) = popup.last_scroll
+        && popup.grep_results.len() + popup.title_results.len() > meta.viewport_len
+    {
+        let has_grep = !popup.grep_results.is_empty();
+        let max_pos = meta.content_len.saturating_sub(1);
+        // Convert flat selection to visible position for fraction
+        let vis_pos = if has_grep {
+            crate::popups::grep_flat_to_visible(
+                &popup.grep_is_header,
+                &popup.grep_expanded,
+                popup.grep_selected,
+            )
+            .unwrap_or(0)
+        } else {
+            popup.title_selected
+        };
+        let frac = vis_pos as f32 / max_pos.max(1) as f32;
+        if let Some(new_frac) =
+            crate::ui::scrollbar::handle_scrollbar_mouse(mouse, meta, frac, scroll_drag)
+        {
+            let new_vis = (new_frac * max_pos as f32).round() as usize;
+            if has_grep {
+                if let Some(flat) = crate::popups::grep_visible_to_flat(
+                    &popup.grep_is_header,
+                    &popup.grep_expanded,
+                    new_vis.min(max_pos),
+                ) {
+                    popup.grep_selected = flat.min(popup.grep_results.len().saturating_sub(1));
+                }
+            } else {
+                popup.title_selected = new_vis.min(popup.title_results.len().saturating_sub(1));
+            }
+            true
+        } else {
+            false
+        }
+    } else {
+        false
+    }
+}
 impl crate::popups::ActivePopup {
     fn handle_mouse(self, app: &mut App, mouse: &MouseEvent, terminal_area: Rect) -> bool {
         use crate::popups::ActivePopup::{
@@ -507,6 +595,28 @@ impl crate::popups::ActivePopup {
                     .direction(Direction::Vertical)
                     .constraints([Constraint::Length(3), Constraint::Min(1)])
                     .split(popup_area);
+
+                // Scroll wheel
+                match mouse.kind {
+                    MouseEventKind::ScrollUp
+                        if contains_cell(popup_area, mouse.column, mouse.row) =>
+                    {
+                        p.selected = p.selected.saturating_sub(1);
+                        app.popups.active = Some(FolderPicker(p));
+                        return true;
+                    }
+                    MouseEventKind::ScrollDown
+                        if contains_cell(popup_area, mouse.column, mouse.row) =>
+                    {
+                        if p.selected + 1 < p.filtered_folders.len() {
+                            p.selected += 1;
+                        }
+                        app.popups.active = Some(FolderPicker(p));
+                        return true;
+                    }
+                    _ => {}
+                }
+
                 let mut confirm_selected = false;
                 if mouse.kind == MouseEventKind::Down(MouseButton::Left)
                     && contains_cell(chunks[0], mouse.column, mouse.row)
@@ -873,8 +983,68 @@ pub fn handle_global_popup_mouse(app: &mut App, mouse: &MouseEvent, terminal_are
             _ => true, // consume other events while menu is open
         };
     }
+    // 4. Active popup — scrollbar pre-pass (list-style popups only)
+    if app.config.ui.scrollbars {
+        let consumed = match app.popups.active.as_mut() {
+            Some(ActivePopup::Template(p)) => handle_popup_scrollbar(
+                p.last_scroll,
+                &mut app.popups.scroll_drag,
+                &mut p.selected,
+                p.filtered_templates.len(),
+                mouse,
+            ),
+            Some(ActivePopup::Theme(p)) => handle_popup_scrollbar(
+                p.last_scroll,
+                &mut app.popups.scroll_drag,
+                &mut p.selected,
+                p.themes.len(),
+                mouse,
+            ),
+            Some(ActivePopup::Tag(p)) => handle_popup_scrollbar(
+                p.last_scroll,
+                &mut app.popups.scroll_drag,
+                &mut p.all_tags_selected,
+                p.all_tags.len(),
+                mouse,
+            ),
+            Some(ActivePopup::FolderPicker(p)) => {
+                // Scrollbar interaction implies user wants to browse the list,
+                // so switch focus to Results for the list to track selection.
+                p.focus = crate::app::FolderPickerFocus::Results;
+                handle_popup_scrollbar(
+                    p.last_scroll,
+                    &mut app.popups.scroll_drag,
+                    &mut p.selected,
+                    p.filtered_folders.len(),
+                    mouse,
+                )
+            }
+            Some(ActivePopup::TrashView(p)) => handle_popup_scrollbar(
+                p.last_scroll,
+                &mut app.popups.scroll_drag,
+                &mut p.selected,
+                p.items.len(),
+                mouse,
+            ),
+            Some(ActivePopup::Subnotes(p)) => handle_popup_scrollbar(
+                p.last_scroll,
+                &mut app.popups.scroll_drag,
+                &mut p.selected,
+                p.subnotes.len(),
+                mouse,
+            ),
+            Some(ActivePopup::Search(p)) => {
+                handle_search_popup_scrollbar(p, &mut app.popups.scroll_drag, mouse)
+            }
+            Some(_) => false,
+            None => false,
+        };
+        if consumed {
+            return true;
+        }
+    }
 
-    // 4. Active popup (take + route through handle_mouse)
+    // 5. Active popup (take + route through handle_mouse)
     if let Some(popup) = app.popups.active.take() {
         popup.handle_mouse(app, mouse, terminal_area)
     } else {

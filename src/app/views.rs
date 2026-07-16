@@ -279,6 +279,7 @@ impl App {
                     items,
                     selected: 0,
                     scroll_offset: 0,
+                    last_scroll: None,
                 }));
             }
             Err(e) => {

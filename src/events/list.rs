@@ -536,6 +536,28 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         list_area.height.saturating_sub(2),
     );
 
+    // --- Scrollbar handling (list layout) ---
+    if app.config.ui.scrollbars
+        && app.list.notes_layout != crate::config::NotesLayout::Grid
+        && let Some(meta) = app.list.last_scroll
+    {
+        let content_len = meta.content_len;
+        let frac = app.list.visual_index as f32 / content_len.max(1).saturating_sub(1) as f32;
+        if let Some(new_frac) = crate::ui::scrollbar::handle_scrollbar_mouse(
+            &mouse_event,
+            meta,
+            frac,
+            &mut app.list.scroll_drag,
+        ) {
+            let max_pos = content_len.saturating_sub(1);
+            let pos = (new_frac * max_pos as f32).round() as usize;
+            app.list.list_state.select(Some(pos.min(max_pos)));
+            app.list.visual_index = pos.min(max_pos);
+            app.request_preview_update_immediate();
+            return;
+        }
+    }
+
     let preview_active = app.list.preview_enabled || app.preview_fullscreen;
     if preview_active
         && let Some(p_area) = preview_area
@@ -836,6 +858,23 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                         }
                     }
                 }
+            }
+        }
+
+        // --- Scrollbar handling (grid) ---
+        if app.config.ui.scrollbars
+            && let Some(meta) = app.list.last_scroll
+        {
+            let max_pos = meta.content_len.saturating_sub(1);
+            let frac = app.list.grid_scroll as f32 / max_pos.max(1) as f32;
+            if let Some(new_frac) = crate::ui::scrollbar::handle_scrollbar_mouse(
+                &mouse_event,
+                meta,
+                frac,
+                &mut app.list.scroll_drag,
+            ) {
+                app.list.grid_scroll = (new_frac * max_pos as f32).round() as usize;
+                return;
             }
         }
 

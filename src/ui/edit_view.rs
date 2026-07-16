@@ -557,6 +557,27 @@ fn draw_sidebar_pane(frame: &mut Frame, area: Rect, app: &mut App, focus: EditFo
             app.mouse_pos,
             theme.hover_style(),
         );
+        if item_count > 0 {
+            let content_len = app.sidebar_len();
+            let viewport_len = list_area.height as usize;
+            let meta = crate::ui::scrollbar::ScrollbarMeta {
+                track: crate::ui::scrollbar::track_rect(sb_chunks[3]),
+                content_len,
+                viewport_len,
+            };
+            app.editor.sidebar_last_scroll = Some(meta);
+            if app.config.ui.scrollbars {
+                crate::ui::scrollbar::draw_scrollbar(
+                    frame,
+                    sb_chunks[3],
+                    content_len,
+                    viewport_len,
+                    app.editor.sidebar_scroll_offset,
+                    content_len.saturating_sub(viewport_len),
+                    theme,
+                );
+            }
+        }
     }
 }
 fn draw_link_preview_popup(frame: &mut Frame, area: Rect, app: &mut App) {

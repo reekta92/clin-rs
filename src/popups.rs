@@ -54,6 +54,7 @@ pub struct TemplatePopup {
     pub selected: usize,
     pub scroll_offset: usize,
     pub focus: TemplatePopupFocus,
+    pub last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -77,6 +78,7 @@ pub struct ThemePopup {
     pub focus: ThemePopupFocus,
     pub general_is_solid: bool,
     pub graph_is_solid: bool,
+    pub last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -94,13 +96,13 @@ pub struct TagPopup {
     pub focus: TagPopupFocus,
     pub all_tags_selected: usize,
     pub scroll_offset: usize,
+    pub last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
 }
 
 pub enum FolderPopupMode {
     Create { parent_path: String },
     Rename { old_path: String },
 }
-
 pub struct FolderPopup {
     pub mode: FolderPopupMode,
     pub input: TextArea<'static>,
@@ -150,8 +152,9 @@ pub struct FolderPicker {
     pub filtered_folders: Vec<String>,
     pub selected: usize,
     pub input: TextArea<'static>,
-    pub focus: FolderPickerFocus,
     pub scroll_offset: usize,
+    pub focus: FolderPickerFocus,
+    pub last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
 }
 
 pub struct NoteRenamePopup {
@@ -192,7 +195,6 @@ pub enum SearchFocus {
     Results,
 }
 
-#[derive(Debug)]
 pub struct SearchPopup {
     pub input: TextArea<'static>,
     pub focus: SearchFocus,
@@ -205,12 +207,13 @@ pub struct SearchPopup {
     pub grep_result_indices: Vec<usize>,
     pub grep_is_header: Vec<bool>,
     pub grep_expanded: std::collections::HashSet<usize>,
-
     pub grep_selected: usize,
     pub results_scroll_offset: usize,
     pub original_index: usize,
     pub original_folder_expanded: std::collections::HashSet<String>,
+    pub last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
 }
+
 pub struct SortPopup {
     pub selected: usize,
 }
@@ -269,6 +272,7 @@ pub struct TrashView {
     pub items: Vec<trash::TrashItem>,
     pub selected: usize,
     pub scroll_offset: usize,
+    pub last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -277,7 +281,6 @@ pub enum SubnotesFocus {
     EditTitle,
     EditContent,
 }
-
 pub struct SubnotesPopup {
     pub parent_id: String,
     pub subnotes: Vec<crate::storage::SubNote>,
@@ -287,8 +290,8 @@ pub struct SubnotesPopup {
     pub title_input: TextArea<'static>,
     pub content_input: TextArea<'static>,
     pub is_dirty: bool,
+    pub last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
 }
-
 /// 0-based flat index of the `vis_pos`-th visible grep item.
 /// Children of collapsed headers are skipped. None if out of range.
 #[allow(clippy::implicit_hasher)]
@@ -452,6 +455,8 @@ pub struct PopupManager {
     pub confirm: Option<ConfirmPopup>,
     /// The single active popup, if any.
     pub active: Option<ActivePopup>,
+    pub last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
+    pub scroll_drag: Option<crate::ui::scrollbar::ScrollDrag>,
 }
 
 impl PopupManager {

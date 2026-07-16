@@ -1053,6 +1053,7 @@ impl App {
             title_input,
             content_input,
             is_dirty: false,
+            last_scroll: None,
         };
 
         self.popups.active = Some(crate::popups::ActivePopup::Subnotes(Box::new(popup)));

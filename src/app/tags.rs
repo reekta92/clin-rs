@@ -48,6 +48,7 @@ impl App {
                 focus: crate::popups::TagPopupFocus::Input,
                 all_tags_selected: 0,
                 scroll_offset: 0,
+                last_scroll: None,
             }));
             self.update_tag_suggestions();
         } else {

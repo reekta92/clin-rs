@@ -14,6 +14,7 @@ pub(crate) mod help_content;
 mod list_view;
 mod popups;
 pub(crate) mod quick_search;
+pub(crate) mod scrollbar;
 pub(crate) mod setup;
 mod title_bar;
 
@@ -451,6 +452,20 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             app.mouse_pos,
             app.app_theme.hover_style(),
         );
+        popup.last_scroll = Some(crate::ui::scrollbar::ScrollbarMeta {
+            track: crate::ui::scrollbar::track_rect(inner_tags),
+            content_len: popup.all_tags.len(),
+            viewport_len: inner_tags.height as usize,
+        });
+        crate::ui::scrollbar::draw_scrollbar(
+            frame,
+            inner_tags,
+            popup.all_tags.len(),
+            inner_tags.height as usize,
+            popup.all_tags_selected,
+            popup.all_tags.len().saturating_sub(1),
+            &app.app_theme,
+        );
     }
 
     // Folder picker popup
@@ -563,6 +578,20 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             picker.filtered_folders.len(),
             app.mouse_pos,
             app.app_theme.hover_style(),
+        );
+        picker.last_scroll = Some(crate::ui::scrollbar::ScrollbarMeta {
+            track: crate::ui::scrollbar::track_rect(inner),
+            content_len: picker.filtered_folders.len(),
+            viewport_len: inner.height as usize,
+        });
+        crate::ui::scrollbar::draw_scrollbar(
+            frame,
+            inner,
+            picker.filtered_folders.len(),
+            inner.height as usize,
+            picker.selected,
+            picker.filtered_folders.len().saturating_sub(1),
+            &app.app_theme,
         );
     }
 
@@ -694,6 +723,29 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             .highlight_symbol("  ");
 
         frame.render_stateful_widget(list, chunks[2], &mut palette.state);
+        let content_len = palette.items.len();
+        if content_len > 0 {
+            let viewport_len = ((chunks[2].height.saturating_sub(2)) / 2) as usize;
+            let meta = crate::ui::scrollbar::ScrollbarMeta {
+                track: crate::ui::scrollbar::track_rect(chunks[2]),
+                content_len,
+                viewport_len,
+            };
+            palette.last_scroll = Some(meta);
+            palette.last_results_area = Some(chunks[2]);
+            if app.config.ui.scrollbars {
+                let pos = palette.state.selected().unwrap_or(0);
+                crate::ui::scrollbar::draw_scrollbar(
+                    frame,
+                    chunks[2],
+                    content_len,
+                    viewport_len,
+                    pos,
+                    content_len.saturating_sub(1),
+                    &app.app_theme,
+                );
+            }
+        }
     }
 
     // Note rename popup
@@ -1085,8 +1137,25 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             app.mouse_pos,
             app.app_theme.hover_style(),
         );
+        popup.last_scroll = Some(crate::ui::scrollbar::ScrollbarMeta {
+            track: crate::ui::scrollbar::track_rect(inner_results),
+            content_len: hover_count,
+            viewport_len: inner_results.height as usize,
+        });
+        crate::ui::scrollbar::draw_scrollbar(
+            frame,
+            inner_results,
+            hover_count,
+            inner_results.height as usize,
+            if has_grep {
+                popup.grep_selected
+            } else {
+                popup.title_selected
+            },
+            hover_count.saturating_sub(1),
+            &app.app_theme,
+        );
     }
-
     // Trash view popup
     if let Some(crate::popups::ActivePopup::TrashView(trash)) = &mut app.popups.active {
         let area = frame.area();
@@ -1163,6 +1232,20 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             trash.items.len(),
             app.mouse_pos,
             app.app_theme.hover_style(),
+        );
+        trash.last_scroll = Some(crate::ui::scrollbar::ScrollbarMeta {
+            track: crate::ui::scrollbar::track_rect(inner),
+            content_len: trash.items.len(),
+            viewport_len: inner.height as usize,
+        });
+        crate::ui::scrollbar::draw_scrollbar(
+            frame,
+            inner,
+            trash.items.len(),
+            inner.height as usize,
+            trash.selected,
+            trash.items.len().saturating_sub(1),
+            &app.app_theme,
         );
     }
 

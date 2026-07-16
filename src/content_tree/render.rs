@@ -183,6 +183,18 @@ pub fn draw_content_tree(
             state.mouse_pos,
             theme.hover_style(),
         );
+        let content_len = visible.len();
+        if config.ui.scrollbars {
+            crate::ui::scrollbar::draw_scrollbar(
+                frame,
+                left_area,
+                content_len,
+                left_area.height as usize,
+                selected_pos.unwrap_or(0),
+                content_len.saturating_sub(1),
+                theme,
+            );
+        }
 
         // Draw vertical separator
         crate::ui::draw_dim_vline(frame, sep_area, theme.muted);

@@ -619,6 +619,31 @@ pub fn handle_edit_mouse(
     if let Some(sb) = sidebar_inner
         && contains_cell(sb, mouse_event.column, mouse_event.row)
     {
+        // --- Scrollbar handling ---
+        if app.config.ui.scrollbars
+            && let Some(meta) = app.editor.sidebar_last_scroll
+        {
+            let max_pos = meta.content_len.saturating_sub(meta.viewport_len);
+            let frac = app.editor.sidebar_scroll_offset as f32 / max_pos.max(1) as f32;
+            if let Some(new_frac) = crate::ui::scrollbar::handle_scrollbar_mouse(
+                &mouse_event,
+                meta,
+                frac,
+                &mut app.editor.sidebar_scroll_drag,
+            ) {
+                let new_offset = (new_frac * max_pos as f32).round() as usize;
+                app.editor.sidebar_scroll_offset = new_offset.min(max_pos);
+                // Keep sidebar_selected in view
+                let viewport = meta.viewport_len;
+                if app.editor.sidebar_selected < app.editor.sidebar_scroll_offset {
+                    app.editor.sidebar_selected = app.editor.sidebar_scroll_offset;
+                } else if app.editor.sidebar_selected >= app.editor.sidebar_scroll_offset + viewport
+                {
+                    app.editor.sidebar_selected = app.editor.sidebar_scroll_offset + viewport - 1;
+                }
+                return;
+            }
+        }
         match mouse_event.kind {
             MouseEventKind::ScrollUp => {
                 app.sidebar_move(-1);

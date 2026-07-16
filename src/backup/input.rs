@@ -340,6 +340,45 @@ pub fn handle_mouse(
         }
     }
 
+    // --- Scrollbar handling for content list ---
+    if state.input_mode == BackupInputMode::Normal
+        && let Some(meta) = state.last_content_scroll
+    {
+        let max_pos = meta.content_len.saturating_sub(1);
+        let frac = match state.selected_section {
+            BackupSection::Status => state.selected_index as f32 / max_pos.max(1) as f32,
+            BackupSection::History => state.selected_commit_index as f32 / max_pos.max(1) as f32,
+        };
+        if let Some(new_frac) =
+            crate::ui::scrollbar::handle_scrollbar_mouse(&event, meta, frac, &mut state.scroll_drag)
+        {
+            let pos = (new_frac * max_pos as f32).round() as usize;
+            match state.selected_section {
+                BackupSection::Status => state.selected_index = pos.min(max_pos),
+                BackupSection::History => state.selected_commit_index = pos.min(max_pos),
+            }
+            return InputResult::None;
+        }
+    }
+
+    // --- Scrollbar handling for diff pane ---
+    if state.input_mode == BackupInputMode::Normal
+        && let Some(meta) = state.last_diff_scroll
+        && let Some(diff_area) = state.last_diff_area
+        && crate::events::contains_cell(diff_area, event.column, event.row)
+    {
+        let max_pos = meta.content_len.saturating_sub(meta.viewport_len);
+        let frac = (state.diff_scroll as f32) / max_pos.max(1) as f32;
+        if let Some(new_frac) = crate::ui::scrollbar::handle_scrollbar_mouse(
+            &event,
+            meta,
+            frac,
+            &mut state.diff_scroll_drag,
+        ) {
+            state.diff_scroll = (new_frac * max_pos as f32).round() as u16;
+            return InputResult::None;
+        }
+    }
     if let MouseEventKind::Down(MouseButton::Left) = event.kind {
         let x = event.column;
         let y = event.row;

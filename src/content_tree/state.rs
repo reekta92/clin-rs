@@ -12,6 +12,8 @@ pub struct ContentTreeState {
     pub seq_matcher: crate::keybinds::KeyMatcher,
     pub last_area: ratatui::layout::Rect,
     pub mouse_pos: Option<(u16, u16)>,
+    pub last_tree_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
+    pub scroll_drag: Option<crate::ui::scrollbar::ScrollDrag>,
 }
 
 impl ContentTreeState {
@@ -32,6 +34,8 @@ impl ContentTreeState {
             seq_matcher,
             last_area: ratatui::layout::Rect::default(),
             mouse_pos: None,
+            last_tree_scroll: None,
+            scroll_drag: None,
         }
     }
 
@@ -60,6 +64,8 @@ impl ContentTreeState {
             seq_matcher,
             last_area: ratatui::layout::Rect::default(),
             mouse_pos: None,
+            last_tree_scroll: None,
+            scroll_drag: None,
         }
     }
 

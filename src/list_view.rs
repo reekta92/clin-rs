@@ -134,6 +134,8 @@ pub struct ListView {
     pub note_drag: Option<usize>,
     pub preview_drag_last_pos: Option<(u16, u16)>,
     pub drag_hover: Option<usize>,
+    pub last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
+    pub scroll_drag: Option<crate::ui::scrollbar::ScrollDrag>,
 }
 
 impl Default for ListView {
@@ -189,6 +191,8 @@ impl Default for ListView {
             note_drag: None,
             drag_hover: None,
             preview_drag_last_pos: None,
+            last_scroll: None,
+            scroll_drag: None,
         }
     }
 }

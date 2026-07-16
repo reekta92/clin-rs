@@ -33,6 +33,12 @@ pub struct BackupState {
     pub history_list_state: ratatui::widgets::ListState,
     pub selected_commit_index: usize,
     pub mouse_pos: Option<(u16, u16)>,
+    pub last_content_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
+    pub scroll_drag: Option<crate::ui::scrollbar::ScrollDrag>,
+    pub last_diff_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
+    pub diff_scroll_drag: Option<crate::ui::scrollbar::ScrollDrag>,
+    pub last_diff_area: Option<ratatui::layout::Rect>,
+    pub scrollbars_enabled: bool,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BackupSection {
@@ -154,6 +160,12 @@ impl BackupState {
             history_list_state: ratatui::widgets::ListState::default(),
             selected_commit_index: 0,
             mouse_pos: None,
+            last_content_scroll: None,
+            scroll_drag: None,
+            last_diff_scroll: None,
+            diff_scroll_drag: None,
+            last_diff_area: None,
+            scrollbars_enabled: false,
         };
 
         state.refresh_git_info();

@@ -16,6 +16,7 @@ pub fn handle_content_tree_mouse(
     state: &mut ContentTreeState,
     mouse: MouseEvent,
     area: Rect,
+    scrollbars_enabled: bool,
 ) -> ContentTreeInput {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -38,6 +39,25 @@ pub fn handle_content_tree_mouse(
         .split(main_area);
 
     let left_area = content_chunks[0];
+    // --- Scrollbar handling ---
+    if scrollbars_enabled && let Some(meta) = state.last_tree_scroll {
+        let max_pos = meta.content_len.saturating_sub(1);
+        let frac = {
+            let visible = state.visible_indices();
+            let selected_pos = visible.iter().position(|&x| x == state.selected);
+            selected_pos.unwrap_or(0) as f32 / max_pos.max(1) as f32
+        };
+        if let Some(new_frac) =
+            crate::ui::scrollbar::handle_scrollbar_mouse(&mouse, meta, frac, &mut state.scroll_drag)
+        {
+            let vis_idx = (new_frac * max_pos as f32).round() as usize;
+            let visible = state.visible_indices();
+            if vis_idx < visible.len() {
+                state.selected = visible[vis_idx];
+            }
+            return ContentTreeInput::None;
+        }
+    }
 
     match mouse.kind {
         MouseEventKind::ScrollUp => {

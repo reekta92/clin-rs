@@ -16,6 +16,7 @@ impl App {
                     selected: 0,
                     scroll_offset: 0,
                     focus: crate::popups::TemplatePopupFocus::Search,
+                    last_scroll: None,
                 }));
             }
             Err(_) => {
@@ -488,6 +489,7 @@ template = """
             scroll_offset: 0,
             general_is_solid,
             graph_is_solid,
+            last_scroll: None,
         }));
     }
 

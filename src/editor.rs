@@ -65,6 +65,8 @@ pub struct NoteEditor {
     pub last_sidebar_click: Option<(u16, u16, Instant)>,
     pub header_title_rect: ratatui::layout::Rect,
     pub preview_drag_last_pos: Option<(u16, u16)>,
+    pub sidebar_last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
+    pub sidebar_scroll_drag: Option<crate::ui::scrollbar::ScrollDrag>,
 }
 
 impl Default for NoteEditor {
@@ -108,6 +110,8 @@ impl Default for NoteEditor {
             link_preview_error: None,
             last_sidebar_click: None,
             preview_drag_last_pos: None,
+            sidebar_last_scroll: None,
+            sidebar_scroll_drag: None,
             header_title_rect: ratatui::layout::Rect::default(),
         }
     }

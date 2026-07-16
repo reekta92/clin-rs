@@ -260,6 +260,9 @@ pub struct UiConfig {
     /// Icon display mode: Nerd Font, Unicode fallback, or None.
     #[serde(default)]
     pub icon_mode: IconMode,
+    /// Show mouse-draggable scrollbars on scrollable regions.
+    #[serde(default = "default_true")]
+    pub scrollbars: bool,
     #[serde(default)]
     pub hint_bar_style: HintBarStyle,
 }
@@ -282,6 +285,7 @@ impl Default for UiConfig {
             show_status_bar: default_true(),
             tab_icons_only: false,
             icon_mode: IconMode::default(),
+            scrollbars: default_true(),
             hint_bar_style: HintBarStyle::default(),
         }
     }

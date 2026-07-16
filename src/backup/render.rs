@@ -43,10 +43,10 @@ pub fn draw_dashboard(
             ])
             .split(content_area);
 
-        draw_content(frame, content_chunks[0], state);
-        draw_diff_pane(frame, content_chunks[1], state);
+        draw_content(frame, content_chunks[0], state, config.ui.scrollbars);
+        draw_diff_pane(frame, content_chunks[1], state, config.ui.scrollbars);
     } else {
-        draw_content(frame, content_area, state);
+        draw_content(frame, content_area, state, config.ui.scrollbars);
     }
 
     let theme = &state.theme;
@@ -162,7 +162,7 @@ pub fn draw_header(
     );
 }
 
-fn draw_content(frame: &mut Frame, area: Rect, state: &mut BackupState) {
+fn draw_content(frame: &mut Frame, area: Rect, state: &mut BackupState, scrollbars_enabled: bool) {
     let theme = &state.theme;
 
     if !state.settings.enabled || state.status.is_none() {
@@ -312,6 +312,25 @@ fn draw_content(frame: &mut Frame, area: Rect, state: &mut BackupState) {
             state.list_state.select(None);
         }
         frame.render_stateful_widget(list, area, &mut state.list_state);
+        let content_len = state.selectable_files.len();
+        let viewport_len = area.height.saturating_sub(2) as usize;
+        let meta = crate::ui::scrollbar::ScrollbarMeta {
+            track: crate::ui::scrollbar::track_rect(area),
+            content_len,
+            viewport_len,
+        };
+        state.last_content_scroll = Some(meta);
+        if scrollbars_enabled {
+            crate::ui::scrollbar::draw_scrollbar(
+                frame,
+                area,
+                content_len,
+                viewport_len,
+                state.selected_index,
+                content_len.saturating_sub(1),
+                &state.theme,
+            );
+        }
     } else if state.selected_section == crate::backup::state::BackupSection::History {
         let mut items = Vec::new();
         items.push(ListItem::new(Line::from(Span::styled(
@@ -395,6 +414,25 @@ fn draw_content(frame: &mut Frame, area: Rect, state: &mut BackupState) {
             state.history_list_state.select(None);
         }
         frame.render_stateful_widget(list, area, &mut state.history_list_state);
+        let content_len = state.commits.len();
+        let viewport_len = area.height.saturating_sub(2) as usize;
+        let meta = crate::ui::scrollbar::ScrollbarMeta {
+            track: crate::ui::scrollbar::track_rect(area),
+            content_len,
+            viewport_len,
+        };
+        state.last_content_scroll = Some(meta);
+        if scrollbars_enabled {
+            crate::ui::scrollbar::draw_scrollbar(
+                frame,
+                area,
+                content_len,
+                viewport_len,
+                state.selected_commit_index,
+                content_len.saturating_sub(1),
+                &state.theme,
+            );
+        }
     }
 
     // Status Message Flash
@@ -416,7 +454,12 @@ fn draw_content(frame: &mut Frame, area: Rect, state: &mut BackupState) {
     state.last_content_height = area.height;
 }
 
-fn draw_diff_pane(frame: &mut Frame, area: Rect, state: &mut BackupState) {
+fn draw_diff_pane(
+    frame: &mut Frame,
+    area: Rect,
+    state: &mut BackupState,
+    scrollbars_enabled: bool,
+) {
     let theme = &state.theme;
     let block = Block::default()
         .title(" Diff ")
@@ -468,12 +511,32 @@ fn draw_diff_pane(frame: &mut Frame, area: Rect, state: &mut BackupState) {
             };
             lines.push(Line::from(Span::styled(line, style)));
         }
-
+        let lines_len = lines.len();
         let paragraph = Paragraph::new(lines)
             .block(block)
             .wrap(Wrap { trim: false })
             .scroll((state.diff_scroll, 0));
         frame.render_widget(paragraph, area);
+        let content_len = lines_len;
+        let viewport_len = area.height as usize;
+        let meta = crate::ui::scrollbar::ScrollbarMeta {
+            track: crate::ui::scrollbar::track_rect(area),
+            content_len,
+            viewport_len,
+        };
+        state.last_diff_scroll = Some(meta);
+        state.last_diff_area = Some(area);
+        if scrollbars_enabled {
+            crate::ui::scrollbar::draw_scrollbar(
+                frame,
+                area,
+                content_len,
+                viewport_len,
+                state.diff_scroll as usize,
+                content_len.saturating_sub(viewport_len),
+                &state.theme,
+            );
+        }
     }
     state.last_diff_height = area.height;
 }

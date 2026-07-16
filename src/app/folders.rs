@@ -129,6 +129,7 @@ impl App {
             input,
             focus: FolderPickerFocus::Search,
             scroll_offset: 0,
+            last_scroll: None,
         }));
     }
 

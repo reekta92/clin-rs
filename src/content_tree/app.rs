@@ -68,7 +68,12 @@ impl crate::overlay::OverlayView for ContentTreeState {
             }
             Event::Mouse(mouse) => {
                 let term_area = self.last_area;
-                let res = input::handle_content_tree_mouse(self, mouse, term_area);
+                let res = input::handle_content_tree_mouse(
+                    self,
+                    mouse,
+                    term_area,
+                    app.config.ui.scrollbars,
+                );
                 if let Some(result) = map_input_result(self, res) {
                     return Ok(result);
                 }

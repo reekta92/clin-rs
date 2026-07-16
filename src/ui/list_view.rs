@@ -866,6 +866,26 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 });
             }
             // do NOT render a List widget here; do NOT touch list_state (tree view still uses it).
+            if cols > 0 && rows > 0 && len > 0 {
+                let total_rows = len.div_ceil(cols);
+                let meta = crate::ui::scrollbar::ScrollbarMeta {
+                    track: crate::ui::scrollbar::track_rect(list_area),
+                    content_len: total_rows,
+                    viewport_len: rows,
+                };
+                app.list.last_scroll = Some(meta);
+                if app.config.ui.scrollbars {
+                    crate::ui::scrollbar::draw_scrollbar(
+                        frame,
+                        list_area,
+                        meta.content_len,
+                        meta.viewport_len,
+                        app.list.grid_scroll,
+                        total_rows.saturating_sub(1),
+                        &app.app_theme,
+                    );
+                }
+            }
         } else {
             let hovered_visual_index = app.mouse_pos.and_then(|(col, row)| {
                 let inner_y = list_area.y + 1;
@@ -925,6 +945,25 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
 
             app.list.list_state.select(Some(app.list.visual_index));
             frame.render_stateful_widget(list, list_area, &mut app.list.list_state);
+            let content_len = app.list.display_items.len();
+            let viewport_len = list_area.height.saturating_sub(2) as usize;
+            let meta = crate::ui::scrollbar::ScrollbarMeta {
+                track: crate::ui::scrollbar::track_rect(list_area),
+                content_len,
+                viewport_len,
+            };
+            app.list.last_scroll = Some(meta);
+            if app.config.ui.scrollbars {
+                crate::ui::scrollbar::draw_scrollbar(
+                    frame,
+                    list_area,
+                    content_len,
+                    viewport_len,
+                    app.list.visual_index,
+                    content_len.saturating_sub(1),
+                    &app.app_theme,
+                );
+            }
         }
     }
     if let Some(preview_rect) = preview_area {

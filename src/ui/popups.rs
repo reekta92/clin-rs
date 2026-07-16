@@ -117,6 +117,26 @@ pub fn draw_template_popup(
         mouse_pos,
         theme.hover_style(),
     );
+    let list_inner = Rect {
+        x: chunks[1].x + 1,
+        y: chunks[1].y + 1,
+        width: chunks[1].width.saturating_sub(2),
+        height: chunks[1].height.saturating_sub(2),
+    };
+    popup.last_scroll = Some(crate::ui::scrollbar::ScrollbarMeta {
+        track: crate::ui::scrollbar::track_rect(list_inner),
+        content_len: popup.filtered_templates.len(),
+        viewport_len: list_inner.height as usize,
+    });
+    crate::ui::scrollbar::draw_scrollbar(
+        frame,
+        list_inner,
+        popup.filtered_templates.len(),
+        list_inner.height as usize,
+        popup.selected,
+        popup.filtered_templates.len().saturating_sub(1),
+        theme,
+    );
 }
 
 pub fn draw_info_popup(
@@ -315,6 +335,26 @@ pub fn draw_theme_popup(
         popup.themes.len(),
         mouse_pos,
         theme.hover_style(),
+    );
+    let theme_inner = Rect {
+        x: chunks[0].x + 1,
+        y: chunks[0].y + 1,
+        width: chunks[0].width.saturating_sub(2),
+        height: chunks[0].height.saturating_sub(2),
+    };
+    popup.last_scroll = Some(crate::ui::scrollbar::ScrollbarMeta {
+        track: crate::ui::scrollbar::track_rect(theme_inner),
+        content_len: popup.themes.len(),
+        viewport_len: theme_inner.height as usize,
+    });
+    crate::ui::scrollbar::draw_scrollbar(
+        frame,
+        theme_inner,
+        popup.themes.len(),
+        theme_inner.height as usize,
+        popup.selected,
+        popup.themes.len().saturating_sub(1),
+        theme,
     );
 
     let gen_label = if popup.general_is_solid {
@@ -1408,6 +1448,27 @@ pub fn draw_subnotes_popup(
         list_state.select(Some(popup.selected));
         frame.render_stateful_widget(list, main_chunks[0], &mut list_state);
         popup.scroll_offset = list_state.offset();
+        // Scrollbar for subnotes list
+        let sub_list_inner = Rect {
+            x: main_chunks[0].x + 1,
+            y: main_chunks[0].y + 1,
+            width: main_chunks[0].width.saturating_sub(2),
+            height: main_chunks[0].height.saturating_sub(2),
+        };
+        popup.last_scroll = Some(crate::ui::scrollbar::ScrollbarMeta {
+            track: crate::ui::scrollbar::track_rect(sub_list_inner),
+            content_len: popup.subnotes.len(),
+            viewport_len: sub_list_inner.height as usize,
+        });
+        crate::ui::scrollbar::draw_scrollbar(
+            frame,
+            sub_list_inner,
+            popup.subnotes.len(),
+            sub_list_inner.height as usize,
+            popup.selected,
+            popup.subnotes.len().saturating_sub(1),
+            theme,
+        );
     }
 
     let edit_chunks = Layout::default()

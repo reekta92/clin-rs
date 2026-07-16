@@ -46,6 +46,7 @@ impl App {
             results_scroll_offset: 0,
             original_index: self.list.visual_index,
             original_folder_expanded: self.list.folder_expanded.clone(),
+            last_scroll: None,
         }));
     }
 
