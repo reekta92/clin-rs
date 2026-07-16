@@ -1281,6 +1281,27 @@ fn run_app(
                                         &mut mouse_selecting,
                                         &mut mouse_dragged,
                                     );
+                                    if matches!(
+                                        mouse_event.kind,
+                                        ratatui::crossterm::event::MouseEventKind::Drag(_)
+                                    ) {
+                                        while event::poll(Duration::ZERO)? {
+                                            match event::read()? {
+                                                Event::Mouse(next) => {
+                                                    app.mouse_pos = Some((next.column, next.row));
+                                                    handle_edit_mouse(
+                                                        app,
+                                                        next,
+                                                        area,
+                                                        &mut focus,
+                                                        &mut mouse_selecting,
+                                                        &mut mouse_dragged,
+                                                    );
+                                                }
+                                                _ => break,
+                                            }
+                                        }
+                                    }
                                 }
                                 ViewMode::Help => {
                                     handle_help_mouse(app, mouse_event, area);
@@ -1343,11 +1364,13 @@ fn run_app(
                                     }
                                 }
                                 ViewMode::Draw => {
-                                    let mut is_drag = false;
+                                    let mut coalesce = false;
                                     if let Some(mut draw) = app.draw_state.take() {
-                                        is_drag = matches!(
+                                        coalesce = matches!(
                                             mouse_event.kind,
                                             ratatui::crossterm::event::MouseEventKind::Drag(_)
+                                                | ratatui::crossterm::event::MouseEventKind::ScrollUp
+                                                | ratatui::crossterm::event::MouseEventKind::ScrollDown
                                         );
                                         let result = draw.overlay_handle_event(
                                             Event::Mouse(mouse_event),
@@ -1369,17 +1392,19 @@ fn run_app(
                                             _ => {}
                                         }
                                     }
-                                    if is_drag && let Some(mut draw) = app.draw_state.take() {
+                                    if coalesce && let Some(mut draw) = app.draw_state.take() {
                                         drain_queued_mouse_events(&mut draw, app, terminal)?;
                                         app.draw_state = Some(draw);
                                     }
                                 }
                                 ViewMode::Canvas => {
-                                    let mut is_drag = false;
+                                    let mut coalesce = false;
                                     if let Some(mut canvas) = app.canvas_state.take() {
-                                        is_drag = matches!(
+                                        coalesce = matches!(
                                             mouse_event.kind,
                                             ratatui::crossterm::event::MouseEventKind::Drag(_)
+                                                | ratatui::crossterm::event::MouseEventKind::ScrollUp
+                                                | ratatui::crossterm::event::MouseEventKind::ScrollDown
                                         );
                                         let _ = canvas.overlay_handle_event(
                                             Event::Mouse(mouse_event),
@@ -1388,7 +1413,7 @@ fn run_app(
                                         )?;
                                         app.canvas_state = Some(canvas);
                                     }
-                                    if is_drag && let Some(mut canvas) = app.canvas_state.take() {
+                                    if coalesce && let Some(mut canvas) = app.canvas_state.take() {
                                         drain_queued_mouse_events(&mut canvas, app, terminal)?;
                                         app.canvas_state = Some(canvas);
                                     }

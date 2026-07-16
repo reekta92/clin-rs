@@ -116,7 +116,9 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 app.list.list_mode = match app.list.list_mode {
                     ListMode::Normal => {
                         app.list.selected_indices.clear();
-                        app.list.selected_indices.insert(app.list.visual_index);
+                        if app.is_selectable_index(app.list.visual_index) {
+                            app.list.selected_indices.insert(app.list.visual_index);
+                        }
                         ListMode::Select
                     }
                     ListMode::Select => {
@@ -127,7 +129,9 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 return false;
             }
             ListAction::ToggleSelectItem => {
-                if app.list.list_mode == ListMode::Select {
+                if app.list.list_mode == ListMode::Select
+                    && app.is_selectable_index(app.list.visual_index)
+                {
                     if app.list.selected_indices.contains(&app.list.visual_index) {
                         app.list.selected_indices.remove(&app.list.visual_index);
                     } else {
@@ -885,6 +889,9 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                     let is_select_mode = app.list.list_mode == crate::list_view::ListMode::Select
                         || app.list.tag_to_assign.is_some();
                     if is_select_mode {
+                        if !app.is_selectable_index(clicked) {
+                            return;
+                        }
                         app.list.visual_index = clicked;
                         if app.list.selected_indices.contains(&clicked) {
                             app.list.selected_indices.remove(&clicked);
@@ -974,6 +981,9 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
             || app.list.tag_to_assign.is_some();
 
         if is_select_mode {
+            if !app.is_selectable_index(clicked_visual_index) {
+                return;
+            }
             app.list.visual_index = clicked_visual_index;
             if app.list.selected_indices.contains(&clicked_visual_index) {
                 app.list.selected_indices.remove(&clicked_visual_index);

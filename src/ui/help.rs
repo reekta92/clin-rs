@@ -23,6 +23,25 @@ pub fn help_tab_names() -> [&'static str; 8] {
         "About",
     ]
 }
+///
+/// Help-view tab (label, glyph) pairs, in `HelpTab` order.
+/// Mirrors `backup_tabs` / list grid tabs. Glyphs are (nerd_font, unicode).
+pub fn help_tabs(icon_mode: crate::config::IconMode) -> Vec<(&'static str, Option<&'static str>)> {
+    let pairs: [(&'static str, &'static str, &'static str); 8] = [
+        ("Notes", "\u{f02d}", "\u{1f4d8}"),     // book
+        ("Editor", "\u{f303}", "\u{270f}"),     // pencil
+        ("Graph", "\u{f1e0}", "\u{1f5c2}"),     // share-alt / stacked
+        ("Draw", "\u{f1fc}", "\u{1f3a8}"),      // paint-brush / palette
+        ("Canvas", "\u{f5a0}", "\u{2b1c}"),     // vector-square / white square
+        ("Backup", "\u{f1d3}", "\u{1f4be}"),    // git / floppy
+        ("Templates", "\u{f15b}", "\u{1f4c4}"), // file / page
+        ("About", "\u{f05a}", "\u{2139}"),      // info-circle
+    ];
+    pairs
+        .iter()
+        .map(|&(label, nerd, uni)| (label, Some(crate::ui::get_icon(nerd, uni, icon_mode))))
+        .collect()
+}
 
 #[derive(Clone)]
 pub struct HelpRow {
@@ -142,7 +161,7 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
         ])
         .split(area);
 
-    let tabs: Vec<(&str, Option<&str>)> = help_tab_names().iter().map(|&l| (l, None)).collect();
+    let tabs: Vec<(&str, Option<&str>)> = help_tabs(app.config.ui.icon_mode);
     let hovered = app.mouse_pos.and_then(|(col, row)| {
         if row == chunks[0].y {
             let region = crate::ui::title_bar_tabs_region(chunks[0], "Help");

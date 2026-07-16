@@ -330,6 +330,16 @@ impl App {
         self.request_preview_update();
     }
 
+    /// True when `idx` is a real note/folder item selectable in Select mode.
+    /// `CreateNew` is excluded so bulk-tag/selection never lands on the
+    /// "Create a new note..." sentinel row.
+    pub fn is_selectable_index(&self, idx: usize) -> bool {
+        !matches!(
+            self.list.visual_list.get(idx),
+            Some(crate::list_view::VisualItem::CreateNew { .. })
+        )
+    }
+
     /// Single-step list directional movements (grid-aware).
     pub fn move_up(&mut self) {
         let is_grid = self.list.notes_layout == crate::config::NotesLayout::Grid;
@@ -341,10 +351,22 @@ impl App {
         if is_grid {
             if self.list.visual_index >= cols {
                 self.list.visual_index -= cols;
+                if self.list.list_mode == crate::list_view::ListMode::Select
+                    && !self.is_selectable_index(self.list.visual_index)
+                    && self.list.visual_index >= cols
+                {
+                    self.list.visual_index -= cols;
+                }
             }
             self.request_preview_update();
         } else if self.list.visual_index > 0 {
             self.list.visual_index -= 1;
+            if self.list.list_mode == crate::list_view::ListMode::Select
+                && !self.is_selectable_index(self.list.visual_index)
+                && self.list.visual_index > 0
+            {
+                self.list.visual_index -= 1;
+            }
             self.request_preview_update();
         }
     }
@@ -357,15 +379,18 @@ impl App {
             1
         };
         let len = self.list.visual_list.len();
+        let in_select = self.list.list_mode == crate::list_view::ListMode::Select;
         if is_grid {
             let next = self.list.visual_index + cols;
-            if next < len {
+            if next < len && (!in_select || self.is_selectable_index(next)) {
                 self.list.visual_index = next;
             } else if self.list.visual_index / cols < (len.saturating_sub(1)) / cols {
                 self.list.visual_index = len.saturating_sub(1);
             }
             self.request_preview_update();
-        } else if self.list.visual_index < len.saturating_sub(1) {
+        } else if self.list.visual_index < len.saturating_sub(1)
+            && (!in_select || self.is_selectable_index(self.list.visual_index + 1))
+        {
             self.list.visual_index += 1;
             self.request_preview_update();
         }
