@@ -32,7 +32,7 @@ pub fn help_tabs(icon_mode: crate::config::IconMode) -> Vec<(&'static str, Optio
         ("Editor", "\u{f303}", "\u{270f}"),     // pencil
         ("Graph", "\u{f1e0}", "\u{1f5c2}"),     // share-alt / stacked
         ("Draw", "\u{f1fc}", "\u{1f3a8}"),      // paint-brush / palette
-        ("Canvas", "\u{f5a0}", "\u{2b1c}"),     // vector-square / white square
+        ("Canvas", "\u{f0b2}", "\u{1f4cc}"),    // thumbtack / pushpin
         ("Backup", "\u{f1d3}", "\u{1f4be}"),    // git / floppy
         ("Templates", "\u{f15b}", "\u{1f4c4}"), // file / page
         ("About", "\u{f05a}", "\u{2139}"),      // info-circle

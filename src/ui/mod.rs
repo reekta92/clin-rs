@@ -1514,17 +1514,7 @@ pub fn render_textarea_with_theme(
     } else {
         Style::default()
     });
-    textarea.set_cursor_line_style(if has_focus {
-        if let Some(bg) = theme.preview_bg() {
-            Style::default().bg(bg)
-        } else {
-            Style::default()
-                .bg(theme.highlight_bg)
-                .fg(theme.highlight_fg)
-        }
-    } else {
-        Style::default()
-    });
+    textarea.set_cursor_line_style(Style::default());
     let want_ln = if show_line_numbers {
         Some(Style::default().fg(theme.muted))
     } else {
@@ -1537,10 +1527,6 @@ pub fn render_textarea_with_theme(
         }
     }
     frame.render_widget(&*textarea, area);
-    if has_focus {
-        let cursor_bg = theme.preview_bg().unwrap_or(theme.highlight_bg);
-        fill_cursor_line_bg(frame, textarea, area, cursor_bg);
-    }
 }
 
 /// Highlight search-match cells in the rendered frame buffer.

@@ -330,23 +330,6 @@ impl App {
         self.editor.editor.set_wrap_mode(mode);
         self.editor.title_editor.set_wrap_mode(mode);
 
-        let highlight_style = ratatui::style::Style::default()
-            .fg(self.app_theme.highlight_fg)
-            .bg(self.app_theme.highlight_bg);
-
-        self.editor.editor.set_cursor_style(highlight_style);
-        self.editor.editor.set_selection_style(highlight_style);
-        self.editor
-            .editor
-            .set_cursor_line_style(ratatui::style::Style::default());
-
-        self.editor.title_editor.set_cursor_style(highlight_style);
-        self.editor
-            .title_editor
-            .set_selection_style(highlight_style);
-        self.editor
-            .title_editor
-            .set_cursor_line_style(ratatui::style::Style::default());
     }
 
     pub fn toggle_show_line_numbers(&mut self) {
