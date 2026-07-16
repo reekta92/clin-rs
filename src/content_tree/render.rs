@@ -193,17 +193,28 @@ pub fn draw_content_tree(
             viewport_len,
         });
         if config.ui.scrollbars {
+            // ScrollbarState interprets position as selection index [0, content_len-1],
+            // but tree_scroll_offset is a scroll offset [0, content_len-viewport_len].
+            // Scale to selection range so thumb reaches bottom at max scroll.
+            let max_offset = content_len.saturating_sub(viewport_len);
+            let scrollbar_pos = if max_offset > 0 {
+                state
+                    .tree_scroll_offset
+                    .saturating_mul(content_len.saturating_sub(1))
+                    / max_offset
+            } else {
+                0
+            };
             crate::ui::scrollbar::draw_scrollbar(
                 frame,
                 left_area,
                 content_len,
                 viewport_len,
-                state.tree_scroll_offset,
-                content_len.saturating_sub(viewport_len),
+                scrollbar_pos,
+                content_len.saturating_sub(1),
                 theme,
             );
         }
-
         // Draw vertical separator
         crate::ui::draw_dim_vline(frame, sep_area, theme.muted);
 
