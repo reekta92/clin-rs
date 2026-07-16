@@ -423,22 +423,28 @@ pub fn handle_mouse(
             if x >= area.x && x < area.x + list_width && y > area.y && y < area.y + area.height - 1
             {
                 if state.selected_section == BackupSection::Status {
-                    let line_idx = y.saturating_sub(area.y).saturating_sub(1) as usize
-                        + state.list_state.offset();
+                    let visual = y.saturating_sub(area.y + 1) as usize;
+                    let line_idx = visual + state.list_state.offset();
                     if let Some(file_idx) = state.file_index_at_rendered_line(line_idx) {
                         state.selected_index = file_idx;
                         state.selected_file = Some(state.selectable_files[file_idx].clone());
                         state.load_selected_diff();
                     }
-                } else if state.selected_section == BackupSection::History {
-                    let line_idx = y.saturating_sub(area.y).saturating_sub(1) as usize
-                        + state.history_list_state.offset();
-                    if line_idx > 0 {
-                        let commit_idx = line_idx - 1;
-                        if commit_idx < state.commits.len() {
-                            state.selected_commit_index = commit_idx;
-                            state.load_commit_diff();
-                        }
+                }
+                if state.selected_section == BackupSection::History
+                    && let Some(line_idx) = crate::ui::list_index_at(
+                        y,
+                        area.y + 1,
+                        1,
+                        state.history_list_state.offset(),
+                        state.commits.len() + 1,
+                    )
+                    && line_idx > 0
+                {
+                    let commit_idx = line_idx - 1;
+                    if commit_idx < state.commits.len() {
+                        state.selected_commit_index = commit_idx;
+                        state.load_commit_diff();
                     }
                 }
             }

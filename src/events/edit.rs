@@ -619,38 +619,31 @@ pub fn handle_edit_mouse(
     if let Some(sb) = sidebar_inner
         && contains_cell(sb, mouse_event.column, mouse_event.row)
     {
-        // --- Scrollbar handling ---
-        if app.config.ui.scrollbars
-            && let Some(meta) = app.editor.sidebar_last_scroll
-        {
-            let max_pos = meta.content_len.saturating_sub(meta.viewport_len);
-            let frac = app.editor.sidebar_scroll_offset as f32 / max_pos.max(1) as f32;
-            if let Some(new_frac) = crate::ui::scrollbar::handle_scrollbar_mouse(
-                &mouse_event,
-                meta,
-                frac,
-                &mut app.editor.sidebar_scroll_drag,
-            ) {
-                let new_offset = (new_frac * max_pos as f32).round() as usize;
-                app.editor.sidebar_scroll_offset = new_offset.min(max_pos);
-                // Keep sidebar_selected in view
-                let viewport = meta.viewport_len;
-                if app.editor.sidebar_selected < app.editor.sidebar_scroll_offset {
-                    app.editor.sidebar_selected = app.editor.sidebar_scroll_offset;
-                } else if app.editor.sidebar_selected >= app.editor.sidebar_scroll_offset + viewport
-                {
-                    app.editor.sidebar_selected = app.editor.sidebar_scroll_offset + viewport - 1;
-                }
-                return;
-            }
-        }
         match mouse_event.kind {
             MouseEventKind::ScrollUp => {
-                app.sidebar_move(-1);
+                let len = app.sidebar_len();
+                let viewport = app.editor.sidebar_list_rect.height as usize;
+                app.editor.sidebar_scroll_offset =
+                    crate::ui::scroll_viewport(app.editor.sidebar_scroll_offset, -1, len, viewport);
+                app.editor.sidebar_selected = crate::ui::clamp_selected_to_view(
+                    app.editor.sidebar_selected,
+                    app.editor.sidebar_scroll_offset,
+                    len,
+                    viewport,
+                );
                 return;
             }
             MouseEventKind::ScrollDown => {
-                app.sidebar_move(1);
+                let len = app.sidebar_len();
+                let viewport = app.editor.sidebar_list_rect.height as usize;
+                app.editor.sidebar_scroll_offset =
+                    crate::ui::scroll_viewport(app.editor.sidebar_scroll_offset, 1, len, viewport);
+                app.editor.sidebar_selected = crate::ui::clamp_selected_to_view(
+                    app.editor.sidebar_selected,
+                    app.editor.sidebar_scroll_offset,
+                    len,
+                    viewport,
+                );
                 return;
             }
             _ => {}
@@ -669,30 +662,32 @@ pub fn handle_edit_mouse(
                 && contains_cell(sb, mouse_event.column, mouse_event.row)
             {
                 *focus = EditFocus::Sidebar;
-                let clicked_row = mouse_event.row as i32 - sb.y as i32 - 3;
-                if clicked_row >= 0 {
-                    let clicked = clicked_row as usize + app.editor.sidebar_scroll_offset;
-                    let len = app.sidebar_len();
-                    if clicked < len {
-                        let is_double_click =
-                            if let Some((lx, ly, lt)) = app.editor.last_sidebar_click {
-                                lx == mouse_event.column
-                                    && ly == mouse_event.row
-                                    && lt.elapsed().as_millis() < 500
-                            } else {
-                                false
-                            };
-                        app.editor.sidebar_selected = clicked;
-                        if is_double_click {
-                            app.sidebar_activate(focus);
-                            app.editor.last_sidebar_click = None;
-                        } else {
-                            app.editor.last_sidebar_click = Some((
-                                mouse_event.column,
-                                mouse_event.row,
-                                std::time::Instant::now(),
-                            ));
-                        }
+                let len = app.sidebar_len();
+                if let Some(clicked) = crate::ui::list_index_at(
+                    mouse_event.row,
+                    app.editor.sidebar_list_rect.y,
+                    1,
+                    app.editor.sidebar_scroll_offset,
+                    len,
+                ) {
+                    let is_double_click = if let Some((lx, ly, lt)) = app.editor.last_sidebar_click
+                    {
+                        lx == mouse_event.column
+                            && ly == mouse_event.row
+                            && lt.elapsed().as_millis() < 500
+                    } else {
+                        false
+                    };
+                    app.editor.sidebar_selected = clicked;
+                    if is_double_click {
+                        app.sidebar_activate(focus);
+                        app.editor.last_sidebar_click = None;
+                    } else {
+                        app.editor.last_sidebar_click = Some((
+                            mouse_event.column,
+                            mouse_event.row,
+                            std::time::Instant::now(),
+                        ));
                     }
                 }
                 return;

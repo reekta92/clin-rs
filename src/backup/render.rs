@@ -273,14 +273,8 @@ fn draw_content(frame: &mut Frame, area: Rect, state: &mut BackupState, scrollba
                 && row >= inner_y
                 && row < inner_y + inner_h
             {
-                let mouse_y_offset = row - inner_y;
-                let offset = state.list_state.offset();
-                let idx = mouse_y_offset as usize + offset;
-                if idx < items.len() && state.file_index_at_rendered_line(idx).is_some() {
-                    Some(idx)
-                } else {
-                    None
-                }
+                crate::ui::list_index_at(row, inner_y, 1, state.list_state.offset(), items.len())
+                    .filter(|i| state.file_index_at_rendered_line(*i).is_some())
             } else {
                 None
             }
@@ -374,10 +368,17 @@ fn draw_content(frame: &mut Frame, area: Rect, state: &mut BackupState, scrollba
                 && row >= inner_y
                 && row < inner_y + inner_h
             {
-                let mouse_y_offset = row - inner_y;
-                let offset = state.history_list_state.offset();
-                let idx = mouse_y_offset as usize + offset;
-                if idx > 0 && idx < items.len() && !state.commits.is_empty() {
+                let idx = crate::ui::list_index_at(
+                    row,
+                    inner_y,
+                    1,
+                    state.history_list_state.offset(),
+                    items.len(),
+                );
+                if let Some(idx) = idx
+                    && idx > 0
+                    && !state.commits.is_empty()
+                {
                     Some(idx)
                 } else {
                     None

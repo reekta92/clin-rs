@@ -65,7 +65,7 @@ fn get_tree_prefix(state: &ContentTreeState, visible: &[usize], p: usize) -> Str
 pub fn draw_content_tree(
     frame: &mut Frame,
     area: Rect,
-    state: &ContentTreeState,
+    state: &mut ContentTreeState,
     theme: &AppThemeColors,
     keybinds: &Keybinds,
     config: &crate::config::ClinConfig,
@@ -162,7 +162,7 @@ pub fn draw_content_tree(
         }
 
         let selected_pos = visible.iter().position(|&x| x == state.selected);
-        let mut list_state = crate::ui::list_state_selected(selected_pos, 0);
+        let mut list_state = crate::ui::list_state_selected(selected_pos, state.tree_scroll_offset);
 
         let item_count = items.len();
         let list = List::new(items)
@@ -175,6 +175,8 @@ pub fn draw_content_tree(
             )
             .highlight_symbol("> ");
         frame.render_stateful_widget(list, left_area, &mut list_state);
+        state.tree_scroll_offset = list_state.offset();
+        state.tree_list_rect = left_area;
         crate::ui::paint_list_hover(
             frame,
             left_area,
@@ -184,14 +186,20 @@ pub fn draw_content_tree(
             theme.hover_style(),
         );
         let content_len = visible.len();
+        let viewport_len = left_area.height as usize;
+        state.last_tree_scroll = Some(crate::ui::scrollbar::ScrollbarMeta {
+            track: crate::ui::scrollbar::track_rect(left_area),
+            content_len,
+            viewport_len,
+        });
         if config.ui.scrollbars {
             crate::ui::scrollbar::draw_scrollbar(
                 frame,
                 left_area,
                 content_len,
-                left_area.height as usize,
-                selected_pos.unwrap_or(0),
-                content_len.saturating_sub(1),
+                viewport_len,
+                state.tree_scroll_offset,
+                content_len.saturating_sub(viewport_len),
                 theme,
             );
         }

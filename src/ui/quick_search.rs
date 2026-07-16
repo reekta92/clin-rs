@@ -291,13 +291,17 @@ pub fn handle_quick_search_mouse<T>(
             if let Some(dropdown_rect) = dropdown_area
                 && over_dropdown
                 && result_count > 0
+                && let Some(target_index) = crate::ui::list_index_at(
+                    event.row,
+                    dropdown_rect.y,
+                    1,
+                    popup.scroll_offset,
+                    result_count,
+                )
+                && popup.selected != target_index
             {
-                let visual_row = event.row.saturating_sub(dropdown_rect.y) as usize;
-                let target_index = popup.scroll_offset + visual_row;
-                if target_index < result_count && popup.selected != target_index {
-                    popup.selected = target_index;
-                    return Some(QuickSearchAction::Navigated);
-                }
+                popup.selected = target_index;
+                return Some(QuickSearchAction::Navigated);
             }
         }
         crossterm::event::MouseEventKind::ScrollUp => {
@@ -319,9 +323,13 @@ pub fn handle_quick_search_mouse<T>(
                 && over_dropdown
                 && result_count > 0
             {
-                let visual_row = event.row.saturating_sub(dropdown_rect.y) as usize;
-                let target_index = popup.scroll_offset + visual_row;
-                if target_index < result_count {
+                if let Some(target_index) = crate::ui::list_index_at(
+                    event.row,
+                    dropdown_rect.y,
+                    1,
+                    popup.scroll_offset,
+                    result_count,
+                ) {
                     popup.selected = target_index;
                     return Some(QuickSearchAction::Submit);
                 }

@@ -669,13 +669,13 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 && col > chunks[2].x
                 && col < chunks[2].x + chunks[2].width - 1
             {
-                let scroll_offset = palette.state.offset();
-                let idx = ((row - inner_y) / 2) as usize + scroll_offset;
-                if idx < palette.items.len() {
-                    Some(idx)
-                } else {
-                    None
-                }
+                crate::ui::list_index_at(
+                    row,
+                    inner_y,
+                    2,
+                    palette.state.offset(),
+                    palette.items.len(),
+                )
             } else {
                 None
             }

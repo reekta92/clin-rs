@@ -530,8 +530,10 @@ fn draw_sidebar_pane(frame: &mut Frame, area: Rect, app: &mut App, focus: EditFo
         let p = Paragraph::new(empty_msg).style(Style::default().fg(theme.muted));
         frame.render_widget(p, sb_chunks[3]);
     } else {
-        let mut state = ListState::default();
-        state.select(Some(app.editor.sidebar_selected));
+        let mut state = crate::ui::list_state_selected(
+            Some(app.editor.sidebar_selected),
+            app.editor.sidebar_scroll_offset,
+        );
 
         // Add left padding to the list rect to align items nicely
         let list_area = Rect::new(
@@ -549,6 +551,7 @@ fn draw_sidebar_pane(frame: &mut Frame, area: Rect, app: &mut App, focus: EditFo
         );
         frame.render_stateful_widget(list, list_area, &mut state);
         app.editor.sidebar_scroll_offset = state.offset();
+        app.editor.sidebar_list_rect = list_area;
         crate::ui::paint_list_hover(
             frame,
             list_area,
@@ -557,27 +560,6 @@ fn draw_sidebar_pane(frame: &mut Frame, area: Rect, app: &mut App, focus: EditFo
             app.mouse_pos,
             theme.hover_style(),
         );
-        if item_count > 0 {
-            let content_len = app.sidebar_len();
-            let viewport_len = list_area.height as usize;
-            let meta = crate::ui::scrollbar::ScrollbarMeta {
-                track: crate::ui::scrollbar::track_rect(sb_chunks[3]),
-                content_len,
-                viewport_len,
-            };
-            app.editor.sidebar_last_scroll = Some(meta);
-            if app.config.ui.scrollbars {
-                crate::ui::scrollbar::draw_scrollbar(
-                    frame,
-                    sb_chunks[3],
-                    content_len,
-                    viewport_len,
-                    app.editor.sidebar_scroll_offset,
-                    content_len.saturating_sub(viewport_len),
-                    theme,
-                );
-            }
-        }
     }
 }
 fn draw_link_preview_popup(frame: &mut Frame, area: Rect, app: &mut App) {

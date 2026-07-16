@@ -55,6 +55,7 @@ pub struct NoteEditor {
     pub image_decode_tx: Option<std::sync::mpsc::Sender<crate::image_render::worker::ImageJob>>,
     pub sidebar: EditSidebar,
     pub sidebar_scroll_offset: usize,
+    pub sidebar_list_rect: ratatui::layout::Rect,
     pub sidebar_selected: usize,
     pub outline_nodes: Vec<crate::content_tree::parse::TreeNode>,
     pub links: Vec<LinkItem>,
@@ -65,8 +66,6 @@ pub struct NoteEditor {
     pub last_sidebar_click: Option<(u16, u16, Instant)>,
     pub header_title_rect: ratatui::layout::Rect,
     pub preview_drag_last_pos: Option<(u16, u16)>,
-    pub sidebar_last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
-    pub sidebar_scroll_drag: Option<crate::ui::scrollbar::ScrollDrag>,
 }
 
 impl Default for NoteEditor {
@@ -101,6 +100,7 @@ impl Default for NoteEditor {
             image_decode_tx: None,
             sidebar: EditSidebar::None,
             sidebar_scroll_offset: 0,
+            sidebar_list_rect: ratatui::layout::Rect::default(),
             sidebar_selected: 0,
             outline_nodes: Vec::new(),
             links: Vec::new(),
@@ -110,8 +110,6 @@ impl Default for NoteEditor {
             link_preview_error: None,
             last_sidebar_click: None,
             preview_drag_last_pos: None,
-            sidebar_last_scroll: None,
-            sidebar_scroll_drag: None,
             header_title_rect: ratatui::layout::Rect::default(),
         }
     }

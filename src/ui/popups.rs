@@ -854,6 +854,57 @@ pub fn build_list_widget<'a>(
     )
 }
 
+/// Map a mouse row to a list item index, honoring scroll offset and row pitch.
+///
+/// `first_row_y` = screen y of the first item row (for a bordered list, `area.y + 1`;
+/// for a borderless list, the list rect's `y`). `row_pitch` = rows per item (1 for
+/// single-line, 2 for two-line palette entries). `offset` = the [`ListState::offset()`]
+/// captured right after render. `item_count` = total items. Returns `None` when the
+/// click is above the first row, in an empty trailing row, or past the last item.
+pub fn list_index_at(
+    mouse_row: u16,
+    first_row_y: u16,
+    row_pitch: u16,
+    offset: usize,
+    item_count: usize,
+) -> Option<usize> {
+    if item_count == 0 || row_pitch == 0 || mouse_row < first_row_y {
+        return None;
+    }
+    let visual = ((mouse_row - first_row_y) / row_pitch) as usize;
+    let idx = visual.saturating_add(offset);
+    (idx < item_count).then_some(idx)
+}
+///
+/// Free-scroll a list viewport by `delta` rows, clamped to `[0, max(0, item_count - viewport)]`.
+/// `delta < 0` scrolls up. Returns the new offset.
+pub fn scroll_viewport(offset: usize, delta: i32, item_count: usize, viewport: usize) -> usize {
+    let max_off = item_count.saturating_sub(viewport);
+    (offset as i32)
+        .saturating_add(delta)
+        .clamp(0, max_off as i32) as usize
+}
+///
+/// Clamp `selected` into the visible range `[offset, offset + viewport - 1]` (capped at
+/// `item_count - 1`). Returns `0` when `item_count == 0`.
+pub fn clamp_selected_to_view(
+    selected: usize,
+    offset: usize,
+    item_count: usize,
+    viewport: usize,
+) -> usize {
+    if item_count == 0 {
+        return 0;
+    }
+    let bottom = (offset + viewport).saturating_sub(1).min(item_count - 1);
+    if selected < offset {
+        offset
+    } else if selected > bottom {
+        bottom
+    } else {
+        selected
+    }
+}
 /// Initialize a [`ListState`] with an optional selection.
 pub fn list_state_selected(selected: Option<usize>, offset: usize) -> ListState {
     let mut s = ListState::default().with_offset(offset);
@@ -887,10 +938,9 @@ pub fn paint_list_hover(
     if row < inner.y || row >= inner.y + inner.height {
         return;
     }
-    let idx = (row - inner.y) as usize + state.offset();
-    if idx >= item_count {
+    let Some(idx) = list_index_at(row, inner.y, 1, state.offset(), item_count) else {
         return;
-    }
+    };
     if Some(idx) == state.selected() {
         return;
     }

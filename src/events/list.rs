@@ -927,12 +927,17 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
     }
 
     if mouse_event.kind == MouseEventKind::Down(MouseButton::Right) {
-        let visual_row = mouse_event.row.saturating_sub(inner_list_area.y) as usize;
-        let clicked_visual_index = app.list.list_state.offset().saturating_add(visual_row);
-        if clicked_visual_index < app.list.visual_list.len() {
-            app.list.visual_index = clicked_visual_index;
-            app.request_preview_update_immediate();
-        }
+        let Some(clicked_visual_index) = crate::ui::list_index_at(
+            mouse_event.row,
+            inner_list_area.y,
+            1,
+            app.list.list_state.offset(),
+            app.list.visual_list.len(),
+        ) else {
+            return;
+        };
+        app.list.visual_index = clicked_visual_index;
+        app.request_preview_update_immediate();
         if let Some(crate::app::VisualItem::Note { summary_idx, .. }) =
             app.list.visual_list.get(app.list.visual_index)
         {
@@ -950,32 +955,36 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         } else {
             1
         };
-        let visual_row = (mouse_event.row.saturating_sub(inner_list_area.y) as usize) / pitch;
-        let clicked_visual_index = app.list.list_state.offset().saturating_add(visual_row);
+        let Some(clicked_visual_index) = crate::ui::list_index_at(
+            mouse_event.row,
+            inner_list_area.y,
+            pitch,
+            app.list.list_state.offset(),
+            app.list.visual_list.len(),
+        ) else {
+            return;
+        };
+        if app.list.notes_layout == crate::config::NotesLayout::Tree
+            && let Some(crate::list_view::VisualItem::Note { .. }) =
+                app.list.visual_list.get(clicked_visual_index)
+        {
+            app.list.note_drag = Some(clicked_visual_index);
+        }
+        let is_select_mode = app.list.list_mode == crate::list_view::ListMode::Select
+            || app.list.tag_to_assign.is_some();
 
-        if clicked_visual_index < app.list.visual_list.len() {
-            if app.list.notes_layout == crate::config::NotesLayout::Tree
-                && let Some(crate::list_view::VisualItem::Note { .. }) =
-                    app.list.visual_list.get(clicked_visual_index)
-            {
-                app.list.note_drag = Some(clicked_visual_index);
-            }
-            let is_select_mode = app.list.list_mode == crate::list_view::ListMode::Select
-                || app.list.tag_to_assign.is_some();
-
-            if is_select_mode {
-                app.list.visual_index = clicked_visual_index;
-                if app.list.selected_indices.contains(&clicked_visual_index) {
-                    app.list.selected_indices.remove(&clicked_visual_index);
-                } else {
-                    app.list.selected_indices.insert(clicked_visual_index);
-                }
-            } else if app.list.visual_index == clicked_visual_index {
-                app.open_selected();
+        if is_select_mode {
+            app.list.visual_index = clicked_visual_index;
+            if app.list.selected_indices.contains(&clicked_visual_index) {
+                app.list.selected_indices.remove(&clicked_visual_index);
             } else {
-                app.list.visual_index = clicked_visual_index;
-                app.request_preview_update_immediate();
+                app.list.selected_indices.insert(clicked_visual_index);
             }
+        } else if app.list.visual_index == clicked_visual_index {
+            app.open_selected();
+        } else {
+            app.list.visual_index = clicked_visual_index;
+            app.request_preview_update_immediate();
         }
         // Check strip section clicks (Draw→open draw, Graf→open graph)
         if app.list.calendar_enabled {
@@ -1021,17 +1030,20 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                 } else {
                     1
                 };
-                let visual_row =
-                    (mouse_event.row.saturating_sub(inner_list_area.y) as usize) / pitch;
-                let clicked_visual_index = app.list.list_state.offset().saturating_add(visual_row);
-                if clicked_visual_index < app.list.visual_list.len() {
-                    if let Some(crate::list_view::VisualItem::Folder { .. }) =
-                        app.list.visual_list.get(clicked_visual_index)
-                    {
-                        app.list.drag_hover = Some(clicked_visual_index);
-                    } else {
-                        app.list.drag_hover = None;
-                    }
+                let Some(clicked_visual_index) = crate::ui::list_index_at(
+                    mouse_event.row,
+                    inner_list_area.y,
+                    pitch,
+                    app.list.list_state.offset(),
+                    app.list.visual_list.len(),
+                ) else {
+                    app.list.drag_hover = None;
+                    return;
+                };
+                if let Some(crate::list_view::VisualItem::Folder { .. }) =
+                    app.list.visual_list.get(clicked_visual_index)
+                {
+                    app.list.drag_hover = Some(clicked_visual_index);
                 } else {
                     app.list.drag_hover = None;
                 }

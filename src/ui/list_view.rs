@@ -898,14 +898,13 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     && row >= inner_y
                     && row < inner_y + inner_h
                 {
-                    let mouse_y_offset = row - inner_y;
-                    let offset = app.list.list_state.offset();
-                    let idx = mouse_y_offset as usize + offset;
-                    if idx < app.list.display_items.len() {
-                        Some(idx)
-                    } else {
-                        None
-                    }
+                    crate::ui::list_index_at(
+                        row,
+                        inner_y,
+                        1,
+                        app.list.list_state.offset(),
+                        app.list.display_items.len(),
+                    )
                 } else {
                     None
                 }
@@ -1622,13 +1621,13 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 && col > chunks[2].x
                 && col < chunks[2].x + chunks[2].width - 1
             {
-                let scroll_offset = palette.state.offset();
-                let idx = ((row - inner_y) / 2) as usize + scroll_offset;
-                if idx < palette.items.len() {
-                    Some(idx)
-                } else {
-                    None
-                }
+                crate::ui::list_index_at(
+                    row,
+                    inner_y,
+                    2,
+                    palette.state.offset(),
+                    palette.items.len(),
+                )
             } else {
                 None
             }

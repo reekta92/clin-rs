@@ -37,6 +37,7 @@ impl App {
                 EditSidebar::None => {}
             }
             self.editor.sidebar_selected = 0;
+            self.editor.sidebar_scroll_offset = 0;
         }
     }
 

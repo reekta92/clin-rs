@@ -14,6 +14,8 @@ pub struct ContentTreeState {
     pub mouse_pos: Option<(u16, u16)>,
     pub last_tree_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
     pub scroll_drag: Option<crate::ui::scrollbar::ScrollDrag>,
+    pub tree_scroll_offset: usize,
+    pub tree_list_rect: ratatui::layout::Rect,
 }
 
 impl ContentTreeState {
@@ -36,6 +38,8 @@ impl ContentTreeState {
             mouse_pos: None,
             last_tree_scroll: None,
             scroll_drag: None,
+            tree_scroll_offset: 0,
+            tree_list_rect: ratatui::layout::Rect::default(),
         }
     }
 
@@ -66,6 +70,8 @@ impl ContentTreeState {
             mouse_pos: None,
             last_tree_scroll: None,
             scroll_drag: None,
+            tree_scroll_offset: 0,
+            tree_list_rect: ratatui::layout::Rect::default(),
         }
     }
 
@@ -167,6 +173,21 @@ impl ContentTreeState {
         // Keep root expanded so depth-1 headers show
         if !self.nodes.is_empty() {
             self.expanded.insert(0);
+        }
+    }
+
+    /// Mouse-wheel free-scroll by `delta` rows, keeping the selection visible.
+    /// No-op before the first render (`tree_list_rect` is zero-height then).
+    pub fn wheel_scroll(&mut self, delta: i32) {
+        let visible = self.visible_indices();
+        let len = visible.len();
+        let viewport = self.tree_list_rect.height as usize;
+        self.tree_scroll_offset =
+            crate::ui::scroll_viewport(self.tree_scroll_offset, delta, len, viewport);
+        if let Some(pos) = visible.iter().position(|&x| x == self.selected) {
+            let clamped =
+                crate::ui::clamp_selected_to_view(pos, self.tree_scroll_offset, len, viewport);
+            self.selected = visible[clamped];
         }
     }
 }

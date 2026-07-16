@@ -1703,6 +1703,7 @@ mod tests {
             Rect::default(),
         );
         let sb = sidebar_inner.unwrap();
+        app.editor.sidebar_list_rect = Rect::new(0, sb.y + 3, 100, 10);
 
         let mouse_event = MouseEvent {
             kind: MouseEventKind::Down(MouseButton::Left),
@@ -1796,6 +1797,7 @@ mod tests {
             Rect::default(),
         );
         let sb = sidebar_inner.unwrap();
+        app.editor.sidebar_list_rect = Rect::new(0, sb.y + 3, 100, 10);
 
         let mouse_event = MouseEvent {
             kind: MouseEventKind::Down(MouseButton::Left),
