@@ -329,9 +329,6 @@ impl App {
         };
         self.editor.editor.set_wrap_mode(mode);
         self.editor.title_editor.set_wrap_mode(mode);
-        self.editor
-            .editor
-            .set_search_style(ratatui::style::Style::default().bg(self.app_theme.highlight_bg));
 
         let highlight_style = ratatui::style::Style::default()
             .fg(self.app_theme.highlight_fg)

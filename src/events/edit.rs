@@ -13,9 +13,6 @@ use super::{
 
 fn leave_editor(app: &mut App, focus: &mut EditFocus) {
     app.editor.find_popup = None;
-    app.editor
-        .editor
-        .set_search_style(ratatui::style::Style::default());
     let prev_id = app.editor.editing_id.clone();
     app.autosave();
     let new_id = app.editor.editing_id.clone();
@@ -23,29 +20,79 @@ fn leave_editor(app: &mut App, focus: &mut EditFocus) {
     *focus = EditFocus::Body;
 }
 
-/// Count total matches and current-match index (1-based) for the editor's
-/// active search pattern.  Returns `None` when there is no pattern or zero matches.
-///
-/// **Unicode caveat:** `regex::Match.start()` is a byte offset;
-/// `cursor().1` (col) is a char index.  For ASCII text they coincide;
-/// multibyte content may be off‑by‑one.  Acceptable for a count display.
-fn find_match_stats(editor: &ratatui_textarea::TextArea<'static>) -> Option<(usize, usize)> {
-    let re = editor.search_pattern()?;
+/// Collect all lines containing the query (case-insensitive), returning (line_index, line_text) pairs.
+fn collect_find_results(
+    editor: &ratatui_textarea::TextArea<'_>,
+    query_lower: &str,
+) -> Vec<(usize, String)> {
+    editor
+        .lines()
+        .iter()
+        .enumerate()
+        .filter(|(_, l)| l.to_lowercase().contains(query_lower))
+        .map(|(i, l)| (i, l.to_string()))
+        .collect()
+}
+
+/// Jump the cursor to the next search match starting at or after the current cursor position.
+/// Wraps around to the beginning of the document. Returns true if a match was found.
+fn jump_to_next_search_match(editor: &mut ratatui_textarea::TextArea<'_>, query: &str) -> bool {
+    if query.is_empty() {
+        return false;
+    }
+    let ql = query.to_lowercase();
     let cursor = editor.cursor();
-    let (row, col) = (cursor.0, cursor.1);
+    let cur_row = cursor.0;
+    let cur_col = cursor.1;
     let lines = editor.lines();
-    let mut current = 0usize;
-    let mut total = 0usize;
-    for (i, line) in lines.iter().enumerate() {
-        let matches: Vec<_> = re.find_iter(line).collect();
-        total += matches.len();
-        if i == row {
-            current = total - matches.iter().rev().take_while(|m| m.start() > col).count();
+    let len = lines.len();
+    if len == 0 {
+        return false;
+    }
+    for offset in 0..len {
+        let row = (cur_row + offset) % len;
+        let from_col = if offset == 0 { cur_col } else { 0 };
+        let line_lower = lines[row].to_lowercase();
+        for (byte_off, _) in line_lower.match_indices(&ql) {
+            let col = line_lower[..byte_off].chars().count();
+            if col >= from_col {
+                editor.move_cursor(ratatui_textarea::CursorMove::Jump(row as u16, col as u16));
+                return true;
+            }
         }
     }
+    false
+}
+
+/// Count total matches and current-match index (1-based) for a plain-text query.
+/// Returns `None` when the query is empty or there are zero matches.
+fn search_match_stats(
+    lines: &[String],
+    (row, col): (usize, usize),
+    query: &str,
+) -> Option<(usize, usize)> {
+    if query.is_empty() {
+        return None;
+    }
+    let ql = query.to_lowercase();
+    let total: usize = lines
+        .iter()
+        .map(|l| l.to_lowercase().matches(&ql).count())
+        .sum();
     if total == 0 {
         return None;
     }
+    let before_row: usize = lines[..row]
+        .iter()
+        .map(|l| l.to_lowercase().matches(&ql).count())
+        .sum();
+    let line = &lines[row];
+    let line_lower = line.to_lowercase();
+    let on_row = line_lower
+        .match_indices(&ql)
+        .take_while(|(b, _)| line_lower[..*b].chars().count() <= col)
+        .count();
+    let current = before_row + on_row;
     Some((current.min(total), total))
 }
 
@@ -130,21 +177,23 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
         app.seq_matcher.clear();
         match crate::ui::quick_search::handle_quick_search_keys(popup, key, &app.keybinds, 10) {
             crate::ui::quick_search::QuickSearchAction::Submit => {
-                if let Some(&(line_idx, _)) = popup.results.get(popup.selected) {
+                if let Some(&(line_idx, ref line_text)) = popup.results.get(popup.selected) {
+                    let ql = popup.query().to_lowercase();
+                    let col = line_text
+                        .to_lowercase()
+                        .find(&ql)
+                        .map(|b| line_text[..b].chars().count())
+                        .unwrap_or(0);
                     app.editor
                         .editor
-                        .move_cursor(ratatui_textarea::CursorMove::Jump(line_idx as u16, 0));
-                    let _ = app.editor.editor.search_forward(false);
+                        .move_cursor(ratatui_textarea::CursorMove::Jump(
+                            line_idx as u16,
+                            col as u16,
+                        ));
                 }
-                app.editor
-                    .editor
-                    .set_search_style(ratatui::style::Style::default());
                 app.editor.find_popup = None;
             }
             crate::ui::quick_search::QuickSearchAction::Cancel => {
-                app.editor
-                    .editor
-                    .set_search_style(ratatui::style::Style::default());
                 app.editor.find_popup = None;
             }
             crate::ui::quick_search::QuickSearchAction::Edited => {
@@ -152,28 +201,18 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 if query_lower.is_empty() {
                     popup.results.clear();
                 } else {
-                    popup.results = app
-                        .editor
-                        .editor
-                        .lines()
-                        .iter()
-                        .enumerate()
-                        .filter(|(_, line)| line.to_lowercase().contains(&query_lower))
-                        .map(|(i, line)| (i, line.to_string()))
-                        .collect();
+                    popup.results = collect_find_results(&app.editor.editor, &query_lower);
                 }
                 if popup.selected >= popup.results.len() {
                     popup.selected = popup.results.len().saturating_sub(1);
                 }
                 popup.scroll_to_selected(10);
                 let query = popup.query();
-                let result = app.editor.editor.set_search_pattern(&query);
-                if result.is_ok() && !query.is_empty() {
-                    let _ = app.editor.editor.search_forward(true);
-                }
-                // Update match-count display
+                let _ = jump_to_next_search_match(&mut app.editor.editor, &query);
+                let cursor = app.editor.editor.cursor();
                 popup.info =
-                    find_match_stats(&app.editor.editor).map(|(n, total)| format!("{n}/{total}"));
+                    search_match_stats(app.editor.editor.lines(), (cursor.0, cursor.1), &query)
+                        .map(|(n, total)| format!("{n}/{total}"));
             }
             _ => {}
         }
@@ -301,14 +340,8 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
             EditAction::Find => {
                 let theme = &app.app_theme;
                 if app.editor.find_popup.is_some() {
-                    app.editor
-                        .editor
-                        .set_search_style(ratatui::style::Style::default());
                     app.editor.find_popup = None;
                 } else {
-                    app.editor
-                        .editor
-                        .set_search_style(ratatui::style::Style::default().bg(theme.highlight_bg));
                     app.editor.find_popup =
                         Some(crate::ui::quick_search::QuickSearch::new(" Find ", theme));
                 }
@@ -423,21 +456,23 @@ pub fn handle_edit_mouse(
         ) {
             match action {
                 crate::ui::quick_search::QuickSearchAction::Submit => {
-                    if let Some(&(line_idx, _)) = popup.results.get(popup.selected) {
+                    if let Some(&(line_idx, ref line_text)) = popup.results.get(popup.selected) {
+                        let ql = popup.query().to_lowercase();
+                        let col = line_text
+                            .to_lowercase()
+                            .find(&ql)
+                            .map(|b| line_text[..b].chars().count())
+                            .unwrap_or(0);
                         app.editor
                             .editor
-                            .move_cursor(ratatui_textarea::CursorMove::Jump(line_idx as u16, 0));
-                        let _ = app.editor.editor.search_forward(false);
+                            .move_cursor(ratatui_textarea::CursorMove::Jump(
+                                line_idx as u16,
+                                col as u16,
+                            ));
                     }
-                    app.editor
-                        .editor
-                        .set_search_style(ratatui::style::Style::default());
                     app.editor.find_popup = None;
                 }
                 crate::ui::quick_search::QuickSearchAction::Cancel => {
-                    app.editor
-                        .editor
-                        .set_search_style(ratatui::style::Style::default());
                     app.editor.find_popup = None;
                 }
                 crate::ui::quick_search::QuickSearchAction::Edited => {
@@ -445,27 +480,18 @@ pub fn handle_edit_mouse(
                     if query_lower.is_empty() {
                         popup.results.clear();
                     } else {
-                        popup.results = app
-                            .editor
-                            .editor
-                            .lines()
-                            .iter()
-                            .enumerate()
-                            .filter(|(_, line)| line.to_lowercase().contains(&query_lower))
-                            .map(|(i, line)| (i, line.to_string()))
-                            .collect();
+                        popup.results = collect_find_results(&app.editor.editor, &query_lower);
                     }
                     if popup.selected >= popup.results.len() {
                         popup.selected = popup.results.len().saturating_sub(1);
                     }
                     popup.scroll_to_selected(10);
                     let query = popup.query();
-                    let result = app.editor.editor.set_search_pattern(&query);
-                    if result.is_ok() && !query.is_empty() {
-                        let _ = app.editor.editor.search_forward(true);
-                    }
-                    popup.info = find_match_stats(&app.editor.editor)
-                        .map(|(n, total)| format!("{n}/{total}"));
+                    let _ = jump_to_next_search_match(&mut app.editor.editor, &query);
+                    let cursor = app.editor.editor.cursor();
+                    popup.info =
+                        search_match_stats(app.editor.editor.lines(), (cursor.0, cursor.1), &query)
+                            .map(|(n, total)| format!("{n}/{total}"));
                 }
                 crate::ui::quick_search::QuickSearchAction::Navigated => {}
             }

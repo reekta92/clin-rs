@@ -1459,3 +1459,63 @@ pub fn render_textarea_with_theme(
         fill_cursor_line_bg(frame, textarea, area, cursor_bg);
     }
 }
+
+/// Highlight search-match cells in the rendered frame buffer.
+/// Walks each visible row, reconstructs the grapheme string, and paints
+/// the background of every cell that falls within a case-insensitive match.
+pub fn overlay_search_highlights(frame: &mut Frame, app: &App, area: Rect) {
+    let Some(popup) = app.editor.find_popup.as_ref() else {
+        return;
+    };
+    let query = popup.query();
+    if query.is_empty() {
+        return;
+    }
+    let ql = query.to_lowercase();
+    let editor = &app.editor.editor;
+    let inner = editor.block().map(|b| b.inner(area)).unwrap_or(area);
+    let gutter = if app.editor.show_line_numbers {
+        editor.lines().len().to_string().len() as u16 + 2
+    } else {
+        0
+    };
+    let bg = app.app_theme.highlight_bg;
+    let buf = frame.buffer_mut();
+    let content_left = inner.left() + gutter;
+    for y in inner.top()..inner.bottom() {
+        let mut graphemes: Vec<(u16, u16)> = Vec::new();
+        let mut concat = String::new();
+        let mut starts: Vec<usize> = Vec::new();
+        for x in content_left..inner.right() {
+            let Some(cell) = buf.cell((x, y)) else {
+                continue;
+            };
+            let sym = cell.symbol();
+            if sym.is_empty() {
+                if let Some((_, w)) = graphemes.last_mut() {
+                    *w = w.saturating_add(1);
+                }
+            } else {
+                starts.push(concat.len());
+                concat.push_str(sym);
+                graphemes.push((x, 1));
+            }
+        }
+        let lower = concat.to_lowercase();
+        let mut from = 0usize;
+        while let Some(rel) = lower[from..].find(&ql) {
+            let s = from + rel;
+            let e = s + ql.len();
+            from = e;
+            let gi = starts.iter().rposition(|&st| st <= s).unwrap_or(0);
+            let gj = starts.iter().rposition(|&st| st < e).unwrap_or(gi);
+            let x_start = graphemes[gi].0;
+            let x_end = graphemes[gj].0 + graphemes[gj].1;
+            for x in x_start..x_end {
+                if let Some(c) = buf.cell_mut((x, y)) {
+                    c.set_bg(bg);
+                }
+            }
+        }
+    }
+}

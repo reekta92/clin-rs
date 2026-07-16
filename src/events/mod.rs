@@ -1955,4 +1955,69 @@ mod tests {
         assert!(app.editor.editor.selection_range().is_some());
         assert!(app.popups.active.is_some());
     }
+
+    #[test]
+    fn find_highlight_overlay_wraps_without_panic() {
+        let _lock = crate::config::ConfigTestGuard::lock();
+        use crate::app::App;
+        use crate::storage::Storage;
+        use tempfile::tempdir;
+
+        let temp_dir = tempdir().expect("value is present");
+        let data_dir = temp_dir.path().join("data");
+        let config_dir = temp_dir.path().join("config");
+        let notes_dir = temp_dir.path().join("notes");
+        let templates_dir = temp_dir.path().join("templates");
+        std::fs::create_dir_all(&data_dir).expect("value is present");
+        std::fs::create_dir_all(&config_dir).expect("value is present");
+        std::fs::create_dir_all(&notes_dir).expect("value is present");
+        std::fs::create_dir_all(&templates_dir).expect("value is present");
+
+        let storage = Storage {
+            data_dir,
+            config_dir,
+            notes_dir,
+            templates_dir,
+            key: [0u8; 32],
+        };
+        let mut app = App::new(storage).expect("value is present");
+        app.editor.editor =
+            ratatui_textarea::TextArea::from(vec!["the quick brown fox jumps over".to_string()]);
+        app.editor
+            .editor
+            .set_wrap_mode(ratatui_textarea::WrapMode::WordOrGlyph);
+        app.editor.show_line_numbers = true;
+
+        let mut p = crate::ui::quick_search::QuickSearch::new(" Find ", &app.app_theme);
+        p.input.insert_str("the");
+        app.editor.find_popup = Some(p);
+
+        let backend = ratatui::backend::TestBackend::new(12, 6);
+        let mut terminal = ratatui::Terminal::new(backend).expect("terminal");
+        app.editor
+            .editor
+            .set_line_number_style(ratatui::style::Style::default());
+        terminal
+            .draw(|frame| {
+                frame.render_widget(&app.editor.editor, ratatui::layout::Rect::new(0, 0, 12, 6));
+                crate::ui::overlay_search_highlights(
+                    frame,
+                    &app,
+                    ratatui::layout::Rect::new(0, 0, 12, 6),
+                );
+            })
+            .unwrap();
+
+        let content_left = 1u16 + 2; // num_digits(1) + 2
+        assert_eq!(
+            terminal
+                .backend()
+                .buffer()
+                .cell((content_left, 0))
+                .expect("cell")
+                .style()
+                .bg,
+            Some(app.app_theme.highlight_bg),
+        );
+    }
 }

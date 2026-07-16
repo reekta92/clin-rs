@@ -36,6 +36,14 @@ pub(crate) fn render_editor_widget(
         block,
         base_style,
     );
+    if app
+        .editor
+        .find_popup
+        .as_ref()
+        .is_some_and(|p| !p.query().is_empty())
+    {
+        super::overlay_search_highlights(frame, app, area);
+    }
 }
 
 #[allow(clippy::collapsible_if)]
