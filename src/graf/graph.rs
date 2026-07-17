@@ -102,6 +102,36 @@ pub fn build_graph(
     Ok(graph)
 }
 
+/// Build a 1-parent + N-subnote force graph for the Subnotes preview.
+/// The parent node uses the parent note's title; each subnote node uses
+/// the subnote title. All subnotes are connected to the parent.
+pub fn build_subnotes_graph(
+    parent_title: &str,
+    subnotes: &[crate::storage::SubNote],
+) -> ForceGraph<GraphNodeData, ()> {
+    let mut graph: ForceGraph<GraphNodeData, ()> = ForceGraph::default();
+    let parent_data = GraphNodeData {
+        note_id: String::new(), // synthetic; not a real note id
+        title: parent_title.to_string(),
+        tags: Vec::new(),
+        link_count: subnotes.len(),
+        folder: String::new(),
+    };
+    let parent_idx = graph.add_force_node(parent_title, parent_data);
+    for sub in subnotes {
+        let data = GraphNodeData {
+            note_id: String::new(),
+            title: sub.title.clone(),
+            tags: Vec::new(),
+            link_count: 1,
+            folder: String::new(),
+        };
+        let child_idx = graph.add_force_node(&sub.title, data);
+        graph.add_edge(parent_idx, child_idx, ());
+    }
+    graph
+}
+
 pub fn create_simulation(
     graph: ForceGraph<GraphNodeData, ()>,
     config: &ClinConfig,

@@ -14,12 +14,20 @@ impl App {
             } else if self.list.grid_folder == VIRTUAL_SMART_PATH
                 || self.list.grid_folder.starts_with('@')
             {
+                VIRTUAL_SUBNOTES_PATH.to_string()
+            } else if self.list.grid_folder == VIRTUAL_SUBNOTES_PATH
+                || Self::is_subnotes_parent_grid_path(&self.list.grid_folder)
+            {
                 String::new()
             } else {
                 VIRTUAL_PINNED_PATH.to_string()
             }
         } else {
             if self.list.grid_folder == VIRTUAL_PINNED_PATH {
+                VIRTUAL_SUBNOTES_PATH.to_string()
+            } else if self.list.grid_folder == VIRTUAL_SUBNOTES_PATH
+                || Self::is_subnotes_parent_grid_path(&self.list.grid_folder)
+            {
                 String::new()
             } else {
                 VIRTUAL_PINNED_PATH.to_string()

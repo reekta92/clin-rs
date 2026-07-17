@@ -64,6 +64,7 @@ impl App {
                     self.list.visual_index = idx;
                 }
             }
+            VisualItem::Subnote { .. } => {}
         }
     }
 
@@ -102,6 +103,7 @@ impl App {
             VisualItem::Note { .. } | VisualItem::CreateNew { .. } => {
                 self.open_selected();
             }
+            VisualItem::Subnote { .. } => {}
         }
     }
 
@@ -144,9 +146,12 @@ impl App {
 
             match &popup.mode {
                 FolderPopupMode::Create { parent_path } => {
-                    if Self::is_virtual_pinned_path(parent_path) {
+                    if Self::is_virtual_pinned_path(parent_path)
+                        || Self::is_virtual_subnotes_path(parent_path)
+                        || Self::is_subnotes_parent_grid_path(parent_path)
+                    {
                         self.set_temporary_status_static(
-                            "Cannot create folder inside virtual Pinned",
+                            "Cannot create folder inside virtual Subnotes",
                         );
                         return;
                     }
@@ -166,8 +171,11 @@ impl App {
                     }
                 }
                 FolderPopupMode::Rename { old_path } => {
-                    if Self::is_virtual_pinned_path(old_path) {
-                        self.set_temporary_status_static("Cannot rename virtual Pinned folder");
+                    if Self::is_virtual_pinned_path(old_path)
+                        || Self::is_virtual_subnotes_path(old_path)
+                        || Self::is_subnotes_parent_grid_path(old_path)
+                    {
+                        self.set_temporary_status_static("Cannot rename virtual Subnotes folder");
                         return;
                     }
                     if let Err(e) = self.storage.rename_folder(old_path, text) {
@@ -204,8 +212,11 @@ impl App {
         if let Some(VisualItem::Folder { path, .. }) =
             self.list.visual_list.get(self.list.visual_index)
         {
-            if Self::is_virtual_pinned_path(path) {
-                self.set_temporary_status_static("Cannot move virtual Pinned folder");
+            if Self::is_virtual_pinned_path(path)
+                || Self::is_virtual_subnotes_path(path)
+                || Self::is_subnotes_parent_grid_path(path)
+            {
+                self.set_temporary_status_static("Cannot move virtual Subnotes folder");
                 return;
             }
             let folder_path = path.clone();
@@ -234,9 +245,12 @@ impl App {
                     if path.is_empty() {
                         continue;
                     } // never move/delete vault root
-                    if Self::is_virtual_pinned_path(path) {
+                    if Self::is_virtual_pinned_path(path)
+                        || Self::is_virtual_subnotes_path(path)
+                        || Self::is_subnotes_parent_grid_path(path)
+                    {
                         continue;
-                    } // never touch virtual Pinned
+                    } // never touch virtual folders
                     folder_paths.push(path.clone());
                 }
                 _ => {}

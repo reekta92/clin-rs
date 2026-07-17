@@ -4,7 +4,10 @@ use super::{
     draw_view_title_bar, draw_view_title_bar_with_tabs, format_keybind_hints, format_relative_time,
     popup_block, popup_hint_line, preview_spans,
 };
-use crate::app::{App, VIRTUAL_PINNED_LABEL, VIRTUAL_PINNED_PATH, VIRTUAL_SMART_PATH, ViewMode};
+use crate::app::{
+    App, VIRTUAL_PINNED_LABEL, VIRTUAL_PINNED_PATH, VIRTUAL_SMART_PATH, VIRTUAL_SUBNOTES_PATH,
+    ViewMode,
+};
 use crate::app_theme::AppThemeColors;
 use crate::keybinds::ListAction;
 use ratatui::{prelude::*, widgets::*};
@@ -237,6 +240,119 @@ fn draw_strip_graf(
     }
 }
 
+/// Render a GraphState using halfblocks into a Rect.
+/// Extracted from draw_strip_graf for reuse by the Subnotes graph preview.
+pub fn render_subnote_graph_halfblock(
+    frame: &mut Frame,
+    rect: Rect,
+    state: &crate::graf::graph::GraphState,
+    config: &crate::config::ClinConfig,
+    theme: &crate::app_theme::AppThemeColors,
+) {
+    let (wx_min, wx_max, wy_min, wy_max) = state.graph_bounds;
+    if wx_max - wx_min <= 0.0 || wy_max - wy_min <= 0.0 {
+        let line = Line::from(vec![Span::styled(
+            "No subnotes",
+            Style::default().fg(theme.muted),
+        )]);
+        let p = ratatui::widgets::Paragraph::new(line)
+            .style(theme.preview_bg_style())
+            .alignment(ratatui::layout::Alignment::Center);
+        frame.render_widget(p, rect);
+        return;
+    }
+
+    let content_x = rect.x;
+    let content_y = rect.y;
+    let content_w = rect.width;
+    let content_h = rect.height;
+    if content_w == 0 || content_h == 0 {
+        return;
+    }
+    let iw = content_w as usize;
+    let ih = content_h as usize;
+    let sub_h = ih * 2;
+    let world_w = wx_max - wx_min;
+    let world_h = wy_max - wy_min;
+
+    let av_cols = content_w as f64;
+    let av_rows_sub = sub_h as f64;
+    let world_aspect = world_w / world_h;
+    let grid_aspect = av_cols / av_rows_sub;
+    let (draw_cols, draw_rows_sub) = if grid_aspect > world_aspect {
+        (av_rows_sub * world_aspect, av_rows_sub)
+    } else {
+        (av_cols, av_cols / world_aspect)
+    };
+    let col_off = ((av_cols - draw_cols) / 2.0) as isize;
+    let row_off = ((av_rows_sub - draw_rows_sub) / 2.0) as isize;
+
+    let world_to_col = |x: f64| -> usize {
+        let t = (x - wx_min) / world_w;
+        let v = (t * draw_cols).floor() as isize + col_off;
+        v.clamp(0, (iw as isize) - 1) as usize
+    };
+    let world_to_subrow = |y: f64| -> usize {
+        let t = (wy_max - y) / world_h;
+        let v = (t * draw_rows_sub).floor() as isize + row_off;
+        v.clamp(0, (sub_h as isize) - 1) as usize
+    };
+
+    let graph = state.simulation.get_graph();
+    let colors = config.theme_colors();
+    let mut cache = state.render_cache.lock();
+    if cache.topology_dirty {
+        cache.rebuild_topology(graph, config, &colors, false);
+    }
+
+    let grid_size = sub_h * iw;
+    let mut grid: Vec<Option<Color>> = Vec::with_capacity(grid_size);
+    grid.resize(grid_size, None);
+
+    for idx in graph.node_indices() {
+        let node = &graph[idx];
+        let color = cache
+            .node_own_color
+            .get(&idx)
+            .copied()
+            .unwrap_or(theme.muted);
+        let col = world_to_col(node.location.x as f64);
+        let sub_row = world_to_subrow(node.location.y as f64);
+        grid[sub_row * iw + col] = Some(color);
+    }
+    drop(cache);
+
+    let buf = frame.buffer_mut();
+    for cell_row in 0..ih {
+        let top_sub = cell_row * 2;
+        let bot_sub = cell_row * 2 + 1;
+        for col in 0..iw {
+            let top_color = grid[top_sub * iw + col];
+            let bot_color = grid[bot_sub * iw + col];
+            let x = content_x + col as u16;
+            let y = content_y + cell_row as u16;
+            let cell = match buf.cell_mut((x, y)) {
+                Some(c) => c,
+                None => continue,
+            };
+            match (top_color, bot_color) {
+                (None, None) => {}
+                (Some(tc), None) => {
+                    cell.set_symbol("▀");
+                    cell.set_style(Style::default().fg(tc));
+                }
+                (None, Some(bc)) => {
+                    cell.set_symbol("▄");
+                    cell.set_style(Style::default().fg(bc));
+                }
+                (Some(tc), Some(bc)) => {
+                    cell.set_symbol("▄");
+                    cell.set_style(Style::default().fg(bc).bg(tc));
+                }
+            }
+        }
+    }
+}
 pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     let saved_mouse_pos = app.mouse_pos;
     if app.popups.active.is_some() {
@@ -337,12 +453,29 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     )),
                 ));
             }
+            // Subnotes tab always visible (like Pinned)
+            tabs.push((
+                "Subnotes",
+                Some(crate::ui::get_icon(
+                    "\u{f02c}",
+                    "\u{1f3f7}",
+                    app.config.ui.icon_mode,
+                )),
+            ));
             let selected_idx = if app.list.grid_folder == VIRTUAL_PINNED_PATH {
                 1
             } else if app.list.grid_folder == VIRTUAL_SMART_PATH
                 || app.list.grid_folder.starts_with('@')
             {
                 2
+            } else if app.list.grid_folder == VIRTUAL_SUBNOTES_PATH
+                || crate::app::App::is_subnotes_parent_grid_path(&app.list.grid_folder)
+            {
+                if app.config.list.smart_folders_enabled {
+                    3
+                } else {
+                    2
+                }
             } else {
                 0
             };
@@ -739,6 +872,26 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                         app.app_theme.success,
                         "Create...".to_string(),
                     ),
+                    crate::app::VisualItem::Subnote {
+                        parent_id,
+                        subnote_idx,
+                        ..
+                    } => {
+                        let ic =
+                            crate::ui::get_char('\u{f02c}', '\u{1f3f7}', app.config.ui.icon_mode);
+                        let title = app
+                            .subnotes_view_cache
+                            .iter()
+                            .find_map(|(p, subs)| {
+                                if p == parent_id {
+                                    subs.get(*subnote_idx).map(|s| s.title.clone())
+                                } else {
+                                    None
+                                }
+                            })
+                            .unwrap_or_else(|| format!("subnote {}", subnote_idx + 1));
+                        (ic, "SN", app.app_theme.tag, title)
+                    }
                 };
 
                 // --- tile border (plain border = "button") ---
@@ -976,21 +1129,53 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 });
 
         let content_is_current = app.list.preview_content_index == Some(app.list.visual_index);
-        let content = if content_is_current || app.list.pending_preview_update {
-            app.list.preview_content.as_ref()
-        } else {
-            None
-        };
+        let is_current_or_pending = content_is_current || app.list.pending_preview_update;
 
-        crate::preview::draw_preview_pane(
-            frame,
-            preview_rect,
-            &app.app_theme,
-            content,
-            hide_encrypted,
-            app.list.snapshot_scroll_offset,
-            app.config.ui.icon_mode,
-        );
+        // SubnoteGraph: render directly from app.subnote_graph_preview.
+        // We bypass draw_preview_pane because it doesn't have access to App.
+        let mut rendered_graph = false;
+        if (content_is_current || app.list.pending_preview_update)
+            && let Some(crate::list_view::PreviewContent::SubnoteGraph { parent_id }) =
+                app.list.preview_content.as_ref()
+        {
+            let pid = parent_id.clone();
+            app.ensure_subnote_graph_preview(&pid);
+            if let Some((_, gs)) = app.subnote_graph_preview.as_mut() {
+                if !gs.is_settled && app.subnote_graph_preview_steps < 100 {
+                    for _ in 0..10 {
+                        crate::graf::physics::simulation_step(gs, 0.01, 0.016);
+                        app.subnote_graph_preview_steps += 1;
+                        if gs.is_settled {
+                            break;
+                        }
+                    }
+                }
+                render_subnote_graph_halfblock(
+                    frame,
+                    preview_rect,
+                    gs,
+                    &app.config,
+                    &app.app_theme,
+                );
+                rendered_graph = true;
+            }
+        }
+        if !rendered_graph {
+            let content = if is_current_or_pending {
+                app.list.preview_content.as_ref()
+            } else {
+                None
+            };
+            crate::preview::draw_preview_pane(
+                frame,
+                preview_rect,
+                &app.app_theme,
+                content,
+                hide_encrypted,
+                app.list.snapshot_scroll_offset,
+                app.config.ui.icon_mode,
+            );
+        }
 
         // Overlay decoded images on the preview text
         if (content_is_current || app.list.pending_preview_update)
@@ -2226,6 +2411,17 @@ fn get_item_name(app: &App, idx: usize) -> Option<String> {
                 app.notes.get(*summary_idx).map(|n| n.title.clone())
             }
             crate::list_view::VisualItem::CreateNew { .. } => Some("Create...".to_string()),
+            crate::list_view::VisualItem::Subnote {
+                parent_id,
+                subnote_idx,
+                ..
+            } => app.subnotes_view_cache.iter().find_map(|(p, subs)| {
+                if p == parent_id {
+                    subs.get(*subnote_idx).map(|s| s.title.clone())
+                } else {
+                    None
+                }
+            }),
         }
     } else {
         None
@@ -2344,6 +2540,24 @@ pub fn get_preview_info(app: &App) -> Option<PreviewHeaderInfo> {
                     format!("Vault/{}", note.folder)
                 };
                 (folder, note.title.clone())
+            }
+            crate::list_view::VisualItem::Subnote {
+                parent_id,
+                subnote_idx,
+                ..
+            } => {
+                let title = app
+                    .subnotes_view_cache
+                    .iter()
+                    .find_map(|(p, subs)| {
+                        if p == parent_id {
+                            subs.get(*subnote_idx).map(|s| s.title.clone())
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap_or_else(|| format!("subnote {}", subnote_idx + 1));
+                ("Subnotes".to_string(), title)
             }
             crate::list_view::VisualItem::CreateNew { path, .. } => {
                 let folder = if path.is_empty() {

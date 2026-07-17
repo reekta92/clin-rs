@@ -52,7 +52,9 @@ impl App {
             Some(VisualItem::Folder { path, .. }) => {
                 self.toggle_pin_folder(path.clone());
             }
-            Some(VisualItem::SmartFolder { .. }) | Some(VisualItem::CreateNew { .. }) => {
+            Some(VisualItem::SmartFolder { .. })
+            | Some(VisualItem::CreateNew { .. })
+            | Some(VisualItem::Subnote { .. }) => {
                 self.set_temporary_status_static("Cannot pin virtual folders or actions");
             }
             None => {
@@ -616,6 +618,50 @@ impl App {
                 self.graph_preview_steps = 0;
             }
         }
+    }
+
+    pub fn ensure_subnote_graph_preview(&mut self, parent_id: &str) {
+        let fresh = self
+            .subnote_graph_preview
+            .as_ref()
+            .map(|(id, _)| id == parent_id)
+            .unwrap_or(false);
+        if fresh {
+            return;
+        }
+        let Some((_, subs)) = self
+            .subnotes_view_cache
+            .iter()
+            .find(|(p, _)| p == parent_id)
+        else {
+            self.subnote_graph_preview = None;
+            return;
+        };
+        let parent_title = self
+            .notes
+            .iter()
+            .find(|n| n.id == parent_id)
+            .map(|n| n.title.clone())
+            .unwrap_or_else(|| parent_id.to_string());
+        let graph = crate::graf::graph::build_subnotes_graph(&parent_title, subs);
+        let simulation = crate::graf::graph::create_simulation(graph, &self.config);
+        let mut gs = crate::graf::graph::GraphState {
+            viewport: crate::graf::viewport::Viewport::default(),
+            simulation,
+            selected_node: None,
+            dragging_node: None,
+            drag_target: None,
+            is_settled: false,
+            graph_bounds: (0.0, 0.0, 0.0, 0.0),
+            render_cache: parking_lot::Mutex::new(crate::graf::render::RenderCache::default()),
+            mouse_pos: None,
+        };
+        gs.viewport = gs
+            .viewport
+            .auto_fit_from_graph(gs.simulation.get_graph(), 1.4);
+        gs.graph_bounds = crate::graf::render::compute_graph_bounds(gs.simulation.get_graph());
+        self.subnote_graph_preview = Some((parent_id.to_string(), gs));
+        self.subnote_graph_preview_steps = 0;
     }
 
     /// Scroll the body editor and keep the cached viewport offset in sync.

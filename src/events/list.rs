@@ -412,6 +412,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 }
                 Some(crate::list_view::PreviewContent::Image(_)) => {}
 
+                Some(crate::list_view::PreviewContent::SubnoteGraph { .. }) => {}
                 None => {}
             },
             ListAction::PreviewPageDown => match &mut app.list.preview_content {
@@ -463,6 +464,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                     app.list.preview_content_offset_y = Some(app.list.preview_offset_y);
                 }
                 Some(crate::list_view::PreviewContent::Image(_)) => {}
+                Some(crate::list_view::PreviewContent::SubnoteGraph { .. }) => {}
                 None => {}
             },
             _ => {}
@@ -736,6 +738,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                     return;
                 }
             }
+            Some(crate::list_view::PreviewContent::SubnoteGraph { .. }) => {}
             Some(crate::list_view::PreviewContent::Image(_)) => {}
 
             None => {}
@@ -790,6 +793,14 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                         )),
                     ));
                 }
+                tabs.push((
+                    "Subnotes",
+                    Some(crate::ui::get_icon(
+                        "\u{f02c}",
+                        "\u{1f3f7}",
+                        app.config.ui.icon_mode,
+                    )),
+                ));
                 let region = crate::ui::title_bar_tabs_region(terminal_area, "Notes");
                 if let Some(i) = crate::ui::hit_test_tabs(
                     &tabs,
@@ -800,10 +811,17 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                     app.config.ui.tab_icons_only,
                     app.config.ui.icon_mode,
                 ) {
+                    let subnotes_idx = if app.config.list.smart_folders_enabled {
+                        3
+                    } else {
+                        2
+                    };
                     app.list.grid_folder = if i == 1 {
                         crate::app::VIRTUAL_PINNED_PATH.to_string()
                     } else if i == 2 && app.config.list.smart_folders_enabled {
                         crate::app::VIRTUAL_SMART_PATH.to_string()
+                    } else if i == subnotes_idx {
+                        crate::app::VIRTUAL_SUBNOTES_PATH.to_string()
                     } else {
                         String::new()
                     };
@@ -1075,6 +1093,13 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                 ..
             }) = app.list.visual_list.get(hovered_idx)
         {
+            if crate::app::App::is_virtual_subnotes_path(target_folder)
+                || crate::app::App::is_subnotes_parent_grid_path(target_folder)
+            {
+                app.set_temporary_status_static("Cannot move note into Subnotes view");
+                app.refresh_visual_list();
+                return;
+            }
             let note = &app.notes[*summary_idx];
             let note_id = note.id.clone();
             if note.folder == *target_folder {

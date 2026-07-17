@@ -1426,6 +1426,39 @@ impl Storage {
             };
         Ok(db.keys().cloned().collect())
     }
+
+    /// Returns (parent_id, Vec<SubNote>) for every parent that has subnotes.
+    /// Reads the subnotes DB once, decrypts per-parent payloads as needed.
+    pub fn get_all_subnotes(&mut self) -> Result<Vec<(String, Vec<SubNote>)>> {
+        let path = self.subnotes_db_path();
+        if !path.exists() {
+            return Ok(Vec::new());
+        }
+        let mut bytes = fs::read(&path).context("failed to read subnotes database")?;
+        obfuscate(&mut bytes);
+        let db: HashMap<String, SubNotePayload> =
+            match bincode::serde::decode_from_slice(&bytes, bincode::config::standard()) {
+                Ok((map, _)) => map,
+                Err(_) => HashMap::new(),
+            };
+        let mut result: Vec<(String, Vec<SubNote>)> = Vec::new();
+        // Deterministic ordering: sort parent ids
+        let mut parent_ids: Vec<&String> = db.keys().collect();
+        parent_ids.sort();
+        for parent_id in parent_ids {
+            match self.get_subnotes(parent_id) {
+                Ok(subs) => {
+                    if !subs.is_empty() {
+                        result.push((parent_id.clone(), subs));
+                    }
+                }
+                Err(_e) => {
+                    // Skip parents whose subnotes fail to decrypt (stale key, etc.).
+                }
+            }
+        }
+        Ok(result)
+    }
 }
 
 fn obfuscate(data: &mut [u8]) {

@@ -111,6 +111,30 @@ impl App {
 
     pub fn refresh_visual_list(&mut self) {
         let mut visual = Vec::new();
+        // Subnotes view cache — computed first (before any &self.notes borrow) to avoid conflict.
+        let subnotes_cache = if self.subnotes_view_cache_sig
+            == self.notes.len() * 31
+                + self
+                    .subnotes_view_cache
+                    .iter()
+                    .map(|(_, v)| v.len())
+                    .sum::<usize>()
+        {
+            self.subnotes_view_cache.clone()
+        } else {
+            self.refresh_subnotes_view_cache();
+            self.subnotes_view_cache.clone()
+        };
+        // Map parent_id -> summary_idx for title/icon lookup.
+        let subnote_parent_idx: std::collections::HashMap<&str, usize> = subnotes_cache
+            .iter()
+            .filter_map(|(pid, _)| {
+                self.notes
+                    .iter()
+                    .position(|n| n.id == *pid)
+                    .map(|i| (pid.as_str(), i))
+            })
+            .collect();
 
         let mut by_folder: HashMap<&str, Vec<(usize, &NoteSummary)>> = HashMap::new();
         let mut pinned_notes: Vec<(usize, &NoteSummary)> = Vec::new();
@@ -493,6 +517,49 @@ impl App {
                 }
             }
         }
+        let subnotes_total: usize = subnotes_cache.iter().map(|(_, v)| v.len()).sum();
+        visual.push(VisualItem::Folder {
+            path: VIRTUAL_SUBNOTES_PATH.to_string(),
+            name: VIRTUAL_SUBNOTES_LABEL.to_string(),
+            depth: 0,
+            is_expanded: self.list.folder_expanded.contains(VIRTUAL_SUBNOTES_PATH),
+            note_count: subnotes_cache.len(),
+            recursive_count: subnotes_total,
+            stale: subnotes_cache.is_empty(),
+            is_pinned: false,
+        });
+        if self.list.folder_expanded.contains(VIRTUAL_SUBNOTES_PATH) {
+            for (parent_id, subs) in &subnotes_cache {
+                let pidx = subnote_parent_idx.get(parent_id.as_str()).copied();
+                let note = pidx.and_then(|i| self.notes.get(i));
+                let name = note
+                    .map(|n| n.title.clone())
+                    .unwrap_or_else(|| parent_id.clone());
+                let parent_expanded = self
+                    .list
+                    .folder_expanded
+                    .contains(&format!("subnotes:{parent_id}"));
+                visual.push(VisualItem::Folder {
+                    path: format!("subnotes:{parent_id}"),
+                    name,
+                    depth: 1,
+                    is_expanded: parent_expanded,
+                    note_count: subs.len(),
+                    recursive_count: subs.len(),
+                    stale: false,
+                    is_pinned: false,
+                });
+                if parent_expanded {
+                    for (i, _sub) in subs.iter().enumerate() {
+                        visual.push(VisualItem::Subnote {
+                            parent_id: parent_id.clone(),
+                            subnote_idx: i,
+                            depth: 2,
+                        });
+                    }
+                }
+            }
+        }
         let vault_direct = by_folder.get("").map_or(0, |v| v.len());
         let vault_recursive = recursive_count.get("").copied().unwrap_or(vault_direct);
         visual.push(VisualItem::Folder {
@@ -574,6 +641,47 @@ impl App {
                             is_draw: note.id.ends_with(".draw"),
                             is_canvas: note.id.ends_with(".canvas"),
                             in_virtual_pinned_folder: false,
+                        });
+                    }
+                }
+            } else if gf == VIRTUAL_SUBNOTES_PATH {
+                // Subnotes tab root: list parent notes as virtual-folder tiles.
+                for (parent_id, subs) in &subnotes_cache {
+                    let pidx = subnote_parent_idx.get(parent_id.as_str()).copied();
+                    let name = pidx
+                        .and_then(|i| self.notes.get(i))
+                        .map(|n| n.title.clone())
+                        .unwrap_or_else(|| parent_id.clone());
+                    visual.push(VisualItem::Folder {
+                        path: format!("subnotes:{parent_id}"),
+                        name,
+                        depth: 0,
+                        is_expanded: false,
+                        note_count: subs.len(),
+                        recursive_count: subs.len(),
+                        stale: false,
+                        is_pinned: false,
+                    });
+                }
+            } else if Self::is_subnotes_parent_grid_path(gf) {
+                // Inside a subnotes parent: ".." back + subnote tiles.
+                let parent_id = Self::subnotes_parent_id_from_grid_path(gf).to_string();
+                visual.push(VisualItem::Folder {
+                    path: VIRTUAL_SUBNOTES_PATH.to_string(),
+                    name: "..".to_string(),
+                    depth: 0,
+                    is_expanded: false,
+                    note_count: 0,
+                    recursive_count: 0,
+                    stale: false,
+                    is_pinned: false,
+                });
+                if let Some((_, subs)) = subnotes_cache.iter().find(|(p, _)| *p == parent_id) {
+                    for (i, _sub) in subs.iter().enumerate() {
+                        visual.push(VisualItem::Subnote {
+                            parent_id: parent_id.clone(),
+                            subnote_idx: i,
+                            depth: 0,
                         });
                     }
                 }
@@ -1010,7 +1118,10 @@ impl App {
                 }
                 self.list.preview_content_index = Some(self.list.visual_index);
             }
-            Some(VisualItem::Folder { path, name, .. }) => {
+            Some(VisualItem::Folder { path, name, .. })
+                if !Self::is_virtual_subnotes_path(path)
+                    && !Self::is_subnotes_parent_grid_path(path) =>
+            {
                 let folder_path = path.clone();
                 let is_pinned = folder_path == crate::app::VIRTUAL_PINNED_PATH;
 
@@ -1100,6 +1211,64 @@ impl App {
                 self.list.preview_content_scale = Some(self.list.preview_scale);
                 self.list.preview_content_offset_x = Some(self.list.preview_offset_x);
                 self.list.preview_content_offset_y = Some(self.list.preview_offset_y);
+                self.list.preview_content_index = Some(self.list.visual_index);
+            }
+            Some(VisualItem::Folder { path, .. }) if Self::is_virtual_subnotes_path(path) => {
+                // Subnotes tab root selected: show summary markdown.
+                let mut md = String::from("# Subnotes\n\n");
+                for (pid, subs) in &self.subnotes_view_cache {
+                    let title = self
+                        .notes
+                        .iter()
+                        .find(|n| n.id == *pid)
+                        .map(|n| n.title.clone())
+                        .unwrap_or_else(|| pid.clone());
+                    md.push_str(&format!("- \u{f02c} {title} ({})\n", subs.len()));
+                }
+                if self.subnotes_view_cache.is_empty() {
+                    md.push_str("*No subnotes.*\n");
+                }
+                let width = self.desired_list_preview_width();
+                let mut renderer = MarkdownRenderer::new(width);
+                let opts = crate::markdown::MdRenderOpts::from_config(&self.config);
+                renderer.render_with(&md, width, &self.app_theme, &opts);
+                self.list.preview_content = Some(PreviewContent::Markdown(Box::new(renderer)));
+                self.list.preview_content_width = Some(width);
+                self.list.preview_content_height = Some(self.desired_list_preview_height());
+                self.list.preview_content_scale = Some(self.list.preview_scale);
+                self.list.preview_content_offset_x = Some(self.list.preview_offset_x);
+                self.list.preview_content_offset_y = Some(self.list.preview_offset_y);
+                self.list.preview_content_index = Some(self.list.visual_index);
+            }
+            Some(VisualItem::Folder { path, .. }) if Self::is_subnotes_parent_grid_path(path) => {
+                // Parent-note subfolder selected: show local graph.
+                let parent_id = Self::subnotes_parent_id_from_grid_path(path).to_string();
+                self.list.preview_content = Some(PreviewContent::SubnoteGraph { parent_id });
+                self.list.preview_content_index = Some(self.list.visual_index);
+            }
+            Some(VisualItem::Subnote {
+                parent_id,
+                subnote_idx,
+                ..
+            }) => {
+                let sub = self
+                    .subnotes_view_cache
+                    .iter()
+                    .find(|(p, _)| p == parent_id)
+                    .and_then(|(_, subs)| subs.get(*subnote_idx));
+                if let Some(sub) = sub {
+                    let width = self.desired_list_preview_width();
+                    let mut renderer = MarkdownRenderer::new(width);
+                    let opts = crate::markdown::MdRenderOpts::from_config(&self.config);
+                    let md = format!("# {}\n\n{}", sub.title, sub.content);
+                    renderer.render_with(&md, width, &self.app_theme, &opts);
+                    self.list.preview_content = Some(PreviewContent::Markdown(Box::new(renderer)));
+                    self.list.preview_content_width = Some(width);
+                    self.list.preview_content_height = Some(self.desired_list_preview_height());
+                    self.list.preview_content_scale = Some(self.list.preview_scale);
+                    self.list.preview_content_offset_x = Some(self.list.preview_offset_x);
+                    self.list.preview_content_offset_y = Some(self.list.preview_offset_y);
+                }
                 self.list.preview_content_index = Some(self.list.visual_index);
             }
             _ => {

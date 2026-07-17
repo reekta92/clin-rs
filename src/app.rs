@@ -42,6 +42,8 @@ pub const VIRTUAL_PINNED_PATH: &str = "__clin_virtual__/pinned";
 pub const VIRTUAL_PINNED_LABEL: &str = "Pinned";
 pub const VIRTUAL_SMART_PATH: &str = "__clin_virtual__/smart";
 pub const VIRTUAL_SMART_LABEL: &str = "Smart";
+pub const VIRTUAL_SUBNOTES_PATH: &str = "__clin_virtual__/subnotes";
+pub const VIRTUAL_SUBNOTES_LABEL: &str = "Subnotes";
 
 #[derive(Debug, Clone, Default)]
 pub struct SearchQuery {
@@ -347,6 +349,13 @@ pub struct App {
     pub canvas_state: Option<crate::pinstar::state::PinstarState>,
     pub config: crate::config::ClinConfig,
     pub summary_cache: HashMap<String, NoteSummary>,
+    /// (parent_id, Vec<SubNote>) cache for the Subnotes view; rebuilt on refresh.
+    pub subnotes_view_cache: Vec<(String, Vec<crate::storage::SubNote>)>,
+    /// Signature (notes.len() + subnotes hash) to invalidate subnotes_view_cache.
+    pub subnotes_view_cache_sig: usize,
+    /// Cached local subnotes graph for the Subnotes view preview.
+    pub subnote_graph_preview: Option<(String, crate::graf::graph::GraphState)>,
+    pub subnote_graph_preview_steps: usize,
     pub summary_mtime: HashMap<String, u64>,
     pub notes_with_subnotes: std::collections::HashSet<String>,
     pub initial_load_done: bool,
@@ -494,6 +503,10 @@ impl App {
             summary_cache: HashMap::new(),
             summary_mtime: HashMap::new(),
             notes_with_subnotes: std::collections::HashSet::new(),
+            subnotes_view_cache: Vec::new(),
+            subnotes_view_cache_sig: 0,
+            subnote_graph_preview: None,
+            subnote_graph_preview_steps: 0,
             initial_load_done: true,
             load_cancel: Arc::new(AtomicBool::new(false)),
             loading_total: 0,
@@ -626,6 +639,10 @@ impl App {
             summary_cache: HashMap::new(),
             summary_mtime: HashMap::new(),
             notes_with_subnotes: std::collections::HashSet::new(),
+            subnotes_view_cache: Vec::new(),
+            subnotes_view_cache_sig: 0,
+            subnote_graph_preview: None,
+            subnote_graph_preview_steps: 0,
             initial_load_done: false,
             load_cancel: Arc::new(AtomicBool::new(false)),
             loading_total: 0,
@@ -692,6 +709,18 @@ impl App {
 
     pub(crate) fn is_virtual_pinned_path(path: &str) -> bool {
         path == VIRTUAL_PINNED_PATH
+    }
+
+    pub(crate) fn is_virtual_subnotes_path(path: &str) -> bool {
+        path == VIRTUAL_SUBNOTES_PATH
+    }
+
+    pub(crate) fn is_subnotes_parent_grid_path(path: &str) -> bool {
+        path.starts_with("subnotes:")
+    }
+
+    pub(crate) fn subnotes_parent_id_from_grid_path(path: &str) -> &str {
+        path.strip_prefix("subnotes:").unwrap_or(path)
     }
 
     /// Rebuild cached display lines from the current visual_list.
@@ -1010,6 +1039,39 @@ impl App {
                     }
                     items.push(ListItem::new(lines));
                 }
+                VisualItem::Subnote {
+                    parent_id,
+                    subnote_idx,
+                    depth,
+                } => {
+                    let indent = "  ".repeat(*depth);
+                    let icon =
+                        crate::ui::get_icon("\u{f02c}", "\u{1f3f7}", self.config.ui.icon_mode);
+                    // Look up the subnote title from the cache.
+                    let title = self
+                        .subnotes_view_cache
+                        .iter()
+                        .find_map(|(p, subs)| {
+                            if p == parent_id {
+                                subs.get(*subnote_idx).map(|s| s.title.clone())
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or_else(|| format!("subnote {}", subnote_idx + 1));
+                    let sanitized = crate::sanitize::sanitize_for_terminal(&title);
+                    let text = if icon.is_empty() {
+                        format!("{indent}{}", sanitized.into_owned())
+                    } else {
+                        format!("{indent}{icon} {}", sanitized.into_owned())
+                    };
+                    let style = Style::default().fg(self.app_theme.tag);
+                    let mut lines = vec![Line::from(vec![Span::styled(text, style)])];
+                    if self.list.list_density == crate::config::ListDensity::Comfortable {
+                        lines.push(Line::from(""));
+                    }
+                    items.push(ListItem::new(lines));
+                }
             }
         }
         self.list.display_items = items;
@@ -1132,7 +1194,8 @@ impl App {
                 }
                 crate::list_view::VisualItem::Folder { .. }
                 | crate::list_view::VisualItem::CreateNew { .. }
-                | crate::list_view::VisualItem::SmartFolder { .. } => {
+                | crate::list_view::VisualItem::SmartFolder { .. }
+                | crate::list_view::VisualItem::Subnote { .. } => {
                     self.set_temporary_status_static(
                         "External preview only supports markdown notes",
                     );

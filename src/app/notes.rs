@@ -41,8 +41,19 @@ impl App {
         self.sort_notes();
         self.refresh_visual_list();
         self.notes_with_subnotes = self.storage.get_notes_with_subnotes().unwrap_or_default();
+        self.refresh_subnotes_view_cache();
 
         Ok(())
+    }
+
+    pub fn refresh_subnotes_view_cache(&mut self) {
+        self.subnotes_view_cache = self.storage.get_all_subnotes().unwrap_or_default();
+        self.subnotes_view_cache_sig = self.notes.len() * 31
+            + self
+                .subnotes_view_cache
+                .iter()
+                .map(|(_, v)| v.len())
+                .sum::<usize>();
     }
 
     /// Update only one note's summary after an in-place edit, reusing the existing
@@ -117,6 +128,7 @@ impl App {
                 .unwrap_or_default(),
             Some(VisualItem::CreateNew { path, .. }) => path.clone(),
             Some(VisualItem::SmartFolder { .. }) => String::new(),
+            Some(VisualItem::Subnote { .. }) => String::new(),
             None => String::new(),
         };
 
@@ -211,6 +223,15 @@ impl App {
                 if let Some(id) = note_id {
                     self.open_note_at_line(&id, None);
                 }
+            }
+            VisualItem::Subnote {
+                parent_id,
+                subnote_idx,
+                ..
+            } => {
+                let pid = parent_id.clone();
+                let idx = *subnote_idx;
+                self.open_subnotes_popup_for(&pid, Some(idx));
             }
         }
     }
@@ -1035,29 +1056,22 @@ impl App {
             self.set_temporary_status_static("Select a note to duplicate");
         }
     }
-    pub fn open_subnotes_popup(&mut self) {
-        let parent_id = match self.get_selected_note_id() {
-            Some(id) => id,
-            None => {
-                self.set_temporary_status_static("No note selected");
-                return;
-            }
-        };
-
-        let subnotes = self.storage.get_subnotes(&parent_id).unwrap_or_default();
+    pub fn open_subnotes_popup_for(&mut self, parent_id: &str, preselect: Option<usize>) {
+        let subnotes = self.storage.get_subnotes(parent_id).unwrap_or_default();
 
         let mut title_input = crate::ui::make_popup_textarea(&self.app_theme, "");
         let mut content_input = crate::ui::make_popup_textarea(&self.app_theme, "");
 
-        if !subnotes.is_empty() {
-            title_input.insert_str(&subnotes[0].title);
-            content_input.insert_str(&subnotes[0].content);
+        let selected = preselect.unwrap_or(0).min(subnotes.len().saturating_sub(1));
+        if !subnotes.is_empty() && selected < subnotes.len() {
+            title_input.insert_str(&subnotes[selected].title);
+            content_input.insert_str(&subnotes[selected].content);
         }
 
         let popup = crate::popups::SubnotesPopup {
-            parent_id,
+            parent_id: parent_id.to_string(),
             subnotes,
-            selected: 0,
+            selected,
             focus: crate::popups::SubnotesFocus::List,
             scroll_offset: 0,
             title_input,
@@ -1069,6 +1083,17 @@ impl App {
         self.popups.active = Some(crate::popups::ActivePopup::Subnotes(Box::new(popup)));
     }
 
+    pub fn open_subnotes_popup(&mut self) {
+        let parent_id = match self.get_selected_note_id() {
+            Some(id) => id,
+            None => {
+                self.set_temporary_status_static("No note selected");
+                return;
+            }
+        };
+        self.open_subnotes_popup_for(&parent_id, None);
+    }
+
     pub fn close_subnotes_popup(&mut self) {
         if let Some(crate::popups::ActivePopup::Subnotes(popup)) = self.popups.active.take() {
             if popup.is_dirty
@@ -1077,6 +1102,7 @@ impl App {
                 self.set_temporary_status(&format!("Failed to save sub-notes: {e}"));
             }
             self.notes_with_subnotes = self.storage.get_notes_with_subnotes().unwrap_or_default();
+            self.refresh_subnotes_view_cache();
         }
         self.popups.active = None;
     }

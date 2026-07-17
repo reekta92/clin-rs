@@ -75,6 +75,14 @@ pub enum VisualItem {
         path: String,
         depth: usize,
     },
+    /// A subnote listed under its parent in the Subnotes view.
+    /// `parent_id` is the parent note id; `subnote_idx` indexes into the
+    /// parent's Vec<SubNote> in App::subnotes_view_cache.
+    Subnote {
+        parent_id: String,
+        subnote_idx: usize,
+        depth: usize,
+    },
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -214,6 +222,12 @@ pub enum PreviewContent {
         grid: Vec<Vec<(char, Style)>>,
     },
     Image(std::path::PathBuf),
+    /// Local graph: one parent note + its subnotes, all connected to parent.
+    /// Carries only the parent_id — the actual GraphState is rendered directly
+    /// from App::subnote_graph_preview in draw_list_view.
+    SubnoteGraph {
+        parent_id: String,
+    },
 }
 
 impl std::fmt::Debug for PreviewContent {
@@ -223,6 +237,7 @@ impl std::fmt::Debug for PreviewContent {
             Self::CanvasGrid { grid, .. } => {
                 f.debug_tuple("CanvasGrid").field(&grid.len()).finish()
             }
+            Self::SubnoteGraph { .. } => f.debug_tuple("SubnoteGraph").finish(),
             Self::DrawGrid { grid, .. } => f.debug_tuple("DrawGrid").field(&grid.len()).finish(),
             Self::Image(_) => f.debug_tuple("Image").finish(),
         }
