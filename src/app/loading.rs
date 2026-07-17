@@ -1245,6 +1245,9 @@ impl App {
                 let parent_id = Self::subnotes_parent_id_from_grid_path(path).to_string();
                 self.list.preview_content = Some(PreviewContent::SubnoteGraph { parent_id });
                 self.list.preview_content_index = Some(self.list.visual_index);
+                self.list.subnote_graph_zoom = 1.0;
+                self.list.subnote_graph_pan_x = 0.0;
+                self.list.subnote_graph_pan_y = 0.0;
             }
             Some(VisualItem::Subnote {
                 parent_id,

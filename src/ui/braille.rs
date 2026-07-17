@@ -57,27 +57,3 @@ pub fn draw_braille_line(buf: &mut Buffer, x1: f64, y1: f64, x2: f64, y2: f64, c
         y += sy;
     }
 }
-
-/// Draw a filled braille circle at center (cx, cy) in cell coords with radius r (cell units).
-pub fn draw_braille_circle_filled(buf: &mut Buffer, cx: f64, cy: f64, r: f64, color: Color) {
-    // Iterate sub-pixel grid: 2 dots wide × 4 dots tall per cell.
-    let min_sx = ((cx - r) * 2.0).floor() as i64;
-    let max_sx = ((cx + r) * 2.0).ceil() as i64;
-    let min_sy = ((cy - r) * 4.0).floor() as i64;
-    let max_sy = ((cy + r) * 4.0).ceil() as i64;
-    for sy in min_sy..=max_sy {
-        for sx in min_sx..=max_sx {
-            let x = sx as f64 / 2.0;
-            let y = sy as f64 / 4.0;
-            let dx = x - cx;
-            let dy = y - cy;
-            if dx * dx + dy * dy <= r * r {
-                let cell_x = (sx / 2) as u16;
-                let cell_y = (sy / 4) as u16;
-                let dot_x = (sx.rem_euclid(2)) as u16;
-                let dot_y = (sy.rem_euclid(4)) as u16;
-                set_braille_dot(buf, cell_x, cell_y, dot_x, dot_y, color);
-            }
-        }
-    }
-}

@@ -18,6 +18,36 @@ const GRID_GAP: u16 = 1; // space between tiles (h and v)
 const GRID_LEFT_MARGIN: u16 = 2; // left inset inside list_area
 const GRID_TOP_MARGIN: u16 = 3; // top inset inside list_area
 
+/// Viewport base span for SubnoteGraph zoom/pan: layout_r(10) + parent_r(3) + 2 padding.
+/// Shared between renderer and mouse handler to prevent drift.
+pub(crate) const SUBNOTE_GRAPH_BASE_SPAN: f64 = 15.0;
+
+/// A hollow (outlined) circle drawn on a ratatui Canvas via Line segments.
+struct HollowCircle {
+    cx: f64,
+    cy: f64,
+    radius: f64,
+    color: ratatui::style::Color,
+}
+
+impl ratatui::widgets::canvas::Shape for HollowCircle {
+    fn draw(&self, painter: &mut ratatui::widgets::canvas::Painter) {
+        let steps = 48u32;
+        for i in 0..steps {
+            let a1 = (i as f64) * std::f64::consts::TAU / steps as f64;
+            let a2 = ((i + 1) as f64) * std::f64::consts::TAU / steps as f64;
+            ratatui::widgets::canvas::Line {
+                x1: self.cx + self.radius * a1.cos(),
+                y1: self.cy + self.radius * a1.sin(),
+                x2: self.cx + self.radius * a2.cos(),
+                y2: self.cy + self.radius * a2.sin(),
+                color: self.color,
+            }
+            .draw(painter);
+        }
+    }
+}
+
 /// Compute the per-section rectangles within the calendar strip area.
 pub(crate) fn section_rects(cal_rect: Rect, active: &[crate::config::NotesSection]) -> Vec<Rect> {
     match active.len() {
@@ -241,22 +271,23 @@ fn draw_strip_graf(
 }
 
 /// Render a GraphState using halfblocks into a Rect.
-/// Extracted from draw_strip_graf for reuse by the Subnotes graph preview.
-/// Render a static radial subnotes graph into the preview rect using braille.
-/// Parent note = filled circle at center; subnotes = smaller filled circles
-/// radially around it, connected by braille lines. Titles drawn above each node.
+/// Render subnote graph on a ratatui Canvas with hollow circles, zoom/pan, and content reveal.
 pub fn render_subnote_graph_static(
     frame: &mut Frame,
     rect: Rect,
     parent_title: &str,
     subnotes: &[crate::storage::SubNote],
+    zoom: f64,
+    pan_x: f64,
+    pan_y: f64,
     theme: &crate::app_theme::AppThemeColors,
 ) {
-    use crate::ui::braille::{draw_braille_circle_filled, draw_braille_line};
+    use ratatui::symbols::Marker;
+    use ratatui::widgets::canvas::{Canvas, Line as CanvasLine};
 
-    // Clear the preview rect background.
-    let bg_block = ratatui::widgets::Block::default().style(theme.preview_bg_style());
-    frame.render_widget(bg_block, rect);
+    // Background
+    let bg = theme.preview_bg_style();
+    frame.render_widget(Block::default().style(bg), rect);
 
     if subnotes.is_empty() {
         let line = Line::from(vec![Span::styled(
@@ -270,89 +301,156 @@ pub fn render_subnote_graph_static(
         return;
     }
 
-    let buf = frame.buffer_mut();
-    let w = rect.width as f64;
-    let h = rect.height as f64;
-    let cx = rect.x as f64 + w / 2.0;
-    let cy = rect.y as f64 + h / 2.0;
-
-    // Layout: parent at center, subnotes on a circle around it.
-    let layout_r = w.min(h) * 0.35;
-    let parent_circle_r = 1.5_f64; // cells
-    let sub_circle_r = 0.5_f64; // cells
-
+    // World-coordinate layout: parent at origin, subnotes on a circle.
+    let layout_r = 10.0_f64;
+    let parent_r = 3.0_f64;
+    let sub_r = 1.5_f64;
     let n = subnotes.len();
     let positions: Vec<(f64, f64)> = (0..n)
         .map(|i| {
-            let angle =
-                i as f64 * 2.0 * std::f64::consts::PI / n as f64 - std::f64::consts::PI / 2.0;
-            (cx + layout_r * angle.cos(), cy + layout_r * angle.sin())
+            let angle = i as f64 * std::f64::consts::TAU / n as f64 - std::f64::consts::FRAC_PI_2;
+            (layout_r * angle.cos(), layout_r * angle.sin())
         })
         .collect();
 
-    // 1. Draw edges (lines from parent center to each subnote center).
-    let edge_color = theme.border;
-    for &(sx, sy) in &positions {
-        draw_braille_line(buf, cx, cy, sx, sy, edge_color);
+    // Viewport bounds from zoom/pan.
+    let aspect = rect.width as f64 / rect.height as f64;
+    let cell_aspect = 2.0; // terminal cells are ~2× taller than wide
+    let span_x = SUBNOTE_GRAPH_BASE_SPAN / zoom;
+    let span_y = span_x * cell_aspect / aspect;
+    let x_bounds = [pan_x - span_x, pan_x + span_x];
+    let y_bounds = [pan_y - span_y, pan_y + span_y];
+
+    // For on-screen sizing of circles and title offsets.
+    let cells_per_world = rect.width as f64 / (2.0 * span_x);
+    let on_screen_sub_r = sub_r * cells_per_world;
+    const FOCUS_THRESHOLD: f64 = 8.0; // cells — subnote circle must be this big on screen
+
+    if on_screen_sub_r > FOCUS_THRESHOLD {
+        // Focus mode: find the subnote closest to viewport center and show its content card.
+        let center = (pan_x, pan_y);
+        let focused = positions
+            .iter()
+            .zip(subnotes.iter())
+            .min_by(|(a, _), (b, _)| {
+                let da = (a.0 - center.0).powi(2) + (a.1 - center.1).powi(2);
+                let db = (b.0 - center.0).powi(2) + (b.1 - center.1).powi(2);
+                da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+            });
+        if let Some((_, sub)) = focused {
+            draw_content_card(frame, rect, &sub.title, &sub.content, theme);
+            return; // Skip all graph rendering — only the content card shows.
+        }
     }
 
-    // 1b. Draw inter-subnote wikilink edges (distinct color from containment).
+    // Build shapes.
+    let mut edges: Vec<CanvasLine> = Vec::new();
+    // Containment edges: parent -> each subnote.
+    for &(sx, sy) in &positions {
+        edges.push(CanvasLine {
+            x1: 0.0,
+            y1: 0.0,
+            x2: sx,
+            y2: sy,
+            color: theme.border,
+        });
+    }
+    // Wikilink edges: subnote -> subnote.
     let title_to_idx: std::collections::HashMap<String, usize> = subnotes
         .iter()
         .enumerate()
         .map(|(i, s)| (s.title.to_lowercase(), i))
         .collect();
-    let wikilink_color = theme.success;
     let mut drawn: std::collections::HashSet<(usize, usize)> = std::collections::HashSet::new();
     for (i, sub) in subnotes.iter().enumerate() {
         let (sx, sy) = positions[i];
         for link in crate::storage::extract_wikilinks(&sub.content) {
-            if let Some(&j) = title_to_idx.get(&link.to_lowercase()) {
-                if j == i {
-                    continue;
-                } // self-link
+            if let Some(&j) = title_to_idx.get(&link.to_lowercase())
+                && j != i
+            {
                 let key = if i < j { (i, j) } else { (j, i) };
                 if drawn.insert(key) {
                     let (tx, ty) = positions[j];
-                    draw_braille_line(buf, sx, sy, tx, ty, wikilink_color);
+                    edges.push(CanvasLine {
+                        x1: sx,
+                        y1: sy,
+                        x2: tx,
+                        y2: ty,
+                        color: theme.success,
+                    });
                 }
             }
         }
     }
 
-    // 2. Draw parent circle (filled, larger, accent color).
-    draw_braille_circle_filled(buf, cx, cy, parent_circle_r, theme.accent);
+    let parent_circle = HollowCircle {
+        cx: 0.0,
+        cy: 0.0,
+        radius: parent_r,
+        color: theme.accent,
+    };
+    let sub_circles: Vec<HollowCircle> = positions
+        .iter()
+        .map(|&(sx, sy)| HollowCircle {
+            cx: sx,
+            cy: sy,
+            radius: sub_r,
+            color: theme.tag,
+        })
+        .collect();
 
-    // 3. Draw subnote circles (filled, smaller, tag color).
-    for &(sx, sy) in &positions {
-        draw_braille_circle_filled(buf, sx, sy, sub_circle_r, theme.tag);
-    }
+    // Render Canvas with Braille marker.
+    let canvas = Canvas::default()
+        .background_color(theme.bg.unwrap_or(ratatui::style::Color::Reset))
+        .block(Block::default().style(bg))
+        .marker(Marker::Braille)
+        .x_bounds(x_bounds)
+        .y_bounds(y_bounds)
+        .paint(|ctx| {
+            for edge in &edges {
+                ctx.draw(edge);
+            }
+            ctx.draw(&parent_circle);
+            for sc in &sub_circles {
+                ctx.draw(sc);
+            }
+        });
+    frame.render_widget(canvas, rect);
 
-    // 4. Draw titles above each node.
-    let max_title_len = (w * 0.3) as usize; // ~30% of preview width per title
-    let title_style = Style::default().fg(theme.fg);
+    // Post-canvas: world -> screen transform for text overlay.
+    let world_to_screen = |wx: f64, wy: f64| -> (f64, f64) {
+        let col =
+            rect.x as f64 + (wx - x_bounds[0]) / (x_bounds[1] - x_bounds[0]) * rect.width as f64;
+        let row = rect.y as f64 + rect.height as f64
+            - (wy - y_bounds[0]) / (y_bounds[1] - y_bounds[0]) * rect.height as f64;
+        (col, row)
+    };
+    let buf = frame.buffer_mut();
+    let max_title_len = (rect.width as f64 * 0.2 / zoom.max(1.0)).max(4.0) as usize;
 
-    // Parent title: above the center circle.
+    // Parent title.
+    let (px, py) = world_to_screen(0.0, parent_r);
     draw_title_above(
         buf,
-        cx,
-        cy - parent_circle_r,
+        px,
+        py,
         parent_title,
         max_title_len,
         rect,
-        title_style,
+        Style::default().fg(theme.fg),
     );
 
-    // Subnote titles: above each subnote circle.
-    for (&(sx, sy), title) in positions.iter().zip(subnotes.iter().map(|s| &s.title)) {
+    // Subnote titles.
+    for (&(sx, sy), sub) in positions.iter().zip(subnotes.iter()) {
+        let (scx, scy) = world_to_screen(sx, sy);
         draw_title_above(
             buf,
-            sx,
-            sy - sub_circle_r,
-            title,
+            scx,
+            scy - sub_r * cells_per_world,
+            &sub.title,
             max_title_len,
             rect,
-            title_style,
+            Style::default().fg(theme.fg),
         );
     }
 }
@@ -384,6 +482,62 @@ fn draw_title_above(
             cell.set_char(ch).set_style(style);
         }
     }
+}
+
+/// Full-pane content card with title in the top border. Shown when a subnote
+/// node is zoomed in past FOCUS_THRESHOLD.
+fn draw_content_card(
+    frame: &mut Frame,
+    rect: Rect,
+    title: &str,
+    content: &str,
+    theme: &crate::app_theme::AppThemeColors,
+) {
+    // Background.
+    frame.render_widget(Block::default().style(theme.preview_bg_style()), rect);
+
+    // Card fills the preview rect with 1-cell padding.
+    let card_w = rect.width.saturating_sub(2);
+    let card_h = rect.height.saturating_sub(2);
+    if card_w < 4 || card_h < 4 {
+        return;
+    }
+    let card_rect = Rect::new(rect.x + 1, rect.y + 1, card_w, card_h);
+
+    // Truncate title to fit inside the top border.
+    let title_max = card_w.saturating_sub(4) as usize; // " title " + border chars
+    let title_text = crate::graf::util::truncate(title, title_max);
+
+    // Bordered block with title in the top border.
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(theme.border))
+        .title(Span::styled(
+            format!(" {} ", title_text),
+            Style::default()
+                .fg(theme.accent)
+                .add_modifier(Modifier::BOLD),
+        ))
+        .style(theme.preview_bg_style());
+
+    let inner = block.inner(card_rect);
+    frame.render_widget(block, card_rect);
+
+    // Content text lines inside the card.
+    let inner_w = inner.width as usize;
+    let inner_h = inner.height as usize;
+    let lines: Vec<Line> = content
+        .lines()
+        .take(inner_h)
+        .map(|l| {
+            Line::from(Span::styled(
+                crate::graf::util::truncate(l, inner_w),
+                Style::default().fg(theme.text),
+            ))
+        })
+        .collect();
+    let para = Paragraph::new(lines).style(theme.preview_bg_style());
+    frame.render_widget(para, inner);
 }
 pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     let saved_mouse_pos = app.mouse_pos;
@@ -1188,6 +1342,9 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 preview_rect,
                 &parent_title,
                 &subnotes,
+                app.list.subnote_graph_zoom,
+                app.list.subnote_graph_pan_x,
+                app.list.subnote_graph_pan_y,
                 &app.app_theme,
             );
             rendered_graph = true;
