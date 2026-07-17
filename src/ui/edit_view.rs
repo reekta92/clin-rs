@@ -99,23 +99,6 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         ViewMode::Edit,
         &app.app_theme,
     );
-
-    // Prepend mode indicator to the left header bar
-    let mode_indicator = Span::styled(
-        match app.editor.edit_mode {
-            EditMode::Read => " READ ",
-            EditMode::Edit => " EDIT ",
-        },
-        Style::default()
-            .fg(match app.editor.edit_mode {
-                EditMode::Read => app.app_theme.muted,
-                EditMode::Edit => app.app_theme.success,
-            })
-            .add_modifier(ratatui::style::Modifier::BOLD),
-    );
-    let mut header_spans = vec![mode_indicator];
-    header_spans.extend(left_line.spans.clone());
-    let left_line = ratatui::text::Line::from(header_spans);
     let status_val = Some(app.status.as_ref());
     let has_status = if let Some(st) = status_val {
         !st.trim().is_empty() && st != "Ready"
