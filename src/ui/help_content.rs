@@ -207,6 +207,10 @@ const EDITOR_SUGGESTIONS: &[HelpSuggestion] = &[
         "Linked-note preview",
         "Place the cursor on a [[wikilink]] and press {edit:PreviewLink} to pop up a rendered preview of the target note. Press Esc to close without navigating.",
     ),
+    tip(
+        "READ and EDIT modes",
+        "On opening a note the editor is in **READ** mode showing rendered markdown. Press `e`/`i` to enter **EDIT** and type. `Esc` steps back: EDIT→READ, READ→list. Scroll READ with j/k/PageUp/PageDown/G/gg.",
+    ),
 ];
 const GRAPH_SUGGESTIONS: &[HelpSuggestion] = &[
     tip(

@@ -4,7 +4,7 @@ use super::{
     PopupHints, PopupSize, centered_rect, draw_dim_vline, draw_popup_frame, draw_status_bar,
     draw_view_title_bar, format_keybind_hints, get_preview_info,
 };
-use crate::app::{App, EditFocus, EditSidebar, ViewMode};
+use crate::app::{App, EditFocus, EditMode, EditSidebar, ViewMode};
 use crate::content_tree::parse::NodeKind;
 use crate::events::get_title_text;
 use crate::keybinds::EditAction;
@@ -44,6 +44,30 @@ pub(crate) fn render_editor_widget(
     {
         super::overlay_search_highlights(frame, app, area);
     }
+}
+
+/// Render the editor body in READ mode (rendered markdown, scrollable).
+pub(crate) fn render_read_view(frame: &mut Frame, app: &mut App, area: Rect) {
+    if app.editor.read_dirty || app.editor.read_cols != area.width {
+        app.refresh_read_mode();
+    }
+    // Clamp scroll offset
+    let max_offset = app
+        .editor
+        .read_grid
+        .len()
+        .saturating_sub(area.height as usize);
+    app.editor.read_offset = app.editor.read_offset.min(max_offset);
+    let grid: &[Vec<(char, Style)>] = &app.editor.read_grid;
+    let snap = crate::snapshot::RenderedSnapshot::new(grid)
+        .scroll_offset(app.editor.read_offset as u16)
+        .block(
+            Block::default()
+                .style(app.app_theme.bg_style())
+                .borders(Borders::NONE)
+                .padding(Padding::new(0, 2, 0, 0)),
+        );
+    frame.render_widget(snap, area);
 }
 
 #[allow(clippy::collapsible_if)]
@@ -232,12 +256,21 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
 
     let editor_container = layout.body;
 
+    app.editor.last_body_width = editor_container.width;
+    app.editor.last_body_height = editor_container.height;
+
     if let Some(sb) = sidebar_area {
         draw_sidebar_pane(frame, sb, app, focus);
     }
     if let Some(preview_area_rect) = preview_area_rect {
         if !app.preview_fullscreen {
-            render_editor_widget(frame, app, focus, editor_container, None, None);
+            match app.editor.edit_mode {
+                EditMode::Read => render_read_view(frame, app, editor_container),
+                EditMode::Edit => {
+                    render_editor_widget(frame, app, focus, editor_container, None, None);
+                    super::overlay_markdown_highlight(frame, app, editor_container);
+                }
+            }
         }
 
         if let Some(renderer) = &app.editor.md_preview_renderer {
@@ -322,10 +355,21 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             } // closes if !renderer.is_pending()
         } // closes if let Some(renderer)
     } else {
-        render_editor_widget(frame, app, focus, editor_container, None, None);
+        match app.editor.edit_mode {
+            EditMode::Read => render_read_view(frame, app, editor_container),
+            EditMode::Edit => {
+                render_editor_widget(frame, app, focus, editor_container, None, None);
+                super::overlay_markdown_highlight(frame, app, editor_container);
+            }
+        }
     }
     let kb = &app.keybinds;
+    let mode_hint = match app.editor.edit_mode {
+        EditMode::Read => ("e".to_string(), "edit"),
+        EditMode::Edit => (kb.display_edit(EditAction::Back), "read"),
+    };
     let hints_items = vec![
+        mode_hint,
         (kb.display_edit(EditAction::CycleFocus), "focus"),
         (kb.display_edit(EditAction::Back), "back"),
         (

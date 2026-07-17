@@ -1588,3 +1588,157 @@ pub fn overlay_search_highlights(frame: &mut Frame, app: &App, area: Rect) {
         }
     }
 }
+
+/// Overlay EDIT-mode markdown highlighting on top of the rendered textarea.
+/// Walks every visible cell and applies colour based on the source line's
+/// markdown role, matched against `MarkdownTheme`.
+///
+/// Skips the cursor cell (it carries `REVERSED` modifier) and any cell inside
+/// an active text selection (non-default background).
+pub fn overlay_markdown_highlight(frame: &mut Frame, app: &mut App, area: Rect) {
+    let editor = &mut app.editor.editor;
+    let inner = editor.block().map(|b| b.inner(area)).unwrap_or(area);
+    let gutter = if app.editor.show_line_numbers {
+        editor.lines().len().to_string().len() as u16 + 2
+    } else {
+        0
+    };
+
+    // Lazy-init or retrieve the source highlighter
+    let highlighter: &mut crate::markdown::SourceHighlighter = app
+        .editor
+        .source_highlighter
+        .get_or_insert_with(|| crate::markdown::SourceHighlighter::new(&app.app_theme));
+
+    let buf = frame.buffer_mut();
+    let content_left = inner.left() + gutter;
+    let full_doc: Vec<String> = editor.lines().to_vec();
+
+    // Determine if we can group by gutter line numbers
+    if app.editor.show_line_numbers {
+        // Group consecutive rows that belong to the same source line
+        // A row with a number in the gutter starts a new group; continuation
+        // rows have blank gutter content.
+        let mut source_idx: Option<usize> = None;
+        let mut rows_for_line: Vec<(u16, u16, u16)> = Vec::new(); // (y, x_start, x_end)
+
+        for y in inner.top()..inner.bottom() {
+            // Read gutter cells
+            let gutter_text: String = (inner.x..content_left)
+                .filter_map(|x| buf.cell((x, y)).map(|c| c.symbol()))
+                .collect();
+            let trimmed_gutter = gutter_text.trim();
+
+            if trimmed_gutter.is_empty() {
+                // Continuation row — add to current group
+                if let Some(_si) = source_idx {
+                    if let Some(last) = rows_for_line.last_mut() {
+                        last.2 = inner.right();
+                    } else {
+                        rows_for_line.push((y, content_left, inner.right()));
+                    }
+                }
+            } else if let Ok(n) = trimmed_gutter.parse::<usize>() {
+                // New source line — flush previous group
+                if let Some(si) = source_idx {
+                    apply_highlight_styles(buf, &rows_for_line, si, &full_doc, highlighter);
+                }
+                source_idx = Some(n.saturating_sub(1));
+                rows_for_line = vec![(y, content_left, inner.right())];
+            }
+        }
+        // Flush last group
+        if let Some(si) = source_idx {
+            apply_highlight_styles(buf, &rows_for_line, si, &full_doc, highlighter);
+        }
+    } else {
+        // No line numbers: each row is its own group
+        for y in inner.top()..inner.bottom() {
+            // We don't have source_idx, so highlight displayed text standalone
+            // Read displayed text
+            let displayed: String = (content_left..inner.right())
+                .filter_map(|x| buf.cell((x, y)).map(|c| c.symbol()))
+                .collect();
+            if displayed.is_empty() {
+                continue;
+            }
+            let styles = highlighter.highlight_line(&displayed, 0, &full_doc);
+            let mut ci = 0usize;
+            for x in content_left..inner.right() {
+                if ci >= styles.len() {
+                    break;
+                }
+                if let Some(cell) = buf.cell_mut((x, y)) {
+                    if cell.symbol().is_empty() {
+                        continue;
+                    }
+                    // Skip cursor cell
+                    if cell.modifier.contains(ratatui::style::Modifier::REVERSED) {
+                        ci += 1;
+                        continue;
+                    }
+                    // Skip selection cells (heuristic: non-default bg)
+                    if cell.bg != app.app_theme.bg.unwrap_or(ratatui::style::Color::Reset) {
+                        ci += 1;
+                        continue;
+                    }
+                    cell.set_style(styles[ci]);
+                    ci += 1;
+                }
+            }
+        }
+    }
+}
+
+/// Apply highlight styles for a group of rows corresponding to one source line.
+fn apply_highlight_styles(
+    buf: &mut ratatui::prelude::Buffer,
+    rows: &[(u16, u16, u16)],
+    source_idx: usize,
+    full_doc: &[String],
+    highlighter: &mut crate::markdown::SourceHighlighter,
+) {
+    let full_line = full_doc.get(source_idx).map(|s| s.as_str()).unwrap_or("");
+    if full_line.is_empty() {
+        return;
+    }
+    let styles = highlighter.highlight_line(full_line, source_idx, full_doc);
+    if styles.is_empty() {
+        return;
+    }
+    // Walk displayed chars across all rows of this group
+    let mut src_cursor = 0usize;
+    for &(y, x_start, x_end) in rows {
+        for x in x_start..x_end {
+            let Some(cell) = buf.cell_mut((x, y)) else {
+                continue;
+            };
+            let sym = cell.symbol();
+            if sym.is_empty() {
+                continue;
+            }
+            // Skip cursor cell (REVERSED modifier)
+            if cell.modifier.contains(ratatui::style::Modifier::REVERSED) {
+                src_cursor += 1;
+                continue;
+            }
+            // Skip cells inside selection (heuristic: non-default bg)
+            if cell.bg != ratatui::style::Color::Reset {
+                src_cursor += 1;
+                continue;
+            }
+
+            // Match display char to source char via prefix scanning
+            // (displayed text is a contiguous substring of full_line due to wrap)
+            let ch = sym.chars().next().unwrap_or(' ');
+            while src_cursor < full_line.len() && !full_line[src_cursor..].starts_with(ch) {
+                src_cursor += 1;
+            }
+            if src_cursor >= styles.len() {
+                break;
+            }
+            cell.set_style(styles[src_cursor]);
+            src_cursor += 1;
+        }
+    }
+}

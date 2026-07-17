@@ -197,11 +197,11 @@ pub fn draw_content_tree(
             // but tree_scroll_offset is a scroll offset [0, content_len-viewport_len].
             // Scale to selection range so thumb reaches bottom at max scroll.
             let max_offset = content_len.saturating_sub(viewport_len);
+            let numerator = state
+                .tree_scroll_offset
+                .saturating_mul(content_len.saturating_sub(1));
             let scrollbar_pos = if max_offset > 0 {
-                state
-                    .tree_scroll_offset
-                    .saturating_mul(content_len.saturating_sub(1))
-                    / max_offset
+                numerator.checked_div(max_offset).unwrap_or(0)
             } else {
                 0
             };

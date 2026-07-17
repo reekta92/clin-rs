@@ -1,5 +1,5 @@
 use crate::actions::Action;
-use crate::app::{App, ContextMenu, EditFocus, EditSidebar};
+use crate::app::{App, ContextMenu, EditFocus, EditMode, EditSidebar};
 use crate::keybinds::EditAction;
 use crate::text_edit::apply_text_shortcuts;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
@@ -223,10 +223,81 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
         return false;
     }
 
-    // Universal back (override-proof): bare Esc leaves the editor. q types a letter.
+    // Esc: mode-gated. EDIT→READ, READ→leave editor.
     if key.modifiers == KeyModifiers::NONE && key.code == KeyCode::Esc {
-        leave_editor(app, focus);
-        return false;
+        match app.editor.edit_mode {
+            EditMode::Edit => {
+                app.back_to_read_mode();
+                return false;
+            }
+            EditMode::Read => {
+                leave_editor(app, focus);
+                return false;
+            }
+        }
+    }
+
+    // READ-mode navigation + entry to EDIT.
+    if app.editor.edit_mode == EditMode::Read {
+        let h = app.editor.last_body_height as usize;
+        let max = app.editor.read_grid.len().saturating_sub(h.max(1));
+        let delta = h.max(1).saturating_div(2).max(1);
+        // enter EDIT
+        if key.modifiers == KeyModifiers::NONE
+            && matches!(key.code, KeyCode::Char('e') | KeyCode::Char('i'))
+        {
+            app.activate_edit_mode();
+            return false;
+        }
+        match key.code {
+            KeyCode::Down | KeyCode::Char('j') => {
+                app.editor.read_offset = (app.editor.read_offset + 1).min(max);
+                return false;
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                app.editor.read_offset = app.editor.read_offset.saturating_sub(1);
+                return false;
+            }
+            KeyCode::PageDown | KeyCode::Char(' ') => {
+                app.editor.read_offset = (app.editor.read_offset + h.max(1)).min(max);
+                return false;
+            }
+            KeyCode::PageUp => {
+                app.editor.read_offset = app.editor.read_offset.saturating_sub(h.max(1));
+                return false;
+            }
+            KeyCode::Char('d') if key.modifiers == KeyModifiers::CONTROL => {
+                app.editor.read_offset = (app.editor.read_offset + delta).min(max);
+                return false;
+            }
+            KeyCode::Char('u') if key.modifiers == KeyModifiers::CONTROL => {
+                app.editor.read_offset = app.editor.read_offset.saturating_sub(delta);
+                return false;
+            }
+            KeyCode::Char('G') => {
+                app.editor.read_offset = max;
+                return false;
+            }
+            KeyCode::Char('g') => {
+                if app.editor.read_gg_pending {
+                    app.editor.read_offset = 0;
+                    app.editor.read_gg_pending = false;
+                } else {
+                    app.editor.read_gg_pending = true;
+                }
+                return false;
+            }
+            KeyCode::Home => {
+                app.editor.read_offset = 0;
+                return false;
+            }
+            KeyCode::End => {
+                app.editor.read_offset = max;
+                return false;
+            }
+            _ => {}
+        }
+        // Fall through to resolve_edit so Find/GoToLine/PreviewLink/etc still work
     }
 
     let seq = app.config.sequences_enabled();
@@ -405,6 +476,13 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 *focus = EditFocus::Body;
                 return false;
             }
+            if app.editor.edit_mode != EditMode::Edit {
+                return false;
+            }
+            if key.code == KeyCode::Enter {
+                *focus = EditFocus::Body;
+                return false;
+            }
             if apply_text_shortcuts(&app.keybinds, &mut app.editor.title_editor, key) {
                 app.request_editor_preview_update();
                 return false;
@@ -425,6 +503,9 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
         }
         EditFocus::Body => {
             app.seq_matcher.clear();
+            if app.editor.edit_mode != EditMode::Edit {
+                return false;
+            }
             if apply_text_shortcuts(&app.keybinds, &mut app.editor.editor, key) {
                 app.request_editor_preview_update();
                 return false;
@@ -538,7 +619,9 @@ pub fn handle_edit_mouse(
                     mouse_event.row,
                 );
             }
-        } else if contains_cell(body_inner, mouse_event.column, mouse_event.row) {
+        } else if app.editor.edit_mode == EditMode::Edit
+            && contains_cell(body_inner, mouse_event.column, mouse_event.row)
+        {
             *focus = EditFocus::Body;
             if app.editor.editor.selection_range().is_none() {
                 move_textarea_cursor_to_mouse(
@@ -654,6 +737,30 @@ pub fn handle_edit_mouse(
         return;
     }
 
+    if app.editor.edit_mode == EditMode::Read {
+        match mouse_event.kind {
+            MouseEventKind::ScrollUp => {
+                let max = app
+                    .editor
+                    .read_grid
+                    .len()
+                    .saturating_sub(app.editor.last_body_height.max(1) as usize);
+                app.editor.read_offset = app.editor.read_offset.saturating_sub(3).min(max);
+            }
+            MouseEventKind::ScrollDown => {
+                let max = app
+                    .editor
+                    .read_grid
+                    .len()
+                    .saturating_sub(app.editor.last_body_height.max(1) as usize);
+                app.editor.read_offset = (app.editor.read_offset + 3).min(max);
+            }
+            _ => {}
+        }
+        // Don't return — sidebar and preview-area interactions still available.
+        // But body clicks/drags are skipped below by the EDIT-mode guard.
+    }
+
     match mouse_event.kind {
         MouseEventKind::Down(MouseButton::Left) => {
             *mouse_selecting = false;
@@ -693,7 +800,9 @@ pub fn handle_edit_mouse(
                 return;
             }
             app.editor.last_sidebar_click = None;
-            if contains_cell(body_inner, mouse_event.column, mouse_event.row) {
+            if app.editor.edit_mode == EditMode::Edit
+                && contains_cell(body_inner, mouse_event.column, mouse_event.row)
+            {
                 *focus = EditFocus::Body;
                 move_textarea_cursor_to_mouse(
                     &mut app.editor.editor,

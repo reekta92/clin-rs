@@ -1,7 +1,9 @@
 mod builtin;
+mod source_highlight;
 mod style;
 
 pub(crate) use builtin::{default_code_theme, render_builtin};
+pub(crate) use source_highlight::SourceHighlighter;
 pub(crate) use style::{MarkdownTheme, RenderLine};
 
 use ratatui::style::{Color, Style};
@@ -50,6 +52,19 @@ impl MdRenderOpts {
             link_url_max: config.core.link_url_max_length,
         }
     }
+}
+
+/// Synchronous render path: renders content inline (no background thread).
+/// Used by READ mode to produce the rendered grid on demand.
+pub(crate) fn render_builtin_sync(
+    content: &str,
+    cols: u16,
+    theme: &crate::app_theme::AppThemeColors,
+    opts: &MdRenderOpts,
+) -> Vec<RenderLine> {
+    let md_theme = style::MarkdownTheme::from_app_theme(theme);
+    let cancel = std::sync::atomic::AtomicBool::new(false);
+    builtin::render_builtin(content, cols, &md_theme, opts, &cancel).0
 }
 
 /// Renders markdown into a paged grid of `(char, Style)` cells.

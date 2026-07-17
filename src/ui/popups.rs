@@ -1390,7 +1390,6 @@ pub fn draw_dim_vline(frame: &mut Frame, area: Rect, color: Color) {
     }
 }
 
-
 pub fn draw_subnotes_popup(
     frame: &mut Frame,
     popup: &mut crate::popups::SubnotesPopup,
@@ -1567,5 +1566,4 @@ mod tests {
             "keybind key should be bold"
         );
     }
-
 }

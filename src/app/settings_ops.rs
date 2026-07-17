@@ -329,7 +329,6 @@ impl App {
         };
         self.editor.editor.set_wrap_mode(mode);
         self.editor.title_editor.set_wrap_mode(mode);
-
     }
 
     pub fn toggle_show_line_numbers(&mut self) {
@@ -617,6 +616,34 @@ impl App {
                 self.graph_preview_steps = 0;
             }
         }
+    }
+
+    pub fn refresh_read_mode(&mut self) {
+        let content = self.editor.editor.lines().join("\n");
+        let cols = self.editor.last_body_width;
+        if cols == 0 {
+            // No render yet; keep dirty so first render triggers refresh.
+            self.editor.read_dirty = true;
+            return;
+        }
+        let opts = crate::markdown::MdRenderOpts::from_config(&self.config);
+        let lines = crate::markdown::render_builtin_sync(&content, cols, &self.app_theme, &opts);
+        self.editor.read_grid = lines.into_iter().map(|l| l.cells).collect();
+        self.editor.read_cols = cols;
+        self.editor.read_dirty = false;
+        let max = self.editor.read_grid.len().saturating_sub(1);
+        self.editor.read_offset = self.editor.read_offset.min(max);
+    }
+
+    pub fn activate_edit_mode(&mut self) {
+        self.editor.edit_mode = crate::editor::EditMode::Edit;
+        self.set_temporary_status_static("EDIT");
+    }
+
+    pub fn back_to_read_mode(&mut self) {
+        self.editor.read_dirty = true;
+        self.editor.edit_mode = crate::editor::EditMode::Read;
+        self.set_temporary_status_static("READ");
     }
 }
 

@@ -30,9 +30,10 @@ use crate::markdown::style::{MarkdownTheme, RenderLine};
 // Lazy-loaded syntect assets (first render pays ~50 ms init)
 // ---------------------------------------------------------------------------
 
-static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(SyntaxSet::load_defaults_nonewlines);
+pub(crate) static SYNTAX_SET: LazyLock<SyntaxSet> =
+    LazyLock::new(SyntaxSet::load_defaults_nonewlines);
 
-static THEME_SET: LazyLock<ThemeSet> = LazyLock::new(ThemeSet::load_defaults);
+pub(crate) static THEME_SET: LazyLock<ThemeSet> = LazyLock::new(ThemeSet::load_defaults);
 
 /// Theme name for code-block syntax highlighting.
 const CODE_THEME: &str = "base16-ocean.dark";
@@ -1071,7 +1072,7 @@ fn render_inline<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, base_style: Style, ma
 /// Convert a syntect `Style` (highlighting style, not the parsing type) to a
 /// ratatui `Style`.  This is the **only** place raw `Color::Rgb` is emitted
 /// — syntect's palette is not theme-derived.
-fn syntect_style_to_ratatui(s: syntect::highlighting::Style) -> ratatui::style::Style {
+pub(crate) fn syntect_style_to_ratatui(s: syntect::highlighting::Style) -> ratatui::style::Style {
     let mut st = ratatui::style::Style::default();
 
     st = st.fg(ratatui::style::Color::Rgb(

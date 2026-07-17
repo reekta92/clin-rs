@@ -11,6 +11,13 @@ pub enum EditFocus {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum EditMode {
+    #[default]
+    Read,
+    Edit,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum EditSidebar {
     #[default]
     None,
@@ -58,6 +65,7 @@ pub struct NoteEditor {
     pub sidebar_list_rect: ratatui::layout::Rect,
     pub sidebar_selected: usize,
     pub outline_nodes: Vec<crate::content_tree::parse::TreeNode>,
+    pub preview_drag_last_pos: Option<(u16, u16)>,
     pub links: Vec<LinkItem>,
     pub link_preview: bool,
     pub link_preview_renderer: Option<MarkdownRenderer>,
@@ -65,7 +73,18 @@ pub struct NoteEditor {
     pub link_preview_error: Option<String>,
     pub last_sidebar_click: Option<(u16, u16, Instant)>,
     pub header_title_rect: ratatui::layout::Rect,
-    pub preview_drag_last_pos: Option<(u16, u16)>,
+    pub edit_mode: EditMode,
+    /// Cells extracted from `render_builtin` for READ mode
+    pub read_grid: Vec<Vec<(char, ratatui::style::Style)>>,
+    pub read_offset: usize,
+    /// Content width used to produce `read_grid`
+    pub read_cols: u16,
+    /// Set true whenever editor text changes or width changes
+    pub read_dirty: bool,
+    pub last_body_width: u16,
+    pub last_body_height: u16,
+    pub read_gg_pending: bool,
+    pub(crate) source_highlighter: Option<crate::markdown::SourceHighlighter>,
 }
 
 impl Default for NoteEditor {
@@ -110,6 +129,15 @@ impl Default for NoteEditor {
             link_preview_error: None,
             last_sidebar_click: None,
             preview_drag_last_pos: None,
+            edit_mode: EditMode::Read,
+            read_grid: Vec::new(),
+            read_offset: 0usize,
+            read_cols: 0u16,
+            read_dirty: true,
+            last_body_width: 0u16,
+            last_body_height: 0u16,
+            read_gg_pending: false,
+            source_highlighter: None,
             header_title_rect: ratatui::layout::Rect::default(),
         }
     }

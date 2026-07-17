@@ -240,6 +240,8 @@ impl App {
             self.editor.image_picker = self.image_picker.clone();
             self.editor.image_decode_tx = self.image_decode_tx.clone();
             self.mode = ViewMode::Edit;
+            self.editor.edit_mode = EditMode::Read;
+            self.editor.read_dirty = true;
 
             if self.editor.editor_preview_enabled {
                 self.update_editor_markdown_preview();
@@ -428,6 +430,8 @@ impl App {
         }
 
         self.mode = ViewMode::Edit;
+        self.editor.edit_mode = EditMode::Read;
+        self.editor.read_dirty = true;
 
         self.editor.editing_id = Some(id);
         self.editor.initial_word_count = crate::goals::count_words(&content);
@@ -470,6 +474,8 @@ impl App {
         }
 
         self.mode = ViewMode::Edit;
+        self.editor.edit_mode = EditMode::Read;
+        self.editor.read_dirty = true;
         self.editor.editing_id = Some(new_id);
         self.editor.initial_word_count = crate::goals::count_words(&rendered.content);
 
@@ -515,6 +521,8 @@ impl App {
         }
 
         self.mode = ViewMode::Edit;
+        self.editor.edit_mode = EditMode::Read;
+        self.editor.read_dirty = true;
         self.editor.editing_id = Some(new_id);
         self.editor.initial_word_count = crate::goals::count_words(&rendered.content);
 
@@ -958,6 +966,8 @@ impl App {
         }
 
         self.mode = ViewMode::Edit;
+        self.editor.edit_mode = EditMode::Read;
+        self.editor.read_dirty = true;
         self.editor.editing_id = Some(new_id);
         self.editor.initial_word_count = crate::goals::count_words(&content);
         self.editor.title_editor = make_title_editor(

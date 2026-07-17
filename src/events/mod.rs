@@ -1861,6 +1861,7 @@ mod tests {
             .editor
             .insert_str("Hello world\nThis is a test\nSome more text\n");
 
+        app.editor.edit_mode = crate::editor::EditMode::Edit;
         let terminal_area = Rect::new(0, 0, 80, 24);
         let mut focus = EditFocus::Body;
         let mut selecting = false;
