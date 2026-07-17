@@ -8,6 +8,7 @@ use crate::app::{App, EditFocus, ViewMode};
 use crate::app_theme::AppThemeColors;
 use crate::overlay::OverlayView;
 
+pub(crate) mod braille;
 mod edit_view;
 mod help;
 pub(crate) mod help_content;

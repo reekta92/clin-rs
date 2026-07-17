@@ -242,15 +242,23 @@ fn draw_strip_graf(
 
 /// Render a GraphState using halfblocks into a Rect.
 /// Extracted from draw_strip_graf for reuse by the Subnotes graph preview.
-pub fn render_subnote_graph_halfblock(
+/// Render a static radial subnotes graph into the preview rect using braille.
+/// Parent note = filled circle at center; subnotes = smaller filled circles
+/// radially around it, connected by braille lines. Titles drawn above each node.
+pub fn render_subnote_graph_static(
     frame: &mut Frame,
     rect: Rect,
-    state: &crate::graf::graph::GraphState,
-    config: &crate::config::ClinConfig,
+    parent_title: &str,
+    subnote_titles: &[String],
     theme: &crate::app_theme::AppThemeColors,
 ) {
-    let (wx_min, wx_max, wy_min, wy_max) = state.graph_bounds;
-    if wx_max - wx_min <= 0.0 || wy_max - wy_min <= 0.0 {
+    use crate::ui::braille::{draw_braille_circle_filled, draw_braille_line};
+
+    // Clear the preview rect background.
+    let bg_block = ratatui::widgets::Block::default().style(theme.preview_bg_style());
+    frame.render_widget(bg_block, rect);
+
+    if subnote_titles.is_empty() {
         let line = Line::from(vec![Span::styled(
             "No subnotes",
             Style::default().fg(theme.muted),
@@ -262,94 +270,94 @@ pub fn render_subnote_graph_halfblock(
         return;
     }
 
-    let content_x = rect.x;
-    let content_y = rect.y;
-    let content_w = rect.width;
-    let content_h = rect.height;
-    if content_w == 0 || content_h == 0 {
+    let buf = frame.buffer_mut();
+    let w = rect.width as f64;
+    let h = rect.height as f64;
+    let cx = rect.x as f64 + w / 2.0;
+    let cy = rect.y as f64 + h / 2.0;
+
+    // Layout: parent at center, subnotes on a circle around it.
+    let layout_r = w.min(h) * 0.35;
+    let parent_circle_r = 1.5_f64; // cells
+    let sub_circle_r = 0.5_f64; // cells
+
+    let n = subnote_titles.len();
+    let positions: Vec<(f64, f64)> = (0..n)
+        .map(|i| {
+            let angle =
+                i as f64 * 2.0 * std::f64::consts::PI / n as f64 - std::f64::consts::PI / 2.0;
+            (cx + layout_r * angle.cos(), cy + layout_r * angle.sin())
+        })
+        .collect();
+
+    // 1. Draw edges (lines from parent center to each subnote center).
+    let edge_color = theme.border;
+    for &(sx, sy) in &positions {
+        draw_braille_line(buf, cx, cy, sx, sy, edge_color);
+    }
+
+    // 2. Draw parent circle (filled, larger, accent color).
+    draw_braille_circle_filled(buf, cx, cy, parent_circle_r, theme.accent);
+
+    // 3. Draw subnote circles (filled, smaller, tag color).
+    for &(sx, sy) in &positions {
+        draw_braille_circle_filled(buf, sx, sy, sub_circle_r, theme.tag);
+    }
+
+    // 4. Draw titles above each node.
+    let max_title_len = (w * 0.3) as usize; // ~30% of preview width per title
+    let title_style = Style::default().fg(theme.fg);
+
+    // Parent title: above the center circle.
+    draw_title_above(
+        buf,
+        cx,
+        cy - parent_circle_r,
+        parent_title,
+        max_title_len,
+        rect,
+        title_style,
+    );
+
+    // Subnote titles: above each subnote circle.
+    for (&(sx, sy), title) in positions.iter().zip(subnote_titles.iter()) {
+        draw_title_above(
+            buf,
+            sx,
+            sy - sub_circle_r,
+            title,
+            max_title_len,
+            rect,
+            title_style,
+        );
+    }
+}
+
+/// Draw `text` centered above position (x, y_top) in the buffer, clamped to rect.
+fn draw_title_above(
+    buf: &mut ratatui::buffer::Buffer,
+    x: f64,
+    y_top: f64,
+    text: &str,
+    max_len: usize,
+    rect: Rect,
+    style: Style,
+) {
+    let truncated = crate::graf::util::truncate(text, max_len);
+    if truncated.is_empty() {
         return;
     }
-    let iw = content_w as usize;
-    let ih = content_h as usize;
-    let sub_h = ih * 2;
-    let world_w = wx_max - wx_min;
-    let world_h = wy_max - wy_min;
-
-    let av_cols = content_w as f64;
-    let av_rows_sub = sub_h as f64;
-    let world_aspect = world_w / world_h;
-    let grid_aspect = av_cols / av_rows_sub;
-    let (draw_cols, draw_rows_sub) = if grid_aspect > world_aspect {
-        (av_rows_sub * world_aspect, av_rows_sub)
-    } else {
-        (av_cols, av_cols / world_aspect)
-    };
-    let col_off = ((av_cols - draw_cols) / 2.0) as isize;
-    let row_off = ((av_rows_sub - draw_rows_sub) / 2.0) as isize;
-
-    let world_to_col = |x: f64| -> usize {
-        let t = (x - wx_min) / world_w;
-        let v = (t * draw_cols).floor() as isize + col_off;
-        v.clamp(0, (iw as isize) - 1) as usize
-    };
-    let world_to_subrow = |y: f64| -> usize {
-        let t = (wy_max - y) / world_h;
-        let v = (t * draw_rows_sub).floor() as isize + row_off;
-        v.clamp(0, (sub_h as isize) - 1) as usize
-    };
-
-    let graph = state.simulation.get_graph();
-    let colors = config.theme_colors();
-    let mut cache = state.render_cache.lock();
-    if cache.topology_dirty {
-        cache.rebuild_topology(graph, config, &colors, false);
-    }
-
-    let grid_size = sub_h * iw;
-    let mut grid: Vec<Option<Color>> = Vec::with_capacity(grid_size);
-    grid.resize(grid_size, None);
-
-    for idx in graph.node_indices() {
-        let node = &graph[idx];
-        let color = cache
-            .node_own_color
-            .get(&idx)
-            .copied()
-            .unwrap_or(theme.muted);
-        let col = world_to_col(node.location.x as f64);
-        let sub_row = world_to_subrow(node.location.y as f64);
-        grid[sub_row * iw + col] = Some(color);
-    }
-    drop(cache);
-
-    let buf = frame.buffer_mut();
-    for cell_row in 0..ih {
-        let top_sub = cell_row * 2;
-        let bot_sub = cell_row * 2 + 1;
-        for col in 0..iw {
-            let top_color = grid[top_sub * iw + col];
-            let bot_color = grid[bot_sub * iw + col];
-            let x = content_x + col as u16;
-            let y = content_y + cell_row as u16;
-            let cell = match buf.cell_mut((x, y)) {
-                Some(c) => c,
-                None => continue,
-            };
-            match (top_color, bot_color) {
-                (None, None) => {}
-                (Some(tc), None) => {
-                    cell.set_symbol("▀");
-                    cell.set_style(Style::default().fg(tc));
-                }
-                (None, Some(bc)) => {
-                    cell.set_symbol("▄");
-                    cell.set_style(Style::default().fg(bc));
-                }
-                (Some(tc), Some(bc)) => {
-                    cell.set_symbol("▄");
-                    cell.set_style(Style::default().fg(bc).bg(tc));
-                }
-            }
+    let title_y = (y_top - 1.0).round() as u16;
+    let title_y = title_y.max(rect.y);
+    let start_x = (x - truncated.chars().count() as f64 / 2.0).round() as u16;
+    for (col, ch) in (start_x..).zip(truncated.chars()) {
+        if col >= rect.x
+            && col < rect.right()
+            && title_y >= rect.y
+            && title_y < rect.bottom()
+            && let Some(cell) = buf.cell_mut((col, title_y))
+        {
+            cell.set_char(ch).set_style(style);
         }
     }
 }
@@ -1131,34 +1139,34 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         let content_is_current = app.list.preview_content_index == Some(app.list.visual_index);
         let is_current_or_pending = content_is_current || app.list.pending_preview_update;
 
-        // SubnoteGraph: render directly from app.subnote_graph_preview.
+        // SubnoteGraph: render statically from cache (no physics, no GraphState).
         // We bypass draw_preview_pane because it doesn't have access to App.
         let mut rendered_graph = false;
         if (content_is_current || app.list.pending_preview_update)
             && let Some(crate::list_view::PreviewContent::SubnoteGraph { parent_id }) =
                 app.list.preview_content.as_ref()
         {
-            let pid = parent_id.clone();
-            app.ensure_subnote_graph_preview(&pid);
-            if let Some((_, gs)) = app.subnote_graph_preview.as_mut() {
-                if !gs.is_settled && app.subnote_graph_preview_steps < 100 {
-                    for _ in 0..10 {
-                        crate::graf::physics::simulation_step(gs, 0.01, 0.016);
-                        app.subnote_graph_preview_steps += 1;
-                        if gs.is_settled {
-                            break;
-                        }
-                    }
-                }
-                render_subnote_graph_halfblock(
-                    frame,
-                    preview_rect,
-                    gs,
-                    &app.config,
-                    &app.app_theme,
-                );
-                rendered_graph = true;
-            }
+            // Look up parent title + subnote titles from the cache (no physics, no GraphState).
+            let parent_title = app
+                .notes
+                .iter()
+                .find(|n| n.id == *parent_id)
+                .map(|n| n.title.clone())
+                .unwrap_or_else(|| parent_id.clone());
+            let subnote_titles: Vec<String> = app
+                .subnotes_view_cache
+                .iter()
+                .find(|(p, _)| p == parent_id)
+                .map(|(_, subs)| subs.iter().map(|s| s.title.clone()).collect())
+                .unwrap_or_default();
+            render_subnote_graph_static(
+                frame,
+                preview_rect,
+                &parent_title,
+                &subnote_titles,
+                &app.app_theme,
+            );
+            rendered_graph = true;
         }
         if !rendered_graph {
             let content = if is_current_or_pending {

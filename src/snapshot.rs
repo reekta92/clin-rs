@@ -76,7 +76,7 @@ pub fn render_canvas_snapshot(
                 let sty = ((by - center_y) * zoom)
                     + (area.y as f64 + area.height as f64 / 2.0)
                     + offset_y;
-                draw_braille_line(buf, sfx, sfy, stx, sty, theme.muted);
+                crate::ui::braille::draw_braille_line(buf, sfx, sfy, stx, sty, theme.muted);
             }
         }
 
@@ -519,50 +519,6 @@ fn is_image_ext(file: &str) -> bool {
         ext.as_str(),
         "png" | "jpg" | "jpeg" | "gif" | "bmp" | "webp" | "svg" | "ico" | "tiff" | "tif" | "avif"
     )
-}
-
-fn draw_braille_line(buf: &mut Buffer, mut x1: f64, mut y1: f64, x2: f64, y2: f64, color: Color) {
-    let dx = x2 - x1;
-    let dy = y2 - y1;
-    let dist = (dx * dx + dy * dy).sqrt();
-    let steps = (dist * 2.0) as usize;
-    if steps == 0 {
-        return;
-    }
-    let sx = dx / steps as f64;
-    let sy = dy / steps as f64;
-
-    for _ in 0..=steps {
-        let cx = x1 as u16;
-        let cy = y1 as u16;
-        let dot_x = ((x1 - cx as f64) * 2.0) as u16;
-        let dot_y = ((y1 - cy as f64) * 4.0) as u16;
-
-        if let Some(cell) = buf.cell_mut((cx, cy)) {
-            let mut braile_code = match cell.symbol().chars().next() {
-                Some(c) if ('\u{2800}'..='\u{28FF}').contains(&c) => c as u32 - 0x2800,
-                _ => 0,
-            };
-            let dot_bit = match (dot_x, dot_y) {
-                (0, 0) => 0x01,
-                (0, 1) => 0x02,
-                (0, 2) => 0x04,
-                (1, 0) => 0x08,
-                (1, 1) => 0x10,
-                (1, 2) => 0x20,
-                (0, 3) => 0x40,
-                (1, 3) => 0x80,
-                _ => 0,
-            };
-            braile_code |= dot_bit;
-            if let Some(c) = char::from_u32(0x2800 + braile_code) {
-                cell.set_char(c).set_fg(color);
-            }
-        }
-
-        x1 += sx;
-        y1 += sy;
-    }
 }
 
 fn draw_stroke_lines(ctx: &mut Context, stroke: &Stroke) {

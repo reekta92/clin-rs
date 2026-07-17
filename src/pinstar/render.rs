@@ -367,30 +367,14 @@ pub fn draw_pinstar_view(
                         let dot_x = ((current_x - cell_x as f64) * 2.0) as u16;
                         let dot_y = ((current_y - cell_y as f64) * 4.0) as u16;
 
-                        if let Some(cell) = frame.buffer_mut().cell_mut((cell_x, cell_y)) {
-                            let mut braille_char =
-                                cell.symbol().chars().next().unwrap_or('\u{2800}');
-                            if !('\u{2800}'..='\u{28FF}').contains(&braille_char) {
-                                braille_char = '\u{2800}';
-                            }
-
-                            let dot_bit = match (dot_x, dot_y) {
-                                (0, 0) => 0x01,
-                                (0, 1) => 0x02,
-                                (0, 2) => 0x04,
-                                (1, 0) => 0x08,
-                                (1, 1) => 0x10,
-                                (1, 2) => 0x20,
-                                (0, 3) => 0x40,
-                                (1, 3) => 0x80,
-                                _ => 0,
-                            };
-
-                            let new_code = (braille_char as u32 - 0x2800) | dot_bit;
-                            if let Some(c) = char::from_u32(0x2800 + new_code) {
-                                cell.set_char(c).set_fg(theme.muted);
-                            }
-                        }
+                        crate::ui::braille::set_braille_dot(
+                            frame.buffer_mut(),
+                            cell_x,
+                            cell_y,
+                            dot_x,
+                            dot_y,
+                            theme.muted,
+                        );
                     }
                     current_x += dx;
                     current_y += dy;

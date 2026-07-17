@@ -223,8 +223,7 @@ pub enum PreviewContent {
     },
     Image(std::path::PathBuf),
     /// Local graph: one parent note + its subnotes, all connected to parent.
-    /// Carries only the parent_id — the actual GraphState is rendered directly
-    /// from App::subnote_graph_preview in draw_list_view.
+    /// Carries only the parent_id — rendered statically in draw_list_view.
     SubnoteGraph {
         parent_id: String,
     },

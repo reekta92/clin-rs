@@ -353,9 +353,6 @@ pub struct App {
     pub subnotes_view_cache: Vec<(String, Vec<crate::storage::SubNote>)>,
     /// Signature (notes.len() + subnotes hash) to invalidate subnotes_view_cache.
     pub subnotes_view_cache_sig: usize,
-    /// Cached local subnotes graph for the Subnotes view preview.
-    pub subnote_graph_preview: Option<(String, crate::graf::graph::GraphState)>,
-    pub subnote_graph_preview_steps: usize,
     pub summary_mtime: HashMap<String, u64>,
     pub notes_with_subnotes: std::collections::HashSet<String>,
     pub initial_load_done: bool,
@@ -505,8 +502,6 @@ impl App {
             notes_with_subnotes: std::collections::HashSet::new(),
             subnotes_view_cache: Vec::new(),
             subnotes_view_cache_sig: 0,
-            subnote_graph_preview: None,
-            subnote_graph_preview_steps: 0,
             initial_load_done: true,
             load_cancel: Arc::new(AtomicBool::new(false)),
             loading_total: 0,
@@ -641,8 +636,6 @@ impl App {
             notes_with_subnotes: std::collections::HashSet::new(),
             subnotes_view_cache: Vec::new(),
             subnotes_view_cache_sig: 0,
-            subnote_graph_preview: None,
-            subnote_graph_preview_steps: 0,
             initial_load_done: false,
             load_cancel: Arc::new(AtomicBool::new(false)),
             loading_total: 0,
