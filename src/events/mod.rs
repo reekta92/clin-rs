@@ -299,13 +299,14 @@ pub fn edit_view_input_areas(
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1),
-            Constraint::Min(8),
-            Constraint::Length(1),
+            Constraint::Length(1), // header
+            Constraint::Length(1), // spacer (matches draw_edit_view)
+            Constraint::Min(8),    // body
+            Constraint::Length(1), // hint bar
         ])
         .split(area);
 
-    let body_area = chunks[1];
+    let body_area = chunks[2];
 
     let layout = compute_edit_layout(body_area, false, md_preview, sidebar, sidebar_position);
     // Apply gutter offset to the body rect for mouse hit-testing
@@ -333,13 +334,14 @@ pub fn edit_view_md_preview_area(
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1),
-            Constraint::Min(8),
-            Constraint::Length(1),
+            Constraint::Length(1), // header
+            Constraint::Length(1), // spacer (matches draw_edit_view)
+            Constraint::Min(8),    // body
+            Constraint::Length(1), // hint bar
         ])
         .split(area);
 
-    let body_area = chunks[1];
+    let body_area = chunks[2];
 
     let layout = compute_edit_layout(body_area, false, true, sidebar, preview_position);
     layout.preview.map(|r| {
