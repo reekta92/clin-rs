@@ -2,6 +2,28 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.10.0-beta.4] - 2026-07-17
+
+### Added
+
+- Perf-fix mouse selection, add read-mode select + clipboard, mode header
+- Add READ/EDIT mode indicator to title bar
+- Add modal READ/EDIT modes to Edit view
+- Added scrollbar to related sections of the project
+
+### Changed
+
+- Sync scroll cache on explicit scroll, add source-line map for READ↔EDIT
+- Remove custom cursor-line and selection highlights
+- Unify all list hit-tests through list_index_at
+
+### Fixed
+
+- Fixed h1 title position in markdown renderer
+- Align edit view hit-test layout with render layout
+- Scale scrollbar position from offset to selection range
+- Render help tab icons, coalesce mouse events, skip CreateNew in select
+- Replace textarea search with own impl to fix wrap panic
 ## [0.10.0-beta.3] - 2026-07-15
 
 ### Added
@@ -52,6 +74,7 @@ All notable changes to clin are documented in this file.
 
 ### Release
 
+- V0.10.0-beta.3
 - V0.10.0-beta.3
 - V0.10.0-beta.0
 ## [0.9.9] - 2026-07-14
