@@ -93,6 +93,8 @@ pub(crate) fn render_builtin(
         wrap_indicator: opts.wrap_indicator,
         link_url_max: opts.link_url_max,
         cancel_token,
+        current_source_line: 0,
+        row_source: vec![0],
     };
     for child in root.children() {
         if ctx.cancel_token.load(Ordering::Relaxed) {
@@ -123,6 +125,7 @@ pub(crate) fn render_builtin(
         .map(|(i, cells)| RenderLine {
             cells,
             image_url: slot_map.get(&i).cloned(),
+            source_line: ctx.row_source.get(i).copied().unwrap_or(0),
         })
         .collect();
     let slots = ctx.image_slots;
@@ -146,6 +149,10 @@ struct Ctx<'a> {
     wrap_indicator: bool,
     link_url_max: usize,
     cancel_token: &'a AtomicBool,
+    current_source_line: usize,
+    /// Per-line source line tracking: one entry per rendered line.
+    /// Updated by `new_line` and `render_block`.
+    row_source: Vec<usize>,
 }
 impl Ctx<'_> {
     fn cur_col(&self) -> usize {
@@ -162,11 +169,11 @@ impl Ctx<'_> {
     /// Start a new line with `margin` leading spaces.
     fn new_line(&mut self, margin: usize) {
         self.lines.push(Vec::with_capacity(self.cols));
+        self.row_source.push(self.current_source_line);
         for _ in 0..margin {
             self.ensure_line().push((' ', Style::default()));
         }
     }
-
     /// Ensure the current line has at least `margin` leading spaces (fills
     /// with spaces if needed).  Called at the start of each block renderer.
     fn ensure_margin(&mut self, margin: usize) {
@@ -231,6 +238,15 @@ impl Ctx<'_> {
 // ---------------------------------------------------------------------------
 
 fn render_block<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, depth: usize) {
+    let src_line = node.data.borrow().sourcepos.start.line;
+    ctx.current_source_line = src_line;
+    // Tag the pre-existing (initial) empty row so it maps to this block.
+    if ctx.lines.last().is_some_and(|l| l.is_empty())
+        && let Some(s) = ctx.row_source.last_mut()
+        && *s == 0
+    {
+        *s = src_line;
+    }
     let data = node.data.borrow();
     match &data.value {
         NodeValue::Heading(h) => render_heading(ctx, node, h, depth),
@@ -322,10 +338,11 @@ fn render_heading<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, h: &NodeHeading, dep
     let margin = 2 + depth * 2;
 
     if h.level == 1 {
-        // H1: banner styled title with 1-space padding, no "#" prefix, no full-width fill.
+        // H1: banner styled title with 2-space left indent, matching body text.
         let banner = ctx.theme.h1_banner;
         ctx.ensure_line();
-        ctx.push(' ', banner, 0); // leading space
+        ctx.push(' ', banner, 0); // first leading space
+        ctx.push(' ', banner, 0); // second leading space (2-space indent, aligning with body text)
         for child in node.children() {
             render_inline(ctx, child, banner, 0);
         }
@@ -1483,10 +1500,10 @@ mod tests {
         let lines = render_test("# Title\n", 30, true, false);
         assert!(!lines.is_empty(), "should have at least one line");
         let row0 = &lines[0];
-        // Row 0: leading space + "Title" + trailing space = 7 cells, NOT full-width.
-        let expected = " Title ";
+        // Row 0: two leading spaces + "Title" + trailing space = 8 cells, NOT full-width.
+        let expected = "  Title ";
         let text: String = row0.cells.iter().map(|(c, _)| c).collect();
-        assert_eq!(text, expected, "H1 row should be ' Title '");
+        assert_eq!(text, expected, "H1 row should be '  Title '");
         // Every cell's bg should be Some(theme.heading)
         for (i, (ch, st)) in row0.cells.iter().enumerate() {
             assert_eq!(

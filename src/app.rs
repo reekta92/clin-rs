@@ -1259,6 +1259,32 @@ impl App {
         focus: &mut EditFocus,
         items: &[&'static str],
     ) {
+        if self.editor.edit_mode == crate::editor::EditMode::Read {
+            if let Some(label) = items.get(action) {
+                match *label {
+                    " Copy " => {
+                        let text = crate::events::read_selection_text(self);
+                        if !text.is_empty() {
+                            crate::text_edit::write_system_clipboard(&text);
+                        }
+                    }
+                    " Select All " => {
+                        let last = self.editor.read_grid.len().saturating_sub(1);
+                        let last_col = self
+                            .editor
+                            .read_grid
+                            .last()
+                            .map(|r| r.len().saturating_sub(1))
+                            .unwrap_or(0);
+                        self.editor.read_sel_anchor = Some((0, 0));
+                        self.editor.read_sel_end = Some((last, last_col));
+                        self.editor.read_selecting = false;
+                    }
+                    _ => {}
+                }
+            }
+            return;
+        }
         let textarea = match focus {
             EditFocus::Title => &mut self.editor.title_editor,
             EditFocus::Body => &mut self.editor.editor,

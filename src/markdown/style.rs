@@ -11,6 +11,9 @@ pub(crate) struct RenderLine {
     /// The `cells` should contain blank/whitespace cells for the reserved rows.
     #[allow(dead_code)]
     pub image_url: Option<String>,
+    /// 1-based source line in the original markdown that produced this row.
+    /// 0 when unset (e.g. the initial empty row). Used for READ↔EDIT scroll sync.
+    pub source_line: usize,
 }
 
 /// Theme-derived styles for every markdown element type.

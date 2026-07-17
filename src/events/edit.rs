@@ -640,15 +640,26 @@ pub fn handle_edit_mouse(
                 );
             }
         }
-        let has_selection = match focus {
-            EditFocus::Title => app.editor.title_editor.selection_range(),
-            EditFocus::Body => app.editor.editor.selection_range(),
-            EditFocus::Sidebar => None,
-        };
-        let items: Vec<&'static str> = if has_selection.is_some() {
-            vec![" Copy ", " Cut ", " Paste ", " Select All "]
+        let items: Vec<&'static str> = if app.editor.edit_mode == EditMode::Read {
+            let has_read_sel = app.editor.read_sel_anchor.is_some()
+                && app.editor.read_sel_anchor != app.editor.read_sel_end;
+            if has_read_sel {
+                vec![" Copy ", " Select All "]
+            } else {
+                vec![" Select All "]
+            }
         } else {
-            vec![" Paste ", " Select All "]
+            // EDIT mode — existing textarea-selection-based items
+            let has_selection = match focus {
+                EditFocus::Title => app.editor.title_editor.selection_range(),
+                EditFocus::Body => app.editor.editor.selection_range(),
+                EditFocus::Sidebar => None,
+            };
+            if has_selection.is_some() {
+                vec![" Copy ", " Cut ", " Paste ", " Select All "]
+            } else {
+                vec![" Paste ", " Select All "]
+            }
         };
         let max_x = terminal_area
             .width
@@ -906,11 +917,11 @@ pub fn handle_edit_mouse(
         }
         MouseEventKind::ScrollDown => {
             if *focus == EditFocus::Body {
-                app.editor.editor.scroll((3, 0));
+                app.scroll_editor(3, 0);
             }
         }
         MouseEventKind::ScrollUp if *focus == EditFocus::Body => {
-            app.editor.editor.scroll((-3, 0));
+            app.scroll_editor(-3, 0);
         }
         _ => {}
     }
@@ -926,7 +937,7 @@ fn read_grid_cell(app: &App, body_inner: Rect, col: u16, row: u16) -> (usize, us
 }
 
 /// Extract the selected text from READ-mode grid selection.
-fn read_selection_text(app: &App) -> String {
+pub(crate) fn read_selection_text(app: &App) -> String {
     let (Some(a), Some(b)) = (app.editor.read_sel_anchor, app.editor.read_sel_end) else {
         return String::new();
     };

@@ -81,6 +81,11 @@ pub struct NoteEditor {
     /// Cells extracted from `render_builtin` for READ mode
     pub read_grid: Vec<Vec<(char, ratatui::style::Style)>>,
     pub read_offset: usize,
+    /// Per-line source line from markdown rendering, used for READ↔EDIT scroll sync.
+    pub read_row_source: Vec<usize>,
+    /// When set, the next READ-mode render will scroll to the grid row
+    /// corresponding to this 0-based logical line.
+    pub pending_read_sync_from_line: Option<usize>,
     /// Content width used to produce `read_grid`
     pub read_cols: u16,
     /// Set true whenever editor text changes or width changes
@@ -146,6 +151,8 @@ impl Default for NoteEditor {
             edit_mode: EditMode::Read,
             read_grid: Vec::new(),
             read_offset: 0usize,
+            read_row_source: Vec::new(),
+            pending_read_sync_from_line: None,
             read_cols: 0u16,
             read_dirty: true,
             last_body_width: 0u16,

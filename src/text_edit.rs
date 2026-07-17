@@ -2,12 +2,27 @@ use crate::keybinds::{EditAction, Keybinds};
 use crossterm::event::KeyEvent;
 use ratatui_textarea::{CursorMove, TextArea};
 use std::cell::RefCell;
+use std::io::Write;
+use std::process::{Command, Stdio};
 
 thread_local! {
     static CLIPBOARD: RefCell<Option<arboard::Clipboard>> = const { RefCell::new(None) };
 }
 
+fn is_wayland() -> bool {
+    std::env::var("WAYLAND_DISPLAY").is_ok() || std::env::var("WAYLAND_DISPLAY_NAME").is_ok()
+}
+
 pub fn write_system_clipboard(text: &str) {
+    if is_wayland()
+        && let Ok(mut child) = Command::new("wl-copy").stdin(Stdio::piped()).spawn()
+    {
+        if let Some(mut stdin) = child.stdin.take() {
+            let _ = stdin.write_all(text.as_bytes());
+        }
+        let _ = child.wait();
+        return;
+    }
     CLIPBOARD.with(|cb_cell| {
         let mut cb = cb_cell.borrow_mut();
         if cb.is_none() {
@@ -20,6 +35,12 @@ pub fn write_system_clipboard(text: &str) {
 }
 
 pub fn read_system_clipboard() -> Option<String> {
+    if is_wayland()
+        && let Ok(out) = Command::new("wl-paste").output()
+        && out.status.success()
+    {
+        return Some(String::from_utf8_lossy(&out.stdout).into_owned());
+    }
     CLIPBOARD.with(|cb_cell| {
         let mut cb = cb_cell.borrow_mut();
         if cb.is_none() {

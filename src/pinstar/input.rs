@@ -317,7 +317,7 @@ pub fn handle_pinstar_mouse(
         }
         MouseEventKind::ScrollUp => {
             if state.show_editor_pane && mouse.column < canvas_area.x {
-                app.editor.editor.scroll((-3, 0));
+                app.scroll_editor(-3, 0);
             } else {
                 state.zoom_in();
             }
@@ -325,7 +325,7 @@ pub fn handle_pinstar_mouse(
         }
         MouseEventKind::ScrollDown => {
             if state.show_editor_pane && mouse.column < canvas_area.x {
-                app.editor.editor.scroll((3, 0));
+                app.scroll_editor(3, 0);
             } else {
                 state.zoom_out();
             }

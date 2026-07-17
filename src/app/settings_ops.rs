@@ -618,6 +618,23 @@ impl App {
         }
     }
 
+    /// Scroll the body editor and keep the cached viewport offset in sync.
+    /// Mirrors `ratatui_textarea::Viewport::scroll` (widget.rs:68) so the
+    /// mouse-to-cursor cache (`body_viewport_row/col`) matches the real viewport
+    /// after explicit scrolls (mouse wheel, pinstar).
+    pub fn scroll_editor(&mut self, rows: i16, cols: i16) {
+        self.editor.editor.scroll((rows, cols));
+        fn apply(pos: u16, d: i16) -> u16 {
+            if d >= 0 {
+                pos.saturating_add(d as u16)
+            } else {
+                pos.saturating_sub((-d) as u16)
+            }
+        }
+        self.editor.body_viewport_row = apply(self.editor.body_viewport_row, rows);
+        self.editor.body_viewport_col = apply(self.editor.body_viewport_col, cols);
+    }
+
     pub fn refresh_read_mode(&mut self) {
         let content = self.editor.editor.lines().join("\n");
         let cols = self.editor.last_body_width;
@@ -628,18 +645,57 @@ impl App {
         }
         let opts = crate::markdown::MdRenderOpts::from_config(&self.config);
         let lines = crate::markdown::render_builtin_sync(&content, cols, &self.app_theme, &opts);
-        self.editor.read_grid = lines.into_iter().map(|l| l.cells).collect();
+        let mut grid = Vec::with_capacity(lines.len());
+        let mut src = Vec::with_capacity(lines.len());
+        for l in lines {
+            grid.push(l.cells);
+            src.push(l.source_line);
+        }
+        self.editor.read_grid = grid;
+        self.editor.read_row_source = src;
         self.editor.read_cols = cols;
         self.editor.read_dirty = false;
+        // EDIT→READ: place read_offset at the grid row for the source line being edited.
+        if let Some(edited_line) = self.editor.pending_read_sync_from_line.take() {
+            let target_src = edited_line + 1; // 0-based logical → 1-based source line
+            let row_source = &self.editor.read_row_source;
+            let g = row_source
+                .iter()
+                .position(|&s| s == target_src)
+                .unwrap_or_else(|| {
+                    row_source
+                        .iter()
+                        .rposition(|&s| s != 0 && s <= target_src)
+                        .unwrap_or(0)
+                });
+            self.editor.read_offset = g.saturating_sub(1); // 1 row of context above
+        }
         let max = self.editor.read_grid.len().saturating_sub(1);
         self.editor.read_offset = self.editor.read_offset.min(max);
     }
 
     pub fn activate_edit_mode(&mut self) {
+        // READ→EDIT: jump the cursor to the source line of the top visible READ row.
+        let src_line = self
+            .editor
+            .read_row_source
+            .get(self.editor.read_offset)
+            .copied()
+            .unwrap_or(1);
+        let logical = src_line.saturating_sub(1);
         self.editor.read_selecting = false;
         self.editor.read_sel_anchor = None;
         self.editor.read_sel_end = None;
         self.editor.edit_mode = crate::editor::EditMode::Edit;
+        let max_line = self.editor.editor.lines().len().saturating_sub(1);
+        let target = logical.min(max_line);
+        self.editor
+            .editor
+            .move_cursor(ratatui_textarea::CursorMove::Jump(target as u16, 0));
+        let delta = target as i16 - self.editor.body_viewport_row as i16;
+        if delta != 0 {
+            self.scroll_editor(delta, 0);
+        }
         self.set_temporary_status_static("EDIT");
     }
 
@@ -648,6 +704,7 @@ impl App {
         self.editor.read_sel_anchor = None;
         self.editor.read_sel_end = None;
         self.editor.read_dirty = true;
+        self.editor.pending_read_sync_from_line = Some(self.editor.editor.cursor().0);
         self.editor.edit_mode = crate::editor::EditMode::Read;
         self.set_temporary_status_static("READ");
     }
