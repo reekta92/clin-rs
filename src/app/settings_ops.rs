@@ -636,11 +636,17 @@ impl App {
     }
 
     pub fn activate_edit_mode(&mut self) {
+        self.editor.read_selecting = false;
+        self.editor.read_sel_anchor = None;
+        self.editor.read_sel_end = None;
         self.editor.edit_mode = crate::editor::EditMode::Edit;
         self.set_temporary_status_static("EDIT");
     }
 
     pub fn back_to_read_mode(&mut self) {
+        self.editor.read_selecting = false;
+        self.editor.read_sel_anchor = None;
+        self.editor.read_sel_end = None;
         self.editor.read_dirty = true;
         self.editor.edit_mode = crate::editor::EditMode::Read;
         self.set_temporary_status_static("READ");

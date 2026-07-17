@@ -55,11 +55,14 @@ pub fn handle_pinstar_mouse(
                     editor_area.height.saturating_sub(1),
                 );
                 if app.editor.editor.selection_range().is_none() {
+                    let (sr, sc) = crate::ui::get_textarea_scroll(&app.editor.editor);
                     crate::events::move_textarea_cursor_to_mouse(
                         &mut app.editor.editor,
                         body_inner,
                         mouse.column,
                         mouse.row,
+                        sr,
+                        sc,
                     );
                 }
                 state.open_editor_context_menu(mouse.column, mouse.row);
@@ -140,11 +143,14 @@ pub fn handle_pinstar_mouse(
                         editor_area.width.saturating_sub(gutter_width + 1),
                         editor_area.height.saturating_sub(1),
                     );
+                    let (sr, sc) = crate::ui::get_textarea_scroll(&app.editor.editor);
                     crate::events::move_textarea_cursor_to_mouse(
                         &mut app.editor.editor,
                         body_inner,
                         mouse.column,
                         mouse.row,
+                        sr,
+                        sc,
                     );
                     app.editor.editor.start_selection();
                     state.mouse_selecting = true;
@@ -266,11 +272,14 @@ pub fn handle_pinstar_mouse(
                         editor_area.width.saturating_sub(gutter_width + 1),
                         editor_area.height.saturating_sub(1),
                     );
+                    let (sr, sc) = crate::ui::get_textarea_scroll(&app.editor.editor);
                     crate::events::move_textarea_cursor_to_mouse(
                         &mut app.editor.editor,
                         body_inner,
                         mouse.column,
                         mouse.row,
+                        sr,
+                        sc,
                     );
                     return true;
                 }

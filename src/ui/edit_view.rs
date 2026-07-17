@@ -36,6 +36,17 @@ pub(crate) fn render_editor_widget(
         block,
         base_style,
     );
+    {
+        let (r, c) = super::refresh_textarea_viewport(
+            &app.editor.editor,
+            app.editor.body_viewport_row,
+            app.editor.body_viewport_col,
+            area,
+            app.editor.show_line_numbers,
+        );
+        app.editor.body_viewport_row = r;
+        app.editor.body_viewport_col = c;
+    }
     if app
         .editor
         .find_popup
@@ -68,6 +79,43 @@ pub(crate) fn render_read_view(frame: &mut Frame, app: &mut App, area: Rect) {
                 .padding(Padding::new(0, 2, 0, 0)),
         );
     frame.render_widget(snap, area);
+    // Paint READ-mode selection overlay on top of the snapshot
+    if let (Some(a), Some(b)) = (app.editor.read_sel_anchor, app.editor.read_sel_end) {
+        let (mut r1, mut c1) = a;
+        let (mut r2, mut c2) = b;
+        if (r2, c2) < (r1, c1) {
+            std::mem::swap(&mut r1, &mut r2);
+            std::mem::swap(&mut c1, &mut c2);
+        }
+        let buf = frame.buffer_mut();
+        let top = app.editor.read_offset;
+        let vis_hi = top + area.height as usize;
+        let hl = Style::default()
+            .fg(app.app_theme.highlight_fg)
+            .bg(app.app_theme.highlight_bg);
+        for r in r1..=r2 {
+            if r < top || r >= vis_hi {
+                continue;
+            }
+            let row = match app.editor.read_grid.get(r) {
+                Some(r) => r,
+                None => continue,
+            };
+            let y = area.y + (r - top) as u16;
+            let cs = if r == r1 { c1 } else { 0 };
+            let ce = if r == r2 {
+                c2.min(row.len().saturating_sub(1))
+            } else {
+                row.len().saturating_sub(1)
+            };
+            for c in cs..=ce {
+                let x = area.x + c as u16;
+                if let Some(cell) = buf.cell_mut((x, y)) {
+                    cell.set_style(hl);
+                }
+            }
+        }
+    }
 }
 
 #[allow(clippy::collapsible_if)]
@@ -77,9 +125,10 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     let outer_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1),
-            Constraint::Min(0),
-            Constraint::Length(1),
+            Constraint::Length(1), // header
+            Constraint::Length(1), // spacer
+            Constraint::Min(0),    // body
+            Constraint::Length(1), // hint bar
         ])
         .split(area);
 
@@ -189,6 +238,17 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 .title_editor
                 .set_cursor_line_style(Style::default());
             frame.render_widget(&app.editor.title_editor, title_rect);
+            {
+                let (r, c) = crate::ui::refresh_textarea_viewport(
+                    &app.editor.title_editor,
+                    app.editor.title_viewport_row,
+                    app.editor.title_viewport_col,
+                    title_rect,
+                    false,
+                );
+                app.editor.title_viewport_row = r;
+                app.editor.title_viewport_col = c;
+            }
         } else {
             // Render background + centered title Paragraph on outer_chunks[0]
             let (span, style) = if title_str.is_empty() {
@@ -228,8 +288,8 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
 
         app.editor.header_title_rect = center_area;
     }
-    let body_area = outer_chunks[1];
-    let hint_area = outer_chunks[2];
+    let body_area = outer_chunks[2];
+    let hint_area = outer_chunks[3];
 
     let layout = crate::events::compute_edit_layout(
         body_area,
@@ -268,7 +328,9 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 EditMode::Read => render_read_view(frame, app, editor_container),
                 EditMode::Edit => {
                     render_editor_widget(frame, app, focus, editor_container, None, None);
-                    super::overlay_markdown_highlight(frame, app, editor_container);
+                    if app.config.editor.edit_mode_highlight {
+                        super::overlay_markdown_highlight(frame, app, editor_container);
+                    }
                 }
             }
         }
@@ -359,7 +421,9 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             EditMode::Read => render_read_view(frame, app, editor_container),
             EditMode::Edit => {
                 render_editor_widget(frame, app, focus, editor_container, None, None);
-                super::overlay_markdown_highlight(frame, app, editor_container);
+                if app.config.editor.edit_mode_highlight {
+                    super::overlay_markdown_highlight(frame, app, editor_container);
+                }
             }
         }
     }

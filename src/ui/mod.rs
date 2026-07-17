@@ -1433,6 +1433,50 @@ pub fn pick_file(filter_name: &str, filter_ext: &str) -> Result<Option<String>> 
     Ok(None)
 }
 
+/// Replicate ratatui-textarea 0.9.2's viewport auto-scroll math (widget.rs
+/// `next_scroll_top` + `scroll_top_col`) so we can track the viewport offset
+/// in O(1) without Debug-formatting the entire textarea on every mouse event.
+/// `prev_*` are the cached offsets from the previous frame; returns the new ones.
+pub fn refresh_textarea_viewport(
+    textarea: &TextArea,
+    prev_row: u16,
+    prev_col: u16,
+    area: Rect,
+    line_numbers: bool,
+) -> (u16, u16) {
+    fn next_top(prev_top: u16, cursor: u16, len: u16) -> u16 {
+        if cursor < prev_top {
+            cursor
+        } else if prev_top.saturating_add(len) <= cursor {
+            cursor + 1 - len
+        } else {
+            prev_top
+        }
+    }
+    let inner = textarea.block().map(|b| b.inner(area)).unwrap_or(area);
+    if inner.width == 0 || inner.height == 0 {
+        return (prev_row, prev_col);
+    }
+    let sc = textarea.screen_cursor();
+    let row = next_top(prev_row, sc.row as u16, inner.height);
+
+    // Column math mirrors scroll_top_col: the line-number gutter shifts the
+    // effective cursor column used for horizontal auto-scroll.
+    let mut col_cursor = sc.col as u16;
+    if line_numbers {
+        let lnum = textarea.lines().len().to_string().len() as u16 + 2; // digits + 2 margins
+        if col_cursor <= lnum {
+            col_cursor = col_cursor.saturating_mul(2);
+        } else {
+            col_cursor = col_cursor.saturating_add(lnum);
+        }
+    }
+    let col = next_top(prev_col, col_cursor, inner.width);
+    (row, col)
+}
+
+/// Fallback: parse viewport from Debug output. Used by popup/pinstar textareas that
+/// don't have cached viewport offsets. Do not use in the hot mouse-drag path.
 pub fn get_textarea_scroll(textarea: &TextArea) -> (usize, usize) {
     let mut scroll_row = 0;
     let mut scroll_col = 0;
@@ -1458,7 +1502,6 @@ pub fn get_textarea_scroll(textarea: &TextArea) -> (usize, usize) {
     }
     (scroll_row, scroll_col)
 }
-
 pub fn line_number_gutter(
     line_count: usize,
     cursor_row: usize,
@@ -1515,6 +1558,13 @@ pub fn render_textarea_with_theme(
         Style::default()
     });
     textarea.set_cursor_line_style(Style::default());
+    if has_focus {
+        textarea.set_selection_style(
+            Style::default()
+                .fg(theme.highlight_fg)
+                .bg(theme.highlight_bg),
+        );
+    }
     let want_ln = if show_line_numbers {
         Some(Style::default().fg(theme.muted))
     } else {
@@ -1590,48 +1640,61 @@ pub fn overlay_search_highlights(frame: &mut Frame, app: &App, area: Rect) {
 }
 
 /// Overlay EDIT-mode markdown highlighting on top of the rendered textarea.
-/// Walks every visible cell and applies colour based on the source line's
-/// markdown role, matched against `MarkdownTheme`.
-///
+/// Uses a per-source-line cache rebuilt only when the document changes.
 /// Skips the cursor cell (it carries `REVERSED` modifier) and any cell inside
 /// an active text selection (non-default background).
 pub fn overlay_markdown_highlight(frame: &mut Frame, app: &mut App, area: Rect) {
-    let editor = &mut app.editor.editor;
-    let inner = editor.block().map(|b| b.inner(area)).unwrap_or(area);
-    let gutter = if app.editor.show_line_numbers {
-        editor.lines().len().to_string().len() as u16 + 2
+    let show_ln = app.editor.show_line_numbers;
+    let gutter = if show_ln {
+        app.editor.editor.lines().len().to_string().len() as u16 + 2
     } else {
         0
     };
-
-    // Lazy-init or retrieve the source highlighter
-    let highlighter: &mut crate::markdown::SourceHighlighter = app
+    let inner = app
         .editor
-        .source_highlighter
-        .get_or_insert_with(|| crate::markdown::SourceHighlighter::new(&app.app_theme));
+        .editor
+        .block()
+        .map(|b| b.inner(area))
+        .unwrap_or(area);
+
+    // --- Phase 1: rebuild per-source-line style cache only when the doc changed.
+    // Disjoint borrows of app.editor subfields: &editor.lines() + &mut source_highlighter
+    // + &mut cache fields are distinct fields through one &mut binding — allowed by the
+    // borrow checker. Zero clones: highlight_line reads full_doc by &[String].
+    {
+        let e = &mut app.editor;
+        let full_doc: &[String] = e.editor.lines();
+        let stale =
+            e.md_highlight_lines != full_doc.len() || e.md_highlight_change != e.last_editor_change;
+        if stale && show_ln {
+            let hl = e
+                .source_highlighter
+                .get_or_insert_with(|| crate::markdown::SourceHighlighter::new(&app.app_theme));
+            let mut cache = Vec::with_capacity(full_doc.len());
+            for (i, line) in full_doc.iter().enumerate() {
+                cache.push(hl.highlight_line(line, i, full_doc));
+            }
+            e.md_highlight_cache = cache;
+            e.md_highlight_lines = full_doc.len();
+            e.md_highlight_change = e.last_editor_change;
+        }
+    }
 
     let buf = frame.buffer_mut();
     let content_left = inner.left() + gutter;
-    let full_doc: Vec<String> = editor.lines().to_vec();
 
-    // Determine if we can group by gutter line numbers
-    if app.editor.show_line_numbers {
-        // Group consecutive rows that belong to the same source line
-        // A row with a number in the gutter starts a new group; continuation
-        // rows have blank gutter content.
+    if show_ln {
+        let cache = &app.editor.md_highlight_cache;
         let mut source_idx: Option<usize> = None;
-        let mut rows_for_line: Vec<(u16, u16, u16)> = Vec::new(); // (y, x_start, x_end)
+        let mut rows_for_line: Vec<(u16, u16, u16)> = Vec::new();
 
         for y in inner.top()..inner.bottom() {
-            // Read gutter cells
             let gutter_text: String = (inner.x..content_left)
                 .filter_map(|x| buf.cell((x, y)).map(|c| c.symbol()))
                 .collect();
             let trimmed_gutter = gutter_text.trim();
-
             if trimmed_gutter.is_empty() {
-                // Continuation row — add to current group
-                if let Some(_si) = source_idx {
+                if source_idx.is_some() {
                     if let Some(last) = rows_for_line.last_mut() {
                         last.2 = inner.right();
                     } else {
@@ -1639,30 +1702,34 @@ pub fn overlay_markdown_highlight(frame: &mut Frame, app: &mut App, area: Rect) 
                     }
                 }
             } else if let Ok(n) = trimmed_gutter.parse::<usize>() {
-                // New source line — flush previous group
                 if let Some(si) = source_idx {
-                    apply_highlight_styles(buf, &rows_for_line, si, &full_doc, highlighter);
+                    let styles = cache.get(si).map(Vec::as_slice).unwrap_or(&[]);
+                    apply_highlight_styles(buf, &rows_for_line, styles);
                 }
                 source_idx = Some(n.saturating_sub(1));
                 rows_for_line = vec![(y, content_left, inner.right())];
             }
         }
-        // Flush last group
         if let Some(si) = source_idx {
-            apply_highlight_styles(buf, &rows_for_line, si, &full_doc, highlighter);
+            let styles = cache.get(si).map(Vec::as_slice).unwrap_or(&[]);
+            apply_highlight_styles(buf, &rows_for_line, styles);
         }
     } else {
-        // No line numbers: each row is its own group
+        // No line numbers: source_idx is unknown, so highlight the displayed text
+        // standalone per frame. Rare path (line numbers default on); left as-is.
+        let e = &mut app.editor;
+        let full_doc: Vec<String> = e.editor.lines().to_vec();
+        let hl = e
+            .source_highlighter
+            .get_or_insert_with(|| crate::markdown::SourceHighlighter::new(&app.app_theme));
         for y in inner.top()..inner.bottom() {
-            // We don't have source_idx, so highlight displayed text standalone
-            // Read displayed text
             let displayed: String = (content_left..inner.right())
                 .filter_map(|x| buf.cell((x, y)).map(|c| c.symbol()))
                 .collect();
             if displayed.is_empty() {
                 continue;
             }
-            let styles = highlighter.highlight_line(&displayed, 0, &full_doc);
+            let styles = hl.highlight_line(&displayed, 0, &full_doc);
             let mut ci = 0usize;
             for x in content_left..inner.right() {
                 if ci >= styles.len() {
@@ -1672,12 +1739,10 @@ pub fn overlay_markdown_highlight(frame: &mut Frame, app: &mut App, area: Rect) 
                     if cell.symbol().is_empty() {
                         continue;
                     }
-                    // Skip cursor cell
                     if cell.modifier.contains(ratatui::style::Modifier::REVERSED) {
                         ci += 1;
                         continue;
                     }
-                    // Skip selection cells (heuristic: non-default bg)
                     if cell.bg != app.app_theme.bg.unwrap_or(ratatui::style::Color::Reset) {
                         ci += 1;
                         continue;
@@ -1690,23 +1755,15 @@ pub fn overlay_markdown_highlight(frame: &mut Frame, app: &mut App, area: Rect) 
     }
 }
 
-/// Apply highlight styles for a group of rows corresponding to one source line.
+/// Apply precomputed highlight styles for a group of rows corresponding to one source line.
 fn apply_highlight_styles(
     buf: &mut ratatui::prelude::Buffer,
     rows: &[(u16, u16, u16)],
-    source_idx: usize,
-    full_doc: &[String],
-    highlighter: &mut crate::markdown::SourceHighlighter,
+    styles: &[ratatui::style::Style],
 ) {
-    let full_line = full_doc.get(source_idx).map(|s| s.as_str()).unwrap_or("");
-    if full_line.is_empty() {
-        return;
-    }
-    let styles = highlighter.highlight_line(full_line, source_idx, full_doc);
     if styles.is_empty() {
         return;
     }
-    // Walk displayed chars across all rows of this group
     let mut src_cursor = 0usize;
     for &(y, x_start, x_end) in rows {
         for x in x_start..x_end {
@@ -1717,22 +1774,13 @@ fn apply_highlight_styles(
             if sym.is_empty() {
                 continue;
             }
-            // Skip cursor cell (REVERSED modifier)
             if cell.modifier.contains(ratatui::style::Modifier::REVERSED) {
                 src_cursor += 1;
                 continue;
             }
-            // Skip cells inside selection (heuristic: non-default bg)
             if cell.bg != ratatui::style::Color::Reset {
                 src_cursor += 1;
                 continue;
-            }
-
-            // Match display char to source char via prefix scanning
-            // (displayed text is a contiguous substring of full_line due to wrap)
-            let ch = sym.chars().next().unwrap_or(' ');
-            while src_cursor < full_line.len() && !full_line[src_cursor..].starts_with(ch) {
-                src_cursor += 1;
             }
             if src_cursor >= styles.len() {
                 break;

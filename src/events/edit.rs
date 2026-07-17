@@ -295,6 +295,10 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 app.editor.read_offset = max;
                 return false;
             }
+            KeyCode::Char('q') => {
+                leave_editor(app, focus);
+                return false;
+            }
             _ => {}
         }
         // Fall through to resolve_edit so Find/GoToLine/PreviewLink/etc still work
@@ -617,6 +621,8 @@ pub fn handle_edit_mouse(
                     title_inner,
                     mouse_event.column,
                     mouse_event.row,
+                    app.editor.title_viewport_row as usize,
+                    app.editor.title_viewport_col as usize,
                 );
             }
         } else if app.editor.edit_mode == EditMode::Edit
@@ -629,6 +635,8 @@ pub fn handle_edit_mouse(
                     body_inner,
                     mouse_event.column,
                     mouse_event.row,
+                    app.editor.body_viewport_row as usize,
+                    app.editor.body_viewport_col as usize,
                 );
             }
         }
@@ -763,6 +771,20 @@ pub fn handle_edit_mouse(
 
     match mouse_event.kind {
         MouseEventKind::Down(MouseButton::Left) => {
+            // READ-mode: start selection
+            if app.editor.edit_mode == EditMode::Read
+                && contains_cell(body_inner, mouse_event.column, mouse_event.row)
+            {
+                app.editor.read_selecting = true;
+                app.editor.read_sel_anchor = Some(read_grid_cell(
+                    app,
+                    body_inner,
+                    mouse_event.column,
+                    mouse_event.row,
+                ));
+                app.editor.read_sel_end = app.editor.read_sel_anchor;
+                return;
+            }
             *mouse_selecting = false;
             *mouse_dragged = false;
             if let Some(sb) = sidebar_inner
@@ -809,6 +831,8 @@ pub fn handle_edit_mouse(
                     body_inner,
                     mouse_event.column,
                     mouse_event.row,
+                    app.editor.body_viewport_row as usize,
+                    app.editor.body_viewport_col as usize,
                 );
                 app.editor.editor.start_selection();
                 *mouse_selecting = true;
@@ -819,12 +843,24 @@ pub fn handle_edit_mouse(
                     title_inner,
                     mouse_event.column,
                     mouse_event.row,
+                    app.editor.title_viewport_row as usize,
+                    app.editor.title_viewport_col as usize,
                 );
                 app.editor.title_editor.start_selection();
                 *mouse_selecting = true;
             }
         }
         MouseEventKind::Drag(MouseButton::Left) => {
+            // READ-mode: extend selection
+            if app.editor.edit_mode == EditMode::Read && app.editor.read_selecting {
+                app.editor.read_sel_end = Some(read_grid_cell(
+                    app,
+                    body_inner,
+                    mouse_event.column,
+                    mouse_event.row,
+                ));
+                return;
+            }
             if *mouse_selecting {
                 *mouse_dragged = true;
                 if *focus == EditFocus::Body {
@@ -833,6 +869,8 @@ pub fn handle_edit_mouse(
                         body_inner,
                         mouse_event.column,
                         mouse_event.row,
+                        app.editor.body_viewport_row as usize,
+                        app.editor.body_viewport_col as usize,
                     );
                 } else {
                     move_textarea_cursor_to_mouse(
@@ -840,11 +878,22 @@ pub fn handle_edit_mouse(
                         title_inner,
                         mouse_event.column,
                         mouse_event.row,
+                        app.editor.title_viewport_row as usize,
+                        app.editor.title_viewport_col as usize,
                     );
                 }
             }
         }
         MouseEventKind::Up(MouseButton::Left) => {
+            // READ-mode: copy selection to system clipboard
+            if app.editor.edit_mode == EditMode::Read && app.editor.read_selecting {
+                let text = read_selection_text(app);
+                if !text.is_empty() {
+                    crate::text_edit::write_system_clipboard(&text);
+                }
+                app.editor.read_selecting = false;
+                return;
+            }
             if *mouse_selecting && !*mouse_dragged {
                 if *focus == EditFocus::Body {
                     app.editor.editor.cancel_selection();
@@ -865,4 +914,50 @@ pub fn handle_edit_mouse(
         }
         _ => {}
     }
+}
+
+/// Map a mouse cell to (grid_row, grid_col) in the READ-mode rendered grid.
+fn read_grid_cell(app: &App, body_inner: Rect, col: u16, row: u16) -> (usize, usize) {
+    let gr = (row.saturating_sub(body_inner.y) as usize).saturating_add(app.editor.read_offset);
+    let gc = col.saturating_sub(body_inner.x) as usize;
+    let gr = gr.min(app.editor.read_grid.len().saturating_sub(1));
+    let row_len = app.editor.read_grid.get(gr).map(|r| r.len()).unwrap_or(0);
+    (gr, gc.min(row_len.saturating_sub(1)))
+}
+
+/// Extract the selected text from READ-mode grid selection.
+fn read_selection_text(app: &App) -> String {
+    let (Some(a), Some(b)) = (app.editor.read_sel_anchor, app.editor.read_sel_end) else {
+        return String::new();
+    };
+    let (mut r1, mut c1) = a;
+    let (mut r2, mut c2) = b;
+    if (r2, c2) < (r1, c1) {
+        std::mem::swap(&mut r1, &mut r2);
+        std::mem::swap(&mut c1, &mut c2);
+    }
+    let grid = &app.editor.read_grid;
+    let mut out = String::new();
+    for r in r1..=r2.min(grid.len().saturating_sub(1)) {
+        let row = &grid[r];
+        if row.is_empty() {
+            out.push('\n');
+            continue;
+        }
+        let start = if r == r1 { c1 } else { 0 };
+        let end = if r == r2 {
+            c2.min(row.len().saturating_sub(1))
+        } else {
+            row.len().saturating_sub(1)
+        };
+        if start > end {
+            continue;
+        }
+        let s: String = row[start..=end].iter().map(|(ch, _)| *ch).collect();
+        out.push_str(s.trim_end());
+        if r != r2.min(grid.len().saturating_sub(1)) {
+            out.push('\n');
+        }
+    }
+    out
 }

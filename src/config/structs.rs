@@ -440,8 +440,9 @@ pub struct EditorConfig {
     pub show_line_numbers: bool,
     #[serde(default = "default_date_format")]
     pub date_format: String,
-    #[serde(default)]
     pub soft_wrap: bool,
+    #[serde(default = "default_true")]
+    pub edit_mode_highlight: bool,
 }
 
 impl Default for EditorConfig {
@@ -452,6 +453,7 @@ impl Default for EditorConfig {
             preview_enabled: false,
             show_line_numbers: true,
             date_format: "%Y-%m-%d %H:%M".to_string(),
+            edit_mode_highlight: true,
             soft_wrap: false,
         }
     }

@@ -72,7 +72,8 @@ fn handle_text_input_popup_mouse(
                 vertical: 1,
                 horizontal: 1,
             });
-            move_textarea_cursor_to_mouse(input, inner, mouse.column, mouse.row);
+            let (sr, sc) = crate::ui::get_textarea_scroll(input);
+            move_textarea_cursor_to_mouse(input, inner, mouse.column, mouse.row, sr, sc);
             false
         }
         _ => false,
@@ -151,7 +152,15 @@ fn handle_command_palette_mouse(app: &mut App, mouse: &MouseEvent, terminal_area
                     vertical: 1,
                     horizontal: 1,
                 });
-                move_textarea_cursor_to_mouse(&mut palette.input, inner, mouse.column, mouse.row);
+                let (sr, sc) = crate::ui::get_textarea_scroll(&palette.input);
+                move_textarea_cursor_to_mouse(
+                    &mut palette.input,
+                    inner,
+                    mouse.column,
+                    mouse.row,
+                    sr,
+                    sc,
+                );
             } else if mouse.row == chunks[1].y {
                 let tabs: Vec<(&str, Option<&str>)> =
                     crate::palette::palette_tabs(app.config.ui.icon_mode)
@@ -482,11 +491,14 @@ impl crate::popups::ActivePopup {
                         return true;
                     } else if contains_cell(input_chunks[0], mouse.column, mouse.row) {
                         p.focus = TagPopupFocus::Input;
+                        let (sr, sc) = crate::ui::get_textarea_scroll(&p.input);
                         move_textarea_cursor_to_mouse(
                             &mut p.input,
                             input_chunks[0],
                             mouse.column,
                             mouse.row,
+                            sr,
+                            sc,
                         );
                     }
                 }
@@ -655,7 +667,15 @@ impl crate::popups::ActivePopup {
                         vertical: 1,
                         horizontal: 1,
                     });
-                    move_textarea_cursor_to_mouse(&mut p.input, inner, mouse.column, mouse.row);
+                    let (sr, sc) = crate::ui::get_textarea_scroll(&p.input);
+                    move_textarea_cursor_to_mouse(
+                        &mut p.input,
+                        inner,
+                        mouse.column,
+                        mouse.row,
+                        sr,
+                        sc,
+                    );
                 } else if mouse.kind == MouseEventKind::Down(MouseButton::Left)
                     && contains_cell(chunks[1], mouse.column, mouse.row)
                 {
@@ -938,11 +958,14 @@ impl crate::popups::ActivePopup {
                             vertical: 1,
                             horizontal: 1,
                         });
+                        let (sr, sc) = crate::ui::get_textarea_scroll(&p.title_input);
                         move_textarea_cursor_to_mouse(
                             &mut p.title_input,
                             inner,
                             mouse.column,
                             mouse.row,
+                            sr,
+                            sc,
                         );
                     } else if contains_cell(edit_chunks[1], mouse.column, mouse.row) {
                         p.focus = SubnotesFocus::EditContent;
@@ -950,11 +973,14 @@ impl crate::popups::ActivePopup {
                             vertical: 1,
                             horizontal: 1,
                         });
+                        let (sr, sc) = crate::ui::get_textarea_scroll(&p.content_input);
                         move_textarea_cursor_to_mouse(
                             &mut p.content_input,
                             inner,
                             mouse.column,
                             mouse.row,
+                            sr,
+                            sc,
                         );
                     }
                 }

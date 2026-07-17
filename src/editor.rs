@@ -73,6 +73,10 @@ pub struct NoteEditor {
     pub link_preview_error: Option<String>,
     pub last_sidebar_click: Option<(u16, u16, Instant)>,
     pub header_title_rect: ratatui::layout::Rect,
+    pub body_viewport_row: u16,
+    pub body_viewport_col: u16,
+    pub title_viewport_row: u16,
+    pub title_viewport_col: u16,
     pub edit_mode: EditMode,
     /// Cells extracted from `render_builtin` for READ mode
     pub read_grid: Vec<Vec<(char, ratatui::style::Style)>>,
@@ -85,6 +89,16 @@ pub struct NoteEditor {
     pub last_body_height: u16,
     pub read_gg_pending: bool,
     pub(crate) source_highlighter: Option<crate::markdown::SourceHighlighter>,
+    /// Cache of per-line highlight styles, rebuilt only when the document changes.
+    pub md_highlight_cache: Vec<Vec<ratatui::style::Style>>,
+    /// `Instant` of the last editor change when cache was built.
+    pub md_highlight_change: Option<std::time::Instant>,
+    /// Number of lines in the document when cache was built.
+    pub md_highlight_lines: usize,
+    /// READ-mode mouse selection state
+    pub read_selecting: bool,
+    pub read_sel_anchor: Option<(usize, usize)>,
+    pub read_sel_end: Option<(usize, usize)>,
 }
 
 impl Default for NoteEditor {
@@ -137,6 +151,16 @@ impl Default for NoteEditor {
             last_body_width: 0u16,
             last_body_height: 0u16,
             read_gg_pending: false,
+            body_viewport_row: 0,
+            body_viewport_col: 0,
+            title_viewport_row: 0,
+            title_viewport_col: 0,
+            md_highlight_cache: Vec::new(),
+            md_highlight_change: None,
+            md_highlight_lines: 0,
+            read_selecting: false,
+            read_sel_anchor: None,
+            read_sel_end: None,
             source_highlighter: None,
             header_title_rect: ratatui::layout::Rect::default(),
         }

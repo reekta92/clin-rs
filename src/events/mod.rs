@@ -111,12 +111,12 @@ pub fn move_textarea_cursor_to_mouse(
     body_inner: Rect,
     mouse_col: u16,
     mouse_row: u16,
+    scroll_row: usize,
+    scroll_col: usize,
 ) {
     if textarea.lines().is_empty() || body_inner.width == 0 || body_inner.height == 0 {
         return;
     }
-    // viewport top in SCREEN coordinates (0-based absolute document screen grid)
-    let (scroll_row, scroll_col) = crate::ui::get_textarea_scroll(textarea);
 
     let target_row = (mouse_row.saturating_sub(body_inner.y) as usize).saturating_add(scroll_row);
     let target_col = (mouse_col.saturating_sub(body_inner.x) as usize).saturating_add(scroll_col);

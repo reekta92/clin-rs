@@ -1268,12 +1268,18 @@ impl App {
             match *label {
                 " Copy " => {
                     textarea.copy();
+                    crate::text_edit::write_system_clipboard(&textarea.yank_text());
                 }
                 " Cut " => {
-                    textarea.cut();
+                    if textarea.cut() {
+                        crate::text_edit::write_system_clipboard(&textarea.yank_text());
+                    }
                 }
                 " Paste " => {
-                    textarea.paste();
+                    if let Some(t) = crate::text_edit::read_system_clipboard() {
+                        textarea.set_yank_text(&t);
+                        textarea.paste();
+                    }
                 }
                 " Select All " => {
                     textarea.select_all();

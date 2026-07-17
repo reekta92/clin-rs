@@ -7,6 +7,28 @@ thread_local! {
     static CLIPBOARD: RefCell<Option<arboard::Clipboard>> = const { RefCell::new(None) };
 }
 
+pub fn write_system_clipboard(text: &str) {
+    CLIPBOARD.with(|cb_cell| {
+        let mut cb = cb_cell.borrow_mut();
+        if cb.is_none() {
+            *cb = arboard::Clipboard::new().ok();
+        }
+        if let Some(clipboard) = cb.as_mut() {
+            let _ = clipboard.set_text(text);
+        }
+    });
+}
+
+pub fn read_system_clipboard() -> Option<String> {
+    CLIPBOARD.with(|cb_cell| {
+        let mut cb = cb_cell.borrow_mut();
+        if cb.is_none() {
+            *cb = arboard::Clipboard::new().ok();
+        }
+        cb.as_mut().and_then(|c| c.get_text().ok())
+    })
+}
+
 pub fn apply_text_shortcuts(
     keybinds: &Keybinds,
     textarea: &mut TextArea<'static>,
