@@ -341,8 +341,8 @@ fn render_heading<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, h: &NodeHeading, dep
         // H1: banner styled title with 2-space left indent, matching body text.
         let banner = ctx.theme.h1_banner;
         ctx.ensure_line();
-        ctx.push(' ', banner, 0); // first leading space
-        ctx.push(' ', banner, 0); // second leading space (2-space indent, aligning with body text)
+        ctx.push(' ', Style::default(), 0); // col 0: plain indent space (default bg, not badge)
+        ctx.push(' ', banner, 0); // col 1: badge starts — highlighted leading space
         for child in node.children() {
             render_inline(ctx, child, banner, 0);
         }
@@ -1504,8 +1504,13 @@ mod tests {
         let expected = "  Title ";
         let text: String = row0.cells.iter().map(|(c, _)| c).collect();
         assert_eq!(text, expected, "H1 row should be '  Title '");
-        // Every cell's bg should be Some(theme.heading)
-        for (i, (ch, st)) in row0.cells.iter().enumerate() {
+        // col 0: plain indent space (no badge bg)
+        assert_eq!(
+            row0.cells[0].1.bg, None,
+            "col 0 should be plain (no badge bg)"
+        );
+        // cols 1..: badge cells have heading bg
+        for (i, (ch, st)) in row0.cells.iter().enumerate().skip(1) {
             assert_eq!(
                 st.bg,
                 Some(theme_colors.heading),
