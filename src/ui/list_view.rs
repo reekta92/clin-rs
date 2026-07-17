@@ -249,7 +249,7 @@ pub fn render_subnote_graph_static(
     frame: &mut Frame,
     rect: Rect,
     parent_title: &str,
-    subnote_titles: &[String],
+    subnotes: &[crate::storage::SubNote],
     theme: &crate::app_theme::AppThemeColors,
 ) {
     use crate::ui::braille::{draw_braille_circle_filled, draw_braille_line};
@@ -258,7 +258,7 @@ pub fn render_subnote_graph_static(
     let bg_block = ratatui::widgets::Block::default().style(theme.preview_bg_style());
     frame.render_widget(bg_block, rect);
 
-    if subnote_titles.is_empty() {
+    if subnotes.is_empty() {
         let line = Line::from(vec![Span::styled(
             "No subnotes",
             Style::default().fg(theme.muted),
@@ -281,7 +281,7 @@ pub fn render_subnote_graph_static(
     let parent_circle_r = 1.5_f64; // cells
     let sub_circle_r = 0.5_f64; // cells
 
-    let n = subnote_titles.len();
+    let n = subnotes.len();
     let positions: Vec<(f64, f64)> = (0..n)
         .map(|i| {
             let angle =
@@ -294,6 +294,30 @@ pub fn render_subnote_graph_static(
     let edge_color = theme.border;
     for &(sx, sy) in &positions {
         draw_braille_line(buf, cx, cy, sx, sy, edge_color);
+    }
+
+    // 1b. Draw inter-subnote wikilink edges (distinct color from containment).
+    let title_to_idx: std::collections::HashMap<String, usize> = subnotes
+        .iter()
+        .enumerate()
+        .map(|(i, s)| (s.title.to_lowercase(), i))
+        .collect();
+    let wikilink_color = theme.success;
+    let mut drawn: std::collections::HashSet<(usize, usize)> = std::collections::HashSet::new();
+    for (i, sub) in subnotes.iter().enumerate() {
+        let (sx, sy) = positions[i];
+        for link in crate::storage::extract_wikilinks(&sub.content) {
+            if let Some(&j) = title_to_idx.get(&link.to_lowercase()) {
+                if j == i {
+                    continue;
+                } // self-link
+                let key = if i < j { (i, j) } else { (j, i) };
+                if drawn.insert(key) {
+                    let (tx, ty) = positions[j];
+                    draw_braille_line(buf, sx, sy, tx, ty, wikilink_color);
+                }
+            }
+        }
     }
 
     // 2. Draw parent circle (filled, larger, accent color).
@@ -320,7 +344,7 @@ pub fn render_subnote_graph_static(
     );
 
     // Subnote titles: above each subnote circle.
-    for (&(sx, sy), title) in positions.iter().zip(subnote_titles.iter()) {
+    for (&(sx, sy), title) in positions.iter().zip(subnotes.iter().map(|s| &s.title)) {
         draw_title_above(
             buf,
             sx,
@@ -1153,17 +1177,17 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 .find(|n| n.id == *parent_id)
                 .map(|n| n.title.clone())
                 .unwrap_or_else(|| parent_id.clone());
-            let subnote_titles: Vec<String> = app
+            let subnotes: Vec<crate::storage::SubNote> = app
                 .subnotes_view_cache
                 .iter()
                 .find(|(p, _)| p == parent_id)
-                .map(|(_, subs)| subs.iter().map(|s| s.title.clone()).collect())
+                .map(|(_, subs)| subs.clone())
                 .unwrap_or_default();
             render_subnote_graph_static(
                 frame,
                 preview_rect,
                 &parent_title,
-                &subnote_titles,
+                &subnotes,
                 &app.app_theme,
             );
             rendered_graph = true;
