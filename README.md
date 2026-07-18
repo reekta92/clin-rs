@@ -26,28 +26,9 @@
 ## About
 `clin` is a free, open-source terminal note manager inspired by Obsidian. It packs Obsidian's core features — markdown editing and rendering, `.canvas` files, and a force-directed graph view — into a roughly 2-5 MB Rust binary with minimal resource use, while keeping the UI approachable.
 
-Drop an existing Obsidian vault into `clin` and it works out of the box. Native image rendering, databases, and Obsidian plugins are not supported (though image files are recognized and rendered as placeholder blocks/icons).
+Drop an existing Obsidian vault into `clin` and it works out of the box. Native image rendering is supported via `ratatui-image` (sixel/kitty/iTerm/halfblocks auto-detected; enable with `[image] enabled = true`). Databases and Obsidian plugins are not supported.
 
-## Screenshots21
-test ui::list_view::tests::test_get_preview_info ... ok
-test ui::list_view::tests::preview_width_ratio_controls_preview_width ... ok
-test markdown::builtin::tests::code_block_lang_icon ... ok
-test markdown::builtin::tests::renders_code_block_highlighted_when_lang ... ok
-
-failures:
-
----- backup::git_ops::tests::test_push_to_file_remote_roundtrip stdout ----
-Error: config value 'user.name' was not found; class=Config (7); code=NotFound (-3)
-
-
-failures:
-    backup::git_ops::tests::test_push_to_file_remote_roundtrip
-
-test result: FAILED. 189 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.38s
-
-error: test failed, to rerun pass `--lib`
-Error: Process completed with exit code 101.
-
+## Screenshots
 
 <table>
   <tr>
@@ -89,12 +70,15 @@ Error: Process completed with exit code 101.
 
 ## Highlights
 
-- **Notes view** — folder tree with recursive folder counts in the header, tags, markdown preview pane (built-in renderer), search, filter, sort, pin, multi-select, `inline_info` toggle to control metadata rendering, trash management, file management (copy, paste, delete, rename, move), customizable bottom strip with activity heatmap, goals, and widget previews.
-- **Editor view** — built-in text editor with mouse support, line numbers, undo/redo, editor context menu, global hover highlights, and **external editor** integration (VISUAL/EDITOR env or config). Markdown preview pane alongside editor.
+- **Notes view** — folder tree with recursive folder counts in the header, tags, markdown preview pane (built-in renderer), search, filter, sort, pin, multi-select, `inline_info` toggle to control metadata rendering, trash management, file management (copy, paste, delete, rename, move), customizable bottom strip with activity heatmap, goals, and widget previews; auto-refresh on external file changes; show-info popup with word/char/header metrics.
+- **Editor view** — modal READ/EDIT modes, built-in find popup, soft-wrap toggle, sidebars with wikilink previews, mouse support, line numbers, undo/redo, editor context menu, external editor integration, insert-date action. See [EDITOR.md](docs/EDITOR.md).
 - **Graph view** — fully integrated force-directed graph visualization of your note corpus. Edges from `[[wikilinks]]`. Physics simulation, minimap, legend, search, configurable colors and layout. See [GRAPH_VIEW.md](docs/GRAPH_VIEW.md).
 - **Canvas view** — Obsidian-compatible `.canvas` file format. Place text/file/link/group/image nodes on an infinite 2D canvas, connect them with edges. Right-click context menu, mouse-drag panning, zoom-to-cursor, drag, resize, zoom. See [CANVAS.md](docs/CANVAS.md).
 - **Draw view** — freehand drawing canvas with shapes (rect, ellipse, diamond, line, arrow), text, draw smoothing (binomial filter), mouse-drag panning, zoom-to-cursor, and eraser tool. `.draw` file format. See [DRAW.md](docs/DRAW.md).
 - **Content tree view** — view to see the content of a `.md` file as a tree with headers being the parents and content being the children.
+- **Help view** — tabbed in-app reference with auto-generated keybind index, per-view descriptions, popup accordion, and preset-aware tips. See [HELP.md](docs/HELP.md).
+- **Subnotes** — encrypted virtual notes attached to any note, with a browsable grid tab, virtual tree folder, radial graph, and manager popup. See [SUBNOTES.md](docs/SUBNOTES.md).
+- **Image rendering** — native pixel image rendering via `ratatui-image` (sixel/kitty/iTerm) in canvas, draw, notes preview, and editor preview. See [IMAGE_RENDERING.md](docs/IMAGE_RENDERING.md).
 - **Git backup** — backup system using `git` as backend, initialize a repository and backup your notes automatically.
 - **Command palette** (Ctrl+P) — extensible action system with encrypt/decrypt, theme switcher, OCR paste, canvas/draw creation, graph view. See [COMMAND_PALETTE.md](docs/COMMAND_PALETTE.md).
 - **Theme system** — 19 built-in themes (default, TokyoNight, CatppuccinMocha, OneDark, Gruvbox, Dracula, Nord, RosePine, Everforest, Kanagawa, Solarized, Catppuccin Frappé, Catppuccin Macchiato, Rose Pine Moon, Gruvbox Material, GitHub Dark, Ayu Mirage, Synthwave '84, Material), transparent/solid backgrounds, per-color overrides. See [THEME_SYSTEM.md](docs/THEME_SYSTEM.md).
@@ -343,7 +327,7 @@ Once inside the TUI: navigate with `j`/`k`, open notes with `Enter`, open the co
 
 | View | Purpose | Key Actions |
 |---|---|---|
-| **List / Notes** | Browse, search, filter, manage notes | Grid/Tree layout, format chooser, folders, tags, sort, pin, markdown preview, search, trash, copy/move/delete |
+| **List / Notes** | Browse, search, filter, manage notes | Grid/Tree layout, format chooser, folders, tags, sort, pin, markdown preview, search, trash, copy/move/delete; Subnotes grid + radial graph |
 | **Editor** | Write and edit notes | Title + body, undo/redo, mouse support, line numbers, markdown preview pane, external editor |
 | **Graph** | Visualize note connections | Force-directed layout, [[wikilinks]] edges, physics, preview pane, minimap, legend, search, grid, configurable colors |
 | **Backup** | Git-based vault versioning | Status (staged/unstaged), commit history, diff preview, auto-push, remote sync |
@@ -351,6 +335,7 @@ Once inside the TUI: navigate with `j`/`k`, open notes with `Enter`, open the co
 | **Draw** | Freehand drawing and shapes | Stroke, rect/ellipse/diamond/line/arrow, text, eraser, pan/zoom |
 | **Content Tree** | Note outline and navigation | Header-based tree parsing, collapsible sections, jump-to-section |
 | **Setup Wizard** | First-run onboarding / reopenable via palette | Theme/background/hint-bar/icon-mode/keybind-preset cycling with live markdown preview |
+| **Help** | In-app keybind + feature reference | Tabbed (Notes/Editor/Graph/Draw/Canvas/Backup/ContentTree/Setup/Templates/About), search, popup accordion, preset-aware tips |
 
 | Feature | Description |
 |---|---|
@@ -492,10 +477,14 @@ Full technical documentation lives in [`docs/`](docs/INDEX.md):
 
 - [Draw](docs/DRAW.md) — freehand drawing canvas
 - [Content Tree](docs/CONTENT_TREE.md) — nested outline navigation
+- [Editor](docs/EDITOR.md) — READ/EDIT modes, find, soft-wrap, sidebars, wikilink previews
 - [Encryption](docs/ENCRYPTION.md) — ChaCha20-Poly1305 per-note encryption
+- [Help](docs/HELP.md) — 3-pane help view: tabs, keybind index, tips, popup accordion
+- [Image Rendering](docs/IMAGE_RENDERING.md) — ratatui-image pixel rendering, protocols, [image] config
 - [Theme System](docs/THEME_SYSTEM.md) — built-in themes and customization
 - [Setup](docs/SETUP.md) — first-run setup wizard
 - [Command Palette](docs/COMMAND_PALETTE.md) — extensible action system
+- [Subnotes](docs/SUBNOTES.md) — encrypted attached notes, grid tab, radial graph, manager popup
 - [Templates](docs/TEMPLATES.md) — TOML-based note templates
 
 ## Stats

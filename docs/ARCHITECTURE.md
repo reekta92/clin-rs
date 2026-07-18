@@ -208,7 +208,7 @@ List and Edit views use ratatui's `Layout` to split the terminal into panes:
 
 **Help view layout:**
 ```
-┌─ Tab Bar (Notes · Editor · Graph · Draw · Canvas · Templates · About) ─┐
+┌─ Tab Bar (Notes · Editor · Graph · Draw · Canvas · Backup · ContentTree · Setup · Templates · About) ─┐
 │                                                              │
 │                Help content (scrollable)                     │
 │                                                              │
@@ -241,6 +241,7 @@ src/
 ├── constants.rs      — Hints, strings, layout constants
 ├── editor.rs         — NoteEditor (title + body TextArea), popup state
 ├── frontmatter.rs    — YAML frontmatter parse/serialize
+├── image_render/     — Native image rendering: LRU cache, background decode worker, protocol picker
 ├── config/           — Config structs, defaults, merging, custom themes
 │   ├── mod.rs        — public re-exports, legacy-key compat shim
 │   ├── structs.rs    — ClinConfig, sub-config structs
@@ -273,6 +274,7 @@ src/
 │   ├── combo.rs      — KeyCombo helpers
 │   ├── matcher.rs    — MatchOutcome enum, sequence matcher
 │   └── api.rs        — keybind_scope! macro, resolve_* methods
+│   ├── help_meta.rs  — Action metadata (group + description) driving the help keybind index
 ├── templates/        — modular template system
 │   ├── mod.rs        — public re-exports
 │   ├── model.rs      — Template schema + render
@@ -284,6 +286,7 @@ src/
 │   ├── list_view.rs  — draw_list_view()
 │   ├── edit_view.rs  — draw_edit_view()
 │   ├── help.rs       — draw_help_view()
+│   ├── help_content.rs — Help tab descriptions, suggestion pools, popup accordion content
 │   ├── popups.rs     — Popup/dialog drawers + format_keybind_hints
 │   ├── title_bar.rs  — Title bar, tab bar rendering
 │   └── setup.rs      — draw_setup_view(), setup_layout()
@@ -329,6 +332,12 @@ src/
 │   ├── render.rs     — Canvas + element rendering
 │   └── state.rs      — DrawAppState, DrawData, DrawElement
 │
+├── content_tree/      — Content Tree view (header outline)
+│   ├── app.rs         — ContentTreeState, OverlayView implementation
+│   ├── input.rs       — Keyboard/mouse handlers
+│   ├── render.rs      — Tree + detail rendering
+│   ├── state.rs       — ContentTreeState, tree model
+│   └── parse.rs       — Header outline parser
 └── pinstar/          — Canvas view (Obsidian-compatible)
     ├── app.rs        — PinstarState, OverlayView implementation
     ├── data.rs       — CanvasData, CanvasNode, CanvasEdge (JSON schema)

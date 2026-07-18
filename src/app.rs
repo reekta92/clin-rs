@@ -238,16 +238,10 @@ pub enum HelpTab {
     Draw,
     Canvas,
     Backup,
+    ContentTree,
+    Setup,
     Templates,
     About,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LayoutDrag {
-    VDivider,
-    HDivider,
-    PreviewSwap,
-    CalendarSwap,
 }
 
 impl HelpTab {
@@ -260,7 +254,9 @@ impl HelpTab {
             HelpTab::Draw => HelpTab::Graph,
             HelpTab::Canvas => HelpTab::Draw,
             HelpTab::Backup => HelpTab::Canvas,
-            HelpTab::Templates => HelpTab::Backup,
+            HelpTab::ContentTree => HelpTab::Backup,
+            HelpTab::Setup => HelpTab::ContentTree,
+            HelpTab::Templates => HelpTab::Setup,
             HelpTab::About => HelpTab::Templates,
         }
     }
@@ -273,7 +269,9 @@ impl HelpTab {
             HelpTab::Graph => HelpTab::Draw,
             HelpTab::Draw => HelpTab::Canvas,
             HelpTab::Canvas => HelpTab::Backup,
-            HelpTab::Backup => HelpTab::Templates,
+            HelpTab::Backup => HelpTab::ContentTree,
+            HelpTab::ContentTree => HelpTab::Setup,
+            HelpTab::Setup => HelpTab::Templates,
             HelpTab::Templates => HelpTab::About,
             HelpTab::About => HelpTab::Notes,
         }
@@ -287,7 +285,9 @@ impl HelpTab {
             3 => HelpTab::Draw,
             4 => HelpTab::Canvas,
             5 => HelpTab::Backup,
-            6 => HelpTab::Templates,
+            6 => HelpTab::ContentTree,
+            7 => HelpTab::Setup,
+            8 => HelpTab::Templates,
             _ => HelpTab::About,
         }
     }
@@ -300,10 +300,20 @@ impl HelpTab {
             HelpTab::Draw => 3,
             HelpTab::Canvas => 4,
             HelpTab::Backup => 5,
-            HelpTab::Templates => 6,
-            HelpTab::About => 7,
+            HelpTab::ContentTree => 6,
+            HelpTab::Setup => 7,
+            HelpTab::Templates => 8,
+            HelpTab::About => 9,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LayoutDrag {
+    VDivider,
+    HDivider,
+    PreviewSwap,
+    CalendarSwap,
 }
 
 pub struct App {

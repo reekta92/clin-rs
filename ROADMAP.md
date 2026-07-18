@@ -35,6 +35,7 @@
 - [X] **Modular custom themes** — drop-in TOML themes in ~/.config/clin/themes/, no recompile
 - [X] **Expanded theme library** — 19 built-in themes (added Catppuccin Frappé/Macchiato, Rose Pine Moon, Gruvbox Material, GitHub Dark, Ayu Mirage, Synthwave '84, Material)
 - [X] **Show-all-files mode** — list every vault file, non-notes open in OS default app
+- [X] **Native image rendering** — pixel image rendering via ratatui-image (sixel/kitty/iTerm/halfblocks auto-detected) across canvas, draw, notes preview, and editor preview; configurable via `[image]` section
 - [X] **Folders-first toggle** — folders_before_files config + Ctrl+H shortcut
 - [X] **Path expansion** — ~ and $VAR/${VAR} expansion in storage_path
 - [X] **Smart folders** — virtual smart folders (Today, This Week, Untagged) with custom rules (tags, title, folder, age)
@@ -46,13 +47,31 @@
 - [X] **Canvas navigation** — mouse-drag panning and zoom-to-cursor for canvas and draw previews
 - [X] **Global UI hover highlights** — mouse hover highlights for TUI panels and interactive lists
 - [X] **Editor enhancements** — right-click editor context menu and merged title bar
+- [X] **Help view (3-pane)** — tabbed help with auto-generated keybind index, per-tab descriptions, popup accordion, preset-aware tips, page indicator
+- [X] **Subnotes browsable view** — Subnotes grid tab + virtual tree folder in notes list, radial braille graph with zoom/pan, subnotes manager popup (add/edit/delete, encrypted)
+- [X] **Editor READ/EDIT modes** — modal editing with read-mode select+clipboard, mode highlight, source-line map for READ↔EDIT scroll sync
+- [X] **Editor find popup** — custom find popup replacing textarea search
+- [X] **Editor soft-wrap toggle** — configurable soft-wrap for the editor body
+- [X] **Editor sidebars + wikilink previews** — forward/back links pane alongside the editor
+- [X] **Insert date action** — command-palette action inserting the current date at cursor (configurable format)
+- [X] **Show Info popup** — per-note and per-folder metrics (word/char count, headers, tasks, top words)
+- [X] **Auto-refresh** — notify-based watcher reloads the notes list on external file changes (configurable via `core.auto_refresh`)
+- [X] **Smart folders (custom rules)** — virtual smart folders (Today, This Week, Untagged) plus user-defined rules (tags, title, folder, age) via `list.custom_smart_folders`
+- [X] **Quick search redesign** — in-header-bar quick search with mouse support
+- [X] **Preview pane enhancements** — zoom-to-cursor, mouse-drag panning, in-memory cache, scale-to-fill on expand
+- [X] **Tree folder enhancements** — expand-all, expand-to-level (with count prefix), recursive folder counts in header, folder state persistence, dim empty folders
+- [X] **Scrollbars** — scrollbars on all scrollable panes
+- [X] **Global hover highlights** — mouse hover highlights across all interactive TUI panels and lists
+- [X] **Centralized popup mouse handling** — scroll/click/hover on all list popups (trash, templates, tags)
+- [X] **Backup libgit2 auth callbacks** — push/pull auth callbacks for remote sync
+- [X] **Config-gated markdown features** — per-feature toggles for syntax highlighting, code theme, code line numbers, preview wrap, wrap indicator, link URL max length
+- [X] **Pin status preserved through encrypt/decrypt** — pinned flag survives `.md` ↔ `.clin` conversion
 
 ## Planned
 
 #### General
 - [ ] **Consistent UI/UX** — literally hardest part of making a TUI, the UI/UX must be consistent accross the app
 - [ ] **More filtypes** — more text filetypes(`org-mode`, `.gv`, `.puml`, `.md` mermaid, `.dot`) support to edit/view
-- [ ] **Image rendering** — native image rendering logic throughout the app using `sixel` or `kitty image protocol` (placeholder rendering is implemented)
 
 #### Notes View
 

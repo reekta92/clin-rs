@@ -1,5 +1,6 @@
 use crate::keybinds::types::{
-    BackupAction, CanvasAction, DrawAction, EditAction, GraphAction, ListAction,
+    BackupAction, CanvasAction, ContentTreeAction, DrawAction, EditAction, GraphAction,
+    ListAction, SetupAction,
 };
 
 #[derive(Clone, Copy)]
@@ -703,6 +704,79 @@ pub fn backup_action_meta(a: BackupAction) -> HelpMeta {
     }
 }
 
+pub fn content_tree_group_order() -> &'static [&'static str] {
+    &["Navigation", "Actions", "General"]
+}
+pub fn setup_group_order() -> &'static [&'static str] {
+    &["Navigation", "Actions", "General"]
+}
+
+pub fn content_tree_action_meta(a: ContentTreeAction) -> HelpMeta {
+    match a {
+        ContentTreeAction::MoveUp => HelpMeta {
+            group: "Navigation",
+            description: "Move up",
+        },
+        ContentTreeAction::MoveDown => HelpMeta {
+            group: "Navigation",
+            description: "Move down",
+        },
+        ContentTreeAction::ToggleCollapse => HelpMeta {
+            group: "Actions",
+            description: "Expand / collapse section",
+        },
+        ContentTreeAction::ExpandAll => HelpMeta {
+            group: "Actions",
+            description: "Expand all sections",
+        },
+        ContentTreeAction::CollapseAll => HelpMeta {
+            group: "Actions",
+            description: "Collapse all sections",
+        },
+        ContentTreeAction::Open => HelpMeta {
+            group: "Actions",
+            description: "Open selected heading",
+        },
+        ContentTreeAction::Back => HelpMeta {
+            group: "General",
+            description: "Back to list",
+        },
+        ContentTreeAction::Help => HelpMeta {
+            group: "General",
+            description: "Help",
+        },
+    }
+}
+
+pub fn setup_action_meta(a: SetupAction) -> HelpMeta {
+    match a {
+        SetupAction::Up => HelpMeta {
+            group: "Navigation",
+            description: "Move up",
+        },
+        SetupAction::Down => HelpMeta {
+            group: "Navigation",
+            description: "Move down",
+        },
+        SetupAction::CycleNext => HelpMeta {
+            group: "Actions",
+            description: "Cycle to next option",
+        },
+        SetupAction::CyclePrev => HelpMeta {
+            group: "Actions",
+            description: "Cycle to previous option",
+        },
+        SetupAction::Activate => HelpMeta {
+            group: "Actions",
+            description: "Activate / confirm",
+        },
+        SetupAction::Finish => HelpMeta {
+            group: "Actions",
+            description: "Finish setup wizard",
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -740,5 +814,13 @@ mod tests {
     #[test]
     fn backup_meta_nonempty() {
         assert_meta_nonempty!(BackupAction, backup_action_meta);
+    }
+    #[test]
+    fn content_tree_meta_nonempty() {
+        assert_meta_nonempty!(ContentTreeAction, content_tree_action_meta);
+    }
+    #[test]
+    fn setup_meta_nonempty() {
+        assert_meta_nonempty!(SetupAction, setup_action_meta);
     }
 }

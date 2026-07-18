@@ -19,13 +19,17 @@ For installation, quickstart, and general project info, see the [README.md](../R
 - [DRAW.md](DRAW.md) — Freehand drawing canvas: `.draw` format, tool set, shape types, interaction
 - [CONTENT_TREE.md](CONTENT_TREE.md) — Content Tree view: nested outline parsing, collapsible subtrees, jump-to-section editor navigation
 - [SETUP.md](SETUP.md) — First-run setup wizard: theme/background/hint-bar/icon-mode/keybind-preset cycling with live preview
+- [HELP.md](HELP.md) — Help view: 3-pane layout, 10 tabs, keybind index, tips, popup accordion
+- [EDITOR.md](EDITOR.md) — Editor view: READ/EDIT modes, find popup, soft-wrap, sidebars, wikilink previews, external editor
 
 ## Features
 
 - [ENCRYPTION.md](ENCRYPTION.md) — Zero-knowledge encryption: ChaCha20-Poly1305, key management, `.clin` file format, encrypt/decrypt workflow
-- [THEME_SYSTEM.md](THEME_SYSTEM.md) — Theme system: 11 built-in themes, color derivation, per-color overrides, AppThemeColors
+- [THEME_SYSTEM.md](THEME_SYSTEM.md) — Theme system: 19 built-in themes, color derivation, per-color overrides, AppThemeColors
 - [COMMAND_PALETTE.md](COMMAND_PALETTE.md) — Command palette and Action trait: available actions, registration, how to add new actions
 - [TEMPLATES.md](TEMPLATES.md) — Note template system: TOML file format, template variables, CLI usage
+- [IMAGE_RENDERING.md](IMAGE_RENDERING.md) — Native image rendering: ratatui-image, sixel/kitty/iTerm protocols, [image] config, cache/worker
+- [SUBNOTES.md](SUBNOTES.md) — Subnotes: encrypted attached notes, grid tab, virtual tree folder, radial graph, manager popup
 
 ## Configuration
 
@@ -42,15 +46,19 @@ docs/
 ├── ARCHITECTURE.md       System overview
 ├── LIST_VIEW.md          Notes list view
 ├── GRAPH_VIEW.md         Force-directed graph
+├── HELP.md               Help: 3-pane, 10 tabs, keybind index, tips, popup accordion
 ├── BACKUP.md             Git-based backup dashboard
 ├── CANVAS.md             Obsidian-compatible canvas
 ├── DRAW.md               Freehand drawing
 ├── CONTENT_TREE.md       Content tree outline
+├── EDITOR.md             Editor: READ/EDIT modes, find, soft-wrap, sidebars, wikilinks
 ├── SETUP.md              First-run setup wizard
 ├── ENCRYPTION.md         Zero-knowledge encryption
 ├── THEME_SYSTEM.md       Theme and color system
 ├── COMMAND_PALETTE.md    Command palette + Action trait
+├── IMAGE_RENDERING.md    Native image rendering, ratatui-image, protocols
 ├── TEMPLATES.md          Note template system
+├── SUBNOTES.md           Subnotes: encrypted virtual notes, grid tab, radial graph
 ├── CONFIG_REFERENCE.md   All config options
 ├── KEYBIND_PRESETS.md     Keybind presets and sequence syntax
 ```

@@ -11,7 +11,7 @@ use crate::keybinds::help_meta::{self, HelpMeta};
 use crate::keybinds::{HelpAction, Keybinds, ListAction};
 use strum::IntoEnumIterator;
 
-pub fn help_tab_names() -> [&'static str; 8] {
+pub fn help_tab_names() -> [&'static str; 10] {
     [
         "Notes",
         "Editor",
@@ -19,6 +19,8 @@ pub fn help_tab_names() -> [&'static str; 8] {
         "Draw",
         "Canvas",
         "Backup",
+        "ContentTree",
+        "Setup",
         "Templates",
         "About",
     ]
@@ -27,15 +29,17 @@ pub fn help_tab_names() -> [&'static str; 8] {
 /// Help-view tab (label, glyph) pairs, in `HelpTab` order.
 /// Mirrors `backup_tabs` / list grid tabs. Glyphs are (nerd_font, unicode).
 pub fn help_tabs(icon_mode: crate::config::IconMode) -> Vec<(&'static str, Option<&'static str>)> {
-    let pairs: [(&'static str, &'static str, &'static str); 8] = [
-        ("Notes", "\u{f02d}", "\u{1f4d8}"),     // book
-        ("Editor", "\u{f303}", "\u{270f}"),     // pencil
-        ("Graph", "\u{f1e0}", "\u{1f5c2}"),     // share-alt / stacked
-        ("Draw", "\u{f1fc}", "\u{1f3a8}"),      // paint-brush / palette
-        ("Canvas", "\u{f0b2}", "\u{1f4cc}"),    // thumbtack / pushpin
-        ("Backup", "\u{f1d3}", "\u{1f4be}"),    // git / floppy
-        ("Templates", "\u{f15b}", "\u{1f4c4}"), // file / page
-        ("About", "\u{f05a}", "\u{2139}"),      // info-circle
+    let pairs: [(&'static str, &'static str, &'static str); 10] = [
+        ("Notes", "\u{f02d}", "\u{1f4d8}"),         // book
+        ("Editor", "\u{f303}", "\u{270f}"),         // pencil
+        ("Graph", "\u{f1e0}", "\u{1f5c2}"),         // share-alt / stacked
+        ("Draw", "\u{f1fc}", "\u{1f3a8}"),          // paint-brush / palette
+        ("Canvas", "\u{f0b2}", "\u{1f4cc}"),        // thumbtack / pushpin
+        ("Backup", "\u{f1d3}", "\u{1f4be}"),        // git / floppy
+        ("ContentTree", "\u{f03a}", "\u{f0ca}"),    // list-ul / three-bars
+        ("Setup", "\u{f0a9}", "\u{2699}"),          // arrow-right / gear
+        ("Templates", "\u{f15b}", "\u{1f4c4}"),     // file / page
+        ("About", "\u{f05a}", "\u{2139}"),          // info-circle
     ];
     pairs
         .iter()
@@ -389,6 +393,8 @@ pub fn help_text_for_tab(
         HelpTab::Draw => draw_help_text(keybinds, theme),
         HelpTab::Canvas => canvas_help_text(keybinds, theme),
         HelpTab::Backup => backup_help_text(keybinds, theme),
+        HelpTab::ContentTree => content_tree_help_text(keybinds, theme),
+        HelpTab::Setup => setup_help_text(keybinds, theme),
         HelpTab::Templates => templates_help_text(keybinds, theme, tab),
         HelpTab::About => about_help_text(keybinds, theme, config, tab),
     }
@@ -525,6 +531,26 @@ fn backup_help_text(keybinds: &Keybinds, theme: &AppThemeColors) -> Vec<HelpRow>
         help_meta::backup_group_order(),
         help_meta::backup_action_meta,
         |kb, a| kb.backup_keys_display(a),
+    )
+}
+fn content_tree_help_text(keybinds: &Keybinds, theme: &AppThemeColors) -> Vec<HelpRow> {
+    generate_scope_help(
+        keybinds,
+        theme,
+        HelpTab::ContentTree,
+        help_meta::content_tree_group_order(),
+        help_meta::content_tree_action_meta,
+        |kb, a| kb.content_tree_keys_display(a),
+    )
+}
+fn setup_help_text(keybinds: &Keybinds, theme: &AppThemeColors) -> Vec<HelpRow> {
+    generate_scope_help(
+        keybinds,
+        theme,
+        HelpTab::Setup,
+        help_meta::setup_group_order(),
+        help_meta::setup_action_meta,
+        |kb, a| kb.setup_keys_display(a),
     )
 }
 
@@ -1143,6 +1169,8 @@ fn tab_display_name(tab: HelpTab) -> &'static str {
         HelpTab::Draw => "Draw",
         HelpTab::Canvas => "Canvas",
         HelpTab::Backup => "Backup",
+        HelpTab::ContentTree => "ContentTree",
+        HelpTab::Setup => "Setup",
         HelpTab::Templates => "Templates",
         HelpTab::About => "About",
     }
@@ -1440,6 +1468,15 @@ pub(crate) fn resolve_tip_key(token: &str, kb: &Keybinds) -> String {
             "CollapseAll" => kb.content_tree_keys_display(ContentTreeAction::CollapseAll),
             "Back" => kb.content_tree_keys_display(ContentTreeAction::Back),
             "Help" => kb.content_tree_keys_display(ContentTreeAction::Help),
+            _ => format!("[ERR:{}]", token),
+        },
+        "setup" => match action {
+            "Up" => kb.setup_keys_display(SetupAction::Up),
+            "Down" => kb.setup_keys_display(SetupAction::Down),
+            "CycleNext" => kb.setup_keys_display(SetupAction::CycleNext),
+            "CyclePrev" => kb.setup_keys_display(SetupAction::CyclePrev),
+            "Activate" => kb.setup_keys_display(SetupAction::Activate),
+            "Finish" => kb.setup_keys_display(SetupAction::Finish),
             _ => format!("[ERR:{}]", token),
         },
         _ => format!("[ERR:{}]", token),

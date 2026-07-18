@@ -78,8 +78,9 @@ pub fn handle_help_keys(app: &mut App, key: KeyEvent) {
             KeyCode::Char('4') => app.switch_help_tab(HelpTab::Draw),
             KeyCode::Char('5') => app.switch_help_tab(HelpTab::Canvas),
             KeyCode::Char('6') => app.switch_help_tab(HelpTab::Backup),
-            KeyCode::Char('7') => app.switch_help_tab(HelpTab::Templates),
-            KeyCode::Char('8') => app.switch_help_tab(HelpTab::About),
+            KeyCode::Char('7') => app.switch_help_tab(HelpTab::ContentTree),
+            KeyCode::Char('8') => app.switch_help_tab(HelpTab::Setup),
+            KeyCode::Char('9') => app.switch_help_tab(HelpTab::Templates),
             KeyCode::Char('n') => {
                 let len = crate::ui::help_content::tab_popup_descriptions(app.help_tab).len();
                 if len > 0 {

@@ -77,6 +77,12 @@ pub fn tab_description(tab: HelpTab) -> &'static str {
         HelpTab::Backup => {
             "Git-backed vault backup dashboard. Stage and unstage file changes, review diffs, write commit messages, push to or pull from a remote, and toggle auto-backup settings inline — all without leaving the app."
         }
+        HelpTab::ContentTree => {
+            "View the selected note's header hierarchy as a collapsible tree. Jump to any section to scroll the editor there; expand and collapse subtrees to navigate long documents."
+        }
+        HelpTab::Setup => {
+            "First-run and onboarding wizard. Cycle theme, background, hint bar style, icon mode, and keybind preset with a live markdown preview. Re-open anytime from the command palette."
+        }
         HelpTab::Templates => {
             "Create reusable note templates with frontmatter and date variables. Pick a template from the notes view, search by name, and auto-fill date tokens when generating a new note. Drop .toml files in the templates directory to add your own."
         }
@@ -516,6 +522,62 @@ const ABOUT_SUGGESTIONS: &[HelpSuggestion] = &[
         "Run `` clin upgrade check `` to see if a new version of clin is available.",
     ),
 ];
+const CONTENT_TREE_SUGGESTIONS: &[HelpSuggestion] = &[
+    tip(
+        "Navigate sections",
+        "Press {content_tree:MoveUp} or {content_tree:MoveDown} to move between headers in the tree.",
+    ),
+    tip(
+        "Expand and collapse",
+        "Press {content_tree:ToggleCollapse} to expand or collapse the selected section's subtree.",
+    ),
+    tip(
+        "Expand all",
+        "Press {content_tree:ExpandAll} to expand every collapsed section in the tree at once.",
+    ),
+    tip(
+        "Collapse all",
+        "Press {content_tree:CollapseAll} to collapse every section back to the top-level headers.",
+    ),
+    tip(
+        "Open a heading",
+        "Press {content_tree:Open} to jump the editor cursor to the line of the selected heading.",
+    ),
+    tip(
+        "Back to notes",
+        "Press {content_tree:Back} to close the content tree and return to the notes list.",
+    ),
+    tip(
+        "Get help",
+        "Press {content_tree:Help} to open the help view for keybind references.",
+    ),
+];
+const SETUP_SUGGESTIONS: &[HelpSuggestion] = &[
+    tip(
+        "Navigate options",
+        "Press {setup:Up} or {setup:Down} to move between configuration options in the wizard.",
+    ),
+    tip(
+        "Cycle forward",
+        "Press {setup:CycleNext} to cycle to the next value for the selected option.",
+    ),
+    tip(
+        "Cycle backward",
+        "Press {setup:CyclePrev} to go back to the previous value for the selected option.",
+    ),
+    tip(
+        "Activate selection",
+        "Press {setup:Activate} to confirm and activate the currently highlighted choice.",
+    ),
+    tip(
+        "Finish wizard",
+        "Press {setup:Finish} to complete the setup wizard and apply all chosen settings.",
+    ),
+    tip(
+        "Live preview",
+        "As you cycle through themes and styles, a **live markdown preview** updates in real time to show your changes.",
+    ),
+];
 
 pub fn tab_suggestions(tab: HelpTab) -> &'static [HelpSuggestion] {
     match tab {
@@ -525,6 +587,8 @@ pub fn tab_suggestions(tab: HelpTab) -> &'static [HelpSuggestion] {
         HelpTab::Draw => DRAW_SUGGESTIONS,
         HelpTab::Canvas => CANVAS_SUGGESTIONS,
         HelpTab::Backup => BACKUP_SUGGESTIONS,
+        HelpTab::ContentTree => CONTENT_TREE_SUGGESTIONS,
+        HelpTab::Setup => SETUP_SUGGESTIONS,
         HelpTab::Templates => TEMPLATES_SUGGESTIONS,
         HelpTab::About => ABOUT_SUGGESTIONS,
     }
@@ -554,10 +618,15 @@ pub fn tab_popup_descriptions(tab: HelpTab) -> &'static [PopupHelp] {
         HelpTab::Draw => DRAW_POPUPS,
         HelpTab::Canvas => CANVAS_POPUPS,
         HelpTab::Backup => BACKUP_POPUPS,
+        HelpTab::ContentTree => CONTENT_TREE_POPUPS,
+        HelpTab::Setup => SETUP_POPUPS,
         HelpTab::Templates => TEMPLATES_POPUPS,
         HelpTab::About => &[],
     }
 }
+const CONTENT_TREE_POPUPS: &[PopupHelp] = &[];
+const SETUP_POPUPS: &[PopupHelp] = &[];
+
 
 const NOTES_POPUPS: &[PopupHelp] = &[
     PopupHelp {
@@ -817,6 +886,8 @@ mod tests {
                 HelpTab::Draw => 2,
                 HelpTab::Canvas => 3,
                 HelpTab::Backup => 2,
+                HelpTab::ContentTree => 0,
+                HelpTab::Setup => 0,
                 HelpTab::Templates => 1,
                 HelpTab::About => 0,
             }
@@ -829,10 +900,11 @@ mod tests {
             HelpTab::Draw,
             HelpTab::Canvas,
             HelpTab::Backup,
+            HelpTab::ContentTree,
+            HelpTab::Setup,
             HelpTab::Templates,
             HelpTab::About,
         ];
-
         for &tab in &tabs {
             let popups = tab_popup_descriptions(tab);
             let want = expected_count(tab);

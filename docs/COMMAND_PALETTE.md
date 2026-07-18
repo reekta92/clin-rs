@@ -21,10 +21,17 @@ pub trait Action: Send + Sync {
     fn category(&self) -> ActionCategory {
         ActionCategory::General
     }
-    fn glyph(&self) -> &'static str {
-        ""
+    fn glyph(&self) -> (&'static str, &'static str) {
+        ("", "")
     }
     fn execute(&self, app: &mut App, context_note_id: Option<&str>) -> Result<()>;
+
+    fn name_dynamic(&self, _app: &App) -> String {
+        self.name().to_string()
+    }
+    fn description_dynamic(&self, _app: &App) -> String {
+        self.description().to_string()
+    }
 }
 ```
 
@@ -33,7 +40,8 @@ pub trait Action: Send + Sync {
 | `id()` | Unique identifier string (e.g. `"note.encrypt"`) |
 | `name()` | Human-readable name for the palette |
 | `description()` | Short help text shown in palette |
-| `category()` | Grouping (Notes, Import, Append, Views, Settings) |
+| `category()` | Grouping (General, Notes, Import, Append, Views, Settings) |
+| `glyph()` | `(&'static str, &'static str)` — Nerd Font + Unicode pair, selected by `IconMode` |
 | `execute()` | Perform the action, mutating `App` state |
 
 ---
@@ -43,16 +51,20 @@ pub trait Action: Send + Sync {
 Actions are registered in a static lazy vector in `src/actions/mod.rs`:
 
 ```rust
-pub static ACTIONS: Lazy<Vec<Box<dyn Action>>> = Lazy::new(|| {
+pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyLock::new(|| {
     vec![
         Box::new(encrypt::EncryptNoteAction),
         Box::new(decrypt::DecryptNoteAction),
+        Box::new(ManageSubnotesList),
+        Box::new(insert_date::InsertDateAction),
         Box::new(OpenGraphAction),
         Box::new(content_tree::OpenContentTreeAction),
         Box::new(OpenBackupAction),
         Box::new(CreateDrawAction),
         Box::new(CreateCanvasAction),
         Box::new(ocr::OcrPasteAction),
+        Box::new(ocr::PasteImageAction),
+        Box::new(ocr::InsertImageFromFileAction),
         Box::new(SwitchThemeAction),
         Box::new(OpenSetupWizardAction),
         Box::new(SwitchKeybindPresetAction),
@@ -73,49 +85,61 @@ pub static ACTIONS: Lazy<Vec<Box<dyn Action>>> = Lazy::new(|| {
         Box::new(settings::ToggleTabIconsOnlyAction),
         Box::new(settings::SetWordGoalAction),
         Box::new(settings::ToggleFoldersFirstAction),
+        Box::new(settings::ToggleInlineInfoAction),
+        Box::new(settings::ToggleSmartFoldersAction),
+        Box::new(settings::ConfigureSmartFoldersAction),
         Box::new(settings::SetNoteGoalAction),
         Box::new(settings::CycleIconModeAction),
         Box::new(settings::CycleHintBarStyleAction),
-        Box::new(import::ImportAction { source: ImportSource::File, target: ImportTarget::NewNote }),
-        Box::new(import::ImportAction { source: ImportSource::File, target: ImportTarget::AppendCurrent }),
-        Box::new(import::ImportAction { source: ImportSource::Csv, target: ImportTarget::NewNote }),
-        Box::new(import::ImportAction { source: ImportSource::Csv, target: ImportTarget::AppendCurrent }),
-        Box::new(import::ImportAction { source: ImportSource::Json, target: ImportTarget::NewNote }),
-        Box::new(import::ImportAction { source: ImportSource::Json, target: ImportTarget::AppendCurrent }),
-        Box::new(import::ImportAction { source: ImportSource::Url, target: ImportTarget::NewNote }),
-        Box::new(import::ImportAction { source: ImportSource::Url, target: ImportTarget::AppendCurrent }),
-        Box::new(import::ImportAction { source: ImportSource::Clipboard, target: ImportTarget::NewNote }),
-        Box::new(import::ImportAction { source: ImportSource::Clipboard, target: ImportTarget::AppendCurrent }),
+        Box::new(info::ShowInfoAction),
+        Box::new(import::ImportAction { source: crate::popups::ImportSource::File, target: crate::popups::ImportTarget::NewNote }),
+        Box::new(import::ImportAction { source: crate::popups::ImportSource::File, target: crate::popups::ImportTarget::AppendCurrent }),
+        Box::new(import::ImportAction { source: crate::popups::ImportSource::Csv, target: crate::popups::ImportTarget::NewNote }),
+        Box::new(import::ImportAction { source: crate::popups::ImportSource::Csv, target: crate::popups::ImportTarget::AppendCurrent }),
+        Box::new(import::ImportAction { source: crate::popups::ImportSource::Json, target: crate::popups::ImportTarget::NewNote }),
+        Box::new(import::ImportAction { source: crate::popups::ImportSource::Json, target: crate::popups::ImportTarget::AppendCurrent }),
+        Box::new(import::ImportAction { source: crate::popups::ImportSource::Url, target: crate::popups::ImportTarget::NewNote }),
+        Box::new(import::ImportAction { source: crate::popups::ImportSource::Url, target: crate::popups::ImportTarget::AppendCurrent }),
+        Box::new(import::ImportAction { source: crate::popups::ImportSource::Clipboard, target: crate::popups::ImportTarget::NewNote }),
+        Box::new(import::ImportAction { source: crate::popups::ImportSource::Clipboard, target: crate::popups::ImportTarget::AppendCurrent }),
     ]
-});
+})
 ```
 
 Action metadata is cached separately:
 
 ```rust
-pub static ACTION_INFOS: Lazy<Vec<ActionInfo>> = Lazy::new(|| {
-    ACTIONS.iter().map(|a| ActionInfo {
-        id: a.id().into_owned(),
-        name: a.name().into_owned(),
-        description: a.description().into_owned(),
-        category: a.category(),
-        glyph: a.glyph().to_string(),
-    }).collect()
-});
+pub fn get_all_action_infos(app: &App) -> Vec<ActionInfo> {
+    let icon_mode = app.config.ui.icon_mode;
+    ACTIONS
+        .iter()
+        .map(|a| {
+            let (nerd, unicode) = a.glyph();
+            ActionInfo {
+                id: a.id().to_string(),
+                name: a.name_dynamic(app),
+                description: a.description_dynamic(app),
+                category: a.category(),
+                glyph: crate::ui::get_icon(nerd, unicode, icon_mode).to_string(),
+            }
+        })
+        .collect()
+}
 ```
 
 
 ## Available Actions
 
-Actions are grouped by category. See the `ACTIONS` registry in `src/actions/mod.rs` for the complete list (currently 39 actions).
+Actions are grouped by category. See the `ACTIONS` registry in `src/actions/mod.rs` for the complete list (currently 49 actions).
 
 | Category | Example Actions |
 |---|---|
-| **Notes** | Encrypt, Decrypt, Content Tree |
-| **Views** | Graph, Draw, Canvas, Backup, Open Setup Wizard |
-| **Settings** | Theme, Keybind Preset, Layout Toggle, External Editor Toggle, Preview Toggle, Sort Cycle, Calendar Toggle, Show All Files, Folders First, Word/Note Goal, Icon Mode, Hint Bar Style |
+| **General** | Insert Date |
+| **Notes** | Encrypt, Decrypt, Manage Sub-notes, Content Tree, Show Info |
+| **Views** | Graph, Draw, Canvas, Backup, Setup Wizard |
+| **Settings** | Theme, Keybind Preset, Layout Toggle, Layout Edit Mode, Preview Toggle, Preview Wrap, Calendar, Line Numbers, Confirm Delete, Pinned On Top, Confirm Quit, Preview Encryption, Sort Cycle, Show Hidden Files, Show All Files, Tab Icons Only, Word Goal, Note Goal, Folders First, Inline Info, Smart Folders, Configure Smart Folders, Icon Mode, Hint Bar Style, External Editor |
 | **Import** | File/CSV/JSON/URL/Clipboard → New Note |
-| **Append** | File/CSV/JSON/URL/Clipboard → Append to Current, OCR Paste |
+| **Append** | File/CSV/JSON/URL/Clipboard → Append to Current, OCR Paste, Paste Image, Insert Image From File |
 
 **Note:** Import and URL actions require `markitdown` (pip install markitdown) or `pandoc` installed. URL import also requires `curl`. CSV and JSON conversions are pure-Rust and always available.
 
@@ -219,9 +243,9 @@ The palette is modeless-modal: it's rendered as a centered popup over the curren
        fn category(&self) -> ActionCategory {
            ActionCategory::General
        }
-       fn glyph(&self) -> &'static str {
-           "\u{f059}" // question-circle
-       }
+        fn glyph(&self) -> (&'static str, &'static str) {
+            ("\u{f059}", "\u{2753}") // question-circle
+        }
        fn execute(&self, app: &mut App, context_note_id: Option<&str>) -> Result<()> {
            // your logic here
            Ok(())

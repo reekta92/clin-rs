@@ -26,6 +26,7 @@ Full reference of all configuration options for clin-rs.
 | `enable_key_sequences` | `bool` | `false` | Enable multi-key sequences (e.g. `"g g"`, `"Space f"`). Requires a preset that uses them |
 | `preview_expand_mode` | `enum` | `"inline"` | Ctrl+e behavior: `"inline"` (maximize the preview pane) or `"external"` (run `preview_command` on the note) |
 | `preview_command` | `String` | — | Command for external preview (Ctrl+e when `preview_expand_mode = "external"`). Shell-split with the note's temp file appended; falls back to `$PAGER`, then `less` |
+| `auto_refresh` | `bool` | `true` | Reload notes list on external file changes (notify watcher) |
 
 ### `[list]`
 
@@ -52,6 +53,12 @@ Full reference of all configuration options for clin-rs.
 | `calendar_position` | `enum` | `"bottom"` | Calendar position: `"top"`, `"bottom"` |
 | `week_start` | `enum` | `"sunday"` | Start day for the rolling-weeks calendar: `"sunday"` or `"monday"` |
 | `sections` | `array` | `["calendar","goals"]` | Bottom-strip widgets (max 2): `calendar`, `goals`, `draw`, `graf`. `calendar_enabled` controls strip on/off |
+| `smart_folders_enabled` | `bool` | `false` | Enable virtual smart folders (Today, This Week, Untagged) |
+| `folder_graph_preview` | `bool` | `true` | Show folder graph preview for all folders |
+| `pinned_folders` | `array` | `[]` | List of always-pinned folder paths |
+| `expanded_folders` | `array` | `[]` | List of always-expanded folder paths |
+| `default_expand_depth` | `usize` | — | Default tree expand depth (`None` = remember per-folder state) |
+| `custom_smart_folders` | `array` | `[]` | User-defined smart folder rules. Each entry: `{name, tags=[], title_contains=..., folder_prefix=..., updated_within_days=...}` |
 
 ### `[editor]`
 
@@ -61,8 +68,12 @@ Full reference of all configuration options for clin-rs.
 | `external_enabled` | `bool` | `false` | Enable external editor mode |
 | `preview_enabled` | `bool` | `false` | Show markdown preview panel in editor by default |
 | `show_line_numbers` | `bool` | `true` | Show line numbers in the editor |
+| `date_format` | `String` | `"%Y-%m-%d %H:%M"` | Format used by the insert-date action |
+| `soft_wrap` | `bool` | `false` | Soft-wrap the editor body |
+| `edit_mode_highlight` | `bool` | `true` | Highlight the active READ/EDIT mode |
 
 ### `[ui]`
+
 
 | Option | Type | Default | Description |
 |---|---|---|---|
@@ -243,6 +254,26 @@ These inject pre-styled groups of cells (e.g., from tab/status systems) and rema
 - `{pending}`: Pending keybind sequence buffer indicator
 
 ---
+
+### `[image]`
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `enabled` | `bool` | `true` | Master toggle for native pixel image rendering |
+| `max_dimension` | `u32` | `2048` | Maximum decode dimension in pixels |
+| `cache_size` | `usize` | `32` | LRU cache entry count |
+| `preview_rows` | `u8` | `8` | Rows occupied by preview images |
+| `attachments_subdir` | `String` | `"attachments"` | Subdirectory for pasted/imported image attachments |
+
+Example:
+```toml
+[image]
+enabled = true
+max_dimension = 2048
+cache_size = 32
+preview_rows = 8
+attachments_subdir = "attachments"
+```
 
 ### `[graf]`
 
@@ -499,7 +530,7 @@ Key combos are strings like `"a"`, `"Enter"`, `"Ctrl+q"`, `"Ctrl+Shift+z"`, `"Al
 | `scroll_down` | `Down`, `j` | Scroll down |
 | `search` | `/`, `Ctrl+f` | Search help |
 
-> Note: digits `1`–`9` jump directly to the nine help tabs (Notes→About). These are fixed and not configurable in `keybinds.toml`.
+> Note: digits `1`–`9` jump directly to the first nine help tabs (Notes→Templates); the tenth tab (About) is reached via `Tab`/`Right`. These are fixed and not configurable in `keybinds.toml`.
 
 ### Graph Actions (`[graph]`)
 
