@@ -2,6 +2,11 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.10.0-rc.1] - 2026-07-18
+
+### Performance
+
+- Cache folder list in FolderGraph preview, drop per-frame O(N) scan
 ## [0.10.0-rc.0] - 2026-07-18
 
 ### Added
@@ -24,6 +29,10 @@ All notable changes to clin are documented in this file.
 ### Performance
 
 - Coalesce Moved events and gate redundant hover draws
+
+### Release
+
+- V0.10.0-rc.0
 
 ### Revert
 

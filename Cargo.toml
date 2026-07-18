@@ -1,6 +1,6 @@
 [package]
 name = "clin-rs"
-version = "0.10.0-rc.0"
+version = "0.10.0-rc.1"
 edition = "2024"
 rust-version = "1.90.0"
 description = "Feature-packed terminal note management app inspired by Obsidian"
