@@ -2,16 +2,32 @@
 
 All notable changes to clin are documented in this file.
 
-## [Unreleased]
+## [0.10.0-rc.0] - 2026-07-18
+
+### Added
+
+- Render FolderGraph note card with markdown
+- Scroll note content by page
+- Extend help view to 10 tabs (ContentTree, Setup)
 
 ### Changed
 
-- **Rename "Content tree" → "Outline"** — module paths, type names, user-facing strings,
-  config keys (`[content_tree]` → `[outline]`, `[statusline.content_tree]` → `[statusline.outline]`),
-  statusline template tokens (`{tree_*}` → `{outline_*}`), and command palette id
-  (`content_tree.open` → `outline.open`). Existing user configs for the old keys are
-  silently dropped — update `keybinds.toml` and `config.toml` to use the new `outline` keys.
+- Rename "Content tree" → "Outline" across code, config, and docs
+- Remove redundant full-redraw clears from event handlers
 
+### Fixed
+
+- Track visual width, fit tables to pane, fix CJK in snapshot
+- Cycle pages on middle-click, fix page indicator
+- Remove Phase 2 render gate that caused ~500ms hover lag
+
+### Performance
+
+- Coalesce Moved events and gate redundant hover draws
+
+### Revert
+
+- Remove ContentTree and Setup tabs
 ## [0.10.0-beta.5] - 2026-07-18
 
 ### Added
@@ -43,6 +59,7 @@ All notable changes to clin are documented in this file.
 
 ### Release
 
+- V0.10.0-beta.5
 - V0.10.0-beta.4
 ## [0.10.0-beta.3] - 2026-07-15
 
