@@ -270,7 +270,25 @@ fn draw_strip_graf(
     }
 }
 
-/// Render a GraphState using halfblocks into a Rect.
+
+/// Shorten a line segment so each endpoint stops at the border of a circle
+/// of the given radius centered on that endpoint. Returns the original
+/// endpoints unchanged when the two circles overlap (distance <= r1 + r2)
+/// or the endpoints coincide, so degenerate cases don't produce NaNs.
+fn shorten_segment_to_borders(
+    x1: f64, y1: f64, r1: f64,
+    x2: f64, y2: f64, r2: f64,
+) -> (f64, f64, f64, f64) {
+    let dx = x2 - x1;
+    let dy = y2 - y1;
+    let dist = dx.hypot(dy);
+    if dist <= r1 + r2 || dist == 0.0 {
+        return (x1, y1, x2, y2);
+    }
+    let ux = dx / dist;
+    let uy = dy / dist;
+    (x1 + ux * r1, y1 + uy * r1, x2 - ux * r2, y2 - uy * r2)
+}
 /// Render subnote graph on a ratatui Canvas with hollow circles, zoom/pan, and content reveal.
 pub fn render_subnote_graph_static(
     frame: &mut Frame,
@@ -345,15 +363,10 @@ pub fn render_subnote_graph_static(
 
     // Build shapes.
     let mut edges: Vec<CanvasLine> = Vec::new();
-    // Containment edges: parent -> each subnote.
     for &(sx, sy) in &positions {
-        edges.push(CanvasLine {
-            x1: 0.0,
-            y1: 0.0,
-            x2: sx,
-            y2: sy,
-            color: theme.border,
-        });
+        let (x1, y1, x2, y2) =
+            shorten_segment_to_borders(0.0, 0.0, parent_r, sx, sy, sub_r);
+        edges.push(CanvasLine { x1, y1, x2, y2, color: theme.border });
     }
     // Wikilink edges: subnote -> subnote.
     let title_to_idx: std::collections::HashMap<String, usize> = subnotes
@@ -371,18 +384,14 @@ pub fn render_subnote_graph_static(
                 let key = if i < j { (i, j) } else { (j, i) };
                 if drawn.insert(key) {
                     let (tx, ty) = positions[j];
-                    edges.push(CanvasLine {
-                        x1: sx,
-                        y1: sy,
-                        x2: tx,
-                        y2: ty,
-                        color: theme.success,
-                    });
+                    let (x1, y1, x2, y2) =
+                        shorten_segment_to_borders(sx, sy, sub_r, tx, ty, sub_r);
+                    edges.push(CanvasLine { x1, y1, x2, y2, color: theme.success });
                 }
             }
         }
-    }
 
+    }
     let parent_circle = HollowCircle {
         cx: 0.0,
         cy: 0.0,
@@ -750,6 +759,8 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             let is_pinned = app.list.grid_folder == VIRTUAL_PINNED_PATH;
             let is_smart =
                 app.list.grid_folder == VIRTUAL_SMART_PATH || app.list.grid_folder.starts_with('@');
+            let is_subnotes = app.list.grid_folder == VIRTUAL_SUBNOTES_PATH
+                || crate::app::App::is_subnotes_parent_grid_path(&app.list.grid_folder);
             let mut spans = Vec::new();
             if is_pinned {
                 spans.push(Span::styled(
@@ -804,6 +815,43 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                         label.to_string(),
                         Style::default().fg(app.app_theme.fg),
                     ));
+                }
+            } else if is_subnotes {
+                let sub_icon =
+                    crate::ui::get_icon("\u{f02c}", "\u{1f3f7}", app.config.ui.icon_mode);
+                let sub_text = format!(" {sub_icon} Subnotes");
+                let sub_w = sub_text.chars().count() as u16;
+                let is_hovered = app.mouse_pos.is_some_and(|(col, row)| {
+                    row == list_area.y + 1
+                        && col >= list_area.x
+                        && col < list_area.x + sub_w
+                        && app.list.grid_folder != VIRTUAL_SUBNOTES_PATH
+                });
+                spans.push(Span::styled(
+                    sub_text,
+                    if is_hovered {
+                        app.app_theme.hover_style()
+                    } else {
+                        Style::default()
+                            .fg(app.app_theme.tag)
+                            .add_modifier(Modifier::BOLD)
+                    },
+                ));
+                if crate::app::App::is_subnotes_parent_grid_path(&app.list.grid_folder) {
+                    let parent_id = crate::app::App::subnotes_parent_id_from_grid_path(
+                        &app.list.grid_folder,
+                    );
+                    let label = app
+                        .notes
+                        .iter()
+                        .find(|n| n.id == parent_id)
+                        .map(|n| n.title.clone())
+                        .unwrap_or_else(|| parent_id.to_string());
+                    spans.push(Span::styled(
+                        " / ",
+                        Style::default().fg(app.app_theme.muted),
+                    ));
+                    spans.push(Span::styled(label, Style::default().fg(app.app_theme.fg)));
                 }
             } else {
                 let vault_icon =
@@ -923,29 +971,17 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                         let is_parent = name == "..";
                         let (ic, label) = if is_pinned {
                             (
-                                crate::ui::get_char(
-                                    '\u{f4cc}',
-                                    '\u{1f4cc}',
-                                    app.config.ui.icon_mode,
-                                ),
+                                crate::ui::get_char('\u{f4cc}', '\u{1f4cc}', app.config.ui.icon_mode),
                                 "F",
                             )
                         } else if is_parent {
                             (
-                                crate::ui::get_char(
-                                    '\u{f062}',
-                                    '\u{2b06}',
-                                    app.config.ui.icon_mode,
-                                ),
+                                crate::ui::get_char('\u{f062}', '\u{2b06}', app.config.ui.icon_mode),
                                 "^",
                             )
                         } else {
                             (
-                                crate::ui::get_char(
-                                    '\u{f07b}',
-                                    '\u{1f4c1}',
-                                    app.config.ui.icon_mode,
-                                ),
+                                crate::ui::get_char('\u{f07b}', '\u{1f4c1}', app.config.ui.icon_mode),
                                 "F",
                             )
                         };

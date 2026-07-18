@@ -249,7 +249,7 @@ fn run_notes(action: NotesCmd) -> Result<()> {
             }
         }
         NotesCmd::Quick { content, title } => {
-            let storage = Storage::init()?;
+            let mut storage = Storage::init()?;
 
             let id = Uuid::new_v4().simple().to_string();
             let final_title = title.unwrap_or_else(|| "Quick Note".to_string());

@@ -14,8 +14,8 @@ impl App {
         folder: String,
         note_id: Option<String>,
     ) {
-        if target == ImportTarget::NewNote && Self::is_virtual_pinned_path(&folder) {
-            self.set_temporary_status_static("Cannot create note inside virtual Pinned");
+        if target == ImportTarget::NewNote && Self::is_virtual_path(&folder) {
+            self.set_temporary_status_static("Cannot create note inside a virtual folder");
             return;
         }
 

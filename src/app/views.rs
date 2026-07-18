@@ -222,7 +222,7 @@ impl App {
     }
 
     pub fn begin_create_draw_in_folder(&mut self, folder: String) {
-        let folder = if Self::is_virtual_pinned_path(&folder) {
+        let folder = if Self::is_virtual_path(&folder) {
             String::new()
         } else {
             folder
@@ -250,7 +250,7 @@ impl App {
     }
 
     pub fn begin_create_canvas_in_folder(&mut self, folder: String) {
-        let folder = if Self::is_virtual_pinned_path(&folder) {
+        let folder = if Self::is_virtual_path(&folder) {
             String::new()
         } else {
             folder

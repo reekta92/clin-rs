@@ -803,7 +803,7 @@ impl Storage {
         }
     }
 
-    pub fn save_note(&self, id: &str, note: &Note) -> Result<String> {
+    pub fn save_note(&mut self, id: &str, note: &Note) -> Result<String> {
         let preferred_stem = self.note_file_stem_from_title(&note.title);
 
         let old_path = self.note_path(id);
@@ -865,12 +865,14 @@ impl Storage {
             if old_path_to_remove.exists() {
                 fs::remove_file(&old_path_to_remove).context("failed to rename note file")?;
             }
+            // Keep subnotes DB key in sync with the note's new id.
+            let _ = self.migrate_subnotes_parent(id, &target_id);
         }
 
         Ok(target_id)
     }
 
-    pub fn rename_note(&self, id: &str, new_title: &str) -> Result<String> {
+    pub fn rename_note(&mut self, id: &str, new_title: &str) -> Result<String> {
         let old_ext = std::path::Path::new(id)
             .extension()
             .and_then(|e| e.to_str())
@@ -895,7 +897,7 @@ impl Storage {
         self.save_note(id, &note)
     }
 
-    pub fn duplicate_note(&self, id: &str, target_folder: &str) -> Result<String> {
+    pub fn duplicate_note(&mut self, id: &str, target_folder: &str) -> Result<String> {
         let source_ext = Path::new(id)
             .extension()
             .and_then(|e| e.to_str())
@@ -1163,7 +1165,7 @@ impl Storage {
         Ok(())
     }
 
-    pub fn move_note(&self, id: &str, new_folder: &str) -> Result<String> {
+    pub fn move_note(&mut self, id: &str, new_folder: &str) -> Result<String> {
         let old_path = self.note_path(id);
         if !old_path.exists() {
             anyhow::bail!("Note does not exist");
@@ -1194,6 +1196,7 @@ impl Storage {
         }
 
         fs::rename(&old_path, &new_path).context("failed to move note")?;
+        let _ = self.migrate_subnotes_parent(id, &target_id);
         Ok(target_id)
     }
 
@@ -1412,6 +1415,46 @@ impl Storage {
         Ok(())
     }
 
+    /// Re-key the subnotes DB when a parent note's id changes (save with new
+    /// title stem / rename / move). No-op when `old_id == new_id`, when the DB
+    /// file is absent, when no entry exists under `old_id`, or when the DB fails
+    /// to decode (corrupt DBs are left intact, never destroyed).
+    pub fn migrate_subnotes_parent(&mut self, old_id: &str, new_id: &str) -> Result<()> {
+        if old_id == new_id {
+            return Ok(());
+        }
+        let path = self.subnotes_db_path();
+        if !path.exists() {
+            return Ok(());
+        }
+        let mut bytes = fs::read(&path).context("failed to read subnotes database")?;
+        obfuscate(&mut bytes);
+        let mut db: HashMap<String, SubNotePayload> =
+            match bincode::serde::decode_from_slice(&bytes, bincode::config::standard()) {
+                Ok((map, _)) => map,
+                Err(_) => return Ok(()),
+            };
+        let Some(payload) = db.remove(old_id) else {
+            return Ok(());
+        };
+        db.insert(new_id.to_string(), payload);
+        let mut out =
+            bincode::serde::encode_to_vec(&db, bincode::config::standard())
+                .context("failed to serialize subnotes database")?;
+        obfuscate(&mut out);
+        #[cfg(unix)]
+        {
+            crate::fsutil::atomic_write_with_mode(&path, &out, 0o600)
+                .context("failed to write subnotes database")?;
+        }
+        #[cfg(not(unix))]
+        {
+            crate::fsutil::atomic_write(&path, &out)
+                .context("failed to write subnotes database")?;
+        }
+        Ok(())
+    }
+
     pub fn get_notes_with_subnotes(&self) -> Result<HashSet<String>> {
         let path = self.subnotes_db_path();
         if !path.exists() {
@@ -1554,7 +1597,7 @@ mod tests {
     fn test_mtime_updates_on_save() -> Result<()> {
         let temp = tempfile::tempdir()?;
         let notes_dir = temp.path().to_path_buf();
-        let storage = Storage {
+        let mut storage = Storage {
             data_dir: PathBuf::new(),
             config_dir: PathBuf::new(),
             notes_dir: notes_dir.clone(),
@@ -1595,7 +1638,7 @@ mod tests {
     fn test_duplicate_preserves_extension() -> Result<()> {
         let temp = tempfile::tempdir()?;
         let notes_dir = temp.path().to_path_buf();
-        let storage = Storage {
+        let mut storage = Storage {
             data_dir: PathBuf::new(),
             config_dir: PathBuf::new(),
             notes_dir: notes_dir.clone(),

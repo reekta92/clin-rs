@@ -125,13 +125,27 @@ impl App {
             self.refresh_subnotes_view_cache();
             self.subnotes_view_cache.clone()
         };
-        // Map parent_id -> summary_idx for title/icon lookup.
+        // Map parent_id -> summary_idx for title/icon/action lookup. Try exact id
+        // first; fall back to matching by file stem so subnotes attached before
+        // the id-migration fix still resolve after a title or folder change.
         let subnote_parent_idx: std::collections::HashMap<&str, usize> = subnotes_cache
             .iter()
             .filter_map(|(pid, _)| {
+                if let Some(i) = self.notes.iter().position(|n| n.id == *pid) {
+                    return Some((pid.as_str(), i));
+                }
+                let pid_stem = std::path::Path::new(pid)
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or(pid);
                 self.notes
                     .iter()
-                    .position(|n| n.id == *pid)
+                    .position(|n| {
+                        std::path::Path::new(&n.id)
+                            .file_stem()
+                            .and_then(|s| s.to_str())
+                            == Some(pid_stem)
+                    })
                     .map(|i| (pid.as_str(), i))
             })
             .collect();

@@ -31,7 +31,7 @@ impl App {
 
     pub fn select_template(&mut self) {
         let folder = if self.list.notes_layout == crate::config::NotesLayout::Grid {
-            if Self::is_virtual_pinned_path(&self.list.grid_folder) {
+            if Self::is_virtual_path(&self.list.grid_folder) {
                 String::new()
             } else {
                 self.list.grid_folder.clone()

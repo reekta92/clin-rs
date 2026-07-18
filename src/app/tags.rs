@@ -1,5 +1,4 @@
 use super::*;
-use crate::list_view::*;
 use crate::popups::*;
 use std::collections::HashSet;
 

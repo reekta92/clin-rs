@@ -132,7 +132,7 @@ impl App {
             None => String::new(),
         };
 
-        let current = if Self::is_virtual_pinned_path(&current) {
+        let current = if Self::is_virtual_path(&current) {
             String::new()
         } else {
             current
@@ -425,7 +425,7 @@ impl App {
 
     pub fn start_blank_note_with_title(&mut self, folder: String, title: String) {
         let mut new_id = self.storage.new_note_id();
-        if !folder.is_empty() && !Self::is_virtual_pinned_path(&folder) {
+        if !folder.is_empty() && !Self::is_virtual_path(&folder) {
             new_id = format!("{folder}/{new_id}");
         }
 
@@ -470,7 +470,7 @@ impl App {
         let rendered = template.render();
 
         let mut new_id = self.storage.new_note_id();
-        if !folder.is_empty() && !Self::is_virtual_pinned_path(&folder) {
+        if !folder.is_empty() && !Self::is_virtual_path(&folder) {
             new_id = format!("{folder}/{new_id}");
         }
 
@@ -520,7 +520,7 @@ impl App {
         let rendered = template.render();
 
         let mut new_id = self.storage.new_note_id();
-        if !folder.is_empty() && !Self::is_virtual_pinned_path(&folder) {
+        if !folder.is_empty() && !Self::is_virtual_path(&folder) {
             new_id = format!("{folder}/{new_id}");
         }
 
@@ -621,8 +621,8 @@ impl App {
         } else {
             self.get_current_folder_context()
         };
-        if Self::is_virtual_pinned_path(&parent_path) {
-            self.set_temporary_status_static("Cannot create folder inside virtual Pinned");
+        if Self::is_virtual_path(&parent_path) {
+            self.set_temporary_status_static("Cannot create folder inside a virtual folder");
             return;
         }
         let mut input = crate::ui::make_popup_textarea(&self.app_theme, "");
@@ -651,8 +651,8 @@ impl App {
                 self.set_temporary_status_static("Cannot rename Vault root");
                 return;
             }
-            if Self::is_virtual_pinned_path(path) {
-                self.set_temporary_status_static("Cannot rename virtual Pinned folder");
+            if Self::is_virtual_path(path) {
+                self.set_temporary_status_static("Cannot rename virtual folder");
                 return;
             }
             let mut input = crate::ui::make_popup_textarea(&self.app_theme, "");
@@ -704,6 +704,7 @@ impl App {
             Err(err) => self.set_temporary_status(&format!("Open location failed: {err:#}")),
         }
     }
+
 
     pub fn get_selected_note_id(&self) -> Option<String> {
         if let Some(id) = &self.editor.editing_id {
@@ -768,7 +769,7 @@ impl App {
 
     pub fn begin_create_select_format(&mut self) {
         let folder = if self.list.notes_layout == crate::config::NotesLayout::Grid {
-            if Self::is_virtual_pinned_path(&self.list.grid_folder) {
+            if Self::is_virtual_path(&self.list.grid_folder) {
                 String::new()
             } else {
                 self.list.grid_folder.clone()
@@ -799,7 +800,7 @@ impl App {
     }
 
     pub fn begin_create_text_in_folder(&mut self, folder: String) {
-        let folder = if Self::is_virtual_pinned_path(&folder) {
+        let folder = if Self::is_virtual_path(&folder) {
             String::new()
         } else {
             folder
@@ -818,7 +819,7 @@ impl App {
     }
 
     pub fn begin_create_note_in_folder(&mut self, folder: String) {
-        let folder = if Self::is_virtual_pinned_path(&folder) {
+        let folder = if Self::is_virtual_path(&folder) {
             String::new()
         } else {
             folder
@@ -958,7 +959,7 @@ impl App {
     }
 
     pub fn start_note_with_content(&mut self, folder: String, title: String, content: String) {
-        let folder = if Self::is_virtual_pinned_path(&folder) {
+        let folder = if Self::is_virtual_path(&folder) {
             String::new()
         } else {
             folder
@@ -1004,9 +1005,8 @@ impl App {
         if let Some(VisualItem::Note { summary_idx, .. }) =
             self.list.visual_list.get(self.list.visual_index)
         {
-            let summary_idx = *summary_idx;
-            let id = self.notes[summary_idx].id.clone();
-            let note = &self.notes[summary_idx];
+            let id = self.notes[*summary_idx].id.clone();
+            let note = &self.notes[*summary_idx];
             let mut input = crate::ui::make_popup_textarea(&self.app_theme, "");
             input.insert_str(&note.title);
             input.set_block(

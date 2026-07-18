@@ -716,6 +716,12 @@ impl App {
         path.strip_prefix("subnotes:").unwrap_or(path)
     }
 
+    pub(crate) fn is_virtual_path(path: &str) -> bool {
+        Self::is_virtual_pinned_path(path)
+            || Self::is_virtual_subnotes_path(path)
+            || Self::is_subnotes_parent_grid_path(path)
+    }
+
     /// Rebuild cached display lines from the current visual_list.
     /// Mirrors the formatting logic from draw_list_view so per-frame work is O(1).
     fn build_display_lines(&mut self) {
@@ -724,7 +730,7 @@ impl App {
         for (vi, item) in visual.iter().enumerate() {
             match item {
                 VisualItem::Folder {
-                    path: _,
+                    path,
                     name,
                     depth,
                     is_expanded,
@@ -732,6 +738,7 @@ impl App {
                     recursive_count,
                     stale,
                     is_pinned,
+                    ..
                 } => {
                     let indent = "  ".repeat(*depth);
                     let is_virtual_pinned = name == crate::app::VIRTUAL_PINNED_LABEL;
@@ -767,18 +774,25 @@ impl App {
                                 )
                             )
                         }
-                    } else if *is_expanded {
-                        format!(
-                            "{} {}",
-                            crate::ui::get_icon("\u{f078}", "\u{25bc}", self.config.ui.icon_mode),
-                            crate::ui::get_icon("\u{f114}", "\u{1f4c2}", self.config.ui.icon_mode)
-                        )
                     } else {
-                        format!(
-                            "{} {}",
-                            crate::ui::get_icon("\u{f054}", "\u{25b6}", self.config.ui.icon_mode),
+                        let folder_glyph = if *path == crate::app::VIRTUAL_SUBNOTES_PATH {
+                            crate::ui::get_icon("\u{f02c}", "\u{1f3f7}", self.config.ui.icon_mode)
+                        } else {
                             crate::ui::get_icon("\u{f114}", "\u{1f4c2}", self.config.ui.icon_mode)
-                        )
+                        };
+                        if *is_expanded {
+                            format!(
+                                "{} {}",
+                                crate::ui::get_icon("\u{f078}", "\u{25bc}", self.config.ui.icon_mode),
+                                folder_glyph
+                            )
+                        } else {
+                            format!(
+                                "{} {}",
+                                crate::ui::get_icon("\u{f054}", "\u{25b6}", self.config.ui.icon_mode),
+                                folder_glyph
+                            )
+                        }
                     };
                     let color = if *is_pinned {
                         self.app_theme.heading
