@@ -76,7 +76,7 @@
 #### Notes View
 
 #### Edit View
-- [ ] **Rework as side panel** — replace editor view with a feature-rich side panel
+- [ ] **Actions side pane** — a side pane that allows you to do some special actions like inserting an OCR result etc.
 - [ ] **Cursor insert** — insert content at cursor from command palette actions
 
 #### Graph View
@@ -108,6 +108,12 @@
 - [ ] **Scrum table support** — support for creating interactive scrum tables like to-do, doing, done etc.
 - [ ] **Tasks** — longterm to-dos basically, can remind the user with a notification
 - [ ] **todo.txt** — todo.txt standardization support
+
+#### Project Management View
+- [ ] **Project management view** — a new view that specifically focuses on managing project documentation files/wikis.
+- [ ] **Assigning docs to files** — assign specific sections of a document file or the entire file to 1 or more project files so when any of the project files updates, user is notified that the documentation requires updates too.
+- [ ] **Notifications** — notify users when documents/wiki requires update.
+- [ ] **Context aware search** — a search action that allows user to search a context that shows similar results from the docs/wiki. For example searching "command palette/how" shows the "How" section of the "Command Palette" system.
 
 #### Databases View
 - [ ] **Database view** — database feature similar to Obsidian's databases
