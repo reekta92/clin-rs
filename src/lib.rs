@@ -19,6 +19,7 @@ pub mod keybinds;
 pub mod list_view;
 pub mod markdown;
 pub mod migration;
+pub mod hover;
 pub mod overlay;
 pub mod palette;
 pub mod pinstar;
@@ -959,7 +960,9 @@ fn run_app(
             graf.overlay_update(&mut app.config);
         }
 
-        if let Err(e) = terminal.draw(|frame| crate::ui::draw_ui(frame, app, focus)) {
+        if app.skip_next_draw {
+            app.skip_next_draw = false;
+        } else if let Err(e) = terminal.draw(|frame| crate::ui::draw_ui(frame, app, focus)) {
             return Err(e.into());
         }
 
@@ -1029,9 +1032,33 @@ fn run_app(
                 {
                     crate::force_quit();
                 }
-                ev @ (Event::Key(_) | Event::Mouse(_)) => {
-                    if let Event::Mouse(mouse_event) = &ev {
-                        app.mouse_pos = Some((mouse_event.column, mouse_event.row));
+                mut ev @ (Event::Key(_) | Event::Mouse(_)) => {
+                    // Phase 1: coalesce Moved events — drain all queued Moved
+                    // events, keeping only the last position
+                    let _coalesced = if let Event::Mouse(mouse_event) = &ev {
+                        if mouse_event.kind == ratatui::crossterm::event::MouseEventKind::Moved {
+                            let mut last = *mouse_event;
+                            while event::poll(Duration::ZERO)? {
+                                match event::read()? {
+                                    Event::Mouse(next)
+                                        if next.kind == ratatui::crossterm::event::MouseEventKind::Moved =>
+                                    {
+                                        last = next;
+                                    }
+                                    _ => break,
+                                }
+                            }
+                            app.mouse_pos = Some((last.column, last.row));
+                            Some(Event::Mouse(last))
+                        } else {
+                            app.mouse_pos = Some((mouse_event.column, mouse_event.row));
+                            None
+                        }
+                    } else {
+                        None
+                    };
+                    if let Some(ev2) = _coalesced {
+                        ev = ev2;
                     }
                     // Global popups & palette get first chance to consume
                     let size = terminal.size().context("failed to get terminal size")?;
@@ -1417,6 +1444,30 @@ fn run_app(
                             }
                         }
                         _ => {}
+                    }
+
+                    // Phase 2: render gate — skip redraw if Moved hasn't changed hover target
+                    // Exclude continuous-render views (Graph/Draw/Canvas)
+                    if !matches!(app.mode, ViewMode::Graph | ViewMode::Draw | ViewMode::Canvas) {
+                        if let Event::Mouse(ref mouse_event) = ev {
+                            if mouse_event.kind == ratatui::crossterm::event::MouseEventKind::Moved {
+                                let hover_key = crate::hover::compute_hover_key(app, area);
+                                if hover_key == app.last_hover_key {
+                                    app.skip_next_draw = true;
+                                } else {
+                                    app.last_hover_key = hover_key;
+                                }
+                            } else {
+                                // Non-Moved mouse events (clicks, scrolls) always trigger a draw
+                                app.skip_next_draw = false;
+                            }
+                        } else {
+                            // Keyboard events always trigger a draw
+                            app.skip_next_draw = false;
+                        }
+                    } else {
+                        // Continuous-render views (Graph/Draw/Canvas) — never gate
+                        app.skip_next_draw = false;
                     }
                 }
                 Event::Paste(data) if app.mode == ViewMode::Edit => match focus {
