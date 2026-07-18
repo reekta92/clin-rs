@@ -75,7 +75,7 @@
 
 #### Notes View
 
-#### Editor
+#### Edit View
 - [ ] **Rework as side panel** — replace editor view with a feature-rich side panel
 - [ ] **Cursor insert** — insert content at cursor from command palette actions
 
@@ -85,7 +85,7 @@
 - [ ] **Assign tags** — tag notes directly from graph
 - [ ] **Right-click menu** — context actions on nodes
 
-#### Canvas
+#### Pinstar View
 - [ ] **Insert note links** — embed note references as objects
 - [ ] **QOL** — UI improvements for telling the state of the node, text alignment options for nodes
 - [ ] **Orthagonal connections** — arrow like connections between nodes, toggleable
@@ -94,7 +94,7 @@
 - [ ] **Node properties** — more properties for nodes like shapes(as tags), border type etc.
 - [ ] **New node types** — more node types like link nodes, etc. (image nodes implemented as placeholders)
 
-#### Draw
+#### Draw View
 - [ ] **Text size** — changable text size
 - [ ] **UI indicators** — indicators like how big is the canvas, the scale etc.
 
@@ -103,13 +103,13 @@
 - [ ] **Advanced clipboard** — multi-selection copy/paste
 - [ ] **Date calculator** — date/time calculator for doing operations like "today + 3 months" or "today <> 12/12/2026"(diff operation) etc.
 
-#### To-Do
+#### To-Do View
 - [ ] **To-do view** — a new view for specifically managing to-dos
 - [ ] **Scrum table support** — support for creating interactive scrum tables like to-do, doing, done etc.
 - [ ] **Tasks** — longterm to-dos basically, can remind the user with a notification
 - [ ] **todo.txt** — todo.txt standardization support
 
-#### Databases
+#### Databases View
 - [ ] **Database view** — database feature similar to Obsidian's databases
 
 #### Configuration
