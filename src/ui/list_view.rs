@@ -368,7 +368,7 @@ pub fn render_subnote_graph_static(
                 da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
             });
         if let Some((_, sub)) = focused {
-            draw_content_card(frame, rect, &sub.title, &sub.content, theme);
+            draw_content_card(frame, rect, &sub.title, &sub.content, 0, theme);
             return; // Skip all graph rendering — only the content card shows.
         }
     }
@@ -514,7 +514,14 @@ pub fn render_folder_graph_static(
         if zoom < EXIT_NOTE_THRESHOLD {
             app.list.folder_graph_focused_note = None;
         } else {
-            draw_content_card(frame, rect, &title, &content, theme);
+            draw_content_card(
+                frame,
+                rect,
+                &title,
+                &content,
+                app.list.folder_graph_note_scroll,
+                theme,
+            );
             return;
         }
     }
@@ -696,6 +703,7 @@ pub fn render_folder_graph_static(
         }) {
             if closest.is_note {
                 app.list.folder_graph_focused_note = Some(closest.key.clone());
+                app.list.folder_graph_note_scroll = 0;
             } else {
                 // Re-focus to subfolder.
                 if let Some(crate::list_view::PreviewContent::FolderGraph {
@@ -776,6 +784,7 @@ fn draw_content_card(
     rect: Rect,
     title: &str,
     content: &str,
+    scroll: usize,
     theme: &crate::app_theme::AppThemeColors,
 ) {
     // Background.
@@ -813,6 +822,7 @@ fn draw_content_card(
     let inner_h = inner.height as usize;
     let lines: Vec<Line> = content
         .lines()
+        .skip(scroll)
         .take(inner_h)
         .map(|l| {
             Line::from(Span::styled(

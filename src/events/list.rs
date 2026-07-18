@@ -413,6 +413,11 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 Some(crate::list_view::PreviewContent::Image(_)) => {}
 
                 Some(crate::list_view::PreviewContent::SubnoteGraph { .. }) => {}
+                Some(crate::list_view::PreviewContent::FolderGraph { .. })
+                    if app.list.folder_graph_focused_note.is_some() =>
+                {
+                    scroll_folder_graph_note_content(app, false);
+                }
                 Some(crate::list_view::PreviewContent::FolderGraph { .. }) => {}
                 None => {}
             },
@@ -466,6 +471,11 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 }
                 Some(crate::list_view::PreviewContent::Image(_)) => {}
                 Some(crate::list_view::PreviewContent::SubnoteGraph { .. }) => {}
+                Some(crate::list_view::PreviewContent::FolderGraph { .. })
+                    if app.list.folder_graph_focused_note.is_some() =>
+                {
+                    scroll_folder_graph_note_content(app, true);
+                }
                 Some(crate::list_view::PreviewContent::FolderGraph { .. }) => {}
                 None => {}
             },
@@ -801,6 +811,13 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                 }
             }
             Some(crate::list_view::PreviewContent::FolderGraph { .. }) => {
+                if mouse_event.kind == MouseEventKind::Down(MouseButton::Middle)
+                    && app.list.folder_graph_focused_note.is_some()
+                {
+                    let forward = !mouse_event.modifiers.contains(KeyModifiers::SHIFT);
+                    scroll_folder_graph_note_content(app, forward);
+                    return;
+                }
                 let aspect = p_area.width as f64 / p_area.height as f64;
                 let base_span = crate::ui::FOLDER_GRAPH_BASE_SPAN;
                 if mouse_event.kind == MouseEventKind::ScrollUp
@@ -1397,5 +1414,76 @@ fn handle_layout_edit_mouse(app: &mut App, mouse: MouseEvent, terminal_area: Rec
             app.layout_drag = None;
         }
         _ => {}
+    }
+}
+
+// ---------------------------------------------------------------------------
+// FolderGraph note content scroll helpers
+// ---------------------------------------------------------------------------
+
+/// New scroll offset after moving one page forward/backward through
+/// `total` lines with a page size of `page_h`.
+fn page_scroll_offset(cur: usize, page_h: usize, total: usize, forward: bool) -> usize {
+    let max_off = total.saturating_sub(page_h);
+    if forward {
+        cur.saturating_add(page_h).min(max_off)
+    } else {
+        cur.saturating_sub(page_h)
+    }
+}
+
+/// Scroll the FolderGraph zoomed-note content card by one page.
+/// Mirrors `render_folder_graph_static`'s `focused_note_content` guard
+/// (src/ui/list_view.rs:1695-1703): no-op for encrypted notes or when no
+/// note is focused.
+fn scroll_folder_graph_note_content(app: &mut App, forward: bool) {
+    let id = match app.list.folder_graph_focused_note.clone() {
+        Some(id) => id,
+        None => return,
+    };
+    if app.config.list.preview_encryption && id.ends_with(".clin") {
+        return;
+    }
+    let content = match app.storage.load_note(&id) {
+        Ok(n) => n.content,
+        Err(_) => return,
+    };
+    // inner_h = preview rect height - 2 (card padding) - 2 (block borders).
+    let page_h = app.list.last_preview_pane_height.saturating_sub(4).max(1) as usize;
+    let total = content.lines().count();
+    app.list.folder_graph_note_scroll =
+        page_scroll_offset(app.list.folder_graph_note_scroll, page_h, total, forward);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_page_scroll_offset_forward() {
+        assert_eq!(page_scroll_offset(0, 10, 25, true), 10);
+        assert_eq!(page_scroll_offset(20, 10, 25, true), 15); // clamp at max_off = 15
+    }
+
+    #[test]
+    fn test_page_scroll_offset_backward() {
+        assert_eq!(page_scroll_offset(15, 10, 25, false), 5);
+        assert_eq!(page_scroll_offset(0, 10, 25, false), 0); // clamp at 0
+    }
+
+    #[test]
+    fn test_page_scroll_offset_empty_content() {
+        assert_eq!(page_scroll_offset(0, 10, 0, true), 0); // empty
+        assert_eq!(page_scroll_offset(0, 10, 3, true), 0); // shorter than a page
+    }
+
+    #[test]
+    fn test_page_scroll_offset_at_boundaries() {
+        // exactly one page
+        assert_eq!(page_scroll_offset(0, 10, 10, true), 0);
+        assert_eq!(page_scroll_offset(0, 10, 10, false), 0);
+        // one line past page
+        assert_eq!(page_scroll_offset(0, 10, 11, true), 1);
+        assert_eq!(page_scroll_offset(1, 10, 11, false), 0);
     }
 }

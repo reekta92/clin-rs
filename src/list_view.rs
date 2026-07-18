@@ -179,6 +179,10 @@ pub struct ListView {
     /// Currently zoom-focused note id inside a FolderGraph, when a note child is
     /// zoomed in past the content-card threshold. None = graph view.
     pub(crate) folder_graph_focused_note: Option<String>,
+    /// Line scroll offset into the zoomed note's content inside the FolderGraph
+    /// content card. Reset to 0 whenever `folder_graph_focused_note` transitions
+    /// None→Some. Ignored when no note is focused.
+    pub(crate) folder_graph_note_scroll: usize,
     pub drag_hover: Option<usize>,
     pub last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
     pub scroll_drag: Option<crate::ui::scrollbar::ScrollDrag>,
@@ -245,6 +249,7 @@ impl Default for ListView {
             folder_graph_pan_y: 0.0,
             folder_graph_nodes: Vec::new(),
             folder_graph_focused_note: None,
+            folder_graph_note_scroll: 0,
             last_scroll: None,
             scroll_drag: None,
         }
