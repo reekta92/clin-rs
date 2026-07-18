@@ -579,7 +579,7 @@ jobs:
           sed -i "s|^source=.*|source=(\"${{ github.server_url }}/${{ github.repository }}/releases/download/$TAG/$TARBALL_NAME\")|" PKGBUILD
       - name: Publish to AUR
         if: ${{ env.AUR_SSH_PRIVATE_KEY != '' }}
-        uses: KSXGitHub/github-actions-deploy-aur@v3.0.1
+        uses: KSXGitHub/github-actions-deploy-aur@v4.2.0
         with:
           pkgname: clin-rs-bin
           pkgbuild: ./PKGBUILD
