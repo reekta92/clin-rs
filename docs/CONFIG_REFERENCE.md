@@ -530,7 +530,7 @@ Key combos are strings like `"a"`, `"Enter"`, `"Ctrl+q"`, `"Ctrl+Shift+z"`, `"Al
 | `scroll_down` | `Down`, `j` | Scroll down |
 | `search` | `/`, `Ctrl+f` | Search help |
 
-> Note: digits `1`–`9` jump directly to the first nine help tabs (Notes→Templates); the tenth tab (About) is reached via `Tab`/`Right`. These are fixed and not configurable in `keybinds.toml`.
+> Note: digits `1`–`7` jump directly to the first seven help tabs (Notes→Templates); the eighth tab (About) is reached via `Tab`/`Right`. These are fixed and not configurable in `keybinds.toml`.
 
 ### Graph Actions (`[graph]`)
 

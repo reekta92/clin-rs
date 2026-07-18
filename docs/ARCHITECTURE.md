@@ -208,7 +208,7 @@ List and Edit views use ratatui's `Layout` to split the terminal into panes:
 
 **Help view layout:**
 ```
-┌─ Tab Bar (Notes · Editor · Graph · Draw · Canvas · Backup · ContentTree · Setup · Templates · About) ─┐
+┌─ Tab Bar (Notes · Editor · Graph · Draw · Canvas · Backup · Templates · About) ─┐
 │                                                              │
 │                Help content (scrollable)                     │
 │                                                              │

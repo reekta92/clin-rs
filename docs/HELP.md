@@ -8,7 +8,7 @@ The help view provides a 3-pane layout: a left pane with a keybind table for the
 
 ## Tabs
 
-The help view has 10 tabs in order:
+The help view has 8 tabs in order:
 
 | # | Tab | Description |
 |---|---|---|
@@ -18,12 +18,10 @@ The help view has 10 tabs in order:
 | 4 | **Draw** | Freehand strokes, shapes, and text on a drawing canvas |
 | 5 | **Canvas** | Infinite pinstar canvas for connecting notes and drawings |
 | 6 | **Backup** | Git-backed vault backup dashboard |
-| 7 | **ContentTree** | Header-based note outline navigation |
-| 8 | **Setup** | First-run and onboarding wizard |
-| 9 | **Templates** | Reusable note templates with variable substitution |
-| 10 | **About** | Application metadata, config paths, CLI reference |
+| 7 | **Templates** | Reusable note templates with variable substitution |
+| 8 | **About** | Application metadata, config paths, CLI reference |
 
-Digits `1`–`9` jump directly to the first nine tabs; the tenth tab (About) is reached via `Tab`/`Right`.
+Digits `1`–`7` jump directly to the first seven tabs; the eighth tab (About) is reached via `Tab`/`Right`.
 
 ## Keybind Index
 
