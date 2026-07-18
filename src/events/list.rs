@@ -416,7 +416,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 Some(crate::list_view::PreviewContent::FolderGraph { .. })
                     if app.list.folder_graph_focused_note.is_some() =>
                 {
-                    scroll_folder_graph_note_content(app, false, false);
+                    scroll_folder_graph_note_content(app, false);
                 }
                 Some(crate::list_view::PreviewContent::FolderGraph { .. }) => {}
                 None => {}
@@ -474,7 +474,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 Some(crate::list_view::PreviewContent::FolderGraph { .. })
                     if app.list.folder_graph_focused_note.is_some() =>
                 {
-                    scroll_folder_graph_note_content(app, true, false);
+                    scroll_folder_graph_note_content(app, true);
                 }
                 Some(crate::list_view::PreviewContent::FolderGraph { .. }) => {}
                 None => {}
@@ -815,7 +815,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                     && app.list.folder_graph_focused_note.is_some()
                 {
                     let forward = !mouse_event.modifiers.contains(KeyModifiers::SHIFT);
-                    scroll_folder_graph_note_content(app, forward, true);
+                    scroll_folder_graph_note_content(app, forward);
                     return;
                 }
                 let aspect = p_area.width as f64 / p_area.height as f64;
@@ -1421,100 +1421,12 @@ fn handle_layout_edit_mouse(app: &mut App, mouse: MouseEvent, terminal_area: Rec
 // FolderGraph note content scroll helpers
 // ---------------------------------------------------------------------------
 
-/// New scroll offset after moving one page forward/backward through
-/// `total` lines with a page size of `page_h`. When `wrap` is true, advancing
-/// past the last page wraps to the beginning, and moving backward from the
-/// first page wraps to the last.
-fn page_scroll_offset(cur: usize, page_h: usize, total: usize, forward: bool, wrap: bool) -> usize {
-    if total <= page_h {
-        return 0;
-    }
-    let max_off = total.saturating_sub(page_h);
-    if forward {
-        let next = cur.saturating_add(page_h).min(max_off);
-        if wrap && next == cur { 0 } else { next }
-    } else {
-        let next = cur.saturating_sub(page_h);
-        if wrap && next == cur { max_off } else { next }
-    }
-}
-fn scroll_folder_graph_note_content(app: &mut App, forward: bool, wrap: bool) {
-    let id = match app.list.folder_graph_focused_note.clone() {
-        Some(id) => id,
-        None => return,
-    };
-    if app.config.list.preview_encryption && id.ends_with(".clin") {
-        return;
-    }
-    let content = match app.storage.load_note(&id) {
-        Ok(n) => n.content,
-        Err(_) => return,
-    };
-    // inner_h = preview rect height - 2 (card padding) - 2 (block borders).
-    let page_h = app.list.last_preview_pane_height.saturating_sub(4).max(1) as usize;
-    let total = content.lines().count();
-    app.list.folder_graph_note_scroll = page_scroll_offset(
-        app.list.folder_graph_note_scroll,
-        page_h,
-        total,
-        forward,
-        wrap,
-    );
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_page_scroll_offset_forward() {
-        assert_eq!(page_scroll_offset(0, 10, 25, true, false), 10);
-        assert_eq!(page_scroll_offset(20, 10, 25, true, false), 15); // clamp at max_off = 15
-    }
-
-    #[test]
-    fn test_page_scroll_offset_backward() {
-        assert_eq!(page_scroll_offset(15, 10, 25, false, false), 5);
-        assert_eq!(page_scroll_offset(0, 10, 25, false, false), 0); // clamp at 0
-    }
-
-    #[test]
-    fn test_page_scroll_offset_empty_content() {
-        assert_eq!(page_scroll_offset(0, 10, 0, true, false), 0); // empty
-        assert_eq!(page_scroll_offset(0, 10, 3, true, false), 0); // shorter than a page
-    }
-
-    #[test]
-    fn test_page_scroll_offset_at_boundaries() {
-        // exactly one page
-        assert_eq!(page_scroll_offset(0, 10, 10, true, false), 0);
-        assert_eq!(page_scroll_offset(0, 10, 10, false, false), 0);
-        // one line past page
-        assert_eq!(page_scroll_offset(0, 10, 11, true, false), 1);
-        assert_eq!(page_scroll_offset(1, 10, 11, false, false), 0);
-    }
-
-    #[test]
-    fn test_page_scroll_offset_cyclic_forward_wrap() {
-        // 25 lines, 10 per page → pages at 0, 10, 15 (max_off = 15)
-        assert_eq!(page_scroll_offset(0, 10, 25, true, true), 10);
-        assert_eq!(page_scroll_offset(10, 10, 25, true, true), 15); // clamp to max, not past it
-        assert_eq!(page_scroll_offset(20, 10, 25, true, true), 15); // past max, still clamped
-        assert_eq!(page_scroll_offset(15, 10, 25, true, true), 0); // wrap to start
-    }
-
-    #[test]
-    fn test_page_scroll_offset_cyclic_backward_wrap() {
-        // 25 lines, 10 per page. max_off = 15.
-        assert_eq!(page_scroll_offset(15, 10, 25, false, true), 5);
-        assert_eq!(page_scroll_offset(5, 10, 25, false, true), 0);
-        assert_eq!(page_scroll_offset(0, 10, 25, false, true), 15); // wrap to last
-    }
-
-    #[test]
-    fn test_page_scroll_offset_cyclic_empty() {
-        // wrap is no-op when total <= page_h
-        assert_eq!(page_scroll_offset(0, 10, 3, true, true), 0);
-        assert_eq!(page_scroll_offset(0, 10, 3, false, true), 0);
+fn scroll_folder_graph_note_content(app: &mut App, forward: bool) {
+    if let Some(renderer) = app.list.folder_graph_note_renderer.as_mut() {
+        if forward {
+            renderer.next_page_wrap();
+        } else {
+            renderer.prev_page_wrap();
+        }
     }
 }

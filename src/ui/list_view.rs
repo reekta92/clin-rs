@@ -487,7 +487,6 @@ pub fn render_subnote_graph_static(
 
 /// Render a hierarchical folder graph on a ratatui Canvas with hollow circles, zoom/pan,
 /// and focus transitions into subfolders (re-focus) or notes (content card).
-#[allow(clippy::too_many_arguments)]
 pub fn render_folder_graph_static(
     frame: &mut Frame,
     rect: Rect,
@@ -496,7 +495,6 @@ pub fn render_folder_graph_static(
     zoom: f64,
     pan_x: f64,
     pan_y: f64,
-    focused_note_content: Option<(String, String)>,
     app: &mut crate::app::App,
 ) {
     use ratatui::symbols::Marker;
@@ -510,18 +508,19 @@ pub fn render_folder_graph_static(
 
     // Content card for zoomed-in note — exits on zoom-out below threshold.
     const EXIT_NOTE_THRESHOLD: f64 = 5.0;
-    if let Some((title, content)) = focused_note_content {
+    let show_card = match &app.list.folder_graph_focused_note {
+        Some(id) => !(app.config.list.preview_encryption && id.ends_with(".clin")),
+        None => false,
+    };
+    if show_card {
         if zoom < EXIT_NOTE_THRESHOLD {
             app.list.folder_graph_focused_note = None;
+            // sync_folder_graph_note_renderer drops the renderer next tick.
         } else {
-            draw_content_card(
-                frame,
-                rect,
-                &title,
-                &content,
-                app.list.folder_graph_note_scroll,
-                theme,
-            );
+            let theme = &app.app_theme;
+            let title = app.list.folder_graph_note_title.as_deref();
+            let renderer = app.list.folder_graph_note_renderer.as_deref();
+            draw_content_card_markdown(frame, rect, title, renderer, theme);
             return;
         }
     }
@@ -703,7 +702,6 @@ pub fn render_folder_graph_static(
         }) {
             if closest.is_note {
                 app.list.folder_graph_focused_note = Some(closest.key.clone());
-                app.list.folder_graph_note_scroll = 0;
             } else {
                 // Re-focus to subfolder.
                 if let Some(crate::list_view::PreviewContent::FolderGraph {
@@ -852,6 +850,85 @@ fn draw_content_card(
     let para = Paragraph::new(lines).style(theme.preview_bg_style());
     frame.render_widget(para, inner);
 }
+
+/// Markdown content card for the FolderGraph zoomed note. Renders the
+/// MarkdownRenderer's current page via `RenderedSnapshot`. Shows a
+/// "Rendering…" placeholder while the renderer is pending or pages aren't
+/// built yet, and "(empty note)" for empty content.
+fn draw_content_card_markdown(
+    frame: &mut Frame,
+    rect: Rect,
+    title: Option<&str>,
+    renderer: Option<&crate::markdown::MarkdownRenderer>,
+    theme: &crate::app_theme::AppThemeColors,
+) {
+    use ratatui::style::{Modifier, Style};
+    use ratatui::text::Span;
+
+    frame.render_widget(Block::default().style(theme.preview_bg_style()), rect);
+
+    let card_w = rect.width.saturating_sub(2);
+    let card_h = rect.height.saturating_sub(2);
+    if card_w < 4 || card_h < 4 {
+        return;
+    }
+    let card_rect = Rect::new(rect.x + 1, rect.y + 1, card_w, card_h);
+
+    // Title + page indicator in the top border.
+    let title_max = card_w.saturating_sub(4) as usize;
+    let page_indicator = match renderer {
+        Some(r) if r.pages_built() && r.total_pages() > 1 => {
+            format!("  {}/{}", r.current_page() + 1, r.total_pages())
+        }
+        _ => String::new(),
+    };
+    let title_avail = title_max.saturating_sub(page_indicator.len());
+    let title_text = title
+        .map(|t| crate::graf::util::truncate(t, title_avail))
+        .unwrap_or_default();
+    let combined_title = if title.is_some() {
+        format!(" {} {} ", title_text, page_indicator)
+    } else {
+        " Rendering… ".to_string()
+    };
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(theme.border))
+        .title(Span::styled(
+            combined_title,
+            Style::default()
+                .fg(theme.accent)
+                .add_modifier(Modifier::BOLD),
+        ))
+        .style(theme.preview_bg_style());
+    let inner = block.inner(card_rect);
+    frame.render_widget(block, card_rect);
+
+    // Body: markdown grid if ready, else placeholder.
+    let grid = renderer
+        .filter(|r| r.pages_built() && !r.is_content_empty())
+        .and_then(|r| r.current_page_grid());
+    match grid {
+        Some(page_grid) => {
+            let snapshot = crate::snapshot::RenderedSnapshot::new(page_grid);
+            frame.render_widget(snapshot, inner);
+        }
+        None => {
+            let empty = renderer.is_some_and(|r| r.is_content_empty());
+            let msg = if empty {
+                "(empty note)"
+            } else {
+                "Rendering…"
+            };
+            let para = Paragraph::new(msg)
+                .style(theme.preview_bg_style())
+                .alignment(ratatui::layout::Alignment::Center);
+            frame.render_widget(para, inner);
+        }
+    }
+}
+
 pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     let saved_mouse_pos = app.mouse_pos;
     if app.popups.active.is_some() {
@@ -1715,20 +1792,9 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 .zip(positions.iter())
                 .map(|(n, &(x, y))| crate::list_view::FolderGraphNode { x, y, ..n.clone() })
                 .collect();
-            let focused_note_id = app.list.folder_graph_focused_note.clone();
-            let preview_encryption = app.config.list.preview_encryption;
             let zoom = app.list.folder_graph_zoom;
             let pan_x = app.list.folder_graph_pan_x;
             let pan_y = app.list.folder_graph_pan_y;
-            let focused_note_content = focused_note_id.and_then(|id| {
-                if preview_encryption && id.ends_with(".clin") {
-                    return None;
-                }
-                app.storage
-                    .load_note(&id)
-                    .ok()
-                    .map(|n| (n.title, n.content))
-            });
             render_folder_graph_static(
                 frame,
                 preview_rect,
@@ -1737,7 +1803,6 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 zoom,
                 pan_x,
                 pan_y,
-                focused_note_content,
                 app,
             );
             rendered_graph = true;

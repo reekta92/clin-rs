@@ -273,6 +273,31 @@ impl MarkdownRenderer {
     pub fn prev_page(&mut self) {
         self.current_page = self.current_page.saturating_sub(1);
     }
+
+    /// Advance one page, wrapping to the first page when past the last.
+    pub fn next_page_wrap(&mut self) {
+        if self.total_pages <= 1 {
+            return;
+        }
+        if self.current_page < self.total_pages - 1 {
+            self.current_page += 1;
+        } else {
+            self.current_page = 0;
+        }
+    }
+
+    /// Go back one page, wrapping to the last page when before the first.
+    pub fn prev_page_wrap(&mut self) {
+        if self.total_pages <= 1 {
+            return;
+        }
+        if self.current_page > 0 {
+            self.current_page -= 1;
+        } else {
+            self.current_page = self.total_pages - 1;
+        }
+    }
+
 }
 
 #[cfg(test)]
