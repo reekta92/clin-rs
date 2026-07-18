@@ -373,8 +373,6 @@ pub struct App {
     pub layout_edit: bool,
     pub layout_drag: Option<LayoutDrag>,
     pub image_picker: Option<ratatui_image::picker::Picker>,
-    pub last_hover_key: crate::hover::HoverKey,
-    pub skip_next_draw: bool,
     pub image_decode_tx: Option<std::sync::mpsc::Sender<crate::image_render::worker::ImageJob>>,
     pub image_decode_rx: Option<
         std::sync::mpsc::Receiver<anyhow::Result<crate::image_render::worker::DecodedImage>>,
@@ -522,8 +520,6 @@ impl App {
             layout_edit: false,
             layout_drag: None,
             image_picker: None,
-            last_hover_key: crate::hover::HoverKey::None,
-            skip_next_draw: false,
             image_decode_tx: None,
             image_decode_rx: None,
         };
@@ -658,8 +654,6 @@ impl App {
             layout_edit: false,
             layout_drag: None,
             image_picker: None,
-            last_hover_key: crate::hover::HoverKey::None,
-            skip_next_draw: false,
             image_decode_tx: None,
             image_decode_rx: None,
         };

@@ -19,7 +19,6 @@ pub mod keybinds;
 pub mod list_view;
 pub mod markdown;
 pub mod migration;
-pub mod hover;
 pub mod overlay;
 pub mod palette;
 pub mod pinstar;
@@ -960,9 +959,7 @@ fn run_app(
             graf.overlay_update(&mut app.config);
         }
 
-        if app.skip_next_draw {
-            app.skip_next_draw = false;
-        } else if let Err(e) = terminal.draw(|frame| crate::ui::draw_ui(frame, app, focus)) {
+        if let Err(e) = terminal.draw(|frame| crate::ui::draw_ui(frame, app, focus)) {
             return Err(e.into());
         }
 
@@ -1041,7 +1038,8 @@ fn run_app(
                             while event::poll(Duration::ZERO)? {
                                 match event::read()? {
                                     Event::Mouse(next)
-                                        if next.kind == ratatui::crossterm::event::MouseEventKind::Moved =>
+                                        if next.kind
+                                            == ratatui::crossterm::event::MouseEventKind::Moved =>
                                     {
                                         last = next;
                                     }
@@ -1444,30 +1442,6 @@ fn run_app(
                             }
                         }
                         _ => {}
-                    }
-
-                    // Phase 2: render gate — skip redraw if Moved hasn't changed hover target
-                    // Exclude continuous-render views (Graph/Draw/Canvas)
-                    if !matches!(app.mode, ViewMode::Graph | ViewMode::Draw | ViewMode::Canvas) {
-                        if let Event::Mouse(ref mouse_event) = ev {
-                            if mouse_event.kind == ratatui::crossterm::event::MouseEventKind::Moved {
-                                let hover_key = crate::hover::compute_hover_key(app, area);
-                                if hover_key == app.last_hover_key {
-                                    app.skip_next_draw = true;
-                                } else {
-                                    app.last_hover_key = hover_key;
-                                }
-                            } else {
-                                // Non-Moved mouse events (clicks, scrolls) always trigger a draw
-                                app.skip_next_draw = false;
-                            }
-                        } else {
-                            // Keyboard events always trigger a draw
-                            app.skip_next_draw = false;
-                        }
-                    } else {
-                        // Continuous-render views (Graph/Draw/Canvas) — never gate
-                        app.skip_next_draw = false;
                     }
                 }
                 Event::Paste(data) if app.mode == ViewMode::Edit => match focus {
