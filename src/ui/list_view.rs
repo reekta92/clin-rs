@@ -800,14 +800,32 @@ fn draw_content_card(
 
     // Truncate title to fit inside the top border.
     let title_max = card_w.saturating_sub(4) as usize; // " title " + border chars
-    let title_text = crate::graf::util::truncate(title, title_max);
+    // Page indicator when content exceeds one card-height.
+    let card_inner_h = card_h.saturating_sub(2) as usize;
+    let total_lines = content.lines().count();
+    let page_indicator = if card_inner_h > 0 && total_lines > card_inner_h {
+        let max_off = total_lines.saturating_sub(card_inner_h);
+        let total_pages = total_lines.saturating_add(card_inner_h - 1) / card_inner_h;
+        let page = if scroll >= max_off {
+            total_pages
+        } else {
+            scroll / card_inner_h + 1
+        };
+        format!("  {}/{}", page, total_pages)
+    } else {
+        String::new()
+    };
+
+    let title_avail = title_max.saturating_sub(page_indicator.len());
+    let title_text = crate::graf::util::truncate(title, title_avail);
+    let combined_title = format!(" {} {} ", title_text, page_indicator);
 
     // Bordered block with title in the top border.
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(theme.border))
         .title(Span::styled(
-            format!(" {} ", title_text),
+            combined_title,
             Style::default()
                 .fg(theme.accent)
                 .add_modifier(Modifier::BOLD),
