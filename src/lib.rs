@@ -915,13 +915,8 @@ fn run_app(
         if let Some(ref rx) = load_rx
             && !app.initial_load_done
         {
-            let mut did_work = false;
             while let Ok(batch) = rx.try_recv() {
-                did_work = true;
                 app.merge_loaded(batch);
-            }
-            if did_work {
-                app.needs_full_redraw = true;
             }
         }
 
@@ -1085,8 +1080,6 @@ fn run_app(
 
                                                 app.reload_theme();
                                                 app.open_note_from_graph(&note_id);
-                                                app.needs_full_redraw = true;
-                                                terminal.clear()?;
                                             }
                                             crate::overlay::OverlayResult::OpenHelp(tab) => {
                                                 app.reload_theme();
@@ -1106,8 +1099,6 @@ fn run_app(
                                                     .unwrap_or(ViewMode::List);
 
                                                 app.reload_theme();
-                                                app.needs_full_redraw = true;
-                                                terminal.clear()?;
                                             }
                                             _ => {}
                                         }
@@ -1128,8 +1119,6 @@ fn run_app(
                                             crate::overlay::OverlayResult::Exit => {
                                                 app.draw_state = None;
                                                 app.close_draw_view();
-                                                app.needs_full_redraw = true;
-                                                terminal.clear()?;
                                             }
                                             crate::overlay::OverlayResult::OpenHelp(tab) => {
                                                 app.reload_theme();
@@ -1157,8 +1146,6 @@ fn run_app(
                                             }
                                             crate::overlay::OverlayResult::Exit => {
                                                 app.close_canvas_view();
-                                                app.needs_full_redraw = true;
-                                                terminal.clear()?;
                                             }
                                             _ => {}
                                         }
@@ -1185,8 +1172,6 @@ fn run_app(
                                                     .unwrap_or(ViewMode::List);
 
                                                 app.reload_theme();
-                                                app.needs_full_redraw = true;
-                                                terminal.clear()?;
                                             }
                                             crate::overlay::OverlayResult::OpenHelp(tab) => {
                                                 app.reload_theme();
@@ -1216,8 +1201,6 @@ fn run_app(
                                                     .unwrap_or(ViewMode::List);
 
                                                 app.reload_theme();
-                                                app.needs_full_redraw = true;
-                                                terminal.clear()?;
                                             }
                                             crate::overlay::OverlayResult::JumpToLine {
                                                 note_id: _,
@@ -1230,14 +1213,10 @@ fn run_app(
                                                     .unwrap_or(ViewMode::List);
 
                                                 app.reload_theme();
-                                                app.needs_full_redraw = true;
-                                                terminal.clear()?;
                                             }
                                             crate::overlay::OverlayResult::OpenHelp(tab) => {
                                                 app.reload_theme();
                                                 app.open_help_page_with_tab(tab);
-                                                app.needs_full_redraw = true;
-                                                terminal.clear()?;
                                             }
                                             _ => {}
                                         }
@@ -1331,8 +1310,6 @@ fn run_app(
 
                                                 app.reload_theme();
                                                 app.open_note_from_graph(&note_id);
-                                                app.needs_full_redraw = true;
-                                                terminal.clear()?;
                                             }
                                             crate::overlay::OverlayResult::OpenHelp(tab) => {
                                                 app.reload_theme();
@@ -1352,8 +1329,6 @@ fn run_app(
                                                     .unwrap_or(ViewMode::List);
 
                                                 app.reload_theme();
-                                                app.needs_full_redraw = true;
-                                                terminal.clear()?;
                                             }
                                             _ => {}
                                         }
@@ -1382,8 +1357,6 @@ fn run_app(
                                             crate::overlay::OverlayResult::Exit => {
                                                 app.draw_state = None;
                                                 app.close_draw_view();
-                                                app.needs_full_redraw = true;
-                                                terminal.clear()?;
                                             }
                                             crate::overlay::OverlayResult::OpenHelp(tab) => {
                                                 app.reload_theme();
@@ -1460,10 +1433,7 @@ fn run_app(
                     }
                     EditFocus::Sidebar => {}
                 },
-                Event::Resize(_, _) => {
-                    terminal.autoresize()?;
-                    app.needs_full_redraw = true;
-                }
+                Event::Resize(_, _) => {}
                 _ => {}
             }
         }
