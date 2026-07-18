@@ -162,9 +162,7 @@ impl App {
             }
         }
 
-        let all_folders = if let Some(cache) = &self.list.folder_cache {
-            cache
-        } else {
+        let all_folders = {
             let folders = self
                 .storage
                 .list_folders(self.list.show_hidden_files)
@@ -1058,6 +1056,7 @@ impl App {
                     is_note: true,
                     x: 0.0,
                     y: 0.0,
+                    links: n.links.clone(),
                 })
                 .collect();
             return (children, crate::app::VIRTUAL_PINNED_LABEL.to_string());
@@ -1081,6 +1080,7 @@ impl App {
                         is_note: true,
                         x: 0.0,
                         y: 0.0,
+                        links: n.links.clone(),
                     })
                     .collect();
                 return (children, label);
@@ -1091,10 +1091,13 @@ impl App {
             return (Vec::new(), String::new());
         }
         // Real vault folder (including "" for root).
-        let all_folders = self
-            .storage
-            .list_folders(self.list.show_hidden_files)
-            .unwrap_or_default();
+        let all_folders = if let Some(cache) = &self.list.folder_cache {
+            cache.clone()
+        } else {
+            self.storage
+                .list_folders(self.list.show_hidden_files)
+                .unwrap_or_default()
+        };
         let subfolders: Vec<FolderGraphNode> = all_folders
             .iter()
             .filter(|f| {
@@ -1113,6 +1116,7 @@ impl App {
                     is_note: false,
                     x: 0.0,
                     y: 0.0,
+                    links: Vec::new(),
                 }
             })
             .collect();
@@ -1126,6 +1130,7 @@ impl App {
                 is_note: true,
                 x: 0.0,
                 y: 0.0,
+                links: n.links.clone(),
             })
             .collect();
         let label = if focused_path.is_empty() {

@@ -575,36 +575,25 @@ pub fn render_folder_graph_static(
             .enumerate()
             .map(|(i, n)| (n.label.to_lowercase(), i))
             .collect();
-        let title_to_nid: std::collections::HashMap<String, usize> = app
-            .notes
-            .iter()
-            .enumerate()
-            .map(|(i, note)| (note.title.to_lowercase(), i))
-            .collect();
         let mut drawn: std::collections::HashSet<(usize, usize)> = std::collections::HashSet::new();
         for (i, child) in notes_only.iter().enumerate() {
-            if let Some(&nidx) = title_to_nid.get(&child.label.to_lowercase())
-                && let Some(note) = app.notes.get(nidx)
-            {
-                for link in &note.links {
-                    if let Some(&j) = title_to_idx.get(&link.to_lowercase())
-                        && j != i
-                    {
-                        let key = if i < j { (i, j) } else { (j, i) };
-                        if drawn.insert(key) {
-                            let tx = notes_only[j].x;
-                            let ty = notes_only[j].y;
-                            let (x1, y1, x2, y2) = shorten_segment_to_borders(
-                                child.x, child.y, child_r, tx, ty, child_r,
-                            );
-                            edges.push(CanvasLine {
-                                x1,
-                                y1,
-                                x2,
-                                y2,
-                                color: theme.success,
-                            });
-                        }
+            for link in &child.links {
+                if let Some(&j) = title_to_idx.get(&link.to_lowercase())
+                    && j != i
+                {
+                    let key = if i < j { (i, j) } else { (j, i) };
+                    if drawn.insert(key) {
+                        let tx = notes_only[j].x;
+                        let ty = notes_only[j].y;
+                        let (x1, y1, x2, y2) =
+                            shorten_segment_to_borders(child.x, child.y, child_r, tx, ty, child_r);
+                        edges.push(CanvasLine {
+                            x1,
+                            y1,
+                            x2,
+                            y2,
+                            color: theme.success,
+                        });
                     }
                 }
             }

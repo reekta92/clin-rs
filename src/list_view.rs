@@ -17,6 +17,7 @@ pub(crate) struct FolderGraphNode {
     pub is_note: bool,
     pub x: f64,
     pub y: f64,
+    pub links: Vec<String>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
