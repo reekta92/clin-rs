@@ -8,6 +8,7 @@ use ratatui::widgets::*;
 use crate::app_theme::AppThemeColors;
 use crate::draw::state::{DrawData, DrawElement, Shape, Stroke};
 use crate::pinstar::data::{CanvasData, CanvasNode};
+use unicode_width::UnicodeWidthChar;
 
 const PREVIEW_COLS: u16 = 78;
 
@@ -333,15 +334,26 @@ impl Widget for RenderedSnapshot<'_> {
                 break;
             }
             let row = &self.grid[src_row];
-            for (col_idx, buf_x) in (area.left()..area.right()).enumerate() {
-                if col_idx >= row.len() {
+            let mut buf_x = area.left();
+            for &(ch, style) in row {
+                if buf_x >= area.right() {
                     break;
                 }
-                let (ch, style) = row[col_idx];
-                let safe_ch = if ch.is_control() { ' ' } else { ch };
+                let (safe_ch, w) = if ch.is_control() {
+                    (' ', 1u16)
+                } else {
+                    (ch, UnicodeWidthChar::width(ch).unwrap_or(0) as u16)
+                };
+                if w == 0 {
+                    continue;
+                }
+                if buf_x as u32 + w as u32 > area.right() as u32 {
+                    break;
+                }
                 if let Some(cell) = buf.cell_mut((buf_x, buf_y)) {
                     cell.set_char(safe_ch).set_style(style);
                 }
+                buf_x += w;
             }
         }
     }
@@ -675,5 +687,31 @@ mod tests {
         let buffer = terminal.backend().buffer();
         let cell = buffer.cell((0, 0)).unwrap();
         assert_eq!(cell.symbol(), " ", "control char replaced by space");
+    }
+
+    /// Wide chars (e.g. CJK) must advance buf_x by their visual width so
+    /// the next grid cell lands after the continuation cell.
+    #[test]
+    fn rendered_snapshot_writes_wide_char_to_two_cells() {
+        let grid = vec![vec![('中', Style::default()), ('b', Style::default())]];
+        let snapshot = RenderedSnapshot::new(&grid);
+
+        let backend = TestBackend::new(4, 1);
+        let mut terminal = Terminal::new(backend).unwrap();
+        terminal
+            .draw(|frame| {
+                frame.render_widget(snapshot, frame.area());
+            })
+            .unwrap();
+        let buffer = terminal.backend().buffer();
+        // '中' occupies cells (0,0) (visual) — cell (1,0) is NOT 'b'
+        assert_eq!(buffer.cell((0, 0)).unwrap().symbol(), "中");
+        // 'b' lands at (2,0) — AFTER the wide-char continuation cell
+        assert_ne!(
+            buffer.cell((1, 0)).unwrap().symbol(),
+            "b",
+            "cell (1,0) should not be 'b' — wide char '中' occupies cols 0-1"
+        );
+        assert_eq!(buffer.cell((2, 0)).unwrap().symbol(), "b");
     }
 }

@@ -86,6 +86,7 @@ pub(crate) fn render_builtin(
         cols: cols as usize,
         wrap: opts.wrap,
         theme,
+        col: 0,
         syntax_hl: opts.syntax_hl,
         icon_mode: opts.icon_mode,
         code_theme: opts.code_theme.clone(),
@@ -93,6 +94,8 @@ pub(crate) fn render_builtin(
         wrap_indicator: opts.wrap_indicator,
         link_url_max: opts.link_url_max,
         cancel_token,
+        cell_clip: None,
+        cell_ellipsis: false,
         current_source_line: 0,
         row_source: vec![0],
     };
@@ -140,6 +143,9 @@ struct Ctx<'a> {
     /// and the URL string for that image.
     image_slots: Vec<(usize, String)>,
     cols: usize,
+    /// Visual (display) column of the current line — sum of char widths,
+    /// not cell count.  Updated by [`push_raw`].
+    col: usize,
     wrap: bool,
     theme: &'a MarkdownTheme,
     syntax_hl: bool,
@@ -148,6 +154,11 @@ struct Ctx<'a> {
     line_numbers: bool,
     wrap_indicator: bool,
     link_url_max: usize,
+    /// Per-table-cell column cap set by [`render_table`]; when `Some(n)`,
+    /// [`push`] truncates the cell at absolute visual col `n` (0-indexed).
+    cell_clip: Option<usize>,
+    /// Whether an ellipsis has already been emitted for the current cell.
+    cell_ellipsis: bool,
     cancel_token: &'a AtomicBool,
     current_source_line: usize,
     /// Per-line source line tracking: one entry per rendered line.
@@ -156,7 +167,7 @@ struct Ctx<'a> {
 }
 impl Ctx<'_> {
     fn cur_col(&self) -> usize {
-        self.lines.last().map(|l| l.len()).unwrap_or(0)
+        self.col
     }
 
     fn ensure_line(&mut self) -> &mut Vec<(char, Style)> {
@@ -166,12 +177,21 @@ impl Ctx<'_> {
         self.lines.last_mut().expect("lines is not empty")
     }
 
+    /// Append one cell and advance `col` by the character's visual width.
+    /// No wrap/clip logic — callers must check bounds first.
+    fn push_raw(&mut self, ch: char, st: Style) {
+        let w = UnicodeWidthChar::width(ch).unwrap_or(0);
+        self.ensure_line().push((ch, st));
+        self.col += w;
+    }
+
     /// Start a new line with `margin` leading spaces.
     fn new_line(&mut self, margin: usize) {
         self.lines.push(Vec::with_capacity(self.cols));
         self.row_source.push(self.current_source_line);
+        self.col = 0;
         for _ in 0..margin {
-            self.ensure_line().push((' ', Style::default()));
+            self.push_raw(' ', Style::default());
         }
     }
     /// Ensure the current line has at least `margin` leading spaces (fills
@@ -180,7 +200,7 @@ impl Ctx<'_> {
         let cur = self.cur_col();
         if cur < margin {
             for _ in cur..margin {
-                self.ensure_line().push((' ', Style::default()));
+                self.push_raw(' ', Style::default());
             }
         }
     }
@@ -196,8 +216,19 @@ impl Ctx<'_> {
             return;
         }
         let w = UnicodeWidthChar::width(ch).unwrap_or(0);
-        let col = self.cur_col();
-        if col + w > self.cols {
+        if w == 0 {
+            return;
+        }
+        let col = self.col;
+        if let Some(clip) = self.cell_clip {
+            if col + w > clip {
+                if !self.cell_ellipsis && col < clip {
+                    self.push_raw('…', st);
+                    self.cell_ellipsis = true;
+                }
+                return;
+            }
+        } else if col + w > self.cols {
             if self.wrap {
                 if self.wrap_indicator {
                     let target = self.cols.saturating_sub(1);
@@ -205,9 +236,9 @@ impl Ctx<'_> {
                     if cur <= target {
                         let glyph_st = self.theme.hr;
                         for _ in cur..target {
-                            self.ensure_line().push((' ', Style::default()));
+                            self.push_raw(' ', Style::default());
                         }
-                        self.ensure_line().push(('┄', glyph_st));
+                        self.push_raw('┄', glyph_st);
                     }
                 }
                 self.new_line(margin);
@@ -215,7 +246,7 @@ impl Ctx<'_> {
                 return;
             }
         }
-        self.ensure_line().push((ch, st));
+        self.push_raw(ch, st);
     }
 
     /// Push an entire string.
@@ -700,6 +731,42 @@ fn cell_leading_pad(align: TableAlignment, col_width: usize, content_w: usize) -
     }
 }
 
+/// Scale `col_widths` to fit within `available` visual columns,
+/// distributing space proportionally to natural widths with min 1 per column.
+fn scale_col_widths(col_widths: &mut Vec<usize>, available: usize) {
+    let num = col_widths.len();
+    if num == 0 {
+        return;
+    }
+    let total: usize = col_widths.iter().sum();
+    if total <= available || available < num {
+        return;
+    }
+    let mut scaled = vec![1usize; num];
+    let remaining = available - num;
+    let weights: Vec<usize> = col_widths.iter().map(|w| (*w).saturating_sub(1)).collect();
+    let weight_total: usize = weights.iter().sum();
+    if weight_total == 0 {
+        *col_widths = scaled;
+        return;
+    }
+    let mut allocated: usize = 0;
+    for (i, w) in weights.iter().enumerate() {
+        let add = w * remaining / weight_total;
+        scaled[i] += add;
+        allocated += add;
+    }
+    let mut leftover = remaining - allocated;
+    let mut order: Vec<usize> = (0..num).collect();
+    order.sort_by_key(|&i| std::cmp::Reverse(weights[i]));
+    let mut k = 0;
+    while leftover > 0 {
+        scaled[order[k % num]] += 1;
+        leftover -= 1;
+        k += 1;
+    }
+    *col_widths = scaled;
+}
 fn render_table<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, tbl: &NodeTable, depth: usize) {
     let margin = 2 + depth * 2;
     ctx.ensure_margin(margin);
@@ -745,6 +812,12 @@ fn render_table<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, tbl: &NodeTable, depth
     for w in &mut col_widths {
         *w = (*w).max(1);
     }
+    // Scale columns to fit the pane width
+    let available = ctx
+        .cols
+        .saturating_sub(margin + 2 + num_cols.saturating_sub(1));
+    scale_col_widths(&mut col_widths, available);
+
     let mut col_offsets = vec![0usize; num_cols];
     let mut offset = margin + 1; // after left border
     for ci in 0..num_cols {
@@ -788,6 +861,8 @@ fn render_table<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, tbl: &NodeTable, depth
                 .copied()
                 .unwrap_or(TableAlignment::None);
             let content_w: usize = cell_inlines.iter().map(|n| inline_text_len(n)).sum();
+            ctx.cell_clip = Some(col_offsets[ci] + col_widths[ci]);
+            ctx.cell_ellipsis = false;
             ctx.push_spaces(
                 cell_leading_pad(align, col_widths[ci], content_w),
                 margin + 1,
@@ -797,6 +872,7 @@ fn render_table<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, tbl: &NodeTable, depth
                 render_inline(ctx, inline, header_style, margin + 1);
             }
             // Pad to width
+            ctx.cell_clip = None;
             let cur = ctx.cur_col();
             let target = col_offsets[ci] + col_widths[ci];
             if cur < target {
@@ -826,6 +902,8 @@ fn render_table<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, tbl: &NodeTable, depth
                 .get(ci)
                 .copied()
                 .unwrap_or(TableAlignment::None);
+            ctx.cell_clip = Some(col_offsets[ci] + col_widths[ci]);
+            ctx.cell_ellipsis = false;
             let content_w: usize = cell_inlines.iter().map(|n| inline_text_len(n)).sum();
             ctx.push_spaces(
                 cell_leading_pad(align, col_widths[ci], content_w),
@@ -835,6 +913,7 @@ fn render_table<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, tbl: &NodeTable, depth
             for inline in cell_inlines {
                 render_inline(ctx, inline, cell_style, margin + 1);
             }
+            ctx.cell_clip = None;
             // Pad to width
             let cur = ctx.cur_col();
             let target = col_offsets[ci] + col_widths[ci];
@@ -1860,5 +1939,123 @@ mod tests {
             text.iter().any(|l| l.contains("fn main")),
             "code still rendered (plain fallback)"
         );
+    }
+
+    fn table_shrinks_to_fit_pane() {
+        // 4 columns, each ~20 chars content -> natural width ~90. At cols=22
+        // the table must scale down with truncation ellipsis (each col gets ~3-4).
+        let md = "| Col AAAAAAAAAAAAA | Col BBBBBBBBBBBBBBB | Col CCCCCCCCCCCCCCCC | Col DDDDDDDDDDDDDDDD |\n\
+                  |--------------------|---------------------|----------------------|-----------------------|\n\
+                  | aaaaaaaaaaaaaaaaaa | bbbbbbbbbbbbbbbbbbb | cccccccccccccccccccc | ddddddddddddddddddddd |\n";
+        let lines = render_test(md, 22, true, false);
+
+        let is_border = |c: char| -> bool {
+            matches!(c, '┃' | '┼' | '┬' | '┴' | '┌' | '┐' | '├' | '┤' | '└' | '┘')
+        };
+
+        // Collect border character visual positions per row
+        let mut border_positions: Vec<Vec<usize>> = Vec::new();
+        for line in &lines {
+            let s = line_text(line);
+            let positions: Vec<usize> = s
+                .chars()
+                .scan(0usize, |col, c| {
+                    let pos = *col;
+                    *col += UnicodeWidthChar::width(c).unwrap_or(0);
+                    Some((pos, c))
+                })
+                .filter(|&(_, c)| is_border(c))
+                .map(|(pos, _)| pos)
+                .collect();
+            if !positions.is_empty() {
+                border_positions.push(positions);
+            }
+        }
+        // All border rows must have identical border positions
+        if let Some(first) = border_positions.first() {
+            for (i, pos) in border_positions.iter().enumerate() {
+                assert_eq!(
+                    pos, first,
+                    "border positions differ at row {i}: {pos:?} vs {first:?}"
+                );
+            }
+        }
+        assert!(
+            !border_positions.is_empty(),
+            "should have at least one border row"
+        );
+        // At least one ellipsis from column truncation
+        let all_text: String = lines.iter().map(line_text).collect::<Vec<_>>().join("\n");
+        assert!(
+            all_text.contains('…'),
+            "should contain ellipsis from truncation"
+        );
+        // No row exceeds the visual column limit
+        for line in &lines {
+            let w: usize = str_visual_width(&line_text(line));
+            assert!(
+                w <= 22,
+                "row visual width {w} exceeds pane cols 22: {}",
+                line_text(line)
+            );
+        }
+    }
+
+    #[test]
+    fn table_cjk_cells_align() {
+        let md = "| 姓名 | 城市 |\n|---|---|\n| 张三 | 北京 |\n";
+        let lines = render_test(md, 40, true, false);
+        let is_border = |c: char| -> bool {
+            matches!(c, '┃' | '┼' | '┬' | '┴' | '┌' | '┐' | '├' | '┤' | '└' | '┘')
+        };
+        let mut border_positions: Vec<Vec<usize>> = Vec::new();
+        for line in &lines {
+            let s = line_text(line);
+            let positions: Vec<usize> = s
+                .chars()
+                .scan(0usize, |col, c| {
+                    let pos = *col;
+                    *col += UnicodeWidthChar::width(c).unwrap_or(0);
+                    Some((pos, c))
+                })
+                .filter(|&(_, c)| is_border(c))
+                .map(|(pos, _)| pos)
+                .collect();
+            if !positions.is_empty() {
+                border_positions.push(positions);
+            }
+        }
+        // All border rows must have identical positions
+        if let Some(first) = border_positions.first() {
+            for (i, pos) in border_positions.iter().enumerate() {
+                assert_eq!(
+                    pos, first,
+                    "CJK table border positions differ at row {i}: {pos:?} vs {first:?}"
+                );
+            }
+        }
+        assert!(!border_positions.is_empty(), "should have border rows");
+        // Verify CJK chars are present in output
+        let all_text: String = lines.iter().map(line_text).collect::<Vec<_>>().join("\n");
+        assert!(all_text.contains('姓'), "姓名 should be in output");
+        assert!(all_text.contains('城'), "城市 should be in output");
+        assert!(all_text.contains('张'), "张三 should be in output");
+        assert!(all_text.contains('北'), "北京 should be in output");
+    }
+
+    #[test]
+    fn wide_char_does_not_overflow_cols() {
+        let lines = render_test("中文测试", 6, true, false);
+        for line in &lines {
+            let s = line_text(line);
+            let w: usize = str_visual_width(&s);
+            assert!(w <= 6, "line visual width {w} exceeds cols=6: {s:?}");
+        }
+        // All 4 characters must be present (wrapped across lines)
+        let all: String = lines.iter().map(line_text).collect::<Vec<_>>().join("");
+        assert!(all.contains('中'), "中 missing");
+        assert!(all.contains('文'), "文 missing");
+        assert!(all.contains('测'), "测 missing");
+        assert!(all.contains('试'), "试 missing");
     }
 }

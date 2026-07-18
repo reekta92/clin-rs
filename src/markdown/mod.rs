@@ -297,7 +297,6 @@ impl MarkdownRenderer {
             self.current_page = self.total_pages - 1;
         }
     }
-
 }
 
 #[cfg(test)]
