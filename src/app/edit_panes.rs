@@ -53,10 +53,10 @@ impl App {
     pub fn rebuild_outline(&mut self) {
         let title = crate::events::get_title_text(&self.editor.title_editor);
         let content = self.editor.editor.lines().join("\n");
-        let all = crate::content_tree::parse::parse_outline(&title, &content);
+        let all = crate::outline::parse::parse_outline(&title, &content);
         self.editor.outline_nodes = all
             .into_iter()
-            .filter(|n| matches!(n.kind, crate::content_tree::parse::NodeKind::Header { level, .. } if level >= 1))
+            .filter(|n| matches!(n.kind, crate::outline::parse::NodeKind::Header { level, .. } if level >= 1))
             .collect();
         // Clamp selection into range.
         let len = self.editor.outline_nodes.len();

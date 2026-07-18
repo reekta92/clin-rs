@@ -33,7 +33,7 @@ pub struct StatuslineContext<'a> {
     pub graph: Option<&'a crate::graf::graph::GraphState>,
     pub draw: Option<&'a crate::draw::app::DrawAppState>,
     pub backup: Option<&'a crate::backup::state::BackupState>,
-    pub content_tree: Option<&'a crate::content_tree::state::ContentTreeState>,
+    pub outline: Option<&'a crate::outline::state::OutlineState>,
     pub canvas: Option<&'a crate::pinstar::state::PinstarState>,
     pub setup: Option<&'a crate::setup::SetupState>,
 
@@ -62,7 +62,7 @@ impl<'a> StatuslineContext<'a> {
             graph: None,
             draw: None,
             backup: None,
-            content_tree: None,
+            outline: None,
             canvas: None,
             setup: None,
             note: None,
@@ -87,7 +87,7 @@ impl<'a> StatuslineContext<'a> {
             graph: None,
             draw: None,
             backup: None,
-            content_tree: None,
+            outline: None,
             canvas: None,
             setup: None,
             note: None,
@@ -136,7 +136,7 @@ impl StatuslineContext<'_> {
                     ViewMode::Draw => "Draw",
                     ViewMode::Canvas => "Canvas",
                     ViewMode::Backup => "Backup",
-                    ViewMode::ContentTree => "Content Tree",
+                    ViewMode::Outline => "Outline",
                     ViewMode::Setup => "Setup",
                 };
                 Some(s.into())
@@ -307,11 +307,11 @@ impl StatuslineContext<'_> {
                     ViewMode::Draw => "Draw".to_string(),
                     ViewMode::Canvas => "Canvas".to_string(),
                     ViewMode::Backup => "Backup".to_string(),
-                    ViewMode::ContentTree => {
-                        if let Some(tree) = &self.content_tree {
-                            format!("CONTENT TREE — {}", tree.note_title)
+                    ViewMode::Outline => {
+                        if let Some(tree) = &self.outline {
+                            format!("OUTLINE — {}", tree.note_title)
                         } else {
-                            "Content Tree".to_string()
+                            "Outline".to_string()
                         }
                     }
                     ViewMode::Setup => "Setup".to_string(),
@@ -681,7 +681,7 @@ impl StatuslineContext<'_> {
                         (if is_mod { "on" } else { "off" }).to_string()
                     }
                     "reading_time" => ((word_count as f64 / 200.0).ceil() as usize).to_string(),
-                    "header_count" => crate::content_tree::parse::parse_outline(title, &content)
+                    "header_count" => crate::outline::parse::parse_outline(title, &content)
                         .len()
                         .saturating_sub(1)
                         .to_string(),
@@ -925,55 +925,54 @@ impl StatuslineContext<'_> {
                 Some(val.into())
             }
 
-            // ContentTree view
-            "tree_nodes" | "tree_headers" | "tree_visible" | "tree_cursor" | "tree_depth"
-            | "tree_max_depth" | "tree_expanded" | "tree_heading" | "tree_note" | "tree_error" => {
-                let ct = match self.content_tree {
+            // Outline view
+            "outline_nodes" | "outline_headers" | "outline_visible" | "outline_cursor"
+            | "outline_depth" | "outline_max_depth" | "outline_expanded" | "outline_heading"
+            | "outline_note" | "outline_error" => {
+                let ct = match self.outline {
                     Some(c) => c,
                     None => return Some("".into()),
                 };
 
                 let val = match name {
-                    "tree_nodes" => ct.nodes.len().to_string(),
-                    "tree_headers" => ct
+                    "outline_nodes" => ct.nodes.len().to_string(),
+                    "outline_headers" => ct
                         .nodes
                         .iter()
                         .filter(|n| {
-                            matches!(n.kind, crate::content_tree::parse::NodeKind::Header { .. })
+                            matches!(n.kind, crate::outline::parse::NodeKind::Header { .. })
                         })
                         .count()
                         .to_string(),
-                    "tree_visible" => ct.visible_indices().len().to_string(),
-                    "tree_cursor" => (ct.selected + 1).to_string(),
-                    "tree_depth" => ct
+                    "outline_visible" => ct.visible_indices().len().to_string(),
+                    "outline_cursor" => (ct.selected + 1).to_string(),
+                    "outline_depth" => ct
                         .nodes
                         .get(ct.selected)
                         .map(|n| n.depth)
                         .unwrap_or(0)
                         .to_string(),
-                    "tree_max_depth" => ct
+                    "outline_max_depth" => ct
                         .nodes
                         .iter()
                         .map(|n| n.depth)
                         .max()
                         .unwrap_or(0)
                         .to_string(),
-                    "tree_expanded" => ct.expanded.len().to_string(),
-                    "tree_heading" => ct
+                    "outline_expanded" => ct.expanded.len().to_string(),
+                    "outline_heading" => ct
                         .nodes
                         .get(ct.selected)
                         .and_then(|n| {
-                            if let crate::content_tree::parse::NodeKind::Header { title, .. } =
-                                &n.kind
-                            {
+                            if let crate::outline::parse::NodeKind::Header { title, .. } = &n.kind {
                                 Some(title.clone())
                             } else {
                                 None
                             }
                         })
                         .unwrap_or_default(),
-                    "tree_note" => ct.note_title.clone(),
-                    "tree_error" => if ct.load_error { "error" } else { "" }.to_string(),
+                    "outline_note" => ct.note_title.clone(),
+                    "outline_error" => if ct.load_error { "error" } else { "" }.to_string(),
                     _ => unreachable!(),
                 };
                 Some(val.into())
@@ -1510,7 +1509,7 @@ pub fn effective_templates(cfg: &StatuslineConfig, view: ViewMode) -> Statusline
         ViewMode::Draw => cfg.draw.as_ref(),
         ViewMode::Canvas => cfg.canvas.as_ref(),
         ViewMode::Backup => cfg.backup.as_ref(),
-        ViewMode::ContentTree => cfg.content_tree.as_ref(),
+        ViewMode::Outline => cfg.outline.as_ref(),
         ViewMode::Setup => None,
     };
 

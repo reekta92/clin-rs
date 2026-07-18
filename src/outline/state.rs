@@ -1,7 +1,7 @@
-use crate::content_tree::parse::TreeNode;
+use crate::outline::parse::TreeNode;
 use std::collections::HashSet;
 
-pub struct ContentTreeState {
+pub struct OutlineState {
     pub note_id: String,
     pub note_title: String,
     pub nodes: Vec<TreeNode>,
@@ -18,7 +18,7 @@ pub struct ContentTreeState {
     pub tree_list_rect: ratatui::layout::Rect,
 }
 
-impl ContentTreeState {
+impl OutlineState {
     /// `load_error=true` variant for unloadable notes.
     pub fn error(
         note_id: String,
@@ -50,10 +50,10 @@ impl ContentTreeState {
         keybinds: crate::keybinds::Keybinds,
         seq_matcher: crate::keybinds::KeyMatcher,
     ) -> Self {
-        let nodes = crate::content_tree::parse::parse_outline(title, content);
+        let nodes = crate::outline::parse::parse_outline(title, content);
         let mut expanded = HashSet::new();
         for (i, n) in nodes.iter().enumerate() {
-            if matches!(n.kind, crate::content_tree::parse::NodeKind::Header { .. }) {
+            if matches!(n.kind, crate::outline::parse::NodeKind::Header { .. }) {
                 expanded.insert(i); // default: all headers expanded
             }
         }
@@ -103,7 +103,7 @@ impl ContentTreeState {
     pub fn is_header(&self, i: usize) -> bool {
         self.nodes
             .get(i)
-            .is_some_and(|n| matches!(n.kind, crate::content_tree::parse::NodeKind::Header { .. }))
+            .is_some_and(|n| matches!(n.kind, crate::outline::parse::NodeKind::Header { .. }))
     }
 
     pub fn move_up(&mut self) {
@@ -196,15 +196,14 @@ impl ContentTreeState {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_content_tree_state() {
+    fn test_outline_state() {
         let content = "
 # H1
 Some intro.
 ## H2
 - Item 1
 ";
-        let mut state = ContentTreeState::new(
+        let mut state = OutlineState::new(
             "id".to_string(),
             "Title",
             content,

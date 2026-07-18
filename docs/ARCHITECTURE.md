@@ -17,7 +17,7 @@ pub enum ViewMode {
     Draw,    // Freehand drawing canvas
     Canvas,  // Obsidian-compatible node/edge canvas (pinstar)
     Backup,  // Git backup dashboard
-    ContentTree,  // Header-based note outline
+    Outline,  // Header-based note outline
     Setup,  // First-run setup wizard
 ```
 
@@ -35,14 +35,14 @@ Canvas──Esc───► List
 List  ──?/F1──► Help
 Help  ──Esc───► List
 List  ──palette──► Backup   (via command palette backup.open)
-List  ──palette──► ContentTree  (via command palette content_tree.open)
+List  ──palette──► Outline  (via command palette outline.open)
 List  ──palette──► Setup   (via setup.open)
 Setup ──Esc───► List
 Backup ──Esc───► List
-ContentTree ──Esc───► List
+Outline ──Esc───► List
 ```
 
-Each overlay view implements the [`OverlayView`] trait (see `src/overlay.rs`). Graph, Draw, Canvas, Backup, and ContentTree all integrate into the main event loop via `overlay_render()` and `overlay_handle_event()` — they do not take control of the terminal. Their state is owned by `App` and instantiated on view transition.
+Each overlay view implements the [`OverlayView`] trait (see `src/overlay.rs`). Graph, Draw, Canvas, Backup, and Outline all integrate into the main event loop via `overlay_render()` and `overlay_handle_event()` — they do not take control of the terminal. Their state is owned by `App` and instantiated on view transition.
 
 ---
 
@@ -85,7 +85,7 @@ while !should_quit:
         └─ draw_ui():
              ├─ match app.mode:
              │    ├─ List / Edit / Help / Setup → dedicated render
-             │    └─ Graph/Draw/Canvas/Backup/ContentTree
+             │    └─ Graph/Draw/Canvas/Backup/Outline
              │       → state.overlay_render(frame, area, theme, config, status)
              └─ popups, palette
 
@@ -98,7 +98,7 @@ while !should_quit:
     ├─ Edit  → handle_edit_keys() / handle_edit_mouse()
     ├─ Help  → handle_help_keys() + tab switching
     ├─ Setup → handle_setup_keys() / handle_setup_mouse()
-    └─ Graph/Draw/Canvas/Backup/ContentTree
+    └─ Graph/Draw/Canvas/Backup/Outline
        → state.overlay_handle_event(event, terminal, config)
           returns OverlayResult::{Continue, Exit, OpenHelp, NoteOpened, JumpToLine}
           └─ Exit → state = None; mode = return_mode (restored to previous view)
@@ -106,12 +106,12 @@ while !should_quit:
 
 ### Sub-view Overlays (OverlayView trait)
 
-Five sub-views (Graph, Draw, Canvas, Backup, ContentTree) implement the [`OverlayView`] trait (see `src/overlay.rs`):
+Five sub-views (Graph, Draw, Canvas, Backup, Outline) implement the [`OverlayView`] trait (see `src/overlay.rs`):
 
 - [`overlay_render()`] — draws the overlay into a given screen area; called from `draw_ui()` during the main render pass
 - [`overlay_handle_event()`] — handles one terminal event; returns [`OverlayResult`] indicating whether the overlay should stay active, exit, open help, or perform a view-specific action (open a note, jump to a line)
 
-Their state is stored as `Option<X>` fields on `App` (e.g. `graph_state: Option<GrafAppState>`, `draw_state: Option<DrawAppState>`). When the user enters Graph/Draw/Canvas/Backup/ContentTree, the state is created and owned by `App`. On exit, the state is dropped (set to `None`) and the previous view is restored via `return_mode`.
+Their state is stored as `Option<X>` fields on `App` (e.g. `graph_state: Option<GrafAppState>`, `draw_state: Option<DrawAppState>`). When the user enters Graph/Draw/Canvas/Backup/Outline, the state is created and owned by `App`. On exit, the state is dropped (set to `None`) and the previous view is restored via `return_mode`.
 
 No sub-view takes terminal ownership or runs a separate event loop.
 
@@ -136,7 +136,7 @@ App
   ├── draw_state: Option<DrawAppState>         // freehand drawing overlay
   ├── canvas_state: Option<PinstarState>       // node/edge canvas overlay
   ├── backup_state: Option<BackupState>        // git backup dashboard overlay
-  ├── content_tree_state: Option<ContentTreeState>  // header-based outline overlay
+  ├── outline_state: Option<OutlineState>  // header-based outline overlay
   └── ...status helpers, config, caches
 ```
 
@@ -156,7 +156,7 @@ App::new(storage)
     ├── App::autosave()
     │     └─ storage.save_note() → writes to disk
     │
-    └── Overlay state (graph_state, draw_state, canvas_state, backup_state, content_tree_state)
+    └── Overlay state (graph_state, draw_state, canvas_state, backup_state, outline_state)
           └─ Owned by App as Option<X>. Created on view transition via mode change.
              Dropped (set to None) on overlay exit. No separate event loop.
 ```
@@ -178,7 +178,7 @@ main.rs: terminal.draw(|frame| draw_ui(frame, app, focus))
             ├─ Draw  → draw_state.overlay_render(frame, area, theme, config, status)
             ├─ Canvas→ canvas_state.overlay_render(frame, area, theme, config, status)
             ├─ Backup→ backup_state.overlay_render(frame, area, theme, config, status)
-            └─ ContentTree → content_tree_state.overlay_render(frame, area, theme, config, status)
+            └─ Outline → outline_state.overlay_render(frame, area, theme, config, status)
        │
        └─ if theme popup → draw_theme_popup()
 ```
@@ -296,7 +296,7 @@ src/
 │   │                    CreateDrawAction, CreateCanvasAction, SwitchThemeAction,
 │   │                    OpenSetupWizardAction, SwitchKeybindPresetAction,
 │   │                    ToggleExternalEditorAction, ToggleLayoutAction
-│   ├── content_tree.rs — OpenContentTreeAction
+│   ├── outline.rs — OpenOutlineAction
 │   ├── decrypt.rs    — DecryptNoteAction
 │   ├── encrypt.rs    — EncryptNoteAction
 │   ├── import.rs     — ImportAction (File/CSV/JSON/URL/Clipboard → New/Append)
@@ -332,11 +332,11 @@ src/
 │   ├── render.rs     — Canvas + element rendering
 │   └── state.rs      — DrawAppState, DrawData, DrawElement
 │
-├── content_tree/      — Content Tree view (header outline)
-│   ├── app.rs         — ContentTreeState, OverlayView implementation
+├── outline/      — Outline view (header outline)
+│   ├── app.rs         — OutlineState, OverlayView implementation
 │   ├── input.rs       — Keyboard/mouse handlers
 │   ├── render.rs      — Tree + detail rendering
-│   ├── state.rs       — ContentTreeState, tree model
+│   ├── state.rs       — OutlineState, tree model
 │   └── parse.rs       — Header outline parser
 └── pinstar/          — Canvas view (Obsidian-compatible)
     ├── app.rs        — PinstarState, OverlayView implementation

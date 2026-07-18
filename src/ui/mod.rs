@@ -244,25 +244,25 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 app.backup_state = Some(backup);
             }
         }
-        ViewMode::ContentTree => {
-            if let Some(mut tree) = app.content_tree_state.take() {
+        ViewMode::Outline => {
+            if let Some(mut tree) = app.outline_state.take() {
                 let outer = Layout::default()
                     .direction(Direction::Vertical)
                     .constraints([Constraint::Length(1), Constraint::Min(0)])
                     .split(frame.area());
                 let mut ctx = crate::statusline::StatuslineContext::for_overlay(
                     &app.config,
-                    ViewMode::ContentTree,
+                    ViewMode::Outline,
                 );
                 ctx.area = Some(outer[0]);
                 ctx.app_status = Some(app.status.as_ref());
                 ctx.vault_path = Some(&app.storage.data_dir);
                 ctx.date_format = Some(&app.date_format);
-                ctx.content_tree = Some(&tree);
+                ctx.outline = Some(&tree);
                 let (left_line, right_line) = crate::statusline::render_header(
                     &ctx,
                     &app.config.statusline,
-                    ViewMode::ContentTree,
+                    ViewMode::Outline,
                     &app.app_theme,
                 );
                 draw_view_title_bar(
@@ -275,7 +275,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 );
                 tree.mouse_pos = app.mouse_pos;
                 tree.overlay_render(frame, outer[1], app);
-                app.content_tree_state = Some(tree);
+                app.outline_state = Some(tree);
             }
         }
     }

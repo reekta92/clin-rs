@@ -517,7 +517,6 @@ const ABOUT_SUGGESTIONS: &[HelpSuggestion] = &[
     ),
 ];
 
-
 pub fn tab_suggestions(tab: HelpTab) -> &'static [HelpSuggestion] {
     match tab {
         HelpTab::Notes => NOTES_SUGGESTIONS,
@@ -560,8 +559,6 @@ pub fn tab_popup_descriptions(tab: HelpTab) -> &'static [PopupHelp] {
     }
 }
 
-
-
 const NOTES_POPUPS: &[PopupHelp] = &[
     PopupHelp {
         name: "Command Palette",
@@ -585,7 +582,7 @@ const NOTES_POPUPS: &[PopupHelp] = &[
     },
     PopupHelp {
         name: "Outline",
-        body: "Open the note's **Outline** to browse its markdown headers as a collapsible tree. Move with {content_tree:MoveUp} / {content_tree:MoveDown}, fold or unfold a section with {content_tree:ToggleCollapse}, and expand or collapse every heading at once with {content_tree:ExpandAll} / {content_tree:CollapseAll}. Press {content_tree:Open} on a heading to jump straight to that line in the editor, {content_tree:Back} to return to the note, or {content_tree:Help} for an in-view key guide.",
+        body: "Open the note's **Outline** to browse its markdown headers as a collapsible tree. Move with {outline:MoveUp} / {outline:MoveDown}, fold or unfold a section with {outline:ToggleCollapse}, and expand or collapse every heading at once with {outline:ExpandAll} / {outline:CollapseAll}. Press {outline:Open} on a heading to jump straight to that line in the editor, {outline:Back} to return to the note, or {outline:Help} for an in-view key guide.",
     },
 ];
 

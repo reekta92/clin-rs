@@ -7,7 +7,6 @@ pub mod cli;
 pub mod config;
 pub mod console;
 pub mod constants;
-pub mod content_tree;
 pub mod draw;
 pub mod editor;
 pub mod frontmatter;
@@ -19,6 +18,7 @@ pub mod keybinds;
 pub mod list_view;
 pub mod markdown;
 pub mod migration;
+pub mod outline;
 pub mod overlay;
 pub mod palette;
 pub mod pinstar;
@@ -1209,17 +1209,17 @@ fn run_app(
                                         false
                                     }
                                 }
-                                ViewMode::ContentTree => {
-                                    if let Some(mut tree) = app.content_tree_state.take() {
+                                ViewMode::Outline => {
+                                    if let Some(mut tree) = app.outline_state.take() {
                                         let res = tree.overlay_handle_event(
                                             Event::Key(key),
                                             app,
                                             terminal,
                                         );
-                                        app.content_tree_state = Some(tree);
+                                        app.outline_state = Some(tree);
                                         match res? {
                                             crate::overlay::OverlayResult::Exit => {
-                                                app.content_tree_state = None;
+                                                app.outline_state = None;
                                                 app.mode = app
                                                     .return_mode
                                                     .take()
@@ -1231,7 +1231,7 @@ fn run_app(
                                                 note_id: _,
                                                 line: _,
                                             } => {
-                                                app.content_tree_state = None;
+                                                app.outline_state = None;
                                                 app.mode = app
                                                     .return_mode
                                                     .take()
@@ -1426,14 +1426,14 @@ fn run_app(
                                         app.backup_state = Some(backup);
                                     }
                                 }
-                                ViewMode::ContentTree => {
-                                    if let Some(mut tree) = app.content_tree_state.take() {
+                                ViewMode::Outline => {
+                                    if let Some(mut tree) = app.outline_state.take() {
                                         let _ = tree.overlay_handle_event(
                                             Event::Mouse(mouse_event),
                                             app,
                                             terminal,
                                         )?;
-                                        app.content_tree_state = Some(tree);
+                                        app.outline_state = Some(tree);
                                     }
                                 }
                                 ViewMode::Setup => {

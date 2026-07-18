@@ -2,6 +2,16 @@
 
 All notable changes to clin are documented in this file.
 
+## [Unreleased]
+
+### Changed
+
+- **Rename "Content tree" → "Outline"** — module paths, type names, user-facing strings,
+  config keys (`[content_tree]` → `[outline]`, `[statusline.content_tree]` → `[statusline.outline]`),
+  statusline template tokens (`{tree_*}` → `{outline_*}`), and command palette id
+  (`content_tree.open` → `outline.open`). Existing user configs for the old keys are
+  silently dropped — update `keybinds.toml` and `config.toml` to use the new `outline` keys.
+
 ## [0.10.0-beta.5] - 2026-07-18
 
 ### Added

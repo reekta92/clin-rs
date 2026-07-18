@@ -1,23 +1,23 @@
 use crate::config::ClinConfig;
-use crate::content_tree::state::ContentTreeState;
-use crate::keybinds::{ContentTreeAction, Keybinds};
+use crate::keybinds::{Keybinds, OutlineAction};
+use crate::outline::state::OutlineState;
 use crossterm::event::{KeyEvent, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::Rect;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ContentTreeInput {
+pub enum OutlineInput {
     None,
     Open,
     Back,
     Help,
 }
 
-pub fn handle_content_tree_mouse(
-    state: &mut ContentTreeState,
+pub fn handle_outline_mouse(
+    state: &mut OutlineState,
     mouse: MouseEvent,
     _area: Rect,
     scrollbars_enabled: bool,
-) -> ContentTreeInput {
+) -> OutlineInput {
     // --- Scrollbar handling (drag) ---
     if scrollbars_enabled && let Some(meta) = state.last_tree_scroll {
         let viewport = meta.viewport_len;
@@ -37,23 +37,23 @@ pub fn handle_content_tree_mouse(
                     viewport,
                 )];
             }
-            return ContentTreeInput::None;
+            return OutlineInput::None;
         }
     }
 
     match mouse.kind {
         MouseEventKind::ScrollUp => {
             state.wheel_scroll(-1);
-            return ContentTreeInput::None;
+            return OutlineInput::None;
         }
         MouseEventKind::ScrollDown => {
             state.wheel_scroll(1);
-            return ContentTreeInput::None;
+            return OutlineInput::None;
         }
         MouseEventKind::Down(MouseButton::Left) => {
             let list_rect = state.tree_list_rect;
             if !crate::events::contains_cell(list_rect, mouse.column, mouse.row) {
-                return ContentTreeInput::None;
+                return OutlineInput::None;
             }
             let visible = state.visible_indices();
             let Some(rel) = crate::ui::list_index_at(
@@ -63,7 +63,7 @@ pub fn handle_content_tree_mouse(
                 state.tree_scroll_offset,
                 visible.len(),
             ) else {
-                return ContentTreeInput::None;
+                return OutlineInput::None;
             };
             let node_idx = visible[rel];
             let was_selected = state.selected == node_idx;
@@ -73,62 +73,62 @@ pub fn handle_content_tree_mouse(
                     state.toggle_collapse();
                 }
             } else if was_selected {
-                return ContentTreeInput::Open;
+                return OutlineInput::Open;
             }
         }
         _ => {}
     }
 
-    ContentTreeInput::None
+    OutlineInput::None
 }
 
 pub fn handle_input(
-    state: &mut ContentTreeState,
+    state: &mut OutlineState,
     key: KeyEvent,
     keybinds: &Keybinds,
     config: &ClinConfig,
-) -> ContentTreeInput {
+) -> OutlineInput {
     if crate::events::is_universal_quit_key(&key) {
-        return ContentTreeInput::Back;
+        return OutlineInput::Back;
     }
 
     let seq = config.sequences_enabled();
     let counts = config.counts_enabled();
-    match keybinds.resolve_content_tree(&mut state.seq_matcher, key, seq, counts) {
+    match keybinds.resolve_outline(&mut state.seq_matcher, key, seq, counts) {
         crate::keybinds::MatchOutcome::Matched(action, count) => match action {
-            ContentTreeAction::Back => return ContentTreeInput::Back,
-            ContentTreeAction::Open => return ContentTreeInput::Open,
-            ContentTreeAction::Help => return ContentTreeInput::Help,
-            ContentTreeAction::MoveUp => {
+            OutlineAction::Back => return OutlineInput::Back,
+            OutlineAction::Open => return OutlineInput::Open,
+            OutlineAction::Help => return OutlineInput::Help,
+            OutlineAction::MoveUp => {
                 let n = count.unwrap_or(1) as usize;
                 for _ in 0..n {
                     state.move_up();
                 }
-                return ContentTreeInput::None;
+                return OutlineInput::None;
             }
-            ContentTreeAction::MoveDown => {
+            OutlineAction::MoveDown => {
                 let n = count.unwrap_or(1) as usize;
                 for _ in 0..n {
                     state.move_down();
                 }
-                return ContentTreeInput::None;
+                return OutlineInput::None;
             }
-            ContentTreeAction::ToggleCollapse => {
+            OutlineAction::ToggleCollapse => {
                 state.toggle_collapse();
-                return ContentTreeInput::None;
+                return OutlineInput::None;
             }
-            ContentTreeAction::ExpandAll => {
+            OutlineAction::ExpandAll => {
                 state.expand_all();
-                return ContentTreeInput::None;
+                return OutlineInput::None;
             }
-            ContentTreeAction::CollapseAll => {
+            OutlineAction::CollapseAll => {
                 state.collapse_all();
-                return ContentTreeInput::None;
+                return OutlineInput::None;
             }
         },
-        crate::keybinds::MatchOutcome::Pending => return ContentTreeInput::None,
+        crate::keybinds::MatchOutcome::Pending => return OutlineInput::None,
         crate::keybinds::MatchOutcome::NoMatch => {}
     }
 
-    ContentTreeInput::None
+    OutlineInput::None
 }

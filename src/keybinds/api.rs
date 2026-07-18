@@ -1,6 +1,6 @@
 use super::{
-    BackupAction, CanvasAction, ContentTreeAction, DrawAction, EditAction, GraphAction, HelpAction,
-    KeyCombo, KeyMatcher, Keybinds, KeybindsToml, ListAction, MatchOutcome, SetupAction,
+    BackupAction, CanvasAction, DrawAction, EditAction, GraphAction, HelpAction, KeyCombo,
+    KeyMatcher, Keybinds, KeybindsToml, ListAction, MatchOutcome, OutlineAction, SetupAction,
 };
 use anyhow::{Context, Result};
 use crossterm::event::KeyEvent;
@@ -92,7 +92,7 @@ keybind_resolve!(graph, GraphAction, resolve_graph, true);
 keybind_resolve!(draw, DrawAction, resolve_draw, true);
 keybind_resolve!(canvas, CanvasAction, resolve_canvas, true);
 keybind_resolve!(backup, BackupAction, resolve_backup, true);
-keybind_resolve!(content_tree, ContentTreeAction, resolve_content_tree, true);
+keybind_resolve!(outline, OutlineAction, resolve_outline, true);
 keybind_resolve!(setup, SetupAction, resolve_setup, false);
 
 impl Keybinds {
@@ -119,7 +119,7 @@ impl Keybinds {
         merge_section(&mut keybinds.draw, &toml.draw);
         merge_section(&mut keybinds.canvas, &toml.canvas);
         merge_section(&mut keybinds.backup, &toml.backup);
-        merge_section(&mut keybinds.content_tree, &toml.content_tree);
+        merge_section(&mut keybinds.outline, &toml.outline);
         merge_section(&mut keybinds.setup, &toml.setup);
         Ok(keybinds)
     }
@@ -146,7 +146,7 @@ impl Keybinds {
             draw: section_to_toml(&self.draw),
             canvas: section_to_toml(&self.canvas),
             backup: section_to_toml(&self.backup),
-            content_tree: section_to_toml(&self.content_tree),
+            outline: section_to_toml(&self.outline),
             setup: section_to_toml(&self.setup),
         }
     }
@@ -244,12 +244,12 @@ keybind_scope!(
     display_backup
 );
 keybind_scope!(
-    content_tree,
-    ContentTreeAction,
-    matches_content_tree,
-    content_tree_keys_display,
-    bindings_for_content_tree,
-    display_content_tree
+    outline,
+    OutlineAction,
+    matches_outline,
+    outline_keys_display,
+    bindings_for_outline,
+    display_outline
 );
 keybind_scope!(
     setup,
@@ -382,12 +382,12 @@ mod tests {
         assert!(!keybinds.draw.is_empty());
         assert!(!keybinds.canvas.is_empty());
         assert!(!keybinds.backup.is_empty());
-        assert!(!keybinds.content_tree.is_empty());
+        assert!(!keybinds.outline.is_empty());
 
         let toml = keybinds.to_toml();
         assert!(!toml.draw.is_empty());
         assert!(!toml.canvas.is_empty());
-        assert!(!toml.content_tree.is_empty());
+        assert!(!toml.outline.is_empty());
         let temp_dir = tempfile::tempdir().unwrap();
         let path = temp_dir.path().join("keybinds.toml");
         keybinds.save(&path).unwrap();
@@ -395,7 +395,7 @@ mod tests {
         assert_eq!(loaded_keybinds.draw, keybinds.draw);
         assert_eq!(loaded_keybinds.canvas, keybinds.canvas);
         assert_eq!(loaded_keybinds.backup, keybinds.backup);
-        assert_eq!(loaded_keybinds.content_tree, keybinds.content_tree);
+        assert_eq!(loaded_keybinds.outline, keybinds.outline);
     }
 
     #[test]
@@ -977,9 +977,9 @@ fn test_macro_resolve_parity() {
     let outcome2 = matcher.resolve(event, &kb.backup, false, true);
     assert_eq!(outcome1, outcome2);
 
-    // ContentTree
-    let outcome1 = kb.resolve_content_tree(&mut matcher, event, false, true);
-    let outcome2 = matcher.resolve(event, &kb.content_tree, false, true);
+    // Outline
+    let outcome1 = kb.resolve_outline(&mut matcher, event, false, true);
+    let outcome2 = matcher.resolve(event, &kb.outline, false, true);
     assert_eq!(outcome1, outcome2);
 
     // Setup

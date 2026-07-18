@@ -28,14 +28,14 @@ pub fn help_tab_names() -> [&'static str; 8] {
 /// Mirrors `backup_tabs` / list grid tabs. Glyphs are (nerd_font, unicode).
 pub fn help_tabs(icon_mode: crate::config::IconMode) -> Vec<(&'static str, Option<&'static str>)> {
     let pairs: [(&'static str, &'static str, &'static str); 8] = [
-        ("Notes", "\u{f02d}", "\u{1f4d8}"),         // book
-        ("Editor", "\u{f303}", "\u{270f}"),         // pencil
-        ("Graph", "\u{f1e0}", "\u{1f5c2}"),         // share-alt / stacked
-        ("Draw", "\u{f1fc}", "\u{1f3a8}"),          // paint-brush / palette
-        ("Canvas", "\u{f0b2}", "\u{1f4cc}"),        // thumbtack / pushpin
-        ("Backup", "\u{f1d3}", "\u{1f4be}"),        // git / floppy
-        ("Templates", "\u{f15b}", "\u{1f4c4}"),     // file / page
-        ("About", "\u{f05a}", "\u{2139}"),          // info-circle
+        ("Notes", "\u{f02d}", "\u{1f4d8}"),     // book
+        ("Editor", "\u{f303}", "\u{270f}"),     // pencil
+        ("Graph", "\u{f1e0}", "\u{1f5c2}"),     // share-alt / stacked
+        ("Draw", "\u{f1fc}", "\u{1f3a8}"),      // paint-brush / palette
+        ("Canvas", "\u{f0b2}", "\u{1f4cc}"),    // thumbtack / pushpin
+        ("Backup", "\u{f1d3}", "\u{1f4be}"),    // git / floppy
+        ("Templates", "\u{f15b}", "\u{1f4c4}"), // file / page
+        ("About", "\u{f05a}", "\u{2139}"),      // info-circle
     ];
     pairs
         .iter()
@@ -527,7 +527,6 @@ fn backup_help_text(keybinds: &Keybinds, theme: &AppThemeColors) -> Vec<HelpRow>
         |kb, a| kb.backup_keys_display(a),
     )
 }
-
 
 fn templates_help_text(keybinds: &Keybinds, theme: &AppThemeColors, tab: HelpTab) -> Vec<HelpRow> {
     let list_template = keybinds.list_keys_display(ListAction::NewFromTemplate);
@@ -1432,15 +1431,15 @@ pub(crate) fn resolve_tip_key(token: &str, kb: &Keybinds) -> String {
             "PrevField" => kb.backup_keys_display(BackupAction::PrevField),
             _ => format!("[ERR:{}]", token),
         },
-        "content_tree" => match action {
-            "Open" => kb.content_tree_keys_display(ContentTreeAction::Open),
-            "MoveUp" => kb.content_tree_keys_display(ContentTreeAction::MoveUp),
-            "MoveDown" => kb.content_tree_keys_display(ContentTreeAction::MoveDown),
-            "ToggleCollapse" => kb.content_tree_keys_display(ContentTreeAction::ToggleCollapse),
-            "ExpandAll" => kb.content_tree_keys_display(ContentTreeAction::ExpandAll),
-            "CollapseAll" => kb.content_tree_keys_display(ContentTreeAction::CollapseAll),
-            "Back" => kb.content_tree_keys_display(ContentTreeAction::Back),
-            "Help" => kb.content_tree_keys_display(ContentTreeAction::Help),
+        "outline" => match action {
+            "Open" => kb.outline_keys_display(OutlineAction::Open),
+            "MoveUp" => kb.outline_keys_display(OutlineAction::MoveUp),
+            "MoveDown" => kb.outline_keys_display(OutlineAction::MoveDown),
+            "ToggleCollapse" => kb.outline_keys_display(OutlineAction::ToggleCollapse),
+            "ExpandAll" => kb.outline_keys_display(OutlineAction::ExpandAll),
+            "CollapseAll" => kb.outline_keys_display(OutlineAction::CollapseAll),
+            "Back" => kb.outline_keys_display(OutlineAction::Back),
+            "Help" => kb.outline_keys_display(OutlineAction::Help),
             _ => format!("[ERR:{}]", token),
         },
         _ => format!("[ERR:{}]", token),
@@ -1514,14 +1513,14 @@ mod tests {
             "list:Search",
             "list:OpenTrash",
             "edit:ManageSubnotes",
-            "content_tree:MoveUp",
-            "content_tree:MoveDown",
-            "content_tree:ToggleCollapse",
-            "content_tree:ExpandAll",
-            "content_tree:CollapseAll",
-            "content_tree:Open",
-            "content_tree:Back",
-            "content_tree:Help",
+            "outline:MoveUp",
+            "outline:MoveDown",
+            "outline:ToggleCollapse",
+            "outline:ExpandAll",
+            "outline:CollapseAll",
+            "outline:Open",
+            "outline:Back",
+            "outline:Help",
         ];
         for &token in &open_keys {
             let resolved = crate::ui::help::resolve_tip_key(token, &kb);

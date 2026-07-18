@@ -18,7 +18,7 @@
 - [X] **Sorting & pinning** — sort by title/modified, pin notes to top
 - [X] **Custom keybinds** — fully rebindable via keybinds.toml
 - [X] **Graph view full integration (graf)** — `graf` is no longer external; physics, minimap, legend, search, config
-- [X] **Tree outline** — note hierarchy from headers
+- [X] \*\*Outline\*\* — note hierarchy from headers
 - [X] **Text search** — search note content via `grep`/`ripgrep`
 - [X] **Batch tagging** — tag multiple notes at once
 - [X] **Link objects** — connect objects with lines

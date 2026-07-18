@@ -5,9 +5,9 @@ use super::{
     draw_view_title_bar, format_keybind_hints, get_preview_info,
 };
 use crate::app::{App, EditFocus, EditMode, EditSidebar, ViewMode};
-use crate::content_tree::parse::NodeKind;
 use crate::events::get_title_text;
 use crate::keybinds::EditAction;
+use crate::outline::parse::NodeKind;
 
 /// Render the body editor widget with proper style, cursor, line numbers, and cursor-line fill.
 /// Called from both the preview and non-preview paths to eliminate a ~50‑line duplication.

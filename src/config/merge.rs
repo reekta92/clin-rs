@@ -235,7 +235,7 @@ tab_icons_only = false
 # footer_right = "{version}"
 
 # Per-view overrides — each sub-table accepts the same four fields:
-#   list, edit, help, graph, draw, canvas, backup, content_tree
+#   list, edit, help, graph, draw, canvas, backup, outline
 # Example:
 # [statusline.list]
 # footer_right = "{note_count} notes ({selected_count} selected) | {version}"

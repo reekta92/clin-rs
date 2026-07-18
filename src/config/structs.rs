@@ -575,7 +575,7 @@ pub struct StatuslineConfig {
     pub draw: Option<StatuslineOverride>,
     pub canvas: Option<StatuslineOverride>,
     pub backup: Option<StatuslineOverride>,
-    pub content_tree: Option<StatuslineOverride>,
+    pub outline: Option<StatuslineOverride>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]

@@ -1,10 +1,10 @@
-pub mod content_tree;
 pub mod decrypt;
 pub mod encrypt;
 pub mod import;
 pub mod info;
 pub mod insert_date;
 pub mod ocr;
+pub mod outline;
 pub mod settings;
 
 use crate::app::App;
@@ -234,7 +234,7 @@ pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyL
         Box::new(ManageSubnotesList),
         Box::new(insert_date::InsertDateAction),
         Box::new(OpenGraphAction),
-        Box::new(content_tree::OpenContentTreeAction),
+        Box::new(outline::OpenOutlineAction),
         Box::new(OpenBackupAction),
         Box::new(CreateDrawAction),
         Box::new(CreateCanvasAction),

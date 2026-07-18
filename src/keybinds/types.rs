@@ -206,7 +206,7 @@ pub enum BackupAction {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, strum::EnumIter)]
 #[serde(rename_all = "snake_case")]
-pub enum ContentTreeAction {
+pub enum OutlineAction {
     MoveUp,
     MoveDown,
     ToggleCollapse,

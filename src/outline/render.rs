@@ -1,7 +1,7 @@
 use crate::app::ViewMode;
 use crate::app_theme::AppThemeColors;
-use crate::content_tree::state::ContentTreeState;
-use crate::keybinds::{ContentTreeAction, Keybinds};
+use crate::keybinds::{Keybinds, OutlineAction};
+use crate::outline::state::OutlineState;
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -10,7 +10,7 @@ use ratatui::{
     widgets::{Block, List, ListItem, Paragraph},
 };
 
-fn get_tree_prefix(state: &ContentTreeState, visible: &[usize], p: usize) -> String {
+fn get_outline_prefix(state: &OutlineState, visible: &[usize], p: usize) -> String {
     let idx = visible[p];
     let node = &state.nodes[idx];
     let depth = node.depth;
@@ -62,10 +62,10 @@ fn get_tree_prefix(state: &ContentTreeState, visible: &[usize], p: usize) -> Str
     prefix
 }
 
-pub fn draw_content_tree(
+pub fn draw_outline(
     frame: &mut Frame,
     area: Rect,
-    state: &mut ContentTreeState,
+    state: &mut OutlineState,
     theme: &AppThemeColors,
     keybinds: &Keybinds,
     config: &crate::config::ClinConfig,
@@ -108,7 +108,7 @@ pub fn draw_content_tree(
 
         for (p, &idx) in visible.iter().enumerate() {
             if let Some(node) = state.nodes.get(idx) {
-                let prefix = get_tree_prefix(state, &visible, p);
+                let prefix = get_outline_prefix(state, &visible, p);
 
                 let mut spans = Vec::new();
                 if !prefix.is_empty() {
@@ -116,7 +116,7 @@ pub fn draw_content_tree(
                 }
 
                 match &node.kind {
-                    crate::content_tree::parse::NodeKind::Header { title, .. } => {
+                    crate::outline::parse::NodeKind::Header { title, .. } => {
                         let arrow = if node.has_children {
                             if state.expanded.contains(&idx) {
                                 "▼ "
@@ -139,17 +139,17 @@ pub fn draw_content_tree(
                                 .add_modifier(Modifier::BOLD),
                         ));
                     }
-                    crate::content_tree::parse::NodeKind::ListItem { text } => {
+                    crate::outline::parse::NodeKind::ListItem { text } => {
                         spans.push(Span::styled("• ", Style::default().fg(theme.accent)));
                         spans.push(Span::styled(text.clone(), Style::default().fg(theme.text)));
                     }
-                    crate::content_tree::parse::NodeKind::Paragraph { preview, .. } => {
+                    crate::outline::parse::NodeKind::Paragraph { preview, .. } => {
                         spans.push(Span::styled(
                             preview.clone(),
                             Style::default().fg(theme.muted),
                         ));
                     }
-                    crate::content_tree::parse::NodeKind::CodeBlock { lang, .. } => {
+                    crate::outline::parse::NodeKind::CodeBlock { lang, .. } => {
                         spans.push(Span::styled(
                             format!("```{lang}"),
                             Style::default().fg(theme.muted),
@@ -258,28 +258,22 @@ pub fn draw_content_tree(
         (
             format!(
                 "{}/{}",
-                keybinds.display_content_tree(ContentTreeAction::MoveDown),
-                keybinds.display_content_tree(ContentTreeAction::MoveUp)
+                keybinds.display_outline(OutlineAction::MoveDown),
+                keybinds.display_outline(OutlineAction::MoveUp)
             ),
             "move",
         ),
         (
-            keybinds.display_content_tree(ContentTreeAction::ToggleCollapse),
+            keybinds.display_outline(OutlineAction::ToggleCollapse),
             "fold",
         ),
-        (
-            keybinds.display_content_tree(ContentTreeAction::Open),
-            "jump",
-        ),
-        (
-            keybinds.display_content_tree(ContentTreeAction::Back),
-            "back",
-        ),
+        (keybinds.display_outline(OutlineAction::Open), "jump"),
+        (keybinds.display_outline(OutlineAction::Back), "back"),
     ];
     let hint = crate::ui::format_keybind_hints(theme, &hints_items);
-    let mut ctx = crate::statusline::StatuslineContext::for_overlay(config, ViewMode::ContentTree);
+    let mut ctx = crate::statusline::StatuslineContext::for_overlay(config, ViewMode::Outline);
     ctx.area = Some(hint_area);
-    ctx.content_tree = Some(state);
+    ctx.outline = Some(state);
     ctx.app_status = app_status;
     ctx.hints = Some(hint.spans);
     if let Some(p) = &state.seq_matcher.pending_display() {
@@ -290,6 +284,6 @@ pub fn draw_content_tree(
     }
 
     let (left_line, right_line) =
-        crate::statusline::render_footer(&ctx, &config.statusline, ViewMode::ContentTree, theme);
+        crate::statusline::render_footer(&ctx, &config.statusline, ViewMode::Outline, theme);
     crate::ui::draw_status_bar(frame, hint_area, theme, left_line, right_line);
 }

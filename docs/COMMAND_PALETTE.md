@@ -58,7 +58,7 @@ pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyL
         Box::new(ManageSubnotesList),
         Box::new(insert_date::InsertDateAction),
         Box::new(OpenGraphAction),
-        Box::new(content_tree::OpenContentTreeAction),
+        Box::new(outline::OpenOutlineAction),
         Box::new(OpenBackupAction),
         Box::new(CreateDrawAction),
         Box::new(CreateCanvasAction),
@@ -135,7 +135,7 @@ Actions are grouped by category. See the `ACTIONS` registry in `src/actions/mod.
 | Category | Example Actions |
 |---|---|
 | **General** | Insert Date |
-| **Notes** | Encrypt, Decrypt, Manage Sub-notes, Content Tree, Show Info |
+| **Notes** | Encrypt, Decrypt, Manage Sub-notes, Outline, Show Info |
 | **Views** | Graph, Draw, Canvas, Backup, Setup Wizard |
 | **Settings** | Theme, Keybind Preset, Layout Toggle, Layout Edit Mode, Preview Toggle, Preview Wrap, Calendar, Line Numbers, Confirm Delete, Pinned On Top, Confirm Quit, Preview Encryption, Sort Cycle, Show Hidden Files, Show All Files, Tab Icons Only, Word Goal, Note Goal, Folders First, Inline Info, Smart Folders, Configure Smart Folders, Icon Mode, Hint Bar Style, External Editor |
 | **Import** | File/CSV/JSON/URL/Clipboard → New Note |
@@ -174,7 +174,7 @@ The command palette is rendered by `CommandPalette` widget in `src/palette.rs`:
 ├─────────────────────────────────────────────┤
 │   Encrypt Note               Encrypt..      │
 │   Decrypt Note               Decrypt..      │
-│   Content Tree               Headers..      │
+│   Outline               Headers..      │
 │   Open Graph View            Switch..       │
 │   Create Drawing             Create..       │
 │   Create Canvas Map          Create..       │

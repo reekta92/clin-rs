@@ -3,15 +3,15 @@ use crate::app::App;
 use anyhow::Result;
 use std::borrow::Cow;
 
-pub struct OpenContentTreeAction;
+pub struct OpenOutlineAction;
 
-impl Action for OpenContentTreeAction {
+impl Action for OpenOutlineAction {
     fn id(&self) -> Cow<'static, str> {
-        Cow::Borrowed("content_tree.open")
+        Cow::Borrowed("outline.open")
     }
 
     fn name(&self) -> Cow<'static, str> {
-        Cow::Borrowed("Content Tree")
+        Cow::Borrowed("Outline")
     }
 
     fn description(&self) -> Cow<'static, str> {
@@ -30,7 +30,7 @@ impl Action for OpenContentTreeAction {
             app.set_temporary_status_static("Select a note first");
             return Ok(());
         }
-        app.open_content_tree_view();
+        app.open_outline_view();
         Ok(())
     }
 }

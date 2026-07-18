@@ -69,12 +69,12 @@ impl App {
             self.mode = ViewMode::Graph;
         }
     }
-    pub fn open_content_tree_view(&mut self) {
+    pub fn open_outline_view(&mut self) {
         let note_id = self.get_selected_note_id();
-        self.content_tree_state = if let Some(id) = note_id {
+        self.outline_state = if let Some(id) = note_id {
             match self.storage.load_note(&id) {
                 Ok(note) => {
-                    let state = crate::content_tree::state::ContentTreeState::new(
+                    let state = crate::outline::state::OutlineState::new(
                         id.clone(),
                         &note.title,
                         &note.content,
@@ -84,22 +84,22 @@ impl App {
 
                     Some(state)
                 }
-                Err(_) => Some(crate::content_tree::state::ContentTreeState::error(
+                Err(_) => Some(crate::outline::state::OutlineState::error(
                     id,
                     self.keybinds.clone(),
                     self.seq_matcher.clone(),
                 )),
             }
         } else {
-            Some(crate::content_tree::state::ContentTreeState::error(
+            Some(crate::outline::state::OutlineState::error(
                 String::new(),
                 self.keybinds.clone(),
                 self.seq_matcher.clone(),
             ))
         };
-        if self.mode != ViewMode::ContentTree {
+        if self.mode != ViewMode::Outline {
             self.return_mode = Some(self.mode);
-            self.mode = ViewMode::ContentTree;
+            self.mode = ViewMode::Outline;
         }
     }
 

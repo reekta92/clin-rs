@@ -1,6 +1,6 @@
 use super::{
-    BackupAction, CanvasAction, ContentTreeAction, DrawAction, EditAction, GraphAction, HelpAction,
-    KeyCombo, Keybinds, ListAction, SetupAction,
+    BackupAction, CanvasAction, DrawAction, EditAction, GraphAction, HelpAction, KeyCombo,
+    Keybinds, ListAction, OutlineAction, SetupAction,
 };
 use crate::config::KeybindPreset;
 use crossterm::event::KeyCode;
@@ -841,23 +841,23 @@ impl Default for Keybinds {
             vec![KeyCombo::simple(KeyCode::Enter)],
         );
 
-        let mut content_tree = HashMap::new();
-        content_tree.insert(
-            ContentTreeAction::MoveUp,
+        let mut outline = HashMap::new();
+        outline.insert(
+            OutlineAction::MoveUp,
             vec![
                 KeyCombo::simple(KeyCode::Char('k')),
                 KeyCombo::simple(KeyCode::Up),
             ],
         );
-        content_tree.insert(
-            ContentTreeAction::MoveDown,
+        outline.insert(
+            OutlineAction::MoveDown,
             vec![
                 KeyCombo::simple(KeyCode::Char('j')),
                 KeyCombo::simple(KeyCode::Down),
             ],
         );
-        content_tree.insert(
-            ContentTreeAction::ToggleCollapse,
+        outline.insert(
+            OutlineAction::ToggleCollapse,
             vec![
                 KeyCombo::simple(KeyCode::Tab),
                 KeyCombo::simple(KeyCode::Left),
@@ -866,30 +866,30 @@ impl Default for Keybinds {
                 KeyCombo::simple(KeyCode::Char('l')),
             ],
         );
-        content_tree.insert(
-            ContentTreeAction::ExpandAll,
+        outline.insert(
+            OutlineAction::ExpandAll,
             vec![KeyCombo::simple(KeyCode::Char('e'))],
         );
-        content_tree.insert(
-            ContentTreeAction::CollapseAll,
+        outline.insert(
+            OutlineAction::CollapseAll,
             vec![KeyCombo::simple(KeyCode::Char('c'))],
         );
-        content_tree.insert(
-            ContentTreeAction::Open,
+        outline.insert(
+            OutlineAction::Open,
             vec![
                 KeyCombo::simple(KeyCode::Enter),
                 KeyCombo::simple(KeyCode::Char('o')),
             ],
         );
-        content_tree.insert(
-            ContentTreeAction::Back,
+        outline.insert(
+            OutlineAction::Back,
             vec![
                 KeyCombo::simple(KeyCode::Esc),
                 KeyCombo::simple(KeyCode::Char('q')),
             ],
         );
-        content_tree.insert(
-            ContentTreeAction::Help,
+        outline.insert(
+            OutlineAction::Help,
             vec![
                 KeyCombo::simple(KeyCode::Char('?')),
                 KeyCombo::simple(KeyCode::F(1)),
@@ -940,7 +940,7 @@ impl Default for Keybinds {
             draw,
             canvas,
             backup,
-            content_tree,
+            outline,
             setup,
         }
     }
@@ -957,7 +957,7 @@ impl KeybindPreset {
             || Self::has_multi_seq(&kb.draw)
             || Self::has_multi_seq(&kb.canvas)
             || Self::has_multi_seq(&kb.backup)
-            || Self::has_multi_seq(&kb.content_tree)
+            || Self::has_multi_seq(&kb.outline)
             || Self::has_multi_seq(&kb.setup)
     }
 
@@ -1369,23 +1369,23 @@ impl KeybindPreset {
                         KeyCombo::simple(KeyCode::BackTab),
                     ],
                 );
-                // ── Content tree view ──
-                kb.content_tree.insert(
-                    ContentTreeAction::MoveUp,
+                // ── Outline view ──
+                kb.outline.insert(
+                    OutlineAction::MoveUp,
                     vec![
                         KeyCombo::simple(KeyCode::Char('k')),
                         KeyCombo::simple(KeyCode::Up),
                     ],
                 );
-                kb.content_tree.insert(
-                    ContentTreeAction::MoveDown,
+                kb.outline.insert(
+                    OutlineAction::MoveDown,
                     vec![
                         KeyCombo::simple(KeyCode::Char('j')),
                         KeyCombo::simple(KeyCode::Down),
                     ],
                 );
-                kb.content_tree.insert(
-                    ContentTreeAction::ToggleCollapse,
+                kb.outline.insert(
+                    OutlineAction::ToggleCollapse,
                     vec![
                         KeyCombo::simple(KeyCode::Tab),
                         KeyCombo::simple(KeyCode::Left),
@@ -1394,30 +1394,30 @@ impl KeybindPreset {
                         KeyCombo::simple(KeyCode::Char('l')),
                     ],
                 );
-                kb.content_tree.insert(
-                    ContentTreeAction::ExpandAll,
+                kb.outline.insert(
+                    OutlineAction::ExpandAll,
                     vec![KeyCombo::simple(KeyCode::Char('e'))],
                 );
-                kb.content_tree.insert(
-                    ContentTreeAction::CollapseAll,
+                kb.outline.insert(
+                    OutlineAction::CollapseAll,
                     vec![KeyCombo::simple(KeyCode::Char('c'))],
                 );
-                kb.content_tree.insert(
-                    ContentTreeAction::Open,
+                kb.outline.insert(
+                    OutlineAction::Open,
                     vec![
                         KeyCombo::simple(KeyCode::Enter),
                         KeyCombo::simple(KeyCode::Char('o')),
                     ],
                 );
-                kb.content_tree.insert(
-                    ContentTreeAction::Back,
+                kb.outline.insert(
+                    OutlineAction::Back,
                     vec![
                         KeyCombo::simple(KeyCode::Esc),
                         KeyCombo::simple(KeyCode::Char('q')),
                     ],
                 );
-                kb.content_tree.insert(
-                    ContentTreeAction::Help,
+                kb.outline.insert(
+                    OutlineAction::Help,
                     vec![
                         KeyCombo::simple(KeyCode::Char('?')),
                         KeyCombo::simple(KeyCode::F(1)),
@@ -1841,23 +1841,23 @@ impl KeybindPreset {
                     BackupAction::StageFile,
                     vec![KeyCombo::simple(KeyCode::Char(' '))],
                 );
-                // ── Content tree view ──
-                kb.content_tree.insert(
-                    ContentTreeAction::MoveUp,
+                // ── Outline view ──
+                kb.outline.insert(
+                    OutlineAction::MoveUp,
                     vec![
                         KeyCombo::simple(KeyCode::Char('k')),
                         KeyCombo::simple(KeyCode::Up),
                     ],
                 );
-                kb.content_tree.insert(
-                    ContentTreeAction::MoveDown,
+                kb.outline.insert(
+                    OutlineAction::MoveDown,
                     vec![
                         KeyCombo::simple(KeyCode::Char('j')),
                         KeyCombo::simple(KeyCode::Down),
                     ],
                 );
-                kb.content_tree.insert(
-                    ContentTreeAction::ToggleCollapse,
+                kb.outline.insert(
+                    OutlineAction::ToggleCollapse,
                     vec![
                         KeyCombo::simple(KeyCode::Tab),
                         KeyCombo::simple(KeyCode::Left),
@@ -1866,30 +1866,30 @@ impl KeybindPreset {
                         KeyCombo::simple(KeyCode::Char('l')),
                     ],
                 );
-                kb.content_tree.insert(
-                    ContentTreeAction::ExpandAll,
+                kb.outline.insert(
+                    OutlineAction::ExpandAll,
                     vec![KeyCombo::simple(KeyCode::Char('e'))],
                 );
-                kb.content_tree.insert(
-                    ContentTreeAction::CollapseAll,
+                kb.outline.insert(
+                    OutlineAction::CollapseAll,
                     vec![KeyCombo::simple(KeyCode::Char('c'))],
                 );
-                kb.content_tree.insert(
-                    ContentTreeAction::Open,
+                kb.outline.insert(
+                    OutlineAction::Open,
                     vec![
                         KeyCombo::simple(KeyCode::Enter),
                         KeyCombo::simple(KeyCode::Char('o')),
                     ],
                 );
-                kb.content_tree.insert(
-                    ContentTreeAction::Back,
+                kb.outline.insert(
+                    OutlineAction::Back,
                     vec![
                         KeyCombo::simple(KeyCode::Esc),
                         KeyCombo::simple(KeyCode::Char('q')),
                     ],
                 );
-                kb.content_tree.insert(
-                    ContentTreeAction::Help,
+                kb.outline.insert(
+                    OutlineAction::Help,
                     vec![
                         KeyCombo::simple(KeyCode::Char('?')),
                         KeyCombo::simple(KeyCode::F(1)),
@@ -2146,41 +2146,41 @@ impl KeybindPreset {
                         KeyCombo::simple(KeyCode::BackTab),
                     ],
                 );
-                // ── Content tree view ──
-                kb.content_tree.insert(
-                    ContentTreeAction::MoveUp,
+                // ── Outline view ──
+                kb.outline.insert(
+                    OutlineAction::MoveUp,
                     vec![
                         KeyCombo::ctrl(KeyCode::Char('p')),
                         KeyCombo::simple(KeyCode::Up),
                     ],
                 );
-                kb.content_tree.insert(
-                    ContentTreeAction::MoveDown,
+                kb.outline.insert(
+                    OutlineAction::MoveDown,
                     vec![
                         KeyCombo::ctrl(KeyCode::Char('n')),
                         KeyCombo::simple(KeyCode::Down),
                     ],
                 );
-                kb.content_tree.insert(
-                    ContentTreeAction::ToggleCollapse,
+                kb.outline.insert(
+                    OutlineAction::ToggleCollapse,
                     vec![KeyCombo::simple(KeyCode::Tab)],
                 );
-                kb.content_tree.insert(
-                    ContentTreeAction::Open,
+                kb.outline.insert(
+                    OutlineAction::Open,
                     vec![
                         KeyCombo::simple(KeyCode::Enter),
                         KeyCombo::simple(KeyCode::Char('o')),
                     ],
                 );
-                kb.content_tree.insert(
-                    ContentTreeAction::Back,
+                kb.outline.insert(
+                    OutlineAction::Back,
                     vec![
                         KeyCombo::parse("Ctrl+x Ctrl+c").expect("valid key combo"),
                         KeyCombo::simple(KeyCode::Char('q')),
                     ],
                 );
-                kb.content_tree.insert(
-                    ContentTreeAction::Help,
+                kb.outline.insert(
+                    OutlineAction::Help,
                     vec![
                         KeyCombo::ctrl(KeyCode::Char('h')),
                         KeyCombo::simple(KeyCode::F(1)),

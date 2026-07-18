@@ -64,7 +64,7 @@ pub struct NoteEditor {
     pub sidebar_scroll_offset: usize,
     pub sidebar_list_rect: ratatui::layout::Rect,
     pub sidebar_selected: usize,
-    pub outline_nodes: Vec<crate::content_tree::parse::TreeNode>,
+    pub outline_nodes: Vec<crate::outline::parse::TreeNode>,
     pub preview_drag_last_pos: Option<(u16, u16)>,
     pub links: Vec<LinkItem>,
     pub link_preview: bool,

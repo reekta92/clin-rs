@@ -17,7 +17,7 @@ For installation, quickstart, and general project info, see the [README.md](../R
 - [BACKUP.md](BACKUP.md) — Git-based backup dashboard: vault state (staged/unstaged/untracked), history, diff preview, automation settings
 - [CANVAS.md](CANVAS.md) — Obsidian-compatible canvas view (pinstar): `.canvas` JSON schema, node types, interaction model, key types
 - [DRAW.md](DRAW.md) — Freehand drawing canvas: `.draw` format, tool set, shape types, interaction
-- [CONTENT_TREE.md](CONTENT_TREE.md) — Content Tree view: nested outline parsing, collapsible subtrees, jump-to-section editor navigation
+- [OUTLINE.md](OUTLINE.md) — Outline view: nested outline parsing, collapsible subtrees, jump-to-section editor navigation
 - [SETUP.md](SETUP.md) — First-run setup wizard: theme/background/hint-bar/icon-mode/keybind-preset cycling with live preview
 - [HELP.md](HELP.md) — Help view: 3-pane layout, 10 tabs, keybind index, tips, popup accordion
 - [EDITOR.md](EDITOR.md) — Editor view: READ/EDIT modes, find popup, soft-wrap, sidebars, wikilink previews, external editor
@@ -50,7 +50,7 @@ docs/
 ├── BACKUP.md             Git-based backup dashboard
 ├── CANVAS.md             Obsidian-compatible canvas
 ├── DRAW.md               Freehand drawing
-├── CONTENT_TREE.md       Content tree outline
+├── OUTLINE.md             Outline
 ├── EDITOR.md             Editor: READ/EDIT modes, find, soft-wrap, sidebars, wikilinks
 ├── SETUP.md              First-run setup wizard
 ├── ENCRYPTION.md         Zero-knowledge encryption

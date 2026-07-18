@@ -703,8 +703,6 @@ pub fn backup_action_meta(a: BackupAction) -> HelpMeta {
     }
 }
 
-
-
 #[cfg(test)]
 mod tests {
     use super::*;

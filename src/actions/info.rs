@@ -41,10 +41,9 @@ impl Action for ShowInfoAction {
             let reading_time_mins = (words as f64 / 200.0).ceil() as usize;
 
             // Header count via outline parser (minus root node)
-            let header_count =
-                crate::content_tree::parse::parse_outline(&note.title, &note.content)
-                    .len()
-                    .saturating_sub(1);
+            let header_count = crate::outline::parse::parse_outline(&note.title, &note.content)
+                .len()
+                .saturating_sub(1);
 
             // Task count: lines matching - [ ], - [x], * [ ], * [x]
             let task_count = note

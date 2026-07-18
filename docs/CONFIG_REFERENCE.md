@@ -113,7 +113,7 @@ You can also customize these per-view by adding nested overrides:
 - `[statusline.draw]` — overrides for the drawing view
 - `[statusline.canvas]` — overrides for the canvas view
 - `[statusline.backup]` — overrides for the backup view
-- `[statusline.content_tree]` — overrides for the content tree view
+- `[statusline.outline]` — overrides for the outline view
 
 Each override sub-table accepts: `header_left`, `header_right`, `footer_left`, and `footer_right` fields.
 
@@ -224,13 +224,13 @@ Variables are enclosed in `{}` (e.g. `{time}`). Escapes `{{` and `}}` render lit
 - `{canvas_selected}`: Selected connection or node ID
 - `{canvas_grid}`, `{canvas_editor}`: Grid and editor panel settings (`on`/`off`)
 
-##### Content Tree View (`Content Tree` view)
-- `{tree_nodes}`, `{tree_headers}`: Total outline nodes and headers
-- `{tree_visible}`, `{tree_cursor}`: Visible node count and cursor position
-- `{tree_depth}`, `{tree_max_depth}`, `{tree_expanded}`: Node depth and expansion states
-- `{tree_heading}`: Title text of the selected heading
-- `{tree_note}`: Title of parent note
-- `{tree_error}`: Load error text or empty
+##### Outline View (`Outline` view)
+- `{outline_nodes}`, `{outline_headers}`: Total outline nodes and headers
+- `{outline_visible}`, `{outline_cursor}`: Visible node count and cursor position
+- `{outline_depth}`, `{outline_max_depth}`, `{outline_expanded}`: Node depth and expansion states
+- `{outline_heading}`: Title text of the selected heading
+- `{outline_note}`: Title of parent note
+- `{outline_error}`: Load error text or empty
 
 ##### Backup View (`Backup` view)
 - `{branch}`: Active git branch name
@@ -630,7 +630,7 @@ Key combos are strings like `"a"`, `"Enter"`, `"Ctrl+q"`, `"Ctrl+Shift+z"`, `"Al
 | `confirm_edit_field` | `Enter` | Confirm field edit |
 | `cancel_edit_field` | `Esc` | Cancel field edit |
 
-### Content Tree Actions (`[content_tree]`)
+### Outline Actions (`[outline]`)
 
 | Action | Default Keys | Description |
 |---|---|---|

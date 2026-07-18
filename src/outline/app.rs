@@ -1,19 +1,19 @@
 use crossterm::event::Event;
 
-use crate::content_tree::state::ContentTreeState;
-use crate::content_tree::{input, render};
+use crate::outline::state::OutlineState;
+use crate::outline::{input, render};
 
-/// Shared mapping from input::ContentTreeInput to Option<OverlayResult>,
+/// Shared mapping from input::OutlineInput to Option<OverlayResult>,
 /// eliminating the identical match in the Key and Mouse dispatch arms.
 fn map_input_result(
-    state: &ContentTreeState,
-    res: input::ContentTreeInput,
+    state: &OutlineState,
+    res: input::OutlineInput,
 ) -> Option<crate::overlay::OverlayResult> {
     use crate::overlay::OverlayResult;
     match res {
-        input::ContentTreeInput::Back => Some(OverlayResult::Exit),
-        input::ContentTreeInput::Help => Some(OverlayResult::OpenHelp(crate::app::HelpTab::Notes)),
-        input::ContentTreeInput::Open => {
+        input::OutlineInput::Back => Some(OverlayResult::Exit),
+        input::OutlineInput::Help => Some(OverlayResult::OpenHelp(crate::app::HelpTab::Notes)),
+        input::OutlineInput::Open => {
             if !state.load_error && state.selected < state.nodes.len() {
                 let line = state.nodes[state.selected].line;
                 Some(OverlayResult::JumpToLine {
@@ -24,11 +24,11 @@ fn map_input_result(
                 Some(OverlayResult::Exit)
             }
         }
-        input::ContentTreeInput::None => None,
+        input::OutlineInput::None => None,
     }
 }
 
-impl crate::overlay::OverlayView for ContentTreeState {
+impl crate::overlay::OverlayView for OutlineState {
     fn overlay_render(
         &mut self,
         frame: &mut ratatui::Frame,
@@ -38,7 +38,7 @@ impl crate::overlay::OverlayView for ContentTreeState {
         self.last_area = area;
         let keybinds = self.keybinds.clone();
         let app_status = app.status.as_ref();
-        render::draw_content_tree(
+        render::draw_outline(
             frame,
             area,
             self,
@@ -68,12 +68,8 @@ impl crate::overlay::OverlayView for ContentTreeState {
             }
             Event::Mouse(mouse) => {
                 let term_area = self.last_area;
-                let res = input::handle_content_tree_mouse(
-                    self,
-                    mouse,
-                    term_area,
-                    app.config.ui.scrollbars,
-                );
+                let res =
+                    input::handle_outline_mouse(self, mouse, term_area, app.config.ui.scrollbars);
                 if let Some(result) = map_input_result(self, res) {
                     return Ok(result);
                 }

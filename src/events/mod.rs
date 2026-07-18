@@ -1744,7 +1744,7 @@ mod tests {
     fn test_sidebar_double_click_outline() {
         let _lock = crate::config::ConfigTestGuard::lock();
         use crate::app::{App, EditFocus, EditSidebar};
-        use crate::content_tree::parse::TreeNode;
+        use crate::outline::parse::TreeNode;
         use crate::storage::Storage;
         use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
         use ratatui::layout::Rect;
@@ -1770,7 +1770,7 @@ mod tests {
         let mut app = App::new(storage).expect("value is present");
         app.editor.sidebar = EditSidebar::Outline;
         app.editor.outline_nodes = vec![TreeNode {
-            kind: crate::content_tree::parse::NodeKind::Header {
+            kind: crate::outline::parse::NodeKind::Header {
                 level: 1,
                 title: "Heading 1".to_string(),
             },

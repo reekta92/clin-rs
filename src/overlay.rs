@@ -1,5 +1,5 @@
 //! Unified overlay contract for sub-view states (Graph, Draw, Canvas, Backup,
-//! ContentTree).
+//! Outline).
 //!
 //! Each sub-view state implements [`OverlayView`] and signals event outcomes
 //! via the shared [`OverlayResult`] enum. This replaces the per-view `XResult`
@@ -25,7 +25,7 @@ pub enum OverlayResult {
     OpenHelp(HelpTab),
     /// A note was opened from within the overlay (Graph only).
     NoteOpened(String),
-    /// Jump to a line in a note (ContentTree only).
+    /// Jump to a line in a note (Outline only).
     JumpToLine { note_id: String, line: usize },
 }
 
