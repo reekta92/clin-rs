@@ -2,10 +2,14 @@
 
 All notable changes to clin are documented in this file.
 
-## [0.10.0-beta.4] - 2026-07-17
+## [0.10.0-beta.5] - 2026-07-18
 
 ### Added
 
+- Extended graph preview for all the folders
+- Tweaks to the subnotes tab/folder and graph preview
+- Draw inter-subnote wikilink edges in subnote graph
+- Add browsable Subnotes view with grid tab and tree folder
 - Perf-fix mouse selection, add read-mode select + clipboard, mode header
 - Add READ/EDIT mode indicator to title bar
 - Add modal READ/EDIT modes to Edit view
@@ -13,17 +17,23 @@ All notable changes to clin are documented in this file.
 
 ### Changed
 
+- Replace subnote graph physics with static braille radial diagram
 - Sync scroll cache on explicit scroll, add source-line map for READ↔EDIT
 - Remove custom cursor-line and selection highlights
 - Unify all list hit-tests through list_index_at
 
 ### Fixed
 
+- Correct viewport math, pan direction, and add focus mode
 - Fixed h1 title position in markdown renderer
 - Align edit view hit-test layout with render layout
 - Scale scrollbar position from offset to selection range
 - Render help tab icons, coalesce mouse events, skip CreateNew in select
 - Replace textarea search with own impl to fix wrap panic
+
+### Release
+
+- V0.10.0-beta.4
 ## [0.10.0-beta.3] - 2026-07-15
 
 ### Added
