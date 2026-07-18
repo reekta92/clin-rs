@@ -1030,4 +1030,20 @@ sections = ["draw", "draw", "graf"]
         assert_eq!(config.list.sections[0], NotesSection::Draw);
         assert_eq!(config.list.sections[1], NotesSection::Graf);
     }
+
+    #[test]
+    fn folder_graph_preview_defaults_on() {
+        // The Default derive sets bool to false, but serde default = "default_true"
+        // ensures deserialization from minimal TOML gives true.
+        let config: ClinConfig = toml::from_str("[list]\n").unwrap();
+        assert!(config.list.folder_graph_preview);
+        // TOML round-trip preserves explicit false.
+        let toml_str = "[list]\nfolder_graph_preview = false\n";
+        let parsed: ClinConfig = toml::from_str(toml_str).unwrap();
+        assert!(!parsed.list.folder_graph_preview);
+
+        let serialized = toml::to_string(&parsed).unwrap();
+        let roundtripped: ClinConfig = toml::from_str(&serialized).unwrap();
+        assert!(!roundtripped.list.folder_graph_preview);
+    }
 }

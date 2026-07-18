@@ -411,80 +411,34 @@ impl App {
         }
         let mut computed_smart_folders = Vec::new();
         if self.config.list.smart_folders_enabled {
-            let now = crate::ui::now_unix_secs();
-            let mut today_notes = Vec::new();
-            let mut week_notes = Vec::new();
-            let mut untagged_notes = Vec::new();
-            let mut tag_to_notes: HashMap<String, Vec<usize>> = HashMap::new();
-
-            for (idx, note) in self.notes.iter().enumerate() {
-                let diff = now.saturating_sub(note.updated_at);
-                if diff < 86_400 {
-                    today_notes.push(idx);
-                }
-                if diff < 604_800 {
-                    week_notes.push(idx);
-                }
-                if note.tags.is_empty() {
-                    untagged_notes.push(idx);
-                }
-                for tag in &note.tags {
-                    tag_to_notes.entry(tag.clone()).or_default().push(idx);
-                }
-            }
-
-            if !today_notes.is_empty() {
+            let today_matches = self.notes_in_smart_folder(&SmartFolderKind::Today);
+            if !today_matches.is_empty() {
                 computed_smart_folders.push(SmartFolderData {
                     kind: SmartFolderKind::Today,
                     label: "Today".to_string(),
-                    matches: today_notes,
+                    matches: today_matches,
                 });
             }
-            if !week_notes.is_empty() {
+            let week_matches = self.notes_in_smart_folder(&SmartFolderKind::ThisWeek);
+            if !week_matches.is_empty() {
                 computed_smart_folders.push(SmartFolderData {
                     kind: SmartFolderKind::ThisWeek,
                     label: "This Week".to_string(),
-                    matches: week_notes,
+                    matches: week_matches,
                 });
             }
-            if !untagged_notes.is_empty() {
+            let untagged_matches = self.notes_in_smart_folder(&SmartFolderKind::Untagged);
+            if !untagged_matches.is_empty() {
                 computed_smart_folders.push(SmartFolderData {
                     kind: SmartFolderKind::Untagged,
                     label: "Untagged".to_string(),
-                    matches: untagged_notes,
+                    matches: untagged_matches,
                 });
             }
 
             for rule in &self.config.list.custom_smart_folders {
-                let mut matches = Vec::new();
-                for (idx, note) in self.notes.iter().enumerate() {
-                    let mut ok = true;
-                    for t in &rule.tags {
-                        if !note.tags.contains(t) {
-                            ok = false;
-                            break;
-                        }
-                    }
-                    if let Some(txt) = &rule.title_contains
-                        && !note.title.to_lowercase().contains(&txt.to_lowercase())
-                    {
-                        ok = false;
-                    }
-                    if let Some(prefix) = &rule.folder_prefix
-                        && !note.folder.starts_with(prefix)
-                    {
-                        ok = false;
-                    }
-                    if let Some(days) = rule.updated_within_days {
-                        let diff = now.saturating_sub(note.updated_at);
-                        if diff >= days * 86_400 {
-                            ok = false;
-                        }
-                    }
-                    if ok {
-                        matches.push(idx);
-                    }
-                }
+                let matches =
+                    self.notes_in_smart_folder(&SmartFolderKind::Custom(rule.name.clone()));
                 if !matches.is_empty() {
                     computed_smart_folders.push(SmartFolderData {
                         kind: SmartFolderKind::Custom(rule.name.clone()),
@@ -494,18 +448,24 @@ impl App {
                 }
             }
 
-            let mut sorted_tags: Vec<String> = tag_to_notes.keys().cloned().collect();
+            let mut tag_set: std::collections::HashSet<String> = std::collections::HashSet::new();
+            for note in &self.notes {
+                for tag in &note.tags {
+                    tag_set.insert(tag.clone());
+                }
+            }
+            let mut sorted_tags: Vec<String> = tag_set.into_iter().collect();
             sorted_tags.sort();
             for tag in sorted_tags {
-                if let Some(matching) = tag_to_notes.remove(&tag) {
+                let matches = self.notes_in_smart_folder(&SmartFolderKind::Tag(tag.clone()));
+                if !matches.is_empty() {
                     computed_smart_folders.push(SmartFolderData {
                         kind: SmartFolderKind::Tag(tag.clone()),
                         label: tag,
-                        matches: matching,
+                        matches,
                     });
                 }
             }
-
             for data in &computed_smart_folders {
                 let virtual_path = data.kind.virtual_path();
                 let is_expanded = self.list.folder_expanded.contains(&virtual_path);
@@ -926,6 +886,188 @@ impl App {
         self.editor.pending_editor_preview_update = true;
     }
 
+    /// Returns indices into `self.notes` that match the given smart folder kind.
+    /// Respects `smart_folders_enabled` (empty when disabled).
+    pub(crate) fn notes_in_smart_folder(&self, kind: &SmartFolderKind) -> Vec<usize> {
+        if !self.config.list.smart_folders_enabled {
+            return Vec::new();
+        }
+        let now = crate::ui::now_unix_secs();
+        match kind {
+            SmartFolderKind::Today => self
+                .notes
+                .iter()
+                .enumerate()
+                .filter(|(_, n)| now.saturating_sub(n.updated_at) < 86_400)
+                .map(|(i, _)| i)
+                .collect(),
+            SmartFolderKind::ThisWeek => self
+                .notes
+                .iter()
+                .enumerate()
+                .filter(|(_, n)| now.saturating_sub(n.updated_at) < 604_800)
+                .map(|(i, _)| i)
+                .collect(),
+            SmartFolderKind::Untagged => self
+                .notes
+                .iter()
+                .enumerate()
+                .filter(|(_, n)| n.tags.is_empty())
+                .map(|(i, _)| i)
+                .collect(),
+            SmartFolderKind::Tag(tag) => self
+                .notes
+                .iter()
+                .enumerate()
+                .filter(|(_, n)| n.tags.contains(tag))
+                .map(|(i, _)| i)
+                .collect(),
+            SmartFolderKind::Custom(name) => {
+                let rule = self
+                    .config
+                    .list
+                    .custom_smart_folders
+                    .iter()
+                    .find(|r| &r.name == name);
+                let Some(rule) = rule else {
+                    return Vec::new();
+                };
+                self.notes
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, n)| {
+                        for t in &rule.tags {
+                            if !n.tags.contains(t) {
+                                return false;
+                            }
+                        }
+                        if let Some(txt) = &rule.title_contains
+                            && !n.title.to_lowercase().contains(&txt.to_lowercase())
+                        {
+                            return false;
+                        }
+                        if let Some(prefix) = &rule.folder_prefix
+                            && !n.folder.starts_with(prefix)
+                        {
+                            return false;
+                        }
+                        if let Some(days) = rule.updated_within_days {
+                            let diff = now.saturating_sub(n.updated_at);
+                            if diff >= days * 86_400 {
+                                return false;
+                            }
+                        }
+                        true
+                    })
+                    .map(|(i, _)| i)
+                    .collect()
+            }
+        }
+    }
+
+    /// Returns children of the focused folder for the FolderGraph preview.
+    /// `(nodes_without_positions, focused_label)`. Positions are filled by the renderer.
+    pub(crate) fn folder_graph_children(
+        &self,
+        focused_path: &str,
+    ) -> (Vec<crate::list_view::FolderGraphNode>, String) {
+        use crate::list_view::FolderGraphNode;
+        if focused_path == crate::app::VIRTUAL_PINNED_PATH {
+            let children: Vec<FolderGraphNode> = self
+                .notes
+                .iter()
+                .filter(|n| n.pinned)
+                .map(|n| FolderGraphNode {
+                    key: n.id.clone(),
+                    label: n.title.clone(),
+                    is_note: true,
+                    x: 0.0,
+                    y: 0.0,
+                })
+                .collect();
+            return (children, crate::app::VIRTUAL_PINNED_LABEL.to_string());
+        }
+        if focused_path.starts_with('@') {
+            if let Some(kind) = SmartFolderKind::from_virtual_path(focused_path) {
+                let label = match &kind {
+                    SmartFolderKind::Today => "Today".to_string(),
+                    SmartFolderKind::ThisWeek => "This Week".to_string(),
+                    SmartFolderKind::Untagged => "Untagged".to_string(),
+                    SmartFolderKind::Tag(t) => t.clone(),
+                    SmartFolderKind::Custom(name) => name.clone(),
+                };
+                let indices = self.notes_in_smart_folder(&kind);
+                let children: Vec<FolderGraphNode> = indices
+                    .iter()
+                    .filter_map(|&i| self.notes.get(i))
+                    .map(|n| FolderGraphNode {
+                        key: n.id.clone(),
+                        label: n.title.clone(),
+                        is_note: true,
+                        x: 0.0,
+                        y: 0.0,
+                    })
+                    .collect();
+                return (children, label);
+            }
+            return (Vec::new(), focused_path.to_string());
+        }
+        if focused_path.starts_with("subnotes:") {
+            return (Vec::new(), String::new());
+        }
+        // Real vault folder (including "" for root).
+        let all_folders = self
+            .storage
+            .list_folders(self.list.show_hidden_files)
+            .unwrap_or_default();
+        let subfolders: Vec<FolderGraphNode> = all_folders
+            .iter()
+            .filter(|f| {
+                let parent = if let Some(slash) = f.rfind('/') {
+                    &f[..slash]
+                } else {
+                    ""
+                };
+                parent == focused_path
+            })
+            .map(|f| {
+                let name = f.split('/').next_back().unwrap_or("").to_string();
+                FolderGraphNode {
+                    key: f.clone(),
+                    label: name,
+                    is_note: false,
+                    x: 0.0,
+                    y: 0.0,
+                }
+            })
+            .collect();
+        let notes: Vec<FolderGraphNode> = self
+            .notes
+            .iter()
+            .filter(|n| n.folder == focused_path)
+            .map(|n| FolderGraphNode {
+                key: n.id.clone(),
+                label: n.title.clone(),
+                is_note: true,
+                x: 0.0,
+                y: 0.0,
+            })
+            .collect();
+        let label = if focused_path.is_empty() {
+            "Vault (Root)".to_string()
+        } else {
+            focused_path
+                .rsplit('/')
+                .next()
+                .unwrap_or(focused_path)
+                .to_string()
+        };
+        let mut children: Vec<FolderGraphNode> = Vec::new();
+        children.extend(subfolders);
+        children.extend(notes);
+        (children, label)
+    }
+
     pub fn update_preview(&mut self) {
         if !(self.list.preview_enabled || self.preview_fullscreen) {
             return;
@@ -1138,6 +1280,24 @@ impl App {
             {
                 let folder_path = path.clone();
                 let is_pinned = folder_path == crate::app::VIRTUAL_PINNED_PATH;
+                if self.config.list.folder_graph_preview {
+                    self.list.preview_content = Some(PreviewContent::FolderGraph {
+                        root_path: folder_path.clone(),
+                        focused_path: folder_path,
+                    });
+                    self.list.preview_content_index = Some(self.list.visual_index);
+                    self.list.folder_graph_zoom = 1.0;
+                    self.list.folder_graph_pan_x = 0.0;
+                    self.list.folder_graph_pan_y = 0.0;
+                    self.list.folder_graph_focused_note = None;
+                    self.list.folder_graph_nodes.clear();
+                    self.list.preview_content_width = Some(self.desired_list_preview_width());
+                    self.list.preview_content_height = Some(self.desired_list_preview_height());
+                    self.list.preview_content_scale = Some(self.list.preview_scale);
+                    self.list.preview_content_offset_x = Some(self.list.preview_offset_x);
+                    self.list.preview_content_offset_y = Some(self.list.preview_offset_y);
+                    return;
+                }
 
                 let all_folders = if let Some(cache) = &self.list.folder_cache {
                     cache.clone()
@@ -1288,6 +1448,24 @@ impl App {
                 }
                 self.list.preview_content_index = Some(self.list.visual_index);
             }
+            Some(VisualItem::SmartFolder { kind, .. }) if self.config.list.folder_graph_preview => {
+                let virtual_path = kind.virtual_path();
+                self.list.preview_content = Some(PreviewContent::FolderGraph {
+                    root_path: virtual_path.clone(),
+                    focused_path: virtual_path,
+                });
+                self.list.preview_content_index = Some(self.list.visual_index);
+                self.list.folder_graph_zoom = 1.0;
+                self.list.folder_graph_pan_x = 0.0;
+                self.list.folder_graph_pan_y = 0.0;
+                self.list.folder_graph_focused_note = None;
+                self.list.folder_graph_nodes.clear();
+                self.list.preview_content_width = Some(self.desired_list_preview_width());
+                self.list.preview_content_height = Some(self.desired_list_preview_height());
+                self.list.preview_content_scale = Some(self.list.preview_scale);
+                self.list.preview_content_offset_x = Some(self.list.preview_offset_x);
+                self.list.preview_content_offset_y = Some(self.list.preview_offset_y);
+            }
             _ => {
                 self.list.preview_content = None;
                 self.list.preview_content_index = None;
@@ -1308,5 +1486,71 @@ impl App {
         self.editor.md_preview_renderer = Some(renderer);
         self.editor.preview_content_width = Some(width);
         self.editor.preview_content_height = Some(self.desired_editor_preview_height());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_app() -> App {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let data_dir = temp_dir.path().join("data");
+        let config_dir = temp_dir.path().join("config");
+        let notes_dir = temp_dir.path().join("notes");
+        let templates_dir = temp_dir.path().join("templates");
+        std::fs::create_dir_all(&data_dir).unwrap();
+        std::fs::create_dir_all(&config_dir).unwrap();
+        std::fs::create_dir_all(&notes_dir).unwrap();
+        std::fs::create_dir_all(&templates_dir).unwrap();
+
+        let storage = crate::storage::Storage {
+            data_dir,
+            config_dir,
+            notes_dir,
+            templates_dir,
+            key: [0u8; 32],
+        };
+        App::new(storage).unwrap()
+    }
+
+    #[test]
+    fn folder_graph_children_real_folder() {
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let mut app = make_app();
+
+        // Create folder structure: docs/ with a.md, b.md; docs/sub/ with c.md
+        let docs_dir = app.storage.notes_dir.join("docs");
+        let sub_dir = app.storage.notes_dir.join("docs/sub");
+        std::fs::create_dir_all(&docs_dir).unwrap();
+        std::fs::create_dir_all(&sub_dir).unwrap();
+        std::fs::write(docs_dir.join("a.md"), "# A\n\n[[b]]").unwrap();
+        std::fs::write(docs_dir.join("b.md"), "# B\n\nContent").unwrap();
+        std::fs::write(sub_dir.join("c.md"), "# C\n\nContent").unwrap();
+
+        app.refresh_notes().unwrap();
+
+        // docs/ should have 3 children: 1 subfolder + 2 notes
+        let (children, label) = app.folder_graph_children("docs");
+        assert_eq!(label, "docs");
+        assert_eq!(
+            children.len(),
+            3,
+            "expected 3 children (1 subfolder + 2 notes), got {children:?}"
+        );
+
+        let subfolder_count = children.iter().filter(|c| !c.is_note).count();
+        let note_count = children.iter().filter(|c| c.is_note).count();
+        assert_eq!(
+            subfolder_count, 1,
+            "expected 1 subfolder, got {subfolder_count}"
+        );
+        assert_eq!(note_count, 2, "expected 2 notes, got {note_count}");
+
+        // docs/sub should have 1 note child (no subfolders)
+        let (children, label) = app.folder_graph_children("docs/sub");
+        assert_eq!(label, "sub");
+        assert_eq!(children.len(), 1);
+        assert!(children[0].is_note);
     }
 }

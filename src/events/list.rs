@@ -413,6 +413,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 Some(crate::list_view::PreviewContent::Image(_)) => {}
 
                 Some(crate::list_view::PreviewContent::SubnoteGraph { .. }) => {}
+                Some(crate::list_view::PreviewContent::FolderGraph { .. }) => {}
                 None => {}
             },
             ListAction::PreviewPageDown => match &mut app.list.preview_content {
@@ -465,6 +466,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 }
                 Some(crate::list_view::PreviewContent::Image(_)) => {}
                 Some(crate::list_view::PreviewContent::SubnoteGraph { .. }) => {}
+                Some(crate::list_view::PreviewContent::FolderGraph { .. }) => {}
                 None => {}
             },
             _ => {}
@@ -788,6 +790,60 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                         // Drag down → content follows down → viewport center moves up in world (pan_y increases).
                         app.list.subnote_graph_pan_x -= dx * world_per_cell_x;
                         app.list.subnote_graph_pan_y += dy * world_per_cell_y;
+                        app.list.preview_drag_last_pos =
+                            Some((mouse_event.column, mouse_event.row));
+                    }
+                    return;
+                }
+                if mouse_event.kind == MouseEventKind::Up(MouseButton::Left) {
+                    app.list.preview_drag_last_pos = None;
+                    return;
+                }
+            }
+            Some(crate::list_view::PreviewContent::FolderGraph { .. }) => {
+                let aspect = p_area.width as f64 / p_area.height as f64;
+                let base_span = crate::ui::FOLDER_GRAPH_BASE_SPAN;
+                if mouse_event.kind == MouseEventKind::ScrollUp
+                    || mouse_event.kind == MouseEventKind::ScrollDown
+                {
+                    let old_zoom = app.list.folder_graph_zoom;
+                    let new_zoom = if mouse_event.kind == MouseEventKind::ScrollUp {
+                        (old_zoom * 1.15).clamp(0.5, 30.0)
+                    } else {
+                        (old_zoom / 1.15).clamp(0.5, 30.0)
+                    };
+                    if (new_zoom - old_zoom).abs() < f64::EPSILON {
+                        return;
+                    }
+                    let span_x_old = base_span / old_zoom;
+                    let span_y_old = span_x_old * 2.0 / aspect;
+                    let span_x_new = base_span / new_zoom;
+                    let span_y_new = span_x_new * 2.0 / aspect;
+                    let fx =
+                        (mouse_event.column as f64 - p_area.x as f64) / p_area.width as f64 - 0.5;
+                    let fy =
+                        0.5 - (mouse_event.row as f64 - p_area.y as f64) / p_area.height as f64;
+                    let world_x = app.list.folder_graph_pan_x + fx * 2.0 * span_x_old;
+                    let world_y = app.list.folder_graph_pan_y + fy * 2.0 * span_y_old;
+                    app.list.folder_graph_pan_x = world_x - fx * 2.0 * span_x_new;
+                    app.list.folder_graph_pan_y = world_y - fy * 2.0 * span_y_new;
+                    app.list.folder_graph_zoom = new_zoom;
+                    return;
+                }
+                if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
+                    app.list.preview_drag_last_pos = Some((mouse_event.column, mouse_event.row));
+                    return;
+                }
+                if mouse_event.kind == MouseEventKind::Drag(MouseButton::Left) {
+                    if let Some((last_x, last_y)) = app.list.preview_drag_last_pos {
+                        let dx = mouse_event.column as f64 - last_x as f64;
+                        let dy = mouse_event.row as f64 - last_y as f64;
+                        let span_x = base_span / app.list.folder_graph_zoom;
+                        let span_y = span_x * 2.0 / aspect;
+                        let world_per_cell_x = 2.0 * span_x / p_area.width as f64;
+                        let world_per_cell_y = 2.0 * span_y / p_area.height as f64;
+                        app.list.folder_graph_pan_x -= dx * world_per_cell_x;
+                        app.list.folder_graph_pan_y += dy * world_per_cell_y;
                         app.list.preview_drag_last_pos =
                             Some((mouse_event.column, mouse_event.row));
                     }

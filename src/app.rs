@@ -783,13 +783,21 @@ impl App {
                         if *is_expanded {
                             format!(
                                 "{} {}",
-                                crate::ui::get_icon("\u{f078}", "\u{25bc}", self.config.ui.icon_mode),
+                                crate::ui::get_icon(
+                                    "\u{f078}",
+                                    "\u{25bc}",
+                                    self.config.ui.icon_mode
+                                ),
                                 folder_glyph
                             )
                         } else {
                             format!(
                                 "{} {}",
-                                crate::ui::get_icon("\u{f054}", "\u{25b6}", self.config.ui.icon_mode),
+                                crate::ui::get_icon(
+                                    "\u{f054}",
+                                    "\u{25b6}",
+                                    self.config.ui.icon_mode
+                                ),
                                 folder_glyph
                             )
                         }

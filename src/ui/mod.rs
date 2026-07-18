@@ -24,8 +24,8 @@ pub(crate) use edit_view::render_editor_widget;
 pub use help::*;
 pub use help_content::{HelpSuggestion, roll_suggestions};
 pub(crate) use list_view::{
-    SUBNOTE_GRAPH_BASE_SPAN, draw_list_view, get_preview_info, list_detail_line, list_view_layout,
-    section_rects,
+    FOLDER_GRAPH_BASE_SPAN, SUBNOTE_GRAPH_BASE_SPAN, draw_list_view, get_preview_info,
+    list_detail_line, list_view_layout, section_rects,
 };
 pub use popups::*;
 pub use setup::draw_setup_view;

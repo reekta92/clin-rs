@@ -143,6 +143,18 @@ pub fn draw_preview_pane(
                     );
                 frame.render_widget(placeholder, rect);
             }
+            Some(PreviewContent::FolderGraph { .. }) => {
+                // Handled directly in draw_list_view; this arm is never reached.
+                let placeholder = Paragraph::new("Graph preview...")
+                    .style(theme.preview_bg_style())
+                    .block(
+                        Block::default()
+                            .style(theme.preview_bg_style())
+                            .borders(Borders::NONE)
+                            .padding(Padding::new(2, 2, 1, 1)),
+                    );
+                frame.render_widget(placeholder, rect);
+            }
             None => {
                 let placeholder = Paragraph::new("Select a note to preview")
                     .style(theme.preview_bg_style())

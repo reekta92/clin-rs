@@ -407,6 +407,8 @@ pub struct ListConfig {
     pub calendar_enabled: bool,
     #[serde(default)]
     pub smart_folders_enabled: bool,
+    #[serde(default = "default_true")]
+    pub folder_graph_preview: bool,
     #[serde(default)]
     pub pinned_folders: Vec<String>,
     #[serde(default = "default_preview_width_ratio")]

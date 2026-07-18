@@ -1438,9 +1438,8 @@ impl Storage {
             return Ok(());
         };
         db.insert(new_id.to_string(), payload);
-        let mut out =
-            bincode::serde::encode_to_vec(&db, bincode::config::standard())
-                .context("failed to serialize subnotes database")?;
+        let mut out = bincode::serde::encode_to_vec(&db, bincode::config::standard())
+            .context("failed to serialize subnotes database")?;
         obfuscate(&mut out);
         #[cfg(unix)]
         {

@@ -9,6 +9,16 @@ pub enum ListMode {
     Select,
 }
 
+/// A child node in the FolderGraph preview — either a subfolder or a note.
+#[derive(Debug, Clone)]
+pub(crate) struct FolderGraphNode {
+    pub key: String,
+    pub label: String,
+    pub is_note: bool,
+    pub x: f64,
+    pub y: f64,
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SortField {
@@ -33,6 +43,17 @@ pub enum SmartFolderKind {
 }
 
 impl SmartFolderKind {
+    /// Inverse of `virtual_path()`: parse `@today`, `@week`, `@untagged`, `@tag:NAME`, `@custom:NAME`.
+    pub fn from_virtual_path(path: &str) -> Option<SmartFolderKind> {
+        match path {
+            "@today" => Some(Self::Today),
+            "@week" => Some(Self::ThisWeek),
+            "@untagged" => Some(Self::Untagged),
+            s if s.starts_with("@tag:") => Some(Self::Tag(s[5..].to_string())),
+            s if s.starts_with("@custom:") => Some(Self::Custom(s[8..].to_string())),
+            _ => None,
+        }
+    }
     pub fn virtual_path(&self) -> String {
         match self {
             Self::Today => "@today".into(),
@@ -146,6 +167,18 @@ pub struct ListView {
     /// Canvas viewport pan offset in world coords.
     pub subnote_graph_pan_x: f64,
     pub subnote_graph_pan_y: f64,
+    /// Canvas viewport zoom for the FolderGraph preview (1.0 = fit whole graph).
+    pub(crate) folder_graph_zoom: f64,
+    /// Canvas viewport pan offset in world coords.
+    pub(crate) folder_graph_pan_x: f64,
+    pub(crate) folder_graph_pan_y: f64,
+    /// Cache of last-rendered FolderGraph child nodes (label + world position +
+    /// kind) so the scroll handler can decide zoom-into-child transitions without
+    /// recomputing layout. Written by render_folder_graph_static each frame.
+    pub(crate) folder_graph_nodes: Vec<FolderGraphNode>,
+    /// Currently zoom-focused note id inside a FolderGraph, when a note child is
+    /// zoomed in past the content-card threshold. None = graph view.
+    pub(crate) folder_graph_focused_note: Option<String>,
     pub drag_hover: Option<usize>,
     pub last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
     pub scroll_drag: Option<crate::ui::scrollbar::ScrollDrag>,
@@ -207,6 +240,11 @@ impl Default for ListView {
             subnote_graph_zoom: 1.0,
             subnote_graph_pan_x: 0.0,
             subnote_graph_pan_y: 0.0,
+            folder_graph_zoom: 1.0,
+            folder_graph_pan_x: 0.0,
+            folder_graph_pan_y: 0.0,
+            folder_graph_nodes: Vec::new(),
+            folder_graph_focused_note: None,
             last_scroll: None,
             scroll_drag: None,
         }
@@ -235,6 +273,15 @@ pub enum PreviewContent {
     SubnoteGraph {
         parent_id: String,
     },
+    /// Hierarchical folder graph: parent folder node at center, direct children
+    /// (subfolders + notes) on an orbit. Zoom into a subfolder child re-focuses
+    /// to that subfolder; zoom into a note child shows the note's content card.
+    /// `root_path` is the originally selected folder/virtual path (stable);
+    /// `focused_path` is the currently focused descendant (defaults to root).
+    FolderGraph {
+        root_path: String,
+        focused_path: String,
+    },
 }
 
 impl std::fmt::Debug for PreviewContent {
@@ -245,8 +292,38 @@ impl std::fmt::Debug for PreviewContent {
                 f.debug_tuple("CanvasGrid").field(&grid.len()).finish()
             }
             Self::SubnoteGraph { .. } => f.debug_tuple("SubnoteGraph").finish(),
+            Self::FolderGraph { .. } => f.debug_tuple("FolderGraph").finish(),
             Self::DrawGrid { grid, .. } => f.debug_tuple("DrawGrid").field(&grid.len()).finish(),
             Self::Image(_) => f.debug_tuple("Image").finish(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn smart_folder_kind_from_virtual_path_roundtrip() {
+        let kinds = vec![
+            SmartFolderKind::Today,
+            SmartFolderKind::ThisWeek,
+            SmartFolderKind::Untagged,
+            SmartFolderKind::Tag("rust".to_string()),
+            SmartFolderKind::Tag("testing".to_string()),
+            SmartFolderKind::Custom("my-folder".to_string()),
+        ];
+        for kind in kinds {
+            let path = kind.virtual_path();
+            let parsed = SmartFolderKind::from_virtual_path(&path);
+            assert_eq!(parsed, Some(kind), "roundtrip failed for {path:?}");
+        }
+    }
+
+    #[test]
+    fn from_virtual_path_invalid() {
+        assert_eq!(SmartFolderKind::from_virtual_path(""), None);
+        assert_eq!(SmartFolderKind::from_virtual_path("not_a_smart"), None);
+        assert_eq!(SmartFolderKind::from_virtual_path("@invalid"), None);
     }
 }

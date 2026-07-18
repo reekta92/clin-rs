@@ -22,6 +22,10 @@ const GRID_TOP_MARGIN: u16 = 3; // top inset inside list_area
 /// Shared between renderer and mouse handler to prevent drift.
 pub(crate) const SUBNOTE_GRAPH_BASE_SPAN: f64 = 15.0;
 
+/// Viewport base span for FolderGraph zoom/pan: layout_r(10) + parent_r(3) + 2 padding.
+/// Shared between renderer and mouse handler to prevent drift.
+pub(crate) const FOLDER_GRAPH_BASE_SPAN: f64 = 15.0;
+
 /// A hollow (outlined) circle drawn on a ratatui Canvas via Line segments.
 struct HollowCircle {
     cx: f64,
@@ -270,14 +274,17 @@ fn draw_strip_graf(
     }
 }
 
-
 /// Shorten a line segment so each endpoint stops at the border of a circle
 /// of the given radius centered on that endpoint. Returns the original
 /// endpoints unchanged when the two circles overlap (distance <= r1 + r2)
 /// or the endpoints coincide, so degenerate cases don't produce NaNs.
 fn shorten_segment_to_borders(
-    x1: f64, y1: f64, r1: f64,
-    x2: f64, y2: f64, r2: f64,
+    x1: f64,
+    y1: f64,
+    r1: f64,
+    x2: f64,
+    y2: f64,
+    r2: f64,
 ) -> (f64, f64, f64, f64) {
     let dx = x2 - x1;
     let dy = y2 - y1;
@@ -288,6 +295,17 @@ fn shorten_segment_to_borders(
     let ux = dx / dist;
     let uy = dy / dist;
     (x1 + ux * r1, y1 + uy * r1, x2 - ux * r2, y2 - uy * r2)
+}
+
+/// Compute positions on a circle of radius `r` for `n` items, starting from top
+/// (angle = -π/2). Used by both SubnoteGraph and FolderGraph renderers.
+fn orbit_positions(n: usize, r: f64) -> Vec<(f64, f64)> {
+    (0..n)
+        .map(|i| {
+            let angle = i as f64 * std::f64::consts::TAU / n as f64 - std::f64::consts::FRAC_PI_2;
+            (r * angle.cos(), r * angle.sin())
+        })
+        .collect()
 }
 /// Render subnote graph on a ratatui Canvas with hollow circles, zoom/pan, and content reveal.
 pub fn render_subnote_graph_static(
@@ -323,13 +341,7 @@ pub fn render_subnote_graph_static(
     let layout_r = 10.0_f64;
     let parent_r = 3.0_f64;
     let sub_r = 1.5_f64;
-    let n = subnotes.len();
-    let positions: Vec<(f64, f64)> = (0..n)
-        .map(|i| {
-            let angle = i as f64 * std::f64::consts::TAU / n as f64 - std::f64::consts::FRAC_PI_2;
-            (layout_r * angle.cos(), layout_r * angle.sin())
-        })
-        .collect();
+    let positions = orbit_positions(subnotes.len(), layout_r);
 
     // Viewport bounds from zoom/pan.
     let aspect = rect.width as f64 / rect.height as f64;
@@ -364,9 +376,14 @@ pub fn render_subnote_graph_static(
     // Build shapes.
     let mut edges: Vec<CanvasLine> = Vec::new();
     for &(sx, sy) in &positions {
-        let (x1, y1, x2, y2) =
-            shorten_segment_to_borders(0.0, 0.0, parent_r, sx, sy, sub_r);
-        edges.push(CanvasLine { x1, y1, x2, y2, color: theme.border });
+        let (x1, y1, x2, y2) = shorten_segment_to_borders(0.0, 0.0, parent_r, sx, sy, sub_r);
+        edges.push(CanvasLine {
+            x1,
+            y1,
+            x2,
+            y2,
+            color: theme.border,
+        });
     }
     // Wikilink edges: subnote -> subnote.
     let title_to_idx: std::collections::HashMap<String, usize> = subnotes
@@ -384,13 +401,17 @@ pub fn render_subnote_graph_static(
                 let key = if i < j { (i, j) } else { (j, i) };
                 if drawn.insert(key) {
                     let (tx, ty) = positions[j];
-                    let (x1, y1, x2, y2) =
-                        shorten_segment_to_borders(sx, sy, sub_r, tx, ty, sub_r);
-                    edges.push(CanvasLine { x1, y1, x2, y2, color: theme.success });
+                    let (x1, y1, x2, y2) = shorten_segment_to_borders(sx, sy, sub_r, tx, ty, sub_r);
+                    edges.push(CanvasLine {
+                        x1,
+                        y1,
+                        x2,
+                        y2,
+                        color: theme.success,
+                    });
                 }
             }
         }
-
     }
     let parent_circle = HollowCircle {
         cx: 0.0,
@@ -464,6 +485,261 @@ pub fn render_subnote_graph_static(
     }
 }
 
+/// Render a hierarchical folder graph on a ratatui Canvas with hollow circles, zoom/pan,
+/// and focus transitions into subfolders (re-focus) or notes (content card).
+#[allow(clippy::too_many_arguments)]
+pub fn render_folder_graph_static(
+    frame: &mut Frame,
+    rect: Rect,
+    focused_label: &str,
+    children: &[crate::list_view::FolderGraphNode],
+    zoom: f64,
+    pan_x: f64,
+    pan_y: f64,
+    focused_note_content: Option<(String, String)>,
+    app: &mut crate::app::App,
+) {
+    use ratatui::symbols::Marker;
+    use ratatui::widgets::canvas::{Canvas, Line as CanvasLine};
+
+    let theme = &app.app_theme;
+
+    // Background
+    let bg = theme.preview_bg_style();
+    frame.render_widget(Block::default().style(bg), rect);
+
+    // Content card for zoomed-in note — exits on zoom-out below threshold.
+    const EXIT_NOTE_THRESHOLD: f64 = 5.0;
+    if let Some((title, content)) = focused_note_content {
+        if zoom < EXIT_NOTE_THRESHOLD {
+            app.list.folder_graph_focused_note = None;
+        } else {
+            draw_content_card(frame, rect, &title, &content, theme);
+            return;
+        }
+    }
+
+    if children.is_empty() {
+        let line = Line::from(vec![Span::styled(
+            "Empty folder",
+            Style::default().fg(theme.muted),
+        )]);
+        let p = ratatui::widgets::Paragraph::new(line)
+            .style(theme.preview_bg_style())
+            .alignment(ratatui::layout::Alignment::Center);
+        frame.render_widget(p, rect);
+        return;
+    }
+
+    // World-coordinate layout: parent at origin, children on a circle.
+    let parent_r = 3.0_f64;
+    let child_r = 1.5_f64;
+
+    // Viewport bounds from zoom/pan.
+    let aspect = rect.width as f64 / rect.height as f64;
+    let cell_aspect = 2.0;
+    let span_x = FOLDER_GRAPH_BASE_SPAN / zoom;
+    let span_y = span_x * cell_aspect / aspect;
+    let x_bounds = [pan_x - span_x, pan_x + span_x];
+    let y_bounds = [pan_y - span_y, pan_y + span_y];
+
+    // For on-screen sizing and focus thresholds.
+    let cells_per_world = rect.width as f64 / (2.0 * span_x);
+    let on_screen_child_r = child_r * cells_per_world;
+
+    // Build shapes: parent->child edges.
+    let mut edges: Vec<CanvasLine> = Vec::new();
+    for child in children {
+        let (x1, y1, x2, y2) =
+            shorten_segment_to_borders(0.0, 0.0, parent_r, child.x, child.y, child_r);
+        edges.push(CanvasLine {
+            x1,
+            y1,
+            x2,
+            y2,
+            color: theme.border,
+        });
+    }
+    // Wikilink edges between note children within the focused folder.
+    let notes_only: Vec<&crate::list_view::FolderGraphNode> =
+        children.iter().filter(|c| c.is_note).collect();
+    if notes_only.len() > 1 {
+        let title_to_idx: std::collections::HashMap<String, usize> = notes_only
+            .iter()
+            .enumerate()
+            .map(|(i, n)| (n.label.to_lowercase(), i))
+            .collect();
+        let title_to_nid: std::collections::HashMap<String, usize> = app
+            .notes
+            .iter()
+            .enumerate()
+            .map(|(i, note)| (note.title.to_lowercase(), i))
+            .collect();
+        let mut drawn: std::collections::HashSet<(usize, usize)> = std::collections::HashSet::new();
+        for (i, child) in notes_only.iter().enumerate() {
+            if let Some(&nidx) = title_to_nid.get(&child.label.to_lowercase())
+                && let Some(note) = app.notes.get(nidx)
+            {
+                for link in &note.links {
+                    if let Some(&j) = title_to_idx.get(&link.to_lowercase())
+                        && j != i
+                    {
+                        let key = if i < j { (i, j) } else { (j, i) };
+                        if drawn.insert(key) {
+                            let tx = notes_only[j].x;
+                            let ty = notes_only[j].y;
+                            let (x1, y1, x2, y2) = shorten_segment_to_borders(
+                                child.x, child.y, child_r, tx, ty, child_r,
+                            );
+                            edges.push(CanvasLine {
+                                x1,
+                                y1,
+                                x2,
+                                y2,
+                                color: theme.success,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let parent_circle = HollowCircle {
+        cx: 0.0,
+        cy: 0.0,
+        radius: parent_r,
+        color: theme.accent,
+    };
+    let child_circles: Vec<HollowCircle> = children
+        .iter()
+        .map(|c| HollowCircle {
+            cx: c.x,
+            cy: c.y,
+            radius: child_r,
+            color: if c.is_note { theme.tag } else { theme.folder },
+        })
+        .collect();
+
+    // Render Canvas
+    let canvas = Canvas::default()
+        .background_color(theme.bg.unwrap_or(ratatui::style::Color::Reset))
+        .block(Block::default().style(bg))
+        .marker(Marker::Braille)
+        .x_bounds(x_bounds)
+        .y_bounds(y_bounds)
+        .paint(|ctx| {
+            for edge in &edges {
+                ctx.draw(edge);
+            }
+            ctx.draw(&parent_circle);
+            for cc in &child_circles {
+                ctx.draw(cc);
+            }
+        });
+    frame.render_widget(canvas, rect);
+
+    // Post-canvas: world -> screen transform for text overlay.
+    let world_to_screen = |wx: f64, wy: f64| -> (f64, f64) {
+        let col =
+            rect.x as f64 + (wx - x_bounds[0]) / (x_bounds[1] - x_bounds[0]) * rect.width as f64;
+        let row = rect.y as f64 + rect.height as f64
+            - (wy - y_bounds[0]) / (y_bounds[1] - y_bounds[0]) * rect.height as f64;
+        (col, row)
+    };
+    let buf = frame.buffer_mut();
+    let max_title_len = (rect.width as f64 * 0.2 / zoom.max(1.0)).max(4.0) as usize;
+
+    // Parent title.
+    let (px, py) = world_to_screen(0.0, parent_r);
+    draw_title_above(
+        buf,
+        px,
+        py,
+        focused_label,
+        max_title_len,
+        rect,
+        Style::default().fg(theme.fg),
+    );
+
+    // Child labels.
+    for child in children {
+        let (scx, scy) = world_to_screen(child.x, child.y);
+        draw_title_above(
+            buf,
+            scx,
+            scy - child_r * cells_per_world,
+            &child.label,
+            max_title_len,
+            rect,
+            Style::default().fg(theme.fg),
+        );
+    }
+
+    // Write the node cache for the scroll handler.
+    app.list.folder_graph_nodes = children.to_vec();
+
+    // Transition logic: zoom-in on subfolder → re-focus; zoom-in on note → content card.
+    const ENTER_THRESHOLD: f64 = 8.0;
+    const ENTER_ZOOM_MIN: f64 = 1.5; // user must zoom past 1.5x before focus triggers
+    const EXIT_FOLDER_THRESHOLD_ZOOM: f64 = 0.6;
+
+    if app.list.folder_graph_focused_note.is_none()
+        && zoom > ENTER_ZOOM_MIN
+        && on_screen_child_r > ENTER_THRESHOLD
+    {
+        let center = (pan_x, pan_y);
+        if let Some(closest) = children.iter().min_by(|a, b| {
+            let da = (a.x - center.0).powi(2) + (a.y - center.1).powi(2);
+            let db = (b.x - center.0).powi(2) + (b.y - center.1).powi(2);
+            da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+        }) {
+            if closest.is_note {
+                app.list.folder_graph_focused_note = Some(closest.key.clone());
+            } else {
+                // Re-focus to subfolder.
+                if let Some(crate::list_view::PreviewContent::FolderGraph {
+                    focused_path, ..
+                }) = app.list.preview_content.as_mut()
+                {
+                    *focused_path = closest.key.clone();
+                }
+                app.list.folder_graph_zoom = 1.0;
+                app.list.folder_graph_pan_x = 0.0;
+                app.list.folder_graph_pan_y = 0.0;
+                app.list.folder_graph_focused_note = None;
+                app.list.folder_graph_nodes.clear();
+                return;
+            }
+        }
+    }
+
+    // Pop back to parent folder when zoomed too far out inside a nested subfolder.
+    if let Some(crate::list_view::PreviewContent::FolderGraph {
+        root_path,
+        focused_path,
+    }) = app.list.preview_content.as_ref()
+        && *focused_path != *root_path
+        && zoom < EXIT_FOLDER_THRESHOLD_ZOOM
+    {
+        let parent_path = if let Some(slash) = focused_path.rfind('/') {
+            focused_path[..slash].to_string()
+        } else {
+            String::new()
+        };
+        if let Some(crate::list_view::PreviewContent::FolderGraph {
+            focused_path: fp, ..
+        }) = app.list.preview_content.as_mut()
+        {
+            *fp = parent_path;
+        }
+        app.list.folder_graph_zoom = 1.0;
+        app.list.folder_graph_pan_x = 0.0;
+        app.list.folder_graph_pan_y = 0.0;
+        app.list.folder_graph_focused_note = None;
+        app.list.folder_graph_nodes.clear();
+    }
+}
 /// Draw `text` centered above position (x, y_top) in the buffer, clamped to rect.
 fn draw_title_above(
     buf: &mut ratatui::buffer::Buffer,
@@ -838,9 +1114,8 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     },
                 ));
                 if crate::app::App::is_subnotes_parent_grid_path(&app.list.grid_folder) {
-                    let parent_id = crate::app::App::subnotes_parent_id_from_grid_path(
-                        &app.list.grid_folder,
-                    );
+                    let parent_id =
+                        crate::app::App::subnotes_parent_id_from_grid_path(&app.list.grid_folder);
                     let label = app
                         .notes
                         .iter()
@@ -971,17 +1246,29 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                         let is_parent = name == "..";
                         let (ic, label) = if is_pinned {
                             (
-                                crate::ui::get_char('\u{f4cc}', '\u{1f4cc}', app.config.ui.icon_mode),
+                                crate::ui::get_char(
+                                    '\u{f4cc}',
+                                    '\u{1f4cc}',
+                                    app.config.ui.icon_mode,
+                                ),
                                 "F",
                             )
                         } else if is_parent {
                             (
-                                crate::ui::get_char('\u{f062}', '\u{2b06}', app.config.ui.icon_mode),
+                                crate::ui::get_char(
+                                    '\u{f062}',
+                                    '\u{2b06}',
+                                    app.config.ui.icon_mode,
+                                ),
                                 "^",
                             )
                         } else {
                             (
-                                crate::ui::get_char('\u{f07b}', '\u{1f4c1}', app.config.ui.icon_mode),
+                                crate::ui::get_char(
+                                    '\u{f07b}',
+                                    '\u{1f4c1}',
+                                    app.config.ui.icon_mode,
+                                ),
                                 "F",
                             )
                         };
@@ -1382,6 +1669,48 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 app.list.subnote_graph_pan_x,
                 app.list.subnote_graph_pan_y,
                 &app.app_theme,
+            );
+            rendered_graph = true;
+        }
+        if !rendered_graph
+            && (content_is_current || app.list.pending_preview_update)
+            && let Some(crate::list_view::PreviewContent::FolderGraph {
+                root_path: _,
+                focused_path,
+            }) = app.list.preview_content.as_ref()
+        {
+            // Extract all immutable data before the mutable render call.
+            let (children, label) = app.folder_graph_children(focused_path);
+            let positions = orbit_positions(children.len(), 10.0);
+            let positioned: Vec<crate::list_view::FolderGraphNode> = children
+                .iter()
+                .zip(positions.iter())
+                .map(|(n, &(x, y))| crate::list_view::FolderGraphNode { x, y, ..n.clone() })
+                .collect();
+            let focused_note_id = app.list.folder_graph_focused_note.clone();
+            let preview_encryption = app.config.list.preview_encryption;
+            let zoom = app.list.folder_graph_zoom;
+            let pan_x = app.list.folder_graph_pan_x;
+            let pan_y = app.list.folder_graph_pan_y;
+            let focused_note_content = focused_note_id.and_then(|id| {
+                if preview_encryption && id.ends_with(".clin") {
+                    return None;
+                }
+                app.storage
+                    .load_note(&id)
+                    .ok()
+                    .map(|n| (n.title, n.content))
+            });
+            render_folder_graph_static(
+                frame,
+                preview_rect,
+                &label,
+                &positioned,
+                zoom,
+                pan_x,
+                pan_y,
+                focused_note_content,
+                app,
             );
             rendered_graph = true;
         }
@@ -3233,5 +3562,20 @@ mod tests {
         assert_eq!(rects[1].y, r.y);
         assert_eq!(rects[1].height, r.height);
         assert_eq!(rects[1].right(), r.right());
+    }
+
+    #[test]
+    fn orbit_positions_count_and_radius() {
+        for n in [0, 1, 2, 3, 4, 8] {
+            let r = 10.0;
+            let pos = orbit_positions(n, r);
+            assert_eq!(pos.len(), n, "count mismatch for n={n}");
+            if n > 0 {
+                // First point is at angle -π/2 → (0, -r).
+                let (x, y) = pos[0];
+                assert!((x - 0.0).abs() < 1e-12, "first x not 0: {x}");
+                assert!((y - (-r)).abs() < 1e-12, "first y not -r: {y}");
+            }
+        }
     }
 }

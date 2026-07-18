@@ -705,7 +705,6 @@ impl App {
         }
     }
 
-
     pub fn get_selected_note_id(&self) -> Option<String> {
         if let Some(id) = &self.editor.editing_id {
             return Some(id.clone());
