@@ -283,6 +283,12 @@ show_hidden_files = false
 # Non-note files open in the OS default application.
 show_all_files = false
 
+# Comma-separated list of regex patterns. Directories whose name matches any
+# pattern are never descended into during note/folder listing. Use to skip
+# obsidian-style attachments folders, e.g. skip_dirs = ["attachments", "assets"]
+# Changes require restart.
+# skip_dirs = []
+
 
 # Show a month calendar (with note activity) at the bottom of the notes view.
 calendar_enabled = true

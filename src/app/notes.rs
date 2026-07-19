@@ -11,6 +11,7 @@ use std::collections::HashSet;
 
 impl App {
     pub fn refresh_notes(&mut self) -> Result<()> {
+        self.list.folder_cache = None;
         self.load_cancel.store(true, Ordering::Release);
 
         let ids = self
@@ -42,6 +43,7 @@ impl App {
         self.refresh_visual_list();
         self.notes_with_subnotes = self.storage.get_notes_with_subnotes().unwrap_or_default();
         self.refresh_subnotes_view_cache();
+        self.save_persisted_summary_cache();
 
         Ok(())
     }
@@ -87,6 +89,7 @@ impl App {
         //    refresh_visual_list; skipping it is the point).
         self.sort_notes();
         self.refresh_visual_list();
+        self.save_persisted_summary_cache();
     }
 
     pub(crate) fn sort_notes(&mut self) {
@@ -277,7 +280,8 @@ impl App {
 
     pub fn open_note_in_external_editor(&mut self, note_id: &str, line_number: Option<usize>) {
         if let Ok(note) = self.storage.load_note(note_id) {
-            let temp_dir = std::env::temp_dir();
+            let temp_dir = std::env::temp_dir().join("clin");
+            let _ = std::fs::create_dir_all(&temp_dir);
             let temp_id = uuid::Uuid::new_v4().to_string();
             let temp_file_path = temp_dir.join(format!("clin_{temp_id}.md"));
 
@@ -575,6 +579,7 @@ impl App {
                 match crate::graf::app::GrafAppState::new(
                     &self.config,
                     self.storage.clone(),
+                    self.notes.clone(),
                     self.config_errors.clone(),
                     self.keybinds.clone(),
                     self.seq_matcher.clone(),
@@ -748,6 +753,7 @@ impl App {
                 match crate::graf::app::GrafAppState::new(
                     &self.config,
                     self.storage.clone(),
+                    self.notes.clone(),
                     self.config_errors.clone(),
                     self.keybinds.clone(),
                     self.seq_matcher.clone(),
@@ -1133,7 +1139,8 @@ impl App {
         }
 
         let subnote = &popup.subnotes[cur_idx];
-        let temp_dir = std::env::temp_dir();
+        let temp_dir = std::env::temp_dir().join("clin");
+        let _ = std::fs::create_dir_all(&temp_dir);
         let temp_id = uuid::Uuid::new_v4().to_string();
         let temp_file_path = temp_dir.join(format!("clin_subnote_{temp_id}.md"));
 

@@ -988,6 +988,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 left_line,
                 right_line,
                 Some(app.status.as_ref()),
+                app.load_spinner_tick,
             );
         } else if app.list.notes_layout == crate::config::NotesLayout::Grid {
             let mut tabs = vec![
@@ -1084,6 +1085,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 tab_spans,
                 right_line,
                 Some(app.status.as_ref()),
+                app.load_spinner_tick,
             );
         } else {
             let (left_line, right_line) = crate::statusline::render_header(
@@ -1099,6 +1101,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 left_line,
                 right_line,
                 Some(app.status.as_ref()),
+                app.load_spinner_tick,
             );
         }
     }
@@ -3418,6 +3421,7 @@ mod tests {
             notes_dir,
             templates_dir,
             key: [0u8; 32],
+            skip_dir_patterns: Vec::new(),
         };
         let mut app = App::new(storage).unwrap();
 

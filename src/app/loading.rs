@@ -14,7 +14,11 @@ struct SmartFolderData {
 impl App {
     /// Spawns a background thread that streams note summaries in batches.
     /// Caller must drain the receiver in the main loop via merge_loaded.
-    pub fn start_background_load(&self) -> mpsc::Receiver<LoadBatch> {
+    pub fn start_background_load(
+        &self,
+        summary_cache: HashMap<String, NoteSummary>,
+        summary_mtime: HashMap<String, u64>,
+    ) -> mpsc::Receiver<LoadBatch> {
         let (tx, rx) = mpsc::channel();
         let storage = self.storage.clone();
         let show_hidden = self.list.show_hidden_files;
@@ -45,6 +49,24 @@ impl App {
                     let _ = tx.send(LoadBatch::Done(loaded));
                     return;
                 }
+                // Fast path: check mtime against persisted cache
+                if let Some(&mt_cached) = summary_mtime.get(id)
+                    && let Some(s_cached) = summary_cache.get(id)
+                {
+                    let mt_current = storage.note_mtime_millis(id);
+                    if mt_current == mt_cached {
+                        batch.push((id.clone(), s_cached.clone(), mt_current));
+                        loaded += 1;
+                        if batch.len() >= batch_size || loaded == total {
+                            let to_send = std::mem::take(&mut batch);
+                            if tx.send(LoadBatch::Items(to_send)).is_err() {
+                                return;
+                            }
+                        }
+                        continue;
+                    }
+                }
+                // Slow path: read note from disk
                 let mt = storage.note_mtime_millis(id);
                 if let Ok(summary) = storage.load_note_summary(id) {
                     batch.push((id.clone(), summary, mt));
@@ -72,7 +94,11 @@ impl App {
         match batch {
             LoadBatch::Started(total) => {
                 self.loading_total = total;
-                self.status = Cow::Owned(format!("Loading notes\u{2026} 0/{total}"));
+                self.status = if self.is_first_cache_build {
+                    Cow::Owned(format!("First time caching please wait\u{2026} 0/{total}"))
+                } else {
+                    Cow::Owned(format!("Loading notes\u{2026} 0/{total}"))
+                };
                 true
             }
             LoadBatch::Items(items) => {
@@ -82,17 +108,29 @@ impl App {
                     self.notes.push(summary);
                 }
                 self.sort_notes();
-                self.refresh_visual_list();
+                self.load_spinner_tick = self.load_spinner_tick.wrapping_add(1);
                 let total = self.loading_total.max(self.notes.len());
-                self.status = Cow::Owned(format!(
-                    "Loading notes\u{2026} {}/{}",
-                    self.notes.len(),
-                    total
-                ));
+                self.status = if self.is_first_cache_build {
+                    Cow::Owned(format!(
+                        "First time caching please wait\u{2026} {}/{}",
+                        self.notes.len(),
+                        total
+                    ))
+                } else {
+                    Cow::Owned(format!(
+                        "Loading notes\u{2026} {}/{}",
+                        self.notes.len(),
+                        total
+                    ))
+                };
                 true
             }
             LoadBatch::Done(_) => {
                 self.initial_load_done = true;
+                self.save_persisted_summary_cache();
+                self.refresh_visual_list();
+                self.is_first_cache_build = false;
+                self.load_spinner_tick = 0;
                 self.loading_total = 0;
                 self.status = Cow::Borrowed("");
                 // Pre-warm graph preview so the first render doesn't block
@@ -162,7 +200,9 @@ impl App {
             }
         }
 
-        let all_folders = {
+        let all_folders = if let Some(cache) = &self.list.folder_cache {
+            cache
+        } else {
             let folders = self
                 .storage
                 .list_folders(self.list.show_hidden_files)
@@ -1590,6 +1630,7 @@ mod tests {
             notes_dir,
             templates_dir,
             key: [0u8; 32],
+            skip_dir_patterns: Vec::new(),
         };
         App::new(storage).unwrap()
     }

@@ -124,6 +124,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                         left_line,
                         right_line,
                         Some(app.status.as_ref()),
+                        app.load_spinner_tick,
                     );
                 }
 
@@ -182,6 +183,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     spans,
                     right_line,
                     Some(app.status.as_ref()),
+                    app.load_spinner_tick,
                 );
                 draw.mouse_pos = app.mouse_pos;
                 draw.overlay_render(frame, outer[1], app);
@@ -216,6 +218,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     left_line,
                     right_line,
                     Some(app.status.as_ref()),
+                    app.load_spinner_tick,
                 );
                 canvas.overlay_render(frame, outer[1], app);
                 app.canvas_state = Some(canvas);
@@ -272,6 +275,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     left_line,
                     right_line,
                     Some(app.status.as_ref()),
+                    app.load_spinner_tick,
                 );
                 tree.mouse_pos = app.mouse_pos;
                 tree.overlay_render(frame, outer[1], app);

@@ -125,6 +125,7 @@ unicode-width = "0.2"
 git2 = { version = "0.21", features = ["ssh", "https"] }
 mimalloc = "0.1"
 notify = "8.2.0"
+regex = "1"
 
 strum = { version = "0.26", features = ["derive"] }
 [profile.release]

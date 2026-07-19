@@ -1,5 +1,6 @@
 use super::*;
 use crate::list_view::*;
+use std::collections::BTreeMap;
 
 impl App {
     /// Load, patch, and save an editor config field.  Replaces the
@@ -548,6 +549,37 @@ impl App {
         }
     }
 
+    pub fn load_persisted_summary_cache(
+        &self,
+    ) -> BTreeMap<String, (u64, crate::storage::NoteSummary)> {
+        let path = self.storage.config_dir.join("note_cache.bin");
+        let Ok(ciphertext) = std::fs::read(&path) else {
+            return BTreeMap::new();
+        };
+        let plain = match self.storage.decrypt(&ciphertext) {
+            Ok(p) => p,
+            Err(_) => return BTreeMap::new(),
+        };
+        bincode::serde::decode_from_slice(plain.as_slice(), bincode::config::standard())
+            .map(|(map, _)| map)
+            .unwrap_or_default()
+    }
+
+    pub fn save_persisted_summary_cache(&self) {
+        let path = self.storage.config_dir.join("note_cache.bin");
+        let mut map: BTreeMap<String, (u64, crate::storage::NoteSummary)> = BTreeMap::new();
+        for (id, summary) in &self.summary_cache {
+            if let Some(&mt) = self.summary_mtime.get(id) {
+                map.insert(id.clone(), (mt, summary.clone()));
+            }
+        }
+        if let Ok(bytes) = bincode::serde::encode_to_vec(&map, bincode::config::standard())
+            && let Ok(ciphertext) = self.storage.encrypt(&bytes)
+        {
+            let _ = crate::fsutil::atomic_write_with_mode(&path, &ciphertext, 0o600);
+        }
+    }
+
     pub fn get_current_goals_progress(&mut self) -> &mut crate::goals::DailyProgress {
         self.check_and_reload_config();
         let today = chrono::Local::now().date_naive().to_string();
@@ -601,7 +633,7 @@ impl App {
         if self.graph_preview.is_some() && self.graph_preview_sig == sig {
             return;
         }
-        match crate::graf::graph::GraphState::new(&self.storage, &self.config) {
+        match crate::graf::graph::GraphState::new(&self.notes, &self.config) {
             Ok(mut gs) => {
                 gs.viewport = gs
                     .viewport
@@ -733,6 +765,7 @@ mod tests {
             notes_dir,
             templates_dir,
             key: [0u8; 32],
+            skip_dir_patterns: Vec::new(),
         };
         App::new(storage).unwrap()
     }

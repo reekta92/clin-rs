@@ -38,7 +38,7 @@ pub enum SubNotePayload {
     Encrypted(Vec<u8>), // bincode + chacha20poly1305 ciphertext
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NoteSummary {
     pub id: String,
     pub title: String,
@@ -90,6 +90,8 @@ pub struct Storage {
     #[zeroize(skip)]
     pub templates_dir: PathBuf,
     pub key: [u8; 32],
+    #[zeroize(skip)]
+    pub skip_dir_patterns: Vec<regex::Regex>,
 }
 
 fn split_frontmatter_payload(bytes: &[u8]) -> (Option<frontmatter::Frontmatter>, &[u8]) {
@@ -232,12 +234,20 @@ impl Storage {
             [0_u8; 32]
         };
 
+        let skip_dir_patterns: Vec<regex::Regex> = bootstrap
+            .list
+            .skip_dirs
+            .iter()
+            .filter_map(|pat| regex::Regex::new(pat).ok())
+            .collect();
+
         let storage = Self {
             data_dir,
             config_dir,
             notes_dir,
             templates_dir,
             key,
+            skip_dir_patterns,
         };
         if !vault_mode {
             storage.migrate_extensions();
@@ -596,6 +606,10 @@ impl Storage {
                         .and_then(|s| s.to_str())
                         .is_some_and(|n| include_hidden || !n.starts_with('.'))
                 {
+                    let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
+                    if self.skip_dir_patterns.iter().any(|re| re.is_match(name)) {
+                        continue;
+                    }
                     dirs_to_visit.push(path);
                 } else {
                     let accepted = if include_all_files {
@@ -1236,6 +1250,10 @@ impl Storage {
                             .and_then(|s| s.to_str())
                             .is_some_and(|n| include_hidden || !n.starts_with('.'))
                     {
+                        let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
+                        if self.skip_dir_patterns.iter().any(|re| re.is_match(name)) {
+                            continue;
+                        }
                         dirs_to_visit.push(path.clone());
                         if let Ok(rel_path) = path.strip_prefix(&self.notes_dir)
                             && let Some(rel_str) = rel_path.to_str()
@@ -1580,6 +1598,7 @@ mod tests {
             notes_dir: PathBuf::new(),
             templates_dir: PathBuf::new(),
             key,
+            skip_dir_patterns: Vec::new(),
         };
 
         let plaintext = b"Secret Message";
@@ -1607,6 +1626,7 @@ mod tests {
             notes_dir: PathBuf::new(),
             templates_dir: PathBuf::new(),
             key: [0u8; 32],
+            skip_dir_patterns: Vec::new(),
         };
         // Truncated payload: valid magic but no nonce/ciphertext
         let truncated = b"CLIN1";
@@ -1624,6 +1644,7 @@ mod tests {
             notes_dir: notes_dir.clone(),
             templates_dir: PathBuf::new(),
             key: [0u8; 32],
+            skip_dir_patterns: Vec::new(),
         };
 
         let id = storage.save_note(
@@ -1665,6 +1686,7 @@ mod tests {
             notes_dir: notes_dir.clone(),
             templates_dir: PathBuf::new(),
             key: [0u8; 32],
+            skip_dir_patterns: Vec::new(),
         };
 
         let content = "Test content for duplicate";
@@ -1731,6 +1753,7 @@ mod tests {
             notes_dir,
             templates_dir,
             key: [2u8; 32],
+            skip_dir_patterns: Vec::new(),
         };
 
         // 1. Plain note subnotes
@@ -1846,6 +1869,7 @@ mod tests {
             notes_dir,
             templates_dir,
             key: [2u8; 32],
+            skip_dir_patterns: Vec::new(),
         };
 
         // Write corrupt bytes directly to subnotes db file path
@@ -1880,6 +1904,7 @@ mod tests {
             notes_dir: notes_dir.clone(),
             templates_dir,
             key: [0u8; 32],
+            skip_dir_patterns: Vec::new(),
         };
 
         // Create an unreadable .md file

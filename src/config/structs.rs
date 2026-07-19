@@ -401,6 +401,8 @@ pub struct ListConfig {
     pub show_hidden_files: bool,
     #[serde(default)]
     pub show_all_files: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub skip_dirs: Vec<String>,
     #[serde(default = "default_true")]
     pub folders_first: bool,
     #[serde(default = "default_true")]

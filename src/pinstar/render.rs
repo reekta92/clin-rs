@@ -839,6 +839,7 @@ mod tests {
             notes_dir,
             templates_dir,
             key: [0u8; 32],
+            skip_dir_patterns: Vec::new(),
         };
         let mut app = crate::app::App::new(storage).unwrap();
 

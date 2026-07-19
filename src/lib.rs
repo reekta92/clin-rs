@@ -895,7 +895,7 @@ fn run_app(
 
     // Start background note load for deferred startup
     let load_rx = if !app.initial_load_done && app.notes.is_empty() {
-        Some(app.start_background_load())
+        Some(app.start_background_load(app.summary_cache.clone(), app.summary_mtime.clone()))
     } else {
         None
     };
@@ -967,14 +967,16 @@ fn run_app(
             Duration::from_millis(16)
         } else if app.mode == ViewMode::Canvas {
             Duration::from_millis(100)
-        } else if matches!(
-            app.list.preview_content,
-            Some(crate::list_view::PreviewContent::Markdown(ref r)) if r.is_pending()
-        ) || app
-            .editor
-            .md_preview_renderer
-            .as_ref()
-            .is_some_and(|r| r.is_pending())
+        } else if app.is_first_cache_build
+            || matches!(
+                app.list.preview_content,
+                Some(crate::list_view::PreviewContent::Markdown(ref r)) if r.is_pending()
+            )
+            || app
+                .editor
+                .md_preview_renderer
+                .as_ref()
+                .is_some_and(|r| r.is_pending())
         {
             Duration::from_millis(50)
         } else {

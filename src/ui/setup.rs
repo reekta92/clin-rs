@@ -311,6 +311,7 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
             left_line,
             Some(right_line),
             None,
+            0,
         );
 
         // Footer hint bar example — adapts to theme.hint_bar_style via format_keybind_hints.

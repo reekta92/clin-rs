@@ -5,7 +5,7 @@ use fdg_sim::petgraph::graph::NodeIndex;
 use fdg_sim::{ForceGraph, ForceGraphHelper, Simulation, SimulationParameters};
 
 use crate::config::ClinConfig;
-use crate::storage::Storage;
+use crate::storage::NoteSummary;
 
 pub struct GraphNodeData {
     pub note_id: String,
@@ -28,30 +28,16 @@ pub struct GraphState {
 }
 
 pub fn build_graph(
-    storage: &Storage,
+    summaries: &[NoteSummary],
     config: &ClinConfig,
 ) -> anyhow::Result<ForceGraph<GraphNodeData, ()>> {
-    let note_ids = storage.list_note_ids(!config.list.show_hidden_files, false)?;
     let mut graph: ForceGraph<GraphNodeData, ()> = ForceGraph::default();
     let mut title_to_index: HashMap<String, NodeIndex> = HashMap::new();
 
-    let mut summaries = Vec::new();
-    let mut links_map: HashMap<String, Vec<String>> = HashMap::new();
-    let mut link_counts: HashMap<String, usize> = HashMap::new();
-
-    for id in &note_ids {
-        if let Ok(summary) = storage.load_note_summary(id) {
-            link_counts.insert(id.clone(), summary.links.len());
-            links_map.insert(id.clone(), summary.links.clone());
-            summaries.push(summary);
-        }
-    }
-
     let min_links = config.graf.filter.min_links;
 
-    for summary in &summaries {
-        let lc = link_counts.get(&summary.id).copied().unwrap_or(0);
-        if lc < min_links {
+    for summary in summaries {
+        if summary.links.len() < min_links {
             continue;
         }
 
@@ -68,7 +54,7 @@ pub fn build_graph(
             note_id: summary.id.clone(),
             title: summary.title.clone(),
             tags: summary.tags.clone(),
-            link_count: lc,
+            link_count: summary.links.len(),
             folder: summary.folder.clone(),
         };
 
@@ -76,25 +62,23 @@ pub fn build_graph(
         title_to_index.insert(summary.title.to_lowercase(), idx);
     }
 
-    for summary in &summaries {
-        if let Some(links) = links_map.get(&summary.id) {
-            let source_title = summary.title.to_lowercase();
+    for summary in summaries {
+        let source_title = summary.title.to_lowercase();
 
-            let source_idx = match title_to_index.get(&source_title) {
-                Some(&idx) => idx,
-                None => continue,
-            };
+        let source_idx = match title_to_index.get(&source_title) {
+            Some(&idx) => idx,
+            None => continue,
+        };
 
-            let mut seen_targets = std::collections::HashSet::new();
-            for link in links {
-                let target_lower = link.to_lowercase();
-                if let Some(&target_idx) = title_to_index.get(&target_lower)
-                    && target_idx != source_idx
-                    && seen_targets.insert(target_idx)
-                    && graph.edges_connecting(source_idx, target_idx).count() == 0
-                {
-                    graph.add_edge(source_idx, target_idx, ());
-                }
+        let mut seen_targets = std::collections::HashSet::new();
+        for link in &summary.links {
+            let target_lower = link.to_lowercase();
+            if let Some(&target_idx) = title_to_index.get(&target_lower)
+                && target_idx != source_idx
+                && seen_targets.insert(target_idx)
+                && graph.edges_connecting(source_idx, target_idx).count() == 0
+            {
+                graph.add_edge(source_idx, target_idx, ());
             }
         }
     }
@@ -112,8 +96,8 @@ pub fn create_simulation(
 }
 
 impl GraphState {
-    pub fn new(storage: &Storage, config: &ClinConfig) -> anyhow::Result<Self> {
-        let graph = build_graph(storage, config)?;
+    pub fn new(summaries: &[NoteSummary], config: &ClinConfig) -> anyhow::Result<Self> {
+        let graph = build_graph(summaries, config)?;
         let simulation = create_simulation(graph, config);
         let mut state = Self {
             viewport: super::viewport::Viewport::default(),

@@ -163,6 +163,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             left_line,
             right_line,
             status_val,
+            app.load_spinner_tick,
         );
         app.editor.header_title_rect = Rect::default();
     } else {

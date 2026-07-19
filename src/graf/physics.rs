@@ -105,12 +105,18 @@ mod tests {
             notes_dir,
             templates_dir: temp_dir.path().join("templates"),
             key: [0u8; 32],
+            skip_dir_patterns: Vec::new(),
         };
         std::fs::create_dir_all(&storage.data_dir).unwrap();
         std::fs::create_dir_all(&storage.templates_dir).unwrap();
 
         let config = crate::config::ClinConfig::default();
-        let mut gs = GraphState::new(&storage, &config).expect("GraphState::new");
+        let note_ids = storage.list_note_ids(true, false).unwrap();
+        let summaries: Vec<_> = note_ids
+            .iter()
+            .filter_map(|id| storage.load_note_summary(id).ok())
+            .collect();
+        let mut gs = GraphState::new(&summaries, &config).expect("GraphState::new");
 
         // Run simulation steps
         for _ in 0..300 {
@@ -146,12 +152,18 @@ mod tests {
             notes_dir,
             templates_dir: temp_dir.path().join("templates"),
             key: [0u8; 32],
+            skip_dir_patterns: Vec::new(),
         };
         std::fs::create_dir_all(&storage.data_dir).unwrap();
         std::fs::create_dir_all(&storage.templates_dir).unwrap();
 
         let config = crate::config::ClinConfig::default();
-        let mut gs = GraphState::new(&storage, &config).expect("GraphState::new");
+        let note_ids = storage.list_note_ids(true, false).unwrap();
+        let summaries: Vec<_> = note_ids
+            .iter()
+            .filter_map(|id| storage.load_note_summary(id).ok())
+            .collect();
+        let mut gs = GraphState::new(&summaries, &config).expect("GraphState::new");
 
         let node_indices: Vec<_> = gs.simulation.get_graph().node_indices().collect();
         assert!(!node_indices.is_empty());

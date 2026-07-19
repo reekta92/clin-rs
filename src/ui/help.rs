@@ -211,6 +211,7 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
         tab_spans,
         right_line,
         Some(app.status.as_ref()),
+        app.load_spinner_tick,
     );
 
     let body_area = chunks[1];

@@ -2,6 +2,15 @@ use super::PreviewHeaderInfo;
 use crate::app_theme::AppThemeColors;
 use ratatui::{prelude::*, widgets::*};
 
+fn spinner_char(tick: usize) -> char {
+    const FRAMES: [char; 10] = [
+        '\u{2801}', '\u{2802}', '\u{2804}', '\u{2840}', '\u{2844}', '\u{2848}', '\u{2850}',
+        '\u{2860}', '\u{28C0}', '\u{28C4}',
+    ];
+    FRAMES[tick % FRAMES.len()]
+}
+
+#[allow(clippy::too_many_arguments)]
 pub fn draw_view_title_bar(
     frame: &mut Frame,
     area: Rect,
@@ -9,6 +18,7 @@ pub fn draw_view_title_bar(
     left: Line<'_>,
     right: Option<Line<'_>>,
     status: Option<&str>,
+    tick: usize,
 ) {
     // Override header when there's an active status notification
     if let Some(st) = status
@@ -16,8 +26,13 @@ pub fn draw_view_title_bar(
         && st != "Ready"
     {
         let st = crate::sanitize::sanitize_for_terminal(st);
+        let display = if st.starts_with("First time caching") {
+            format!("  {} {}  ", spinner_char(tick), st)
+        } else {
+            format!("  {}  ", st)
+        };
         let span = Span::styled(
-            format!("  {}  ", st),
+            display,
             Style::default()
                 .fg(theme.highlight_fg)
                 .add_modifier(Modifier::BOLD),
@@ -63,6 +78,7 @@ pub fn draw_view_title_bar(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn draw_view_title_bar_with_tabs(
     frame: &mut Frame,
     area: Rect,
@@ -72,6 +88,7 @@ pub fn draw_view_title_bar_with_tabs(
     tab_spans: Vec<Span<'static>>,
     right: Option<Line<'_>>,
     status: Option<&str>,
+    tick: usize,
 ) {
     // Override header when there's an active status notification
     if let Some(st) = status
@@ -79,8 +96,13 @@ pub fn draw_view_title_bar_with_tabs(
         && st != "Ready"
     {
         let st = crate::sanitize::sanitize_for_terminal(st);
+        let display = if st.starts_with("First time caching") {
+            format!("  {} {}  ", spinner_char(tick), st)
+        } else {
+            format!("  {}  ", st)
+        };
         let span = Span::styled(
-            format!("  {}  ", st),
+            display,
             Style::default()
                 .fg(theme.highlight_fg)
                 .add_modifier(Modifier::BOLD),

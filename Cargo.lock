@@ -569,6 +569,7 @@ dependencies = [
  "ratatui",
  "ratatui-image",
  "ratatui-textarea",
+ "regex",
  "serde",
  "serde_json",
  "serde_yaml_ng",

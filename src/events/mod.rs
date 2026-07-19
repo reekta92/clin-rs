@@ -1680,6 +1680,7 @@ mod tests {
             notes_dir,
             templates_dir,
             key: [0u8; 32],
+            skip_dir_patterns: Vec::new(),
         };
         let mut app = App::new(storage).expect("value is present");
         app.editor.sidebar = EditSidebar::Links;
@@ -1766,6 +1767,7 @@ mod tests {
             notes_dir,
             templates_dir,
             key: [0u8; 32],
+            skip_dir_patterns: Vec::new(),
         };
         let mut app = App::new(storage).expect("value is present");
         app.editor.sidebar = EditSidebar::Outline;
@@ -1858,6 +1860,7 @@ mod tests {
             notes_dir,
             templates_dir,
             key: [0u8; 32],
+            skip_dir_patterns: Vec::new(),
         };
         let mut app = App::new(storage).expect("value is present");
         app.editor
@@ -1985,6 +1988,7 @@ mod tests {
             notes_dir,
             templates_dir,
             key: [0u8; 32],
+            skip_dir_patterns: Vec::new(),
         };
         let mut app = App::new(storage).expect("value is present");
         app.editor.editor =

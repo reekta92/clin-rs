@@ -358,6 +358,8 @@ pub struct App {
     pub initial_load_done: bool,
     pub load_cancel: Arc<AtomicBool>,
     pub loading_total: usize,
+    pub is_first_cache_build: bool,
+    pub load_spinner_tick: usize,
     pub backup_tx: Option<mpsc::Sender<crate::backup::worker::BackupJob>>,
     pub git_lock: Arc<Mutex<()>>,
     pub backup_status: Arc<Mutex<Option<String>>>,
@@ -505,6 +507,8 @@ impl App {
             initial_load_done: true,
             load_cancel: Arc::new(AtomicBool::new(false)),
             loading_total: 0,
+            is_first_cache_build: false,
+            load_spinner_tick: 0,
             backup_tx: None,
             git_lock: Arc::new(Mutex::new(())),
             backup_status: Arc::new(Mutex::new(None)),
@@ -524,6 +528,11 @@ impl App {
             image_decode_rx: None,
         };
         app.goals_progress = app.load_goals_progress();
+        let persisted = app.load_persisted_summary_cache();
+        for (id, (mt, summary)) in persisted {
+            app.summary_cache.insert(id.clone(), summary);
+            app.summary_mtime.insert(id, mt);
+        }
         app.list.folder_expanded.insert(String::new());
         if !app.config.list.expanded_folders.is_empty() {
             for folder in &app.config.list.expanded_folders {
@@ -639,6 +648,8 @@ impl App {
             initial_load_done: false,
             load_cancel: Arc::new(AtomicBool::new(false)),
             loading_total: 0,
+            is_first_cache_build: false,
+            load_spinner_tick: 0,
             backup_tx: None,
             git_lock: Arc::new(Mutex::new(())),
             backup_status: Arc::new(Mutex::new(None)),
@@ -658,6 +669,13 @@ impl App {
             image_decode_rx: None,
         };
         app.goals_progress = app.load_goals_progress();
+        let persisted = app.load_persisted_summary_cache();
+        for (id, (mt, summary)) in persisted {
+            app.summary_cache.insert(id.clone(), summary);
+            app.summary_mtime.insert(id, mt);
+        }
+        let cache_path = app.storage.config_dir.join("note_cache.bin");
+        app.is_first_cache_build = !cache_path.exists();
         app.list.folder_expanded.insert(String::new());
         if !app.config.list.expanded_folders.is_empty() {
             for folder in &app.config.list.expanded_folders {
@@ -1220,8 +1238,9 @@ impl App {
         };
 
         // Write content to a temp file with 0o600 permissions (secret).
-        let temp_dir = std::env::temp_dir();
-        let temp_file_path = temp_dir.join(format!("clin_preview_{}.md", uuid::Uuid::new_v4()));
+        let clin_temp = std::env::temp_dir().join("clin");
+        let _ = std::fs::create_dir_all(&clin_temp);
+        let temp_file_path = clin_temp.join(format!("clin_preview_{}.md", uuid::Uuid::new_v4()));
         if let Err(e) = crate::fsutil::atomic_write_str(&temp_file_path, &content) {
             self.set_temporary_status(&format!("Failed to write temp file: {e}"));
             return;
@@ -1497,6 +1516,7 @@ mod tests {
             notes_dir,
             templates_dir,
             key: [0u8; 32],
+            skip_dir_patterns: Vec::new(),
         };
         let mut app = App::new(storage).expect("value is present");
         app.list.preview_enabled = true;
@@ -1535,6 +1555,7 @@ mod tests {
             notes_dir,
             templates_dir,
             key: [0u8; 32],
+            skip_dir_patterns: Vec::new(),
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -1594,6 +1615,7 @@ mod tests {
             notes_dir,
             templates_dir,
             key: [0u8; 32],
+            skip_dir_patterns: Vec::new(),
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -1629,6 +1651,7 @@ mod tests {
             notes_dir,
             templates_dir,
             key: [0u8; 32],
+            skip_dir_patterns: Vec::new(),
         };
         let mut app = App::new(storage).expect("value is present");
         app.editor.external_editor_enabled = false;
@@ -1700,6 +1723,7 @@ mod tests {
             notes_dir,
             templates_dir,
             key: [0u8; 32],
+            skip_dir_patterns: Vec::new(),
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -1801,6 +1825,7 @@ mod tests {
             notes_dir,
             templates_dir,
             key: [0u8; 32],
+            skip_dir_patterns: Vec::new(),
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -1838,6 +1863,7 @@ mod tests {
             notes_dir,
             templates_dir,
             key: [0u8; 32],
+            skip_dir_patterns: Vec::new(),
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -1923,6 +1949,7 @@ mod tests {
             notes_dir,
             templates_dir,
             key: [0u8; 32],
+            skip_dir_patterns: Vec::new(),
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -1963,6 +1990,7 @@ word_goal = 1200
             notes_dir,
             templates_dir,
             key: [0u8; 32],
+            skip_dir_patterns: Vec::new(),
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2000,6 +2028,7 @@ word_goal = 1200
             notes_dir,
             templates_dir,
             key: [0u8; 32],
+            skip_dir_patterns: Vec::new(),
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2029,6 +2058,7 @@ word_goal = 1200
             notes_dir,
             templates_dir,
             key: [0u8; 32],
+            skip_dir_patterns: Vec::new(),
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2071,6 +2101,7 @@ word_goal = 1200
             notes_dir,
             templates_dir,
             key: [0u8; 32],
+            skip_dir_patterns: Vec::new(),
         };
         let mut app = App::new(storage).expect("value is present");
 
@@ -2137,6 +2168,7 @@ word_goal = 1200
             notes_dir,
             templates_dir,
             key: [0u8; 32],
+            skip_dir_patterns: Vec::new(),
         };
         let config_content = crate::config::merge::default_config_content().replace(
             "preview_enabled = true",

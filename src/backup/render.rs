@@ -158,7 +158,7 @@ pub fn draw_header(
     let (left_line, right_line) =
         crate::statusline::render_header(&ctx, &config.statusline, ViewMode::Backup, theme);
     crate::ui::draw_view_title_bar_with_tabs(
-        frame, area, "Backup", theme, left_line, spans, right_line, app_status,
+        frame, area, "Backup", theme, left_line, spans, right_line, app_status, 0,
     );
 }
 

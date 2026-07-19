@@ -62,7 +62,9 @@ pub fn atomic_write_with_mode(path: &Path, data: &[u8], mode: u32) -> Result<()>
 pub fn cleanup_orphaned_temp_files() {
     const MAX_AGE: std::time::Duration = std::time::Duration::from_secs(24 * 3600);
     let now = std::time::SystemTime::now();
-    let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) else {
+    let clin_temp = std::env::temp_dir().join("clin");
+    let _ = std::fs::create_dir_all(&clin_temp);
+    let Ok(entries) = std::fs::read_dir(&clin_temp) else {
         return;
     };
     for entry in entries.flatten() {

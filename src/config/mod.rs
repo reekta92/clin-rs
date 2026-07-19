@@ -1046,4 +1046,16 @@ sections = ["draw", "draw", "graf"]
         let roundtripped: ClinConfig = toml::from_str(&serialized).unwrap();
         assert!(!roundtripped.list.folder_graph_preview);
     }
+
+    #[test]
+    fn skip_dirs_defaults_empty_and_roundtrips() {
+        let config: ClinConfig = toml::from_str("[list]\n").unwrap();
+        assert!(config.list.skip_dirs.is_empty());
+        let toml_str = "[list]\nskip_dirs = [\"attachments\", \"assets\"]\n";
+        let parsed: ClinConfig = toml::from_str(toml_str).unwrap();
+        assert_eq!(parsed.list.skip_dirs, vec!["attachments", "assets"]);
+        let serialized = toml::to_string(&parsed).unwrap();
+        let roundtripped: ClinConfig = toml::from_str(&serialized).unwrap();
+        assert_eq!(roundtripped.list.skip_dirs, vec!["attachments", "assets"]);
+    }
 }

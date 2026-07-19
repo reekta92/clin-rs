@@ -18,6 +18,7 @@ pub struct GrafAppState {
     pub graph_kill_tx: Option<std::sync::mpsc::Sender<()>>,
     pub graph_mouse_state: GraphMouseState,
     pub storage: Storage,
+    pub notes: Vec<crate::storage::NoteSummary>,
     pub config_errors: Vec<String>,
     pub search_popup: Option<crate::ui::quick_search::QuickSearch<(NodeIndex, String)>>,
     pub show_minimap: bool,
@@ -56,11 +57,12 @@ impl GrafAppState {
     pub fn new(
         config: &ClinConfig,
         storage: Storage,
+        summaries: Vec<crate::storage::NoteSummary>,
         config_errors: Vec<String>,
         keybinds: Keybinds,
         seq_matcher: crate::keybinds::KeyMatcher,
     ) -> anyhow::Result<Self> {
-        let graph_state = crate::graf::graph::GraphState::new(&storage, config)?;
+        let graph_state = crate::graf::graph::GraphState::new(&summaries, config)?;
         let state = Arc::new(RwLock::new(graph_state));
         let (kill_tx, kill_rx) = std::sync::mpsc::channel();
         crate::graf::physics::start_physics(state.clone(), config, kill_rx);
@@ -70,6 +72,7 @@ impl GrafAppState {
             graph_kill_tx: Some(kill_tx),
             graph_mouse_state: GraphMouseState::default(),
             storage,
+            notes: summaries,
 
             config_errors,
             search_popup: None,
@@ -104,7 +107,7 @@ impl GrafAppState {
         if let Some(kill_tx) = self.graph_kill_tx.take() {
             let _ = kill_tx.send(());
         }
-        if let Ok(graph_state) = crate::graf::graph::GraphState::new(&self.storage, config) {
+        if let Ok(graph_state) = crate::graf::graph::GraphState::new(&self.notes, config) {
             let state = Arc::new(RwLock::new(graph_state));
             let (kill_tx, kill_rx) = std::sync::mpsc::channel();
             crate::graf::physics::start_physics(state.clone(), config, kill_rx);
