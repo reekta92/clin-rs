@@ -372,7 +372,7 @@ pub struct CustomSmartFolder {
     pub updated_within_days: Option<u64>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct ListConfig {
     #[serde(default = "default_preview_enabled")]
@@ -383,7 +383,7 @@ pub struct ListConfig {
     pub preview_encryption: bool,
     #[serde(default)]
     pub show_file_size: bool,
-    #[serde(default = "default_date_format")]
+    #[serde(default = "default_list_date_format")]
     pub date_format: String,
     #[serde(default)]
     pub density: ListDensity,
@@ -395,13 +395,13 @@ pub struct ListConfig {
     pub default_sort_order: Option<crate::app::SortOrder>,
     #[serde(default = "default_true")]
     pub inline_info: bool,
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub pinned_on_top: bool,
     #[serde(default)]
     pub show_hidden_files: bool,
     #[serde(default)]
     pub show_all_files: bool,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
     pub skip_dirs: Vec<String>,
     #[serde(default = "default_true")]
     pub folders_first: bool,
@@ -424,11 +424,41 @@ pub struct ListConfig {
     #[serde(default = "default_sections")]
     pub sections: Vec<NotesSection>,
     #[serde(default)]
-    pub expanded_folders: Vec<String>,
-    #[serde(default)]
     pub default_expand_depth: Option<usize>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub custom_smart_folders: Vec<CustomSmartFolder>,
+}
+impl Default for ListConfig {
+    fn default() -> Self {
+        Self {
+            preview_enabled: default_preview_enabled(),
+            preview_position: PreviewPosition::default(),
+            preview_encryption: false,
+            show_file_size: false,
+            date_format: default_list_date_format(),
+            density: ListDensity::default(),
+            default_view: NotesLayout::default(),
+            default_sort_field: None,
+            default_sort_order: None,
+            inline_info: default_true(),
+            pinned_on_top: default_true(),
+            show_hidden_files: false,
+            show_all_files: false,
+            skip_dirs: Vec::new(),
+            folders_first: default_true(),
+            calendar_enabled: default_true(),
+            calendar_position: CalendarPosition::default(),
+            week_start: WeekStart::default(),
+            smart_folders_enabled: false,
+            folder_graph_preview: default_true(),
+            pinned_folders: Vec::new(),
+            preview_width_ratio: default_preview_width_ratio(),
+            calendar_height: default_calendar_height(),
+            sections: default_sections(),
+            default_expand_depth: None,
+            custom_smart_folders: Vec::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -442,7 +472,7 @@ pub struct EditorConfig {
     pub preview_enabled: bool,
     #[serde(default = "default_true")]
     pub show_line_numbers: bool,
-    #[serde(default = "default_date_format")]
+    #[serde(default = "default_editor_date_format")]
     pub date_format: String,
     pub soft_wrap: bool,
     #[serde(default = "default_true")]
@@ -456,7 +486,7 @@ impl Default for EditorConfig {
             external_enabled: false,
             preview_enabled: false,
             show_line_numbers: true,
-            date_format: "%Y-%m-%d %H:%M".to_string(),
+            date_format: default_editor_date_format(),
             edit_mode_highlight: true,
             soft_wrap: false,
         }
@@ -484,8 +514,6 @@ pub struct GrafConfig {
 #[serde(default)]
 pub struct CoreConfig {
     pub storage_path: Option<PathBuf>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub previous_storage_path: Option<PathBuf>,
     #[serde(default = "default_true")]
     pub mouse_enabled: bool,
     #[serde(default)]
@@ -522,7 +550,6 @@ impl Default for CoreConfig {
     fn default() -> Self {
         Self {
             storage_path: None,
-            previous_storage_path: None,
             mouse_enabled: default_true(),
             default_folder: None,
             confirm_on_delete: default_true(),
@@ -531,8 +558,8 @@ impl Default for CoreConfig {
             keybind_preset: KeybindPreset::Default,
             enable_key_sequences: false,
             preview_expand_mode: crate::config::PreviewExpandMode::default(),
-            syntax_highlighting: default_true(),
             preview_command: None,
+            syntax_highlighting: default_true(),
             code_theme: default_code_theme(),
             code_line_numbers: default_true(),
             auto_refresh: default_true(),

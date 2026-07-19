@@ -8,13 +8,20 @@ use ratatui::{
     widgets::{Block, Borders, Padding, Paragraph},
 };
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::BTreeSet;
+
+/// A qualified note identity scoped to a vault.
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Ord, PartialOrd)]
+pub struct TrackedNote {
+    pub vault: String,
+    pub note_id: String,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct DailyProgress {
     pub date: String, // "YYYY-MM-DD"
     pub words_written: usize,
-    pub notes_modified: HashSet<String>,
+    pub notes_modified: BTreeSet<TrackedNote>,
 }
 
 pub fn count_words(text: &str) -> usize {

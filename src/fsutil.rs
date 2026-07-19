@@ -106,6 +106,14 @@ impl Drop for SecretTempFile {
     }
 }
 
+/// Remove a file, returning `true` if it existed.
+pub fn remove_file_if_exists(path: &Path) -> std::io::Result<bool> {
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(true),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(e),
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;

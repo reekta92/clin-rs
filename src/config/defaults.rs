@@ -60,7 +60,11 @@ pub fn default_graph_background() -> Background {
 pub fn default_theme() -> String {
     "default".to_string()
 }
-pub fn default_date_format() -> String {
+pub fn default_list_date_format() -> String {
+    "%Y-%m-%d".to_string()
+}
+
+pub fn default_editor_date_format() -> String {
     "%Y-%m-%d %H:%M".to_string()
 }
 pub fn default_word_goal() -> usize {

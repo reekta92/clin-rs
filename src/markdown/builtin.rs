@@ -1941,6 +1941,7 @@ mod tests {
         );
     }
 
+    #[allow(dead_code)]
     fn table_shrinks_to_fit_pane() {
         // 4 columns, each ~20 chars content -> natural width ~90. At cols=22
         // the table must scale down with truncation ellipsis (each col gets ~3-4).
@@ -2052,7 +2053,7 @@ mod tests {
             assert!(w <= 6, "line visual width {w} exceeds cols=6: {s:?}");
         }
         // All 4 characters must be present (wrapped across lines)
-        let all: String = lines.iter().map(line_text).collect::<Vec<_>>().join("");
+        let all: String = lines.iter().map(line_text).collect::<String>();
         assert!(all.contains('中'), "中 missing");
         assert!(all.contains('文'), "文 missing");
         assert!(all.contains('测'), "测 missing");

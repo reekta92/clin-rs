@@ -687,6 +687,7 @@ mod tests {
         let styles = hl.highlight_line("text `code` more", 0, &doc);
         let code_start = "text ".len();
         let code_end = code_start + "`code`".len();
+        #[allow(clippy::needless_range_loop)]
         for i in code_start..code_end {
             assert_eq!(
                 styles[i], hl.theme.code_inline,

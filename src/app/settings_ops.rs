@@ -248,12 +248,29 @@ impl App {
     }
 
     pub(crate) fn persist_folder_state(&mut self) {
+        // Save pinned_folders to config.toml (preference)
         if let Ok(mut config) = crate::config::ClinConfig::load() {
-            config.list.expanded_folders = self.list.folder_expanded.iter().cloned().collect();
             config.list.pinned_folders = self.list.pinned_folders.iter().cloned().collect();
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save folder state: {e}"));
             }
+        }
+
+        // Save expanded_folders to state.json per vault (session state)
+        let vault_id = crate::local_state::vault_identity_path(&self.storage.data_dir)
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_else(|_| self.storage.data_dir.to_string_lossy().into_owned());
+        let expanded: std::collections::BTreeSet<String> =
+            self.list.folder_expanded.iter().cloned().collect();
+        if let Ok(paths) = crate::paths::AppPaths::discover(
+            crate::config::ClinConfig::config_path().unwrap_or_default(),
+        ) {
+            let state_path = paths.state_path();
+            let _ = crate::local_state::LocalState::update(&state_path, |s| {
+                let vault = s.vaults.entry(vault_id.clone()).or_default();
+                vault.expanded_folders = expanded.clone();
+                Ok(())
+            });
         }
     }
 
@@ -522,31 +539,52 @@ impl App {
             }
         }
     }
-    pub fn load_goals_progress(&self) -> crate::goals::DailyProgress {
-        let path = self.storage.config_dir.join("goals_progress.json");
-        let today = chrono::Local::now().date_naive().to_string();
-        if path.exists()
-            && let Ok(content) = std::fs::read_to_string(&path)
-            && let Ok(progress) = serde_json::from_str::<crate::goals::DailyProgress>(&content)
-            && progress.date == today
+    fn local_state_path(&self) -> anyhow::Result<std::path::PathBuf> {
+        #[cfg(test)]
         {
-            return progress;
+            // Hand-built Storage fixtures intentionally do not resolve XDG
+            // state; keep their state in their temporary config root.
+            Ok(self.storage.config_dir.join("state.json"))
         }
-        crate::goals::DailyProgress {
-            date: today,
-            words_written: 0,
-            notes_modified: std::collections::HashSet::new(),
+        #[cfg(not(test))]
+        {
+            let config_path = crate::config::ClinConfig::config_path()?;
+            Ok(crate::paths::AppPaths::discover(config_path)?.state_path())
         }
     }
 
-    pub fn save_goals_progress(&self, progress: &crate::goals::DailyProgress) {
-        let path = self.storage.config_dir.join("goals_progress.json");
-        if let Some(parent) = path.parent() {
-            let _ = std::fs::create_dir_all(parent);
+    pub fn load_goals_progress(&self) -> crate::goals::DailyProgress {
+        let today = chrono::Local::now().date_naive().to_string();
+        let fresh = || crate::goals::DailyProgress {
+            date: today.clone(),
+            words_written: 0,
+            notes_modified: std::collections::BTreeSet::new(),
+        };
+
+        let Ok(state_path) = self.local_state_path() else {
+            return fresh();
+        };
+        let Ok(state) = crate::local_state::LocalState::load(&state_path) else {
+            return fresh();
+        };
+        if state.goals.date == today {
+            state.goals
+        } else {
+            fresh()
         }
-        if let Ok(content) = serde_json::to_string(progress) {
-            let _ = crate::fsutil::atomic_write_str(&path, &content);
-        }
+    }
+
+    pub fn save_goals_progress(
+        &self,
+        progress: &crate::goals::DailyProgress,
+    ) -> anyhow::Result<()> {
+        let state_path = self.local_state_path()?;
+        let progress = progress.clone();
+        crate::local_state::LocalState::update(&state_path, |state| {
+            state.goals = progress;
+            Ok(())
+        })?;
+        Ok(())
     }
 
     pub fn load_persisted_summary_cache(

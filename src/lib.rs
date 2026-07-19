@@ -16,11 +16,13 @@ pub mod graf;
 pub mod image_render;
 pub mod keybinds;
 pub mod list_view;
+pub mod local_state;
 pub mod markdown;
 pub mod migration;
 pub mod outline;
 pub mod overlay;
 pub mod palette;
+pub mod paths;
 pub mod pinstar;
 pub mod popups;
 pub mod preview;
@@ -31,7 +33,9 @@ pub mod statusline;
 pub mod templates;
 pub mod text_edit;
 
-use crate::cli::{CacheCmd, Cli, Command, ConfigCmd, KeybindsCmd, NotesCmd, StorageCmd, TemplatesCmd};
+use crate::cli::{
+    CacheCmd, Cli, Command, ConfigCmd, KeybindsCmd, NotesCmd, StorageCmd, TemplatesCmd,
+};
 use crate::config::ClinConfig;
 
 use crate::overlay::OverlayView;
@@ -345,8 +349,21 @@ fn run_storage(action: StorageCmd) -> Result<()> {
             fs::create_dir_all(&path)
                 .with_context(|| format!("failed to create directory: {}", path.display()))?;
 
-            if old_path.exists() && old_path != path {
-                bootstrap.set_previous_storage_path(old_path);
+            // Record storage migration in state.json (not in config.toml)
+            if old_path.exists()
+                && old_path != path
+                && let Ok(paths) = crate::paths::AppPaths::discover(ClinConfig::config_path()?)
+            {
+                let state_path = paths.state_path();
+                let _ = crate::local_state::LocalState::update(&state_path, |s| {
+                    if s.storage_migration.is_none() {
+                        s.storage_migration = Some(crate::local_state::StorageMigrationState {
+                            previous_path: old_path.clone(),
+                            target_path: path.clone(),
+                        });
+                    }
+                    Ok(())
+                });
             }
 
             bootstrap.set_storage_path(path.clone());
@@ -357,7 +374,11 @@ fn run_storage(action: StorageCmd) -> Result<()> {
                 console::success(&format!("Storage path set to: {}", console::path(&path)))
             );
 
-            if bootstrap.core.previous_storage_path.is_some() {
+            // Check for migration hint
+            if let Ok(paths) = crate::paths::AppPaths::discover(ClinConfig::config_path()?)
+                && let Ok(state) = crate::local_state::LocalState::load(&paths.state_path())
+                && state.storage_migration.is_some()
+            {
                 println!();
                 println!(
                     "{}",
@@ -369,9 +390,27 @@ fn run_storage(action: StorageCmd) -> Result<()> {
         }
         StorageCmd::Reset => {
             let mut bootstrap = ClinConfig::load()?;
+            let old_path = bootstrap.effective_storage_path()?;
+            let default = ClinConfig::default_storage_path()?;
+
+            // Record migration before resetting
+            if old_path != default
+                && let Ok(paths) = crate::paths::AppPaths::discover(ClinConfig::config_path()?)
+            {
+                let state_path = paths.state_path();
+                let _ = crate::local_state::LocalState::update(&state_path, |s| {
+                    if s.storage_migration.is_none() {
+                        s.storage_migration = Some(crate::local_state::StorageMigrationState {
+                            previous_path: old_path.clone(),
+                            target_path: default.clone(),
+                        });
+                    }
+                    Ok(())
+                });
+            }
+
             bootstrap.reset_storage_path();
             bootstrap.save()?;
-            let default = ClinConfig::default_storage_path()?;
             println!(
                 "{}",
                 console::success(&format!(
@@ -382,12 +421,70 @@ fn run_storage(action: StorageCmd) -> Result<()> {
             Ok(())
         }
         StorageCmd::Migrate => {
-            let mut bootstrap = ClinConfig::load()?;
+            let bootstrap = ClinConfig::load()?;
             let to = bootstrap.effective_storage_path()?;
 
-            let from = match bootstrap.core.previous_storage_path.clone() {
-                Some(path) if path.exists() && path.is_dir() => path,
-                _ => {
+            // Read storage migration from state.json
+            let from = if let Ok(paths) =
+                crate::paths::AppPaths::discover(ClinConfig::config_path()?)
+            {
+                if let Ok(state) = crate::local_state::LocalState::load(&paths.state_path()) {
+                    if let Some(ref m) = state.storage_migration {
+                        let prev = m.previous_path.clone();
+                        if prev.exists() && prev.is_dir() {
+                            prev
+                        } else {
+                            let default = ClinConfig::default_storage_path()?;
+                            if default.exists() && default.is_dir() && default != to {
+                                println!(
+                                    "{}",
+                                    console::info("Recorded previous path does not exist.")
+                                );
+                                println!(
+                                    "Found data at default location: {}",
+                                    console::path(&default)
+                                );
+                                print!("{}", console::warning("Migrate from there? [y/N]: "));
+                                io::stdout().flush()?;
+
+                                let mut input = String::new();
+                                io::stdin().read_line(&mut input)?;
+                                if !input.trim().eq_ignore_ascii_case("y") {
+                                    println!("{}", console::warning("Migration cancelled."));
+                                    return Ok(());
+                                }
+                                default
+                            } else {
+                                anyhow::bail!(
+                                    "No previous storage location found. Nothing to migrate."
+                                );
+                            }
+                        }
+                    } else {
+                        let default = ClinConfig::default_storage_path()?;
+                        if default.exists() && default.is_dir() && default != to {
+                            println!("{}", console::info("No previous storage path recorded."));
+                            println!(
+                                "Found data at default location: {}",
+                                console::path(&default)
+                            );
+                            print!("{}", console::warning("Migrate from there? [y/N]: "));
+                            io::stdout().flush()?;
+
+                            let mut input = String::new();
+                            io::stdin().read_line(&mut input)?;
+                            if !input.trim().eq_ignore_ascii_case("y") {
+                                println!("{}", console::warning("Migration cancelled."));
+                                return Ok(());
+                            }
+                            default
+                        } else {
+                            anyhow::bail!(
+                                "No previous storage location found. Nothing to migrate."
+                            );
+                        }
+                    }
+                } else {
                     let default = ClinConfig::default_storage_path()?;
                     if default.exists() && default.is_dir() && default != to {
                         println!("{}", console::info("No previous storage path recorded."));
@@ -408,6 +505,27 @@ fn run_storage(action: StorageCmd) -> Result<()> {
                     } else {
                         anyhow::bail!("No previous storage location found. Nothing to migrate.");
                     }
+                }
+            } else {
+                let default = ClinConfig::default_storage_path()?;
+                if default.exists() && default.is_dir() && default != to {
+                    println!("{}", console::info("No previous storage path recorded."));
+                    println!(
+                        "Found data at default location: {}",
+                        console::path(&default)
+                    );
+                    print!("{}", console::warning("Migrate from there? [y/N]: "));
+                    io::stdout().flush()?;
+
+                    let mut input = String::new();
+                    io::stdin().read_line(&mut input)?;
+                    if !input.trim().eq_ignore_ascii_case("y") {
+                        println!("{}", console::warning("Migration cancelled."));
+                        return Ok(());
+                    }
+                    default
+                } else {
+                    anyhow::bail!("No previous storage location found. Nothing to migrate.");
                 }
             };
 
@@ -465,7 +583,6 @@ fn run_storage(action: StorageCmd) -> Result<()> {
                         conflict_action,
                     )?
                 } else {
-                    // Clin-native source: full directory copy
                     migration::migrate_directory_with_conflict(
                         &notes_src,
                         &notes_dst,
@@ -489,8 +606,14 @@ fn run_storage(action: StorageCmd) -> Result<()> {
                 skipped_count += s;
             }
 
-            bootstrap.clear_previous_storage_path();
-            bootstrap.save()?;
+            // Clear storage migration record after successful migration
+            if let Ok(paths) = crate::paths::AppPaths::discover(ClinConfig::config_path()?) {
+                let state_path = paths.state_path();
+                let _ = crate::local_state::LocalState::update(&state_path, |s| {
+                    s.storage_migration = None;
+                    Ok(())
+                });
+            }
 
             println!();
             println!("{}", console::success("Migration complete!"));
@@ -533,7 +656,9 @@ fn run_keybinds(action: KeybindsCmd) -> Result<()> {
         }
         KeybindsCmd::Export => {
             let storage = Storage::init()?;
-            let keybinds = storage.load_keybinds();
+            let config = crate::config::ClinConfig::load().unwrap_or_default();
+            let preset = config.core.keybind_preset;
+            let keybinds = storage.load_keybinds_with_preset(preset);
             let toml = keybinds.to_toml();
             let content = toml::to_string_pretty(&toml)?;
             println!("{content}");
@@ -640,11 +765,7 @@ fn run_config(action: ConfigCmd) -> Result<()> {
             Ok(())
         }
         ConfigCmd::Reset => {
-            let path = ClinConfig::config_path()?;
-            if path.exists() {
-                fs::remove_file(&path).context("failed to remove configuration file")?;
-            }
-            let _ = ClinConfig::load()?;
+            let _ = ClinConfig::reset()?;
             println!(
                 "{}",
                 console::success("Configuration reset to default values.")
@@ -657,16 +778,39 @@ fn run_config(action: ConfigCmd) -> Result<()> {
 fn run_cache(action: CacheCmd) -> Result<()> {
     match action {
         CacheCmd::Reset => {
-            let (path, removed) = Storage::delete_persisted_summary_cache()?;
-            if removed {
+            let app_paths = crate::paths::AppPaths::discover(ClinConfig::config_path()?)?;
+
+            // Collect all cache locations (target + legacy)
+            let mut cache_locations = vec![app_paths.summary_cache_path()];
+            cache_locations.push(app_paths.config_root_cache_path());
+            let default_root = app_paths.default_config_root_cache_path();
+            if default_root != cache_locations[0] && default_root != cache_locations[1] {
+                cache_locations.push(default_root);
+            }
+
+            let mut any_removed = false;
+            for path in &cache_locations {
+                if crate::fsutil::remove_file_if_exists(path).with_context(|| {
+                    format!("failed to remove note-summary cache: {}", path.display())
+                })? {
+                    any_removed = true;
+                    println!(
+                        "{}",
+                        console::success(&format!(
+                            "Note-summary cache cleared: {}",
+                            console::path(path)
+                        ))
+                    );
+                }
+            }
+
+            if !any_removed {
                 println!(
                     "{}",
-                    console::success(&format!("Note-summary cache cleared: {}", console::path(&path)))
-                );
-            } else {
-                println!(
-                    "{}",
-                    console::info(&format!("Note-summary cache already empty: {}", console::path(&path)))
+                    console::info(&format!(
+                        "Note-summary cache already empty: {}",
+                        console::path(&cache_locations[0])
+                    ))
                 );
             }
             Ok(())

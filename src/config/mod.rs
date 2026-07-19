@@ -1,6 +1,6 @@
 use parking_lot::RwLock;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use anyhow::{Context, Result};
@@ -69,6 +69,20 @@ fn storage_path_override() -> Option<PathBuf> {
 
 // ── ClinConfig impl ─────────────────────────────────────────────────────────
 
+fn write_config_file(config_path: &Path) -> Result<()> {
+    if let Some(parent) = config_path.parent() {
+        fs::create_dir_all(parent).context("failed to create config directory")?;
+    }
+    let content = merge::default_config_content();
+    #[cfg(unix)]
+    crate::fsutil::atomic_write_with_mode(config_path, content.as_bytes(), 0o600)
+        .context("failed to write config file")?;
+    #[cfg(not(unix))]
+    crate::fsutil::atomic_write_str(config_path, &content)
+        .context("failed to write config file")?;
+    Ok(())
+}
+
 impl ClinConfig {
     /// Returns true if key sequences are enabled: either explicitly via config
     /// or because the active keybind preset uses multi-key sequences.
@@ -131,14 +145,7 @@ impl ClinConfig {
                 }
             }
 
-            let content = merge::default_config_content();
-            #[cfg(unix)]
-            crate::fsutil::atomic_write_with_mode(&config_path, content.as_bytes(), 0o600)
-                .context("failed to write config file")?;
-            #[cfg(not(unix))]
-            crate::fsutil::atomic_write_str(&config_path, &content)
-                .context("failed to write config file")?;
-
+            write_config_file(&config_path)?;
             return Ok(config);
         }
 
@@ -327,6 +334,82 @@ impl ClinConfig {
                 root.insert("graf".to_string(), toml::Value::Table(graf_addons));
             }
         }
+
+        // State migration: extract machine state from config and persist to state.json.
+        let mut state_changed = false;
+        if let Some(root) = value.as_table_mut() {
+            // -- previous_storage_path -> state.json storage_migration --
+            let core_prev = root
+                .get_mut("core")
+                .and_then(|c| c.as_table_mut())
+                .and_then(|t| t.remove("previous_storage_path"));
+            if let Some(toml::Value::String(prev_path_str)) = &core_prev {
+                let prev_path = std::path::PathBuf::from(prev_path_str);
+                let target_path = match root
+                    .get("core")
+                    .and_then(|c| c.as_table())
+                    .and_then(|t| t.get("storage_path"))
+                {
+                    Some(toml::Value::String(p)) => crate::config::path::expand_path(p),
+                    _ => Self::default_storage_path()?,
+                };
+                if let Ok(paths) = crate::paths::AppPaths::discover(Self::config_path()?) {
+                    let state_path = paths.state_path();
+                    let _ = crate::local_state::LocalState::update(&state_path, |s| {
+                        if s.storage_migration.is_none() {
+                            s.storage_migration = Some(crate::local_state::StorageMigrationState {
+                                previous_path: prev_path,
+                                target_path,
+                            });
+                        }
+                        // Conflicting record: leave untouched
+                        Ok(())
+                    });
+                }
+                state_changed = true;
+            }
+
+            // -- expanded_folders -> state.json per-vault --
+            let list_expanded = root
+                .get_mut("list")
+                .and_then(|l| l.as_table_mut())
+                .and_then(|t| t.remove("expanded_folders"));
+            if let Some(toml::Value::Array(folders)) = &list_expanded {
+                let folder_set: std::collections::BTreeSet<String> = folders
+                    .iter()
+                    .filter_map(|v| match v {
+                        toml::Value::String(s) => Some(s.clone()),
+                        _ => None,
+                    })
+                    .collect();
+                if !folder_set.is_empty() {
+                    let storage_path = match root
+                        .get("core")
+                        .and_then(|c| c.as_table())
+                        .and_then(|t| t.get("storage_path"))
+                    {
+                        Some(toml::Value::String(p)) => crate::config::path::expand_path(p),
+                        _ => Self::default_storage_path()?,
+                    };
+                    if let Ok(vault_id) = crate::local_state::vault_identity_path(&storage_path) {
+                        let vault_key = vault_id.to_string_lossy().into_owned();
+                        if let Ok(paths) = crate::paths::AppPaths::discover(Self::config_path()?) {
+                            let state_path = paths.state_path();
+                            let _ = crate::local_state::LocalState::update(&state_path, |s| {
+                                let vault = s.vaults.entry(vault_key).or_default();
+                                if vault.expanded_folders.is_empty() {
+                                    vault.expanded_folders = folder_set.clone();
+                                }
+                                // Non-empty existing set: keep it (already have state)
+                                Ok(())
+                            });
+                        }
+                    }
+                }
+                state_changed = true;
+            }
+        }
+        changed = changed || state_changed;
         if changed {
             let migrated_content =
                 toml::to_string_pretty(&value).context("failed to serialize migrated config")?;
@@ -382,17 +465,26 @@ impl ClinConfig {
         crate::fsutil::atomic_write(&config_path, doc.to_string().as_bytes())?;
         Ok(())
     }
+    /// Atomically replace the effective config file with canonical defaults.
+    /// Local state, cache, keys, themes, keybinds, and vault content are retained.
+    pub fn reset() -> Result<Self> {
+        let config_path = Self::config_path()?;
+        write_config_file(&config_path)?;
+        let content = fs::read_to_string(&config_path).context("failed to read reset config")?;
+        let mut config: Self = toml::from_str(&content).context("failed to parse reset config")?;
+        config.normalize_sections();
+        Ok(config)
+    }
 
     pub fn effective_storage_path(&self) -> Result<PathBuf> {
-        if let Some(p) = storage_path_override() {
-            return Ok(p);
+        if let Some(path) = storage_path_override() {
+            return Ok(path);
         }
         match &self.core.storage_path {
             Some(path) => Ok(expand_path(&path.to_string_lossy())),
             None => Self::default_storage_path(),
         }
     }
-
     pub fn set_storage_path(&mut self, path: PathBuf) {
         self.core.storage_path = Some(path);
     }
@@ -403,14 +495,6 @@ impl ClinConfig {
 
     pub fn has_custom_storage_path(&self) -> bool {
         storage_path_override().is_some() || self.core.storage_path.is_some()
-    }
-
-    pub fn set_previous_storage_path(&mut self, path: PathBuf) {
-        self.core.previous_storage_path = Some(path);
-    }
-
-    pub fn clear_previous_storage_path(&mut self) {
-        self.core.previous_storage_path = None;
     }
 
     pub fn theme_colors(&self) -> ThemeColors {
@@ -507,6 +591,17 @@ impl ClinConfig {
         }
         if self.list.sections.is_empty() {
             errs.push("list.sections is empty, will use defaults".to_string());
+        }
+        let attachment_path = Path::new(&self.image.attachments_subdir);
+        let valid_attachments_subdir = !self.image.attachments_subdir.is_empty()
+            && attachment_path
+                .components()
+                .all(|component| matches!(component, std::path::Component::Normal(_)));
+        if !valid_attachments_subdir {
+            errs.push(
+                "image.attachments_subdir must be a non-empty relative path of normal components"
+                    .to_string(),
+            );
         }
         errs
     }
@@ -1057,5 +1152,58 @@ sections = ["draw", "draw", "graf"]
         let serialized = toml::to_string(&parsed).unwrap();
         let roundtripped: ClinConfig = toml::from_str(&serialized).unwrap();
         assert_eq!(roundtripped.list.skip_dirs, vec!["attachments", "assets"]);
+    }
+
+    #[test]
+    fn test_default_config_content_roundtrip() {
+        // The default config template must parse and produce defaults matching Rust impl
+        let content = merge::default_config_content();
+        let parsed: ClinConfig = toml::from_str(content).unwrap();
+        let default = ClinConfig::default();
+
+        // Compare field-by-field (some fields have #[serde(skip)] or special comparison)
+        assert_eq!(parsed.core, default.core, "core config mismatch");
+        assert_eq!(parsed.ui, default.ui, "ui config mismatch");
+        assert_eq!(parsed.list, default.list, "list config mismatch");
+        assert_eq!(parsed.editor, default.editor, "editor config mismatch");
+        assert_eq!(parsed.graf, default.graf, "graf config mismatch");
+        assert_eq!(parsed.goals, default.goals, "goals config mismatch");
+        assert_eq!(parsed.image, default.image, "image config mismatch");
+        assert_eq!(parsed.backup, default.backup, "backup config mismatch");
+        assert_eq!(
+            parsed.statusline, default.statusline,
+            "statusline config mismatch"
+        );
+    }
+
+    #[test]
+    fn test_default_config_content_is_valid_toml() {
+        let content = merge::default_config_content();
+        // Must parse without errors
+        let value: toml::Value =
+            toml::from_str(content).expect("default_config_content must be valid TOML");
+        // Must contain all expected sections
+        let table = value.as_table().expect("must be a table");
+        for section in &[
+            "core",
+            "ui",
+            "list",
+            "editor",
+            "backup",
+            "graf",
+            "goals",
+            "image",
+            "statusline",
+        ] {
+            assert!(table.contains_key(*section), "missing section: {section}");
+        }
+    }
+
+    #[test]
+    fn test_list_config_default_matches_serde() {
+        // ListConfig::default() should produce the same as serde Default when parsing empty
+        let from_empty: ListConfig = toml::from_str("").unwrap();
+        let from_default = ListConfig::default();
+        assert_eq!(from_default, from_empty);
     }
 }

@@ -156,7 +156,12 @@ mod tests {
         let cli = Cli::try_parse_from(["clin", "cache", "reset"]).unwrap();
         let command = cli.command.unwrap();
         assert!(
-            matches!(command, Command::Cache { action: CacheCmd::Reset }),
+            matches!(
+                command,
+                Command::Cache {
+                    action: CacheCmd::Reset
+                }
+            ),
             "expected Cache::Reset, got {command:?}"
         );
     }

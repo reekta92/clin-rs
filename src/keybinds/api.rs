@@ -4,6 +4,7 @@ use super::{
 };
 use anyhow::{Context, Result};
 use crossterm::event::KeyEvent;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
@@ -12,7 +13,7 @@ use std::path::Path;
 
 fn merge_section<A: std::hash::Hash + std::cmp::Eq + Clone + std::fmt::Debug>(
     into: &mut HashMap<A, Vec<KeyCombo>>,
-    from: &HashMap<A, Vec<String>>,
+    from: &BTreeMap<A, Vec<String>>,
 ) {
     for (action, strs) in from {
         let mut combos = Vec::with_capacity(strs.len());
@@ -33,10 +34,9 @@ fn merge_section<A: std::hash::Hash + std::cmp::Eq + Clone + std::fmt::Debug>(
         }
     }
 }
-
-fn section_to_toml<A: std::hash::Hash + std::cmp::Eq + Clone>(
+fn section_to_toml<A: std::hash::Hash + std::cmp::Eq + Clone + std::cmp::Ord>(
     from: &HashMap<A, Vec<KeyCombo>>,
-) -> HashMap<A, Vec<String>> {
+) -> BTreeMap<A, Vec<String>> {
     from.iter()
         .map(|(a, c)| {
             (

@@ -45,38 +45,6 @@ impl GitOps {
         } else {
             Repository::init(vault_path)?
         };
-
-        // Normalize .gitignore on every init
-        let gitignore_path = vault_path.join(".gitignore");
-        let mut lines: Vec<String> = if gitignore_path.exists() {
-            std::fs::read_to_string(&gitignore_path)?
-                .lines()
-                .map(|s| s.trim().to_string())
-                .collect()
-        } else {
-            Vec::new()
-        };
-
-        let mut changed = false;
-        // Remove stale clin.key if present
-        if let Some(pos) = lines.iter().position(|l| l == "clin.key") {
-            lines.remove(pos);
-            changed = true;
-        }
-        // Ensure key.bin is present
-        if !lines.iter().any(|l| l == "key.bin") {
-            lines.push("key.bin".to_string());
-            changed = true;
-        }
-
-        if changed || !gitignore_path.exists() {
-            let mut content = lines.join("\n");
-            if !content.is_empty() && !content.ends_with('\n') {
-                content.push('\n');
-            }
-            crate::fsutil::atomic_write(&gitignore_path, content.as_bytes())?;
-        }
-
         Ok(Self { repo })
     }
 
@@ -408,22 +376,19 @@ mod tests {
         let tmp = tempdir()?;
         let vault_path = tmp.path();
 
-        // 1. Fresh init
+        // GitOps::init no longer creates or normalizes .gitignore.
+        // key.bin is now at AppPaths::key_path() (data_local_dir), not in the vault.
         let _ = GitOps::init(vault_path)?;
         let gitignore_path = vault_path.join(".gitignore");
-        assert!(gitignore_path.exists());
-        let content = fs::read_to_string(&gitignore_path)?;
-        assert!(content.contains("key.bin"));
-        assert!(!content.contains("clin.key"));
+        assert!(!gitignore_path.exists(), "should not create .gitignore");
 
-        // 2. Init with stale clin.key
+        // Pre-existing .gitignore is left untouched by GitOps::init
         fs::write(&gitignore_path, "some-other-file\nclin.key\nanother-file\n")?;
         let _ = GitOps::init(vault_path)?;
         let content = fs::read_to_string(&gitignore_path)?;
         assert!(content.contains("some-other-file"));
+        assert!(content.contains("clin.key"));
         assert!(content.contains("another-file"));
-        assert!(content.contains("key.bin"));
-        assert!(!content.contains("clin.key"));
 
         Ok(())
     }

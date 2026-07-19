@@ -188,7 +188,9 @@ impl Action for PasteImageAction {
             .save_with_format(&temp_path, image::ImageFormat::Png)
             .context("Failed to save clipboard image to temp PNG")?;
 
-        let rel_path = app.storage.import_attachment(&temp_path)?;
+        let rel_path = app
+            .storage
+            .import_attachment(&temp_path, &app.config.image.attachments_subdir)?;
         insert_image_reference(app, &rel_path);
         Ok(())
     }
@@ -222,7 +224,9 @@ impl Action for InsertImageFromFileAction {
         let picked = crate::ui::pick_file("Image", "png;jpg;jpeg;gif;webp;bmp")?;
         if let Some(path_str) = picked {
             let src = std::path::Path::new(&path_str);
-            let rel_path = app.storage.import_attachment(src)?;
+            let rel_path = app
+                .storage
+                .import_attachment(src, &app.config.image.attachments_subdir)?;
             insert_image_reference(app, &rel_path);
         }
         Ok(())

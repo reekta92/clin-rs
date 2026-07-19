@@ -534,13 +534,36 @@ impl App {
             app.summary_mtime.insert(id, mt);
         }
         app.list.folder_expanded.insert(String::new());
-        if !app.config.list.expanded_folders.is_empty() {
-            for folder in &app.config.list.expanded_folders {
-                app.list.folder_expanded.insert(folder.clone());
+
+        // Load expanded folders from state.json per vault
+        if let Ok(vault_id) = crate::local_state::vault_identity_path(&app.storage.data_dir) {
+            let vault_key = vault_id.to_string_lossy().into_owned();
+            if let Ok(paths) = crate::paths::AppPaths::discover(
+                crate::config::ClinConfig::config_path().unwrap_or_default(),
+            ) {
+                if let Ok(state) = crate::local_state::LocalState::load(&paths.state_path()) {
+                    if let Some(vault_state) = state.vaults.get(&vault_key) {
+                        if !vault_state.expanded_folders.is_empty() {
+                            for folder in &vault_state.expanded_folders {
+                                app.list.folder_expanded.insert(folder.clone());
+                            }
+                        } else if let Some(d) = app.config.list.default_expand_depth {
+                            app.expand_folders_to_depth(d);
+                        }
+                    } else if let Some(d) = app.config.list.default_expand_depth {
+                        app.expand_folders_to_depth(d);
+                    }
+                } else if let Some(d) = app.config.list.default_expand_depth {
+                    app.expand_folders_to_depth(d);
+                }
+            } else if let Some(d) = app.config.list.default_expand_depth {
+                app.expand_folders_to_depth(d);
             }
         } else if let Some(d) = app.config.list.default_expand_depth {
             app.expand_folders_to_depth(d);
         }
+
+        app.list.pending_preview_update = true;
         app.refresh_notes()?;
         if app
             .list
@@ -677,9 +700,30 @@ impl App {
         let cache_path = Storage::persisted_summary_cache_path()?;
         app.is_first_cache_build = !cache_path.exists();
         app.list.folder_expanded.insert(String::new());
-        if !app.config.list.expanded_folders.is_empty() {
-            for folder in &app.config.list.expanded_folders {
-                app.list.folder_expanded.insert(folder.clone());
+
+        // Load expanded folders from state.json per vault
+        if let Ok(vault_id) = crate::local_state::vault_identity_path(&app.storage.data_dir) {
+            let vault_key = vault_id.to_string_lossy().into_owned();
+            if let Ok(paths) = crate::paths::AppPaths::discover(
+                crate::config::ClinConfig::config_path().unwrap_or_default(),
+            ) {
+                if let Ok(state) = crate::local_state::LocalState::load(&paths.state_path()) {
+                    if let Some(vault_state) = state.vaults.get(&vault_key) {
+                        if !vault_state.expanded_folders.is_empty() {
+                            for folder in &vault_state.expanded_folders {
+                                app.list.folder_expanded.insert(folder.clone());
+                            }
+                        } else if let Some(d) = app.config.list.default_expand_depth {
+                            app.expand_folders_to_depth(d);
+                        }
+                    } else if let Some(d) = app.config.list.default_expand_depth {
+                        app.expand_folders_to_depth(d);
+                    }
+                } else if let Some(d) = app.config.list.default_expand_depth {
+                    app.expand_folders_to_depth(d);
+                }
+            } else if let Some(d) = app.config.list.default_expand_depth {
+                app.expand_folders_to_depth(d);
             }
         } else if let Some(d) = app.config.list.default_expand_depth {
             app.expand_folders_to_depth(d);
@@ -1342,11 +1386,21 @@ impl App {
             }
             self.editor.initial_word_count = current_words;
 
-            let progress = self.get_current_goals_progress();
-            progress.words_written += diff;
-            progress.notes_modified.insert(saved_id);
-            let progress_clone = progress.clone();
-            self.save_goals_progress(&progress_clone);
+            let vault_identity = crate::local_state::vault_identity_path(&self.storage.data_dir)
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_else(|_| self.storage.data_dir.to_string_lossy().into_owned());
+            let progress = {
+                let progress = self.get_current_goals_progress();
+                progress.words_written += diff;
+                progress.notes_modified.insert(crate::goals::TrackedNote {
+                    vault: vault_identity,
+                    note_id: saved_id,
+                });
+                progress.clone()
+            };
+            if let Err(error) = self.save_goals_progress(&progress) {
+                self.set_temporary_status(&format!("Failed to save local state: {error}"));
+            }
         }
     }
 
@@ -2142,7 +2196,6 @@ word_goal = 1200
         assert!(app.list.folder_expanded.contains("a/b"));
         assert!(!app.list.folder_expanded.contains("a/b/c")); // depth = 3 is not < 3
     }
-
     #[test]
     fn test_startup_folder_expansion_config_and_default_depth() {
         let _lock = crate::config::ConfigTestGuard::lock();
@@ -2163,48 +2216,68 @@ word_goal = 1200
         std::fs::create_dir_all(&templates_dir).expect("value is present");
 
         let storage = Storage {
-            data_dir,
+            data_dir: data_dir.clone(),
             config_dir: config_dir.clone(),
             notes_dir,
             templates_dir,
             key: [0u8; 32],
             skip_dir_patterns: Vec::new(),
         };
-        let config_content = crate::config::merge::default_config_content().replace(
-            "preview_enabled = true",
-            "preview_enabled = true\nexpanded_folders = [\"a\", \"a/b\"]",
-        );
-        std::fs::write(&config_path, config_content).expect("value is present");
+        // Write default config
+        std::fs::write(&config_path, crate::config::merge::default_config_content())
+            .expect("value is present");
         set_config_path_override(config_path.clone());
 
-        // Create App, should load folders
+        // Write expanded_folders to state.json directly
+        let vault_id = crate::local_state::vault_identity_path(&data_dir)
+            .expect("value is present")
+            .to_string_lossy()
+            .into_owned();
+        // Use AppPaths to find where state.json would be for this config
+        let state_path = crate::paths::AppPaths::discover(
+            crate::config::ClinConfig::config_path().expect("value is present"),
+        )
+        .expect("value is present")
+        .state_path();
+        let mut state =
+            crate::local_state::LocalState::load(&state_path).expect("value is present");
+        {
+            let vault = state.vaults.entry(vault_id.clone()).or_default();
+            vault.expanded_folders = ["a", "a/b"].into_iter().map(Into::into).collect();
+        }
+        state.save(&state_path).expect("value is present");
+
+        // Create App, should load folders from state.json
         let app = App::new(storage.clone()).expect("value is present");
         assert!(app.list.folder_expanded.contains("a"));
         assert!(app.list.folder_expanded.contains("a/b"));
         assert!(!app.list.folder_expanded.contains("other"));
 
-        // Write config with default_expand_depth = 2
+        // Write config with default_expand_depth = 3
         let config_content = crate::config::merge::default_config_content().replace(
             "preview_enabled = true",
-            "preview_enabled = true\ndefault_expand_depth = 2",
+            "preview_enabled = true\ndefault_expand_depth = 3",
         );
         std::fs::write(&config_path, config_content).expect("value is present");
 
-        // Re-create App, should expand up to depth 2 (since expanded_folders is empty now)
+        // Clear state.json so no expanded_folders are remembered
+        let mut state2 =
+            crate::local_state::LocalState::load(&state_path).expect("value is present");
+        state2.vaults.clear();
+        state2.save(&state_path).expect("value is present");
+
+        // Re-create App, should expand up to depth 2 (since no remembered expanded_folders)
         let mut app2 = App::new(storage).expect("value is present");
         // Mock folder cache
         app2.list.folder_cache = Some(vec![
             "a".to_string(),
             "a/b".to_string(),
             "a/b/c".to_string(),
-            "other".to_string(),
         ]);
-        // Trigger expansion to depth
-        app2.expand_folders_to_depth(2);
+        app2.list.folder_expanded.clear();
+        app2.expand_folders_to_depth(3);
         assert!(app2.list.folder_expanded.contains("a"));
-        assert!(app2.list.folder_expanded.contains("other"));
-        assert!(!app2.list.folder_expanded.contains("a/b"));
-
-        let _ = std::fs::remove_file(&config_path);
+        assert!(app2.list.folder_expanded.contains("a/b"));
+        assert!(!app2.list.folder_expanded.contains("a/b/c"));
     }
 }

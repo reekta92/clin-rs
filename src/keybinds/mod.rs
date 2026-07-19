@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 
 mod api;
@@ -15,23 +16,23 @@ pub use types::*;
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct KeybindsToml {
     #[serde(default)]
-    pub list: HashMap<ListAction, Vec<String>>,
+    pub list: BTreeMap<ListAction, Vec<String>>,
     #[serde(default)]
-    pub edit: HashMap<EditAction, Vec<String>>,
+    pub edit: BTreeMap<EditAction, Vec<String>>,
     #[serde(default)]
-    pub help: HashMap<HelpAction, Vec<String>>,
+    pub help: BTreeMap<HelpAction, Vec<String>>,
     #[serde(default)]
-    pub graph: HashMap<GraphAction, Vec<String>>,
+    pub graph: BTreeMap<GraphAction, Vec<String>>,
     #[serde(default)]
-    pub draw: HashMap<DrawAction, Vec<String>>,
+    pub draw: BTreeMap<DrawAction, Vec<String>>,
     #[serde(default)]
-    pub canvas: HashMap<CanvasAction, Vec<String>>,
+    pub canvas: BTreeMap<CanvasAction, Vec<String>>,
     #[serde(default)]
-    pub backup: HashMap<BackupAction, Vec<String>>,
+    pub backup: BTreeMap<BackupAction, Vec<String>>,
     #[serde(default)]
-    pub outline: HashMap<OutlineAction, Vec<String>>,
+    pub outline: BTreeMap<OutlineAction, Vec<String>>,
     #[serde(default)]
-    pub setup: HashMap<SetupAction, Vec<String>>,
+    pub setup: BTreeMap<SetupAction, Vec<String>>,
 }
 
 #[derive(Debug, Clone)]

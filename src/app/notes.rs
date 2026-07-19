@@ -366,11 +366,26 @@ impl App {
                                     self.set_temporary_status(&format!("Refresh failed: {e}"));
                                 }
 
-                                let progress = self.get_current_goals_progress();
-                                progress.words_written += diff;
-                                progress.notes_modified.insert(note_id.to_string());
-                                let progress_clone = progress.clone();
-                                self.save_goals_progress(&progress_clone);
+                                let vault_identity =
+                                    crate::local_state::vault_identity_path(&self.storage.data_dir)
+                                        .map(|p| p.to_string_lossy().into_owned())
+                                        .unwrap_or_else(|_| {
+                                            self.storage.data_dir.to_string_lossy().into_owned()
+                                        });
+                                let progress = {
+                                    let progress = self.get_current_goals_progress();
+                                    progress.words_written += diff;
+                                    progress.notes_modified.insert(crate::goals::TrackedNote {
+                                        vault: vault_identity,
+                                        note_id: note_id.to_string(),
+                                    });
+                                    progress.clone()
+                                };
+                                if let Err(error) = self.save_goals_progress(&progress) {
+                                    self.set_temporary_status(&format!(
+                                        "Failed to save local state: {error}"
+                                    ));
+                                }
                             }
                         } else {
                             self.set_temporary_status_static("No changes made in external editor.");
