@@ -273,12 +273,6 @@ impl App {
                         }
                     }
                 }
-                SearchEvent::Failed { generation, message } => {
-                    if generation == cur_gen {
-                        self.search_status = None;
-                        self.set_temporary_status(&format!("Search failed: {message}"));
-                    }
-                }
             }
         }
     }

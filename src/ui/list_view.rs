@@ -1123,7 +1123,6 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
 
     if !app.preview_fullscreen {
         let is_grid = app.list.notes_layout == crate::config::NotesLayout::Grid;
-        let mut items: Vec<ListItem> = Vec::new();
 
         if is_grid {
             app.list.grid_tiles.clear();

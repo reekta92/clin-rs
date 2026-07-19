@@ -1,5 +1,5 @@
 use crate::list_view::FolderGraphNode;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender, TrySendError};
 use std::sync::Arc;
@@ -29,7 +29,7 @@ impl FolderPreviewCatalog {
     pub fn build(
         revision: u64,
         notes: &[crate::storage::NoteSummary],
-        catalog_folders: &[String],
+        _catalog_folders: &[String],
         note_index: &crate::note_index::NoteIndex,
     ) -> Arc<Self> {
         let mut string_interner: HashMap<String, Arc<str>> = HashMap::new();
@@ -73,6 +73,7 @@ impl FolderPreviewCatalog {
 }
 
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub(crate) struct GroupNode {
     pub path: String,
     pub label: String,
@@ -80,6 +81,7 @@ pub(crate) struct GroupNode {
 }
 
 #[derive(Clone, Debug)]
+#[allow(dead_code)]
 pub(crate) struct FolderGraphModel {
     pub focused_path: String,
     pub focused_label: String,
@@ -98,7 +100,8 @@ pub struct FolderPreviewResponse {
     pub generation: u64,
     pub notes_revision: u64,
     pub focused_path: String,
-    pub model: Arc<FolderGraphModel>,
+    #[allow(dead_code)]
+    pub(crate) model: Arc<FolderGraphModel>,
 }
 
 pub struct FolderPreviewService {
@@ -108,7 +111,7 @@ pub struct FolderPreviewService {
 }
 
 impl FolderPreviewService {
-    pub fn spawn(pool: Arc<rayon::ThreadPool>) -> Self {
+    pub fn spawn(_pool: Arc<rayon::ThreadPool>) -> Self {
         let (req_tx, req_rx) = sync_channel::<FolderPreviewRequest>(1);
         let (res_tx, res_rx) = sync_channel::<FolderPreviewResponse>(1);
         let generation = Arc::new(AtomicU64::new(1));

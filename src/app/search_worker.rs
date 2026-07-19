@@ -20,14 +20,9 @@ pub(crate) enum SearchEvent {
         errors: usize,
         globally_truncated: bool,
     },
-    Failed {
-        generation: u64,
-        message: String,
-    },
 }
 
 pub(crate) struct SearchWorker {
-    pub generation: Arc<AtomicU64>,
     pub req_tx: SyncSender<SearchRequest>,
     pub event_rx: Receiver<SearchEvent>,
 }
@@ -53,7 +48,6 @@ impl SearchWorker {
             .expect("failed spawning search worker");
 
         SearchWorker {
-            generation,
             req_tx,
             event_rx,
         }

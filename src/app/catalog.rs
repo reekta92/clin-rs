@@ -77,6 +77,7 @@ pub enum CatalogEvent {
     },
 }
 
+#[allow(dead_code)]
 pub(crate) struct BlockingCatalogLoad {
     pub summaries: Vec<NoteSummary>,
     pub map: HashMap<String, (FileStamp, NoteSummary)>,

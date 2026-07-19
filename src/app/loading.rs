@@ -3,7 +3,6 @@ use crate::list_view::*;
 use crate::storage::NoteSummary;
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 struct SmartFolderData {

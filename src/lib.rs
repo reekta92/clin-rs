@@ -146,7 +146,7 @@ fn run_notes(action: NotesCmd) -> Result<()> {
     match action {
         NotesCmd::List => {
             let storage = Storage::init()?;
-            let mut app = App::new(storage)?;
+            let app = App::new(storage)?;
             for (index, note) in app.notes.iter().enumerate() {
                 println!(
                     "{} {}",
@@ -229,7 +229,7 @@ fn run_notes(action: NotesCmd) -> Result<()> {
         NotesCmd::Open { title } => launch_tui(Some(title), false),
         NotesCmd::Cat { title } => {
             let storage = Storage::init()?;
-            let mut app = App::new(storage)?;
+            let app = App::new(storage)?;
             let id = app
                 .notes
                 .iter()
@@ -281,7 +281,7 @@ fn run_notes(action: NotesCmd) -> Result<()> {
             use fuzzy_matcher::skim::SkimMatcherV2;
 
             let storage = Storage::init()?;
-            let mut app = App::new(storage)?;
+            let app = App::new(storage)?;
             let matcher = SkimMatcherV2::default();
             let mut hits: Vec<(i64, String, String)> = Vec::new(); // (score, title, folder)
             for note in &app.notes {

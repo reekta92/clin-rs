@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 
 use chrono::Datelike;
 use ratatui::Frame;
@@ -8,7 +7,6 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Padding, Paragraph};
 
 use crate::app_theme::AppThemeColors;
-use crate::storage::NoteSummary;
 
 /// Draw a GitHub-contributions-style rolling-weeks heatmap at the bottom of
 /// the notes view.

@@ -39,7 +39,6 @@ use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::mpsc;
 
 pub const VIRTUAL_PINNED_PATH: &str = "__clin_virtual__/pinned";
 pub const VIRTUAL_PINNED_LABEL: &str = "Pinned";
@@ -355,15 +354,16 @@ pub struct App {
     pub catalog_generation: Arc<AtomicU64>,
     pub catalog_folders: Vec<String>,
     pub catalog_status: Option<String>,
-    pub search_worker: crate::app::search_worker::SearchWorker,
+    pub(crate) search_worker: crate::app::search_worker::SearchWorker,
     pub search_debounce_deadline: Option<Instant>,
     pub search_query_generation: Arc<AtomicU64>,
-    pub unsent_search_request: Option<crate::app::search_worker::SearchRequest>,
+    pub(crate) unsent_search_request: Option<crate::app::search_worker::SearchRequest>,
     pub search_status: Option<String>,
     pub note_index: Option<crate::note_index::NoteIndex>,
     pub folder_preview_service: crate::app::folder_preview::FolderPreviewService,
     pub folder_preview_catalog: Option<Arc<crate::app::folder_preview::FolderPreviewCatalog>>,
-    pub folder_preview_model: Option<Arc<crate::app::folder_preview::FolderGraphModel>>,
+    #[allow(dead_code)]
+    pub(crate) folder_preview_model: Option<Arc<crate::app::folder_preview::FolderGraphModel>>,
     pub notes_revision: u64,
     pub note_stamps: HashMap<String, crate::storage::FileStamp>,
     pub subnotes_view_cache: Vec<(String, Vec<crate::storage::SubNote>)>,

@@ -1,6 +1,5 @@
 use super::*;
 use crate::list_view::*;
-use std::collections::BTreeMap;
 
 impl App {
     /// Load, patch, and save an editor config field.  Replaces the
