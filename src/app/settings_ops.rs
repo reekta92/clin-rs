@@ -615,10 +615,36 @@ impl App {
                 map.insert(id.clone(), (mt, summary.clone()));
             }
         }
-        if let Ok(bytes) = bincode::serde::encode_to_vec(&map, bincode::config::standard())
-            && let Ok(ciphertext) = self.storage.encrypt(&bytes)
+        let Ok(bytes) = bincode::serde::encode_to_vec(&map, bincode::config::standard()) else {
+            eprintln!(
+                "{}",
+                crate::console::warning("Failed to serialize note-summary cache")
+            );
+            return;
+        };
+        let Ok(ciphertext) = self.storage.encrypt(&bytes) else {
+            eprintln!(
+                "{}",
+                crate::console::warning("Failed to encrypt note-summary cache")
+            );
+            return;
+        };
+        if let Some(parent) = path.parent()
+            && let Err(error) = std::fs::create_dir_all(parent)
         {
-            let _ = crate::fsutil::atomic_write_with_mode(&path, &ciphertext, 0o600);
+            eprintln!(
+                "{}",
+                crate::console::warning(&format!(
+                    "Failed to create note-summary cache directory: {error}"
+                ))
+            );
+            return;
+        }
+        if let Err(error) = crate::fsutil::atomic_write_with_mode(&path, &ciphertext, 0o600) {
+            eprintln!(
+                "{}",
+                crate::console::warning(&format!("Failed to save note-summary cache: {error}"))
+            );
         }
     }
 
