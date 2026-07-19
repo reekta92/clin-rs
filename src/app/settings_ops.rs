@@ -36,9 +36,7 @@ impl App {
                 let id = self.notes[*summary_idx].id.clone();
                 match self.storage.toggle_pin(&id) {
                     Ok(pinned) => {
-                        if let Err(e) = self.refresh_notes() {
-                            self.set_temporary_status(&format!("Refresh failed: {e}"));
-                        }
+                        self.refresh_note_single(None, &id);
                         if pinned {
                             self.set_temporary_status_static("Note pinned");
                         } else {
@@ -98,7 +96,6 @@ impl App {
 
     pub fn toggle_inline_info(&mut self) {
         self.list.inline_info = !self.list.inline_info;
-        self.build_display_lines();
         let msg: &'static str = if self.list.inline_info {
             "Inline info shown"
         } else {
@@ -416,9 +413,8 @@ impl App {
 
     pub fn toggle_pinned_on_top(&mut self) {
         self.pinned_on_top = !self.pinned_on_top;
-        if let Err(e) = self.refresh_notes() {
-            self.set_temporary_status(&format!("Refresh failed: {e}"));
-        }
+        self.sort_notes();
+        self.refresh_visual_list();
         let msg: &'static str = if self.pinned_on_top {
             "Pinned notes shown on top"
         } else {
@@ -435,10 +431,7 @@ impl App {
 
     pub fn toggle_show_hidden_files(&mut self) {
         self.list.show_hidden_files = !self.list.show_hidden_files;
-        self.list.folder_cache = None; // invalidate cached folder list
-        if let Err(e) = self.refresh_notes() {
-            self.set_temporary_status(&format!("Refresh failed: {e}"));
-        }
+        self.request_notes_reconcile();
         let msg: &'static str = if self.list.show_hidden_files {
             "Hidden files shown"
         } else {
@@ -455,10 +448,7 @@ impl App {
 
     pub fn toggle_show_all_files(&mut self) {
         self.list.show_all_files = !self.list.show_all_files;
-        self.list.folder_cache = None; // invalidate cached folder list
-        if let Err(e) = self.refresh_notes() {
-            self.set_temporary_status(&format!("Refresh failed: {e}"));
-        }
+        self.request_notes_reconcile();
         let msg: &'static str = if self.list.show_all_files {
             "Showing all files"
         } else {
@@ -587,66 +577,6 @@ impl App {
         Ok(())
     }
 
-    pub fn load_persisted_summary_cache(
-        &self,
-    ) -> BTreeMap<String, (u64, crate::storage::NoteSummary)> {
-        let Ok(path) = Storage::persisted_summary_cache_path() else {
-            return BTreeMap::new();
-        };
-        let Ok(ciphertext) = std::fs::read(&path) else {
-            return BTreeMap::new();
-        };
-        let plain = match self.storage.decrypt(&ciphertext) {
-            Ok(p) => p,
-            Err(_) => return BTreeMap::new(),
-        };
-        bincode::serde::decode_from_slice(plain.as_slice(), bincode::config::standard())
-            .map(|(map, _)| map)
-            .unwrap_or_default()
-    }
-
-    pub fn save_persisted_summary_cache(&self) {
-        let Ok(path) = Storage::persisted_summary_cache_path() else {
-            return;
-        };
-        let mut map: BTreeMap<String, (u64, crate::storage::NoteSummary)> = BTreeMap::new();
-        for (id, summary) in &self.summary_cache {
-            if let Some(&mt) = self.summary_mtime.get(id) {
-                map.insert(id.clone(), (mt, summary.clone()));
-            }
-        }
-        let Ok(bytes) = bincode::serde::encode_to_vec(&map, bincode::config::standard()) else {
-            eprintln!(
-                "{}",
-                crate::console::warning("Failed to serialize note-summary cache")
-            );
-            return;
-        };
-        let Ok(ciphertext) = self.storage.encrypt(&bytes) else {
-            eprintln!(
-                "{}",
-                crate::console::warning("Failed to encrypt note-summary cache")
-            );
-            return;
-        };
-        if let Some(parent) = path.parent()
-            && let Err(error) = std::fs::create_dir_all(parent)
-        {
-            eprintln!(
-                "{}",
-                crate::console::warning(&format!(
-                    "Failed to create note-summary cache directory: {error}"
-                ))
-            );
-            return;
-        }
-        if let Err(error) = crate::fsutil::atomic_write_with_mode(&path, &ciphertext, 0o600) {
-            eprintln!(
-                "{}",
-                crate::console::warning(&format!("Failed to save note-summary cache: {error}"))
-            );
-        }
-    }
 
     pub fn get_current_goals_progress(&mut self) -> &mut crate::goals::DailyProgress {
         self.check_and_reload_config();

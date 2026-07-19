@@ -19,8 +19,11 @@ pub mod list_view;
 pub mod local_state;
 pub mod markdown;
 pub mod migration;
+pub mod note_index;
 pub mod outline;
 pub mod overlay;
+#[cfg(test)]
+pub mod perf_tests;
 pub mod palette;
 pub mod paths;
 pub mod pinstar;
@@ -33,6 +36,8 @@ pub mod statusline;
 pub mod templates;
 pub mod text_edit;
 
+use std::collections::HashMap;
+use std::time::{Duration, Instant};
 use crate::cli::{
     CacheCmd, Cli, Command, ConfigCmd, KeybindsCmd, NotesCmd, StorageCmd, TemplatesCmd,
 };
@@ -48,7 +53,6 @@ use std::process;
 use std::sync::Arc;
 use std::sync::LazyLock;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::time::Duration;
 use uuid::Uuid;
 
 use mimalloc::MiMalloc;
@@ -143,7 +147,6 @@ fn run_notes(action: NotesCmd) -> Result<()> {
         NotesCmd::List => {
             let storage = Storage::init()?;
             let mut app = App::new(storage)?;
-            app.refresh_notes()?;
             for (index, note) in app.notes.iter().enumerate() {
                 println!(
                     "{} {}",
@@ -219,7 +222,7 @@ fn run_notes(action: NotesCmd) -> Result<()> {
             }
 
             app.editor.editing_id = Some(saved_id.clone());
-            app.refresh_notes()?;
+            app.refresh_note_single(None, &saved_id);
             app.load_and_open_note(&saved_id, None);
             run_tui_session(&mut app)
         }
@@ -227,7 +230,6 @@ fn run_notes(action: NotesCmd) -> Result<()> {
         NotesCmd::Cat { title } => {
             let storage = Storage::init()?;
             let mut app = App::new(storage)?;
-            app.refresh_notes()?;
             let id = app
                 .notes
                 .iter()
@@ -280,7 +282,6 @@ fn run_notes(action: NotesCmd) -> Result<()> {
 
             let storage = Storage::init()?;
             let mut app = App::new(storage)?;
-            app.refresh_notes()?;
             let matcher = SkimMatcherV2::default();
             let mut hits: Vec<(i64, String, String)> = Vec::new(); // (score, title, folder)
             for note in &app.notes {
@@ -778,13 +779,16 @@ fn run_config(action: ConfigCmd) -> Result<()> {
 fn run_cache(action: CacheCmd) -> Result<()> {
     match action {
         CacheCmd::Reset => {
+            let storage = Storage::init()?;
             let app_paths = crate::paths::AppPaths::discover(ClinConfig::config_path()?)?;
+            let vault_id = crate::local_state::vault_identity_path(&storage.data_dir)?;
+            let digest = crate::paths::vault_cache_digest(&vault_id);
+            let scoped_cache = app_paths.scoped_summary_cache_path(&digest);
 
-            // Collect all cache locations (target + legacy)
-            let mut cache_locations = vec![app_paths.summary_cache_path()];
+            let mut cache_locations = vec![scoped_cache, app_paths.summary_cache_path()];
             cache_locations.push(app_paths.config_root_cache_path());
             let default_root = app_paths.default_config_root_cache_path();
-            if default_root != cache_locations[0] && default_root != cache_locations[1] {
+            if !cache_locations.contains(&default_root) {
                 cache_locations.push(default_root);
             }
 
@@ -816,6 +820,155 @@ fn run_cache(action: CacheCmd) -> Result<()> {
             Ok(())
         }
     }
+}
+fn process_watcher_events(app: &mut App) {
+    let Some(ref rx) = app.fs_event_rx else { return };
+    let overflow = app.fs_overflow.swap(false, Ordering::SeqCst);
+
+    let mut events = Vec::new();
+    while let Ok(evt) = rx.try_recv() {
+        events.push(evt);
+    }
+
+    if overflow {
+        app.request_notes_reconcile();
+        app.watcher_window_start = None;
+        return;
+    }
+
+    if events.is_empty() && app.watcher_window_start.is_none() {
+        return;
+    }
+
+    if app.watcher_window_start.is_none() {
+        if let Some(first) = events.first() {
+            app.watcher_window_start = Some(first.observed_at);
+        } else {
+            app.watcher_window_start = Some(Instant::now());
+        }
+    }
+
+    let window_start = app.watcher_window_start.unwrap();
+    if Instant::now() < window_start + Duration::from_millis(250) {
+        return;
+    }
+
+    app.watcher_window_start = None;
+
+    let mut changes_map: HashMap<String, crate::app::catalog::PathChange> = HashMap::new();
+    let mut needs_full_reconcile = false;
+
+    'events_loop: for watched in events {
+        use notify::EventKind;
+        use notify::event::{ModifyKind, RenameMode};
+
+        let ev = watched.event;
+        if ev.paths.is_empty() {
+            needs_full_reconcile = true;
+            break 'events_loop;
+        }
+
+        match ev.kind {
+            EventKind::Access(_) => continue,
+            EventKind::Create(_)
+            | EventKind::Modify(ModifyKind::Data(_))
+            | EventKind::Modify(ModifyKind::Metadata(_)) => {
+                for path in &ev.paths {
+                    if path.is_dir() {
+                        needs_full_reconcile = true;
+                        break 'events_loop;
+                    }
+                    if let Ok(rel) = path.strip_prefix(&app.storage.notes_dir) {
+                        if let Some(rel_str) = rel.to_str() {
+                            let norm_id = rel_str.replace('\\', "/");
+                            changes_map.insert(norm_id.clone(), crate::app::catalog::PathChange::Upsert(norm_id));
+                        } else {
+                            needs_full_reconcile = true;
+                            break 'events_loop;
+                        }
+                    } else {
+                        needs_full_reconcile = true;
+                        break 'events_loop;
+                    }
+                }
+            }
+            EventKind::Remove(_) => {
+                for path in &ev.paths {
+                    if let Ok(rel) = path.strip_prefix(&app.storage.notes_dir) {
+                        if let Some(rel_str) = rel.to_str() {
+                            let norm_id = rel_str.replace('\\', "/");
+                            changes_map.insert(norm_id.clone(), crate::app::catalog::PathChange::Remove(norm_id));
+                        } else {
+                            needs_full_reconcile = true;
+                            break 'events_loop;
+                        }
+                    } else {
+                        needs_full_reconcile = true;
+                        break 'events_loop;
+                    }
+                }
+            }
+            EventKind::Modify(ModifyKind::Name(RenameMode::Both)) => {
+                if ev.paths.len() == 2 {
+                    let old_p = &ev.paths[0];
+                    let new_p = &ev.paths[1];
+                    if let (Ok(rel_old), Ok(rel_new)) = (
+                        old_p.strip_prefix(&app.storage.notes_dir),
+                        new_p.strip_prefix(&app.storage.notes_dir),
+                    ) {
+                        if let (Some(old_str), Some(new_str)) = (rel_old.to_str(), rel_new.to_str()) {
+                            let old_norm = old_str.replace('\\', "/");
+                            let new_norm = new_str.replace('\\', "/");
+                            changes_map.insert(old_norm.clone(), crate::app::catalog::PathChange::Remove(old_norm));
+                            changes_map.insert(new_norm.clone(), crate::app::catalog::PathChange::Upsert(new_norm));
+                        } else {
+                            needs_full_reconcile = true;
+                            break 'events_loop;
+                        }
+                    } else {
+                        needs_full_reconcile = true;
+                        break 'events_loop;
+                    }
+                } else {
+                    needs_full_reconcile = true;
+                    break 'events_loop;
+                }
+            }
+            _ => {
+                needs_full_reconcile = true;
+                break 'events_loop;
+            }
+        }
+        if needs_full_reconcile || changes_map.len() > 512 {
+            needs_full_reconcile = true;
+            break;
+        }
+    }
+
+    if needs_full_reconcile || changes_map.len() > 512 {
+        app.request_notes_reconcile();
+    } else if !changes_map.is_empty() {
+        let changes: Vec<_> = changes_map.into_values().collect();
+        app.send_catalog_paths(changes);
+    }
+}
+
+fn perform_orderly_catalog_shutdown(app: &mut App) {
+    app.catalog_generation.fetch_add(1, Ordering::SeqCst);
+    while app.catalog_event_rx.try_recv().is_ok() {}
+
+    let (ack_tx, ack_rx) = std::sync::mpsc::sync_channel(0);
+    let deadline = Instant::now() + Duration::from_millis(500);
+
+    while Instant::now() < deadline {
+        if app.catalog_cmd_tx.try_send(crate::app::catalog::CatalogCommand::Flush { ack: ack_tx.clone() }).is_ok() {
+            if ack_rx.recv_timeout(Duration::from_millis(100)).is_ok() {
+                break;
+            }
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let _ = app.catalog_cmd_tx.try_send(crate::app::catalog::CatalogCommand::Shutdown);
 }
 struct TerminalGuard;
 
@@ -911,24 +1064,45 @@ fn run_tui_session(app: &mut App) -> Result<()> {
     // by the app reading its own files during `refresh_notes()`.
     let _watcher = if app.config.core.auto_refresh {
         use notify::{EventKind, RecursiveMode, Watcher};
-        let (tx, rx) = std::sync::mpsc::channel();
+        let (tx, rx) = std::sync::mpsc::sync_channel::<crate::app::WatchedFsEvent>(1024);
+        let overflow = Arc::new(AtomicBool::new(false));
         app.fs_event_rx = Some(rx);
+        app.fs_overflow = overflow.clone();
+
         let notes_path = app.storage.notes_dir.clone();
+        let overflow_cb = overflow.clone();
         let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
-            if let Ok(event) = res {
-                // Prevent infinite loop: ignore Access events triggered by our
-                // own `refresh_notes()` reads.
-                if matches!(event.kind, EventKind::Access(_)) {
+            let observed_at = Instant::now();
+            let event = match res {
+                Ok(e) => e,
+                Err(_) => {
+                    overflow_cb.store(true, Ordering::SeqCst);
                     return;
                 }
-                // Performance: aggressively filter out .git and temp lock files.
-                let has_relevant_events = event.paths.iter().any(|p| {
+            };
+            if event.need_rescan() {
+                overflow_cb.store(true, Ordering::SeqCst);
+                return;
+            }
+            if matches!(event.kind, EventKind::Access(_)) {
+                return;
+            }
+            if !event.paths.is_empty() {
+                let all_ignored = event.paths.iter().all(|p| {
                     let path_str = p.to_string_lossy();
-                    !path_str.contains("/.git/") && !path_str.ends_with(".clin")
+                    path_str.contains("/.git/")
+                        || path_str.contains("\\.git\\")
+                        || path_str.ends_with(".tmp")
+                        || path_str.ends_with(".lock")
+                        || path_str.ends_with("~")
                 });
-                if has_relevant_events {
-                    let _ = tx.send(()); // Non-blocking send
+                if all_ignored {
+                    return;
                 }
+            }
+
+            if tx.try_send(crate::app::WatchedFsEvent { observed_at, event }).is_err() {
+                overflow_cb.store(true, Ordering::SeqCst);
             }
         })
         .ok();
@@ -1057,64 +1231,65 @@ fn run_app(
     let mut focus = EditFocus::Body;
     let mut mouse_selecting = false;
     let mut mouse_dragged = false;
-
-    // Start background note load for deferred startup
-    let load_rx = if !app.initial_load_done && app.notes.is_empty() {
-        Some(app.start_background_load(app.summary_cache.clone(), app.summary_mtime.clone()))
-    } else {
-        None
-    };
-    let mut last_fs_refresh = std::time::Instant::now()
-        .checked_sub(std::time::Duration::from_secs(1))
-        .expect("1s ago is always valid from just-created now");
-    let mut pending_fs_refresh = false;
+    let mut list_dirty = true;
+    let mut prev_mode = app.mode;
 
     while !app.should_quit {
-        // Check for external SIGINT/SIGTERM
         if SHOULD_EXIT.load(Ordering::Acquire) {
             app.should_quit = true;
             break;
         }
 
-        // Drain background load batches (non-blocking)
-        if let Some(ref rx) = load_rx
-            && !app.initial_load_done
-        {
-            while let Ok(batch) = rx.try_recv() {
-                app.merge_loaded(batch);
+        if app.mode != prev_mode {
+            if app.mode == ViewMode::List {
+                list_dirty = true;
             }
+            prev_mode = app.mode;
         }
 
-        // Drain file system watcher signals (non-blocking)
-        // Multiple rapid signals collapse into a single refresh per frame.
-        if let Some(rx) = &app.fs_event_rx {
-            // Drain the entire channel queue so multiple rapid signals collapse
-            while rx.try_recv().is_ok() {
-                pending_fs_refresh = true;
-            }
-
-            // Throttle the heavy refresh to max 1 per 250ms to guarantee zero lag
-            // even during massive `git pull` checkouts
-            if pending_fs_refresh && last_fs_refresh.elapsed().as_millis() > 250 {
-                pending_fs_refresh = false;
-                last_fs_refresh = std::time::Instant::now();
-
-                app.list.folder_cache = None; // Invalidate folder cache so new/deleted folders appear
-                if let Err(e) = app.refresh_notes() {
-                    app.set_temporary_status(&format!("Auto-refresh failed: {e}"));
-                }
+        while let Ok(evt) = app.catalog_event_rx.try_recv() {
+            app.handle_catalog_event(evt);
+            if app.mode == ViewMode::List {
+                list_dirty = true;
             }
         }
+        app.handle_search_events();
+        process_watcher_events(app);
 
-        app.tick_status();
+        if app.tick_status() && app.mode == ViewMode::List {
+            list_dirty = true;
+        }
         let failed = app.backup_status.lock().take();
         if let Some(msg) = failed {
             app.set_temporary_status(&format!("Backup failed: {msg}"));
+            if app.mode == ViewMode::List {
+                list_dirty = true;
+            }
+        }
+
+        if let Some(ref idx) = app.note_index {
+            if let Some(expiry) = idx.min_membership_expiry {
+                if crate::ui::now_unix_secs() >= expiry {
+                    app.rebuild_note_index();
+                    if app.mode == ViewMode::List {
+                        list_dirty = true;
+                    }
+                }
+            }
         }
 
         if app.needs_full_redraw {
             terminal.clear()?;
             app.needs_full_redraw = false;
+            list_dirty = true;
+        }
+
+        if app.mode == ViewMode::List
+            && app.list.sections.contains(&crate::config::NotesSection::Graf)
+            && app.graph_preview.is_some()
+            && app.graph_preview_steps < 100
+        {
+            list_dirty = true;
         }
 
         // Apply update ticks for continuous views before rendering
@@ -1124,14 +1299,30 @@ fn run_app(
             graf.overlay_update(&mut app.config);
         }
 
-        if let Err(e) = terminal.draw(|frame| crate::ui::draw_ui(frame, app, focus)) {
-            return Err(e.into());
+        let should_draw = if app.mode == ViewMode::List {
+            list_dirty
+        } else {
+            true
+        };
+
+        if should_draw {
+            if let Err(e) = terminal.draw(|frame| crate::ui::draw_ui(frame, app, focus)) {
+                return Err(e.into());
+            }
+            if app.mode == ViewMode::List {
+                list_dirty = false;
+            }
         }
+
+        let active_catalog = app.catalog_status.is_some();
+        let active_search = app.search_status.is_some() || app.search_debounce_deadline.is_some();
 
         let poll_timeout = if app.mode == ViewMode::Graph || app.mode == ViewMode::Draw {
             Duration::from_millis(16)
         } else if app.mode == ViewMode::Canvas {
             Duration::from_millis(100)
+        } else if active_catalog || active_search {
+            Duration::from_millis(32)
         } else if app.is_first_cache_build
             || matches!(
                 app.list.preview_content,
@@ -1181,12 +1372,16 @@ fn run_app(
             }
         }
 
-        if need_redraw && let Err(e) = terminal.draw(|frame| crate::ui::draw_ui(frame, app, focus))
-        {
-            return Err(e.into());
+        if app.mode != ViewMode::List && need_redraw {
+            if let Err(e) = terminal.draw(|frame| crate::ui::draw_ui(frame, app, focus)) {
+                return Err(e.into());
+            }
+        } else if app.mode == ViewMode::List && need_redraw {
+            list_dirty = true;
         }
 
         if event::poll(poll_timeout).context("event poll failed")? {
+            list_dirty = true;
             match event::read().context("failed to read event")? {
                 // Global Ctrl+C — immediately kill process
                 Event::Key(key)
@@ -1630,7 +1825,57 @@ fn run_app(
             }
         }
     }
+    perform_orderly_catalog_shutdown(app);
     Ok(())
 }
 
 pub use constants::*;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn list_dirty_draws_only_on_change() {
+        let storage = Storage {
+            data_dir: PathBuf::from("/tmp"),
+            config_dir: PathBuf::from("/tmp"),
+            notes_dir: PathBuf::from("/tmp"),
+            templates_dir: PathBuf::from("/tmp"),
+            key: [1u8; 32],
+            skip_dir_patterns: vec![],
+        };
+        let mut app = App::new(storage).unwrap();
+        app.mode = ViewMode::List;
+
+        let mut list_dirty = true;
+        let mut draw_count = 0;
+
+        for _tick in 0..5 {
+            let should_draw = if app.mode == ViewMode::List {
+                list_dirty
+            } else {
+                true
+            };
+
+            if should_draw {
+                draw_count += 1;
+                if app.mode == ViewMode::List {
+                    list_dirty = false;
+                }
+            }
+        }
+
+        assert_eq!(draw_count, 1);
+
+        app.set_temporary_status("New Status");
+        list_dirty = true;
+
+        if list_dirty {
+            draw_count += 1;
+            list_dirty = false;
+        }
+
+        assert_eq!(draw_count, 2);
+    }
+}

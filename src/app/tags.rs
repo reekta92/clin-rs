@@ -83,9 +83,7 @@ impl App {
                     self.set_temporary_status(&format!("Failed to save tags: {e}"));
                 } else {
                     self.enqueue_backup(format!("auto: {}", note.title));
-                    if let Err(e) = self.refresh_notes() {
-                        self.set_temporary_status(&format!("Refresh failed: {e}"));
-                    }
+                    self.refresh_note_single(None, &popup.note_id);
                     self.set_temporary_status_static("Tags updated");
                 }
             } else {
@@ -229,9 +227,7 @@ impl App {
         }
 
         self.set_temporary_status(&format!("Deleted '{tag}' from {count} note(s)"));
-        if let Err(e) = self.refresh_notes() {
-            self.set_temporary_status(&format!("Refresh failed: {e}"));
-        }
+        self.request_notes_reconcile();
         let live_tags = self.collect_live_tags();
 
         if let Some(crate::popups::ActivePopup::Tag(popup)) = &mut self.popups.active {
@@ -292,10 +288,7 @@ impl App {
         self.list.selected_indices.clear();
         self.list.list_mode = crate::list_view::ListMode::Normal;
 
-        if let Err(e) = self.refresh_notes() {
-            self.set_temporary_status(&format!("Refresh failed: {e}"));
-            return;
-        }
+        self.request_notes_reconcile();
 
         self.set_temporary_status(&format!("Tag '{tag}' applied to {count} note(s)"));
     }

@@ -25,6 +25,33 @@
 //! so `--config` matches existing `custom_themes_dir()` behaviour.
 //! Data/cache roots always come from `ProjectDirs`.
 
+use sha2::{Digest, Sha256};
+use std::fmt::Write as _;
+
+/// Compute a 32-byte SHA-256 digest of platform-stable vault path bytes.
+pub fn vault_cache_digest(path: &Path) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        hasher.update(b"unix\0");
+        hasher.update(path.as_os_str().as_bytes());
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        hasher.update(b"windows\0");
+        for unit in path.as_os_str().encode_wide() {
+            hasher.update(&unit.to_le_bytes());
+        }
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        hasher.update(b"other\0");
+        hasher.update(path.to_string_lossy().as_bytes());
+    }
+    hasher.finalize().into()
+}
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 
@@ -122,6 +149,15 @@ impl AppPaths {
     /// Path to the note-summary cache (`<cache_dir>/note_cache.bin`).
     pub fn summary_cache_path(&self) -> PathBuf {
         self.cache_dir.join("note_cache.bin")
+    }
+
+    /// Path to the vault-scoped note-summary cache (`<cache_dir>/vaults/<hex>/note_cache.bin`).
+    pub fn scoped_summary_cache_path(&self, vault_digest: &[u8; 32]) -> PathBuf {
+        let mut hex = String::with_capacity(64);
+        for b in vault_digest {
+            let _ = write!(hex, "{:02x}", b);
+        }
+        self.cache_dir.join("vaults").join(hex).join("note_cache.bin")
     }
 
     /// Keybinds directory (`<config_dir>/keybinds/`).
@@ -252,5 +288,20 @@ mod tests {
         assert!(paths.keybinds_dir().is_absolute());
         assert!(paths.themes_dir().is_absolute());
         assert!(paths.legacy_graf_path().is_absolute());
+        assert!(paths.scoped_summary_cache_path(&[0; 32]).is_absolute());
+    }
+
+    #[test]
+    fn vault_cache_paths_are_isolated() {
+        let (_tmp, config_file, default_config, data, cache) = make_dirs();
+        let paths = AppPaths::from_roots(config_file, default_config, data, cache).unwrap();
+        let v1 = Path::new("/vault/one");
+        let v2 = Path::new("/vault/two");
+        let d1 = vault_cache_digest(v1);
+        let d2 = vault_cache_digest(v2);
+        assert_ne!(d1, d2);
+        let p1 = paths.scoped_summary_cache_path(&d1);
+        let p2 = paths.scoped_summary_cache_path(&d2);
+        assert_ne!(p1, p2);
     }
 }

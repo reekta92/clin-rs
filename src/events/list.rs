@@ -233,7 +233,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                         let id = note.id.clone();
                         match app.storage.move_note(&id, parent_folder) {
                             Ok(_) => {
-                                let _ = app.refresh_notes();
+                                app.request_notes_reconcile();
                                 app.set_temporary_status_static("Note moved to parent folder");
                             }
                             Err(e) => {
@@ -348,12 +348,8 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 return false;
             }
             ListAction::RefreshNotes => {
-                app.list.folder_cache = None;
-                if let Err(e) = app.refresh_notes() {
-                    app.set_temporary_status(&format!("Refresh failed: {e}"));
-                } else {
-                    app.set_temporary_status_static("Notes refreshed");
-                }
+                app.request_notes_reconcile();
+                app.set_temporary_status_static("Notes refreshed");
                 return false;
             }
             ListAction::ShowInfo => {
@@ -1239,7 +1235,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
             } else {
                 match app.storage.move_note(&note_id, target_folder) {
                     Ok(_) => {
-                        let _ = app.refresh_notes();
+                        app.request_notes_reconcile();
                         app.set_temporary_status_static("Note moved");
                     }
                     Err(e) => {

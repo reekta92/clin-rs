@@ -1,3 +1,6 @@
+pub(crate) mod catalog;
+pub(crate) mod folder_preview;
+pub(crate) mod search_worker;
 mod edit_panes;
 mod folders;
 mod import_ops;
@@ -35,7 +38,7 @@ use crossterm::terminal::{
 use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc;
 
 pub const VIRTUAL_PINNED_PATH: &str = "__clin_virtual__/pinned";
@@ -61,12 +64,6 @@ pub struct HelpSearchState {
     pub highlight_row: Option<usize>,
 }
 
-#[derive(Debug)]
-pub enum LoadBatch {
-    Started(usize),
-    Items(Vec<(String, NoteSummary, u64)>),
-    Done(usize),
-}
 
 fn find_filter_tokens(s: &str) -> Vec<(usize, &'static str)> {
     let spaced = [" f:", " g:", " p:", " t:"];
@@ -305,6 +302,11 @@ pub enum LayoutDrag {
     PreviewSwap,
     CalendarSwap,
 }
+pub struct WatchedFsEvent {
+    pub observed_at: Instant,
+    pub event: notify::Event,
+}
+
 
 pub struct App {
     pub popups: crate::popups::PopupManager,
@@ -348,22 +350,34 @@ pub struct App {
     pub config_errors: Vec<String>,
     pub canvas_state: Option<crate::pinstar::state::PinstarState>,
     pub config: crate::config::ClinConfig,
-    pub summary_cache: HashMap<String, NoteSummary>,
-    /// (parent_id, Vec<SubNote>) cache for the Subnotes view; rebuilt on refresh.
+    pub catalog_cmd_tx: std::sync::mpsc::SyncSender<crate::app::catalog::CatalogCommand>,
+    pub catalog_event_rx: std::sync::mpsc::Receiver<crate::app::catalog::CatalogEvent>,
+    pub catalog_generation: Arc<AtomicU64>,
+    pub catalog_folders: Vec<String>,
+    pub catalog_status: Option<String>,
+    pub search_worker: crate::app::search_worker::SearchWorker,
+    pub search_debounce_deadline: Option<Instant>,
+    pub search_query_generation: Arc<AtomicU64>,
+    pub unsent_search_request: Option<crate::app::search_worker::SearchRequest>,
+    pub search_status: Option<String>,
+    pub note_index: Option<crate::note_index::NoteIndex>,
+    pub folder_preview_service: crate::app::folder_preview::FolderPreviewService,
+    pub folder_preview_catalog: Option<Arc<crate::app::folder_preview::FolderPreviewCatalog>>,
+    pub folder_preview_model: Option<Arc<crate::app::folder_preview::FolderGraphModel>>,
+    pub notes_revision: u64,
+    pub note_stamps: HashMap<String, crate::storage::FileStamp>,
     pub subnotes_view_cache: Vec<(String, Vec<crate::storage::SubNote>)>,
-    /// Signature (notes.len() + subnotes hash) to invalidate subnotes_view_cache.
     pub subnotes_view_cache_sig: usize,
-    pub summary_mtime: HashMap<String, u64>,
     pub notes_with_subnotes: std::collections::HashSet<String>,
+    pub fs_event_rx: Option<std::sync::mpsc::Receiver<WatchedFsEvent>>,
+    pub fs_overflow: Arc<AtomicBool>,
+    pub watcher_window_start: Option<Instant>,
     pub initial_load_done: bool,
-    pub load_cancel: Arc<AtomicBool>,
-    pub loading_total: usize,
     pub is_first_cache_build: bool,
     pub load_spinner_tick: usize,
-    pub backup_tx: Option<mpsc::Sender<crate::backup::worker::BackupJob>>,
+    pub backup_tx: Option<std::sync::mpsc::Sender<crate::backup::worker::BackupJob>>,
     pub git_lock: Arc<Mutex<()>>,
     pub backup_status: Arc<Mutex<Option<String>>>,
-    pub fs_event_rx: Option<mpsc::Receiver<()>>,
     pub config_mtime: Option<std::time::SystemTime>,
     pub goals_progress: crate::goals::DailyProgress,
     pub draw_preview: Option<(String, crate::draw::state::DrawData)>,
@@ -379,6 +393,7 @@ pub struct App {
     pub image_decode_rx: Option<
         std::sync::mpsc::Receiver<anyhow::Result<crate::image_render::worker::DecodedImage>>,
     >,
+    pub notes_worker_pool: Arc<rayon::ThreadPool>,
 }
 
 const PREVIEW_INNER_PAD: u16 = 4;
@@ -402,6 +417,24 @@ impl App {
     pub fn desired_editor_preview_width(&self) -> u16 {
         preview_render_cols(self.editor.last_preview_pane_width, self.preview_wrap)
     }
+    pub fn rebuild_note_index(&mut self) {
+        let now = crate::ui::now_unix_secs();
+        let index = crate::note_index::NoteIndex::build(
+            self.notes_revision,
+            &self.notes,
+            &self.catalog_folders,
+            &self.config.list.custom_smart_folders,
+            now,
+        );
+        let preview_cat = crate::app::folder_preview::FolderPreviewCatalog::build(
+            self.notes_revision,
+            &self.notes,
+            &self.catalog_folders,
+            &index,
+        );
+        self.note_index = Some(index);
+        self.folder_preview_catalog = Some(preview_cat);
+    }
     pub fn desired_list_preview_height(&self) -> u16 {
         self.list.last_preview_pane_height
     }
@@ -410,8 +443,20 @@ impl App {
         self.editor.last_preview_pane_height
     }
 
+fn build_notes_worker_pool() -> anyhow::Result<Arc<rayon::ThreadPool>> {
+    let threads = std::thread::available_parallelism()
+        .map(|n| n.get().saturating_sub(1).max(1))
+        .unwrap_or(1);
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(threads)
+        .thread_name(|i| format!("notes-worker-{i}"))
+        .build()?;
+    Ok(Arc::new(pool))
+}
+
     pub fn new(storage: Storage) -> Result<Self> {
         let bootstrap_config = crate::config::ClinConfig::load().unwrap_or_default();
+        let notes_worker_pool = Self::build_notes_worker_pool()?;
         let config_errors = bootstrap_config.validate();
         let keybinds = storage.load_keybinds_with_preset(bootstrap_config.core.keybind_preset);
         let app_theme = crate::app_theme::AppThemeColors::from_config(&bootstrap_config.ui);
@@ -457,11 +502,58 @@ impl App {
         let config_mtime =
             config_path.and_then(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok());
 
+        let (cmd_tx, cmd_rx) = std::sync::mpsc::sync_channel(32);
+        let (evt_tx, evt_rx) = std::sync::mpsc::sync_channel(4);
+        let catalog_generation = Arc::new(AtomicU64::new(1));
+
+        let load = crate::app::catalog::load_notes_blocking(
+            &storage,
+            &notes_worker_pool,
+            bootstrap_config.list.show_hidden_files,
+            bootstrap_config.list.show_all_files,
+        )?;
+
+        let vault_id = crate::local_state::vault_identity_path(&storage.data_dir)?;
+        let digest = crate::paths::vault_cache_digest(&vault_id);
+        let app_paths = crate::paths::AppPaths::discover(crate::config::ClinConfig::config_path().unwrap_or_default())?;
+        let scoped_cache_path = app_paths.scoped_summary_cache_path(&digest);
+        let legacy_cache_path = app_paths.summary_cache_path();
+
+        let notes = load.summaries;
+        let initial_complete = load.complete;
+        let catalog_folders = load.folders;
+        let note_stamps: HashMap<String, crate::storage::FileStamp> = load.map.iter().map(|(k, (s, _))| (k.clone(), *s)).collect();
+
+        crate::app::catalog::spawn_catalog_worker(
+            storage.clone(),
+            notes_worker_pool.clone(),
+            scoped_cache_path,
+            legacy_cache_path,
+            digest,
+            bootstrap_config.list.show_hidden_files,
+            bootstrap_config.list.show_all_files,
+            load.map,
+            catalog_folders.clone(),
+            initial_complete,
+            catalog_generation.clone(),
+            cmd_rx,
+            evt_tx,
+        );
+
+        if !initial_complete {
+            let _ = cmd_tx.try_send(crate::app::catalog::CatalogCommand::Reconcile {
+                generation: 1,
+                show_hidden: bootstrap_config.list.show_hidden_files,
+                show_all: bootstrap_config.list.show_all_files,
+            });
+        }
+
         let mut app = Self {
-            storage,
+            storage: storage.clone(),
+            notes_worker_pool: notes_worker_pool.clone(),
             keybinds,
             seq_matcher: crate::keybinds::KeyMatcher::new(),
-            notes: Vec::new(),
+            notes,
             editor,
             list,
             mode: ViewMode::List,
@@ -499,20 +591,34 @@ impl App {
             app_theme,
             canvas_state: None,
             config: bootstrap_config,
-            summary_cache: HashMap::new(),
-            summary_mtime: HashMap::new(),
+            catalog_cmd_tx: cmd_tx,
+            catalog_event_rx: evt_rx,
+            catalog_generation,
+            catalog_folders,
+            catalog_status: None,
+            search_status: None,
+            search_worker: crate::app::search_worker::SearchWorker::spawn(storage.clone(), notes_worker_pool.clone()),
+            search_debounce_deadline: None,
+            search_query_generation: Arc::new(AtomicU64::new(1)),
+            unsent_search_request: None,
+            note_index: None,
+            folder_preview_service: crate::app::folder_preview::FolderPreviewService::spawn(notes_worker_pool.clone()),
+            folder_preview_catalog: None,
+            folder_preview_model: None,
+            notes_revision: 0,
+            note_stamps,
             notes_with_subnotes: std::collections::HashSet::new(),
             subnotes_view_cache: Vec::new(),
             subnotes_view_cache_sig: 0,
-            initial_load_done: true,
-            load_cancel: Arc::new(AtomicBool::new(false)),
-            loading_total: 0,
+            initial_load_done: initial_complete,
             is_first_cache_build: false,
             load_spinner_tick: 0,
             backup_tx: None,
             git_lock: Arc::new(Mutex::new(())),
             backup_status: Arc::new(Mutex::new(None)),
             fs_event_rx: None,
+            fs_overflow: Arc::new(AtomicBool::new(false)),
+            watcher_window_start: None,
             config_mtime,
             goals_progress: crate::goals::DailyProgress::default(),
             draw_preview: None,
@@ -528,14 +634,8 @@ impl App {
             image_decode_rx: None,
         };
         app.goals_progress = app.load_goals_progress();
-        let persisted = app.load_persisted_summary_cache();
-        for (id, (mt, summary)) in persisted {
-            app.summary_cache.insert(id.clone(), summary);
-            app.summary_mtime.insert(id, mt);
-        }
         app.list.folder_expanded.insert(String::new());
 
-        // Load expanded folders from state.json per vault
         if let Ok(vault_id) = crate::local_state::vault_identity_path(&app.storage.data_dir) {
             let vault_key = vault_id.to_string_lossy().into_owned();
             if let Ok(paths) = crate::paths::AppPaths::discover(
@@ -564,7 +664,8 @@ impl App {
         }
 
         app.list.pending_preview_update = true;
-        app.refresh_notes()?;
+        app.sort_notes();
+        app.refresh_visual_list();
         if app
             .list
             .sections
@@ -578,6 +679,7 @@ impl App {
     pub fn new_deferred(storage: Storage) -> Result<Self> {
         let bootstrap_config = crate::config::ClinConfig::load().unwrap_or_default();
         let config_errors = bootstrap_config.validate();
+        let notes_worker_pool = Self::build_notes_worker_pool()?;
         let keybinds = storage.load_keybinds_with_preset(bootstrap_config.core.keybind_preset);
         let app_theme = crate::app_theme::AppThemeColors::from_config(&bootstrap_config.ui);
 
@@ -621,15 +723,61 @@ impl App {
         let config_mtime =
             config_path.and_then(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok());
 
+        let (cmd_tx, cmd_rx) = std::sync::mpsc::sync_channel(32);
+        let (evt_tx, evt_rx) = std::sync::mpsc::sync_channel(4);
+        let catalog_generation = Arc::new(AtomicU64::new(1));
+
+        let vault_id = crate::local_state::vault_identity_path(&storage.data_dir)?;
+        let digest = crate::paths::vault_cache_digest(&vault_id);
+        let app_paths = crate::paths::AppPaths::discover(crate::config::ClinConfig::config_path().unwrap_or_default())?;
+        let scoped_cache_path = app_paths.scoped_summary_cache_path(&digest);
+        let legacy_cache_path = app_paths.summary_cache_path();
+
+        let (cached_summaries, cached_map, cached_folders) = crate::app::catalog::load_persisted_note_cache(
+            &storage,
+            &scoped_cache_path,
+            &digest,
+            bootstrap_config.list.show_hidden_files,
+            bootstrap_config.list.show_all_files,
+        );
+
+        let initial_complete = false;
+        let notes = cached_summaries;
+        let catalog_folders = cached_folders;
+        let note_stamps: HashMap<String, crate::storage::FileStamp> = cached_map.iter().map(|(k, (s, _))| (k.clone(), *s)).collect();
+
+        crate::app::catalog::spawn_catalog_worker(
+            storage.clone(),
+            notes_worker_pool.clone(),
+            scoped_cache_path,
+            legacy_cache_path,
+            digest,
+            bootstrap_config.list.show_hidden_files,
+            bootstrap_config.list.show_all_files,
+            cached_map,
+            catalog_folders.clone(),
+            initial_complete,
+            catalog_generation.clone(),
+            cmd_rx,
+            evt_tx,
+        );
+
+        let _ = cmd_tx.try_send(crate::app::catalog::CatalogCommand::Reconcile {
+            generation: 1,
+            show_hidden: bootstrap_config.list.show_hidden_files,
+            show_all: bootstrap_config.list.show_all_files,
+        });
+
         let mut app = Self {
-            storage,
+            storage: storage.clone(),
             keybinds,
             seq_matcher: crate::keybinds::KeyMatcher::new(),
-            notes: Vec::new(),
+            notes,
             editor,
             list,
+            notes_worker_pool: notes_worker_pool.clone(),
             mode: ViewMode::List,
-            status: Cow::Borrowed(""),
+            status: Cow::Borrowed("Validating notes…"),
             status_until: None,
             help_page: 0,
             help_tab: HelpTab::Notes,
@@ -663,20 +811,34 @@ impl App {
             app_theme,
             canvas_state: None,
             config: bootstrap_config,
-            summary_cache: HashMap::new(),
-            summary_mtime: HashMap::new(),
+            catalog_cmd_tx: cmd_tx,
+            catalog_event_rx: evt_rx,
+            catalog_generation,
+            catalog_folders,
+            catalog_status: Some("Validating notes…".to_string()),
+            search_status: None,
+            search_worker: crate::app::search_worker::SearchWorker::spawn(storage.clone(), notes_worker_pool.clone()),
+            search_debounce_deadline: None,
+            search_query_generation: Arc::new(AtomicU64::new(1)),
+            unsent_search_request: None,
+            note_index: None,
+            folder_preview_service: crate::app::folder_preview::FolderPreviewService::spawn(notes_worker_pool.clone()),
+            folder_preview_catalog: None,
+            folder_preview_model: None,
+            notes_revision: 0,
+            note_stamps,
             notes_with_subnotes: std::collections::HashSet::new(),
             subnotes_view_cache: Vec::new(),
             subnotes_view_cache_sig: 0,
             initial_load_done: false,
-            load_cancel: Arc::new(AtomicBool::new(false)),
-            loading_total: 0,
             is_first_cache_build: false,
             load_spinner_tick: 0,
             backup_tx: None,
             git_lock: Arc::new(Mutex::new(())),
             backup_status: Arc::new(Mutex::new(None)),
             fs_event_rx: None,
+            fs_overflow: Arc::new(AtomicBool::new(false)),
+            watcher_window_start: None,
             config_mtime,
             goals_progress: crate::goals::DailyProgress::default(),
             draw_preview: None,
@@ -692,16 +854,8 @@ impl App {
             image_decode_rx: None,
         };
         app.goals_progress = app.load_goals_progress();
-        let persisted = app.load_persisted_summary_cache();
-        for (id, (mt, summary)) in persisted {
-            app.summary_cache.insert(id.clone(), summary);
-            app.summary_mtime.insert(id, mt);
-        }
-        let cache_path = Storage::persisted_summary_cache_path()?;
-        app.is_first_cache_build = !cache_path.exists();
         app.list.folder_expanded.insert(String::new());
 
-        // Load expanded folders from state.json per vault
         if let Ok(vault_id) = crate::local_state::vault_identity_path(&app.storage.data_dir) {
             let vault_key = vault_id.to_string_lossy().into_owned();
             if let Ok(paths) = crate::paths::AppPaths::discover(
@@ -735,6 +889,8 @@ impl App {
             app.config.accent_hint_migrated = false;
             let _ = app.config.save();
         }
+        app.sort_notes();
+        app.refresh_visual_list();
         Ok(app)
     }
     pub fn reload_config(&mut self) {
@@ -748,7 +904,6 @@ impl App {
         self.preview_wrap = self.config.core.preview_wrap;
         self.app_theme = crate::app_theme::AppThemeColors::from_config(&self.config.ui);
         self.list.pinned_folders = self.config.list.pinned_folders.iter().cloned().collect();
-        self.build_display_lines();
     }
 
     pub fn check_and_reload_config(&mut self) {
@@ -784,374 +939,338 @@ impl App {
             || Self::is_subnotes_parent_grid_path(path)
     }
 
-    /// Rebuild cached display lines from the current visual_list.
-    /// Mirrors the formatting logic from draw_list_view so per-frame work is O(1).
-    fn build_display_lines(&mut self) {
-        let mut items = Vec::with_capacity(self.list.visual_list.len());
-        let visual = &self.list.visual_list.clone();
-        for (vi, item) in visual.iter().enumerate() {
-            match item {
-                VisualItem::Folder {
-                    path,
-                    name,
-                    depth,
-                    is_expanded,
-                    note_count,
-                    recursive_count,
-                    stale,
-                    is_pinned,
-                    ..
-                } => {
-                    let indent = "  ".repeat(*depth);
-                    let is_virtual_pinned = name == crate::app::VIRTUAL_PINNED_LABEL;
-                    let icon = if self.config.ui.icon_mode == crate::config::IconMode::None {
-                        String::new()
-                    } else if is_virtual_pinned {
-                        if *is_expanded {
-                            format!(
-                                "{} {}",
-                                crate::ui::get_icon(
-                                    "\u{f078}",
-                                    "\u{25bc}",
-                                    self.config.ui.icon_mode
-                                ),
-                                crate::ui::get_icon(
-                                    "\u{f08d}",
-                                    "\u{1f4cc}",
-                                    self.config.ui.icon_mode
-                                )
-                            )
-                        } else {
-                            format!(
-                                "{} {}",
-                                crate::ui::get_icon(
-                                    "\u{f054}",
-                                    "\u{25b6}",
-                                    self.config.ui.icon_mode
-                                ),
-                                crate::ui::get_icon(
-                                    "\u{f08d}",
-                                    "\u{1f4cc}",
-                                    self.config.ui.icon_mode
-                                )
-                            )
-                        }
+    pub fn format_visual_item(&self, vi: usize) -> ListItem<'static> {
+        let Some(item) = self.list.visual_list.get(vi) else {
+            return ListItem::new(Vec::<Line<'static>>::new());
+        };
+        match item {
+            VisualItem::Folder {
+                path,
+                name,
+                depth,
+                is_expanded,
+                note_count,
+                recursive_count,
+                stale,
+                is_pinned,
+                ..
+            } => {
+                let indent = "  ".repeat(*depth);
+                let is_virtual_pinned = name == crate::app::VIRTUAL_PINNED_LABEL;
+                let icon = if self.config.ui.icon_mode == crate::config::IconMode::None {
+                    String::new()
+                } else if is_virtual_pinned {
+                    if *is_expanded {
+                        format!(
+                            "{} {}",
+                            crate::ui::get_icon("\u{f078}", "\u{25bc}", self.config.ui.icon_mode),
+                            crate::ui::get_icon("\u{f08d}", "\u{1f4cc}", self.config.ui.icon_mode)
+                        )
                     } else {
-                        let folder_glyph = if *path == crate::app::VIRTUAL_SUBNOTES_PATH {
-                            crate::ui::get_icon("\u{f02c}", "\u{1f3f7}", self.config.ui.icon_mode)
-                        } else {
-                            crate::ui::get_icon("\u{f114}", "\u{1f4c2}", self.config.ui.icon_mode)
-                        };
-                        if *is_expanded {
-                            format!(
-                                "{} {}",
-                                crate::ui::get_icon(
-                                    "\u{f078}",
-                                    "\u{25bc}",
-                                    self.config.ui.icon_mode
-                                ),
-                                folder_glyph
-                            )
-                        } else {
-                            format!(
-                                "{} {}",
-                                crate::ui::get_icon(
-                                    "\u{f054}",
-                                    "\u{25b6}",
-                                    self.config.ui.icon_mode
-                                ),
-                                folder_glyph
-                            )
-                        }
-                    };
-                    let color = if *is_pinned {
-                        self.app_theme.heading
-                    } else if *stale {
-                        self.app_theme.muted
-                    } else {
-                        self.app_theme.folder
-                    };
-                    let count_str = if *recursive_count > *note_count {
-                        format!("{} + {}", note_count, recursive_count - note_count)
-                    } else {
-                        format!("{}", note_count)
-                    };
-                    let count_suffix = if self.list.inline_info {
-                        format!(" ({count_str})")
-                    } else {
-                        String::new()
-                    };
-                    let sanitized_name = crate::sanitize::sanitize_for_terminal(name);
-                    let mut display_name = sanitized_name.into_owned();
-                    if *is_pinned {
-                        let pin_icon =
-                            crate::ui::get_icon("\u{f08d}", "\u{1f4cc}", self.config.ui.icon_mode);
-                        if !pin_icon.is_empty() {
-                            display_name = format!("{pin_icon} {display_name}");
-                        }
+                        format!(
+                            "{} {}",
+                            crate::ui::get_icon("\u{f054}", "\u{25b6}", self.config.ui.icon_mode),
+                            crate::ui::get_icon("\u{f08d}", "\u{1f4cc}", self.config.ui.icon_mode)
+                        )
                     }
-                    let text = if icon.is_empty() {
-                        format!("{indent}{display_name}{count_suffix}")
+                } else {
+                    let folder_glyph = if *path == crate::app::VIRTUAL_SUBNOTES_PATH {
+                        crate::ui::get_icon("\u{f02c}", "\u{1f3f7}", self.config.ui.icon_mode)
                     } else {
-                        format!("{indent}{icon} {display_name}{count_suffix}")
+                        crate::ui::get_icon("\u{f114}", "\u{1f4c2}", self.config.ui.icon_mode)
                     };
-                    let mut style = Style::default().add_modifier(Modifier::BOLD).fg(color);
-                    if *stale && !*is_pinned {
-                        style = style.add_modifier(Modifier::DIM);
+                    if *is_expanded {
+                        format!(
+                            "{} {}",
+                            crate::ui::get_icon("\u{f078}", "\u{25bc}", self.config.ui.icon_mode),
+                            folder_glyph
+                        )
+                    } else {
+                        format!(
+                            "{} {}",
+                            crate::ui::get_icon("\u{f054}", "\u{25b6}", self.config.ui.icon_mode),
+                            folder_glyph
+                        )
                     }
-                    if self.list.drag_hover == Some(vi) {
-                        style = style.bg(self.app_theme.highlight_bg);
+                };
+                let color = if *is_pinned {
+                    self.app_theme.heading
+                } else if *stale {
+                    self.app_theme.muted
+                } else {
+                    self.app_theme.folder
+                };
+                let count_str = if *recursive_count > *note_count {
+                    format!("{} + {}", note_count, recursive_count - note_count)
+                } else {
+                    format!("{}", note_count)
+                };
+                let count_suffix = if self.list.inline_info {
+                    format!(" ({count_str})")
+                } else {
+                    String::new()
+                };
+                let sanitized_name = crate::sanitize::sanitize_for_terminal(name);
+                let mut display_name = sanitized_name.into_owned();
+                if *is_pinned {
+                    let pin_icon = crate::ui::get_icon("\u{f08d}", "\u{1f4cc}", self.config.ui.icon_mode);
+                    if !pin_icon.is_empty() {
+                        display_name = format!("{pin_icon} {display_name}");
                     }
-                    let mut lines = vec![Line::from(vec![Span::styled(text, style)])];
-                    if self.list.list_density == crate::config::ListDensity::Comfortable {
-                        lines.push(Line::from(""));
-                    }
-                    items.push(ListItem::new(lines));
                 }
-                VisualItem::Note {
-                    summary_idx,
-                    depth,
-                    is_clin,
-                    is_draw,
-                    is_canvas,
-                    in_virtual_pinned_folder,
-                    ..
-                } => {
-                    let summary = &self.notes[*summary_idx];
-                    let indent = "  ".repeat(*depth);
+                let text = if icon.is_empty() {
+                    format!("{indent}{display_name}{count_suffix}")
+                } else {
+                    format!("{indent}{icon} {display_name}{count_suffix}")
+                };
+                let mut style = Style::default().add_modifier(Modifier::BOLD).fg(color);
+                if *stale && !*is_pinned {
+                    style = style.add_modifier(Modifier::DIM);
+                }
+                if self.list.drag_hover == Some(vi) {
+                    style = style.bg(self.app_theme.highlight_bg);
+                }
+                let mut lines = vec![Line::from(vec![Span::styled(text, style)])];
+                if self.list.list_density == crate::config::ListDensity::Comfortable {
+                    lines.push(Line::from(""));
+                }
+                ListItem::new(lines)
+            }
+            VisualItem::Note {
+                summary_idx,
+                depth,
+                is_clin,
+                is_draw,
+                is_canvas,
+                in_virtual_pinned_folder,
+                ..
+            } => {
+                let summary = &self.notes[*summary_idx];
+                let indent = "  ".repeat(*depth);
 
-                    let when = crate::ui::format_relative_time(summary.updated_at);
-                    let mut text_style = Style::default();
+                let when = crate::ui::format_relative_time(summary.updated_at);
+                let mut text_style = Style::default();
 
-                    let mut spans = Vec::new();
-                    spans.push(Span::raw(indent));
+                let mut spans = Vec::new();
+                spans.push(Span::raw(indent));
 
-                    spans.push(Span::raw("  "));
-                    if summary.pinned {
-                        let icon =
-                            crate::ui::get_icon("\u{f4cc}", "\u{1f4cc}", self.config.ui.icon_mode);
-                        if !icon.is_empty() {
-                            spans.push(Span::styled(
-                                format!("{icon} "),
-                                Style::default()
-                                    .fg(self.app_theme.heading)
-                                    .add_modifier(Modifier::BOLD),
-                            ));
-                        }
+                spans.push(Span::raw("  "));
+                if summary.pinned {
+                    let icon = crate::ui::get_icon("\u{f4cc}", "\u{1f4cc}", self.config.ui.icon_mode);
+                    if !icon.is_empty() {
+                        spans.push(Span::styled(
+                            format!("{icon} "),
+                            Style::default()
+                                .fg(self.app_theme.heading)
+                                .add_modifier(Modifier::BOLD),
+                        ));
+                    }
+                }
+
+                if *is_clin {
+                    text_style = text_style.fg(self.app_theme.muted);
+                    let icon = crate::ui::get_icon("\u{f023}", "\u{1f512}", self.config.ui.icon_mode);
+                    if !icon.is_empty() {
+                        spans.push(Span::styled(
+                            format!("{icon} "),
+                            Style::default()
+                                .fg(self.app_theme.destructive)
+                                .add_modifier(Modifier::BOLD),
+                        ));
+                    }
+                }
+
+                if *is_draw {
+                    let icon = crate::ui::get_icon("\u{f1fc}", "\u{270f}", self.config.ui.icon_mode);
+                    if !icon.is_empty() {
+                        spans.push(Span::styled(
+                            format!("{icon} "),
+                            Style::default()
+                                .fg(self.app_theme.success)
+                                .add_modifier(Modifier::BOLD),
+                        ));
+                    }
+                }
+
+                if *is_canvas {
+                    let icon = crate::ui::get_icon("\u{f005}", "\u{2b50}", self.config.ui.icon_mode);
+                    if !icon.is_empty() {
+                        spans.push(Span::styled(
+                            format!("{icon} "),
+                            Style::default()
+                                .fg(self.app_theme.accent)
+                                .add_modifier(Modifier::BOLD),
+                        ));
+                    }
+                }
+
+                let sanitized_title =
+                    crate::sanitize::sanitize_for_terminal(summary.title.as_str()).into_owned();
+                spans.push(Span::styled(sanitized_title, text_style));
+                if self.list.inline_info {
+                    if self.notes_with_subnotes.contains(&summary.id) {
+                        let sub_icon = match self.config.ui.icon_mode {
+                            crate::config::IconMode::Nerd => " ⧉",
+                            crate::config::IconMode::Unicode => " ⧉",
+                            crate::config::IconMode::None => " +",
+                        };
+                        spans.push(Span::styled(
+                            sub_icon.to_string(),
+                            Style::default().fg(self.app_theme.accent),
+                        ));
                     }
 
-                    if *is_clin {
-                        text_style = text_style.fg(self.app_theme.muted);
-                        let icon =
-                            crate::ui::get_icon("\u{f023}", "\u{1f512}", self.config.ui.icon_mode);
-                        if !icon.is_empty() {
-                            spans.push(Span::styled(
-                                format!("{icon} "),
-                                Style::default()
-                                    .fg(self.app_theme.destructive)
-                                    .add_modifier(Modifier::BOLD),
-                            ));
-                        }
+                    for tag in &summary.tags {
+                        spans.push(Span::raw(" "));
+                        let sanitized_tag = crate::sanitize::sanitize_for_terminal(tag);
+                        spans.push(Span::styled(
+                            format!("[{sanitized_tag}]"),
+                            Style::default().fg(self.app_theme.tag),
+                        ));
                     }
 
-                    if *is_draw {
-                        let icon =
-                            crate::ui::get_icon("\u{f1fc}", "\u{270f}", self.config.ui.icon_mode);
-                        if !icon.is_empty() {
-                            spans.push(Span::styled(
-                                format!("{icon} "),
-                                Style::default()
-                                    .fg(self.app_theme.success)
-                                    .add_modifier(Modifier::BOLD),
-                            ));
-                        }
+                    if *in_virtual_pinned_folder {
+                        let source = if summary.folder.is_empty() {
+                            "Vault".to_string()
+                        } else {
+                            summary.folder.clone()
+                        };
+                        spans.push(Span::styled(
+                            format!(
+                                "  (from {})",
+                                crate::sanitize::sanitize_for_terminal(&source)
+                            ),
+                            Style::default().fg(self.app_theme.muted),
+                        ));
                     }
-
-                    if *is_canvas {
-                        let icon =
-                            crate::ui::get_icon("\u{f005}", "\u{2b50}", self.config.ui.icon_mode);
-                        if !icon.is_empty() {
-                            spans.push(Span::styled(
-                                format!("{icon} "),
-                                Style::default()
-                                    .fg(self.app_theme.accent)
-                                    .add_modifier(Modifier::BOLD),
-                            ));
-                        }
-                    }
-
-                    let sanitized_title =
-                        crate::sanitize::sanitize_for_terminal(summary.title.as_str()).into_owned();
-                    spans.push(Span::styled(sanitized_title, text_style));
-                    if self.list.inline_info {
-                        if self.notes_with_subnotes.contains(&summary.id) {
-                            let sub_icon = match self.config.ui.icon_mode {
-                                crate::config::IconMode::Nerd => " ⧉",
-                                crate::config::IconMode::Unicode => " ⧉",
-                                crate::config::IconMode::None => " +",
-                            };
-                            spans.push(Span::styled(
-                                sub_icon.to_string(),
-                                Style::default().fg(self.app_theme.accent),
-                            ));
-                        }
-
-                        for tag in &summary.tags {
-                            spans.push(Span::raw(" "));
-                            let sanitized_tag = crate::sanitize::sanitize_for_terminal(tag);
-                            spans.push(Span::styled(
-                                format!("[{sanitized_tag}]"),
-                                Style::default().fg(self.app_theme.tag),
-                            ));
-                        }
-
-                        if *in_virtual_pinned_folder {
-                            let source = if summary.folder.is_empty() {
-                                "Vault".to_string()
-                            } else {
-                                summary.folder.clone()
-                            };
-                            spans.push(Span::styled(
-                                format!(
-                                    "  (from {})",
-                                    crate::sanitize::sanitize_for_terminal(&source)
-                                ),
-                                Style::default().fg(self.app_theme.muted),
-                            ));
-                        }
-                        if self.list.show_file_size {
-                            let size = crate::ui::format_size(summary.size_bytes);
-                            spans.push(Span::raw(" "));
-                            spans.push(Span::styled(
-                                format!("[{size}]"),
-                                Style::default().fg(self.app_theme.muted),
-                            ));
-                        }
-
-                        let secs = std::time::UNIX_EPOCH
-                            + std::time::Duration::from_secs(summary.updated_at);
-                        let dt: chrono::DateTime<chrono::Local> = secs.into();
-                        let formatted = dt.format(&self.date_format).to_string();
+                    if self.list.show_file_size {
+                        let size = crate::ui::format_size(summary.size_bytes);
                         spans.push(Span::raw(" "));
                         spans.push(Span::styled(
-                            format!("({formatted})"),
+                            format!("[{size}]"),
                             Style::default().fg(self.app_theme.muted),
                         ));
                     }
 
-                    if vi == self.list.visual_index && !self.list.inline_info {
-                        spans.push(Span::styled(
-                            format!("  ({when})"),
-                            Style::default().fg(self.app_theme.muted),
-                        ));
-                    }
-                    let mut lines = vec![Line::from(spans)];
-                    if self.list.list_density == crate::config::ListDensity::Comfortable {
-                        lines.push(Line::from(""));
-                    }
-                    items.push(ListItem::new(lines));
+                    let secs = std::time::UNIX_EPOCH
+                        + std::time::Duration::from_secs(summary.updated_at);
+                    let dt: chrono::DateTime<chrono::Local> = secs.into();
+                    let formatted = dt.format(&self.date_format).to_string();
+                    spans.push(Span::raw(" "));
+                    spans.push(Span::styled(
+                        format!("({formatted})"),
+                        Style::default().fg(self.app_theme.muted),
+                    ));
                 }
-                VisualItem::CreateNew { depth, .. } => {
-                    let indent = "  ".repeat(*depth);
-                    let icon =
-                        crate::ui::get_icon("\u{f067}", "\u{2795}", self.config.ui.icon_mode);
-                    let text = if icon.is_empty() {
-                        format!("{indent}Create new...")
-                    } else {
-                        format!("{indent} {icon} Create new...")
-                    };
-                    let mut lines = vec![Line::from(vec![Span::styled(
-                        text,
-                        Style::default().fg(self.app_theme.success),
-                    )])];
-                    if self.list.list_density == crate::config::ListDensity::Comfortable {
-                        lines.push(Line::from(""));
-                    }
-                    items.push(ListItem::new(lines));
+
+                if vi == self.list.visual_index && !self.list.inline_info {
+                    spans.push(Span::styled(
+                        format!("  ({when})"),
+                        Style::default().fg(self.app_theme.muted),
+                    ));
                 }
-                VisualItem::SmartFolder {
-                    kind,
-                    label,
-                    depth,
-                    is_expanded,
-                    note_count,
-                } => {
-                    let indent = "  ".repeat(*depth);
-                    let icon_mode = self.config.ui.icon_mode;
-                    let (nerd, unicode) = match kind {
-                        SmartFolderKind::Today => ("\u{f133}", "\u{1f4c5}"),
-                        SmartFolderKind::ThisWeek => ("\u{f073}", "\u{1f5d3}"),
-                        SmartFolderKind::Untagged => ("\u{f187}", "\u{1f4e5}"),
-                        SmartFolderKind::Tag(_) => ("\u{f02c}", "\u{1f3f7}"),
-                        SmartFolderKind::Custom(_) => ("\u{f0e7}", "\u{26a1}"),
-                    };
-
-                    let arrow = if *is_expanded {
-                        crate::ui::get_icon("\u{f078}", "\u{25bc}", icon_mode)
-                    } else {
-                        crate::ui::get_icon("\u{f054}", "\u{25b6}", icon_mode)
-                    };
-
-                    let folder_icon = crate::ui::get_icon(nerd, unicode, icon_mode);
-                    let icon = format!("{arrow} {folder_icon}");
-                    let color = self.app_theme.tag;
-                    let count_str = format!("{}", note_count);
-                    let count_suffix = if self.list.inline_info {
-                        format!(" ({count_str})")
-                    } else {
-                        String::new()
-                    };
-                    let sanitized_name = crate::sanitize::sanitize_for_terminal(label);
-
-                    let text = if icon.is_empty() {
-                        format!("{indent}{sanitized_name}{count_suffix}")
-                    } else {
-                        format!("{indent}{icon} {sanitized_name}{count_suffix}")
-                    };
-
-                    let style = Style::default().add_modifier(Modifier::BOLD).fg(color);
-                    let mut lines = vec![Line::from(vec![Span::styled(text, style)])];
-                    if self.list.list_density == crate::config::ListDensity::Comfortable {
-                        lines.push(Line::from(""));
-                    }
-                    items.push(ListItem::new(lines));
+                let mut lines = vec![Line::from(spans)];
+                if self.list.list_density == crate::config::ListDensity::Comfortable {
+                    lines.push(Line::from(""));
                 }
-                VisualItem::Subnote {
-                    parent_id,
-                    subnote_idx,
-                    depth,
-                } => {
-                    let indent = "  ".repeat(*depth);
-                    let icon =
-                        crate::ui::get_icon("\u{f02c}", "\u{1f3f7}", self.config.ui.icon_mode);
-                    // Look up the subnote title from the cache.
-                    let title = self
-                        .subnotes_view_cache
-                        .iter()
-                        .find_map(|(p, subs)| {
-                            if p == parent_id {
-                                subs.get(*subnote_idx).map(|s| s.title.clone())
-                            } else {
-                                None
-                            }
-                        })
-                        .unwrap_or_else(|| format!("subnote {}", subnote_idx + 1));
-                    let sanitized = crate::sanitize::sanitize_for_terminal(&title);
-                    let text = if icon.is_empty() {
-                        format!("{indent}{}", sanitized.into_owned())
-                    } else {
-                        format!("{indent}{icon} {}", sanitized.into_owned())
-                    };
-                    let style = Style::default().fg(self.app_theme.tag);
-                    let mut lines = vec![Line::from(vec![Span::styled(text, style)])];
-                    if self.list.list_density == crate::config::ListDensity::Comfortable {
-                        lines.push(Line::from(""));
-                    }
-                    items.push(ListItem::new(lines));
+                ListItem::new(lines)
+            }
+            VisualItem::CreateNew { depth, .. } => {
+                let indent = "  ".repeat(*depth);
+                let icon = crate::ui::get_icon("\u{f067}", "\u{2795}", self.config.ui.icon_mode);
+                let text = if icon.is_empty() {
+                    format!("{indent}Create new...")
+                } else {
+                    format!("{indent} {icon} Create new...")
+                };
+                let mut lines = vec![Line::from(vec![Span::styled(
+                    text,
+                    Style::default().fg(self.app_theme.success),
+                )])];
+                if self.list.list_density == crate::config::ListDensity::Comfortable {
+                    lines.push(Line::from(""));
                 }
+                ListItem::new(lines)
+            }
+            VisualItem::SmartFolder {
+                kind,
+                label,
+                depth,
+                is_expanded,
+                note_count,
+            } => {
+                let indent = "  ".repeat(*depth);
+                let icon_mode = self.config.ui.icon_mode;
+                let (nerd, unicode) = match kind {
+                    SmartFolderKind::Today => ("\u{f133}", "\u{1f4c5}"),
+                    SmartFolderKind::ThisWeek => ("\u{f073}", "\u{1f5d3}"),
+                    SmartFolderKind::Untagged => ("\u{f187}", "\u{1f4e5}"),
+                    SmartFolderKind::Tag(_) => ("\u{f02c}", "\u{1f3f7}"),
+                    SmartFolderKind::Custom(_) => ("\u{f0e7}", "\u{26a1}"),
+                };
+
+                let arrow = if *is_expanded {
+                    crate::ui::get_icon("\u{f078}", "\u{25bc}", icon_mode)
+                } else {
+                    crate::ui::get_icon("\u{f054}", "\u{25b6}", icon_mode)
+                };
+
+                let folder_icon = crate::ui::get_icon(nerd, unicode, icon_mode);
+                let icon = format!("{arrow} {folder_icon}");
+                let color = self.app_theme.tag;
+                let count_str = format!("{}", note_count);
+                let count_suffix = if self.list.inline_info {
+                    format!(" ({count_str})")
+                } else {
+                    String::new()
+                };
+                let sanitized_name = crate::sanitize::sanitize_for_terminal(label);
+
+                let text = if icon.is_empty() {
+                    format!("{indent}{sanitized_name}{count_suffix}")
+                } else {
+                    format!("{indent}{icon} {sanitized_name}{count_suffix}")
+                };
+
+                let style = Style::default().add_modifier(Modifier::BOLD).fg(color);
+                let mut lines = vec![Line::from(vec![Span::styled(text, style)])];
+                if self.list.list_density == crate::config::ListDensity::Comfortable {
+                    lines.push(Line::from(""));
+                }
+                ListItem::new(lines)
+            }
+            VisualItem::Subnote {
+                parent_id,
+                subnote_idx,
+                depth,
+            } => {
+                let indent = "  ".repeat(*depth);
+                let icon = crate::ui::get_icon("\u{f02c}", "\u{1f3f7}", self.config.ui.icon_mode);
+                let title = self
+                    .subnotes_view_cache
+                    .iter()
+                    .find_map(|(p, subs)| {
+                        if p == parent_id {
+                            subs.get(*subnote_idx).map(|s| s.title.clone())
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap_or_else(|| format!("subnote {}", subnote_idx + 1));
+                let sanitized = crate::sanitize::sanitize_for_terminal(&title);
+                let text = if icon.is_empty() {
+                    format!("{indent}{}", sanitized.into_owned())
+                } else {
+                    format!("{indent}{icon} {}", sanitized.into_owned())
+                };
+                let style = Style::default().fg(self.app_theme.tag);
+                let mut lines = vec![Line::from(vec![Span::styled(text, style)])];
+                if self.list.list_density == crate::config::ListDensity::Comfortable {
+                    lines.push(Line::from(""));
+                }
+                ListItem::new(lines)
             }
         }
-        self.list.display_items = items;
     }
 
     /// Suspend the TUI, run `command` (split on whitespace) with `extra_args`
@@ -1516,7 +1635,6 @@ impl App {
     pub fn reload_theme(&mut self) {
         let config = crate::config::ClinConfig::load().unwrap_or_default();
         self.app_theme = crate::app_theme::AppThemeColors::from_config(&config.ui);
-        self.build_display_lines();
         if self.mode == ViewMode::Help {
             self.list.help_text_cache = None;
         }
@@ -1526,7 +1644,6 @@ impl App {
     /// Used for live preview where config was mutated but not yet saved.
     pub fn refresh_theme_from_config(&mut self) {
         self.app_theme = crate::app_theme::AppThemeColors::from_config(&self.config.ui);
-        self.build_display_lines();
         if self.mode == ViewMode::Help {
             self.list.help_text_cache = None;
         }
@@ -2160,12 +2277,12 @@ word_goal = 1200
         let mut app = App::new(storage).expect("value is present");
 
         // Mock folder cache
-        app.list.folder_cache = Some(vec![
+        app.catalog_folders = vec![
             "a".to_string(),
             "a/b".to_string(),
             "a/b/c".to_string(),
             "other".to_string(),
-        ]);
+        ];
 
         // 1. Test expand_all_folders
         app.expand_all_folders();
@@ -2269,11 +2386,11 @@ word_goal = 1200
         // Re-create App, should expand up to depth 2 (since no remembered expanded_folders)
         let mut app2 = App::new(storage).expect("value is present");
         // Mock folder cache
-        app2.list.folder_cache = Some(vec![
+        app2.catalog_folders = vec![
             "a".to_string(),
             "a/b".to_string(),
             "a/b/c".to_string(),
-        ]);
+        ];
         app2.list.folder_expanded.clear();
         app2.expand_folders_to_depth(3);
         assert!(app2.list.folder_expanded.contains("a"));

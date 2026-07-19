@@ -23,7 +23,7 @@ pub fn draw_calendar(
     frame: &mut Frame,
     rect: Rect,
     theme: &AppThemeColors,
-    notes: &[NoteSummary],
+    activity_by_day: &std::collections::HashMap<chrono::NaiveDate, usize>,
     bottom_border: bool,
     week_start: crate::config::WeekStart,
     strip_rect: Rect,
@@ -50,15 +50,6 @@ pub fn draw_calendar(
     let last_col_start = today - chrono::Duration::days(shift);
     let first_col_start = last_col_start - chrono::Duration::days(7 * (weeks as i64 - 1));
 
-    // Aggregate counts per date within the window.
-    let mut counts: HashMap<chrono::NaiveDate, usize> = HashMap::new();
-    for n in notes {
-        let dt = crate::ui::unix_ts_to_local(n.updated_at);
-        let d = dt.date_naive();
-        if d >= first_col_start && d <= today {
-            *counts.entry(d).or_insert(0) += 1;
-        }
-    }
 
     let mut lines: Vec<Line> = Vec::with_capacity(8);
 
@@ -94,7 +85,7 @@ pub fn draw_calendar(
         ));
         for col_i in 0..weeks as usize {
             let date = first_col_start + chrono::Duration::days((7 * col_i + row_i) as i64);
-            let count = counts.get(&date).copied().unwrap_or(0);
+            let count = activity_by_day.get(&date).copied().unwrap_or(0);
             let (ch, style) = if date == today {
                 (
                     '\u{2588}', // █

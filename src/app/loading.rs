@@ -12,140 +12,6 @@ struct SmartFolderData {
     matches: Vec<usize>,
 }
 impl App {
-    /// Spawns a background thread that streams note summaries in batches.
-    /// Caller must drain the receiver in the main loop via merge_loaded.
-    pub fn start_background_load(
-        &self,
-        summary_cache: HashMap<String, NoteSummary>,
-        summary_mtime: HashMap<String, u64>,
-    ) -> mpsc::Receiver<LoadBatch> {
-        let (tx, rx) = mpsc::channel();
-        let storage = self.storage.clone();
-        let show_hidden = self.list.show_hidden_files;
-        let show_all = self.list.show_all_files;
-        let cancel = Arc::clone(&self.load_cancel);
-        std::thread::spawn(move || {
-            let ids = match storage.list_note_ids(show_hidden, show_all) {
-                Ok(ids) => ids,
-                Err(_) => {
-                    let _ = tx.send(LoadBatch::Done(0));
-                    return;
-                }
-            };
-            let total = ids.len();
-            if tx.send(LoadBatch::Started(total)).is_err() {
-                return;
-            }
-
-            // Reset cancel flag at start of new load
-            cancel.store(false, Ordering::Release);
-
-            let mut loaded = 0usize;
-            let mut batch: Vec<(String, NoteSummary, u64)> = Vec::new();
-            let batch_size = 250usize;
-
-            for id in &ids {
-                if cancel.load(Ordering::Acquire) {
-                    let _ = tx.send(LoadBatch::Done(loaded));
-                    return;
-                }
-                // Fast path: check mtime against persisted cache
-                if let Some(&mt_cached) = summary_mtime.get(id)
-                    && let Some(s_cached) = summary_cache.get(id)
-                {
-                    let mt_current = storage.note_mtime_millis(id);
-                    if mt_current == mt_cached {
-                        batch.push((id.clone(), s_cached.clone(), mt_current));
-                        loaded += 1;
-                        if batch.len() >= batch_size || loaded == total {
-                            let to_send = std::mem::take(&mut batch);
-                            if tx.send(LoadBatch::Items(to_send)).is_err() {
-                                return;
-                            }
-                        }
-                        continue;
-                    }
-                }
-                // Slow path: read note from disk
-                let mt = storage.note_mtime_millis(id);
-                if let Ok(summary) = storage.load_note_summary(id) {
-                    batch.push((id.clone(), summary, mt));
-                    loaded += 1;
-                    if batch.len() >= batch_size || loaded == total {
-                        let to_send = std::mem::take(&mut batch);
-                        if tx.send(LoadBatch::Items(to_send)).is_err() {
-                            return;
-                        }
-                    }
-                }
-            }
-            if !batch.is_empty() {
-                let _ = tx.send(LoadBatch::Items(batch));
-            }
-            let _ = tx.send(LoadBatch::Done(loaded));
-        });
-
-        rx
-    }
-
-    /// Merge a batch from the background loader into the app state.
-    /// Returns `true` if the UI should redraw.
-    pub fn merge_loaded(&mut self, batch: LoadBatch) -> bool {
-        match batch {
-            LoadBatch::Started(total) => {
-                self.loading_total = total;
-                self.status = if self.is_first_cache_build {
-                    Cow::Owned(format!("First time caching please wait\u{2026} 0/{total}"))
-                } else {
-                    Cow::Owned(format!("Loading notes\u{2026} 0/{total}"))
-                };
-                true
-            }
-            LoadBatch::Items(items) => {
-                for (id, summary, mtime) in items {
-                    self.summary_cache.insert(id.clone(), summary.clone());
-                    self.summary_mtime.entry(id.clone()).or_insert(mtime);
-                    self.notes.push(summary);
-                }
-                self.sort_notes();
-                self.load_spinner_tick = self.load_spinner_tick.wrapping_add(1);
-                let total = self.loading_total.max(self.notes.len());
-                self.status = if self.is_first_cache_build {
-                    Cow::Owned(format!(
-                        "First time caching please wait\u{2026} {}/{}",
-                        self.notes.len(),
-                        total
-                    ))
-                } else {
-                    Cow::Owned(format!(
-                        "Loading notes\u{2026} {}/{}",
-                        self.notes.len(),
-                        total
-                    ))
-                };
-                true
-            }
-            LoadBatch::Done(_) => {
-                self.initial_load_done = true;
-                self.save_persisted_summary_cache();
-                self.refresh_visual_list();
-                self.is_first_cache_build = false;
-                self.load_spinner_tick = 0;
-                self.loading_total = 0;
-                self.status = Cow::Borrowed("");
-                // Pre-warm graph preview so the first render doesn't block
-                if self
-                    .list
-                    .sections
-                    .contains(&crate::config::NotesSection::Graf)
-                {
-                    self.ensure_graph_preview();
-                }
-
-                true
-            }
-        }
-    }
 
     pub fn refresh_visual_list(&mut self) {
         let mut visual = Vec::new();
@@ -200,19 +66,7 @@ impl App {
             }
         }
 
-        let all_folders = if let Some(cache) = &self.list.folder_cache {
-            cache
-        } else {
-            let folders = self
-                .storage
-                .list_folders(self.list.show_hidden_files)
-                .unwrap_or_default();
-            self.list.folder_cache = Some(folders);
-            self.list
-                .folder_cache
-                .as_ref()
-                .expect("folder_cache populated above")
-        };
+        let all_folders = &self.catalog_folders;
 
         // Build subfolders map: group each folder by parent path for recursive traversal
         let mut subfolders_map: std::collections::HashMap<&str, Vec<&String>> =
@@ -805,13 +659,11 @@ impl App {
             }
 
             self.list.visual_list = visual;
-            self.build_display_lines();
             self.request_preview_update_immediate();
             return;
         }
 
         self.list.visual_list = visual;
-        self.build_display_lines();
         self.request_preview_update_immediate();
     }
 
@@ -1131,13 +983,7 @@ impl App {
             return (Vec::new(), String::new());
         }
         // Real vault folder (including "" for root).
-        let all_folders = if let Some(cache) = &self.list.folder_cache {
-            cache.clone()
-        } else {
-            self.storage
-                .list_folders(self.list.show_hidden_files)
-                .unwrap_or_default()
-        };
+        let all_folders = &self.catalog_folders;
         let subfolders: Vec<FolderGraphNode> = all_folders
             .iter()
             .filter(|f| {
@@ -1419,16 +1265,7 @@ impl App {
                     return;
                 }
 
-                let all_folders = if let Some(cache) = &self.list.folder_cache {
-                    cache.clone()
-                } else {
-                    let folders = self
-                        .storage
-                        .list_folders(self.list.show_hidden_files)
-                        .unwrap_or_default();
-                    self.list.folder_cache = Some(folders.clone());
-                    folders
-                };
+                let all_folders = self.catalog_folders.clone();
 
                 let mut subfolders = Vec::new();
                 if !is_pinned {
@@ -1649,7 +1486,11 @@ mod tests {
         std::fs::write(docs_dir.join("b.md"), "# B\n\nContent").unwrap();
         std::fs::write(sub_dir.join("c.md"), "# C\n\nContent").unwrap();
 
-        app.refresh_notes().unwrap();
+        let load = crate::app::catalog::load_notes_blocking(&app.storage, &app.notes_worker_pool, false, false).unwrap();
+        app.notes = load.summaries;
+        app.catalog_folders = load.folders;
+        app.sort_notes();
+        app.refresh_visual_list();
 
         // docs/ should have 3 children: 1 subfolder + 2 notes
         let (children, label) = app.folder_graph_children("docs");

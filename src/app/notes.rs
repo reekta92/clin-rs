@@ -10,42 +10,122 @@ use std::borrow::Cow;
 use std::collections::HashSet;
 
 impl App {
-    pub fn refresh_notes(&mut self) -> Result<()> {
-        self.list.folder_cache = None;
-        self.load_cancel.store(true, Ordering::Release);
+    pub fn request_notes_reconcile(&mut self) {
+        let generation_num = self.catalog_generation.fetch_add(1, Ordering::SeqCst) + 1;
+        let cmd = crate::app::catalog::CatalogCommand::Reconcile {
+            generation: generation_num,
+            show_hidden: self.list.show_hidden_files,
+            show_all: self.list.show_all_files,
+        };
+        let _ = self.catalog_cmd_tx.try_send(cmd);
+    }
 
-        let ids = self
-            .storage
-            .list_note_ids(self.list.show_hidden_files, self.list.show_all_files)?;
-        let mut summaries = Vec::new();
+    pub fn send_catalog_paths(&mut self, changes: Vec<crate::app::catalog::PathChange>) {
+        let generation_num = self.catalog_generation.load(Ordering::SeqCst);
+        let cmd = crate::app::catalog::CatalogCommand::Paths {
+            generation: generation_num,
+            changes,
+        };
+        let _ = self.catalog_cmd_tx.try_send(cmd);
+    }
 
-        for id in &ids {
-            let mt = self.storage.note_mtime_millis(id);
-            if self.summary_mtime.get(id) == Some(&mt)
-                && let Some(s) = self.summary_cache.get(id)
-            {
-                summaries.push(s.clone());
-                continue;
+    pub fn handle_catalog_event(&mut self, event: crate::app::catalog::CatalogEvent) {
+        use crate::app::catalog::CatalogEvent;
+        let cur_gen = self.catalog_generation.load(Ordering::SeqCst);
+        match event {
+            CatalogEvent::Started { generation, total } => {
+                if generation == cur_gen {
+                    self.catalog_status = Some(format!("Validating notes… 0/{total}"));
+                    self.set_default_status();
+                }
             }
-            if let Ok(summary) = self.storage.load_note_summary(id) {
-                self.summary_cache.insert(id.clone(), summary.clone());
-                self.summary_mtime.insert(id.clone(), mt);
-                summaries.push(summary);
+            CatalogEvent::Delta {
+                generation,
+                upserts,
+                removed,
+                folders,
+                processed,
+                total,
+            } => {
+                if generation == cur_gen {
+                    self.catalog_status = Some(format!("Validating notes… {processed}/{total}"));
+
+                    let mut data_changed = false;
+                    if let Some(f) = folders {
+                        if self.catalog_folders != f {
+                            self.catalog_folders = f;
+                            data_changed = true;
+                        }
+                    }
+
+                    if !upserts.is_empty() || !removed.is_empty() {
+                        data_changed = true;
+                        let removed_set: HashSet<&str> = removed.iter().map(|s| s.as_str()).collect();
+                        self.notes.retain(|n| !removed_set.contains(n.id.as_str()));
+                        for r in &removed {
+                            self.note_stamps.remove(r);
+                        }
+
+                        let upsert_map: HashMap<String, (NoteSummary, crate::storage::FileStamp)> = upserts
+                            .into_iter()
+                            .map(|(s, st)| (s.id.clone(), (s, st)))
+                            .collect();
+
+                        for (id, (summary, stamp)) in upsert_map {
+                            if let Some(pos) = self.notes.iter().position(|n| n.id == id) {
+                                self.notes[pos] = summary;
+                            } else {
+                                self.notes.push(summary);
+                            }
+                            self.note_stamps.insert(id, stamp);
+                        }
+                    }
+
+                    if data_changed {
+                        self.sort_notes();
+                        self.refresh_visual_list();
+                        self.refresh_subnotes_view_cache();
+                        self.notes_revision += 1;
+                    }
+
+                    self.set_default_status();
+                }
+            }
+            CatalogEvent::Finished {
+                generation,
+                complete,
+                warnings,
+            } => {
+                if generation == cur_gen {
+                    if complete {
+                        self.initial_load_done = true;
+                        self.catalog_status = None;
+                        if self.list.sections.contains(&crate::config::NotesSection::Graf) {
+                            self.ensure_graph_preview();
+                        }
+                        if !warnings.is_empty() {
+                            self.set_temporary_status(&format!("Notes loaded with {} warning(s)", warnings.len()));
+                        } else {
+                            self.set_default_status();
+                        }
+                    } else {
+                        self.initial_load_done = false;
+                        self.catalog_status = Some("Notes validation incomplete; Refresh to retry".to_string());
+                        if let Some(w) = warnings.first() {
+                            self.set_temporary_status(w);
+                        } else {
+                            self.set_default_status();
+                        }
+                    }
+                }
+            }
+            CatalogEvent::Failed { generation, message } => {
+                if generation == cur_gen {
+                    self.catalog_status = Some(format!("Notes validation failed: {message}"));
+                    self.set_default_status();
+                }
             }
         }
-
-        let id_set: HashSet<&String> = ids.iter().collect();
-        self.summary_cache.retain(|k, _| id_set.contains(k));
-        self.summary_mtime.retain(|k, _| id_set.contains(k));
-
-        self.notes = summaries;
-        self.sort_notes();
-        self.refresh_visual_list();
-        self.notes_with_subnotes = self.storage.get_notes_with_subnotes().unwrap_or_default();
-        self.refresh_subnotes_view_cache();
-        self.save_persisted_summary_cache();
-
-        Ok(())
     }
 
     pub fn refresh_subnotes_view_cache(&mut self) {
@@ -58,38 +138,66 @@ impl App {
                 .sum::<usize>();
     }
 
-    /// Update only one note's summary after an in-place edit, reusing the existing
-    /// summary_cache for every other note. Avoids the full per-note stat loop in
-    /// refresh_notes. `prev_id` is the id before the edit; it may differ from `id`
-    /// when the note was renamed because of a title change (save_note renames).
     pub fn refresh_note_single(&mut self, prev_id: Option<&str>, id: &str) {
-        // 1. Handle rename: drop the old id from every view.
-        if let Some(old) = prev_id
-            && old != id
-        {
-            self.summary_cache.remove(old);
-            self.summary_mtime.remove(old);
-            self.notes.retain(|n| n.id != old);
+        if let Some(old) = prev_id {
+            if old != id {
+                self.notes.retain(|n| n.id != old);
+                self.note_stamps.remove(old);
+            }
         }
-        // 2. Reload this one note's summary + mtime, replace in notes.
-        if let Ok(summary) = self.storage.load_note_summary(id) {
-            let mt = self.storage.note_mtime_millis(id);
-            self.summary_cache.insert(id.to_string(), summary.clone());
-            self.summary_mtime.insert(id.to_string(), mt);
-            self.notes.retain(|n| n.id != id);
-            self.notes.push(summary);
+
+        let note_path = self.storage.note_path(id);
+        if let Ok(meta) = std::fs::metadata(&note_path) {
+            let modified_nanos = meta
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_nanos()));
+            let stamp = crate::storage::FileStamp {
+                modified_nanos,
+                len: meta.len(),
+            };
+            let entry = crate::storage::NoteFileEntry { id: id.to_string(), stamp };
+            if let Ok(summary) = self.storage.load_note_summary_from_entry(&entry) {
+                self.notes.retain(|n| n.id != id);
+                self.notes.push(summary.clone());
+                self.note_stamps.insert(id.to_string(), stamp);
+                self.sort_notes();
+                self.notes_revision += 1;
+
+                let generation_num = self.catalog_generation.load(Ordering::SeqCst);
+                let _ = self.catalog_cmd_tx.try_send(crate::app::catalog::CatalogCommand::PutKnown {
+                    generation: generation_num,
+                    summary,
+                    stamp,
+                    old_id: prev_id.map(|s| s.to_string()),
+                });
+            } else {
+                self.notes.retain(|n| n.id != id);
+                self.note_stamps.remove(id);
+                self.sort_notes();
+                self.notes_revision += 1;
+
+                let generation_num = self.catalog_generation.load(Ordering::SeqCst);
+                let _ = self.catalog_cmd_tx.try_send(crate::app::catalog::CatalogCommand::RemoveKnown {
+                    generation: generation_num,
+                    id: id.to_string(),
+                });
+            }
         } else {
-            // Note vanished (e.g. deleted out of band): ensure it is gone.
             self.notes.retain(|n| n.id != id);
-            self.summary_cache.remove(id);
-            self.summary_mtime.remove(id);
+            self.note_stamps.remove(id);
+            self.sort_notes();
+            self.notes_revision += 1;
+
+            let generation_num = self.catalog_generation.load(Ordering::SeqCst);
+            let _ = self.catalog_cmd_tx.try_send(crate::app::catalog::CatalogCommand::RemoveKnown {
+                generation: generation_num,
+                id: id.to_string(),
+            });
         }
-        // 3. Folders are unchanged for a same-folder title rename, so keep
-        //    folder_cache as-is (list_folders rescan is the only other FS cost in
-        //    refresh_visual_list; skipping it is the point).
-        self.sort_notes();
+
         self.refresh_visual_list();
-        self.save_persisted_summary_cache();
+        self.refresh_subnotes_view_cache();
     }
 
     pub(crate) fn sort_notes(&mut self) {
@@ -361,10 +469,7 @@ impl App {
                             } else {
                                 self.enqueue_backup(format!("auto: {}", updated_note.title));
                                 self.set_temporary_status_static("Note saved");
-                                self.list.folder_cache = None;
-                                if let Err(e) = self.refresh_notes() {
-                                    self.set_temporary_status(&format!("Refresh failed: {e}"));
-                                }
+                                self.refresh_note_single(None, note_id);
 
                                 let vault_identity =
                                     crate::local_state::vault_identity_path(&self.storage.data_dir)
@@ -461,9 +566,7 @@ impl App {
             };
             if let Ok(saved_id) = self.storage.save_note(&id, &new_note) {
                 self.enqueue_backup(format!("auto: {}", new_note.title));
-                if let Err(e) = self.refresh_notes() {
-                    self.set_temporary_status(&format!("Refresh failed: {e}"));
-                }
+                self.refresh_note_single(None, &saved_id);
                 self.open_note_in_external_editor(&saved_id, None);
             }
             return;
@@ -505,9 +608,7 @@ impl App {
             };
             if let Ok(saved_id) = self.storage.save_note(&new_id, &new_note) {
                 self.enqueue_backup(format!("auto: {}", new_note.title));
-                if let Err(e) = self.refresh_notes() {
-                    self.set_temporary_status(&format!("Refresh failed: {e}"));
-                }
+                self.refresh_note_single(None, &saved_id);
                 self.open_note_in_external_editor(&saved_id, None);
             }
             return;
@@ -552,9 +653,7 @@ impl App {
             };
             if let Ok(saved_id) = self.storage.save_note(&new_id, &new_note) {
                 self.enqueue_backup(format!("auto: {}", new_note.title));
-                if let Err(e) = self.refresh_notes() {
-                    self.set_temporary_status(&format!("Refresh failed: {e}"));
-                }
+                self.refresh_note_single(None, &saved_id);
                 self.open_note_in_external_editor(&saved_id, None);
             }
             return;
@@ -628,8 +727,8 @@ impl App {
         self.editor.md_preview_renderer = None;
         if let Some(id) = new_id {
             self.refresh_note_single(prev_id, id);
-        } else if let Err(e) = self.refresh_notes() {
-            self.set_temporary_status(&format!("Refresh failed: {e}"));
+        } else {
+            self.request_notes_reconcile();
         }
 
         self.set_default_status();
@@ -971,7 +1070,7 @@ impl App {
                 note.updated_at = now_unix_secs();
                 self.storage.save_note(id, &note)?;
                 self.enqueue_backup(format!("auto: {}", note.title));
-                self.refresh_notes()?;
+                self.refresh_note_single(None, id);
                 self.set_temporary_status_static("Content appended");
             }
         }
@@ -999,9 +1098,7 @@ impl App {
             };
             if let Ok(saved_id) = self.storage.save_note(&new_id, &note) {
                 self.enqueue_backup(format!("auto: {}", note.title));
-                if let Err(e) = self.refresh_notes() {
-                    self.set_temporary_status(&format!("Refresh failed: {e}"));
-                }
+                self.refresh_note_single(None, &saved_id);
                 self.open_note_in_external_editor(&saved_id, None);
             }
             return;
@@ -1054,9 +1151,7 @@ impl App {
             }
             match self.storage.rename_note(&popup.note_id, new_title) {
                 Ok(_) => {
-                    if let Err(e) = self.refresh_notes() {
-                        self.set_temporary_status(&format!("Refresh failed: {e}"));
-                    }
+                    self.request_notes_reconcile();
                     self.set_temporary_status_static("Note renamed");
                 }
                 Err(e) => {

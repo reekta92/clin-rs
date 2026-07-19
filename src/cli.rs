@@ -143,7 +143,7 @@ pub enum ConfigCmd {
 
 #[derive(Subcommand, Debug)]
 pub enum CacheCmd {
-    /// Delete the persisted note-summary cache. It rebuilds next launch.
+    /// Delete the vault's scoped note-summary cache and legacy cache locations. It rebuilds on next launch.
     Reset,
 }
 

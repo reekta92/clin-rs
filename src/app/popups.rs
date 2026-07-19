@@ -412,10 +412,7 @@ template = """
                 .folder_expanded
                 .retain(|p| !p.starts_with(&format!("{path}/")));
         }
-        self.list.folder_cache = None;
-        if let Err(e) = self.refresh_notes() {
-            self.set_temporary_status(&format!("Refresh failed: {e}"));
-        }
+        self.request_notes_reconcile();
         self.clamp_visual_index();
         self.list.selected_indices.clear();
         self.list.list_mode = ListMode::Normal;
@@ -451,9 +448,8 @@ template = """
                 self.list.sort_order = SortOrder::Descending;
             }
         }
-        if let Err(e) = self.refresh_notes() {
-            self.set_temporary_status(&format!("Refresh failed: {e}"));
-        }
+        self.sort_notes();
+        self.refresh_visual_list();
 
         if let Ok(mut config) = crate::config::ClinConfig::load() {
             config.list.default_sort_field = Some(self.list.sort_field);
@@ -530,9 +526,8 @@ template = """
                 }
                 _ => {}
             }
-            if let Err(e) = self.refresh_notes() {
-                self.set_temporary_status(&format!("Refresh failed: {e}"));
-            }
+            self.sort_notes();
+            self.refresh_visual_list();
         }
     }
 
@@ -827,7 +822,7 @@ template = """
         match self.config.save() {
             Ok(()) => {
                 let _ = self.storage.template_manager().create_examples();
-                let _ = self.refresh_notes();
+                self.request_notes_reconcile();
                 self.set_temporary_status_static("Setup complete");
                 self.setup_state = None;
                 self.mode = self

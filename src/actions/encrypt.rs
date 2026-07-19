@@ -48,8 +48,7 @@ impl Action for EncryptNoteAction {
 
         match app.storage.encrypt_note(&note_id) {
             Ok(new_id) => {
-                app.list.folder_cache = None;
-                let _ = app.refresh_notes();
+                app.refresh_note_single(Some(&note_id), &new_id);
                 app.set_temporary_status(&format!("Note encrypted: {new_id}"));
             }
             Err(e) => {

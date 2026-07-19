@@ -380,10 +380,7 @@ impl StatuslineContext<'_> {
                     .into(),
             ),
             "folder_count" => {
-                let count = self
-                    .app
-                    .and_then(|a| a.list.folder_cache.as_ref().map(|f| f.len()))
-                    .unwrap_or(0);
+                let count = self.app.map(|a| a.catalog_folders.len()).unwrap_or(0);
                 Some(count.to_string().into())
             }
             "tag_count" => {

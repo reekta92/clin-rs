@@ -195,23 +195,66 @@ pub enum SearchFocus {
     Results,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SearchLineHit {
+    pub line_number: usize,
+    pub snippet: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SearchNoteHit {
+    pub note_id: std::sync::Arc<str>,
+    pub match_count: usize,
+    pub lines: Vec<SearchLineHit>,
+    pub truncated: bool,
+}
 pub struct SearchPopup {
     pub input: TextArea<'static>,
     pub focus: SearchFocus,
 
-    pub title_results: Vec<String>,
-    pub title_result_indices: Vec<usize>,
+    pub title_result_ids: Vec<std::sync::Arc<str>>,
     pub title_selected: usize,
 
-    pub grep_results: Vec<String>,
-    pub grep_result_indices: Vec<usize>,
-    pub grep_is_header: Vec<bool>,
-    pub grep_expanded: std::collections::HashSet<usize>,
+    pub grep_results: Vec<SearchNoteHit>,
+    pub grep_row_offsets: Vec<usize>,
+    pub grep_expanded: std::collections::HashSet<std::sync::Arc<str>>,
     pub grep_selected: usize,
+    pub globally_truncated: bool,
+    pub read_errors: usize,
+
     pub results_scroll_offset: usize,
     pub original_index: usize,
     pub original_folder_expanded: std::collections::HashSet<String>,
     pub last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
+}
+
+impl SearchPopup {
+    pub fn rebuild_grep_offsets(&mut self) {
+        let mut offsets = Vec::with_capacity(self.grep_results.len());
+        let mut current = 0usize;
+        for hit in &self.grep_results {
+            offsets.push(current);
+            current += 1;
+            if self.grep_expanded.contains(&hit.note_id) {
+                current += hit.lines.len();
+            }
+        }
+        self.grep_row_offsets = offsets;
+    }
+
+    pub fn total_grep_rows(&self) -> usize {
+        let mut count = 0usize;
+        for hit in &self.grep_results {
+            count += 1;
+            if self.grep_expanded.contains(&hit.note_id) {
+                count += hit.lines.len();
+            }
+        }
+        if self.globally_truncated {
+            count += 1;
+        }
+        count
+    }
 }
 
 pub struct SortPopup {

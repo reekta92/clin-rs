@@ -66,16 +66,16 @@ impl App {
     pub fn confirm_delete_selected(&mut self, id: String) {
         match self.storage.trash_note(&id) {
             Ok(()) => {
-                // Drop from in-memory caches without a full filesystem rescan.
-                self.summary_cache.remove(&id);
-                self.summary_mtime.remove(&id);
                 self.notes.retain(|n| n.id != id);
-                self.notes_with_subnotes =
-                    self.storage.get_notes_with_subnotes().unwrap_or_default();
-
+                self.note_stamps.remove(&id);
+                let generation_num = self.catalog_generation.load(Ordering::SeqCst);
+                let _ = self.catalog_cmd_tx.try_send(crate::app::catalog::CatalogCommand::RemoveKnown {
+                    generation: generation_num,
+                    id: id.clone(),
+                });
                 self.sort_notes();
                 self.refresh_visual_list();
-
+                self.notes_revision += 1;
                 self.clamp_visual_index();
                 self.set_temporary_status_static("Note moved to trash");
             }
@@ -88,13 +88,10 @@ impl App {
     pub fn confirm_delete_folder(&mut self, path: String) {
         match self.storage.trash_folder(&path) {
             Ok(()) => {
-                self.list.folder_cache = None;
                 self.list
                     .folder_expanded
                     .retain(|p| p != &path && !p.starts_with(&format!("{path}/")));
-                if let Err(e) = self.refresh_notes() {
-                    self.set_temporary_status(&format!("Refresh failed: {e}"));
-                }
+                self.request_notes_reconcile();
                 self.clamp_visual_index();
                 self.set_temporary_status_static("Folder moved to trash");
             }
@@ -127,10 +124,7 @@ impl App {
                         self.set_temporary_status_static("Note restored");
                     }
                 }
-                self.list.folder_cache = None;
-                if let Err(e) = self.refresh_notes() {
-                    self.set_temporary_status(&format!("Refresh failed: {e}"));
-                }
+                self.request_notes_reconcile();
             }
             Err(e) => {
                 self.set_temporary_status(&format!("Failed to restore: {e}"));

@@ -48,6 +48,24 @@ pub struct NoteSummary {
     pub links: Vec<String>,
     pub size_bytes: u64,
 }
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct FileStamp {
+    pub modified_nanos: Option<u128>,
+    pub len: u64,
+}
+
+pub(crate) struct NoteFileEntry {
+    pub id: String,
+    pub stamp: FileStamp,
+}
+
+pub(crate) struct VaultScan {
+    pub files: Vec<NoteFileEntry>,
+    pub folders: Vec<String>,
+    pub complete: bool,
+    pub warnings: Vec<String>,
+}
+
 
 pub fn extract_wikilinks(content: &str) -> Vec<String> {
     let mut links = Vec::new();
@@ -93,7 +111,7 @@ pub struct Storage {
     pub skip_dir_patterns: Vec<regex::Regex>,
 }
 
-fn split_frontmatter_payload(bytes: &[u8]) -> (Option<frontmatter::Frontmatter>, &[u8]) {
+pub(crate) fn split_frontmatter_payload(bytes: &[u8]) -> (Option<frontmatter::Frontmatter>, &[u8]) {
     if !bytes.starts_with(b"---\n") && !bytes.starts_with(b"---\r\n") {
         return (None, bytes);
     }
@@ -373,11 +391,6 @@ impl Storage {
             .map(|d| d.config_dir().to_path_buf())
     }
 
-    pub(crate) fn persisted_summary_cache_path() -> Result<PathBuf> {
-        let config_path = ClinConfig::config_path()?;
-        let paths = crate::paths::AppPaths::discover(config_path)?;
-        Ok(paths.summary_cache_path())
-    }
 
     pub fn ensure_key(&mut self) -> Result<()> {
         if self.key != [0_u8; 32] {
@@ -825,6 +838,127 @@ impl Storage {
                 }
             }
         }
+    }
+    pub(crate) fn scan_vault(
+        &self,
+        include_hidden: bool,
+        include_all_files: bool,
+    ) -> Result<VaultScan> {
+        let mut files = Vec::new();
+        let mut folders = Vec::new();
+        let mut warnings = Vec::new();
+        let mut complete = true;
+
+        let root_entries = match fs::read_dir(&self.notes_dir) {
+            Ok(e) => e,
+            Err(err) => return Err(anyhow::anyhow!("failed reading notes directory {}: {}", self.notes_dir.display(), err)),
+        };
+        drop(root_entries);
+
+        let mut pending_dirs = vec![(self.notes_dir.clone(), String::new())];
+
+        while let Some((dir_path, _rel_dir)) = pending_dirs.pop() {
+            let entries = match fs::read_dir(&dir_path) {
+                Ok(e) => e,
+                Err(err) => {
+                    complete = false;
+                    warnings.push(format!("Failed to read directory {}: {}", dir_path.display(), err));
+                    continue;
+                }
+            };
+
+            for entry in entries {
+                let entry = match entry {
+                    Ok(e) => e,
+                    Err(err) => {
+                        complete = false;
+                        warnings.push(format!("Failed to read entry in {}: {}", dir_path.display(), err));
+                        continue;
+                    }
+                };
+                let path = entry.path();
+                let file_name = match path.file_name().and_then(|s| s.to_str()) {
+                    Some(name) => name,
+                    None => continue,
+                };
+
+                if !include_hidden && file_name.starts_with('.') {
+                    continue;
+                }
+
+                let rel_path = match path.strip_prefix(&self.notes_dir) {
+                    Ok(r) => match r.to_str() {
+                        Some(s) => s.replace('\\', "/"),
+                        None => continue,
+                    },
+                    Err(_) => continue,
+                };
+
+                if path.is_dir() {
+                    if self.skip_dir_patterns.iter().any(|re| re.is_match(file_name)) {
+                        continue;
+                    }
+                    folders.push(rel_path.clone());
+                    pending_dirs.push((path, rel_path));
+                } else {
+                    let accepted = if include_all_files {
+                        path.is_file()
+                    } else {
+                        path.extension()
+                            .and_then(|e| e.to_str())
+                            .is_some_and(|ext| {
+                                matches!(ext, "clin" | "md" | "txt" | "draw" | "canvas")
+                                    || crate::storage::is_image_ext(ext)
+                            })
+                    };
+
+                    if accepted {
+                        let metadata = match entry.metadata().or_else(|_| fs::metadata(&path)) {
+                            Ok(m) => m,
+                            Err(err) => {
+                                complete = false;
+                                warnings.push(format!("Failed metadata for {}: {}", path.display(), err));
+                                continue;
+                            }
+                        };
+
+                        let modified_nanos = metadata
+                            .modified()
+                            .ok()
+                            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_nanos()));
+
+                        let stamp = FileStamp {
+                            modified_nanos,
+                            len: metadata.len(),
+                        };
+
+                        files.push(NoteFileEntry {
+                            id: rel_path,
+                            stamp,
+                        });
+                    }
+                }
+            }
+        }
+
+        folders.sort();
+        files.sort_by(|a, b| a.id.cmp(&b.id));
+
+        Ok(VaultScan {
+            files,
+            folders,
+            complete,
+            warnings,
+        })
+    }
+
+    pub(crate) fn load_note_summary_from_entry(
+        &self,
+        entry: &NoteFileEntry,
+    ) -> Result<NoteSummary> {
+        let mut summary = self.load_note_summary(&entry.id)?;
+        summary.size_bytes = entry.stamp.len;
+        Ok(summary)
     }
     pub fn load_note_summary(&self, id: &str) -> Result<NoteSummary> {
         let path = self.note_path(id);

@@ -258,39 +258,34 @@ fn handle_search_popup_scrollbar(
     scroll_drag: &mut Option<crate::ui::scrollbar::ScrollDrag>,
     mouse: &MouseEvent,
 ) -> bool {
-    if let Some(meta) = popup.last_scroll
-        && popup.grep_results.len() + popup.title_results.len() > meta.viewport_len
-    {
+    if let Some(meta) = popup.last_scroll {
         let has_grep = !popup.grep_results.is_empty();
-        let max_pos = meta.content_len.saturating_sub(1);
-        // Convert flat selection to visible position for fraction
-        let vis_pos = if has_grep {
-            crate::popups::grep_flat_to_visible(
-                &popup.grep_is_header,
-                &popup.grep_expanded,
-                popup.grep_selected,
-            )
-            .unwrap_or(0)
+        let total_items = if has_grep {
+            popup.total_grep_rows()
         } else {
-            popup.title_selected
+            popup.title_result_ids.len()
         };
-        let frac = vis_pos as f32 / max_pos.max(1) as f32;
-        if let Some(new_frac) =
-            crate::ui::scrollbar::handle_scrollbar_mouse(mouse, meta, frac, scroll_drag)
-        {
-            let new_vis = (new_frac * max_pos as f32).round() as usize;
-            if has_grep {
-                if let Some(flat) = crate::popups::grep_visible_to_flat(
-                    &popup.grep_is_header,
-                    &popup.grep_expanded,
-                    new_vis.min(max_pos),
-                ) {
-                    popup.grep_selected = flat.min(popup.grep_results.len().saturating_sub(1));
-                }
+        if total_items > meta.viewport_len {
+            let max_pos = total_items.saturating_sub(1);
+            let vis_pos = if has_grep {
+                popup.grep_selected
             } else {
-                popup.title_selected = new_vis.min(popup.title_results.len().saturating_sub(1));
+                popup.title_selected
+            };
+            let frac = vis_pos as f32 / max_pos.max(1) as f32;
+            if let Some(new_frac) =
+                crate::ui::scrollbar::handle_scrollbar_mouse(mouse, meta, frac, scroll_drag)
+            {
+                let new_vis = (new_frac * max_pos as f32).round() as usize;
+                if has_grep {
+                    popup.grep_selected = new_vis.min(max_pos);
+                } else {
+                    popup.title_selected = new_vis.min(max_pos);
+                }
+                true
+            } else {
+                false
             }
-            true
         } else {
             false
         }
@@ -736,19 +731,21 @@ impl crate::popups::ActivePopup {
                     .constraints(constraints)
                     .split(popup_area);
                 let results_chunk_idx = if has_filter { 2 } else { 1 };
-                let has_title = !p.title_results.is_empty();
+                let has_title = !p.title_result_ids.is_empty();
                 let has_grep = !p.grep_results.is_empty();
-                // Scroll over results chunk
+                let total_items = if has_grep {
+                    p.total_grep_rows()
+                } else if has_title {
+                    p.title_result_ids.len()
+                } else {
+                    0
+                };
                 if contains_cell(chunks[results_chunk_idx], mouse.column, mouse.row) {
                     match mouse.kind {
                         MouseEventKind::ScrollUp => {
                             p.focus = SearchFocus::Results;
                             if has_grep {
-                                p.grep_selected = crate::popups::grep_prev_visible(
-                                    &p.grep_is_header,
-                                    &p.grep_expanded,
-                                    p.grep_selected,
-                                );
+                                p.grep_selected = p.grep_selected.saturating_sub(1);
                             } else if has_title {
                                 p.title_selected = p.title_selected.saturating_sub(1);
                             }
@@ -758,12 +755,8 @@ impl crate::popups::ActivePopup {
                         MouseEventKind::ScrollDown => {
                             p.focus = SearchFocus::Results;
                             if has_grep {
-                                p.grep_selected = crate::popups::grep_next_visible(
-                                    &p.grep_is_header,
-                                    &p.grep_expanded,
-                                    p.grep_selected,
-                                );
-                            } else if has_title && p.title_selected + 1 < p.title_results.len() {
+                                p.grep_selected = (p.grep_selected + 1).min(total_items.saturating_sub(1));
+                            } else if has_title && p.title_selected + 1 < p.title_result_ids.len() {
                                 p.title_selected += 1;
                             }
                             app.popups.active = Some(Search(p));
@@ -787,40 +780,39 @@ impl crate::popups::ActivePopup {
                         chunks[results_chunk_idx].y + 1,
                         1,
                         p.results_scroll_offset,
-                        p.grep_results.len() + p.title_results.len(),
+                        total_items,
                     ) else {
                         return true;
                     };
                     if has_grep {
-                        if let Some(flat) = crate::popups::grep_visible_to_flat(
-                            &p.grep_is_header,
-                            &p.grep_expanded,
-                            target_vis,
-                        ) {
-                            let already_selected = flat == p.grep_selected;
-                            p.grep_selected = flat;
-                            if already_selected
-                                && mouse.kind == MouseEventKind::Down(MouseButton::Left)
-                            {
-                                let is_header =
-                                    p.grep_is_header.get(flat).copied().unwrap_or(false);
-                                if is_header {
-                                    if p.grep_expanded.contains(&flat) {
-                                        p.grep_expanded.remove(&flat);
+                        let target_vis = target_vis.min(total_items.saturating_sub(1));
+                        let already_selected = target_vis == p.grep_selected;
+                        p.grep_selected = target_vis;
+                        if already_selected && mouse.kind == MouseEventKind::Down(MouseButton::Left) {
+                            let hit_idx = match p.grep_row_offsets.binary_search(&target_vis) {
+                                Ok(i) => i,
+                                Err(i) => i.saturating_sub(1),
+                            };
+                            let base = p.grep_row_offsets.get(hit_idx).copied().unwrap_or(0);
+                            let hit = p.grep_results.get(hit_idx);
+                            if target_vis == base {
+                                if let Some(hit) = hit {
+                                    if p.grep_expanded.contains(&hit.note_id) {
+                                        p.grep_expanded.remove(&hit.note_id);
                                     } else {
-                                        p.grep_expanded.insert(flat);
+                                        p.grep_expanded.insert(hit.note_id.clone());
                                     }
-                                } else {
-                                    open_result = true;
+                                    p.rebuild_grep_offsets();
                                 }
+                            } else {
+                                open_result = true;
                             }
                         }
                     } else if has_title {
-                        let flat = target_vis.min(p.title_results.len().saturating_sub(1));
+                        let flat = target_vis.min(p.title_result_ids.len().saturating_sub(1));
                         let already_selected = flat == p.title_selected;
                         p.title_selected = flat;
-                        if already_selected && mouse.kind == MouseEventKind::Down(MouseButton::Left)
-                        {
+                        if already_selected && mouse.kind == MouseEventKind::Down(MouseButton::Left) {
                             open_result = true;
                         }
                     }

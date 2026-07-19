@@ -1004,7 +1004,7 @@ impl crate::popups::ActivePopup {
                 true
             }
             ActivePopup::Search(mut popup) => {
-                let has_title = !popup.title_results.is_empty();
+                let has_title = !popup.title_result_ids.is_empty();
                 let has_grep = !popup.grep_results.is_empty();
                 let has_results = has_title || has_grep;
 
@@ -1045,17 +1045,27 @@ impl crate::popups::ActivePopup {
                             }
                             app.popups.active = Some(reinsert(popup));
                             app.update_search();
-                        } else if has_grep
-                            && popup
-                                .grep_is_header
-                                .get(popup.grep_selected)
-                                .copied()
-                                .unwrap_or(false)
-                        {
-                            if popup.grep_expanded.contains(&popup.grep_selected) {
-                                popup.grep_expanded.remove(&popup.grep_selected);
+                        } else if has_grep {
+                            let r = popup.grep_selected;
+                            let hit_idx = match popup.grep_row_offsets.binary_search(&r) {
+                                Ok(i) => i,
+                                Err(i) => i.saturating_sub(1),
+                            };
+                            let base = popup.grep_row_offsets.get(hit_idx).copied().unwrap_or(0);
+                            if r == base {
+                                if let Some(hit) = popup.grep_results.get(hit_idx) {
+                                    if popup.grep_expanded.contains(&hit.note_id) {
+                                        popup.grep_expanded.remove(&hit.note_id);
+                                    } else {
+                                        popup.grep_expanded.insert(hit.note_id.clone());
+                                    }
+                                    popup.rebuild_grep_offsets();
+                                }
                             } else {
-                                popup.grep_expanded.insert(popup.grep_selected);
+                                app.popups.active = Some(reinsert(popup));
+                                app.jump_to_selected_result();
+                                app.confirm_search();
+                                return true;
                             }
                             app.popups.active = Some(reinsert(popup));
                         } else if has_results {
@@ -1079,11 +1089,7 @@ impl crate::popups::ActivePopup {
                             app.popups.active = Some(reinsert(popup));
                             app.update_search();
                         } else if has_grep {
-                            popup.grep_selected = crate::popups::grep_prev_visible(
-                                &popup.grep_is_header,
-                                &popup.grep_expanded,
-                                popup.grep_selected,
-                            );
+                            popup.grep_selected = popup.grep_selected.saturating_sub(1);
                             app.popups.active = Some(reinsert(popup));
                         } else if has_title {
                             popup.title_selected = popup.title_selected.saturating_sub(1);
@@ -1102,14 +1108,10 @@ impl crate::popups::ActivePopup {
                             app.popups.active = Some(reinsert(popup));
                             app.update_search();
                         } else if has_grep {
-                            popup.grep_selected = crate::popups::grep_next_visible(
-                                &popup.grep_is_header,
-                                &popup.grep_expanded,
-                                popup.grep_selected,
-                            );
+                            popup.grep_selected = (popup.grep_selected + 1).min(popup.total_grep_rows().saturating_sub(1));
                             app.popups.active = Some(reinsert(popup));
                         } else if has_title {
-                            if popup.title_selected + 1 < popup.title_results.len() {
+                            if popup.title_selected + 1 < popup.title_result_ids.len() {
                                 popup.title_selected += 1;
                             }
                             app.popups.active = Some(reinsert(popup));
@@ -1126,14 +1128,19 @@ impl crate::popups::ActivePopup {
                             }
                             app.popups.active = Some(reinsert(popup));
                             app.update_search();
-                        } else if has_grep
-                            && popup
-                                .grep_is_header
-                                .get(popup.grep_selected)
-                                .copied()
-                                .unwrap_or(false)
-                        {
-                            popup.grep_expanded.insert(popup.grep_selected);
+                        } else if has_grep {
+                            let r = popup.grep_selected;
+                            let hit_idx = match popup.grep_row_offsets.binary_search(&r) {
+                                Ok(i) => i,
+                                Err(i) => i.saturating_sub(1),
+                            };
+                            let base = popup.grep_row_offsets.get(hit_idx).copied().unwrap_or(0);
+                            if r == base {
+                                if let Some(hit) = popup.grep_results.get(hit_idx) {
+                                    popup.grep_expanded.insert(hit.note_id.clone());
+                                    popup.rebuild_grep_offsets();
+                                }
+                            }
                             app.popups.active = Some(reinsert(popup));
                         } else {
                             popup.focus = crate::popups::SearchFocus::Input;
@@ -1159,14 +1166,19 @@ impl crate::popups::ActivePopup {
                             }
                             app.popups.active = Some(reinsert(popup));
                             app.update_search();
-                        } else if has_grep
-                            && popup
-                                .grep_is_header
-                                .get(popup.grep_selected)
-                                .copied()
-                                .unwrap_or(false)
-                        {
-                            popup.grep_expanded.remove(&popup.grep_selected);
+                        } else if has_grep {
+                            let r = popup.grep_selected;
+                            let hit_idx = match popup.grep_row_offsets.binary_search(&r) {
+                                Ok(i) => i,
+                                Err(i) => i.saturating_sub(1),
+                            };
+                            let base = popup.grep_row_offsets.get(hit_idx).copied().unwrap_or(0);
+                            if r == base {
+                                if let Some(hit) = popup.grep_results.get(hit_idx) {
+                                    popup.grep_expanded.remove(&hit.note_id);
+                                    popup.rebuild_grep_offsets();
+                                }
+                            }
                             app.popups.active = Some(reinsert(popup));
                         } else {
                             popup.focus = crate::popups::SearchFocus::Input;

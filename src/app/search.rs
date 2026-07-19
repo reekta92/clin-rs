@@ -1,3 +1,4 @@
+use std::time::{Duration, Instant};
 use super::*;
 use crate::list_view::*;
 use crate::popups::*;
@@ -43,14 +44,14 @@ impl App {
         self.popups.active = Some(crate::popups::ActivePopup::Search(SearchPopup {
             input,
             focus: crate::popups::SearchFocus::Input,
-            title_results: Vec::new(),
-            title_result_indices: Vec::new(),
+            title_result_ids: Vec::new(),
             title_selected: 0,
             grep_results: Vec::new(),
-            grep_result_indices: Vec::new(),
-            grep_is_header: Vec::new(),
+            grep_row_offsets: Vec::new(),
             grep_expanded: std::collections::HashSet::new(),
             grep_selected: 0,
+            globally_truncated: false,
+            read_errors: 0,
             results_scroll_offset: 0,
             original_index: self.list.visual_index,
             original_folder_expanded: self.list.folder_expanded.clone(),
@@ -101,25 +102,23 @@ impl App {
             && parsed.tag_filter.is_none();
         if no_filters {
             if let Some(crate::popups::ActivePopup::Search(popup)) = &mut self.popups.active {
-                popup.title_results.clear();
-                popup.title_result_indices.clear();
+                popup.title_result_ids.clear();
                 popup.title_selected = 0;
                 popup.grep_results.clear();
-                popup.grep_result_indices.clear();
-                popup.grep_is_header.clear();
+                popup.grep_row_offsets.clear();
                 popup.grep_expanded.clear();
                 popup.grep_selected = 0;
+                popup.globally_truncated = false;
+                popup.read_errors = 0;
             }
+            self.search_status = None;
             return;
         }
 
-        let mut title_results = Vec::new();
-        let mut title_result_indices = Vec::new();
-        let mut grep_results = Vec::new();
-        let mut grep_result_indices = Vec::new();
-        let mut grep_is_header = Vec::new();
+        let mut candidate_ids: Vec<Arc<str>> = Vec::new();
+        let mut title_result_ids: Vec<Arc<str>> = Vec::new();
 
-        for (note_idx, note) in self.notes.iter().enumerate() {
+        for note in &self.notes {
             if parsed.pinned_only && !note.pinned {
                 continue;
             }
@@ -149,111 +148,44 @@ impl App {
                 || note.title.to_lowercase().contains(&title_query)
                 || note.id.to_lowercase().contains(&title_query);
 
-            let content_opt = if !grep_query.is_empty() {
-                self.storage.load_note(&note.id).ok()
-            } else {
-                None
-            };
-            let matched_grep = grep_query.is_empty()
-                || content_opt
-                    .as_ref()
-                    .is_some_and(|n| n.content.to_lowercase().contains(&grep_query));
+            let note_id_arc: Arc<str> = Arc::from(note.id.as_str());
 
-            let label = if note.folder.is_empty() {
-                note.title.clone()
-            } else {
-                format!("{}/{}", note.folder, note.title)
-            };
-            let lock_prefix = if note.id.ends_with(".clin") {
-                format!(
-                    "{} ",
-                    crate::ui::get_icon("\u{f023}", "\u{1f512}", self.config.ui.icon_mode)
-                )
-            } else {
-                String::new()
-            };
-            let tags_str = if note.tags.is_empty() {
-                String::new()
-            } else {
-                format!(
-                    " [{}]",
-                    note.tags
-                        .iter()
-                        .map(|t| t.as_str())
-                        .collect::<Vec<_>>()
-                        .join(" ")
-                )
-            };
-
-            if !title_query.is_empty() && matched_title {
-                title_results.push(format!("{lock_prefix}{label}{tags_str}"));
-                title_result_indices.push(note_idx);
+            if matched_title {
+                title_result_ids.push(note_id_arc.clone());
             }
 
-            if !grep_query.is_empty()
-                && matched_grep
-                && matched_title
-                && let Some(note_data) =
-                    content_opt.filter(|n| n.content.to_lowercase().contains(&grep_query))
-            {
-                let match_count = note_data
-                    .content
-                    .lines()
-                    .filter(|l| l.to_lowercase().contains(&grep_query))
-                    .count();
-                grep_results.push(format!(" {lock_prefix}{label}{tags_str} ({match_count})"));
-                grep_result_indices.push(note_idx);
-                grep_is_header.push(true);
-
-                for (line_no, line) in note_data
-                    .content
-                    .lines()
-                    .enumerate()
-                    .filter(|(_, line)| line.to_lowercase().contains(&grep_query))
-                {
-                    let trimmed = line.trim();
-                    let snippet = crate::ui::truncate_with_ellipsis(trimmed, 56);
-                    grep_results.push(format!("  L{}: {}", line_no + 1, snippet));
-                    grep_result_indices.push(note_idx);
-                    grep_is_header.push(false);
-                }
-            }
-
-            if title_query.is_empty()
-                && grep_query.is_empty()
-                && (parsed.folder_filter.is_some()
-                    || parsed.pinned_only
-                    || parsed.tag_filter.is_some())
-            {
-                let tags_str = if note.tags.is_empty() {
-                    String::new()
-                } else {
-                    format!(
-                        "  [{}]",
-                        note.tags
-                            .iter()
-                            .map(|t| t.as_str())
-                            .collect::<Vec<_>>()
-                            .join(" ")
-                    )
-                };
-                title_results.push(format!("{lock_prefix}{label}{tags_str}"));
-                title_result_indices.push(note_idx);
+            if !grep_query.is_empty() && matched_title {
+                candidate_ids.push(note_id_arc);
             }
         }
 
         if let Some(crate::popups::ActivePopup::Search(popup)) = &mut self.popups.active {
-            popup.title_results = title_results;
-            popup.title_result_indices = title_result_indices;
-            if popup.title_selected >= popup.title_results.len() {
-                popup.title_selected = popup.title_results.len().saturating_sub(1);
+            popup.title_result_ids = title_result_ids;
+            if popup.title_selected >= popup.title_result_ids.len() {
+                popup.title_selected = popup.title_result_ids.len().saturating_sub(1);
             }
-            popup.grep_results = grep_results;
-            popup.grep_result_indices = grep_result_indices;
-            popup.grep_is_header = grep_is_header;
-            if popup.grep_selected >= popup.grep_results.len() {
-                popup.grep_selected = popup.grep_results.len().saturating_sub(1);
+        }
+
+        if !grep_query.is_empty() {
+            let gen_num = self.search_query_generation.fetch_add(1, Ordering::SeqCst) + 1;
+            self.search_status = Some("Searching…".to_string());
+            self.search_debounce_deadline = Some(Instant::now() + Duration::from_millis(150));
+            self.unsent_search_request = Some(crate::app::search_worker::SearchRequest {
+                generation: gen_num,
+                query: grep_query,
+                candidate_ids: candidate_ids.into_boxed_slice(),
+            });
+            if let Some(crate::popups::ActivePopup::Search(popup)) = &mut self.popups.active {
+                popup.grep_results.clear();
+                popup.grep_row_offsets.clear();
+                popup.grep_expanded.clear();
+                popup.grep_selected = 0;
+                popup.globally_truncated = false;
+                popup.read_errors = 0;
             }
+            self.search_status = None;
+            self.search_debounce_deadline = None;
+            self.unsent_search_request = None;
         }
     }
 
@@ -264,44 +196,92 @@ impl App {
     pub fn jump_to_selected_result(&mut self) {
         if let Some(crate::popups::ActivePopup::Search(popup)) = &self.popups.active {
             let mut target_line = None;
-            let note_idx = match popup.focus {
-                crate::popups::SearchFocus::Results => {
-                    let has_grep = !popup.grep_results.is_empty();
-                    if has_grep {
-                        let is_header = popup
-                            .grep_is_header
-                            .get(popup.grep_selected)
-                            .copied()
-                            .unwrap_or(false);
-                        if !is_header
-                            && let Some(line_str) = popup.grep_results.get(popup.grep_selected)
-                            && let Some(l_pos) = line_str.as_str().find('L')
-                            && let Some(colon_pos) = line_str.as_str().find(':')
-                            && colon_pos > l_pos + 1
-                            && let Ok(num) = line_str[l_pos + 1..colon_pos].trim().parse::<usize>()
-                        {
-                            target_line = Some(num);
+            let mut target_id = None;
+
+            if popup.focus == crate::popups::SearchFocus::Results {
+                let has_grep = !popup.grep_results.is_empty();
+                if has_grep {
+                    if popup.grep_selected < popup.total_grep_rows() {
+                        let hit_idx = match popup.grep_row_offsets.binary_search(&popup.grep_selected) {
+                            Ok(i) => i,
+                            Err(i) => i.saturating_sub(1),
+                        };
+                        let base = popup.grep_row_offsets.get(hit_idx).copied().unwrap_or(0);
+                        if let Some(hit) = popup.grep_results.get(hit_idx) {
+                            target_id = Some(hit.note_id.to_string());
+                            if popup.grep_selected > base {
+                                let line_idx = popup.grep_selected - base - 1;
+                                if let Some(line_hit) = hit.lines.get(line_idx) {
+                                    target_line = Some(line_hit.line_number);
+                                }
+                            }
                         }
-                        popup.grep_result_indices.get(popup.grep_selected).copied()
-                    } else {
-                        popup
-                            .title_result_indices
-                            .get(popup.title_selected)
-                            .copied()
                     }
+                } else if !popup.title_result_ids.is_empty() {
+                    target_id = popup.title_result_ids.get(popup.title_selected).map(|id| id.to_string());
                 }
-                crate::popups::SearchFocus::Input => None,
-            };
-            if let Some(idx) = note_idx {
-                self.jump_to_note_index(idx);
-                if let Some(note) = self.notes.get(idx) {
-                    let id = note.id.clone();
+            }
+
+            if let Some(id) = target_id {
+                if let Some(idx) = self.notes.iter().position(|n| n.id == id) {
+                    self.jump_to_note_index(idx);
                     self.open_note_at_line(&id, target_line);
                 }
             }
         }
     }
 
+    pub fn handle_search_events(&mut self) {
+        use crate::app::search_worker::SearchEvent;
+        let cur_gen = self.search_query_generation.load(Ordering::SeqCst);
+
+        if let Some(deadline) = self.search_debounce_deadline {
+            if Instant::now() >= deadline {
+                self.search_debounce_deadline = None;
+                if let Some(req) = self.unsent_search_request.take() {
+                    if req.generation == cur_gen {
+                        let _ = self.search_worker.req_tx.try_send(req);
+                    }
+                }
+            }
+        }
+
+        while let Ok(event) = self.search_worker.event_rx.try_recv() {
+            match event {
+                SearchEvent::Batch {
+                    generation,
+                    hits,
+                    finished,
+                    errors,
+                    globally_truncated,
+                } => {
+                    if generation == cur_gen {
+                        if let Some(crate::popups::ActivePopup::Search(popup)) = &mut self.popups.active {
+                            popup.grep_results.extend(hits);
+                            popup.globally_truncated = globally_truncated;
+                            popup.read_errors = errors;
+                            popup.rebuild_grep_offsets();
+                            if popup.grep_selected >= popup.total_grep_rows() {
+                                popup.grep_selected = popup.total_grep_rows().saturating_sub(1);
+                            }
+                        }
+                        if finished {
+                            self.search_status = None;
+                            if errors > 0 {
+                                self.set_temporary_status(&format!("Search completed with {errors} read error(s)"));
+                            }
+                        }
+                    }
+                }
+                SearchEvent::Failed { generation, message } => {
+                    if generation == cur_gen {
+                        self.search_status = None;
+                        self.set_temporary_status(&format!("Search failed: {message}"));
+                    }
+                }
+            }
+        }
+    }
     pub fn cancel_search(&mut self) {
         if let Some(crate::popups::ActivePopup::Search(popup)) = self.popups.active.take() {
             self.list.visual_index = popup.original_index;

@@ -138,7 +138,7 @@ impl Action for OcrPasteAction {
         note.updated_at = crate::ui::now_unix_secs();
 
         app.storage.save_note(note_id, &note)?;
-        app.refresh_notes()?;
+        app.refresh_note_single(None, note_id);
         app.set_temporary_status("OCR text appended successfully");
 
         Ok(())

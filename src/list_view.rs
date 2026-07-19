@@ -114,14 +114,12 @@ pub struct GridTile {
 }
 
 pub struct ListView {
-    pub display_items: Vec<ListItem<'static>>,
     pub visual_list: Vec<VisualItem>,
     pub visual_index: usize,
     pub list_state: ListState,
     pub grid_scroll: usize,
     pub grid_tiles: Vec<GridTile>,
     pub folder_expanded: HashSet<String>,
-    pub folder_cache: Option<Vec<String>>,
     pub preview_enabled: bool,
     pub preview_content: Option<PreviewContent>,
     pub preview_content_index: Option<usize>,
@@ -207,12 +205,10 @@ impl Default for ListView {
         Self {
             visual_list: Vec::new(),
             visual_index: 0,
-            display_items: Vec::new(),
             list_state: ListState::default(),
             grid_scroll: 0,
             grid_tiles: Vec::new(),
             folder_expanded: HashSet::new(),
-            folder_cache: None,
             preview_enabled: false,
             preview_content: None,
             preview_content_index: None,

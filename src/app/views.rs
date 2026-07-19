@@ -140,11 +140,13 @@ impl App {
     }
 
     pub fn close_draw_view(&mut self) {
-        self.editor.editing_id = None;
+        let editing_id = self.editor.editing_id.take();
         self.mode = self.return_mode.take().unwrap_or(ViewMode::List);
 
-        if let Err(e) = self.refresh_notes() {
-            self.set_temporary_status(&format!("Refresh failed: {e}"));
+        if let Some(id) = editing_id {
+            self.refresh_note_single(None, &id);
+        } else {
+            self.request_notes_reconcile();
         }
         self.set_default_status();
     }
@@ -185,11 +187,13 @@ impl App {
     }
 
     pub fn close_canvas_view(&mut self) {
-        self.editor.editing_id = None;
+        let editing_id = self.editor.editing_id.take();
         self.mode = self.return_mode.take().unwrap_or(ViewMode::List);
 
-        if let Err(e) = self.refresh_notes() {
-            self.set_temporary_status(&format!("Refresh failed: {e}"));
+        if let Some(id) = editing_id {
+            self.refresh_note_single(None, &id);
+        } else {
+            self.request_notes_reconcile();
         }
         self.set_default_status();
     }

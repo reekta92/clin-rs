@@ -163,10 +163,7 @@ impl App {
                     if let Err(e) = self.storage.create_folder(&full_path) {
                         self.set_temporary_status(&format!("Failed to create folder: {e}"));
                     } else {
-                        self.list.folder_cache = None;
-                        if let Err(e) = self.refresh_notes() {
-                            self.set_temporary_status(&format!("Refresh failed: {e}"));
-                        }
+                        self.request_notes_reconcile();
                         self.set_temporary_status_static("Folder created");
                     }
                 }
@@ -181,10 +178,7 @@ impl App {
                     if let Err(e) = self.storage.rename_folder(old_path, text) {
                         self.set_temporary_status(&format!("Failed to rename folder: {e}"));
                     } else {
-                        self.list.folder_cache = None;
-                        if let Err(e) = self.refresh_notes() {
-                            self.set_temporary_status(&format!("Refresh failed: {e}"));
-                        }
+                        self.request_notes_reconcile();
                         self.set_temporary_status_static("Folder renamed");
                     }
                 }
@@ -323,10 +317,7 @@ impl App {
 
     /// Shared post move/copy cleanup.
     fn finish_bulk_list_op(&mut self) {
-        self.list.folder_cache = None;
-        if let Err(e) = self.refresh_notes() {
-            self.set_temporary_status(&format!("Refresh failed: {e}"));
-        }
+        self.request_notes_reconcile();
         self.clamp_visual_index();
         self.list.selected_indices.clear();
         self.list.list_mode = ListMode::Normal;
@@ -396,20 +387,14 @@ impl App {
                     if let Err(e) = self.storage.move_note(&note_id, target_folder) {
                         self.set_temporary_status(&format!("Failed to move note: {e}"));
                     } else {
-                        self.list.folder_cache = None;
-                        if let Err(e) = self.refresh_notes() {
-                            self.set_temporary_status(&format!("Refresh failed: {e}"));
-                        }
+                        self.request_notes_reconcile();
                         self.set_temporary_status_static("Note moved");
                     }
                 }
                 FolderPickerMode::CopyNote { note_id } => {
                     match self.storage.duplicate_note(&note_id, target_folder) {
                         Ok(_) => {
-                            self.list.folder_cache = None;
-                            if let Err(e) = self.refresh_notes() {
-                                self.set_temporary_status(&format!("Refresh failed: {e}"));
-                            }
+                            self.request_notes_reconcile();
                             self.set_temporary_status_static("Note copied");
                         }
                         Err(e) => {
@@ -436,10 +421,7 @@ impl App {
                         if self.list.folder_expanded.remove(&folder_path) {
                             self.list.folder_expanded.insert(new_path);
                         }
-                        self.list.folder_cache = None;
-                        if let Err(e) = self.refresh_notes() {
-                            self.set_temporary_status(&format!("Refresh failed: {e}"));
-                        }
+                        self.request_notes_reconcile();
                         self.set_temporary_status_static("Folder moved");
                     }
                 }
@@ -573,16 +555,7 @@ impl App {
     }
 
     pub fn expand_all_folders(&mut self) {
-        let folders = if let Some(cache) = &self.list.folder_cache {
-            cache.clone()
-        } else {
-            let folders = self
-                .storage
-                .list_folders(self.list.show_hidden_files)
-                .unwrap_or_default();
-            self.list.folder_cache = Some(folders.clone());
-            folders
-        };
+        let folders = self.catalog_folders.clone();
 
         for path in folders {
             self.list.folder_expanded.insert(path);
@@ -604,16 +577,7 @@ impl App {
     }
 
     pub fn expand_folders_to_depth(&mut self, level: usize) {
-        let folders = if let Some(cache) = &self.list.folder_cache {
-            cache.clone()
-        } else {
-            let folders = self
-                .storage
-                .list_folders(self.list.show_hidden_files)
-                .unwrap_or_default();
-            self.list.folder_cache = Some(folders.clone());
-            folders
-        };
+        let folders = self.catalog_folders.clone();
 
         for path in folders {
             let depth = if path.is_empty() {

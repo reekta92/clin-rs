@@ -1646,12 +1646,27 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 }
             }
         } else {
-            let hovered_visual_index = app.mouse_pos.and_then(|(col, row)| {
-                let inner_y = list_area.y + 1;
-                let inner_h = list_area.height.saturating_sub(2);
-                let inner_x = list_area.x + 2;
-                let inner_w = list_area.width.saturating_sub(4);
+            let total_len = app.list.visual_list.len();
+            let viewport_len = list_area.height.saturating_sub(2) as usize;
 
+            let mut offset = app.list.list_state.offset();
+            if offset > total_len.saturating_sub(viewport_len) {
+                offset = total_len.saturating_sub(viewport_len);
+            }
+            if app.list.visual_index < offset {
+                offset = app.list.visual_index;
+            } else if app.list.visual_index >= offset + viewport_len {
+                offset = app.list.visual_index.saturating_add(1).saturating_sub(viewport_len);
+            }
+            *app.list.list_state.offset_mut() = offset;
+
+            let end = (offset + viewport_len).min(total_len);
+
+            let inner_x = list_area.x + 2;
+            let inner_y = list_area.y + 1;
+            let inner_w = list_area.width.saturating_sub(4);
+            let inner_h = list_area.height.saturating_sub(2);
+            let hovered_visual_index = app.mouse_pos.and_then(|(col, row)| {
                 if col >= inner_x
                     && col < inner_x + inner_w
                     && row >= inner_y
@@ -1661,20 +1676,21 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                         row,
                         inner_y,
                         1,
-                        app.list.list_state.offset(),
-                        app.list.display_items.len(),
+                        offset,
+                        total_len,
                     )
                 } else {
                     None
                 }
             });
-            items.reserve(app.list.display_items.len());
-            for (idx, item) in app.list.display_items.iter().enumerate() {
+
+            let mut items = Vec::with_capacity(end.saturating_sub(offset));
+            for idx in offset..end {
+                let item = app.format_visual_item(idx);
                 let in_selection = app.list.selected_indices.contains(&idx);
                 if in_selection {
-                    // Full-line accent highlight for selected items — matches grid layout behavior
                     items.push(
-                        item.clone().style(
+                        item.style(
                             Style::default()
                                 .bg(app.app_theme.accent)
                                 .fg(app.app_theme.highlight_fg)
@@ -1682,11 +1698,16 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                         ),
                     );
                 } else if Some(idx) == hovered_visual_index && idx != app.list.visual_index {
-                    items.push(item.clone().style(app.app_theme.hover_style()));
+                    items.push(item.style(app.app_theme.hover_style()));
                 } else {
-                    items.push(item.clone());
+                    items.push(item);
                 }
             }
+
+            let relative_selected = app.list.visual_index.saturating_sub(offset);
+            let mut rel_state = ListState::default();
+            rel_state.select(Some(relative_selected));
+
             let list = List::new(items)
                 .block(
                     Block::default()
@@ -1701,10 +1722,8 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                         .add_modifier(Modifier::BOLD),
                 );
 
-            app.list.list_state.select(Some(app.list.visual_index));
-            frame.render_stateful_widget(list, list_area, &mut app.list.list_state);
-            let content_len = app.list.display_items.len();
-            let viewport_len = list_area.height.saturating_sub(2) as usize;
+            frame.render_stateful_widget(list, list_area, &mut rel_state);
+            let content_len = total_len;
             let meta = crate::ui::scrollbar::ScrollbarMeta {
                 track: crate::ui::scrollbar::track_rect(list_area),
                 content_len,
@@ -1934,7 +1953,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     frame,
                     r,
                     &app.app_theme,
-                    &app.notes,
+                    &app.note_index.as_ref().map(|i| &i.activity_by_day).unwrap_or(&std::collections::HashMap::new()),
                     bottom_border,
                     app.config.list.week_start,
                     cal_rect,
@@ -2749,7 +2768,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         );
         frame.render_widget(&popup.input, input_chunk);
 
-        let has_title = !popup.title_results.is_empty();
+        let has_title = !popup.title_result_ids.is_empty();
         let has_grep = !popup.grep_results.is_empty();
 
         let results_focused = popup.focus == crate::popups::SearchFocus::Results;
@@ -2759,88 +2778,104 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             Style::default().fg(app.app_theme.muted)
         };
 
-        let search_item_count = if has_grep {
-            let mut count = 0;
-            let mut i = 0;
-            while i < popup.grep_results.len() {
-                count += 1;
-                if popup.grep_is_header[i] && !popup.grep_expanded.contains(&i) {
-                    while i < popup.grep_results.len() && !popup.grep_is_header[i] {
-                        i += 1;
-                    }
-                }
-                i += 1;
-            }
-            count
+        let inner_results = Rect {
+            x: results_chunk.x + 1,
+            y: results_chunk.y + 1,
+            width: results_chunk.width.saturating_sub(2),
+            height: results_chunk.height.saturating_sub(2),
+        };
+        let viewport_len = inner_results.height as usize;
+
+        let total_items = if has_grep {
+            popup.total_grep_rows()
         } else if has_title {
-            popup.title_results.len()
+            popup.title_result_ids.len()
         } else {
             0
         };
-        let (all_items, results_title) = if has_grep {
-            let mut visible: Vec<(usize, String)> = Vec::new();
-            let mut i = 0;
-            while i < popup.grep_results.len() {
-                let is_collapsed = popup.grep_is_header[i] && !popup.grep_expanded.contains(&i);
-                let icon = if popup.grep_is_header[i] {
-                    if is_collapsed { "\u{25b6}" } else { "\u{25bc}" }
+
+        let selected_idx = if has_grep {
+            popup.grep_selected
+        } else if has_title {
+            popup.title_selected
+        } else {
+            0
+        };
+
+        let mut offset = popup.results_scroll_offset;
+        if offset > total_items.saturating_sub(viewport_len) {
+            offset = total_items.saturating_sub(viewport_len);
+        }
+        if selected_idx < offset {
+            offset = selected_idx;
+        } else if selected_idx >= offset + viewport_len {
+            offset = selected_idx.saturating_add(1).saturating_sub(viewport_len);
+        }
+        popup.results_scroll_offset = offset;
+
+        let end = (offset + viewport_len).min(total_items);
+
+        let items: Vec<ListItem> = if has_grep {
+            (offset..end).map(|r| {
+                if popup.globally_truncated && r == popup.total_grep_rows() - 1 {
+                    ListItem::new(Span::styled(
+                        "  Results truncated; refine grep query",
+                        Style::default().fg(app.app_theme.muted).add_modifier(Modifier::ITALIC),
+                    ))
                 } else {
-                    ""
-                };
-                visible.push((i, format!("{}{}", icon, popup.grep_results[i])));
-                i += 1;
-                if is_collapsed {
-                    while i < popup.grep_results.len() && !popup.grep_is_header[i] {
-                        i += 1;
+                    let hit_idx = match popup.grep_row_offsets.binary_search(&r) {
+                        Ok(i) => i,
+                        Err(i) => i.saturating_sub(1),
+                    };
+                    let base = popup.grep_row_offsets[hit_idx];
+                    let hit = &popup.grep_results[hit_idx];
+                    if r == base {
+                        let arrow = if popup.grep_expanded.contains(&hit.note_id) { "▼ " } else { "▶ " };
+                        let note_summary = app.notes.iter().find(|n| n.id.as_str() == &*hit.note_id);
+                        let title = note_summary.map(|n| n.title.as_str()).unwrap_or(&*hit.note_id);
+                        let folder = note_summary.map(|n| n.folder.as_str()).unwrap_or("");
+                        let label = if folder.is_empty() { title.to_string() } else { format!("{folder}/{title}") };
+                        let trunc_suffix = if hit.truncated { "; first 200 lines shown" } else { "" };
+                        let header_text = format!("{arrow}{label} ({}{trunc_suffix})", hit.match_count);
+                        ListItem::new(crate::ui::styled_result_line(&header_text, &app.app_theme, app.config.ui.icon_mode))
+                    } else {
+                        let line_idx = r - base - 1;
+                        let line_hit = &hit.lines[line_idx];
+                        let line_text = format!("  L{}: {}", line_hit.line_number, line_hit.snippet);
+                        ListItem::new(Span::styled(line_text, Style::default().fg(app.app_theme.text)))
                     }
                 }
-            }
-            let items: Vec<ListItem> = visible
-                .iter()
-                .map(|(_, t)| {
-                    ListItem::new(crate::ui::styled_result_line(
-                        t,
-                        &app.app_theme,
-                        app.config.ui.icon_mode,
-                    ))
-                })
-                .collect();
-            (items, "")
+            }).collect()
         } else if has_title {
-            let items: Vec<ListItem> = popup
-                .title_results
-                .iter()
-                .map(|entry| {
-                    ListItem::new(crate::ui::styled_result_line(
-                        entry,
-                        &app.app_theme,
-                        app.config.ui.icon_mode,
-                    ))
-                })
-                .collect();
-            (items, "")
+            (offset..end).map(|idx| {
+                let id_arc = &popup.title_result_ids[idx];
+                let note_summary = app.notes.iter().find(|n| n.id.as_str() == &**id_arc);
+                let title = note_summary.map(|n| n.title.as_str()).unwrap_or(&**id_arc);
+                let folder = note_summary.map(|n| n.folder.as_str()).unwrap_or("");
+                let label = if folder.is_empty() { title.to_string() } else { format!("{folder}/{title}") };
+                ListItem::new(crate::ui::styled_result_line(&label, &app.app_theme, app.config.ui.icon_mode))
+            }).collect()
         } else {
             let msg = if query_text.trim().is_empty() && !has_filter {
                 "Type to search notes"
             } else {
                 "No results"
             };
-            (
-                vec![ListItem::new(Span::styled(
-                    msg.to_string(),
-                    Style::default().fg(app.app_theme.muted),
-                ))],
-                "",
-            )
+            vec![ListItem::new(Span::styled(msg, Style::default().fg(app.app_theme.muted)))]
         };
 
-        let results_list = List::new(all_items)
+        let rel_selected = selected_idx.saturating_sub(offset);
+        let mut rel_state = ListState::default();
+        if results_focused && total_items > 0 {
+            rel_state.select(Some(rel_selected));
+        }
+
+        let results_list = List::new(items)
             .block(
                 Block::default()
                     .style(app.app_theme.bg_style())
                     .borders(Borders::ALL)
-                    .border_style(results_border)
-                    .title(results_title),
+                    .border_style(results_border),
             )
             .highlight_style(
                 Style::default()
@@ -2849,34 +2884,32 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     .add_modifier(Modifier::BOLD),
             )
             .highlight_symbol("  ");
-        let mut list_state = ListState::default().with_offset(popup.results_scroll_offset);
-        if results_focused && has_grep {
-            if let Some(vis_pos) = crate::popups::grep_flat_to_visible(
-                &popup.grep_is_header,
-                &popup.grep_expanded,
-                popup.grep_selected,
-            ) {
-                list_state.select(Some(vis_pos));
-            }
-        } else if results_focused && has_title {
-            list_state.select(Some(popup.title_selected));
-        }
-        frame.render_stateful_widget(results_list, results_chunk, &mut list_state);
-        popup.results_scroll_offset = list_state.offset();
-        let inner_results = Rect {
-            x: results_chunk.x + 1,
-            y: results_chunk.y + 1,
-            width: results_chunk.width.saturating_sub(2),
-            height: results_chunk.height.saturating_sub(2),
-        };
+
+        frame.render_stateful_widget(results_list, results_chunk, &mut rel_state);
         crate::ui::paint_list_hover(
             frame,
             inner_results,
-            &list_state,
-            search_item_count,
+            &rel_state,
+            end.saturating_sub(offset),
             app.mouse_pos,
             app.app_theme.hover_style(),
         );
+        popup.last_scroll = Some(crate::ui::scrollbar::ScrollbarMeta {
+            track: crate::ui::scrollbar::track_rect(inner_results),
+            content_len: total_items,
+            viewport_len,
+        });
+        if app.config.ui.scrollbars {
+            crate::ui::scrollbar::draw_scrollbar(
+                frame,
+                inner_results,
+                total_items,
+                viewport_len,
+                selected_idx,
+                total_items.saturating_sub(1),
+                &app.app_theme,
+            );
+        }
     }
 
     if let Some(crate::popups::ActivePopup::TrashView(trash)) = &mut app.popups.active {
