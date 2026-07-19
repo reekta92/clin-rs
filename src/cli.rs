@@ -52,6 +52,11 @@ pub enum Command {
         #[command(subcommand)]
         action: ConfigCmd,
     },
+    /// Cached data management.
+    Cache {
+        #[command(subcommand)]
+        action: CacheCmd,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -134,4 +139,25 @@ pub enum ConfigCmd {
     Edit,
     /// Reset the configuration to default values.
     Reset,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum CacheCmd {
+    /// Delete the persisted note-summary cache. It rebuilds next launch.
+    Reset,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_cache_reset() {
+        let cli = Cli::try_parse_from(["clin", "cache", "reset"]).unwrap();
+        let command = cli.command.unwrap();
+        assert!(
+            matches!(command, Command::Cache { action: CacheCmd::Reset }),
+            "expected Cache::Reset, got {command:?}"
+        );
+    }
 }

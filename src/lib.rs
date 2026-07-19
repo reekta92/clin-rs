@@ -31,7 +31,7 @@ pub mod statusline;
 pub mod templates;
 pub mod text_edit;
 
-use crate::cli::{Cli, Command, ConfigCmd, KeybindsCmd, NotesCmd, StorageCmd, TemplatesCmd};
+use crate::cli::{CacheCmd, Cli, Command, ConfigCmd, KeybindsCmd, NotesCmd, StorageCmd, TemplatesCmd};
 use crate::config::ClinConfig;
 
 use crate::overlay::OverlayView;
@@ -109,6 +109,7 @@ pub fn run() -> Result<()> {
         Some(Command::Keybinds { action }) => run_keybinds(action),
         Some(Command::Templates { action }) => run_templates(action),
         Some(Command::Config { action }) => run_config(action),
+        Some(Command::Cache { action }) => run_cache(action),
     }
 }
 fn launch_tui(open_title: Option<String>, force_setup: bool) -> Result<()> {
@@ -648,6 +649,26 @@ fn run_config(action: ConfigCmd) -> Result<()> {
                 "{}",
                 console::success("Configuration reset to default values.")
             );
+            Ok(())
+        }
+    }
+}
+
+fn run_cache(action: CacheCmd) -> Result<()> {
+    match action {
+        CacheCmd::Reset => {
+            let (path, removed) = Storage::delete_persisted_summary_cache()?;
+            if removed {
+                println!(
+                    "{}",
+                    console::success(&format!("Note-summary cache cleared: {}", console::path(&path)))
+                );
+            } else {
+                println!(
+                    "{}",
+                    console::info(&format!("Note-summary cache already empty: {}", console::path(&path)))
+                );
+            }
             Ok(())
         }
     }

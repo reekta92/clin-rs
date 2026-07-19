@@ -12,6 +12,7 @@ use zeroize::Zeroizing;
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
@@ -149,6 +150,14 @@ pub(crate) fn is_existing_vault(dir: &Path) -> bool {
     }
 }
 
+fn remove_file_if_exists(path: &Path) -> io::Result<bool> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(true),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(e),
+    }
+}
+
 impl Storage {
     pub fn init() -> Result<Self> {
         let bootstrap = ClinConfig::load().context("failed to load config")?;
@@ -156,9 +165,7 @@ impl Storage {
             .effective_storage_path()
             .context("failed to determine storage path")?;
 
-        let proj_dirs = directories::ProjectDirs::from("com", "clin", "clin")
-            .context("could not determine config directory")?;
-        let config_dir = proj_dirs.config_dir().to_path_buf();
+        let config_dir = Self::config_dir_path()?;
 
         let vault_mode = bootstrap.has_custom_storage_path();
 
@@ -257,6 +264,23 @@ impl Storage {
 
     fn key_path(&self) -> PathBuf {
         self.config_dir.join("key.bin")
+    }
+
+    fn config_dir_path() -> Result<PathBuf> {
+        directories::ProjectDirs::from("com", "clin", "clin")
+            .context("could not determine config directory")
+            .map(|d| d.config_dir().to_path_buf())
+    }
+
+    pub(crate) fn persisted_summary_cache_path() -> Result<PathBuf> {
+        Ok(Self::config_dir_path()?.join("note_cache.bin"))
+    }
+
+    pub(crate) fn delete_persisted_summary_cache() -> Result<(PathBuf, bool)> {
+        let path = Self::persisted_summary_cache_path()?;
+        let removed = remove_file_if_exists(&path)
+            .with_context(|| format!("failed to remove note-summary cache: {}", path.display()))?;
+        Ok((path, removed))
     }
 
     pub fn ensure_key(&mut self) -> Result<()> {
@@ -1928,6 +1952,25 @@ mod tests {
             result.is_err(),
             "load_note_summary should fail for unreadable file"
         );
+
+        Ok(())
+    }
+
+    #[test]
+    fn remove_file_if_exists_is_idempotent() -> std::io::Result<()> {
+        let dir = tempfile::tempdir()?;
+        let path = dir.path().join("note_cache.bin");
+
+        // File doesn't exist yet — should return false
+        assert!(!remove_file_if_exists(&path)?);
+
+        // Create the file and remove it — should return true
+        fs::write(&path, b"stale data")?;
+        assert!(remove_file_if_exists(&path)?);
+        assert!(!path.exists(), "file must be deleted after removal");
+
+        // File already gone — should return false (idempotent)
+        assert!(!remove_file_if_exists(&path)?);
 
         Ok(())
     }

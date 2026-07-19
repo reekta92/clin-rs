@@ -674,7 +674,7 @@ impl App {
             app.summary_cache.insert(id.clone(), summary);
             app.summary_mtime.insert(id, mt);
         }
-        let cache_path = app.storage.config_dir.join("note_cache.bin");
+        let cache_path = Storage::persisted_summary_cache_path()?;
         app.is_first_cache_build = !cache_path.exists();
         app.list.folder_expanded.insert(String::new());
         if !app.config.list.expanded_folders.is_empty() {

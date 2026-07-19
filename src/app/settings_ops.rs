@@ -552,7 +552,9 @@ impl App {
     pub fn load_persisted_summary_cache(
         &self,
     ) -> BTreeMap<String, (u64, crate::storage::NoteSummary)> {
-        let path = self.storage.config_dir.join("note_cache.bin");
+        let Ok(path) = Storage::persisted_summary_cache_path() else {
+            return BTreeMap::new();
+        };
         let Ok(ciphertext) = std::fs::read(&path) else {
             return BTreeMap::new();
         };
@@ -566,7 +568,9 @@ impl App {
     }
 
     pub fn save_persisted_summary_cache(&self) {
-        let path = self.storage.config_dir.join("note_cache.bin");
+        let Ok(path) = Storage::persisted_summary_cache_path() else {
+            return;
+        };
         let mut map: BTreeMap<String, (u64, crate::storage::NoteSummary)> = BTreeMap::new();
         for (id, summary) in &self.summary_cache {
             if let Some(&mt) = self.summary_mtime.get(id) {
