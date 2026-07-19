@@ -462,8 +462,30 @@ impl Storage {
                 let _ = std::fs::remove_file(&legacy);
             }
         }
-        crate::keybinds::Keybinds::load_layered(&per_preset, preset.base_keybinds())
-            .unwrap_or_default()
+        if !per_preset.exists() {
+            eprintln!(
+                "{}",
+                crate::console::warning(&format!(
+                    "keybinds file not found at {} — using {} preset defaults",
+                    per_preset.display(),
+                    preset
+                ))
+            );
+            return preset.base_keybinds();
+        }
+        crate::keybinds::Keybinds::load_layered(&per_preset, preset.base_keybinds()).unwrap_or_else(
+            |e| {
+                eprintln!(
+                    "{}",
+                    crate::console::error(&format!(
+                        "keybinds: failed to load {}: {e} — using {} preset defaults",
+                        per_preset.display(),
+                        preset
+                    ))
+                );
+                preset.base_keybinds()
+            },
+        )
     }
 
     pub fn save_keybinds(&self, keybinds: &Keybinds) -> Result<()> {

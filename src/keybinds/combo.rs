@@ -119,8 +119,20 @@ impl KeyCombo {
                 }
             }
         }
-
-        let code = parse_key_code(key_part)?;
+        let mut code = parse_key_code(key_part)?;
+        // crossterm delivers Shift+<letter> as an uppercase Char whose SHIFT
+        // modifier is stripped by `matches_event` (capitalization signals
+        // shift). Canonicalize lowercase Char + SHIFT (sole modifier) to
+        // uppercase so a parsed "Shift+j" binding is byte-identical to the
+        // `KeyCombo::shift(KeyCode::Char('J'))` helper used by defaults and
+        // matches real terminal input. CTRL+SHIFT and other combos are left
+        // untouched to preserve existing `ctrl_shift(...)` helper semantics.
+        if modifiers == KeyModifiers::SHIFT
+            && let KeyCode::Char(c) = code
+            && c.is_ascii_lowercase()
+        {
+            code = KeyCode::Char(c.to_ascii_uppercase());
+        }
         Some(KeyStroke { code, modifiers })
     }
 
@@ -130,7 +142,11 @@ impl KeyCombo {
         if s.is_empty() {
             return None;
         }
-        let tokens: Vec<&str> = s.split_ascii_whitespace().collect();
+        // Trim whitespace around '+' within a single stroke so "Shift + j"
+        // collapses to "Shift+j" before whitespace is used to split multi-key
+        // sequences ("g g", "Ctrl+x Ctrl+s").
+        let collapsed: String = s.split('+').map(|p| p.trim()).collect::<Vec<_>>().join("+");
+        let tokens: Vec<&str> = collapsed.split_ascii_whitespace().collect();
         if tokens.is_empty() {
             return None;
         }

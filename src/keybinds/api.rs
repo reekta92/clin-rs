@@ -10,12 +10,24 @@ use std::path::Path;
 
 // ── Generic keybind-section helpers ─────────────────────────────────────────
 
-fn merge_section<A: std::hash::Hash + std::cmp::Eq + Clone>(
+fn merge_section<A: std::hash::Hash + std::cmp::Eq + Clone + std::fmt::Debug>(
     into: &mut HashMap<A, Vec<KeyCombo>>,
     from: &HashMap<A, Vec<String>>,
 ) {
     for (action, strs) in from {
-        let combos: Vec<KeyCombo> = strs.iter().filter_map(|s| KeyCombo::parse(s)).collect();
+        let mut combos = Vec::with_capacity(strs.len());
+        for s in strs {
+            match KeyCombo::parse(s) {
+                Some(c) => combos.push(c),
+                None => eprintln!(
+                    "{}",
+                    crate::console::warning(&format!(
+                        "keybinds: skipping unparseable combo {:?} for action {:?}",
+                        s, action
+                    ))
+                ),
+            }
+        }
         if !combos.is_empty() {
             into.insert(action.clone(), combos);
         }
@@ -293,6 +305,39 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_parse_shift_plus_letter_canonicalizes() {
+        // lowercase + SHIFT (sole modifier) → uppercase Char + SHIFT,
+        // identical to KeyCombo::shift(KeyCode::Char('J')).
+        for input in ["Shift+j", "Shift+J", "shift+j", "Shift + j"] {
+            let combo = KeyCombo::parse(input).unwrap();
+            assert_eq!(combo.keys.len(), 1, "input {input:?}");
+            assert_eq!(combo.keys[0].code, KeyCode::Char('J'), "input {input:?}");
+            assert_eq!(
+                combo.keys[0].modifiers,
+                KeyModifiers::SHIFT,
+                "input {input:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_parse_shift_plus_letter_matches_terminal() {
+        // crossterm sends Shift+j as Char('J') with NONE or SHIFT; both match.
+        let combo = KeyCombo::parse("Shift + j").unwrap();
+        assert!(combo.matches(&KeyEvent::new(KeyCode::Char('J'), KeyModifiers::NONE)));
+        assert!(combo.matches(&KeyEvent::new(KeyCode::Char('J'), KeyModifiers::SHIFT)));
+        // plain 'j' (no shift) MUST NOT trigger the Shift+j binding
+        assert!(!combo.matches(&KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE)));
+    }
+
+    #[test]
+    fn test_parse_spaces_around_plus_non_shift() {
+        // Spaces around '+' tolerated for non-SHIFT modifiers too.
+        let combo = KeyCombo::parse("Ctrl + q").unwrap();
+        assert_eq!(combo.keys[0].code, KeyCode::Char('q'));
+        assert_eq!(combo.keys[0].modifiers, KeyModifiers::CONTROL);
+    }
     #[test]
     fn test_parse_special_keys() {
         assert_eq!(
