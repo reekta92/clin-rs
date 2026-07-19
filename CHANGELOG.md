@@ -2,11 +2,35 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.10.0-rc.2] - 2026-07-19
+
+### Added
+
+- Reorganize generated file layout
+- Add `clin cache reset` command
+
+### Fixed
+
+- Create directory before saving summaries
+- Tolerate spaces and lowercase in Shift+letter binds
+
+### Miscellaneous
+
+- Warning cleanup
+
+### Performance
+
+- Optimize view for large 10k note vaults
+- Persist note summary cache to disk, defer graph rebuilds
 ## [0.10.0-rc.1] - 2026-07-18
 
 ### Performance
 
 - Cache folder list in FolderGraph preview, drop per-frame O(N) scan
+
+### Release
+
+- V0.10.0-rc.1
 ## [0.10.0-rc.0] - 2026-07-18
 
 ### Added
