@@ -412,7 +412,7 @@ pub struct ListConfig {
     pub calendar_enabled: bool,
     #[serde(default)]
     pub smart_folders_enabled: bool,
-    #[serde(default = "default_true")]
+    #[serde(default)]
     pub folder_graph_preview: bool,
     #[serde(default)]
     pub pinned_folders: Vec<String>,
@@ -453,7 +453,7 @@ impl Default for ListConfig {
             calendar_position: CalendarPosition::default(),
             week_start: WeekStart::default(),
             smart_folders_enabled: false,
-            folder_graph_preview: default_true(),
+            folder_graph_preview: false,
             pinned_folders: Vec::new(),
             preview_width_ratio: default_preview_width_ratio(),
             calendar_height: default_calendar_height(),

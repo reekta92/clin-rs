@@ -1138,19 +1138,18 @@ sections = ["draw", "draw", "graf"]
     }
 
     #[test]
-    fn folder_graph_preview_defaults_on() {
-        // The Default derive sets bool to false, but serde default = "default_true"
-        // ensures deserialization from minimal TOML gives true.
+    fn folder_graph_preview_defaults_off() {
+        // The Default derive sets bool to false, and serde default sets it to false.
         let config: ClinConfig = toml::from_str("[list]\n").unwrap();
-        assert!(config.list.folder_graph_preview);
-        // TOML round-trip preserves explicit false.
-        let toml_str = "[list]\nfolder_graph_preview = false\n";
+        assert!(!config.list.folder_graph_preview);
+        // TOML round-trip preserves explicit true.
+        let toml_str = "[list]\nfolder_graph_preview = true\n";
         let parsed: ClinConfig = toml::from_str(toml_str).unwrap();
-        assert!(!parsed.list.folder_graph_preview);
+        assert!(parsed.list.folder_graph_preview);
 
         let serialized = toml::to_string(&parsed).unwrap();
         let roundtripped: ClinConfig = toml::from_str(&serialized).unwrap();
-        assert!(!roundtripped.list.folder_graph_preview);
+        assert!(roundtripped.list.folder_graph_preview);
     }
 
     #[test]

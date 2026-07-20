@@ -327,7 +327,7 @@ show_all_files = false
 folders_first = true
 
 # Show folder link count in graph preview within the notes list.
-folder_graph_preview = true
+folder_graph_preview = false
 
 # Show a month calendar (with note activity) at the bottom of the notes view.
 calendar_enabled = true

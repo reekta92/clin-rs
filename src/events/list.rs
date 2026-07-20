@@ -861,34 +861,156 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         if mouse_event.kind == MouseEventKind::Up(MouseButton::Left) {
             app.list.preview_drag_last_pos = None;
 
-            if !is_subnotes {
-                let zoom = app.list.folder_graph_zoom;
-                let pan_x = app.list.folder_graph_pan_x;
-                let pan_y = app.list.folder_graph_pan_y;
-                let span_x = base_span / zoom;
-                let span_y = span_x * 2.0 / aspect;
-                let fx = (mouse_event.column as f64 - area.x as f64) / area.width as f64 - 0.5;
-                let fy = 0.5 - (mouse_event.row as f64 - area.y as f64) / area.height as f64;
-                let world_x = pan_x + fx * 2.0 * span_x;
-                let world_y = pan_y + fy * 2.0 * span_y;
+            let zoom = if is_subnotes {
+                app.list.subnote_graph_zoom
+            } else {
+                app.list.folder_graph_zoom
+            };
+            let pan_x = if is_subnotes {
+                app.list.subnote_graph_pan_x
+            } else {
+                app.list.folder_graph_pan_x
+            };
+            let pan_y = if is_subnotes {
+                app.list.subnote_graph_pan_y
+            } else {
+                app.list.folder_graph_pan_y
+            };
+            let span_x = base_span / zoom;
+            let span_y = span_x * 2.0 / aspect;
+            let fx = (mouse_event.column as f64 - area.x as f64) / area.width as f64 - 0.5;
+            let fy = 0.5 - (mouse_event.row as f64 - area.y as f64) / area.height as f64;
+            let world_x = pan_x + fx * 2.0 * span_x;
+            let world_y = pan_y + fy * 2.0 * span_y;
 
-                let node_r = 1.5_f64;
-                if let Some(node) = app.list.folder_graph_nodes.iter().find(|n| {
-                    let dx = n.x - world_x;
-                    let dy = n.y - world_y;
-                    (dx * dx + dy * dy).sqrt() <= node_r * 1.5
-                }) {
-                    if node.is_note {
-                        app.list.folder_graph_pan_x = node.x;
-                        app.list.folder_graph_pan_y = node.y;
-                        app.list.folder_graph_zoom = 8.0;
-                        app.list.folder_graph_focused_note = Some(node.key.clone());
+            if is_subnotes {
+                let parent_id = crate::app::App::subnotes_parent_id_from_grid_path(&app.list.grid_folder)
+                    .to_string();
+                let subnotes: Vec<crate::storage::SubNote> = app
+                    .subnotes_view_cache
+                    .iter()
+                    .find(|(p, _)| p == &parent_id)
+                    .map(|(_, subs)| subs.clone())
+                    .unwrap_or_default();
+                let parent_r = 3.0_f64;
+                let sub_r = 1.5_f64;
+                let layout_r = (10.0_f64).max(subnotes.len() as f64 * 1.8);
+                let positions = crate::ui::orbit_positions(subnotes.len(), layout_r);
+
+                let click_key = if (world_x * world_x + world_y * world_y).sqrt() <= parent_r * 1.5
+                {
+                    Some(("parent".to_string(), parent_id.clone(), true, 0))
+                } else {
+                    positions.iter().enumerate().zip(subnotes.iter()).find_map(
+                        |((idx, &(sx, sy)), _sub)| {
+                            let dx = sx - world_x;
+                            let dy = sy - world_y;
+                            if (dx * dx + dy * dy).sqrt() <= sub_r * 1.5 {
+                                Some((format!("sub_{idx}"), parent_id.clone(), false, idx))
+                            } else {
+                                None
+                            }
+                        },
+                    )
+                };
+
+                if let Some((key_id, pid, is_parent, sub_idx)) = click_key {
+                    let is_double = if let Some((lx, ly, lt, ref lkey)) = app.list.last_graph_click
+                    {
+                        lx.abs_diff(mouse_event.column) <= 1
+                            && ly.abs_diff(mouse_event.row) <= 1
+                            && lt.elapsed() < std::time::Duration::from_millis(400)
+                            && *lkey == key_id
                     } else {
-                        app.list.grid_folder = node.key.clone();
-                        app.list.folder_graph_zoom = 1.0;
-                        app.list.folder_graph_pan_x = 0.0;
-                        app.list.folder_graph_pan_y = 0.0;
-                        app.list.folder_graph_focused_note = None;
+                        false
+                    };
+
+                    if is_double {
+                        app.list.last_graph_click = None;
+                        if is_parent {
+                            app.open_note_at_line(&pid, None);
+                        } else {
+                            app.open_subnotes_popup_for(&pid, Some(sub_idx));
+                        }
+                    } else {
+                        app.list.last_graph_click = Some((
+                            mouse_event.column,
+                            mouse_event.row,
+                            std::time::Instant::now(),
+                            key_id,
+                        ));
+                    }
+                }
+            } else {
+                let parent_r = 3.0_f64;
+                let node_r = 1.5_f64;
+
+                let parent_hit =
+                    (world_x * world_x + world_y * world_y).sqrt() <= parent_r * 1.5;
+                let clicked_node = if parent_hit
+                    && !app.list.grid_folder.is_empty()
+                    && !crate::app::App::is_virtual_path(&app.list.grid_folder)
+                {
+                    let parent_path = if let Some(slash) = app.list.grid_folder.rfind('/') {
+                        app.list.grid_folder[..slash].to_string()
+                    } else {
+                        String::new()
+                    };
+                    Some(("parent_dir".to_string(), parent_path, false))
+                } else {
+                    app.list.folder_graph_nodes.iter().find_map(|n| {
+                        let dx = n.x - world_x;
+                        let dy = n.y - world_y;
+                        if (dx * dx + dy * dy).sqrt() <= node_r * 1.5 {
+                            Some((n.key.clone(), n.key.clone(), n.is_note))
+                        } else {
+                            None
+                        }
+                    })
+                };
+
+                if let Some((hit_id, target_key, is_note)) = clicked_node {
+                    let is_double = if let Some((lx, ly, lt, ref lkey)) = app.list.last_graph_click
+                    {
+                        lx.abs_diff(mouse_event.column) <= 1
+                            && ly.abs_diff(mouse_event.row) <= 1
+                            && lt.elapsed() < std::time::Duration::from_millis(400)
+                            && *lkey == hit_id
+                    } else {
+                        false
+                    };
+
+                    if is_double {
+                        app.list.last_graph_click = None;
+                        if is_note {
+                            app.open_note_at_line(&target_key, None);
+                        } else {
+                            app.list.grid_folder = target_key;
+                            app.list.folder_graph_zoom = 1.0;
+                            app.list.folder_graph_pan_x = 0.0;
+                            app.list.folder_graph_pan_y = 0.0;
+                        }
+                    } else {
+                        app.list.last_graph_click = Some((
+                            mouse_event.column,
+                            mouse_event.row,
+                            std::time::Instant::now(),
+                            hit_id,
+                        ));
+                        if is_note {
+                            if let Some(idx) = app.list.visual_list.iter().position(|item| {
+                                if let crate::app::VisualItem::Note { summary_idx, .. } = item {
+                                    app.notes
+                                        .get(*summary_idx)
+                                        .map_or(false, |n| n.id == target_key)
+                                } else {
+                                    false
+                                }
+                            }) {
+                                app.list.visual_index = idx;
+                                app.request_preview_update_immediate();
+                            }
+                        }
                     }
                 }
             }

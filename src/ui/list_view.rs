@@ -299,7 +299,7 @@ fn shorten_segment_to_borders(
 
 /// Compute positions on a circle of radius `r` for `n` items, starting from top
 /// (angle = -π/2). Used by both SubnoteGraph and FolderGraph renderers.
-fn orbit_positions(n: usize, r: f64) -> Vec<(f64, f64)> {
+pub(crate) fn orbit_positions(n: usize, r: f64) -> Vec<(f64, f64)> {
     (0..n)
         .map(|i| {
             let angle = i as f64 * std::f64::consts::TAU / n as f64 - std::f64::consts::FRAC_PI_2;
@@ -317,7 +317,7 @@ pub fn render_subnote_graph_static(
     pan_x: f64,
     pan_y: f64,
     theme: &crate::app_theme::AppThemeColors,
-    interactable: bool,
+    _interactable: bool,
 ) {
     use ratatui::symbols::Marker;
     use ratatui::widgets::canvas::{Canvas, Line as CanvasLine};
@@ -354,25 +354,7 @@ pub fn render_subnote_graph_static(
 
     // For on-screen sizing of circles and title offsets.
     let cells_per_world = rect.width as f64 / (2.0 * span_x);
-    let on_screen_sub_r = sub_r * cells_per_world;
-    const FOCUS_THRESHOLD: f64 = 8.0; // cells — subnote circle must be this big on screen
-
-    if interactable && on_screen_sub_r > FOCUS_THRESHOLD {
-        // Focus mode: find the subnote closest to viewport center and show its content card.
-        let center = (pan_x, pan_y);
-        let focused = positions
-            .iter()
-            .zip(subnotes.iter())
-            .min_by(|(a, _), (b, _)| {
-                let da = (a.0 - center.0).powi(2) + (a.1 - center.1).powi(2);
-                let db = (b.0 - center.0).powi(2) + (b.1 - center.1).powi(2);
-                da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
-            });
-        if let Some((_, sub)) = focused {
-            draw_content_card(frame, rect, &sub.title, &sub.content, 0, theme);
-            return; // Skip all graph rendering — only the content card shows.
-        }
-    }
+    let _on_screen_sub_r = sub_r * cells_per_world;
 
     // Build shapes.
     let mut edges: Vec<CanvasLine> = Vec::new();
@@ -554,7 +536,7 @@ pub fn render_folder_graph_static(
 
     // For on-screen sizing and focus thresholds.
     let cells_per_world = rect.width as f64 / (2.0 * span_x);
-    let on_screen_child_r = child_r * cells_per_world;
+    let _on_screen_child_r = child_r * cells_per_world;
 
     // Build shapes: parent->child edges.
     let mut edges: Vec<CanvasLine> = Vec::new();
@@ -678,44 +660,9 @@ pub fn render_folder_graph_static(
     app.list.folder_graph_nodes = children.to_vec();
 
     // Transition logic: zoom-in on subfolder → re-focus; zoom-in on note → content card.
-    const ENTER_THRESHOLD: f64 = 8.0;
-    const ENTER_ZOOM_MIN: f64 = 1.5; // user must zoom past 1.5x before focus triggers
     const EXIT_FOLDER_THRESHOLD_ZOOM: f64 = 0.6;
 
     let is_graph = app.list.notes_layout == crate::config::NotesLayout::Graph;
-    if interactable
-        && app.list.folder_graph_focused_note.is_none()
-        && zoom > ENTER_ZOOM_MIN
-        && on_screen_child_r > ENTER_THRESHOLD
-    {
-        let center = (pan_x, pan_y);
-        if let Some(closest) = children.iter().min_by(|a, b| {
-            let da = (a.x - center.0).powi(2) + (a.y - center.1).powi(2);
-            let db = (b.x - center.0).powi(2) + (b.y - center.1).powi(2);
-            da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
-        }) {
-            if closest.is_note {
-                app.list.folder_graph_focused_note = Some(closest.key.clone());
-            } else {
-                // Re-focus to subfolder.
-                if is_graph {
-                    app.list.grid_folder = closest.key.clone();
-                } else if let Some(crate::list_view::PreviewContent::FolderGraph {
-                    focused_path, ..
-                }) = app.list.preview_content.as_mut()
-                {
-                    *focused_path = closest.key.clone();
-                }
-                app.list.folder_graph_zoom = 1.0;
-                app.list.folder_graph_pan_x = 0.0;
-                app.list.folder_graph_pan_y = 0.0;
-                app.list.folder_graph_focused_note = None;
-                app.list.folder_graph_nodes.clear();
-                return;
-            }
-        }
-    }
-
     // Pop back to parent folder when zoomed too far out inside a nested subfolder.
     let should_pop = interactable && if is_graph {
         !app.list.grid_folder.is_empty()
@@ -794,81 +741,6 @@ fn draw_title_above(
     }
 }
 
-/// Full-pane content card with title in the top border. Shown when a subnote
-/// node is zoomed in past FOCUS_THRESHOLD.
-fn draw_content_card(
-    frame: &mut Frame,
-    rect: Rect,
-    title: &str,
-    content: &str,
-    scroll: usize,
-    theme: &crate::app_theme::AppThemeColors,
-) {
-    // Background.
-    frame.render_widget(Block::default().style(theme.preview_bg_style()), rect);
-
-    // Card fills the preview rect with 1-cell padding.
-    let card_w = rect.width.saturating_sub(2);
-    let card_h = rect.height.saturating_sub(2);
-    if card_w < 4 || card_h < 4 {
-        return;
-    }
-    let card_rect = Rect::new(rect.x + 1, rect.y + 1, card_w, card_h);
-
-    // Truncate title to fit inside the top border.
-    let title_max = card_w.saturating_sub(4) as usize; // " title " + border chars
-    // Page indicator when content exceeds one card-height.
-    let card_inner_h = card_h.saturating_sub(2) as usize;
-    let total_lines = content.lines().count();
-    let page_indicator = if card_inner_h > 0 && total_lines > card_inner_h {
-        let max_off = total_lines.saturating_sub(card_inner_h);
-        let total_pages = total_lines.saturating_add(card_inner_h - 1) / card_inner_h;
-        let page = if scroll >= max_off {
-            total_pages
-        } else {
-            scroll / card_inner_h + 1
-        };
-        format!("  {}/{}", page, total_pages)
-    } else {
-        String::new()
-    };
-
-    let title_avail = title_max.saturating_sub(page_indicator.len());
-    let title_text = crate::graf::util::truncate(title, title_avail);
-    let combined_title = format!(" {} {} ", title_text, page_indicator);
-
-    // Bordered block with title in the top border.
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(theme.border))
-        .title(Span::styled(
-            combined_title,
-            Style::default()
-                .fg(theme.accent)
-                .add_modifier(Modifier::BOLD),
-        ))
-        .style(theme.preview_bg_style());
-
-    let inner = block.inner(card_rect);
-    frame.render_widget(block, card_rect);
-
-    // Content text lines inside the card.
-    let inner_w = inner.width as usize;
-    let inner_h = inner.height as usize;
-    let lines: Vec<Line> = content
-        .lines()
-        .skip(scroll)
-        .take(inner_h)
-        .map(|l| {
-            Line::from(Span::styled(
-                crate::graf::util::truncate(l, inner_w),
-                Style::default().fg(theme.text),
-            ))
-        })
-        .collect();
-    let para = Paragraph::new(lines).style(theme.preview_bg_style());
-    frame.render_widget(para, inner);
-}
 
 /// Markdown content card for the FolderGraph zoomed note. Renders the
 /// MarkdownRenderer's current page via `RenderedSnapshot`. Shows a
@@ -1139,7 +1011,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     let is_graph = app.list.notes_layout == crate::config::NotesLayout::Graph;
     let (list_area, preview_area, calendar_area) = list_view_layout(
         area,
-        app.list.preview_enabled && !is_graph,
+        app.list.preview_enabled,
         app.preview_position,
         app.list.calendar_enabled,
         app.preview_fullscreen,

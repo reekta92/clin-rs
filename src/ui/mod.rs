@@ -25,7 +25,7 @@ pub use help::*;
 pub use help_content::{HelpSuggestion, roll_suggestions};
 pub(crate) use list_view::{
     FOLDER_GRAPH_BASE_SPAN, SUBNOTE_GRAPH_BASE_SPAN, draw_list_view, get_preview_info,
-    list_detail_line, list_view_layout, section_rects,
+    list_detail_line, list_view_layout, orbit_positions, section_rects,
 };
 pub use popups::*;
 pub use setup::draw_setup_view;

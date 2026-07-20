@@ -198,6 +198,7 @@ pub struct ListView {
     pub drag_hover: Option<usize>,
     pub last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
     pub scroll_drag: Option<crate::ui::scrollbar::ScrollDrag>,
+    pub(crate) last_graph_click: Option<(u16, u16, std::time::Instant, String)>,
 }
 
 impl Default for ListView {
@@ -266,6 +267,7 @@ impl Default for ListView {
             folder_graph_note_title: None,
             last_scroll: None,
             scroll_drag: None,
+            last_graph_click: None,
         }
     }
 }
