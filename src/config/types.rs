@@ -17,6 +17,7 @@ pub enum NotesLayout {
     Tree,
     #[default]
     Grid,
+    Graph,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]

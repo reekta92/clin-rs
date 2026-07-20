@@ -514,7 +514,8 @@ impl App {
     pub fn toggle_notes_layout(&mut self) {
         self.list.notes_layout = match self.list.notes_layout {
             crate::config::NotesLayout::Tree => crate::config::NotesLayout::Grid,
-            crate::config::NotesLayout::Grid => crate::config::NotesLayout::Tree,
+            crate::config::NotesLayout::Grid => crate::config::NotesLayout::Graph,
+            crate::config::NotesLayout::Graph => crate::config::NotesLayout::Tree,
         };
         self.list.visual_index = 0;
         // #1: entering grid always opens the Vault tab (grid_folder == "")

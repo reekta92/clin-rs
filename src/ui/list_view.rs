@@ -317,6 +317,7 @@ pub fn render_subnote_graph_static(
     pan_x: f64,
     pan_y: f64,
     theme: &crate::app_theme::AppThemeColors,
+    interactable: bool,
 ) {
     use ratatui::symbols::Marker;
     use ratatui::widgets::canvas::{Canvas, Line as CanvasLine};
@@ -356,7 +357,7 @@ pub fn render_subnote_graph_static(
     let on_screen_sub_r = sub_r * cells_per_world;
     const FOCUS_THRESHOLD: f64 = 8.0; // cells — subnote circle must be this big on screen
 
-    if on_screen_sub_r > FOCUS_THRESHOLD {
+    if interactable && on_screen_sub_r > FOCUS_THRESHOLD {
         // Focus mode: find the subnote closest to viewport center and show its content card.
         let center = (pan_x, pan_y);
         let focused = positions
@@ -496,6 +497,7 @@ pub fn render_folder_graph_static(
     pan_x: f64,
     pan_y: f64,
     app: &mut crate::app::App,
+    interactable: bool,
 ) {
     use ratatui::symbols::Marker;
     use ratatui::widgets::canvas::{Canvas, Line as CanvasLine};
@@ -508,10 +510,11 @@ pub fn render_folder_graph_static(
 
     // Content card for zoomed-in note — exits on zoom-out below threshold.
     const EXIT_NOTE_THRESHOLD: f64 = 5.0;
-    let show_card = match &app.list.folder_graph_focused_note {
-        Some(id) => !(app.config.list.preview_encryption && id.ends_with(".clin")),
-        None => false,
-    };
+    let show_card = interactable
+        && match &app.list.folder_graph_focused_note {
+            Some(id) => !(app.config.list.preview_encryption && id.ends_with(".clin")),
+            None => false,
+        };
     if show_card {
         if zoom < EXIT_NOTE_THRESHOLD {
             app.list.folder_graph_focused_note = None;
@@ -679,7 +682,9 @@ pub fn render_folder_graph_static(
     const ENTER_ZOOM_MIN: f64 = 1.5; // user must zoom past 1.5x before focus triggers
     const EXIT_FOLDER_THRESHOLD_ZOOM: f64 = 0.6;
 
-    if app.list.folder_graph_focused_note.is_none()
+    let is_graph = app.list.notes_layout == crate::config::NotesLayout::Graph;
+    if interactable
+        && app.list.folder_graph_focused_note.is_none()
         && zoom > ENTER_ZOOM_MIN
         && on_screen_child_r > ENTER_THRESHOLD
     {
@@ -693,7 +698,9 @@ pub fn render_folder_graph_static(
                 app.list.folder_graph_focused_note = Some(closest.key.clone());
             } else {
                 // Re-focus to subfolder.
-                if let Some(crate::list_view::PreviewContent::FolderGraph {
+                if is_graph {
+                    app.list.grid_folder = closest.key.clone();
+                } else if let Some(crate::list_view::PreviewContent::FolderGraph {
                     focused_path, ..
                 }) = app.list.preview_content.as_mut()
                 {
@@ -710,19 +717,42 @@ pub fn render_folder_graph_static(
     }
 
     // Pop back to parent folder when zoomed too far out inside a nested subfolder.
-    if let Some(crate::list_view::PreviewContent::FolderGraph {
+    let should_pop = interactable && if is_graph {
+        !app.list.grid_folder.is_empty()
+            && !crate::app::App::is_virtual_path(&app.list.grid_folder)
+            && zoom < EXIT_FOLDER_THRESHOLD_ZOOM
+    } else if let Some(crate::list_view::PreviewContent::FolderGraph {
         root_path,
         focused_path,
-    }) = app.list.preview_content.as_ref()
-        && *focused_path != *root_path
-        && zoom < EXIT_FOLDER_THRESHOLD_ZOOM
-    {
-        let parent_path = if let Some(slash) = focused_path.rfind('/') {
-            focused_path[..slash].to_string()
+    }) = app.list.preview_content.as_ref() {
+        *focused_path != *root_path && zoom < EXIT_FOLDER_THRESHOLD_ZOOM
+    } else {
+        false
+    };
+
+    if should_pop {
+        let parent_path = if is_graph {
+            if let Some(slash) = app.list.grid_folder.rfind('/') {
+                app.list.grid_folder[..slash].to_string()
+            } else {
+                String::new()
+            }
         } else {
-            String::new()
+            let focused_path = match app.list.preview_content.as_ref() {
+                Some(crate::list_view::PreviewContent::FolderGraph { focused_path, .. }) => {
+                    focused_path
+                }
+                _ => "",
+            };
+            if let Some(slash) = focused_path.rfind('/') {
+                focused_path[..slash].to_string()
+            } else {
+                String::new()
+            }
         };
-        if let Some(crate::list_view::PreviewContent::FolderGraph {
+        if is_graph {
+            app.list.grid_folder = parent_path;
+        } else if let Some(crate::list_view::PreviewContent::FolderGraph {
             focused_path: fp, ..
         }) = app.list.preview_content.as_mut()
         {
@@ -1106,9 +1136,10 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         }
     }
 
+    let is_graph = app.list.notes_layout == crate::config::NotesLayout::Graph;
     let (list_area, preview_area, calendar_area) = list_view_layout(
         area,
-        app.list.preview_enabled,
+        app.list.preview_enabled && !is_graph,
         app.preview_position,
         app.list.calendar_enabled,
         app.preview_fullscreen,
@@ -1124,7 +1155,56 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     if !app.preview_fullscreen {
         let is_grid = app.list.notes_layout == crate::config::NotesLayout::Grid;
 
-        if is_grid {
+        if is_graph {
+            app.list.grid_tiles.clear();
+            if crate::app::App::is_subnotes_parent_grid_path(&app.list.grid_folder) {
+                let parent_id =
+                    crate::app::App::subnotes_parent_id_from_grid_path(&app.list.grid_folder);
+                let parent_title = app
+                    .notes
+                    .iter()
+                    .find(|n| n.id == parent_id)
+                    .map(|n| n.title.clone())
+                    .unwrap_or_else(|| parent_id.to_string());
+                let subnotes: Vec<crate::storage::SubNote> = app
+                    .subnotes_view_cache
+                    .iter()
+                    .find(|(p, _)| p == parent_id)
+                    .map(|(_, subs)| subs.clone())
+                    .unwrap_or_default();
+                render_subnote_graph_static(
+                    frame,
+                    list_area,
+                    &parent_title,
+                    &subnotes,
+                    app.list.subnote_graph_zoom,
+                    app.list.subnote_graph_pan_x,
+                    app.list.subnote_graph_pan_y,
+                    &app.app_theme,
+                    true,
+                );
+            } else {
+                let (children, label) = app.folder_graph_children(&app.list.grid_folder);
+                let positions = orbit_positions(children.len(), 10.0);
+                let positioned: Vec<crate::list_view::FolderGraphNode> = children
+                    .iter()
+                    .zip(positions.iter())
+                    .map(|(n, &(x, y))| crate::list_view::FolderGraphNode { x, y, ..n.clone() })
+                    .collect();
+                app.list.folder_graph_nodes = positioned.clone();
+                render_folder_graph_static(
+                    frame,
+                    list_area,
+                    &label,
+                    &positioned,
+                    app.list.folder_graph_zoom,
+                    app.list.folder_graph_pan_x,
+                    app.list.folder_graph_pan_y,
+                    app,
+                    true,
+                );
+            }
+        } else if is_grid {
             app.list.grid_tiles.clear();
 
             // --- render directory breadcrumbs at the top of the list area ---
@@ -1780,10 +1860,11 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 preview_rect,
                 &parent_title,
                 &subnotes,
-                app.list.subnote_graph_zoom,
-                app.list.subnote_graph_pan_x,
-                app.list.subnote_graph_pan_y,
+                1.0,
+                0.0,
+                0.0,
                 &app.app_theme,
+                false,
             );
             rendered_graph = true;
         }
@@ -1802,18 +1883,16 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 .zip(positions.iter())
                 .map(|(n, &(x, y))| crate::list_view::FolderGraphNode { x, y, ..n.clone() })
                 .collect();
-            let zoom = app.list.folder_graph_zoom;
-            let pan_x = app.list.folder_graph_pan_x;
-            let pan_y = app.list.folder_graph_pan_y;
             render_folder_graph_static(
                 frame,
                 preview_rect,
                 &label,
                 &positioned,
-                zoom,
-                pan_x,
-                pan_y,
+                1.0,
+                0.0,
+                0.0,
                 app,
+                false,
             );
             rendered_graph = true;
         }

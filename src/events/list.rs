@@ -358,122 +358,127 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 }
                 return false;
             }
-            ListAction::PreviewPageUp => match &mut app.list.preview_content {
-                Some(crate::list_view::PreviewContent::Markdown(renderer)) => {
-                    renderer.prev_page();
-                }
-                Some(crate::list_view::PreviewContent::CanvasGrid { data, grid }) => {
-                    let old_scale = app.list.preview_scale;
-                    let new_scale = (old_scale * 1.1).clamp(0.1, 10.0);
-                    app.list.preview_offset_x *= new_scale / old_scale;
-                    app.list.preview_offset_y *= new_scale / old_scale;
-                    app.list.preview_scale = new_scale;
-                    let width = app.list.preview_content_width.unwrap_or(40);
-                    let height = app.list.preview_content_height.unwrap_or(40);
-                    *grid = crate::snapshot::render_canvas_snapshot(
-                        data,
-                        &app.app_theme,
-                        app.config.ui.icon_mode,
-                        width,
-                        height,
-                        app.list.preview_scale,
-                        app.list.preview_offset_x,
-                        app.list.preview_offset_y,
-                    );
-                    app.list.preview_content_scale = Some(app.list.preview_scale);
-                    app.list.preview_content_offset_x = Some(app.list.preview_offset_x);
-                    app.list.preview_content_offset_y = Some(app.list.preview_offset_y);
-                }
-                Some(crate::list_view::PreviewContent::DrawGrid { data, grid }) => {
-                    let old_scale = app.list.preview_scale;
-                    let new_scale = (old_scale * 1.1).clamp(0.1, 10.0);
-                    app.list.preview_offset_x *= new_scale / old_scale;
-                    app.list.preview_offset_y *= new_scale / old_scale;
-                    app.list.preview_scale = new_scale;
-                    let width = app.list.preview_content_width.unwrap_or(40);
-                    let height = app.list.preview_content_height.unwrap_or(40);
-                    *grid = crate::snapshot::render_draw_snapshot_with_size(
-                        data,
-                        &app.app_theme,
-                        app.config.ui.icon_mode,
-                        width,
-                        height,
-                        app.list.preview_scale,
-                        app.list.preview_offset_x,
-                        app.list.preview_offset_y,
-                    );
-                    app.list.preview_content_scale = Some(app.list.preview_scale);
-                    app.list.preview_content_offset_x = Some(app.list.preview_offset_x);
-                    app.list.preview_content_offset_y = Some(app.list.preview_offset_y);
-                }
-                Some(crate::list_view::PreviewContent::Image(_)) => {}
-
-                Some(crate::list_view::PreviewContent::SubnoteGraph { .. }) => {}
-                Some(crate::list_view::PreviewContent::FolderGraph { .. })
-                    if app.list.folder_graph_focused_note.is_some() =>
+            ListAction::PreviewPageUp => {
+                if app.list.notes_layout == crate::config::NotesLayout::Graph
+                    && app.list.folder_graph_focused_note.is_some()
                 {
                     scroll_folder_graph_note_content(app, false);
+                } else {
+                    match &mut app.list.preview_content {
+                        Some(crate::list_view::PreviewContent::Markdown(renderer)) => {
+                            renderer.prev_page();
+                        }
+                        Some(crate::list_view::PreviewContent::CanvasGrid { data, grid }) => {
+                            let old_scale = app.list.preview_scale;
+                            let new_scale = (old_scale * 1.1).clamp(0.1, 10.0);
+                            app.list.preview_offset_x *= new_scale / old_scale;
+                            app.list.preview_offset_y *= new_scale / old_scale;
+                            app.list.preview_scale = new_scale;
+                            let width = app.list.preview_content_width.unwrap_or(40);
+                            let height = app.list.preview_content_height.unwrap_or(40);
+                            *grid = crate::snapshot::render_canvas_snapshot(
+                                data,
+                                &app.app_theme,
+                                app.config.ui.icon_mode,
+                                width,
+                                height,
+                                app.list.preview_scale,
+                                app.list.preview_offset_x,
+                                app.list.preview_offset_y,
+                            );
+                            app.list.preview_content_scale = Some(app.list.preview_scale);
+                            app.list.preview_content_offset_x = Some(app.list.preview_offset_x);
+                            app.list.preview_content_offset_y = Some(app.list.preview_offset_y);
+                        }
+                        Some(crate::list_view::PreviewContent::DrawGrid { data, grid }) => {
+                            let old_scale = app.list.preview_scale;
+                            let new_scale = (old_scale * 1.1).clamp(0.1, 10.0);
+                            app.list.preview_offset_x *= new_scale / old_scale;
+                            app.list.preview_offset_y *= new_scale / old_scale;
+                            app.list.preview_scale = new_scale;
+                            let width = app.list.preview_content_width.unwrap_or(40);
+                            let height = app.list.preview_content_height.unwrap_or(40);
+                            *grid = crate::snapshot::render_draw_snapshot_with_size(
+                                data,
+                                &app.app_theme,
+                                app.config.ui.icon_mode,
+                                width,
+                                height,
+                                app.list.preview_scale,
+                                app.list.preview_offset_x,
+                                app.list.preview_offset_y,
+                            );
+                            app.list.preview_content_scale = Some(app.list.preview_scale);
+                            app.list.preview_content_offset_x = Some(app.list.preview_offset_x);
+                            app.list.preview_content_offset_y = Some(app.list.preview_offset_y);
+                        }
+                        Some(crate::list_view::PreviewContent::Image(_)) => {}
+                        Some(crate::list_view::PreviewContent::SubnoteGraph { .. }) => {}
+                        Some(crate::list_view::PreviewContent::FolderGraph { .. }) => {}
+                        None => {}
+                    }
                 }
-                Some(crate::list_view::PreviewContent::FolderGraph { .. }) => {}
-                None => {}
             },
-            ListAction::PreviewPageDown => match &mut app.list.preview_content {
-                Some(crate::list_view::PreviewContent::Markdown(renderer)) => {
-                    renderer.next_page();
-                }
-                Some(crate::list_view::PreviewContent::CanvasGrid { data, grid }) => {
-                    let old_scale = app.list.preview_scale;
-                    let new_scale = (old_scale / 1.1).clamp(0.1, 10.0);
-                    app.list.preview_offset_x *= new_scale / old_scale;
-                    app.list.preview_offset_y *= new_scale / old_scale;
-                    app.list.preview_scale = new_scale;
-                    let width = app.list.preview_content_width.unwrap_or(40);
-                    let height = app.list.preview_content_height.unwrap_or(40);
-                    *grid = crate::snapshot::render_canvas_snapshot(
-                        data,
-                        &app.app_theme,
-                        app.config.ui.icon_mode,
-                        width,
-                        height,
-                        app.list.preview_scale,
-                        app.list.preview_offset_x,
-                        app.list.preview_offset_y,
-                    );
-                    app.list.preview_content_scale = Some(app.list.preview_scale);
-                    app.list.preview_content_offset_x = Some(app.list.preview_offset_x);
-                    app.list.preview_content_offset_y = Some(app.list.preview_offset_y);
-                }
-                Some(crate::list_view::PreviewContent::DrawGrid { data, grid }) => {
-                    let old_scale = app.list.preview_scale;
-                    let new_scale = (old_scale / 1.1).clamp(0.1, 10.0);
-                    app.list.preview_offset_x *= new_scale / old_scale;
-                    app.list.preview_offset_y *= new_scale / old_scale;
-                    app.list.preview_scale = new_scale;
-                    let width = app.list.preview_content_width.unwrap_or(40);
-                    let height = app.list.preview_content_height.unwrap_or(40);
-                    *grid = crate::snapshot::render_draw_snapshot_with_size(
-                        data,
-                        &app.app_theme,
-                        app.config.ui.icon_mode,
-                        width,
-                        height,
-                        app.list.preview_scale,
-                        app.list.preview_offset_x,
-                        app.list.preview_offset_y,
-                    );
-                    app.list.preview_content_scale = Some(app.list.preview_scale);
-                    app.list.preview_content_offset_x = Some(app.list.preview_offset_x);
-                    app.list.preview_content_offset_y = Some(app.list.preview_offset_y);
-                }
-                Some(crate::list_view::PreviewContent::Image(_)) => {}
-                Some(crate::list_view::PreviewContent::SubnoteGraph { .. }) => {}
-                Some(crate::list_view::PreviewContent::FolderGraph { .. })
-                    if app.list.folder_graph_focused_note.is_some() =>
+            ListAction::PreviewPageDown => {
+                if app.list.notes_layout == crate::config::NotesLayout::Graph
+                    && app.list.folder_graph_focused_note.is_some()
                 {
                     scroll_folder_graph_note_content(app, true);
+                } else {
+                    match &mut app.list.preview_content {
+                        Some(crate::list_view::PreviewContent::Markdown(renderer)) => {
+                            renderer.next_page();
+                        }
+                        Some(crate::list_view::PreviewContent::CanvasGrid { data, grid }) => {
+                            let old_scale = app.list.preview_scale;
+                            let new_scale = (old_scale / 1.1).clamp(0.1, 10.0);
+                            app.list.preview_offset_x *= new_scale / old_scale;
+                            app.list.preview_offset_y *= new_scale / old_scale;
+                            app.list.preview_scale = new_scale;
+                            let width = app.list.preview_content_width.unwrap_or(40);
+                            let height = app.list.preview_content_height.unwrap_or(40);
+                            *grid = crate::snapshot::render_canvas_snapshot(
+                                data,
+                                &app.app_theme,
+                                app.config.ui.icon_mode,
+                                width,
+                                height,
+                                app.list.preview_scale,
+                                app.list.preview_offset_x,
+                                app.list.preview_offset_y,
+                            );
+                            app.list.preview_content_scale = Some(app.list.preview_scale);
+                            app.list.preview_content_offset_x = Some(app.list.preview_offset_x);
+                            app.list.preview_content_offset_y = Some(app.list.preview_offset_y);
+                        }
+                        Some(crate::list_view::PreviewContent::DrawGrid { data, grid }) => {
+                            let old_scale = app.list.preview_scale;
+                            let new_scale = (old_scale / 1.1).clamp(0.1, 10.0);
+                            app.list.preview_offset_x *= new_scale / old_scale;
+                            app.list.preview_offset_y *= new_scale / old_scale;
+                            app.list.preview_scale = new_scale;
+                            let width = app.list.preview_content_width.unwrap_or(40);
+                            let height = app.list.preview_content_height.unwrap_or(40);
+                            *grid = crate::snapshot::render_draw_snapshot_with_size(
+                                data,
+                                &app.app_theme,
+                                app.config.ui.icon_mode,
+                                width,
+                                height,
+                                app.list.preview_scale,
+                                app.list.preview_offset_x,
+                                app.list.preview_offset_y,
+                            );
+                            app.list.preview_content_scale = Some(app.list.preview_scale);
+                            app.list.preview_content_offset_x = Some(app.list.preview_offset_x);
+                            app.list.preview_content_offset_y = Some(app.list.preview_offset_y);
+                        }
+                        Some(crate::list_view::PreviewContent::Image(_)) => {}
+                        Some(crate::list_view::PreviewContent::SubnoteGraph { .. }) => {}
+                        Some(crate::list_view::PreviewContent::FolderGraph { .. }) => {}
+                        None => {}
+                    }
                 }
-                Some(crate::list_view::PreviewContent::FolderGraph { .. }) => {}
-                None => {}
             },
             _ => {}
         },
@@ -746,131 +751,150 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
                     return;
                 }
             }
-            Some(crate::list_view::PreviewContent::SubnoteGraph { .. }) => {
-                let aspect = p_area.width as f64 / p_area.height as f64;
-                let base_span = crate::ui::SUBNOTE_GRAPH_BASE_SPAN;
-                if mouse_event.kind == MouseEventKind::ScrollUp
-                    || mouse_event.kind == MouseEventKind::ScrollDown
-                {
-                    let old_zoom = app.list.subnote_graph_zoom;
-                    let new_zoom = if mouse_event.kind == MouseEventKind::ScrollUp {
-                        (old_zoom * 1.15).clamp(0.5, 30.0)
-                    } else {
-                        (old_zoom / 1.15).clamp(0.5, 30.0)
-                    };
-                    if (new_zoom - old_zoom).abs() < f64::EPSILON {
-                        return;
-                    }
-                    // Zoom toward cursor: keep the world point under the cursor fixed.
-                    let span_x_old = base_span / old_zoom;
-                    let span_y_old = span_x_old * 2.0 / aspect;
-                    let span_x_new = base_span / new_zoom;
-                    let span_y_new = span_x_new * 2.0 / aspect;
-                    // Cursor position as fraction of pane, centered at 0.
-                    let fx =
-                        (mouse_event.column as f64 - p_area.x as f64) / p_area.width as f64 - 0.5;
-                    let fy =
-                        0.5 - (mouse_event.row as f64 - p_area.y as f64) / p_area.height as f64;
-                    // World point under cursor before zoom.
-                    let world_x = app.list.subnote_graph_pan_x + fx * 2.0 * span_x_old;
-                    let world_y = app.list.subnote_graph_pan_y + fy * 2.0 * span_y_old;
-                    // Adjust pan so that world point stays under cursor after zoom.
-                    app.list.subnote_graph_pan_x = world_x - fx * 2.0 * span_x_new;
-                    app.list.subnote_graph_pan_y = world_y - fy * 2.0 * span_y_new;
-                    app.list.subnote_graph_zoom = new_zoom;
-                    return;
-                }
-                if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
-                    app.list.preview_drag_last_pos = Some((mouse_event.column, mouse_event.row));
-                    return;
-                }
-                if mouse_event.kind == MouseEventKind::Drag(MouseButton::Left) {
-                    if let Some((last_x, last_y)) = app.list.preview_drag_last_pos {
-                        let dx = mouse_event.column as f64 - last_x as f64;
-                        let dy = mouse_event.row as f64 - last_y as f64;
-                        let span_x = base_span / app.list.subnote_graph_zoom;
-                        let span_y = span_x * 2.0 / aspect; // cell_aspect compensation (must match renderer)
-                        let world_per_cell_x = 2.0 * span_x / p_area.width as f64;
-                        let world_per_cell_y = 2.0 * span_y / p_area.height as f64;
-                        // Drag right → content follows right → viewport center moves left (pan_x decreases).
-                        // Drag down → content follows down → viewport center moves up in world (pan_y increases).
-                        app.list.subnote_graph_pan_x -= dx * world_per_cell_x;
-                        app.list.subnote_graph_pan_y += dy * world_per_cell_y;
-                        app.list.preview_drag_last_pos =
-                            Some((mouse_event.column, mouse_event.row));
-                    }
-                    return;
-                }
-                if mouse_event.kind == MouseEventKind::Up(MouseButton::Left) {
-                    app.list.preview_drag_last_pos = None;
-                    return;
-                }
-            }
-            Some(crate::list_view::PreviewContent::FolderGraph { .. }) => {
-                if mouse_event.kind == MouseEventKind::Down(MouseButton::Middle)
-                    && app.list.folder_graph_focused_note.is_some()
-                {
-                    let forward = !mouse_event.modifiers.contains(KeyModifiers::SHIFT);
-                    scroll_folder_graph_note_content(app, forward);
-                    return;
-                }
-                let aspect = p_area.width as f64 / p_area.height as f64;
-                let base_span = crate::ui::FOLDER_GRAPH_BASE_SPAN;
-                if mouse_event.kind == MouseEventKind::ScrollUp
-                    || mouse_event.kind == MouseEventKind::ScrollDown
-                {
-                    let old_zoom = app.list.folder_graph_zoom;
-                    let new_zoom = if mouse_event.kind == MouseEventKind::ScrollUp {
-                        (old_zoom * 1.15).clamp(0.5, 30.0)
-                    } else {
-                        (old_zoom / 1.15).clamp(0.5, 30.0)
-                    };
-                    if (new_zoom - old_zoom).abs() < f64::EPSILON {
-                        return;
-                    }
-                    let span_x_old = base_span / old_zoom;
-                    let span_y_old = span_x_old * 2.0 / aspect;
-                    let span_x_new = base_span / new_zoom;
-                    let span_y_new = span_x_new * 2.0 / aspect;
-                    let fx =
-                        (mouse_event.column as f64 - p_area.x as f64) / p_area.width as f64 - 0.5;
-                    let fy =
-                        0.5 - (mouse_event.row as f64 - p_area.y as f64) / p_area.height as f64;
-                    let world_x = app.list.folder_graph_pan_x + fx * 2.0 * span_x_old;
-                    let world_y = app.list.folder_graph_pan_y + fy * 2.0 * span_y_old;
-                    app.list.folder_graph_pan_x = world_x - fx * 2.0 * span_x_new;
-                    app.list.folder_graph_pan_y = world_y - fy * 2.0 * span_y_new;
-                    app.list.folder_graph_zoom = new_zoom;
-                    return;
-                }
-                if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
-                    app.list.preview_drag_last_pos = Some((mouse_event.column, mouse_event.row));
-                    return;
-                }
-                if mouse_event.kind == MouseEventKind::Drag(MouseButton::Left) {
-                    if let Some((last_x, last_y)) = app.list.preview_drag_last_pos {
-                        let dx = mouse_event.column as f64 - last_x as f64;
-                        let dy = mouse_event.row as f64 - last_y as f64;
-                        let span_x = base_span / app.list.folder_graph_zoom;
-                        let span_y = span_x * 2.0 / aspect;
-                        let world_per_cell_x = 2.0 * span_x / p_area.width as f64;
-                        let world_per_cell_y = 2.0 * span_y / p_area.height as f64;
-                        app.list.folder_graph_pan_x -= dx * world_per_cell_x;
-                        app.list.folder_graph_pan_y += dy * world_per_cell_y;
-                        app.list.preview_drag_last_pos =
-                            Some((mouse_event.column, mouse_event.row));
-                    }
-                    return;
-                }
-                if mouse_event.kind == MouseEventKind::Up(MouseButton::Left) {
-                    app.list.preview_drag_last_pos = None;
-                    return;
-                }
-            }
+            Some(crate::list_view::PreviewContent::SubnoteGraph { .. }) => {}
+            Some(crate::list_view::PreviewContent::FolderGraph { .. }) => {}
             Some(crate::list_view::PreviewContent::Image(_)) => {}
 
             None => {}
         }
+    }
+    if app.preview_fullscreen {
+        return;
+    }
+
+    if app.list.notes_layout == crate::config::NotesLayout::Graph {
+        if !contains_cell(inner_list_area, mouse_event.column, mouse_event.row) {
+            return;
+        }
+        let is_subnotes = crate::app::App::is_subnotes_parent_grid_path(&app.list.grid_folder);
+        let area = inner_list_area;
+        let aspect = area.width as f64 / area.height as f64;
+        let base_span = if is_subnotes {
+            crate::ui::SUBNOTE_GRAPH_BASE_SPAN
+        } else {
+            crate::ui::FOLDER_GRAPH_BASE_SPAN
+        };
+
+        if mouse_event.kind == MouseEventKind::Down(MouseButton::Middle)
+            && app.list.folder_graph_focused_note.is_some()
+        {
+            let forward = !mouse_event.modifiers.contains(KeyModifiers::SHIFT);
+            scroll_folder_graph_note_content(app, forward);
+            return;
+        }
+
+        if mouse_event.kind == MouseEventKind::ScrollUp
+            || mouse_event.kind == MouseEventKind::ScrollDown
+        {
+            let (old_zoom, pan_x, pan_y) = if is_subnotes {
+                (
+                    app.list.subnote_graph_zoom,
+                    app.list.subnote_graph_pan_x,
+                    app.list.subnote_graph_pan_y,
+                )
+            } else {
+                (
+                    app.list.folder_graph_zoom,
+                    app.list.folder_graph_pan_x,
+                    app.list.folder_graph_pan_y,
+                )
+            };
+            let new_zoom = if mouse_event.kind == MouseEventKind::ScrollUp {
+                (old_zoom * 1.15).clamp(0.5, 30.0)
+            } else {
+                (old_zoom / 1.15).clamp(0.5, 30.0)
+            };
+            if (new_zoom - old_zoom).abs() > f64::EPSILON {
+                let span_x_old = base_span / old_zoom;
+                let span_y_old = span_x_old * 2.0 / aspect;
+                let span_x_new = base_span / new_zoom;
+                let span_y_new = span_x_new * 2.0 / aspect;
+                let fx = (mouse_event.column as f64 - area.x as f64) / area.width as f64 - 0.5;
+                let fy = 0.5 - (mouse_event.row as f64 - area.y as f64) / area.height as f64;
+                let world_x = pan_x + fx * 2.0 * span_x_old;
+                let world_y = pan_y + fy * 2.0 * span_y_old;
+                let new_pan_x = world_x - fx * 2.0 * span_x_new;
+                let new_pan_y = world_y - fy * 2.0 * span_y_new;
+                if is_subnotes {
+                    app.list.subnote_graph_pan_x = new_pan_x;
+                    app.list.subnote_graph_pan_y = new_pan_y;
+                    app.list.subnote_graph_zoom = new_zoom;
+                } else {
+                    app.list.folder_graph_pan_x = new_pan_x;
+                    app.list.folder_graph_pan_y = new_pan_y;
+                    app.list.folder_graph_zoom = new_zoom;
+                }
+            }
+            return;
+        }
+
+        if mouse_event.kind == MouseEventKind::Down(MouseButton::Left) {
+            app.list.preview_drag_last_pos = Some((mouse_event.column, mouse_event.row));
+            return;
+        }
+
+        if mouse_event.kind == MouseEventKind::Drag(MouseButton::Left) {
+            if let Some((last_x, last_y)) = app.list.preview_drag_last_pos {
+                let dx = mouse_event.column as f64 - last_x as f64;
+                let dy = mouse_event.row as f64 - last_y as f64;
+                let zoom = if is_subnotes {
+                    app.list.subnote_graph_zoom
+                } else {
+                    app.list.folder_graph_zoom
+                };
+                let span_x = base_span / zoom;
+                let span_y = span_x * 2.0 / aspect;
+                let world_per_cell_x = 2.0 * span_x / area.width as f64;
+                let world_per_cell_y = 2.0 * span_y / area.height as f64;
+                if is_subnotes {
+                    app.list.subnote_graph_pan_x -= dx * world_per_cell_x;
+                    app.list.subnote_graph_pan_y += dy * world_per_cell_y;
+                } else {
+                    app.list.folder_graph_pan_x -= dx * world_per_cell_x;
+                    app.list.folder_graph_pan_y += dy * world_per_cell_y;
+                }
+                app.list.preview_drag_last_pos = Some((mouse_event.column, mouse_event.row));
+            }
+            return;
+        }
+
+        if mouse_event.kind == MouseEventKind::Up(MouseButton::Left) {
+            app.list.preview_drag_last_pos = None;
+
+            if !is_subnotes {
+                let zoom = app.list.folder_graph_zoom;
+                let pan_x = app.list.folder_graph_pan_x;
+                let pan_y = app.list.folder_graph_pan_y;
+                let span_x = base_span / zoom;
+                let span_y = span_x * 2.0 / aspect;
+                let fx = (mouse_event.column as f64 - area.x as f64) / area.width as f64 - 0.5;
+                let fy = 0.5 - (mouse_event.row as f64 - area.y as f64) / area.height as f64;
+                let world_x = pan_x + fx * 2.0 * span_x;
+                let world_y = pan_y + fy * 2.0 * span_y;
+
+                let node_r = 1.5_f64;
+                if let Some(node) = app.list.folder_graph_nodes.iter().find(|n| {
+                    let dx = n.x - world_x;
+                    let dy = n.y - world_y;
+                    (dx * dx + dy * dy).sqrt() <= node_r * 1.5
+                }) {
+                    if node.is_note {
+                        app.list.folder_graph_pan_x = node.x;
+                        app.list.folder_graph_pan_y = node.y;
+                        app.list.folder_graph_zoom = 8.0;
+                        app.list.folder_graph_focused_note = Some(node.key.clone());
+                    } else {
+                        app.list.grid_folder = node.key.clone();
+                        app.list.folder_graph_zoom = 1.0;
+                        app.list.folder_graph_pan_x = 0.0;
+                        app.list.folder_graph_pan_y = 0.0;
+                        app.list.folder_graph_focused_note = None;
+                    }
+                }
+            }
+            return;
+        }
+        return;
     }
     if app.preview_fullscreen {
         return;
