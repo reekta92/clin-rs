@@ -238,6 +238,17 @@ impl ClinConfig {
             root.insert("default_view".to_string(), notes_layout);
             changed = true;
         }
+        // Migrate graf.filter.max_nodes -> graf.max_node
+        if let Some(graf) = value.get_mut("graf").and_then(|g| g.as_table_mut()) {
+            if let Some(filter) = graf.get_mut("filter").and_then(|f| f.as_table_mut()) {
+                if let Some(max_nodes) = filter.remove("max_nodes") {
+                    if graf.get("max_node").is_none() {
+                        graf.insert("max_node".to_string(), max_nodes);
+                        changed = true;
+                    }
+                }
+            }
+        }
 
         let mut editor_table = toml::value::Table::new();
         if let Some(root) = value.as_table_mut() {
@@ -1205,5 +1216,33 @@ sections = ["draw", "draw", "graf"]
         let from_empty: ListConfig = toml::from_str("").unwrap();
         let from_default = ListConfig::default();
         assert_eq!(from_default, from_empty);
+    }
+    #[test]
+    fn test_max_node_default() {
+        let default_config = ClinConfig::default();
+        assert_eq!(default_config.graf.max_node, 500);
+
+        let parsed: ClinConfig = toml::from_str("[graf]").unwrap();
+        assert_eq!(parsed.graf.max_node, 500);
+    }
+
+    #[test]
+    fn test_max_node_migration() {
+        let toml_str = r#"
+[graf.filter]
+max_nodes = 42
+"#;
+        let mut value: toml::Value = toml::from_str(toml_str).unwrap();
+        if let Some(graf) = value.get_mut("graf").and_then(|g| g.as_table_mut()) {
+            if let Some(filter) = graf.get_mut("filter").and_then(|f| f.as_table_mut()) {
+                if let Some(max_nodes) = filter.remove("max_nodes") {
+                    if graf.get("max_node").is_none() {
+                        graf.insert("max_node".to_string(), max_nodes);
+                    }
+                }
+            }
+        }
+        let parsed: ClinConfig = value.try_into().unwrap();
+        assert_eq!(parsed.graf.max_node, 42);
     }
 }

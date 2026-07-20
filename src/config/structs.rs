@@ -301,8 +301,6 @@ pub struct FilterConfig {
     pub exclude_tags: Vec<String>,
     #[serde(default)]
     pub min_links: usize,
-    #[serde(default)]
-    pub max_nodes: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -498,7 +496,7 @@ impl Default for EditorConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct GrafConfig {
     #[serde(default)]
@@ -513,6 +511,22 @@ pub struct GrafConfig {
     pub search: SearchConfig,
     #[serde(default)]
     pub preview_enabled: bool,
+    #[serde(default = "crate::config::defaults::default_max_node")]
+    pub max_node: usize,
+}
+
+impl Default for GrafConfig {
+    fn default() -> Self {
+        Self {
+            visual: VisualConfig::default(),
+            physics: PhysicsConfig::default(),
+            interaction: InteractionConfig::default(),
+            filter: FilterConfig::default(),
+            search: SearchConfig::default(),
+            preview_enabled: false,
+            max_node: crate::config::defaults::default_max_node(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

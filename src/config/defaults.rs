@@ -79,3 +79,6 @@ pub fn default_sections() -> Vec<super::types::NotesSection> {
         super::types::NotesSection::Goals,
     ]
 }
+pub fn default_max_node() -> usize {
+    500
+}

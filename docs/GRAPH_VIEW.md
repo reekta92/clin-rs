@@ -22,7 +22,7 @@ The graph view displays all notes as nodes with edges representing `[[wikilinks]
    - `min_links` — minimum link threshold
    - `exclude_tags` — skip notes with these tags
    - `exclude_patterns` — skip notes matching path patterns
-   - `max_nodes` — cap total nodes
+   - `max_node` — cap total nodes
 4. Creates force nodes with `GraphNodeData`
 5. Creates edges from `[[wikilinks]]` extracted by `extract_wikilinks()`
 6. Resolves links via title matching (case-insensitive)

@@ -418,9 +418,11 @@ auto_push = false
 # ── Graph View (Graf) ─────────────────────────────────────────────────────────
 
 [graf]
+# Maximum number of nodes to simulate and display (0 = unlimited).
+max_node = 500
+
 # Enable preview pane in graph view.
 preview_enabled = false
-
 [graf.visual]
 # Graph background style ("solid", "transparent")
 graph_background = "solid"
@@ -507,9 +509,6 @@ exclude_tags = []
 
 # Minimum number of links for a node to be visible.
 min_links = 0
-
-# Maximum number of nodes to display (0 = unlimited).
-max_nodes = 0
 
 [graf.search]
 # Maximum results to show in graph search.

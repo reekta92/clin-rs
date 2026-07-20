@@ -56,10 +56,11 @@ pub fn build_graph(
         candidates.push(summary);
     }
 
-    // Apply max_nodes cap: keep most-connected nodes
-    let max_nodes = config.graf.filter.max_nodes;
-    if max_nodes > 0 && candidates.len() > max_nodes {
+    // Apply max_node cap: keep most-connected nodes
+    let max_node = config.graf.max_node;
+    if max_node > 0 && candidates.len() > max_node {
         candidates.sort_by_key(|b| std::cmp::Reverse(b.links.len()));
+        candidates.truncate(max_node);
     }
 
     // Insert into force graph
@@ -173,4 +174,55 @@ pub fn search_nodes(
 
     results.truncate(max_results);
     results
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_build_force_graph_max_node_truncation() {
+        let mut config = ClinConfig::default();
+        config.graf.max_node = 2;
+
+        let summaries = vec![
+            NoteSummary {
+                id: "1".to_string(),
+                title: "Note 1".to_string(),
+                updated_at: 0,
+                folder: "".to_string(),
+                tags: vec![],
+                pinned: false,
+                links: vec!["2".to_string(), "3".to_string()],
+                size_bytes: 0,
+            },
+            NoteSummary {
+                id: "2".to_string(),
+                title: "Note 2".to_string(),
+                updated_at: 0,
+                folder: "".to_string(),
+                tags: vec![],
+                pinned: false,
+                links: vec!["1".to_string()],
+                size_bytes: 0,
+            },
+            NoteSummary {
+                id: "3".to_string(),
+                title: "Note 3".to_string(),
+                updated_at: 0,
+                folder: "".to_string(),
+                tags: vec![],
+                pinned: false,
+                links: vec![],
+                size_bytes: 0,
+            },
+        ];
+
+        let graph = build_graph(&summaries, &config).unwrap();
+        assert_eq!(graph.node_count(), 2);
+        // Note 1 (2 links) and Note 2 (1 link) should be kept, Note 3 (0 links) truncated
+        let titles: Vec<_> = graph.node_weights().map(|n| n.data.title.as_str()).collect();
+        assert!(titles.contains(&"Note 1"));
+        assert!(titles.contains(&"Note 2"));
+        assert!(!titles.contains(&"Note 3"));
+    }
 }

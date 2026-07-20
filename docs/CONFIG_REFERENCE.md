@@ -279,8 +279,8 @@ attachments_subdir = "attachments"
 
 | Option | Type | Default | Description |
 |---|---|---|---|
+| `max_node` | `usize` | `500` | Maximum number of nodes to simulate and display (0 = unlimited) |
 | `preview_enabled` | `bool` | `false` | Enable the preview pane in Graph view |
-
 ### `[graf.visual]`
 
 | Option | Type | Default | Description |
@@ -420,8 +420,8 @@ hint_bar_style = "classic"
 accent = "#ff6600"
 
 [graf]
+max_node = 500
 preview_enabled = false
-
 [graf.visual]
 node_color_mode = "folder"
 label_mode = "selected"
