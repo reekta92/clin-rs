@@ -190,12 +190,15 @@ impl Default for VisualConfig {
 pub struct PhysicsConfig {
     #[serde(default = "default_ideal_distance")]
     pub ideal_distance: f64,
+    #[serde(default)]
+    pub tick_rate: PhysicsTickRate,
 }
 
 impl Default for PhysicsConfig {
     fn default() -> Self {
         Self {
             ideal_distance: default_ideal_distance(),
+            tick_rate: PhysicsTickRate::default(),
         }
     }
 }
@@ -298,6 +301,8 @@ pub struct FilterConfig {
     pub exclude_tags: Vec<String>,
     #[serde(default)]
     pub min_links: usize,
+    #[serde(default)]
+    pub max_nodes: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

@@ -3,6 +3,7 @@ pub mod ui;
 pub mod util;
 
 pub mod graph;
+pub mod spatial;
 pub mod input;
 pub mod physics;
 pub mod render;

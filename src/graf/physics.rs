@@ -2,7 +2,7 @@ use parking_lot::RwLock;
 use std::sync::{Arc, mpsc};
 
 use super::graph::GraphState;
-use crate::config::ClinConfig;
+use crate::config::{ClinConfig, PhysicsTickRate};
 
 pub fn simulation_step(state: &mut GraphState, gravity: f32, timestep: f32) {
     state.simulation.update(timestep);
@@ -26,16 +26,29 @@ pub fn simulation_step(state: &mut GraphState, gravity: f32, timestep: f32) {
         state.is_settled = true;
     }
     state.graph_bounds = super::render::compute_graph_bounds(graph);
+    state.spatial_grid.rebuild(state.simulation.get_graph());
 }
 
 pub fn start_physics(
     state: Arc<RwLock<GraphState>>,
-    _config: &ClinConfig,
+    config: &ClinConfig,
     kill_rx: mpsc::Receiver<()>,
 ) {
     let gravity = 0.01;
     let timestep = 0.016;
-    let sleep_ms = 16;
+
+    // Compute tick rate based on config mode and node count
+    let tick_rate_mode = config.graf.physics.tick_rate;
+    let node_count = { state.read().simulation.get_graph().node_count() };
+    let sleep_ms: u64 = if tick_rate_mode == PhysicsTickRate::Fixed {
+        16
+    } else {
+        match node_count {
+            0..=500 => 16,      // ~60Hz
+            501..=2000 => 33,   // ~30Hz
+            _ => 66,            // ~15Hz
+        }
+    };
 
     std::thread::spawn(move || {
         loop {

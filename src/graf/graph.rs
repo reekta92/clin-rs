@@ -25,6 +25,7 @@ pub struct GraphState {
     pub graph_bounds: (f64, f64, f64, f64),
     pub render_cache: Mutex<super::render::RenderCache>,
     pub mouse_pos: Option<(u16, u16)>,
+    pub spatial_grid: super::spatial::SpatialGrid,
 }
 
 pub fn build_graph(
@@ -36,6 +37,8 @@ pub fn build_graph(
 
     let min_links = config.graf.filter.min_links;
 
+    // Filter and collect candidate summaries
+    let mut candidates: Vec<&NoteSummary> = Vec::new();
     for summary in summaries {
         if summary.links.len() < min_links {
             continue;
@@ -50,6 +53,17 @@ pub fn build_graph(
             continue;
         }
 
+        candidates.push(summary);
+    }
+
+    // Apply max_nodes cap: keep most-connected nodes
+    let max_nodes = config.graf.filter.max_nodes;
+    if max_nodes > 0 && candidates.len() > max_nodes {
+        candidates.sort_by_key(|b| std::cmp::Reverse(b.links.len()));
+    }
+
+    // Insert into force graph
+    for summary in &candidates {
         let data = GraphNodeData {
             note_id: summary.id.clone(),
             title: summary.title.clone(),
@@ -94,7 +108,6 @@ pub fn create_simulation(
     let params = SimulationParameters::new(800.0, fdg_sim::Dimensions::Two, force);
     Simulation::from_graph(graph, params)
 }
-
 impl GraphState {
     pub fn new(summaries: &[NoteSummary], config: &ClinConfig) -> anyhow::Result<Self> {
         let graph = build_graph(summaries, config)?;
@@ -109,11 +122,16 @@ impl GraphState {
             graph_bounds: (0.0, 0.0, 0.0, 0.0),
             render_cache: Mutex::new(super::render::RenderCache::new()),
             mouse_pos: None,
+            spatial_grid: super::spatial::SpatialGrid::new(config.graf.physics.ideal_distance),
         };
         state.viewport = state
             .viewport
             .auto_fit_from_graph(state.simulation.get_graph(), 1.4);
         state.graph_bounds = super::render::compute_graph_bounds(state.simulation.get_graph());
+        // Rebuild spatial index after initial graph is placed
+        state
+            .spatial_grid
+            .rebuild(state.simulation.get_graph());
         Ok(state)
     }
 }

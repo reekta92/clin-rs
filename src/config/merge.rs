@@ -491,6 +491,9 @@ grid_divisions = 10
 # Ideal distance between nodes.
 ideal_distance = 80.0
 
+# Physics tick rate ("auto" or "fixed"). Auto reduces tick rate for large graphs.
+tick_rate = "auto"
+
 [graf.interaction]
 # Zoom sensitivity factor.
 zoom_factor = 1.15
@@ -504,6 +507,9 @@ exclude_tags = []
 
 # Minimum number of links for a node to be visible.
 min_links = 0
+
+# Maximum number of nodes to display (0 = unlimited).
+max_nodes = 0
 
 [graf.search]
 # Maximum results to show in graph search.

@@ -14,6 +14,7 @@ use crate::config::{
 };
 use crate::graf::graph::GraphState;
 use crate::graf::viewport::Viewport;
+use crate::graf::spatial::SpatialGrid;
 fn tag_color(tag: &str, index: usize, _total: usize, palette: &[Color]) -> Color {
     let palette_len = palette.len();
     if palette_len == 0 {
@@ -31,6 +32,17 @@ fn link_count_color(count: usize, max_count: usize, colors: &[Color]) -> Color {
     }
     let idx = (count as f64 / max_count as f64 * colors.len().saturating_sub(1) as f64) as usize;
     colors.get(idx).copied().unwrap_or(Color::Gray)
+}
+
+/// Level-of-detail tier determined by visible node count.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LodTier {
+    /// ≤200 visible nodes: full detail (shapes, colors, tag orbits, labels).
+    Full,
+    /// 201–1000 visible: shapes + colors, no orbits, selected labels only.
+    Medium,
+    /// >1000 visible: single-pixel dots, no edges, no labels.
+    Minimal,
 }
 
 #[derive(Clone)]
@@ -278,6 +290,7 @@ pub struct RenderCache {
     pub minimap_grid: Vec<Option<Color>>,
 
     pub topology_dirty: bool,
+    pub minimap_dirty: bool,
 }
 
 impl Default for RenderCache {
@@ -299,6 +312,7 @@ impl RenderCache {
             labels: Vec::new(),
             minimap_grid: Vec::new(),
             topology_dirty: true,
+            minimap_dirty: true,
         }
     }
 
@@ -400,21 +414,41 @@ impl RenderCache {
         graph: &fdg_sim::ForceGraph<super::graph::GraphNodeData, ()>,
         config: &ClinConfig,
         edge_color: Color,
+        tier: LodTier,
+        visible_nodes: &HashSet<NodeIndex>,
     ) {
         self.edges.clear();
+
+        if tier == LodTier::Minimal {
+            // No edges at minimal LOD
+            return;
+        }
+
+        let uniform_edges = tier == LodTier::Medium;
         for edge in graph.edge_references() {
+            // Skip edge if neither endpoint is visible
+            if !visible_nodes.contains(&edge.source())
+                && !visible_nodes.contains(&edge.target())
+            {
+                continue;
+            }
+
             let src = &graph[edge.source()];
             let tgt = &graph[edge.target()];
-            let color = match config.graf.visual.edge_color_mode {
-                EdgeColorMode::Source => *self
-                    .node_own_color
-                    .get(&edge.source())
-                    .unwrap_or(&edge_color),
-                EdgeColorMode::Target => *self
-                    .node_own_color
-                    .get(&edge.target())
-                    .unwrap_or(&edge_color),
-                EdgeColorMode::Uniform => edge_color,
+            let color = if uniform_edges {
+                edge_color
+            } else {
+                match config.graf.visual.edge_color_mode {
+                    EdgeColorMode::Source => *self
+                        .node_own_color
+                        .get(&edge.source())
+                        .unwrap_or(&edge_color),
+                    EdgeColorMode::Target => *self
+                        .node_own_color
+                        .get(&edge.target())
+                        .unwrap_or(&edge_color),
+                    EdgeColorMode::Uniform => edge_color,
+                }
             };
             self.edges.push(EdgeData {
                 x1: src.location.x as f64,
@@ -422,11 +456,16 @@ impl RenderCache {
                 x2: tgt.location.x as f64,
                 y2: tgt.location.y as f64,
                 color,
-                thickness: config.graf.visual.edge_thickness,
+                thickness: if uniform_edges {
+                    1
+                } else {
+                    config.graf.visual.edge_thickness
+                },
             });
         }
     }
 
+#[allow(clippy::too_many_arguments)]
     pub fn fill_nodes(
         &mut self,
         graph: &fdg_sim::ForceGraph<super::graph::GraphNodeData, ()>,
@@ -434,9 +473,30 @@ impl RenderCache {
         selected_node: Option<NodeIndex>,
         selection_ring_color: Color,
         hovered_node: Option<NodeIndex>,
-    ) {
+        spatial_grid: &SpatialGrid,
+        x_bounds: [f64; 2],
+        y_bounds: [f64; 2],
+    ) -> (LodTier, HashSet<NodeIndex>) {
         self.nodes.clear();
-        for idx in graph.node_indices() {
+
+        // Collect visible nodes via spatial index query
+        let mut visible_nodes: HashSet<NodeIndex> = spatial_grid
+            .query_rect(x_bounds[0], y_bounds[0], x_bounds[1], y_bounds[1])
+            .collect();
+
+        // Always include selected node even if off-screen
+        if let Some(sel) = selected_node {
+            visible_nodes.insert(sel);
+        }
+
+        // Determine LOD tier from visible node count
+        let tier = match visible_nodes.len() {
+            0..=200 => LodTier::Full,
+            201..=1000 => LodTier::Medium,
+            _ => LodTier::Minimal,
+        };
+
+        for &idx in &visible_nodes {
             let node = &graph[idx];
             let primary_color = self
                 .node_own_color
@@ -455,28 +515,66 @@ impl RenderCache {
                     }
                 }
             };
-            let extra_tag_colors: Vec<Color> = if node.data.tags.is_empty() {
-                Vec::new()
-            } else {
-                node.data
-                    .tags
-                    .iter()
-                    .skip(1)
-                    .filter_map(|tag| self.tag_colors.get(tag).copied())
-                    .collect()
-            };
-            self.nodes.push(NodeRenderData {
-                x: node.location.x as f64,
-                y: node.location.y as f64,
-                color: primary_color,
-                radius,
-                extra_tag_colors,
-                is_selected: selected_node == Some(idx),
-                is_hovered: hovered_node == Some(idx),
-                selection_ring_color,
-                shape: config.graf.visual.node_shape,
-            });
+
+            let is_selected = selected_node == Some(idx);
+            let is_hovered = hovered_node == Some(idx) && !is_selected;
+
+            match tier {
+                LodTier::Full => {
+                    let extra_tag_colors: Vec<Color> = if node.data.tags.is_empty() {
+                        Vec::new()
+                    } else {
+                        node.data
+                            .tags
+                            .iter()
+                            .skip(1)
+                            .filter_map(|tag| self.tag_colors.get(tag).copied())
+                            .collect()
+                    };
+                    self.nodes.push(NodeRenderData {
+                        x: node.location.x as f64,
+                        y: node.location.y as f64,
+                        color: primary_color,
+                        radius,
+                        extra_tag_colors,
+                        is_selected,
+                        is_hovered,
+                        selection_ring_color,
+                        shape: config.graf.visual.node_shape,
+                    });
+                }
+                LodTier::Medium => {
+                    // No tag orbits, only selected node gets hover ring
+                    self.nodes.push(NodeRenderData {
+                        x: node.location.x as f64,
+                        y: node.location.y as f64,
+                        color: primary_color,
+                        radius,
+                        extra_tag_colors: Vec::new(),
+                        is_selected,
+                        is_hovered: false,
+                        selection_ring_color,
+                        shape: config.graf.visual.node_shape,
+                    });
+                }
+                LodTier::Minimal => {
+                    // Single-pixel dots, forced Circle shape
+                    self.nodes.push(NodeRenderData {
+                        x: node.location.x as f64,
+                        y: node.location.y as f64,
+                        color: primary_color,
+                        radius: 1.0,
+                        extra_tag_colors: Vec::new(),
+                        is_selected,
+                        is_hovered: false,
+                        selection_ring_color,
+                        shape: NodeShape::Circle,
+                    });
+                }
+            }
         }
+
+        (tier, visible_nodes)
     }
 
     pub fn fill_labels(
@@ -485,8 +583,36 @@ impl RenderCache {
         config: &ClinConfig,
         selected_node: Option<NodeIndex>,
         min_offset_y: f64,
+        tier: LodTier,
+        visible_nodes: &HashSet<NodeIndex>,
     ) {
         self.labels.clear();
+
+        match tier {
+            LodTier::Minimal => return,
+            LodTier::Medium => {
+                // Only show label for selected node
+                if let Some(sel) = selected_node
+                    && visible_nodes.contains(&sel)
+                {
+                    let node = &graph[sel];
+                    let radius = self.nodes.get(sel.index()).map(|n| n.radius).unwrap_or(2.0);
+                    self.labels.push(LabelData {
+                        x: node.location.x as f64,
+                        y: node.location.y as f64
+                            + radius
+                            + config.graf.visual.label_offset.max(min_offset_y),
+                        text: crate::graf::util::truncate(
+                            &node.data.title,
+                            config.graf.visual.label_max_length,
+                        ),
+                    });
+                }
+                return;
+            }
+            LodTier::Full => {}
+        }
+
         let should_show = |idx: NodeIndex| -> bool {
             match config.graf.visual.label_mode {
                 LabelMode::Selected => selected_node == Some(idx),
@@ -508,7 +634,7 @@ impl RenderCache {
             }
         };
 
-        for idx in graph.node_indices() {
+        for &idx in visible_nodes {
             if !should_show(idx) {
                 continue;
             }
@@ -561,19 +687,23 @@ pub fn draw_graph_view(
         viewport.hit_test(wx, wy, state)
     });
 
-    cache.fill_edges(graph, config, colors.edge_color);
-    cache.fill_nodes(
+    let x_bounds = viewport.x_bounds(aspect);
+    let y_bounds = viewport.y_bounds(aspect);
+
+    let (tier, visible_nodes) = cache.fill_nodes(
         graph,
         config,
         state.selected_node,
         colors.selected_indicator_color,
         hovered_node,
+        &state.spatial_grid,
+        x_bounds,
+        y_bounds,
     );
-    let x_bounds = viewport.x_bounds(aspect);
-    let y_bounds = viewport.y_bounds(aspect);
+    cache.fill_edges(graph, config, colors.edge_color, tier, &visible_nodes);
     let cell_world_height =
         (y_bounds[1] - y_bounds[0]).abs() / (canvas_area.height as f64).max(1.0);
-    cache.fill_labels(graph, config, state.selected_node, cell_world_height * 1.5);
+    cache.fill_labels(graph, config, state.selected_node, cell_world_height * 1.5, tier, &visible_nodes);
     let edges = cache.edges.clone();
     let nodes = cache.nodes.clone();
     let labels = cache.labels.clone();
@@ -713,6 +843,9 @@ pub fn draw_graph_view(
     if flags.show_minimap {
         let minimap_area = compute_minimap_area(canvas_area, config);
 
+        // Mark dirty when physics is active (positions may change)
+        cache.minimap_dirty = !state.is_settled;
+
         let mut minimap_grid = std::mem::take(&mut cache.minimap_grid);
         draw_minimap(
             frame,
@@ -725,9 +858,11 @@ pub fn draw_graph_view(
                 colors: &colors,
             },
             &mut minimap_grid,
+            cache.minimap_dirty,
         );
 
         cache.minimap_grid = minimap_grid;
+        cache.minimap_dirty = false;
     }
 }
 
@@ -850,12 +985,12 @@ struct MinimapParams<'a> {
     node_colors: &'a HashMap<NodeIndex, Color>,
     colors: &'a crate::config::ThemeColors,
 }
-
 fn draw_minimap(
     frame: &mut ratatui::Frame,
     area: Rect,
     params: MinimapParams<'_>,
     grid: &mut Vec<Option<Color>>,
+    dirty: bool,
 ) {
     let (wx_min, wx_max, wy_min, wy_max) = params.graph_bounds;
     let aspect = area.width as f64 / area.height as f64;
@@ -901,18 +1036,21 @@ fn draw_minimap(
         row.clamp(0, (ih as isize) - 1) as usize
     };
 
+    // Only rebuild the pixel grid when dirty (physics changed positions)
     let grid_size = sub_h * iw;
-    grid.resize(grid_size, None);
-    grid.fill(None);
+    if dirty || grid.len() != grid_size {
+        grid.resize(grid_size, None);
+        grid.fill(None);
 
-    for idx in params.graph.node_indices() {
-        let node = &params.graph[idx];
-        let nx = node.location.x as f64;
-        let ny = node.location.y as f64;
-        let col = world_to_col(nx);
-        let sub_row = world_to_subrow(ny);
-        let color = params.node_colors.get(&idx).copied().unwrap_or(Color::Gray);
-        grid[sub_row * iw + col] = Some(color);
+        for idx in params.graph.node_indices() {
+            let node = &params.graph[idx];
+            let nx = node.location.x as f64;
+            let ny = node.location.y as f64;
+            let col = world_to_col(nx);
+            let sub_row = world_to_subrow(ny);
+            let color = params.node_colors.get(&idx).copied().unwrap_or(Color::Gray);
+            grid[sub_row * iw + col] = Some(color);
+        }
     }
 
     let buf = frame.buffer_mut();
@@ -1028,7 +1166,18 @@ mod tests {
     use super::*;
     use crate::config::ClinConfig;
     use crate::graf::graph::GraphNodeData;
+    use crate::graf::spatial::SpatialGrid;
     use fdg_sim::{ForceGraph, ForceGraphHelper};
+
+    fn setup_spatial_grid(graph: &ForceGraph<GraphNodeData, ()>) -> SpatialGrid {
+        let mut grid = SpatialGrid::new(100.0);
+        grid.rebuild(graph);
+        grid
+    }
+
+    // Generous bounds covering all nodes in test graphs
+    const TEST_X_BOUNDS: [f64; 2] = [-1000.0, 1000.0];
+    const TEST_Y_BOUNDS: [f64; 2] = [-1000.0, 1000.0];
 
     #[test]
     fn test_fill_labels() {
@@ -1065,54 +1214,67 @@ mod tests {
 
         let mut cache = RenderCache::new();
         let mut config = ClinConfig::default();
+        let grid = setup_spatial_grid(&graph);
 
         // 1. LabelMode::None
         config.graf.visual.label_mode = crate::config::LabelMode::None;
-        cache.fill_nodes(
+        let (_tier, visible) = cache.fill_nodes(
             &graph,
             &config,
             Some(idx1),
             ratatui::style::Color::Red,
             None,
+            &grid,
+            TEST_X_BOUNDS,
+            TEST_Y_BOUNDS,
         );
-        cache.fill_labels(&graph, &config, Some(idx1), 0.0);
+        cache.fill_labels(&graph, &config, Some(idx1), 0.0, _tier, &visible);
         assert!(cache.labels.is_empty());
 
         // 2. LabelMode::All
         config.graf.visual.label_mode = crate::config::LabelMode::All;
-        cache.fill_nodes(
+        let (_tier, visible) = cache.fill_nodes(
             &graph,
             &config,
             Some(idx1),
             ratatui::style::Color::Red,
             None,
+            &grid,
+            TEST_X_BOUNDS,
+            TEST_Y_BOUNDS,
         );
-        cache.fill_labels(&graph, &config, Some(idx1), 0.0);
+        cache.fill_labels(&graph, &config, Some(idx1), 0.0, _tier, &visible);
         assert_eq!(cache.labels.len(), 3);
 
         // 3. LabelMode::Selected
         config.graf.visual.label_mode = crate::config::LabelMode::Selected;
-        cache.fill_nodes(
+        let (_tier, visible) = cache.fill_nodes(
             &graph,
             &config,
             Some(idx1),
             ratatui::style::Color::Red,
             None,
+            &grid,
+            TEST_X_BOUNDS,
+            TEST_Y_BOUNDS,
         );
-        cache.fill_labels(&graph, &config, Some(idx1), 0.0);
+        cache.fill_labels(&graph, &config, Some(idx1), 0.0, _tier, &visible);
         assert_eq!(cache.labels.len(), 1);
         assert_eq!(cache.labels[0].text, "Node 1");
 
         // 4. LabelMode::Neighbors
         config.graf.visual.label_mode = crate::config::LabelMode::Neighbors;
-        cache.fill_nodes(
+        let (_tier, visible) = cache.fill_nodes(
             &graph,
             &config,
             Some(idx1),
             ratatui::style::Color::Red,
             None,
+            &grid,
+            TEST_X_BOUNDS,
+            TEST_Y_BOUNDS,
         );
-        cache.fill_labels(&graph, &config, Some(idx1), 0.0);
+        cache.fill_labels(&graph, &config, Some(idx1), 0.0, _tier, &visible);
         // Node 1 (selected) and Node 2 (neighbor) should have labels. Node 3 (distant) should not.
         assert_eq!(cache.labels.len(), 2);
         let mut names: Vec<String> = cache.labels.iter().map(|l| l.text.clone()).collect();
@@ -1120,8 +1282,18 @@ mod tests {
         assert_eq!(names, vec!["Node 1".to_string(), "Node 2".to_string()]);
 
         // 5. Test min_offset_y parameter
+        let (_tier, visible) = cache.fill_nodes(
+            &graph,
+            &config,
+            Some(idx1),
+            ratatui::style::Color::Red,
+            None,
+            &grid,
+            TEST_X_BOUNDS,
+            TEST_Y_BOUNDS,
+        );
         config.graf.visual.label_mode = crate::config::LabelMode::Selected;
-        cache.fill_labels(&graph, &config, Some(idx1), 10.0);
+        cache.fill_labels(&graph, &config, Some(idx1), 10.0, _tier, &visible);
         assert_eq!(cache.labels.len(), 1);
         let label = &cache.labels[0];
         let node_y = graph[idx1].location.y as f64;
@@ -1133,7 +1305,7 @@ mod tests {
         // The default label_offset is 4.0, but min_offset_y is 10.0. The actual offset should be 10.0.
         assert_eq!(label.y, node_y + radius + 10.0);
 
-        cache.fill_labels(&graph, &config, Some(idx1), 1.0);
+        cache.fill_labels(&graph, &config, Some(idx1), 1.0, _tier, &visible);
         let label = &cache.labels[0];
         // The default label_offset is 4.0, which is larger than min_offset_y of 1.0. The actual offset should be 4.0.
         assert_eq!(label.y, node_y + radius + 4.0);
