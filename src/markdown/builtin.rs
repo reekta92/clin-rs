@@ -34,6 +34,10 @@ pub(crate) static SYNTAX_SET: LazyLock<SyntaxSet> =
     LazyLock::new(SyntaxSet::load_defaults_nonewlines);
 
 pub(crate) static THEME_SET: LazyLock<ThemeSet> = LazyLock::new(ThemeSet::load_defaults);
+use parking_lot::Mutex;
+type CachedBlock = Vec<Vec<(ratatui::style::Style, String)>>;
+pub(crate) static CODE_CACHE: LazyLock<Mutex<std::collections::HashMap<(String, String, u64), CachedBlock>>> =
+    LazyLock::new(|| Mutex::new(std::collections::HashMap::new()));
 
 /// Theme name for code-block syntax highlighting.
 const CODE_THEME: &str = "base16-ocean.dark";
@@ -610,8 +614,46 @@ fn render_code_block(ctx: &mut Ctx, cb: &NodeCodeBlock, depth: usize) {
         && let Some(syntax) = SYNTAX_SET.find_syntax_by_token(&lang)
         && let Some(theme) = THEME_SET.themes.get(&ctx.code_theme)
     {
-        let mut highlighter = syntect::easy::HighlightLines::new(syntax, theme);
-        for (i, line) in cb.literal.lines().enumerate() {
+        let content_hash = {
+            use std::hash::{DefaultHasher, Hash, Hasher};
+            let mut h = DefaultHasher::new();
+            for line in cb.literal.lines() {
+                line.hash(&mut h);
+                b"\n".hash(&mut h);
+            }
+            h.finish()
+        };
+
+        let key = (lang.clone(), ctx.code_theme.clone(), content_hash);
+
+        let cached_lines = {
+            let cache = CODE_CACHE.lock();
+            cache.get(&key).cloned()
+        };
+
+        let highlighted_lines = if let Some(lines) = cached_lines {
+            lines
+        } else {
+            let mut highlighter = syntect::easy::HighlightLines::new(syntax, theme);
+            let mut computed = Vec::with_capacity(cb.literal.lines().count());
+            for line in cb.literal.lines() {
+                let mut line_spans = Vec::new();
+                if let Ok(ranges) = highlighter.highlight_line(line, &SYNTAX_SET) {
+                    for (syn_style, text) in &ranges {
+                        let rt_style = syntect_style_to_ratatui(*syn_style);
+                        line_spans.push((rt_style, text.to_string()));
+                    }
+                } else {
+                    line_spans.push((ctx.theme.paragraph, line.to_string()));
+                }
+                computed.push(line_spans);
+            }
+            let mut cache = CODE_CACHE.lock();
+            cache.insert(key, computed.clone());
+            computed
+        };
+
+        for (i, spans) in highlighted_lines.into_iter().enumerate() {
             if ctx.cancel_token.load(Ordering::Relaxed) {
                 return;
             }
@@ -621,13 +663,8 @@ fn render_code_block(ctx: &mut Ctx, cb: &NodeCodeBlock, depth: usize) {
             } else {
                 ctx.push_spaces(4, margin);
             }
-            if let Ok(ranges) = highlighter.highlight_line(line, &SYNTAX_SET) {
-                for (syn_style, text) in &ranges {
-                    let rt_style = syntect_style_to_ratatui(*syn_style);
-                    ctx.push_str(text, rt_style, code_indent);
-                }
-            } else {
-                ctx.push_str(line, ctx.theme.paragraph, code_indent);
+            for (style, text) in spans {
+                ctx.push_str(&text, style, code_indent);
             }
         }
         ctx.new_line(margin);

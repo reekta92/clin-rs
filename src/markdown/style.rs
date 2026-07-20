@@ -33,6 +33,7 @@ pub(crate) struct MarkdownTheme {
     // Body text
     pub paragraph: Style,
     pub code_inline: Style,
+    pub code_block: Style,
     pub code_block_bg: Option<Color>,
     // Links
     pub link_text: Style,
@@ -79,6 +80,7 @@ impl MarkdownTheme {
                 .add_modifier(Modifier::ITALIC),
             paragraph: Style::default().fg(theme.text),
             code_inline: Style::default().fg(theme.fg).bg(theme.muted),
+            code_block: Style::default().fg(theme.muted),
             code_block_bg: theme.bg,
             link_text: Style::default()
                 .fg(theme.accent)

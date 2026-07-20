@@ -10,17 +10,12 @@
 use ratatui::style::{Modifier, Style};
 use std::hash::{DefaultHasher, Hash, Hasher};
 
-use crate::markdown::builtin;
 use crate::markdown::style::MarkdownTheme;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum LineTag {
     Inline,
-    CodeBlock {
-        block_start: usize,
-        local: usize,
-        lang: String,
-        block_hash: u64,
-    },
+    CodeBlock,
 }
 
 /// Source-preserving markdown highlighter.
@@ -32,11 +27,6 @@ enum LineTag {
 /// Thread-safe: no, but called only from the single UI thread.
 pub(crate) struct SourceHighlighter {
     theme: MarkdownTheme,
-    syntax_set: &'static syntect::parsing::SyntaxSet,
-    theme_set: &'static syntect::highlighting::ThemeSet,
-    code_theme: String,
-    /// Global syntect cache keyed by (lang, content-hash).
-    code_cache: std::collections::HashMap<(String, u64), Vec<Vec<Style>>>,
     /// Per-line tag computed from the last full scan.
     line_tags: Vec<LineTag>,
     /// Hash of the document at last scan.
@@ -45,14 +35,8 @@ pub(crate) struct SourceHighlighter {
 
 impl SourceHighlighter {
     pub fn new(theme: &crate::app_theme::AppThemeColors) -> Self {
-        let syntax_set: &'static syntect::parsing::SyntaxSet = &builtin::SYNTAX_SET;
-        let theme_set: &'static syntect::highlighting::ThemeSet = &builtin::THEME_SET;
         Self {
             theme: MarkdownTheme::from_app_theme(theme),
-            syntax_set,
-            theme_set,
-            code_theme: builtin::default_code_theme().to_string(),
-            code_cache: std::collections::HashMap::new(),
             line_tags: Vec::new(),
             scanned_hash: 0,
         }
@@ -61,7 +45,10 @@ impl SourceHighlighter {
     /// Re-rescan fence boundaries when `full_doc` hash has changed.
     fn rescan_if_needed(&mut self, full_doc: &[String]) {
         let mut hasher = DefaultHasher::new();
-        full_doc.join("\n").hash(&mut hasher);
+        for line in full_doc {
+            line.hash(&mut hasher);
+            b"\n".hash(&mut hasher);
+        }
         let hash = hasher.finish();
 
         if hash == self.scanned_hash && !self.line_tags.is_empty() {
@@ -70,104 +57,26 @@ impl SourceHighlighter {
         self.scanned_hash = hash;
         self.line_tags = Vec::with_capacity(full_doc.len());
 
-        // Walk lines tracking ``` / ~~~ fence state.
-        let mut in_fence: Option<(usize, String)> = None;
-        let mut fence_content: Vec<String> = Vec::new();
+        let mut in_fence = false;
 
-        for (i, line) in full_doc.iter().enumerate() {
-            if let Some((start_line, ref lang)) = in_fence {
-                let trimmed = line.trim();
-                if is_fence_line(trimmed) {
-                    // Close fence — cache the block content
-                    let content_hash = {
-                        let mut h = DefaultHasher::new();
-                        fence_content.join("\n").hash(&mut h);
-                        h.finish()
-                    };
-                    let key = (lang.clone(), content_hash);
-                    if !self.code_cache.contains_key(&key) {
-                        self.highlight_code_block(lang, &fence_content, &key);
-                    }
-                    // Tag fence-open line as inline
-                    self.line_tags.push(LineTag::Inline);
-                    // Tag interior lines
-                    for (local, _) in fence_content.iter().enumerate() {
-                        self.line_tags.push(LineTag::CodeBlock {
-                            block_start: start_line,
-                            local,
-                            lang: lang.clone(),
-                            block_hash: content_hash,
-                        });
-                    }
-                    // Tag close-fence line as inline
-                    self.line_tags.push(LineTag::Inline);
-                    in_fence = None;
-                    fence_content.clear();
-                } else {
-                    fence_content.push(line.clone());
-                }
+        for line in full_doc {
+            let trimmed = line.trim_start();
+            let spaces = line.len() - trimmed.len();
+            let is_fence = spaces <= 3
+                && (trimmed.starts_with("```") || trimmed.starts_with("~~~"))
+                && trimmed.len() >= 3;
+
+            if is_fence {
+                self.line_tags.push(LineTag::Inline);
+                in_fence = !in_fence;
+            } else if in_fence {
+                self.line_tags.push(LineTag::CodeBlock);
             } else {
-                let trimmed = line.trim_start();
-                let spaces = line.len() - trimmed.len();
-                if spaces <= 3
-                    && let Some(rest) = trimmed
-                        .strip_prefix("```")
-                        .or_else(|| trimmed.strip_prefix("~~~"))
-                {
-                    let lang = rest.trim().to_string();
-                    in_fence = Some((i, lang));
-                    fence_content = Vec::new();
-                    continue;
-                }
-                self.line_tags.push(LineTag::Inline);
-            }
-        }
-
-        // If still inside an unclosed fence, tag buffered content as inline
-        if in_fence.is_some() {
-            // The opening fence line was tagged inline (via `continue` above)
-            // Content lines were never tagged — already skipped in the fence branch
-            // without pushing. We need to tag them now as Inline.
-            for _ in 0..fence_content.len() {
                 self.line_tags.push(LineTag::Inline);
             }
         }
     }
 
-    /// Run syntect on a code block and store in cache.
-    fn highlight_code_block(&mut self, lang: &str, lines: &[String], key: &(String, u64)) {
-        use syntect::easy::HighlightLines;
-        use syntect::highlighting::Theme;
-
-        let syntax = self
-            .syntax_set
-            .find_syntax_by_token(lang)
-            .unwrap_or_else(|| self.syntax_set.find_syntax_plain_text());
-        let theme: &Theme = self
-            .theme_set
-            .themes
-            .get(&self.code_theme)
-            .unwrap_or_else(|| {
-                self.theme_set
-                    .themes
-                    .get(builtin::default_code_theme())
-                    .expect("default code theme should exist")
-            });
-        let mut hl = HighlightLines::new(syntax, theme);
-        let mut result = Vec::with_capacity(lines.len());
-        for line in lines {
-            let ranges = hl.highlight_line(line, self.syntax_set).unwrap_or_default();
-            let styles: Vec<Style> = ranges
-                .iter()
-                .flat_map(|(style, text)| {
-                    let s = builtin::syntect_style_to_ratatui(*style);
-                    text.chars().map(move |_| s)
-                })
-                .collect();
-            result.push(styles);
-        }
-        self.code_cache.insert(key.clone(), result);
-    }
 
     /// Return one [`Style`] per character of `line`, considering its role
     /// in the document (code block vs inline markdown).
@@ -177,17 +86,8 @@ impl SourceHighlighter {
     pub fn highlight_line(&mut self, line: &str, row: usize, full_doc: &[String]) -> Vec<Style> {
         self.rescan_if_needed(full_doc);
 
-        if row < self.line_tags.len()
-            && let LineTag::CodeBlock {
-                block_start: _,
-                local,
-                lang,
-                block_hash,
-            } = &self.line_tags[row]
-            && let Some(cached) = self.code_cache.get(&(lang.clone(), *block_hash))
-            && let Some(styles) = cached.get(*local)
-        {
-            return styles.clone();
+        if row < self.line_tags.len() && self.line_tags[row] == LineTag::CodeBlock {
+            return vec![self.theme.code_block; line.chars().count()];
         }
 
         self.highlight_inline(line)
@@ -232,7 +132,7 @@ impl SourceHighlighter {
 
         // Fence open/close line (``` or ~~~)
         if is_fence_marker(&chars) {
-            return vec![self.theme.code_inline; chars.len()];
+            return vec![self.theme.code_block; chars.len()];
         }
 
         // Task list line
@@ -501,14 +401,6 @@ fn try_autolink(chars: &[char], i: usize) -> Option<usize> {
     Some(end)
 }
 
-/// Check if a trimmed line is a fence close: only ```` ``` ```` / `~~~` and whitespace.
-fn is_fence_line(trimmed: &str) -> bool {
-    (trimmed.starts_with("```") || trimmed.starts_with("~~~"))
-        && trimmed.len() >= 3
-        && trimmed
-            .chars()
-            .all(|c| c == '`' || c == '~' || c.is_whitespace())
-}
 
 /// Detect heading level from `#` prefix.
 fn heading_level(chars: &[char]) -> Option<usize> {
@@ -736,5 +628,26 @@ mod tests {
             styles2[bracket_start], hl.theme.task_checked,
             "checked bracket"
         );
+    }
+    #[test]
+    fn code_block_fence_highlighting() {
+        let colors = AppThemeColors::default();
+        let mut hl = SourceHighlighter::new(&colors);
+        let doc = vec![
+            "```rust".to_string(),
+            "fn main() {}".to_string(),
+            "```".to_string(),
+        ];
+        let styles_fence_open = hl.highlight_line("```rust", 0, &doc);
+        assert_eq!(styles_fence_open[0], hl.theme.code_block);
+
+        let styles_interior = hl.highlight_line("fn main() {}", 1, &doc);
+        assert_eq!(styles_interior.len(), "fn main() {}".len());
+        for style in styles_interior {
+            assert_eq!(style, hl.theme.code_block);
+        }
+
+        let styles_fence_close = hl.highlight_line("```", 2, &doc);
+        assert_eq!(styles_fence_close[0], hl.theme.code_block);
     }
 }
