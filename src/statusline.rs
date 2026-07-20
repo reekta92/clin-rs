@@ -747,6 +747,14 @@ impl StatuslineContext<'_> {
                 Some(val.into())
             }
 
+            "fps" => {
+                if let Some(app) = self.app {
+                    Some(format!("{:.0}", app.fps).into())
+                } else {
+                    Some("".into())
+                }
+            }
+
             // Graph view
             "node_count" | "edge_count" | "selected_node" | "viewport_size" | "viewport_ratio"
             | "graph_settled" | "label_mode" | "node_color_mode" | "edge_color_mode"
@@ -1548,7 +1556,7 @@ fn default_template(view: ViewMode, field: &str) -> Cow<'static, str> {
         "footer_left" => "{pending}{badge}{hints}".into(),
         "header_right" => {
             match view {
-                ViewMode::Graph => "Nodes: {node_count} | Edges: {edge_count} | Selected: {selected_node} | Ratio: {viewport_ratio}x   ".into(),
+                ViewMode::Graph => "Nodes: {node_count} | Edges: {edge_count} | Selected: {selected_node} | Ratio: {viewport_ratio}x | FPS: {fps}   ".into(),
                 ViewMode::Backup => "{branch} | ↑{ahead} ↓{behind} | {modified_text}".into(),
                 ViewMode::List => "{detail}".into(),
                 ViewMode::Setup => "{pinned_count} pinned".into(),

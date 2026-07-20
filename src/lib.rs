@@ -1309,6 +1309,10 @@ fn run_app(
             if let Err(e) = terminal.draw(|frame| crate::ui::draw_ui(frame, app, focus)) {
                 return Err(e.into());
             }
+            let now = std::time::Instant::now();
+            let elapsed = now.duration_since(app.last_frame_time).as_secs_f64();
+            app.fps = app.fps * 0.9 + (1.0 / elapsed.max(0.001)) * 0.1;
+            app.last_frame_time = now;
             if app.mode == ViewMode::List {
                 list_dirty = false;
             }

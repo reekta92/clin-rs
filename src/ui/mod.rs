@@ -104,6 +104,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                         ViewMode::Graph,
                     );
                     ctx.area = Some(outer[0]);
+                    ctx.app = Some(app);
                     ctx.app_status = Some(app.status.as_ref());
                     ctx.vault_path = Some(&app.storage.data_dir);
                     ctx.date_format = Some(&app.date_format);

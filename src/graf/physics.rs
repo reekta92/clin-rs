@@ -21,6 +21,13 @@ pub fn simulation_step(state: &mut GraphState, timestep: f32) {
     let cooloff = 0.50 + 0.45 * alpha;
     for node in state.simulation.get_graph_mut().node_weights_mut() {
         node.velocity *= cooloff;
+
+        let max_dist = 8000.0;
+        let dist = (node.location.x.powi(2) + node.location.y.powi(2)).sqrt();
+        if dist > max_dist {
+            node.location.x = (node.location.x / dist) * max_dist;
+            node.location.y = (node.location.y / dist) * max_dist;
+        }
     }
 
     if let Some((tx, ty)) = state.drag_target

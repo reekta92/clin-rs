@@ -92,8 +92,8 @@ impl Viewport {
 
     pub fn zoom_out(&mut self, factor: f64) {
         self.zoom /= factor;
-        if self.zoom < 0.01 {
-            self.zoom = 0.01;
+        if self.zoom < 0.05 {
+            self.zoom = 0.05;
         }
     }
 

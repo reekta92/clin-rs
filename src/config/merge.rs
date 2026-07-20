@@ -507,8 +507,8 @@ drag_sensitivity = 1.0
 # List of tags to exclude from graph view.
 exclude_tags = []
 
-# Minimum number of links for a node to be visible.
-min_links = 0
+# Show isolated notes with no valid links.
+show_orphan = false
 
 [graf.search]
 # Maximum results to show in graph search.

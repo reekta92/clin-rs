@@ -394,6 +394,8 @@ pub struct App {
         std::sync::mpsc::Receiver<anyhow::Result<crate::image_render::worker::DecodedImage>>,
     >,
     pub notes_worker_pool: Arc<rayon::ThreadPool>,
+    pub fps: f64,
+    pub last_frame_time: std::time::Instant,
 }
 
 const PREVIEW_INNER_PAD: u16 = 4;
@@ -632,6 +634,8 @@ fn build_notes_worker_pool() -> anyhow::Result<Arc<rayon::ThreadPool>> {
             image_picker: None,
             image_decode_tx: None,
             image_decode_rx: None,
+            fps: 0.0,
+            last_frame_time: std::time::Instant::now(),
         };
         app.goals_progress = app.load_goals_progress();
         app.list.folder_expanded.insert(String::new());
@@ -852,6 +856,8 @@ fn build_notes_worker_pool() -> anyhow::Result<Arc<rayon::ThreadPool>> {
             image_picker: None,
             image_decode_tx: None,
             image_decode_rx: None,
+            fps: 0.0,
+            last_frame_time: std::time::Instant::now(),
         };
         app.goals_progress = app.load_goals_progress();
         app.list.folder_expanded.insert(String::new());

@@ -19,7 +19,7 @@ The graph view displays all notes as nodes with edges representing `[[wikilinks]
 1. Lists all note IDs from `Storage`
 2. Loads each note summary (title, tags, folder, links)
 3. Filters out nodes that don't meet criteria:
-   - `min_links` — minimum link threshold
+   - `show_orphan` — show isolated notes with no links
    - `exclude_tags` — skip notes with these tags
    - `exclude_patterns` — skip notes matching path patterns
    - `max_node` — cap total nodes

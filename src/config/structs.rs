@@ -300,7 +300,7 @@ pub struct FilterConfig {
     #[serde(default)]
     pub exclude_tags: Vec<String>,
     #[serde(default)]
-    pub min_links: usize,
+    pub show_orphan: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

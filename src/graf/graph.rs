@@ -1,5 +1,5 @@
 use parking_lot::Mutex;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use fdg_sim::petgraph::graph::NodeIndex;
 use fdg_sim::{ForceGraph, ForceGraphHelper, Simulation, SimulationParameters};
@@ -36,15 +36,11 @@ pub fn build_graph(
     let mut graph: ForceGraph<GraphNodeData, ()> = ForceGraph::default();
     let mut title_to_index: HashMap<String, NodeIndex> = HashMap::new();
 
-    let min_links = config.graf.filter.min_links;
+    let show_orphan = config.graf.filter.show_orphan;
 
-    // Filter and collect candidate summaries
-    let mut candidates: Vec<&NoteSummary> = Vec::new();
+    // 1. Filter out notes excluded by tags
+    let mut valid_summaries: Vec<&NoteSummary> = Vec::new();
     for summary in summaries {
-        if summary.links.len() < min_links {
-            continue;
-        }
-
         if !config.graf.filter.exclude_tags.is_empty()
             && summary
                 .tags
@@ -53,7 +49,36 @@ pub fn build_graph(
         {
             continue;
         }
+        valid_summaries.push(summary);
+    }
 
+    // 2. Map valid titles for edge validation
+    let valid_titles: HashSet<String> = valid_summaries
+        .iter()
+        .map(|s| s.title.to_lowercase())
+        .collect();
+
+    // 3. Find titles that participate in at least one valid edge
+    let mut has_valid_edge = HashSet::new();
+    if !show_orphan {
+        for summary in &valid_summaries {
+            let source_title = summary.title.to_lowercase();
+            for link in &summary.links {
+                let target_title = link.to_lowercase();
+                if target_title != source_title && valid_titles.contains(&target_title) {
+                    has_valid_edge.insert(source_title.clone());
+                    has_valid_edge.insert(target_title);
+                }
+            }
+        }
+    }
+
+    // 4. Collect final candidates (excluding orphans if requested)
+    let mut candidates: Vec<&NoteSummary> = Vec::new();
+    for summary in valid_summaries {
+        if !show_orphan && !has_valid_edge.contains(&summary.title.to_lowercase()) {
+            continue;
+        }
         candidates.push(summary);
     }
 
@@ -78,6 +103,8 @@ pub fn build_graph(
         title_to_index.insert(summary.title.to_lowercase(), idx);
     }
 
+    let mut has_final_edge = std::collections::HashSet::new();
+
     for summary in summaries {
         let source_title = summary.title.to_lowercase();
 
@@ -95,7 +122,22 @@ pub fn build_graph(
                 && graph.edges_connecting(source_idx, target_idx).count() == 0
             {
                 graph.add_edge(source_idx, target_idx, ());
+                has_final_edge.insert(source_idx);
+                has_final_edge.insert(target_idx);
             }
+        }
+    }
+
+    if !show_orphan {
+        let mut to_remove = Vec::new();
+        for idx in graph.node_indices() {
+            if !has_final_edge.contains(&idx) {
+                to_remove.push(idx);
+            }
+        }
+        to_remove.sort_unstable_by(|a, b| b.cmp(a));
+        for idx in to_remove {
+            graph.remove_node(idx);
         }
     }
 
@@ -121,7 +163,7 @@ impl GraphState {
             dragging_node: None,
             drag_target: None,
             is_settled: false,
-            alpha: 1.0,
+            alpha: 0.4,
             graph_bounds: (0.0, 0.0, 0.0, 0.0),
             render_cache: Mutex::new(super::render::RenderCache::new()),
             mouse_pos: None,
@@ -200,7 +242,7 @@ mod tests {
                 folder: "".to_string(),
                 tags: vec![],
                 pinned: false,
-                links: vec!["2".to_string(), "3".to_string()],
+                links: vec!["Note 2".to_string(), "Note 3".to_string()],
                 size_bytes: 0,
             },
             NoteSummary {
@@ -210,7 +252,7 @@ mod tests {
                 folder: "".to_string(),
                 tags: vec![],
                 pinned: false,
-                links: vec!["1".to_string()],
+                links: vec!["Note 1".to_string()],
                 size_bytes: 0,
             },
             NoteSummary {
@@ -232,5 +274,143 @@ mod tests {
         assert!(titles.contains(&"Note 1"));
         assert!(titles.contains(&"Note 2"));
         assert!(!titles.contains(&"Note 3"));
+    }
+    #[test]
+    fn test_build_force_graph_show_orphan() {
+        let summaries = vec![
+            NoteSummary {
+                id: "1".to_string(),
+                title: "Connected 1".to_string(),
+                updated_at: 0,
+                folder: "".to_string(),
+                tags: vec![],
+                pinned: false,
+                links: vec!["Connected 2".to_string()],
+                size_bytes: 0,
+            },
+            NoteSummary {
+                id: "2".to_string(),
+                title: "Connected 2".to_string(),
+                updated_at: 0,
+                folder: "".to_string(),
+                tags: vec![],
+                pinned: false,
+                links: vec![],
+                size_bytes: 0,
+            },
+            NoteSummary {
+                id: "3".to_string(),
+                title: "Orphan 1".to_string(),
+                updated_at: 0,
+                folder: "".to_string(),
+                tags: vec![],
+                pinned: false,
+                links: vec!["Dead Link Target".to_string()],
+                size_bytes: 0,
+            },
+        ];
+
+        // Default: show_orphan = false
+        let config_hide = ClinConfig::default();
+        let graph_hide = build_graph(&summaries, &config_hide).unwrap();
+        assert_eq!(graph_hide.node_count(), 2);
+        let titles_hide: Vec<_> = graph_hide.node_weights().map(|n| n.data.title.as_str()).collect();
+        assert!(titles_hide.contains(&"Connected 1"));
+        assert!(titles_hide.contains(&"Connected 2"));
+        assert!(!titles_hide.contains(&"Orphan 1"));
+
+        // show_orphan = true
+        let mut config_show = ClinConfig::default();
+        config_show.graf.filter.show_orphan = true;
+        let graph_show = build_graph(&summaries, &config_show).unwrap();
+        assert_eq!(graph_show.node_count(), 3);
+        let titles_show: Vec<_> = graph_show.node_weights().map(|n| n.data.title.as_str()).collect();
+        assert!(titles_show.contains(&"Connected 1"));
+        assert!(titles_show.contains(&"Connected 2"));
+        assert!(titles_show.contains(&"Orphan 1"));
+    }
+    #[test]
+    fn test_build_force_graph_self_link_orphan() {
+        let summaries = vec![NoteSummary {
+            id: "1".to_string(),
+            title: "Self Linker".to_string(),
+            updated_at: 0,
+            folder: "".to_string(),
+            tags: vec![],
+            pinned: false,
+            links: vec!["Self Linker".to_string()],
+            size_bytes: 0,
+        }];
+
+        let config_hide = ClinConfig::default();
+        let graph_hide = build_graph(&summaries, &config_hide).unwrap();
+        assert_eq!(graph_hide.node_count(), 0);
+
+        let mut config_show = ClinConfig::default();
+        config_show.graf.filter.show_orphan = true;
+        let graph_show = build_graph(&summaries, &config_show).unwrap();
+        assert_eq!(graph_show.node_count(), 1);
+    }
+
+    #[test]
+    fn test_build_force_graph_truncated_orphan_removal() {
+        let summaries = vec![
+            NoteSummary {
+                id: "1".to_string(),
+                title: "A".to_string(),
+                updated_at: 0,
+                folder: "".to_string(),
+                tags: vec![],
+                pinned: false,
+                links: vec!["B".to_string()],
+                size_bytes: 0,
+            },
+            NoteSummary {
+                id: "2".to_string(),
+                title: "B".to_string(),
+                updated_at: 0,
+                folder: "".to_string(),
+                tags: vec![],
+                pinned: false,
+                links: vec!["A".to_string()],
+                size_bytes: 0,
+            },
+            NoteSummary {
+                id: "3".to_string(),
+                title: "C".to_string(),
+                updated_at: 0,
+                folder: "".to_string(),
+                tags: vec![],
+                pinned: false,
+                links: vec!["D".to_string()],
+                size_bytes: 0,
+            },
+            NoteSummary {
+                id: "4".to_string(),
+                title: "D".to_string(),
+                updated_at: 0,
+                folder: "".to_string(),
+                tags: vec![],
+                pinned: false,
+                links: vec![],
+                size_bytes: 0,
+            },
+        ];
+
+        let mut config = ClinConfig::default();
+        config.graf.max_node = 3;
+        let graph = build_graph(&summaries, &config).unwrap();
+        // Pre-filter includes A, B, C, D.
+        // Truncation (max_node = 3): A(1 link), B(1 link), C(1 link) kept; D(0 links) dropped.
+        // Edge building: A<->B edge built. C->D edge cannot be built because D was truncated.
+        // Post-filter scrubs C because it has no final edges.
+        // Final graph only contains A and B.
+        assert_eq!(graph.node_count(), 2);
+        let titles: Vec<_> = graph.node_weights().map(|n| n.data.title.as_str()).collect();
+        assert!(titles.contains(&"A"));
+        assert!(titles.contains(&"B"));
+        assert!(!titles.contains(&"C"));
+        assert!(!titles.contains(&"D"));
+        assert_eq!(graph.edge_count(), 1);
     }
 }

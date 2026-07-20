@@ -339,7 +339,7 @@ All optional. Hex color strings like `"#ff6600"`. Override theme defaults.
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `exclude_tags` | `Vec<String>` | `[]` | Tags to exclude from graph |
-| `min_links` | `usize` | `0` | Minimum links for a node to appear |
+| `show_orphan` | `bool` | `false` | Show isolated notes with no valid links |
 
 ### `[graf.search]`
 
