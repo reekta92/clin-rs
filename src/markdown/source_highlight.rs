@@ -77,7 +77,6 @@ impl SourceHighlighter {
         }
     }
 
-
     /// Return one [`Style`] per character of `line`, considering its role
     /// in the document (code block vs inline markdown).
     ///
@@ -400,7 +399,6 @@ fn try_autolink(chars: &[char], i: usize) -> Option<usize> {
     let end = slice.find('>')?;
     Some(end)
 }
-
 
 /// Detect heading level from `#` prefix.
 fn heading_level(chars: &[char]) -> Option<usize> {

@@ -60,16 +60,18 @@ impl App {
 
                     if !upserts.is_empty() || !removed.is_empty() {
                         data_changed = true;
-                        let removed_set: HashSet<&str> = removed.iter().map(|s| s.as_str()).collect();
+                        let removed_set: HashSet<&str> =
+                            removed.iter().map(|s| s.as_str()).collect();
                         self.notes.retain(|n| !removed_set.contains(n.id.as_str()));
                         for r in &removed {
                             self.note_stamps.remove(r);
                         }
 
-                        let upsert_map: HashMap<String, (NoteSummary, crate::storage::FileStamp)> = upserts
-                            .into_iter()
-                            .map(|(s, st)| (s.id.clone(), (s, st)))
-                            .collect();
+                        let upsert_map: HashMap<String, (NoteSummary, crate::storage::FileStamp)> =
+                            upserts
+                                .into_iter()
+                                .map(|(s, st)| (s.id.clone(), (s, st)))
+                                .collect();
 
                         for (id, (summary, stamp)) in upsert_map {
                             if let Some(pos) = self.notes.iter().position(|n| n.id == id) {
@@ -100,17 +102,25 @@ impl App {
                     if complete {
                         self.initial_load_done = true;
                         self.catalog_status = None;
-                        if self.list.sections.contains(&crate::config::NotesSection::Graf) {
+                        if self
+                            .list
+                            .sections
+                            .contains(&crate::config::NotesSection::Graf)
+                        {
                             self.ensure_graph_preview();
                         }
                         if !warnings.is_empty() {
-                            self.set_temporary_status(&format!("Notes loaded with {} warning(s)", warnings.len()));
+                            self.set_temporary_status(&format!(
+                                "Notes loaded with {} warning(s)",
+                                warnings.len()
+                            ));
                         } else {
                             self.set_default_status();
                         }
                     } else {
                         self.initial_load_done = false;
-                        self.catalog_status = Some("Notes validation incomplete; Refresh to retry".to_string());
+                        self.catalog_status =
+                            Some("Notes validation incomplete; Refresh to retry".to_string());
                         if let Some(w) = warnings.first() {
                             self.set_temporary_status(w);
                         } else {
@@ -119,7 +129,10 @@ impl App {
                     }
                 }
             }
-            CatalogEvent::Failed { generation, message } => {
+            CatalogEvent::Failed {
+                generation,
+                message,
+            } => {
                 if generation == cur_gen {
                     self.catalog_status = Some(format!("Notes validation failed: {message}"));
                     self.set_default_status();
@@ -148,15 +161,19 @@ impl App {
 
         let note_path = self.storage.note_path(id);
         if let Ok(meta) = std::fs::metadata(&note_path) {
-            let modified_nanos = meta
-                .modified()
-                .ok()
-                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_nanos()));
+            let modified_nanos = meta.modified().ok().and_then(|t| {
+                t.duration_since(std::time::UNIX_EPOCH)
+                    .ok()
+                    .map(|d| d.as_nanos())
+            });
             let stamp = crate::storage::FileStamp {
                 modified_nanos,
                 len: meta.len(),
             };
-            let entry = crate::storage::NoteFileEntry { id: id.to_string(), stamp };
+            let entry = crate::storage::NoteFileEntry {
+                id: id.to_string(),
+                stamp,
+            };
             if let Ok(summary) = self.storage.load_note_summary_from_entry(&entry) {
                 self.notes.retain(|n| n.id != id);
                 self.notes.push(summary.clone());
@@ -165,12 +182,14 @@ impl App {
                 self.notes_revision += 1;
 
                 let generation_num = self.catalog_generation.load(Ordering::SeqCst);
-                let _ = self.catalog_cmd_tx.try_send(crate::app::catalog::CatalogCommand::PutKnown {
-                    generation: generation_num,
-                    summary,
-                    stamp,
-                    old_id: prev_id.map(|s| s.to_string()),
-                });
+                let _ =
+                    self.catalog_cmd_tx
+                        .try_send(crate::app::catalog::CatalogCommand::PutKnown {
+                            generation: generation_num,
+                            summary,
+                            stamp,
+                            old_id: prev_id.map(|s| s.to_string()),
+                        });
             } else {
                 self.notes.retain(|n| n.id != id);
                 self.note_stamps.remove(id);
@@ -178,10 +197,12 @@ impl App {
                 self.notes_revision += 1;
 
                 let generation_num = self.catalog_generation.load(Ordering::SeqCst);
-                let _ = self.catalog_cmd_tx.try_send(crate::app::catalog::CatalogCommand::RemoveKnown {
-                    generation: generation_num,
-                    id: id.to_string(),
-                });
+                let _ = self.catalog_cmd_tx.try_send(
+                    crate::app::catalog::CatalogCommand::RemoveKnown {
+                        generation: generation_num,
+                        id: id.to_string(),
+                    },
+                );
             }
         } else {
             self.notes.retain(|n| n.id != id);
@@ -190,10 +211,12 @@ impl App {
             self.notes_revision += 1;
 
             let generation_num = self.catalog_generation.load(Ordering::SeqCst);
-            let _ = self.catalog_cmd_tx.try_send(crate::app::catalog::CatalogCommand::RemoveKnown {
-                generation: generation_num,
-                id: id.to_string(),
-            });
+            let _ =
+                self.catalog_cmd_tx
+                    .try_send(crate::app::catalog::CatalogCommand::RemoveKnown {
+                        generation: generation_num,
+                        id: id.to_string(),
+                    });
         }
 
         self.refresh_visual_list();
@@ -373,7 +396,6 @@ impl App {
             self.editor.image_decode_tx = self.image_decode_tx.clone();
             self.mode = ViewMode::Edit;
             self.editor.edit_mode = EditMode::Read;
-            self.editor.read_dirty = true;
 
             if self.editor.editor_preview_enabled {
                 self.update_editor_markdown_preview();
@@ -574,7 +596,6 @@ impl App {
 
         self.mode = ViewMode::Edit;
         self.editor.edit_mode = EditMode::Read;
-        self.editor.read_dirty = true;
 
         self.editor.editing_id = Some(id);
         self.editor.initial_word_count = crate::goals::count_words(&content);
@@ -616,7 +637,6 @@ impl App {
 
         self.mode = ViewMode::Edit;
         self.editor.edit_mode = EditMode::Read;
-        self.editor.read_dirty = true;
         self.editor.editing_id = Some(new_id);
         self.editor.initial_word_count = crate::goals::count_words(&rendered.content);
 
@@ -661,7 +681,6 @@ impl App {
 
         self.mode = ViewMode::Edit;
         self.editor.edit_mode = EditMode::Read;
-        self.editor.read_dirty = true;
         self.editor.editing_id = Some(new_id);
         self.editor.initial_word_count = crate::goals::count_words(&rendered.content);
 
@@ -1106,7 +1125,6 @@ impl App {
 
         self.mode = ViewMode::Edit;
         self.editor.edit_mode = EditMode::Read;
-        self.editor.read_dirty = true;
         self.editor.editing_id = Some(new_id);
         self.editor.initial_word_count = crate::goals::count_words(&content);
         self.editor.title_editor = make_title_editor(

@@ -161,44 +161,9 @@ pub struct ListView {
     pub pinned_folders: HashSet<String>,
     pub note_drag: Option<usize>,
     pub preview_drag_last_pos: Option<(u16, u16)>,
-    /// Canvas viewport zoom for the SubnoteGraph preview (1.0 = fit whole graph).
-    pub subnote_graph_zoom: f64,
-    /// Canvas viewport pan offset in world coords.
-    pub subnote_graph_pan_x: f64,
-    pub subnote_graph_pan_y: f64,
-    /// Canvas viewport zoom for the FolderGraph preview (1.0 = fit whole graph).
-    pub(crate) folder_graph_zoom: f64,
-    /// Canvas viewport pan offset in world coords.
-    pub(crate) folder_graph_pan_x: f64,
-    pub(crate) folder_graph_pan_y: f64,
-    /// Cache of last-rendered FolderGraph child nodes (label + world position +
-    /// kind) so the scroll handler can decide zoom-into-child transitions without
-    /// recomputing layout. Written by render_folder_graph_static each frame.
-    pub(crate) folder_graph_nodes: Vec<FolderGraphNode>,
-    /// Currently zoom-focused note id inside a FolderGraph, when a note child is
-    /// zoomed in past the content-card threshold. None = graph view.
-    pub(crate) folder_graph_focused_note: Option<String>,
-    /// Async markdown renderer for the FolderGraph zoomed-note content card.
-    /// Created/recreated by `App::sync_folder_graph_note_renderer` on focus or
-    /// width change; `None` when no note is focused or the focused note is
-    /// encrypted. Owns its own page index.
-    pub folder_graph_note_renderer: Option<Box<crate::markdown::MarkdownRenderer>>,
-    /// Note id the current renderer was built for. When this differs from
-    /// `folder_graph_focused_note`, the sync fn recreates the renderer.
-    pub folder_graph_note_renderer_id: Option<String>,
-    /// `desired_list_preview_width()` the renderer was last rendered with.
-    /// Width change → re-render (markdown wrapping is baked into the grid).
-    pub folder_graph_note_renderer_cols: Option<u16>,
-    /// `visible_rows` the pages were last chunked with. Height change →
-    /// re-`build_pages` (no re-render needed).
-    pub folder_graph_note_renderer_visible: Option<u16>,
-    /// Title of the focused note, stashed at load time for the card's title
-    /// border. `None` iff no renderer (no focus / encrypted / load failed).
-    pub folder_graph_note_title: Option<String>,
     pub drag_hover: Option<usize>,
     pub last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
     pub scroll_drag: Option<crate::ui::scrollbar::ScrollDrag>,
-    pub(crate) last_graph_click: Option<(u16, u16, std::time::Instant, String)>,
 }
 
 impl Default for ListView {
@@ -252,22 +217,8 @@ impl Default for ListView {
             note_drag: None,
             drag_hover: None,
             preview_drag_last_pos: None,
-            subnote_graph_zoom: 1.0,
-            subnote_graph_pan_x: 0.0,
-            subnote_graph_pan_y: 0.0,
-            folder_graph_zoom: 1.0,
-            folder_graph_pan_x: 0.0,
-            folder_graph_pan_y: 0.0,
-            folder_graph_nodes: Vec::new(),
-            folder_graph_focused_note: None,
-            folder_graph_note_renderer: None,
-            folder_graph_note_renderer_id: None,
-            folder_graph_note_renderer_cols: None,
-            folder_graph_note_renderer_visible: None,
-            folder_graph_note_title: None,
             last_scroll: None,
             scroll_drag: None,
-            last_graph_click: None,
         }
     }
 }

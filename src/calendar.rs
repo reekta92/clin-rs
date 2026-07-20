@@ -1,4 +1,3 @@
-
 use chrono::Datelike;
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -47,7 +46,6 @@ pub fn draw_calendar(
     let shift = (today_wd - target).rem_euclid(7);
     let last_col_start = today - chrono::Duration::days(shift);
     let first_col_start = last_col_start - chrono::Duration::days(7 * (weeks as i64 - 1));
-
 
     let mut lines: Vec<Line> = Vec::with_capacity(8);
 

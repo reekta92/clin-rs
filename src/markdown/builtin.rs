@@ -36,8 +36,9 @@ pub(crate) static SYNTAX_SET: LazyLock<SyntaxSet> =
 pub(crate) static THEME_SET: LazyLock<ThemeSet> = LazyLock::new(ThemeSet::load_defaults);
 use parking_lot::Mutex;
 type CachedBlock = Vec<Vec<(ratatui::style::Style, String)>>;
-pub(crate) static CODE_CACHE: LazyLock<Mutex<std::collections::HashMap<(String, String, u64), CachedBlock>>> =
-    LazyLock::new(|| Mutex::new(std::collections::HashMap::new()));
+pub(crate) static CODE_CACHE: LazyLock<
+    Mutex<std::collections::HashMap<(String, String, u64), CachedBlock>>,
+> = LazyLock::new(|| Mutex::new(std::collections::HashMap::new()));
 
 /// Theme name for code-block syntax highlighting.
 const CODE_THEME: &str = "base16-ocean.dark";

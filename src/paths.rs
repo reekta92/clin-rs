@@ -157,7 +157,10 @@ impl AppPaths {
         for b in vault_digest {
             let _ = write!(hex, "{:02x}", b);
         }
-        self.cache_dir.join("vaults").join(hex).join("note_cache.bin")
+        self.cache_dir
+            .join("vaults")
+            .join(hex)
+            .join("note_cache.bin")
     }
 
     /// Keybinds directory (`<config_dir>/keybinds/`).

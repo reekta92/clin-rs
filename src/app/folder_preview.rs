@@ -1,8 +1,8 @@
 use crate::list_view::FolderGraphNode;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::mpsc::{sync_channel, Receiver, SyncSender, TrySendError};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc::{Receiver, SyncSender, TrySendError, sync_channel};
 use std::time::Duration;
 
 #[derive(Clone)]
@@ -159,10 +159,7 @@ impl FolderPreviewService {
     }
 }
 
-fn build_preview_model(
-    catalog: &FolderPreviewCatalog,
-    focused_path: &str,
-) -> FolderGraphModel {
+fn build_preview_model(catalog: &FolderPreviewCatalog, focused_path: &str) -> FolderGraphModel {
     let mut raw_nodes: Vec<FolderGraphNode> = Vec::new();
 
     if focused_path == crate::app::VIRTUAL_PINNED_PATH {
@@ -211,7 +208,11 @@ fn build_preview_model(
     let focused_label = if focused_path.is_empty() {
         "Vault (Root)".to_string()
     } else {
-        focused_path.rsplit('/').next().unwrap_or(focused_path).to_string()
+        focused_path
+            .rsplit('/')
+            .next()
+            .unwrap_or(focused_path)
+            .to_string()
     };
 
     if raw_nodes.len() <= 128 {

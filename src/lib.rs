@@ -22,10 +22,10 @@ pub mod migration;
 pub mod note_index;
 pub mod outline;
 pub mod overlay;
-#[cfg(test)]
-pub mod perf_tests;
 pub mod palette;
 pub mod paths;
+#[cfg(test)]
+pub mod perf_tests;
 pub mod pinstar;
 pub mod popups;
 pub mod preview;
@@ -36,12 +36,12 @@ pub mod statusline;
 pub mod templates;
 pub mod text_edit;
 
-use std::collections::HashMap;
-use std::time::{Duration, Instant};
 use crate::cli::{
     CacheCmd, Cli, Command, ConfigCmd, KeybindsCmd, NotesCmd, StorageCmd, TemplatesCmd,
 };
 use crate::config::ClinConfig;
+use std::collections::HashMap;
+use std::time::{Duration, Instant};
 
 use crate::overlay::OverlayView;
 use clap::{CommandFactory, FromArgMatches};
@@ -822,7 +822,9 @@ fn run_cache(action: CacheCmd) -> Result<()> {
     }
 }
 fn process_watcher_events(app: &mut App) {
-    let Some(ref rx) = app.fs_event_rx else { return };
+    let Some(ref rx) = app.fs_event_rx else {
+        return;
+    };
     let overflow = app.fs_overflow.swap(false, Ordering::SeqCst);
 
     let mut events = Vec::new();
@@ -881,7 +883,10 @@ fn process_watcher_events(app: &mut App) {
                     if let Ok(rel) = path.strip_prefix(&app.storage.notes_dir) {
                         if let Some(rel_str) = rel.to_str() {
                             let norm_id = rel_str.replace('\\', "/");
-                            changes_map.insert(norm_id.clone(), crate::app::catalog::PathChange::Upsert(norm_id));
+                            changes_map.insert(
+                                norm_id.clone(),
+                                crate::app::catalog::PathChange::Upsert(norm_id),
+                            );
                         } else {
                             needs_full_reconcile = true;
                             break 'events_loop;
@@ -897,7 +902,10 @@ fn process_watcher_events(app: &mut App) {
                     if let Ok(rel) = path.strip_prefix(&app.storage.notes_dir) {
                         if let Some(rel_str) = rel.to_str() {
                             let norm_id = rel_str.replace('\\', "/");
-                            changes_map.insert(norm_id.clone(), crate::app::catalog::PathChange::Remove(norm_id));
+                            changes_map.insert(
+                                norm_id.clone(),
+                                crate::app::catalog::PathChange::Remove(norm_id),
+                            );
                         } else {
                             needs_full_reconcile = true;
                             break 'events_loop;
@@ -916,11 +924,18 @@ fn process_watcher_events(app: &mut App) {
                         old_p.strip_prefix(&app.storage.notes_dir),
                         new_p.strip_prefix(&app.storage.notes_dir),
                     ) {
-                        if let (Some(old_str), Some(new_str)) = (rel_old.to_str(), rel_new.to_str()) {
+                        if let (Some(old_str), Some(new_str)) = (rel_old.to_str(), rel_new.to_str())
+                        {
                             let old_norm = old_str.replace('\\', "/");
                             let new_norm = new_str.replace('\\', "/");
-                            changes_map.insert(old_norm.clone(), crate::app::catalog::PathChange::Remove(old_norm));
-                            changes_map.insert(new_norm.clone(), crate::app::catalog::PathChange::Upsert(new_norm));
+                            changes_map.insert(
+                                old_norm.clone(),
+                                crate::app::catalog::PathChange::Remove(old_norm),
+                            );
+                            changes_map.insert(
+                                new_norm.clone(),
+                                crate::app::catalog::PathChange::Upsert(new_norm),
+                            );
                         } else {
                             needs_full_reconcile = true;
                             break 'events_loop;
@@ -961,14 +976,22 @@ fn perform_orderly_catalog_shutdown(app: &mut App) {
     let deadline = Instant::now() + Duration::from_millis(500);
 
     while Instant::now() < deadline {
-        if app.catalog_cmd_tx.try_send(crate::app::catalog::CatalogCommand::Flush { ack: ack_tx.clone() }).is_ok() {
+        if app
+            .catalog_cmd_tx
+            .try_send(crate::app::catalog::CatalogCommand::Flush {
+                ack: ack_tx.clone(),
+            })
+            .is_ok()
+        {
             if ack_rx.recv_timeout(Duration::from_millis(100)).is_ok() {
                 break;
             }
         }
         std::thread::sleep(Duration::from_millis(10));
     }
-    let _ = app.catalog_cmd_tx.try_send(crate::app::catalog::CatalogCommand::Shutdown);
+    let _ = app
+        .catalog_cmd_tx
+        .try_send(crate::app::catalog::CatalogCommand::Shutdown);
 }
 struct TerminalGuard;
 
@@ -1101,7 +1124,10 @@ fn run_tui_session(app: &mut App) -> Result<()> {
                 }
             }
 
-            if tx.try_send(crate::app::WatchedFsEvent { observed_at, event }).is_err() {
+            if tx
+                .try_send(crate::app::WatchedFsEvent { observed_at, event })
+                .is_err()
+            {
                 overflow_cb.store(true, Ordering::SeqCst);
             }
         })
@@ -1285,7 +1311,10 @@ fn run_app(
         }
 
         if app.mode == ViewMode::List
-            && app.list.sections.contains(&crate::config::NotesSection::Graf)
+            && app
+                .list
+                .sections
+                .contains(&crate::config::NotesSection::Graf)
             && app.graph_preview.is_some()
             && app.graph_preview_steps < 100
         {

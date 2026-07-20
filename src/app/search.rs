@@ -1,7 +1,7 @@
-use std::time::{Duration, Instant};
 use super::*;
 use crate::list_view::*;
 use crate::popups::*;
+use std::time::{Duration, Instant};
 
 impl App {
     /// In grid layout, cycle between Vault, Pinned, and Smart tabs.
@@ -202,10 +202,11 @@ impl App {
                 let has_grep = !popup.grep_results.is_empty();
                 if has_grep {
                     if popup.grep_selected < popup.total_grep_rows() {
-                        let hit_idx = match popup.grep_row_offsets.binary_search(&popup.grep_selected) {
-                            Ok(i) => i,
-                            Err(i) => i.saturating_sub(1),
-                        };
+                        let hit_idx =
+                            match popup.grep_row_offsets.binary_search(&popup.grep_selected) {
+                                Ok(i) => i,
+                                Err(i) => i.saturating_sub(1),
+                            };
                         let base = popup.grep_row_offsets.get(hit_idx).copied().unwrap_or(0);
                         if let Some(hit) = popup.grep_results.get(hit_idx) {
                             target_id = Some(hit.note_id.to_string());
@@ -218,7 +219,10 @@ impl App {
                         }
                     }
                 } else if !popup.title_result_ids.is_empty() {
-                    target_id = popup.title_result_ids.get(popup.title_selected).map(|id| id.to_string());
+                    target_id = popup
+                        .title_result_ids
+                        .get(popup.title_selected)
+                        .map(|id| id.to_string());
                 }
             }
 
@@ -256,7 +260,9 @@ impl App {
                     globally_truncated,
                 } => {
                     if generation == cur_gen {
-                        if let Some(crate::popups::ActivePopup::Search(popup)) = &mut self.popups.active {
+                        if let Some(crate::popups::ActivePopup::Search(popup)) =
+                            &mut self.popups.active
+                        {
                             popup.grep_results.extend(hits);
                             popup.globally_truncated = globally_truncated;
                             popup.read_errors = errors;
@@ -268,7 +274,9 @@ impl App {
                         if finished {
                             self.search_status = None;
                             if errors > 0 {
-                                self.set_temporary_status(&format!("Search completed with {errors} read error(s)"));
+                                self.set_temporary_status(&format!(
+                                    "Search completed with {errors} read error(s)"
+                                ));
                             }
                         }
                     }

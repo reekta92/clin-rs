@@ -172,7 +172,6 @@ toggle_action!(
     match app.list.notes_layout {
         crate::config::NotesLayout::Tree => "Tree",
         crate::config::NotesLayout::Grid => "Grid",
-        crate::config::NotesLayout::Graph => "Graph",
     }
 );
 toggle_action!(

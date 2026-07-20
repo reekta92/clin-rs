@@ -77,7 +77,10 @@ impl NoteIndex {
         let mon_date = today_date - chrono::Duration::days(days_since_mon);
 
         for (i, note) in notes.iter().enumerate() {
-            notes_by_folder.entry(note.folder.clone()).or_default().push(i);
+            notes_by_folder
+                .entry(note.folder.clone())
+                .or_default()
+                .push(i);
 
             if note.pinned {
                 pinned_indices.push(i);
@@ -144,7 +147,9 @@ impl NoteIndex {
         for note in notes {
             let mut current = note.folder.as_str();
             loop {
-                *recursive_note_counts.entry(current.to_string()).or_default() += 1;
+                *recursive_note_counts
+                    .entry(current.to_string())
+                    .or_default() += 1;
                 if current.is_empty() {
                     break;
                 }
@@ -195,7 +200,11 @@ impl NoteIndex {
                 }
 
                 if let Some(ref title_query) = rule.title_contains {
-                    if !note.title.to_lowercase().contains(&title_query.to_lowercase()) {
+                    if !note
+                        .title
+                        .to_lowercase()
+                        .contains(&title_query.to_lowercase())
+                    {
                         continue;
                     }
                 }
@@ -287,7 +296,10 @@ mod tests {
         assert_eq!(index.by_stem.get("b").copied(), Some(1));
         assert_eq!(index.pinned_indices, vec![0]);
         assert_eq!(index.recursive_note_counts.get("folder1").copied(), Some(2));
-        assert_eq!(index.recursive_note_counts.get("folder1/sub").copied(), Some(1));
+        assert_eq!(
+            index.recursive_note_counts.get("folder1/sub").copied(),
+            Some(1)
+        );
         assert_eq!(index.notes_by_exact_tag.get("rust").unwrap(), &vec![0]);
     }
 }

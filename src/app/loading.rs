@@ -11,7 +11,6 @@ struct SmartFolderData {
     matches: Vec<usize>,
 }
 impl App {
-
     pub fn refresh_visual_list(&mut self) {
         let mut visual = Vec::new();
         // Subnotes view cache — computed first (before any &self.notes borrow) to avoid conflict.
@@ -668,6 +667,14 @@ impl App {
 
     pub fn poll_renderers(&mut self) -> bool {
         let mut updated = false;
+        // In READ mode the rendered markdown is the primary view, so the
+        // preview renderer must always be present even when the split-pane
+        // preview toggle is off (it defaults off).
+        if self.editor.edit_mode == crate::editor::EditMode::Read
+            && self.editor.md_preview_renderer.is_none()
+        {
+            self.update_editor_markdown_preview();
+        }
 
         if let Some(last) = self.editor.last_editor_change
             && last.elapsed() > Duration::from_millis(150)
@@ -711,90 +718,7 @@ impl App {
         if let Some(renderer) = &mut self.editor.md_preview_renderer
             && renderer.poll()
         {
-            if !renderer.pages_built() {
-                let visible = self
-                    .editor
-                    .last_preview_pane_height
-                    .saturating_sub(2)
-                    .max(10);
-                renderer.build_pages(visible, self.app_theme.preview_bg());
-            }
             updated = true;
-        }
-        if self.sync_folder_graph_note_renderer() {
-            updated = true;
-        }
-        updated
-    }
-
-    /// Sync the FolderGraph zoomed-note MarkdownRenderer: create/recreate on
-    /// focus or width change, poll the background render, and (re)build pages on
-    /// poll success or height change. Returns true if state changed.
-    pub fn sync_folder_graph_note_renderer(&mut self) -> bool {
-        let mut updated = false;
-        let id = self.list.folder_graph_focused_note.clone();
-        let encrypted = id
-            .as_ref()
-            .is_some_and(|i| self.config.list.preview_encryption && i.ends_with(".clin"));
-
-        // No focus, or encrypted focus → drop all card state.
-        if id.as_ref().is_none() || encrypted {
-            let had = self.list.folder_graph_note_renderer.is_some()
-                || self.list.folder_graph_note_title.is_some();
-            if had {
-                self.list.folder_graph_note_renderer = None;
-                self.list.folder_graph_note_renderer_id = None;
-                self.list.folder_graph_note_renderer_cols = None;
-                self.list.folder_graph_note_renderer_visible = None;
-                self.list.folder_graph_note_title = None;
-                updated = true;
-            }
-            return updated;
-        }
-
-        let Some(id) = id else {
-            return updated;
-        };
-        let cols = self.list.last_preview_pane_width.saturating_sub(4).max(20); // card inner width; never 1000 (forced wrap)
-        let visible = self.list.last_preview_pane_height.saturating_sub(4).max(1);
-
-        // Focus change or width change → reload note + (re)create renderer.
-        let needs_rebuild = self.list.folder_graph_note_renderer_id != Some(id.clone())
-            || self.list.folder_graph_note_renderer_cols != Some(cols);
-        if needs_rebuild {
-            let note = match self.storage.load_note(&id) {
-                Ok(n) => n,
-                Err(_) => {
-                    self.list.folder_graph_note_renderer = None;
-                    self.list.folder_graph_note_renderer_id = None;
-                    self.list.folder_graph_note_renderer_cols = None;
-                    self.list.folder_graph_note_renderer_visible = None;
-                    self.list.folder_graph_note_title = None;
-                    return updated;
-                }
-            };
-            self.list.folder_graph_note_title = Some(note.title);
-            let mut renderer = crate::markdown::MarkdownRenderer::new(cols);
-            let mut opts = crate::markdown::MdRenderOpts::from_config(&self.config);
-            opts.wrap = true; // force wrap on for the card, ignoring global preview_wrap
-            renderer.render_with(&note.content, cols, &self.app_theme, &opts);
-            self.list.folder_graph_note_renderer = Some(Box::new(renderer));
-            self.list.folder_graph_note_renderer_id = Some(id);
-            self.list.folder_graph_note_renderer_cols = Some(cols);
-            self.list.folder_graph_note_renderer_visible = None; // force build_pages on poll
-            updated = true;
-        }
-
-        // Poll + (re)build pages.
-        if let Some(renderer) = self.list.folder_graph_note_renderer.as_mut() {
-            let needs_pages = renderer.poll()
-                || (renderer.pages_built()
-                    && self.list.folder_graph_note_renderer_visible != Some(visible));
-            if needs_pages {
-                renderer.build_pages(visible, self.app_theme.preview_bg());
-                self.list.folder_graph_note_renderer_visible = Some(visible);
-                updated = true;
-            }
         }
         updated
     }
@@ -1251,11 +1175,6 @@ impl App {
                         focused_path: folder_path,
                     });
                     self.list.preview_content_index = Some(self.list.visual_index);
-                    self.list.folder_graph_zoom = 1.0;
-                    self.list.folder_graph_pan_x = 0.0;
-                    self.list.folder_graph_pan_y = 0.0;
-                    self.list.folder_graph_focused_note = None;
-                    self.list.folder_graph_nodes.clear();
                     self.list.preview_content_width = Some(self.desired_list_preview_width());
                     self.list.preview_content_height = Some(self.desired_list_preview_height());
                     self.list.preview_content_scale = Some(self.list.preview_scale);
@@ -1375,9 +1294,6 @@ impl App {
                 let parent_id = Self::subnotes_parent_id_from_grid_path(path).to_string();
                 self.list.preview_content = Some(PreviewContent::SubnoteGraph { parent_id });
                 self.list.preview_content_index = Some(self.list.visual_index);
-                self.list.subnote_graph_zoom = 1.0;
-                self.list.subnote_graph_pan_x = 0.0;
-                self.list.subnote_graph_pan_y = 0.0;
             }
             Some(VisualItem::Subnote {
                 parent_id,
@@ -1411,11 +1327,6 @@ impl App {
                     focused_path: virtual_path,
                 });
                 self.list.preview_content_index = Some(self.list.visual_index);
-                self.list.folder_graph_zoom = 1.0;
-                self.list.folder_graph_pan_x = 0.0;
-                self.list.folder_graph_pan_y = 0.0;
-                self.list.folder_graph_focused_note = None;
-                self.list.folder_graph_nodes.clear();
                 self.list.preview_content_width = Some(self.desired_list_preview_width());
                 self.list.preview_content_height = Some(self.desired_list_preview_height());
                 self.list.preview_content_scale = Some(self.list.preview_scale);
@@ -1430,7 +1341,10 @@ impl App {
     }
 
     pub fn update_editor_markdown_preview(&mut self) {
-        if !(self.editor.editor_preview_enabled || self.preview_fullscreen) {
+        if !(self.editor.editor_preview_enabled
+            || self.preview_fullscreen
+            || self.editor.edit_mode == crate::editor::EditMode::Read)
+        {
             return;
         }
 
@@ -1485,7 +1399,13 @@ mod tests {
         std::fs::write(docs_dir.join("b.md"), "# B\n\nContent").unwrap();
         std::fs::write(sub_dir.join("c.md"), "# C\n\nContent").unwrap();
 
-        let load = crate::app::catalog::load_notes_blocking(&app.storage, &app.notes_worker_pool, false, false).unwrap();
+        let load = crate::app::catalog::load_notes_blocking(
+            &app.storage,
+            &app.notes_worker_pool,
+            false,
+            false,
+        )
+        .unwrap();
         app.notes = load.summaries;
         app.catalog_folders = load.folders;
         app.sort_notes();

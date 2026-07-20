@@ -13,8 +13,8 @@ use crate::config::{
     ClinConfig, EdgeColorMode, LabelMode, LegendPosition, NodeColorMode, NodeShape, NodeSizeMode,
 };
 use crate::graf::graph::GraphState;
-use crate::graf::viewport::Viewport;
 use crate::graf::spatial::SpatialGrid;
+use crate::graf::viewport::Viewport;
 fn tag_color(tag: &str, index: usize, _total: usize, palette: &[Color]) -> Color {
     let palette_len = palette.len();
     if palette_len == 0 {
@@ -427,9 +427,7 @@ impl RenderCache {
         let uniform_edges = tier == LodTier::Medium;
         for edge in graph.edge_references() {
             // Skip edge if neither endpoint is visible
-            if !visible_nodes.contains(&edge.source())
-                && !visible_nodes.contains(&edge.target())
-            {
+            if !visible_nodes.contains(&edge.source()) && !visible_nodes.contains(&edge.target()) {
                 continue;
             }
 
@@ -465,7 +463,7 @@ impl RenderCache {
         }
     }
 
-#[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
     pub fn fill_nodes(
         &mut self,
         graph: &fdg_sim::ForceGraph<super::graph::GraphNodeData, ()>,
@@ -703,7 +701,14 @@ pub fn draw_graph_view(
     cache.fill_edges(graph, config, colors.edge_color, tier, &visible_nodes);
     let cell_world_height =
         (y_bounds[1] - y_bounds[0]).abs() / (canvas_area.height as f64).max(1.0);
-    cache.fill_labels(graph, config, state.selected_node, cell_world_height * 1.5, tier, &visible_nodes);
+    cache.fill_labels(
+        graph,
+        config,
+        state.selected_node,
+        cell_world_height * 1.5,
+        tier,
+        &visible_nodes,
+    );
     let edges = cache.edges.clone();
     let nodes = cache.nodes.clone();
     let labels = cache.labels.clone();

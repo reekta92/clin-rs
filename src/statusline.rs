@@ -347,7 +347,6 @@ impl StatuslineContext<'_> {
                 let l = match layout {
                     crate::config::NotesLayout::Tree => "tree",
                     crate::config::NotesLayout::Grid => "grid",
-                    crate::config::NotesLayout::Graph => "graph",
                 };
                 Some(l.into())
             }

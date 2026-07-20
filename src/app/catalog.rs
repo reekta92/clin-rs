@@ -3,9 +3,9 @@ use anyhow::Result;
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, SyncSender, TrySendError};
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 const NOTE_CACHE_VERSION: u16 = 2;
@@ -130,7 +130,11 @@ pub(crate) fn load_persisted_note_cache(
     vault_digest: &[u8; 32],
     show_hidden: bool,
     show_all: bool,
-) -> (Vec<NoteSummary>, HashMap<String, (FileStamp, NoteSummary)>, Vec<String>) {
+) -> (
+    Vec<NoteSummary>,
+    HashMap<String, (FileStamp, NoteSummary)>,
+    Vec<String>,
+) {
     let raw = match std::fs::read(cache_path) {
         Ok(r) => r,
         Err(_) => return (Vec::new(), HashMap::new(), Vec::new()),
@@ -140,10 +144,11 @@ pub(crate) fn load_persisted_note_cache(
         Ok(p) => p,
         Err(_) => return (Vec::new(), HashMap::new(), Vec::new()),
     };
-    let cache: PersistedNoteCache = match bincode::serde::decode_from_slice(&plain, bincode::config::standard()) {
-        Ok((c, _)) => c,
-        Err(_) => return (Vec::new(), HashMap::new(), Vec::new()),
-    };
+    let cache: PersistedNoteCache =
+        match bincode::serde::decode_from_slice(&plain, bincode::config::standard()) {
+            Ok((c, _)) => c,
+            Err(_) => return (Vec::new(), HashMap::new(), Vec::new()),
+        };
 
     if cache.version != NOTE_CACHE_VERSION || &cache.vault_digest != vault_digest {
         return (Vec::new(), HashMap::new(), Vec::new());
@@ -160,8 +165,12 @@ pub(crate) fn load_persisted_note_cache(
             }
         }
         if !show_all {
-            let ext = Path::new(&id).extension().and_then(|e| e.to_str()).unwrap_or("");
-            let accepted = matches!(ext, "clin" | "md" | "txt" | "draw" | "canvas") || crate::storage::is_image_ext(ext);
+            let ext = Path::new(&id)
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("");
+            let accepted = matches!(ext, "clin" | "md" | "txt" | "draw" | "canvas")
+                || crate::storage::is_image_ext(ext);
             if !accepted {
                 continue;
             }
@@ -171,7 +180,11 @@ pub(crate) fn load_persisted_note_cache(
     }
 
     let folders = if !show_hidden {
-        cache.folders.into_iter().filter(|f| !f.split('/').any(|s| s.starts_with('.'))).collect()
+        cache
+            .folders
+            .into_iter()
+            .filter(|f| !f.split('/').any(|s| s.starts_with('.')))
+            .collect()
     } else {
         cache.folders
     };
@@ -271,7 +284,10 @@ pub(crate) fn spawn_catalog_worker(
             let mut last_dirty_at: Option<Instant> = None;
 
             loop {
-                if dirty && baseline_complete && last_dirty_at.is_some_and(|t| t.elapsed() >= Duration::from_secs(1)) {
+                if dirty
+                    && baseline_complete
+                    && last_dirty_at.is_some_and(|t| t.elapsed() >= Duration::from_secs(1))
+                {
                     let _ = save_persisted_note_cache(
                         &storage,
                         &cache_path,
@@ -287,7 +303,9 @@ pub(crate) fn spawn_catalog_worker(
 
                 let timeout = if dirty && baseline_complete {
                     let elapsed = last_dirty_at.map(|t| t.elapsed()).unwrap_or_default();
-                    Duration::from_secs(1).saturating_sub(elapsed).max(Duration::from_millis(10))
+                    Duration::from_secs(1)
+                        .saturating_sub(elapsed)
+                        .max(Duration::from_millis(10))
                 } else {
                     Duration::from_millis(100)
                 };
@@ -372,7 +390,8 @@ pub(crate) fn spawn_catalog_worker(
                             let needs_reload = match map.get(&file.id) {
                                 Some((existing_stamp, _)) => {
                                     existing_stamp.len != file.stamp.len
-                                        || existing_stamp.modified_nanos != file.stamp.modified_nanos
+                                        || existing_stamp.modified_nanos
+                                            != file.stamp.modified_nanos
                                         || file.stamp.modified_nanos.is_none()
                                 }
                                 None => true,
@@ -417,7 +436,8 @@ pub(crate) fn spawn_catalog_worker(
                                     chunk
                                         .par_iter()
                                         .map(|entry| {
-                                            let summary_res = storage.load_note_summary_from_entry(entry);
+                                            let summary_res =
+                                                storage.load_note_summary_from_entry(entry);
                                             ((*entry).id.clone(), (*entry).stamp, summary_res)
                                         })
                                         .collect()
@@ -520,16 +540,22 @@ pub(crate) fn spawn_catalog_worker(
                                 PathChange::Upsert(id) => {
                                     let path = storage.note_path(&id);
                                     if let Ok(meta) = std::fs::metadata(&path) {
-                                        let modified_nanos = meta
-                                            .modified()
-                                            .ok()
-                                            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_nanos()));
+                                        let modified_nanos = meta.modified().ok().and_then(|t| {
+                                            t.duration_since(std::time::UNIX_EPOCH)
+                                                .ok()
+                                                .map(|d| d.as_nanos())
+                                        });
                                         let stamp = FileStamp {
                                             modified_nanos,
                                             len: meta.len(),
                                         };
-                                        let entry = NoteFileEntry { id: id.clone(), stamp };
-                                        if let Ok(summary) = storage.load_note_summary_from_entry(&entry) {
+                                        let entry = NoteFileEntry {
+                                            id: id.clone(),
+                                            stamp,
+                                        };
+                                        if let Ok(summary) =
+                                            storage.load_note_summary_from_entry(&entry)
+                                        {
                                             map.insert(id.clone(), (stamp, summary.clone()));
                                             if baseline_complete {
                                                 dirty = true;
@@ -598,11 +624,7 @@ pub(crate) fn spawn_catalog_worker(
                             last_dirty_at = Some(Instant::now());
                         }
                         let removed = if let Some(old) = old_id {
-                            if old != id {
-                                vec![old]
-                            } else {
-                                Vec::new()
-                            }
+                            if old != id { vec![old] } else { Vec::new() }
                         } else {
                             Vec::new()
                         };
@@ -693,7 +715,10 @@ mod tests {
         };
 
         let mut map = HashMap::new();
-        map.insert("folder/secret_note.md".to_string(), (stamp, summary.clone()));
+        map.insert(
+            "folder/secret_note.md".to_string(),
+            (stamp, summary.clone()),
+        );
         let folders = vec!["folder".to_string()];
 
         save_persisted_note_cache(
@@ -705,7 +730,8 @@ mod tests {
             false,
             &folders,
             &map,
-        ).unwrap();
+        )
+        .unwrap();
 
         let raw = std::fs::read(&cache_path).unwrap();
         let raw_str = String::from_utf8_lossy(&raw);
@@ -719,13 +745,8 @@ mod tests {
             assert_eq!(mode, 0o600);
         }
 
-        let (reloaded_summaries, reloaded_map, reloaded_folders) = load_persisted_note_cache(
-            &storage,
-            &cache_path,
-            &digest,
-            false,
-            false,
-        );
+        let (reloaded_summaries, reloaded_map, reloaded_folders) =
+            load_persisted_note_cache(&storage, &cache_path, &digest, false, false);
 
         assert_eq!(reloaded_folders, folders);
         assert_eq!(reloaded_summaries.len(), 1);
@@ -740,7 +761,8 @@ mod tests {
         let cache_path = tmp.path().join("cache/note_cache.bin");
         let digest = [1u8; 32];
 
-        let (summaries, _, _) = load_persisted_note_cache(&storage, &cache_path, &digest, false, false);
+        let (summaries, _, _) =
+            load_persisted_note_cache(&storage, &cache_path, &digest, false, false);
         assert!(summaries.is_empty());
     }
 
@@ -751,7 +773,10 @@ mod tests {
 
         let sent = send_event(
             &tx,
-            CatalogEvent::Started { generation: 1, total: 10 },
+            CatalogEvent::Started {
+                generation: 1,
+                total: 10,
+            },
             &gen_atomic,
             1,
         );

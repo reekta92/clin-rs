@@ -271,6 +271,10 @@ impl App {
     }
 
     pub fn toggle_markdown_preview(&mut self) {
+        if self.editor.edit_mode == crate::editor::EditMode::Read {
+            self.set_temporary_status_static("Preview can't be hidden in read mode");
+            return;
+        }
         self.editor.editor_preview_enabled = !self.editor.editor_preview_enabled;
         if self.editor.editor_preview_enabled {
             self.editor.sidebar = EditSidebar::None;
@@ -514,8 +518,7 @@ impl App {
     pub fn toggle_notes_layout(&mut self) {
         self.list.notes_layout = match self.list.notes_layout {
             crate::config::NotesLayout::Tree => crate::config::NotesLayout::Grid,
-            crate::config::NotesLayout::Grid => crate::config::NotesLayout::Graph,
-            crate::config::NotesLayout::Graph => crate::config::NotesLayout::Tree,
+            crate::config::NotesLayout::Grid => crate::config::NotesLayout::Tree,
         };
         self.list.visual_index = 0;
         // #1: entering grid always opens the Vault tab (grid_folder == "")
@@ -576,7 +579,6 @@ impl App {
         })?;
         Ok(())
     }
-
 
     pub fn get_current_goals_progress(&mut self) -> &mut crate::goals::DailyProgress {
         self.check_and_reload_config();
@@ -667,77 +669,35 @@ impl App {
         self.editor.body_viewport_col = apply(self.editor.body_viewport_col, cols);
     }
 
-    pub fn refresh_read_mode(&mut self) {
-        let content = self.editor.editor.lines().join("\n");
-        let cols = self.editor.last_body_width;
-        if cols == 0 {
-            // No render yet; keep dirty so first render triggers refresh.
-            self.editor.read_dirty = true;
-            return;
-        }
-        let opts = crate::markdown::MdRenderOpts::from_config(&self.config);
-        let lines = crate::markdown::render_builtin_sync(&content, cols, &self.app_theme, &opts);
-        let mut grid = Vec::with_capacity(lines.len());
-        let mut src = Vec::with_capacity(lines.len());
-        for l in lines {
-            grid.push(l.cells);
-            src.push(l.source_line);
-        }
-        self.editor.read_grid = grid;
-        self.editor.read_row_source = src;
-        self.editor.read_cols = cols;
-        self.editor.read_dirty = false;
-        // EDIT→READ: place read_offset at the grid row for the source line being edited.
-        if let Some(edited_line) = self.editor.pending_read_sync_from_line.take() {
-            let target_src = edited_line + 1; // 0-based logical → 1-based source line
-            let row_source = &self.editor.read_row_source;
-            let g = row_source
-                .iter()
-                .position(|&s| s == target_src)
-                .unwrap_or_else(|| {
-                    row_source
-                        .iter()
-                        .rposition(|&s| s != 0 && s <= target_src)
-                        .unwrap_or(0)
-                });
-            self.editor.read_offset = g.saturating_sub(1); // 1 row of context above
-        }
-        let max = self.editor.read_grid.len().saturating_sub(1);
-        self.editor.read_offset = self.editor.read_offset.min(max);
-    }
 
     pub fn activate_edit_mode(&mut self) {
-        // READ→EDIT: jump the cursor to the source line of the top visible READ row.
-        let src_line = self
-            .editor
-            .read_row_source
-            .get(self.editor.read_offset)
-            .copied()
-            .unwrap_or(1);
-        let logical = src_line.saturating_sub(1);
+        self.editor.edit_mode = crate::editor::EditMode::Edit;
         self.editor.read_selecting = false;
         self.editor.read_sel_anchor = None;
         self.editor.read_sel_end = None;
-        self.editor.edit_mode = crate::editor::EditMode::Edit;
-        let max_line = self.editor.editor.lines().len().saturating_sub(1);
-        let target = logical.min(max_line);
-        self.editor
-            .editor
-            .move_cursor(ratatui_textarea::CursorMove::Jump(target as u16, 0));
-        let delta = target as i16 - self.editor.body_viewport_row as i16;
-        if delta != 0 {
-            self.scroll_editor(delta, 0);
+        if let Some(renderer) = &self.editor.md_preview_renderer {
+            let src_line = renderer.grid_to_source_line(renderer.scroll_offset());
+            let max_line = self.editor.editor.lines().len().saturating_sub(1);
+            let target = src_line.min(max_line);
+            self.editor.body_viewport_row = target as u16;
+            self.editor
+                .editor
+                .move_cursor(ratatui_textarea::CursorMove::Jump(target as u16, 0));
         }
         self.set_temporary_status_static("EDIT");
     }
 
     pub fn back_to_read_mode(&mut self) {
-        self.editor.read_selecting = false;
+        self.editor.edit_mode = crate::editor::EditMode::Read;
         self.editor.read_sel_anchor = None;
         self.editor.read_sel_end = None;
-        self.editor.read_dirty = true;
-        self.editor.pending_read_sync_from_line = Some(self.editor.editor.cursor().0);
-        self.editor.edit_mode = crate::editor::EditMode::Read;
+        self.editor.read_selecting = false;
+        if let Some(renderer) = &mut self.editor.md_preview_renderer {
+            let target_grid_line =
+                renderer.source_to_grid_line(self.editor.body_viewport_row as usize);
+            renderer.scroll_top(); // reset
+            renderer.scroll_down(target_grid_line, self.editor.last_body_height as usize);
+        }
         self.set_temporary_status_static("READ");
     }
 }

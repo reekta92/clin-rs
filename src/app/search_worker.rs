@@ -1,9 +1,9 @@
 use crate::popups::{SearchLineHit, SearchNoteHit};
 use crate::storage::Storage;
 use rayon::prelude::*;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::mpsc::{sync_channel, Receiver, SyncSender, TrySendError};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc::{Receiver, SyncSender, TrySendError, sync_channel};
 use std::time::Duration;
 
 pub(crate) struct SearchRequest {
@@ -47,10 +47,7 @@ impl SearchWorker {
             })
             .expect("failed spawning search worker");
 
-        SearchWorker {
-            req_tx,
-            event_rx,
-        }
+        SearchWorker { req_tx, event_rx }
     }
 }
 
@@ -234,7 +231,12 @@ mod tests {
         };
         let saved_id = storage.save_note("cap_test.md", &note).unwrap();
 
-        let pool = Arc::new(rayon::ThreadPoolBuilder::new().num_threads(2).build().unwrap());
+        let pool = Arc::new(
+            rayon::ThreadPoolBuilder::new()
+                .num_threads(2)
+                .build()
+                .unwrap(),
+        );
         let req = SearchRequest {
             generation: 1,
             query: "target_keyword".to_string(),
@@ -247,7 +249,10 @@ mod tests {
 
         let mut hits = Vec::new();
         while let Ok(evt) = rx.try_recv() {
-            if let SearchEvent::Batch { hits: batch_hits, .. } = evt {
+            if let SearchEvent::Batch {
+                hits: batch_hits, ..
+            } = evt
+            {
                 hits.extend(batch_hits);
             }
         }

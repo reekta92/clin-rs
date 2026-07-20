@@ -287,6 +287,7 @@ pub fn compute_edit_layout(
 
 pub fn edit_view_input_areas(
     area: Rect,
+    fullscreen: bool,
     md_preview: bool,
     line_count: usize,
     show_line_numbers: bool,
@@ -308,9 +309,12 @@ pub fn edit_view_input_areas(
 
     let body_area = chunks[2];
 
-    let layout = compute_edit_layout(body_area, false, md_preview, sidebar, sidebar_position);
-    // Apply gutter offset to the body rect for mouse hit-testing
-    let gutter_width = if show_line_numbers {
+    let layout = compute_edit_layout(body_area, fullscreen, md_preview, sidebar, sidebar_position);
+    // Apply gutter offset to the body rect for mouse hit-testing.
+    // In fullscreen (READ) mode the preview has no editor gutter.
+    let gutter_width = if fullscreen {
+        0
+    } else if show_line_numbers {
         (line_count.max(1).to_string().len() as u16) + 2
     } else {
         0
@@ -1108,7 +1112,8 @@ impl crate::popups::ActivePopup {
                             app.popups.active = Some(reinsert(popup));
                             app.update_search();
                         } else if has_grep {
-                            popup.grep_selected = (popup.grep_selected + 1).min(popup.total_grep_rows().saturating_sub(1));
+                            popup.grep_selected = (popup.grep_selected + 1)
+                                .min(popup.total_grep_rows().saturating_sub(1));
                             app.popups.active = Some(reinsert(popup));
                         } else if has_title {
                             if popup.title_selected + 1 < popup.title_result_ids.len() {
@@ -1696,6 +1701,7 @@ mod tests {
         };
         let mut app = App::new(storage).expect("value is present");
         app.editor.sidebar = EditSidebar::Links;
+        app.editor.edit_mode = crate::editor::EditMode::Edit;
         app.editor.links = vec![LinkItem {
             id: "test_note.md".to_string(),
             title: "Test Note".to_string(),
@@ -1711,6 +1717,7 @@ mod tests {
 
         let (_, _, sidebar_inner) = crate::events::edit_view_input_areas(
             terminal_area,
+            false,
             false,
             1,
             false,
@@ -1783,6 +1790,7 @@ mod tests {
         };
         let mut app = App::new(storage).expect("value is present");
         app.editor.sidebar = EditSidebar::Outline;
+        app.editor.edit_mode = crate::editor::EditMode::Edit;
         app.editor.outline_nodes = vec![TreeNode {
             kind: crate::outline::parse::NodeKind::Header {
                 level: 1,
@@ -1806,6 +1814,7 @@ mod tests {
 
         let (_, _, sidebar_inner) = crate::events::edit_view_input_areas(
             terminal_area,
+            false,
             false,
             1,
             false,
@@ -1887,6 +1896,7 @@ mod tests {
 
         let (_, body_inner, _) = crate::events::edit_view_input_areas(
             terminal_area,
+            false,
             app.editor.editor_preview_enabled,
             app.editor.editor.lines().len(),
             app.editor.show_line_numbers,

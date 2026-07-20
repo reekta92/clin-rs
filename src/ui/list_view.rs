@@ -313,14 +313,14 @@ pub fn render_subnote_graph_static(
     rect: Rect,
     parent_title: &str,
     subnotes: &[crate::storage::SubNote],
-    zoom: f64,
-    pan_x: f64,
-    pan_y: f64,
     theme: &crate::app_theme::AppThemeColors,
-    _interactable: bool,
 ) {
     use ratatui::symbols::Marker;
     use ratatui::widgets::canvas::{Canvas, Line as CanvasLine};
+
+    let zoom = 1.0;
+    let pan_x = 0.0;
+    let pan_y = 0.0;
 
     // Background
     let bg = theme.preview_bg_style();
@@ -475,40 +475,18 @@ pub fn render_folder_graph_static(
     rect: Rect,
     focused_label: &str,
     children: &[crate::list_view::FolderGraphNode],
-    zoom: f64,
-    pan_x: f64,
-    pan_y: f64,
-    app: &mut crate::app::App,
-    interactable: bool,
+    theme: &crate::app_theme::AppThemeColors,
 ) {
     use ratatui::symbols::Marker;
     use ratatui::widgets::canvas::{Canvas, Line as CanvasLine};
 
-    let theme = &app.app_theme;
+    let zoom = 1.0;
+    let pan_x = 0.0;
+    let pan_y = 0.0;
 
     // Background
     let bg = theme.preview_bg_style();
     frame.render_widget(Block::default().style(bg), rect);
-
-    // Content card for zoomed-in note — exits on zoom-out below threshold.
-    const EXIT_NOTE_THRESHOLD: f64 = 5.0;
-    let show_card = interactable
-        && match &app.list.folder_graph_focused_note {
-            Some(id) => !(app.config.list.preview_encryption && id.ends_with(".clin")),
-            None => false,
-        };
-    if show_card {
-        if zoom < EXIT_NOTE_THRESHOLD {
-            app.list.folder_graph_focused_note = None;
-            // sync_folder_graph_note_renderer drops the renderer next tick.
-        } else {
-            let theme = &app.app_theme;
-            let title = app.list.folder_graph_note_title.as_deref();
-            let renderer = app.list.folder_graph_note_renderer.as_deref();
-            draw_content_card_markdown(frame, rect, title, renderer, theme);
-            return;
-        }
-    }
 
     if children.is_empty() {
         let line = Line::from(vec![Span::styled(
@@ -655,62 +633,6 @@ pub fn render_folder_graph_static(
             Style::default().fg(theme.fg),
         );
     }
-
-    // Write the node cache for the scroll handler.
-    app.list.folder_graph_nodes = children.to_vec();
-
-    // Transition logic: zoom-in on subfolder → re-focus; zoom-in on note → content card.
-    const EXIT_FOLDER_THRESHOLD_ZOOM: f64 = 0.6;
-
-    let is_graph = app.list.notes_layout == crate::config::NotesLayout::Graph;
-    // Pop back to parent folder when zoomed too far out inside a nested subfolder.
-    let should_pop = interactable && if is_graph {
-        !app.list.grid_folder.is_empty()
-            && !crate::app::App::is_virtual_path(&app.list.grid_folder)
-            && zoom < EXIT_FOLDER_THRESHOLD_ZOOM
-    } else if let Some(crate::list_view::PreviewContent::FolderGraph {
-        root_path,
-        focused_path,
-    }) = app.list.preview_content.as_ref() {
-        *focused_path != *root_path && zoom < EXIT_FOLDER_THRESHOLD_ZOOM
-    } else {
-        false
-    };
-
-    if should_pop {
-        let parent_path = if is_graph {
-            if let Some(slash) = app.list.grid_folder.rfind('/') {
-                app.list.grid_folder[..slash].to_string()
-            } else {
-                String::new()
-            }
-        } else {
-            let focused_path = match app.list.preview_content.as_ref() {
-                Some(crate::list_view::PreviewContent::FolderGraph { focused_path, .. }) => {
-                    focused_path
-                }
-                _ => "",
-            };
-            if let Some(slash) = focused_path.rfind('/') {
-                focused_path[..slash].to_string()
-            } else {
-                String::new()
-            }
-        };
-        if is_graph {
-            app.list.grid_folder = parent_path;
-        } else if let Some(crate::list_view::PreviewContent::FolderGraph {
-            focused_path: fp, ..
-        }) = app.list.preview_content.as_mut()
-        {
-            *fp = parent_path;
-        }
-        app.list.folder_graph_zoom = 1.0;
-        app.list.folder_graph_pan_x = 0.0;
-        app.list.folder_graph_pan_y = 0.0;
-        app.list.folder_graph_focused_note = None;
-        app.list.folder_graph_nodes.clear();
-    }
 }
 /// Draw `text` centered above position (x, y_top) in the buffer, clamped to rect.
 fn draw_title_above(
@@ -737,85 +659,6 @@ fn draw_title_above(
             && let Some(cell) = buf.cell_mut((col, title_y))
         {
             cell.set_char(ch).set_style(style);
-        }
-    }
-}
-
-
-/// Markdown content card for the FolderGraph zoomed note. Renders the
-/// MarkdownRenderer's current page via `RenderedSnapshot`. Shows a
-/// "Rendering…" placeholder while the renderer is pending or pages aren't
-/// built yet, and "(empty note)" for empty content.
-fn draw_content_card_markdown(
-    frame: &mut Frame,
-    rect: Rect,
-    title: Option<&str>,
-    renderer: Option<&crate::markdown::MarkdownRenderer>,
-    theme: &crate::app_theme::AppThemeColors,
-) {
-    use ratatui::style::{Modifier, Style};
-    use ratatui::text::Span;
-
-    frame.render_widget(Block::default().style(theme.preview_bg_style()), rect);
-
-    let card_w = rect.width.saturating_sub(2);
-    let card_h = rect.height.saturating_sub(2);
-    if card_w < 4 || card_h < 4 {
-        return;
-    }
-    let card_rect = Rect::new(rect.x + 1, rect.y + 1, card_w, card_h);
-
-    // Title + page indicator in the top border.
-    let title_max = card_w.saturating_sub(4) as usize;
-    let page_indicator = match renderer {
-        Some(r) if r.pages_built() && r.total_pages() > 1 => {
-            format!("  {}/{}", r.current_page() + 1, r.total_pages())
-        }
-        _ => String::new(),
-    };
-    let title_avail = title_max.saturating_sub(page_indicator.len());
-    let title_text = title
-        .map(|t| crate::graf::util::truncate(t, title_avail))
-        .unwrap_or_default();
-    let combined_title = if title.is_some() {
-        format!(" {} {} ", title_text, page_indicator)
-    } else {
-        " Rendering… ".to_string()
-    };
-
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(theme.border))
-        .title(Span::styled(
-            combined_title,
-            Style::default()
-                .fg(theme.accent)
-                .add_modifier(Modifier::BOLD),
-        ))
-        .style(theme.preview_bg_style());
-    let inner = block.inner(card_rect);
-    frame.render_widget(block, card_rect);
-
-    // Body: markdown grid if ready, else placeholder.
-    let grid = renderer
-        .filter(|r| r.pages_built() && !r.is_content_empty())
-        .and_then(|r| r.current_page_grid());
-    match grid {
-        Some(page_grid) => {
-            let snapshot = crate::snapshot::RenderedSnapshot::new(page_grid);
-            frame.render_widget(snapshot, inner);
-        }
-        None => {
-            let empty = renderer.is_some_and(|r| r.is_content_empty());
-            let msg = if empty {
-                "(empty note)"
-            } else {
-                "Rendering…"
-            };
-            let para = Paragraph::new(msg)
-                .style(theme.preview_bg_style())
-                .alignment(ratatui::layout::Alignment::Center);
-            frame.render_widget(para, inner);
         }
     }
 }
@@ -1008,7 +851,6 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         }
     }
 
-    let is_graph = app.list.notes_layout == crate::config::NotesLayout::Graph;
     let (list_area, preview_area, calendar_area) = list_view_layout(
         area,
         app.list.preview_enabled,
@@ -1027,56 +869,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     if !app.preview_fullscreen {
         let is_grid = app.list.notes_layout == crate::config::NotesLayout::Grid;
 
-        if is_graph {
-            app.list.grid_tiles.clear();
-            if crate::app::App::is_subnotes_parent_grid_path(&app.list.grid_folder) {
-                let parent_id =
-                    crate::app::App::subnotes_parent_id_from_grid_path(&app.list.grid_folder);
-                let parent_title = app
-                    .notes
-                    .iter()
-                    .find(|n| n.id == parent_id)
-                    .map(|n| n.title.clone())
-                    .unwrap_or_else(|| parent_id.to_string());
-                let subnotes: Vec<crate::storage::SubNote> = app
-                    .subnotes_view_cache
-                    .iter()
-                    .find(|(p, _)| p == parent_id)
-                    .map(|(_, subs)| subs.clone())
-                    .unwrap_or_default();
-                render_subnote_graph_static(
-                    frame,
-                    list_area,
-                    &parent_title,
-                    &subnotes,
-                    app.list.subnote_graph_zoom,
-                    app.list.subnote_graph_pan_x,
-                    app.list.subnote_graph_pan_y,
-                    &app.app_theme,
-                    true,
-                );
-            } else {
-                let (children, label) = app.folder_graph_children(&app.list.grid_folder);
-                let positions = orbit_positions(children.len(), 10.0);
-                let positioned: Vec<crate::list_view::FolderGraphNode> = children
-                    .iter()
-                    .zip(positions.iter())
-                    .map(|(n, &(x, y))| crate::list_view::FolderGraphNode { x, y, ..n.clone() })
-                    .collect();
-                app.list.folder_graph_nodes = positioned.clone();
-                render_folder_graph_static(
-                    frame,
-                    list_area,
-                    &label,
-                    &positioned,
-                    app.list.folder_graph_zoom,
-                    app.list.folder_graph_pan_x,
-                    app.list.folder_graph_pan_y,
-                    app,
-                    true,
-                );
-            }
-        } else if is_grid {
+        if is_grid {
             app.list.grid_tiles.clear();
 
             // --- render directory breadcrumbs at the top of the list area ---
@@ -1607,7 +1400,11 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             if app.list.visual_index < offset {
                 offset = app.list.visual_index;
             } else if app.list.visual_index >= offset + viewport_len {
-                offset = app.list.visual_index.saturating_add(1).saturating_sub(viewport_len);
+                offset = app
+                    .list
+                    .visual_index
+                    .saturating_add(1)
+                    .saturating_sub(viewport_len);
             }
             *app.list.list_state.offset_mut() = offset;
 
@@ -1623,13 +1420,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     && row >= inner_y
                     && row < inner_y + inner_h
                 {
-                    crate::ui::list_index_at(
-                        row,
-                        inner_y,
-                        1,
-                        offset,
-                        total_len,
-                    )
+                    crate::ui::list_index_at(row, inner_y, 1, offset, total_len)
                 } else {
                     None
                 }
@@ -1732,11 +1523,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 preview_rect,
                 &parent_title,
                 &subnotes,
-                1.0,
-                0.0,
-                0.0,
                 &app.app_theme,
-                false,
             );
             rendered_graph = true;
         }
@@ -1755,17 +1542,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 .zip(positions.iter())
                 .map(|(n, &(x, y))| crate::list_view::FolderGraphNode { x, y, ..n.clone() })
                 .collect();
-            render_folder_graph_static(
-                frame,
-                preview_rect,
-                &label,
-                &positioned,
-                1.0,
-                0.0,
-                0.0,
-                app,
-                false,
-            );
+            render_folder_graph_static(frame, preview_rect, &label, &positioned, &app.app_theme);
             rendered_graph = true;
         }
         if !rendered_graph {
@@ -1903,7 +1680,10 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     frame,
                     r,
                     &app.app_theme,
-                    &app.note_index.as_ref().map(|i| &i.activity_by_day).unwrap_or(&std::collections::HashMap::new()),
+                    &app.note_index
+                        .as_ref()
+                        .map(|i| &i.activity_by_day)
+                        .unwrap_or(&std::collections::HashMap::new()),
                     bottom_border,
                     app.config.list.week_start,
                     cal_rect,
@@ -2766,52 +2546,93 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         let end = (offset + viewport_len).min(total_items);
 
         let items: Vec<ListItem> = if has_grep {
-            (offset..end).map(|r| {
-                if popup.globally_truncated && r == popup.total_grep_rows() - 1 {
-                    ListItem::new(Span::styled(
-                        "  Results truncated; refine grep query",
-                        Style::default().fg(app.app_theme.muted).add_modifier(Modifier::ITALIC),
-                    ))
-                } else {
-                    let hit_idx = match popup.grep_row_offsets.binary_search(&r) {
-                        Ok(i) => i,
-                        Err(i) => i.saturating_sub(1),
-                    };
-                    let base = popup.grep_row_offsets[hit_idx];
-                    let hit = &popup.grep_results[hit_idx];
-                    if r == base {
-                        let arrow = if popup.grep_expanded.contains(&hit.note_id) { "▼ " } else { "▶ " };
-                        let note_summary = app.notes.iter().find(|n| n.id.as_str() == &*hit.note_id);
-                        let title = note_summary.map(|n| n.title.as_str()).unwrap_or(&*hit.note_id);
-                        let folder = note_summary.map(|n| n.folder.as_str()).unwrap_or("");
-                        let label = if folder.is_empty() { title.to_string() } else { format!("{folder}/{title}") };
-                        let trunc_suffix = if hit.truncated { "; first 200 lines shown" } else { "" };
-                        let header_text = format!("{arrow}{label} ({}{trunc_suffix})", hit.match_count);
-                        ListItem::new(crate::ui::styled_result_line(&header_text, &app.app_theme, app.config.ui.icon_mode))
+            (offset..end)
+                .map(|r| {
+                    if popup.globally_truncated && r == popup.total_grep_rows() - 1 {
+                        ListItem::new(Span::styled(
+                            "  Results truncated; refine grep query",
+                            Style::default()
+                                .fg(app.app_theme.muted)
+                                .add_modifier(Modifier::ITALIC),
+                        ))
                     } else {
-                        let line_idx = r - base - 1;
-                        let line_hit = &hit.lines[line_idx];
-                        let line_text = format!("  L{}: {}", line_hit.line_number, line_hit.snippet);
-                        ListItem::new(Span::styled(line_text, Style::default().fg(app.app_theme.text)))
+                        let hit_idx = match popup.grep_row_offsets.binary_search(&r) {
+                            Ok(i) => i,
+                            Err(i) => i.saturating_sub(1),
+                        };
+                        let base = popup.grep_row_offsets[hit_idx];
+                        let hit = &popup.grep_results[hit_idx];
+                        if r == base {
+                            let arrow = if popup.grep_expanded.contains(&hit.note_id) {
+                                "▼ "
+                            } else {
+                                "▶ "
+                            };
+                            let note_summary =
+                                app.notes.iter().find(|n| n.id.as_str() == &*hit.note_id);
+                            let title = note_summary
+                                .map(|n| n.title.as_str())
+                                .unwrap_or(&*hit.note_id);
+                            let folder = note_summary.map(|n| n.folder.as_str()).unwrap_or("");
+                            let label = if folder.is_empty() {
+                                title.to_string()
+                            } else {
+                                format!("{folder}/{title}")
+                            };
+                            let trunc_suffix = if hit.truncated {
+                                "; first 200 lines shown"
+                            } else {
+                                ""
+                            };
+                            let header_text =
+                                format!("{arrow}{label} ({}{trunc_suffix})", hit.match_count);
+                            ListItem::new(crate::ui::styled_result_line(
+                                &header_text,
+                                &app.app_theme,
+                                app.config.ui.icon_mode,
+                            ))
+                        } else {
+                            let line_idx = r - base - 1;
+                            let line_hit = &hit.lines[line_idx];
+                            let line_text =
+                                format!("  L{}: {}", line_hit.line_number, line_hit.snippet);
+                            ListItem::new(Span::styled(
+                                line_text,
+                                Style::default().fg(app.app_theme.text),
+                            ))
+                        }
                     }
-                }
-            }).collect()
+                })
+                .collect()
         } else if has_title {
-            (offset..end).map(|idx| {
-                let id_arc = &popup.title_result_ids[idx];
-                let note_summary = app.notes.iter().find(|n| n.id.as_str() == &**id_arc);
-                let title = note_summary.map(|n| n.title.as_str()).unwrap_or(&**id_arc);
-                let folder = note_summary.map(|n| n.folder.as_str()).unwrap_or("");
-                let label = if folder.is_empty() { title.to_string() } else { format!("{folder}/{title}") };
-                ListItem::new(crate::ui::styled_result_line(&label, &app.app_theme, app.config.ui.icon_mode))
-            }).collect()
+            (offset..end)
+                .map(|idx| {
+                    let id_arc = &popup.title_result_ids[idx];
+                    let note_summary = app.notes.iter().find(|n| n.id.as_str() == &**id_arc);
+                    let title = note_summary.map(|n| n.title.as_str()).unwrap_or(&**id_arc);
+                    let folder = note_summary.map(|n| n.folder.as_str()).unwrap_or("");
+                    let label = if folder.is_empty() {
+                        title.to_string()
+                    } else {
+                        format!("{folder}/{title}")
+                    };
+                    ListItem::new(crate::ui::styled_result_line(
+                        &label,
+                        &app.app_theme,
+                        app.config.ui.icon_mode,
+                    ))
+                })
+                .collect()
         } else {
             let msg = if query_text.trim().is_empty() && !has_filter {
                 "Type to search notes"
             } else {
                 "No results"
             };
-            vec![ListItem::new(Span::styled(msg, Style::default().fg(app.app_theme.muted)))]
+            vec![ListItem::new(Span::styled(
+                msg,
+                Style::default().fg(app.app_theme.muted),
+            ))]
         };
 
         let rel_selected = selected_idx.saturating_sub(offset);

@@ -755,7 +755,8 @@ impl crate::popups::ActivePopup {
                         MouseEventKind::ScrollDown => {
                             p.focus = SearchFocus::Results;
                             if has_grep {
-                                p.grep_selected = (p.grep_selected + 1).min(total_items.saturating_sub(1));
+                                p.grep_selected =
+                                    (p.grep_selected + 1).min(total_items.saturating_sub(1));
                             } else if has_title && p.title_selected + 1 < p.title_result_ids.len() {
                                 p.title_selected += 1;
                             }
@@ -788,7 +789,8 @@ impl crate::popups::ActivePopup {
                         let target_vis = target_vis.min(total_items.saturating_sub(1));
                         let already_selected = target_vis == p.grep_selected;
                         p.grep_selected = target_vis;
-                        if already_selected && mouse.kind == MouseEventKind::Down(MouseButton::Left) {
+                        if already_selected && mouse.kind == MouseEventKind::Down(MouseButton::Left)
+                        {
                             let hit_idx = match p.grep_row_offsets.binary_search(&target_vis) {
                                 Ok(i) => i,
                                 Err(i) => i.saturating_sub(1),
@@ -812,7 +814,8 @@ impl crate::popups::ActivePopup {
                         let flat = target_vis.min(p.title_result_ids.len().saturating_sub(1));
                         let already_selected = flat == p.title_selected;
                         p.title_selected = flat;
-                        if already_selected && mouse.kind == MouseEventKind::Down(MouseButton::Left) {
+                        if already_selected && mouse.kind == MouseEventKind::Down(MouseButton::Left)
+                        {
                             open_result = true;
                         }
                     }

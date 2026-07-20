@@ -2,8 +2,8 @@
 mod tests {
     use crate::app::App;
     use crate::storage::Storage;
-    use ratatui::backend::TestBackend;
     use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
     use std::path::PathBuf;
     use std::time::Instant;
 

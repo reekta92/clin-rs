@@ -24,8 +24,8 @@ pub(crate) use edit_view::render_editor_widget;
 pub use help::*;
 pub use help_content::{HelpSuggestion, roll_suggestions};
 pub(crate) use list_view::{
-    FOLDER_GRAPH_BASE_SPAN, SUBNOTE_GRAPH_BASE_SPAN, draw_list_view, get_preview_info,
-    list_detail_line, list_view_layout, orbit_positions, section_rects,
+    draw_list_view, get_preview_info,
+    list_detail_line, list_view_layout, section_rects,
 };
 pub use popups::*;
 pub use setup::draw_setup_view;
@@ -1081,52 +1081,93 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         let end = (offset + viewport_len).min(total_items);
 
         let items: Vec<ListItem> = if has_grep {
-            (offset..end).map(|r| {
-                if popup.globally_truncated && r == popup.total_grep_rows() - 1 {
-                    ListItem::new(Span::styled(
-                        "  Results truncated; refine grep query",
-                        Style::default().fg(app.app_theme.muted).add_modifier(Modifier::ITALIC),
-                    ))
-                } else {
-                    let hit_idx = match popup.grep_row_offsets.binary_search(&r) {
-                        Ok(i) => i,
-                        Err(i) => i.saturating_sub(1),
-                    };
-                    let base = popup.grep_row_offsets[hit_idx];
-                    let hit = &popup.grep_results[hit_idx];
-                    if r == base {
-                        let arrow = if popup.grep_expanded.contains(&hit.note_id) { "▼ " } else { "▶ " };
-                        let note_summary = app.notes.iter().find(|n| n.id.as_str() == &*hit.note_id);
-                        let title = note_summary.map(|n| n.title.as_str()).unwrap_or(&*hit.note_id);
-                        let folder = note_summary.map(|n| n.folder.as_str()).unwrap_or("");
-                        let label = if folder.is_empty() { title.to_string() } else { format!("{folder}/{title}") };
-                        let trunc_suffix = if hit.truncated { "; first 200 lines shown" } else { "" };
-                        let header_text = format!("{arrow}{label} ({}{trunc_suffix})", hit.match_count);
-                        ListItem::new(crate::ui::styled_result_line(&header_text, &app.app_theme, app.config.ui.icon_mode))
+            (offset..end)
+                .map(|r| {
+                    if popup.globally_truncated && r == popup.total_grep_rows() - 1 {
+                        ListItem::new(Span::styled(
+                            "  Results truncated; refine grep query",
+                            Style::default()
+                                .fg(app.app_theme.muted)
+                                .add_modifier(Modifier::ITALIC),
+                        ))
                     } else {
-                        let line_idx = r - base - 1;
-                        let line_hit = &hit.lines[line_idx];
-                        let line_text = format!("  L{}: {}", line_hit.line_number, line_hit.snippet);
-                        ListItem::new(Span::styled(line_text, Style::default().fg(app.app_theme.text)))
+                        let hit_idx = match popup.grep_row_offsets.binary_search(&r) {
+                            Ok(i) => i,
+                            Err(i) => i.saturating_sub(1),
+                        };
+                        let base = popup.grep_row_offsets[hit_idx];
+                        let hit = &popup.grep_results[hit_idx];
+                        if r == base {
+                            let arrow = if popup.grep_expanded.contains(&hit.note_id) {
+                                "▼ "
+                            } else {
+                                "▶ "
+                            };
+                            let note_summary =
+                                app.notes.iter().find(|n| n.id.as_str() == &*hit.note_id);
+                            let title = note_summary
+                                .map(|n| n.title.as_str())
+                                .unwrap_or(&*hit.note_id);
+                            let folder = note_summary.map(|n| n.folder.as_str()).unwrap_or("");
+                            let label = if folder.is_empty() {
+                                title.to_string()
+                            } else {
+                                format!("{folder}/{title}")
+                            };
+                            let trunc_suffix = if hit.truncated {
+                                "; first 200 lines shown"
+                            } else {
+                                ""
+                            };
+                            let header_text =
+                                format!("{arrow}{label} ({}{trunc_suffix})", hit.match_count);
+                            ListItem::new(crate::ui::styled_result_line(
+                                &header_text,
+                                &app.app_theme,
+                                app.config.ui.icon_mode,
+                            ))
+                        } else {
+                            let line_idx = r - base - 1;
+                            let line_hit = &hit.lines[line_idx];
+                            let line_text =
+                                format!("  L{}: {}", line_hit.line_number, line_hit.snippet);
+                            ListItem::new(Span::styled(
+                                line_text,
+                                Style::default().fg(app.app_theme.text),
+                            ))
+                        }
                     }
-                }
-            }).collect()
+                })
+                .collect()
         } else if has_title {
-            (offset..end).map(|idx| {
-                let id_arc = &popup.title_result_ids[idx];
-                let note_summary = app.notes.iter().find(|n| n.id.as_str() == &**id_arc);
-                let title = note_summary.map(|n| n.title.as_str()).unwrap_or(&**id_arc);
-                let folder = note_summary.map(|n| n.folder.as_str()).unwrap_or("");
-                let label = if folder.is_empty() { title.to_string() } else { format!("{folder}/{title}") };
-                ListItem::new(crate::ui::styled_result_line(&label, &app.app_theme, app.config.ui.icon_mode))
-            }).collect()
+            (offset..end)
+                .map(|idx| {
+                    let id_arc = &popup.title_result_ids[idx];
+                    let note_summary = app.notes.iter().find(|n| n.id.as_str() == &**id_arc);
+                    let title = note_summary.map(|n| n.title.as_str()).unwrap_or(&**id_arc);
+                    let folder = note_summary.map(|n| n.folder.as_str()).unwrap_or("");
+                    let label = if folder.is_empty() {
+                        title.to_string()
+                    } else {
+                        format!("{folder}/{title}")
+                    };
+                    ListItem::new(crate::ui::styled_result_line(
+                        &label,
+                        &app.app_theme,
+                        app.config.ui.icon_mode,
+                    ))
+                })
+                .collect()
         } else {
             let msg = if query_text.trim().is_empty() && !has_filter {
                 "Type to search notes"
             } else {
                 "No results"
             };
-            vec![ListItem::new(Span::styled(msg, Style::default().fg(app.app_theme.muted)))]
+            vec![ListItem::new(Span::styled(
+                msg,
+                Style::default().fg(app.app_theme.muted),
+            ))]
         };
 
         let rel_selected = selected_idx.saturating_sub(offset);

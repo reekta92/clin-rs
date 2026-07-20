@@ -240,8 +240,6 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
     // READ-mode navigation + entry to EDIT.
     if app.editor.edit_mode == EditMode::Read {
         let h = app.editor.last_body_height as usize;
-        let max = app.editor.read_grid.len().saturating_sub(h.max(1));
-        let delta = h.max(1).saturating_div(2).max(1);
         // enter EDIT
         if key.modifiers == KeyModifiers::NONE
             && matches!(key.code, KeyCode::Char('e') | KeyCode::Char('i'))
@@ -249,57 +247,62 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
             app.activate_edit_mode();
             return false;
         }
-        match key.code {
-            KeyCode::Down | KeyCode::Char('j') => {
-                app.editor.read_offset = (app.editor.read_offset + 1).min(max);
-                return false;
-            }
-            KeyCode::Up | KeyCode::Char('k') => {
-                app.editor.read_offset = app.editor.read_offset.saturating_sub(1);
-                return false;
-            }
-            KeyCode::PageDown | KeyCode::Char(' ') => {
-                app.editor.read_offset = (app.editor.read_offset + h.max(1)).min(max);
-                return false;
-            }
-            KeyCode::PageUp => {
-                app.editor.read_offset = app.editor.read_offset.saturating_sub(h.max(1));
-                return false;
-            }
-            KeyCode::Char('d') if key.modifiers == KeyModifiers::CONTROL => {
-                app.editor.read_offset = (app.editor.read_offset + delta).min(max);
-                return false;
-            }
-            KeyCode::Char('u') if key.modifiers == KeyModifiers::CONTROL => {
-                app.editor.read_offset = app.editor.read_offset.saturating_sub(delta);
-                return false;
-            }
-            KeyCode::Char('G') => {
-                app.editor.read_offset = max;
-                return false;
-            }
-            KeyCode::Char('g') => {
-                if app.editor.read_gg_pending {
-                    app.editor.read_offset = 0;
-                    app.editor.read_gg_pending = false;
-                } else {
-                    app.editor.read_gg_pending = true;
+        if let Some(renderer) = &mut app.editor.md_preview_renderer {
+            match key.code {
+                KeyCode::Down | KeyCode::Char('j') => {
+                    renderer.scroll_down(1, h.max(1));
+                    return false;
                 }
-                return false;
+                KeyCode::Up | KeyCode::Char('k') => {
+                    renderer.scroll_up(1);
+                    return false;
+                }
+                KeyCode::PageDown | KeyCode::Char(' ') => {
+                    renderer.page_down(h.max(1));
+                    return false;
+                }
+                KeyCode::PageUp => {
+                    renderer.page_up(h.max(1));
+                    return false;
+                }
+                KeyCode::Char('d') if key.modifiers == KeyModifiers::CONTROL => {
+                    renderer.scroll_down(h.max(1) / 2, h.max(1));
+                    return false;
+                }
+                KeyCode::Char('u') if key.modifiers == KeyModifiers::CONTROL => {
+                    renderer.scroll_up(h.max(1) / 2);
+                    return false;
+                }
+                KeyCode::Char('G') => {
+                    renderer.scroll_bottom(h.max(1));
+                    return false;
+                }
+                KeyCode::Char('g') => {
+                    if app.editor.read_gg_pending {
+                        renderer.scroll_top();
+                        app.editor.read_gg_pending = false;
+                    } else {
+                        app.editor.read_gg_pending = true;
+                    }
+                    return false;
+                }
+                KeyCode::Home => {
+                    renderer.scroll_top();
+                    return false;
+                }
+                KeyCode::End => {
+                    renderer.scroll_bottom(h.max(1));
+                    return false;
+                }
+                KeyCode::Char('q') => {
+                    leave_editor(app, focus);
+                    return false;
+                }
+                _ => {}
             }
-            KeyCode::Home => {
-                app.editor.read_offset = 0;
-                return false;
-            }
-            KeyCode::End => {
-                app.editor.read_offset = max;
-                return false;
-            }
-            KeyCode::Char('q') => {
-                leave_editor(app, focus);
-                return false;
-            }
-            _ => {}
+        } else if key.code == KeyCode::Char('q') {
+            leave_editor(app, focus);
+            return false;
         }
         // Fall through to resolve_edit so Find/GoToLine/PreviewLink/etc still work
     }
@@ -605,6 +608,7 @@ pub fn handle_edit_mouse(
     if mouse_event.kind == MouseEventKind::Down(MouseButton::Right) {
         let (title_inner, body_inner, _sidebar_inner) = edit_view_input_areas(
             terminal_area,
+            app.preview_fullscreen || app.editor.edit_mode == EditMode::Read,
             app.editor.editor_preview_enabled,
             app.editor.editor.lines().len(),
             app.editor.show_line_numbers,
@@ -675,6 +679,7 @@ pub fn handle_edit_mouse(
 
     let (title_inner, body_inner, sidebar_inner) = edit_view_input_areas(
         terminal_area,
+        app.preview_fullscreen || app.editor.edit_mode == EditMode::Read,
         app.editor.editor_preview_enabled,
         app.editor.editor.lines().len(),
         app.editor.show_line_numbers,
@@ -683,7 +688,7 @@ pub fn handle_edit_mouse(
         app.editor.header_title_rect,
     );
 
-    let md_area = if app.preview_fullscreen {
+    let md_area = if app.preview_fullscreen || app.editor.edit_mode == EditMode::Read {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -705,13 +710,15 @@ pub fn handle_edit_mouse(
         match mouse_event.kind {
             MouseEventKind::ScrollUp => {
                 if let Some(renderer) = &mut app.editor.md_preview_renderer {
-                    renderer.prev_page();
+                    let h = app.editor.last_body_height.max(1) as usize;
+                    renderer.scroll_up(3.min(h));
                 }
                 return;
             }
             MouseEventKind::ScrollDown => {
                 if let Some(renderer) = &mut app.editor.md_preview_renderer {
-                    renderer.next_page();
+                    let h = app.editor.last_body_height.max(1) as usize;
+                    renderer.scroll_down(3.min(h), h);
                 }
                 return;
             }
@@ -759,20 +766,16 @@ pub fn handle_edit_mouse(
     if app.editor.edit_mode == EditMode::Read {
         match mouse_event.kind {
             MouseEventKind::ScrollUp => {
-                let max = app
-                    .editor
-                    .read_grid
-                    .len()
-                    .saturating_sub(app.editor.last_body_height.max(1) as usize);
-                app.editor.read_offset = app.editor.read_offset.saturating_sub(3).min(max);
+                if let Some(renderer) = &mut app.editor.md_preview_renderer {
+                    let h = app.editor.last_body_height.max(1) as usize;
+                    renderer.scroll_up(3.min(h));
+                }
             }
             MouseEventKind::ScrollDown => {
-                let max = app
-                    .editor
-                    .read_grid
-                    .len()
-                    .saturating_sub(app.editor.last_body_height.max(1) as usize);
-                app.editor.read_offset = (app.editor.read_offset + 3).min(max);
+                if let Some(renderer) = &mut app.editor.md_preview_renderer {
+                    let h = app.editor.last_body_height.max(1) as usize;
+                    renderer.scroll_down(3.min(h), h);
+                }
             }
             _ => {}
         }
@@ -929,11 +932,24 @@ pub fn handle_edit_mouse(
 
 /// Map a mouse cell to (grid_row, grid_col) in the READ-mode rendered grid.
 fn read_grid_cell(app: &App, body_inner: Rect, col: u16, row: u16) -> (usize, usize) {
-    let gr = (row.saturating_sub(body_inner.y) as usize).saturating_add(app.editor.read_offset);
-    let gc = col.saturating_sub(body_inner.x) as usize;
-    let gr = gr.min(app.editor.read_grid.len().saturating_sub(1));
-    let row_len = app.editor.read_grid.get(gr).map(|r| r.len()).unwrap_or(0);
-    (gr, gc.min(row_len.saturating_sub(1)))
+    let scroll = app
+        .editor
+        .md_preview_renderer
+        .as_ref()
+        .map(|r| r.scroll_offset())
+        .unwrap_or(0);
+    let grid = app
+        .editor
+        .md_preview_renderer
+        .as_ref()
+        .map(|r| r.grid())
+        .unwrap_or(&[]);
+    // body_inner == preview rect in READ mode; snapshot padding is (left=2, top=1).
+    let gr = (row.saturating_sub(body_inner.y).saturating_sub(1) as usize).saturating_add(scroll);
+    let gc = (col.saturating_sub(body_inner.x).saturating_sub(2)) as usize;
+    let gr = gr.min(grid.len().saturating_sub(1));
+    let row_len = grid.get(gr).map(|r| r.len()).unwrap_or(0);
+    (gr, gc.min(row_len))
 }
 
 /// Extract the selected text from READ-mode grid selection.
@@ -941,32 +957,36 @@ pub(crate) fn read_selection_text(app: &App) -> String {
     let (Some(a), Some(b)) = (app.editor.read_sel_anchor, app.editor.read_sel_end) else {
         return String::new();
     };
+    let grid = app
+        .editor
+        .md_preview_renderer
+        .as_ref()
+        .map(|r| r.grid())
+        .unwrap_or(&[]);
     let (mut r1, mut c1) = a;
     let (mut r2, mut c2) = b;
     if (r2, c2) < (r1, c1) {
         std::mem::swap(&mut r1, &mut r2);
         std::mem::swap(&mut c1, &mut c2);
     }
-    let grid = &app.editor.read_grid;
     let mut out = String::new();
-    for r in r1..=r2.min(grid.len().saturating_sub(1)) {
-        let row = &grid[r];
-        if row.is_empty() {
-            out.push('\n');
-            continue;
-        }
-        let start = if r == r1 { c1 } else { 0 };
-        let end = if r == r2 {
-            c2.min(row.len().saturating_sub(1))
-        } else {
-            row.len().saturating_sub(1)
+    for r in r1..=r2 {
+        let row_cells = match grid.get(r) {
+            Some(r) => r,
+            None => continue,
         };
-        if start > end {
-            continue;
+        let cs = if r == r1 { c1 } else { 0 };
+        let ce = if r == r2 {
+            c2.min(row_cells.len().saturating_sub(1))
+        } else {
+            row_cells.len().saturating_sub(1)
+        };
+        for c in cs..=ce {
+            if let Some((ch, _)) = row_cells.get(c) {
+                out.push(*ch);
+            }
         }
-        let s: String = row[start..=end].iter().map(|(ch, _)| *ch).collect();
-        out.push_str(s.trim_end());
-        if r != r2.min(grid.len().saturating_sub(1)) {
+        if r != r2 {
             out.push('\n');
         }
     }

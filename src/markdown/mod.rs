@@ -53,20 +53,6 @@ impl MdRenderOpts {
         }
     }
 }
-
-/// Synchronous render path: renders content inline (no background thread).
-/// Used by READ mode to produce the rendered grid on demand.
-pub(crate) fn render_builtin_sync(
-    content: &str,
-    cols: u16,
-    theme: &crate::app_theme::AppThemeColors,
-    opts: &MdRenderOpts,
-) -> Vec<RenderLine> {
-    let md_theme = style::MarkdownTheme::from_app_theme(theme);
-    let cancel = std::sync::atomic::AtomicBool::new(false);
-    builtin::render_builtin(content, cols, &md_theme, opts, &cancel).0
-}
-
 /// Renders markdown into a paged grid of `(char, Style)` cells.
 ///
 /// Public API mirrors the previous `vt100` / glow-based implementation exactly,
@@ -78,6 +64,8 @@ pub(crate) fn render_builtin_sync(
 pub struct MarkdownRenderer {
     pending: Option<mpsc::Receiver<(Vec<RenderLine>, Vec<(usize, String)>)>>,
     lines: Vec<RenderLine>,
+    /// Full unpaged grid for continuous scroll.
+    grid: Vec<Vec<(char, Style)>>,
     /// Image slots: Vec<(rendered_line_idx, url)> from the background render.
     image_slots: Vec<(usize, String)>,
     /// Image slots per-page, derived from image_slots by build_pages.
@@ -86,6 +74,8 @@ pub struct MarkdownRenderer {
     pages: Vec<Vec<Vec<(char, Style)>>>,
     current_page: usize,
     total_pages: usize,
+    /// Continuous scroll position (grid line index).
+    scroll_offset: usize,
     content_empty: bool,
 }
 
@@ -110,12 +100,14 @@ impl MarkdownRenderer {
         Self {
             pending: None,
             lines: Vec::new(),
+            grid: Vec::new(),
             image_slots: Vec::new(),
             page_image_slots: Vec::new(),
             cancel_token: Arc::new(AtomicBool::new(false)),
             pages: Vec::new(),
             current_page: 0,
             total_pages: 0,
+            scroll_offset: 0,
             content_empty: true,
         }
     }
@@ -188,8 +180,14 @@ impl MarkdownRenderer {
 
         match rx.try_recv() {
             Ok((lines, slots)) => {
+                self.content_empty = lines.is_empty()
+                    || lines.iter().all(|l| {
+                        l.cells.is_empty()
+                            || l.cells.iter().all(|(c, _)| c.is_whitespace())
+                    });
                 self.lines = lines;
                 self.image_slots = slots;
+                self.grid = self.lines.iter().map(|l| l.cells.clone()).collect();
                 self.pending = None;
                 true
             }
@@ -296,6 +294,55 @@ impl MarkdownRenderer {
         } else {
             self.current_page = self.total_pages - 1;
         }
+    }
+
+    pub fn grid(&self) -> &[Vec<(char, Style)>] {
+        &self.grid
+    }
+    pub fn scroll_offset(&self) -> usize {
+        self.scroll_offset
+    }
+    pub fn raw_image_slots(&self) -> &[(usize, String)] {
+        &self.image_slots
+    }
+    pub fn has_grid(&self) -> bool {
+        !self.grid.is_empty() || self.content_empty
+    }
+
+    pub fn scroll_up(&mut self, lines: usize) {
+        self.scroll_offset = self.scroll_offset.saturating_sub(lines);
+    }
+    pub fn scroll_down(&mut self, lines: usize, visible_height: usize) {
+        let max = self.lines.len().saturating_sub(visible_height);
+        self.scroll_offset = (self.scroll_offset + lines).min(max);
+    }
+    pub fn page_up(&mut self, visible_height: usize) {
+        self.scroll_up(visible_height);
+    }
+    pub fn page_down(&mut self, visible_height: usize) {
+        self.scroll_down(visible_height, visible_height);
+    }
+    pub fn scroll_top(&mut self) {
+        self.scroll_offset = 0;
+    }
+    pub fn scroll_bottom(&mut self, visible_height: usize) {
+        self.scroll_offset = self.lines.len().saturating_sub(visible_height);
+    }
+
+    // Line Mapping (0-based textarea rows <-> 1-based comrak source lines)
+    pub fn source_to_grid_line(&self, source_line_0_based: usize) -> usize {
+        let comrak_line = source_line_0_based + 1;
+        self.lines
+            .iter()
+            .position(|l| l.source_line >= comrak_line)
+            .unwrap_or(0)
+    }
+    pub fn grid_to_source_line(&self, grid_line: usize) -> usize {
+        self.lines
+            .get(grid_line)
+            .map(|l| l.source_line)
+            .unwrap_or(1)
+            .saturating_sub(1)
     }
 }
 

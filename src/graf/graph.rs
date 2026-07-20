@@ -174,9 +174,7 @@ impl GraphState {
             .auto_fit_from_graph(state.simulation.get_graph(), 1.4);
         state.graph_bounds = super::render::compute_graph_bounds(state.simulation.get_graph());
         // Rebuild spatial index after initial graph is placed
-        state
-            .spatial_grid
-            .rebuild(state.simulation.get_graph());
+        state.spatial_grid.rebuild(state.simulation.get_graph());
         Ok(state)
     }
     pub fn reheat(&mut self, target: f32) {
@@ -270,7 +268,10 @@ mod tests {
         let graph = build_graph(&summaries, &config).unwrap();
         assert_eq!(graph.node_count(), 2);
         // Note 1 (2 links) and Note 2 (1 link) should be kept, Note 3 (0 links) truncated
-        let titles: Vec<_> = graph.node_weights().map(|n| n.data.title.as_str()).collect();
+        let titles: Vec<_> = graph
+            .node_weights()
+            .map(|n| n.data.title.as_str())
+            .collect();
         assert!(titles.contains(&"Note 1"));
         assert!(titles.contains(&"Note 2"));
         assert!(!titles.contains(&"Note 3"));
@@ -314,7 +315,10 @@ mod tests {
         let config_hide = ClinConfig::default();
         let graph_hide = build_graph(&summaries, &config_hide).unwrap();
         assert_eq!(graph_hide.node_count(), 2);
-        let titles_hide: Vec<_> = graph_hide.node_weights().map(|n| n.data.title.as_str()).collect();
+        let titles_hide: Vec<_> = graph_hide
+            .node_weights()
+            .map(|n| n.data.title.as_str())
+            .collect();
         assert!(titles_hide.contains(&"Connected 1"));
         assert!(titles_hide.contains(&"Connected 2"));
         assert!(!titles_hide.contains(&"Orphan 1"));
@@ -324,7 +328,10 @@ mod tests {
         config_show.graf.filter.show_orphan = true;
         let graph_show = build_graph(&summaries, &config_show).unwrap();
         assert_eq!(graph_show.node_count(), 3);
-        let titles_show: Vec<_> = graph_show.node_weights().map(|n| n.data.title.as_str()).collect();
+        let titles_show: Vec<_> = graph_show
+            .node_weights()
+            .map(|n| n.data.title.as_str())
+            .collect();
         assert!(titles_show.contains(&"Connected 1"));
         assert!(titles_show.contains(&"Connected 2"));
         assert!(titles_show.contains(&"Orphan 1"));
@@ -406,7 +413,10 @@ mod tests {
         // Post-filter scrubs C because it has no final edges.
         // Final graph only contains A and B.
         assert_eq!(graph.node_count(), 2);
-        let titles: Vec<_> = graph.node_weights().map(|n| n.data.title.as_str()).collect();
+        let titles: Vec<_> = graph
+            .node_weights()
+            .map(|n| n.data.title.as_str())
+            .collect();
         assert!(titles.contains(&"A"));
         assert!(titles.contains(&"B"));
         assert!(!titles.contains(&"C"));

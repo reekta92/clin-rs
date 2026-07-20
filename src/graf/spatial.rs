@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use fdg_sim::petgraph::graph::NodeIndex;
 use fdg_sim::ForceGraph;
+use fdg_sim::petgraph::graph::NodeIndex;
 
 use super::graph::GraphNodeData;
 
@@ -180,6 +180,9 @@ mod tests {
         grid.rebuild(&empty_graph);
 
         let results: Vec<NodeIndex> = grid.query_point(0.0, 0.0, 50.0).collect();
-        assert!(results.is_empty(), "after rebuild with empty graph, should be empty");
+        assert!(
+            results.is_empty(),
+            "after rebuild with empty graph, should be empty"
+        );
     }
 }

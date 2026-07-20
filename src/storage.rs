@@ -66,7 +66,6 @@ pub(crate) struct VaultScan {
     pub warnings: Vec<String>,
 }
 
-
 pub fn extract_wikilinks(content: &str) -> Vec<String> {
     let mut links = Vec::new();
     let mut cursor = 0;
@@ -390,7 +389,6 @@ impl Storage {
             .context("could not determine config directory")
             .map(|d| d.config_dir().to_path_buf())
     }
-
 
     pub fn ensure_key(&mut self) -> Result<()> {
         if self.key != [0_u8; 32] {
@@ -851,7 +849,13 @@ impl Storage {
 
         let root_entries = match fs::read_dir(&self.notes_dir) {
             Ok(e) => e,
-            Err(err) => return Err(anyhow::anyhow!("failed reading notes directory {}: {}", self.notes_dir.display(), err)),
+            Err(err) => {
+                return Err(anyhow::anyhow!(
+                    "failed reading notes directory {}: {}",
+                    self.notes_dir.display(),
+                    err
+                ));
+            }
         };
         drop(root_entries);
 
@@ -862,7 +866,11 @@ impl Storage {
                 Ok(e) => e,
                 Err(err) => {
                     complete = false;
-                    warnings.push(format!("Failed to read directory {}: {}", dir_path.display(), err));
+                    warnings.push(format!(
+                        "Failed to read directory {}: {}",
+                        dir_path.display(),
+                        err
+                    ));
                     continue;
                 }
             };
@@ -872,7 +880,11 @@ impl Storage {
                     Ok(e) => e,
                     Err(err) => {
                         complete = false;
-                        warnings.push(format!("Failed to read entry in {}: {}", dir_path.display(), err));
+                        warnings.push(format!(
+                            "Failed to read entry in {}: {}",
+                            dir_path.display(),
+                            err
+                        ));
                         continue;
                     }
                 };
@@ -895,7 +907,11 @@ impl Storage {
                 };
 
                 if path.is_dir() {
-                    if self.skip_dir_patterns.iter().any(|re| re.is_match(file_name)) {
+                    if self
+                        .skip_dir_patterns
+                        .iter()
+                        .any(|re| re.is_match(file_name))
+                    {
                         continue;
                     }
                     folders.push(rel_path.clone());
@@ -917,15 +933,20 @@ impl Storage {
                             Ok(m) => m,
                             Err(err) => {
                                 complete = false;
-                                warnings.push(format!("Failed metadata for {}: {}", path.display(), err));
+                                warnings.push(format!(
+                                    "Failed metadata for {}: {}",
+                                    path.display(),
+                                    err
+                                ));
                                 continue;
                             }
                         };
 
-                        let modified_nanos = metadata
-                            .modified()
-                            .ok()
-                            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_nanos()));
+                        let modified_nanos = metadata.modified().ok().and_then(|t| {
+                            t.duration_since(std::time::UNIX_EPOCH)
+                                .ok()
+                                .map(|d| d.as_nanos())
+                        });
 
                         let stamp = FileStamp {
                             modified_nanos,

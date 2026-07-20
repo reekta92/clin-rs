@@ -57,66 +57,6 @@ pub(crate) fn render_editor_widget(
     }
 }
 
-/// Render the editor body in READ mode (rendered markdown, scrollable).
-pub(crate) fn render_read_view(frame: &mut Frame, app: &mut App, area: Rect) {
-    if app.editor.read_dirty || app.editor.read_cols != area.width {
-        app.refresh_read_mode();
-    }
-    // Clamp scroll offset
-    let max_offset = app
-        .editor
-        .read_grid
-        .len()
-        .saturating_sub(area.height as usize);
-    app.editor.read_offset = app.editor.read_offset.min(max_offset);
-    let grid: &[Vec<(char, Style)>] = &app.editor.read_grid;
-    let snap = crate::snapshot::RenderedSnapshot::new(grid)
-        .scroll_offset(app.editor.read_offset as u16)
-        .block(
-            Block::default()
-                .style(app.app_theme.bg_style())
-                .borders(Borders::NONE)
-                .padding(Padding::new(0, 2, 0, 0)),
-        );
-    frame.render_widget(snap, area);
-    // Paint READ-mode selection overlay on top of the snapshot
-    if let (Some(a), Some(b)) = (app.editor.read_sel_anchor, app.editor.read_sel_end) {
-        let (mut r1, mut c1) = a;
-        let (mut r2, mut c2) = b;
-        if (r2, c2) < (r1, c1) {
-            std::mem::swap(&mut r1, &mut r2);
-            std::mem::swap(&mut c1, &mut c2);
-        }
-        let buf = frame.buffer_mut();
-        let top = app.editor.read_offset;
-        let vis_hi = top + area.height as usize;
-        let hl = Style::default()
-            .fg(app.app_theme.highlight_fg)
-            .bg(app.app_theme.highlight_bg);
-        for r in r1..=r2 {
-            if r < top || r >= vis_hi {
-                continue;
-            }
-            let row = match app.editor.read_grid.get(r) {
-                Some(r) => r,
-                None => continue,
-            };
-            let y = area.y + (r - top) as u16;
-            let cs = if r == r1 { c1 } else { 0 };
-            let ce = if r == r2 {
-                c2.min(row.len().saturating_sub(1))
-            } else {
-                row.len().saturating_sub(1)
-            };
-            for c in cs..=ce {
-                let x = area.x + c as u16;
-                if let Some(cell) = buf.cell_mut((x, y)) {
-                    cell.set_style(hl);
-                }
-            }
-        }
-    }
-}
 
 #[allow(clippy::collapsible_if)]
 pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
@@ -294,7 +234,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
 
     let layout = crate::events::compute_edit_layout(
         body_area,
-        app.preview_fullscreen,
+        app.preview_fullscreen || app.editor.edit_mode == EditMode::Read,
         app.editor.editor_preview_enabled,
         app.editor.sidebar,
         app.preview_position,
@@ -324,108 +264,123 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         draw_sidebar_pane(frame, sb, app, focus);
     }
     if let Some(preview_area_rect) = preview_area_rect {
-        if !app.preview_fullscreen {
-            match app.editor.edit_mode {
-                EditMode::Read => render_read_view(frame, app, editor_container),
-                EditMode::Edit => {
-                    render_editor_widget(frame, app, focus, editor_container, None, None);
-                    if app.config.editor.edit_mode_highlight {
-                        super::overlay_markdown_highlight(frame, app, editor_container);
-                    }
-                }
+        if !app.preview_fullscreen && app.editor.edit_mode == EditMode::Edit {
+            render_editor_widget(frame, app, focus, editor_container, None, None);
+            if app.config.editor.edit_mode_highlight {
+                super::overlay_markdown_highlight(frame, app, editor_container);
             }
         }
 
         if let Some(renderer) = &app.editor.md_preview_renderer {
-            if !renderer.is_pending() && renderer.pages_built() {
-                if let Some(page_grid) = renderer.current_page_grid() {
-                    let snapshot = crate::snapshot::RenderedSnapshot::new(page_grid).block(
+            if !renderer.is_pending() && renderer.has_grid() {
+                let snapshot = crate::snapshot::RenderedSnapshot::new(renderer.grid())
+                    .scroll_offset(renderer.scroll_offset() as u16)
+                    .block(
                         Block::default()
                             .style(app.app_theme.preview_bg_style())
                             .borders(Borders::NONE)
                             .padding(Padding::new(2, 2, 1, 1)),
                     );
-                    frame.render_widget(snapshot, preview_area_rect);
-                    if renderer.total_pages() > 1 {
-                        let indicator = format!(
-                            " {}/{} ",
-                            renderer.current_page() + 1,
-                            renderer.total_pages()
-                        );
-                        let ind_width = indicator.len() as u16;
-                        let ind_x = preview_area_rect.right().saturating_sub(ind_width + 2);
-                        let ind_y = preview_area_rect.bottom().saturating_sub(1);
-                        if ind_x >= preview_area_rect.x && ind_y >= preview_area_rect.y {
-                            let ind_area = Rect::new(ind_x, ind_y, ind_width, 1);
-                            let ind_widget = Paragraph::new(Span::styled(
-                                indicator,
-                                Style::default()
-                                    .fg(app.app_theme.muted)
-                                    .add_modifier(Modifier::DIM),
-                            ));
-                            frame.render_widget(ind_widget, ind_area);
+                frame.render_widget(snapshot, preview_area_rect);
+
+                // Overlay images continuously
+                if let (Some(picker), Some(decode_tx)) =
+                    (&app.editor.image_picker, &app.editor.image_decode_tx)
+                {
+                    let inner_pad = 2_u16;
+                    let col_width = preview_area_rect.width.saturating_sub(2 * inner_pad);
+                    for (line_idx, url) in renderer.raw_image_slots() {
+                        let scroll = renderer.scroll_offset();
+                        if *line_idx < scroll
+                            || *line_idx >= scroll + preview_area_rect.height as usize
+                        {
+                            continue;
+                        }
+
+                        let resolved = app.storage.resolve_attachment(url);
+                        let path = resolved.unwrap_or_else(|| app.storage.notes_dir.join(url));
+                        if !path.exists() {
+                            continue;
+                        }
+                        let key = crate::image_render::ImageKey { path, mtime: 0 };
+                        if app.editor.image_cache.get_proto(&key).is_none() {
+                            app.editor.image_cache.request(key.clone(), 2048, decode_tx, picker);
+                        }
+
+                        if let Some(proto) = app.editor.image_cache.get_proto(&key) {
+                            let row = preview_area_rect.y + 1 + (*line_idx - scroll) as u16;
+                            let max_h = app.config.image.preview_rows as u16;
+                            let img_rect = Rect::new(
+                                preview_area_rect.x + inner_pad,
+                                row,
+                                col_width.min(preview_area_rect.width.saturating_sub(2)),
+                                max_h.min(preview_area_rect.bottom().saturating_sub(row)),
+                            );
+                            if img_rect.width > 1 && img_rect.height > 1 {
+                                frame.render_widget(ratatui::widgets::Clear, img_rect);
+                                frame.render_widget(
+                                    Block::default().style(app.app_theme.preview_bg_style()),
+                                    img_rect,
+                                );
+                                frame.render_stateful_widget(
+                                    ratatui_image::StatefulImage::default()
+                                        .resize(ratatui_image::Resize::Fit(None)),
+                                    img_rect,
+                                    proto,
+                                );
+                            }
                         }
                     }
+                }
 
-                    // Overlay decoded images on their reserved lines
-                    if let (Some(picker), Some(decode_tx)) =
-                        (&app.editor.image_picker, &app.editor.image_decode_tx)
+                // Selection overlay for READ mode
+                if app.editor.edit_mode == EditMode::Read {
+                    if let (Some(a), Some(b)) =
+                        (app.editor.read_sel_anchor, app.editor.read_sel_end)
                     {
-                        let inner_pad = 2_u16; // left padding of snapshot
-                        let col_width = preview_area_rect.width.saturating_sub(2 * inner_pad);
-                        let slots = renderer.current_page_image_slots();
-                        for (line_idx, url) in slots {
-                            let resolved = app.storage.resolve_attachment(url);
-                            let path = resolved.unwrap_or_else(|| app.storage.notes_dir.join(url));
-                            if !path.exists() {
+                        let (mut r1, mut c1) = a;
+                        let (mut r2, mut c2) = b;
+                        if (r2, c2) < (r1, c1) {
+                            std::mem::swap(&mut r1, &mut r2);
+                            std::mem::swap(&mut c1, &mut c2);
+                        }
+                        let buf = frame.buffer_mut();
+                        let top = renderer.scroll_offset();
+                        let vis_hi = top + preview_area_rect.height as usize;
+                        let hl = Style::default()
+                            .fg(app.app_theme.highlight_fg)
+                            .bg(app.app_theme.highlight_bg);
+
+                        for r in r1..=r2 {
+                            if r < top || r >= vis_hi {
                                 continue;
                             }
-                            let key = crate::image_render::ImageKey { path, mtime: 0 };
-                            if app.editor.image_cache.get_proto(&key).is_none() {
-                                app.editor.image_cache.request(
-                                    key.clone(),
-                                    2048,
-                                    decode_tx,
-                                    picker,
-                                );
-                            }
-                            if let Some(proto) = app.editor.image_cache.get_proto(&key) {
-                                let row = preview_area_rect.y + 1 + *line_idx as u16;
-                                let max_h = app.config.image.preview_rows as u16;
-                                let img_rect = Rect::new(
-                                    preview_area_rect.x + inner_pad,
-                                    row,
-                                    col_width.min(preview_area_rect.width.saturating_sub(2)),
-                                    max_h.min(preview_area_rect.bottom().saturating_sub(row)),
-                                );
-                                if img_rect.width > 1 && img_rect.height > 1 {
-                                    frame.render_widget(Clear, img_rect);
-                                    frame.render_widget(
-                                        Block::default().style(app.app_theme.preview_bg_style()),
-                                        img_rect,
-                                    );
-                                    frame.render_stateful_widget(
-                                        ratatui_image::StatefulImage::default()
-                                            .resize(ratatui_image::Resize::Fit(None)),
-                                        img_rect,
-                                        proto,
-                                    );
+                            let row_cells = match renderer.grid().get(r) {
+                                Some(r) => r,
+                                None => continue,
+                            };
+                            let y = preview_area_rect.y + 1 + (r - top) as u16; // Padding top=1
+                            let cs = if r == r1 { c1 } else { 0 };
+                            let ce = if r == r2 {
+                                c2.min(row_cells.len().saturating_sub(1))
+                            } else {
+                                row_cells.len().saturating_sub(1)
+                            };
+                            for c in cs..=ce {
+                                let x = preview_area_rect.x + 2 + c as u16; // Padding left=2
+                                if let Some(cell) = buf.cell_mut((x, y)) {
+                                    cell.set_style(hl);
                                 }
                             }
                         }
                     }
-                } // closes if let Some(page_grid)
-            } // closes if !renderer.is_pending()
-        } // closes if let Some(renderer)
-    } else {
-        match app.editor.edit_mode {
-            EditMode::Read => render_read_view(frame, app, editor_container),
-            EditMode::Edit => {
-                render_editor_widget(frame, app, focus, editor_container, None, None);
-                if app.config.editor.edit_mode_highlight {
-                    super::overlay_markdown_highlight(frame, app, editor_container);
                 }
             }
+        }
+    } else if app.editor.edit_mode == EditMode::Edit {
+        render_editor_widget(frame, app, focus, editor_container, None, None);
+        if app.config.editor.edit_mode_highlight {
+            super::overlay_markdown_highlight(frame, app, editor_container);
         }
     }
     let kb = &app.keybinds;

@@ -1,13 +1,13 @@
 pub(crate) mod catalog;
-pub(crate) mod folder_preview;
-pub(crate) mod search_worker;
 mod edit_panes;
+pub(crate) mod folder_preview;
 mod folders;
 mod import_ops;
 mod loading;
 mod notes;
 mod popups;
 mod search;
+pub(crate) mod search_worker;
 mod settings_ops;
 mod status;
 mod tags;
@@ -62,7 +62,6 @@ pub struct HelpSearchState {
     pub popup: Option<crate::ui::quick_search::QuickSearch<(usize, String)>>,
     pub highlight_row: Option<usize>,
 }
-
 
 fn find_filter_tokens(s: &str) -> Vec<(usize, &'static str)> {
     let spaced = [" f:", " g:", " p:", " t:"];
@@ -306,7 +305,6 @@ pub struct WatchedFsEvent {
     pub event: notify::Event,
 }
 
-
 pub struct App {
     pub popups: crate::popups::PopupManager,
     pub storage: Storage,
@@ -445,16 +443,16 @@ impl App {
         self.editor.last_preview_pane_height
     }
 
-fn build_notes_worker_pool() -> anyhow::Result<Arc<rayon::ThreadPool>> {
-    let threads = std::thread::available_parallelism()
-        .map(|n| n.get().saturating_sub(1).max(1))
-        .unwrap_or(1);
-    let pool = rayon::ThreadPoolBuilder::new()
-        .num_threads(threads)
-        .thread_name(|i| format!("notes-worker-{i}"))
-        .build()?;
-    Ok(Arc::new(pool))
-}
+    fn build_notes_worker_pool() -> anyhow::Result<Arc<rayon::ThreadPool>> {
+        let threads = std::thread::available_parallelism()
+            .map(|n| n.get().saturating_sub(1).max(1))
+            .unwrap_or(1);
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(threads)
+            .thread_name(|i| format!("notes-worker-{i}"))
+            .build()?;
+        Ok(Arc::new(pool))
+    }
 
     pub fn new(storage: Storage) -> Result<Self> {
         let bootstrap_config = crate::config::ClinConfig::load().unwrap_or_default();
@@ -517,14 +515,17 @@ fn build_notes_worker_pool() -> anyhow::Result<Arc<rayon::ThreadPool>> {
 
         let vault_id = crate::local_state::vault_identity_path(&storage.data_dir)?;
         let digest = crate::paths::vault_cache_digest(&vault_id);
-        let app_paths = crate::paths::AppPaths::discover(crate::config::ClinConfig::config_path().unwrap_or_default())?;
+        let app_paths = crate::paths::AppPaths::discover(
+            crate::config::ClinConfig::config_path().unwrap_or_default(),
+        )?;
         let scoped_cache_path = app_paths.scoped_summary_cache_path(&digest);
         let legacy_cache_path = app_paths.summary_cache_path();
 
         let notes = load.summaries;
         let initial_complete = load.complete;
         let catalog_folders = load.folders;
-        let note_stamps: HashMap<String, crate::storage::FileStamp> = load.map.iter().map(|(k, (s, _))| (k.clone(), *s)).collect();
+        let note_stamps: HashMap<String, crate::storage::FileStamp> =
+            load.map.iter().map(|(k, (s, _))| (k.clone(), *s)).collect();
 
         crate::app::catalog::spawn_catalog_worker(
             storage.clone(),
@@ -599,12 +600,17 @@ fn build_notes_worker_pool() -> anyhow::Result<Arc<rayon::ThreadPool>> {
             catalog_folders,
             catalog_status: None,
             search_status: None,
-            search_worker: crate::app::search_worker::SearchWorker::spawn(storage.clone(), notes_worker_pool.clone()),
+            search_worker: crate::app::search_worker::SearchWorker::spawn(
+                storage.clone(),
+                notes_worker_pool.clone(),
+            ),
             search_debounce_deadline: None,
             search_query_generation: Arc::new(AtomicU64::new(1)),
             unsent_search_request: None,
             note_index: None,
-            folder_preview_service: crate::app::folder_preview::FolderPreviewService::spawn(notes_worker_pool.clone()),
+            folder_preview_service: crate::app::folder_preview::FolderPreviewService::spawn(
+                notes_worker_pool.clone(),
+            ),
             folder_preview_catalog: None,
             folder_preview_model: None,
             notes_revision: 0,
@@ -733,22 +739,28 @@ fn build_notes_worker_pool() -> anyhow::Result<Arc<rayon::ThreadPool>> {
 
         let vault_id = crate::local_state::vault_identity_path(&storage.data_dir)?;
         let digest = crate::paths::vault_cache_digest(&vault_id);
-        let app_paths = crate::paths::AppPaths::discover(crate::config::ClinConfig::config_path().unwrap_or_default())?;
+        let app_paths = crate::paths::AppPaths::discover(
+            crate::config::ClinConfig::config_path().unwrap_or_default(),
+        )?;
         let scoped_cache_path = app_paths.scoped_summary_cache_path(&digest);
         let legacy_cache_path = app_paths.summary_cache_path();
 
-        let (cached_summaries, cached_map, cached_folders) = crate::app::catalog::load_persisted_note_cache(
-            &storage,
-            &scoped_cache_path,
-            &digest,
-            bootstrap_config.list.show_hidden_files,
-            bootstrap_config.list.show_all_files,
-        );
+        let (cached_summaries, cached_map, cached_folders) =
+            crate::app::catalog::load_persisted_note_cache(
+                &storage,
+                &scoped_cache_path,
+                &digest,
+                bootstrap_config.list.show_hidden_files,
+                bootstrap_config.list.show_all_files,
+            );
 
         let initial_complete = false;
         let notes = cached_summaries;
         let catalog_folders = cached_folders;
-        let note_stamps: HashMap<String, crate::storage::FileStamp> = cached_map.iter().map(|(k, (s, _))| (k.clone(), *s)).collect();
+        let note_stamps: HashMap<String, crate::storage::FileStamp> = cached_map
+            .iter()
+            .map(|(k, (s, _))| (k.clone(), *s))
+            .collect();
 
         crate::app::catalog::spawn_catalog_worker(
             storage.clone(),
@@ -821,12 +833,17 @@ fn build_notes_worker_pool() -> anyhow::Result<Arc<rayon::ThreadPool>> {
             catalog_folders,
             catalog_status: Some("Validating notes…".to_string()),
             search_status: None,
-            search_worker: crate::app::search_worker::SearchWorker::spawn(storage.clone(), notes_worker_pool.clone()),
+            search_worker: crate::app::search_worker::SearchWorker::spawn(
+                storage.clone(),
+                notes_worker_pool.clone(),
+            ),
             search_debounce_deadline: None,
             search_query_generation: Arc::new(AtomicU64::new(1)),
             unsent_search_request: None,
             note_index: None,
-            folder_preview_service: crate::app::folder_preview::FolderPreviewService::spawn(notes_worker_pool.clone()),
+            folder_preview_service: crate::app::folder_preview::FolderPreviewService::spawn(
+                notes_worker_pool.clone(),
+            ),
             folder_preview_catalog: None,
             folder_preview_model: None,
             notes_revision: 0,
@@ -1019,7 +1036,8 @@ fn build_notes_worker_pool() -> anyhow::Result<Arc<rayon::ThreadPool>> {
                 let sanitized_name = crate::sanitize::sanitize_for_terminal(name);
                 let mut display_name = sanitized_name.into_owned();
                 if *is_pinned {
-                    let pin_icon = crate::ui::get_icon("\u{f08d}", "\u{1f4cc}", self.config.ui.icon_mode);
+                    let pin_icon =
+                        crate::ui::get_icon("\u{f08d}", "\u{1f4cc}", self.config.ui.icon_mode);
                     if !pin_icon.is_empty() {
                         display_name = format!("{pin_icon} {display_name}");
                     }
@@ -1062,7 +1080,8 @@ fn build_notes_worker_pool() -> anyhow::Result<Arc<rayon::ThreadPool>> {
 
                 spans.push(Span::raw("  "));
                 if summary.pinned {
-                    let icon = crate::ui::get_icon("\u{f4cc}", "\u{1f4cc}", self.config.ui.icon_mode);
+                    let icon =
+                        crate::ui::get_icon("\u{f4cc}", "\u{1f4cc}", self.config.ui.icon_mode);
                     if !icon.is_empty() {
                         spans.push(Span::styled(
                             format!("{icon} "),
@@ -1075,7 +1094,8 @@ fn build_notes_worker_pool() -> anyhow::Result<Arc<rayon::ThreadPool>> {
 
                 if *is_clin {
                     text_style = text_style.fg(self.app_theme.muted);
-                    let icon = crate::ui::get_icon("\u{f023}", "\u{1f512}", self.config.ui.icon_mode);
+                    let icon =
+                        crate::ui::get_icon("\u{f023}", "\u{1f512}", self.config.ui.icon_mode);
                     if !icon.is_empty() {
                         spans.push(Span::styled(
                             format!("{icon} "),
@@ -1087,7 +1107,8 @@ fn build_notes_worker_pool() -> anyhow::Result<Arc<rayon::ThreadPool>> {
                 }
 
                 if *is_draw {
-                    let icon = crate::ui::get_icon("\u{f1fc}", "\u{270f}", self.config.ui.icon_mode);
+                    let icon =
+                        crate::ui::get_icon("\u{f1fc}", "\u{270f}", self.config.ui.icon_mode);
                     if !icon.is_empty() {
                         spans.push(Span::styled(
                             format!("{icon} "),
@@ -1099,7 +1120,8 @@ fn build_notes_worker_pool() -> anyhow::Result<Arc<rayon::ThreadPool>> {
                 }
 
                 if *is_canvas {
-                    let icon = crate::ui::get_icon("\u{f005}", "\u{2b50}", self.config.ui.icon_mode);
+                    let icon =
+                        crate::ui::get_icon("\u{f005}", "\u{2b50}", self.config.ui.icon_mode);
                     if !icon.is_empty() {
                         spans.push(Span::styled(
                             format!("{icon} "),
@@ -1158,8 +1180,8 @@ fn build_notes_worker_pool() -> anyhow::Result<Arc<rayon::ThreadPool>> {
                         ));
                     }
 
-                    let secs = std::time::UNIX_EPOCH
-                        + std::time::Duration::from_secs(summary.updated_at);
+                    let secs =
+                        std::time::UNIX_EPOCH + std::time::Duration::from_secs(summary.updated_at);
                     let dt: chrono::DateTime<chrono::Local> = secs.into();
                     let formatted = dt.format(&self.date_format).to_string();
                     spans.push(Span::raw(" "));
@@ -1545,10 +1567,14 @@ fn build_notes_worker_pool() -> anyhow::Result<Arc<rayon::ThreadPool>> {
                         }
                     }
                     " Select All " => {
-                        let last = self.editor.read_grid.len().saturating_sub(1);
-                        let last_col = self
+                        let grid = self
                             .editor
-                            .read_grid
+                            .md_preview_renderer
+                            .as_ref()
+                            .map(|r| r.grid())
+                            .unwrap_or(&[]);
+                        let last = grid.len().saturating_sub(1);
+                        let last_col = grid
                             .last()
                             .map(|r| r.len().saturating_sub(1))
                             .unwrap_or(0);
@@ -2392,11 +2418,7 @@ word_goal = 1200
         // Re-create App, should expand up to depth 2 (since no remembered expanded_folders)
         let mut app2 = App::new(storage).expect("value is present");
         // Mock folder cache
-        app2.catalog_folders = vec![
-            "a".to_string(),
-            "a/b".to_string(),
-            "a/b/c".to_string(),
-        ];
+        app2.catalog_folders = vec!["a".to_string(), "a/b".to_string(), "a/b/c".to_string()];
         app2.list.folder_expanded.clear();
         app2.expand_folders_to_depth(3);
         assert!(app2.list.folder_expanded.contains("a"));
