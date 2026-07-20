@@ -277,7 +277,7 @@ pub fn handle_graph_mouse(
                         node.velocity = fdg_sim::glam::Vec3::ZERO;
                     }
                     guard.drag_target = Some((wx as f32, wy as f32));
-                    guard.is_settled = false;
+                    guard.reheat(0.4);
                 }
                 mouse_state.drag_origin = Some((mouse_event.column, mouse_event.row));
             }

@@ -142,7 +142,7 @@ fn draw_strip_graf(
             // Progressive settle: 10 steps per frame to avoid blocking
             if !gs.is_settled && app.graph_preview_steps < 100 {
                 for _ in 0..10 {
-                    crate::graf::physics::simulation_step(gs, 0.01, 0.016);
+                    crate::graf::physics::simulation_step(gs, 0.12);
                     app.graph_preview_steps += 1;
                     if gs.is_settled {
                         break;

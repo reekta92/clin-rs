@@ -22,6 +22,7 @@ pub struct GraphState {
     pub dragging_node: Option<NodeIndex>,
     pub drag_target: Option<(f32, f32)>,
     pub is_settled: bool,
+    pub alpha: f32,
     pub graph_bounds: (f64, f64, f64, f64),
     pub render_cache: Mutex<super::render::RenderCache>,
     pub mouse_pos: Option<(u16, u16)>,
@@ -120,6 +121,7 @@ impl GraphState {
             dragging_node: None,
             drag_target: None,
             is_settled: false,
+            alpha: 1.0,
             graph_bounds: (0.0, 0.0, 0.0, 0.0),
             render_cache: Mutex::new(super::render::RenderCache::new()),
             mouse_pos: None,
@@ -134,6 +136,12 @@ impl GraphState {
             .spatial_grid
             .rebuild(state.simulation.get_graph());
         Ok(state)
+    }
+    pub fn reheat(&mut self, target: f32) {
+        if target > self.alpha {
+            self.alpha = target;
+            self.is_settled = false;
+        }
     }
 }
 

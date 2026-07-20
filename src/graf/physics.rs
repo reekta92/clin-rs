@@ -4,14 +4,25 @@ use std::sync::{Arc, mpsc};
 use super::graph::GraphState;
 use crate::config::{ClinConfig, PhysicsTickRate};
 
-pub fn simulation_step(state: &mut GraphState, gravity: f32, timestep: f32) {
-    state.simulation.update(timestep);
-    if gravity > 0.0 {
-        for n in state.simulation.get_graph_mut().node_weights_mut() {
-            n.velocity.x -= n.location.x * gravity;
-            n.velocity.y -= n.location.y * gravity;
-        }
+pub fn simulation_step(state: &mut GraphState, timestep: f32) {
+    if state.alpha < 0.005 {
+        state.is_settled = true;
+        return;
     }
+
+    let alpha = state.alpha;
+    // Step dt is higher when alpha is hot, shrinking as it cools.
+    let step_dt = timestep * (0.2 + 0.8 * alpha);
+    state.simulation.update(step_dt);
+
+    // Friction increases as temperature drops:
+    // Hot (alpha=1.0) -> cooloff=0.95 (nodes fly freely to find space)
+    // Freezing (alpha->0.0) -> cooloff=0.50 (bounces are dampened into crystalline lock)
+    let cooloff = 0.50 + 0.45 * alpha;
+    for node in state.simulation.get_graph_mut().node_weights_mut() {
+        node.velocity *= cooloff;
+    }
+
     if let Some((tx, ty)) = state.drag_target
         && let Some(idx) = state.dragging_node
         && let Some(node) = state.simulation.get_graph_mut().node_weight_mut(idx)
@@ -19,14 +30,20 @@ pub fn simulation_step(state: &mut GraphState, gravity: f32, timestep: f32) {
         node.location.x = tx;
         node.location.y = ty;
         node.velocity = fdg_sim::glam::Vec3::ZERO;
+        state.reheat(0.4);
     }
+
     let graph = state.simulation.get_graph();
     let energy: f32 = graph.node_weights().map(|n| n.velocity.length()).sum();
-    if energy < 0.05 * graph.node_count() as f32 {
+    if energy < 0.05 * graph.node_count() as f32 || alpha < 0.005 {
         state.is_settled = true;
     }
+
     state.graph_bounds = super::render::compute_graph_bounds(graph);
     state.spatial_grid.rebuild(state.simulation.get_graph());
+
+    // Temperature decays towards 0 (mathematical energy minimum)
+    state.alpha *= 0.95;
 }
 
 pub fn start_physics(
@@ -34,8 +51,7 @@ pub fn start_physics(
     config: &ClinConfig,
     kill_rx: mpsc::Receiver<()>,
 ) {
-    let gravity = 0.01;
-    let timestep = 0.016;
+    let timestep = 0.12;
 
     // Compute tick rate based on config mode and node count
     let tick_rate_mode = config.graf.physics.tick_rate;
@@ -74,7 +90,7 @@ pub fn start_physics(
                         node.velocity = fdg_sim::glam::Vec3::ZERO;
                     }
                 }
-                simulation_step(&mut guard, gravity as f32, timestep as f32);
+                simulation_step(&mut guard, timestep as f32);
             } else {
                 std::thread::sleep(std::time::Duration::from_millis(sleep_ms * 6));
                 continue;
@@ -133,7 +149,7 @@ mod tests {
 
         // Run simulation steps
         for _ in 0..300 {
-            simulation_step(&mut gs, 0.01, 0.016);
+            simulation_step(&mut gs, 0.12);
             if gs.is_settled {
                 break;
             }
@@ -185,7 +201,7 @@ mod tests {
         gs.dragging_node = Some(dragging_idx);
         gs.drag_target = Some((100.0, 200.0));
 
-        simulation_step(&mut gs, 0.01, 0.016);
+        simulation_step(&mut gs, 0.12);
 
         let node = gs.simulation.get_graph().node_weight(dragging_idx).unwrap();
         assert_eq!(node.location.x, 100.0);
