@@ -2,7 +2,7 @@
 
 All notable changes to clin are documented in this file.
 
-## [0.10.0-rc.3] - 2026-07-22
+## [0.10.0-rc.4] - 2026-07-22
 
 ### Added
 
@@ -22,6 +22,7 @@ All notable changes to clin are documented in this file.
 
 ### Fixed
 
+- Make Windows release build compile
 - Drop isolated nodes when show_orphan is false
 - Create directory before saving summaries
 - Tolerate spaces and lowercase in Shift+letter binds
@@ -41,6 +42,7 @@ All notable changes to clin are documented in this file.
 
 ### Release
 
+- V0.10.0-rc.3
 - V0.10.0-rc.2
 ## [0.10.0-rc.1] - 2026-07-18
 
