@@ -154,11 +154,19 @@ pub fn create_simulation(
     Simulation::from_graph(graph, params)
 }
 #[derive(Debug, Clone)]
+struct StaticNode {
+    index: NodeIndex,
+    degree: usize,
+    key: String,
+    relative_pos: (f64, f64),
+}
+
+#[derive(Debug, Clone)]
 struct StaticComponent {
-    nodes: Vec<NodeIndex>,
+    nodes: Vec<StaticNode>,
     key: String,
     center: (f64, f64),
-    node_radius: f64,
+    disk_radius: f64,
     envelope_radius: f64,
 }
 
@@ -206,7 +214,7 @@ fn collect_static_components(
             }
         }
 
-        // Sort component's nodes deterministically by note_id and index
+        // Sort component's nodes deterministically by note_id and index to identify first_node key
         component_nodes.sort_by(|&a, &b| {
             let node_a = &graph[a];
             let node_b = &graph[b];
@@ -217,11 +225,28 @@ fn collect_static_components(
         if !component_nodes.is_empty() {
             let first_node_idx = component_nodes[0];
             let key = graph[first_node_idx].data.note_id.clone();
+
+            let mut static_nodes: Vec<StaticNode> = component_nodes
+                .into_iter()
+                .map(|idx| StaticNode {
+                    index: idx,
+                    degree: graph.neighbors(idx).count(),
+                    key: graph[idx].data.note_id.clone(),
+                    relative_pos: (0.0, 0.0),
+                })
+                .collect();
+
+            static_nodes.sort_by(|a, b| {
+                b.degree.cmp(&a.degree)
+                    .then_with(|| a.key.cmp(&b.key))
+                    .then_with(|| a.index.cmp(&b.index))
+            });
+
             components.push(StaticComponent {
-                nodes: component_nodes,
+                nodes: static_nodes,
                 key,
                 center: (0.0, 0.0),
-                node_radius: 0.0,
+                disk_radius: 0.0,
                 envelope_radius: 0.0,
             });
         }
@@ -253,18 +278,80 @@ fn layout_static_components(
     for c in components.iter_mut() {
         let n = c.nodes.len();
         if n == 0 {
-            c.node_radius = 0.0;
+            c.disk_radius = 0.0;
             c.envelope_radius = 0.0;
         } else if n == 1 {
-            c.node_radius = 0.0;
+            c.nodes[0].relative_pos = (0.0, 0.0);
+            c.disk_radius = 0.0;
             c.envelope_radius = spacing;
         } else {
-            let sin_val = (std::f64::consts::PI / n as f64).sin();
-            if !sin_val.is_finite() || sin_val == 0.0 {
-                return None;
+            // Place nodes[0] (highest degree) at center (0, 0)
+            c.nodes[0].relative_pos = (0.0, 0.0);
+
+            // Group remaining nodes by degree
+            let mut groups = Vec::new();
+            {
+                let mut current_group = Vec::new();
+                let mut current_degree = c.nodes[1].degree;
+                current_group.push(1);
+                for idx in 2..n {
+                    if c.nodes[idx].degree == current_degree {
+                        current_group.push(idx);
+                    } else {
+                        groups.push(current_group);
+                        current_group = vec![idx];
+                        current_degree = c.nodes[idx].degree;
+                    }
+                }
+                if !current_group.is_empty() {
+                    groups.push(current_group);
+                }
             }
-            c.node_radius = spacing / (2.0 * sin_val);
-            c.envelope_radius = c.node_radius + spacing;
+
+            // Lay out groups in concentric rings
+            let mut r = 1;
+            let mut last_used_ring_radius = 0.0;
+
+            for group in groups {
+                let mut group_remaining = group.len();
+                let mut group_idx = 0;
+
+                while group_remaining > 0 {
+                    let ring_radius = spacing * r as f64;
+                    last_used_ring_radius = ring_radius;
+
+                    // Calculate slot capacity for this ring
+                    let mut slot_capacity = 1;
+                    let upper_bound = (2.0 * std::f64::consts::PI * ring_radius / spacing).ceil() as usize + 2;
+                    for sc in (1..=upper_bound).rev() {
+                        if sc == 1 {
+                            slot_capacity = 1;
+                            break;
+                        }
+                        let sin_val = (std::f64::consts::PI / sc as f64).sin();
+                        if 2.0 * ring_radius * sin_val >= spacing - 1e-9 {
+                            slot_capacity = sc;
+                            break;
+                        }
+                    }
+
+                    let used_slots = std::cmp::min(group_remaining, slot_capacity);
+                    for slot in 0..used_slots {
+                        let node_idx = group[group_idx + slot];
+                        let angle = 2.0 * std::f64::consts::PI * (slot as f64) / (used_slots as f64);
+                        let rx = ring_radius * angle.cos();
+                        let ry = ring_radius * angle.sin();
+                        c.nodes[node_idx].relative_pos = (rx, ry);
+                    }
+
+                    group_remaining -= used_slots;
+                    group_idx += used_slots;
+                    r += 1;
+                }
+            }
+
+            c.disk_radius = last_used_ring_radius;
+            c.envelope_radius = c.disk_radius + spacing;
         }
     }
 
@@ -306,31 +393,19 @@ fn layout_static_components(
 
     let mut node_positions = Vec::new();
     for c in components.iter() {
-        let n = c.nodes.len();
         let (cx, cy) = c.center;
         if !cx.is_finite() || !cy.is_finite() {
             return None;
         }
 
-        if n == 1 {
-            let idx = c.nodes[0];
-            let pos = fdg_sim::glam::Vec3::new(cx as f32, cy as f32, 0.0);
-            node_positions.push((idx, pos));
-        } else if n >= 2 {
-            let radius = c.node_radius;
-            if !radius.is_finite() {
+        for node in &c.nodes {
+            let nx = cx + node.relative_pos.0;
+            let ny = cy + node.relative_pos.1;
+            if !nx.is_finite() || !ny.is_finite() {
                 return None;
             }
-            for (i, &idx) in c.nodes.iter().enumerate() {
-                let angle = 2.0 * std::f64::consts::PI * (i as f64) / (n as f64);
-                let nx = cx + radius * angle.cos();
-                let ny = cy + radius * angle.sin();
-                if !nx.is_finite() || !ny.is_finite() {
-                    return None;
-                }
-                let pos = fdg_sim::glam::Vec3::new(nx as f32, ny as f32, 0.0);
-                node_positions.push((idx, pos));
-            }
+            let pos = fdg_sim::glam::Vec3::new(nx as f32, ny as f32, 0.0);
+            node_positions.push((node.index, pos));
         }
     }
 
@@ -646,48 +721,48 @@ mod tests {
     fn test_static_cluster_layout_geometry() {
         let summaries = vec![
             NoteSummary {
-                id: "A".to_string(),
-                title: "A".to_string(),
+                id: "hub".to_string(),
+                title: "hub".to_string(),
                 updated_at: 0,
                 folder: "".to_string(),
                 tags: vec![],
                 pinned: false,
-                links: vec!["B".to_string()],
+                links: vec!["a".to_string(), "b".to_string(), "c".to_string()],
                 size_bytes: 0,
             },
             NoteSummary {
-                id: "B".to_string(),
-                title: "B".to_string(),
+                id: "a".to_string(),
+                title: "a".to_string(),
                 updated_at: 0,
                 folder: "".to_string(),
                 tags: vec![],
                 pinned: false,
-                links: vec!["C".to_string()],
+                links: vec!["leaf_a".to_string()],
                 size_bytes: 0,
             },
             NoteSummary {
-                id: "C".to_string(),
-                title: "C".to_string(),
+                id: "b".to_string(),
+                title: "b".to_string(),
                 updated_at: 0,
                 folder: "".to_string(),
                 tags: vec![],
                 pinned: false,
-                links: vec!["A".to_string()],
+                links: vec!["leaf_b".to_string()],
                 size_bytes: 0,
             },
             NoteSummary {
-                id: "D".to_string(),
-                title: "D".to_string(),
+                id: "c".to_string(),
+                title: "c".to_string(),
                 updated_at: 0,
                 folder: "".to_string(),
                 tags: vec![],
                 pinned: false,
-                links: vec!["E".to_string()],
+                links: vec!["leaf_c".to_string()],
                 size_bytes: 0,
             },
             NoteSummary {
-                id: "E".to_string(),
-                title: "E".to_string(),
+                id: "leaf_a".to_string(),
+                title: "leaf_a".to_string(),
                 updated_at: 0,
                 folder: "".to_string(),
                 tags: vec![],
@@ -696,8 +771,48 @@ mod tests {
                 size_bytes: 0,
             },
             NoteSummary {
-                id: "F".to_string(),
-                title: "F".to_string(),
+                id: "leaf_b".to_string(),
+                title: "leaf_b".to_string(),
+                updated_at: 0,
+                folder: "".to_string(),
+                tags: vec![],
+                pinned: false,
+                links: vec![],
+                size_bytes: 0,
+            },
+            NoteSummary {
+                id: "leaf_c".to_string(),
+                title: "leaf_c".to_string(),
+                updated_at: 0,
+                folder: "".to_string(),
+                tags: vec![],
+                pinned: false,
+                links: vec![],
+                size_bytes: 0,
+            },
+            NoteSummary {
+                id: "d".to_string(),
+                title: "d".to_string(),
+                updated_at: 0,
+                folder: "".to_string(),
+                tags: vec![],
+                pinned: false,
+                links: vec!["e".to_string()],
+                size_bytes: 0,
+            },
+            NoteSummary {
+                id: "e".to_string(),
+                title: "e".to_string(),
+                updated_at: 0,
+                folder: "".to_string(),
+                tags: vec![],
+                pinned: false,
+                links: vec![],
+                size_bytes: 0,
+            },
+            NoteSummary {
+                id: "isolated".to_string(),
+                title: "isolated".to_string(),
                 updated_at: 0,
                 folder: "".to_string(),
                 tags: vec![],
@@ -724,44 +839,63 @@ mod tests {
             node_map.insert(n.data.note_id.clone(), (idx, n.location));
         }
 
-        assert_eq!(node_map.len(), 6);
+        assert_eq!(node_map.len(), 10);
 
         let mut comps = collect_static_components(graph);
         assert_eq!(comps.len(), 3);
-        assert_eq!(comps[0].nodes.len(), 3);
+        assert_eq!(comps[0].nodes.len(), 7);
         assert_eq!(comps[1].nodes.len(), 2);
         assert_eq!(comps[2].nodes.len(), 1);
 
-        assert_eq!(comps[0].key, "A");
-        assert_eq!(comps[1].key, "D");
-        assert_eq!(comps[2].key, "F");
+        assert_eq!(comps[0].key, "a");
+        assert_eq!(comps[1].key, "d");
+        assert_eq!(comps[2].key, "isolated");
 
         layout_static_components(&mut comps, spacing);
-
-        let radius_3 = spacing / (2.0 * (std::f64::consts::PI / 3.0).sin());
-        let radius_2 = spacing / (2.0 * (std::f64::consts::PI / 2.0).sin());
 
         let c0 = comps[0].center;
         assert_eq!(c0, (0.0, 0.0));
         
-        let loc_a = node_map.get("A").unwrap().1;
-        let loc_b = node_map.get("B").unwrap().1;
-        let loc_c = node_map.get("C").unwrap().1;
-        
-        assert!(((loc_a.x as f64 - c0.0).hypot(loc_a.y as f64 - c0.1) - radius_3).abs() < 1e-4);
-        assert!(((loc_b.x as f64 - c0.0).hypot(loc_b.y as f64 - c0.1) - radius_3).abs() < 1e-4);
-        assert!(((loc_c.x as f64 - c0.0).hypot(loc_c.y as f64 - c0.1) - radius_3).abs() < 1e-4);
+        // Assert hub is exactly at its component center
+        let loc_hub = node_map.get("hub").unwrap().1;
+        assert!((loc_hub.x as f64 - c0.0).abs() < 1e-4);
+        assert!((loc_hub.y as f64 - c0.1).abs() < 1e-4);
 
-        let c1 = comps[1].center;
-        let loc_d = node_map.get("D").unwrap().1;
-        let loc_e = node_map.get("E").unwrap().1;
-        assert!(((loc_d.x as f64 - c1.0).hypot(loc_d.y as f64 - c1.1) - radius_2).abs() < 1e-4);
-        assert!(((loc_e.x as f64 - c1.0).hypot(loc_e.y as f64 - c1.1) - radius_2).abs() < 1e-4);
+        // All degree-2 nodes have nonzero equal intermediate radius (spacing)
+        let loc_a = node_map.get("a").unwrap().1;
+        let loc_b = node_map.get("b").unwrap().1;
+        let loc_c = node_map.get("c").unwrap().1;
+        let r_a = (loc_a.x as f64 - c0.0).hypot(loc_a.y as f64 - c0.1);
+        let r_b = (loc_b.x as f64 - c0.0).hypot(loc_b.y as f64 - c0.1);
+        let r_c = (loc_c.x as f64 - c0.0).hypot(loc_c.y as f64 - c0.1);
+        assert!((r_a - spacing).abs() < 1e-4);
+        assert!((r_b - spacing).abs() < 1e-4);
+        assert!((r_c - spacing).abs() < 1e-4);
 
-        let c2 = comps[2].center;
-        let loc_f = node_map.get("F").unwrap().1;
-        assert!((loc_f.x as f64 - c2.0).abs() < 1e-4);
-        assert!((loc_f.y as f64 - c2.1).abs() < 1e-4);
+        // All degree-1 nodes occupy a strictly greater radius (2.0 * spacing)
+        let loc_la = node_map.get("leaf_a").unwrap().1;
+        let loc_lb = node_map.get("leaf_b").unwrap().1;
+        let loc_lc = node_map.get("leaf_c").unwrap().1;
+        let r_la = (loc_la.x as f64 - c0.0).hypot(loc_la.y as f64 - c0.1);
+        let r_lb = (loc_lb.x as f64 - c0.0).hypot(loc_lb.y as f64 - c0.1);
+        let r_lc = (loc_lc.x as f64 - c0.0).hypot(loc_lc.y as f64 - c0.1);
+        assert!((r_la - 2.0 * spacing).abs() < 1e-4);
+        assert!((r_lb - 2.0 * spacing).abs() < 1e-4);
+        assert!((r_lc - 2.0 * spacing).abs() < 1e-4);
+
+        // No node lies beyond disk_radius
+        assert!(comps[0].disk_radius >= r_la - 1e-4);
+
+        // Every pair within component is at least spacing - epsilon
+        let comp1_nodes = ["hub", "a", "b", "c", "leaf_a", "leaf_b", "leaf_c"];
+        for i in 0..comp1_nodes.len() {
+            for j in (i + 1)..comp1_nodes.len() {
+                let pos_i = node_map.get(comp1_nodes[i]).unwrap().1;
+                let pos_j = node_map.get(comp1_nodes[j]).unwrap().1;
+                let d = (pos_i.x - pos_j.x).hypot(pos_i.y - pos_j.y) as f64;
+                assert!(d >= spacing - 1e-4, "Pair {}-{} distance {} too small", comp1_nodes[i], comp1_nodes[j], d);
+            }
+        }
 
         let gap = spacing * 4.0;
         
@@ -840,6 +974,13 @@ mod tests {
         assert!((loc1_a.y - loc2_a.y).abs() < 1e-4f32);
         assert!((loc1_b.x - loc2_b.x).abs() < 1e-4f32);
         assert!((loc1_b.y - loc2_b.y).abs() < 1e-4f32);
+
+        // Expect lexical first node at center, and second node exactly spacing away
+        let c0 = (0.0, 0.0);
+        assert!((loc1_a.x as f64 - c0.0).abs() < 1e-4);
+        assert!((loc1_a.y as f64 - c0.1).abs() < 1e-4);
+        let dist_b = (loc1_b.x as f64 - c0.0).hypot(loc1_b.y as f64 - c0.1);
+        assert!((dist_b - 80.0).abs() < 1e-4);
 
         let spacing_invalid = vec![0.0, -10.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY];
         for s in spacing_invalid {
