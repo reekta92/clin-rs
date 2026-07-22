@@ -6,17 +6,23 @@ All notable changes to clin are documented in this file.
 
 ### Added
 
-- Add deterministic link-derived circular cluster layout for static/frozen large graphs (nodes > 1,000)
-
-## [0.10.0-rc.2] - 2026-07-19
-
-### Added
-
+- Add deterministic angular jitter to static layout
+- Add circular layout for static graphs
+- Continuous scrolling READ preview
+- Refine Graph layout to use double-click opening and respect preview pane
+- Add top-level Graph layout option for notes
+- Add graf.max_node setting
 - Reorganize generated file layout
 - Add `clin cache reset` command
 
+### Changed
+
+- Replace static circle layout with degree-ranked disk
+- Implement simulated annealing graph physics
+
 ### Fixed
 
+- Drop isolated nodes when show_orphan is false
 - Create directory before saving summaries
 - Tolerate spaces and lowercase in Shift+letter binds
 
@@ -26,8 +32,16 @@ All notable changes to clin are documented in this file.
 
 ### Performance
 
+- Optimize GFM renderer using run-based layout and async worker
+- Optimize graph rendering and physics
+- Cache preview codeblocks and simplify edit view
+- Add LOD, spatial index, adaptive physics, and node cap
 - Optimize view for large 10k note vaults
 - Persist note summary cache to disk, defer graph rebuilds
+
+### Release
+
+- V0.10.0-rc.2
 ## [0.10.0-rc.1] - 2026-07-18
 
 ### Performance
