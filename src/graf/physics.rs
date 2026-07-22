@@ -71,6 +71,9 @@ pub fn start_physics(
     let node_count = { state.read().simulation.get_graph().node_count() };
     if node_count == 0 || node_count > MAX_DYNAMIC_NODES {
         let mut guard = state.write();
+        if node_count > MAX_DYNAMIC_NODES {
+            guard.apply_static_cluster_layout(config.graf.physics.ideal_distance);
+        }
         guard.physics_worker_active = false;
         guard.is_settled = true;
         guard.alpha = 0.0;
@@ -301,16 +304,20 @@ mod tests {
         assert_eq!(state_0.read().alpha, 0.0);
 
         let mut graph = fdg_sim::ForceGraph::default();
+        let mut nodes = Vec::new();
         for i in 0..1001 {
             let data = crate::graf::graph::GraphNodeData {
                 note_id: format!("{i}"),
                 title: format!("Node {i}"),
                 tags: vec![],
-                link_count: 0,
+                link_count: if i < 2 { 1 } else { 0 },
                 folder: "".to_string(),
             };
-            graph.add_force_node(format!("Node {i}"), data);
+            let idx = graph.add_force_node(format!("Node {i}"), data);
+            nodes.push(idx);
         }
+        graph.add_edge(nodes[0], nodes[1], ());
+
         let gs_1001 = GraphState {
             simulation: fdg_sim::Simulation::from_graph(graph, fdg_sim::SimulationParameters::default()),
             viewport: crate::graf::viewport::Viewport::default(),
@@ -322,7 +329,7 @@ mod tests {
             graph_bounds: (0.0, 0.0, 0.0, 0.0),
             render_cache: parking_lot::Mutex::new(crate::graf::render::RenderCache::new()),
             mouse_pos: None,
-            spatial_grid: crate::graf::spatial::SpatialGrid::new(100.0),
+            spatial_grid: crate::graf::spatial::SpatialGrid::new(80.0),
             physics_worker_active: true,
         };
         let state_1001 = Arc::new(RwLock::new(gs_1001));
@@ -331,6 +338,29 @@ mod tests {
         assert!(!state_1001.read().physics_worker_active);
         assert!(state_1001.read().is_settled);
         assert_eq!(state_1001.read().alpha, 0.0);
+
+        let state_read = state_1001.read();
+        let g = state_read.simulation.get_graph();
+        let loc_0 = g[nodes[0]].location;
+        let loc_1 = g[nodes[1]].location;
+        let dist = (loc_0.x - loc_1.x).hypot(loc_0.y - loc_1.y);
+        assert!((dist - 80.0).abs() < 1e-4f32);
+
+        for &idx in &nodes {
+            let node = &g[idx];
+            let mut found = false;
+            state_read.spatial_grid.for_each_near(
+                node.location.x as f64,
+                node.location.y as f64,
+                1.0,
+                |n_idx| {
+                    if n_idx == idx {
+                        found = true;
+                    }
+                }
+            );
+            assert!(found, "Node {:?} not found in spatial grid near location {:?}", idx, node.location);
+        }
 
         let mut graph = fdg_sim::ForceGraph::default();
         let data = crate::graf::graph::GraphNodeData {

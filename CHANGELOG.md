@@ -2,6 +2,12 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.10.0-rc.3] - 2026-07-22
+
+### Added
+
+- Add deterministic link-derived circular cluster layout for static/frozen large graphs (nodes > 1,000)
+
 ## [0.10.0-rc.2] - 2026-07-19
 
 ### Added

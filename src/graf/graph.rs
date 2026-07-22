@@ -153,6 +153,189 @@ pub fn create_simulation(
     let params = SimulationParameters::new(800.0, fdg_sim::Dimensions::Two, force);
     Simulation::from_graph(graph, params)
 }
+#[derive(Debug, Clone)]
+struct StaticComponent {
+    nodes: Vec<NodeIndex>,
+    key: String,
+    center: (f64, f64),
+    node_radius: f64,
+    envelope_radius: f64,
+}
+
+fn collect_static_components(
+    graph: &ForceGraph<GraphNodeData, ()>,
+) -> Vec<StaticComponent> {
+    let mut visited = HashSet::new();
+    let mut components = Vec::new();
+
+    let mut start_nodes: Vec<NodeIndex> = graph.node_indices().collect();
+    start_nodes.sort_by(|&a, &b| {
+        let node_a = &graph[a];
+        let node_b = &graph[b];
+        node_a.data.note_id.cmp(&node_b.data.note_id)
+            .then_with(|| a.cmp(&b))
+    });
+
+    for &start_node in &start_nodes {
+        if visited.contains(&start_node) {
+            continue;
+        }
+
+        let mut component_nodes = Vec::new();
+        let mut queue = std::collections::VecDeque::new();
+
+        visited.insert(start_node);
+        queue.push_back(start_node);
+
+        while let Some(curr) = queue.pop_front() {
+            component_nodes.push(curr);
+
+            let mut neighbors: Vec<NodeIndex> = graph.neighbors(curr).collect();
+            neighbors.sort_by(|&a, &b| {
+                let node_a = &graph[a];
+                let node_b = &graph[b];
+                node_a.data.note_id.cmp(&node_b.data.note_id)
+                    .then_with(|| a.cmp(&b))
+            });
+
+            for nbr in neighbors {
+                if !visited.contains(&nbr) {
+                    visited.insert(nbr);
+                    queue.push_back(nbr);
+                }
+            }
+        }
+
+        // Sort component's nodes deterministically by note_id and index
+        component_nodes.sort_by(|&a, &b| {
+            let node_a = &graph[a];
+            let node_b = &graph[b];
+            node_a.data.note_id.cmp(&node_b.data.note_id)
+                .then_with(|| a.cmp(&b))
+        });
+
+        if !component_nodes.is_empty() {
+            let first_node_idx = component_nodes[0];
+            let key = graph[first_node_idx].data.note_id.clone();
+            components.push(StaticComponent {
+                nodes: component_nodes,
+                key,
+                center: (0.0, 0.0),
+                node_radius: 0.0,
+                envelope_radius: 0.0,
+            });
+        }
+    }
+
+    // Sort final components by (Reverse(nodes.len()), key)
+    components.sort_by(|a, b| {
+        let len_cmp = b.nodes.len().cmp(&a.nodes.len());
+        if len_cmp != std::cmp::Ordering::Equal {
+            len_cmp
+        } else {
+            a.key.cmp(&b.key)
+        }
+    });
+
+    components
+}
+
+fn layout_static_components(
+    components: &mut [StaticComponent],
+    spacing: f64,
+) -> Option<Vec<(NodeIndex, fdg_sim::glam::Vec3)>> {
+    let spacing = if spacing.is_finite() && spacing > 0.0 {
+        spacing
+    } else {
+        crate::config::defaults::default_ideal_distance()
+    };
+
+    for c in components.iter_mut() {
+        let n = c.nodes.len();
+        if n == 0 {
+            c.node_radius = 0.0;
+            c.envelope_radius = 0.0;
+        } else if n == 1 {
+            c.node_radius = 0.0;
+            c.envelope_radius = spacing;
+        } else {
+            let sin_val = (std::f64::consts::PI / n as f64).sin();
+            if !sin_val.is_finite() || sin_val == 0.0 {
+                return None;
+            }
+            c.node_radius = spacing / (2.0 * sin_val);
+            c.envelope_radius = c.node_radius + spacing;
+        }
+    }
+
+    if components.is_empty() {
+        return Some(Vec::new());
+    }
+
+    let gap = spacing * 4.0;
+    components[0].center = (0.0, 0.0);
+    let mut occupied_outer_radius = components[0].envelope_radius;
+
+    let mut idx = 1;
+    while idx < components.len() {
+        let remaining_count = components.len() - idx;
+        let next_envelope = components[idx].envelope_radius;
+        let ring_radius = occupied_outer_radius + next_envelope + gap;
+        let ring_max_envelope = next_envelope;
+
+        let mut slot_count = 1;
+        for sc in (2..=remaining_count).rev() {
+            let sin_val = (std::f64::consts::PI / sc as f64).sin();
+            if 2.0 * ring_radius * sin_val >= 2.0 * ring_max_envelope + gap {
+                slot_count = sc;
+                break;
+            }
+        }
+
+        for slot in 0..slot_count {
+            let c_idx = idx + slot;
+            let angle = 2.0 * std::f64::consts::PI * (slot as f64) / (slot_count as f64);
+            let cx = ring_radius * angle.cos();
+            let cy = ring_radius * angle.sin();
+            components[c_idx].center = (cx, cy);
+        }
+
+        occupied_outer_radius = ring_radius + ring_max_envelope;
+        idx += slot_count;
+    }
+
+    let mut node_positions = Vec::new();
+    for c in components.iter() {
+        let n = c.nodes.len();
+        let (cx, cy) = c.center;
+        if !cx.is_finite() || !cy.is_finite() {
+            return None;
+        }
+
+        if n == 1 {
+            let idx = c.nodes[0];
+            let pos = fdg_sim::glam::Vec3::new(cx as f32, cy as f32, 0.0);
+            node_positions.push((idx, pos));
+        } else if n >= 2 {
+            let radius = c.node_radius;
+            if !radius.is_finite() {
+                return None;
+            }
+            for (i, &idx) in c.nodes.iter().enumerate() {
+                let angle = 2.0 * std::f64::consts::PI * (i as f64) / (n as f64);
+                let nx = cx + radius * angle.cos();
+                let ny = cy + radius * angle.sin();
+                if !nx.is_finite() || !ny.is_finite() {
+                    return None;
+                }
+                let pos = fdg_sim::glam::Vec3::new(nx as f32, ny as f32, 0.0);
+                node_positions.push((idx, pos));
+            }
+        }
+    }
+
+    Some(node_positions)
+}
 impl GraphState {
     pub fn new(summaries: &[NoteSummary], config: &ClinConfig) -> anyhow::Result<Self> {
         let graph = build_graph(summaries, config)?;
@@ -184,6 +367,40 @@ impl GraphState {
             self.alpha = target;
             self.is_settled = false;
         }
+    }
+    pub(crate) fn apply_static_cluster_layout(&mut self, ideal_distance: f64) -> bool {
+        let graph = self.simulation.get_graph();
+        let node_count = graph.node_count();
+        if node_count == 0 {
+            return false;
+        }
+
+        let mut components = collect_static_components(graph);
+        let node_positions = match layout_static_components(&mut components, ideal_distance) {
+            Some(pos) => pos,
+            None => return false,
+        };
+
+        let graph_mut = self.simulation.get_graph_mut();
+        for (idx, pos) in node_positions {
+            if let Some(node) = graph_mut.node_weight_mut(idx) {
+                node.location = pos;
+                node.old_location = pos;
+                node.velocity = fdg_sim::glam::Vec3::ZERO;
+            }
+        }
+
+        // Recompute derived state
+        self.viewport = self.viewport.auto_fit_from_graph(graph_mut, 1.4);
+        self.graph_bounds = super::render::compute_graph_bounds(graph_mut);
+        self.spatial_grid.rebuild(graph_mut);
+
+        self.is_settled = true;
+        self.alpha = 0.0;
+        self.physics_worker_active = false;
+        self.render_cache.lock().minimap_dirty = true;
+
+        true
     }
 }
 
@@ -424,5 +641,232 @@ mod tests {
         assert!(!titles.contains(&"C"));
         assert!(!titles.contains(&"D"));
         assert_eq!(graph.edge_count(), 1);
+    }
+    #[test]
+    fn test_static_cluster_layout_geometry() {
+        let summaries = vec![
+            NoteSummary {
+                id: "A".to_string(),
+                title: "A".to_string(),
+                updated_at: 0,
+                folder: "".to_string(),
+                tags: vec![],
+                pinned: false,
+                links: vec!["B".to_string()],
+                size_bytes: 0,
+            },
+            NoteSummary {
+                id: "B".to_string(),
+                title: "B".to_string(),
+                updated_at: 0,
+                folder: "".to_string(),
+                tags: vec![],
+                pinned: false,
+                links: vec!["C".to_string()],
+                size_bytes: 0,
+            },
+            NoteSummary {
+                id: "C".to_string(),
+                title: "C".to_string(),
+                updated_at: 0,
+                folder: "".to_string(),
+                tags: vec![],
+                pinned: false,
+                links: vec!["A".to_string()],
+                size_bytes: 0,
+            },
+            NoteSummary {
+                id: "D".to_string(),
+                title: "D".to_string(),
+                updated_at: 0,
+                folder: "".to_string(),
+                tags: vec![],
+                pinned: false,
+                links: vec!["E".to_string()],
+                size_bytes: 0,
+            },
+            NoteSummary {
+                id: "E".to_string(),
+                title: "E".to_string(),
+                updated_at: 0,
+                folder: "".to_string(),
+                tags: vec![],
+                pinned: false,
+                links: vec![],
+                size_bytes: 0,
+            },
+            NoteSummary {
+                id: "F".to_string(),
+                title: "F".to_string(),
+                updated_at: 0,
+                folder: "".to_string(),
+                tags: vec![],
+                pinned: false,
+                links: vec![],
+                size_bytes: 0,
+            },
+        ];
+
+        let mut config = ClinConfig::default();
+        config.graf.filter.show_orphan = true;
+        let spacing = 80.0;
+        config.graf.physics.ideal_distance = spacing;
+
+        let mut gs = GraphState::new(&summaries, &config).unwrap();
+        
+        let success = gs.apply_static_cluster_layout(spacing);
+        assert!(success);
+
+        let graph = gs.simulation.get_graph();
+        let mut node_map = HashMap::new();
+        for idx in graph.node_indices() {
+            let n = &graph[idx];
+            node_map.insert(n.data.note_id.clone(), (idx, n.location));
+        }
+
+        assert_eq!(node_map.len(), 6);
+
+        let mut comps = collect_static_components(graph);
+        assert_eq!(comps.len(), 3);
+        assert_eq!(comps[0].nodes.len(), 3);
+        assert_eq!(comps[1].nodes.len(), 2);
+        assert_eq!(comps[2].nodes.len(), 1);
+
+        assert_eq!(comps[0].key, "A");
+        assert_eq!(comps[1].key, "D");
+        assert_eq!(comps[2].key, "F");
+
+        layout_static_components(&mut comps, spacing);
+
+        let radius_3 = spacing / (2.0 * (std::f64::consts::PI / 3.0).sin());
+        let radius_2 = spacing / (2.0 * (std::f64::consts::PI / 2.0).sin());
+
+        let c0 = comps[0].center;
+        assert_eq!(c0, (0.0, 0.0));
+        
+        let loc_a = node_map.get("A").unwrap().1;
+        let loc_b = node_map.get("B").unwrap().1;
+        let loc_c = node_map.get("C").unwrap().1;
+        
+        assert!(((loc_a.x as f64 - c0.0).hypot(loc_a.y as f64 - c0.1) - radius_3).abs() < 1e-4);
+        assert!(((loc_b.x as f64 - c0.0).hypot(loc_b.y as f64 - c0.1) - radius_3).abs() < 1e-4);
+        assert!(((loc_c.x as f64 - c0.0).hypot(loc_c.y as f64 - c0.1) - radius_3).abs() < 1e-4);
+
+        let c1 = comps[1].center;
+        let loc_d = node_map.get("D").unwrap().1;
+        let loc_e = node_map.get("E").unwrap().1;
+        assert!(((loc_d.x as f64 - c1.0).hypot(loc_d.y as f64 - c1.1) - radius_2).abs() < 1e-4);
+        assert!(((loc_e.x as f64 - c1.0).hypot(loc_e.y as f64 - c1.1) - radius_2).abs() < 1e-4);
+
+        let c2 = comps[2].center;
+        let loc_f = node_map.get("F").unwrap().1;
+        assert!((loc_f.x as f64 - c2.0).abs() < 1e-4);
+        assert!((loc_f.y as f64 - c2.1).abs() < 1e-4);
+
+        let gap = spacing * 4.0;
+        
+        for i in 0..comps.len() {
+            for j in (i + 1)..comps.len() {
+                let ci = comps[i].center;
+                let cj = comps[j].center;
+                let dist = (ci.0 - cj.0).hypot(ci.1 - cj.1);
+                let min_dist = comps[i].envelope_radius + comps[j].envelope_radius + gap;
+                assert!(dist >= min_dist - 1e-4, "Components {} and {} overlap: dist={}, min_dist={}", i, j, dist, min_dist);
+            }
+        }
+    }
+
+    #[test]
+    fn test_static_cluster_layout_stability_and_validation() {
+        let summaries_1 = vec![
+            NoteSummary {
+                id: "A".to_string(),
+                title: "A".to_string(),
+                updated_at: 0,
+                folder: "".to_string(),
+                tags: vec![],
+                pinned: false,
+                links: vec!["B".to_string()],
+                size_bytes: 0,
+            },
+            NoteSummary {
+                id: "B".to_string(),
+                title: "B".to_string(),
+                updated_at: 0,
+                folder: "".to_string(),
+                tags: vec![],
+                pinned: false,
+                links: vec![],
+                size_bytes: 0,
+            },
+        ];
+
+        let summaries_2 = vec![
+            NoteSummary {
+                id: "B".to_string(),
+                title: "B".to_string(),
+                updated_at: 0,
+                folder: "".to_string(),
+                tags: vec![],
+                pinned: false,
+                links: vec![],
+                size_bytes: 0,
+            },
+            NoteSummary {
+                id: "A".to_string(),
+                title: "A".to_string(),
+                updated_at: 0,
+                folder: "".to_string(),
+                tags: vec![],
+                pinned: false,
+                links: vec!["B".to_string()],
+                size_bytes: 0,
+            },
+        ];
+
+        let config = ClinConfig::default();
+        
+        let mut gs1 = GraphState::new(&summaries_1, &config).unwrap();
+        gs1.apply_static_cluster_layout(80.0);
+        let loc1_a = gs1.simulation.get_graph().node_weights().find(|n| n.data.note_id == "A").unwrap().location;
+        let loc1_b = gs1.simulation.get_graph().node_weights().find(|n| n.data.note_id == "B").unwrap().location;
+
+        let mut gs2 = GraphState::new(&summaries_2, &config).unwrap();
+        gs2.apply_static_cluster_layout(80.0);
+        let loc2_a = gs2.simulation.get_graph().node_weights().find(|n| n.data.note_id == "A").unwrap().location;
+        let loc2_b = gs2.simulation.get_graph().node_weights().find(|n| n.data.note_id == "B").unwrap().location;
+
+        assert!((loc1_a.x - loc2_a.x).abs() < 1e-4f32);
+        assert!((loc1_a.y - loc2_a.y).abs() < 1e-4f32);
+        assert!((loc1_b.x - loc2_b.x).abs() < 1e-4f32);
+        assert!((loc1_b.y - loc2_b.y).abs() < 1e-4f32);
+
+        let spacing_invalid = vec![0.0, -10.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY];
+        for s in spacing_invalid {
+            let mut gs = GraphState::new(&summaries_1, &config).unwrap();
+            let success = gs.apply_static_cluster_layout(s);
+            assert!(success);
+            for node in gs.simulation.get_graph().node_weights() {
+                assert!(node.location.x.is_finite());
+                assert!(node.location.y.is_finite());
+            }
+        }
+
+        let mut gs_empty = GraphState {
+            simulation: fdg_sim::Simulation::from_graph(fdg_sim::ForceGraph::default(), fdg_sim::SimulationParameters::default()),
+            viewport: crate::graf::viewport::Viewport::default(),
+            selected_node: None,
+            dragging_node: None,
+            drag_target: None,
+            is_settled: false,
+            alpha: 0.4,
+            graph_bounds: (0.0, 0.0, 0.0, 0.0),
+            render_cache: Mutex::new(crate::graf::render::RenderCache::new()),
+            mouse_pos: None,
+            spatial_grid: crate::graf::spatial::SpatialGrid::new(100.0),
+            physics_worker_active: false,
+        };
+        let success = gs_empty.apply_static_cluster_layout(80.0);
+        assert!(!success);
     }
 }
