@@ -265,7 +265,7 @@ pub(crate) fn render_code_patch(
 
         ctx.new_line(margin);
         if line_numbers {
-            push_code_gutter(&mut ctx, i + 1, digits, margin);
+            push_code_gutter(&mut ctx, i + 1, digits);
         } else {
             ctx.push_spaces(4, margin);
         }
@@ -887,7 +887,7 @@ fn render_code_block(ctx: &mut Ctx, cb: &NodeCodeBlock, depth: usize) {
         }
         ctx.new_line(margin);
         if ctx.opts.code_line_numbers {
-            push_code_gutter(ctx, i + 1, digits, margin);
+            push_code_gutter(ctx, i + 1, digits);
         } else {
             ctx.push_spaces(4, margin);
         }
@@ -924,7 +924,7 @@ fn render_code_block(ctx: &mut Ctx, cb: &NodeCodeBlock, depth: usize) {
 }
 
 /// Push the right-justified line-number gutter `{:>w} │ ` in muted style.
-fn push_code_gutter(ctx: &mut Ctx, idx: usize, digits: usize, margin: usize) {
+fn push_code_gutter(ctx: &mut Ctx, idx: usize, digits: usize) {
     use std::fmt::Write;
     let st = ctx.theme.blockquote;
     let line = ctx.ensure_line();

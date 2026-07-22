@@ -230,7 +230,10 @@ fn save_persisted_note_cache(
     if let Some(parent) = cache_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
+    #[cfg(unix)]
     crate::fsutil::atomic_write_with_mode(cache_path, &content, 0o600)?;
+    #[cfg(not(unix))]
+    crate::fsutil::atomic_write(cache_path, &content)?;
 
     let _ = crate::fsutil::remove_file_if_exists(legacy_cache_path);
 

@@ -28,6 +28,8 @@ fn atomic_write_impl(path: &Path, data: &[u8], mode: Option<u32>) -> Result<()> 
         let f = File::open(&tmp).context("failed to open temp file for syncing")?;
         f.sync_all().context("failed to sync temp file")?;
     }
+    #[cfg(not(unix))]
+    let _ = mode;
 
     fs::rename(&tmp, path).with_context(|| {
         format!(
