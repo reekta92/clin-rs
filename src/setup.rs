@@ -76,6 +76,13 @@ pub fn hint_style_index(s: crate::config::HintBarStyle) -> usize {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct SetupPreviewKey {
+    pub cols: u16,
+    pub theme: crate::markdown::MarkdownTheme,
+    pub opts: crate::markdown::MdRenderOpts,
+}
+
 #[derive(Debug)]
 pub struct SetupState {
     pub theme: usize,
@@ -83,10 +90,12 @@ pub struct SetupState {
     pub hint_bar_style: usize,
     pub icon_mode: usize,
     pub keybind_preset: usize,
-    /// Currently focused row: 0..OPTION_ROWS = options, DONE_ROW = Done button.
     pub selected: usize,
-    /// When true, the Esc→confirm overlay is rendered and absorbs keys.
     pub confirm_exit: bool,
+
+    pub(crate) preview_renderer: crate::markdown::MarkdownRenderer,
+    pub(crate) preview_key: Option<SetupPreviewKey>,
+    pub(crate) pending_preview_resize: Option<(u16, std::time::Instant)>,
 }
 
 impl SetupState {
@@ -111,6 +120,9 @@ impl SetupState {
             },
             selected: 0,
             confirm_exit: false,
+            preview_renderer: crate::markdown::MarkdownRenderer::new(),
+            preview_key: None,
+            pending_preview_resize: None,
         }
     }
 
@@ -212,6 +224,9 @@ mod tests {
             keybind_preset: 0,
             selected: 0,
             confirm_exit: false,
+            preview_renderer: crate::markdown::MarkdownRenderer::new(),
+            preview_key: None,
+            pending_preview_resize: None,
         };
 
         // Theme wraps forward
@@ -266,6 +281,9 @@ mod tests {
             keybind_preset: 0,
             selected: 0,
             confirm_exit: false,
+            preview_renderer: crate::markdown::MarkdownRenderer::new(),
+            preview_key: None,
+            pending_preview_resize: None,
         };
         s.move_sel(false);
         assert_eq!(s.selected, 0);

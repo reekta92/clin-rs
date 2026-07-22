@@ -1,8 +1,8 @@
-//! Built-in markdown → grid renderer using comrak (GFM parse) + syntect
+//! Built-in markdown layout engine using comrak (GFM parse) + syntect
 //! (optional code-block highlighting).
 //!
-//! The public entry point is [`render_builtin`], which returns a
-//! `Vec<RenderLine>` matching glow's structural layout (2-space margin,
+//! The public entry point is [`render_layout`], which returns a
+//! `RenderedDocument` matching glow's structural layout (2-space margin,
 //! box-drawing tables, `•` bullets, `┃` blockquote bars, `[ ]`/`[✓]` task
 //! boxes, preserved `#` heading prefixes, 8-dash HR).
 //!
@@ -10,8 +10,9 @@
 //! blocks get theme-bg shading, inline code gets bg/fg, and fenced code
 //! blocks with a known language get full syntect syntax highlighting.
 
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::ops::Range;
 
 use comrak::nodes::{
     AstNode, ListType, NodeCodeBlock, NodeHeading, NodeList, NodeTable, NodeValue, TableAlignment,
@@ -24,8 +25,31 @@ use syntect::highlighting::{FontStyle, ThemeSet};
 use syntect::parsing::SyntaxSet;
 
 use crate::markdown::MdRenderOpts;
-use crate::markdown::style::{MarkdownTheme, RenderLine};
+use crate::markdown::style::{MarkdownTheme, RenderLine, StyledSpan, RenderedDocument};
 
+pub(crate) struct PendingCodeBlock {
+    pub id: u32,
+    pub literal: Arc<str>,
+    pub literal_fingerprint: u64,
+    pub language: Arc<str>,
+    pub fenced: bool,
+    pub depth: usize,
+    pub source_line: usize,
+    pub line_range: Range<usize>,
+}
+
+pub(crate) struct LayoutResult {
+    pub document: RenderedDocument,
+    pub code_blocks: Vec<PendingCodeBlock>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct HighlightedSpan {
+    pub text: String,
+    pub style: ratatui::style::Style,
+}
+
+pub(crate) type HighlightedBlock = Vec<Option<Vec<HighlightedSpan>>>;
 // ---------------------------------------------------------------------------
 // Lazy-loaded syntect assets (first render pays ~50 ms init)
 // ---------------------------------------------------------------------------
@@ -34,11 +58,6 @@ pub(crate) static SYNTAX_SET: LazyLock<SyntaxSet> =
     LazyLock::new(SyntaxSet::load_defaults_nonewlines);
 
 pub(crate) static THEME_SET: LazyLock<ThemeSet> = LazyLock::new(ThemeSet::load_defaults);
-use parking_lot::Mutex;
-type CachedBlock = Vec<Vec<(ratatui::style::Style, String)>>;
-pub(crate) static CODE_CACHE: LazyLock<
-    Mutex<std::collections::HashMap<(String, String, u64), CachedBlock>>,
-> = LazyLock::new(|| Mutex::new(std::collections::HashMap::new()));
 
 /// Theme name for code-block syntax highlighting.
 const CODE_THEME: &str = "base16-ocean.dark";
@@ -56,18 +75,17 @@ pub(crate) fn default_code_theme() -> &'static str {
 /// Runs the full comrak → grid pipeline (optionally with syntect
 /// highlighting).  Checks `cancel_token` between major operations so the
 /// caller can abort mid-render.
-pub(crate) fn render_builtin(
+pub(crate) fn render_layout(
     content: &str,
     cols: u16,
     theme: &MarkdownTheme,
     opts: &MdRenderOpts,
-    cancel_token: &AtomicBool,
-) -> (Vec<RenderLine>, Vec<(usize, String)>) {
-    if cancel_token.load(Ordering::Relaxed) {
-        return (Vec::new(), Vec::new());
+    cancel: &AtomicBool,
+) -> Option<LayoutResult> {
+    if cancel.load(Ordering::Relaxed) {
+        return None;
     }
 
-    // --- Parse -----------------------------------------------------------
     let mut options = Options::default();
     options.extension.strikethrough = true;
     options.extension.table = true;
@@ -80,127 +98,281 @@ pub(crate) fn render_builtin(
     let arena = Arena::new();
     let root = parse_document(&arena, content, &options);
 
-    if cancel_token.load(Ordering::Relaxed) {
-        return (Vec::new(), Vec::new());
+    if cancel.load(Ordering::Relaxed) {
+        return None;
     }
 
-    // --- Walk ------------------------------------------------------------
     let mut ctx = Ctx {
-        lines: vec![Vec::with_capacity(cols as usize)],
+        lines: vec![LineBuilder {
+            spans: Vec::with_capacity(4),
+            visual_width: 0,
+        }],
         image_slots: Vec::new(),
         cols: cols as usize,
-        wrap: opts.wrap,
         theme,
+        opts,
         col: 0,
-        syntax_hl: opts.syntax_hl,
-        icon_mode: opts.icon_mode,
-        code_theme: opts.code_theme.clone(),
-        line_numbers: opts.code_line_numbers,
-        wrap_indicator: opts.wrap_indicator,
-        link_url_max: opts.link_url_max,
-        cancel_token,
+        cancel_token: cancel,
         cell_clip: None,
         cell_ellipsis: false,
         current_source_line: 0,
         row_source: vec![0],
+        code_blocks: Vec::new(),
     };
+
     for child in root.children() {
         if ctx.cancel_token.load(Ordering::Relaxed) {
-            break;
+            return None;
         }
         render_block(&mut ctx, child, 0);
     }
 
-    // Remove any trailing empty rows (but keep at least one)
     while let Some(last) = ctx.lines.last() {
-        if last.iter().all(|(c, _)| c.is_whitespace()) && ctx.lines.len() > 1 {
+        let is_empty = last.spans.iter().all(|s| s.text.chars().all(char::is_whitespace));
+        if is_empty && ctx.lines.len() > 1 {
             ctx.lines.pop();
+            ctx.row_source.pop();
         } else {
             break;
         }
     }
 
-    // Convert Ctx lines to RenderLines, attaching image_url from image_slots
     let slot_map: std::collections::HashMap<usize, String> = ctx
         .image_slots
         .iter()
         .map(|(i, url)| (*i, url.clone()))
         .collect();
+
     let lines: Vec<RenderLine> = ctx
         .lines
         .into_iter()
         .enumerate()
-        .map(|(i, cells)| RenderLine {
-            cells,
-            image_url: slot_map.get(&i).cloned(),
+        .map(|(i, lb)| RenderLine {
+            spans: lb.spans,
+            visual_width: lb.visual_width,
+            is_blank: false,
+            image_url: slot_map.get(&i).map(|s| Arc::from(s.as_str())),
             source_line: ctx.row_source.get(i).copied().unwrap_or(0),
         })
         .collect();
-    let slots = ctx.image_slots;
-    (lines, slots)
+
+    Some(LayoutResult {
+        document: RenderedDocument::new(lines),
+        code_blocks: ctx.code_blocks,
+    })
 }
-// Internal rendering state
-// ---------------------------------------------------------------------------
+
+pub(crate) fn highlight_code_block(
+    language: &str,
+    literal: &str,
+    code_theme: &str,
+    cancel: &AtomicBool,
+) -> Option<Arc<HighlightedBlock>> {
+    if cancel.load(Ordering::Relaxed) {
+        return None;
+    }
+    let syntax = SYNTAX_SET.find_syntax_by_token(language)?;
+    let theme = THEME_SET.themes.get(code_theme)?;
+
+    if cancel.load(Ordering::Relaxed) {
+        return None;
+    }
+
+    let mut highlighter = syntect::easy::HighlightLines::new(syntax, theme);
+    let mut style_cache = std::collections::HashMap::new();
+    let mut block = Vec::with_capacity(literal.lines().count());
+
+    for line in literal.lines() {
+        if cancel.load(Ordering::Relaxed) {
+            return None;
+        }
+
+        if let Ok(ranges) = highlighter.highlight_line(line, &SYNTAX_SET) {
+            let mut line_spans: Vec<HighlightedSpan> = Vec::new();
+            for (syn_style, text) in &ranges {
+                let rt_style = *style_cache.entry(*syn_style).or_insert_with(|| {
+                    syntect_style_to_ratatui(*syn_style)
+                });
+                if let Some(last_span) = line_spans.last_mut() {
+                    if last_span.style == rt_style {
+                        last_span.text.push_str(text);
+                        continue;
+                    }
+                }
+                line_spans.push(HighlightedSpan {
+                    text: text.to_string(),
+                    style: rt_style,
+                });
+            }
+            block.push(Some(line_spans));
+        } else {
+            block.push(None);
+        }
+    }
+
+    if block.is_empty() {
+        block.push(None);
+    }
+
+    Some(Arc::new(block))
+}
+
+pub(crate) fn render_code_patch(
+    block: &PendingCodeBlock,
+    highlighted: &HighlightedBlock,
+    cols: u16,
+    theme: &MarkdownTheme,
+    opts: &MdRenderOpts,
+    cancel: &AtomicBool,
+) -> Option<Vec<RenderLine>> {
+    if cancel.load(Ordering::Relaxed) {
+        return None;
+    }
+
+    let margin = 2 + block.depth * 2;
+    let code_margin = margin + 4;
+
+    let literal_lines: Vec<&str> = block.literal.lines().collect();
+    let line_count = literal_lines.len().max(1);
+    let digits = line_count.to_string().len().max(2);
+    let line_numbers = opts.code_line_numbers;
+    let gutter_w = if line_numbers { digits + 3 } else { 0 };
+    let code_indent = if line_numbers {
+        margin + gutter_w
+    } else {
+        code_margin
+    };
+
+    let mut ctx = Ctx {
+        lines: Vec::with_capacity(line_count),
+        image_slots: Vec::new(),
+        cols: cols as usize,
+        theme,
+        opts,
+        col: 0,
+        cancel_token: cancel,
+        cell_clip: None,
+        cell_ellipsis: false,
+        current_source_line: block.source_line,
+        row_source: Vec::with_capacity(line_count),
+        code_blocks: Vec::new(),
+    };
+
+    for i in 0..line_count {
+        if cancel.load(Ordering::Relaxed) {
+            return None;
+        }
+
+        ctx.new_line(margin);
+        if line_numbers {
+            push_code_gutter(&mut ctx, i + 1, digits, margin);
+        } else {
+            ctx.push_spaces(4, margin);
+        }
+
+        let orig_line = literal_lines.get(i).copied().unwrap_or("");
+        
+        let spans_opt = highlighted.get(i);
+        if let Some(Some(spans)) = spans_opt {
+            for span in spans {
+                ctx.push_str(&span.text, span.style, code_indent);
+            }
+        } else {
+            ctx.push_str(orig_line, theme.paragraph, code_indent);
+        }
+    }
+
+    let lines: Vec<RenderLine> = ctx
+        .lines
+        .into_iter()
+        .enumerate()
+        .map(|(i, lb)| RenderLine {
+            spans: lb.spans,
+            visual_width: lb.visual_width,
+            is_blank: false,
+            image_url: None,
+            source_line: ctx.row_source.get(i).copied().unwrap_or(block.source_line),
+        })
+        .collect();
+
+    if lines.len() != block.line_range.len() {
+        debug_assert_eq!(lines.len(), block.line_range.len());
+        return None;
+    }
+
+    Some(lines)
+}
+
+pub(crate) fn load_syntax_assets(code_theme: &str) {
+    let _ = &*SYNTAX_SET;
+    let _ = THEME_SET.themes.get(code_theme);
+}
+
+struct LineBuilder {
+    spans: Vec<StyledSpan>,
+    visual_width: usize,
+}
 
 struct Ctx<'a> {
-    lines: Vec<Vec<(char, Style)>>,
-    /// Tracks which rendered line index contains a markdown image
-    /// and the URL string for that image.
+    lines: Vec<LineBuilder>,
     image_slots: Vec<(usize, String)>,
     cols: usize,
-    /// Visual (display) column of the current line — sum of char widths,
-    /// not cell count.  Updated by [`push_raw`].
-    col: usize,
-    wrap: bool,
     theme: &'a MarkdownTheme,
-    syntax_hl: bool,
-    icon_mode: crate::config::IconMode,
-    code_theme: String,
-    line_numbers: bool,
-    wrap_indicator: bool,
-    link_url_max: usize,
-    /// Per-table-cell column cap set by [`render_table`]; when `Some(n)`,
-    /// [`push`] truncates the cell at absolute visual col `n` (0-indexed).
-    cell_clip: Option<usize>,
-    /// Whether an ellipsis has already been emitted for the current cell.
-    cell_ellipsis: bool,
+    opts: &'a MdRenderOpts,
+    col: usize,
     cancel_token: &'a AtomicBool,
+    cell_clip: Option<usize>,
+    cell_ellipsis: bool,
     current_source_line: usize,
-    /// Per-line source line tracking: one entry per rendered line.
-    /// Updated by `new_line` and `render_block`.
     row_source: Vec<usize>,
+    code_blocks: Vec<PendingCodeBlock>,
 }
+
 impl Ctx<'_> {
     fn cur_col(&self) -> usize {
         self.col
     }
 
-    fn ensure_line(&mut self) -> &mut Vec<(char, Style)> {
+    fn ensure_line(&mut self) -> &mut LineBuilder {
         if self.lines.is_empty() {
-            self.lines.push(Vec::with_capacity(self.cols));
+            self.lines.push(LineBuilder {
+                spans: Vec::with_capacity(4),
+                visual_width: 0,
+            });
         }
         self.lines.last_mut().expect("lines is not empty")
     }
 
-    /// Append one cell and advance `col` by the character's visual width.
-    /// No wrap/clip logic — callers must check bounds first.
     fn push_raw(&mut self, ch: char, st: Style) {
         let w = UnicodeWidthChar::width(ch).unwrap_or(0);
-        self.ensure_line().push((ch, st));
+        let line = self.ensure_line();
+        if let Some(last_span) = line.spans.last_mut() {
+            if last_span.style == st {
+                last_span.text.push(ch);
+                line.visual_width += w;
+                self.col += w;
+                return;
+            }
+        }
+        let mut text = String::with_capacity(8);
+        text.push(ch);
+        line.spans.push(StyledSpan { text, style: st });
+        line.visual_width += w;
         self.col += w;
     }
 
-    /// Start a new line with `margin` leading spaces.
     fn new_line(&mut self, margin: usize) {
-        self.lines.push(Vec::with_capacity(self.cols));
+        self.lines.push(LineBuilder {
+            spans: Vec::with_capacity(4),
+            visual_width: 0,
+        });
         self.row_source.push(self.current_source_line);
         self.col = 0;
         for _ in 0..margin {
             self.push_raw(' ', Style::default());
         }
     }
-    /// Ensure the current line has at least `margin` leading spaces (fills
-    /// with spaces if needed).  Called at the start of each block renderer.
+
     fn ensure_margin(&mut self, margin: usize) {
         let cur = self.cur_col();
         if cur < margin {
@@ -210,8 +382,6 @@ impl Ctx<'_> {
         }
     }
 
-    /// Push a single character to the current line, wrapping/truncating as
-    /// configured.
     fn push(&mut self, ch: char, st: Style, margin: usize) {
         if ch == '\t' {
             self.push(' ', st, margin);
@@ -234,8 +404,8 @@ impl Ctx<'_> {
                 return;
             }
         } else if col + w > self.cols {
-            if self.wrap {
-                if self.wrap_indicator {
+            if self.opts.wrap {
+                if self.opts.wrap_indicator {
                     let target = self.cols.saturating_sub(1);
                     let cur = self.cur_col();
                     if cur <= target {
@@ -254,18 +424,123 @@ impl Ctx<'_> {
         self.push_raw(ch, st);
     }
 
-    /// Push an entire string.
+    fn push_str_raw(&mut self, s: &str, st: Style) {
+        if s.is_empty() {
+            return;
+        }
+        let w = s.len();
+        let line = self.ensure_line();
+        if let Some(last_span) = line.spans.last_mut() {
+            if last_span.style == st {
+                last_span.text.push_str(s);
+                line.visual_width += w;
+                self.col += w;
+                return;
+            }
+        }
+        line.spans.push(StyledSpan {
+            text: s.to_owned(),
+            style: st,
+        });
+        line.visual_width += w;
+        self.col += w;
+    }
+
     fn push_str(&mut self, s: &str, st: Style, margin: usize) {
-        for ch in s.chars() {
-            self.push(ch, st, margin);
+        let bytes = s.as_bytes();
+        let mut idx = 0;
+        let mut bytes_since_cancel_check = 0;
+        
+        while idx < bytes.len() {
+            if bytes_since_cancel_check >= 256 {
+                if self.cancel_token.load(Ordering::Relaxed) {
+                    return;
+                }
+                bytes_since_cancel_check = 0;
+            }
+            
+            let mut run_len = 0;
+            while idx + run_len < bytes.len() {
+                let b = bytes[idx + run_len];
+                if b >= 0x20 && b <= 0x7e {
+                    run_len += 1;
+                } else {
+                    break;
+                }
+            }
+            
+            if run_len > 0 {
+                let run_str = unsafe { std::str::from_utf8_unchecked(&bytes[idx..idx + run_len]) };
+                idx += run_len;
+                bytes_since_cancel_check += run_len;
+                
+                let mut remaining_run = run_str;
+                while !remaining_run.is_empty() {
+                    if let Some(clip) = self.cell_clip {
+                        let available = clip.saturating_sub(self.col);
+                        if available == 0 {
+                            if !self.cell_ellipsis {
+                                self.push_raw('…', st);
+                                self.cell_ellipsis = true;
+                            }
+                            return;
+                        }
+                        let chunk_len = remaining_run.len().min(available);
+                        self.push_str_raw(&remaining_run[..chunk_len], st);
+                        remaining_run = &remaining_run[chunk_len..];
+                    } else {
+                        let available = self.cols.saturating_sub(self.col);
+                        if available == 0 {
+                            if self.opts.wrap {
+                                if self.opts.wrap_indicator {
+                                    let target = self.cols.saturating_sub(1);
+                                    let cur = self.cur_col();
+                                    if cur <= target {
+                                        let glyph_st = self.theme.hr;
+                                        for _ in cur..target {
+                                            self.push_raw(' ', Style::default());
+                                        }
+                                        self.push_raw('┄', glyph_st);
+                                    }
+                                }
+                                self.new_line(margin);
+                            } else {
+                                return;
+                            }
+                        } else {
+                            let chunk_len = remaining_run.len().min(available);
+                            self.push_str_raw(&remaining_run[..chunk_len], st);
+                            remaining_run = &remaining_run[chunk_len..];
+                        }
+                    }
+                }
+            } else {
+                let rest_str = unsafe { std::str::from_utf8_unchecked(&bytes[idx..]) };
+                if let Some(ch) = rest_str.chars().next() {
+                    let ch_len = ch.len_utf8();
+                    idx += ch_len;
+                    bytes_since_cancel_check += ch_len;
+                    self.push(ch, st, margin);
+                } else {
+                    break;
+                }
+            }
         }
     }
 
-    /// Push N spaces.
     fn push_spaces(&mut self, n: usize, margin: usize) {
         for _ in 0..n {
             self.push(' ', Style::default(), margin);
         }
+    }
+}
+
+fn tag_row_source(ctx: &mut Ctx, src_line: usize) {
+    if ctx.lines.last().is_some_and(|l| l.spans.is_empty())
+        && let Some(s) = ctx.row_source.last_mut()
+        && *s == 0
+    {
+        *s = src_line;
     }
 }
 
@@ -277,12 +552,7 @@ fn render_block<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, depth: usize) {
     let src_line = node.data.borrow().sourcepos.start.line;
     ctx.current_source_line = src_line;
     // Tag the pre-existing (initial) empty row so it maps to this block.
-    if ctx.lines.last().is_some_and(|l| l.is_empty())
-        && let Some(s) = ctx.row_source.last_mut()
-        && *s == 0
-    {
-        *s = src_line;
-    }
+    tag_row_source(ctx, src_line);
     let data = node.data.borrow();
     match &data.value {
         NodeValue::Heading(h) => render_heading(ctx, node, h, depth),
@@ -572,8 +842,8 @@ fn render_code_block(ctx: &mut Ctx, cb: &NodeCodeBlock, depth: usize) {
     // Line-number gutter geometry
     let line_count = cb.literal.lines().count().max(1);
     let digits = line_count.to_string().len().max(2);
-    let gutter_w = if ctx.line_numbers { digits + 3 } else { 0 }; // "{:>w} │ "
-    let code_indent = if ctx.line_numbers {
+    let gutter_w = if ctx.opts.code_line_numbers { digits + 3 } else { 0 }; // "{:>w} │ "
+    let code_indent = if ctx.opts.code_line_numbers {
         margin + gutter_w
     } else {
         code_margin
@@ -590,10 +860,10 @@ fn render_code_block(ctx: &mut Ctx, cb: &NodeCodeBlock, depth: usize) {
     if has_label && !lang.is_empty() {
         let mut icon_seg = String::new();
         let mut icon_w = 0usize;
-        if !matches!(ctx.icon_mode, crate::config::IconMode::None)
+        if !matches!(ctx.opts.icon_mode, crate::config::IconMode::None)
             && let Some((nerd, uni)) = lang_icon(&lang)
         {
-            let g = crate::ui::get_icon(nerd, uni, ctx.icon_mode);
+            let g = crate::ui::get_icon(nerd, uni, ctx.opts.icon_mode);
             icon_seg = format!("{g} ");
             icon_w = str_visual_width(&icon_seg);
         }
@@ -608,100 +878,80 @@ fn render_code_block(ctx: &mut Ctx, cb: &NodeCodeBlock, depth: usize) {
         ctx.push_str(" ─╮", ctx.theme.table_border, margin);
     }
 
-    // Highlighted path
-    if ctx.syntax_hl
-        && has_label
-        && !lang.is_empty()
-        && let Some(syntax) = SYNTAX_SET.find_syntax_by_token(&lang)
-        && let Some(theme) = THEME_SET.themes.get(&ctx.code_theme)
-    {
-        let content_hash = {
-            use std::hash::{DefaultHasher, Hash, Hasher};
-            let mut h = DefaultHasher::new();
-            for line in cb.literal.lines() {
-                line.hash(&mut h);
-                b"\n".hash(&mut h);
-            }
-            h.finish()
-        };
+    let start_line = ctx.lines.len();
 
-        let key = (lang.clone(), ctx.code_theme.clone(), content_hash);
-
-        let cached_lines = {
-            let cache = CODE_CACHE.lock();
-            cache.get(&key).cloned()
-        };
-
-        let highlighted_lines = if let Some(lines) = cached_lines {
-            lines
-        } else {
-            let mut highlighter = syntect::easy::HighlightLines::new(syntax, theme);
-            let mut computed = Vec::with_capacity(cb.literal.lines().count());
-            for line in cb.literal.lines() {
-                let mut line_spans = Vec::new();
-                if let Ok(ranges) = highlighter.highlight_line(line, &SYNTAX_SET) {
-                    for (syn_style, text) in &ranges {
-                        let rt_style = syntect_style_to_ratatui(*syn_style);
-                        line_spans.push((rt_style, text.to_string()));
-                    }
-                } else {
-                    line_spans.push((ctx.theme.paragraph, line.to_string()));
-                }
-                computed.push(line_spans);
-            }
-            let mut cache = CODE_CACHE.lock();
-            cache.insert(key, computed.clone());
-            computed
-        };
-
-        for (i, spans) in highlighted_lines.into_iter().enumerate() {
-            if ctx.cancel_token.load(Ordering::Relaxed) {
-                return;
-            }
-            ctx.new_line(margin);
-            if ctx.line_numbers {
-                push_code_gutter(ctx, i + 1, digits, margin);
-            } else {
-                ctx.push_spaces(4, margin);
-            }
-            for (style, text) in spans {
-                ctx.push_str(&text, style, code_indent);
-            }
-        }
-        ctx.new_line(margin);
-        if has_label && !lang.is_empty() {
-            close_code_pill(ctx, margin, inner);
-        }
-        ctx.new_line(0);
-        ctx.new_line(0);
-        return;
-    }
-
-    // Plain path (no syntect, unknown lang, or unknown code theme)
+    // Plain path
     for (i, line) in cb.literal.lines().enumerate() {
         if ctx.cancel_token.load(Ordering::Relaxed) {
             return;
         }
         ctx.new_line(margin);
-        if ctx.line_numbers {
+        if ctx.opts.code_line_numbers {
             push_code_gutter(ctx, i + 1, digits, margin);
         } else {
             ctx.push_spaces(4, margin);
         }
         ctx.push_str(line, ctx.theme.paragraph, code_indent);
     }
+    let end_line = ctx.lines.len();
+
     ctx.new_line(margin);
     if has_label && !lang.is_empty() {
         close_code_pill(ctx, margin, inner);
     }
     ctx.new_line(0);
     ctx.new_line(0);
+
+    // Enqueue for async syntax highlighting if requested and valid
+    if ctx.opts.syntax_hl && cb.fenced && !lang.is_empty() {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::hash::DefaultHasher::new();
+        cb.literal.hash(&mut hasher);
+        let literal_fingerprint = hasher.finish();
+
+        let id = ctx.code_blocks.len() as u32;
+        ctx.code_blocks.push(PendingCodeBlock {
+            id,
+            literal: Arc::from(cb.literal.as_str()),
+            literal_fingerprint,
+            language: Arc::from(lang.as_str()),
+            fenced: cb.fenced,
+            depth,
+            source_line: ctx.current_source_line,
+            line_range: start_line..end_line,
+        });
+    }
 }
 
 /// Push the right-justified line-number gutter `{:>w} │ ` in muted style.
 fn push_code_gutter(ctx: &mut Ctx, idx: usize, digits: usize, margin: usize) {
-    let s = format!("{:>width$} │ ", idx, width = digits);
-    ctx.push_str(&s, ctx.theme.blockquote, margin);
+    use std::fmt::Write;
+    let st = ctx.theme.blockquote;
+    let line = ctx.ensure_line();
+    let can_coalesce = if let Some(last_span) = line.spans.last_mut() {
+        last_span.style == st
+    } else {
+        false
+    };
+    
+    if can_coalesce {
+        let last_span = line.spans.last_mut().unwrap();
+        let prev_len = last_span.text.len();
+        let _ = write!(last_span.text, "{:>width$} │ ", idx, width = digits);
+        let added_len = last_span.text.len() - prev_len;
+        line.visual_width += added_len;
+        ctx.col += added_len;
+    } else {
+        let mut text = String::with_capacity(digits + 4);
+        let _ = write!(text, "{:>width$} │ ", idx, width = digits);
+        let added_len = text.len();
+        line.spans.push(StyledSpan {
+            text,
+            style: st,
+        });
+        line.visual_width += added_len;
+        ctx.col += added_len;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1122,7 +1372,7 @@ fn render_inline<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, base_style: Style, ma
             }
         }
         NodeValue::Link(link) => {
-            let icon = link_icon(&link.url, ctx.icon_mode);
+            let icon = link_icon(&link.url, ctx.opts.icon_mode);
             if !icon.is_empty() {
                 ctx.push_str(icon, ctx.theme.blockquote, margin);
                 ctx.push(' ', ctx.theme.blockquote, margin);
@@ -1132,13 +1382,13 @@ fn render_inline<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, base_style: Style, ma
             }
             ctx.push(' ', base_style, margin);
             ctx.push_str(
-                &truncate_url_middle(&link.url, ctx.link_url_max),
+                &truncate_url_middle(&link.url, ctx.opts.link_url_max),
                 ctx.theme.link_url,
                 margin,
             );
         }
         NodeValue::Image(img) => {
-            let icon = crate::ui::get_icon("\u{f03e}", "\u{1f5bc}", ctx.icon_mode);
+            let icon = crate::ui::get_icon("\u{f03e}", "\u{1f5bc}", ctx.opts.icon_mode);
             if !icon.is_empty() {
                 ctx.push_str(icon, ctx.theme.blockquote, margin);
                 ctx.push(' ', ctx.theme.blockquote, margin);
@@ -1162,7 +1412,7 @@ fn render_inline<'a>(ctx: &mut Ctx, node: &'a AstNode<'a>, base_style: Style, ma
             if !img.url.is_empty() {
                 ctx.push(' ', base_style, margin);
                 ctx.push_str(
-                    &truncate_url_middle(&img.url, ctx.link_url_max),
+                    &truncate_url_middle(&img.url, ctx.opts.link_url_max),
                     ctx.theme.link_url,
                     margin,
                 );
@@ -1256,11 +1506,21 @@ mod tests {
         let mut opts = mk_opts(crate::config::IconMode::default());
         opts.wrap = wrap;
         opts.syntax_hl = syntax_hl;
-        render_builtin(content, cols, &theme, &opts, &cancel).0
+        render_layout(content, cols, &theme, &opts, &cancel).unwrap().document.lines().to_vec()
     }
 
     fn line_text(line: &RenderLine) -> String {
-        line.cells.iter().map(|(c, _)| c).collect()
+        line.spans.iter().map(|s| s.text.as_str()).collect()
+    }
+
+    fn line_cells(line: &RenderLine) -> Vec<(char, Style)> {
+        let mut cells = Vec::new();
+        for span in &line.spans {
+            for c in span.text.chars() {
+                cells.push((c, span.style));
+            }
+        }
+        cells
     }
 
     fn has_mod(st: Style, m: Modifier) -> bool {
@@ -1273,9 +1533,8 @@ mod tests {
         let h1_line = lines.iter().find(|l| line_text(l).contains("Heading 1"));
         assert!(h1_line.is_some(), "h1 should appear");
         // First non-space cell is '#' which should be bold
-        let h1_first = h1_line
-            .expect("lines is not empty")
-            .cells
+        let h1_cells = line_cells(h1_line.expect("lines is not empty"));
+        let h1_first = h1_cells
             .iter()
             .find(|(c, _)| *c != ' ')
             .map(|(_, s)| *s);
@@ -1287,9 +1546,8 @@ mod tests {
 
         let h2_line = lines.iter().find(|l| line_text(l).contains("Heading 2"));
         assert!(h2_line.is_some(), "h2 should appear");
-        let h2_first = h2_line
-            .expect("lines is not empty")
-            .cells
+        let h2_cells = line_cells(h2_line.expect("lines is not empty"));
+        let h2_first = h2_cells
             .iter()
             .find(|(c, _)| *c != ' ')
             .map(|(_, s)| *s);
@@ -1307,14 +1565,12 @@ mod tests {
         let h2 = lines.iter().find(|l| line_text(l).contains("Heading 2"));
         assert!(h2.is_some(), "H2 should contain heading text");
         assert!(
-            !h2.expect("lines is not empty")
-                .cells
+            !line_cells(h2.expect("lines is not empty"))
                 .iter()
                 .any(|(c, _)| *c == '#'),
             "heading should NOT contain hash prefix"
         );
     }
-
     #[test]
     fn renders_table_with_box_borders() {
         let lines = render_test("| A | B |\n|---|---|\n| 1 | 2 |\n", 80, true, false);
@@ -1454,16 +1710,14 @@ mod tests {
     fn control_chars_dropped_from_grid() {
         let lines = render_test("hello\nworld\tend\x07bell", 80, true, false);
         for line in &lines {
-            for &(ch, _) in &line.cells {
+            for &(ch, _) in &line_cells(line) {
                 assert!(!ch.is_control(), "cell char is control: {ch:?}");
             }
         }
-        // The \x07 (bell) is dropped; the printable "bell" text after it survives.
-        // Verify no literal bell byte survives in any cell.
         let has_bell_ch = lines
             .iter()
-            .flat_map(|l| &l.cells)
-            .any(|(c, _)| *c == '\x07');
+            .flat_map(|l| line_cells(l))
+            .any(|(c, _)| c == '\x07');
         assert!(!has_bell_ch, "bell char \\x07 should not appear in cells");
     }
 
@@ -1473,8 +1727,7 @@ mod tests {
         let text: String = lines.iter().map(line_text).collect::<Vec<_>>().join("\n");
         assert!(text.contains(' '), "tab should render as space");
         assert!(!text.contains('\t'), "no raw tab in output");
-        let mut cells = lines.iter().flat_map(|l| &l.cells);
-        let tab_pos = cells.position(|(c, _)| *c == '\t');
+        let tab_pos = lines.iter().flat_map(|l| line_cells(l)).position(|(c, _)| c == '\t');
         assert!(tab_pos.is_none(), "no tab char in any cell");
     }
 
@@ -1484,7 +1737,7 @@ mod tests {
         let non_blank_indices: Vec<usize> = lines
             .iter()
             .enumerate()
-            .filter(|(_, l)| !l.cells.iter().all(|(c, _)| c.is_whitespace()))
+            .filter(|(_, l)| !l.is_blank)
             .map(|(i, _)| i)
             .collect();
         assert!(
@@ -1504,7 +1757,7 @@ mod tests {
         let non_blank_indices: Vec<usize> = lines
             .iter()
             .enumerate()
-            .filter(|(_, l)| !l.cells.iter().all(|(c, _)| c.is_whitespace()))
+            .filter(|(_, l)| !l.is_blank)
             .map(|(i, _)| i)
             .collect();
         assert!(
@@ -1522,7 +1775,7 @@ mod tests {
     fn no_leading_blank_line() {
         let lines = render_test("first\n\nsecond", 80, true, false);
         assert!(
-            !lines[0].cells.iter().all(|(c, _)| c.is_whitespace()),
+            !lines[0].is_blank,
             "first row should not be blank"
         );
     }
@@ -1532,7 +1785,7 @@ mod tests {
         let lines = render_test("a\n\nb", 80, true, false);
         let last = lines.last().expect("lines is not empty");
         assert!(
-            !last.cells.iter().all(|(c, _)| c.is_whitespace()),
+            !last.is_blank,
             "last row should not be blank"
         );
     }
@@ -1543,7 +1796,7 @@ mod tests {
         let non_blank_indices: Vec<usize> = lines
             .iter()
             .enumerate()
-            .filter(|(_, l)| !l.cells.iter().all(|(c, _)| c.is_whitespace()))
+            .filter(|(_, l)| !l.is_blank)
             .map(|(i, _)| i)
             .collect();
         assert!(
@@ -1564,7 +1817,10 @@ mod tests {
         let non_blank_indices: Vec<usize> = lines
             .iter()
             .enumerate()
-            .filter(|(_, l)| !l.cells.iter().all(|(c, _)| c.is_whitespace() || *c == ' '))
+            .filter(|(_, l)| {
+                let text = line_text(l);
+                !text.chars().all(|c| c.is_whitespace() || c == ' ')
+            })
             .map(|(i, _)| i)
             .collect();
         // Should have 3 content rows (one per item)
@@ -1597,16 +1853,16 @@ mod tests {
         );
         let filtered: Vec<&RenderLine> = lines
             .iter()
-            .filter(|l| !l.cells.iter().all(|(c, _)| c.is_whitespace()))
+            .filter(|l| !l.is_blank)
             .collect();
         // The two list items should be on consecutive rows
         let docs = filtered
             .iter()
-            .position(|l| l.cells.iter().any(|(c, _)| *c == 'D' || *c == 'd'))
+            .position(|l| line_text(l).contains('D') || line_text(l).contains('d'))
             .filter(|_| {
                 filtered
                     .iter()
-                    .any(|l| l.cells.iter().any(|(c, _)| *c == 'N' || *c == 'n'))
+                    .any(|l| line_text(l).contains('N') || line_text(l).contains('n'))
             });
         assert!(docs.is_some(), "should find Documents and Notes items");
     }
@@ -1617,17 +1873,15 @@ mod tests {
         let lines = render_test("# Title\n", 30, true, false);
         assert!(!lines.is_empty(), "should have at least one line");
         let row0 = &lines[0];
-        // Row 0: two leading spaces + "Title" + trailing space = 8 cells, NOT full-width.
+        let row0_cells = line_cells(row0);
         let expected = "  Title ";
-        let text: String = row0.cells.iter().map(|(c, _)| c).collect();
+        let text: String = row0_cells.iter().map(|(c, _)| c).collect();
         assert_eq!(text, expected, "H1 row should be '  Title '");
-        // col 0: plain indent space (no badge bg)
         assert_eq!(
-            row0.cells[0].1.bg, None,
+            row0_cells[0].1.bg, None,
             "col 0 should be plain (no badge bg)"
         );
-        // cols 1..: badge cells have heading bg
-        for (i, (ch, st)) in row0.cells.iter().enumerate().skip(1) {
+        for (i, (ch, st)) in row0_cells.iter().enumerate().skip(1) {
             assert_eq!(
                 st.bg,
                 Some(theme_colors.heading),
@@ -1636,8 +1890,7 @@ mod tests {
                 ch
             );
         }
-        // Non-space cells should have fg = highlight_fg + BOLD
-        for (i, (ch, st)) in row0.cells.iter().enumerate() {
+        for (i, (ch, st)) in row0_cells.iter().enumerate() {
             if *ch != ' ' {
                 assert_eq!(
                     st.fg,
@@ -1654,9 +1907,8 @@ mod tests {
                 );
             }
         }
-        // No '#' char anywhere in row 0
         assert!(
-            !row0.cells.iter().any(|(c, _)| *c == '#'),
+            !row0_cells.iter().any(|(c, _)| *c == '#'),
             "H1 banner should not contain # prefix"
         );
     }
@@ -1666,13 +1918,12 @@ mod tests {
         let h2_line = lines.iter().find(|l| line_text(l).contains("Sub"));
         assert!(h2_line.is_some(), "H2 should contain Sub");
         let h2 = h2_line.expect("lines is not empty");
-        // No '#' char in the rendered output
+        let h2_cells = line_cells(h2);
         assert!(
-            !h2.cells.iter().any(|(c, _)| *c == '#'),
+            !h2_cells.iter().any(|(c, _)| *c == '#'),
             "H2 should NOT have # prefix"
         );
-        // No bg fill: cells after text should be absent/default
-        let h2_first = h2.cells.iter().find(|(c, _)| *c != ' ').map(|(_, s)| *s);
+        let h2_first = h2_cells.iter().find(|(c, _)| *c != ' ').map(|(_, s)| *s);
         assert!(h2_first.is_some(), "H2 has content");
         assert!(
             has_mod(h2_first.expect("lines is not empty"), Modifier::BOLD),
@@ -1737,7 +1988,7 @@ mod tests {
         let lines = render_test("~~deleted~~", 80, true, false);
         let mut found = false;
         for line in &lines {
-            for (c, st) in &line.cells {
+            for (c, st) in &line_cells(line) {
                 if *c == 'd' || *c == 'e' || *c == 'l' {
                     assert!(
                         has_mod(*st, Modifier::CROSSED_OUT),
@@ -1773,7 +2024,7 @@ mod tests {
             .iter()
             .find(|l| line_text(l).contains("Definition text"))
             .expect("lines is not empty");
-        let leading_spaces = def_line.cells.iter().take_while(|(c, _)| *c == ' ').count();
+        let leading_spaces = line_cells(def_line).iter().take_while(|(c, _)| *c == ' ').count();
         assert_eq!(
             leading_spaces, 6,
             "definition detail should be indented by 6 spaces"
@@ -1785,26 +2036,26 @@ mod tests {
         let theme_colors = AppThemeColors::default();
         let theme = MarkdownTheme::from_app_theme(&theme_colors);
         let cancel = AtomicBool::new(false);
-        let (lines, _) = render_builtin(
+        let lines = render_layout(
             "[repo](https://github.com/user/repo)",
             80,
             &theme,
             &mk_opts(crate::config::IconMode::Unicode),
             &cancel,
-        );
+        ).unwrap().document.lines().to_vec();
         let text = lines.iter().map(line_text).collect::<Vec<_>>().join("\n");
         assert!(
             text.contains("📦 repo"),
             "should contain github unicode icon"
         );
 
-        let (lines_none, _) = render_builtin(
+        let lines_none = render_layout(
             "[repo](https://github.com/user/repo)",
             80,
             &theme,
             &mk_opts(crate::config::IconMode::None),
             &cancel,
-        );
+        ).unwrap().document.lines().to_vec();
         let text_none = lines_none
             .iter()
             .map(line_text)
@@ -1821,23 +2072,23 @@ mod tests {
         let theme_colors = AppThemeColors::default();
         let theme = MarkdownTheme::from_app_theme(&theme_colors);
         let cancel = AtomicBool::new(false);
-        let (lines, _) = render_builtin(
+        let lines = render_layout(
             "![alt](url.png)",
             80,
             &theme,
             &mk_opts(crate::config::IconMode::Unicode),
             &cancel,
-        );
+        ).unwrap().document.lines().to_vec();
         let text = lines.iter().map(line_text).collect::<Vec<_>>().join("\n");
         assert!(text.contains("🖼 alt"), "should contain image unicode icon");
 
-        let (lines_none, _) = render_builtin(
+        let lines_none = render_layout(
             "![alt](url.png)",
             80,
             &theme,
             &mk_opts(crate::config::IconMode::None),
             &cancel,
-        );
+        ).unwrap().document.lines().to_vec();
         let text_none = lines_none
             .iter()
             .map(line_text)
@@ -1870,7 +2121,7 @@ mod tests {
         let cancel = AtomicBool::new(false);
         let mut opts = mk_opts(crate::config::IconMode::default());
         opts.code_line_numbers = true;
-        let (lines, _) = render_builtin("```txt\na\nb\nc\n```\n", 80, &theme, &opts, &cancel);
+        let lines = render_layout("```txt\na\nb\nc\n```\n", 80, &theme, &opts, &cancel).unwrap().document.lines().to_vec();
         let text: Vec<String> = lines.iter().map(line_text).collect();
         assert!(
             text.iter().any(|l| l.trim_start().starts_with("1 │ a")),
@@ -1886,13 +2137,13 @@ mod tests {
     fn code_block_lang_icon() {
         let theme = MarkdownTheme::from_app_theme(&AppThemeColors::default());
         let cancel = AtomicBool::new(false);
-        let (lines, _) = render_builtin(
+        let lines = render_layout(
             "```rust\nx\n```\n",
             80,
             &theme,
             &mk_opts(crate::config::IconMode::Unicode),
             &cancel,
-        );
+        ).unwrap().document.lines().to_vec();
         let text: Vec<String> = lines.iter().map(line_text).collect();
         assert!(
             text.iter().any(|l| l.contains('🦀')),
@@ -1920,7 +2171,7 @@ mod tests {
         let mut opts = mk_opts(crate::config::IconMode::None);
         opts.link_url_max = 20;
         let long = "[t](https://example.com/very/long/path/to/resource)";
-        let (lines, _) = render_builtin(long, 80, &theme, &opts, &cancel);
+        let lines = render_layout(long, 80, &theme, &opts, &cancel).unwrap().document.lines().to_vec();
         let text: Vec<String> = lines.iter().map(line_text).collect();
         let joined = text.join("");
         assert!(joined.contains('…'), "truncated");
@@ -1937,8 +2188,9 @@ mod tests {
             .iter()
             .find(|l| line_text(l).contains('x'))
             .expect("code line");
-        let idx = line.cells.iter().position(|(c, _)| *c == 'x').expect("x");
-        assert_eq!(line.cells[idx - 1].0, ' ', "leading padding space");
+        let cells = line_cells(line);
+        let idx = cells.iter().position(|(c, _)| *c == 'x').expect("x");
+        assert_eq!(cells[idx - 1].0, ' ', "leading padding space");
     }
 
     #[test]
@@ -1955,8 +2207,8 @@ mod tests {
         let mut opts = mk_opts(crate::config::IconMode::default());
         opts.wrap = true;
         opts.wrap_indicator = true;
-        let (lines, _) =
-            render_builtin("aaaaaaa\u{4e00}bcdefghijklmnop", 10, &theme, &opts, &cancel);
+        let lines =
+            render_layout("aaaaaaa\u{4e00}bcdefghijklmnop", 10, &theme, &opts, &cancel).unwrap().document.lines().to_vec();
         let text: Vec<String> = lines.iter().map(line_text).collect();
         assert!(
             text.iter().any(|l| l.ends_with('┄')),
@@ -1971,7 +2223,7 @@ mod tests {
         let mut opts = mk_opts(crate::config::IconMode::default());
         opts.syntax_hl = true;
         opts.code_theme = "does-not-exist".to_string();
-        let (lines, _) = render_builtin("```rust\nfn main(){}\n```\n", 80, &theme, &opts, &cancel);
+        let lines = render_layout("```rust\nfn main(){}\n```\n", 80, &theme, &opts, &cancel).unwrap().document.lines().to_vec();
         let text: Vec<String> = lines.iter().map(line_text).collect();
         assert!(
             text.iter().any(|l| l.contains("fn main")),

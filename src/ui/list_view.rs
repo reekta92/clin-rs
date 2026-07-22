@@ -1563,53 +1563,58 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
         }
 
         // Overlay decoded images on the preview text
-        if (content_is_current || app.list.pending_preview_update)
-            && let Some(crate::list_view::PreviewContent::Markdown(renderer)) =
-                &app.list.preview_content
-            && !renderer.is_pending()
-            && renderer.pages_built()
-            && let (Some(picker), Some(decode_tx)) = (&app.image_picker, &app.image_decode_tx)
+        if let Some(crate::list_view::PreviewContent::Markdown(renderer)) =
+            &app.list.preview_content
         {
-            let inner_pad = 2_u16;
-            let col_width = preview_rect.width.saturating_sub(2 * inner_pad);
-            let slots = renderer.current_page_image_slots();
-            let scroll = app.list.snapshot_scroll_offset;
-            for (line_idx, url) in slots {
-                let resolved = app.storage.resolve_attachment(url);
-                let path = resolved.unwrap_or_else(|| app.storage.notes_dir.join(url));
-                if !path.exists() {
-                    continue;
-                }
-                let key = crate::image_render::ImageKey { path, mtime: 0 };
-                if app.list.image_cache.get_proto(&key).is_none() {
-                    app.list
-                        .image_cache
-                        .request(key.clone(), 512, decode_tx, picker);
-                }
-                if let Some(proto) = app.list.image_cache.get_proto(&key) {
-                    let row = preview_rect.y + 1 + *line_idx as u16 - scroll;
-                    if row < preview_rect.y || row >= preview_rect.bottom() {
-                        continue;
-                    }
-                    let max_h = app.config.image.preview_rows as u16;
-                    let img_rect = Rect::new(
-                        preview_rect.x + inner_pad,
-                        row,
-                        col_width.min(preview_rect.width.saturating_sub(2)),
-                        max_h.min(preview_rect.bottom().saturating_sub(row)),
-                    );
-                    if img_rect.width > 1 && img_rect.height > 1 {
-                        frame.render_widget(Clear, img_rect);
-                        frame.render_widget(
-                            Block::default().style(app.app_theme.preview_bg_style()),
-                            img_rect,
-                        );
-                        frame.render_stateful_widget(
-                            ratatui_image::StatefulImage::default()
-                                .resize(ratatui_image::Resize::Fit(None)),
-                            img_rect,
-                            proto,
-                        );
+            if let Some(doc) = renderer.document() {
+                if let (Some(picker), Some(decode_tx)) = (&app.image_picker, &app.image_decode_tx) {
+                    let page = renderer.current_page_range();
+                    let scroll = app.list.snapshot_scroll_offset as usize;
+                    let start = page.start.saturating_add(scroll).min(page.end);
+                    let block = Block::default()
+                        .style(app.app_theme.preview_bg_style())
+                        .borders(Borders::NONE)
+                        .padding(Padding::new(2, 2, 1, 1));
+                    let inner = block.inner(preview_rect);
+                    let end = (start + inner.height as usize).min(page.end);
+                    let range = start..end;
+                    let col_width = inner.width;
+
+                    for (local_line_idx, url) in doc.image_slots(range) {
+                        let resolved = app.storage.resolve_attachment(url);
+                        let path = resolved.unwrap_or_else(|| app.storage.notes_dir.join(url));
+                        if !path.exists() {
+                            continue;
+                        }
+                        let key = crate::image_render::ImageKey { path, mtime: 0 };
+                        if app.list.image_cache.get_proto(&key).is_none() {
+                            app.list
+                                .image_cache
+                                .request(key.clone(), 512, decode_tx, picker);
+                        }
+                        if let Some(proto) = app.list.image_cache.get_proto(&key) {
+                            let row = inner.y + local_line_idx as u16;
+                            let max_h = app.config.image.preview_rows as u16;
+                            let img_rect = Rect::new(
+                                inner.x,
+                                row,
+                                col_width.min(inner.width),
+                                max_h.min(inner.bottom().saturating_sub(row)),
+                            );
+                            if img_rect.width > 1 && img_rect.height > 1 {
+                                frame.render_widget(Clear, img_rect);
+                                frame.render_widget(
+                                    Block::default().style(app.app_theme.preview_bg_style()),
+                                    img_rect,
+                                );
+                                frame.render_stateful_widget(
+                                    ratatui_image::StatefulImage::default()
+                                        .resize(ratatui_image::Resize::Fit(None)),
+                                    img_rect,
+                                    proto,
+                                );
+                            }
+                        }
                     }
                 }
             }

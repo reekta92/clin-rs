@@ -1567,20 +1567,15 @@ impl App {
                         }
                     }
                     " Select All " => {
-                        let grid = self
-                            .editor
-                            .md_preview_renderer
-                            .as_ref()
-                            .map(|r| r.grid())
-                            .unwrap_or(&[]);
-                        let last = grid.len().saturating_sub(1);
-                        let last_col = grid
-                            .last()
-                            .map(|r| r.len().saturating_sub(1))
-                            .unwrap_or(0);
-                        self.editor.read_sel_anchor = Some((0, 0));
-                        self.editor.read_sel_end = Some((last, last_col));
-                        self.editor.read_selecting = false;
+                        if let Some(doc) = self.editor.md_preview_renderer.as_ref().and_then(|r| r.document()) {
+                            let last_line_idx = doc.line_count().saturating_sub(1);
+                            let last_col = doc.line(last_line_idx)
+                                .map(|l| l.spans.iter().map(|s| s.text.chars().count()).sum::<usize>())
+                                .unwrap_or(0);
+                            self.editor.read_sel_anchor = Some((0, 0));
+                            self.editor.read_sel_end = Some((last_line_idx, last_col));
+                            self.editor.read_selecting = false;
+                        }
                     }
                     _ => {}
                 }

@@ -95,7 +95,7 @@ pub(crate) fn setup_layout(area: Rect) -> SetupLayout {
 
 pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
     let theme = &app.app_theme;
-    let Some(state) = app.setup_state.as_ref() else {
+    let Some(state) = app.setup_state.as_mut() else {
         return;
     };
 
@@ -226,10 +226,10 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
         theme: &AppThemeColors,
         icon_mode: crate::config::IconMode,
         keybinds: &crate::keybinds::Keybinds,
-        state: &SetupState,
+        state: &mut SetupState,
     ) {
         match selected {
-            0 | 1 => draw_preview_markdown(frame, area, theme, icon_mode),
+            0 | 1 => draw_preview_markdown(frame, area, theme, icon_mode, state),
             2 => draw_preview_hint_bar(frame, area, theme),
             3 => draw_preview_icons(frame, area, theme, icon_mode),
             4 => draw_preview_keybinds(frame, area, theme, keybinds),
@@ -242,6 +242,7 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
         area: Rect,
         theme: &AppThemeColors,
         icon_mode: crate::config::IconMode,
+        state: &mut SetupState,
     ) {
         let block = Block::default()
             .borders(Borders::ALL)
@@ -261,7 +262,6 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
 
         let cols = inner.width;
         let md_theme = crate::markdown::MarkdownTheme::from_app_theme(theme);
-        let cancel = std::sync::atomic::AtomicBool::new(false);
         let opts = crate::markdown::MdRenderOpts {
             syntax_hl: true,
             wrap: true,
@@ -271,11 +271,53 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
             wrap_indicator: false,
             link_url_max: 80,
         };
-        let (lines, _slots) =
-            crate::markdown::render_builtin(SETUP_PREVIEW_MD, cols, &md_theme, &opts, &cancel);
-        let grid: Vec<Vec<(char, ratatui::style::Style)>> =
-            lines.iter().map(|l| l.cells.clone()).collect();
-        frame.render_widget(crate::snapshot::RenderedSnapshot::new(&grid), inner);
+
+        let next_key = crate::setup::SetupPreviewKey {
+            cols,
+            theme: md_theme,
+            opts: opts.clone(),
+        };
+
+        let mut should_render = false;
+        if state.preview_key.is_none() {
+            should_render = true;
+        } else if let Some(ref cur) = state.preview_key {
+            if cur.theme != next_key.theme || cur.opts != next_key.opts {
+                should_render = true;
+                state.pending_preview_resize = None;
+            } else if cur.cols != next_key.cols {
+                let now = std::time::Instant::now();
+                if let Some((pending_w, _)) = state.pending_preview_resize {
+                    if pending_w != next_key.cols {
+                        state.pending_preview_resize = Some((next_key.cols, now));
+                    }
+                } else {
+                    state.pending_preview_resize = Some((next_key.cols, now));
+                }
+            }
+        }
+
+        if let Some((_, inst)) = state.pending_preview_resize {
+            if inst.elapsed() >= std::time::Duration::from_millis(50) {
+                should_render = true;
+                state.pending_preview_resize = None;
+            }
+        }
+
+        if should_render {
+            let viewport = crate::markdown::RenderViewport { start: 0, height: inner.height as usize };
+            state.preview_renderer.render_with(SETUP_PREVIEW_MD, cols, theme, &opts, viewport);
+            state.preview_key = Some(next_key);
+        }
+
+        if let Some(doc) = state.preview_renderer.document() {
+            let widget = crate::markdown::MarkdownWidget::new(doc, 0..inner.height as usize);
+            frame.render_widget(widget, inner);
+        } else {
+            let loading = Paragraph::new("Loading...")
+                .alignment(Alignment::Center);
+            frame.render_widget(loading, inner);
+        }
     }
 
     fn draw_preview_hint_bar(frame: &mut Frame, area: Rect, theme: &AppThemeColors) {

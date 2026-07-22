@@ -676,7 +676,7 @@ impl App {
         self.editor.read_sel_anchor = None;
         self.editor.read_sel_end = None;
         if let Some(renderer) = &self.editor.md_preview_renderer {
-            let src_line = renderer.grid_to_source_line(renderer.scroll_offset());
+            let src_line = renderer.rendered_to_source_line(renderer.scroll_offset());
             let max_line = self.editor.editor.lines().len().saturating_sub(1);
             let target = src_line.min(max_line);
             self.editor.body_viewport_row = target as u16;
@@ -694,7 +694,7 @@ impl App {
         self.editor.read_selecting = false;
         if let Some(renderer) = &mut self.editor.md_preview_renderer {
             let target_grid_line =
-                renderer.source_to_grid_line(self.editor.body_viewport_row as usize);
+                renderer.source_to_rendered_line(self.editor.body_viewport_row as usize);
             renderer.scroll_top(); // reset
             renderer.scroll_down(target_grid_line, self.editor.last_body_height as usize);
         }
@@ -794,6 +794,9 @@ mod tests {
             keybind_preset: 2, // Vim
             selected: 0,
             confirm_exit: false,
+            preview_renderer: crate::markdown::MarkdownRenderer::new(),
+            preview_key: None,
+            pending_preview_resize: None,
         });
 
         app.finish_setup();
@@ -827,6 +830,9 @@ mod tests {
             keybind_preset: 0,
             selected: 0, // Theme row
             confirm_exit: false,
+            preview_renderer: crate::markdown::MarkdownRenderer::new(),
+            preview_key: None,
+            pending_preview_resize: None,
         });
 
         // Cycle theme forward → apply_setup_live writes it to config.
@@ -858,6 +864,9 @@ mod tests {
             keybind_preset: 0,
             selected: 0,
             confirm_exit: false,
+            preview_renderer: crate::markdown::MarkdownRenderer::new(),
+            preview_key: None,
+            pending_preview_resize: None,
         });
 
         let esc = KeyEvent {

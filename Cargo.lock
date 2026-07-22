@@ -562,6 +562,7 @@ dependencies = [
  "fuzzy-matcher",
  "git2",
  "image",
+ "lru",
  "mimalloc",
  "notify",
  "parking_lot",

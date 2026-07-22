@@ -930,65 +930,36 @@ pub fn handle_edit_mouse(
     }
 }
 
-/// Map a mouse cell to (grid_row, grid_col) in the READ-mode rendered grid.
-fn read_grid_cell(app: &App, body_inner: Rect, col: u16, row: u16) -> (usize, usize) {
-    let scroll = app
-        .editor
-        .md_preview_renderer
-        .as_ref()
-        .map(|r| r.scroll_offset())
-        .unwrap_or(0);
-    let grid = app
-        .editor
-        .md_preview_renderer
-        .as_ref()
-        .map(|r| r.grid())
-        .unwrap_or(&[]);
-    // body_inner == preview rect in READ mode; snapshot padding is (left=2, top=1).
-    let gr = (row.saturating_sub(body_inner.y).saturating_sub(1) as usize).saturating_add(scroll);
-    let gc = (col.saturating_sub(body_inner.x).saturating_sub(2)) as usize;
-    let gr = gr.min(grid.len().saturating_sub(1));
-    let row_len = grid.get(gr).map(|r| r.len()).unwrap_or(0);
-    (gr, gc.min(row_len))
+/// Map a mouse cell to (rendered_row, char_index) in the READ-mode rendered document.
+fn read_grid_cell(app: &App, _body_inner: Rect, col: u16, row: u16) -> (usize, usize) {
+    let renderer = match app.editor.md_preview_renderer.as_ref() {
+        Some(r) => r,
+        None => return (0, 0),
+    };
+    let doc = match renderer.document() {
+        Some(d) => d,
+        None => return (0, 0),
+    };
+    let inner = match app.editor.markdown_inner_rect {
+        Some(rect) => rect,
+        None => return (0, 0),
+    };
+    let line_offset = renderer.scroll_offset();
+    crate::markdown::hit_test_markdown(doc, inner, line_offset, col, row).unwrap_or((0, 0))
 }
 
-/// Extract the selected text from READ-mode grid selection.
+/// Extract the selected text from READ-mode document selection.
 pub(crate) fn read_selection_text(app: &App) -> String {
     let (Some(a), Some(b)) = (app.editor.read_sel_anchor, app.editor.read_sel_end) else {
         return String::new();
     };
-    let grid = app
-        .editor
-        .md_preview_renderer
-        .as_ref()
-        .map(|r| r.grid())
-        .unwrap_or(&[]);
-    let (mut r1, mut c1) = a;
-    let (mut r2, mut c2) = b;
-    if (r2, c2) < (r1, c1) {
-        std::mem::swap(&mut r1, &mut r2);
-        std::mem::swap(&mut c1, &mut c2);
-    }
-    let mut out = String::new();
-    for r in r1..=r2 {
-        let row_cells = match grid.get(r) {
-            Some(r) => r,
-            None => continue,
-        };
-        let cs = if r == r1 { c1 } else { 0 };
-        let ce = if r == r2 {
-            c2.min(row_cells.len().saturating_sub(1))
-        } else {
-            row_cells.len().saturating_sub(1)
-        };
-        for c in cs..=ce {
-            if let Some((ch, _)) = row_cells.get(c) {
-                out.push(*ch);
-            }
-        }
-        if r != r2 {
-            out.push('\n');
-        }
-    }
-    out
+    let renderer = match app.editor.md_preview_renderer.as_ref() {
+        Some(r) => r,
+        None => return String::new(),
+    };
+    let doc = match renderer.document() {
+        Some(d) => d,
+        None => return String::new(),
+    };
+    crate::markdown::read_selection_text(doc, a, b)
 }

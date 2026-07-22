@@ -1254,6 +1254,11 @@ fn run_app(
     terminal: &mut Terminal<ratatui::backend::CrosstermBackend<Stdout>>,
     app: &mut App,
 ) -> Result<()> {
+    if app.config.core.syntax_highlighting {
+        let code_theme = std::sync::Arc::from(app.config.core.code_theme.as_str());
+        crate::markdown::prewarm_syntax_assets(code_theme);
+    }
+
     let mut focus = EditFocus::Body;
     let mut mouse_selecting = false;
     let mut mouse_dragged = false;

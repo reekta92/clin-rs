@@ -83,6 +83,7 @@ pub struct GrafAppState {
     pub last_preview_pane_height: u16,
     pub preview_scale: f64,
     preview_request_key: Option<PreviewRequestKey>,
+    pub pending_markdown_resize: Option<(u16, std::time::Instant)>,
     pub app_theme: crate::app_theme::AppThemeColors,
     pub preview_offset_x: f64,
     pub preview_offset_y: f64,
@@ -136,6 +137,7 @@ impl GrafAppState {
             preview_offset_x: 0.0,
             preview_offset_y: 0.0,
             preview_request_key: None,
+            pending_markdown_resize: None,
             app_theme: crate::app_theme::AppThemeColors::from_config(&config.ui),
             keybinds,
             seq_matcher,
@@ -173,20 +175,24 @@ impl GrafAppState {
         self.graph_state = None;
     }
 
-    pub fn poll_renderers(&mut self) -> bool {
+    pub fn poll_renderers(&mut self, config: &ClinConfig) -> bool {
+        let mut updated = false;
+
+        if let Some((_, inst)) = self.pending_markdown_resize {
+            if inst.elapsed() >= std::time::Duration::from_millis(50) {
+                self.pending_markdown_resize = None;
+                self.update_preview(config, None);
+                updated = true;
+            }
+        }
+
         if let Some(PreviewContent::Markdown(renderer)) = &mut self.preview_content {
             if renderer.poll() {
-                if !renderer.pages_built() {
-                    let visible = 34u16;
-                    renderer.build_pages(visible, self.app_theme.preview_bg());
-                }
-                true
-            } else {
-                false
+                updated = true;
             }
-        } else {
-            false
         }
+
+        updated
     }
 
     fn build_preview_key(&self) -> Option<PreviewRequestKey> {
@@ -242,13 +248,14 @@ impl GrafAppState {
 
         if new_key != self.preview_request_key {
             let key = new_key.unwrap();
+            let old_width = self.preview_request_key.as_ref().map(|k| k.width);
             self.preview_note_id = Some(key.note_id.clone());
             self.preview_request_key = Some(key);
-            self.update_preview(config);
+            self.update_preview(config, old_width);
         }
     }
 
-    pub fn update_preview(&mut self, config: &ClinConfig) {
+    pub fn update_preview(&mut self, config: &ClinConfig, old_width: Option<u16>) {
         let Some(key) = self.preview_request_key.clone() else {
             self.preview_content = None;
             return;
@@ -330,9 +337,39 @@ impl GrafAppState {
         }
 
         if let Ok(note) = self.storage.load_note(&key.note_id) {
-            let mut renderer = MarkdownRenderer::new(key.width);
+            let mut renderer = match self.preview_content.take() {
+                Some(PreviewContent::Markdown(r)) => *r,
+                _ => MarkdownRenderer::new(),
+            };
             let opts = crate::markdown::MdRenderOpts::from_config(config);
-            renderer.render_with(&note.content, key.width, &self.app_theme, &opts);
+            let height = key.height;
+            let viewport = crate::markdown::RenderViewport { start: renderer.visible_start(), height: height as usize };
+
+            let content_changed = renderer.is_content_changed(&note.content);
+            let mut should_render = false;
+            if content_changed || renderer.document().is_none() {
+                should_render = true;
+            } else if let Some(old_w) = old_width {
+                if old_w == key.width {
+                    renderer.set_viewport(viewport.start, viewport.height);
+                } else {
+                    let now = std::time::Instant::now();
+                    if let Some((w, _)) = self.pending_markdown_resize {
+                        if w != key.width {
+                            self.pending_markdown_resize = Some((key.width, now));
+                        }
+                    } else {
+                        self.pending_markdown_resize = Some((key.width, now));
+                    }
+                }
+            } else {
+                should_render = true;
+            }
+
+            if should_render {
+                renderer.render_with(&note.content, key.width, &self.app_theme, &opts, viewport);
+                self.pending_markdown_resize = None;
+            }
             self.preview_content = Some(PreviewContent::Markdown(Box::new(renderer)));
         } else {
             self.preview_content = None;
@@ -349,7 +386,7 @@ pub enum EventAction {
 impl GrafAppState {
     pub fn overlay_update(&mut self, config: &mut crate::config::ClinConfig) {
         self.sync_preview(config);
-        let _ = self.poll_renderers();
+        let _ = self.poll_renderers(config);
     }
 }
 

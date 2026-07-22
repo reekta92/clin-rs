@@ -50,7 +50,7 @@ pub fn draw_preview_pane(
     } else {
         match content {
             Some(PreviewContent::Markdown(renderer))
-                if !renderer.is_pending() && renderer.pages_built() =>
+                if renderer.document().is_some() =>
             {
                 if renderer.is_content_empty() {
                     let placeholder = Paragraph::new(Line::from(vec![Span::styled(
@@ -65,16 +65,19 @@ pub fn draw_preview_pane(
                             .padding(Padding::new(2, 2, 1, 1)),
                     );
                     frame.render_widget(placeholder, rect);
-                } else if let Some(page_grid) = renderer.current_page_grid() {
-                    let snapshot = crate::snapshot::RenderedSnapshot::new(page_grid)
-                        .scroll_offset(scroll_offset)
-                        .block(
-                            Block::default()
-                                .style(theme.preview_bg_style())
-                                .borders(Borders::NONE)
-                                .padding(Padding::new(2, 2, 1, 1)),
-                        );
-                    frame.render_widget(snapshot, rect);
+                } else if let Some(doc) = renderer.document() {
+                    let block = Block::default()
+                        .style(theme.preview_bg_style())
+                        .borders(Borders::NONE)
+                        .padding(Padding::new(2, 2, 1, 1));
+                    let inner = block.inner(rect);
+                    frame.render_widget(block, rect);
+
+                    let page = renderer.current_page_range();
+                    let start = page.start.saturating_add(scroll_offset as usize).min(page.end);
+                    let widget_range = start..page.end;
+                    let widget = crate::markdown::MarkdownWidget::new(doc, widget_range);
+                    frame.render_widget(widget, inner);
                     if renderer.total_pages() > 1 {
                         let indicator = format!(
                             " {}/{} ",

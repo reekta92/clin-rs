@@ -667,9 +667,30 @@ impl App {
 
     pub fn poll_renderers(&mut self) -> bool {
         let mut updated = false;
-        // In READ mode the rendered markdown is the primary view, so the
-        // preview renderer must always be present even when the split-pane
-        // preview toggle is off (it defaults off).
+
+        // Check resize debounces
+        if let Some((_, inst)) = self.list.pending_markdown_resize {
+            if inst.elapsed() >= Duration::from_millis(50) {
+                self.list.pending_markdown_resize = None;
+                self.update_preview();
+                updated = true;
+            }
+        }
+        if let Some((_, inst)) = self.editor.pending_markdown_resize {
+            if inst.elapsed() >= Duration::from_millis(50) {
+                self.editor.pending_markdown_resize = None;
+                self.update_editor_markdown_preview();
+                updated = true;
+            }
+        }
+        if let Some(ref mut setup) = self.setup_state {
+            if let Some((_, inst)) = setup.pending_preview_resize {
+                if inst.elapsed() >= Duration::from_millis(50) {
+                    updated = true; // Trigger redraw so draw loop handles it
+                }
+            }
+        }
+
         if self.editor.edit_mode == crate::editor::EditMode::Read
             && self.editor.md_preview_renderer.is_none()
         {
@@ -688,6 +709,7 @@ impl App {
 
         let list_active = self.list.preview_enabled || self.preview_fullscreen;
         if list_active
+            && self.list.pending_markdown_resize.is_none()
             && (self.list.preview_content_width != Some(self.desired_list_preview_width())
                 || self.list.preview_content_height != Some(self.desired_list_preview_height())
                 || self.list.preview_content_scale != Some(self.list.preview_scale)
@@ -699,6 +721,7 @@ impl App {
         }
         let edit_active = self.editor.editor_preview_enabled || self.preview_fullscreen;
         if edit_active
+            && self.editor.pending_markdown_resize.is_none()
             && (self.editor.preview_content_width != Some(self.desired_editor_preview_width())
                 || self.editor.preview_content_height != Some(self.desired_editor_preview_height()))
         {
@@ -706,20 +729,28 @@ impl App {
             updated = true;
         }
 
-        if let Some(PreviewContent::Markdown(renderer)) = &mut self.list.preview_content
-            && renderer.poll()
-        {
-            if !renderer.pages_built() {
-                let visible = self.list.last_preview_pane_height.saturating_sub(2).max(10);
-                renderer.build_pages(visible, self.app_theme.preview_bg());
+        // Poll renderers
+        if let Some(PreviewContent::Markdown(renderer)) = &mut self.list.preview_content {
+            if renderer.poll() {
+                updated = true;
             }
-            updated = true;
         }
-        if let Some(renderer) = &mut self.editor.md_preview_renderer
-            && renderer.poll()
-        {
-            updated = true;
+        if let Some(renderer) = &mut self.editor.md_preview_renderer {
+            if renderer.poll() {
+                updated = true;
+            }
         }
+        if let Some(renderer) = &mut self.editor.link_preview_renderer {
+            if renderer.poll() {
+                updated = true;
+            }
+        }
+        if let Some(ref mut setup) = self.setup_state {
+            if setup.preview_renderer.poll() {
+                updated = true;
+            }
+        }
+
         updated
     }
 
@@ -1149,12 +1180,43 @@ impl App {
 
                 if let Ok(note) = self.storage.load_note(id) {
                     let width = self.desired_list_preview_width();
-                    let mut renderer = MarkdownRenderer::new(width);
+                    let mut renderer = match self.list.preview_content.take() {
+                        Some(PreviewContent::Markdown(r)) => *r,
+                        _ => MarkdownRenderer::new(),
+                    };
                     let opts = crate::markdown::MdRenderOpts::from_config(&self.config);
-                    renderer.render_with(&note.content, width, &self.app_theme, &opts);
+                    let height = self.desired_list_preview_height();
+                    renderer.set_page_height(height as usize);
+                    let viewport = crate::markdown::RenderViewport { start: renderer.visible_start(), height: height as usize };
+
+                    let content_changed = renderer.is_content_changed(&note.content);
+                    let mut should_render = false;
+                    if content_changed || renderer.document().is_none() {
+                        should_render = true;
+                    } else if let Some(old_w) = self.list.preview_content_width {
+                        if old_w == width {
+                            renderer.set_viewport(viewport.start, viewport.height);
+                        } else {
+                            let now = std::time::Instant::now();
+                            if let Some((w, _)) = self.list.pending_markdown_resize {
+                                if w != width {
+                                    self.list.pending_markdown_resize = Some((width, now));
+                                }
+                            } else {
+                                self.list.pending_markdown_resize = Some((width, now));
+                            }
+                        }
+                    } else {
+                        should_render = true;
+                    }
+
+                    if should_render {
+                        renderer.render_with(&note.content, width, &self.app_theme, &opts, viewport);
+                        self.list.preview_content_width = Some(width);
+                        self.list.pending_markdown_resize = None;
+                    }
                     self.list.preview_content = Some(PreviewContent::Markdown(Box::new(renderer)));
-                    self.list.preview_content_width = Some(width);
-                    self.list.preview_content_height = Some(self.desired_list_preview_height());
+                    self.list.preview_content_height = Some(height);
                     self.list.preview_content_scale = Some(self.list.preview_scale);
                     self.list.preview_content_offset_x = Some(self.list.preview_offset_x);
                     self.list.preview_content_offset_y = Some(self.list.preview_offset_y);
@@ -1251,12 +1313,43 @@ impl App {
                 }
 
                 let width = self.desired_list_preview_width();
-                let mut renderer = MarkdownRenderer::new(width);
+                let mut renderer = match self.list.preview_content.take() {
+                    Some(PreviewContent::Markdown(r)) => *r,
+                    _ => MarkdownRenderer::new(),
+                };
                 let opts = crate::markdown::MdRenderOpts::from_config(&self.config);
-                renderer.render_with(&md, width, &self.app_theme, &opts);
+                let height = self.desired_list_preview_height();
+                renderer.set_page_height(height as usize);
+                let viewport = crate::markdown::RenderViewport { start: renderer.visible_start(), height: height as usize };
+
+                let content_changed = renderer.is_content_changed(&md);
+                let mut should_render = false;
+                if content_changed || renderer.document().is_none() {
+                    should_render = true;
+                } else if let Some(old_w) = self.list.preview_content_width {
+                    if old_w == width {
+                        renderer.set_viewport(viewport.start, viewport.height);
+                    } else {
+                        let now = std::time::Instant::now();
+                        if let Some((w, _)) = self.list.pending_markdown_resize {
+                            if w != width {
+                                self.list.pending_markdown_resize = Some((width, now));
+                            }
+                        } else {
+                            self.list.pending_markdown_resize = Some((width, now));
+                        }
+                    }
+                } else {
+                    should_render = true;
+                }
+
+                if should_render {
+                    renderer.render_with(&md, width, &self.app_theme, &opts, viewport);
+                    self.list.preview_content_width = Some(width);
+                    self.list.pending_markdown_resize = None;
+                }
                 self.list.preview_content = Some(PreviewContent::Markdown(Box::new(renderer)));
-                self.list.preview_content_width = Some(width);
-                self.list.preview_content_height = Some(self.desired_list_preview_height());
+                self.list.preview_content_height = Some(height);
                 self.list.preview_content_scale = Some(self.list.preview_scale);
                 self.list.preview_content_offset_x = Some(self.list.preview_offset_x);
                 self.list.preview_content_offset_y = Some(self.list.preview_offset_y);
@@ -1278,12 +1371,43 @@ impl App {
                     md.push_str("*No subnotes.*\n");
                 }
                 let width = self.desired_list_preview_width();
-                let mut renderer = MarkdownRenderer::new(width);
+                let mut renderer = match self.list.preview_content.take() {
+                    Some(PreviewContent::Markdown(r)) => *r,
+                    _ => MarkdownRenderer::new(),
+                };
                 let opts = crate::markdown::MdRenderOpts::from_config(&self.config);
-                renderer.render_with(&md, width, &self.app_theme, &opts);
+                let height = self.desired_list_preview_height();
+                renderer.set_page_height(height as usize);
+                let viewport = crate::markdown::RenderViewport { start: renderer.visible_start(), height: height as usize };
+
+                let content_changed = renderer.is_content_changed(&md);
+                let mut should_render = false;
+                if content_changed || renderer.document().is_none() {
+                    should_render = true;
+                } else if let Some(old_w) = self.list.preview_content_width {
+                    if old_w == width {
+                        renderer.set_viewport(viewport.start, viewport.height);
+                    } else {
+                        let now = std::time::Instant::now();
+                        if let Some((w, _)) = self.list.pending_markdown_resize {
+                            if w != width {
+                                self.list.pending_markdown_resize = Some((width, now));
+                            }
+                        } else {
+                            self.list.pending_markdown_resize = Some((width, now));
+                        }
+                    }
+                } else {
+                    should_render = true;
+                }
+
+                if should_render {
+                    renderer.render_with(&md, width, &self.app_theme, &opts, viewport);
+                    self.list.preview_content_width = Some(width);
+                    self.list.pending_markdown_resize = None;
+                }
                 self.list.preview_content = Some(PreviewContent::Markdown(Box::new(renderer)));
-                self.list.preview_content_width = Some(width);
-                self.list.preview_content_height = Some(self.desired_list_preview_height());
+                self.list.preview_content_height = Some(height);
                 self.list.preview_content_scale = Some(self.list.preview_scale);
                 self.list.preview_content_offset_x = Some(self.list.preview_offset_x);
                 self.list.preview_content_offset_y = Some(self.list.preview_offset_y);
@@ -1307,13 +1431,44 @@ impl App {
                     .and_then(|(_, subs)| subs.get(*subnote_idx));
                 if let Some(sub) = sub {
                     let width = self.desired_list_preview_width();
-                    let mut renderer = MarkdownRenderer::new(width);
+                    let mut renderer = match self.list.preview_content.take() {
+                        Some(PreviewContent::Markdown(r)) => *r,
+                        _ => MarkdownRenderer::new(),
+                    };
                     let opts = crate::markdown::MdRenderOpts::from_config(&self.config);
                     let md = format!("# {}\n\n{}", sub.title, sub.content);
-                    renderer.render_with(&md, width, &self.app_theme, &opts);
+                    let height = self.desired_list_preview_height();
+                    renderer.set_page_height(height as usize);
+                    let viewport = crate::markdown::RenderViewport { start: renderer.visible_start(), height: height as usize };
+
+                    let content_changed = renderer.is_content_changed(&md);
+                    let mut should_render = false;
+                    if content_changed || renderer.document().is_none() {
+                        should_render = true;
+                    } else if let Some(old_w) = self.list.preview_content_width {
+                        if old_w == width {
+                            renderer.set_viewport(viewport.start, viewport.height);
+                        } else {
+                            let now = std::time::Instant::now();
+                            if let Some((w, _)) = self.list.pending_markdown_resize {
+                                if w != width {
+                                    self.list.pending_markdown_resize = Some((width, now));
+                                }
+                            } else {
+                                self.list.pending_markdown_resize = Some((width, now));
+                            }
+                        }
+                    } else {
+                        should_render = true;
+                    }
+
+                    if should_render {
+                        renderer.render_with(&md, width, &self.app_theme, &opts, viewport);
+                        self.list.preview_content_width = Some(width);
+                        self.list.pending_markdown_resize = None;
+                    }
                     self.list.preview_content = Some(PreviewContent::Markdown(Box::new(renderer)));
-                    self.list.preview_content_width = Some(width);
-                    self.list.preview_content_height = Some(self.desired_list_preview_height());
+                    self.list.preview_content_height = Some(height);
                     self.list.preview_content_scale = Some(self.list.preview_scale);
                     self.list.preview_content_offset_x = Some(self.list.preview_offset_x);
                     self.list.preview_content_offset_y = Some(self.list.preview_offset_y);
@@ -1350,12 +1505,39 @@ impl App {
 
         let content = self.editor.editor.lines().join("\n");
         let width = self.desired_editor_preview_width();
-        let mut renderer = MarkdownRenderer::new(width);
+        let mut renderer = self.editor.md_preview_renderer.take().unwrap_or_else(MarkdownRenderer::new);
         let opts = crate::markdown::MdRenderOpts::from_config(&self.config);
-        renderer.render_with(&content, width, &self.app_theme, &opts);
+        let height = self.desired_editor_preview_height();
+        let viewport = crate::markdown::RenderViewport { start: renderer.visible_start(), height: height as usize };
+
+        let content_changed = renderer.is_content_changed(&content);
+        let mut should_render = false;
+        if content_changed || renderer.document().is_none() {
+            should_render = true;
+        } else if let Some(old_w) = self.editor.preview_content_width {
+            if old_w == width {
+                renderer.set_viewport(viewport.start, viewport.height);
+            } else {
+                let now = std::time::Instant::now();
+                if let Some((w, _)) = self.editor.pending_markdown_resize {
+                    if w != width {
+                        self.editor.pending_markdown_resize = Some((width, now));
+                    }
+                } else {
+                    self.editor.pending_markdown_resize = Some((width, now));
+                }
+            }
+        } else {
+            should_render = true;
+        }
+
+        if should_render {
+            renderer.render_with(&content, width, &self.app_theme, &opts, viewport);
+            self.editor.preview_content_width = Some(width);
+            self.editor.pending_markdown_resize = None;
+        }
         self.editor.md_preview_renderer = Some(renderer);
-        self.editor.preview_content_width = Some(width);
-        self.editor.preview_content_height = Some(self.desired_editor_preview_height());
+        self.editor.preview_content_height = Some(height);
     }
 }
 

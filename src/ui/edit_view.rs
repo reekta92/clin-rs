@@ -271,32 +271,28 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             }
         }
 
+        app.editor.markdown_inner_rect = None;
         if let Some(renderer) = &app.editor.md_preview_renderer {
-            if !renderer.is_pending() && renderer.has_grid() {
-                let snapshot = crate::snapshot::RenderedSnapshot::new(renderer.grid())
-                    .scroll_offset(renderer.scroll_offset() as u16)
-                    .block(
-                        Block::default()
-                            .style(app.app_theme.preview_bg_style())
-                            .borders(Borders::NONE)
-                            .padding(Padding::new(2, 2, 1, 1)),
-                    );
-                frame.render_widget(snapshot, preview_area_rect);
+            if let Some(doc) = renderer.document() {
+                let block = Block::default()
+                    .style(app.app_theme.preview_bg_style())
+                    .borders(Borders::NONE)
+                    .padding(Padding::new(2, 2, 1, 1));
+                let inner = block.inner(preview_area_rect);
+                frame.render_widget(block, preview_area_rect);
+                app.editor.markdown_inner_rect = Some(inner);
+
+                let scroll = renderer.scroll_offset();
+                let widget_range = scroll..(scroll + inner.height as usize);
+                let widget = crate::markdown::MarkdownWidget::new(doc, widget_range.clone());
+                frame.render_widget(widget, inner);
 
                 // Overlay images continuously
                 if let (Some(picker), Some(decode_tx)) =
                     (&app.editor.image_picker, &app.editor.image_decode_tx)
                 {
-                    let inner_pad = 2_u16;
-                    let col_width = preview_area_rect.width.saturating_sub(2 * inner_pad);
-                    for (line_idx, url) in renderer.raw_image_slots() {
-                        let scroll = renderer.scroll_offset();
-                        if *line_idx < scroll
-                            || *line_idx >= scroll + preview_area_rect.height as usize
-                        {
-                            continue;
-                        }
-
+                    let col_width = inner.width;
+                    for (local_line_idx, url) in doc.image_slots(widget_range) {
                         let resolved = app.storage.resolve_attachment(url);
                         let path = resolved.unwrap_or_else(|| app.storage.notes_dir.join(url));
                         if !path.exists() {
@@ -308,13 +304,13 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                         }
 
                         if let Some(proto) = app.editor.image_cache.get_proto(&key) {
-                            let row = preview_area_rect.y + 1 + (*line_idx - scroll) as u16;
+                            let row = inner.y + local_line_idx as u16;
                             let max_h = app.config.image.preview_rows as u16;
                             let img_rect = Rect::new(
-                                preview_area_rect.x + inner_pad,
+                                inner.x,
                                 row,
-                                col_width.min(preview_area_rect.width.saturating_sub(2)),
-                                max_h.min(preview_area_rect.bottom().saturating_sub(row)),
+                                col_width.min(inner.width),
+                                max_h.min(inner.bottom().saturating_sub(row)),
                             );
                             if img_rect.width > 1 && img_rect.height > 1 {
                                 frame.render_widget(ratatui::widgets::Clear, img_rect);
@@ -335,46 +331,62 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
 
                 // Selection overlay for READ mode
                 if app.editor.edit_mode == EditMode::Read {
-                    if let (Some(a), Some(b)) =
-                        (app.editor.read_sel_anchor, app.editor.read_sel_end)
-                    {
-                        let (mut r1, mut c1) = a;
-                        let (mut r2, mut c2) = b;
-                        if (r2, c2) < (r1, c1) {
-                            std::mem::swap(&mut r1, &mut r2);
-                            std::mem::swap(&mut c1, &mut c2);
-                        }
-                        let buf = frame.buffer_mut();
-                        let top = renderer.scroll_offset();
-                        let vis_hi = top + preview_area_rect.height as usize;
-                        let hl = Style::default()
-                            .fg(app.app_theme.highlight_fg)
-                            .bg(app.app_theme.highlight_bg);
-
-                        for r in r1..=r2 {
-                            if r < top || r >= vis_hi {
-                                continue;
+                    if let (Some(inner), Some(doc)) = (app.editor.markdown_inner_rect, renderer.document()) {
+                        if let (Some(a), Some(b)) = (app.editor.read_sel_anchor, app.editor.read_sel_end) {
+                            let (mut r1, mut c1) = a;
+                            let (mut r2, mut c2) = b;
+                            if (r2, c2) < (r1, c1) {
+                                std::mem::swap(&mut r1, &mut r2);
+                                std::mem::swap(&mut c1, &mut c2);
                             }
-                            let row_cells = match renderer.grid().get(r) {
-                                Some(r) => r,
-                                None => continue,
-                            };
-                            let y = preview_area_rect.y + 1 + (r - top) as u16; // Padding top=1
-                            let cs = if r == r1 { c1 } else { 0 };
-                            let ce = if r == r2 {
-                                c2.min(row_cells.len().saturating_sub(1))
-                            } else {
-                                row_cells.len().saturating_sub(1)
-                            };
-                            for c in cs..=ce {
-                                let x = preview_area_rect.x + 2 + c as u16; // Padding left=2
-                                if let Some(cell) = buf.cell_mut((x, y)) {
-                                    cell.set_style(hl);
+                            
+                            let buf = frame.buffer_mut();
+                            let top = renderer.scroll_offset();
+                            let vis_hi = top + inner.height as usize;
+                            let hl = Style::default()
+                                .fg(app.app_theme.highlight_fg)
+                                .bg(app.app_theme.highlight_bg);
+
+                            for r in r1..=r2 {
+                                if r < top || r >= vis_hi {
+                                    continue;
+                                }
+                                let line = match doc.line(r) {
+                                    Some(l) => l,
+                                    None => continue,
+                                };
+                                let y = inner.y + (r - top) as u16;
+                                
+                                let total_chars: usize = line.spans.iter().map(|s| s.text.chars().count()).sum();
+                                let char_start = if r == r1 { c1.min(total_chars) } else { 0 };
+                                let char_end = if r == r2 { c2.min(total_chars) } else { total_chars };
+                                
+                                for i in char_start..char_end {
+                                    let col_start = line.visual_column_of_char(i);
+                                    let col_end = line.visual_column_of_char(i + 1);
+                                    for col in col_start..col_end {
+                                        let x = inner.x + col as u16;
+                                        if x < inner.right() {
+                                            if let Some(cell) = buf.cell_mut((x, y)) {
+                                                cell.set_style(hl);
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
                 }
+            } else {
+                let loading = Paragraph::new("Rendering preview...")
+                    .style(Style::default().fg(app.app_theme.muted))
+                    .block(
+                        Block::default()
+                            .style(app.app_theme.preview_bg_style())
+                            .borders(Borders::NONE)
+                            .padding(Padding::new(2, 2, 1, 1)),
+                    );
+                frame.render_widget(loading, preview_area_rect);
             }
         }
     } else if app.editor.edit_mode == EditMode::Edit {
@@ -643,21 +655,21 @@ fn draw_link_preview_popup(frame: &mut Frame, area: Rect, app: &mut App) {
     let Some(renderer) = &mut app.editor.link_preview_renderer else {
         return;
     };
-    if renderer.is_pending() {
+    renderer.set_page_height(inner.height as usize);
+    renderer.set_viewport(0, inner.height as usize);
+    if let Some(doc) = renderer.document() {
+        let padding_block = Block::default()
+            .style(app.app_theme.preview_bg_style())
+            .borders(Borders::NONE)
+            .padding(Padding::new(1, 1, 0, 0));
+        let padded_inner = padding_block.inner(inner);
+        frame.render_widget(padding_block, inner);
+
+        let range = renderer.current_page_range();
+        let widget = crate::markdown::MarkdownWidget::new(doc, range);
+        frame.render_widget(widget, padded_inner);
+    } else {
         let p = Paragraph::new("Loading…").style(Style::default().fg(app.app_theme.muted));
         frame.render_widget(p, inner);
-        return;
-    }
-    if !renderer.pages_built() {
-        return;
-    }
-    if let Some(grid) = renderer.current_page_grid() {
-        let snapshot = crate::snapshot::RenderedSnapshot::new(grid).block(
-            Block::default()
-                .style(app.app_theme.preview_bg_style())
-                .borders(Borders::NONE)
-                .padding(Padding::new(1, 1, 0, 0)),
-        );
-        frame.render_widget(snapshot, inner);
     }
 }
