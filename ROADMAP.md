@@ -84,6 +84,7 @@
 - [ ] **Create links** — create/remove wikilinks from graph view
 - [ ] **Assign tags** — tag notes directly from graph
 - [ ] **Right-click menu** — context actions on nodes
+- [ ] **Looking glass** — similar to minimap, a enlarged version of the selected note for easier identification.
 
 #### Pinstar View
 - [ ] **Insert note links** — embed note references as objects

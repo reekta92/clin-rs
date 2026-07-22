@@ -265,6 +265,38 @@ fn collect_static_components(
     components
 }
 
+const STATIC_LAYOUT_SLOT_RESERVE: f64 = 1.15;
+const MAX_STATIC_LAYOUT_ANGULAR_JITTER: f64 = 0.15;
+
+fn stable_layout_hash(component_key: &str, node_key: &str, ring: usize, stream: u8) -> u64 {
+    let mut hash = 0xcbf29ce484222325u64;
+    let prime = 0x100000001b3u64;
+
+    let mut update_hash = |byte: u8| {
+        hash ^= byte as u64;
+        hash = hash.wrapping_mul(prime);
+    };
+
+    for &b in component_key.as_bytes() {
+        update_hash(b);
+    }
+    update_hash(0xff);
+    for &b in node_key.as_bytes() {
+        update_hash(b);
+    }
+    update_hash(0xff);
+    for &b in &(ring as u64).to_le_bytes() {
+        update_hash(b);
+    }
+    update_hash(stream);
+
+    hash
+}
+
+fn stable_layout_unit(component_key: &str, node_key: &str, ring: usize, stream: u8) -> f64 {
+    stable_layout_hash(component_key, node_key, ring, stream) as f64 / u64::MAX as f64
+}
+
 fn layout_static_components(
     components: &mut [StaticComponent],
     spacing: f64,
@@ -329,16 +361,28 @@ fn layout_static_components(
                             break;
                         }
                         let sin_val = (std::f64::consts::PI / sc as f64).sin();
-                        if 2.0 * ring_radius * sin_val >= spacing - 1e-9 {
+                        if 2.0 * ring_radius * sin_val >= spacing * STATIC_LAYOUT_SLOT_RESERVE {
                             slot_capacity = sc;
                             break;
                         }
                     }
 
                     let used_slots = std::cmp::min(group_remaining, slot_capacity);
+                    let sector_angle = 2.0 * std::f64::consts::PI / used_slots as f64;
+                    let minimum_angle = 2.0 * ((spacing / (2.0 * ring_radius)).min(1.0)).asin();
+                    let available_slack = (sector_angle - minimum_angle).max(0.0);
+                    let jitter_limit = if used_slots <= 1 {
+                        0.0
+                    } else {
+                        MAX_STATIC_LAYOUT_ANGULAR_JITTER.min(available_slack * 0.45)
+                    };
+                    let ring_phase = stable_layout_unit(&c.key, "", r, 0) * 2.0 * std::f64::consts::PI;
+
                     for slot in 0..used_slots {
                         let node_idx = group[group_idx + slot];
-                        let angle = 2.0 * std::f64::consts::PI * (slot as f64) / (used_slots as f64);
+                        let node_key = &c.nodes[node_idx].key;
+                        let signed_jitter = (stable_layout_unit(&c.key, node_key, r, 1) * 2.0 - 1.0) * jitter_limit;
+                        let angle = ring_phase + sector_angle * slot as f64 + signed_jitter;
                         let rx = ring_radius * angle.cos();
                         let ry = ring_radius * angle.sin();
                         c.nodes[node_idx].relative_pos = (rx, ry);
@@ -908,24 +952,106 @@ mod tests {
                 assert!(dist >= min_dist - 1e-4, "Components {} and {} overlap: dist={}, min_dist={}", i, j, dist, min_dist);
             }
         }
+
+        // Derive angles around comps[0].center (which is (0,0))
+        let angle_a = (loc_a.y as f64).atan2(loc_a.x as f64);
+        let angle_b = (loc_b.y as f64).atan2(loc_b.x as f64);
+        let angle_c = (loc_c.y as f64).atan2(loc_c.x as f64);
+
+        // Normalize angles to [0, 2PI)
+        let norm_angle = |ang: f64| {
+            let mut a = ang % (2.0 * std::f64::consts::PI);
+            if a < 0.0 {
+                a += 2.0 * std::f64::consts::PI;
+            }
+            a
+        };
+        let mut angles = vec![norm_angle(angle_a), norm_angle(angle_b), norm_angle(angle_c)];
+        angles.sort_by(|x, y| x.partial_cmp(y).unwrap());
+
+        // Successive gaps including wraparound
+        let gap0 = angles[1] - angles[0];
+        let gap1 = angles[2] - angles[1];
+        let gap2 = (angles[0] + 2.0 * std::f64::consts::PI) - angles[2];
+
+        // Assert at least two gaps differ by more than 1e-4
+        let diff01 = (gap0 - gap1).abs();
+        let diff12 = (gap1 - gap2).abs();
+        let diff20 = (gap2 - gap0).abs();
+        assert!(diff01 > 1e-4 || diff12 > 1e-4 || diff20 > 1e-4, "Angular gaps are uniform: {:?}, diffs: {}, {}, {}", angles, diff01, diff12, diff20);
     }
 
     #[test]
     fn test_static_cluster_layout_stability_and_validation() {
+        // Direct helper assertions
+        assert_eq!(stable_layout_hash("a", "b", 1, 0), 0x1eb4c9ab64b11751u64);
+        assert_eq!(stable_layout_hash("cluster-a", "node-b", 2, 1), 0x628ba93c5bd07ea9u64);
+        assert!((stable_layout_unit("a", "b", 1, 0) - (0x1eb4c9ab64b11751u64 as f64 / u64::MAX as f64)).abs() < 1e-9);
+
         let summaries_1 = vec![
             NoteSummary {
-                id: "A".to_string(),
-                title: "A".to_string(),
+                id: "hub".to_string(),
+                title: "hub".to_string(),
                 updated_at: 0,
                 folder: "".to_string(),
                 tags: vec![],
                 pinned: false,
-                links: vec!["B".to_string()],
+                links: vec!["a".to_string(), "b".to_string(), "c".to_string()],
                 size_bytes: 0,
             },
             NoteSummary {
-                id: "B".to_string(),
-                title: "B".to_string(),
+                id: "a".to_string(),
+                title: "a".to_string(),
+                updated_at: 0,
+                folder: "".to_string(),
+                tags: vec![],
+                pinned: false,
+                links: vec!["leaf_a".to_string()],
+                size_bytes: 0,
+            },
+            NoteSummary {
+                id: "b".to_string(),
+                title: "b".to_string(),
+                updated_at: 0,
+                folder: "".to_string(),
+                tags: vec![],
+                pinned: false,
+                links: vec!["leaf_b".to_string()],
+                size_bytes: 0,
+            },
+            NoteSummary {
+                id: "c".to_string(),
+                title: "c".to_string(),
+                updated_at: 0,
+                folder: "".to_string(),
+                tags: vec![],
+                pinned: false,
+                links: vec!["leaf_c".to_string()],
+                size_bytes: 0,
+            },
+            NoteSummary {
+                id: "leaf_a".to_string(),
+                title: "leaf_a".to_string(),
+                updated_at: 0,
+                folder: "".to_string(),
+                tags: vec![],
+                pinned: false,
+                links: vec![],
+                size_bytes: 0,
+            },
+            NoteSummary {
+                id: "leaf_b".to_string(),
+                title: "leaf_b".to_string(),
+                updated_at: 0,
+                folder: "".to_string(),
+                tags: vec![],
+                pinned: false,
+                links: vec![],
+                size_bytes: 0,
+            },
+            NoteSummary {
+                id: "leaf_c".to_string(),
+                title: "leaf_c".to_string(),
                 updated_at: 0,
                 folder: "".to_string(),
                 tags: vec![],
@@ -937,8 +1063,8 @@ mod tests {
 
         let summaries_2 = vec![
             NoteSummary {
-                id: "B".to_string(),
-                title: "B".to_string(),
+                id: "leaf_c".to_string(),
+                title: "leaf_c".to_string(),
                 updated_at: 0,
                 folder: "".to_string(),
                 tags: vec![],
@@ -947,40 +1073,93 @@ mod tests {
                 size_bytes: 0,
             },
             NoteSummary {
-                id: "A".to_string(),
-                title: "A".to_string(),
+                id: "leaf_b".to_string(),
+                title: "leaf_b".to_string(),
                 updated_at: 0,
                 folder: "".to_string(),
                 tags: vec![],
                 pinned: false,
-                links: vec!["B".to_string()],
+                links: vec![],
+                size_bytes: 0,
+            },
+            NoteSummary {
+                id: "leaf_a".to_string(),
+                title: "leaf_a".to_string(),
+                updated_at: 0,
+                folder: "".to_string(),
+                tags: vec![],
+                pinned: false,
+                links: vec![],
+                size_bytes: 0,
+            },
+            NoteSummary {
+                id: "c".to_string(),
+                title: "c".to_string(),
+                updated_at: 0,
+                folder: "".to_string(),
+                tags: vec![],
+                pinned: false,
+                links: vec!["leaf_c".to_string()],
+                size_bytes: 0,
+            },
+            NoteSummary {
+                id: "b".to_string(),
+                title: "b".to_string(),
+                updated_at: 0,
+                folder: "".to_string(),
+                tags: vec![],
+                pinned: false,
+                links: vec!["leaf_b".to_string()],
+                size_bytes: 0,
+            },
+            NoteSummary {
+                id: "a".to_string(),
+                title: "a".to_string(),
+                updated_at: 0,
+                folder: "".to_string(),
+                tags: vec![],
+                pinned: false,
+                links: vec!["leaf_a".to_string()],
+                size_bytes: 0,
+            },
+            NoteSummary {
+                id: "hub".to_string(),
+                title: "hub".to_string(),
+                updated_at: 0,
+                folder: "".to_string(),
+                tags: vec![],
+                pinned: false,
+                links: vec!["a".to_string(), "b".to_string(), "c".to_string()],
                 size_bytes: 0,
             },
         ];
 
         let config = ClinConfig::default();
-        
+
         let mut gs1 = GraphState::new(&summaries_1, &config).unwrap();
         gs1.apply_static_cluster_layout(80.0);
-        let loc1_a = gs1.simulation.get_graph().node_weights().find(|n| n.data.note_id == "A").unwrap().location;
-        let loc1_b = gs1.simulation.get_graph().node_weights().find(|n| n.data.note_id == "B").unwrap().location;
 
         let mut gs2 = GraphState::new(&summaries_2, &config).unwrap();
         gs2.apply_static_cluster_layout(80.0);
-        let loc2_a = gs2.simulation.get_graph().node_weights().find(|n| n.data.note_id == "A").unwrap().location;
-        let loc2_b = gs2.simulation.get_graph().node_weights().find(|n| n.data.note_id == "B").unwrap().location;
 
-        assert!((loc1_a.x - loc2_a.x).abs() < 1e-4f32);
-        assert!((loc1_a.y - loc2_a.y).abs() < 1e-4f32);
-        assert!((loc1_b.x - loc2_b.x).abs() < 1e-4f32);
-        assert!((loc1_b.y - loc2_b.y).abs() < 1e-4f32);
+        let ids = vec!["hub", "a", "b", "c", "leaf_a", "leaf_b", "leaf_c"];
+        for id in ids {
+            let loc1 = gs1.simulation.get_graph().node_weights().find(|n| n.data.note_id == id).unwrap().location;
+            let loc2 = gs2.simulation.get_graph().node_weights().find(|n| n.data.note_id == id).unwrap().location;
+            assert!((loc1.x - loc2.x).abs() < 1e-4f32, "Node {} x mismatch", id);
+            assert!((loc1.y - loc2.y).abs() < 1e-4f32, "Node {} y mismatch", id);
+        }
 
-        // Expect lexical first node at center, and second node exactly spacing away
-        let c0 = (0.0, 0.0);
-        assert!((loc1_a.x as f64 - c0.0).abs() < 1e-4);
-        assert!((loc1_a.y as f64 - c0.1).abs() < 1e-4);
-        let dist_b = (loc1_b.x as f64 - c0.0).hypot(loc1_b.y as f64 - c0.1);
-        assert!((dist_b - 80.0).abs() < 1e-4);
+        // Expect hub at center, and a, b, c exactly spacing away
+        let loc_hub = gs1.simulation.get_graph().node_weights().find(|n| n.data.note_id == "hub").unwrap().location;
+        assert!((loc_hub.x as f64).abs() < 1e-4);
+        assert!((loc_hub.y as f64).abs() < 1e-4);
+
+        for id in ["a", "b", "c"] {
+            let loc = gs1.simulation.get_graph().node_weights().find(|n| n.data.note_id == id).unwrap().location;
+            let dist = (loc.x as f64).hypot(loc.y as f64);
+            assert!((dist - 80.0).abs() < 1e-4);
+        }
 
         let spacing_invalid = vec![0.0, -10.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY];
         for s in spacing_invalid {
