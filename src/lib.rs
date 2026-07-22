@@ -1339,6 +1339,13 @@ fn run_app(
                 return Err(e.into());
             }
             let now = std::time::Instant::now();
+            if app.mode == ViewMode::Graph {
+                if let Some(ref mut graph_state) = app.graph_state {
+                    if graph_state.config_errors.is_empty() {
+                        graph_state.record_frame(now);
+                    }
+                }
+            }
             let elapsed = now.duration_since(app.last_frame_time).as_secs_f64();
             app.fps = app.fps * 0.9 + (1.0 / elapsed.max(0.001)) * 0.1;
             app.last_frame_time = now;
@@ -1408,6 +1415,14 @@ fn run_app(
         if app.mode != ViewMode::List && need_redraw {
             if let Err(e) = terminal.draw(|frame| crate::ui::draw_ui(frame, app, focus)) {
                 return Err(e.into());
+            }
+            let now = std::time::Instant::now();
+            if app.mode == ViewMode::Graph {
+                if let Some(ref mut graph_state) = app.graph_state {
+                    if graph_state.config_errors.is_empty() {
+                        graph_state.record_frame(now);
+                    }
+                }
             }
         } else if app.mode == ViewMode::List && need_redraw {
             list_dirty = true;

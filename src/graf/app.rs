@@ -1,4 +1,53 @@
+struct CanvasFpsSampler {
+    window_started_at: Option<std::time::Instant>,
+    frames_in_window: u32,
+    published_fps: Option<f64>,
+}
+
+impl Default for CanvasFpsSampler {
+    fn default() -> Self {
+        Self {
+            window_started_at: None,
+            frames_in_window: 0,
+            published_fps: None,
+        }
+    }
+}
+
+impl CanvasFpsSampler {
+    fn record_frame(&mut self, now: std::time::Instant) {
+        match self.window_started_at {
+            None => {
+                self.window_started_at = Some(now);
+                self.frames_in_window = 0;
+            }
+            Some(start) => {
+                self.frames_in_window += 1;
+                let elapsed = now.duration_since(start);
+                if elapsed >= std::time::Duration::from_millis(500) {
+                    let elapsed_secs = elapsed.as_secs_f64();
+                    if elapsed_secs > 0.0 {
+                        self.published_fps = Some(self.frames_in_window as f64 / elapsed_secs);
+                    }
+                    self.window_started_at = Some(now);
+                    self.frames_in_window = 0;
+                }
+            }
+        }
+    }
+}
+
 use anyhow::Context;
+#[derive(Clone, Debug, PartialEq)]
+struct PreviewRequestKey {
+    note_id: String,
+    width: u16,
+    height: u16,
+    scale: f64,
+    offset_x: f64,
+    offset_y: f64,
+}
+
 use parking_lot::RwLock;
 use std::sync::Arc;
 
@@ -32,19 +81,16 @@ pub struct GrafAppState {
     pub preview_note_id: Option<String>,
     pub last_preview_pane_width: u16,
     pub last_preview_pane_height: u16,
-    pub preview_content_width: Option<u16>,
-    pub preview_content_height: Option<u16>,
     pub preview_scale: f64,
-    pub preview_content_scale: Option<f64>,
+    preview_request_key: Option<PreviewRequestKey>,
     pub app_theme: crate::app_theme::AppThemeColors,
     pub preview_offset_x: f64,
     pub preview_offset_y: f64,
-    pub preview_content_offset_x: Option<f64>,
-    pub preview_content_offset_y: Option<f64>,
     pub keybinds: Keybinds,
     pub seq_matcher: crate::keybinds::KeyMatcher,
     pub mouse_pos: Option<(u16, u16)>,
     pub preview_drag_last_pos: Option<(u16, u16)>,
+    canvas_fps_sampler: CanvasFpsSampler,
 }
 
 impl Drop for GrafAppState {
@@ -64,12 +110,11 @@ impl GrafAppState {
     ) -> anyhow::Result<Self> {
         let graph_state = crate::graf::graph::GraphState::new(&summaries, config)?;
         let state = Arc::new(RwLock::new(graph_state));
-        let (kill_tx, kill_rx) = std::sync::mpsc::channel();
-        crate::graf::physics::start_physics(state.clone(), config, kill_rx);
+        let graph_kill_tx = crate::graf::physics::start_physics(state.clone(), config);
 
         Ok(Self {
             graph_state: Some(state),
-            graph_kill_tx: Some(kill_tx),
+            graph_kill_tx,
             graph_mouse_state: GraphMouseState::default(),
             storage,
             notes: summaries,
@@ -87,20 +132,25 @@ impl GrafAppState {
             preview_note_id: None,
             last_preview_pane_width: 0,
             last_preview_pane_height: 0,
-            preview_content_width: None,
-            preview_content_height: None,
             preview_scale: 1.0,
-            preview_content_scale: None,
             preview_offset_x: 0.0,
             preview_offset_y: 0.0,
-            preview_content_offset_x: None,
-            preview_content_offset_y: None,
+            preview_request_key: None,
             app_theme: crate::app_theme::AppThemeColors::from_config(&config.ui),
             keybinds,
             seq_matcher,
             preview_drag_last_pos: None,
             mouse_pos: None,
+            canvas_fps_sampler: CanvasFpsSampler::default(),
         })
+    }
+
+    pub fn canvas_fps(&self) -> Option<f64> {
+        self.canvas_fps_sampler.published_fps
+    }
+
+    pub fn record_frame(&mut self, now: std::time::Instant) {
+        self.canvas_fps_sampler.record_frame(now);
     }
 
     pub fn refresh_simulation(&mut self, config: &ClinConfig) {
@@ -109,10 +159,9 @@ impl GrafAppState {
         }
         if let Ok(graph_state) = crate::graf::graph::GraphState::new(&self.notes, config) {
             let state = Arc::new(RwLock::new(graph_state));
-            let (kill_tx, kill_rx) = std::sync::mpsc::channel();
-            crate::graf::physics::start_physics(state.clone(), config, kill_rx);
+            let graph_kill_tx = crate::graf::physics::start_physics(state.clone(), config);
             self.graph_state = Some(state);
-            self.graph_kill_tx = Some(kill_tx);
+            self.graph_kill_tx = graph_kill_tx;
             self.search_popup = None;
         }
     }
@@ -140,11 +189,8 @@ impl GrafAppState {
         }
     }
 
-    pub fn sync_preview(&mut self, config: &ClinConfig) {
-        if !self.preview_enabled {
-            return;
-        }
-        let selected_note_id = if let Some(gs) = &self.graph_state {
+    fn build_preview_key(&self) -> Option<PreviewRequestKey> {
+        let note_id = if let Some(gs) = &self.graph_state {
             let guard = gs.read();
             if let Some(idx) = guard.selected_node {
                 guard
@@ -157,34 +203,60 @@ impl GrafAppState {
             }
         } else {
             None
+        }?;
+
+        let is_draw = note_id.ends_with(".draw");
+        let is_canvas = note_id.ends_with(".canvas");
+        let width = if is_draw || is_canvas {
+            self.last_preview_pane_width
+        } else {
+            self.last_preview_pane_width.saturating_sub(2).max(40)
         };
 
-        let size_changed = self.preview_content_width != Some(self.last_preview_pane_width)
-            || self.preview_content_height != Some(self.last_preview_pane_height)
-            || self.preview_content_scale != Some(self.preview_scale)
-            || self.preview_content_offset_x != Some(self.preview_offset_x)
-            || self.preview_content_offset_y != Some(self.preview_offset_y);
+        Some(PreviewRequestKey {
+            note_id,
+            width,
+            height: self.last_preview_pane_height,
+            scale: self.preview_scale,
+            offset_x: self.preview_offset_x,
+            offset_y: self.preview_offset_y,
+        })
+    }
 
-        if selected_note_id != self.preview_note_id || size_changed {
-            self.preview_note_id = selected_note_id;
+    pub fn sync_preview(&mut self, config: &ClinConfig) {
+        if !self.preview_enabled {
+            self.preview_content = None;
+            self.preview_note_id = None;
+            self.preview_request_key = None;
+            return;
+        }
+
+        let new_key = self.build_preview_key();
+
+        if new_key.is_none() {
+            self.preview_content = None;
+            self.preview_note_id = None;
+            self.preview_request_key = None;
+            return;
+        }
+
+        if new_key != self.preview_request_key {
+            let key = new_key.unwrap();
+            self.preview_note_id = Some(key.note_id.clone());
+            self.preview_request_key = Some(key);
             self.update_preview(config);
         }
     }
 
     pub fn update_preview(&mut self, config: &ClinConfig) {
-        if !self.preview_enabled {
-            self.preview_content = None;
-            return;
-        }
-
-        let Some(id) = self.preview_note_id.clone() else {
+        let Some(key) = self.preview_request_key.clone() else {
             self.preview_content = None;
             return;
         };
 
-        let is_draw = id.ends_with(".draw");
-        let is_canvas = id.ends_with(".canvas");
-        let is_clin = id.ends_with(".clin");
+        let is_draw = key.note_id.ends_with(".draw");
+        let is_canvas = key.note_id.ends_with(".canvas");
+        let is_clin = key.note_id.ends_with(".clin");
 
         if config.list.preview_encryption && is_clin {
             self.preview_content = None;
@@ -192,77 +264,25 @@ impl GrafAppState {
         }
 
         if is_draw {
-            let path = self.storage.note_path(&id);
+            let path = self.storage.note_path(&key.note_id);
             match std::fs::read_to_string(path) {
                 Ok(content) => {
                     match serde_json::from_str::<crate::draw::state::DrawData>(&content) {
                         Ok(data) => {
-                            let width = self.last_preview_pane_width;
-                            let height = self.last_preview_pane_height;
-                            let scale = self.preview_scale;
-                            let offset_x = self.preview_offset_x;
-                            let offset_y = self.preview_offset_y;
                             let grid = crate::snapshot::render_draw_snapshot_with_size(
                                 &data,
                                 &self.app_theme,
                                 config.ui.icon_mode,
-                                width,
-                                height,
-                                scale,
-                                offset_x,
-                                offset_y,
+                                key.width,
+                                key.height,
+                                key.scale,
+                                key.offset_x,
+                                key.offset_y,
                             );
                             self.preview_content = Some(PreviewContent::DrawGrid {
                                 data: Box::new(data),
                                 grid,
                             });
-                            self.preview_content_width = Some(width);
-                            self.preview_content_height = Some(height);
-                            self.preview_content_scale = Some(scale);
-                            self.preview_content_offset_x = Some(offset_x);
-                            self.preview_content_offset_y = Some(offset_y);
-                        }
-                        Err(_) => {
-                            self.preview_content = None;
-                        }
-                    }
-                }
-                Err(_) => {
-                    self.preview_content = None;
-                }
-            }
-            return;
-        }
-        if is_canvas {
-            let path = self.storage.note_path(&id);
-            match std::fs::read_to_string(path) {
-                Ok(content) => {
-                    match serde_json::from_str::<crate::pinstar::data::CanvasData>(&content) {
-                        Ok(data) => {
-                            let width = self.last_preview_pane_width;
-                            let height = self.last_preview_pane_height;
-                            let scale = self.preview_scale;
-                            let offset_x = self.preview_offset_x;
-                            let offset_y = self.preview_offset_y;
-                            let grid = crate::snapshot::render_canvas_snapshot(
-                                &data,
-                                &self.app_theme,
-                                config.ui.icon_mode,
-                                width,
-                                height,
-                                scale,
-                                offset_x,
-                                offset_y,
-                            );
-                            self.preview_content = Some(PreviewContent::CanvasGrid {
-                                data: Box::new(data),
-                                grid,
-                            });
-                            self.preview_content_width = Some(width);
-                            self.preview_content_height = Some(height);
-                            self.preview_content_scale = Some(scale);
-                            self.preview_content_offset_x = Some(offset_x);
-                            self.preview_content_offset_y = Some(offset_y);
                         }
                         Err(_) => {
                             self.preview_content = None;
@@ -276,17 +296,44 @@ impl GrafAppState {
             return;
         }
 
-        if let Ok(note) = self.storage.load_note(&id) {
-            let width = self.last_preview_pane_width.saturating_sub(2).max(40);
-            let mut renderer = MarkdownRenderer::new(width);
+        if is_canvas {
+            let path = self.storage.note_path(&key.note_id);
+            match std::fs::read_to_string(path) {
+                Ok(content) => {
+                    match serde_json::from_str::<crate::pinstar::data::CanvasData>(&content) {
+                        Ok(data) => {
+                            let grid = crate::snapshot::render_canvas_snapshot(
+                                &data,
+                                &self.app_theme,
+                                config.ui.icon_mode,
+                                key.width,
+                                key.height,
+                                key.scale,
+                                key.offset_x,
+                                key.offset_y,
+                            );
+                            self.preview_content = Some(PreviewContent::CanvasGrid {
+                                data: Box::new(data),
+                                grid,
+                            });
+                        }
+                        Err(_) => {
+                            self.preview_content = None;
+                        }
+                    }
+                }
+                Err(_) => {
+                    self.preview_content = None;
+                }
+            }
+            return;
+        }
+
+        if let Ok(note) = self.storage.load_note(&key.note_id) {
+            let mut renderer = MarkdownRenderer::new(key.width);
             let opts = crate::markdown::MdRenderOpts::from_config(config);
-            renderer.render_with(&note.content, width, &self.app_theme, &opts);
+            renderer.render_with(&note.content, key.width, &self.app_theme, &opts);
             self.preview_content = Some(PreviewContent::Markdown(Box::new(renderer)));
-            self.preview_content_width = Some(width);
-            self.preview_content_height = Some(self.last_preview_pane_height);
-            self.preview_content_scale = Some(self.preview_scale);
-            self.preview_content_offset_x = Some(self.preview_offset_x);
-            self.preview_content_offset_y = Some(self.preview_offset_y);
         } else {
             self.preview_content = None;
         }
@@ -437,6 +484,7 @@ fn handle_event(
                         } else {
                             app_state.preview_content = None;
                             app_state.preview_note_id = None;
+                            app_state.preview_request_key = None;
                         }
                         return Ok(None);
                     }
@@ -623,3 +671,124 @@ fn run_search(app_state: &mut GrafAppState, config: &crate::config::ClinConfig) 
     popup.selected = 0;
     popup.scroll_offset = 0;
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn test_canvas_fps_sampler_deterministic() {
+        let mut sampler = CanvasFpsSampler::default();
+
+        let t0 = Instant::now();
+        sampler.record_frame(t0);
+        assert_eq!(sampler.published_fps, None);
+        assert_eq!(sampler.frames_in_window, 0);
+
+        let t1 = t0 + Duration::from_millis(100);
+        sampler.record_frame(t1);
+        let t2 = t0 + Duration::from_millis(200);
+        sampler.record_frame(t2);
+        let t3 = t0 + Duration::from_millis(300);
+        sampler.record_frame(t3);
+        let t4 = t0 + Duration::from_millis(400);
+        sampler.record_frame(t4);
+        assert_eq!(sampler.published_fps, None);
+        assert_eq!(sampler.frames_in_window, 4);
+
+        let t5 = t0 + Duration::from_millis(500);
+        sampler.record_frame(t5);
+        assert_eq!(sampler.published_fps, Some(10.0));
+        assert_eq!(sampler.frames_in_window, 0);
+        assert_eq!(sampler.window_started_at, Some(t5));
+
+        let t6 = t5 + Duration::from_millis(100);
+        sampler.record_frame(t6);
+        assert_eq!(sampler.published_fps, Some(10.0));
+        assert_eq!(sampler.frames_in_window, 1);
+    }
+
+    #[test]
+    fn test_sync_preview_request_key_identity() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let notes_dir = temp_dir.path().join("notes");
+        let config_dir = temp_dir.path().join("config");
+        std::fs::create_dir_all(&notes_dir).unwrap();
+        std::fs::create_dir_all(&config_dir).unwrap();
+        std::fs::write(notes_dir.join("a.md"), "content a").unwrap();
+
+        let storage = crate::storage::Storage {
+            data_dir: temp_dir.path().join("data"),
+            config_dir,
+            notes_dir,
+            templates_dir: temp_dir.path().join("templates"),
+            key: [0u8; 32],
+            skip_dir_patterns: Vec::new(),
+        };
+        std::fs::create_dir_all(&storage.data_dir).unwrap();
+        std::fs::create_dir_all(&storage.templates_dir).unwrap();
+
+        let mut config = crate::config::ClinConfig::default();
+        config.graf.filter.show_orphan = true;
+        let keybinds = crate::keybinds::Keybinds::default();
+        let seq_matcher = crate::keybinds::KeyMatcher::new();
+
+        let mut app_state = GrafAppState::new(
+            &config,
+            storage,
+            vec![crate::storage::NoteSummary {
+                id: "a.md".to_string(),
+                title: "a".to_string(),
+                updated_at: 0,
+                folder: "".to_string(),
+                tags: vec![],
+                pinned: false,
+                links: vec![],
+                size_bytes: 0,
+            }],
+            vec![],
+            keybinds,
+            seq_matcher,
+        ).unwrap();
+
+        let gs_ref = app_state.graph_state.as_ref().unwrap();
+        let node_idx = {
+            let guard = gs_ref.read();
+            guard.simulation.get_graph().node_indices().next().unwrap()
+        };
+
+        gs_ref.write().selected_node = Some(node_idx);
+        app_state.preview_enabled = true;
+        app_state.last_preview_pane_width = 100;
+        app_state.last_preview_pane_height = 40;
+
+        app_state.sync_preview(&config);
+        assert!(app_state.preview_request_key.is_some());
+        let original_key = app_state.preview_request_key.clone().unwrap();
+        assert_eq!(original_key.note_id, "a.md");
+        assert_eq!(original_key.width, 98);
+
+        app_state.sync_preview(&config);
+        assert_eq!(app_state.preview_request_key.as_ref().unwrap(), &original_key);
+
+        app_state.last_preview_pane_width = 80;
+        app_state.sync_preview(&config);
+        let new_key = app_state.preview_request_key.clone().unwrap();
+        assert_ne!(new_key, original_key);
+        assert_eq!(new_key.width, 78);
+
+        let note_path = app_state.storage.note_path("a.md");
+        let _ = std::fs::remove_file(note_path);
+
+        app_state.last_preview_pane_width = 60;
+        app_state.sync_preview(&config);
+        assert!(app_state.preview_request_key.is_some());
+        assert!(app_state.preview_content.is_none());
+
+        let key_after_fail = app_state.preview_request_key.clone().unwrap();
+
+        app_state.sync_preview(&config);
+        assert_eq!(app_state.preview_request_key.as_ref().unwrap(), &key_after_fail);
+    }
+}
+

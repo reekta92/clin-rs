@@ -108,6 +108,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     ctx.app_status = Some(app.status.as_ref());
                     ctx.vault_path = Some(&app.storage.data_dir);
                     ctx.date_format = Some(&app.date_format);
+                    ctx.graph_fps = graf.canvas_fps();
                     if let Some(graph_state) = &graf.graph_state {
                         guard = graph_state.read();
                         ctx.graph = Some(&guard);

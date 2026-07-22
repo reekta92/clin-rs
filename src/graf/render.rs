@@ -264,9 +264,9 @@ impl Shape for GraphNodesShape<'_> {
 
 #[derive(Clone)]
 pub struct LabelData {
+    pub node_idx: NodeIndex,
     pub x: f64,
     pub y: f64,
-    pub text: String,
 }
 
 pub struct FeatureFlags {
@@ -291,6 +291,11 @@ pub struct RenderCache {
 
     pub topology_dirty: bool,
     pub minimap_dirty: bool,
+
+    pub visible_nodes: HashSet<NodeIndex>,
+    pub selected_neighbors: HashSet<NodeIndex>,
+    pub label_texts: HashMap<NodeIndex, String>,
+    pub cached_label_max_length: usize,
 }
 
 impl Default for RenderCache {
@@ -313,6 +318,10 @@ impl RenderCache {
             minimap_grid: Vec::new(),
             topology_dirty: true,
             minimap_dirty: true,
+            visible_nodes: HashSet::new(),
+            selected_neighbors: HashSet::new(),
+            label_texts: HashMap::new(),
+            cached_label_max_length: usize::MAX,
         }
     }
 
@@ -407,6 +416,16 @@ impl RenderCache {
         };
 
         self.topology_dirty = false;
+        self.label_texts.clear();
+        for idx in graph.node_indices() {
+            let node = &graph[idx];
+            let truncated = crate::graf::util::truncate(
+                &node.data.title,
+                config.graf.visual.label_max_length,
+            );
+            self.label_texts.insert(idx, truncated);
+        }
+        self.cached_label_max_length = config.graf.visual.label_max_length;
     }
 
     pub fn fill_edges(
@@ -415,7 +434,6 @@ impl RenderCache {
         config: &ClinConfig,
         edge_color: Color,
         tier: LodTier,
-        visible_nodes: &HashSet<NodeIndex>,
     ) {
         self.edges.clear();
 
@@ -427,8 +445,7 @@ impl RenderCache {
         let uniform_edges = tier == LodTier::Medium;
         for edge in graph.edge_references() {
             // Skip edge if neither endpoint is visible
-            if !visible_nodes.contains(&edge.source()) && !visible_nodes.contains(&edge.target()) {
-                continue;
+            if !self.visible_nodes.contains(&edge.source()) && !self.visible_nodes.contains(&edge.target()) {
             }
 
             let src = &graph[edge.source()];
@@ -474,27 +491,27 @@ impl RenderCache {
         spatial_grid: &SpatialGrid,
         x_bounds: [f64; 2],
         y_bounds: [f64; 2],
-    ) -> (LodTier, HashSet<NodeIndex>) {
+    ) -> LodTier {
         self.nodes.clear();
+        self.visible_nodes.clear();
 
-        // Collect visible nodes via spatial index query
-        let mut visible_nodes: HashSet<NodeIndex> = spatial_grid
-            .query_rect(x_bounds[0], y_bounds[0], x_bounds[1], y_bounds[1])
-            .collect();
+        spatial_grid.for_each_in_rect(x_bounds[0], y_bounds[0], x_bounds[1], y_bounds[1], |idx| {
+            self.visible_nodes.insert(idx);
+        });
 
         // Always include selected node even if off-screen
         if let Some(sel) = selected_node {
-            visible_nodes.insert(sel);
+            self.visible_nodes.insert(sel);
         }
 
         // Determine LOD tier from visible node count
-        let tier = match visible_nodes.len() {
+        let tier = match self.visible_nodes.len() {
             0..=200 => LodTier::Full,
             201..=1000 => LodTier::Medium,
             _ => LodTier::Minimal,
         };
 
-        for &idx in &visible_nodes {
+        for &idx in &self.visible_nodes {
             let node = &graph[idx];
             let primary_color = self
                 .node_own_color
@@ -572,9 +589,8 @@ impl RenderCache {
             }
         }
 
-        (tier, visible_nodes)
+        tier
     }
-
     pub fn fill_labels(
         &mut self,
         graph: &fdg_sim::ForceGraph<super::graph::GraphNodeData, ()>,
@@ -582,28 +598,36 @@ impl RenderCache {
         selected_node: Option<NodeIndex>,
         min_offset_y: f64,
         tier: LodTier,
-        visible_nodes: &HashSet<NodeIndex>,
     ) {
         self.labels.clear();
+
+        if self.cached_label_max_length != config.graf.visual.label_max_length {
+            self.label_texts.clear();
+            for idx in graph.node_indices() {
+                let node = &graph[idx];
+                let truncated = crate::graf::util::truncate(
+                    &node.data.title,
+                    config.graf.visual.label_max_length,
+                );
+                self.label_texts.insert(idx, truncated);
+            }
+            self.cached_label_max_length = config.graf.visual.label_max_length;
+        }
 
         match tier {
             LodTier::Minimal => return,
             LodTier::Medium => {
-                // Only show label for selected node
                 if let Some(sel) = selected_node
-                    && visible_nodes.contains(&sel)
+                    && self.visible_nodes.contains(&sel)
                 {
                     let node = &graph[sel];
                     let radius = self.nodes.get(sel.index()).map(|n| n.radius).unwrap_or(2.0);
                     self.labels.push(LabelData {
+                        node_idx: sel,
                         x: node.location.x as f64,
                         y: node.location.y as f64
                             + radius
                             + config.graf.visual.label_offset.max(min_offset_y),
-                        text: crate::graf::util::truncate(
-                            &node.data.title,
-                            config.graf.visual.label_max_length,
-                        ),
                     });
                 }
                 return;
@@ -611,42 +635,41 @@ impl RenderCache {
             LodTier::Full => {}
         }
 
+        self.selected_neighbors.clear();
+        if let Some(sel) = selected_node && config.graf.visual.label_mode == LabelMode::Neighbors {
+            for edge in graph.edges(sel) {
+                if edge.target() != sel {
+                    self.selected_neighbors.insert(edge.target());
+                }
+                if edge.source() != sel {
+                    self.selected_neighbors.insert(edge.source());
+                }
+            }
+        }
+
         let should_show = |idx: NodeIndex| -> bool {
             match config.graf.visual.label_mode {
                 LabelMode::Selected => selected_node == Some(idx),
                 LabelMode::Neighbors => {
-                    if selected_node == Some(idx) {
-                        return true;
-                    }
-                    if let Some(sel) = selected_node {
-                        for edge in graph.edges(sel) {
-                            if edge.target() == idx || edge.source() == idx {
-                                return true;
-                            }
-                        }
-                    }
-                    false
+                    selected_node == Some(idx) || self.selected_neighbors.contains(&idx)
                 }
                 LabelMode::All => true,
                 LabelMode::None => false,
             }
         };
 
-        for &idx in visible_nodes {
+        for &idx in &self.visible_nodes {
             if !should_show(idx) {
                 continue;
             }
             let node = &graph[idx];
             let radius = self.nodes.get(idx.index()).map(|n| n.radius).unwrap_or(2.0);
             self.labels.push(LabelData {
+                node_idx: idx,
                 x: node.location.x as f64,
                 y: node.location.y as f64
                     + radius
                     + config.graf.visual.label_offset.max(min_offset_y),
-                text: crate::graf::util::truncate(
-                    &node.data.title,
-                    config.graf.visual.label_max_length,
-                ),
             });
         }
     }
@@ -688,7 +711,7 @@ pub fn draw_graph_view(
     let x_bounds = viewport.x_bounds(aspect);
     let y_bounds = viewport.y_bounds(aspect);
 
-    let (tier, visible_nodes) = cache.fill_nodes(
+    let tier = cache.fill_nodes(
         graph,
         config,
         state.selected_node,
@@ -698,7 +721,7 @@ pub fn draw_graph_view(
         x_bounds,
         y_bounds,
     );
-    cache.fill_edges(graph, config, colors.edge_color, tier, &visible_nodes);
+    cache.fill_edges(graph, config, colors.edge_color, tier);
     let cell_world_height =
         (y_bounds[1] - y_bounds[0]).abs() / (canvas_area.height as f64).max(1.0);
     cache.fill_labels(
@@ -707,11 +730,11 @@ pub fn draw_graph_view(
         state.selected_node,
         cell_world_height * 1.5,
         tier,
-        &visible_nodes,
     );
-    let edges = cache.edges.clone();
-    let nodes = cache.nodes.clone();
-    let labels = cache.labels.clone();
+    let edges_ref = &cache.edges;
+    let nodes_ref = &cache.nodes;
+    let labels_ref = &cache.labels;
+    let label_texts_ref = &cache.label_texts;
 
     let block = ratatui::widgets::Block::default().style(
         ratatui::style::Style::default().bg(colors.background_color.unwrap_or(Color::Reset)),
@@ -735,16 +758,18 @@ pub fn draw_graph_view(
                     config.graf.visual.grid_divisions,
                 );
             }
-            ctx.draw(&GraphEdgesShape { edges: &edges });
+            ctx.draw(&GraphEdgesShape { edges: edges_ref });
             ctx.layer();
-            ctx.draw(&GraphNodesShape { nodes: &nodes });
+            ctx.draw(&GraphNodesShape { nodes: nodes_ref });
             ctx.layer();
-            for label in &labels {
-                let span = ratatui::text::Span::styled(
-                    label.text.clone(),
-                    ratatui::style::Style::default().fg(colors.label_color),
-                );
-                ctx.print(label.x, label.y, span);
+            for label in labels_ref {
+                if let Some(text) = label_texts_ref.get(&label.node_idx) {
+                    let span = ratatui::text::Span::styled(
+                        text.clone(),
+                        ratatui::style::Style::default().fg(colors.label_color),
+                    );
+                    ctx.print(label.x, label.y, span);
+                }
             }
         });
 
@@ -849,7 +874,7 @@ pub fn draw_graph_view(
         let minimap_area = compute_minimap_area(canvas_area, config);
 
         // Mark dirty when physics is active (positions may change)
-        cache.minimap_dirty = !state.is_settled;
+        cache.minimap_dirty = cache.minimap_dirty || !state.is_settled;
 
         let mut minimap_grid = std::mem::take(&mut cache.minimap_grid);
         draw_minimap(
@@ -870,37 +895,6 @@ pub fn draw_graph_view(
         cache.minimap_dirty = false;
     }
 }
-
-pub fn compute_status_string(state: &GraphState, _area: Rect) -> String {
-    let viewport = &state.viewport;
-    let graph = state.simulation.get_graph();
-
-    let node_count = graph.node_count();
-    let edge_count = graph.edge_count();
-
-    let selected_info = state
-        .selected_node
-        .and_then(|idx| graph.node_weight(idx))
-        .map(|n| n.data.title.clone());
-
-    let viewport_ratio = {
-        let (gx_min, gx_max, gy_min, gy_max) = state.graph_bounds;
-        let graph_w = gx_max - gx_min;
-        let graph_h = gy_max - gy_min;
-        let range = graph_w.max(graph_h).max(1.0) * 1.4;
-        let full_zoom = 200.0 / range;
-        viewport.zoom / full_zoom
-    };
-
-    format!(
-        "Nodes: {} | Edges: {} | Selected: {} | Ratio: {:.1}x   ",
-        node_count,
-        edge_count,
-        selected_info.as_deref().unwrap_or("none"),
-        viewport_ratio
-    )
-}
-
 fn draw_grid(
     ctx: &mut ratatui::widgets::canvas::Context,
     x: [f64; 2],
@@ -1223,7 +1217,7 @@ mod tests {
 
         // 1. LabelMode::None
         config.graf.visual.label_mode = crate::config::LabelMode::None;
-        let (_tier, visible) = cache.fill_nodes(
+        let _tier = cache.fill_nodes(
             &graph,
             &config,
             Some(idx1),
@@ -1233,12 +1227,12 @@ mod tests {
             TEST_X_BOUNDS,
             TEST_Y_BOUNDS,
         );
-        cache.fill_labels(&graph, &config, Some(idx1), 0.0, _tier, &visible);
+        cache.fill_labels(&graph, &config, Some(idx1), 0.0, _tier);
         assert!(cache.labels.is_empty());
 
         // 2. LabelMode::All
         config.graf.visual.label_mode = crate::config::LabelMode::All;
-        let (_tier, visible) = cache.fill_nodes(
+        let _tier = cache.fill_nodes(
             &graph,
             &config,
             Some(idx1),
@@ -1248,12 +1242,12 @@ mod tests {
             TEST_X_BOUNDS,
             TEST_Y_BOUNDS,
         );
-        cache.fill_labels(&graph, &config, Some(idx1), 0.0, _tier, &visible);
+        cache.fill_labels(&graph, &config, Some(idx1), 0.0, _tier);
         assert_eq!(cache.labels.len(), 3);
 
         // 3. LabelMode::Selected
         config.graf.visual.label_mode = crate::config::LabelMode::Selected;
-        let (_tier, visible) = cache.fill_nodes(
+        let _tier = cache.fill_nodes(
             &graph,
             &config,
             Some(idx1),
@@ -1263,13 +1257,13 @@ mod tests {
             TEST_X_BOUNDS,
             TEST_Y_BOUNDS,
         );
-        cache.fill_labels(&graph, &config, Some(idx1), 0.0, _tier, &visible);
+        cache.fill_labels(&graph, &config, Some(idx1), 0.0, _tier);
         assert_eq!(cache.labels.len(), 1);
-        assert_eq!(cache.labels[0].text, "Node 1");
+        assert_eq!(cache.label_texts.get(&cache.labels[0].node_idx).unwrap(), "Node 1");
 
         // 4. LabelMode::Neighbors
         config.graf.visual.label_mode = crate::config::LabelMode::Neighbors;
-        let (_tier, visible) = cache.fill_nodes(
+        let _tier = cache.fill_nodes(
             &graph,
             &config,
             Some(idx1),
@@ -1279,15 +1273,15 @@ mod tests {
             TEST_X_BOUNDS,
             TEST_Y_BOUNDS,
         );
-        cache.fill_labels(&graph, &config, Some(idx1), 0.0, _tier, &visible);
+        cache.fill_labels(&graph, &config, Some(idx1), 0.0, _tier);
         // Node 1 (selected) and Node 2 (neighbor) should have labels. Node 3 (distant) should not.
         assert_eq!(cache.labels.len(), 2);
-        let mut names: Vec<String> = cache.labels.iter().map(|l| l.text.clone()).collect();
+        let mut names: Vec<String> = cache.labels.iter().map(|l| cache.label_texts.get(&l.node_idx).unwrap().clone()).collect();
         names.sort();
         assert_eq!(names, vec!["Node 1".to_string(), "Node 2".to_string()]);
 
         // 5. Test min_offset_y parameter
-        let (_tier, visible) = cache.fill_nodes(
+        let _tier = cache.fill_nodes(
             &graph,
             &config,
             Some(idx1),
@@ -1298,7 +1292,7 @@ mod tests {
             TEST_Y_BOUNDS,
         );
         config.graf.visual.label_mode = crate::config::LabelMode::Selected;
-        cache.fill_labels(&graph, &config, Some(idx1), 10.0, _tier, &visible);
+        cache.fill_labels(&graph, &config, Some(idx1), 10.0, _tier);
         assert_eq!(cache.labels.len(), 1);
         let label = &cache.labels[0];
         let node_y = graph[idx1].location.y as f64;
@@ -1310,7 +1304,7 @@ mod tests {
         // The default label_offset is 4.0, but min_offset_y is 10.0. The actual offset should be 10.0.
         assert_eq!(label.y, node_y + radius + 10.0);
 
-        cache.fill_labels(&graph, &config, Some(idx1), 1.0, _tier, &visible);
+        cache.fill_labels(&graph, &config, Some(idx1), 1.0, _tier);
         let label = &cache.labels[0];
         // The default label_offset is 4.0, which is larger than min_offset_y of 1.0. The actual offset should be 4.0.
         assert_eq!(label.y, node_y + radius + 4.0);

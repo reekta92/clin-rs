@@ -276,8 +276,18 @@ pub fn handle_graph_mouse(
                         node.location.y = wy as f32;
                         node.velocity = fdg_sim::glam::Vec3::ZERO;
                     }
-                    guard.drag_target = Some((wx as f32, wy as f32));
-                    guard.reheat(0.4);
+                    if guard.physics_worker_active {
+                        guard.drag_target = Some((wx as f32, wy as f32));
+                        guard.reheat(0.4);
+                    } else {
+                        guard.alpha = 0.0;
+                        guard.is_settled = true;
+                        let state_ref = &mut *guard;
+                        let bounds = super::render::compute_graph_bounds(state_ref.simulation.get_graph());
+                        state_ref.graph_bounds = bounds;
+                        state_ref.spatial_grid.rebuild(state_ref.simulation.get_graph());
+                        state_ref.render_cache.lock().minimap_dirty = true;
+                    }
                 }
                 mouse_state.drag_origin = Some((mouse_event.column, mouse_event.row));
             }

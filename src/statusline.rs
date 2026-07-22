@@ -47,6 +47,8 @@ pub struct StatuslineContext<'a> {
     pub pending: Option<Vec<Span<'a>>>,
     pub preview: Option<Vec<Span<'a>>>,
     pub detail: Option<Vec<Span<'a>>>,
+
+    pub graph_fps: Option<f64>,
 }
 
 impl<'a> StatuslineContext<'a> {
@@ -72,6 +74,7 @@ impl<'a> StatuslineContext<'a> {
             pending: None,
             preview: None,
             detail: None,
+            graph_fps: None,
         }
     }
 
@@ -97,6 +100,7 @@ impl<'a> StatuslineContext<'a> {
             pending: None,
             preview: None,
             detail: None,
+            graph_fps: None,
         }
     }
 }
@@ -748,7 +752,13 @@ impl StatuslineContext<'_> {
             }
 
             "fps" => {
-                if let Some(app) = self.app {
+                if self.view == ViewMode::Graph {
+                    if let Some(fps_val) = self.graph_fps {
+                        Some(format!("{:.1}", fps_val).into())
+                    } else {
+                        Some("--".into())
+                    }
+                } else if let Some(app) = self.app {
                     Some(format!("{:.0}", app.fps).into())
                 } else {
                     Some("".into())
@@ -756,7 +766,7 @@ impl StatuslineContext<'_> {
             }
 
             // Graph view
-            "node_count" | "edge_count" | "selected_node" | "viewport_size" | "viewport_ratio"
+            "node_count" | "edge_count" | "selected_node" | "viewport_size" | "scale"
             | "graph_settled" | "label_mode" | "node_color_mode" | "edge_color_mode"
             | "node_size_mode" | "zoom" | "show_grid" | "show_legend" | "show_minimap" => {
                 let graph = match self.graph {
@@ -795,14 +805,8 @@ impl StatuslineContext<'_> {
                         };
                         format!("{:.0}", size_pct)
                     }
-                    "viewport_ratio" => {
-                        let (gx_min, gx_max, gy_min, gy_max) = graph.graph_bounds;
-                        let graph_w = gx_max - gx_min;
-                        let graph_h = gy_max - gy_min;
-                        let range = graph_w.max(graph_h).max(1.0) * 1.4;
-                        let full_zoom = 200.0 / range;
-                        let ratio = graph.viewport.zoom / full_zoom;
-                        format!("{:.1}", ratio)
+                    "scale" => {
+                        format!("{:.2}", graph.viewport.scale())
                     }
                     "graph_settled" => (if graph.is_settled { "on" } else { "off" }).to_string(),
                     "label_mode" => {
@@ -1556,8 +1560,7 @@ fn default_template(view: ViewMode, field: &str) -> Cow<'static, str> {
         "footer_left" => "{pending}{badge}{hints}".into(),
         "header_right" => {
             match view {
-                ViewMode::Graph => "Nodes: {node_count} | Edges: {edge_count} | Selected: {selected_node} | Ratio: {viewport_ratio}x | FPS: {fps}   ".into(),
-                ViewMode::Backup => "{branch} | ↑{ahead} ↓{behind} | {modified_text}".into(),
+                ViewMode::Graph => "Nodes: {node_count} | Edges: {edge_count} | Selected: {selected_node} | Scale: {scale}× | FPS: {fps}   ".into(),
                 ViewMode::List => "{detail}".into(),
                 ViewMode::Setup => "{pinned_count} pinned".into(),
                 ViewMode::Help => "Page {help_page}/{help_total_pages}".into(),
@@ -1695,5 +1698,43 @@ mod tests {
         let (left, right) = render_header(&ctx, &config.statusline, ViewMode::List, &theme);
         assert_eq!(left.width(), 7); // " Notes " (7 chars)
         assert!(right.is_none());
+    }
+    #[test]
+    fn test_statusline_graph_scale_and_fps() {
+        let config = ClinConfig::default();
+        let mut ctx = StatuslineContext::for_overlay(&config, ViewMode::Graph);
+        let theme = AppThemeColors::default();
+
+        let mut graph_state = crate::graf::graph::GraphState {
+            simulation: fdg_sim::Simulation::from_graph(fdg_sim::ForceGraph::default(), fdg_sim::SimulationParameters::default()),
+            viewport: crate::graf::viewport::Viewport::default(),
+            selected_node: None,
+            dragging_node: None,
+            drag_target: None,
+            is_settled: true,
+            alpha: 0.0,
+            graph_bounds: (0.0, 0.0, 0.0, 0.0),
+            render_cache: parking_lot::Mutex::new(crate::graf::render::RenderCache::new()),
+            mouse_pos: None,
+            spatial_grid: crate::graf::spatial::SpatialGrid::new(100.0),
+            physics_worker_active: false,
+        };
+        ctx.graph = Some(&graph_state);
+        let segs_scale = render_segments("{scale}", &ctx, &theme);
+        assert_eq!(text_cells(segs_scale), vec!["1.00".to_string()]);
+
+        graph_state.viewport.zoom = 2.5;
+        let mut ctx2 = StatuslineContext::for_overlay(&config, ViewMode::Graph);
+        ctx2.graph = Some(&graph_state);
+        let segs_scale2 = render_segments("{scale}", &ctx2, &theme);
+        assert_eq!(text_cells(segs_scale2), vec!["2.50".to_string()]);
+
+        ctx2.graph_fps = None;
+        let segs_fps_none = render_segments("{fps}", &ctx2, &theme);
+        assert_eq!(text_cells(segs_fps_none), vec!["--".to_string()]);
+
+        ctx2.graph_fps = Some(12.34);
+        let segs_fps_val = render_segments("{fps}", &ctx2, &theme);
+        assert_eq!(text_cells(segs_fps_val), vec!["12.3".to_string()]);
     }
 }

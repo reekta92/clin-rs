@@ -205,7 +205,7 @@ Variables are enclosed in `{}` (e.g. `{time}`). Escapes `{{` and `}}` render lit
 - `{node_count}`, `{edge_count}`: Graph nodes and edges
 - `{selected_node}`: Label of the selected node or `"none"`
 - `{viewport_size}`: Graph viewport coverage percentage (e.g. `"45%"`)
-- `{viewport_ratio}`: Graph zoom ratio (e.g. `"1.2x"`)
+- `{scale}`: Graph zoom scale relative to auto-fit (e.g. `"1.00×"`)
 - `{graph_settled}`: Force-directed simulation settlement status (`on`/`off`)
 - `{label_mode}`, `{node_color_mode}`, `{edge_color_mode}`, `{node_size_mode}`, `{zoom}`: Graph configuration and zoom status
 - `{show_grid}`, `{show_legend}`, `{show_minimap}`: Grid, legend, and minimap settings (`on`/`off`)

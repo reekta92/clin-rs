@@ -13,7 +13,7 @@ use super::graph::GraphNodeData;
 /// fast hit-testing and viewport culling.
 pub struct SpatialGrid {
     cell_size: f64,
-    cells: HashMap<(i32, i32), Vec<NodeIndex>>,
+    cells: HashMap<(i64, i64), Vec<NodeIndex>>,
 }
 
 impl SpatialGrid {
@@ -43,49 +43,65 @@ impl SpatialGrid {
         }
     }
 
-    /// Query all nodes within `radius` of the given world-space point.
-    /// Checks the 3×3 cell neighborhood around the point's cell.
-    pub fn query_point(
-        &self,
-        x: f64,
-        y: f64,
-        _radius: f64,
-    ) -> impl Iterator<Item = NodeIndex> + '_ {
-        let center_cell = self.cell_coord(x, y);
-
-        let min_cx = center_cell.0 - 1;
-        let max_cx = center_cell.0 + 1;
-        let min_cy = center_cell.1 - 1;
-        let max_cy = center_cell.1 + 1;
-
-        (min_cx..=max_cx)
-            .flat_map(move |cx| (min_cy..=max_cy).map(move |cy| (cx, cy)))
-            .flat_map(move |cell| self.cells.get(&cell).into_iter().flatten())
-            .copied()
-    }
-
-    /// Query all nodes within the given axis-aligned bounding rectangle.
-    /// Iterates cells that overlap the rectangle.
-    pub fn query_rect(
+    pub fn for_each_in_rect(
         &self,
         min_x: f64,
         min_y: f64,
         max_x: f64,
         max_y: f64,
-    ) -> impl Iterator<Item = NodeIndex> + '_ {
+        mut visit: impl FnMut(NodeIndex),
+    ) {
+        if !min_x.is_finite() || !min_y.is_finite() || !max_x.is_finite() || !max_y.is_finite() {
+            return;
+        }
+
         let min_cell = self.cell_coord(min_x, min_y);
         let max_cell = self.cell_coord(max_x, max_y);
 
-        (min_cell.0..=max_cell.0)
-            .flat_map(move |cx| (min_cell.1..=max_cell.1).map(move |cy| (cx, cy)))
-            .flat_map(move |cell| self.cells.get(&cell).into_iter().flatten())
-            .copied()
+        let dx = (max_cell.0.saturating_sub(min_cell.0)).saturating_add(1);
+        let dy = (max_cell.1.saturating_sub(min_cell.1)).saturating_add(1);
+        let span_area = dx.saturating_mul(dy);
+
+        let occupied_count = self.cells.len() as i64;
+
+        if span_area > 0 && span_area < occupied_count {
+            for cx in min_cell.0..=max_cell.0 {
+                for cy in min_cell.1..=max_cell.1 {
+                    if let Some(nodes) = self.cells.get(&(cx, cy)) {
+                        for &idx in nodes {
+                            visit(idx);
+                        }
+                    }
+                }
+            }
+        } else {
+            for (&(cx, cy), nodes) in &self.cells {
+                if cx >= min_cell.0 && cx <= max_cell.0 && cy >= min_cell.1 && cy <= max_cell.1 {
+                    for &idx in nodes {
+                        visit(idx);
+                    }
+                }
+            }
+        }
     }
 
-    fn cell_coord(&self, x: f64, y: f64) -> (i32, i32) {
+    pub fn for_each_near(
+        &self,
+        x: f64,
+        y: f64,
+        radius: f64,
+        visit: impl FnMut(NodeIndex),
+    ) {
+        if !x.is_finite() || !y.is_finite() || !radius.is_finite() || radius < 0.0 {
+            return;
+        }
+        self.for_each_in_rect(x - radius, y - radius, x + radius, y + radius, visit);
+    }
+
+    fn cell_coord(&self, x: f64, y: f64) -> (i64, i64) {
         (
-            (x / self.cell_size).floor() as i32,
-            (y / self.cell_size).floor() as i32,
+            (x / self.cell_size).floor() as i64,
+            (y / self.cell_size).floor() as i64,
         )
     }
 }
@@ -129,16 +145,12 @@ mod tests {
     #[test]
     fn test_spatial_grid_query_point() {
         let graph = make_test_graph();
-        // Cell size 100 means a 3×3 cell area covers 300×300 space
         let grid = SpatialGrid::new(100.0);
-
-        // Insert nodes (we need a mutable grid)
         let mut grid = grid;
         grid.rebuild(&graph);
 
-        // Query near origin — center node should be returned
-        // (its location is 0,0)
-        let results: Vec<NodeIndex> = grid.query_point(0.0, 0.0, 50.0).collect();
+        let mut results = Vec::new();
+        grid.for_each_near(0.0, 0.0, 50.0, |idx| results.push(idx));
         assert!(!results.is_empty(), "should find at least the center node");
     }
 
@@ -148,24 +160,21 @@ mod tests {
         let mut grid = SpatialGrid::new(100.0);
         grid.rebuild(&graph);
 
-        // Query rect that covers only the first quadrant (x >= 0, y >= 0)
-        // The 3×3 grid of nodes at (0,0), (100,0), (200,0), (0,100), etc.
-        // With cell_size=100 and nodes at 0-200 range, query rect 0..250, 0..250
-        // should return 4 nodes (0,100) in x and y
-        let results: Vec<NodeIndex> = grid.query_rect(-50.0, -50.0, 250.0, 250.0).collect();
+        let mut results = Vec::new();
+        grid.for_each_in_rect(-50.0, -50.0, 250.0, 250.0, |idx| results.push(idx));
         assert!(!results.is_empty(), "should find nodes in rect");
     }
 
     #[test]
     fn test_spatial_grid_empty() {
-        let graph = make_test_graph();
         let grid = SpatialGrid::new(100.0);
-        // Don't rebuild — grid is empty
 
-        let results: Vec<NodeIndex> = grid.query_point(0.0, 0.0, 50.0).collect();
+        let mut results = Vec::new();
+        grid.for_each_near(0.0, 0.0, 50.0, |idx| results.push(idx));
         assert!(results.is_empty(), "empty grid should return nothing");
 
-        let results: Vec<NodeIndex> = grid.query_rect(-100.0, -100.0, 100.0, 100.0).collect();
+        let mut results = Vec::new();
+        grid.for_each_in_rect(-100.0, -100.0, 100.0, 100.0, |idx| results.push(idx));
         assert!(results.is_empty(), "empty grid should return nothing");
     }
 
@@ -175,11 +184,11 @@ mod tests {
         let mut grid = SpatialGrid::new(100.0);
         grid.rebuild(&graph);
 
-        // Rebuild with an empty graph
         let empty_graph: ForceGraph<GraphNodeData, ()> = ForceGraph::default();
         grid.rebuild(&empty_graph);
 
-        let results: Vec<NodeIndex> = grid.query_point(0.0, 0.0, 50.0).collect();
+        let mut results = Vec::new();
+        grid.for_each_near(0.0, 0.0, 50.0, |idx| results.push(idx));
         assert!(
             results.is_empty(),
             "after rebuild with empty graph, should be empty"

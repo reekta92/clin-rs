@@ -27,6 +27,7 @@ pub struct GraphState {
     pub render_cache: Mutex<super::render::RenderCache>,
     pub mouse_pos: Option<(u16, u16)>,
     pub spatial_grid: super::spatial::SpatialGrid,
+    pub physics_worker_active: bool,
 }
 
 pub fn build_graph(
@@ -168,6 +169,7 @@ impl GraphState {
             render_cache: Mutex::new(super::render::RenderCache::new()),
             mouse_pos: None,
             spatial_grid: super::spatial::SpatialGrid::new(config.graf.physics.ideal_distance),
+            physics_worker_active: false,
         };
         state.viewport = state
             .viewport
@@ -178,7 +180,7 @@ impl GraphState {
         Ok(state)
     }
     pub fn reheat(&mut self, target: f32) {
-        if target > self.alpha {
+        if self.physics_worker_active && target > self.alpha {
             self.alpha = target;
             self.is_settled = false;
         }
