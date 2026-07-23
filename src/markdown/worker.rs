@@ -238,7 +238,7 @@ fn process_single_block(block: &PendingCodeBlock, job: &RenderJob, cancel: &Atom
             if cancel.load(Ordering::Relaxed) {
                 return true;
             }
-            let line_count = block.literal.lines().count().max(1);
+            let line_count = super::builtin::code_lines(&block.literal).count();
             Arc::new(vec![None; line_count])
         }
     };

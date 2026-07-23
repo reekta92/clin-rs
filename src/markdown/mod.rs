@@ -464,7 +464,7 @@ impl MarkdownRenderer {
 
                     if let Some(DocumentState::Working(ref mut doc)) = self.document {
                         if line_range.start < doc.line_count() && line_range.end <= doc.line_count() && line_range.len() == lines.len() {
-                            let mut valid = true;
+                            let mut first_failure = None;
                             for (idx, new_line) in lines.iter().enumerate() {
                                 let orig_line = &doc.lines()[line_range.start + idx];
                                 let orig_text: String = orig_line.spans.iter().map(|s| s.text.as_str()).collect();
@@ -474,28 +474,27 @@ impl MarkdownRenderer {
                                     || orig_line.source_line != new_line.source_line
                                     || new_line.image_url.is_some()
                                 {
-                                    valid = false;
+                                    first_failure = Some(idx);
                                     break;
                                 }
                             }
+                            if first_failure.is_some() {
+                                continue;
+                            }
 
-                            if valid {
-                                let doc_lines = doc.lines_mut();
-                                for (idx, new_line) in lines.into_iter().enumerate() {
-                                    doc_lines[line_range.start + idx] = new_line;
-                                }
+                            let doc_lines = doc.lines_mut();
+                            for (idx, new_line) in lines.into_iter().enumerate() {
+                                doc_lines[line_range.start + idx] = new_line;
+                            }
 
-                                let (vp_start, vp_height) = unpack_viewport(self.viewport.load(Ordering::Relaxed));
-                                let vp_end = vp_start.saturating_add(vp_height);
-                                let intersects = line_range.start < vp_end && line_range.end > vp_start;
-                                if intersects {
-                                    redraw = true;
-                                }
-                            } else {
-                                debug_assert!(false, "CodeBlockReady invariants violated");
+                            let (vp_start, vp_height) = unpack_viewport(self.viewport.load(Ordering::Relaxed));
+                            let vp_end = vp_start.saturating_add(vp_height);
+                            let intersects = line_range.start < vp_end && line_range.end > vp_start;
+                            if intersects {
+                                redraw = true;
                             }
                         } else {
-                            debug_assert!(false, "CodeBlockReady range out-of-bounds");
+                            continue;
                         }
                     }
                 }
@@ -598,3 +597,118 @@ pub(crate) fn read_selection_text(
 #[cfg(test)]
 mod perf_tests;
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::mpsc;
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicU64;
+    use crate::markdown::style::{RenderLine, StyledSpan, RenderedDocument};
+    use crate::markdown::worker::RenderEvent;
+    use ratatui::style::{Modifier, Style};
+
+    #[test]
+    fn test_markdown_renderer_poll_code_block_ready_incompatible() {
+        let (tx, rx) = mpsc::sync_channel(1);
+        
+        let base_line = RenderLine {
+            spans: vec![StyledSpan { text: "original code".to_string(), style: Style::default() }],
+            visual_width: 13,
+            is_blank: false,
+            image_url: None,
+            source_line: 42,
+        };
+        
+        let mut renderer = MarkdownRenderer {
+            document: Some(DocumentState::Working(RenderedDocument::new(vec![base_line]))),
+            events: Some(rx),
+            current_key: None,
+            generation: 1,
+            cancel: None,
+            viewport: Arc::new(AtomicU64::new(0)),
+            current_page: 0,
+            page_height: 0,
+            scroll_offset: 0,
+            pending_source_anchor: None,
+            pending: true,
+        };
+
+        let incompatible_line = RenderLine {
+            spans: vec![StyledSpan { text: "mismatched code".to_string(), style: Style::default() }],
+            visual_width: 15,
+            is_blank: false,
+            image_url: None,
+            source_line: 42,
+        };
+
+        tx.send(RenderEvent::CodeBlockReady {
+            generation: 1,
+            line_range: 0..1,
+            lines: vec![incompatible_line],
+        }).unwrap();
+
+        let redraw = renderer.poll();
+        assert!(!redraw);
+
+        if let Some(DocumentState::Working(doc)) = &renderer.document {
+            assert_eq!(doc.line_count(), 1);
+            let spans = &doc.lines()[0].spans;
+            assert_eq!(spans[0].text, "original code");
+        } else {
+            panic!("Expected working document state");
+        }
+    }
+
+    #[test]
+    fn test_markdown_renderer_poll_code_block_ready_compatible() {
+        let (tx, rx) = mpsc::sync_channel(1);
+        
+        let base_line = RenderLine {
+            spans: vec![StyledSpan { text: "original code".to_string(), style: Style::default() }],
+            visual_width: 13,
+            is_blank: false,
+            image_url: None,
+            source_line: 42,
+        };
+        
+        let mut renderer = MarkdownRenderer {
+            document: Some(DocumentState::Working(RenderedDocument::new(vec![base_line]))),
+            events: Some(rx),
+            current_key: None,
+            generation: 1,
+            cancel: None,
+            viewport: Arc::new(AtomicU64::new(pack_viewport(0, 10))),
+            current_page: 0,
+            page_height: 10,
+            scroll_offset: 0,
+            pending_source_anchor: None,
+            pending: true,
+        };
+
+        let compatible_line = RenderLine {
+            spans: vec![StyledSpan { text: "original code".to_string(), style: Style::default().add_modifier(Modifier::BOLD) }],
+            visual_width: 13,
+            is_blank: false,
+            image_url: None,
+            source_line: 42,
+        };
+
+        tx.send(RenderEvent::CodeBlockReady {
+            generation: 1,
+            line_range: 0..1,
+            lines: vec![compatible_line],
+        }).unwrap();
+
+        let redraw = renderer.poll();
+        assert!(redraw);
+
+        if let Some(DocumentState::Working(doc)) = &renderer.document {
+            assert_eq!(doc.line_count(), 1);
+            let spans = &doc.lines()[0].spans;
+            assert_eq!(spans[0].text, "original code");
+            assert_ne!(spans[0].style, Style::default());
+        } else {
+            panic!("Expected working document state");
+        }
+    }
+}

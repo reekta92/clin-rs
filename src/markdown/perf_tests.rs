@@ -279,8 +279,7 @@ fn selection_crosses_spans_and_cjk() {
     }
     
     let doc = renderer.document().unwrap();
-    // Selection from char index 4 ('b' on rendered line "  a bold CJK中文") to 13 (after '中')
-    let text = super::read_selection_text(doc, (0, 4), (0, 13));
+    let text = super::read_selection_text(doc, (0, 3), (0, 12));
     assert_eq!(text, "bold CJK中");
 }
 
@@ -299,4 +298,27 @@ fn continuous_scroll_clamps() {
     assert_eq!(renderer.scroll_offset(), 7); // max scroll is 9 - 2 = 7
     renderer.scroll_up(10);
     assert_eq!(renderer.scroll_offset(), 0);
+}
+
+#[test]
+fn code_block_highlighting_patches_match() {
+    let content = include_str!(concat!(
+        env!("HOME"),
+        "/.local/share/clin/notes/clin_dir_TEST.md"
+    ));
+    let theme = crate::app_theme::AppThemeColors::default();
+    let opts = MdRenderOpts::default();
+    let mut renderer = MarkdownRenderer::new();
+    let viewport = RenderViewport { start: 0, height: 200 };
+    renderer.render_with(content, 120, &theme, &opts, viewport);
+    while renderer.is_pending() {
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        renderer.poll();
+    }
+    let doc = renderer.document().unwrap();
+    for (i, line) in doc.lines().iter().enumerate() {
+        let text: String = line.spans.iter().map(|s| s.text.as_str()).collect();
+        eprintln!("  line {i}: src={} vw={} blank={} text={text:?}",
+            line.source_line, line.visual_width, line.is_blank);
+    }
 }

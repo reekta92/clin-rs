@@ -208,6 +208,20 @@ pub(crate) struct MarkdownTheme {
     pub task_checked: Style,
 }
 
+pub(crate) fn faint_background(fg: Color) -> Color {
+    match fg {
+        Color::Rgb(r, g, b) => Color::Rgb(r / 7, g / 7, b / 7),
+        Color::Red | Color::LightRed => Color::Rgb(40, 10, 10),
+        Color::Green | Color::LightGreen => Color::Rgb(10, 40, 10),
+        Color::Yellow | Color::LightYellow => Color::Rgb(35, 30, 10),
+        Color::Blue | Color::LightBlue => Color::Rgb(10, 10, 45),
+        Color::Magenta | Color::LightMagenta => Color::Rgb(35, 10, 35),
+        Color::Cyan | Color::LightCyan => Color::Rgb(10, 35, 35),
+        Color::White | Color::Gray | Color::DarkGray => Color::Rgb(20, 20, 20),
+        _ => Color::Reset,
+    }
+}
+
 impl MarkdownTheme {
     pub fn from_app_theme(theme: &crate::app_theme::AppThemeColors) -> Self {
         Self {
@@ -215,22 +229,22 @@ impl MarkdownTheme {
                 .fg(theme.accent)
                 .add_modifier(Modifier::BOLD),
             h1_banner: Style::default()
-                .fg(theme.highlight_fg)
-                .bg(theme.heading)
+                .fg(theme.accent)
+                .bg(faint_background(theme.accent))
                 .add_modifier(Modifier::BOLD),
             h2: Style::default()
                 .fg(theme.heading)
                 .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
             h3: Style::default().fg(theme.tag).add_modifier(Modifier::BOLD),
             h4: Style::default()
-                .fg(theme.muted)
+                .fg(theme.success)
                 .add_modifier(Modifier::BOLD),
             h5: Style::default()
-                .fg(theme.muted)
-                .add_modifier(Modifier::ITALIC | Modifier::DIM),
+                .fg(theme.folder)
+                .add_modifier(Modifier::BOLD),
             h6: Style::default()
-                .fg(theme.muted)
-                .add_modifier(Modifier::ITALIC),
+                .fg(theme.destructive)
+                .add_modifier(Modifier::BOLD),
             paragraph: Style::default().fg(theme.text),
             code_inline: Style::default().fg(theme.fg).bg(theme.muted),
             code_block: Style::default().fg(theme.muted),
