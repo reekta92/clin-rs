@@ -5,6 +5,8 @@ pub mod info;
 pub mod insert_date;
 pub mod ocr;
 pub mod outline;
+pub mod rasterize;
+
 pub mod settings;
 
 use crate::app::App;
@@ -231,6 +233,7 @@ pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyL
     vec![
         Box::new(encrypt::EncryptNoteAction),
         Box::new(decrypt::DecryptNoteAction),
+        Box::new(rasterize::RasterizeNoteAction),
         Box::new(ManageSubnotesList),
         Box::new(insert_date::InsertDateAction),
         Box::new(OpenGraphAction),

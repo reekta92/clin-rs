@@ -234,9 +234,18 @@ impl MarkdownRenderer {
         self.document().map(|d| d.is_content_empty()).unwrap_or(true)
     }
 
-    pub fn is_content_changed(&self, content: &str) -> bool {
+    pub(crate) fn is_changed(
+        &self,
+        content: &str,
+        theme: &crate::app_theme::AppThemeColors,
+        opts: &MdRenderOpts,
+    ) -> bool {
         self.current_key.as_ref()
-            .map(|k| k.content.as_ref() != content)
+            .map(|k| {
+                k.content.as_ref() != content
+                    || k.theme != MarkdownTheme::from_app_theme(theme)
+                    || &k.opts != opts
+            })
             .unwrap_or(true)
     }
 

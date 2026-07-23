@@ -345,7 +345,7 @@ impl GrafAppState {
             let height = key.height;
             let viewport = crate::markdown::RenderViewport { start: renderer.visible_start(), height: height as usize };
 
-            let content_changed = renderer.is_content_changed(&note.content);
+            let content_changed = renderer.is_changed(&note.content, &self.app_theme, &opts);
             let mut should_render = false;
             if content_changed || renderer.document().is_none() {
                 should_render = true;

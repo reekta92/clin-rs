@@ -1185,7 +1185,7 @@ impl App {
                     renderer.set_page_height(height as usize);
                     let viewport = crate::markdown::RenderViewport { start: renderer.visible_start(), height: height as usize };
 
-                    let content_changed = renderer.is_content_changed(&note.content);
+                    let content_changed = renderer.is_changed(&note.content, &self.app_theme, &opts);
                     let mut should_render = false;
                     if content_changed || renderer.document().is_none() {
                         should_render = true;
@@ -1318,7 +1318,7 @@ impl App {
                 renderer.set_page_height(height as usize);
                 let viewport = crate::markdown::RenderViewport { start: renderer.visible_start(), height: height as usize };
 
-                let content_changed = renderer.is_content_changed(&md);
+                let content_changed = renderer.is_changed(&md, &self.app_theme, &opts);
                 let mut should_render = false;
                 if content_changed || renderer.document().is_none() {
                     should_render = true;
@@ -1376,7 +1376,7 @@ impl App {
                 renderer.set_page_height(height as usize);
                 let viewport = crate::markdown::RenderViewport { start: renderer.visible_start(), height: height as usize };
 
-                let content_changed = renderer.is_content_changed(&md);
+                let content_changed = renderer.is_changed(&md, &self.app_theme, &opts);
                 let mut should_render = false;
                 if content_changed || renderer.document().is_none() {
                     should_render = true;
@@ -1437,7 +1437,7 @@ impl App {
                     renderer.set_page_height(height as usize);
                     let viewport = crate::markdown::RenderViewport { start: renderer.visible_start(), height: height as usize };
 
-                    let content_changed = renderer.is_content_changed(&md);
+                    let content_changed = renderer.is_changed(&md, &self.app_theme, &opts);
                     let mut should_render = false;
                     if content_changed || renderer.document().is_none() {
                         should_render = true;
@@ -1506,7 +1506,7 @@ impl App {
         let height = self.desired_editor_preview_height();
         let viewport = crate::markdown::RenderViewport { start: renderer.visible_start(), height: height as usize };
 
-        let content_changed = renderer.is_content_changed(&content);
+        let content_changed = renderer.is_changed(&content, &self.app_theme, &opts);
         let mut should_render = false;
         if content_changed || renderer.document().is_none() {
             should_render = true;
