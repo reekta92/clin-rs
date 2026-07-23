@@ -74,6 +74,7 @@
 - [ ] **More filtypes** — more text filetypes(`org-mode`, `.gv`, `.puml`, `.md` mermaid, `.dot`) support to edit/view
 
 #### Notes View
+- [ ] **Notebook files** — a text file type where you can embed interactable drawings(via `draw`), schemes(via `pinstar`) etc. At it's core it's a markdown file with a special property, so it will be compatible with other `.md` editors.
 
 #### Edit View
 - [ ] **Actions side pane** — a side pane that allows you to do some special actions like inserting an OCR result etc.
