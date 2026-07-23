@@ -801,9 +801,9 @@ fn render_heading<'a>(ctx: &mut Ctx<'_, '_>, node: &'a AstNode<'a>, h: &NodeHead
     ctx.ensure_source_line(start_line, 0);
 
     let h_margin = if h.level == 1 {
-        depth
+        depth + 1
     } else {
-        heading_margin(depth, h.level)
+        heading_margin(depth, h.level) + 1
     };
 
     for _ in 0..h_margin {
