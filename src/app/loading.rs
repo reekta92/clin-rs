@@ -691,11 +691,6 @@ impl App {
             }
         }
 
-        if self.editor.edit_mode == crate::editor::EditMode::Read
-            && self.editor.md_preview_renderer.is_none()
-        {
-            self.update_editor_markdown_preview();
-        }
 
         if let Some(last) = self.editor.last_editor_change
             && last.elapsed() > Duration::from_millis(150)
@@ -1493,8 +1488,7 @@ impl App {
 
     pub fn update_editor_markdown_preview(&mut self) {
         if !(self.editor.editor_preview_enabled
-            || self.preview_fullscreen
-            || self.editor.edit_mode == crate::editor::EditMode::Read)
+            || self.preview_fullscreen)
         {
             return;
         }

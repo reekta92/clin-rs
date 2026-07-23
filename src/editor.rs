@@ -10,12 +10,6 @@ pub enum EditFocus {
     Sidebar,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum EditMode {
-    #[default]
-    Read,
-    Edit,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum EditSidebar {
@@ -79,10 +73,8 @@ pub struct NoteEditor {
     pub body_viewport_col: u16,
     pub title_viewport_row: u16,
     pub title_viewport_col: u16,
-    pub edit_mode: EditMode,
     pub last_body_width: u16,
     pub last_body_height: u16,
-    pub read_gg_pending: bool,
     pub(crate) source_highlighter: Option<crate::markdown::SourceHighlighter>,
     /// Cache of per-line highlight styles, rebuilt only when the document changes.
     pub md_highlight_cache: Vec<Vec<ratatui::style::Style>>,
@@ -90,10 +82,6 @@ pub struct NoteEditor {
     pub md_highlight_change: Option<std::time::Instant>,
     /// Number of lines in the document when cache was built.
     pub md_highlight_lines: usize,
-    /// READ-mode mouse selection state
-    pub read_selecting: bool,
-    pub read_sel_anchor: Option<(usize, usize)>,
-    pub read_sel_end: Option<(usize, usize)>,
 }
 
 impl Default for NoteEditor {
@@ -140,10 +128,8 @@ impl Default for NoteEditor {
             link_preview_error: None,
             last_sidebar_click: None,
             preview_drag_last_pos: None,
-            edit_mode: EditMode::Read,
             last_body_width: 0u16,
             last_body_height: 0u16,
-            read_gg_pending: false,
             body_viewport_row: 0,
             body_viewport_col: 0,
             title_viewport_row: 0,
@@ -151,9 +137,6 @@ impl Default for NoteEditor {
             md_highlight_cache: Vec::new(),
             md_highlight_change: None,
             md_highlight_lines: 0,
-            read_selecting: false,
-            read_sel_anchor: None,
-            read_sel_end: None,
             source_highlighter: None,
             header_title_rect: ratatui::layout::Rect::default(),
         }

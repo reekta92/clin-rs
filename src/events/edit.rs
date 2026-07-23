@@ -1,5 +1,5 @@
 use crate::actions::Action;
-use crate::app::{App, ContextMenu, EditFocus, EditMode, EditSidebar};
+use crate::app::{App, ContextMenu, EditFocus, EditSidebar};
 use crate::keybinds::EditAction;
 use crate::text_edit::apply_text_shortcuts;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
@@ -223,89 +223,12 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
         return false;
     }
 
-    // Esc: mode-gated. EDIT→READ, READ→leave editor.
+    // Esc: leave editor.
     if key.modifiers == KeyModifiers::NONE && key.code == KeyCode::Esc {
-        match app.editor.edit_mode {
-            EditMode::Edit => {
-                app.back_to_read_mode();
-                return false;
-            }
-            EditMode::Read => {
-                leave_editor(app, focus);
-                return false;
-            }
-        }
+        leave_editor(app, focus);
+        return false;
     }
 
-    // READ-mode navigation + entry to EDIT.
-    if app.editor.edit_mode == EditMode::Read {
-        let h = app.editor.last_body_height as usize;
-        // enter EDIT
-        if key.modifiers == KeyModifiers::NONE
-            && matches!(key.code, KeyCode::Char('e') | KeyCode::Char('i'))
-        {
-            app.activate_edit_mode();
-            return false;
-        }
-        if let Some(renderer) = &mut app.editor.md_preview_renderer {
-            match key.code {
-                KeyCode::Down | KeyCode::Char('j') => {
-                    renderer.scroll_down(1, h.max(1));
-                    return false;
-                }
-                KeyCode::Up | KeyCode::Char('k') => {
-                    renderer.scroll_up(1);
-                    return false;
-                }
-                KeyCode::PageDown | KeyCode::Char(' ') => {
-                    renderer.page_down(h.max(1));
-                    return false;
-                }
-                KeyCode::PageUp => {
-                    renderer.page_up(h.max(1));
-                    return false;
-                }
-                KeyCode::Char('d') if key.modifiers == KeyModifiers::CONTROL => {
-                    renderer.scroll_down(h.max(1) / 2, h.max(1));
-                    return false;
-                }
-                KeyCode::Char('u') if key.modifiers == KeyModifiers::CONTROL => {
-                    renderer.scroll_up(h.max(1) / 2);
-                    return false;
-                }
-                KeyCode::Char('G') => {
-                    renderer.scroll_bottom(h.max(1));
-                    return false;
-                }
-                KeyCode::Char('g') => {
-                    if app.editor.read_gg_pending {
-                        renderer.scroll_top();
-                        app.editor.read_gg_pending = false;
-                    } else {
-                        app.editor.read_gg_pending = true;
-                    }
-                    return false;
-                }
-                KeyCode::Home => {
-                    renderer.scroll_top();
-                    return false;
-                }
-                KeyCode::End => {
-                    renderer.scroll_bottom(h.max(1));
-                    return false;
-                }
-                KeyCode::Char('q') => {
-                    leave_editor(app, focus);
-                    return false;
-                }
-                _ => {}
-            }
-        } else if key.code == KeyCode::Char('q') {
-            leave_editor(app, focus);
-            return false;
-        }
-        // Fall through to resolve_edit so Find/GoToLine/PreviewLink/etc still work
-    }
 
     let seq = app.config.sequences_enabled();
     let counts = app.config.counts_enabled();
@@ -483,13 +406,6 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 *focus = EditFocus::Body;
                 return false;
             }
-            if app.editor.edit_mode != EditMode::Edit {
-                return false;
-            }
-            if key.code == KeyCode::Enter {
-                *focus = EditFocus::Body;
-                return false;
-            }
             if apply_text_shortcuts(&app.keybinds, &mut app.editor.title_editor, key) {
                 app.request_editor_preview_update();
                 return false;
@@ -507,12 +423,17 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 );
             }
             app.request_editor_preview_update();
+            if apply_text_shortcuts(&app.keybinds, &mut app.editor.editor, key) {
+                app.request_editor_preview_update();
+                return false;
+            }
+            if app.editor.editor.input(Input::from(key)) {
+                app.request_editor_preview_update();
+            }
+            app.request_editor_preview_update();
         }
         EditFocus::Body => {
             app.seq_matcher.clear();
-            if app.editor.edit_mode != EditMode::Edit {
-                return false;
-            }
             if apply_text_shortcuts(&app.keybinds, &mut app.editor.editor, key) {
                 app.request_editor_preview_update();
                 return false;
@@ -608,7 +529,7 @@ pub fn handle_edit_mouse(
     if mouse_event.kind == MouseEventKind::Down(MouseButton::Right) {
         let (title_inner, body_inner, _sidebar_inner) = edit_view_input_areas(
             terminal_area,
-            app.preview_fullscreen || app.editor.edit_mode == EditMode::Read,
+            app.preview_fullscreen,
             app.editor.editor_preview_enabled,
             app.editor.editor.lines().len(),
             app.editor.show_line_numbers,
@@ -629,8 +550,7 @@ pub fn handle_edit_mouse(
                     app.editor.title_viewport_col as usize,
                 );
             }
-        } else if app.editor.edit_mode == EditMode::Edit
-            && contains_cell(body_inner, mouse_event.column, mouse_event.row)
+        } else if contains_cell(body_inner, mouse_event.column, mouse_event.row)
         {
             *focus = EditFocus::Body;
             if app.editor.editor.selection_range().is_none() {
@@ -644,15 +564,7 @@ pub fn handle_edit_mouse(
                 );
             }
         }
-        let items: Vec<&'static str> = if app.editor.edit_mode == EditMode::Read {
-            let has_read_sel = app.editor.read_sel_anchor.is_some()
-                && app.editor.read_sel_anchor != app.editor.read_sel_end;
-            if has_read_sel {
-                vec![" Copy ", " Select All "]
-            } else {
-                vec![" Select All "]
-            }
-        } else {
+        let items: Vec<&'static str> = {
             // EDIT mode — existing textarea-selection-based items
             let has_selection = match focus {
                 EditFocus::Title => app.editor.title_editor.selection_range(),
@@ -679,7 +591,7 @@ pub fn handle_edit_mouse(
 
     let (title_inner, body_inner, sidebar_inner) = edit_view_input_areas(
         terminal_area,
-        app.preview_fullscreen || app.editor.edit_mode == EditMode::Read,
+        app.preview_fullscreen,
         app.editor.editor_preview_enabled,
         app.editor.editor.lines().len(),
         app.editor.show_line_numbers,
@@ -688,7 +600,7 @@ pub fn handle_edit_mouse(
         app.editor.header_title_rect,
     );
 
-    let md_area = if app.preview_fullscreen || app.editor.edit_mode == EditMode::Read {
+    let md_area = if app.preview_fullscreen {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -763,42 +675,10 @@ pub fn handle_edit_mouse(
         return;
     }
 
-    if app.editor.edit_mode == EditMode::Read {
-        match mouse_event.kind {
-            MouseEventKind::ScrollUp => {
-                if let Some(renderer) = &mut app.editor.md_preview_renderer {
-                    let h = app.editor.last_body_height.max(1) as usize;
-                    renderer.scroll_up(3.min(h));
-                }
-            }
-            MouseEventKind::ScrollDown => {
-                if let Some(renderer) = &mut app.editor.md_preview_renderer {
-                    let h = app.editor.last_body_height.max(1) as usize;
-                    renderer.scroll_down(3.min(h), h);
-                }
-            }
-            _ => {}
-        }
-        // Don't return — sidebar and preview-area interactions still available.
-        // But body clicks/drags are skipped below by the EDIT-mode guard.
-    }
 
     match mouse_event.kind {
         MouseEventKind::Down(MouseButton::Left) => {
             // READ-mode: start selection
-            if app.editor.edit_mode == EditMode::Read
-                && contains_cell(body_inner, mouse_event.column, mouse_event.row)
-            {
-                app.editor.read_selecting = true;
-                app.editor.read_sel_anchor = Some(read_grid_cell(
-                    app,
-                    body_inner,
-                    mouse_event.column,
-                    mouse_event.row,
-                ));
-                app.editor.read_sel_end = app.editor.read_sel_anchor;
-                return;
-            }
             *mouse_selecting = false;
             *mouse_dragged = false;
             if let Some(sb) = sidebar_inner
@@ -836,8 +716,7 @@ pub fn handle_edit_mouse(
                 return;
             }
             app.editor.last_sidebar_click = None;
-            if app.editor.edit_mode == EditMode::Edit
-                && contains_cell(body_inner, mouse_event.column, mouse_event.row)
+            if contains_cell(body_inner, mouse_event.column, mouse_event.row)
             {
                 *focus = EditFocus::Body;
                 move_textarea_cursor_to_mouse(
@@ -863,18 +742,8 @@ pub fn handle_edit_mouse(
                 app.editor.title_editor.start_selection();
                 *mouse_selecting = true;
             }
-        }
+        },
         MouseEventKind::Drag(MouseButton::Left) => {
-            // READ-mode: extend selection
-            if app.editor.edit_mode == EditMode::Read && app.editor.read_selecting {
-                app.editor.read_sel_end = Some(read_grid_cell(
-                    app,
-                    body_inner,
-                    mouse_event.column,
-                    mouse_event.row,
-                ));
-                return;
-            }
             if *mouse_selecting {
                 *mouse_dragged = true;
                 if *focus == EditFocus::Body {
@@ -897,17 +766,8 @@ pub fn handle_edit_mouse(
                     );
                 }
             }
-        }
+        },
         MouseEventKind::Up(MouseButton::Left) => {
-            // READ-mode: copy selection to system clipboard
-            if app.editor.edit_mode == EditMode::Read && app.editor.read_selecting {
-                let text = read_selection_text(app);
-                if !text.is_empty() {
-                    crate::text_edit::write_system_clipboard(&text);
-                }
-                app.editor.read_selecting = false;
-                return;
-            }
             if *mouse_selecting && !*mouse_dragged {
                 if *focus == EditFocus::Body {
                     app.editor.editor.cancel_selection();
@@ -917,12 +777,12 @@ pub fn handle_edit_mouse(
             }
             *mouse_selecting = false;
             *mouse_dragged = false;
-        }
+        },
         MouseEventKind::ScrollDown => {
             if *focus == EditFocus::Body {
                 app.scroll_editor(3, 0);
             }
-        }
+        },
         MouseEventKind::ScrollUp if *focus == EditFocus::Body => {
             app.scroll_editor(-3, 0);
         }
@@ -930,36 +790,3 @@ pub fn handle_edit_mouse(
     }
 }
 
-/// Map a mouse cell to (rendered_row, char_index) in the READ-mode rendered document.
-fn read_grid_cell(app: &App, _body_inner: Rect, col: u16, row: u16) -> (usize, usize) {
-    let renderer = match app.editor.md_preview_renderer.as_ref() {
-        Some(r) => r,
-        None => return (0, 0),
-    };
-    let doc = match renderer.document() {
-        Some(d) => d,
-        None => return (0, 0),
-    };
-    let inner = match app.editor.markdown_inner_rect {
-        Some(rect) => rect,
-        None => return (0, 0),
-    };
-    let line_offset = renderer.scroll_offset();
-    crate::markdown::hit_test_markdown(doc, inner, line_offset, col, row).unwrap_or((0, 0))
-}
-
-/// Extract the selected text from READ-mode document selection.
-pub(crate) fn read_selection_text(app: &App) -> String {
-    let (Some(a), Some(b)) = (app.editor.read_sel_anchor, app.editor.read_sel_end) else {
-        return String::new();
-    };
-    let renderer = match app.editor.md_preview_renderer.as_ref() {
-        Some(r) => r,
-        None => return String::new(),
-    };
-    let doc = match renderer.document() {
-        Some(d) => d,
-        None => return String::new(),
-    };
-    crate::markdown::read_selection_text(doc, a, b)
-}

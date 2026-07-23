@@ -268,20 +268,6 @@ fn widget_clips_wide_characters() {
 }
 
 #[test]
-fn selection_crosses_spans_and_cjk() {
-    let theme = AppThemeColors::default();
-    let opts = MdRenderOpts::default();
-    let mut renderer = MarkdownRenderer::new();
-    let viewport = RenderViewport { start: 0, height: 10 };
-    renderer.render_with("a **bold** CJK中文", 80, &theme, &opts, viewport);
-    while renderer.is_pending() {
-        renderer.poll();
-    }
-    
-    let doc = renderer.document().unwrap();
-    let text = super::read_selection_text(doc, (0, 3), (0, 12));
-    assert_eq!(text, "bold CJK中");
-}
 
 #[test]
 fn continuous_scroll_clamps() {

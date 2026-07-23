@@ -302,10 +302,7 @@ impl StatuslineContext<'_> {
                             "Notes".to_string()
                         }
                     }
-                    ViewMode::Edit => match self.app.map(|a| a.editor.edit_mode) {
-                        Some(crate::editor::EditMode::Edit) => "EDITOR - EDIT MODE".to_string(),
-                        _ => "EDITOR - READ MODE".to_string(),
-                    },
+                    ViewMode::Edit => "EDITOR".to_string(),
                     ViewMode::Help => "Help".to_string(),
                     ViewMode::Graph => "Graph".to_string(),
                     ViewMode::Draw => "Draw".to_string(),

@@ -85,7 +85,6 @@ impl App {
         };
 
         self.mode = ViewMode::Edit;
-        self.editor.edit_mode = EditMode::Read;
         self.editor.editing_id = None;
         self.editor.template_edit_path = Some(path.to_path_buf());
         self.editor.title_editor = make_title_editor(

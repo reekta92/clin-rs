@@ -13,7 +13,6 @@ mod setup;
 
 pub use popup_mouse::handle_global_popup_mouse;
 
-pub(crate) use edit::read_selection_text;
 pub use edit::{handle_edit_keys, handle_edit_mouse};
 pub use help::{handle_help_keys, handle_help_mouse};
 pub use list::{handle_list_keys, handle_list_mouse};
@@ -1701,7 +1700,6 @@ mod tests {
         };
         let mut app = App::new(storage).expect("value is present");
         app.editor.sidebar = EditSidebar::Links;
-        app.editor.edit_mode = crate::editor::EditMode::Edit;
         app.editor.links = vec![LinkItem {
             id: "test_note.md".to_string(),
             title: "Test Note".to_string(),
@@ -1790,7 +1788,6 @@ mod tests {
         };
         let mut app = App::new(storage).expect("value is present");
         app.editor.sidebar = EditSidebar::Outline;
-        app.editor.edit_mode = crate::editor::EditMode::Edit;
         app.editor.outline_nodes = vec![TreeNode {
             kind: crate::outline::parse::NodeKind::Header {
                 level: 1,
@@ -1888,7 +1885,6 @@ mod tests {
             .editor
             .insert_str("Hello world\nThis is a test\nSome more text\n");
 
-        app.editor.edit_mode = crate::editor::EditMode::Edit;
         let terminal_area = Rect::new(0, 0, 80, 24);
         let mut focus = EditFocus::Body;
         let mut selecting = false;

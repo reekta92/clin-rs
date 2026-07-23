@@ -271,10 +271,6 @@ impl App {
     }
 
     pub fn toggle_markdown_preview(&mut self) {
-        if self.editor.edit_mode == crate::editor::EditMode::Read {
-            self.set_temporary_status_static("Preview can't be hidden in read mode");
-            return;
-        }
         self.editor.editor_preview_enabled = !self.editor.editor_preview_enabled;
         if self.editor.editor_preview_enabled {
             self.editor.sidebar = EditSidebar::None;
@@ -670,36 +666,7 @@ impl App {
     }
 
 
-    pub fn activate_edit_mode(&mut self) {
-        self.editor.edit_mode = crate::editor::EditMode::Edit;
-        self.editor.read_selecting = false;
-        self.editor.read_sel_anchor = None;
-        self.editor.read_sel_end = None;
-        if let Some(renderer) = &self.editor.md_preview_renderer {
-            let src_line = renderer.rendered_to_source_line(renderer.scroll_offset());
-            let max_line = self.editor.editor.lines().len().saturating_sub(1);
-            let target = src_line.min(max_line);
-            self.editor.body_viewport_row = target as u16;
-            self.editor
-                .editor
-                .move_cursor(ratatui_textarea::CursorMove::Jump(target as u16, 0));
-        }
-        self.set_temporary_status_static("EDIT");
-    }
 
-    pub fn back_to_read_mode(&mut self) {
-        self.editor.edit_mode = crate::editor::EditMode::Read;
-        self.editor.read_sel_anchor = None;
-        self.editor.read_sel_end = None;
-        self.editor.read_selecting = false;
-        if let Some(renderer) = &mut self.editor.md_preview_renderer {
-            let target_grid_line =
-                renderer.source_to_rendered_line(self.editor.body_viewport_row as usize);
-            renderer.scroll_top(); // reset
-            renderer.scroll_down(target_grid_line, self.editor.last_body_height as usize);
-        }
-        self.set_temporary_status_static("READ");
-    }
 }
 
 #[cfg(test)]

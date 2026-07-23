@@ -555,53 +555,6 @@ pub(crate) fn hit_test_markdown(
     Some((global_line, char_idx))
 }
 
-pub(crate) fn read_selection_text(
-    document: &RenderedDocument,
-    mut start: (usize, usize),
-    mut end: (usize, usize),
-) -> String {
-    if document.line_count() == 0 {
-        return String::new();
-    }
-    
-    if start.0 > end.0 || (start.0 == end.0 && start.1 > end.1) {
-        std::mem::swap(&mut start, &mut end);
-    }
-    
-    let start_line = start.0.min(document.line_count() - 1);
-    let end_line = end.0.min(document.line_count() - 1);
-    
-    let mut selected_parts = Vec::new();
-    
-    for line_idx in start_line..=end_line {
-        let line = match document.line(line_idx) {
-            Some(l) => l,
-            None => continue,
-        };
-        
-        let total_chars: usize = line.spans.iter().map(|s| s.text.chars().count()).sum();
-        
-        let chars_start = if line_idx == start_line {
-            start.1.min(total_chars)
-        } else {
-            0
-        };
-        
-        let chars_end = if line_idx == end_line {
-            end.1.min(total_chars)
-        } else {
-            total_chars
-        };
-        
-        if chars_start < chars_end {
-            selected_parts.push(line.text_range(chars_start..chars_end));
-        } else {
-            selected_parts.push(String::new());
-        }
-    }
-    
-    selected_parts.join("\n")
-}
 
 #[cfg(test)]
 mod perf_tests;

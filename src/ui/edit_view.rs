@@ -4,7 +4,7 @@ use super::{
     PopupHints, PopupSize, centered_rect, draw_dim_vline, draw_popup_frame, draw_status_bar,
     draw_view_title_bar, format_keybind_hints, get_preview_info,
 };
-use crate::app::{App, EditFocus, EditMode, EditSidebar, ViewMode};
+use crate::app::{App, EditFocus, EditSidebar, ViewMode};
 use crate::events::get_title_text;
 use crate::keybinds::EditAction;
 use crate::outline::parse::NodeKind;
@@ -234,7 +234,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
 
     let layout = crate::events::compute_edit_layout(
         body_area,
-        app.preview_fullscreen || app.editor.edit_mode == EditMode::Read,
+        app.preview_fullscreen,
         app.editor.editor_preview_enabled,
         app.editor.sidebar,
         app.preview_position,
@@ -263,13 +263,14 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     if let Some(sb) = sidebar_area {
         draw_sidebar_pane(frame, sb, app, focus);
     }
-    if let Some(preview_area_rect) = preview_area_rect {
-        if !app.preview_fullscreen && app.editor.edit_mode == EditMode::Edit {
-            render_editor_widget(frame, app, focus, editor_container, None, None);
-            if app.config.editor.edit_mode_highlight {
-                super::overlay_markdown_highlight(frame, app, editor_container);
-            }
+    if !app.preview_fullscreen {
+        render_editor_widget(frame, app, focus, editor_container, None, None);
+        if app.config.editor.edit_mode_highlight {
+            super::overlay_markdown_highlight(frame, app, editor_container);
         }
+    }
+
+    if let Some(preview_area_rect) = preview_area_rect {
 
         app.editor.markdown_inner_rect = None;
         if let Some(renderer) = &app.editor.md_preview_renderer {
@@ -329,54 +330,6 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     }
                 }
 
-                // Selection overlay for READ mode
-                if app.editor.edit_mode == EditMode::Read {
-                    if let (Some(inner), Some(doc)) = (app.editor.markdown_inner_rect, renderer.document()) {
-                        if let (Some(a), Some(b)) = (app.editor.read_sel_anchor, app.editor.read_sel_end) {
-                            let (mut r1, mut c1) = a;
-                            let (mut r2, mut c2) = b;
-                            if (r2, c2) < (r1, c1) {
-                                std::mem::swap(&mut r1, &mut r2);
-                                std::mem::swap(&mut c1, &mut c2);
-                            }
-                            
-                            let buf = frame.buffer_mut();
-                            let top = renderer.scroll_offset();
-                            let vis_hi = top + inner.height as usize;
-                            let hl = Style::default()
-                                .fg(app.app_theme.highlight_fg)
-                                .bg(app.app_theme.highlight_bg);
-
-                            for r in r1..=r2 {
-                                if r < top || r >= vis_hi {
-                                    continue;
-                                }
-                                let line = match doc.line(r) {
-                                    Some(l) => l,
-                                    None => continue,
-                                };
-                                let y = inner.y + (r - top) as u16;
-                                
-                                let total_chars: usize = line.spans.iter().map(|s| s.text.chars().count()).sum();
-                                let char_start = if r == r1 { c1.min(total_chars) } else { 0 };
-                                let char_end = if r == r2 { c2.min(total_chars) } else { total_chars };
-                                
-                                for i in char_start..char_end {
-                                    let col_start = line.visual_column_of_char(i);
-                                    let col_end = line.visual_column_of_char(i + 1);
-                                    for col in col_start..col_end {
-                                        let x = inner.x + col as u16;
-                                        if x < inner.right() {
-                                            if let Some(cell) = buf.cell_mut((x, y)) {
-                                                cell.set_style(hl);
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
             } else {
                 let loading = Paragraph::new("Rendering preview...")
                     .style(Style::default().fg(app.app_theme.muted))
@@ -389,19 +342,9 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 frame.render_widget(loading, preview_area_rect);
             }
         }
-    } else if app.editor.edit_mode == EditMode::Edit {
-        render_editor_widget(frame, app, focus, editor_container, None, None);
-        if app.config.editor.edit_mode_highlight {
-            super::overlay_markdown_highlight(frame, app, editor_container);
-        }
     }
     let kb = &app.keybinds;
-    let mode_hint = match app.editor.edit_mode {
-        EditMode::Read => ("e".to_string(), "edit"),
-        EditMode::Edit => (kb.display_edit(EditAction::Back), "read"),
-    };
     let hints_items = vec![
-        mode_hint,
         (kb.display_edit(EditAction::CycleFocus), "focus"),
         (kb.display_edit(EditAction::Back), "back"),
         (
