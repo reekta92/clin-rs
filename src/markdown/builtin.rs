@@ -754,35 +754,38 @@ fn heading_style(ctx: &Ctx<'_, '_>, level: u8) -> Style {
 fn heading_marker(level: u8, mode: crate::config::IconMode) -> &'static str {
     match mode {
         crate::config::IconMode::Nerd => match level {
-            2 => "\u{f0ca2}",
-            3 => "\u{f0ca4}",
-            4 => "\u{f0ca6}",
-            5 => "\u{f0ca8}",
-            6 => "\u{f0caa}",
-            _ => unreachable!("H1 does not use a numbered marker"),
+            1 => "\u{f0ca1}",
+            2 => "\u{f0ca3}",
+            3 => "\u{f0ca5}",
+            4 => "\u{f0ca7}",
+            5 => "\u{f0ca9}",
+            6 => "\u{f0cab}",
+            _ => unreachable!("heading level must be 1-6"),
         },
         crate::config::IconMode::Unicode => match level {
+            1 => "①",
             2 => "②",
             3 => "③",
             4 => "④",
             5 => "⑤",
             6 => "⑥",
-            _ => unreachable!("H1 does not use a numbered marker"),
+            _ => unreachable!("heading level must be 1-6"),
         },
         crate::config::IconMode::None => match level {
-            2 => " II",
+            1 => "I",
+            2 => "II",
             3 => "III",
-            4 => " IV",
-            5 => "  V",
-            6 => " VI",
-            _ => unreachable!("H1 does not use a numbered marker"),
+            4 => "IV",
+            5 => "V",
+            6 => "VI",
+            _ => unreachable!("heading level must be 1-6"),
         },
     }
 }
-
 fn heading_margin(depth: usize, level: u8) -> usize {
-    block_margin(depth) + usize::from(level.saturating_sub(2)) * 2
+    depth + usize::from(level.saturating_sub(1))
 }
+
 
 fn render_heading<'a>(ctx: &mut Ctx<'_, '_>, node: &'a AstNode<'a>, h: &NodeHeading, depth: usize) {
     let margin = block_margin(depth);
@@ -798,7 +801,7 @@ fn render_heading<'a>(ctx: &mut Ctx<'_, '_>, node: &'a AstNode<'a>, h: &NodeHead
     ctx.ensure_source_line(start_line, 0);
 
     let h_margin = if h.level == 1 {
-        margin
+        depth
     } else {
         heading_margin(depth, h.level)
     };
@@ -807,21 +810,11 @@ fn render_heading<'a>(ctx: &mut Ctx<'_, '_>, node: &'a AstNode<'a>, h: &NodeHead
         ctx.push(' ', bg_style, 0);
     }
 
-    let text_start_col;
-    if h.level == 1 {
-        ctx.push(' ', bg_style, 0);
-        text_start_col = ctx.cur_col();
-        for child in node.children() {
-            render_inline(ctx, child, bg_style, 0);
-        }
-        ctx.push(' ', bg_style, 0);
-    } else {
-        ctx.push_str(heading_marker(h.level, ctx.opts.icon_mode), bg_style, 0);
-        ctx.push(' ', bg_style, 0);
-        text_start_col = ctx.cur_col();
-        for child in node.children() {
-            render_inline(ctx, child, bg_style, 0);
-        }
+    ctx.push_str(heading_marker(h.level, ctx.opts.icon_mode), bg_style, 0);
+    ctx.push(' ', bg_style, 0);
+    let text_start_col = ctx.cur_col();
+    for child in node.children() {
+        render_inline(ctx, child, bg_style, 0);
     }
 
     let title_width = ctx.cur_col().saturating_sub(text_start_col);
@@ -1747,6 +1740,36 @@ mod tests {
     }
 
     #[test]
+    fn headings_have_no_padding_and_reduced_indentation() {
+        let lines = render_test(
+            "# H1\n\n## H2\n\n### H3\n\n#### H4\n\n##### H5\n\n###### H6\n",
+            80,
+            true,
+            false,
+        );
+
+        for (title, indent) in [
+            ("H1", 0),
+            ("H2", 1),
+            ("H3", 2),
+            ("H4", 3),
+            ("H5", 4),
+            ("H6", 5),
+        ] {
+            let line = lines
+                .iter()
+                .find(|line| line_text(line).contains(title))
+                .expect("heading should render");
+            let text = line_text(line);
+            assert_eq!(
+                text.chars().take_while(|c| *c == ' ').count(),
+                indent,
+                "{title} indentation"
+            );
+        }
+    }
+
+    #[test]
     fn renders_task_list_checkboxes() {
         let lines = render_test("- [ ] unchecked\n- [x] checked\n", 80, true, false);
         let text = lines.iter().map(line_text).collect::<Vec<_>>().join("\n");
@@ -2653,7 +2676,7 @@ let very_long_variable_name_value = 42;
         let mut opts_nerd = mk_opts(crate::config::IconMode::Nerd);
         let lines_nerd = render_layout("## H2", 80, &theme, &opts_nerd, &cancel).unwrap().document.lines().to_vec();
         let t_nerd = line_text(&lines_nerd[0]);
-        assert!(t_nerd.contains("\u{f0ca2}"));
+        assert!(t_nerd.contains("\u{f0ca3}"));
 
         // Unicode mode
         let mut opts_uni = mk_opts(crate::config::IconMode::Unicode);
@@ -2665,6 +2688,6 @@ let very_long_variable_name_value = 42;
         let mut opts_none = mk_opts(crate::config::IconMode::None);
         let lines_none = render_layout("## H2", 80, &theme, &opts_none, &cancel).unwrap().document.lines().to_vec();
         let t_none = line_text(&lines_none[0]);
-        assert!(t_none.contains(" II "));
+        assert!(t_none.contains("II "));
     }
 }
