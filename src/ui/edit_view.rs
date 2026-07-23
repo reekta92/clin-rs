@@ -269,7 +269,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         }
     }
 
-    // Sync preview scroll with editor scroll
+    // Sync preview scroll with editor scroll position
     if let Some(renderer) = &mut app.editor.md_preview_renderer {
         if renderer.document().is_some() {
             if let Some(preview_area) = preview_area_rect {
@@ -278,9 +278,13 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     .borders(Borders::NONE)
                     .padding(Padding::new(2, 2, 1, 1));
                 let inner = block.inner(preview_area);
-                // Convert editor viewport row (source line) to rendered line
-                let rendered_start = renderer.source_to_rendered_line(app.editor.body_viewport_row as usize);
-                // Update the renderer's scroll offset to match editor viewport
+                // Use viewport row when wrap is OFF (accurate), cursor when wrap is ON (fallback)
+                let source_line = if app.config.editor.soft_wrap {
+                    app.editor.editor.cursor().0 as usize
+                } else {
+                    app.editor.body_viewport_row as usize
+                };
+                let rendered_start = renderer.source_to_rendered_line(source_line);
                 renderer.set_scroll_offset(rendered_start, inner.height as usize);
             }
         }
