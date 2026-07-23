@@ -155,17 +155,13 @@ pub fn list_action_meta(a: ListAction) -> HelpMeta {
             group: "Display",
             description: "Toggle preview fullscreen",
         },
-        ListAction::TogglePreviewWrap => HelpMeta {
+        ListAction::ToggleWrap => HelpMeta {
             group: "Display",
-            description: "Toggle preview wrap",
+            description: "Toggle word wrap (editor and preview)",
         },
         ListAction::PreviewPageUp => HelpMeta {
             group: "Display",
             description: "Page preview up",
-        },
-        ListAction::PreviewPageDown => HelpMeta {
-            group: "Display",
-            description: "Page preview down",
         },
         ListAction::ToggleCalendar => HelpMeta {
             group: "Display",
@@ -239,6 +235,10 @@ pub fn list_action_meta(a: ListAction) -> HelpMeta {
             group: "General",
             description: "Show note info",
         },
+        ListAction::PreviewPageDown => HelpMeta {
+            group: "Display",
+            description: "Page preview down",
+        },
     }
 }
 
@@ -308,9 +308,9 @@ pub fn edit_action_meta(a: EditAction) -> HelpMeta {
             group: "Preview",
             description: "Toggle preview fullscreen",
         },
-        EditAction::TogglePreviewWrap => HelpMeta {
-            group: "Preview",
-            description: "Toggle preview wrap",
+        EditAction::ToggleWrap => HelpMeta {
+            group: "Editing",
+            description: "Toggle word wrap (editor and preview)",
         },
         EditAction::PreviewPageUp => HelpMeta {
             group: "Preview",
@@ -319,26 +319,6 @@ pub fn edit_action_meta(a: EditAction) -> HelpMeta {
         EditAction::PreviewPageDown => HelpMeta {
             group: "Preview",
             description: "Page preview down",
-        },
-        EditAction::PasteImage => HelpMeta {
-            group: "Editing",
-            description: "Paste image from clipboard",
-        },
-        EditAction::InsertImageFromFile => HelpMeta {
-            group: "Editing",
-            description: "Insert image from file",
-        },
-        EditAction::Find => HelpMeta {
-            group: "Editing",
-            description: "Find in document",
-        },
-        EditAction::InsertDate => HelpMeta {
-            group: "Editing",
-            description: "Insert date/time",
-        },
-        EditAction::ToggleSoftWrap => HelpMeta {
-            group: "Editing",
-            description: "Toggle soft wrap",
         },
         EditAction::ToggleOutline => HelpMeta {
             group: "Panels",
@@ -355,6 +335,22 @@ pub fn edit_action_meta(a: EditAction) -> HelpMeta {
         EditAction::GoToLine => HelpMeta {
             group: "Editor",
             description: "Go to line number",
+        },
+        EditAction::PasteImage => HelpMeta {
+            group: "Editing",
+            description: "Paste image from clipboard",
+        },
+        EditAction::InsertImageFromFile => HelpMeta {
+            group: "Editing",
+            description: "Insert image from file",
+        },
+        EditAction::Find => HelpMeta {
+            group: "Editing",
+            description: "Find in document",
+        },
+        EditAction::InsertDate => HelpMeta {
+            group: "Editing",
+            description: "Insert date/time",
         },
     }
 }

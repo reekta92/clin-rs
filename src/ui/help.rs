@@ -1360,7 +1360,7 @@ pub(crate) fn resolve_tip_key(token: &str, kb: &Keybinds) -> String {
             "ManageSubnotes" => kb.edit_keys_display(EditAction::ManageSubnotes),
             "Find" => kb.edit_keys_display(EditAction::Find),
             "InsertDate" => kb.edit_keys_display(EditAction::InsertDate),
-            "ToggleSoftWrap" => kb.edit_keys_display(EditAction::ToggleSoftWrap),
+            "ToggleWrap" => kb.edit_keys_display(EditAction::ToggleWrap),
             "ToggleOutline" => kb.edit_keys_display(EditAction::ToggleOutline),
             "ToggleLinks" => kb.edit_keys_display(EditAction::ToggleLinks),
             "PreviewLink" => kb.edit_keys_display(EditAction::PreviewLink),

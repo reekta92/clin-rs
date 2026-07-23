@@ -182,7 +182,7 @@ impl Default for Keybinds {
             vec![KeyCombo::ctrl(KeyCode::Char('e'))],
         );
         list.insert(
-            ListAction::TogglePreviewWrap,
+            ListAction::ToggleWrap,
             vec![KeyCombo::ctrl(KeyCode::Char('w'))],
         );
         // Preview paging; inherited by all presets (none override Shift+Up/Down).
@@ -301,8 +301,8 @@ impl Default for Keybinds {
             vec![KeyCombo::simple(KeyCode::F(11))],
         );
         edit.insert(
-            EditAction::TogglePreviewWrap,
-            vec![KeyCombo::simple(KeyCode::F(12))],
+            EditAction::ToggleWrap,
+            vec![KeyCombo::simple(KeyCode::F(10))],
         );
         // Preview paging; inherited by all presets (none override PageUp/Down).
         edit.insert(
@@ -333,10 +333,6 @@ impl Default for Keybinds {
         edit.insert(
             EditAction::InsertDate,
             vec![KeyCombo::ctrl(KeyCode::Char(';'))],
-        );
-        edit.insert(
-            EditAction::ToggleSoftWrap,
-            vec![KeyCombo::simple(KeyCode::F(10))],
         );
         edit.insert(
             EditAction::ToggleOutline,

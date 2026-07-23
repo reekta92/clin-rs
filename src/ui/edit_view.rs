@@ -269,7 +269,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         }
     }
 
-    // Sync preview scroll with editor scroll position
+    // Sync preview scroll with editor scroll
     if let Some(renderer) = &mut app.editor.md_preview_renderer {
         if renderer.document().is_some() {
             if let Some(preview_area) = preview_area_rect {
@@ -278,13 +278,17 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     .borders(Borders::NONE)
                     .padding(Padding::new(2, 2, 1, 1));
                 let inner = block.inner(preview_area);
-                // Use viewport row when wrap is OFF (accurate), cursor when wrap is ON (fallback)
-                let source_line = if app.config.editor.soft_wrap {
-                    app.editor.editor.cursor().0 as usize
-                } else {
+
+                let rendered_start = if app.config.editor.soft_wrap {
+                    // With wrap ON: body_viewport_row is first visible screen line
+                    // Preview scroll_offset is also in rendered (screen) lines
+                    // Use directly for 1:1 visual line correspondence
                     app.editor.body_viewport_row as usize
+                } else {
+                    // Wrap OFF: viewport row = source line, convert to rendered line
+                    let source_line = app.editor.body_viewport_row as usize;
+                    renderer.source_to_rendered_line(source_line)
                 };
-                let rendered_start = renderer.source_to_rendered_line(source_line);
                 renderer.set_scroll_offset(rendered_start, inner.height as usize);
             }
         }
@@ -376,7 +380,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         (kb.display_edit(EditAction::PreviewLink), "peek link"),
         (kb.display_edit(EditAction::Find), "find"),
         (kb.display_edit(EditAction::InsertDate), "date"),
-        (kb.display_edit(EditAction::ToggleSoftWrap), "wrap"),
+        (kb.display_edit(EditAction::ToggleWrap), "wrap"),
     ];
     let default_hints = format_keybind_hints(&app.app_theme, &hints_items);
     let hint = default_hints;

@@ -303,37 +303,34 @@ impl App {
         }
     }
 
-    pub fn toggle_preview_wrap(&mut self) {
-        self.preview_wrap = !self.preview_wrap;
-        self.config.core.preview_wrap = self.preview_wrap;
-        let val = self.preview_wrap;
-        self.persist_editor_config(|c| c.core.preview_wrap = val);
-        match self.mode {
-            ViewMode::Edit => self.update_editor_markdown_preview(),
-            _ => self.update_preview(),
-        }
-        self.set_temporary_status_static(if self.preview_wrap {
-            "Wrap on"
-        } else {
-            "Wrap off"
-        });
-    }
+    pub fn toggle_wrap(&mut self) {
+        let new_wrap = !self.preview_wrap;
+        self.preview_wrap = new_wrap;
+        self.config.core.preview_wrap = new_wrap;
+        self.config.editor.soft_wrap = new_wrap;
 
-    pub fn toggle_editor_soft_wrap(&mut self) {
-        self.config.editor.soft_wrap = !self.config.editor.soft_wrap;
-        let mode = if self.config.editor.soft_wrap {
+        let mode = if new_wrap {
             ratatui_textarea::WrapMode::WordOrGlyph
         } else {
             ratatui_textarea::WrapMode::None
         };
         self.editor.editor.set_wrap_mode(mode);
         self.editor.title_editor.set_wrap_mode(mode);
-        let val = self.config.editor.soft_wrap;
-        self.persist_editor_config(|c| c.editor.soft_wrap = val);
-        self.set_temporary_status_static(if self.config.editor.soft_wrap {
-            "Editor wrap on"
+
+        let val = new_wrap;
+        self.persist_editor_config(|c| {
+            c.core.preview_wrap = val;
+            c.editor.soft_wrap = val;
+        });
+
+        match self.mode {
+            ViewMode::Edit => self.update_editor_markdown_preview(),
+            _ => self.update_preview(),
+        }
+        self.set_temporary_status_static(if new_wrap {
+            "Wrap on"
         } else {
-            "Editor wrap off"
+            "Wrap off"
         });
     }
 

@@ -19,14 +19,14 @@ toggle_action!(
 );
 
 toggle_action!(
-    TogglePreviewWrapAction,
-    "settings.preview_wrap",
-    "Toggle Preview Word Wrap",
-    "Wrap long preview lines to the pane width",
+    ToggleWrapAction,
+    "settings.wrap",
+    "Toggle Word Wrap",
+    "Toggle word wrap for both editor and preview",
     ActionCategory::Settings,
     "\u{f036}",
     "\u{1f4c4}",
-    toggle_preview_wrap,
+    toggle_wrap,
     app,
     if app.preview_wrap { "On" } else { "Off" }
 );

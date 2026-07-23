@@ -315,8 +315,8 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 app.toggle_preview_fullscreen();
                 return false;
             }
-            ListAction::TogglePreviewWrap => {
-                app.toggle_preview_wrap();
+            ListAction::ToggleWrap => {
+                app.toggle_wrap();
                 return false;
             }
             ListAction::ToggleCalendar => {

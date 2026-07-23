@@ -329,14 +329,15 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                     EditFocus::Body => {
                         let _ = app.editor.editor.insert_str(&s);
                     }
-                    EditFocus::Sidebar => {}
+                    EditFocus::Sidebar => {
+                        // no-op
+                    }
                 }
-                app.request_editor_preview_update();
                 app.request_editor_preview_update();
                 return false;
             }
-            EditAction::ToggleSoftWrap => {
-                app.toggle_editor_soft_wrap();
+            EditAction::ToggleWrap => {
+                app.toggle_wrap();
                 return false;
             }
             EditAction::InsertTab => {
@@ -347,7 +348,9 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                     EditFocus::Body => {
                         let _ = app.editor.editor.insert_str("\t");
                     }
-                    EditFocus::Sidebar => {}
+                    EditFocus::Sidebar => {
+                        // no-op
+                    }
                 }
                 app.request_editor_preview_update();
                 return false;
@@ -365,13 +368,6 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
         .matches_edit(EditAction::TogglePreviewFullscreen, &key)
     {
         app.toggle_preview_fullscreen();
-        return false;
-    }
-    if app
-        .keybinds
-        .matches_edit(EditAction::TogglePreviewWrap, &key)
-    {
-        app.toggle_preview_wrap();
         return false;
     }
 

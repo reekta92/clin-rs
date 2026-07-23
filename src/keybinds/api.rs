@@ -942,6 +942,8 @@ fn test_display_picks_hint_key() {
     assert_eq!(kb.display_edit(EditAction::InsertTab), "Tab", "InsertTab");
     assert_eq!(kb.display_edit(EditAction::CycleFocus), "Ctrl+t", "CycleFocus");
     assert_eq!(kb.display_edit(EditAction::Back), "Esc", "Back");
+    // Edit: F10 for ToggleWrap
+    assert_eq!(kb.display_edit(EditAction::ToggleWrap), "F10", "ToggleWrap");
     // Canvas: letter for nav, conventional for quit
     assert_eq!(
         kb.display_canvas(CanvasAction::MoveUp),
