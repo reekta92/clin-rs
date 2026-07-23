@@ -166,7 +166,6 @@ fn build_preview_model(catalog: &FolderPreviewCatalog, focused_path: &str) -> Fo
         for &idx in &catalog.pinned_indices {
             if let Some(n) = catalog.notes.get(idx) {
                 raw_nodes.push(FolderGraphNode {
-                    key: n.id.to_string(),
                     label: n.title.to_string(),
                     is_note: true,
                     x: 0.0,
@@ -180,7 +179,6 @@ fn build_preview_model(catalog: &FolderPreviewCatalog, focused_path: &str) -> Fo
             for f in subfolders {
                 let name = f.split('/').next_back().unwrap_or("").to_string();
                 raw_nodes.push(FolderGraphNode {
-                    key: f.clone(),
                     label: name,
                     is_note: false,
                     x: 0.0,
@@ -193,7 +191,6 @@ fn build_preview_model(catalog: &FolderPreviewCatalog, focused_path: &str) -> Fo
             for &idx in note_indices {
                 if let Some(n) = catalog.notes.get(idx) {
                     raw_nodes.push(FolderGraphNode {
-                        key: n.id.to_string(),
                         label: n.title.to_string(),
                         is_note: true,
                         x: 0.0,
@@ -241,7 +238,6 @@ fn build_preview_model(catalog: &FolderPreviewCatalog, focused_path: &str) -> Fo
         groups.push(group);
 
         top_nodes.push(FolderGraphNode {
-            key: group_path,
             label,
             is_note: false,
             x: 0.0,

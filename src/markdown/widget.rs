@@ -53,7 +53,3 @@ impl<'a> Widget for MarkdownWidget<'a> {
     }
 }
 
-pub(crate) fn markdown_inner_area(block: &ratatui::widgets::Block<'_>, outer: Rect) -> Rect {
-    block.inner(outer)
-}
-

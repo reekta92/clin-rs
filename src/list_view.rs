@@ -12,7 +12,6 @@ pub enum ListMode {
 /// A child node in the FolderGraph preview — either a subfolder or a note.
 #[derive(Debug, Clone)]
 pub(crate) struct FolderGraphNode {
-    pub key: String,
     pub label: String,
     pub is_note: bool,
     pub x: f64,

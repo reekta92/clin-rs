@@ -897,7 +897,6 @@ impl App {
                 .iter()
                 .filter(|n| n.pinned)
                 .map(|n| FolderGraphNode {
-                    key: n.id.clone(),
                     label: n.title.clone(),
                     is_note: true,
                     x: 0.0,
@@ -921,7 +920,6 @@ impl App {
                     .iter()
                     .filter_map(|&i| self.notes.get(i))
                     .map(|n| FolderGraphNode {
-                        key: n.id.clone(),
                         label: n.title.clone(),
                         is_note: true,
                         x: 0.0,
@@ -951,7 +949,6 @@ impl App {
             .map(|f| {
                 let name = f.split('/').next_back().unwrap_or("").to_string();
                 FolderGraphNode {
-                    key: f.clone(),
                     label: name,
                     is_note: false,
                     x: 0.0,
@@ -965,7 +962,6 @@ impl App {
             .iter()
             .filter(|n| n.folder == focused_path)
             .map(|n| FolderGraphNode {
-                key: n.id.clone(),
                 label: n.title.clone(),
                 is_note: true,
                 x: 0.0,
