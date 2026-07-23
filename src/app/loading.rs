@@ -691,7 +691,6 @@ impl App {
             }
         }
 
-
         if let Some(last) = self.editor.last_editor_change
             && last.elapsed() > Duration::from_millis(150)
             && self.editor.pending_editor_preview_update
@@ -1178,9 +1177,13 @@ impl App {
                     let opts = crate::markdown::MdRenderOpts::from_config(&self.config);
                     let height = self.desired_list_preview_height();
                     renderer.set_page_height(height as usize);
-                    let viewport = crate::markdown::RenderViewport { start: renderer.visible_start(), height: height as usize };
+                    let viewport = crate::markdown::RenderViewport {
+                        start: renderer.visible_start(),
+                        height: height as usize,
+                    };
 
-                    let content_changed = renderer.is_changed(&note.content, &self.app_theme, &opts);
+                    let content_changed =
+                        renderer.is_changed(&note.content, &self.app_theme, &opts);
                     let mut should_render = false;
                     if content_changed || renderer.document().is_none() {
                         should_render = true;
@@ -1202,7 +1205,13 @@ impl App {
                     }
 
                     if should_render {
-                        renderer.render_with(&note.content, width, &self.app_theme, &opts, viewport);
+                        renderer.render_with(
+                            &note.content,
+                            width,
+                            &self.app_theme,
+                            &opts,
+                            viewport,
+                        );
                         self.list.preview_content_width = Some(width);
                         self.list.pending_markdown_resize = None;
                     }
@@ -1311,7 +1320,10 @@ impl App {
                 let opts = crate::markdown::MdRenderOpts::from_config(&self.config);
                 let height = self.desired_list_preview_height();
                 renderer.set_page_height(height as usize);
-                let viewport = crate::markdown::RenderViewport { start: renderer.visible_start(), height: height as usize };
+                let viewport = crate::markdown::RenderViewport {
+                    start: renderer.visible_start(),
+                    height: height as usize,
+                };
 
                 let content_changed = renderer.is_changed(&md, &self.app_theme, &opts);
                 let mut should_render = false;
@@ -1369,7 +1381,10 @@ impl App {
                 let opts = crate::markdown::MdRenderOpts::from_config(&self.config);
                 let height = self.desired_list_preview_height();
                 renderer.set_page_height(height as usize);
-                let viewport = crate::markdown::RenderViewport { start: renderer.visible_start(), height: height as usize };
+                let viewport = crate::markdown::RenderViewport {
+                    start: renderer.visible_start(),
+                    height: height as usize,
+                };
 
                 let content_changed = renderer.is_changed(&md, &self.app_theme, &opts);
                 let mut should_render = false;
@@ -1430,7 +1445,10 @@ impl App {
                     let md = format!("# {}\n\n{}", sub.title, sub.content);
                     let height = self.desired_list_preview_height();
                     renderer.set_page_height(height as usize);
-                    let viewport = crate::markdown::RenderViewport { start: renderer.visible_start(), height: height as usize };
+                    let viewport = crate::markdown::RenderViewport {
+                        start: renderer.visible_start(),
+                        height: height as usize,
+                    };
 
                     let content_changed = renderer.is_changed(&md, &self.app_theme, &opts);
                     let mut should_render = false;
@@ -1487,18 +1505,23 @@ impl App {
     }
 
     pub fn update_editor_markdown_preview(&mut self) {
-        if !(self.editor.editor_preview_enabled
-            || self.preview_fullscreen)
-        {
+        if !(self.editor.editor_preview_enabled || self.preview_fullscreen) {
             return;
         }
 
         let content = self.editor.editor.lines().join("\n");
         let width = self.desired_editor_preview_width();
-        let mut renderer = self.editor.md_preview_renderer.take().unwrap_or_else(MarkdownRenderer::new);
+        let mut renderer = self
+            .editor
+            .md_preview_renderer
+            .take()
+            .unwrap_or_else(MarkdownRenderer::new);
         let opts = crate::markdown::MdRenderOpts::from_config(&self.config);
         let height = self.desired_editor_preview_height();
-        let viewport = crate::markdown::RenderViewport { start: renderer.visible_start(), height: height as usize };
+        let viewport = crate::markdown::RenderViewport {
+            start: renderer.visible_start(),
+            height: height as usize,
+        };
 
         let content_changed = renderer.is_changed(&content, &self.app_theme, &opts);
         let mut should_render = false;

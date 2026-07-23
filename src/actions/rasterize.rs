@@ -1,6 +1,6 @@
 use super::Action;
 use crate::app::App;
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use std::borrow::Cow;
 
 pub struct RasterizeNoteAction;
@@ -136,6 +136,9 @@ mod tests {
     #[test]
     fn removes_trailing_whitespace_outside_fenced_code() {
         let content = "export TEST_ROOT=\"$(mktemp -d)\"                                                                                                                          ";
-        assert_eq!(rasterize_spacing(content), "export TEST_ROOT=\"$(mktemp -d)\"");
+        assert_eq!(
+            rasterize_spacing(content),
+            "export TEST_ROOT=\"$(mktemp -d)\""
+        );
     }
 }

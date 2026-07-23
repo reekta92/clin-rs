@@ -327,11 +327,7 @@ impl App {
             ViewMode::Edit => self.update_editor_markdown_preview(),
             _ => self.update_preview(),
         }
-        self.set_temporary_status_static(if new_wrap {
-            "Wrap on"
-        } else {
-            "Wrap off"
-        });
+        self.set_temporary_status_static(if new_wrap { "Wrap on" } else { "Wrap off" });
     }
 
     pub fn apply_editor_prefs(&mut self) {
@@ -661,9 +657,6 @@ impl App {
         self.editor.body_viewport_row = apply(self.editor.body_viewport_row, rows);
         self.editor.body_viewport_col = apply(self.editor.body_viewport_col, cols);
     }
-
-
-
 }
 
 #[cfg(test)]

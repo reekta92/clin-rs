@@ -1,10 +1,10 @@
-use std::sync::{Arc, LazyLock};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::ops::Range;
-use std::sync::mpsc;
-use super::style::{RenderLine, RenderedDocument};
-use super::cache::{RenderKey, HighlightKey};
 use super::builtin::PendingCodeBlock;
+use super::cache::{HighlightKey, RenderKey};
+use super::style::{RenderLine, RenderedDocument};
+use std::ops::Range;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::mpsc;
+use std::sync::{Arc, LazyLock};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct RenderViewport {
@@ -25,13 +25,18 @@ pub(crate) fn unpack_viewport(packed: u64) -> (usize, usize) {
 }
 
 pub(crate) enum RenderEvent {
-    LayoutReady { generation: u64, document: RenderedDocument },
+    LayoutReady {
+        generation: u64,
+        document: RenderedDocument,
+    },
     CodeBlockReady {
         generation: u64,
         line_range: Range<usize>,
         lines: Vec<RenderLine>,
     },
-    Complete { generation: u64 },
+    Complete {
+        generation: u64,
+    },
 }
 
 pub(crate) struct RenderJob {
@@ -57,14 +62,22 @@ pub(crate) static POOL: LazyLock<rayon::ThreadPool> = LazyLock::new(|| {
 static PREWARM_STARTED: AtomicBool = AtomicBool::new(false);
 
 pub(crate) fn prewarm_syntax_assets(code_theme: Arc<str>) {
-    if PREWARM_STARTED.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire).is_ok() {
+    if PREWARM_STARTED
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_ok()
+    {
         POOL.spawn(move || {
             super::builtin::load_syntax_assets(&code_theme);
         });
     }
 }
 
-fn block_distance(block_start: usize, block_end: usize, viewport_start: usize, viewport_height: usize) -> usize {
+fn block_distance(
+    block_start: usize,
+    block_end: usize,
+    viewport_start: usize,
+    viewport_height: usize,
+) -> usize {
     let viewport_end = viewport_start.saturating_add(viewport_height);
     if block_start < viewport_end && block_end > viewport_start {
         0
@@ -102,10 +115,14 @@ fn execute_job(job: RenderJob) {
         return;
     }
 
-    if job.tx.send(RenderEvent::LayoutReady {
-        generation: job.generation,
-        document: layout_res.document,
-    }).is_err() {
+    if job
+        .tx
+        .send(RenderEvent::LayoutReady {
+            generation: job.generation,
+            document: layout_res.document,
+        })
+        .is_err()
+    {
         return;
     }
 
@@ -120,7 +137,9 @@ fn execute_job(job: RenderJob) {
     }
 
     if blocks_map.is_empty() {
-        let _ = job.tx.send(RenderEvent::Complete { generation: job.generation });
+        let _ = job.tx.send(RenderEvent::Complete {
+            generation: job.generation,
+        });
         return;
     }
 
@@ -130,16 +149,21 @@ fn execute_job(job: RenderJob) {
         let packed = job.viewport.load(Ordering::Relaxed);
         let (vp_start, vp_height) = unpack_viewport(packed);
         let mut map = shared_blocks.lock();
-        
+
         let mut best_key = None;
         for (&key, block) in map.iter() {
-            let dist = block_distance(block.line_range.start, block.line_range.end, vp_start, vp_height);
+            let dist = block_distance(
+                block.line_range.start,
+                block.line_range.end,
+                vp_start,
+                vp_height,
+            );
             if dist == 0 {
                 best_key = Some(key);
                 break;
             }
         }
-        
+
         if let Some(key) = best_key {
             map.remove(&key)
         } else {
@@ -159,7 +183,7 @@ fn execute_job(job: RenderJob) {
             let shared_blocks = Arc::clone(&shared_blocks);
             let job = &job;
             let cancel = &job.cancel;
-            
+
             s.spawn(move |_| {
                 loop {
                     if cancel.load(Ordering::Relaxed) {
@@ -178,7 +202,12 @@ fn execute_job(job: RenderJob) {
                         let mut min_dist = usize::MAX;
 
                         for (&key, block) in map.iter() {
-                            let dist = block_distance(block.line_range.start, block.line_range.end, vp_start, vp_height);
+                            let dist = block_distance(
+                                block.line_range.start,
+                                block.line_range.end,
+                                vp_start,
+                                vp_height,
+                            );
                             if dist < min_dist {
                                 min_dist = dist;
                                 best_key = Some(key);
@@ -208,7 +237,9 @@ fn execute_job(job: RenderJob) {
         return;
     }
 
-    let _ = job.tx.send(RenderEvent::Complete { generation: job.generation });
+    let _ = job.tx.send(RenderEvent::Complete {
+        generation: job.generation,
+    });
 }
 
 fn process_single_block(block: &PendingCodeBlock, job: &RenderJob, cancel: &AtomicBool) -> bool {
@@ -259,11 +290,15 @@ fn process_single_block(block: &PendingCodeBlock, job: &RenderJob, cancel: &Atom
             return true;
         }
 
-        if job.tx.send(RenderEvent::CodeBlockReady {
-            generation: job.generation,
-            line_range: block.line_range.clone(),
-            lines: patch_lines,
-        }).is_err() {
+        if job
+            .tx
+            .send(RenderEvent::CodeBlockReady {
+                generation: job.generation,
+                line_range: block.line_range.clone(),
+                lines: patch_lines,
+            })
+            .is_err()
+        {
             return true;
         }
     }

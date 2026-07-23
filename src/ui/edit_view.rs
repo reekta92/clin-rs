@@ -57,7 +57,6 @@ pub(crate) fn render_editor_widget(
     }
 }
 
-
 #[allow(clippy::collapsible_if)]
 pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     let area = frame.area();
@@ -295,7 +294,6 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     }
 
     if let Some(preview_area_rect) = preview_area_rect {
-
         app.editor.markdown_inner_rect = None;
         if let Some(renderer) = &app.editor.md_preview_renderer {
             if let Some(doc) = renderer.document() {
@@ -325,7 +323,9 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                         }
                         let key = crate::image_render::ImageKey { path, mtime: 0 };
                         if app.editor.image_cache.get_proto(&key).is_none() {
-                            app.editor.image_cache.request(key.clone(), 2048, decode_tx, picker);
+                            app.editor
+                                .image_cache
+                                .request(key.clone(), 2048, decode_tx, picker);
                         }
 
                         if let Some(proto) = app.editor.image_cache.get_proto(&key) {
@@ -353,7 +353,6 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                         }
                     }
                 }
-
             } else {
                 let loading = Paragraph::new("Rendering preview...")
                     .style(Style::default().fg(app.app_theme.muted))

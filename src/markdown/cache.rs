@@ -1,9 +1,9 @@
-use std::sync::{Arc, LazyLock};
-use std::hash::{Hash, Hasher};
-use parking_lot::Mutex;
-use super::style::{MarkdownTheme, RenderedDocument};
 use super::MdRenderOpts;
 use super::builtin::{HighlightedBlock, HighlightedSpan};
+use super::style::{MarkdownTheme, RenderedDocument};
+use parking_lot::Mutex;
+use std::hash::{Hash, Hasher};
+use std::sync::{Arc, LazyLock};
 
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) struct RenderKey {
@@ -53,7 +53,12 @@ impl RenderKey {
 }
 
 impl HighlightKey {
-    pub fn new(language: Arc<str>, code_theme: Arc<str>, literal: Arc<str>, literal_fingerprint: u64) -> Self {
+    pub fn new(
+        language: Arc<str>,
+        code_theme: Arc<str>,
+        literal: Arc<str>,
+        literal_fingerprint: u64,
+    ) -> Self {
         let mut hasher = std::hash::DefaultHasher::new();
         language.hash(&mut hasher);
         code_theme.hash(&mut hasher);
@@ -127,7 +132,6 @@ impl<K: Eq + Hash, V> ByteLru<K, V> {
     }
 }
 
-
 fn render_key_size(k: &RenderKey) -> usize {
     k.content.len() + k.opts.code_theme.capacity() + std::mem::size_of::<RenderKey>()
 }
@@ -141,10 +145,12 @@ fn highlight_key_size(k: &HighlightKey) -> usize {
 }
 
 fn highlighted_block_size(block: &Arc<HighlightedBlock>) -> usize {
-    let mut bytes = std::mem::size_of::<HighlightedBlock>() + block.capacity() * std::mem::size_of::<Option<Vec<HighlightedSpan>>>();
+    let mut bytes = std::mem::size_of::<HighlightedBlock>()
+        + block.capacity() * std::mem::size_of::<Option<Vec<HighlightedSpan>>>();
     for opt_line in &***block {
         if let Some(spans) = opt_line {
-            bytes += std::mem::size_of::<Vec<HighlightedSpan>>() + spans.capacity() * std::mem::size_of::<HighlightedSpan>();
+            bytes += std::mem::size_of::<Vec<HighlightedSpan>>()
+                + spans.capacity() * std::mem::size_of::<HighlightedSpan>();
             for span in spans {
                 bytes += std::mem::size_of::<HighlightedSpan>() + span.text.capacity();
             }
@@ -153,13 +159,25 @@ fn highlighted_block_size(block: &Arc<HighlightedBlock>) -> usize {
     bytes
 }
 
-static DOCUMENT_CACHE: LazyLock<Mutex<ByteLru<RenderKey, Arc<RenderedDocument>>>> = LazyLock::new(|| {
-    Mutex::new(ByteLru::new(32, 64 * 1024 * 1024, render_key_size, document_size))
-});
+static DOCUMENT_CACHE: LazyLock<Mutex<ByteLru<RenderKey, Arc<RenderedDocument>>>> =
+    LazyLock::new(|| {
+        Mutex::new(ByteLru::new(
+            32,
+            64 * 1024 * 1024,
+            render_key_size,
+            document_size,
+        ))
+    });
 
-static HIGHLIGHT_CACHE: LazyLock<Mutex<ByteLru<HighlightKey, Arc<HighlightedBlock>>>> = LazyLock::new(|| {
-    Mutex::new(ByteLru::new(1024, 32 * 1024 * 1024, highlight_key_size, highlighted_block_size))
-});
+static HIGHLIGHT_CACHE: LazyLock<Mutex<ByteLru<HighlightKey, Arc<HighlightedBlock>>>> =
+    LazyLock::new(|| {
+        Mutex::new(ByteLru::new(
+            1024,
+            32 * 1024 * 1024,
+            highlight_key_size,
+            highlighted_block_size,
+        ))
+    });
 
 pub(crate) fn get_document(key: &RenderKey) -> Option<Arc<RenderedDocument>> {
     DOCUMENT_CACHE.lock().get(key).cloned()

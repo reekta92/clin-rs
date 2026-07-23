@@ -14,6 +14,7 @@ mod help;
 pub(crate) mod help_content;
 mod list_view;
 mod popups;
+pub(crate) mod quick_keybinds;
 pub(crate) mod quick_search;
 pub(crate) mod scrollbar;
 pub(crate) mod setup;
@@ -24,8 +25,7 @@ pub(crate) use edit_view::render_editor_widget;
 pub use help::*;
 pub use help_content::{HelpSuggestion, roll_suggestions};
 pub(crate) use list_view::{
-    draw_list_view, get_preview_info,
-    list_detail_line, list_view_layout, section_rects,
+    draw_list_view, get_preview_info, list_detail_line, list_view_layout, section_rects,
 };
 pub use popups::*;
 pub use setup::draw_setup_view;
@@ -287,6 +287,8 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     }
     // Restore mouse_pos for popup hover detection
     app.mouse_pos = popup_hover_pos;
+
+    crate::ui::quick_keybinds::draw_quick_keybinds(frame, app);
 
     // Global popups — rendered on top of the active view
     // Template popup
@@ -1729,9 +1731,13 @@ pub fn overlay_markdown_highlight(frame: &mut Frame, app: &mut App, area: Rect) 
         let stale =
             e.md_highlight_lines != full_doc.len() || e.md_highlight_change != e.last_editor_change;
         if stale && show_ln {
-            let hl = e
-                .source_highlighter
-                .get_or_insert_with(|| crate::markdown::SourceHighlighter::new(&app.app_theme, app.config.editor.ghost_syntax, app.config.editor.extended_markdown_features));
+            let hl = e.source_highlighter.get_or_insert_with(|| {
+                crate::markdown::SourceHighlighter::new(
+                    &app.app_theme,
+                    app.config.editor.ghost_syntax,
+                    app.config.editor.extended_markdown_features,
+                )
+            });
             let mut cache = Vec::with_capacity(full_doc.len());
             for (i, line) in full_doc.iter().enumerate() {
                 cache.push(hl.highlight_line(line, i, full_doc));
@@ -1782,9 +1788,13 @@ pub fn overlay_markdown_highlight(frame: &mut Frame, app: &mut App, area: Rect) 
         // standalone per frame. Rare path (line numbers default on); left as-is.
         let e = &mut app.editor;
         let full_doc: Vec<String> = e.editor.lines().to_vec();
-        let hl = e
-            .source_highlighter
-            .get_or_insert_with(|| crate::markdown::SourceHighlighter::new(&app.app_theme, app.config.editor.ghost_syntax, app.config.editor.extended_markdown_features));
+        let hl = e.source_highlighter.get_or_insert_with(|| {
+            crate::markdown::SourceHighlighter::new(
+                &app.app_theme,
+                app.config.editor.ghost_syntax,
+                app.config.editor.extended_markdown_features,
+            )
+        });
         for y in inner.top()..inner.bottom() {
             let displayed: String = (content_left..inner.right())
                 .filter_map(|x| buf.cell((x, y)).map(|c| c.symbol()))

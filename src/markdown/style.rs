@@ -1,6 +1,6 @@
-use std::sync::Arc;
-use std::ops::Range;
 use ratatui::style::{Color, Modifier, Style};
+use std::ops::Range;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct StyledSpan {
@@ -109,9 +109,10 @@ pub(crate) struct RenderedDocument {
 impl RenderedDocument {
     pub(crate) fn new(mut lines: Vec<RenderLine>) -> Self {
         for line in &mut lines {
-            line.is_blank = line.spans.iter().all(|span| {
-                span.text.chars().all(char::is_whitespace)
-            });
+            line.is_blank = line
+                .spans
+                .iter()
+                .all(|span| span.text.chars().all(char::is_whitespace));
         }
 
         let content_empty = lines.is_empty() || lines.iter().all(|l| l.is_blank);
@@ -165,18 +166,13 @@ impl RenderedDocument {
         self.estimated_bytes
     }
 
-    pub(crate) fn image_slots(
-        &self,
-        range: Range<usize>,
-    ) -> impl Iterator<Item = (usize, &str)> {
+    pub(crate) fn image_slots(&self, range: Range<usize>) -> impl Iterator<Item = (usize, &str)> {
         let start = range.start.min(self.lines.len());
         let end = range.end.min(self.lines.len());
         self.lines[start..end]
             .iter()
             .enumerate()
-            .filter_map(move |(idx, line)| {
-                line.image_url.as_ref().map(|url| (idx, &**url))
-            })
+            .filter_map(move |(idx, line)| line.image_url.as_ref().map(|url| (idx, &**url)))
     }
 }
 
@@ -271,9 +267,7 @@ impl MarkdownTheme {
             footnote_def: Style::default().fg(theme.muted),
             task_unchecked: Style::default().fg(theme.warning),
             task_checked: Style::default().fg(theme.success),
-            ghost_syntax: Style::default()
-                .fg(theme.muted)
-                .add_modifier(Modifier::DIM),
+            ghost_syntax: Style::default().fg(theme.muted).add_modifier(Modifier::DIM),
         }
     }
 }

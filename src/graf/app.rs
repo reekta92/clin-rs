@@ -343,7 +343,10 @@ impl GrafAppState {
             };
             let opts = crate::markdown::MdRenderOpts::from_config(config);
             let height = key.height;
-            let viewport = crate::markdown::RenderViewport { start: renderer.visible_start(), height: height as usize };
+            let viewport = crate::markdown::RenderViewport {
+                start: renderer.visible_start(),
+                height: height as usize,
+            };
 
             let content_changed = renderer.is_changed(&note.content, &self.app_theme, &opts);
             let mut should_render = false;
@@ -786,7 +789,8 @@ mod tests {
             vec![],
             keybinds,
             seq_matcher,
-        ).unwrap();
+        )
+        .unwrap();
 
         let gs_ref = app_state.graph_state.as_ref().unwrap();
         let node_idx = {
@@ -806,7 +810,10 @@ mod tests {
         assert_eq!(original_key.width, 98);
 
         app_state.sync_preview(&config);
-        assert_eq!(app_state.preview_request_key.as_ref().unwrap(), &original_key);
+        assert_eq!(
+            app_state.preview_request_key.as_ref().unwrap(),
+            &original_key
+        );
 
         app_state.last_preview_pane_width = 80;
         app_state.sync_preview(&config);
@@ -825,7 +832,9 @@ mod tests {
         let key_after_fail = app_state.preview_request_key.clone().unwrap();
 
         app_state.sync_preview(&config);
-        assert_eq!(app_state.preview_request_key.as_ref().unwrap(), &key_after_fail);
+        assert_eq!(
+            app_state.preview_request_key.as_ref().unwrap(),
+            &key_after_fail
+        );
     }
 }
-

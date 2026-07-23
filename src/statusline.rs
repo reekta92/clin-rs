@@ -1703,7 +1703,10 @@ mod tests {
         let theme = AppThemeColors::default();
 
         let mut graph_state = crate::graf::graph::GraphState {
-            simulation: fdg_sim::Simulation::from_graph(fdg_sim::ForceGraph::default(), fdg_sim::SimulationParameters::default()),
+            simulation: fdg_sim::Simulation::from_graph(
+                fdg_sim::ForceGraph::default(),
+                fdg_sim::SimulationParameters::default(),
+            ),
             viewport: crate::graf::viewport::Viewport::default(),
             selected_node: None,
             dragging_node: None,

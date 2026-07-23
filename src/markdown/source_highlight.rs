@@ -139,7 +139,11 @@ impl SourceHighlighter {
 
             let mut styles = Vec::with_capacity(chars.len() + 300);
             for _ in 0..marker_end {
-                let mut marker_style = if ghost { self.theme.ghost_syntax } else { heading_style };
+                let mut marker_style = if ghost {
+                    self.theme.ghost_syntax
+                } else {
+                    heading_style
+                };
                 if let Some(bg) = heading_style.bg {
                     marker_style = marker_style.bg(bg);
                 }
@@ -147,7 +151,11 @@ impl SourceHighlighter {
             }
             styles.extend(rest_styles);
             while styles.len() < chars.len() {
-                styles.push(if ghost { self.theme.ghost_syntax } else { heading_style });
+                styles.push(if ghost {
+                    self.theme.ghost_syntax
+                } else {
+                    heading_style
+                });
             }
             for _ in 0..300 {
                 styles.push(heading_style);
@@ -178,7 +186,6 @@ impl SourceHighlighter {
             };
             return vec![style; chars.len()];
         }
-
 
         // Blockquote `^\s*>+`
         if let Some((depth, after_marker)) = blockquote_depth(&chars) {
@@ -237,11 +244,19 @@ impl SourceHighlighter {
         let rest_styles = self.inline_highlight_chars(&rest, self.theme.blockquote);
         let mut styles = Vec::with_capacity(chars.len());
         for _ in 0..after_marker {
-            styles.push(if ghost { self.theme.ghost_syntax } else { self.theme.blockquote_bar });
+            styles.push(if ghost {
+                self.theme.ghost_syntax
+            } else {
+                self.theme.blockquote_bar
+            });
         }
         styles.extend(rest_styles);
         while styles.len() < chars.len() {
-            styles.push(if ghost { self.theme.ghost_syntax } else { self.theme.blockquote });
+            styles.push(if ghost {
+                self.theme.ghost_syntax
+            } else {
+                self.theme.blockquote
+            });
         }
         styles
     }
@@ -273,17 +288,29 @@ impl SourceHighlighter {
         let mut styles = Vec::with_capacity(chars.len());
         for (idx, _ch) in chars.iter().enumerate() {
             if idx < bracket_start {
-                styles.push(if ghost { self.theme.ghost_syntax } else { self.theme.paragraph });
+                styles.push(if ghost {
+                    self.theme.ghost_syntax
+                } else {
+                    self.theme.paragraph
+                });
             } else if idx < bracket_end {
                 // Inside brackets: only the checkmark character gets task style,
                 // the brackets themselves get ghost syntax
                 if idx == bracket_start || idx == bracket_end - 1 {
-                    styles.push(if ghost { self.theme.ghost_syntax } else { self.theme.paragraph });
+                    styles.push(if ghost {
+                        self.theme.ghost_syntax
+                    } else {
+                        self.theme.paragraph
+                    });
                 } else {
                     styles.push(task_style);
                 }
             } else if idx < after_task {
-                styles.push(if ghost { self.theme.ghost_syntax } else { self.theme.paragraph });
+                styles.push(if ghost {
+                    self.theme.ghost_syntax
+                } else {
+                    self.theme.paragraph
+                });
             } else {
                 let ri = idx - after_task;
                 styles.push(rest_styles.get(ri).copied().unwrap_or(self.theme.paragraph));
@@ -299,11 +326,19 @@ impl SourceHighlighter {
         let rest_styles = self.inline_highlight_chars(&rest, self.theme.paragraph);
         let mut styles = Vec::with_capacity(chars.len());
         for _ in 0..marker_end {
-            styles.push(if ghost { self.theme.ghost_syntax } else { self.theme.h3 });
+            styles.push(if ghost {
+                self.theme.ghost_syntax
+            } else {
+                self.theme.h3
+            });
         }
         styles.extend(rest_styles);
         while styles.len() < chars.len() {
-            styles.push(if ghost { self.theme.ghost_syntax } else { self.theme.paragraph });
+            styles.push(if ghost {
+                self.theme.ghost_syntax
+            } else {
+                self.theme.paragraph
+            });
         }
         styles
     }
@@ -399,7 +434,7 @@ impl SourceHighlighter {
                         styles[i + 1] = self.theme.ghost_syntax;
                         styles[i + end] = self.theme.ghost_syntax;
                         styles[i + end + 1] = self.theme.ghost_syntax;
-                        
+
                         let mut pipe_idx = None;
                         if self.extended_features {
                             for j in 2..end {
@@ -509,13 +544,23 @@ impl SourceHighlighter {
 
             // Bold italic `***` or `___` (extended feature)
             if self.extended_features
-                && ((chars[i] == '*' && i + 2 < chars.len() && chars[i + 1] == '*' && chars[i + 2] == '*')
-                    || (chars[i] == '_' && i + 2 < chars.len() && chars[i + 1] == '_' && chars[i + 2] == '_'))
+                && ((chars[i] == '*'
+                    && i + 2 < chars.len()
+                    && chars[i + 1] == '*'
+                    && chars[i + 2] == '*')
+                    || (chars[i] == '_'
+                        && i + 2 < chars.len()
+                        && chars[i + 1] == '_'
+                        && chars[i + 2] == '_'))
             {
                 let delim = if chars[i] == '*' { "***" } else { "___" };
                 let slice: String = chars[i + 3..].iter().collect();
                 if let Some(end) = slice.find(delim) {
-                    let delim_style = if ghost { self.theme.ghost_syntax } else { base_style };
+                    let delim_style = if ghost {
+                        self.theme.ghost_syntax
+                    } else {
+                        base_style
+                    };
                     styles[i] = delim_style;
                     styles[i + 1] = delim_style;
                     styles[i + 2] = delim_style;
@@ -538,7 +583,11 @@ impl SourceHighlighter {
                 let slice: String = chars[i + 2..].iter().collect();
                 if let Some(end) = slice.find(delim) {
                     // Works same in both modes: delimiters get paragraph, content gets bold
-                    let delim_style = if ghost { self.theme.ghost_syntax } else { base_style };
+                    let delim_style = if ghost {
+                        self.theme.ghost_syntax
+                    } else {
+                        base_style
+                    };
                     styles[i] = delim_style;
                     styles[i + 1] = delim_style;
                     for j in 2..end + 2 {
@@ -560,7 +609,11 @@ impl SourceHighlighter {
                 let slice: String = chars[i + 1..].iter().collect();
                 if let Some(end) = slice.find(chars[i]) {
                     // Works same in both modes: delimiter gets paragraph, content gets italic
-                    let delim_style = if ghost { self.theme.ghost_syntax } else { base_style };
+                    let delim_style = if ghost {
+                        self.theme.ghost_syntax
+                    } else {
+                        base_style
+                    };
                     styles[i] = delim_style;
                     for j in 1..end + 1 {
                         styles[i + j] = base_style.add_modifier(Modifier::ITALIC);
@@ -576,7 +629,11 @@ impl SourceHighlighter {
                 let slice: String = chars[i + 2..].iter().collect();
                 if let Some(end) = slice.find("~~") {
                     // Works same in both modes: delimiters get paragraph, content gets crossed
-                    let delim_style = if ghost { self.theme.ghost_syntax } else { base_style };
+                    let delim_style = if ghost {
+                        self.theme.ghost_syntax
+                    } else {
+                        base_style
+                    };
                     styles[i] = delim_style;
                     styles[i + 1] = delim_style;
                     for j in 2..end + 2 {
@@ -652,11 +709,19 @@ impl SourceHighlighter {
         let rest_styles = self.inline_highlight_chars(&rest, self.theme.paragraph);
         let mut styles = Vec::with_capacity(chars.len());
         for _ in 0..marker_end {
-            styles.push(if ghost { self.theme.ghost_syntax } else { self.theme.h5 });
+            styles.push(if ghost {
+                self.theme.ghost_syntax
+            } else {
+                self.theme.h5
+            });
         }
         styles.extend(rest_styles);
         while styles.len() < chars.len() {
-            styles.push(if ghost { self.theme.ghost_syntax } else { self.theme.paragraph });
+            styles.push(if ghost {
+                self.theme.ghost_syntax
+            } else {
+                self.theme.paragraph
+            });
         }
         styles
     }
@@ -666,7 +731,7 @@ impl SourceHighlighter {
         let rest: String = chars.iter().skip(marker_end).collect();
         let rest_styles = self.inline_highlight_chars(&rest, self.theme.paragraph);
         let mut styles = Vec::with_capacity(chars.len());
-        
+
         if ghost {
             let mut i = 0;
             while i < marker_end && chars[i] == ' ' {
@@ -702,10 +767,14 @@ impl SourceHighlighter {
                 styles.push(self.theme.footnote_ref);
             }
         }
-        
+
         styles.extend(rest_styles);
         while styles.len() < chars.len() {
-            styles.push(if ghost { self.theme.ghost_syntax } else { self.theme.paragraph });
+            styles.push(if ghost {
+                self.theme.ghost_syntax
+            } else {
+                self.theme.paragraph
+            });
         }
         styles
     }
@@ -756,11 +825,7 @@ fn try_bare_url(chars: &[char], i: usize) -> Option<usize> {
             break;
         }
     }
-    if len > 7 {
-        Some(len)
-    } else {
-        None
-    }
+    if len > 7 { Some(len) } else { None }
 }
 
 /// Find end of description marker (up to 3 leading spaces followed by `: `).
@@ -1032,14 +1097,20 @@ mod tests {
         let bracket_start = "- ".len(); // index 2 = '['
         let checkmark_idx = bracket_start + 1; // index 3 = ' ' (or 'x')
         // Bracket should be paragraph
-        assert_eq!(styles[bracket_start], hl.theme.paragraph, "bracket should be paragraph");
+        assert_eq!(
+            styles[bracket_start], hl.theme.paragraph,
+            "bracket should be paragraph"
+        );
         // Checkmark should be task_unchecked
         assert_eq!(
             styles[checkmark_idx], hl.theme.task_unchecked,
             "unchecked checkmark"
         );
         let styles2 = hl.highlight_line("- [x] done", 1, &doc);
-        assert_eq!(styles2[bracket_start], hl.theme.paragraph, "bracket should be paragraph");
+        assert_eq!(
+            styles2[bracket_start], hl.theme.paragraph,
+            "bracket should be paragraph"
+        );
         assert_eq!(
             styles2[checkmark_idx], hl.theme.task_checked,
             "checked checkmark"
@@ -1148,7 +1219,7 @@ mod tests {
     #[test]
     fn extended_markdown_features() {
         let colors = AppThemeColors::default();
-        
+
         // Test with extended_features = true
         let mut hl = SourceHighlighter::new(&colors, false, true);
 
@@ -1184,13 +1255,22 @@ mod tests {
         let styles_url = hl.highlight_line("Visit https://google.com now", 0, &doc_url);
         let url_start = "Visit ".len();
         assert_eq!(styles_url[url_start], hl.theme.link_url);
-        assert_eq!(styles_url[url_start + "https://google.com".len() - 1], hl.theme.link_url);
-        assert_eq!(styles_url[url_start + "https://google.com".len()], hl.theme.paragraph);
+        assert_eq!(
+            styles_url[url_start + "https://google.com".len() - 1],
+            hl.theme.link_url
+        );
+        assert_eq!(
+            styles_url[url_start + "https://google.com".len()],
+            hl.theme.paragraph
+        );
 
         // 3. Bold italic nested style
         let doc_bi = vec!["***bold italic***".to_string()];
         let styles_bi = hl.highlight_line("***bold italic***", 0, &doc_bi);
-        let expected_bi = hl.theme.paragraph.add_modifier(Modifier::BOLD | Modifier::ITALIC);
+        let expected_bi = hl
+            .theme
+            .paragraph
+            .add_modifier(Modifier::BOLD | Modifier::ITALIC);
         assert_eq!(styles_bi[3], expected_bi);
 
         // 4. Dimmed escapes

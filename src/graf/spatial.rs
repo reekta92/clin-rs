@@ -85,13 +85,7 @@ impl SpatialGrid {
         }
     }
 
-    pub fn for_each_near(
-        &self,
-        x: f64,
-        y: f64,
-        radius: f64,
-        visit: impl FnMut(NodeIndex),
-    ) {
+    pub fn for_each_near(&self, x: f64, y: f64, radius: f64, visit: impl FnMut(NodeIndex)) {
         if !x.is_finite() || !y.is_finite() || !radius.is_finite() || radius < 0.0 {
             return;
         }

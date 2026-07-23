@@ -114,7 +114,19 @@ pub enum EditAction {
     GoToLine,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    strum::EnumIter,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum HelpAction {
     Close,

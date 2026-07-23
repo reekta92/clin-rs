@@ -49,9 +49,7 @@ pub fn draw_preview_pane(
         frame.render_widget(lock_para, rect);
     } else {
         match content {
-            Some(PreviewContent::Markdown(renderer))
-                if renderer.document().is_some() =>
-            {
+            Some(PreviewContent::Markdown(renderer)) if renderer.document().is_some() => {
                 if renderer.is_content_empty() {
                     let placeholder = Paragraph::new(Line::from(vec![Span::styled(
                         "(empty note)",
@@ -74,7 +72,10 @@ pub fn draw_preview_pane(
                     frame.render_widget(block, rect);
 
                     let page = renderer.current_page_range();
-                    let start = page.start.saturating_add(scroll_offset as usize).min(page.end);
+                    let start = page
+                        .start
+                        .saturating_add(scroll_offset as usize)
+                        .min(page.end);
                     let widget_range = start..page.end;
                     let widget = crate::markdown::MarkdownWidget::new(doc, widget_range);
                     frame.render_widget(widget, inner);

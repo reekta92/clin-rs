@@ -242,9 +242,16 @@ impl App {
             // Fixed width matching PopupSize::Large inner on a ~120-col terminal
             // (60% width, max 100, minus borders/padding ≈ 76).
             let width = 76u16;
-            let mut renderer = self.editor.link_preview_renderer.take().unwrap_or_else(crate::markdown::MarkdownRenderer::new);
+            let mut renderer = self
+                .editor
+                .link_preview_renderer
+                .take()
+                .unwrap_or_else(crate::markdown::MarkdownRenderer::new);
             let opts = crate::markdown::MdRenderOpts::from_config(&self.config);
-            let viewport = crate::markdown::RenderViewport { start: 0, height: 20 };
+            let viewport = crate::markdown::RenderViewport {
+                start: 0,
+                height: 20,
+            };
             renderer.render_with(&content, width, &self.app_theme, &opts, viewport);
             self.editor.link_preview_renderer = Some(renderer);
             self.editor.link_preview_error = None;

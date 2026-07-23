@@ -245,10 +245,7 @@ impl Default for Keybinds {
             EditAction::CycleFocus,
             vec![KeyCombo::ctrl(KeyCode::Char('t'))],
         );
-        edit.insert(
-            EditAction::InsertTab,
-            vec![KeyCombo::simple(KeyCode::Tab)],
-        );
+        edit.insert(EditAction::InsertTab, vec![KeyCombo::simple(KeyCode::Tab)]);
         edit.insert(
             EditAction::SelectAll,
             vec![KeyCombo::ctrl(KeyCode::Char('a'))],

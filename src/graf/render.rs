@@ -419,10 +419,8 @@ impl RenderCache {
         self.label_texts.clear();
         for idx in graph.node_indices() {
             let node = &graph[idx];
-            let truncated = crate::graf::util::truncate(
-                &node.data.title,
-                config.graf.visual.label_max_length,
-            );
+            let truncated =
+                crate::graf::util::truncate(&node.data.title, config.graf.visual.label_max_length);
             self.label_texts.insert(idx, truncated);
         }
         self.cached_label_max_length = config.graf.visual.label_max_length;
@@ -445,8 +443,9 @@ impl RenderCache {
         let uniform_edges = tier == LodTier::Medium;
         for edge in graph.edge_references() {
             // Skip edge if neither endpoint is visible
-            if !self.visible_nodes.contains(&edge.source()) && !self.visible_nodes.contains(&edge.target()) {
-            }
+            if !self.visible_nodes.contains(&edge.source())
+                && !self.visible_nodes.contains(&edge.target())
+            {}
 
             let src = &graph[edge.source()];
             let tgt = &graph[edge.target()];
@@ -636,7 +635,9 @@ impl RenderCache {
         }
 
         self.selected_neighbors.clear();
-        if let Some(sel) = selected_node && config.graf.visual.label_mode == LabelMode::Neighbors {
+        if let Some(sel) = selected_node
+            && config.graf.visual.label_mode == LabelMode::Neighbors
+        {
             for edge in graph.edges(sel) {
                 if edge.target() != sel {
                     self.selected_neighbors.insert(edge.target());
@@ -1259,7 +1260,10 @@ mod tests {
         );
         cache.fill_labels(&graph, &config, Some(idx1), 0.0, _tier);
         assert_eq!(cache.labels.len(), 1);
-        assert_eq!(cache.label_texts.get(&cache.labels[0].node_idx).unwrap(), "Node 1");
+        assert_eq!(
+            cache.label_texts.get(&cache.labels[0].node_idx).unwrap(),
+            "Node 1"
+        );
 
         // 4. LabelMode::Neighbors
         config.graf.visual.label_mode = crate::config::LabelMode::Neighbors;
@@ -1276,7 +1280,11 @@ mod tests {
         cache.fill_labels(&graph, &config, Some(idx1), 0.0, _tier);
         // Node 1 (selected) and Node 2 (neighbor) should have labels. Node 3 (distant) should not.
         assert_eq!(cache.labels.len(), 2);
-        let mut names: Vec<String> = cache.labels.iter().map(|l| cache.label_texts.get(&l.node_idx).unwrap().clone()).collect();
+        let mut names: Vec<String> = cache
+            .labels
+            .iter()
+            .map(|l| cache.label_texts.get(&l.node_idx).unwrap().clone())
+            .collect();
         names.sort();
         assert_eq!(names, vec!["Node 1".to_string(), "Node 2".to_string()]);
 

@@ -1,15 +1,23 @@
-use std::time::Instant;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::ops::Range;
+use super::style::{RenderLine, RenderedDocument};
+use super::{MarkdownRenderer, MdRenderOpts, RenderViewport};
+use crate::app_theme::AppThemeColors;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
-use crate::app_theme::AppThemeColors;
-use super::{MarkdownRenderer, MdRenderOpts, RenderViewport};
-use super::style::{RenderLine, RenderedDocument};
+use std::ops::Range;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Instant;
 
 fn code_heavy_fixture() -> String {
-    let langs = ["rust", "python", "javascript", "go", "sql", "yaml", "unknown"];
+    let langs = [
+        "rust",
+        "python",
+        "javascript",
+        "go",
+        "sql",
+        "yaml",
+        "unknown",
+    ];
     let mut out = String::new();
     out.push_str("# Code Heavy Fixture\n\n");
     for i in 0..200 {
@@ -30,7 +38,10 @@ fn single_large_block_fixture() -> String {
     let mut out = String::new();
     out.push_str("```rust\n");
     for i in 0..5000 {
-        out.push_str(&format!("fn test_function_name_{}() {{ let a = {}; let b = {}; let c = a + b; }}\n", i, i, i));
+        out.push_str(&format!(
+            "fn test_function_name_{}() {{ let a = {}; let b = {}; let c = a + b; }}\n",
+            i, i, i
+        ));
     }
     out.push_str("```\n");
     out
@@ -91,9 +102,12 @@ fn markdown_renderer_perf() {
     let mut renderer = MarkdownRenderer::new();
 
     let t0 = Instant::now();
-    let viewport = RenderViewport { start: 0, height: 40 };
+    let viewport = RenderViewport {
+        start: 0,
+        height: 40,
+    };
     renderer.render_with(&code_heavy, 100, &theme, &opts, viewport);
-    
+
     let mut layout_ready_time = None;
     while renderer.is_pending() {
         std::thread::sleep(std::time::Duration::from_millis(1));
@@ -122,15 +136,17 @@ fn markdown_renderer_perf() {
             r.poll();
         }
         total_times.push(t_start.elapsed().as_micros() as u64);
-        
+
         let doc = r.document().unwrap();
         heap_sizes.push(doc.estimated_bytes());
 
         let t_draw_start = Instant::now();
-        terminal.draw(|f| {
-            let widget = super::MarkdownWidget::new(doc, 0..40);
-            f.render_widget(widget, f.size());
-        }).unwrap();
+        terminal
+            .draw(|f| {
+                let widget = super::MarkdownWidget::new(doc, 0..40);
+                f.render_widget(widget, f.size());
+            })
+            .unwrap();
         draw_times.push(t_draw_start.elapsed().as_micros() as u64);
     }
 
@@ -144,7 +160,10 @@ fn markdown_renderer_perf() {
     let p95_draw = draw_times[19];
     let median_heap = heap_sizes[10];
 
-    println!("Warm completion median: {} us, p95: {} us", median_total, p95_total);
+    println!(
+        "Warm completion median: {} us, p95: {} us",
+        median_total, p95_total
+    );
     println!("Draw median: {} us, p95: {} us", median_draw, p95_draw);
     println!("Estimated heap bytes: {}", median_heap);
 
@@ -163,11 +182,34 @@ fn markdown_renderer_perf() {
             .parse::<u64>()
             .unwrap();
 
-        assert!(layout_ready.as_millis() <= 50, "LayoutReady should be <= 50ms, got {}ms", layout_ready.as_millis());
-        assert!(p95_total <= baseline_total_p95 / 2, "Completion p95 should be <= 50% baseline, got {}us (baseline {}us)", p95_total, baseline_total_p95);
-        assert!(median_heap <= (baseline_heap * 40 / 100), "Heap size should be <= 40% baseline, got {} bytes (baseline {} bytes)", median_heap, baseline_heap);
-        assert!(p95_draw <= 1000, "Draw p95 should be <= 1ms, got {}us", p95_draw);
-        assert!(p95_draw <= baseline_draw_p95.max(500), "Draw p95 should be <= baseline.max(500us), got {}us (baseline {}us)", p95_draw, baseline_draw_p95);
+        assert!(
+            layout_ready.as_millis() <= 50,
+            "LayoutReady should be <= 50ms, got {}ms",
+            layout_ready.as_millis()
+        );
+        assert!(
+            p95_total <= baseline_total_p95 / 2,
+            "Completion p95 should be <= 50% baseline, got {}us (baseline {}us)",
+            p95_total,
+            baseline_total_p95
+        );
+        assert!(
+            median_heap <= (baseline_heap * 40 / 100),
+            "Heap size should be <= 40% baseline, got {} bytes (baseline {} bytes)",
+            median_heap,
+            baseline_heap
+        );
+        assert!(
+            p95_draw <= 1000,
+            "Draw p95 should be <= 1ms, got {}us",
+            p95_draw
+        );
+        assert!(
+            p95_draw <= baseline_draw_p95.max(500),
+            "Draw p95 should be <= baseline.max(500us), got {}us (baseline {}us)",
+            p95_draw,
+            baseline_draw_p95
+        );
 
         // Warm document cache hit test
         let mut r_cache = MarkdownRenderer::new();
@@ -178,7 +220,11 @@ fn markdown_renderer_perf() {
         let t_hit = Instant::now();
         r_cache.render_with(&code_heavy, 100, &theme, &opts, viewport);
         assert!(!r_cache.is_pending(), "Cache hit must be synchronous");
-        assert!(t_hit.elapsed().as_micros() <= 2000, "Cache hit must take <= 2ms, got {:?}", t_hit.elapsed());
+        assert!(
+            t_hit.elapsed().as_micros() <= 2000,
+            "Cache hit must take <= 2ms, got {:?}",
+            t_hit.elapsed()
+        );
 
         // Generation count test
         let mut r_rapid = MarkdownRenderer::new();
@@ -192,7 +238,10 @@ fn markdown_renderer_perf() {
         r_cancel.render_with(&single_large, 100, &theme, &opts, viewport);
         let t_cancel = Instant::now();
         r_cancel.render_with(&code_heavy, 100, &theme, &opts, viewport);
-        assert!(t_cancel.elapsed().as_millis() <= 50, "Cancellation of single large block must take <= 50ms");
+        assert!(
+            t_cancel.elapsed().as_millis() <= 50,
+            "Cancellation of single large block must take <= 50ms"
+        );
 
         // Cache counter test
         let (doc_len, doc_bytes, hl_len, hl_bytes) = super::cache::cache_stats();
@@ -209,9 +258,12 @@ fn layout_precedes_highlighting() {
     let theme = AppThemeColors::default();
     let opts = MdRenderOpts::default();
     let mut renderer = MarkdownRenderer::new();
-    let viewport = RenderViewport { start: 0, height: 10 };
+    let viewport = RenderViewport {
+        start: 0,
+        height: 10,
+    };
     renderer.render_with(content, 80, &theme, &opts, viewport);
-    
+
     // First poll should trigger LayoutReady event synchronously or near-synchronously
     let mut tries = 0;
     while renderer.document().is_none() && tries < 50 {
@@ -219,8 +271,14 @@ fn layout_precedes_highlighting() {
         renderer.poll();
         tries += 1;
     }
-    assert!(renderer.document().is_some(), "LayoutReady must arrive first");
-    assert!(renderer.is_pending(), "Should still be pending highlighting");
+    assert!(
+        renderer.document().is_some(),
+        "LayoutReady must arrive first"
+    );
+    assert!(
+        renderer.is_pending(),
+        "Should still be pending highlighting"
+    );
 }
 
 #[test]
@@ -229,16 +287,25 @@ fn unknown_language_completes_plain() {
     let theme = AppThemeColors::default();
     let opts = MdRenderOpts::default();
     let mut renderer = MarkdownRenderer::new();
-    let viewport = RenderViewport { start: 0, height: 10 };
+    let viewport = RenderViewport {
+        start: 0,
+        height: 10,
+    };
     renderer.render_with(content, 80, &theme, &opts, viewport);
-    
+
     while renderer.is_pending() {
         std::thread::sleep(std::time::Duration::from_millis(1));
         renderer.poll();
     }
-    
+
     let doc = renderer.document().unwrap();
-    let text: String = doc.line(1).unwrap().spans.iter().map(|s| s.text.as_str()).collect();
+    let text: String = doc
+        .line(1)
+        .unwrap()
+        .spans
+        .iter()
+        .map(|s| s.text.as_str())
+        .collect();
     assert!(text.contains("hello world"));
 }
 
@@ -248,18 +315,21 @@ fn widget_clips_wide_characters() {
     let theme = AppThemeColors::default();
     let opts = MdRenderOpts::default();
     let mut renderer = MarkdownRenderer::new();
-    let viewport = RenderViewport { start: 0, height: 10 };
+    let viewport = RenderViewport {
+        start: 0,
+        height: 10,
+    };
     renderer.render_with(content, 80, &theme, &opts, viewport);
     while renderer.is_pending() {
         renderer.poll();
     }
-    
+
     let doc = renderer.document().unwrap();
     let widget = super::MarkdownWidget::new(doc, 0..1);
     // Buffer width 8 to hold 2 spaces margin + 3 CJK chars (each width 2) = 8 columns
     let mut buf = ratatui::buffer::Buffer::empty(ratatui::layout::Rect::new(0, 0, 8, 1));
     ratatui::widgets::Widget::render(widget, buf.area, &mut buf);
-    
+
     let text = buf.content.iter().map(|c| c.symbol()).collect::<String>();
     assert!(text.contains("中"));
     assert!(text.contains("文"));
@@ -268,14 +338,16 @@ fn widget_clips_wide_characters() {
 }
 
 #[test]
-
 #[test]
 fn continuous_scroll_clamps() {
     let content = "line 1\n\nline 2\n\nline 3\n\nline 4\n\nline 5\n";
     let mut renderer = MarkdownRenderer::new();
     let theme = AppThemeColors::default();
     let opts = MdRenderOpts::default();
-    let viewport = RenderViewport { start: 0, height: 2 };
+    let viewport = RenderViewport {
+        start: 0,
+        height: 2,
+    };
     renderer.render_with(content, 80, &theme, &opts, viewport);
     while renderer.is_pending() {
         renderer.poll();
@@ -295,7 +367,10 @@ fn code_block_highlighting_patches_match() {
     let theme = crate::app_theme::AppThemeColors::default();
     let opts = MdRenderOpts::default();
     let mut renderer = MarkdownRenderer::new();
-    let viewport = RenderViewport { start: 0, height: 200 };
+    let viewport = RenderViewport {
+        start: 0,
+        height: 200,
+    };
     renderer.render_with(content, 120, &theme, &opts, viewport);
     while renderer.is_pending() {
         std::thread::sleep(std::time::Duration::from_millis(5));
@@ -304,7 +379,9 @@ fn code_block_highlighting_patches_match() {
     let doc = renderer.document().unwrap();
     for (i, line) in doc.lines().iter().enumerate() {
         let text: String = line.spans.iter().map(|s| s.text.as_str()).collect();
-        eprintln!("  line {i}: src={} vw={} blank={} text={text:?}",
-            line.source_line, line.visual_width, line.is_blank);
+        eprintln!(
+            "  line {i}: src={} vw={} blank={} text={text:?}",
+            line.source_line, line.visual_width, line.is_blank
+        );
     }
 }

@@ -465,6 +465,19 @@ pub fn handle_global_popups_and_palette(
         return false;
     }
 
+    // QuickKeybinds toggle — identical combo in every view. F2 is unbound in
+    // all 9 keybind scopes (verified in src/keybinds/defaults.rs); raw check
+    // follows the is_universal_quit_key precedent (global keys live outside
+    // the per-scope enum system). Only toggles when no popup/palette is open
+    // so it never fights modal input.
+    if app.popups.active.is_none()
+        && app.command_palette.is_none()
+        && key.code == crossterm::event::KeyCode::F(2)
+    {
+        app.quick_keybinds_open = !app.quick_keybinds_open;
+        return true;
+    }
+
     // Command palette
     if let Some(mut palette) = app.command_palette.take() {
         if palette.handle_input(key, app) {

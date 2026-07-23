@@ -197,34 +197,34 @@ impl Viewport {
         best.map(|(idx, _)| idx)
     }
 
-    pub fn hit_test(
-        &self,
-        world_x: f64,
-        world_y: f64,
-        state: &GraphState,
-    ) -> Option<NodeIndex> {
+    pub fn hit_test(&self, world_x: f64, world_y: f64, state: &GraphState) -> Option<NodeIndex> {
         let threshold = 8.0 / self.zoom;
         let mut best: Option<(NodeIndex, f64)> = None;
         let graph = state.simulation.get_graph();
 
-        state.spatial_grid.for_each_near(world_x, world_y, threshold, |idx| {
-            let node = &graph[idx];
-            let dx = node.location.x as f64 - world_x;
-            let dy = node.location.y as f64 - world_y;
-            let dist = (dx * dx + dy * dy).sqrt();
-            if dist < threshold {
-                match best {
-                    Some((best_idx, best_dist)) => {
-                        if dist < best_dist || ( (dist - best_dist).abs() < 1e-9 && idx.index() < best_idx.index() ) {
+        state
+            .spatial_grid
+            .for_each_near(world_x, world_y, threshold, |idx| {
+                let node = &graph[idx];
+                let dx = node.location.x as f64 - world_x;
+                let dy = node.location.y as f64 - world_y;
+                let dist = (dx * dx + dy * dy).sqrt();
+                if dist < threshold {
+                    match best {
+                        Some((best_idx, best_dist)) => {
+                            if dist < best_dist
+                                || ((dist - best_dist).abs() < 1e-9
+                                    && idx.index() < best_idx.index())
+                            {
+                                best = Some((idx, dist));
+                            }
+                        }
+                        None => {
                             best = Some((idx, dist));
                         }
                     }
-                    None => {
-                        best = Some((idx, dist));
-                    }
                 }
-            }
-        });
+            });
 
         best.map(|(idx, _)| idx)
     }
@@ -236,8 +236,8 @@ mod tests {
     use crate::graf::spatial::SpatialGrid;
     use fdg_sim::{ForceGraph, ForceGraphHelper, Simulation, SimulationParameters};
     use parking_lot::Mutex;
-    use std::sync::Arc;
     use parking_lot::RwLock;
+    use std::sync::Arc;
 
     #[test]
     fn test_viewport_baseline_scale() {
@@ -351,4 +351,3 @@ mod tests {
         assert_eq!(hit_equal, idxs[1]);
     }
 }
-

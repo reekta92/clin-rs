@@ -1,7 +1,7 @@
 mod builtin;
+mod cache;
 mod source_highlight;
 mod style;
-mod cache;
 mod widget;
 mod worker;
 
@@ -11,12 +11,12 @@ pub(crate) use style::{MarkdownTheme, RenderedDocument};
 pub(crate) use widget::MarkdownWidget;
 pub(crate) use worker::{RenderViewport, prewarm_syntax_assets};
 
+use cache::RenderKey;
 use ratatui::layout::Rect;
+use std::ops::Range;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc;
-use std::ops::Range;
-use cache::RenderKey;
 use worker::{RenderEvent, RenderJob, pack_viewport, unpack_viewport};
 
 /// Bundled render flags threaded into `render_layout`. Replaces the prior
@@ -157,7 +157,9 @@ impl MarkdownRenderer {
         self.events = None;
         self.generation = self.generation.wrapping_add(1);
 
-        let content_unchanged = self.current_key.as_ref()
+        let content_unchanged = self
+            .current_key
+            .as_ref()
             .map(|k| k.content == next_key.content)
             .unwrap_or(false);
 
@@ -181,7 +183,7 @@ impl MarkdownRenderer {
 
         if let Some(cached) = cache::get_document(&next_key) {
             self.document = Some(DocumentState::Final(cached));
-            
+
             if let Some(src_line) = self.pending_source_anchor.take() {
                 let new_rendered = self.source_to_rendered_line(src_line);
                 if self.page_height > 0 {
@@ -191,7 +193,7 @@ impl MarkdownRenderer {
                 }
                 self.clamp_current_page();
             }
-            
+
             self.pending = false;
             return;
         }
@@ -215,7 +217,8 @@ impl MarkdownRenderer {
     }
 
     pub fn set_viewport(&mut self, start: usize, height: usize) {
-        self.viewport.store(pack_viewport(start, height), Ordering::Relaxed);
+        self.viewport
+            .store(pack_viewport(start, height), Ordering::Relaxed);
     }
 
     pub(crate) fn document(&self) -> Option<&RenderedDocument> {
@@ -231,7 +234,9 @@ impl MarkdownRenderer {
     }
 
     pub fn is_content_empty(&self) -> bool {
-        self.document().map(|d| d.is_content_empty()).unwrap_or(true)
+        self.document()
+            .map(|d| d.is_content_empty())
+            .unwrap_or(true)
     }
 
     pub(crate) fn is_changed(
@@ -240,7 +245,8 @@ impl MarkdownRenderer {
         theme: &crate::app_theme::AppThemeColors,
         opts: &MdRenderOpts,
     ) -> bool {
-        self.current_key.as_ref()
+        self.current_key
+            .as_ref()
             .map(|k| {
                 k.content.as_ref() != content
                     || k.theme != MarkdownTheme::from_app_theme(theme)
@@ -248,7 +254,6 @@ impl MarkdownRenderer {
             })
             .unwrap_or(true)
     }
-
 
     pub fn set_page_height(&mut self, rows: usize) {
         self.page_height = rows;
@@ -281,7 +286,6 @@ impl MarkdownRenderer {
             self.scroll_offset
         }
     }
-
 
     pub fn total_pages(&self) -> usize {
         if self.page_height == 0 {
@@ -388,7 +392,8 @@ impl MarkdownRenderer {
             Some(doc) => doc,
             None => return 0,
         };
-        document.lines()
+        document
+            .lines()
             .iter()
             .position(|l| l.source_line >= comrak_line)
             .unwrap_or(0)
@@ -399,7 +404,8 @@ impl MarkdownRenderer {
             Some(doc) => doc,
             None => return 0,
         };
-        document.lines()
+        document
+            .lines()
             .get(rendered_line)
             .map(|l| l.source_line)
             .unwrap_or(1)
@@ -451,7 +457,10 @@ impl MarkdownRenderer {
 
         for event in events {
             match event {
-                RenderEvent::LayoutReady { generation, document } => {
+                RenderEvent::LayoutReady {
+                    generation,
+                    document,
+                } => {
                     if generation != self.generation {
                         continue;
                     }
@@ -472,18 +481,27 @@ impl MarkdownRenderer {
 
                     redraw = true;
                 }
-                RenderEvent::CodeBlockReady { generation, line_range, lines } => {
+                RenderEvent::CodeBlockReady {
+                    generation,
+                    line_range,
+                    lines,
+                } => {
                     if generation != self.generation {
                         continue;
                     }
 
                     if let Some(DocumentState::Working(ref mut doc)) = self.document {
-                        if line_range.start < doc.line_count() && line_range.end <= doc.line_count() && line_range.len() == lines.len() {
+                        if line_range.start < doc.line_count()
+                            && line_range.end <= doc.line_count()
+                            && line_range.len() == lines.len()
+                        {
                             let mut first_failure = None;
                             for (idx, new_line) in lines.iter().enumerate() {
                                 let orig_line = &doc.lines()[line_range.start + idx];
-                                let orig_text: String = orig_line.spans.iter().map(|s| s.text.as_str()).collect();
-                                let new_text: String = new_line.spans.iter().map(|s| s.text.as_str()).collect();
+                                let orig_text: String =
+                                    orig_line.spans.iter().map(|s| s.text.as_str()).collect();
+                                let new_text: String =
+                                    new_line.spans.iter().map(|s| s.text.as_str()).collect();
                                 if orig_text != new_text
                                     || orig_line.visual_width != new_line.visual_width
                                     || orig_line.source_line != new_line.source_line
@@ -502,7 +520,8 @@ impl MarkdownRenderer {
                                 doc_lines[line_range.start + idx] = new_line;
                             }
 
-                            let (vp_start, vp_height) = unpack_viewport(self.viewport.load(Ordering::Relaxed));
+                            let (vp_start, vp_height) =
+                                unpack_viewport(self.viewport.load(Ordering::Relaxed));
                             let vp_end = vp_start.saturating_add(vp_height);
                             let intersects = line_range.start < vp_end && line_range.end > vp_start;
                             if intersects {
@@ -561,34 +580,38 @@ pub(crate) fn hit_test_markdown(
     Some((global_line, char_idx))
 }
 
-
 #[cfg(test)]
 mod perf_tests;
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::mpsc;
-    use std::sync::Arc;
-    use std::sync::atomic::AtomicU64;
-    use crate::markdown::style::{RenderLine, StyledSpan, RenderedDocument};
+    use crate::markdown::style::{RenderLine, RenderedDocument, StyledSpan};
     use crate::markdown::worker::RenderEvent;
     use ratatui::style::{Modifier, Style};
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicU64;
+    use std::sync::mpsc;
 
     #[test]
     fn test_markdown_renderer_poll_code_block_ready_incompatible() {
         let (tx, rx) = mpsc::sync_channel(1);
-        
+
         let base_line = RenderLine {
-            spans: vec![StyledSpan { text: "original code".to_string(), style: Style::default() }],
+            spans: vec![StyledSpan {
+                text: "original code".to_string(),
+                style: Style::default(),
+            }],
             visual_width: 13,
             is_blank: false,
             image_url: None,
             source_line: 42,
         };
-        
+
         let mut renderer = MarkdownRenderer {
-            document: Some(DocumentState::Working(RenderedDocument::new(vec![base_line]))),
+            document: Some(DocumentState::Working(RenderedDocument::new(vec![
+                base_line,
+            ]))),
             events: Some(rx),
             current_key: None,
             generation: 1,
@@ -602,7 +625,10 @@ mod tests {
         };
 
         let incompatible_line = RenderLine {
-            spans: vec![StyledSpan { text: "mismatched code".to_string(), style: Style::default() }],
+            spans: vec![StyledSpan {
+                text: "mismatched code".to_string(),
+                style: Style::default(),
+            }],
             visual_width: 15,
             is_blank: false,
             image_url: None,
@@ -613,7 +639,8 @@ mod tests {
             generation: 1,
             line_range: 0..1,
             lines: vec![incompatible_line],
-        }).unwrap();
+        })
+        .unwrap();
 
         let redraw = renderer.poll();
         assert!(!redraw);
@@ -630,17 +657,22 @@ mod tests {
     #[test]
     fn test_markdown_renderer_poll_code_block_ready_compatible() {
         let (tx, rx) = mpsc::sync_channel(1);
-        
+
         let base_line = RenderLine {
-            spans: vec![StyledSpan { text: "original code".to_string(), style: Style::default() }],
+            spans: vec![StyledSpan {
+                text: "original code".to_string(),
+                style: Style::default(),
+            }],
             visual_width: 13,
             is_blank: false,
             image_url: None,
             source_line: 42,
         };
-        
+
         let mut renderer = MarkdownRenderer {
-            document: Some(DocumentState::Working(RenderedDocument::new(vec![base_line]))),
+            document: Some(DocumentState::Working(RenderedDocument::new(vec![
+                base_line,
+            ]))),
             events: Some(rx),
             current_key: None,
             generation: 1,
@@ -654,7 +686,10 @@ mod tests {
         };
 
         let compatible_line = RenderLine {
-            spans: vec![StyledSpan { text: "original code".to_string(), style: Style::default().add_modifier(Modifier::BOLD) }],
+            spans: vec![StyledSpan {
+                text: "original code".to_string(),
+                style: Style::default().add_modifier(Modifier::BOLD),
+            }],
             visual_width: 13,
             is_blank: false,
             image_url: None,
@@ -665,7 +700,8 @@ mod tests {
             generation: 1,
             line_range: 0..1,
             lines: vec![compatible_line],
-        }).unwrap();
+        })
+        .unwrap();
 
         let redraw = renderer.poll();
         assert!(redraw);

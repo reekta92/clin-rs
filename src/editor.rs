@@ -10,7 +10,6 @@ pub enum EditFocus {
     Sidebar,
 }
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum EditSidebar {
     #[default]

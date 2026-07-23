@@ -283,7 +283,10 @@ mod tests {
         let config = crate::config::ClinConfig::default();
 
         let gs_0 = GraphState {
-            simulation: fdg_sim::Simulation::from_graph(fdg_sim::ForceGraph::default(), fdg_sim::SimulationParameters::default()),
+            simulation: fdg_sim::Simulation::from_graph(
+                fdg_sim::ForceGraph::default(),
+                fdg_sim::SimulationParameters::default(),
+            ),
             viewport: crate::graf::viewport::Viewport::default(),
             selected_node: None,
             dragging_node: None,
@@ -319,7 +322,10 @@ mod tests {
         graph.add_edge(nodes[0], nodes[1], ());
 
         let gs_1001 = GraphState {
-            simulation: fdg_sim::Simulation::from_graph(graph, fdg_sim::SimulationParameters::default()),
+            simulation: fdg_sim::Simulation::from_graph(
+                graph,
+                fdg_sim::SimulationParameters::default(),
+            ),
             viewport: crate::graf::viewport::Viewport::default(),
             selected_node: None,
             dragging_node: None,
@@ -357,9 +363,13 @@ mod tests {
                     if n_idx == idx {
                         found = true;
                     }
-                }
+                },
             );
-            assert!(found, "Node {:?} not found in spatial grid near location {:?}", idx, node.location);
+            assert!(
+                found,
+                "Node {:?} not found in spatial grid near location {:?}",
+                idx, node.location
+            );
         }
 
         let mut graph = fdg_sim::ForceGraph::default();
@@ -372,7 +382,10 @@ mod tests {
         };
         graph.add_force_node("Node 1", data);
         let gs_1 = GraphState {
-            simulation: fdg_sim::Simulation::from_graph(graph, fdg_sim::SimulationParameters::default()),
+            simulation: fdg_sim::Simulation::from_graph(
+                graph,
+                fdg_sim::SimulationParameters::default(),
+            ),
             viewport: crate::graf::viewport::Viewport::default(),
             selected_node: None,
             dragging_node: None,

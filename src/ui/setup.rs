@@ -305,8 +305,13 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
         }
 
         if should_render {
-            let viewport = crate::markdown::RenderViewport { start: 0, height: inner.height as usize };
-            state.preview_renderer.render_with(SETUP_PREVIEW_MD, cols, theme, &opts, viewport);
+            let viewport = crate::markdown::RenderViewport {
+                start: 0,
+                height: inner.height as usize,
+            };
+            state
+                .preview_renderer
+                .render_with(SETUP_PREVIEW_MD, cols, theme, &opts, viewport);
             state.preview_key = Some(next_key);
         }
 
@@ -314,8 +319,7 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
             let widget = crate::markdown::MarkdownWidget::new(doc, 0..inner.height as usize);
             frame.render_widget(widget, inner);
         } else {
-            let loading = Paragraph::new("Loading...")
-                .alignment(Alignment::Center);
+            let loading = Paragraph::new("Loading...").alignment(Alignment::Center);
             frame.render_widget(loading, inner);
         }
     }

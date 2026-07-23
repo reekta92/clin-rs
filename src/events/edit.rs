@@ -229,7 +229,6 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
         return false;
     }
 
-
     let seq = app.config.sequences_enabled();
     let counts = app.config.counts_enabled();
     match app
@@ -553,8 +552,7 @@ pub fn handle_edit_mouse(
                     app.editor.title_viewport_col as usize,
                 );
             }
-        } else if contains_cell(body_inner, mouse_event.column, mouse_event.row)
-        {
+        } else if contains_cell(body_inner, mouse_event.column, mouse_event.row) {
             *focus = EditFocus::Body;
             if app.editor.editor.selection_range().is_none() {
                 move_textarea_cursor_to_mouse(
@@ -678,7 +676,6 @@ pub fn handle_edit_mouse(
         return;
     }
 
-
     match mouse_event.kind {
         MouseEventKind::Down(MouseButton::Left) => {
             // READ-mode: start selection
@@ -719,8 +716,7 @@ pub fn handle_edit_mouse(
                 return;
             }
             app.editor.last_sidebar_click = None;
-            if contains_cell(body_inner, mouse_event.column, mouse_event.row)
-            {
+            if contains_cell(body_inner, mouse_event.column, mouse_event.row) {
                 *focus = EditFocus::Body;
                 move_textarea_cursor_to_mouse(
                     &mut app.editor.editor,
@@ -745,7 +741,7 @@ pub fn handle_edit_mouse(
                 app.editor.title_editor.start_selection();
                 *mouse_selecting = true;
             }
-        },
+        }
         MouseEventKind::Drag(MouseButton::Left) => {
             if *mouse_selecting {
                 *mouse_dragged = true;
@@ -769,7 +765,7 @@ pub fn handle_edit_mouse(
                     );
                 }
             }
-        },
+        }
         MouseEventKind::Up(MouseButton::Left) => {
             if *mouse_selecting && !*mouse_dragged {
                 if *focus == EditFocus::Body {
@@ -780,16 +776,15 @@ pub fn handle_edit_mouse(
             }
             *mouse_selecting = false;
             *mouse_dragged = false;
-        },
+        }
         MouseEventKind::ScrollDown => {
             if *focus == EditFocus::Body {
                 app.scroll_editor(3, 0);
             }
-        },
+        }
         MouseEventKind::ScrollUp if *focus == EditFocus::Body => {
             app.scroll_editor(-3, 0);
         }
         _ => {}
     }
 }
-

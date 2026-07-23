@@ -170,9 +170,7 @@ struct StaticComponent {
     envelope_radius: f64,
 }
 
-fn collect_static_components(
-    graph: &ForceGraph<GraphNodeData, ()>,
-) -> Vec<StaticComponent> {
+fn collect_static_components(graph: &ForceGraph<GraphNodeData, ()>) -> Vec<StaticComponent> {
     let mut visited = HashSet::new();
     let mut components = Vec::new();
 
@@ -180,7 +178,10 @@ fn collect_static_components(
     start_nodes.sort_by(|&a, &b| {
         let node_a = &graph[a];
         let node_b = &graph[b];
-        node_a.data.note_id.cmp(&node_b.data.note_id)
+        node_a
+            .data
+            .note_id
+            .cmp(&node_b.data.note_id)
             .then_with(|| a.cmp(&b))
     });
 
@@ -202,7 +203,10 @@ fn collect_static_components(
             neighbors.sort_by(|&a, &b| {
                 let node_a = &graph[a];
                 let node_b = &graph[b];
-                node_a.data.note_id.cmp(&node_b.data.note_id)
+                node_a
+                    .data
+                    .note_id
+                    .cmp(&node_b.data.note_id)
                     .then_with(|| a.cmp(&b))
             });
 
@@ -218,7 +222,10 @@ fn collect_static_components(
         component_nodes.sort_by(|&a, &b| {
             let node_a = &graph[a];
             let node_b = &graph[b];
-            node_a.data.note_id.cmp(&node_b.data.note_id)
+            node_a
+                .data
+                .note_id
+                .cmp(&node_b.data.note_id)
                 .then_with(|| a.cmp(&b))
         });
 
@@ -237,7 +244,8 @@ fn collect_static_components(
                 .collect();
 
             static_nodes.sort_by(|a, b| {
-                b.degree.cmp(&a.degree)
+                b.degree
+                    .cmp(&a.degree)
                     .then_with(|| a.key.cmp(&b.key))
                     .then_with(|| a.index.cmp(&b.index))
             });
@@ -354,7 +362,8 @@ fn layout_static_components(
 
                     // Calculate slot capacity for this ring
                     let mut slot_capacity = 1;
-                    let upper_bound = (2.0 * std::f64::consts::PI * ring_radius / spacing).ceil() as usize + 2;
+                    let upper_bound =
+                        (2.0 * std::f64::consts::PI * ring_radius / spacing).ceil() as usize + 2;
                     for sc in (1..=upper_bound).rev() {
                         if sc == 1 {
                             slot_capacity = 1;
@@ -376,12 +385,14 @@ fn layout_static_components(
                     } else {
                         MAX_STATIC_LAYOUT_ANGULAR_JITTER.min(available_slack * 0.45)
                     };
-                    let ring_phase = stable_layout_unit(&c.key, "", r, 0) * 2.0 * std::f64::consts::PI;
+                    let ring_phase =
+                        stable_layout_unit(&c.key, "", r, 0) * 2.0 * std::f64::consts::PI;
 
                     for slot in 0..used_slots {
                         let node_idx = group[group_idx + slot];
                         let node_key = &c.nodes[node_idx].key;
-                        let signed_jitter = (stable_layout_unit(&c.key, node_key, r, 1) * 2.0 - 1.0) * jitter_limit;
+                        let signed_jitter =
+                            (stable_layout_unit(&c.key, node_key, r, 1) * 2.0 - 1.0) * jitter_limit;
                         let angle = ring_phase + sector_angle * slot as f64 + signed_jitter;
                         let rx = ring_radius * angle.cos();
                         let ry = ring_radius * angle.sin();
@@ -872,7 +883,7 @@ mod tests {
         config.graf.physics.ideal_distance = spacing;
 
         let mut gs = GraphState::new(&summaries, &config).unwrap();
-        
+
         let success = gs.apply_static_cluster_layout(spacing);
         assert!(success);
 
@@ -899,7 +910,7 @@ mod tests {
 
         let c0 = comps[0].center;
         assert_eq!(c0, (0.0, 0.0));
-        
+
         // Assert hub is exactly at its component center
         let loc_hub = node_map.get("hub").unwrap().1;
         assert!((loc_hub.x as f64 - c0.0).abs() < 1e-4);
@@ -937,19 +948,32 @@ mod tests {
                 let pos_i = node_map.get(comp1_nodes[i]).unwrap().1;
                 let pos_j = node_map.get(comp1_nodes[j]).unwrap().1;
                 let d = (pos_i.x - pos_j.x).hypot(pos_i.y - pos_j.y) as f64;
-                assert!(d >= spacing - 1e-4, "Pair {}-{} distance {} too small", comp1_nodes[i], comp1_nodes[j], d);
+                assert!(
+                    d >= spacing - 1e-4,
+                    "Pair {}-{} distance {} too small",
+                    comp1_nodes[i],
+                    comp1_nodes[j],
+                    d
+                );
             }
         }
 
         let gap = spacing * 4.0;
-        
+
         for i in 0..comps.len() {
             for j in (i + 1)..comps.len() {
                 let ci = comps[i].center;
                 let cj = comps[j].center;
                 let dist = (ci.0 - cj.0).hypot(ci.1 - cj.1);
                 let min_dist = comps[i].envelope_radius + comps[j].envelope_radius + gap;
-                assert!(dist >= min_dist - 1e-4, "Components {} and {} overlap: dist={}, min_dist={}", i, j, dist, min_dist);
+                assert!(
+                    dist >= min_dist - 1e-4,
+                    "Components {} and {} overlap: dist={}, min_dist={}",
+                    i,
+                    j,
+                    dist,
+                    min_dist
+                );
             }
         }
 
@@ -966,7 +990,11 @@ mod tests {
             }
             a
         };
-        let mut angles = vec![norm_angle(angle_a), norm_angle(angle_b), norm_angle(angle_c)];
+        let mut angles = vec![
+            norm_angle(angle_a),
+            norm_angle(angle_b),
+            norm_angle(angle_c),
+        ];
         angles.sort_by(|x, y| x.partial_cmp(y).unwrap());
 
         // Successive gaps including wraparound
@@ -978,15 +1006,29 @@ mod tests {
         let diff01 = (gap0 - gap1).abs();
         let diff12 = (gap1 - gap2).abs();
         let diff20 = (gap2 - gap0).abs();
-        assert!(diff01 > 1e-4 || diff12 > 1e-4 || diff20 > 1e-4, "Angular gaps are uniform: {:?}, diffs: {}, {}, {}", angles, diff01, diff12, diff20);
+        assert!(
+            diff01 > 1e-4 || diff12 > 1e-4 || diff20 > 1e-4,
+            "Angular gaps are uniform: {:?}, diffs: {}, {}, {}",
+            angles,
+            diff01,
+            diff12,
+            diff20
+        );
     }
 
     #[test]
     fn test_static_cluster_layout_stability_and_validation() {
         // Direct helper assertions
         assert_eq!(stable_layout_hash("a", "b", 1, 0), 0x1eb4c9ab64b11751u64);
-        assert_eq!(stable_layout_hash("cluster-a", "node-b", 2, 1), 0x628ba93c5bd07ea9u64);
-        assert!((stable_layout_unit("a", "b", 1, 0) - (0x1eb4c9ab64b11751u64 as f64 / u64::MAX as f64)).abs() < 1e-9);
+        assert_eq!(
+            stable_layout_hash("cluster-a", "node-b", 2, 1),
+            0x628ba93c5bd07ea9u64
+        );
+        assert!(
+            (stable_layout_unit("a", "b", 1, 0) - (0x1eb4c9ab64b11751u64 as f64 / u64::MAX as f64))
+                .abs()
+                < 1e-9
+        );
 
         let summaries_1 = vec![
             NoteSummary {
@@ -1144,19 +1186,43 @@ mod tests {
 
         let ids = vec!["hub", "a", "b", "c", "leaf_a", "leaf_b", "leaf_c"];
         for id in ids {
-            let loc1 = gs1.simulation.get_graph().node_weights().find(|n| n.data.note_id == id).unwrap().location;
-            let loc2 = gs2.simulation.get_graph().node_weights().find(|n| n.data.note_id == id).unwrap().location;
+            let loc1 = gs1
+                .simulation
+                .get_graph()
+                .node_weights()
+                .find(|n| n.data.note_id == id)
+                .unwrap()
+                .location;
+            let loc2 = gs2
+                .simulation
+                .get_graph()
+                .node_weights()
+                .find(|n| n.data.note_id == id)
+                .unwrap()
+                .location;
             assert!((loc1.x - loc2.x).abs() < 1e-4f32, "Node {} x mismatch", id);
             assert!((loc1.y - loc2.y).abs() < 1e-4f32, "Node {} y mismatch", id);
         }
 
         // Expect hub at center, and a, b, c exactly spacing away
-        let loc_hub = gs1.simulation.get_graph().node_weights().find(|n| n.data.note_id == "hub").unwrap().location;
+        let loc_hub = gs1
+            .simulation
+            .get_graph()
+            .node_weights()
+            .find(|n| n.data.note_id == "hub")
+            .unwrap()
+            .location;
         assert!((loc_hub.x as f64).abs() < 1e-4);
         assert!((loc_hub.y as f64).abs() < 1e-4);
 
         for id in ["a", "b", "c"] {
-            let loc = gs1.simulation.get_graph().node_weights().find(|n| n.data.note_id == id).unwrap().location;
+            let loc = gs1
+                .simulation
+                .get_graph()
+                .node_weights()
+                .find(|n| n.data.note_id == id)
+                .unwrap()
+                .location;
             let dist = (loc.x as f64).hypot(loc.y as f64);
             assert!((dist - 80.0).abs() < 1e-4);
         }
@@ -1173,7 +1239,10 @@ mod tests {
         }
 
         let mut gs_empty = GraphState {
-            simulation: fdg_sim::Simulation::from_graph(fdg_sim::ForceGraph::default(), fdg_sim::SimulationParameters::default()),
+            simulation: fdg_sim::Simulation::from_graph(
+                fdg_sim::ForceGraph::default(),
+                fdg_sim::SimulationParameters::default(),
+            ),
             viewport: crate::graf::viewport::Viewport::default(),
             selected_node: None,
             dragging_node: None,

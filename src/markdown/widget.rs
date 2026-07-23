@@ -1,8 +1,8 @@
-use std::ops::Range;
+use super::style::RenderedDocument;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::widgets::Widget;
-use super::style::RenderedDocument;
+use std::ops::Range;
 
 pub(crate) struct MarkdownWidget<'a> {
     document: &'a RenderedDocument,
@@ -25,7 +25,9 @@ impl<'a> Widget for MarkdownWidget<'a> {
         }
 
         let start = self.line_range.start.min(self.document.line_count());
-        let end = self.line_range.end
+        let end = self
+            .line_range
+            .end
             .max(start)
             .min(self.document.line_count())
             .min(start.saturating_add(area.height as usize));
@@ -52,4 +54,3 @@ impl<'a> Widget for MarkdownWidget<'a> {
         }
     }
 }
-
