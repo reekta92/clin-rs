@@ -23,7 +23,7 @@ pub(crate) fn render_editor_widget(
         Block::default()
             .style(app.app_theme.bg_style())
             .borders(Borders::NONE)
-            .padding(Padding::new(0, 2, 0, 0))
+            .padding(Padding::new(0, 2, 1, 0))
     });
     let base_style = custom_style.unwrap_or_else(|| app.app_theme.bg_style());
     super::render_textarea_with_theme(
@@ -66,7 +66,6 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(1), // header
-            Constraint::Length(1), // spacer
             Constraint::Min(0),    // body
             Constraint::Length(1), // hint bar
         ])
@@ -229,8 +228,8 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
 
         app.editor.header_title_rect = center_area;
     }
-    let body_area = outer_chunks[2];
-    let hint_area = outer_chunks[3];
+    let body_area = outer_chunks[1];
+    let hint_area = outer_chunks[2];
 
     let layout = crate::events::compute_edit_layout(
         body_area,
@@ -270,6 +269,23 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         }
     }
 
+    // Sync preview scroll with editor scroll
+    if let Some(renderer) = &mut app.editor.md_preview_renderer {
+        if renderer.document().is_some() {
+            if let Some(preview_area) = preview_area_rect {
+                let block = Block::default()
+                    .style(app.app_theme.preview_bg_style())
+                    .borders(Borders::NONE)
+                    .padding(Padding::new(2, 2, 1, 1));
+                let inner = block.inner(preview_area);
+                // Convert editor viewport row (source line) to rendered line
+                let rendered_start = renderer.source_to_rendered_line(app.editor.body_viewport_row as usize);
+                // Update the renderer's scroll offset to match editor viewport
+                renderer.set_scroll_offset(rendered_start, inner.height as usize);
+            }
+        }
+    }
+
     if let Some(preview_area_rect) = preview_area_rect {
 
         app.editor.markdown_inner_rect = None;
@@ -278,7 +294,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 let block = Block::default()
                     .style(app.app_theme.preview_bg_style())
                     .borders(Borders::NONE)
-                    .padding(Padding::new(2, 2, 1, 1));
+                    .padding(Padding::new(0, 2, 1, 1));
                 let inner = block.inner(preview_area_rect);
                 frame.render_widget(block, preview_area_rect);
                 app.editor.markdown_inner_rect = Some(inner);

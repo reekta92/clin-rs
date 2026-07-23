@@ -339,11 +339,17 @@ impl MarkdownRenderer {
         }
         self.update_viewport_for_current_page();
     }
-
     pub fn scroll_offset(&self) -> usize {
         self.scroll_offset
     }
 
+    /// Set the scroll offset directly, clamping to valid range.
+    pub fn set_scroll_offset(&mut self, offset: usize, visible_height: usize) {
+        let len = self.document().map(|d| d.line_count()).unwrap_or(0);
+        let max = len.saturating_sub(visible_height);
+        self.scroll_offset = offset.min(max);
+        self.update_viewport_for_scroll();
+    }
 
     pub fn scroll_up(&mut self, lines: usize) {
         self.scroll_offset = self.scroll_offset.saturating_sub(lines);
