@@ -71,6 +71,8 @@ Full reference of all configuration options for clin-rs.
 | `date_format` | `String` | `"%Y-%m-%d %H:%M"` | Format used by the insert-date action |
 | `soft_wrap` | `bool` | `false` | Soft-wrap the editor body |
 | `edit_mode_highlight` | `bool` | `true` | Highlight the active READ/EDIT mode |
+| `ghost_syntax` | `bool` | `true` | Visually dim markdown delimiters (brackets, URLs, etc.) in edit view |
+| `extended_markdown_features` | `bool` | `true` | Enable extended markdown highlighting features (bare URLs, bold italic combinations, description lists, footnotes) |
 
 ### `[ui]`
 

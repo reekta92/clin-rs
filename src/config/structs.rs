@@ -481,6 +481,8 @@ pub struct EditorConfig {
     pub edit_mode_highlight: bool,
     #[serde(default = "default_true")]
     pub ghost_syntax: bool,
+    #[serde(default = "default_true")]
+    pub extended_markdown_features: bool,
     pub soft_wrap: bool,
 }
 
@@ -494,6 +496,7 @@ impl Default for EditorConfig {
             date_format: default_editor_date_format(),
             edit_mode_highlight: true,
             ghost_syntax: true,
+            extended_markdown_features: true,
             soft_wrap: false,
         }
     }

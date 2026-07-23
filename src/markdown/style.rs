@@ -235,7 +235,7 @@ impl MarkdownTheme {
                 .add_modifier(Modifier::BOLD),
             h2: Style::default()
                 .fg(theme.heading)
-                .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
+                .add_modifier(Modifier::BOLD),
             h3: Style::default().fg(theme.tag).add_modifier(Modifier::BOLD),
             h4: Style::default()
                 .fg(theme.success)
@@ -249,7 +249,7 @@ impl MarkdownTheme {
             paragraph: Style::default().fg(theme.text),
             code_inline: Style::default().fg(theme.fg).bg(theme.muted),
             code_block: Style::default().fg(theme.muted),
-            code_block_bg: theme.bg,
+            code_block_bg: Some(faint_background(theme.muted)),
             link_text: Style::default()
                 .fg(theme.accent)
                 .add_modifier(Modifier::BOLD),

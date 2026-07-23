@@ -1731,7 +1731,7 @@ pub fn overlay_markdown_highlight(frame: &mut Frame, app: &mut App, area: Rect) 
         if stale && show_ln {
             let hl = e
                 .source_highlighter
-                .get_or_insert_with(|| crate::markdown::SourceHighlighter::new(&app.app_theme, app.config.editor.ghost_syntax));
+                .get_or_insert_with(|| crate::markdown::SourceHighlighter::new(&app.app_theme, app.config.editor.ghost_syntax, app.config.editor.extended_markdown_features));
             let mut cache = Vec::with_capacity(full_doc.len());
             for (i, line) in full_doc.iter().enumerate() {
                 cache.push(hl.highlight_line(line, i, full_doc));
@@ -1745,6 +1745,7 @@ pub fn overlay_markdown_highlight(frame: &mut Frame, app: &mut App, area: Rect) 
     let buf = frame.buffer_mut();
     let content_left = inner.left() + gutter;
 
+    let base_bg = app.app_theme.bg.unwrap_or(ratatui::style::Color::Reset);
     if show_ln {
         let cache = &app.editor.md_highlight_cache;
         let mut source_idx: Option<usize> = None;
@@ -1766,7 +1767,7 @@ pub fn overlay_markdown_highlight(frame: &mut Frame, app: &mut App, area: Rect) 
             } else if let Ok(n) = trimmed_gutter.parse::<usize>() {
                 if let Some(si) = source_idx {
                     let styles = cache.get(si).map(Vec::as_slice).unwrap_or(&[]);
-                    apply_highlight_styles(buf, &rows_for_line, styles);
+                    apply_highlight_styles(buf, &rows_for_line, styles, base_bg);
                 }
                 source_idx = Some(n.saturating_sub(1));
                 rows_for_line = vec![(y, content_left, inner.right())];
@@ -1774,7 +1775,7 @@ pub fn overlay_markdown_highlight(frame: &mut Frame, app: &mut App, area: Rect) 
         }
         if let Some(si) = source_idx {
             let styles = cache.get(si).map(Vec::as_slice).unwrap_or(&[]);
-            apply_highlight_styles(buf, &rows_for_line, styles);
+            apply_highlight_styles(buf, &rows_for_line, styles, base_bg);
         }
     } else {
         // No line numbers: source_idx is unknown, so highlight the displayed text
@@ -1783,7 +1784,7 @@ pub fn overlay_markdown_highlight(frame: &mut Frame, app: &mut App, area: Rect) 
         let full_doc: Vec<String> = e.editor.lines().to_vec();
         let hl = e
             .source_highlighter
-            .get_or_insert_with(|| crate::markdown::SourceHighlighter::new(&app.app_theme, app.config.editor.ghost_syntax));
+            .get_or_insert_with(|| crate::markdown::SourceHighlighter::new(&app.app_theme, app.config.editor.ghost_syntax, app.config.editor.extended_markdown_features));
         for y in inner.top()..inner.bottom() {
             let displayed: String = (content_left..inner.right())
                 .filter_map(|x| buf.cell((x, y)).map(|c| c.symbol()))
@@ -1805,7 +1806,7 @@ pub fn overlay_markdown_highlight(frame: &mut Frame, app: &mut App, area: Rect) 
                         ci += 1;
                         continue;
                     }
-                    if cell.bg != app.app_theme.bg.unwrap_or(ratatui::style::Color::Reset) {
+                    if cell.bg != base_bg {
                         ci += 1;
                         continue;
                     }
@@ -1822,6 +1823,7 @@ fn apply_highlight_styles(
     buf: &mut ratatui::prelude::Buffer,
     rows: &[(u16, u16, u16)],
     styles: &[ratatui::style::Style],
+    base_bg: ratatui::style::Color,
 ) {
     if styles.is_empty() {
         return;
@@ -1840,7 +1842,7 @@ fn apply_highlight_styles(
                 src_cursor += 1;
                 continue;
             }
-            if cell.bg != ratatui::style::Color::Reset {
+            if cell.bg != base_bg {
                 src_cursor += 1;
                 continue;
             }

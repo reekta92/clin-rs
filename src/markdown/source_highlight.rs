@@ -10,7 +10,7 @@
 use ratatui::style::{Modifier, Style};
 use std::hash::{DefaultHasher, Hash, Hasher};
 
-use crate::markdown::style::MarkdownTheme;
+use crate::markdown::style::{MarkdownTheme, faint_background};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum LineTag {
@@ -28,16 +28,22 @@ enum LineTag {
 pub(crate) struct SourceHighlighter {
     theme: MarkdownTheme,
     ghost_syntax_enabled: bool,
+    extended_features: bool,
     /// Per-line tag computed from the last full scan.
     line_tags: Vec<LineTag>,
     /// Hash of the document at last scan.
     scanned_hash: u64,
 }
 impl SourceHighlighter {
-    pub fn new(theme: &crate::app_theme::AppThemeColors, ghost_syntax_enabled: bool) -> Self {
+    pub fn new(
+        theme: &crate::app_theme::AppThemeColors,
+        ghost_syntax_enabled: bool,
+        extended_features: bool,
+    ) -> Self {
         Self {
             theme: MarkdownTheme::from_app_theme(theme),
             ghost_syntax_enabled,
+            extended_features,
             line_tags: Vec::new(),
             scanned_hash: 0,
         }
@@ -87,7 +93,16 @@ impl SourceHighlighter {
         self.rescan_if_needed(full_doc);
 
         if row < self.line_tags.len() && self.line_tags[row] == LineTag::CodeBlock {
-            return vec![self.theme.code_block; line.chars().count()];
+            let mut st = self.theme.code_block;
+            if let Some(bg) = self.theme.code_block_bg {
+                st = st.bg(bg);
+            }
+            let count = line.chars().count();
+            let mut styles = vec![st; count];
+            for _ in 0..300 {
+                styles.push(st);
+            }
+            return styles;
         }
 
         self.highlight_inline(line)
@@ -104,21 +119,45 @@ impl SourceHighlighter {
 
         // Heading: `^#{1,6}\s`
         if let Some(level) = heading_level(&chars) {
-            let style = match level {
-                1 => self.theme.h1,
+            let mut heading_style = match level {
+                1 => self.theme.h1_banner,
                 2 => self.theme.h2,
                 3 => self.theme.h3,
                 4 => self.theme.h4,
                 5 => self.theme.h5,
                 _ => self.theme.h6,
             };
-            if self.ghost_syntax_enabled {
-                let marker_end = level + 1; // # chars + space
-                let mut styles = vec![self.theme.ghost_syntax; marker_end];
-                styles.extend(vec![style; chars.len().saturating_sub(marker_end)]);
-                return styles;
+            if level > 1 {
+                if let Some(fg) = heading_style.fg {
+                    heading_style = heading_style.bg(faint_background(fg));
+                }
             }
-            return vec![style; chars.len()];
+            let marker_end = level + 1; // # chars + space
+            let ghost = self.ghost_syntax_enabled;
+            let rest: String = chars.iter().skip(marker_end).collect();
+            let rest_styles = self.inline_highlight_chars(&rest, heading_style);
+
+            let mut styles = Vec::with_capacity(chars.len() + 300);
+            for _ in 0..marker_end {
+                let mut marker_style = if ghost { self.theme.ghost_syntax } else { heading_style };
+                if let Some(bg) = heading_style.bg {
+                    marker_style = marker_style.bg(bg);
+                }
+                styles.push(marker_style);
+            }
+            styles.extend(rest_styles);
+            while styles.len() < chars.len() {
+                styles.push(if ghost { self.theme.ghost_syntax } else { heading_style });
+            }
+            for _ in 0..300 {
+                styles.push(heading_style);
+            }
+            if let Some(bg) = heading_style.bg {
+                for style in &mut styles {
+                    *style = style.bg(bg);
+                }
+            }
+            return styles;
         }
         // Setext underline `^=+$` or `^-{2,}$`
         if is_setext_underline(&chars) {
@@ -148,12 +187,19 @@ impl SourceHighlighter {
 
         // Fence open/close line (``` or ~~~)
         if is_fence_marker(&chars) {
-            let style = if self.ghost_syntax_enabled {
+            let mut style = if self.ghost_syntax_enabled {
                 self.theme.ghost_syntax
             } else {
                 self.theme.code_block
             };
-            return vec![style; chars.len()];
+            if let Some(bg) = self.theme.code_block_bg {
+                style = style.bg(bg);
+            }
+            let mut styles = vec![style; chars.len()];
+            for _ in 0..300 {
+                styles.push(style);
+            }
+            return styles;
         }
 
         // Task list line
@@ -166,24 +212,38 @@ impl SourceHighlighter {
             return self.list_line_styles(&chars, marker_end);
         }
 
+        // Description list marker
+        if self.extended_features {
+            if let Some(marker_end) = find_description_marker(&chars) {
+                return self.description_line_styles(&chars, marker_end);
+            }
+        }
+
+        // Footnote definition marker
+        if self.extended_features {
+            if let Some(marker_end) = find_footnote_def_marker(&chars) {
+                return self.footnote_def_line_styles(&chars, marker_end);
+            }
+        }
+
         // Default: inline-highlight as paragraph text
-        self.inline_highlight_chars(line)
+        self.inline_highlight_chars(line, self.theme.paragraph)
     }
 
     /// Blockquote styles: leading `>` chars get blockquote_bar, rest get blockquote.
     fn blockquote_styles(&self, chars: &[char], _depth: usize, after_marker: usize) -> Vec<Style> {
         let ghost = self.ghost_syntax_enabled;
-        chars
-            .iter()
-            .enumerate()
-            .map(|(idx, _)| {
-                if idx < after_marker {
-                    if ghost { self.theme.ghost_syntax } else { self.theme.blockquote_bar }
-                } else {
-                    self.theme.blockquote
-                }
-            })
-            .collect()
+        let rest: String = chars.iter().skip(after_marker).collect();
+        let rest_styles = self.inline_highlight_chars(&rest, self.theme.blockquote);
+        let mut styles = Vec::with_capacity(chars.len());
+        for _ in 0..after_marker {
+            styles.push(if ghost { self.theme.ghost_syntax } else { self.theme.blockquote_bar });
+        }
+        styles.extend(rest_styles);
+        while styles.len() < chars.len() {
+            styles.push(if ghost { self.theme.ghost_syntax } else { self.theme.blockquote });
+        }
+        styles
     }
 
     /// Style a task-list line.
@@ -207,7 +267,7 @@ impl SourceHighlighter {
 
         let after_task = bracket_end + 1; // skip the trailing space
         let rest: String = chars.iter().skip(after_task).collect();
-        let rest_styles = self.inline_highlight_chars(&rest);
+        let rest_styles = self.inline_highlight_chars(&rest, self.theme.paragraph);
 
         let ghost = self.ghost_syntax_enabled;
         let mut styles = Vec::with_capacity(chars.len());
@@ -236,10 +296,10 @@ impl SourceHighlighter {
     fn list_line_styles(&self, chars: &[char], marker_end: usize) -> Vec<Style> {
         let ghost = self.ghost_syntax_enabled;
         let rest: String = chars.iter().skip(marker_end).collect();
-        let rest_styles = self.inline_highlight_chars(&rest);
+        let rest_styles = self.inline_highlight_chars(&rest, self.theme.paragraph);
         let mut styles = Vec::with_capacity(chars.len());
         for _ in 0..marker_end {
-            styles.push(if ghost { self.theme.ghost_syntax } else { self.theme.paragraph });
+            styles.push(if ghost { self.theme.ghost_syntax } else { self.theme.h3 });
         }
         styles.extend(rest_styles);
         while styles.len() < chars.len() {
@@ -249,17 +309,22 @@ impl SourceHighlighter {
     }
 
     #[allow(clippy::collapsible_if)]
-    fn inline_highlight_chars(&self, text: &str) -> Vec<Style> {
+    fn inline_highlight_chars(&self, text: &str, base_style: Style) -> Vec<Style> {
         let chars: Vec<char> = text.chars().collect();
-        let mut styles = vec![self.theme.paragraph; chars.len()];
+        let mut styles = vec![base_style; chars.len()];
         let mut i = 0;
         let ghost = self.ghost_syntax_enabled;
 
         while i < chars.len() {
             // Escape: `\X` — paragraph style on both chars (same in both modes)
             if chars[i] == '\\' && i + 1 < chars.len() {
-                styles[i] = self.theme.paragraph;
-                styles[i + 1] = self.theme.paragraph;
+                if self.extended_features {
+                    styles[i] = self.theme.ghost_syntax;
+                    styles[i + 1] = base_style;
+                } else {
+                    styles[i] = base_style;
+                    styles[i + 1] = base_style;
+                }
                 i += 2;
                 continue;
             }
@@ -334,8 +399,28 @@ impl SourceHighlighter {
                         styles[i + 1] = self.theme.ghost_syntax;
                         styles[i + end] = self.theme.ghost_syntax;
                         styles[i + end + 1] = self.theme.ghost_syntax;
-                        for j in 2..end {
-                            styles[i + j] = self.theme.wikilink;
+                        
+                        let mut pipe_idx = None;
+                        if self.extended_features {
+                            for j in 2..end {
+                                if chars[i + j] == '|' {
+                                    pipe_idx = Some(j);
+                                    break;
+                                }
+                            }
+                        }
+
+                        if let Some(p) = pipe_idx {
+                            for j in 2..=p {
+                                styles[i + j] = self.theme.ghost_syntax;
+                            }
+                            for j in p + 1..end {
+                                styles[i + j] = self.theme.wikilink;
+                            }
+                        } else {
+                            for j in 2..end {
+                                styles[i + j] = self.theme.wikilink;
+                            }
                         }
                     } else {
                         // Original: entire wikilink gets wikilink
@@ -411,6 +496,40 @@ impl SourceHighlighter {
                 }
             }
 
+            // Bare URL (extended feature)
+            if self.extended_features && (chars[i] == 'h' || chars[i] == 'H') {
+                if let Some(len) = try_bare_url(&chars, i) {
+                    for j in 0..len {
+                        styles[i + j] = self.theme.link_url;
+                    }
+                    i += len;
+                    continue;
+                }
+            }
+
+            // Bold italic `***` or `___` (extended feature)
+            if self.extended_features
+                && ((chars[i] == '*' && i + 2 < chars.len() && chars[i + 1] == '*' && chars[i + 2] == '*')
+                    || (chars[i] == '_' && i + 2 < chars.len() && chars[i + 1] == '_' && chars[i + 2] == '_'))
+            {
+                let delim = if chars[i] == '*' { "***" } else { "___" };
+                let slice: String = chars[i + 3..].iter().collect();
+                if let Some(end) = slice.find(delim) {
+                    let delim_style = if ghost { self.theme.ghost_syntax } else { base_style };
+                    styles[i] = delim_style;
+                    styles[i + 1] = delim_style;
+                    styles[i + 2] = delim_style;
+                    for j in 3..end + 3 {
+                        styles[i + j] = base_style.add_modifier(Modifier::BOLD | Modifier::ITALIC);
+                    }
+                    styles[i + end + 3] = delim_style;
+                    styles[i + end + 4] = delim_style;
+                    styles[i + end + 5] = delim_style;
+                    i += end + 6;
+                    continue;
+                }
+            }
+
             // Bold `**` or `__`
             if (chars[i] == '*' && i + 1 < chars.len() && chars[i + 1] == '*')
                 || (chars[i] == '_' && i + 1 < chars.len() && chars[i + 1] == '_')
@@ -419,11 +538,11 @@ impl SourceHighlighter {
                 let slice: String = chars[i + 2..].iter().collect();
                 if let Some(end) = slice.find(delim) {
                     // Works same in both modes: delimiters get paragraph, content gets bold
-                    let delim_style = if ghost { self.theme.ghost_syntax } else { self.theme.paragraph };
+                    let delim_style = if ghost { self.theme.ghost_syntax } else { base_style };
                     styles[i] = delim_style;
                     styles[i + 1] = delim_style;
                     for j in 2..end + 2 {
-                        styles[i + j] = self.theme.paragraph.add_modifier(Modifier::BOLD);
+                        styles[i + j] = base_style.add_modifier(Modifier::BOLD);
                     }
                     styles[i + end + 2] = delim_style;
                     styles[i + end + 3] = delim_style;
@@ -441,10 +560,10 @@ impl SourceHighlighter {
                 let slice: String = chars[i + 1..].iter().collect();
                 if let Some(end) = slice.find(chars[i]) {
                     // Works same in both modes: delimiter gets paragraph, content gets italic
-                    let delim_style = if ghost { self.theme.ghost_syntax } else { self.theme.paragraph };
+                    let delim_style = if ghost { self.theme.ghost_syntax } else { base_style };
                     styles[i] = delim_style;
                     for j in 1..end + 1 {
-                        styles[i + j] = self.theme.paragraph.add_modifier(Modifier::ITALIC);
+                        styles[i + j] = base_style.add_modifier(Modifier::ITALIC);
                     }
                     styles[i + end + 1] = delim_style;
                     i += end + 2;
@@ -457,11 +576,11 @@ impl SourceHighlighter {
                 let slice: String = chars[i + 2..].iter().collect();
                 if let Some(end) = slice.find("~~") {
                     // Works same in both modes: delimiters get paragraph, content gets crossed
-                    let delim_style = if ghost { self.theme.ghost_syntax } else { self.theme.paragraph };
+                    let delim_style = if ghost { self.theme.ghost_syntax } else { base_style };
                     styles[i] = delim_style;
                     styles[i + 1] = delim_style;
                     for j in 2..end + 2 {
-                        styles[i + j] = self.theme.paragraph.add_modifier(Modifier::CROSSED_OUT);
+                        styles[i + j] = base_style.add_modifier(Modifier::CROSSED_OUT);
                     }
                     styles[i + end + 2] = delim_style;
                     styles[i + end + 3] = delim_style;
@@ -470,31 +589,124 @@ impl SourceHighlighter {
                 }
             }
 
-            // Inline code `` ` `` (single)
+            // Inline code with multi-backticks
             if chars[i] == '`' {
-                let slice: String = chars[i + 1..].iter().collect();
-                if let Some(end) = slice.find('`') {
+                let mut bt_count = 0;
+                while i + bt_count < chars.len() && chars[i + bt_count] == '`' {
+                    bt_count += 1;
+                }
+                let delim: String = std::iter::repeat('`').take(bt_count).collect();
+                let slice: String = chars[i + bt_count..].iter().collect();
+                if let Some(end) = slice.find(&delim) {
+                    let mut code_style = base_style;
+                    if let Some(fg) = self.theme.code_inline.fg {
+                        code_style = code_style.fg(fg);
+                    }
+                    if let Some(bg) = self.theme.code_inline.bg {
+                        code_style = code_style.bg(bg);
+                    }
                     if ghost {
-                        // Ghost: backticks get ghost, content gets code_inline
-                        styles[i] = self.theme.ghost_syntax;
-                        for j in 1..end + 1 {
-                            styles[i + j] = self.theme.code_inline;
+                        let mut ghost_code_style = self.theme.ghost_syntax;
+                        if let Some(bg) = self.theme.code_inline.bg {
+                            ghost_code_style = ghost_code_style.bg(bg);
                         }
-                        styles[i + end + 1] = self.theme.ghost_syntax;
+                        if let Some(fg) = self.theme.code_inline.fg {
+                            ghost_code_style = ghost_code_style.fg(fg);
+                        }
+                        ghost_code_style = ghost_code_style.add_modifier(Modifier::DIM);
+                        for j in 0..bt_count {
+                            styles[i + j] = ghost_code_style;
+                        }
+                        for j in bt_count..bt_count + end {
+                            styles[i + j] = code_style;
+                        }
+                        for j in bt_count + end..bt_count + end + bt_count {
+                            styles[i + j] = ghost_code_style;
+                        }
                     } else {
-                        // Original: entire inline code gets code_inline
-                        for j in 0..end + 2 {
-                            styles[i + j] = self.theme.code_inline;
+                        for j in 0..bt_count + end + bt_count {
+                            styles[i + j] = code_style;
                         }
                     }
-                    i += end + 2;
+                    i += bt_count + end + bt_count;
                     continue;
                 }
+            }
+
+            // Table Delimiters
+            if chars[i] == '|' {
+                styles[i] = self.theme.table_border;
+                i += 1;
+                continue;
             }
 
             i += 1;
         }
 
+        styles
+    }
+
+    fn description_line_styles(&self, chars: &[char], marker_end: usize) -> Vec<Style> {
+        let ghost = self.ghost_syntax_enabled;
+        let rest: String = chars.iter().skip(marker_end).collect();
+        let rest_styles = self.inline_highlight_chars(&rest, self.theme.paragraph);
+        let mut styles = Vec::with_capacity(chars.len());
+        for _ in 0..marker_end {
+            styles.push(if ghost { self.theme.ghost_syntax } else { self.theme.h5 });
+        }
+        styles.extend(rest_styles);
+        while styles.len() < chars.len() {
+            styles.push(if ghost { self.theme.ghost_syntax } else { self.theme.paragraph });
+        }
+        styles
+    }
+
+    fn footnote_def_line_styles(&self, chars: &[char], marker_end: usize) -> Vec<Style> {
+        let ghost = self.ghost_syntax_enabled;
+        let rest: String = chars.iter().skip(marker_end).collect();
+        let rest_styles = self.inline_highlight_chars(&rest, self.theme.paragraph);
+        let mut styles = Vec::with_capacity(chars.len());
+        
+        if ghost {
+            let mut i = 0;
+            while i < marker_end && chars[i] == ' ' {
+                styles.push(self.theme.ghost_syntax);
+                i += 1;
+            }
+            if i + 1 < marker_end && chars[i] == '[' && chars[i + 1] == '^' {
+                styles.push(self.theme.ghost_syntax); // [
+                styles.push(self.theme.ghost_syntax); // ^
+                i += 2;
+                while i < marker_end && chars[i] != ']' {
+                    styles.push(self.theme.footnote_ref);
+                    i += 1;
+                }
+                if i < marker_end && chars[i] == ']' {
+                    styles.push(self.theme.ghost_syntax); // ]
+                    i += 1;
+                }
+                if i < marker_end && chars[i] == ':' {
+                    styles.push(self.theme.ghost_syntax); // :
+                    i += 1;
+                }
+                if i < marker_end && chars[i] == ' ' {
+                    styles.push(self.theme.ghost_syntax); // space
+                    i += 1;
+                }
+            }
+            while styles.len() < marker_end {
+                styles.push(self.theme.ghost_syntax);
+            }
+        } else {
+            for _ in 0..marker_end {
+                styles.push(self.theme.footnote_ref);
+            }
+        }
+        
+        styles.extend(rest_styles);
+        while styles.len() < chars.len() {
+            styles.push(if ghost { self.theme.ghost_syntax } else { self.theme.paragraph });
+        }
         styles
     }
 }
@@ -515,6 +727,84 @@ fn try_autolink(chars: &[char], i: usize) -> Option<usize> {
     }
     let end = slice.find('>')?;
     Some(end)
+}
+
+/// Try to detect a bare URL `http://` or `https://` starting at position `i`.
+fn try_bare_url(chars: &[char], i: usize) -> Option<usize> {
+    if i > 0 && chars[i - 1].is_alphanumeric() {
+        return None;
+    }
+    if i + 7 > chars.len() {
+        return None;
+    }
+    let slice: String = chars[i..].iter().collect();
+    if !slice.starts_with("http://") && !slice.starts_with("https://") {
+        return None;
+    }
+    let mut len = 0;
+    for &ch in &chars[i..] {
+        if ch.is_whitespace() || ['<', '>', '"', '\'', '`', '[', ']', '(', ')'].contains(&ch) {
+            break;
+        }
+        len += 1;
+    }
+    while len > 0 {
+        let last_ch = chars[i + len - 1];
+        if ['.', ',', ';', ':', '!', '?'].contains(&last_ch) {
+            len -= 1;
+        } else {
+            break;
+        }
+    }
+    if len > 7 {
+        Some(len)
+    } else {
+        None
+    }
+}
+
+/// Find end of description marker (up to 3 leading spaces followed by `: `).
+fn find_description_marker(chars: &[char]) -> Option<usize> {
+    let mut i = 0;
+    while i < chars.len() && chars[i] == ' ' && i < 3 {
+        i += 1;
+    }
+    if i + 1 < chars.len() && chars[i] == ':' && chars[i + 1] == ' ' {
+        Some(i + 2)
+    } else {
+        None
+    }
+}
+
+/// Find end of footnote definition marker (optional up to 3 leading spaces followed by `[^...]:`).
+fn find_footnote_def_marker(chars: &[char]) -> Option<usize> {
+    if chars.len() < 5 {
+        return None;
+    }
+    let mut i = 0;
+    while i < chars.len() && chars[i] == ' ' && i < 3 {
+        i += 1;
+    }
+    if i + 3 < chars.len() && chars[i] == '[' && chars[i + 1] == '^' {
+        let start = i;
+        i += 2;
+        while i < chars.len() && chars[i] != ']' {
+            i += 1;
+        }
+        if i < chars.len() && chars[i] == ']' {
+            if i > start + 2 {
+                i += 1;
+                if i < chars.len() && chars[i] == ':' {
+                    i += 1;
+                    if i < chars.len() && chars[i] == ' ' {
+                        i += 1;
+                    }
+                    return Some(i);
+                }
+            }
+        }
+    }
+    None
 }
 
 /// Detect heading level from `#` prefix.
@@ -676,21 +966,26 @@ mod tests {
     #[test]
     fn heading_levels() {
         let colors = AppThemeColors::default();
-        let mut hl = SourceHighlighter::new(&colors, false);
+        let mut hl = SourceHighlighter::new(&colors, false, false);
         let doc = vec!["# H1".to_string(), "## H2".to_string()];
         let styles_h1 = hl.highlight_line("# H1", 0, &doc);
-        assert_eq!(styles_h1.len(), 4);
+        assert_eq!(styles_h1.len(), 304);
         // With ghost_syntax=false, entire line gets heading style
-        assert_eq!(styles_h1[0], hl.theme.h1);
+        assert_eq!(styles_h1[0], hl.theme.h1_banner);
         let styles_h2 = hl.highlight_line("## H2", 1, &doc);
-        assert_eq!(styles_h2.len(), 5);
-        assert_eq!(styles_h2[0], hl.theme.h2);
+        assert_eq!(styles_h2.len(), 305);
+        let mut expected_h2 = hl.theme.h2;
+        if let Some(fg) = expected_h2.fg {
+            expected_h2 = expected_h2.bg(faint_background(fg));
+        }
+        assert_eq!(styles_h2[0], expected_h2);
+        assert!(!styles_h2[0].add_modifier.contains(Modifier::UNDERLINED));
     }
 
     #[test]
     fn inline_code() {
         let colors = AppThemeColors::default();
-        let mut hl = SourceHighlighter::new(&colors, false);
+        let mut hl = SourceHighlighter::new(&colors, false, false);
         let doc = vec!["text `code` more".to_string()];
         let styles = hl.highlight_line("text `code` more", 0, &doc);
         let code_start = "text ".len();
@@ -707,7 +1002,7 @@ mod tests {
     #[test]
     fn link_split() {
         let colors = AppThemeColors::default();
-        let mut hl = SourceHighlighter::new(&colors, false);
+        let mut hl = SourceHighlighter::new(&colors, false, false);
         let doc = vec!["a [text](url) b".to_string()];
         let styles = hl.highlight_line("a [text](url) b", 0, &doc);
         let link_text_start = "a ".len();
@@ -719,7 +1014,7 @@ mod tests {
     #[test]
     fn cache_hit_skips_rescan() {
         let colors = AppThemeColors::default();
-        let mut hl = SourceHighlighter::new(&colors, false);
+        let mut hl = SourceHighlighter::new(&colors, false, false);
         let doc = vec!["line".to_string()];
         let _ = hl.highlight_line("line", 0, &doc);
         let hash_before = hl.scanned_hash;
@@ -730,7 +1025,7 @@ mod tests {
     #[test]
     fn task_list_detection() {
         let colors = AppThemeColors::default();
-        let mut hl = SourceHighlighter::new(&colors, false);
+        let mut hl = SourceHighlighter::new(&colors, false, false);
         let doc = vec!["- [ ] task".to_string(), "- [x] done".to_string()];
         let styles = hl.highlight_line("- [ ] task", 0, &doc);
         // With ghost_syntax=false: brackets get paragraph style, checkmark gets task style
@@ -753,22 +1048,179 @@ mod tests {
     #[test]
     fn code_block_fence_highlighting() {
         let colors = AppThemeColors::default();
-        let mut hl = SourceHighlighter::new(&colors, false);
+        let mut hl = SourceHighlighter::new(&colors, false, false);
         let doc = vec![
             "```rust".to_string(),
             "fn main() {}".to_string(),
             "```".to_string(),
         ];
         let styles_fence_open = hl.highlight_line("```rust", 0, &doc);
-        assert_eq!(styles_fence_open[0], hl.theme.code_block);
+        let mut expected_fence_style = hl.theme.code_block;
+        if let Some(bg) = hl.theme.code_block_bg {
+            expected_fence_style = expected_fence_style.bg(bg);
+        }
+        assert_eq!(styles_fence_open[0], expected_fence_style);
 
         let styles_interior = hl.highlight_line("fn main() {}", 1, &doc);
-        assert_eq!(styles_interior.len(), "fn main() {}".len());
+        assert_eq!(styles_interior.len(), "fn main() {}".len() + 300);
         for style in styles_interior {
-            assert_eq!(style, hl.theme.code_block);
+            assert_eq!(style, expected_fence_style);
         }
 
         let styles_fence_close = hl.highlight_line("```", 2, &doc);
-        assert_eq!(styles_fence_close[0], hl.theme.code_block);
+        assert_eq!(styles_fence_close[0], expected_fence_style);
+    }
+
+    #[test]
+    fn nested_formatting_and_custom_features() {
+        let colors = AppThemeColors::default();
+        let mut hl = SourceHighlighter::new(&colors, false, false);
+
+        // 1. Heading 1 padding & banner style
+        let doc1 = vec!["# H1".to_string()];
+        let styles_h1 = hl.highlight_line("# H1", 0, &doc1);
+        assert_eq!(styles_h1.len(), 4 + 300);
+        assert_eq!(styles_h1[0], hl.theme.h1_banner);
+        assert_eq!(styles_h1[4], hl.theme.h1_banner); // padded part
+
+        // 2. Bold nested in Heading 1
+        let doc2 = vec!["# H1 **bold**".to_string()];
+        let styles_nested = hl.highlight_line("# H1 **bold**", 0, &doc2);
+        // `# H1 ` has length 5. `**` bold delimiter style is heading style (h1_banner)
+        assert_eq!(styles_nested[5], hl.theme.h1_banner);
+        // `bold` is indices 7..11. It should have h1_banner style + BOLD modifier
+        let expected_bold = hl.theme.h1_banner.add_modifier(Modifier::BOLD);
+        assert_eq!(styles_nested[7], expected_bold);
+
+        // 3. Pipe character (table delimiter)
+        let doc3 = vec!["| col |".to_string()];
+        let styles_table = hl.highlight_line("| col |", 0, &doc3);
+        assert_eq!(styles_table[0], hl.theme.table_border);
+        assert_eq!(styles_table[6], hl.theme.table_border);
+
+        // 4. Blockquote nested formatting
+        let doc4 = vec!["> **quote**".to_string()];
+        let styles_bq = hl.highlight_line("> **quote**", 0, &doc4);
+        assert_eq!(styles_bq[0], hl.theme.blockquote_bar); // marker
+        // `quote` is nested. It should have blockquote style + BOLD modifier
+        let expected_bq_bold = hl.theme.blockquote.add_modifier(Modifier::BOLD);
+        assert_eq!(styles_bq[4], expected_bq_bold);
+
+        // 5. List marker styling
+        let doc5 = vec!["- item".to_string()];
+        let styles_list = hl.highlight_line("- item", 0, &doc5);
+        assert_eq!(styles_list[0], hl.theme.h3); // list marker
+        assert_eq!(styles_list[2], hl.theme.paragraph); // text
+
+        // 6. Heading 2 nested formatting retaining background
+        let doc6 = vec!["## H2 *italic*".to_string()];
+        let styles_h2_nested = hl.highlight_line("## H2 *italic*", 0, &doc6);
+        let expected_h2 = hl.theme.h2;
+        let mut expected_h2_bg = expected_h2;
+        if let Some(fg) = expected_h2.fg {
+            expected_h2_bg = expected_h2.bg(faint_background(fg));
+        }
+        if let Some(bg) = expected_h2_bg.bg {
+            // Verify that the delimiter * (index 6) has the background color
+            assert_eq!(styles_h2_nested[6].bg, Some(bg));
+            // Verify that the italic text 'italic' (index 7) has the background color
+            assert_eq!(styles_h2_nested[7].bg, Some(bg));
+        }
+    }
+
+    #[test]
+    fn code_block_fence_highlighting_retains_bg() {
+        let colors = AppThemeColors::default();
+        let mut hl = SourceHighlighter::new(&colors, false, false);
+        let doc = vec![
+            "```rust".to_string(),
+            "fn main() {}".to_string(),
+            "```".to_string(),
+        ];
+        let styles_fence_open = hl.highlight_line("```rust", 0, &doc);
+        let mut expected_fence_style = hl.theme.code_block;
+        if let Some(bg) = hl.theme.code_block_bg {
+            expected_fence_style = expected_fence_style.bg(bg);
+        }
+        assert_eq!(styles_fence_open[0], expected_fence_style);
+    }
+
+    #[test]
+    fn extended_markdown_features() {
+        let colors = AppThemeColors::default();
+        
+        // Test with extended_features = true
+        let mut hl = SourceHighlighter::new(&colors, false, true);
+
+        // 1. Multi-backtick and background fix
+        let doc = vec!["``code``".to_string()];
+        let styles = hl.highlight_line("``code``", 0, &doc);
+        let mut expected_code = hl.theme.code_inline;
+        let mut expected_ghost_code = hl.theme.ghost_syntax;
+        if let Some(bg) = hl.theme.code_inline.bg {
+            expected_code = expected_code.bg(bg);
+            expected_ghost_code = expected_ghost_code.bg(bg);
+        }
+        // Ghost is false: so delimiters and content all get expected_code style
+        assert_eq!(styles[0], expected_code);
+        assert_eq!(styles[2], expected_code);
+
+        // Multi-backticks with ghost = true
+        let mut hl_ghost = SourceHighlighter::new(&colors, true, true);
+        let styles_ghost = hl_ghost.highlight_line("``code``", 0, &doc);
+        let mut expected_ghost_code = hl_ghost.theme.ghost_syntax;
+        if let Some(bg) = hl_ghost.theme.code_inline.bg {
+            expected_ghost_code = expected_ghost_code.bg(bg);
+        }
+        if let Some(fg) = hl_ghost.theme.code_inline.fg {
+            expected_ghost_code = expected_ghost_code.fg(fg);
+        }
+        expected_ghost_code = expected_ghost_code.add_modifier(Modifier::DIM);
+        assert_eq!(styles_ghost[0], expected_ghost_code);
+        assert_eq!(styles_ghost[2], expected_code);
+
+        // 2. Bare URL
+        let doc_url = vec!["Visit https://google.com now".to_string()];
+        let styles_url = hl.highlight_line("Visit https://google.com now", 0, &doc_url);
+        let url_start = "Visit ".len();
+        assert_eq!(styles_url[url_start], hl.theme.link_url);
+        assert_eq!(styles_url[url_start + "https://google.com".len() - 1], hl.theme.link_url);
+        assert_eq!(styles_url[url_start + "https://google.com".len()], hl.theme.paragraph);
+
+        // 3. Bold italic nested style
+        let doc_bi = vec!["***bold italic***".to_string()];
+        let styles_bi = hl.highlight_line("***bold italic***", 0, &doc_bi);
+        let expected_bi = hl.theme.paragraph.add_modifier(Modifier::BOLD | Modifier::ITALIC);
+        assert_eq!(styles_bi[3], expected_bi);
+
+        // 4. Dimmed escapes
+        let doc_esc = vec!["\\*".to_string()];
+        let styles_esc = hl.highlight_line("\\*", 0, &doc_esc);
+        // With ghost=false but extended=true: escape backslash is themed.ghost_syntax
+        assert_eq!(styles_esc[0], hl.theme.ghost_syntax);
+        assert_eq!(styles_esc[1], hl.theme.paragraph);
+
+        // 5. Description list markers
+        let doc_desc = vec![": definition".to_string()];
+        let styles_desc = hl.highlight_line(": definition", 0, &doc_desc);
+        assert_eq!(styles_desc[0], hl.theme.h5);
+        assert_eq!(styles_desc[1], hl.theme.h5);
+        assert_eq!(styles_desc[2], hl.theme.paragraph);
+
+        // 6. Wikilink syntax separation
+        let doc_wiki = vec!["[[link|title]]".to_string()];
+        let styles_wiki = hl_ghost.highlight_line("[[link|title]]", 0, &doc_wiki);
+        // [[ and link| get ghost syntax
+        assert_eq!(styles_wiki[0], hl_ghost.theme.ghost_syntax);
+        assert_eq!(styles_wiki[6], hl_ghost.theme.ghost_syntax); // '|'
+        // title gets wikilink style
+        assert_eq!(styles_wiki[7], hl_ghost.theme.wikilink);
+
+        // 7. Footnote definitions
+        let doc_fn = vec!["[^1]: footnote text".to_string()];
+        let styles_fn = hl.highlight_line("[^1]: footnote text", 0, &doc_fn);
+        assert_eq!(styles_fn[0], hl.theme.footnote_ref);
+        assert_eq!(styles_fn[5], hl.theme.footnote_ref);
+        assert_eq!(styles_fn[6], hl.theme.paragraph);
     }
 }

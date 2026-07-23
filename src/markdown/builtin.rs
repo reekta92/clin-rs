@@ -2526,10 +2526,10 @@ mod tests {
         assert!(!h2_line.contains('▌'));
         
         assert!(h2_line.starts_with(" ②"));
-        assert!(h3_line.starts_with("   ③"));
-        assert!(h4_line.starts_with("     ④"));
-        assert!(h5_line.starts_with("       ⑤"));
-        assert!(h6_line.starts_with("         ⑥"));
+        assert!(h3_line.starts_with("  ③"));
+        assert!(h4_line.starts_with("   ④"));
+        assert!(h5_line.starts_with("    ⑤"));
+        assert!(h6_line.starts_with("     ⑥"));
 
         let setext_idx = texts.iter().position(|t| t.contains("Setext")).expect("Setext heading");
         let underline_line = &texts[setext_idx + 1];

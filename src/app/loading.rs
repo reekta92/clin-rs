@@ -793,10 +793,10 @@ impl App {
     }
 
     pub fn request_editor_preview_update(&mut self) {
+        self.editor.last_editor_change = Some(Instant::now());
         if !(self.editor.editor_preview_enabled || self.preview_fullscreen) {
             return;
         }
-        self.editor.last_editor_change = Some(Instant::now());
         self.editor.pending_editor_preview_update = true;
     }
 
@@ -1605,5 +1605,20 @@ mod tests {
         assert_eq!(label, "sub");
         assert_eq!(children.len(), 1);
         assert!(children[0].is_note);
+    }
+
+    #[test]
+    fn test_request_editor_preview_update_sets_change_timestamp() {
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let mut app = make_app();
+
+        assert!(app.editor.last_editor_change.is_none());
+
+        app.editor.editor_preview_enabled = false;
+        app.preview_fullscreen = false;
+
+        app.request_editor_preview_update();
+
+        assert!(app.editor.last_editor_change.is_some());
     }
 }
