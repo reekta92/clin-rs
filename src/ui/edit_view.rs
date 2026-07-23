@@ -365,7 +365,6 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     }
     let kb = &app.keybinds;
     let hints_items = vec![
-        (kb.display_edit(EditAction::InsertTab), "indent"),
         (kb.display_edit(EditAction::CycleFocus), "focus"),
         (kb.display_edit(EditAction::Back), "back"),
         (
