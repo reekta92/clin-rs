@@ -166,7 +166,7 @@ pub fn draw_quick_keybinds(frame: &mut Frame, app: &App) {
                 Style::default().fg(theme.highlight_fg).bg(bg),
             ),
             Span::styled(SEP, Style::default().fg(theme.muted).bg(bg)),
-            Span::styled(desc.clone(), Style::default().fg(theme.text).bg(bg)),
+            Span::styled(desc.clone(), Style::default().fg(theme.highlight_fg).bg(bg)),
         ]);
         frame.render_widget(Paragraph::new(row), content_area);
     }
