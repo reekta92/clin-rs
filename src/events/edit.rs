@@ -355,7 +355,14 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 return false;
             }
             EditAction::Find => {
-                // handled below
+                let theme = &app.app_theme;
+                let mut popup = crate::ui::quick_search::QuickSearch::new("Find", theme);
+                let query_lower = popup.query().to_lowercase();
+                if !query_lower.is_empty() {
+                    popup.results = collect_find_results(&app.editor.editor, &query_lower);
+                }
+                app.editor.find_popup = Some(popup);
+                return false;
             }
             _ => {}
         },
