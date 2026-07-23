@@ -477,9 +477,11 @@ pub struct EditorConfig {
     pub show_line_numbers: bool,
     #[serde(default = "default_editor_date_format")]
     pub date_format: String,
-    pub soft_wrap: bool,
     #[serde(default = "default_true")]
     pub edit_mode_highlight: bool,
+    #[serde(default = "default_true")]
+    pub ghost_syntax: bool,
+    pub soft_wrap: bool,
 }
 
 impl Default for EditorConfig {
@@ -491,6 +493,7 @@ impl Default for EditorConfig {
             show_line_numbers: true,
             date_format: default_editor_date_format(),
             edit_mode_highlight: true,
+            ghost_syntax: true,
             soft_wrap: false,
         }
     }

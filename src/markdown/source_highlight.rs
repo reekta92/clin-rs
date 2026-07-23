@@ -27,16 +27,17 @@ enum LineTag {
 /// Thread-safe: no, but called only from the single UI thread.
 pub(crate) struct SourceHighlighter {
     theme: MarkdownTheme,
+    ghost_syntax_enabled: bool,
     /// Per-line tag computed from the last full scan.
     line_tags: Vec<LineTag>,
     /// Hash of the document at last scan.
     scanned_hash: u64,
 }
-
 impl SourceHighlighter {
-    pub fn new(theme: &crate::app_theme::AppThemeColors) -> Self {
+    pub fn new(theme: &crate::app_theme::AppThemeColors, ghost_syntax_enabled: bool) -> Self {
         Self {
             theme: MarkdownTheme::from_app_theme(theme),
+            ghost_syntax_enabled,
             line_tags: Vec::new(),
             scanned_hash: 0,
         }
@@ -111,18 +112,34 @@ impl SourceHighlighter {
                 5 => self.theme.h5,
                 _ => self.theme.h6,
             };
+            if self.ghost_syntax_enabled {
+                let marker_end = level + 1; // # chars + space
+                let mut styles = vec![self.theme.ghost_syntax; marker_end];
+                styles.extend(vec![style; chars.len().saturating_sub(marker_end)]);
+                return styles;
+            }
+            return vec![style; chars.len()];
+        }
+        // Setext underline `^=+$` or `^-{2,}$`
+        if is_setext_underline(&chars) {
+            let style = if self.ghost_syntax_enabled {
+                self.theme.ghost_syntax
+            } else {
+                self.theme.hr
+            };
             return vec![style; chars.len()];
         }
 
-        // Setext underline `^=+$` or `^-{2,}$`
-        if is_setext_underline(&chars) {
-            return vec![self.theme.hr; chars.len()];
+        // Horizontal rule `^---$` or `^***$` or `^___$`
+        if is_horizontal_rule(&chars) {
+            let style = if self.ghost_syntax_enabled {
+                self.theme.ghost_syntax
+            } else {
+                self.theme.hr
+            };
+            return vec![style; chars.len()];
         }
 
-        // HR line: `(\s*\*){3,}\s*` | `(\s*-){3,}\s*` | `(\s*_){3,}\s*`
-        if is_horizontal_rule(&chars) {
-            return vec![self.theme.hr; chars.len()];
-        }
 
         // Blockquote `^\s*>+`
         if let Some((depth, after_marker)) = blockquote_depth(&chars) {
@@ -131,7 +148,12 @@ impl SourceHighlighter {
 
         // Fence open/close line (``` or ~~~)
         if is_fence_marker(&chars) {
-            return vec![self.theme.code_block; chars.len()];
+            let style = if self.ghost_syntax_enabled {
+                self.theme.ghost_syntax
+            } else {
+                self.theme.code_block
+            };
+            return vec![style; chars.len()];
         }
 
         // Task list line
@@ -150,12 +172,13 @@ impl SourceHighlighter {
 
     /// Blockquote styles: leading `>` chars get blockquote_bar, rest get blockquote.
     fn blockquote_styles(&self, chars: &[char], _depth: usize, after_marker: usize) -> Vec<Style> {
+        let ghost = self.ghost_syntax_enabled;
         chars
             .iter()
             .enumerate()
             .map(|(idx, _)| {
                 if idx < after_marker {
-                    self.theme.blockquote_bar
+                    if ghost { self.theme.ghost_syntax } else { self.theme.blockquote_bar }
                 } else {
                     self.theme.blockquote
                 }
@@ -186,14 +209,21 @@ impl SourceHighlighter {
         let rest: String = chars.iter().skip(after_task).collect();
         let rest_styles = self.inline_highlight_chars(&rest);
 
+        let ghost = self.ghost_syntax_enabled;
         let mut styles = Vec::with_capacity(chars.len());
         for (idx, _ch) in chars.iter().enumerate() {
             if idx < bracket_start {
-                styles.push(self.theme.paragraph);
+                styles.push(if ghost { self.theme.ghost_syntax } else { self.theme.paragraph });
             } else if idx < bracket_end {
-                styles.push(task_style);
+                // Inside brackets: only the checkmark character gets task style,
+                // the brackets themselves get ghost syntax
+                if idx == bracket_start || idx == bracket_end - 1 {
+                    styles.push(if ghost { self.theme.ghost_syntax } else { self.theme.paragraph });
+                } else {
+                    styles.push(task_style);
+                }
             } else if idx < after_task {
-                styles.push(self.theme.paragraph);
+                styles.push(if ghost { self.theme.ghost_syntax } else { self.theme.paragraph });
             } else {
                 let ri = idx - after_task;
                 styles.push(rest_styles.get(ri).copied().unwrap_or(self.theme.paragraph));
@@ -204,15 +234,16 @@ impl SourceHighlighter {
 
     /// Style a list line.
     fn list_line_styles(&self, chars: &[char], marker_end: usize) -> Vec<Style> {
+        let ghost = self.ghost_syntax_enabled;
         let rest: String = chars.iter().skip(marker_end).collect();
         let rest_styles = self.inline_highlight_chars(&rest);
         let mut styles = Vec::with_capacity(chars.len());
         for _ in 0..marker_end {
-            styles.push(self.theme.paragraph);
+            styles.push(if ghost { self.theme.ghost_syntax } else { self.theme.paragraph });
         }
         styles.extend(rest_styles);
         while styles.len() < chars.len() {
-            styles.push(self.theme.paragraph);
+            styles.push(if ghost { self.theme.ghost_syntax } else { self.theme.paragraph });
         }
         styles
     }
@@ -222,9 +253,10 @@ impl SourceHighlighter {
         let chars: Vec<char> = text.chars().collect();
         let mut styles = vec![self.theme.paragraph; chars.len()];
         let mut i = 0;
+        let ghost = self.ghost_syntax_enabled;
 
         while i < chars.len() {
-            // Escape: `\X` — paragraph style on both chars
+            // Escape: `\X` — paragraph style on both chars (same in both modes)
             if chars[i] == '\\' && i + 1 < chars.len() {
                 styles[i] = self.theme.paragraph;
                 styles[i + 1] = self.theme.paragraph;
@@ -234,8 +266,18 @@ impl SourceHighlighter {
 
             // Autolink `<https?://...>`
             if let Some(end) = try_autolink(&chars, i) {
-                for j in 0..=end {
-                    styles[i + j] = self.theme.link_url;
+                if ghost {
+                    // Ghost mode: < and > get ghost, URL gets link_url
+                    styles[i] = self.theme.ghost_syntax;
+                    styles[i + end] = self.theme.ghost_syntax;
+                    for j in 1..end {
+                        styles[i + j] = self.theme.link_url;
+                    }
+                } else {
+                    // Original: entire autolink gets link_url
+                    for j in 0..=end {
+                        styles[i + j] = self.theme.link_url;
+                    }
                 }
                 i += end + 1;
                 continue;
@@ -246,16 +288,37 @@ impl SourceHighlighter {
                 let slice: String = chars[i..].iter().collect();
                 if let Some(close_b) = slice.find(']') {
                     if i + close_b + 1 < chars.len() && chars[i + close_b + 1] == '(' {
-                        for j in 0..=close_b {
-                            styles[i + j] = self.theme.link_text;
-                        }
-                        if let Some(url_end) = slice[close_b + 1..].find(')') {
-                            let img_total = close_b + 1 + url_end;
-                            for j in close_b + 1..=img_total {
-                                styles[i + j] = self.theme.link_url;
+                        if ghost {
+                            // Ghost: ![ and ]( and ) get ghost, alt gets link_text, url gets link_url
+                            styles[i] = self.theme.ghost_syntax; // !
+                            styles[i + 1] = self.theme.ghost_syntax; // [
+                            for j in 2..close_b {
+                                styles[i + j] = self.theme.link_text;
                             }
-                            i += img_total + 1;
-                            continue;
+                            styles[i + close_b] = self.theme.ghost_syntax; // ]
+                            styles[i + close_b + 1] = self.theme.ghost_syntax; // (
+                            if let Some(url_end) = slice[close_b + 1..].find(')') {
+                                let url_total = close_b + 1 + url_end;
+                                for j in close_b + 2..url_total {
+                                    styles[i + j] = self.theme.link_url;
+                                }
+                                styles[i + url_total] = self.theme.ghost_syntax; // )
+                                i += url_total + 1;
+                                continue;
+                            }
+                        } else {
+                            // Original: ![alt] gets link_text, ](url) gets link_url
+                            for j in 0..=close_b {
+                                styles[i + j] = self.theme.link_text;
+                            }
+                            if let Some(url_end) = slice[close_b + 1..].find(')') {
+                                let url_total = close_b + 1 + url_end;
+                                for j in close_b + 1..=url_total {
+                                    styles[i + j] = self.theme.link_url;
+                                }
+                                i += url_total + 1;
+                                continue;
+                            }
                         }
                     }
                 }
@@ -265,8 +328,20 @@ impl SourceHighlighter {
             if chars[i] == '[' && i + 1 < chars.len() && chars[i + 1] == '[' {
                 let slice: String = chars[i..].iter().collect();
                 if let Some(end) = slice.find("]]") {
-                    for j in 0..end + 2 {
-                        styles[i + j] = self.theme.wikilink;
+                    if ghost {
+                        // Ghost: [[ and ]] get ghost, content gets wikilink
+                        styles[i] = self.theme.ghost_syntax;
+                        styles[i + 1] = self.theme.ghost_syntax;
+                        styles[i + end] = self.theme.ghost_syntax;
+                        styles[i + end + 1] = self.theme.ghost_syntax;
+                        for j in 2..end {
+                            styles[i + j] = self.theme.wikilink;
+                        }
+                    } else {
+                        // Original: entire wikilink gets wikilink
+                        for j in 0..end + 2 {
+                            styles[i + j] = self.theme.wikilink;
+                        }
                     }
                     i += end + 2;
                     continue;
@@ -277,8 +352,19 @@ impl SourceHighlighter {
             if chars[i] == '[' && i + 1 < chars.len() && chars[i + 1] == '^' {
                 let slice: String = chars[i..].iter().collect();
                 if let Some(end) = slice.find(']') {
-                    for j in 0..=end {
-                        styles[i + j] = self.theme.footnote_ref;
+                    if ghost {
+                        // Ghost: [^ and ] get ghost, content gets footnote_ref
+                        styles[i] = self.theme.ghost_syntax;
+                        styles[i + 1] = self.theme.ghost_syntax;
+                        styles[i + end] = self.theme.ghost_syntax;
+                        for j in 2..end {
+                            styles[i + j] = self.theme.footnote_ref;
+                        }
+                    } else {
+                        // Original: entire footnote ref gets footnote_ref
+                        for j in 0..=end {
+                            styles[i + j] = self.theme.footnote_ref;
+                        }
                     }
                     i += end + 1;
                     continue;
@@ -290,16 +376,36 @@ impl SourceHighlighter {
                 let slice: String = chars[i..].iter().collect();
                 if let Some(close_b) = slice.find(']') {
                     if i + close_b + 1 < chars.len() && chars[i + close_b + 1] == '(' {
-                        for j in 0..=close_b {
-                            styles[i + j] = self.theme.link_text;
-                        }
-                        if let Some(url_end) = slice[close_b + 1..].find(')') {
-                            let url_total = close_b + 1 + url_end;
-                            for j in close_b + 1..=url_total {
-                                styles[i + j] = self.theme.link_url;
+                        if ghost {
+                            // Ghost: [ and ] and ( and ) get ghost, text gets link_text, url gets link_url
+                            styles[i] = self.theme.ghost_syntax; // [
+                            for j in 1..close_b {
+                                styles[i + j] = self.theme.link_text;
                             }
-                            i += url_total + 1;
-                            continue;
+                            styles[i + close_b] = self.theme.ghost_syntax; // ]
+                            styles[i + close_b + 1] = self.theme.ghost_syntax; // (
+                            if let Some(url_end) = slice[close_b + 1..].find(')') {
+                                let url_total = close_b + 1 + url_end;
+                                for j in close_b + 2..url_total {
+                                    styles[i + j] = self.theme.link_url;
+                                }
+                                styles[i + url_total] = self.theme.ghost_syntax; // )
+                                i += url_total + 1;
+                                continue;
+                            }
+                        } else {
+                            // Original: [text] gets link_text, ](url) gets link_url
+                            for j in 0..=close_b {
+                                styles[i + j] = self.theme.link_text;
+                            }
+                            if let Some(url_end) = slice[close_b + 1..].find(')') {
+                                let url_total = close_b + 1 + url_end;
+                                for j in close_b + 1..=url_total {
+                                    styles[i + j] = self.theme.link_url;
+                                }
+                                i += url_total + 1;
+                                continue;
+                            }
                         }
                     }
                 }
@@ -312,14 +418,15 @@ impl SourceHighlighter {
                 let delim = if chars[i] == '*' { "**" } else { "__" };
                 let slice: String = chars[i + 2..].iter().collect();
                 if let Some(end) = slice.find(delim) {
-                    for j in 0..end + 4 {
-                        let is_content = j > 0 && j < end + 3;
-                        styles[i + j] = if is_content {
-                            self.theme.paragraph.add_modifier(Modifier::BOLD)
-                        } else {
-                            self.theme.paragraph
-                        };
+                    // Works same in both modes: delimiters get paragraph, content gets bold
+                    let delim_style = if ghost { self.theme.ghost_syntax } else { self.theme.paragraph };
+                    styles[i] = delim_style;
+                    styles[i + 1] = delim_style;
+                    for j in 2..end + 2 {
+                        styles[i + j] = self.theme.paragraph.add_modifier(Modifier::BOLD);
                     }
+                    styles[i + end + 2] = delim_style;
+                    styles[i + end + 3] = delim_style;
                     i += end + 4;
                     continue;
                 }
@@ -333,14 +440,13 @@ impl SourceHighlighter {
             {
                 let slice: String = chars[i + 1..].iter().collect();
                 if let Some(end) = slice.find(chars[i]) {
-                    for j in 0..end + 2 {
-                        let is_content = j > 0 && j < end + 1;
-                        styles[i + j] = if is_content {
-                            self.theme.paragraph.add_modifier(Modifier::ITALIC)
-                        } else {
-                            self.theme.paragraph
-                        };
+                    // Works same in both modes: delimiter gets paragraph, content gets italic
+                    let delim_style = if ghost { self.theme.ghost_syntax } else { self.theme.paragraph };
+                    styles[i] = delim_style;
+                    for j in 1..end + 1 {
+                        styles[i + j] = self.theme.paragraph.add_modifier(Modifier::ITALIC);
                     }
+                    styles[i + end + 1] = delim_style;
                     i += end + 2;
                     continue;
                 }
@@ -350,14 +456,15 @@ impl SourceHighlighter {
             if chars[i] == '~' && i + 1 < chars.len() && chars[i + 1] == '~' {
                 let slice: String = chars[i + 2..].iter().collect();
                 if let Some(end) = slice.find("~~") {
-                    for j in 0..end + 4 {
-                        let is_content = j > 0 && j < end + 3;
-                        styles[i + j] = if is_content {
-                            self.theme.paragraph.add_modifier(Modifier::CROSSED_OUT)
-                        } else {
-                            self.theme.paragraph
-                        };
+                    // Works same in both modes: delimiters get paragraph, content gets crossed
+                    let delim_style = if ghost { self.theme.ghost_syntax } else { self.theme.paragraph };
+                    styles[i] = delim_style;
+                    styles[i + 1] = delim_style;
+                    for j in 2..end + 2 {
+                        styles[i + j] = self.theme.paragraph.add_modifier(Modifier::CROSSED_OUT);
                     }
+                    styles[i + end + 2] = delim_style;
+                    styles[i + end + 3] = delim_style;
                     i += end + 4;
                     continue;
                 }
@@ -367,8 +474,18 @@ impl SourceHighlighter {
             if chars[i] == '`' {
                 let slice: String = chars[i + 1..].iter().collect();
                 if let Some(end) = slice.find('`') {
-                    for j in 0..end + 2 {
-                        styles[i + j] = self.theme.code_inline;
+                    if ghost {
+                        // Ghost: backticks get ghost, content gets code_inline
+                        styles[i] = self.theme.ghost_syntax;
+                        for j in 1..end + 1 {
+                            styles[i + j] = self.theme.code_inline;
+                        }
+                        styles[i + end + 1] = self.theme.ghost_syntax;
+                    } else {
+                        // Original: entire inline code gets code_inline
+                        for j in 0..end + 2 {
+                            styles[i + j] = self.theme.code_inline;
+                        }
                     }
                     i += end + 2;
                     continue;
@@ -559,10 +676,11 @@ mod tests {
     #[test]
     fn heading_levels() {
         let colors = AppThemeColors::default();
-        let mut hl = SourceHighlighter::new(&colors);
+        let mut hl = SourceHighlighter::new(&colors, false);
         let doc = vec!["# H1".to_string(), "## H2".to_string()];
         let styles_h1 = hl.highlight_line("# H1", 0, &doc);
         assert_eq!(styles_h1.len(), 4);
+        // With ghost_syntax=false, entire line gets heading style
         assert_eq!(styles_h1[0], hl.theme.h1);
         let styles_h2 = hl.highlight_line("## H2", 1, &doc);
         assert_eq!(styles_h2.len(), 5);
@@ -572,7 +690,7 @@ mod tests {
     #[test]
     fn inline_code() {
         let colors = AppThemeColors::default();
-        let mut hl = SourceHighlighter::new(&colors);
+        let mut hl = SourceHighlighter::new(&colors, false);
         let doc = vec!["text `code` more".to_string()];
         let styles = hl.highlight_line("text `code` more", 0, &doc);
         let code_start = "text ".len();
@@ -589,7 +707,7 @@ mod tests {
     #[test]
     fn link_split() {
         let colors = AppThemeColors::default();
-        let mut hl = SourceHighlighter::new(&colors);
+        let mut hl = SourceHighlighter::new(&colors, false);
         let doc = vec!["a [text](url) b".to_string()];
         let styles = hl.highlight_line("a [text](url) b", 0, &doc);
         let link_text_start = "a ".len();
@@ -601,7 +719,7 @@ mod tests {
     #[test]
     fn cache_hit_skips_rescan() {
         let colors = AppThemeColors::default();
-        let mut hl = SourceHighlighter::new(&colors);
+        let mut hl = SourceHighlighter::new(&colors, false);
         let doc = vec!["line".to_string()];
         let _ = hl.highlight_line("line", 0, &doc);
         let hash_before = hl.scanned_hash;
@@ -612,25 +730,30 @@ mod tests {
     #[test]
     fn task_list_detection() {
         let colors = AppThemeColors::default();
-        let mut hl = SourceHighlighter::new(&colors);
+        let mut hl = SourceHighlighter::new(&colors, false);
         let doc = vec!["- [ ] task".to_string(), "- [x] done".to_string()];
         let styles = hl.highlight_line("- [ ] task", 0, &doc);
-        // The `[ ]` part should use task_unchecked
-        let bracket_start = "- ".len();
+        // With ghost_syntax=false: brackets get paragraph style, checkmark gets task style
+        let bracket_start = "- ".len(); // index 2 = '['
+        let checkmark_idx = bracket_start + 1; // index 3 = ' ' (or 'x')
+        // Bracket should be paragraph
+        assert_eq!(styles[bracket_start], hl.theme.paragraph, "bracket should be paragraph");
+        // Checkmark should be task_unchecked
         assert_eq!(
-            styles[bracket_start], hl.theme.task_unchecked,
-            "unchecked bracket"
+            styles[checkmark_idx], hl.theme.task_unchecked,
+            "unchecked checkmark"
         );
         let styles2 = hl.highlight_line("- [x] done", 1, &doc);
+        assert_eq!(styles2[bracket_start], hl.theme.paragraph, "bracket should be paragraph");
         assert_eq!(
-            styles2[bracket_start], hl.theme.task_checked,
-            "checked bracket"
+            styles2[checkmark_idx], hl.theme.task_checked,
+            "checked checkmark"
         );
     }
     #[test]
     fn code_block_fence_highlighting() {
         let colors = AppThemeColors::default();
-        let mut hl = SourceHighlighter::new(&colors);
+        let mut hl = SourceHighlighter::new(&colors, false);
         let doc = vec![
             "```rust".to_string(),
             "fn main() {}".to_string(),

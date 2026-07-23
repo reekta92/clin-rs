@@ -1731,7 +1731,7 @@ pub fn overlay_markdown_highlight(frame: &mut Frame, app: &mut App, area: Rect) 
         if stale && show_ln {
             let hl = e
                 .source_highlighter
-                .get_or_insert_with(|| crate::markdown::SourceHighlighter::new(&app.app_theme));
+                .get_or_insert_with(|| crate::markdown::SourceHighlighter::new(&app.app_theme, app.config.editor.ghost_syntax));
             let mut cache = Vec::with_capacity(full_doc.len());
             for (i, line) in full_doc.iter().enumerate() {
                 cache.push(hl.highlight_line(line, i, full_doc));
@@ -1783,7 +1783,7 @@ pub fn overlay_markdown_highlight(frame: &mut Frame, app: &mut App, area: Rect) 
         let full_doc: Vec<String> = e.editor.lines().to_vec();
         let hl = e
             .source_highlighter
-            .get_or_insert_with(|| crate::markdown::SourceHighlighter::new(&app.app_theme));
+            .get_or_insert_with(|| crate::markdown::SourceHighlighter::new(&app.app_theme, app.config.editor.ghost_syntax));
         for y in inner.top()..inner.bottom() {
             let displayed: String = (content_left..inner.right())
                 .filter_map(|x| buf.cell((x, y)).map(|c| c.symbol()))

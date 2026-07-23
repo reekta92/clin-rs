@@ -206,6 +206,7 @@ pub(crate) struct MarkdownTheme {
     pub footnote_def: Style,
     pub task_unchecked: Style,
     pub task_checked: Style,
+    pub ghost_syntax: Style,
 }
 
 pub(crate) fn faint_background(fg: Color) -> Color {
@@ -270,6 +271,9 @@ impl MarkdownTheme {
             footnote_def: Style::default().fg(theme.muted),
             task_unchecked: Style::default().fg(theme.warning),
             task_checked: Style::default().fg(theme.success),
+            ghost_syntax: Style::default()
+                .fg(theme.muted)
+                .add_modifier(Modifier::DIM),
         }
     }
 }
