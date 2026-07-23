@@ -938,8 +938,9 @@ fn test_display_picks_hint_key() {
     assert_eq!(kb.display_list(ListAction::Open), "Enter", "Open");
     assert_eq!(kb.display_list(ListAction::Help), "?", "Help");
     assert_eq!(kb.display_list(ListAction::Quit), "q", "Quit");
-    // Edit: Tab for CycleFocus, Esc for Back
-    assert_eq!(kb.display_edit(EditAction::CycleFocus), "Tab", "CycleFocus");
+// Edit: Tab for InsertTab, Ctrl+t for CycleFocus, Esc for Back
+    assert_eq!(kb.display_edit(EditAction::InsertTab), "Tab", "InsertTab");
+    assert_eq!(kb.display_edit(EditAction::CycleFocus), "Ctrl+t", "CycleFocus");
     assert_eq!(kb.display_edit(EditAction::Back), "Esc", "Back");
     // Canvas: letter for nav, conventional for quit
     assert_eq!(

@@ -248,6 +248,10 @@ pub fn edit_action_meta(a: EditAction) -> HelpMeta {
             group: "Navigation",
             description: "Cycle focus (Title, Content)",
         },
+        EditAction::InsertTab => HelpMeta {
+            group: "Editing",
+            description: "Insert tab character",
+        },
         EditAction::Back => HelpMeta {
             group: "Navigation",
             description: "Return to notes (auto-saves)",

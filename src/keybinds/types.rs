@@ -86,6 +86,7 @@ pub enum ListAction {
 pub enum EditAction {
     Back,
     CycleFocus,
+    InsertTab,
 
     SelectAll,
     Copy,

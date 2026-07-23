@@ -332,21 +332,28 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                     EditFocus::Sidebar => {}
                 }
                 app.request_editor_preview_update();
+                app.request_editor_preview_update();
                 return false;
             }
             EditAction::ToggleSoftWrap => {
                 app.toggle_editor_soft_wrap();
                 return false;
             }
-            EditAction::Find => {
-                let theme = &app.app_theme;
-                if app.editor.find_popup.is_some() {
-                    app.editor.find_popup = None;
-                } else {
-                    app.editor.find_popup =
-                        Some(crate::ui::quick_search::QuickSearch::new(" Find ", theme));
+            EditAction::InsertTab => {
+                match *focus {
+                    EditFocus::Title => {
+                        let _ = app.editor.title_editor.insert_str("\t");
+                    }
+                    EditFocus::Body => {
+                        let _ = app.editor.editor.insert_str("\t");
+                    }
+                    EditFocus::Sidebar => {}
                 }
+                app.request_editor_preview_update();
                 return false;
+            }
+            EditAction::Find => {
+                // handled below
             }
             _ => {}
         },

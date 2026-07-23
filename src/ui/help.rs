@@ -1348,6 +1348,7 @@ pub(crate) fn resolve_tip_key(token: &str, kb: &Keybinds) -> String {
             _ => format!("[ERR:{}]", token),
         },
         "edit" => match action {
+            "InsertTab" => kb.edit_keys_display(EditAction::InsertTab),
             "ToggleMarkdownPreview" => kb.edit_keys_display(EditAction::ToggleMarkdownPreview),
             "TogglePreviewFullscreen" => kb.edit_keys_display(EditAction::TogglePreviewFullscreen),
             "Undo" => kb.edit_keys_display(EditAction::Undo),
