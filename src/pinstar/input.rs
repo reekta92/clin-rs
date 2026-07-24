@@ -302,7 +302,9 @@ pub fn handle_pinstar_mouse(
                 let dy = cy - last_pos.1;
                 state.move_selected_node(dx, dy);
                 state.drag_start_pos = Some((cx, cy));
-                state.sync_to_raw_editor(app);
+                if state.show_editor_pane {
+                    state.sync_to_raw_editor(app);
+                }
                 true
             } else if let Some((lx, ly)) = state.last_mouse_pos {
                 state.is_panning = true;
