@@ -2,6 +2,44 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.10.0-rc.5] - 2026-07-24
+
+### Added
+
+- Add QuickKeybinds overlay toggled by F2
+- Preview pane scroll syncs with the textarea
+- Add dynamic md coloring
+- Add ghost syntax (conceal method) for markdown
+
+### CI
+
+- Fix actions/checkout and resolve clippy -D warnings
+
+### Changed
+
+- Removed READ mode and modal typing method
+- More changes to the markdown style to make it's output unified
+- Rewrite built-in layout engine
+
+### Fixed
+
+- Scale offset-range positions to reach track bottom
+- Wrapping behaviour fixes
+- Potential fix for graph view nodes flinging around
+- Potential fix for graph view causing crash
+- Codeblocks color fix so it uses a color from the theme
+- Ctrl + f not launching the quick search
+- Preview pane scroll sync fixes when wrap is on
+- Reorganize hint items
+- Fixed preview pane and textarea sync
+- Tab not inserting indentation
+- Fixed left margin for h1 headers
+- Trim unsaved note whitespace
+- Remove dead code warnings
+
+### Performance
+
+- Reduced the poll rate with frozen layout
 ## [0.10.0-rc.4] - 2026-07-22
 
 ### Added
@@ -42,6 +80,7 @@ All notable changes to clin are documented in this file.
 
 ### Release
 
+- V0.10.0-rc.4
 - V0.10.0-rc.3
 - V0.10.0-rc.2
 ## [0.10.0-rc.1] - 2026-07-18
