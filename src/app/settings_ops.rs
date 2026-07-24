@@ -660,6 +660,229 @@ impl App {
         self.editor.body_viewport_row = apply(self.editor.body_viewport_row, rows);
         self.editor.body_viewport_col = apply(self.editor.body_viewport_col, cols);
     }
+
+    pub fn toggle_edit_mode_highlight(&mut self) {
+        self.config.editor.edit_mode_highlight = !self.config.editor.edit_mode_highlight;
+        let val = self.config.editor.edit_mode_highlight;
+        self.set_temporary_status_static(if val {
+            "Edit mode highlighting enabled"
+        } else {
+            "Edit mode highlighting disabled"
+        });
+        self.persist_editor_config(|c| c.editor.edit_mode_highlight = val);
+    }
+
+    pub fn toggle_ghost_syntax(&mut self) {
+        self.config.editor.ghost_syntax = !self.config.editor.ghost_syntax;
+        let val = self.config.editor.ghost_syntax;
+        self.set_temporary_status_static(if val {
+            "Ghost syntax enabled"
+        } else {
+            "Ghost syntax disabled"
+        });
+        self.persist_editor_config(|c| c.editor.ghost_syntax = val);
+    }
+
+    pub fn toggle_extended_markdown(&mut self) {
+        self.config.editor.extended_markdown_features = !self.config.editor.extended_markdown_features;
+        let val = self.config.editor.extended_markdown_features;
+        self.set_temporary_status_static(if val {
+            "Extended markdown features enabled"
+        } else {
+            "Extended markdown features disabled"
+        });
+        self.persist_editor_config(|c| c.editor.extended_markdown_features = val);
+    }
+
+    pub fn toggle_scrollbars(&mut self) {
+        self.config.ui.scrollbars = !self.config.ui.scrollbars;
+        self.set_temporary_status_static(if self.config.ui.scrollbars {
+            "Scrollbars on"
+        } else {
+            "Scrollbars off"
+        });
+        if let Ok(mut config) = crate::config::ClinConfig::load() {
+            config.ui.scrollbars = self.config.ui.scrollbars;
+            if let Err(e) = config.save() {
+                self.set_temporary_status(&format!("Failed to save config: {e}"));
+            }
+        }
+    }
+
+    pub fn toggle_syntax_highlighting(&mut self) {
+        self.config.core.syntax_highlighting = !self.config.core.syntax_highlighting;
+        self.set_temporary_status_static(if self.config.core.syntax_highlighting {
+            "Syntax highlighting enabled"
+        } else {
+            "Syntax highlighting disabled"
+        });
+        if let Ok(mut config) = crate::config::ClinConfig::load() {
+            config.core.syntax_highlighting = self.config.core.syntax_highlighting;
+            if let Err(e) = config.save() {
+                self.set_temporary_status(&format!("Failed to save config: {e}"));
+            }
+        }
+    }
+
+    pub fn toggle_code_line_numbers(&mut self) {
+        self.config.core.code_line_numbers = !self.config.core.code_line_numbers;
+        self.set_temporary_status_static(if self.config.core.code_line_numbers {
+            "Code line numbers enabled"
+        } else {
+            "Code line numbers disabled"
+        });
+        if let Ok(mut config) = crate::config::ClinConfig::load() {
+            config.core.code_line_numbers = self.config.core.code_line_numbers;
+            if let Err(e) = config.save() {
+                self.set_temporary_status(&format!("Failed to save config: {e}"));
+            }
+        }
+    }
+
+    pub fn toggle_show_file_size(&mut self) {
+        self.list.show_file_size = !self.list.show_file_size;
+        self.refresh_visual_list();
+        self.set_temporary_status_static(if self.list.show_file_size {
+            "File sizes shown"
+        } else {
+            "File sizes hidden"
+        });
+        if let Ok(mut config) = crate::config::ClinConfig::load() {
+            config.list.show_file_size = self.list.show_file_size;
+            if let Err(e) = config.save() {
+                self.set_temporary_status(&format!("Failed to save config: {e}"));
+            }
+        }
+    }
+
+    pub fn cycle_list_density(&mut self) {
+        self.list.list_density = match self.list.list_density {
+            crate::config::ListDensity::Compact => crate::config::ListDensity::Comfortable,
+            crate::config::ListDensity::Comfortable => crate::config::ListDensity::Compact,
+        };
+        self.refresh_visual_list();
+        self.set_temporary_status_static(if self.list.list_density == crate::config::ListDensity::Compact {
+            "List density: compact"
+        } else {
+            "List density: comfortable"
+        });
+        if let Ok(mut config) = crate::config::ClinConfig::load() {
+            config.list.density = self.list.list_density.clone();
+            if let Err(e) = config.save() {
+                self.set_temporary_status(&format!("Failed to save config: {e}"));
+            }
+        }
+    }
+
+    pub fn cycle_week_start(&mut self) {
+        self.list.week_start = match self.list.week_start {
+            crate::config::WeekStart::Sunday => crate::config::WeekStart::Monday,
+            crate::config::WeekStart::Monday => crate::config::WeekStart::Sunday,
+        };
+        self.set_temporary_status_static(if self.list.week_start == crate::config::WeekStart::Sunday {
+            "Week starts: Sunday"
+        } else {
+            "Week starts: Monday"
+        });
+        if let Ok(mut config) = crate::config::ClinConfig::load() {
+            config.list.week_start = self.list.week_start;
+            if let Err(e) = config.save() {
+                self.set_temporary_status(&format!("Failed to save config: {e}"));
+            }
+        }
+    }
+
+    pub fn toggle_goals(&mut self) {
+        self.config.goals.enabled = !self.config.goals.enabled;
+        self.refresh_visual_list();
+        self.set_temporary_status_static(if self.config.goals.enabled {
+            "Goals enabled"
+        } else {
+            "Goals disabled"
+        });
+        if let Ok(mut config) = crate::config::ClinConfig::load() {
+            config.goals.enabled = self.config.goals.enabled;
+            if let Err(e) = config.save() {
+                self.set_temporary_status(&format!("Failed to save config: {e}"));
+            }
+        }
+    }
+
+    pub fn toggle_graph_preview(&mut self) {
+        self.config.graf.preview_enabled = !self.config.graf.preview_enabled;
+        self.refresh_visual_list();
+        self.set_temporary_status_static(if self.config.graf.preview_enabled {
+            "Graph preview enabled"
+        } else {
+            "Graph preview disabled"
+        });
+        if let Ok(mut config) = crate::config::ClinConfig::load() {
+            config.graf.preview_enabled = self.config.graf.preview_enabled;
+            if let Err(e) = config.save() {
+                self.set_temporary_status(&format!("Failed to save config: {e}"));
+            }
+        }
+    }
+
+    pub fn toggle_graph_show_legend(&mut self) {
+        self.config.graf.visual.show_legend = !self.config.graf.visual.show_legend;
+        self.set_temporary_status_static(if self.config.graf.visual.show_legend {
+            "Graph legend shown"
+        } else {
+            "Graph legend hidden"
+        });
+        if let Ok(mut config) = crate::config::ClinConfig::load() {
+            config.graf.visual.show_legend = self.config.graf.visual.show_legend;
+            if let Err(e) = config.save() {
+                self.set_temporary_status(&format!("Failed to save config: {e}"));
+            }
+        }
+    }
+
+    pub fn toggle_graph_show_grid(&mut self) {
+        self.config.graf.visual.show_grid = !self.config.graf.visual.show_grid;
+        self.set_temporary_status_static(if self.config.graf.visual.show_grid {
+            "Graph grid shown"
+        } else {
+            "Graph grid hidden"
+        });
+        if let Ok(mut config) = crate::config::ClinConfig::load() {
+            config.graf.visual.show_grid = self.config.graf.visual.show_grid;
+            if let Err(e) = config.save() {
+                self.set_temporary_status(&format!("Failed to save config: {e}"));
+            }
+        }
+    }
+
+    pub fn toggle_graph_show_minimap(&mut self) {
+        self.config.graf.visual.show_minimap = !self.config.graf.visual.show_minimap;
+        self.set_temporary_status_static(if self.config.graf.visual.show_minimap {
+            "Graph minimap shown"
+        } else {
+            "Graph minimap hidden"
+        });
+        if let Ok(mut config) = crate::config::ClinConfig::load() {
+            config.graf.visual.show_minimap = self.config.graf.visual.show_minimap;
+            if let Err(e) = config.save() {
+                self.set_temporary_status(&format!("Failed to save config: {e}"));
+            }
+        }
+    }
+
+    pub fn toggle_graph_show_orphan(&mut self) {
+        self.config.graf.filter.show_orphan = !self.config.graf.filter.show_orphan;
+        self.set_temporary_status_static(if self.config.graf.filter.show_orphan {
+            "Orphan nodes shown"
+        } else {
+            "Orphan nodes hidden"
+        });
+        if let Ok(mut config) = crate::config::ClinConfig::load() {
+            config.graf.filter.show_orphan = self.config.graf.filter.show_orphan;
+            if let Err(e) = config.save() {
+                self.set_temporary_status(&format!("Failed to save config: {e}"));
+            }
+        }
+    }
 }
 
 #[cfg(test)]

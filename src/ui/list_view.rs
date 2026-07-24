@@ -1683,7 +1683,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                         .map(|i| &i.activity_by_day)
                         .unwrap_or(&std::collections::HashMap::new()),
                     bottom_border,
-                    app.config.list.week_start,
+                    app.list.week_start,
                     cal_rect,
                 ),
                 crate::config::NotesSection::Goals => {
