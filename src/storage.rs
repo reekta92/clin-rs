@@ -151,8 +151,8 @@ impl Storage {
             .effective_storage_path()
             .context("failed to determine storage path")?;
 
-        let config_dir = crate::config::clin_config_dir()
-            .context("could not determine config directory")?;
+        let config_dir =
+            crate::config::clin_config_dir().context("could not determine config directory")?;
 
         let vault_mode = bootstrap.has_custom_storage_path();
 
