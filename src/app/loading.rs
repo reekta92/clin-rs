@@ -356,7 +356,19 @@ impl App {
                     });
                 }
             }
+            // Separate tag-based smart folders from non-tag ones
+            let mut non_tag_folders: Vec<&SmartFolderData> = Vec::new();
+            let mut tag_folders: Vec<&SmartFolderData> = Vec::new();
             for data in &computed_smart_folders {
+                if matches!(data.kind, SmartFolderKind::Tag(_)) {
+                    tag_folders.push(data);
+                } else {
+                    non_tag_folders.push(data);
+                }
+            }
+
+            // Non-tag smart folders at depth 0
+            for data in &non_tag_folders {
                 let virtual_path = data.kind.virtual_path();
                 let is_expanded = self.list.folder_expanded.contains(&virtual_path);
                 visual.push(VisualItem::SmartFolder {
@@ -377,6 +389,46 @@ impl App {
                             is_canvas: note.id.ends_with(".canvas"),
                             in_virtual_pinned_folder: true,
                         });
+                    }
+                }
+            }
+
+            // Tagged parent folder (depth 0), only when tag folders exist
+            if !tag_folders.is_empty() {
+                let tagged_path = SmartFolderKind::Tagged.virtual_path();
+                let tagged_expanded = self.list.folder_expanded.contains(&tagged_path);
+                let total_tag_notes: usize = tag_folders.iter().map(|d| d.matches.len()).sum();
+                visual.push(VisualItem::SmartFolder {
+                    kind: SmartFolderKind::Tagged,
+                    label: "Tagged".to_string(),
+                    depth: 0,
+                    is_expanded: tagged_expanded,
+                    note_count: total_tag_notes,
+                });
+                if tagged_expanded {
+                    for data in &tag_folders {
+                        let virtual_path = data.kind.virtual_path();
+                        let is_expanded = self.list.folder_expanded.contains(&virtual_path);
+                        visual.push(VisualItem::SmartFolder {
+                            kind: data.kind.clone(),
+                            label: data.label.clone(),
+                            depth: 1,
+                            is_expanded,
+                            note_count: data.matches.len(),
+                        });
+                        if is_expanded {
+                            for idx in &data.matches {
+                                let note = &self.notes[*idx];
+                                visual.push(VisualItem::Note {
+                                    summary_idx: *idx,
+                                    depth: 2,
+                                    is_clin: note.id.ends_with(".clin"),
+                                    is_draw: note.id.ends_with(".draw"),
+                                    is_canvas: note.id.ends_with(".canvas"),
+                                    in_virtual_pinned_folder: true,
+                                });
+                            }
+                        }
                     }
                 }
             }
@@ -468,8 +520,17 @@ impl App {
                     });
                 }
             } else if gf == VIRTUAL_SMART_PATH {
-                // Smart Folders tab: show all smart folders as tiles, no ".." since it's the root of the tab
+                // Smart Folders tab: separate non-tag and tag-based smart folders
+                let mut non_tag: Vec<&SmartFolderData> = Vec::new();
+                let mut tag: Vec<&SmartFolderData> = Vec::new();
                 for data in &computed_smart_folders {
+                    if matches!(data.kind, SmartFolderKind::Tag(_)) {
+                        tag.push(data);
+                    } else {
+                        non_tag.push(data);
+                    }
+                }
+                for data in &non_tag {
                     visual.push(VisualItem::SmartFolder {
                         kind: data.kind.clone(),
                         label: data.label.clone(),
@@ -477,6 +538,39 @@ impl App {
                         is_expanded: false,
                         note_count: data.matches.len(),
                     });
+                }
+                if !tag.is_empty() {
+                    let total: usize = tag.iter().map(|d| d.matches.len()).sum();
+                    visual.push(VisualItem::SmartFolder {
+                        kind: SmartFolderKind::Tagged,
+                        label: "Tagged".to_string(),
+                        depth: 0,
+                        is_expanded: false,
+                        note_count: total,
+                    });
+                }
+            } else if gf == "@tagged" {
+                // Inside Tagged: show per-tag smart folders with ".." back to Smart tab
+                visual.push(VisualItem::Folder {
+                    path: VIRTUAL_SMART_PATH.to_string(),
+                    name: "..".to_string(),
+                    depth: 0,
+                    is_expanded: false,
+                    note_count: 0,
+                    recursive_count: 0,
+                    stale: false,
+                    is_pinned: false,
+                });
+                for data in &computed_smart_folders {
+                    if matches!(data.kind, SmartFolderKind::Tag(_)) {
+                        visual.push(VisualItem::SmartFolder {
+                            kind: data.kind.clone(),
+                            label: data.label.clone(),
+                            depth: 0,
+                            is_expanded: false,
+                            note_count: data.matches.len(),
+                        });
+                    }
                 }
             } else if gf.starts_with('@') {
                 // User is inside a smart folder.
@@ -874,6 +968,7 @@ impl App {
                     .map(|(i, _)| i)
                     .collect()
             }
+            SmartFolderKind::Tagged => Vec::new(),
         }
     }
 
@@ -907,6 +1002,7 @@ impl App {
                     SmartFolderKind::Untagged => "Untagged".to_string(),
                     SmartFolderKind::Tag(t) => t.clone(),
                     SmartFolderKind::Custom(name) => name.clone(),
+                    SmartFolderKind::Tagged => "Tagged".to_string(),
                 };
                 let indices = self.notes_in_smart_folder(&kind);
                 let children: Vec<FolderGraphNode> = indices
@@ -1483,18 +1579,70 @@ impl App {
                 }
                 self.list.preview_content_index = Some(self.list.visual_index);
             }
-            Some(VisualItem::SmartFolder { kind, .. }) if self.config.list.folder_graph_preview => {
-                let virtual_path = kind.virtual_path();
-                self.list.preview_content = Some(PreviewContent::FolderGraph {
-                    root_path: virtual_path.clone(),
-                    focused_path: virtual_path,
+            Some(VisualItem::SmartFolder {
+                kind,
+                label,
+                note_count,
+                ..
+            }) => {
+                let kind = kind.clone();
+                let label = label.clone();
+                let note_count = *note_count;
+                let conditions: Vec<String> = match &kind {
+                    SmartFolderKind::Today => {
+                        vec!["Notes modified today".into()]
+                    }
+                    SmartFolderKind::ThisWeek => {
+                        vec!["Notes modified this week".into()]
+                    }
+                    SmartFolderKind::Untagged => {
+                        vec!["Notes with no tags".into()]
+                    }
+                    SmartFolderKind::Tag(t) => {
+                        vec![format!("Tag: {t}")]
+                    }
+                    SmartFolderKind::Tagged => {
+                        vec!["Tag-based smart folders grouped together".into()]
+                    }
+                    SmartFolderKind::Custom(name) => {
+                        let mut conds = Vec::new();
+                        if let Some(rule) = self
+                            .config
+                            .list
+                            .custom_smart_folders
+                            .iter()
+                            .find(|r| r.name == *name)
+                        {
+                            if !rule.tags.is_empty() {
+                                conds.push(format!("Tags: {}", rule.tags.join(", ")));
+                            }
+                            if let Some(ref ti) = rule.title_contains {
+                                conds.push(format!("Title contains: \"{ti}\""));
+                            }
+                            if let Some(ref fp) = rule.folder_prefix {
+                                conds.push(format!("Folder prefix: {fp}"));
+                            }
+                            if let Some(days) = rule.updated_within_days {
+                                conds.push(format!(
+                                    "Updated within {} {}",
+                                    days,
+                                    if days == 1 { "day" } else { "days" }
+                                ));
+                            }
+                        }
+                        if conds.is_empty() {
+                            conds.push("No conditions configured".into());
+                        }
+                        conds
+                    }
+                };
+                self.list.preview_content = Some(PreviewContent::SmartFolderInfo {
+                    kind,
+                    label,
+                    note_count,
+                    conditions,
                 });
                 self.list.preview_content_index = Some(self.list.visual_index);
-                self.list.preview_content_width = Some(self.desired_list_preview_width());
-                self.list.preview_content_height = Some(self.desired_list_preview_height());
-                self.list.preview_content_scale = Some(self.list.preview_scale);
-                self.list.preview_content_offset_x = Some(self.list.preview_offset_x);
-                self.list.preview_content_offset_y = Some(self.list.preview_offset_y);
             }
             _ => {
                 self.list.preview_content = None;

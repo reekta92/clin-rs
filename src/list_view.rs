@@ -40,6 +40,8 @@ pub enum SmartFolderKind {
     Untagged,
     Tag(String),
     Custom(String),
+    /// Parent group containing all per-tag smart folders.
+    Tagged,
 }
 
 impl SmartFolderKind {
@@ -49,6 +51,7 @@ impl SmartFolderKind {
             "@today" => Some(Self::Today),
             "@week" => Some(Self::ThisWeek),
             "@untagged" => Some(Self::Untagged),
+            "@tagged" => Some(Self::Tagged),
             s if s.starts_with("@tag:") => Some(Self::Tag(s[5..].to_string())),
             s if s.starts_with("@custom:") => Some(Self::Custom(s[8..].to_string())),
             _ => None,
@@ -61,6 +64,7 @@ impl SmartFolderKind {
             Self::Untagged => "@untagged".into(),
             Self::Tag(t) => format!("@tag:{t}"),
             Self::Custom(name) => format!("@custom:{name}"),
+            Self::Tagged => "@tagged".into(),
         }
     }
 }
@@ -257,6 +261,13 @@ pub enum PreviewContent {
         root_path: String,
         focused_path: String,
     },
+    /// Info card for a smart folder, showing its conditions/rules and match count.
+    SmartFolderInfo {
+        kind: SmartFolderKind,
+        label: String,
+        note_count: usize,
+        conditions: Vec<String>,
+    },
 }
 
 impl std::fmt::Debug for PreviewContent {
@@ -270,6 +281,9 @@ impl std::fmt::Debug for PreviewContent {
             Self::FolderGraph { .. } => f.debug_tuple("FolderGraph").finish(),
             Self::DrawGrid { grid, .. } => f.debug_tuple("DrawGrid").field(&grid.len()).finish(),
             Self::Image(_) => f.debug_tuple("Image").finish(),
+            Self::SmartFolderInfo { kind, .. } => {
+                f.debug_tuple("SmartFolderInfo").field(kind).finish()
+            }
         }
     }
 }

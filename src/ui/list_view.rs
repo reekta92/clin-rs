@@ -413,7 +413,7 @@ pub fn render_subnote_graph_static(
 
     // Render Canvas with Braille marker.
     let canvas = Canvas::default()
-        .background_color(theme.bg.unwrap_or(ratatui::style::Color::Reset))
+        .background_color(theme.preview_bg().unwrap_or(ratatui::style::Color::Reset))
         .block(Block::default().style(bg))
         .marker(Marker::Braille)
         .x_bounds(x_bounds)
@@ -576,7 +576,7 @@ pub fn render_folder_graph_static(
 
     // Render Canvas
     let canvas = Canvas::default()
-        .background_color(theme.bg.unwrap_or(ratatui::style::Color::Reset))
+        .background_color(theme.preview_bg().unwrap_or(ratatui::style::Color::Reset))
         .block(Block::default().style(bg))
         .marker(Marker::Braille)
         .x_bounds(x_bounds)
@@ -916,6 +916,8 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                         tag
                     } else if let Some(custom) = app.list.grid_folder.strip_prefix("@custom:") {
                         custom
+                    } else if app.list.grid_folder == "@tagged" {
+                        "Tagged"
                     } else {
                         &app.list.grid_folder
                     };
@@ -1156,6 +1158,14 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                                     app.config.ui.icon_mode,
                                 ),
                                 "Custom",
+                            ),
+                            crate::list_view::SmartFolderKind::Tagged => (
+                                crate::ui::get_char(
+                                    '\u{f0e7}',
+                                    '\u{26a1}',
+                                    app.config.ui.icon_mode,
+                                ),
+                                "Tagged",
                             ),
                         };
                         (ic, text_label, app.app_theme.tag, label.clone())

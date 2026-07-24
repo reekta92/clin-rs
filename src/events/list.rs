@@ -409,6 +409,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 Some(crate::list_view::PreviewContent::Image(_)) => {}
                 Some(crate::list_view::PreviewContent::SubnoteGraph { .. }) => {}
                 Some(crate::list_view::PreviewContent::FolderGraph { .. }) => {}
+                Some(crate::list_view::PreviewContent::SmartFolderInfo { .. }) => {}
                 None => {}
             },
             ListAction::PreviewPageDown => match &mut app.list.preview_content {
@@ -462,6 +463,7 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 Some(crate::list_view::PreviewContent::Image(_)) => {}
                 Some(crate::list_view::PreviewContent::SubnoteGraph { .. }) => {}
                 Some(crate::list_view::PreviewContent::FolderGraph { .. }) => {}
+                Some(crate::list_view::PreviewContent::SmartFolderInfo { .. }) => {}
                 None => {}
             },
             _ => {}
@@ -738,6 +740,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
             Some(crate::list_view::PreviewContent::SubnoteGraph { .. }) => {}
             Some(crate::list_view::PreviewContent::FolderGraph { .. }) => {}
             Some(crate::list_view::PreviewContent::Image(_)) => {}
+            Some(crate::list_view::PreviewContent::SmartFolderInfo { .. }) => {}
 
             None => {}
         }

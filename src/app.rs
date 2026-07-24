@@ -1240,6 +1240,7 @@ impl App {
                     SmartFolderKind::Untagged => ("\u{f187}", "\u{1f4e5}"),
                     SmartFolderKind::Tag(_) => ("\u{f02c}", "\u{1f3f7}"),
                     SmartFolderKind::Custom(_) => ("\u{f0e7}", "\u{26a1}"),
+                    SmartFolderKind::Tagged => ("\u{f0e7}", "\u{26a1}"),
                 };
 
                 let arrow = if *is_expanded {

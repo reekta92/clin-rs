@@ -556,7 +556,6 @@ impl App {
 
     pub fn expand_all_folders(&mut self) {
         let folders = self.catalog_folders.clone();
-
         for path in folders {
             self.list.folder_expanded.insert(path);
         }
@@ -564,6 +563,36 @@ impl App {
         self.list
             .folder_expanded
             .insert(crate::app::VIRTUAL_PINNED_PATH.to_string());
+        // Subnotes root
+        self.list
+            .folder_expanded
+            .insert(crate::app::VIRTUAL_SUBNOTES_PATH.to_string());
+        // Smart folders: insert all possible virtual paths. refresh_visual_list
+        // filters out ones with zero matches, so no harm in inserting extras.
+        if self.config.list.smart_folders_enabled {
+            self.list.folder_expanded.insert("@today".to_string());
+            self.list.folder_expanded.insert("@week".to_string());
+            self.list.folder_expanded.insert("@untagged".to_string());
+            self.list.folder_expanded.insert("@tagged".to_string());
+            for rule in &self.config.list.custom_smart_folders {
+                self.list
+                    .folder_expanded
+                    .insert(format!("@custom:{}", rule.name));
+            }
+            // Tag-level smart folders — each tag gets its own virtual path
+            let mut seen_tags: std::collections::HashSet<String> =
+                std::collections::HashSet::new();
+            for note in &self.notes {
+                for tag in &note.tags {
+                    if seen_tags.insert(tag.clone()) {
+                        self.list
+                            .folder_expanded
+                            .insert(format!("@tag:{tag}"));
+                    }
+                }
+            }
+        }
+        self.list.visual_index = 0;
         self.refresh_visual_list();
         self.request_preview_update();
         self.persist_folder_state();
@@ -593,6 +622,32 @@ impl App {
         self.list
             .folder_expanded
             .insert(crate::app::VIRTUAL_PINNED_PATH.to_string());
+        // Virtual folders for subnotes and smart folders
+        self.list
+            .folder_expanded
+            .insert(crate::app::VIRTUAL_SUBNOTES_PATH.to_string());
+        if self.config.list.smart_folders_enabled {
+            self.list.folder_expanded.insert("@today".to_string());
+            self.list.folder_expanded.insert("@week".to_string());
+            self.list.folder_expanded.insert("@untagged".to_string());
+            self.list.folder_expanded.insert("@tagged".to_string());
+            for rule in &self.config.list.custom_smart_folders {
+                self.list
+                    .folder_expanded
+                    .insert(format!("@custom:{}", rule.name));
+            }
+            let mut seen_tags: std::collections::HashSet<String> =
+                std::collections::HashSet::new();
+            for note in &self.notes {
+                for tag in &note.tags {
+                    if seen_tags.insert(tag.clone()) {
+                        self.list
+                            .folder_expanded
+                            .insert(format!("@tag:{tag}"));
+                    }
+                }
+            }
+        }
     }
     pub fn toggle_pin_folder(&mut self, path: String) {
         if path.is_empty() || path == crate::app::VIRTUAL_PINNED_PATH {

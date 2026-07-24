@@ -808,16 +808,17 @@ impl App {
         }
     }
 
-    pub fn toggle_graph_preview(&mut self) {
-        self.config.graf.preview_enabled = !self.config.graf.preview_enabled;
+    pub fn toggle_folder_graph_preview(&mut self) {
+        self.config.list.folder_graph_preview = !self.config.list.folder_graph_preview;
         self.refresh_visual_list();
-        self.set_temporary_status_static(if self.config.graf.preview_enabled {
-            "Graph preview enabled"
+        self.request_preview_update();
+        self.set_temporary_status_static(if self.config.list.folder_graph_preview {
+            "Folder graph preview enabled"
         } else {
-            "Graph preview disabled"
+            "Folder graph preview disabled"
         });
         if let Ok(mut config) = crate::config::ClinConfig::load() {
-            config.graf.preview_enabled = self.config.graf.preview_enabled;
+            config.list.folder_graph_preview = self.config.list.folder_graph_preview;
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
             }

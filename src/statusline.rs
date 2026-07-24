@@ -319,25 +319,22 @@ impl StatuslineContext<'_> {
                 };
                 Some(title.into())
             }
-            "sort_field" => {
-                let sf = self
+            "sort" => {
+                let s = self
                     .app
-                    .map(|a| match a.list.sort_field {
-                        crate::list_view::SortField::Title => "title",
-                        crate::list_view::SortField::Modified => "modified",
+                    .map(|a| {
+                        let field = match a.list.sort_field {
+                            crate::list_view::SortField::Title => "Title",
+                            crate::list_view::SortField::Modified => "Modified",
+                        };
+                        let arrow = match a.list.sort_order {
+                            crate::list_view::SortOrder::Ascending => "\u{25b2}",
+                            crate::list_view::SortOrder::Descending => "\u{25bc}",
+                        };
+                        format!("{field} {arrow}")
                     })
-                    .unwrap_or("");
-                Some(sf.into())
-            }
-            "sort_order" => {
-                let so = self
-                    .app
-                    .map(|a| match a.list.sort_order {
-                        crate::list_view::SortOrder::Ascending => "ascending",
-                        crate::list_view::SortOrder::Descending => "descending",
-                    })
-                    .unwrap_or("");
-                Some(so.into())
+                    .unwrap_or_default();
+                Some(s.into())
             }
             "layout" => {
                 let layout = if let Some(app) = self.app {
@@ -1558,7 +1555,7 @@ fn default_template(view: ViewMode, field: &str) -> Cow<'static, str> {
         "header_right" => {
             match view {
                 ViewMode::Graph => "Nodes: {node_count} | Edges: {edge_count} | Selected: {selected_node} | Scale: {scale}× | FPS: {fps}   ".into(),
-                ViewMode::List => "{detail}".into(),
+                ViewMode::List => "{sort}  {detail}".into(),
                 ViewMode::Setup => "{pinned_count} pinned".into(),
                 ViewMode::Help => "Page {help_page}/{help_total_pages}".into(),
                 ViewMode::Edit => "{word_count}w {char_count}c {cursor_line}:{cursor_col}".into(),

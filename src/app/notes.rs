@@ -809,32 +809,8 @@ impl App {
     }
 
     pub fn open_selected_note_location(&mut self) {
-        if self.list.visual_index >= self.list.visual_list.len() {
-            self.set_temporary_status_static("No note selected for location");
-            return;
-        }
-
-        let summary_idx = match &self.list.visual_list[self.list.visual_index] {
-            VisualItem::Note { summary_idx, .. } => *summary_idx,
-            _ => {
-                self.set_temporary_status_static("Selected item is not a note");
-                return;
-            }
-        };
-
-        let Some(note) = self.notes.get(summary_idx) else {
-            self.set_temporary_status_static("No note selected for location");
-            return;
-        };
-
-        let note_path = self.storage.note_path(&note.id);
-        let Some(parent) = note_path.parent() else {
-            self.set_temporary_status_static("Could not determine note directory");
-            return;
-        };
-
-        match open_in_file_manager(parent) {
-            Ok(()) => self.set_temporary_status_static("Opened note file location"),
+        match open_in_file_manager(&self.storage.notes_dir) {
+            Ok(()) => self.set_temporary_status_static("Opened vault location"),
             Err(err) => self.set_temporary_status(&format!("Open location failed: {err:#}")),
         }
     }

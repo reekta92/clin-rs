@@ -159,6 +159,54 @@ pub fn draw_preview_pane(
                     );
                 frame.render_widget(placeholder, rect);
             }
+            Some(PreviewContent::SmartFolderInfo {
+                kind: _,
+                label,
+                note_count,
+                conditions,
+            }) => {
+                let mut lines: Vec<Line> = Vec::new();
+                // Header
+                let icon = crate::ui::get_icon("\u{f0e7}", "\u{26a1}", icon_mode);
+                lines.push(Line::from(vec![
+                    Span::styled(
+                        format!(" {icon} "),
+                        Style::default()
+                            .fg(theme.accent)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled(
+                        label.as_str(),
+                        Style::default()
+                            .fg(theme.accent)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                ]));
+                lines.push(Line::from(""));
+                // Conditions
+                for cond in conditions {
+                    lines.push(Line::from(vec![Span::styled(
+                        format!("  \u{2022} {cond}"),
+                        Style::default().fg(theme.fg),
+                    )]));
+                }
+                lines.push(Line::from(""));
+                // Note count
+                let suffix = if *note_count == 1 { "note" } else { "notes" };
+                lines.push(Line::from(vec![Span::styled(
+                    format!("  {note_count} {suffix} match this folder"),
+                    Style::default().fg(theme.muted),
+                )]));
+                let para = Paragraph::new(lines)
+                    .style(theme.preview_bg_style())
+                    .block(
+                        Block::default()
+                            .style(theme.preview_bg_style())
+                            .borders(Borders::NONE)
+                            .padding(Padding::new(2, 2, 1, 1)),
+                    );
+                frame.render_widget(para, rect);
+            }
             None => {
                 let placeholder = Paragraph::new("Select a note to preview")
                     .style(theme.preview_bg_style())

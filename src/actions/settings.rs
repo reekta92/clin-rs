@@ -477,15 +477,15 @@ toggle_action!(
 
 toggle_action!(
     ToggleGraphPreviewAction,
-    "settings.graph_preview",
-    "Toggle Graph Preview",
+    "settings.folder_graph_preview",
+    "Toggle Folder Graph Preview",
     "Show or hide the graph preview in the notes list",
     ActionCategory::Settings,
     "\u{f0c0}",
     "\u{1f578}",
-    toggle_graph_preview,
+    toggle_folder_graph_preview,
     app,
-    if app.config.graf.preview_enabled {
+    if app.config.list.folder_graph_preview {
         "On"
     } else {
         "Off"
