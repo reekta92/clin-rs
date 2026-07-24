@@ -75,7 +75,7 @@ Drop an existing Obsidian vault into `clin` and it works out of the box. Native 
 - **Graph view** — fully integrated force-directed graph visualization of your note corpus. Edges from `[[wikilinks]]`. Physics simulation, minimap, legend, search, configurable colors and layout. See [GRAPH_VIEW.md](docs/GRAPH_VIEW.md).
 - **Canvas view** — Obsidian-compatible `.canvas` file format. Place text/file/link/group/image nodes on an infinite 2D canvas, connect them with edges. Right-click context menu, mouse-drag panning, zoom-to-cursor, drag, resize, zoom. See [CANVAS.md](docs/CANVAS.md).
 - **Draw view** — freehand drawing canvas with shapes (rect, ellipse, diamond, line, arrow), text, draw smoothing (binomial filter), mouse-drag panning, zoom-to-cursor, and eraser tool. `.draw` file format. See [DRAW.md](docs/DRAW.md).
-- \*\*Outline view\*\* — view to see the content of a `.md` file as a tree with headers being the parents and content being the children.
+- **Outline view** — view to see the content of a `.md` file as a tree with headers being the parents and content being the children.
 - **Help view** — tabbed in-app reference with auto-generated keybind index, per-view descriptions, popup accordion, and preset-aware tips. See [HELP.md](docs/HELP.md).
 - **Subnotes** — encrypted virtual notes attached to any note, with a browsable grid tab, virtual tree folder, radial graph, and manager popup. See [SUBNOTES.md](docs/SUBNOTES.md).
 - **Image rendering** — native pixel image rendering via `ratatui-image` (sixel/kitty/iTerm) in canvas, draw, notes preview, and editor preview. See [IMAGE_RENDERING.md](docs/IMAGE_RENDERING.md).
@@ -333,7 +333,7 @@ Once inside the TUI: navigate with `j`/`k`, open notes with `Enter`, open the co
 | **Backup** | Git-based vault versioning | Status (staged/unstaged), commit history, diff preview, auto-push, remote sync |
 | **Canvas** | Obsidian-compatible node/edge canvas | Text/file/link/group nodes, edges, drag/resize, context menu, raw JSON editor |
 | **Draw** | Freehand drawing and shapes | Stroke, rect/ellipse/diamond/line/arrow, text, eraser, pan/zoom |
-| \*\*Outline\*\* | Note outline and navigation | Header-based tree parsing, collapsible sections, jump-to-section |
+| **Outline** | Note outline and navigation | Header-based tree parsing, collapsible sections, jump-to-section |
 | **Setup Wizard** | First-run onboarding / reopenable via palette | Theme/background/hint-bar/icon-mode/keybind-preset cycling with live markdown preview |
 | **Help** | In-app keybind + feature reference | Tabbed (Notes/Editor/Graph/Draw/Canvas/Backup/Outline/Setup/Templates/About), search, popup accordion, preset-aware tips |
 
