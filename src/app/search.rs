@@ -38,6 +38,42 @@ impl App {
         self.refresh_visual_list();
     }
 
+    /// In grid layout, reverse-cycle between Vault, Pinned, and Smart tabs.
+    pub fn reverse_cycle_grid_tab(&mut self) {
+        if self.list.notes_layout != crate::config::NotesLayout::Grid {
+            return;
+        }
+        self.list.grid_folder = if self.config.list.smart_folders_enabled {
+            if self.list.grid_folder == VIRTUAL_SMART_PATH
+                || self.list.grid_folder.starts_with('@')
+            {
+                VIRTUAL_PINNED_PATH.to_string()
+            } else if self.list.grid_folder == VIRTUAL_PINNED_PATH {
+                String::new()
+            } else if self.list.grid_folder == VIRTUAL_SUBNOTES_PATH
+                || Self::is_subnotes_parent_grid_path(&self.list.grid_folder)
+            {
+                VIRTUAL_SMART_PATH.to_string()
+            } else {
+                // Vault (empty) or unknown → Subnotes
+                VIRTUAL_SUBNOTES_PATH.to_string()
+            }
+        } else {
+            if self.list.grid_folder == VIRTUAL_PINNED_PATH {
+                String::new()
+            } else if self.list.grid_folder == VIRTUAL_SUBNOTES_PATH
+                || Self::is_subnotes_parent_grid_path(&self.list.grid_folder)
+            {
+                VIRTUAL_PINNED_PATH.to_string()
+            } else {
+                // Vault (empty) or unknown → Subnotes
+                VIRTUAL_SUBNOTES_PATH.to_string()
+            }
+        };
+        self.list.visual_index = 0;
+        self.refresh_visual_list();
+    }
+
     pub fn begin_search(&mut self) {
         let input = crate::ui::make_popup_textarea(&self.app_theme, "Search notes...");
 

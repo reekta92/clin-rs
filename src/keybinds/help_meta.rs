@@ -211,6 +211,10 @@ pub fn list_action_meta(a: ListAction) -> HelpMeta {
             group: "General",
             description: "Cycle focus between panes",
         },
+        ListAction::ReverseCycleFocus => HelpMeta {
+            group: "General",
+            description: "Reverse cycle focus between panes",
+        },
         ListAction::Confirm => HelpMeta {
             group: "General",
             description: "Confirm action",

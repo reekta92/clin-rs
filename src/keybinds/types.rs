@@ -25,6 +25,7 @@ pub enum ListAction {
     Help,
     OpenLocation,
     CycleFocus,
+    ReverseCycleFocus,
     Confirm,
     Cancel,
     ToggleExternalEditor,

@@ -65,10 +65,11 @@ impl Default for Keybinds {
         );
         list.insert(
             ListAction::CycleFocus,
-            vec![
-                KeyCombo::simple(KeyCode::Tab),
-                KeyCombo::simple(KeyCode::BackTab),
-            ],
+            vec![KeyCombo::simple(KeyCode::Tab)],
+        );
+        list.insert(
+            ListAction::ReverseCycleFocus,
+            vec![KeyCombo::simple(KeyCode::BackTab)],
         );
         list.insert(
             ListAction::Confirm,

@@ -99,6 +99,12 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 }
                 return false;
             }
+            ListAction::ReverseCycleFocus => {
+                if app.list.notes_layout == crate::config::NotesLayout::Grid {
+                    app.reverse_cycle_grid_tab();
+                }
+                return false;
+            }
             ListAction::Quit => {
                 if app.list.list_mode != ListMode::Select {
                     app.initiate_quit();
