@@ -1464,6 +1464,9 @@ pub fn line_from_segments<'a>(
                     prev_was_cell = true;
                 }
                 FlatSegment::Composite(comp_spans) => {
+                    if !is_header_left && prev_was_cell {
+                        spans.push(Span::styled(" · ", Style::default().fg(theme.muted)));
+                    }
                     spans.extend(comp_spans);
                     prev_was_cell = false;
                 }

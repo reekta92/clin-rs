@@ -352,16 +352,16 @@ pub fn render_draw_snapshot_with_size(
 
     let (min_x, min_y, max_x, max_y) = draw_bounds(data);
     let padding = 20.0;
-    let content_w = (max_x - min_x + 2.0 * padding).max(1.0);
-    let content_h = (max_y - min_y + 2.0 * padding).max(1.0);
-    let upc =
-        (content_w / f64::from(width)).max(content_h / f64::from(height)) / scale.max(0.01);
-    let cx = (min_x + max_x) / 2.0 - offset_x * upc;
-    let cy = (min_y + max_y) / 2.0 + offset_y * upc;
-    let hw = upc * f64::from(width) / 2.0;
-    let hh = upc * f64::from(height) / 2.0;
-    let x_bounds = [cx - hw, cx + hw];
-    let y_bounds = [cy - hh, cy + hh];
+    let cx = (min_x + max_x) / 2.0;
+    let cy = (min_y + max_y) / 2.0;
+    let hw = ((max_x - min_x) / 2.0 + padding).max(10.0) / scale;
+    let hh = ((max_y - min_y) / 2.0 + padding).max(10.0) / scale;
+    let ratio_x = (2.0 * hw) / width as f64;
+    let ratio_y = (2.0 * hh) / height as f64;
+    let cx_shifted = cx - offset_x * ratio_x;
+    let cy_shifted = cy + offset_y * ratio_y;
+    let x_bounds = [cx_shifted - hw, cx_shifted + hw];
+    let y_bounds = [cy_shifted - hh, cy_shifted + hh];
 
     let backend = TestBackend::new(width, height);
     let mut terminal = Terminal::new(backend).unwrap();
@@ -898,7 +898,7 @@ mod tests {
     }
 
     #[test]
-    fn draw_snapshot_preserves_aspect_with_letterbox() {
+    fn draw_snapshot_renders_content() {
         let data = DrawData {
             version: 1,
             width: 500.0,
@@ -923,10 +923,9 @@ mod tests {
             0.0,
             0.0,
         );
-        for row in &grid {
-            assert_eq!(row[0].0, ' ', "column 0 must be letterbox (space)");
-            assert_eq!(row[39].0, ' ', "column 39 must be letterbox (space)");
-        }
+        // Per-axis scaling: drawing fills the pane (no letterboxing from uniform fit)
+        let has_content = grid.iter().any(|row| row.iter().any(|(ch, _)| *ch != ' '));
+        assert!(has_content, "drawing must be visible in the preview");
     }
 
     /// Smoke: real clin_arch.canvas (~7180 units wide, previously cropped)
