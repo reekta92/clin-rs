@@ -125,4 +125,4 @@
 
 #### Other
 - [ ] **Calendar/time tools** — date calculator, timezone converter
-- [ ] **AOD pinning** — overlay note on screen
+- [ ] **CLI mode** — mainly for automation and quick access to some features
