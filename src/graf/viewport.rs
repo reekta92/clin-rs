@@ -5,6 +5,21 @@ use fdg_sim::petgraph::graph::NodeIndex;
 use super::graph::GraphState;
 
 pub const CELL_ASPECT: f64 = 0.5;
+/// Lowest zoom-out permitted, expressed as a fraction of `auto_fit_zoom`
+/// (i.e. `scale() >= MIN_SCALE`). Bounds screen_to_world so node-drag never
+/// writes coordinates large enough to destabilise the force simulation.
+const MIN_SCALE: f64 = 0.15;
+/// Max |world coordinate| returned by screen_to_world. Chosen far above any
+/// real graph span (auto-fit produces coords in the thousands) yet small enough
+/// that `x as f32` stays finite and force arithmetic never overflows f32.
+const WORLD_COORD_LIMIT: f64 = 1.0e18;
+
+fn clamp_world(v: f64) -> f64 {
+    if !v.is_finite() {
+        return 0.0;
+    }
+    v.clamp(-WORLD_COORD_LIMIT, WORLD_COORD_LIMIT)
+}
 
 #[derive(Clone)]
 pub struct Viewport {
@@ -43,7 +58,7 @@ impl Viewport {
 
         let wx = x_left + ((col as f64 - area.x as f64) / area.width as f64) * (x_right - x_left);
         let wy = y_top - ((row as f64 - area.y as f64) / area.height as f64) * (y_top - y_bottom);
-        (wx, wy)
+        (clamp_world(wx), clamp_world(wy))
     }
 
     #[must_use]
@@ -100,7 +115,12 @@ impl Viewport {
         if factor.is_finite() && factor > 0.0 {
             let candidate = self.zoom / factor;
             if candidate.is_finite() && candidate > 0.0 && (100.0 / candidate).is_finite() {
-                self.zoom = candidate;
+                let min_zoom = MIN_SCALE * self.auto_fit_zoom;
+                self.zoom = if min_zoom.is_finite() && min_zoom > 0.0 {
+                    candidate.max(min_zoom)
+                } else {
+                    candidate
+                };
             }
         }
     }
@@ -254,7 +274,8 @@ mod tests {
 
         vp.zoom = 1.0;
         vp.zoom_out(100.0);
-        assert_eq!(vp.zoom, 0.01);
+        assert!((vp.zoom - 0.15).abs() < 1e-12);
+        assert!((vp.scale() - 0.15).abs() < 1e-12);
     }
 
     #[test]

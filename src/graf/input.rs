@@ -184,8 +184,7 @@ pub fn handle_graph_mouse(
                         &state.read(),
                     );
                     let mut guard = state.write();
-                    guard.viewport.center_x = world.0;
-                    guard.viewport.center_y = world.1;
+                    guard.viewport.set_center(world.0, world.1);
                     mouse_state.is_minimap_dragging = true;
                     mouse_state.drag_origin = Some((mouse_event.column, mouse_event.row));
                 }
@@ -244,8 +243,7 @@ pub fn handle_graph_mouse(
                         &state.read(),
                     );
                     let mut guard = state.write();
-                    guard.viewport.center_x = world.0;
-                    guard.viewport.center_y = world.1;
+                    guard.viewport.set_center(world.0, world.1);
                     mouse_state.drag_origin = Some((mouse_event.column, mouse_event.row));
                 }
             } else if mouse_state.is_panning {
@@ -257,8 +255,7 @@ pub fn handle_graph_mouse(
                     * config.graf.interaction.drag_sensitivity;
                 let world_dy = dy_row * 200.0 * CELL_ASPECT / (vp.zoom * area.height as f64)
                     * config.graf.interaction.drag_sensitivity;
-                guard.viewport.center_x += world_dx;
-                guard.viewport.center_y += world_dy;
+                guard.viewport.pan_by(world_dx, world_dy);
                 mouse_state.drag_origin = Some((mouse_event.column, mouse_event.row));
             } else {
                 let (wx, wy) = {

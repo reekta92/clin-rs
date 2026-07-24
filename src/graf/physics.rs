@@ -22,14 +22,31 @@ pub fn simulation_step(state: &mut GraphState, timestep: f32) {
     // Hot (alpha=1.0) -> cooloff=0.95 (nodes fly freely to find space)
     // Freezing (alpha->0.0) -> cooloff=0.50 (bounces are dampened into crystalline lock)
     let cooloff = 0.50 + 0.45 * alpha;
+    let mut need_reheat = false;
     for node in state.simulation.get_graph_mut().node_weights_mut() {
         node.velocity *= cooloff;
 
-        assert!(node.location.x.is_finite(), "x location must be finite");
-        assert!(node.location.y.is_finite(), "y location must be finite");
+        // Non-finite location/velocity (e.g. from extreme zoom/drag overflow into
+        // the f32 node coordinates) would otherwise propagate through force
+        // arithmetic and corrupt every node. Reset to a finite seed and re-spread.
+        if !node.location.x.is_finite()
+            || !node.location.y.is_finite()
+            || !node.velocity.x.is_finite()
+            || !node.velocity.y.is_finite()
+        {
+            node.location = fdg_sim::glam::Vec3::ZERO;
+            node.old_location = fdg_sim::glam::Vec3::ZERO;
+            node.velocity = fdg_sim::glam::Vec3::ZERO;
+            need_reheat = true;
+        }
+    }
+    if need_reheat {
+        state.reheat(0.4);
     }
 
     if let Some((tx, ty)) = state.drag_target
+        && tx.is_finite()
+        && ty.is_finite()
         && let Some(idx) = state.dragging_node
         && let Some(node) = state.simulation.get_graph_mut().node_weight_mut(idx)
     {
@@ -116,6 +133,8 @@ pub fn start_physics(
             {
                 let mut guard = state_clone.write();
                 if let Some((tx, ty)) = guard.drag_target
+                    && tx.is_finite()
+                    && ty.is_finite()
                     && let Some(idx) = guard.dragging_node
                 {
                     let graph = guard.simulation.get_graph_mut();
@@ -466,5 +485,52 @@ mod tests {
         assert_eq!(gs.alpha, 0.0);
         assert!(gs.is_settled);
         assert!(gs.render_cache.lock().minimap_dirty);
+    }
+
+    #[test]
+    fn test_non_finite_node_is_healed() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let notes_dir = temp_dir.path().join("notes");
+        let config_dir = temp_dir.path().join("config");
+        std::fs::create_dir_all(&notes_dir).unwrap();
+        std::fs::create_dir_all(&config_dir).unwrap();
+
+        std::fs::write(notes_dir.join("a.md"), "[[b]]").unwrap();
+        std::fs::write(notes_dir.join("b.md"), "[[a]]").unwrap();
+
+        let storage = crate::storage::Storage {
+            data_dir: temp_dir.path().join("data"),
+            config_dir,
+            notes_dir,
+            templates_dir: temp_dir.path().join("templates"),
+            key: [0u8; 32],
+            skip_dir_patterns: Vec::new(),
+        };
+        std::fs::create_dir_all(&storage.data_dir).unwrap();
+        std::fs::create_dir_all(&storage.templates_dir).unwrap();
+
+        let config = crate::config::ClinConfig::default();
+        let note_ids = storage.list_note_ids(true, false).unwrap();
+        let summaries: Vec<_> = note_ids
+            .iter()
+            .filter_map(|id| storage.load_note_summary(id).ok())
+            .collect();
+        let mut gs = GraphState::new(&summaries, &config).expect("GraphState::new");
+
+        let node_indices: Vec<_> = gs.simulation.get_graph().node_indices().collect();
+        assert!(!node_indices.is_empty());
+        let idx = node_indices[0];
+
+        // Corrupt the node with non-finite location
+        let node = gs.simulation.get_graph_mut().node_weight_mut(idx).unwrap();
+        node.location = fdg_sim::glam::Vec3::new(f32::INFINITY, f32::INFINITY, 0.0);
+        node.velocity = fdg_sim::glam::Vec3::ZERO;
+
+        simulation_step(&mut gs, 0.12);
+
+        let node = gs.simulation.get_graph().node_weight(idx).unwrap();
+        assert!(node.location.x.is_finite(), "x should be finite after heal");
+        assert!(node.location.y.is_finite(), "y should be finite after heal");
+        assert_eq!(node.velocity, fdg_sim::glam::Vec3::ZERO);
     }
 }
