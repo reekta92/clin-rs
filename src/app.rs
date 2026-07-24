@@ -1004,8 +1004,10 @@ impl App {
                 } else {
                     let folder_glyph = if *path == crate::app::VIRTUAL_SUBNOTES_PATH {
                         crate::ui::get_icon("\u{f02c}", "\u{1f3f7}", self.config.ui.icon_mode)
+                    } else if path.starts_with("subnotes:") {
+                        crate::ui::get_icon("\u{f15b}", "\u{1f4c3}", self.config.ui.icon_mode)
                     } else {
-                        crate::ui::get_icon("\u{f114}", "\u{1f4c2}", self.config.ui.icon_mode)
+                        crate::ui::get_icon("\u{f07b}", "\u{1f4c1}", self.config.ui.icon_mode)
                     };
                     if *is_expanded {
                         format!(
@@ -1140,6 +1142,18 @@ impl App {
                             format!("{icon} "),
                             Style::default()
                                 .fg(self.app_theme.accent)
+                                .add_modifier(Modifier::BOLD),
+                        ));
+                    }
+                }
+                if !summary.pinned && !*is_clin && !*is_draw && !*is_canvas {
+                    let icon =
+                        crate::ui::get_icon("\u{f15c}", "\u{1f4c4}", self.config.ui.icon_mode);
+                    if !icon.is_empty() {
+                        spans.push(Span::styled(
+                            format!("{icon} "),
+                            Style::default()
+                                .fg(self.app_theme.text)
                                 .add_modifier(Modifier::BOLD),
                         ));
                     }

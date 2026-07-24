@@ -1079,9 +1079,12 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 // --- resolve (icon char, glyph color, display name): SAME mapping the old code used ---
                 let item = &app.list.visual_list[vi];
                 let (icon_char, text_label, glyph_color, raw_name) = match item {
-                    crate::app::VisualItem::Folder { name, .. } => {
+                    crate::app::VisualItem::Folder { path, name, .. } => {
                         let is_pinned = name == VIRTUAL_PINNED_LABEL;
                         let is_parent = name == "..";
+                        let is_subnotes = !is_parent
+                            && (path.as_str() == crate::app::VIRTUAL_SUBNOTES_PATH
+                                || crate::app::App::is_subnotes_parent_grid_path(path));
                         let (ic, label) = if is_pinned {
                             (
                                 crate::ui::get_char(
@@ -1090,6 +1093,15 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                                     app.config.ui.icon_mode,
                                 ),
                                 "F",
+                            )
+                        } else if is_subnotes {
+                            (
+                                crate::ui::get_char(
+                                    '\u{f15b}',
+                                    '\u{1f4c3}',
+                                    app.config.ui.icon_mode,
+                                ),
+                                "SN",
                             )
                         } else if is_parent {
                             (
@@ -1112,6 +1124,8 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                         };
                         let col = if is_pinned {
                             app.app_theme.pinned
+                        } else if is_subnotes {
+                            app.app_theme.subnote
                         } else {
                             app.app_theme.folder
                         };
