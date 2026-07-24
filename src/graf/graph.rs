@@ -28,6 +28,7 @@ pub struct GraphState {
     pub mouse_pos: Option<(u16, u16)>,
     pub spatial_grid: super::spatial::SpatialGrid,
     pub physics_worker_active: bool,
+    pub physics_ideal_distance: f64,
 }
 
 pub fn build_graph(
@@ -483,6 +484,7 @@ impl GraphState {
             mouse_pos: None,
             spatial_grid: super::spatial::SpatialGrid::new(config.graf.physics.ideal_distance),
             physics_worker_active: false,
+            physics_ideal_distance: config.graf.physics.ideal_distance,
         };
         state.viewport = state
             .viewport
@@ -1254,6 +1256,7 @@ mod tests {
             mouse_pos: None,
             spatial_grid: crate::graf::spatial::SpatialGrid::new(100.0),
             physics_worker_active: false,
+            physics_ideal_distance: 80.0,
         };
         let success = gs_empty.apply_static_cluster_layout(80.0);
         assert!(!success);

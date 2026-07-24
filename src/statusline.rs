@@ -1718,6 +1718,7 @@ mod tests {
             mouse_pos: None,
             spatial_grid: crate::graf::spatial::SpatialGrid::new(100.0),
             physics_worker_active: false,
+            physics_ideal_distance: 80.0,
         };
         ctx.graph = Some(&graph_state);
         let segs_scale = render_segments("{scale}", &ctx, &theme);

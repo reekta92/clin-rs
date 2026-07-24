@@ -351,6 +351,7 @@ mod tests {
             mouse_pos: None,
             spatial_grid: SpatialGrid::new(100.0),
             physics_worker_active: false,
+            physics_ideal_distance: 80.0,
         };
 
         for (i, &idx) in idxs.iter().enumerate() {

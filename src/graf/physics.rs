@@ -6,6 +6,15 @@ use crate::config::{ClinConfig, PhysicsTickRate};
 
 pub(crate) const MAX_DYNAMIC_NODES: usize = 1_000;
 const MIN_DYNAMIC_ALPHA: f32 = 0.005;
+/// Per-tick node velocity cap, as a multiple of `ideal_distance`. Stops force
+/// explosions (overlapping-node repulsion) from launching nodes off-screen.
+/// Scaled by sqrt(node_count) at use so large dynamic graphs aren't choked.
+const VELOCITY_FACTOR: f32 = 25.0;
+/// World-position clamp radius, as a multiple of `ideal_distance * sqrt(node_count)`.
+/// Tuned to comfortably contain a settled Fruchterman-Reingold layout (~1.7x its
+/// natural spread) so it never compresses a real graph, while catching nodes flung
+/// beyond the cluster. Bounds `graph_bounds` so auto-fit never shrinks to a dot.
+const SPREAD_FACTOR: f64 = 2.5;
 
 pub fn simulation_step(state: &mut GraphState, timestep: f32) {
     if state.alpha < MIN_DYNAMIC_ALPHA {
@@ -22,6 +31,12 @@ pub fn simulation_step(state: &mut GraphState, timestep: f32) {
     // Hot (alpha=1.0) -> cooloff=0.95 (nodes fly freely to find space)
     // Freezing (alpha->0.0) -> cooloff=0.50 (bounces are dampened into crystalline lock)
     let cooloff = 0.50 + 0.45 * alpha;
+
+    let node_count = state.simulation.get_graph().node_count();
+    let ideal = state.physics_ideal_distance as f32;
+    let max_velocity = ideal * VELOCITY_FACTOR * (node_count.max(1) as f32).sqrt();
+    let world_clamp_radius =
+        state.physics_ideal_distance * (node_count as f64).max(4.0).sqrt() * SPREAD_FACTOR;
     let mut need_reheat = false;
     for node in state.simulation.get_graph_mut().node_weights_mut() {
         node.velocity *= cooloff;
@@ -38,6 +53,25 @@ pub fn simulation_step(state: &mut GraphState, timestep: f32) {
             node.old_location = fdg_sim::glam::Vec3::ZERO;
             node.velocity = fdg_sim::glam::Vec3::ZERO;
             need_reheat = true;
+        }
+
+        // Cap velocity magnitude: stops a force explosion (overlapping-node
+        // repulsion) from launching this node off-screen over subsequent ticks.
+        let speed = node.velocity.length();
+        if speed.is_finite() && speed > 0.0 && speed > max_velocity {
+            node.velocity *= max_velocity / speed;
+        }
+        // Bound the node to a world box around the origin. The `centering` force
+        // (enabled in fdg_sim::force::handy) subtracts the centroid every tick,
+        // so the cluster sits at the origin post-update — this box is effectively
+        // around the cluster. Strays snap to the edge and self-heal inward once the
+        // drag force relaxes; they can never inflate graph_bounds past this radius.
+        let radius = world_clamp_radius as f32;
+        if node.location.x.is_finite() {
+            node.location.x = node.location.x.clamp(-radius, radius);
+        }
+        if node.location.y.is_finite() {
+            node.location.y = node.location.y.clamp(-radius, radius);
         }
     }
     if need_reheat {
@@ -317,6 +351,7 @@ mod tests {
             mouse_pos: None,
             spatial_grid: crate::graf::spatial::SpatialGrid::new(100.0),
             physics_worker_active: true,
+            physics_ideal_distance: 80.0,
         };
         let state_0 = Arc::new(RwLock::new(gs_0));
         let handle_0 = start_physics(state_0.clone(), &config);
@@ -356,6 +391,7 @@ mod tests {
             mouse_pos: None,
             spatial_grid: crate::graf::spatial::SpatialGrid::new(80.0),
             physics_worker_active: true,
+            physics_ideal_distance: 80.0,
         };
         let state_1001 = Arc::new(RwLock::new(gs_1001));
         let handle_1001 = start_physics(state_1001.clone(), &config);
@@ -416,6 +452,7 @@ mod tests {
             mouse_pos: None,
             spatial_grid: crate::graf::spatial::SpatialGrid::new(100.0),
             physics_worker_active: false,
+            physics_ideal_distance: 80.0,
         };
         let state_1 = Arc::new(RwLock::new(gs_1));
         let handle_1 = start_physics(state_1.clone(), &config);
@@ -532,5 +569,81 @@ mod tests {
         assert!(node.location.x.is_finite(), "x should be finite after heal");
         assert!(node.location.y.is_finite(), "y should be finite after heal");
         assert_eq!(node.velocity, fdg_sim::glam::Vec3::ZERO);
+    }
+
+    #[test]
+    fn test_simulation_step_clamps_runaway_node() {
+        // Reuse the 2-note tempdir + Storage + GraphState::new builder pattern.
+        let temp_dir = tempfile::tempdir().unwrap();
+        let notes_dir = temp_dir.path().join("notes");
+        let config_dir = temp_dir.path().join("config");
+        std::fs::create_dir_all(&notes_dir).unwrap();
+        std::fs::create_dir_all(&config_dir).unwrap();
+
+        std::fs::write(notes_dir.join("a.md"), "[[b]]").unwrap();
+        std::fs::write(notes_dir.join("b.md"), "[[a]]").unwrap();
+
+        let storage = crate::storage::Storage {
+            data_dir: temp_dir.path().join("data"),
+            config_dir,
+            notes_dir,
+            templates_dir: temp_dir.path().join("templates"),
+            key: [0u8; 32],
+            skip_dir_patterns: Vec::new(),
+        };
+        std::fs::create_dir_all(&storage.data_dir).unwrap();
+        std::fs::create_dir_all(&storage.templates_dir).unwrap();
+
+        let config = crate::config::ClinConfig::default();
+        let note_ids = storage.list_note_ids(true, false).unwrap();
+        let summaries: Vec<_> = note_ids
+            .iter()
+            .filter_map(|id| storage.load_note_summary(id).ok())
+            .collect();
+        let mut gs = GraphState::new(&summaries, &config).expect("GraphState::new");
+        gs.physics_worker_active = true;
+        let node_indices: Vec<_> = gs.simulation.get_graph().node_indices().collect();
+        let victim = node_indices[0];
+
+        // Place a node far beyond any real layout span and give it huge velocity,
+        // simulating a force explosion from an overlapping drag.
+        {
+            let n = gs
+                .simulation
+                .get_graph_mut()
+                .node_weight_mut(victim)
+                .unwrap();
+            n.location = fdg_sim::glam::Vec3::new(1.0e7, 1.0e7, 0.0);
+            n.velocity = fdg_sim::glam::Vec3::new(1.0e6, 0.0, 0.0);
+        }
+        gs.alpha = 0.4; // keep the step running (hot)
+        simulation_step(&mut gs, 0.12);
+
+        let n = gs.simulation.get_graph().node_weight(victim).unwrap();
+        let radius = gs.physics_ideal_distance
+            * ((gs.simulation.get_graph().node_count() as f64).max(4.0)).sqrt()
+            * super::SPREAD_FACTOR;
+        assert!(
+            n.location.x.abs() <= radius as f32 + 1e-3,
+            "x {} not clamped to {}",
+            n.location.x,
+            radius
+        );
+        assert!(
+            n.location.y.abs() <= radius as f32 + 1e-3,
+            "y {} not clamped to {}",
+            n.location.y,
+            radius
+        );
+        let speed = n.velocity.length();
+        let max_v = (gs.physics_ideal_distance as f32)
+            * super::VELOCITY_FACTOR
+            * (gs.simulation.get_graph().node_count().max(1) as f32).sqrt();
+        assert!(
+            speed <= max_v + 1e-3,
+            "velocity {} not capped to {}",
+            speed,
+            max_v
+        );
     }
 }

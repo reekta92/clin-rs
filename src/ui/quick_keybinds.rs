@@ -105,8 +105,16 @@ pub fn draw_quick_keybinds(frame: &mut Frame, app: &App) {
 
     // --- Compute popup width from content ---
     const SEP: &str = " • ";
-    let max_key_width = lines.iter().map(|(k, _)| k.chars().count()).max().unwrap_or(0);
-    let max_action_width = lines.iter().map(|(_, d)| d.chars().count()).max().unwrap_or(0);
+    let max_key_width = lines
+        .iter()
+        .map(|(k, _)| k.chars().count())
+        .max()
+        .unwrap_or(0);
+    let max_action_width = lines
+        .iter()
+        .map(|(_, d)| d.chars().count())
+        .max()
+        .unwrap_or(0);
     let inner_pad: u16 = 1;
     let content_width = (max_key_width + SEP.chars().count() + max_action_width) as u16;
     let title = format!(" Keybinds — {} ", view_name(app.mode));
