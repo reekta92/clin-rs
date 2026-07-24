@@ -1263,6 +1263,7 @@ fn run_app(
     let mut mouse_selecting = false;
     let mut mouse_dragged = false;
     let mut list_dirty = true;
+    let mut graph_dirty = true;
     let mut prev_mode = app.mode;
 
     while !app.should_quit {
@@ -1272,8 +1273,10 @@ fn run_app(
         }
 
         if app.mode != prev_mode {
-            if app.mode == ViewMode::List {
-                list_dirty = true;
+            match app.mode {
+                ViewMode::List => list_dirty = true,
+                ViewMode::Graph => graph_dirty = true,
+                _ => {}
             }
             prev_mode = app.mode;
         }
@@ -1287,8 +1290,12 @@ fn run_app(
         app.handle_search_events();
         process_watcher_events(app);
 
-        if app.tick_status() && app.mode == ViewMode::List {
-            list_dirty = true;
+        if app.tick_status() {
+            if app.mode == ViewMode::List {
+                list_dirty = true;
+            } else if app.mode == ViewMode::Graph {
+                graph_dirty = true;
+            }
         }
         let failed = app.backup_status.lock().take();
         if let Some(msg) = failed {
@@ -1313,6 +1320,7 @@ fn run_app(
             terminal.clear()?;
             app.needs_full_redraw = false;
             list_dirty = true;
+            graph_dirty = true;
         }
 
         if app.mode == ViewMode::List
@@ -1333,8 +1341,19 @@ fn run_app(
             graf.overlay_update(&mut app.config);
         }
 
+        let graph_active = app
+            .graph_state
+            .as_ref()
+            .and_then(|g| g.graph_state.as_ref())
+            .is_some_and(|s| {
+                let st = s.read();
+                !st.is_settled || st.physics_worker_active
+            });
+
         let should_draw = if app.mode == ViewMode::List {
             list_dirty
+        } else if app.mode == ViewMode::Graph {
+            graph_dirty || graph_active
         } else {
             true
         };
@@ -1357,12 +1376,22 @@ fn run_app(
             if app.mode == ViewMode::List {
                 list_dirty = false;
             }
+            if app.mode == ViewMode::Graph {
+                graph_dirty = false;
+            }
         }
 
         let active_catalog = app.catalog_status.is_some();
         let active_search = app.search_status.is_some() || app.search_debounce_deadline.is_some();
 
-        let poll_timeout = if app.mode == ViewMode::Graph || app.mode == ViewMode::Draw {
+        let poll_timeout = if app.mode == ViewMode::Graph {
+            let graph_idle = !graph_dirty && !graph_active;
+            if graph_idle {
+                Duration::from_millis(50)
+            } else {
+                Duration::from_millis(16)
+            }
+        } else if app.mode == ViewMode::Draw {
             Duration::from_millis(16)
         } else if app.mode == ViewMode::Canvas {
             Duration::from_millis(100)
@@ -1435,6 +1464,7 @@ fn run_app(
 
         if event::poll(poll_timeout).context("event poll failed")? {
             list_dirty = true;
+            graph_dirty = true;
             match event::read().context("failed to read event")? {
                 // Global Ctrl+C — immediately kill process
                 Event::Key(key)
