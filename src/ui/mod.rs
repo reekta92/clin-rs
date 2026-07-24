@@ -376,7 +376,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             .border_style(input_border)
             .title("");
         let input_inner = input_block.inner(input_chunks[0]);
-        frame.render_widget(input_block, chunks[0]);
+        frame.render_widget(input_block, input_chunks[0]);
         frame.render_widget(&popup.input, input_inner);
 
         if !popup.suggestions.is_empty() {
