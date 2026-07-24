@@ -1022,7 +1022,15 @@ impl App {
                     }
                 };
                 let color = if *is_pinned {
-                    self.app_theme.heading
+                    self.app_theme.pinned
+                } else if *path == crate::app::VIRTUAL_PINNED_PATH {
+                    self.app_theme.pinned
+                } else if *path == crate::app::VIRTUAL_SMART_PATH {
+                    self.app_theme.smart
+                } else if *path == crate::app::VIRTUAL_SUBNOTES_PATH
+                    || path.starts_with("subnotes:")
+                {
+                    self.app_theme.subnote
                 } else if *stale {
                     self.app_theme.muted
                 } else {
@@ -1091,7 +1099,7 @@ impl App {
                         spans.push(Span::styled(
                             format!("{icon} "),
                             Style::default()
-                                .fg(self.app_theme.heading)
+                                .fg(self.app_theme.pinned)
                                 .add_modifier(Modifier::BOLD),
                         ));
                     }
@@ -1251,7 +1259,7 @@ impl App {
 
                 let folder_icon = crate::ui::get_icon(nerd, unicode, icon_mode);
                 let icon = format!("{arrow} {folder_icon}");
-                let color = self.app_theme.tag;
+                let color = self.app_theme.smart;
                 let count_str = format!("{}", note_count);
                 let count_suffix = if self.list.inline_info {
                     format!(" ({count_str})")
@@ -1297,7 +1305,7 @@ impl App {
                 } else {
                     format!("{indent}{icon} {}", sanitized.into_owned())
                 };
-                let style = Style::default().fg(self.app_theme.tag);
+                let style = Style::default().fg(self.app_theme.subnote);
                 let mut lines = vec![Line::from(vec![Span::styled(text, style)])];
                 if self.list.list_density == crate::config::ListDensity::Comfortable {
                     lines.push(Line::from(""));

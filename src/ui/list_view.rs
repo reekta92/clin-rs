@@ -881,7 +881,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                         crate::ui::get_icon("\u{f4cc}", "\u{1f4cc}", app.config.ui.icon_mode)
                     ),
                     Style::default()
-                        .fg(app.app_theme.heading)
+                        .fg(app.app_theme.pinned)
                         .add_modifier(Modifier::BOLD),
                 ));
             } else if is_smart {
@@ -901,7 +901,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                         app.app_theme.hover_style()
                     } else {
                         Style::default()
-                            .fg(app.app_theme.tag)
+                            .fg(app.app_theme.smart)
                             .add_modifier(Modifier::BOLD)
                     },
                 ));
@@ -947,7 +947,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                         app.app_theme.hover_style()
                     } else {
                         Style::default()
-                            .fg(app.app_theme.tag)
+                            .fg(app.app_theme.subnote)
                             .add_modifier(Modifier::BOLD)
                     },
                 ));
@@ -1111,7 +1111,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                             )
                         };
                         let col = if is_pinned {
-                            app.app_theme.heading
+                            app.app_theme.pinned
                         } else {
                             app.app_theme.folder
                         };
@@ -1168,7 +1168,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                                 "Tagged",
                             ),
                         };
-                        (ic, text_label, app.app_theme.tag, label.clone())
+                        (ic, text_label, app.app_theme.smart, label.clone())
                     }
                     crate::app::VisualItem::Note {
                         summary_idx,
@@ -1245,7 +1245,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                                 }
                             })
                             .unwrap_or_else(|| format!("subnote {}", subnote_idx + 1));
-                        (ic, "SN", app.app_theme.tag, title)
+                        (ic, "SN", app.app_theme.subnote, title)
                     }
                 };
 

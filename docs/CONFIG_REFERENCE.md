@@ -94,6 +94,9 @@ Full reference of all configuration options for clin-rs.
 | `border` | `String` | — | Hex color override for borders |
 | `tag` | `String` | — | Hex color override for tag labels |
 | `folder` | `String` | — | Hex color override for folder labels |
+| `pinned` | `String` | — | Hex color override for pinned items |
+| `smart` | `String` | — | Hex color override for smart folder items |
+| `subnote` | `String` | — | Hex color override for subnote items |
 | `background_color` | `String` | — | Hex color override for solid background |
 
 ### `[statusline]`
@@ -420,6 +423,9 @@ show_status_bar = true
 icon_mode = "nerd"
 hint_bar_style = "classic"
 accent = "#ff6600"
+pinned = "#ffaa00"
+smart = "#ff66aa"
+subnote = "#66ccff"
 
 [graf]
 max_node = 500

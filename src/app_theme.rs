@@ -19,6 +19,9 @@ pub struct AppThemeColors {
     pub border: Color,
     pub tag: Color,
     pub folder: Color,
+    pub pinned: Color,
+    pub smart: Color,
+    pub subnote: Color,
     pub highlight_fg: Color,
     pub highlight_bg: Color,
     pub hint_bar_style: crate::config::HintBarStyle,
@@ -54,6 +57,9 @@ impl AppThemeColors {
                 border: Color::DarkGray,
                 tag: Color::LightMagenta,
                 folder: Color::Blue,
+                pinned: Color::Yellow,
+                smart: Color::LightMagenta,
+                subnote: Color::LightCyan,
                 highlight_fg: Color::Black,
                 highlight_bg: Color::Cyan,
                 hint_bar_style: crate::config::HintBarStyle::default(),
@@ -63,7 +69,7 @@ impl AppThemeColors {
                 Self {
                     accent: tc.node_colors.first().copied().unwrap_or(Color::Cyan),
                     heading: tc.node_colors.get(3).copied().unwrap_or(Color::Yellow),
-                    success: tc.node_colors.get(4).copied().unwrap_or(Color::Green),
+                    success: tc.node_colors.get(3).copied().unwrap_or(Color::Green),
                     warning: tc.node_colors.get(3).copied().unwrap_or(Color::Yellow),
                     destructive: tc.node_colors.get(5).copied().unwrap_or(Color::Red),
                     muted: tc.border_color,
@@ -77,6 +83,9 @@ impl AppThemeColors {
                         .copied()
                         .unwrap_or(Color::LightMagenta),
                     folder: tc.node_colors.get(2).copied().unwrap_or(Color::Blue),
+                    pinned: tc.node_colors.get(4).copied().unwrap_or(Color::Yellow),
+                    smart: tc.node_colors.get(6).copied().unwrap_or(Color::LightMagenta),
+                    subnote: tc.node_colors.get(7).copied().unwrap_or(Color::LightCyan),
                     highlight_fg: tc.background_color.unwrap_or(Color::Black),
                     highlight_bg: tc.node_colors.first().copied().unwrap_or(Color::Cyan),
                     hint_bar_style: crate::config::HintBarStyle::default(),
@@ -177,6 +186,9 @@ impl AppThemeColors {
             border: crate::config::parse_hex_color(&c.border).unwrap_or(Color::Reset),
             tag: crate::config::parse_hex_color(&c.tag).unwrap_or(Color::Reset),
             folder: crate::config::parse_hex_color(&c.folder).unwrap_or(Color::Reset),
+            pinned: crate::config::parse_hex_color(&c.pinned).unwrap_or(Color::Reset),
+            smart: crate::config::parse_hex_color(&c.smart).unwrap_or(Color::Reset),
+            subnote: crate::config::parse_hex_color(&c.subnote).unwrap_or(Color::Reset),
             highlight_fg: crate::config::parse_hex_color(&c.highlight_fg).unwrap_or(Color::Reset),
             highlight_bg: crate::config::parse_hex_color(&c.highlight_bg).unwrap_or(Color::Reset),
             hint_bar_style: crate::config::HintBarStyle::default(),
@@ -273,6 +285,7 @@ mod tests {
             highlight_fg: "#000000".to_string(),
             highlight_bg: "#ff0000".to_string(),
             background: Some("#000000".to_string()),
+            ..Default::default()
         };
         let colors = AppThemeColors::from_custom_chrome(&chrome, &Background::Solid);
         assert_eq!(colors.accent, Color::Rgb(255, 0, 0));
@@ -298,6 +311,7 @@ mod tests {
             highlight_fg: "#000000".to_string(),
             highlight_bg: "#ff0000".to_string(),
             background: None,
+            ..Default::default()
         };
         let colors = AppThemeColors::from_custom_chrome(&chrome, &Background::Transparent);
         assert_eq!(colors.accent, Color::Rgb(255, 0, 0));
@@ -321,6 +335,7 @@ mod tests {
             highlight_fg: "#000000".to_string(),
             highlight_bg: "#ff0000".to_string(),
             background: Some("#1a1b26".to_string()),
+            ..Default::default()
         };
         let transparent = AppThemeColors::from_custom_chrome(&chrome, &Background::Transparent);
         assert_eq!(transparent.bg, None);

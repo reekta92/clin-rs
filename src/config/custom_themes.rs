@@ -57,6 +57,12 @@ pub struct CustomChrome {
     pub border: String,
     pub tag: String,
     pub folder: String,
+    #[serde(default)]
+    pub pinned: String,
+    #[serde(default)]
+    pub smart: String,
+    #[serde(default)]
+    pub subnote: String,
     pub highlight_fg: String,
     pub highlight_bg: String,
     /// Optional; `None` means transparent background.

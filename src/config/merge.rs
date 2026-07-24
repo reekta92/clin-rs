@@ -252,6 +252,9 @@ tab_icons_only = false
 # border = "#444444"
 # tag = "#ffa500"
 # folder = "#00ffff"
+# pinned = "#ffff00"
+# smart = "#ff00ff"
+# subnote = "#00ffff"
 # background_color = "#000000"
 
 

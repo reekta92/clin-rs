@@ -25,6 +25,9 @@ fg = "#ffffff"
 border = "#414868"
 tag = "#bb9af7"
 folder = "#7dcfff"
+pinned = "#9ece6a"       # Pinned category
+smart = "#bb9af7"        # Smart folders category
+subnote = "#94e2d5"      # Subnotes category
 highlight_fg = "#1a1b26"
 highlight_bg = "#7aa2f7"
 background = "#1a1b26"   # optional → transparent when absent
@@ -202,6 +205,9 @@ pub struct AppThemeColors {
     pub border: Color,       // Borders and dividers
     pub tag: Color,          // Tag labels
     pub folder: Color,       // Folder labels
+    pub pinned: Color,         // Pinned items category color
+    pub smart: Color,          // Smart folders category color
+    pub subnote: Color,        // Subnotes category color
     pub highlight_fg: Color, // Text on highlighted bg
     pub highlight_bg: Color, // Selection highlight background
 }
@@ -225,7 +231,7 @@ impl AppThemeColors {
 
 | View | Uses |
 |---|---|
-| List | `accent` (selection), `tag` (tags), `folder` (folder names), `muted` (hints), `border` (dividers), `bg` (background) |
+  | List | `accent` (selection), `pinned` (pinned items), `smart` (smart folders), `subnote` (subnotes), `folder` (vault folders), `tag` (tags), `muted` (hints), `border` (dividers), `bg` (background) |
 | Edit | `accent` (cursor), `highlight_fg`/`highlight_bg` (title bar), `muted` (status), `border` (dividers) |
 | Help | `accent` (current tab), `muted` (other tabs), `title_bar_bg_style` (tab bar), `bg_style` (content) |
 | Graph | Uses graf `ThemeColors` palette for node/edge/grid colors; `app_theme` for UI shell (status bar, borders) |
