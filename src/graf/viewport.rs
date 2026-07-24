@@ -256,8 +256,6 @@ mod tests {
     use crate::graf::spatial::SpatialGrid;
     use fdg_sim::{ForceGraph, ForceGraphHelper, Simulation, SimulationParameters};
     use parking_lot::Mutex;
-    use parking_lot::RwLock;
-    use std::sync::Arc;
 
     #[test]
     fn test_viewport_baseline_scale() {
@@ -316,7 +314,7 @@ mod tests {
     fn test_hit_test_parity_with_brute_force() {
         let mut graph: ForceGraph<GraphNodeData, ()> = ForceGraph::default();
 
-        let positions = vec![
+        let positions = [
             (0.0, 0.0),
             (10000.0, 10000.0),
             (10005.0, 10005.0),
@@ -363,8 +361,10 @@ mod tests {
 
         gs.spatial_grid.rebuild(gs.simulation.get_graph());
 
-        let mut vp = Viewport::default();
-        vp.zoom = 1.0;
+        let vp = Viewport {
+            zoom: 1.0,
+            ..Default::default()
+        };
 
         let hit = vp.hit_test(10001.0, 10001.0, &gs).unwrap();
         assert_eq!(hit, idxs[1]);

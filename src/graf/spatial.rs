@@ -121,8 +121,6 @@ mod tests {
 
         // Nodes at various positions
         for i in 0..9 {
-            let x = (i % 3) as f32 * 100.0;
-            let y = (i / 3) as f32 * 100.0;
             let data = GraphNodeData {
                 note_id: format!("{i}"),
                 title: format!("node_{i}"),

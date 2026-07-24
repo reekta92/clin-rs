@@ -147,13 +147,11 @@ fn highlight_key_size(k: &HighlightKey) -> usize {
 fn highlighted_block_size(block: &Arc<HighlightedBlock>) -> usize {
     let mut bytes = std::mem::size_of::<HighlightedBlock>()
         + block.capacity() * std::mem::size_of::<Option<Vec<HighlightedSpan>>>();
-    for opt_line in &***block {
-        if let Some(spans) = opt_line {
-            bytes += std::mem::size_of::<Vec<HighlightedSpan>>()
-                + spans.capacity() * std::mem::size_of::<HighlightedSpan>();
-            for span in spans {
-                bytes += std::mem::size_of::<HighlightedSpan>() + span.text.capacity();
-            }
+    for spans in block.iter().flatten() {
+        bytes += std::mem::size_of::<Vec<HighlightedSpan>>()
+            + spans.capacity() * std::mem::size_of::<HighlightedSpan>();
+        for span in spans {
+            bytes += std::mem::size_of::<HighlightedSpan>() + span.text.capacity();
         }
     }
     bytes
@@ -196,6 +194,7 @@ pub(crate) fn insert_highlight(key: HighlightKey, block: Arc<HighlightedBlock>) 
 }
 
 #[cfg(test)]
+#[allow(dead_code)]
 impl<K: Eq + Hash, V> ByteLru<K, V> {
     pub fn clear(&mut self) {
         self.cache.clear();
@@ -211,12 +210,14 @@ impl<K: Eq + Hash, V> ByteLru<K, V> {
     }
 }
 #[cfg(test)]
+#[allow(dead_code)]
 pub(crate) fn clear_markdown_caches() {
     DOCUMENT_CACHE.lock().clear();
     HIGHLIGHT_CACHE.lock().clear();
 }
 
 #[cfg(test)]
+#[allow(dead_code)]
 pub(crate) fn cache_stats() -> (usize, usize, usize, usize) {
     let doc = DOCUMENT_CACHE.lock();
     let hl = HIGHLIGHT_CACHE.lock();

@@ -17,6 +17,7 @@ pub(crate) struct RenderLine {
     pub source_line: usize,
 }
 
+#[allow(dead_code)]
 impl RenderLine {
     pub(crate) fn char_index_at_visual_column(&self, column: usize) -> Option<usize> {
         if column >= self.visual_width {
@@ -76,21 +77,11 @@ impl RenderLine {
             if char_idx >= chars.end {
                 break;
             }
-
-            let span_len = span.text.chars().count();
-            if char_idx + span_len <= chars.start {
-                char_idx += span_len;
-                continue;
-            }
-
             for c in span.text.chars() {
                 if char_idx >= chars.start && char_idx < chars.end {
                     result.push(c);
                 }
                 char_idx += 1;
-                if char_idx >= chars.end {
-                    break;
-                }
             }
         }
 

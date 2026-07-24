@@ -124,6 +124,7 @@ pub(crate) fn load_notes_blocking(
     })
 }
 
+#[allow(clippy::type_complexity)]
 pub(crate) fn load_persisted_note_cache(
     storage: &Storage,
     cache_path: &Path,
@@ -262,6 +263,7 @@ fn send_event(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn spawn_catalog_worker(
     storage: Storage,
     pool: Arc<rayon::ThreadPool>,
@@ -441,7 +443,7 @@ pub(crate) fn spawn_catalog_worker(
                                         .map(|entry| {
                                             let summary_res =
                                                 storage.load_note_summary_from_entry(entry);
-                                            ((*entry).id.clone(), (*entry).stamp, summary_res)
+                                            (entry.id.clone(), entry.stamp, summary_res)
                                         })
                                         .collect()
                                 });
@@ -615,10 +617,10 @@ pub(crate) fn spawn_catalog_worker(
                         if generation.load(Ordering::SeqCst) != cmd_gen {
                             continue;
                         }
-                        if let Some(ref old) = old_id {
-                            if old != &summary.id {
-                                map.remove(old);
-                            }
+                        if let Some(ref old) = old_id
+                            && old != &summary.id
+                        {
+                            map.remove(old);
                         }
                         let id = summary.id.clone();
                         map.insert(id.clone(), (stamp, summary.clone()));
@@ -705,7 +707,7 @@ mod tests {
         let summary = NoteSummary {
             id: "folder/secret_note.md".to_string(),
             title: "Super Secret Title".to_string(),
-            updated_at: 1234567890,
+            updated_at: 1_234_567_890,
             folder: "folder".to_string(),
             tags: vec!["secret".to_string()],
             pinned: true,
@@ -713,7 +715,7 @@ mod tests {
             size_bytes: 100,
         };
         let stamp = FileStamp {
-            modified_nanos: Some(1234567890000000000),
+            modified_nanos: Some(1_234_567_890_000_000_000),
             len: 100,
         };
 

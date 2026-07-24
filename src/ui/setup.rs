@@ -297,11 +297,11 @@ pub fn draw_setup_view(frame: &mut Frame, app: &mut App) {
             }
         }
 
-        if let Some((_, inst)) = state.pending_preview_resize {
-            if inst.elapsed() >= std::time::Duration::from_millis(50) {
-                should_render = true;
-                state.pending_preview_resize = None;
-            }
+        if let Some((_, inst)) = state.pending_preview_resize
+            && inst.elapsed() >= std::time::Duration::from_millis(50)
+        {
+            should_render = true;
+            state.pending_preview_resize = None;
         }
 
         if should_render {

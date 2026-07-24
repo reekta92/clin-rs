@@ -18,7 +18,7 @@ impl<'a> MarkdownWidget<'a> {
     }
 }
 
-impl<'a> Widget for MarkdownWidget<'a> {
+impl Widget for MarkdownWidget<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
         if area.height == 0 || area.width == 0 {
             return;

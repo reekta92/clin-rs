@@ -120,7 +120,7 @@ pub fn draw_quick_keybinds(frame: &mut Frame, app: &App) {
     let title = format!(" Keybinds — {} ", view_name(app.mode));
     let title_width = title.chars().count() as u16;
     let popup_width = content_width.max(title_width) + inner_pad * 2;
-    let popup_width = popup_width.min(60).max(10);
+    let popup_width = popup_width.clamp(10, 60);
     let margin: u16 = 2;
 
     // --- Full-width header bar at row 0, centered title (mirrors draw_quick_search) ---

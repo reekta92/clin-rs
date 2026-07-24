@@ -70,7 +70,7 @@ impl NoteIndex {
         let now_local = Local
             .timestamp_opt(now_unix_secs as i64, 0)
             .single()
-            .unwrap_or_else(|| Local::now());
+            .unwrap_or_else(Local::now);
 
         let today_date = now_local.date_naive();
         let days_since_mon = now_local.weekday().num_days_from_monday() as i64;
@@ -199,20 +199,19 @@ impl NoteIndex {
                     continue;
                 }
 
-                if let Some(ref title_query) = rule.title_contains {
-                    if !note
+                if let Some(ref title_query) = rule.title_contains
+                    && !note
                         .title
                         .to_lowercase()
                         .contains(&title_query.to_lowercase())
-                    {
-                        continue;
-                    }
+                {
+                    continue;
                 }
 
-                if let Some(ref folder_prefix) = rule.folder_prefix {
-                    if !note.folder.starts_with(folder_prefix) {
-                        continue;
-                    }
+                if let Some(ref folder_prefix) = rule.folder_prefix
+                    && !note.folder.starts_with(folder_prefix)
+                {
+                    continue;
                 }
 
                 if let Some(days) = rule.updated_within_days {
@@ -265,7 +264,7 @@ mod tests {
 
     #[test]
     fn note_index_matches_bruteforce() {
-        let now = 1700000000u64;
+        let now = 1_700_000_000_u64;
         let notes = vec![
             NoteSummary {
                 id: "folder1/a.md".to_string(),

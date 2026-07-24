@@ -162,8 +162,8 @@ fn run_search(
             }
         }
 
-        if !hits.is_empty() {
-            if !send_event(
+        if !hits.is_empty()
+            && !send_event(
                 event_tx,
                 SearchEvent::Batch {
                     generation: current_gen,
@@ -174,9 +174,9 @@ fn run_search(
                 },
                 gen_atomic,
                 current_gen,
-            ) {
-                return;
-            }
+            )
+        {
+            return;
         }
 
         if globally_truncated {
@@ -249,12 +249,10 @@ mod tests {
 
         let mut hits = Vec::new();
         while let Ok(evt) = rx.try_recv() {
-            if let SearchEvent::Batch {
+            let SearchEvent::Batch {
                 hits: batch_hits, ..
-            } = evt
-            {
-                hits.extend(batch_hits);
-            }
+            } = evt;
+            hits.extend(batch_hits);
         }
 
         assert_eq!(hits.len(), 1);

@@ -181,7 +181,7 @@ fn is_closing_fence(line: &str, cb: &NodeCodeBlock) -> bool {
             break;
         }
     }
-    if count < cb.fence_length as usize {
+    if count < cb.fence_length {
         return false;
     }
     for c in chars {
@@ -222,11 +222,11 @@ pub(crate) fn highlight_code_block(
                 let rt_style = *style_cache
                     .entry(*syn_style)
                     .or_insert_with(|| syntect_style_to_ratatui(*syn_style));
-                if let Some(last_span) = line_spans.last_mut() {
-                    if last_span.style == rt_style {
-                        last_span.text.push_str(text);
-                        continue;
-                    }
+                if let Some(last_span) = line_spans.last_mut()
+                    && last_span.style == rt_style
+                {
+                    last_span.text.push_str(text);
+                    continue;
                 }
                 line_spans.push(HighlightedSpan {
                     text: text.to_string(),
@@ -343,7 +343,7 @@ fn block_margin(depth: usize) -> usize {
     1 + depth * 2
 }
 
-impl<'src, 'render> Ctx<'src, 'render> {
+impl Ctx<'_, '_> {
     fn cur_col(&self) -> usize {
         self.col
     }
@@ -440,13 +440,13 @@ impl<'src, 'render> Ctx<'src, 'render> {
     fn push_raw(&mut self, ch: char, st: Style) {
         let w = UnicodeWidthChar::width(ch).unwrap_or(0);
         let line = self.ensure_line();
-        if let Some(last_span) = line.spans.last_mut() {
-            if last_span.style == st {
-                last_span.text.push(ch);
-                line.visual_width += w;
-                self.col += w;
-                return;
-            }
+        if let Some(last_span) = line.spans.last_mut()
+            && last_span.style == st
+        {
+            last_span.text.push(ch);
+            line.visual_width += w;
+            self.col += w;
+            return;
         }
         let mut text = String::with_capacity(8);
         text.push(ch);
@@ -512,13 +512,13 @@ impl<'src, 'render> Ctx<'src, 'render> {
         }
         let w = s.len();
         let line = self.ensure_line();
-        if let Some(last_span) = line.spans.last_mut() {
-            if last_span.style == st {
-                last_span.text.push_str(s);
-                line.visual_width += w;
-                self.col += w;
-                return;
-            }
+        if let Some(last_span) = line.spans.last_mut()
+            && last_span.style == st
+        {
+            last_span.text.push_str(s);
+            line.visual_width += w;
+            self.col += w;
+            return;
         }
         line.spans.push(StyledSpan {
             text: s.to_owned(),
@@ -544,7 +544,7 @@ impl<'src, 'render> Ctx<'src, 'render> {
             let mut run_len = 0;
             while idx + run_len < bytes.len() {
                 let b = bytes[idx + run_len];
-                if b >= 0x20 && b <= 0x7e {
+                if (0x20..=0x7e).contains(&b) {
                     run_len += 1;
                 } else {
                     break;
@@ -803,7 +803,7 @@ fn heading_margin(depth: usize, level: u8) -> usize {
 }
 
 fn render_heading<'a>(ctx: &mut Ctx<'_, '_>, node: &'a AstNode<'a>, h: &NodeHeading, depth: usize) {
-    let margin = block_margin(depth);
+    let _margin = block_margin(depth);
     let style = heading_style(ctx, h.level);
 
     let bg_style = if h.level == 1 {
@@ -1918,10 +1918,7 @@ mod tests {
                 assert!(!ch.is_control(), "cell char is control: {ch:?}");
             }
         }
-        let has_bell_ch = lines
-            .iter()
-            .flat_map(|l| line_cells(l))
-            .any(|(c, _)| c == '\x07');
+        let has_bell_ch = lines.iter().flat_map(line_cells).any(|(c, _)| c == '\x07');
         assert!(!has_bell_ch, "bell char \\x07 should not appear in cells");
     }
 
@@ -1933,7 +1930,7 @@ mod tests {
         assert!(!text.contains('\t'), "no raw tab in output");
         let tab_pos = lines
             .iter()
-            .flat_map(|l| line_cells(l))
+            .flat_map(line_cells)
             .position(|(c, _)| c == '\t');
         assert!(tab_pos.is_none(), "no tab char in any cell");
     }
@@ -2850,7 +2847,7 @@ let very_long_variable_name_value = 42;
         let cancel = AtomicBool::new(false);
 
         // Nerd mode
-        let mut opts_nerd = mk_opts(crate::config::IconMode::Nerd);
+        let opts_nerd = mk_opts(crate::config::IconMode::Nerd);
         let lines_nerd = render_layout("## H2", 80, &theme, &opts_nerd, &cancel)
             .unwrap()
             .document
@@ -2860,7 +2857,7 @@ let very_long_variable_name_value = 42;
         assert!(t_nerd.contains("\u{f0ca3}"));
 
         // Unicode mode
-        let mut opts_uni = mk_opts(crate::config::IconMode::Unicode);
+        let opts_uni = mk_opts(crate::config::IconMode::Unicode);
         let lines_uni = render_layout("## H2", 80, &theme, &opts_uni, &cancel)
             .unwrap()
             .document
@@ -2870,7 +2867,7 @@ let very_long_variable_name_value = 42;
         assert!(t_uni.contains("②"));
 
         // None mode
-        let mut opts_none = mk_opts(crate::config::IconMode::None);
+        let opts_none = mk_opts(crate::config::IconMode::None);
         let lines_none = render_layout("## H2", 80, &theme, &opts_none, &cancel)
             .unwrap()
             .document

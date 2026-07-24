@@ -82,10 +82,8 @@ pub fn rasterize_spacing(content: &str) -> String {
         };
         let blank = line.trim().is_empty();
 
-        if blank && !in_fenced_code {
-            if previous_blank {
-                continue;
-            }
+        if blank && !in_fenced_code && previous_blank {
+            continue;
         }
 
         if !output.is_empty() {

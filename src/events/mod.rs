@@ -1152,11 +1152,11 @@ impl crate::popups::ActivePopup {
                                 Err(i) => i.saturating_sub(1),
                             };
                             let base = popup.grep_row_offsets.get(hit_idx).copied().unwrap_or(0);
-                            if r == base {
-                                if let Some(hit) = popup.grep_results.get(hit_idx) {
-                                    popup.grep_expanded.insert(hit.note_id.clone());
-                                    popup.rebuild_grep_offsets();
-                                }
+                            if r == base
+                                && let Some(hit) = popup.grep_results.get(hit_idx)
+                            {
+                                popup.grep_expanded.insert(hit.note_id.clone());
+                                popup.rebuild_grep_offsets();
                             }
                             app.popups.active = Some(reinsert(popup));
                         } else {
@@ -1190,11 +1190,11 @@ impl crate::popups::ActivePopup {
                                 Err(i) => i.saturating_sub(1),
                             };
                             let base = popup.grep_row_offsets.get(hit_idx).copied().unwrap_or(0);
-                            if r == base {
-                                if let Some(hit) = popup.grep_results.get(hit_idx) {
-                                    popup.grep_expanded.remove(&hit.note_id);
-                                    popup.rebuild_grep_offsets();
-                                }
+                            if r == base
+                                && let Some(hit) = popup.grep_results.get(hit_idx)
+                            {
+                                popup.grep_expanded.remove(&hit.note_id);
+                                popup.rebuild_grep_offsets();
                             }
                             app.popups.active = Some(reinsert(popup));
                         } else {

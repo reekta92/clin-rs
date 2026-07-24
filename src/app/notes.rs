@@ -51,11 +51,11 @@ impl App {
                     self.catalog_status = Some(format!("Validating notes… {processed}/{total}"));
 
                     let mut data_changed = false;
-                    if let Some(f) = folders {
-                        if self.catalog_folders != f {
-                            self.catalog_folders = f;
-                            data_changed = true;
-                        }
+                    if let Some(f) = folders
+                        && self.catalog_folders != f
+                    {
+                        self.catalog_folders = f;
+                        data_changed = true;
                     }
 
                     if !upserts.is_empty() || !removed.is_empty() {
@@ -152,11 +152,11 @@ impl App {
     }
 
     pub fn refresh_note_single(&mut self, prev_id: Option<&str>, id: &str) {
-        if let Some(old) = prev_id {
-            if old != id {
-                self.notes.retain(|n| n.id != old);
-                self.note_stamps.remove(old);
-            }
+        if let Some(old) = prev_id
+            && old != id
+        {
+            self.notes.retain(|n| n.id != old);
+            self.note_stamps.remove(old);
         }
 
         let note_path = self.storage.note_path(id);

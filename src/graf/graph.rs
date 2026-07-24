@@ -278,8 +278,8 @@ const STATIC_LAYOUT_SLOT_RESERVE: f64 = 1.15;
 const MAX_STATIC_LAYOUT_ANGULAR_JITTER: f64 = 0.15;
 
 fn stable_layout_hash(component_key: &str, node_key: &str, ring: usize, stream: u8) -> u64 {
-    let mut hash = 0xcbf29ce484222325u64;
-    let prime = 0x100000001b3u64;
+    let mut hash = 0xcbf2_9ce4_8422_2325_u64;
+    let prime = 0x0100_0000_01b3_u64;
 
     let mut update_hash = |byte: u8| {
         hash ^= byte as u64;
@@ -1021,13 +1021,17 @@ mod tests {
     #[test]
     fn test_static_cluster_layout_stability_and_validation() {
         // Direct helper assertions
-        assert_eq!(stable_layout_hash("a", "b", 1, 0), 0x1eb4c9ab64b11751u64);
+        assert_eq!(
+            stable_layout_hash("a", "b", 1, 0),
+            0x1eb4_c9ab_64b1_1751_u64
+        );
         assert_eq!(
             stable_layout_hash("cluster-a", "node-b", 2, 1),
-            0x628ba93c5bd07ea9u64
+            0x628b_a93c_5bd0_7ea9_u64
         );
         assert!(
-            (stable_layout_unit("a", "b", 1, 0) - (0x1eb4c9ab64b11751u64 as f64 / u64::MAX as f64))
+            (stable_layout_unit("a", "b", 1, 0)
+                - (0x1eb4_c9ab_64b1_1751_u64 as f64 / u64::MAX as f64))
                 .abs()
                 < 1e-9
         );

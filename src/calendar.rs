@@ -16,6 +16,7 @@ use crate::app_theme::AppThemeColors;
 /// with a filled cell.
 ///
 /// Needs at least 9 rows and 8 columns; otherwise it no-ops.
+#[allow(clippy::implicit_hasher)]
 pub fn draw_calendar(
     frame: &mut Frame,
     rect: Rect,

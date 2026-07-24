@@ -239,15 +239,13 @@ impl ClinConfig {
             changed = true;
         }
         // Migrate graf.filter.max_nodes -> graf.max_node
-        if let Some(graf) = value.get_mut("graf").and_then(|g| g.as_table_mut()) {
-            if let Some(filter) = graf.get_mut("filter").and_then(|f| f.as_table_mut()) {
-                if let Some(max_nodes) = filter.remove("max_nodes") {
-                    if graf.get("max_node").is_none() {
-                        graf.insert("max_node".to_string(), max_nodes);
-                        changed = true;
-                    }
-                }
-            }
+        if let Some(graf) = value.get_mut("graf").and_then(|g| g.as_table_mut())
+            && let Some(filter) = graf.get_mut("filter").and_then(|f| f.as_table_mut())
+            && let Some(max_nodes) = filter.remove("max_nodes")
+            && graf.get("max_node").is_none()
+        {
+            graf.insert("max_node".to_string(), max_nodes);
+            changed = true;
         }
 
         let mut editor_table = toml::value::Table::new();
@@ -1232,14 +1230,12 @@ sections = ["draw", "draw", "graf"]
 max_nodes = 42
 "#;
         let mut value: toml::Value = toml::from_str(toml_str).unwrap();
-        if let Some(graf) = value.get_mut("graf").and_then(|g| g.as_table_mut()) {
-            if let Some(filter) = graf.get_mut("filter").and_then(|f| f.as_table_mut()) {
-                if let Some(max_nodes) = filter.remove("max_nodes") {
-                    if graf.get("max_node").is_none() {
-                        graf.insert("max_node".to_string(), max_nodes);
-                    }
-                }
-            }
+        if let Some(graf) = value.get_mut("graf").and_then(|g| g.as_table_mut())
+            && let Some(filter) = graf.get_mut("filter").and_then(|f| f.as_table_mut())
+            && let Some(max_nodes) = filter.remove("max_nodes")
+            && graf.get("max_node").is_none()
+        {
+            graf.insert("max_node".to_string(), max_nodes);
         }
         let parsed: ClinConfig = value.try_into().unwrap();
         assert_eq!(parsed.graf.max_node, 42);

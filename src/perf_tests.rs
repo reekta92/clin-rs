@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[allow(dead_code)]
 mod tests {
     use crate::app::App;
     use crate::storage::Storage;
@@ -14,10 +15,10 @@ mod tests {
                 for line in status.lines() {
                     if line.starts_with("VmHWM:") {
                         let parts: Vec<&str> = line.split_whitespace().collect();
-                        if parts.len() >= 2 {
-                            if let Ok(kb) = parts[1].parse::<usize>() {
-                                return kb / 1024;
-                            }
+                        if parts.len() >= 2
+                            && let Ok(kb) = parts[1].parse::<usize>()
+                        {
+                            return kb / 1024;
                         }
                     }
                 }
@@ -27,12 +28,11 @@ mod tests {
     }
 
     fn generate_vault_if_needed(dir: &PathBuf, notes: usize, folders: usize) {
-        if dir.exists() {
-            if let Ok(entries) = std::fs::read_dir(dir) {
-                if entries.count() > 0 {
-                    return;
-                }
-            }
+        if dir.exists()
+            && let Ok(entries) = std::fs::read_dir(dir)
+            && entries.count() > 0
+        {
+            return;
         }
         let status = std::process::Command::new("python3")
             .arg("dev_scripts/generate_perf_vault.py")
@@ -59,8 +59,7 @@ mod tests {
         assert!(status.success());
     }
 
-    #[test]
-    #[ignore]
+    #[ignore = "performance test, run manually"]
     fn large_notes_vault_perf() {
         let enforce = std::env::var("CLIN_PERF_ENFORCE").as_deref() == Ok("1");
         let general_dir = PathBuf::from("/tmp/clin-perf-notes");

@@ -669,26 +669,25 @@ impl App {
         let mut updated = false;
 
         // Check resize debounces
-        if let Some((_, inst)) = self.list.pending_markdown_resize {
-            if inst.elapsed() >= Duration::from_millis(50) {
-                self.list.pending_markdown_resize = None;
-                self.update_preview();
-                updated = true;
-            }
+        if let Some((_, inst)) = self.list.pending_markdown_resize
+            && inst.elapsed() >= Duration::from_millis(50)
+        {
+            self.list.pending_markdown_resize = None;
+            self.update_preview();
+            updated = true;
         }
-        if let Some((_, inst)) = self.editor.pending_markdown_resize {
-            if inst.elapsed() >= Duration::from_millis(50) {
-                self.editor.pending_markdown_resize = None;
-                self.update_editor_markdown_preview();
-                updated = true;
-            }
+        if let Some((_, inst)) = self.editor.pending_markdown_resize
+            && inst.elapsed() >= Duration::from_millis(50)
+        {
+            self.editor.pending_markdown_resize = None;
+            self.update_editor_markdown_preview();
+            updated = true;
         }
-        if let Some(ref mut setup) = self.setup_state {
-            if let Some((_, inst)) = setup.pending_preview_resize {
-                if inst.elapsed() >= Duration::from_millis(50) {
-                    updated = true; // Trigger redraw so draw loop handles it
-                }
-            }
+        if let Some(ref mut setup) = self.setup_state
+            && let Some((_, inst)) = setup.pending_preview_resize
+            && inst.elapsed() >= Duration::from_millis(50)
+        {
+            updated = true; // Trigger redraw so draw loop handles it
         }
 
         if let Some(last) = self.editor.last_editor_change
@@ -724,25 +723,25 @@ impl App {
         }
 
         // Poll renderers
-        if let Some(PreviewContent::Markdown(renderer)) = &mut self.list.preview_content {
-            if renderer.poll() {
-                updated = true;
-            }
+        if let Some(PreviewContent::Markdown(renderer)) = &mut self.list.preview_content
+            && renderer.poll()
+        {
+            updated = true;
         }
-        if let Some(renderer) = &mut self.editor.md_preview_renderer {
-            if renderer.poll() {
-                updated = true;
-            }
+        if let Some(renderer) = &mut self.editor.md_preview_renderer
+            && renderer.poll()
+        {
+            updated = true;
         }
-        if let Some(renderer) = &mut self.editor.link_preview_renderer {
-            if renderer.poll() {
-                updated = true;
-            }
+        if let Some(renderer) = &mut self.editor.link_preview_renderer
+            && renderer.poll()
+        {
+            updated = true;
         }
-        if let Some(ref mut setup) = self.setup_state {
-            if setup.preview_renderer.poll() {
-                updated = true;
-            }
+        if let Some(ref mut setup) = self.setup_state
+            && setup.preview_renderer.poll()
+        {
+            updated = true;
         }
 
         updated
@@ -1511,11 +1510,7 @@ impl App {
 
         let content = self.editor.editor.lines().join("\n");
         let width = self.desired_editor_preview_width();
-        let mut renderer = self
-            .editor
-            .md_preview_renderer
-            .take()
-            .unwrap_or_else(MarkdownRenderer::new);
+        let mut renderer = self.editor.md_preview_renderer.take().unwrap_or_default();
         let opts = crate::markdown::MdRenderOpts::from_config(&self.config);
         let height = self.desired_editor_preview_height();
         let viewport = crate::markdown::RenderViewport {

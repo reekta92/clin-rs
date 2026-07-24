@@ -226,11 +226,11 @@ impl App {
                 }
             }
 
-            if let Some(id) = target_id {
-                if let Some(idx) = self.notes.iter().position(|n| n.id == id) {
-                    self.jump_to_note_index(idx);
-                    self.open_note_at_line(&id, target_line);
-                }
+            if let Some(id) = target_id
+                && let Some(idx) = self.notes.iter().position(|n| n.id == id)
+            {
+                self.jump_to_note_index(idx);
+                self.open_note_at_line(&id, target_line);
             }
         }
     }
@@ -239,14 +239,14 @@ impl App {
         use crate::app::search_worker::SearchEvent;
         let cur_gen = self.search_query_generation.load(Ordering::SeqCst);
 
-        if let Some(deadline) = self.search_debounce_deadline {
-            if Instant::now() >= deadline {
-                self.search_debounce_deadline = None;
-                if let Some(req) = self.unsent_search_request.take() {
-                    if req.generation == cur_gen {
-                        let _ = self.search_worker.req_tx.try_send(req);
-                    }
-                }
+        if let Some(deadline) = self.search_debounce_deadline
+            && Instant::now() >= deadline
+        {
+            self.search_debounce_deadline = None;
+            if let Some(req) = self.unsent_search_request.take()
+                && req.generation == cur_gen
+            {
+                let _ = self.search_worker.req_tx.try_send(req);
             }
         }
 

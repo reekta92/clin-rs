@@ -127,10 +127,10 @@ impl SourceHighlighter {
                 5 => self.theme.h5,
                 _ => self.theme.h6,
             };
-            if level > 1 {
-                if let Some(fg) = heading_style.fg {
-                    heading_style = heading_style.bg(faint_background(fg));
-                }
+            if level > 1
+                && let Some(fg) = heading_style.fg
+            {
+                heading_style = heading_style.bg(faint_background(fg));
             }
             let marker_end = level + 1; // # chars + space
             let ghost = self.ghost_syntax_enabled;
@@ -220,17 +220,17 @@ impl SourceHighlighter {
         }
 
         // Description list marker
-        if self.extended_features {
-            if let Some(marker_end) = find_description_marker(&chars) {
-                return self.description_line_styles(&chars, marker_end);
-            }
+        if self.extended_features
+            && let Some(marker_end) = find_description_marker(&chars)
+        {
+            return self.description_line_styles(&chars, marker_end);
         }
 
         // Footnote definition marker
-        if self.extended_features {
-            if let Some(marker_end) = find_footnote_def_marker(&chars) {
-                return self.footnote_def_line_styles(&chars, marker_end);
-            }
+        if self.extended_features
+            && let Some(marker_end) = find_footnote_def_marker(&chars)
+        {
+            return self.footnote_def_line_styles(&chars, marker_end);
         }
 
         // Default: inline-highlight as paragraph text
@@ -652,7 +652,7 @@ impl SourceHighlighter {
                 while i + bt_count < chars.len() && chars[i + bt_count] == '`' {
                     bt_count += 1;
                 }
-                let delim: String = std::iter::repeat('`').take(bt_count).collect();
+                let delim: String = std::iter::repeat_n('`', bt_count).collect();
                 let slice: String = chars[i + bt_count..].iter().collect();
                 if let Some(end) = slice.find(&delim) {
                     let mut code_style = base_style;
@@ -756,7 +756,6 @@ impl SourceHighlighter {
                 }
                 if i < marker_end && chars[i] == ' ' {
                     styles.push(self.theme.ghost_syntax); // space
-                    i += 1;
                 }
             }
             while styles.len() < marker_end {
@@ -856,16 +855,14 @@ fn find_footnote_def_marker(chars: &[char]) -> Option<usize> {
         while i < chars.len() && chars[i] != ']' {
             i += 1;
         }
-        if i < chars.len() && chars[i] == ']' {
-            if i > start + 2 {
+        if i < chars.len() && chars[i] == ']' && i > start + 2 {
+            i += 1;
+            if i < chars.len() && chars[i] == ':' {
                 i += 1;
-                if i < chars.len() && chars[i] == ':' {
+                if i < chars.len() && chars[i] == ' ' {
                     i += 1;
-                    if i < chars.len() && chars[i] == ' ' {
-                        i += 1;
-                    }
-                    return Some(i);
                 }
+                return Some(i);
             }
         }
     }
@@ -1227,10 +1224,8 @@ mod tests {
         let doc = vec!["``code``".to_string()];
         let styles = hl.highlight_line("``code``", 0, &doc);
         let mut expected_code = hl.theme.code_inline;
-        let mut expected_ghost_code = hl.theme.ghost_syntax;
         if let Some(bg) = hl.theme.code_inline.bg {
             expected_code = expected_code.bg(bg);
-            expected_ghost_code = expected_ghost_code.bg(bg);
         }
         // Ghost is false: so delimiters and content all get expected_code style
         assert_eq!(styles[0], expected_code);

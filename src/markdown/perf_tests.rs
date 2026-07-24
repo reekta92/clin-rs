@@ -1,11 +1,8 @@
-use super::style::{RenderLine, RenderedDocument};
+#![allow(dead_code)]
 use super::{MarkdownRenderer, MdRenderOpts, RenderViewport};
 use crate::app_theme::AppThemeColors;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
-use std::ops::Range;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 fn code_heavy_fixture() -> String {
@@ -80,8 +77,7 @@ fn mixed_fixture() -> String {
     out
 }
 
-#[test]
-#[ignore]
+#[ignore = "performance test, run manually"]
 fn markdown_renderer_perf() {
     let code_heavy = code_heavy_fixture();
     let single_large = single_large_block_fixture();
@@ -144,15 +140,15 @@ fn markdown_renderer_perf() {
         terminal
             .draw(|f| {
                 let widget = super::MarkdownWidget::new(doc, 0..40);
-                f.render_widget(widget, f.size());
+                f.render_widget(widget, f.area());
             })
             .unwrap();
         draw_times.push(t_draw_start.elapsed().as_micros() as u64);
     }
 
-    total_times.sort();
-    draw_times.sort();
-    heap_sizes.sort();
+    total_times.sort_unstable();
+    draw_times.sort_unstable();
+    heap_sizes.sort_unstable();
 
     let median_total = total_times[10];
     let p95_total = total_times[19];
@@ -337,7 +333,6 @@ fn widget_clips_wide_characters() {
     assert!(!text.contains("试"));
 }
 
-#[test]
 #[test]
 fn continuous_scroll_clamps() {
     let content = "line 1\n\nline 2\n\nline 3\n\nline 4\n\nline 5\n";

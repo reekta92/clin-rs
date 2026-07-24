@@ -443,9 +443,9 @@ impl RenderCache {
         let uniform_edges = tier == LodTier::Medium;
         for edge in graph.edge_references() {
             // Skip edge if neither endpoint is visible
-            if !self.visible_nodes.contains(&edge.source())
-                && !self.visible_nodes.contains(&edge.target())
-            {}
+            if !self.visible_nodes.contains(&edge.source()) {
+                self.visible_nodes.contains(&edge.target());
+            }
 
             let src = &graph[edge.source()];
             let tgt = &graph[edge.target()];

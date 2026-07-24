@@ -850,7 +850,9 @@ fn process_watcher_events(app: &mut App) {
         }
     }
 
-    let window_start = app.watcher_window_start.unwrap();
+    let Some(window_start) = app.watcher_window_start else {
+        return;
+    };
     if Instant::now() < window_start + Duration::from_millis(250) {
         return;
     }
@@ -916,30 +918,24 @@ fn process_watcher_events(app: &mut App) {
                     }
                 }
             }
-            EventKind::Modify(ModifyKind::Name(RenameMode::Both)) => {
-                if ev.paths.len() == 2 {
-                    let old_p = &ev.paths[0];
-                    let new_p = &ev.paths[1];
-                    if let (Ok(rel_old), Ok(rel_new)) = (
-                        old_p.strip_prefix(&app.storage.notes_dir),
-                        new_p.strip_prefix(&app.storage.notes_dir),
-                    ) {
-                        if let (Some(old_str), Some(new_str)) = (rel_old.to_str(), rel_new.to_str())
-                        {
-                            let old_norm = old_str.replace('\\', "/");
-                            let new_norm = new_str.replace('\\', "/");
-                            changes_map.insert(
-                                old_norm.clone(),
-                                crate::app::catalog::PathChange::Remove(old_norm),
-                            );
-                            changes_map.insert(
-                                new_norm.clone(),
-                                crate::app::catalog::PathChange::Upsert(new_norm),
-                            );
-                        } else {
-                            needs_full_reconcile = true;
-                            break 'events_loop;
-                        }
+            EventKind::Modify(ModifyKind::Name(RenameMode::Both)) if ev.paths.len() == 2 => {
+                let old_p = &ev.paths[0];
+                let new_p = &ev.paths[1];
+                if let (Ok(rel_old), Ok(rel_new)) = (
+                    old_p.strip_prefix(&app.storage.notes_dir),
+                    new_p.strip_prefix(&app.storage.notes_dir),
+                ) {
+                    if let (Some(old_str), Some(new_str)) = (rel_old.to_str(), rel_new.to_str()) {
+                        let old_norm = old_str.replace('\\', "/");
+                        let new_norm = new_str.replace('\\', "/");
+                        changes_map.insert(
+                            old_norm.clone(),
+                            crate::app::catalog::PathChange::Remove(old_norm),
+                        );
+                        changes_map.insert(
+                            new_norm.clone(),
+                            crate::app::catalog::PathChange::Upsert(new_norm),
+                        );
                     } else {
                         needs_full_reconcile = true;
                         break 'events_loop;
@@ -982,10 +978,9 @@ fn perform_orderly_catalog_shutdown(app: &mut App) {
                 ack: ack_tx.clone(),
             })
             .is_ok()
+            && ack_rx.recv_timeout(Duration::from_millis(100)).is_ok()
         {
-            if ack_rx.recv_timeout(Duration::from_millis(100)).is_ok() {
-                break;
-            }
+            break;
         }
         std::thread::sleep(Duration::from_millis(10));
     }
@@ -1117,7 +1112,7 @@ fn run_tui_session(app: &mut App) -> Result<()> {
                         || path_str.contains("\\.git\\")
                         || path_str.ends_with(".tmp")
                         || path_str.ends_with(".lock")
-                        || path_str.ends_with("~")
+                        || path_str.ends_with('~')
                 });
                 if all_ignored {
                     return;
@@ -1305,14 +1300,13 @@ fn run_app(
             }
         }
 
-        if let Some(ref idx) = app.note_index {
-            if let Some(expiry) = idx.min_membership_expiry {
-                if crate::ui::now_unix_secs() >= expiry {
-                    app.rebuild_note_index();
-                    if app.mode == ViewMode::List {
-                        list_dirty = true;
-                    }
-                }
+        if let Some(ref idx) = app.note_index
+            && let Some(expiry) = idx.min_membership_expiry
+            && crate::ui::now_unix_secs() >= expiry
+        {
+            app.rebuild_note_index();
+            if app.mode == ViewMode::List {
+                list_dirty = true;
             }
         }
 
@@ -1363,12 +1357,11 @@ fn run_app(
                 return Err(e.into());
             }
             let now = std::time::Instant::now();
-            if app.mode == ViewMode::Graph {
-                if let Some(ref mut graph_state) = app.graph_state {
-                    if graph_state.config_errors.is_empty() {
-                        graph_state.record_frame(now);
-                    }
-                }
+            if app.mode == ViewMode::Graph
+                && let Some(ref mut graph_state) = app.graph_state
+                && graph_state.config_errors.is_empty()
+            {
+                graph_state.record_frame(now);
             }
             let elapsed = now.duration_since(app.last_frame_time).as_secs_f64();
             app.fps = app.fps * 0.9 + (1.0 / elapsed.max(0.001)) * 0.1;
@@ -1451,12 +1444,11 @@ fn run_app(
                 return Err(e.into());
             }
             let now = std::time::Instant::now();
-            if app.mode == ViewMode::Graph {
-                if let Some(ref mut graph_state) = app.graph_state {
-                    if graph_state.config_errors.is_empty() {
-                        graph_state.record_frame(now);
-                    }
-                }
+            if app.mode == ViewMode::Graph
+                && let Some(ref mut graph_state) = app.graph_state
+                && graph_state.config_errors.is_empty()
+            {
+                graph_state.record_frame(now);
             }
         } else if app.mode == ViewMode::List && need_redraw {
             list_dirty = true;
@@ -1956,7 +1948,6 @@ mod tests {
 
         if list_dirty {
             draw_count += 1;
-            list_dirty = false;
         }
 
         assert_eq!(draw_count, 2);

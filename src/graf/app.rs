@@ -1,17 +1,8 @@
+#[derive(Default)]
 struct CanvasFpsSampler {
     window_started_at: Option<std::time::Instant>,
     frames_in_window: u32,
     published_fps: Option<f64>,
-}
-
-impl Default for CanvasFpsSampler {
-    fn default() -> Self {
-        Self {
-            window_started_at: None,
-            frames_in_window: 0,
-            published_fps: None,
-        }
-    }
 }
 
 impl CanvasFpsSampler {
@@ -178,18 +169,18 @@ impl GrafAppState {
     pub fn poll_renderers(&mut self, config: &ClinConfig) -> bool {
         let mut updated = false;
 
-        if let Some((_, inst)) = self.pending_markdown_resize {
-            if inst.elapsed() >= std::time::Duration::from_millis(50) {
-                self.pending_markdown_resize = None;
-                self.update_preview(config, None);
-                updated = true;
-            }
+        if let Some((_, inst)) = self.pending_markdown_resize
+            && inst.elapsed() >= std::time::Duration::from_millis(50)
+        {
+            self.pending_markdown_resize = None;
+            self.update_preview(config, None);
+            updated = true;
         }
 
-        if let Some(PreviewContent::Markdown(renderer)) = &mut self.preview_content {
-            if renderer.poll() {
-                updated = true;
-            }
+        if let Some(PreviewContent::Markdown(renderer)) = &mut self.preview_content
+            && renderer.poll()
+        {
+            updated = true;
         }
 
         updated
@@ -247,7 +238,9 @@ impl GrafAppState {
         }
 
         if new_key != self.preview_request_key {
-            let key = new_key.unwrap();
+            let Some(key) = new_key else {
+                return;
+            };
             let old_width = self.preview_request_key.as_ref().map(|k| k.width);
             self.preview_note_id = Some(key.note_id.clone());
             self.preview_request_key = Some(key);

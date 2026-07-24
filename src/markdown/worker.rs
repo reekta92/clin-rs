@@ -20,7 +20,7 @@ pub(crate) fn pack_viewport(start: usize, height: usize) -> u64 {
 
 pub(crate) fn unpack_viewport(packed: u64) -> (usize, usize) {
     let start = (packed >> 32) as usize;
-    let height = (packed & 0xFFFFFFFF) as usize;
+    let height = (packed & 0xFFFF_FFFF) as usize;
     (start, height)
 }
 
@@ -171,10 +171,10 @@ fn execute_job(job: RenderJob) {
         }
     };
 
-    if let Some(block) = first_block {
-        if process_single_block(&block, &job, cancel) {
-            return;
-        }
+    if let Some(block) = first_block
+        && process_single_block(&block, &job, cancel)
+    {
+        return;
     }
 
     let num_threads = POOL.current_num_threads();
@@ -256,22 +256,20 @@ fn process_single_block(block: &PendingCodeBlock, job: &RenderJob, cancel: &Atom
 
     let highlighted = if let Some(cached) = super::cache::get_highlight(&highlight_key) {
         cached
+    } else if let Some(hl) = super::builtin::highlight_code_block(
+        &block.language,
+        &block.literal,
+        &job.key.opts.code_theme,
+        cancel,
+    ) {
+        super::cache::insert_highlight(highlight_key, Arc::clone(&hl));
+        hl
     } else {
-        if let Some(hl) = super::builtin::highlight_code_block(
-            &block.language,
-            &block.literal,
-            &job.key.opts.code_theme,
-            cancel,
-        ) {
-            super::cache::insert_highlight(highlight_key, Arc::clone(&hl));
-            hl
-        } else {
-            if cancel.load(Ordering::Relaxed) {
-                return true;
-            }
-            let line_count = super::builtin::code_lines(&block.literal).count();
-            Arc::new(vec![None; line_count])
+        if cancel.load(Ordering::Relaxed) {
+            return true;
         }
+        let line_count = super::builtin::code_lines(&block.literal).count();
+        Arc::new(vec![None; line_count])
     };
 
     if cancel.load(Ordering::Relaxed) {

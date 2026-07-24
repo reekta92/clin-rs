@@ -80,6 +80,7 @@ pub struct MarkdownRenderer {
     pending: bool,
 }
 
+#[allow(clippy::missing_fields_in_debug)]
 impl std::fmt::Debug for MarkdownRenderer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("MarkdownRenderer")
@@ -97,6 +98,12 @@ impl Drop for MarkdownRenderer {
         if let Some(token) = &self.cancel {
             token.store(true, Ordering::Relaxed);
         }
+    }
+}
+
+impl Default for MarkdownRenderer {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -144,11 +151,11 @@ impl MarkdownRenderer {
             opts.clone(),
         );
 
-        if let Some(ref cur) = self.current_key {
-            if cur == &next_key {
-                self.set_viewport(viewport.start, viewport.height);
-                return;
-            }
+        if let Some(ref cur) = self.current_key
+            && cur == &next_key
+        {
+            self.set_viewport(viewport.start, viewport.height);
+            return;
         }
 
         if let Some(token) = self.cancel.take() {
@@ -184,6 +191,7 @@ impl MarkdownRenderer {
         if let Some(cached) = cache::get_document(&next_key) {
             self.document = Some(DocumentState::Final(cached));
 
+            #[allow(clippy::manual_checked_ops)]
             if let Some(src_line) = self.pending_source_anchor.take() {
                 let new_rendered = self.source_to_rendered_line(src_line);
                 if self.page_height > 0 {
@@ -296,7 +304,7 @@ impl MarkdownRenderer {
             return 1;
         }
         let page_h = self.page_height;
-        (pageable_len + page_h - 1) / page_h
+        pageable_len.div_ceil(page_h)
     }
 
     pub fn current_page(&self) -> usize {
@@ -465,6 +473,7 @@ impl MarkdownRenderer {
                         continue;
                     }
 
+                    #[allow(clippy::manual_checked_ops)]
                     if let Some(src_line) = self.pending_source_anchor.take() {
                         self.document = Some(DocumentState::Working(document));
                         let new_rendered = self.source_to_rendered_line(src_line);
@@ -559,6 +568,7 @@ impl MarkdownRenderer {
     }
 }
 
+#[allow(dead_code)]
 pub(crate) fn hit_test_markdown(
     document: &RenderedDocument,
     inner: Rect,
