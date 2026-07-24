@@ -19,7 +19,7 @@ For installation, quickstart, and general project info, see the [README.md](../R
 - [DRAW.md](DRAW.md) — Freehand drawing canvas: `.draw` format, tool set, shape types, interaction
 - [OUTLINE.md](OUTLINE.md) — Outline view: nested outline parsing, collapsible subtrees, jump-to-section editor navigation
 - [SETUP.md](SETUP.md) — First-run setup wizard: theme/background/hint-bar/icon-mode/keybind-preset cycling with live preview
-- [HELP.md](HELP.md) — Help view: 3-pane layout, 10 tabs, keybind index, tips, popup accordion
+- [HELP.md](HELP.md) — Help view: 3-pane layout, 8 tabs, keybind index, tips, popup accordion
 - [EDITOR.md](EDITOR.md) — Editor view: READ/EDIT modes, find popup, soft-wrap, sidebars, wikilink previews, external editor
 
 ## Features
@@ -46,7 +46,7 @@ docs/
 ├── ARCHITECTURE.md       System overview
 ├── LIST_VIEW.md          Notes list view
 ├── GRAPH_VIEW.md         Force-directed graph
-├── HELP.md               Help: 3-pane, 10 tabs, keybind index, tips, popup accordion
+├── HELP.md               Help: 3-pane, 8 tabs, keybind index, tips, popup accordion
 ├── BACKUP.md             Git-based backup dashboard
 ├── CANVAS.md             Obsidian-compatible canvas
 ├── DRAW.md               Freehand drawing

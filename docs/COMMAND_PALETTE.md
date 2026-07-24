@@ -65,6 +65,7 @@ pub static ACTIONS: std::sync::LazyLock<Vec<Box<dyn Action>>> = std::sync::LazyL
         Box::new(ocr::OcrPasteAction),
         Box::new(ocr::PasteImageAction),
         Box::new(ocr::InsertImageFromFileAction),
+        Box::new(rasterize::RasterizeNoteAction),
         Box::new(SwitchThemeAction),
         Box::new(OpenSetupWizardAction),
         Box::new(SwitchKeybindPresetAction),
@@ -129,13 +130,11 @@ pub fn get_all_action_infos(app: &App) -> Vec<ActionInfo> {
 
 
 ## Available Actions
-
-Actions are grouped by category. See the `ACTIONS` registry in `src/actions/mod.rs` for the complete list (currently 49 actions).
+Actions are grouped by category. See the `ACTIONS` registry in `src/actions/mod.rs` for the complete list (currently 50 actions).
 
 | Category | Example Actions |
 |---|---|
-| **General** | Insert Date |
-| **Notes** | Encrypt, Decrypt, Manage Sub-notes, Outline, Show Info |
+| **Notes** | Encrypt, Decrypt, Manage Sub-notes, Outline, Show Info, Rasterize |
 | **Views** | Graph, Draw, Canvas, Backup, Setup Wizard |
 | **Settings** | Theme, Keybind Preset, Layout Toggle, Layout Edit Mode, Preview Toggle, Preview Wrap, Calendar, Line Numbers, Confirm Delete, Pinned On Top, Confirm Quit, Preview Encryption, Sort Cycle, Show Hidden Files, Show All Files, Tab Icons Only, Word Goal, Note Goal, Folders First, Inline Info, Smart Folders, Configure Smart Folders, Icon Mode, Hint Bar Style, External Editor |
 | **Import** | File/CSV/JSON/URL/Clipboard → New Note |

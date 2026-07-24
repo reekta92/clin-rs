@@ -48,7 +48,7 @@ Each overlay view implements the [`OverlayView`] trait (see `src/overlay.rs`). G
 
 ## Event Loop Structure
 
-### Main Loop (`main.rs` → `run_app()`)
+### Main Loop (`lib.rs` → `run_app()`)
 
 ```
 main()
@@ -166,7 +166,7 @@ App::new(storage)
 ## Rendering Pipeline
 
 ```
-main.rs: terminal.draw(|frame| draw_ui(frame, app, focus))
+lib.rs: terminal.draw(|frame| draw_ui(frame, app, focus))
   │
   └─ draw_ui()
        ├─ dark background block (if solid bg mode)
@@ -222,128 +222,155 @@ List and Edit views use ratatui's `Layout` to split the terminal into panes:
 
 ```
 src/
-├── main.rs           — CLI parsing, terminal setup, main event loop
-├── app.rs            — App struct, ViewMode enum, top-level App API
-├── app/              — App logic split by concern (see app.rs for public API)
-│   ├── views.rs      — View transitions (open_graph_view, open_backup_view, etc.)
-│   ├── notes.rs      — Note CRUD helpers
-│   ├── folders.rs    — Folder operations
-│   ├── popups.rs     — Popup creation helpers
-│   ├── tags.rs       — Tag management
-│   ├── trash.rs      — Trash operations
-│   ├── search.rs     — Search
-│   ├── status.rs     — Status bar tick
-│   ├── settings_ops.rs — Settings operations
-│   ├── import_ops.rs — Import operations
-│   └── loading.rs    — Async loading state
-├── app_theme.rs      — AppThemeColors derivation from ThemeConfig
-├── cli.rs            — CliCommand enum
-├── constants.rs      — Hints, strings, layout constants
-├── editor.rs         — NoteEditor (title + body TextArea), popup state
-├── frontmatter.rs    — YAML frontmatter parse/serialize
-├── image_render/     — Native image rendering: LRU cache, background decode worker, protocol picker
-├── config/           — Config structs, defaults, merging, custom themes
-│   ├── mod.rs        — public re-exports, legacy-key compat shim
-│   ├── structs.rs    — ClinConfig, sub-config structs
-│   ├── types.rs      — Theme enum, enums + FromStr/Display
-│   ├── merge.rs      — TOML value merging logic
-│   ├── defaults.rs   — Default config values
-│   ├── custom_themes.rs — Drop-in TOML theme loading
-│   ├── path.rs       — Config path resolution
-│   └── de.rs         — Custom deserialization helpers
-├── list_view.rs      — ListView state, VisualItem, PreviewContent, sort
-├── markdown/         — Markdown renderer (built-in comrak/syntect)
-│   ├── mod.rs        — MarkdownRenderer public API
-│   ├── render.rs     — comrak parse + syntect highlight rendering
-│   └── theme.rs      — Syntect theme mapping
-├── migration.rs      — Storage migration logic
-├── palette.rs        — CommandPalette popup widget
-├── popups.rs         — ConfirmPopup, FolderPopup, TagPopup, etc.
-├── events/           — Keyboard/mouse event handlers per view
-│   ├── mod.rs        — Shared popup/palette dispatcher
-│   ├── list.rs       — handle_list_keys(), handle_list_mouse()
-│   ├── edit.rs       — handle_edit_keys(), handle_edit_mouse()
-│   ├── help.rs       — handle_help_keys()
-│   └── setup.rs      — handle_setup_keys(), handle_setup_mouse()
-├── snapshot.rs       — Backup/restore snapshots
-├── storage.rs        — Note CRUD, encryption, key management
-├── keybinds/         — Keybind loading, Keybinds struct, presets
-│   ├── mod.rs        — Keybinds struct, KeybindsToml
-│   ├── types.rs      — Action enums per scope (ListAction, SetupAction, etc.)
-│   ├── defaults.rs   — Default bindings + preset overrides (Helix/Vim/Emacs)
-│   ├── combo.rs      — KeyCombo helpers
-│   ├── matcher.rs    — MatchOutcome enum, sequence matcher
-│   └── api.rs        — keybind_scope! macro, resolve_* methods
-│   ├── help_meta.rs  — Action metadata (group + description) driving the help keybind index
-├── templates/        — modular template system
-│   ├── mod.rs        — public re-exports
-│   ├── model.rs      — Template schema + render
-│   ├── variables.rs  — variable substitution
-│   ├── store.rs      — filename sanitization
-│   └── manager.rs    — TemplateManager orchestration
-├── ui/               — UI rendering: draw_ui() and per-view renderers
-│   ├── mod.rs        — draw_ui(), shared layout helpers
-│   ├── list_view.rs  — draw_list_view()
-│   ├── edit_view.rs  — draw_edit_view()
-│   ├── help.rs       — draw_help_view()
-│   ├── help_content.rs — Help tab descriptions, suggestion pools, popup accordion content
-│   ├── popups.rs     — Popup/dialog drawers + format_keybind_hints
-│   ├── title_bar.rs  — Title bar, tab bar rendering
-│   └── setup.rs      — draw_setup_view(), setup_layout()
-│
-├── actions/
-│   ├── mod.rs        — Action trait, ACTIONS registry, OpenGraphAction, OpenBackupAction,
-│   │                    CreateDrawAction, CreateCanvasAction, SwitchThemeAction,
-│   │                    OpenSetupWizardAction, SwitchKeybindPresetAction,
-│   │                    ToggleExternalEditorAction, ToggleLayoutAction
-│   ├── outline.rs — OpenOutlineAction
-│   ├── decrypt.rs    — DecryptNoteAction
-│   ├── encrypt.rs    — EncryptNoteAction
-│   ├── import.rs     — ImportAction (File/CSV/JSON/URL/Clipboard → New/Append)
-│   ├── ocr.rs        — OcrPasteAction
-│   └── settings.rs   — Toggle actions: LayoutEditMode, PreviewPane/Wrap, Calendar,
-│                        LineNumbers, ConfirmDelete, PinnedOnTop, ConfirmQuit,
-│                        PreviewEncryption, CycleSort, ShowHiddenFiles/AllFiles,
-│                        SetWordGoal, FoldersFirst, SetNoteGoal, CycleIconMode, HintBarStyle
-│
-├── backup/           — Git backup dashboard
-│   ├── app.rs        — BackupState, OverlayView implementation
-│   ├── git_ops.rs    — GitOps (git2 safe wrappers)
-│   ├── input.rs      — Keyboard/mouse event handling
-│   ├── render.rs     — Dashboard rendering
-│   ├── state.rs      — BackupState, BackupInputMode, BackupSection
-│   └── worker.rs     — Background worker for auto-backup
-│
-├── graf/             — Graph view (force-directed)
-│   ├── app.rs        — GrafAppState, OverlayView implementation
-│   ├── graph.rs      — build_graph(), GraphNodeData, edge resolution
-│   ├── input.rs      — Keyboard/mouse event handling
-│   ├── physics.rs    — Force simulation thread (fdg_sim)
-│   ├── render.rs     — draw_graph_view(), minimap, legend, grid
-│   ├── state.rs      — GraphState, RenderCache, search state
-│   ├── themes.rs     — theme_colors() palette definitions
-│   ├── ui.rs         — search popup, node labels
-│   ├── util.rs       — Math helpers, color conversion
-│   └── viewport.rs   — Viewport (screen↔world transform)
-│
-├── draw/             — Draw view (freehand + shapes)
-│   ├── app.rs        — DrawAppState, OverlayView implementation
-│   ├── input.rs      — Mouse/keyboard handlers
-│   ├── render.rs     — Canvas + element rendering
-│   └── state.rs      — DrawAppState, DrawData, DrawElement
-│
-├── outline/      — Outline view (header outline)
-│   ├── app.rs         — OutlineState, OverlayView implementation
-│   ├── input.rs       — Keyboard/mouse handlers
-│   ├── render.rs      — Tree + detail rendering
-│   ├── state.rs       — OutlineState, tree model
-│   └── parse.rs       — Header outline parser
-└── pinstar/          — Canvas view (Obsidian-compatible)
-    ├── app.rs        — PinstarState, OverlayView implementation
-    ├── data.rs       — CanvasData, CanvasNode, CanvasEdge (JSON schema)
-    ├── input.rs      — Keyboard/mouse handlers
-    ├── render.rs     — Canvas + node/edge rendering
-    └── state.rs      — PinstarState, PinstarContextMenu
+├── bin/
+│   └── clin.rs           — Binary entry point; main() calls lib::run()
+├── lib.rs                — Crate root: entry point, TUI loop, CLI dispatch
+├── app.rs                — Central App struct, ViewMode enum, top-level API
+├── app_theme.rs          — AppThemeColors derivation from ThemeConfig
+├── calendar.rs           — GitHub-style activity heatmap
+├── cli.rs                — CLI argument definitions (clap-derive)
+├── console.rs            — Colored CLI output and clap theme
+├── constants.rs          — Binary constants (FILE_MAGIC, NONCE_LEN)
+├── editor.rs             — NoteEditor (title + body TextArea), edit/read modes
+├── frontmatter.rs        — YAML frontmatter parse/serialize
+├── fsutil.rs             — Atomic file I/O and secure temp files
+├── goals.rs              — Writing goals progress tracking and rendering
+├── list_view.rs          — ListView state, VisualItem, PreviewContent, sort
+├── local_state.rs        — Versioned local state persistence
+├── migration.rs          — File migration with interactive conflict resolution
+├── note_index.rs         — In-memory note index for search and filtering
+├── overlay.rs            — OverlayView trait, OverlayResult enum
+├── palette.rs            — CommandPalette popup widget
+├── paths.rs              — Platform-aware application path discovery
+├── perf_tests.rs         — Performance benchmarks (ignored by default)
+├── popups.rs             — Modal popup types and PopupManager
+├── preview.rs            — Preview pane dispatcher
+├── sanitize.rs           — Terminal control-character sanitization
+├── setup.rs              — First-run setup wizard constants and state
+├── snapshot.rs           — Canvas/draw/image snapshot rendering
+├── statusline.rs         — Statusline/header/footer template rendering
+├── storage.rs            — Note persistence, encryption, vault management
+├── text_edit.rs          — Text-editing shortcuts and clipboard I/O
+├── app/                  — App logic: catalog, edit panes, folder preview, etc.
+│   ├── catalog.rs        — Background note catalog worker
+│   ├── edit_panes.rs     — Editor sidebar management
+│   ├── folder_preview.rs — Background folder preview for FolderGraph
+│   ├── folders.rs        — Folder tree, move, duplicate, pin
+│   ├── import_ops.rs     — File/URL import orchestration
+│   ├── loading.rs        — Visual list construction, preview rendering
+│   ├── notes.rs          — Core note lifecycle
+│   ├── popups.rs         — Non-editor popup dialogs
+│   ├── search.rs         — Search popup UI
+│   ├── search_worker.rs  — Background search worker (rayon)
+│   ├── settings_ops.rs   — Toggleable settings, layout persistence
+│   ├── status.rs         — Status bar messages
+│   ├── tags.rs           — Tag CRUD operations
+│   ├── trash.rs          — Trash lifecycle
+│   └── views.rs          — View-mode switching
+├── config/               — Config schema, loading, merging, custom themes
+│   ├── mod.rs            — ClinConfig lifecycle, re-exports
+│   ├── structs.rs        — All config data structures
+│   ├── types.rs          — Enum types and parsing
+│   ├── merge.rs          — Comment-preserving TOML merge
+│   ├── defaults.rs       — Default field values
+│   ├── custom_themes.rs  — Drop-in TOML theme loading
+│   ├── path.rs           — Path expansion (~, $VAR)
+│   └── de.rs             — Custom serde helpers
+├── events/               — Keyboard/mouse event handlers per view
+│   ├── mod.rs            — Shared utilities, popup dispatch
+│   ├── list.rs           — List view key/mouse handlers
+│   ├── edit.rs           — Edit view key/mouse handlers
+│   ├── help.rs           — Help view key/mouse handlers
+│   ├── setup.rs          — Setup wizard key/mouse handlers
+│   └── popup_mouse.rs    — Centralized popup mouse dispatch
+├── keybinds/             — Keybind loading, Keybinds struct, presets
+│   ├── mod.rs            — Keybinds/KeybindsToml structs, re-exports
+│   ├── types.rs          — Action enums for all scopes
+│   ├── api.rs            — Persistence, macros, resolution, hints
+│   ├── defaults.rs       — Default bindings + preset overrides
+│   ├── combo.rs          — KeyCombo representation and parsing
+│   ├── matcher.rs        — Key event matcher with sequence buffering
+│   └── help_meta.rs      — Action metadata for help UI
+├── ui/                   — Terminal rendering: draw_ui() and per-view renderers
+│   ├── mod.rs            — Central UI dispatcher, shared helpers
+│   ├── list_view.rs      — Main list/grid view rendering
+│   ├── edit_view.rs      — Editor body rendering
+│   ├── help.rs           — Full help view
+│   ├── help_content.rs   — Static help/suggestion data
+│   ├── popups.rs         — Popup and status-bar rendering
+│   ├── title_bar.rs      — Title bar / tab bar rendering
+│   ├── setup.rs          — Setup wizard rendering
+│   ├── quick_search.rs   — Generic quick-search popup
+│   ├── scrollbar.rs      — Auto-hiding vertical scrollbar
+│   ├── quick_keybinds.rs — Quick keybind-hint dropdown
+│   └── braille.rs        — Braille sub-pixel dot and line drawing
+├── actions/              — Action trait ecosystem and ACTIONS registry
+│   ├── mod.rs            — Action trait, macros, ACTIONS LazyLock
+│   ├── decrypt.rs        — Decrypt .clin to .md
+│   ├── encrypt.rs        — Encrypt .md to .clin
+│   ├── import.rs         — Import from external sources (File/CSV/JSON/URL/Clipboard)
+│   ├── info.rs           — Show note/folder metrics popup
+│   ├── insert_date.rs    — Insert current date/time at cursor
+│   ├── ocr.rs            — OCR paste and image attachment
+│   ├── outline.rs        — Open outline tree
+│   ├── rasterize.rs      — Rasterize note spacing (remove blank lines)
+│   └── settings.rs       — Toggle/cycle actions for all settings
+├── markdown/             — GFM markdown rendering pipeline
+│   ├── mod.rs            — MarkdownRenderer, render_builtin_sync
+│   ├── builtin.rs        — Core comrak → grid renderer
+│   ├── source_highlight.rs — Per-line source highlighter for EDIT mode
+│   ├── style.rs          — RenderLine type, MarkdownTheme palette
+│   ├── cache.rs          — Cached markdown output with revalidation
+│   ├── perf_tests.rs     — Rendering performance benchmarks
+│   ├── widget.rs         — Ratatui Widget impl for RenderLine slices
+│   └── worker.rs         — Cancelable background render thread
+├── templates/            — Template system: data model, substitution, persistence
+│   ├── mod.rs            — Module root, re-exports
+│   ├── model.rs          — Template, TitleConfig, ContentConfig
+│   ├── variables.rs      — Template date/time variable substitution
+│   ├── store.rs          — Filename sanitization
+│   └── manager.rs        — TemplateManager CRUD orchestration
+├── image_render/         — Native image rendering
+│   ├── mod.rs            — Module root and cache types
+│   ├── cache.rs          — LRU image cache
+│   └── worker.rs         — Background decode worker
+├── backup/               — Git backup dashboard
+│   ├── app.rs            — BackupState, OverlayView implementation
+│   ├── git_ops.rs        — GitOps safe wrappers
+│   ├── input.rs          — Keyboard/mouse event handling
+│   ├── render.rs         — Dashboard rendering
+│   ├── state.rs          — BackupState, BackupSection, BackupInputMode
+│   └── worker.rs         — Background auto-backup worker
+├── graf/                 — Force-directed graph view
+│   ├── mod.rs            — Module declarations and re-exports
+│   ├── app.rs            — GrafAppState, OverlayView implementation
+│   ├── graph.rs          — build_graph(), GraphNodeData
+│   ├── input.rs          — Keyboard/mouse handlers
+│   ├── physics.rs        — Force simulation thread
+│   ├── render.rs         — draw_graph_view(), minimap, legend, grid
+│   ├── spatial.rs        — Uniform-grid spatial index
+│   ├── themes.rs         — Color palette definitions
+│   ├── ui.rs             — Search popup, layout orchestration
+│   ├── util.rs           — String truncation helper
+│   └── viewport.rs       — Camera viewport (zoom, pan, hit-test)
+├── draw/                 — Freehand drawing overlay
+│   ├── app.rs            — DrawAppState, OverlayView implementation
+│   ├── input.rs          — Mouse/keyboard handlers
+│   ├── render.rs         — Canvas + element rendering
+│   └── state.rs          — DrawData, DrawElement, DrawTool
+├── outline/              — Header outline view
+│   ├── app.rs            — OutlineState, OverlayView implementation
+│   ├── input.rs          — Keyboard/mouse handlers
+│   ├── render.rs         — Tree + detail rendering
+│   ├── state.rs          — OutlineState, tree model
+│   └── parse.rs          — Header outline parser
+└── pinstar/              — Obsidian-compatible canvas (node/edge)
+    ├── mod.rs            — Module root, color picker palette
+    ├── app.rs            — PinstarState, OverlayView implementation
+    ├── data.rs           — CanvasData, CanvasNode, CanvasEdge (JSON schema)
+    ├── input.rs          — Mouse/keyboard event handlers
+    ├── render.rs         — Canvas + node/edge rendering
+    └── state.rs          — PinstarState, viewport, mutations
 ```
 
 ---

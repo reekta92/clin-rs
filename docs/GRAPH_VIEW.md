@@ -8,7 +8,7 @@ Technical docs for the force-directed graph module — visualizes the note corpu
 
 The graph view displays all notes as nodes with edges representing `[[wikilinks]]` connections between them. It uses a force-directed layout simulation (`fdg_sim` crate) that runs in a background thread, settling into a stable configuration.
 
-**Source:** `src/graf/` — modules: `app`, `graph`, `input`, `physics`, `render`, `state`, `themes`, `ui`, `util`, `viewport`
+**Source:** `src/graf/` — modules: `app`, `graph`, `input`, `physics`, `render`, `spatial`, `themes`, `ui`, `util`, `viewport`
 
 ---
 

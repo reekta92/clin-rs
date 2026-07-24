@@ -23,7 +23,7 @@
 - [X] **Batch tagging** — tag multiple notes at once
 - [X] **Link objects** — connect objects with lines
 - [X] **Grouping** — merge objects into groups
-- [X] **PDF import/export** — convert PDFs to/from markdown
+- [X] **PDF import** — convert PDFs to markdown
 - [X] **CSV to markdown** — import CSV tables
 - [X] **URL import** — fetch article content as formatted markdown
 - [X] **Git integration** — vault versioning and backup

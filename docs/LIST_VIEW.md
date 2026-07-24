@@ -8,7 +8,7 @@ The List view is the primary interface for browsing, searching, and managing you
 
 The List view (`ViewMode::List`) provides a flexible way to interact with your note library. Whether you prefer a visual grid of cards or a structured file tree, the List view adapts to your workflow.
 
-**Source:** `src/app.rs`, `src/ui.rs` (List rendering logic)
+**Source:** `src/app.rs`, `src/ui/list_view.rs` (List rendering logic)
 
 ---
 
