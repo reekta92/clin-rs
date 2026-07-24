@@ -49,6 +49,24 @@ fn storage_path_override() -> Option<PathBuf> {
     STORAGE_PATH_OVERRIDE.get().and_then(|opt| opt.clone())
 }
 
+/// Platform-aware config directory.
+///
+/// macOS: `~/.config/clin/` (XDG convention for CLI/TUI apps).
+/// Linux/Windows: `ProjectDirs::config_dir()` (standard).
+pub(crate) fn clin_config_dir() -> Result<PathBuf> {
+    #[cfg(target_os = "macos")]
+    {
+        let home = std::env::var("HOME").context("HOME environment variable not set")?;
+        Ok(PathBuf::from(home).join(".config").join("clin"))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let proj_dirs = directories::ProjectDirs::from("com", "clin", "clin")
+            .context("could not determine config directory")?;
+        Ok(proj_dirs.config_dir().to_path_buf())
+    }
+}
+
 // ── ClinConfig impl ─────────────────────────────────────────────────────────
 
 impl ClinConfig {
@@ -74,9 +92,7 @@ impl ClinConfig {
         {
             return Ok(p.clone());
         }
-        let proj_dirs = ProjectDirs::from("com", "clin", "clin")
-            .context("could not determine config directory")?;
-        Ok(proj_dirs.config_dir().join("config.toml"))
+        Ok(clin_config_dir()?.join("config.toml"))
     }
 
     pub fn default_storage_path() -> Result<PathBuf> {
@@ -92,10 +108,38 @@ impl ClinConfig {
             if let Some(parent) = config_path.parent() {
                 fs::create_dir_all(parent).context("failed to create config directory")?;
             }
+            // macOS migration: if old Library/Application Support config exists, move to new location
+            #[cfg(target_os = "macos")]
+            {
+                let old_proj_dirs = directories::ProjectDirs::from("com", "clin", "clin")
+                    .ok_or_else(|| anyhow::anyhow!("no home dir"))?;
+                let old_config_dir = old_proj_dirs.config_dir();
+                let old_config_path = old_config_dir.join("config.toml");
+                if old_config_path.exists() {
+                    // Copy entire old config dir contents to new location
+                    if let Ok(entries) = std::fs::read_dir(old_config_dir) {
+                        for entry in entries.flatten() {
+                            let dest = config_path.parent().unwrap().join(entry.file_name());
+                            if !dest.exists() {
+                                let _ = std::fs::copy(entry.path(), &dest);
+                            }
+                        }
+                    }
+                }
+            }
 
-            let proj_dirs = ProjectDirs::from("com", "clin", "clin")
-                .ok_or_else(|| anyhow::anyhow!("no home dir"))?;
-            let graf_path = proj_dirs.config_dir().join("graf.toml");
+            #[cfg(target_os = "macos")]
+            let graf_path = {
+                let old_pd = directories::ProjectDirs::from("com", "clin", "clin")
+                    .ok_or_else(|| anyhow::anyhow!("no home dir"))?;
+                old_pd.config_dir().join("graf.toml")
+            };
+            #[cfg(not(target_os = "macos"))]
+            let graf_path = {
+                let proj_dirs = directories::ProjectDirs::from("com", "clin", "clin")
+                    .ok_or_else(|| anyhow::anyhow!("no home dir"))?;
+                proj_dirs.config_dir().join("graf.toml")
+            };
             let mut config = Self::default();
 
             if graf_path.exists() {
