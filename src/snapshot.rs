@@ -81,7 +81,128 @@ pub fn render_canvas_snapshot(
             }
         }
 
+        // Pass 1: group nodes (drawn behind child nodes)
         for node in &data.nodes {
+            if !matches!(node, CanvasNode::Group(_)) {
+                continue;
+            }
+            let (nx, ny) = node.pos();
+            let (nw, nh) = node.size();
+            let sx =
+                ((nx - center_x) * zoom) + (area.x as f64 + area.width as f64 / 2.0) + offset_x;
+            let sy =
+                ((ny - center_y) * zoom) + (area.y as f64 + area.height as f64 / 2.0) + offset_y;
+            let sw = (nw * zoom).max(1.0);
+            let sh = (nh * zoom).max(1.0);
+
+            if sx + sw < area.left() as f64
+                || sx > area.right() as f64
+                || sy + sh < area.top() as f64
+                || sy > area.bottom() as f64
+            {
+                continue;
+            }
+
+            let left = sx.max(area.left() as f64) as u16;
+            let top = sy.max(area.top() as f64) as u16;
+            let right = (sx + sw).min(area.right() as f64) as u16;
+            let bottom = (sy + sh).min(area.bottom() as f64) as u16;
+            if right <= left || bottom <= top {
+                continue;
+            }
+
+            let node_rect = Rect::new(left, top, right - left, bottom - top);
+
+            let color_str = match node {
+                CanvasNode::Text(n) => n.color.as_deref(),
+                CanvasNode::File(n) => n.color.as_deref(),
+                CanvasNode::Link(n) => n.color.as_deref(),
+                CanvasNode::Group(_) => None,
+            };
+            let node_color = canvas_color_to_style(color_str, theme);
+
+            let title = match node.title() {
+                Some(t) => t.to_string(),
+                None => match node {
+                    CanvasNode::File(n) => std::path::Path::new(&n.file)
+                        .file_name()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or(&n.file)
+                        .to_string(),
+                    CanvasNode::Link(n) => n.url.clone(),
+                    CanvasNode::Group(n) => n.label.clone().unwrap_or_default(),
+                    CanvasNode::Text(_) => "".to_string(),
+                },
+            };
+
+            let inner_text = node.text();
+
+            let max_text_len = (node_rect.width.saturating_sub(2) as usize)
+                * (node_rect.height.saturating_sub(2) as usize);
+            let display_text = if inner_text.chars().count() > max_text_len && max_text_len > 10 {
+                let mut s: String = inner_text
+                    .chars()
+                    .take(max_text_len.saturating_sub(1))
+                    .collect();
+                s.push('…');
+                s
+            } else {
+                inner_text.to_string()
+            };
+            let is_image = matches!(node, CanvasNode::File(n) if is_image_ext(&n.file));
+
+            if is_image {
+                let icon = crate::ui::get_icon("\u{f03e}", "\u{1f5bc}", icon_mode);
+                let filled_block = Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(node_color))
+                    .title(title)
+                    .style(
+                        Style::default()
+                            .bg(node_color)
+                            .fg(theme.bg.unwrap_or(Color::Reset)),
+                    );
+
+                let icon_line = Line::from(Span::styled(
+                    icon,
+                    Style::default().fg(theme.bg.unwrap_or(Color::Reset)),
+                ))
+                .alignment(Alignment::Center);
+
+                let content_height = node_rect.height.saturating_sub(2);
+                let empty_count = content_height / 2;
+
+                let mut lines: Vec<Line> = Vec::new();
+                for _ in 0..empty_count {
+                    lines.push(Line::from(""));
+                }
+                lines.push(icon_line);
+
+                let text = Paragraph::new(lines).block(filled_block);
+                frame.render_widget(Clear, node_rect);
+                frame.render_widget(text, node_rect);
+            } else {
+                let block = Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(node_color))
+                    .title(title)
+                    .style(theme.bg_style());
+
+                let text = Paragraph::new(display_text)
+                    .block(block)
+                    .style(Style::default().fg(theme.fg))
+                    .wrap(Wrap { trim: false });
+
+                frame.render_widget(Clear, node_rect);
+                frame.render_widget(text, node_rect);
+            }
+        }
+
+        // Pass 2: non-group nodes (drawn on top of groups)
+        for node in &data.nodes {
+            if matches!(node, CanvasNode::Group(_)) {
+                continue;
+            }
             let (nx, ny) = node.pos();
             let (nw, nh) = node.size();
             let sx =
@@ -508,6 +629,16 @@ fn draw_bounds(data: &DrawData) -> (f64, f64, f64, f64) {
 
 fn canvas_color_to_style(color: Option<&str>, theme: &AppThemeColors) -> Color {
     match color {
+        Some(s) if s.starts_with('#') => {
+            if s.len() == 7 {
+                let r = u8::from_str_radix(&s[1..3], 16).unwrap_or(0);
+                let g = u8::from_str_radix(&s[3..5], 16).unwrap_or(0);
+                let b = u8::from_str_radix(&s[5..7], 16).unwrap_or(0);
+                Color::Rgb(r, g, b)
+            } else {
+                theme.accent
+            }
+        }
         Some("1") | Some("red") => Color::Rgb(255, 82, 82),
         Some("2") | Some("orange") => Color::Rgb(255, 152, 0),
         Some("3") | Some("yellow") => Color::Rgb(255, 235, 59),
@@ -667,7 +798,7 @@ fn draw_shape_on_canvas(ctx: &mut Context, shape: &Shape) {
 mod tests {
     use super::*;
     use ratatui::backend::TestBackend;
-    use crate::pinstar::data::TextNode;
+    use crate::pinstar::data::{GroupNode, TextNode};
 
     /// Regression guard: a grid cell containing a control char must not
     /// reach `Cell::set_char` as-is (ratatui debug-assert!-panics on
@@ -820,5 +951,41 @@ mod tests {
         assert_eq!(grid[0].len(), 78, "width matches");
         let has_content = grid.iter().any(|row| row.iter().any(|(ch, _)| *ch != ' '));
         assert!(has_content, "fixture renders visible content at preview size");
+    }
+
+
+    /// Verify file nodes inside groups are visible (not cleared by later group render).
+    #[test]
+    fn file_nodes_visible_inside_groups() {
+        let data = CanvasData {
+            nodes: vec![
+                CanvasNode::Text(TextNode {
+                    id: "f1".to_string(),
+                    x: 100.0, y: 100.0,
+                    width: 200.0, height: 100.0,
+                    text: "hello".to_string(),
+                    title: Some("file1".to_string()),
+                    color: Some("#ff0000".to_string()),
+                }),
+                CanvasNode::Group(GroupNode {
+                    id: "g1".to_string(),
+                    x: 50.0, y: 50.0,
+                    width: 300.0, height: 200.0,
+                    label: Some("group".to_string()),
+                    color: Some("#0000ff".to_string()),
+                }),
+            ],
+            edges: vec![],
+        };
+        let theme = AppThemeColors::default();
+        let grid = render_canvas_snapshot(
+            &data, &theme, crate::config::IconMode::default(),
+            60, 30, 1.0, 0.0, 0.0,
+        );
+        let has_file_content = grid.iter().any(|row| {
+            let s: String = row.iter().map(|(ch, _)| *ch).collect();
+            s.contains("hello") || s.contains("file1")
+        });
+        assert!(has_file_content, "file node must render on top of group, not be cleared");
     }
 }
