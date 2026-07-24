@@ -40,7 +40,7 @@ pub fn render_canvas_snapshot(
 
     let zoom_x = (width as f64 - 4.0) / content_w;
     let zoom_y = (height as f64 - 4.0) / content_h;
-    let zoom = (zoom_x.min(zoom_y) * scale).clamp(0.01, 10.0);
+    let zoom = (zoom_x.min(zoom_y) * scale).clamp(0.0001, 10.0);
 
     let center_x = (min_x + max_x) / 2.0;
     let center_y = (min_y + max_y) / 2.0;
@@ -88,8 +88,8 @@ pub fn render_canvas_snapshot(
                 ((nx - center_x) * zoom) + (area.x as f64 + area.width as f64 / 2.0) + offset_x;
             let sy =
                 ((ny - center_y) * zoom) + (area.y as f64 + area.height as f64 / 2.0) + offset_y;
-            let sw = (nw * zoom).max(4.0);
-            let sh = (nh * zoom).max(2.0);
+            let sw = (nw * zoom).max(1.0);
+            let sh = (nh * zoom).max(1.0);
 
             if sx + sw < area.left() as f64
                 || sx > area.right() as f64
@@ -231,16 +231,16 @@ pub fn render_draw_snapshot_with_size(
 
     let (min_x, min_y, max_x, max_y) = draw_bounds(data);
     let padding = 20.0;
-    let cx = (min_x + max_x) / 2.0;
-    let cy = (min_y + max_y) / 2.0;
-    let hw = ((max_x - min_x) / 2.0 + padding).max(10.0) / scale;
-    let hh = ((max_y - min_y) / 2.0 + padding).max(10.0) / scale;
-    let ratio_x = (2.0 * hw) / width as f64;
-    let ratio_y = (2.0 * hh) / height as f64;
-    let cx_shifted = cx - offset_x * ratio_x;
-    let cy_shifted = cy + offset_y * ratio_y;
-    let x_bounds = [cx_shifted - hw, cx_shifted + hw];
-    let y_bounds = [cy_shifted - hh, cy_shifted + hh];
+    let content_w = (max_x - min_x + 2.0 * padding).max(1.0);
+    let content_h = (max_y - min_y + 2.0 * padding).max(1.0);
+    let upc =
+        (content_w / f64::from(width)).max(content_h / f64::from(height)) / scale.max(0.01);
+    let cx = (min_x + max_x) / 2.0 - offset_x * upc;
+    let cy = (min_y + max_y) / 2.0 + offset_y * upc;
+    let hw = upc * f64::from(width) / 2.0;
+    let hh = upc * f64::from(height) / 2.0;
+    let x_bounds = [cx - hw, cx + hw];
+    let y_bounds = [cy - hh, cy + hh];
 
     let backend = TestBackend::new(width, height);
     let mut terminal = Terminal::new(backend).unwrap();
@@ -667,6 +667,7 @@ fn draw_shape_on_canvas(ctx: &mut Context, shape: &Shape) {
 mod tests {
     use super::*;
     use ratatui::backend::TestBackend;
+    use crate::pinstar::data::TextNode;
 
     /// Regression guard: a grid cell containing a control char must not
     /// reach `Cell::set_char` as-is (ratatui debug-assert!-panics on
@@ -713,5 +714,111 @@ mod tests {
             "cell (1,0) should not be 'b' — wide char '中' occupies cols 0-1"
         );
         assert_eq!(buffer.cell((2, 0)).unwrap().symbol(), "b");
+    }
+
+    #[test]
+    fn canvas_snapshot_fits_wide_content() {
+        let data = CanvasData {
+            nodes: vec![
+                CanvasNode::Text(TextNode {
+                    id: "n1".to_string(),
+                    x: 0.0,
+                    y: 0.0,
+                    width: 500.0,
+                    height: 700.0,
+                    text: "A".to_string(),
+                    title: None,
+                    color: None,
+                }),
+                CanvasNode::Text(TextNode {
+                    id: "n2".to_string(),
+                    x: 7000.0,
+                    y: 0.0,
+                    width: 500.0,
+                    height: 700.0,
+                    text: "B".to_string(),
+                    title: None,
+                    color: None,
+                }),
+            ],
+            edges: vec![],
+        };
+        let theme = AppThemeColors::default();
+        let grid = render_canvas_snapshot(
+            &data,
+            &theme,
+            crate::config::IconMode::default(),
+            40,
+            20,
+            1.0,
+            0.0,
+            0.0,
+        );
+        let left_has_content = (0..=19).any(|col| {
+            grid.iter()
+                .any(|row| row.get(col).map_or(false, |(ch, _)| *ch != ' '))
+        });
+        assert!(left_has_content, "left half should have content from node near x=0");
+        let right_has_content = (20..=39).any(|col| {
+            grid.iter()
+                .any(|row| row.get(col).map_or(false, |(ch, _)| *ch != ' '))
+        });
+        assert!(right_has_content, "right half should have content from node near x=7000");
+    }
+
+    #[test]
+    fn draw_snapshot_preserves_aspect_with_letterbox() {
+        let data = DrawData {
+            version: 1,
+            width: 500.0,
+            height: 500.0,
+            background: None,
+            elements: vec![DrawElement::Shape(Shape::Rect {
+                x: 0.0,
+                y: 0.0,
+                width: 100.0,
+                height: 100.0,
+                color: (255, 0, 0),
+            })],
+        };
+        let theme = AppThemeColors::default();
+        let grid = render_draw_snapshot_with_size(
+            &data,
+            &theme,
+            crate::config::IconMode::default(),
+            40,
+            10,
+            1.0,
+            0.0,
+            0.0,
+        );
+        for row in &grid {
+            assert_eq!(row[0].0, ' ', "column 0 must be letterbox (space)");
+            assert_eq!(row[39].0, ' ', "column 39 must be letterbox (space)");
+        }
+    }
+
+    /// Smoke: real clin_arch.canvas (~7180 units wide, previously cropped)
+    /// must render without panic at preview size and produce non-empty output.
+    #[test]
+    fn canvas_snapshot_fits_wide_fixture() {
+        let raw = include_str!("../dev_scripts/clin_arch.canvas");
+        let data: CanvasData = serde_json::from_str(raw).expect("parse fixture");
+        assert!(!data.nodes.is_empty(), "fixture has nodes");
+        let theme = AppThemeColors::default();
+        let grid = render_canvas_snapshot(
+            &data,
+            &theme,
+            crate::config::IconMode::default(),
+            78,
+            38,
+            1.0,
+            0.0,
+            0.0,
+        );
+        assert_eq!(grid.len(), 38, "height matches");
+        assert_eq!(grid[0].len(), 78, "width matches");
+        let has_content = grid.iter().any(|row| row.iter().any(|(ch, _)| *ch != ' '));
+        assert!(has_content, "fixture renders visible content at preview size");
     }
 }
