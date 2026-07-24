@@ -121,9 +121,9 @@ fn handle_normal_input(
                     let n = count.unwrap_or(1) as usize;
                     for _ in 0..n {
                         state.diff_scroll = state.diff_scroll.saturating_add(10);
-                        let max = state
-                            .diff_lines
-                            .len()
+                        // +2 for the 2-line header (File:/Commit: line + blank)
+                        // rendered in draw_diff_pane ahead of diff_lines
+                        let max = (state.diff_lines.len() + 2)
                             .saturating_sub(state.last_diff_height as usize);
                         state.diff_scroll = state.diff_scroll.min(max as u16);
                     }

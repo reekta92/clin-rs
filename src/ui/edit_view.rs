@@ -269,7 +269,11 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         // Scrollbar for editor body
         if app.config.ui.scrollbars {
             let content_len = app.editor.editor.lines().len();
-            let viewport_len = editor_container.height as usize;
+            // The editor block uses Padding::new(0, 2, 1, 0), so the textarea
+            // renders height-1 rows. Match refresh_textarea_viewport
+            // (src/ui/mod.rs:1516), which derives visible rows from
+            // block.inner(area).
+            let viewport_len = editor_container.height.saturating_sub(1) as usize;
             let area = editor_container;
             let meta = crate::ui::scrollbar::ScrollbarMeta {
                 track: crate::ui::scrollbar::track_rect(area),

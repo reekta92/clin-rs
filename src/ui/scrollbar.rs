@@ -40,9 +40,16 @@ pub fn overflows(content_len: usize, viewport_len: usize) -> bool {
 
 /// Render a themed vertical scrollbar on the rightmost column of `area`.
 /// No-op (auto-hide) when `!overflows(content_len, viewport_len)`.
-/// `position` is the current top index; `max_position` = the largest legal
-/// `position` (content_len.saturating_sub(viewport_len) for offset regions,
-/// content_len.saturating_sub(1) for selection regions — caller picks).
+///
+/// `position` / `max_position` may use either convention:
+/// - offset: `max_position = content_len.saturating_sub(viewport_len)`
+/// - selection: `max_position = content_len.saturating_sub(1)`
+///
+/// ratatui's `ScrollbarState` interprets position as a selection index in
+/// `[0, content_len-1]`, where the thumb only reaches the track bottom at
+/// `position == content_len - 1`. This function scales offset-range callers
+/// into that selection range internally, so the thumb is flush at the
+/// track bottom when `position == max_position` for both conventions.
 pub fn draw_scrollbar(
     frame: &mut Frame,
     area: Rect,
@@ -55,9 +62,21 @@ pub fn draw_scrollbar(
     if !overflows(content_len, viewport_len) {
         return;
     }
+    // Scale from caller's range [0, max_position] into ratatui's selection
+    // range [0, content_len-1]. For selection callers (max_position ==
+    // content_len-1) this is identity.
+    let scaled_position = if max_position > 0 {
+        position
+            .min(max_position)
+            .saturating_mul(content_len.saturating_sub(1))
+            .checked_div(max_position)
+            .unwrap_or(0)
+    } else {
+        0
+    };
     let mut s = ScrollbarState::new(content_len)
         .viewport_content_length(viewport_len)
-        .position(position.min(max_position));
+        .position(scaled_position);
     let sb = Scrollbar::new(ScrollbarOrientation::VerticalRight)
         .thumb_style(
             Style::default()
@@ -271,5 +290,82 @@ mod tests {
         let mut drag = None;
         let res = handle_scrollbar_mouse(&scroll_up, m, 0.5, &mut drag);
         assert!(res.is_none()); // scroll events pass through
+    }
+
+    // ── draw_scrollbar position scaling tests ──────────────────────
+
+    /// Offset convention: position == max_position (bottom of content).
+    /// Thumb must render on the bottom row of the track (ratatui
+    /// reaches bottom only when position == content_len - 1 internally).
+    #[test]
+    fn offset_convention_thumb_at_bottom() {
+        let backend = ratatui::backend::TestBackend::new(1, 10);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| {
+                draw_scrollbar(
+                    f,
+                    Rect::new(0, 0, 1, 10),
+                    100, // content_len
+                    10,  // viewport_len
+                    90,  // position == max_position (offset convention)
+                    90,  // max_position = content_len - viewport_len
+                    &AppThemeColors::default(),
+                );
+            })
+            .unwrap();
+        let buf = terminal.backend().buffer();
+        // Bottom cell (y=9) is the thumb
+        assert_eq!(buf.cell((0, 9)).unwrap().symbol(), "█");
+        // Top cell (y=0) is track
+        assert_ne!(buf.cell((0, 0)).unwrap().symbol(), "█");
+    }
+
+    /// Selection convention identity: max_position == content_len - 1.
+    /// Scaling is identity (no-op), and thumb is at bottom.
+    #[test]
+    fn selection_convention_identity_thumb_at_bottom() {
+        let backend = ratatui::backend::TestBackend::new(1, 10);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| {
+                draw_scrollbar(
+                    f,
+                    Rect::new(0, 0, 1, 10),
+                    100, // content_len
+                    10,  // viewport_len
+                    99,  // position == content_len - 1 (selection convention)
+                    99,  // max_position = content_len - 1
+                    &AppThemeColors::default(),
+                );
+            })
+            .unwrap();
+        let buf = terminal.backend().buffer();
+        assert_eq!(buf.cell((0, 9)).unwrap().symbol(), "█");
+    }
+
+    /// Position 0 → thumb at top row of track, bottom row is track.
+    #[test]
+    fn position_zero_thumb_at_top() {
+        let backend = ratatui::backend::TestBackend::new(1, 10);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| {
+                draw_scrollbar(
+                    f,
+                    Rect::new(0, 0, 1, 10),
+                    100, // content_len
+                    10,  // viewport_len
+                    0,   // position
+                    90,  // max_position (offset convention)
+                    &AppThemeColors::default(),
+                );
+            })
+            .unwrap();
+        let buf = terminal.backend().buffer();
+        // Top cell (y=0) is the thumb
+        assert_eq!(buf.cell((0, 0)).unwrap().symbol(), "█");
+        // Bottom cell (y=9) is track
+        assert_ne!(buf.cell((0, 9)).unwrap().symbol(), "█");
     }
 }
