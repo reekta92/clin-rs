@@ -683,6 +683,27 @@ pub fn handle_edit_mouse(
         return;
     }
 
+    // Scrollbar drag/click on editor body
+    if app.config.ui.scrollbars
+        && let Some(meta) = app.editor.last_scroll
+    {
+        let max_pos = meta.content_len.saturating_sub(meta.viewport_len);
+        let frac = app.editor.body_viewport_row as f32 / max_pos.max(1) as f32;
+        if let Some(new_frac) = crate::ui::scrollbar::handle_scrollbar_mouse(
+            &mouse_event,
+            meta,
+            frac,
+            &mut app.editor.scroll_drag,
+        ) {
+            let new_pos = ((new_frac * max_pos as f32).round() as usize).min(max_pos);
+            let delta = new_pos as i16 - app.editor.body_viewport_row as i16;
+            if delta != 0 {
+                app.scroll_editor(delta, 0);
+            }
+            return;
+        }
+    }
+
     match mouse_event.kind {
         MouseEventKind::Down(MouseButton::Left) => {
             // READ-mode: start selection

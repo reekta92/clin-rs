@@ -28,7 +28,10 @@ toggle_action!(
     "\u{1f4c4}",
     toggle_wrap,
     app,
-    if app.preview_wrap { "On" } else { "Off" }
+    if match app.mode {
+        crate::app::ViewMode::Edit => app.config.editor.soft_wrap,
+        _ => app.preview_wrap,
+    } { "On" } else { "Off" }
 );
 
 toggle_action!(

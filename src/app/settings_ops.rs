@@ -304,7 +304,10 @@ impl App {
     }
 
     pub fn toggle_wrap(&mut self) {
-        let new_wrap = !self.preview_wrap;
+        let new_wrap = match self.mode {
+            ViewMode::Edit => !self.config.editor.soft_wrap,
+            _ => !self.preview_wrap,
+        };
         self.preview_wrap = new_wrap;
         self.config.core.preview_wrap = new_wrap;
         self.config.editor.soft_wrap = new_wrap;

@@ -266,6 +266,27 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         if app.config.editor.edit_mode_highlight {
             super::overlay_markdown_highlight(frame, app, editor_container);
         }
+        // Scrollbar for editor body
+        if app.config.ui.scrollbars {
+            let content_len = app.editor.editor.lines().len();
+            let viewport_len = editor_container.height as usize;
+            let area = editor_container;
+            let meta = crate::ui::scrollbar::ScrollbarMeta {
+                track: crate::ui::scrollbar::track_rect(area),
+                content_len,
+                viewport_len,
+            };
+            app.editor.last_scroll = Some(meta);
+            crate::ui::scrollbar::draw_scrollbar(
+                frame,
+                area,
+                content_len,
+                viewport_len,
+                app.editor.body_viewport_row as usize,
+                content_len.saturating_sub(viewport_len),
+                &app.app_theme,
+            );
+        }
     }
 
     // Sync preview scroll with editor scroll

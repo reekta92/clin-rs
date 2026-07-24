@@ -74,6 +74,8 @@ pub struct NoteEditor {
     pub title_viewport_col: u16,
     pub last_body_width: u16,
     pub last_body_height: u16,
+    pub last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
+    pub scroll_drag: Option<crate::ui::scrollbar::ScrollDrag>,
     pub(crate) source_highlighter: Option<crate::markdown::SourceHighlighter>,
     /// Cache of per-line highlight styles, rebuilt only when the document changes.
     pub md_highlight_cache: Vec<Vec<ratatui::style::Style>>,
@@ -129,6 +131,8 @@ impl Default for NoteEditor {
             preview_drag_last_pos: None,
             last_body_width: 0u16,
             last_body_height: 0u16,
+            last_scroll: None,
+            scroll_drag: None,
             body_viewport_row: 0,
             body_viewport_col: 0,
             title_viewport_row: 0,

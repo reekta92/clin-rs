@@ -1511,7 +1511,8 @@ impl App {
         let content = self.editor.editor.lines().join("\n");
         let width = self.desired_editor_preview_width();
         let mut renderer = self.editor.md_preview_renderer.take().unwrap_or_default();
-        let opts = crate::markdown::MdRenderOpts::from_config(&self.config);
+        let mut opts = crate::markdown::MdRenderOpts::from_config(&self.config);
+        opts.wrap = self.config.editor.soft_wrap;
         let height = self.desired_editor_preview_height();
         let viewport = crate::markdown::RenderViewport {
             start: renderer.visible_start(),
