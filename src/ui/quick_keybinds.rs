@@ -1,7 +1,7 @@
 use ratatui::{
     Frame,
     layout::Rect,
-    style::{Color, Style},
+    style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Clear, Paragraph},
 };
@@ -171,7 +171,7 @@ pub fn draw_quick_keybinds(frame: &mut Frame, app: &App) {
         let row = Line::from(vec![
             Span::styled(
                 format!("{:<width$}", keys, width = max_key_width),
-                Style::default().fg(theme.highlight_fg).bg(bg),
+                Style::default().fg(theme.highlight_fg).bg(bg).add_modifier(Modifier::BOLD),
             ),
             Span::styled(SEP, Style::default().fg(theme.muted).bg(bg)),
             Span::styled(desc.clone(), Style::default().fg(theme.highlight_fg).bg(bg)),

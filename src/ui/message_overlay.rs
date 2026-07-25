@@ -1,7 +1,7 @@
 use ratatui::{
     Frame,
     layout::Rect,
-    style::{Color, Style},
+    style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Clear, Paragraph},
 };
@@ -165,7 +165,17 @@ pub fn draw_message_overlay(
         frame.render_widget(Clear, full_row);
         frame.render_widget(Block::default().style(Style::default().bg(bg)), full_row);
 
-        let styled_line = Line::from(Span::styled(&wl.text, Style::default().fg(wl.fg).bg(bg)));
+        let styled_line = if let Some(colon_pos) = wl.text.find(':') {
+            let prefix_end = colon_pos + 1; // include the colon
+            let bold_style = Style::default().fg(wl.fg).bg(bg).add_modifier(Modifier::BOLD);
+            let normal_style = Style::default().fg(wl.fg).bg(bg);
+            Line::from(vec![
+                Span::styled(&wl.text[..prefix_end], bold_style),
+                Span::styled(&wl.text[prefix_end..], normal_style),
+            ])
+        } else {
+            Line::from(Span::styled(&wl.text, Style::default().fg(wl.fg).bg(bg)))
+        };
         let content_area = Rect::new(dropdown_area.x + 1, row_y, popup_width.saturating_sub(2), 1);
         frame.render_widget(Paragraph::new(styled_line), content_area);
     }
