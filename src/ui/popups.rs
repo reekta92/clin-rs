@@ -674,10 +674,10 @@ pub fn draw_hint_bar_style_popup(
         theme,
     );
 
-    let options = ["Classic", "Sharp", "Rounded", "Slanted"];
+    let options: Vec<&str> = crate::config::HintBarStyle::ALL.iter().map(|s| s.name()).collect();
     let items: Vec<ListItem> = options
         .iter()
-        .map(|&opt| ListItem::new(Line::from(Span::raw(opt))))
+        .map(|opt| ListItem::new(Line::from(Span::raw(*opt))))
         .collect();
 
     let list = List::new(items)
@@ -1080,6 +1080,7 @@ pub fn ext_badge_spans<'a>(
 ) -> Vec<Span<'a>> {
     let b = ext_badge(enabled, theme);
     let mut spans = Vec::new();
+    let pwr_bg = b.style.fg.unwrap_or(theme.accent);
     match theme.hint_bar_style {
         crate::config::HintBarStyle::Sharp
         | crate::config::HintBarStyle::Rounded
@@ -1090,7 +1091,6 @@ pub fn ext_badge_spans<'a>(
                 crate::config::HintBarStyle::Slanted => "\u{e0bc}",
                 _ => unreachable!(),
             };
-            let pwr_bg = b.style.fg.unwrap_or(theme.accent);
             let pwr_style = Style::default()
                 .bg(pwr_bg)
                 .fg(theme.highlight_fg)
@@ -1103,7 +1103,31 @@ pub fn ext_badge_spans<'a>(
             }
             spans.push(Span::styled(sep_char, sep_style));
         }
-        _ => {
+        crate::config::HintBarStyle::Bubbles
+        | crate::config::HintBarStyle::Blurred
+        | crate::config::HintBarStyle::Chips => {
+            let (cap_l, cap_r) = theme.hint_bar_style.cell_caps().unwrap_or(("", ""));
+            let pwr_style = Style::default()
+                .bg(pwr_bg)
+                .fg(theme.highlight_fg)
+                .add_modifier(b.style.add_modifier);
+
+            spans.push(Span::styled(cap_l, Style::default().fg(pwr_bg)));
+            spans.push(Span::styled(b.label, pwr_style));
+
+            spans.push(Span::styled(cap_r, Style::default().fg(pwr_bg)));
+            spans.push(Span::raw(" "));
+        }
+        crate::config::HintBarStyle::Brackets => {
+            spans.push(Span::styled("[", Style::default().fg(theme.fg)));
+            spans.push(Span::styled(
+                b.label.trim().to_string(),
+                Style::default().fg(pwr_bg).add_modifier(Modifier::BOLD),
+            ));
+            spans.push(Span::styled("]", Style::default().fg(theme.fg)));
+            spans.push(Span::raw(" "));
+        }
+        crate::config::HintBarStyle::Classic => {
             spans.push(Span::styled(b.label, b.style));
             spans.push(Span::raw(" "));
         }
@@ -1165,6 +1189,29 @@ pub fn format_keybind_hints<'a>(
     theme: &'a AppThemeColors,
     items: &[(String, &'static str)],
 ) -> Line<'a> {
+    let build_bg_colors = || {
+        let base_colors = [
+            theme.accent,
+            theme.folder,
+            theme.tag,
+            theme.warning,
+            theme.success,
+        ];
+        let mut bg_colors = Vec::new();
+        for &color in &base_colors {
+            if bg_colors.last() != Some(&color) {
+                bg_colors.push(color);
+            }
+        }
+        if bg_colors.len() > 1 && bg_colors.first() == bg_colors.last() {
+            bg_colors.pop();
+        }
+        if bg_colors.is_empty() {
+            bg_colors.push(theme.accent);
+        }
+        bg_colors
+    };
+
     match theme.hint_bar_style {
         crate::config::HintBarStyle::Classic => format_keybind_hints_classic(theme, items),
         style @ (crate::config::HintBarStyle::Sharp
@@ -1176,27 +1223,7 @@ pub fn format_keybind_hints<'a>(
                 crate::config::HintBarStyle::Slanted => "\u{e0bc}",
                 _ => unreachable!(),
             };
-
-            let base_colors = [
-                theme.accent,
-                theme.folder,
-                theme.tag,
-                theme.warning,
-                theme.success,
-            ];
-            let mut bg_colors = Vec::new();
-            for &color in &base_colors {
-                if bg_colors.last() != Some(&color) {
-                    bg_colors.push(color);
-                }
-            }
-            // Prevent wrap-around duplicate (last == first after cycling)
-            if bg_colors.len() > 1 && bg_colors.first() == bg_colors.last() {
-                bg_colors.pop();
-            }
-            if bg_colors.is_empty() {
-                bg_colors.push(theme.accent);
-            }
+            let bg_colors = build_bg_colors();
             let fg = theme.highlight_fg;
             let mut spans = Vec::new();
 
@@ -1218,6 +1245,64 @@ pub fn format_keybind_hints<'a>(
                     sep_style = sep_style.bg(n_bg);
                 }
                 spans.push(Span::styled(sep_char, sep_style));
+            }
+            Line::from(spans)
+        }
+        style @ (crate::config::HintBarStyle::Bubbles
+        | crate::config::HintBarStyle::Blurred
+        | crate::config::HintBarStyle::Chips) => {
+            let (cap_l, cap_r) = style.cell_caps().unwrap_or(("", ""));
+            let bg_colors = build_bg_colors();
+            let fg = theme.highlight_fg;
+            let bar_bg = theme.hint_line_bg();
+            let mut spans = Vec::new();
+
+            for (i, (key, action)) in items.iter().enumerate() {
+                let bg = bg_colors[i % bg_colors.len()];
+
+                if let Some(bbg) = bar_bg {
+                    spans.push(Span::styled(cap_l, Style::default().fg(bg).bg(bbg)));
+                } else {
+                    spans.push(Span::styled(cap_l, Style::default().fg(bg)));
+                }
+
+                spans.push(Span::styled(
+                    format!(" {} {} ", key, action),
+                    Style::default().bg(bg).fg(fg).add_modifier(Modifier::BOLD),
+                ));
+
+                if let Some(bbg) = bar_bg {
+                    spans.push(Span::styled(cap_r, Style::default().fg(bg).bg(bbg)));
+                } else {
+                    spans.push(Span::styled(cap_r, Style::default().fg(bg)));
+                }
+
+                if i < items.len() - 1 {
+                    if let Some(bbg) = bar_bg {
+                        spans.push(Span::styled(" ", Style::default().bg(bbg)));
+                    } else {
+                        spans.push(Span::raw(" "));
+                    }
+                }
+            }
+            Line::from(spans)
+        }
+        crate::config::HintBarStyle::Brackets => {
+            let mut spans = Vec::new();
+            for (i, (key, action)) in items.iter().enumerate() {
+                spans.push(Span::styled("[", Style::default().fg(theme.fg)));
+                spans.push(Span::styled(
+                    key.clone(),
+                    Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+                ));
+                spans.push(Span::styled("]", Style::default().fg(theme.fg)));
+                spans.push(Span::styled(
+                    format!(" {}", action),
+                    Style::default().fg(theme.muted),
+                ));
+                if i < items.len() - 1 {
+                    spans.push(Span::raw("  "));
+                }
             }
             Line::from(spans)
         }

@@ -375,6 +375,98 @@ pub enum HintBarStyle {
     Rounded,
     #[serde(alias = "powerline_slanted")]
     Slanted,
+    Bubbles,
+    Blurred,
+    Chips,
+    Brackets,
+}
+
+impl HintBarStyle {
+    /// Every style in picker/display order.
+    pub const ALL: [HintBarStyle; 8] = [
+        HintBarStyle::Classic,
+        HintBarStyle::Sharp,
+        HintBarStyle::Rounded,
+        HintBarStyle::Slanted,
+        HintBarStyle::Bubbles,
+        HintBarStyle::Blurred,
+        HintBarStyle::Chips,
+        HintBarStyle::Brackets,
+    ];
+
+    /// Display name ("Classic", "Bubbles", …).
+    pub fn name(self) -> &'static str {
+        match self {
+            HintBarStyle::Classic => "Classic",
+            HintBarStyle::Sharp => "Sharp",
+            HintBarStyle::Rounded => "Rounded",
+            HintBarStyle::Slanted => "Slanted",
+            HintBarStyle::Bubbles => "Bubbles",
+            HintBarStyle::Blurred => "Blurred",
+            HintBarStyle::Chips => "Chips",
+            HintBarStyle::Brackets => "Brackets",
+        }
+    }
+
+    /// Config/template string ("classic", "bubbles", …) — matches serde names.
+    pub fn as_config_str(self) -> &'static str {
+        match self {
+            HintBarStyle::Classic => "classic",
+            HintBarStyle::Sharp => "sharp",
+            HintBarStyle::Rounded => "rounded",
+            HintBarStyle::Slanted => "slanted",
+            HintBarStyle::Bubbles => "bubbles",
+            HintBarStyle::Blurred => "blurred",
+            HintBarStyle::Chips => "chips",
+            HintBarStyle::Brackets => "brackets",
+        }
+    }
+
+    /// Position in `ALL`.
+    pub fn index(self) -> usize {
+        HintBarStyle::ALL
+            .iter()
+            .position(|&s| s == self)
+            .unwrap_or(0)
+    }
+
+    /// `ALL.get(idx)`, fallback Classic (default) on out-of-range.
+    pub fn from_index(idx: usize) -> Self {
+        HintBarStyle::ALL.get(idx).copied().unwrap_or_default()
+    }
+
+    /// Styles painting cells on filled backgrounds.
+    /// true: Sharp|Rounded|Slanted|Bubbles|Blurred|Chips. false: Classic|Brackets.
+    pub fn has_filled_cells(self) -> bool {
+        match self {
+            HintBarStyle::Classic | HintBarStyle::Brackets => false,
+            HintBarStyle::Sharp
+            | HintBarStyle::Rounded
+            | HintBarStyle::Slanted
+            | HintBarStyle::Bubbles
+            | HintBarStyle::Blurred
+            | HintBarStyle::Chips => true,
+        }
+    }
+
+    /// Chained powerline family: Sharp|Rounded|Slanted.
+    pub fn is_chained(self) -> bool {
+        matches!(
+            self,
+            HintBarStyle::Sharp | HintBarStyle::Rounded | HintBarStyle::Slanted
+        )
+    }
+
+    /// Detached-family edge glyphs (left, right), drawn fg=cell-bg on bar-bg.
+    /// Bubbles → ("\u{e0b6}", "\u{e0b4}"); Blurred → ("░▒▓", "▓▒░"); Chips → ("", ""); others → None.
+    pub fn cell_caps(self) -> Option<(&'static str, &'static str)> {
+        match self {
+            HintBarStyle::Bubbles => Some(("\u{e0b6}", "\u{e0b4}")),
+            HintBarStyle::Blurred => Some(("░▒▓", "▓▒░")),
+            HintBarStyle::Chips => Some(("", "")),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -499,5 +591,22 @@ mod tests {
     #[test]
     fn unknown_theme_still_errors() {
         assert!(Theme::from_str("not_a_theme").is_err());
+    }
+
+    #[test]
+    fn hint_bar_style_round_trip() {
+        for s in HintBarStyle::ALL {
+            assert_eq!(HintBarStyle::from_index(s.index()), s, "from_index roundtrip for {:?}", s);
+        }
+        // Names must be unique.
+        let mut names: Vec<&str> = HintBarStyle::ALL.iter().map(|s| s.name()).collect();
+        names.sort();
+        names.dedup();
+        assert_eq!(names.len(), HintBarStyle::ALL.len(), "name() values not unique");
+        // Config strings must be unique.
+        let mut cfg: Vec<&str> = HintBarStyle::ALL.iter().map(|s| s.as_config_str()).collect();
+        cfg.sort();
+        cfg.dedup();
+        assert_eq!(cfg.len(), HintBarStyle::ALL.len(), "as_config_str() values not unique");
     }
 }

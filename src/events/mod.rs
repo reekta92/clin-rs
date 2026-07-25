@@ -1619,7 +1619,7 @@ impl crate::popups::ActivePopup {
             }
             ActivePopup::HintBarStyle(mut popup) => {
                 app.seq_matcher.clear();
-                match route_selection_list(&key, &app.keybinds, &mut popup.selected, 3) {
+                match route_selection_list(&key, &app.keybinds, &mut popup.selected, crate::config::HintBarStyle::ALL.len() - 1) {
                     SelListAction::Up | SelListAction::Down => {
                         app.popups.active = Some(ActivePopup::HintBarStyle(popup));
                         app.select_hint_bar_style();

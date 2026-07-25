@@ -1811,12 +1811,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     } else {
         default_hints
     };
-    let badge_spans = if matches!(
-        app.app_theme.hint_bar_style,
-        crate::config::HintBarStyle::Sharp
-            | crate::config::HintBarStyle::Rounded
-            | crate::config::HintBarStyle::Slanted
-    ) {
+    let badge_spans = if app.app_theme.hint_bar_style.has_filled_cells() {
         crate::ui::ext_badge_spans(
             app.editor.external_editor_enabled,
             &app.app_theme,

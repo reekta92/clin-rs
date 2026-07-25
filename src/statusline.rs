@@ -236,15 +236,7 @@ impl StatuslineContext<'_> {
                 };
                 Some(im.into())
             }
-            "hint_bar_style" => {
-                let hbs = match self.config.ui.hint_bar_style {
-                    crate::config::HintBarStyle::Classic => "classic",
-                    crate::config::HintBarStyle::Sharp => "sharp",
-                    crate::config::HintBarStyle::Rounded => "rounded",
-                    crate::config::HintBarStyle::Slanted => "slanted",
-                };
-                Some(hbs.into())
-            }
+            "hint_bar_style" => Some(self.config.ui.hint_bar_style.as_config_str().into()),
             "background" => {
                 let bg = match self.config.ui.background {
                     crate::config::Background::Transparent => "transparent",
@@ -1253,14 +1245,13 @@ pub fn line_from_segments<'a>(
         return Line::default();
     }
 
-    let is_powerline = matches!(
+    // Every non-Classic style splits composite segments into per-term cells.
+    let split_cells = !matches!(
         theme.hint_bar_style,
-        crate::config::HintBarStyle::Sharp
-            | crate::config::HintBarStyle::Rounded
-            | crate::config::HintBarStyle::Slanted
+        crate::config::HintBarStyle::Classic
     );
 
-    let flat: Vec<FlatSegment> = if is_powerline {
+    let flat: Vec<FlatSegment> = if split_cells {
         let mut out = Vec::new();
         for seg in flat {
             match seg {
@@ -1288,100 +1279,194 @@ pub fn line_from_segments<'a>(
 
     let mut spans = Vec::new();
 
-    if is_powerline {
-        let sep_char = match theme.hint_bar_style {
-            crate::config::HintBarStyle::Sharp => {
-                if is_right {
-                    "\u{e0b2}"
-                } else {
-                    "\u{e0b0}"
-                }
-            }
-            crate::config::HintBarStyle::Rounded => {
-                if is_right {
-                    "\u{e0b6}"
-                } else {
-                    "\u{e0b4}"
-                }
-            }
-            crate::config::HintBarStyle::Slanted => {
-                if is_right {
-                    "\u{e0be}"
-                } else {
-                    "\u{e0bc}"
-                }
-            }
-            _ => unreachable!(),
-        };
+    let bar_bg = if is_header {
+        theme.title_bar_bg()
+    } else {
+        theme.hint_line_bg()
+    };
 
-        let bg_colors = [
-            theme.accent,
-            theme.folder,
-            theme.tag,
-            theme.warning,
-            theme.success,
-        ];
+    let bg_colors = [
+        theme.accent,
+        theme.folder,
+        theme.tag,
+        theme.warning,
+        theme.success,
+    ];
 
-        let bar_bg = if is_header {
-            theme.title_bar_bg()
-        } else {
-            theme.hint_line_bg()
-        };
+    let is_header_left = is_header && !is_right;
 
-        let mut cell_idx = 0;
-
-        if is_right {
-            for (idx, seg) in flat.iter().enumerate() {
+    match theme.hint_bar_style {
+        crate::config::HintBarStyle::Classic => {
+            // Classic: muted dots + no bg fills.
+            let palette = bg_colors;
+            let mut cell_idx = 0;
+            let mut prev_was_cell = false;
+            for seg in flat {
                 match seg {
                     FlatSegment::Cell(text) => {
-                        let bg = bg_colors[cell_idx % bg_colors.len()];
-                        let prev_bg = if idx > 0 {
-                            let prev_cell_idx = cell_idx.saturating_sub(1);
-                            get_segment_bg(
-                                &flat[idx - 1],
-                                prev_cell_idx,
-                                is_header,
-                                true,
-                                theme,
-                                &bg_colors,
-                            )
-                        } else {
-                            None
-                        };
-                        let prev_bg_val = prev_bg.or(bar_bg).unwrap_or(Color::Reset);
-
-                        let mut sep_style = Style::default().fg(bg);
-                        if prev_bg.or(bar_bg).is_some() {
-                            sep_style = sep_style.bg(prev_bg_val);
-                        }
-                        spans.push(Span::styled(sep_char, sep_style));
-
-                        spans.push(Span::styled(
-                            format!(" {} ", text),
+                        let style = if is_header_left && cell_idx == 0 {
                             Style::default()
-                                .bg(bg)
                                 .fg(theme.highlight_fg)
-                                .add_modifier(Modifier::BOLD),
-                        ));
-
+                                .bg(theme.heading)
+                                .add_modifier(Modifier::BOLD)
+                        } else if is_header_left {
+                            Style::default().fg(theme.fg)
+                        } else {
+                            Style::default()
+                                .fg(palette[cell_idx % palette.len()])
+                                .add_modifier(Modifier::BOLD)
+                        };
+                        if !is_header_left && prev_was_cell {
+                            spans.push(Span::styled(" · ", Style::default().fg(theme.muted)));
+                        }
+                        let text_to_render = if is_header_left && cell_idx == 0 {
+                            format!(" {} ", text.trim())
+                        } else {
+                            text
+                        };
+                        spans.push(Span::styled(text_to_render, style));
                         cell_idx += 1;
+                        prev_was_cell = true;
                     }
                     FlatSegment::Composite(comp_spans) => {
-                        spans.extend(comp_spans.clone());
+                        if !is_header_left && prev_was_cell {
+                            spans.push(Span::styled(" · ", Style::default().fg(theme.muted)));
+                        }
+                        spans.extend(comp_spans);
+                        prev_was_cell = false;
                     }
                     FlatSegment::Splittable(_) => unreachable!(),
                 }
             }
-        } else {
+        }
+        style if style.is_chained() => {
+            // Chained powerline family: Sharp, Rounded, Slanted.
+            let sep_char = match style {
+                crate::config::HintBarStyle::Sharp => {
+                    if is_right { "\u{e0b2}" } else { "\u{e0b0}" }
+                }
+                crate::config::HintBarStyle::Rounded => {
+                    if is_right { "\u{e0b6}" } else { "\u{e0b4}" }
+                }
+                crate::config::HintBarStyle::Slanted => {
+                    if is_right { "\u{e0be}" } else { "\u{e0bc}" }
+                }
+                _ => unreachable!(),
+            };
+
+            let mut cell_idx = 0;
+
+            if is_right {
+                for (idx, seg) in flat.iter().enumerate() {
+                    match seg {
+                        FlatSegment::Cell(text) => {
+                            let bg = bg_colors[cell_idx % bg_colors.len()];
+                            let prev_bg = if idx > 0 {
+                                let prev_cell_idx = cell_idx.saturating_sub(1);
+                                get_segment_bg(
+                                    &flat[idx - 1],
+                                    prev_cell_idx,
+                                    is_header,
+                                    true,
+                                    theme,
+                                    &bg_colors,
+                                )
+                            } else {
+                                None
+                            };
+                            let prev_bg_val = prev_bg.or(bar_bg).unwrap_or(Color::Reset);
+
+                            let mut sep_style = Style::default().fg(bg);
+                            if prev_bg.or(bar_bg).is_some() {
+                                sep_style = sep_style.bg(prev_bg_val);
+                            }
+                            spans.push(Span::styled(sep_char, sep_style));
+
+                            spans.push(Span::styled(
+                                format!(" {} ", text),
+                                Style::default()
+                                    .bg(bg)
+                                    .fg(theme.highlight_fg)
+                                    .add_modifier(Modifier::BOLD),
+                            ));
+
+                            cell_idx += 1;
+                        }
+                        FlatSegment::Composite(comp_spans) => {
+                            spans.extend(comp_spans.clone());
+                        }
+                        FlatSegment::Splittable(_) => unreachable!(),
+                    }
+                }
+            } else {
+                for (idx, seg) in flat.iter().enumerate() {
+                    match seg {
+                        FlatSegment::Cell(text) => {
+                            let bg = if is_header && cell_idx == 0 {
+                                theme.heading
+                            } else {
+                                bg_colors[cell_idx % bg_colors.len()]
+                            };
+
+                            spans.push(Span::styled(
+                                format!(" {} ", text),
+                                Style::default()
+                                    .bg(bg)
+                                    .fg(theme.highlight_fg)
+                                    .add_modifier(Modifier::BOLD),
+                            ));
+
+                            let next_bg = if idx + 1 < flat.len() {
+                                let next_cell_idx = cell_idx + 1;
+                                get_segment_bg(
+                                    &flat[idx + 1],
+                                    next_cell_idx,
+                                    is_header,
+                                    false,
+                                    theme,
+                                    &bg_colors,
+                                )
+                            } else {
+                                None
+                            };
+                            let next_bg_val = next_bg.or(bar_bg).unwrap_or(Color::Reset);
+
+                            let mut sep_style = Style::default().fg(bg);
+                            if next_bg.or(bar_bg).is_some() {
+                                sep_style = sep_style.bg(next_bg_val);
+                            }
+                            spans.push(Span::styled(sep_char, sep_style));
+
+                            cell_idx += 1;
+                        }
+                        FlatSegment::Composite(comp_spans) => {
+                            spans.extend(comp_spans.clone());
+                        }
+                        FlatSegment::Splittable(_) => unreachable!(),
+                    }
+                }
+            }
+        }
+        style if style.cell_caps().is_some() => {
+            // Detached family: Bubbles, Blurred, Chips. Symmetrical — same render for left/right.
+            let (cap_l, cap_r) = style.cell_caps().unwrap_or(("", ""));
+
+            let mut cell_idx = 0;
             for (idx, seg) in flat.iter().enumerate() {
                 match seg {
                     FlatSegment::Cell(text) => {
-                        let bg = if is_header && cell_idx == 0 {
+                        let bg = if is_header && !is_right && cell_idx == 0 {
                             theme.heading
                         } else {
                             bg_colors[cell_idx % bg_colors.len()]
                         };
 
+                        if let Some(bbg) = bar_bg {
+                            spans.push(Span::styled(cap_l, Style::default().fg(bg).bg(bbg)));
+                        } else {
+                            spans.push(Span::styled(cap_l, Style::default().fg(bg)));
+                        }
+
                         spans.push(Span::styled(
                             format!(" {} ", text),
                             Style::default()
@@ -1390,26 +1475,19 @@ pub fn line_from_segments<'a>(
                                 .add_modifier(Modifier::BOLD),
                         ));
 
-                        let next_bg = if idx + 1 < flat.len() {
-                            let next_cell_idx = cell_idx + 1;
-                            get_segment_bg(
-                                &flat[idx + 1],
-                                next_cell_idx,
-                                is_header,
-                                false,
-                                theme,
-                                &bg_colors,
-                            )
+                        if let Some(bbg) = bar_bg {
+                            spans.push(Span::styled(cap_r, Style::default().fg(bg).bg(bbg)));
                         } else {
-                            None
-                        };
-                        let next_bg_val = next_bg.or(bar_bg).unwrap_or(Color::Reset);
-
-                        let mut sep_style = Style::default().fg(bg);
-                        if next_bg.or(bar_bg).is_some() {
-                            sep_style = sep_style.bg(next_bg_val);
+                            spans.push(Span::styled(cap_r, Style::default().fg(bg)));
                         }
-                        spans.push(Span::styled(sep_char, sep_style));
+
+                        if idx < flat.len() - 1 {
+                            if let Some(bbg) = bar_bg {
+                                spans.push(Span::styled(" ", Style::default().bg(bbg)));
+                            } else {
+                                spans.push(Span::raw(" "));
+                            }
+                        }
 
                         cell_idx += 1;
                     }
@@ -1420,59 +1498,39 @@ pub fn line_from_segments<'a>(
                 }
             }
         }
-    } else {
-        let palette = [
-            theme.accent,
-            theme.folder,
-            theme.tag,
-            theme.warning,
-            theme.success,
-        ];
-        // header_left (the title) uses uniform pre-fix styling — no rotation, no separators.
-        let is_header_left = is_header && !is_right;
-        let mut cell_idx = 0;
-        let mut prev_was_cell = false;
-        for seg in flat {
-            match seg {
-                FlatSegment::Cell(text) => {
-                    let style = if is_header_left && cell_idx == 0 {
-                        // Title heading badge (unchanged).
-                        Style::default()
-                            .fg(theme.highlight_fg)
-                            .bg(theme.heading)
-                            .add_modifier(Modifier::BOLD)
-                    } else if is_header_left {
-                        // Header-left additional cells: pre-fix uniform color.
-                        Style::default().fg(theme.fg)
-                    } else {
-                        // Header-right + footer: rotating palette.
-                        Style::default()
-                            .fg(palette[cell_idx % palette.len()])
-                            .add_modifier(Modifier::BOLD)
-                    };
-                    // " · " separators appear only between rotating cells, never in header-left.
-                    if !is_header_left && prev_was_cell {
-                        spans.push(Span::styled(" · ", Style::default().fg(theme.muted)));
+        crate::config::HintBarStyle::Brackets => {
+            // Brackets: [key] action, no bg fills.
+            let mut cell_idx = 0;
+            let mut prev_was_cell = false;
+            for seg in flat {
+                match seg {
+                    FlatSegment::Cell(text) => {
+                        let fg = if is_header_left && cell_idx == 0 {
+                            theme.heading
+                        } else {
+                            bg_colors[cell_idx % bg_colors.len()]
+                        };
+                        if prev_was_cell {
+                            spans.push(Span::raw(" "));
+                        }
+                        spans.push(Span::styled("[", Style::default().fg(theme.fg)));
+                        spans.push(Span::styled(
+                            text,
+                            Style::default().fg(fg).add_modifier(Modifier::BOLD),
+                        ));
+                        spans.push(Span::styled("]", Style::default().fg(theme.fg)));
+                        cell_idx += 1;
+                        prev_was_cell = true;
                     }
-                    let text_to_render = if is_header_left && cell_idx == 0 {
-                        format!(" {} ", text.trim())
-                    } else {
-                        text
-                    };
-                    spans.push(Span::styled(text_to_render, style));
-                    cell_idx += 1;
-                    prev_was_cell = true;
-                }
-                FlatSegment::Composite(comp_spans) => {
-                    if !is_header_left && prev_was_cell {
-                        spans.push(Span::styled(" · ", Style::default().fg(theme.muted)));
+                    FlatSegment::Composite(comp_spans) => {
+                        spans.extend(comp_spans);
+                        prev_was_cell = false;
                     }
-                    spans.extend(comp_spans);
-                    prev_was_cell = false;
+                    FlatSegment::Splittable(_) => unreachable!(),
                 }
-                FlatSegment::Splittable(_) => unreachable!(),
             }
         }
+        _ => unreachable!(),
     }
 
     Line::from(spans)

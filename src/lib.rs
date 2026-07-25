@@ -66,7 +66,8 @@ static FORCE_QUIT: AtomicBool = AtomicBool::new(false);
 use anyhow::{Context, Result};
 use crossterm::event::{
     self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
-    Event, KeyCode, KeyEventKind, KeyModifiers,
+    Event, KeyboardEnhancementFlags, KeyCode, KeyEventKind, KeyModifiers,
+    PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
 };
 use crossterm::execute;
 use crossterm::terminal::{
@@ -92,6 +93,7 @@ pub fn run() -> Result<()> {
             LeaveAlternateScreen,
             DisableMouseCapture,
             DisableBracketedPaste,
+            PopKeyboardEnhancementFlags,
             crossterm::cursor::Show,
         );
         prev(panic_info);
@@ -1024,10 +1026,16 @@ impl TerminalGuard {
                 stdout,
                 EnterAlternateScreen,
                 EnableMouseCapture,
-                EnableBracketedPaste
+                EnableBracketedPaste,
+                PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
             )
         } else {
-            execute!(stdout, EnterAlternateScreen, EnableBracketedPaste)
+            execute!(
+                stdout,
+                EnterAlternateScreen,
+                EnableBracketedPaste,
+                PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
+            )
         };
         if let Err(e) = entered {
             disable_raw_mode().ok(); // guard won't be built; clean up raw mode ourselves
@@ -1045,6 +1053,7 @@ impl Drop for TerminalGuard {
             LeaveAlternateScreen,
             DisableMouseCapture,
             DisableBracketedPaste,
+            PopKeyboardEnhancementFlags,
             crossterm::cursor::Show,
         );
     }
@@ -1059,6 +1068,7 @@ pub fn force_quit() -> ! {
         crossterm::terminal::LeaveAlternateScreen,
         crossterm::event::DisableMouseCapture,
         crossterm::event::DisableBracketedPaste,
+        crossterm::event::PopKeyboardEnhancementFlags,
         crossterm::cursor::Show,
     );
     std::process::exit(130);

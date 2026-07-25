@@ -585,12 +585,7 @@ template = """
     }
 
     pub fn begin_hint_bar_style_selection(&mut self) {
-        let current_idx = match self.config.ui.hint_bar_style {
-            crate::config::HintBarStyle::Classic => 0,
-            crate::config::HintBarStyle::Sharp => 1,
-            crate::config::HintBarStyle::Rounded => 2,
-            crate::config::HintBarStyle::Slanted => 3,
-        };
+        let current_idx = self.config.ui.hint_bar_style.index();
         self.popups.active = Some(crate::popups::ActivePopup::HintBarStyle(
             crate::popups::HintBarStylePopup {
                 selected: current_idx,
@@ -600,21 +595,10 @@ template = """
 
     pub fn select_hint_bar_style(&mut self) {
         if let Some(crate::popups::ActivePopup::HintBarStyle(popup)) = self.popups.active.take() {
-            let style = match popup.selected {
-                0 => crate::config::HintBarStyle::Classic,
-                1 => crate::config::HintBarStyle::Sharp,
-                2 => crate::config::HintBarStyle::Rounded,
-                _ => crate::config::HintBarStyle::Slanted,
-            };
+            let style = crate::config::HintBarStyle::from_index(popup.selected);
             self.config.ui.hint_bar_style = style;
             self.app_theme.hint_bar_style = style;
-            let status = match style {
-                crate::config::HintBarStyle::Classic => "Hint bar style: Classic",
-                crate::config::HintBarStyle::Sharp => "Hint bar style: Sharp",
-                crate::config::HintBarStyle::Rounded => "Hint bar style: Rounded",
-                crate::config::HintBarStyle::Slanted => "Hint bar style: Slanted",
-            };
-            self.set_temporary_status_static(status);
+            self.set_temporary_status(&format!("Hint bar style: {}", style.name()));
             if let Ok(mut config) = crate::config::ClinConfig::load().0 {
                 config.ui.hint_bar_style = style;
                 if let Err(e) = config.save() {

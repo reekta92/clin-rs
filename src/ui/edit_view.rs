@@ -144,12 +144,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             frame.render_widget(left_bar, left_area);
 
             if let Some(r_text) = right_line {
-                let is_powerline = matches!(
-                    theme.hint_bar_style,
-                    crate::config::HintBarStyle::Sharp
-                        | crate::config::HintBarStyle::Rounded
-                        | crate::config::HintBarStyle::Slanted
-                );
+                let is_powerline = theme.hint_bar_style.has_filled_cells();
                 if is_powerline {
                     let r_bar = Paragraph::new(r_text)
                         .style(theme.hint_line_bg_style())
@@ -215,12 +210,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             frame.render_widget(left_bar, left_area);
 
             if let Some(r_text) = right_line {
-                let is_powerline = matches!(
-                    theme.hint_bar_style,
-                    crate::config::HintBarStyle::Sharp
-                        | crate::config::HintBarStyle::Rounded
-                        | crate::config::HintBarStyle::Slanted
-                );
+                let is_powerline = theme.hint_bar_style.has_filled_cells();
                 if is_powerline {
                     let r_bar = Paragraph::new(r_text)
                         .style(theme.hint_line_bg_style())

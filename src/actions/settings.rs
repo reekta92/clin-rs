@@ -271,12 +271,7 @@ toggle_action!(
     "\u{1f4cb}",
     begin_hint_bar_style_selection,
     app,
-    match app.config.ui.hint_bar_style {
-        crate::config::HintBarStyle::Classic => "Classic",
-        crate::config::HintBarStyle::Sharp => "Sharp",
-        crate::config::HintBarStyle::Rounded => "Rounded",
-        crate::config::HintBarStyle::Slanted => "Slanted",
-    }
+    app.config.ui.hint_bar_style.name()
 );
 
 toggle_action!(

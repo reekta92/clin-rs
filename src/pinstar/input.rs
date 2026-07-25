@@ -348,14 +348,26 @@ fn execute_menu_action(
     if menu_type == PinstarMenuType::Editor {
         match selected_index {
             0 => {
-                app.editor.editor.copy();
+                if app.editor.editor.selection_range().is_some() {
+                    app.editor.editor.copy();
+                    crate::text_edit::write_system_clipboard(&app.editor.editor.yank_text());
+                }
             }
             1 => {
-                app.editor.editor.cut();
+                if app.editor.editor.cut() {
+                    crate::text_edit::write_system_clipboard(&app.editor.editor.yank_text());
+                }
                 let _ = state.sync_from_raw_editor(app);
             }
             2 => {
-                app.editor.editor.paste();
+                match crate::text_edit::read_system_clipboard() {
+                    Some(t) if !t.is_empty() => {
+                        app.editor.editor.insert_str(t);
+                    }
+                    _ => {
+                        let _ = app.editor.editor.paste();
+                    }
+                }
                 let _ = state.sync_from_raw_editor(app);
             }
             3 => {

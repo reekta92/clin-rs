@@ -350,7 +350,7 @@ impl crate::popups::ActivePopup {
             }
             HintBarStyle(mut p) => {
                 let area = crate::ui::centered_rect(crate::ui::PopupSize::Medium, terminal_area);
-                match handle_list_popup_mouse(mouse, area, &mut p.selected, 4) {
+                match handle_list_popup_mouse(mouse, area, &mut p.selected, crate::config::HintBarStyle::ALL.len()) {
                     ListPopupMouseAction::Selected => {
                         app.popups.active = Some(HintBarStyle(p));
                         app.select_hint_bar_style();

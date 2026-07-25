@@ -1705,8 +1705,10 @@ impl App {
         if let Some(label) = items.get(action) {
             match *label {
                 " Copy " => {
-                    textarea.copy();
-                    crate::text_edit::write_system_clipboard(&textarea.yank_text());
+                    if textarea.selection_range().is_some() {
+                        textarea.copy();
+                        crate::text_edit::write_system_clipboard(&textarea.yank_text());
+                    }
                 }
                 " Cut " => {
                     if textarea.cut() {
