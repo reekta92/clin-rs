@@ -41,6 +41,11 @@ const MAX_MESSAGES: usize = 50;
 
 impl MessageOverlay {
     pub fn push(&mut self, text: String, severity: MessageSeverity) {
+        // Consecutive-dedupe: skip if identical to the immediately previous message.
+        if self.messages.last().is_some_and(|last| last.text == text && last.severity == severity)
+        {
+            return;
+        }
         let msg = OverlayMessage {
             id: self.next_id,
             text,
@@ -49,19 +54,28 @@ impl MessageOverlay {
         };
         self.next_id = self.next_id.wrapping_add(1);
         self.messages.push(msg);
-        if self.messages.len() > MAX_MESSAGES {
-            let drain = self.messages.len() - MAX_MESSAGES;
-            self.messages.drain(..drain);
+        self.retain_non_fatals_over_capacity();
+    }
+
+    fn retain_non_fatals_over_capacity(&mut self) {
+        if self.messages.len() <= MAX_MESSAGES {
+            return;
         }
+        let mut to_remove = self.messages.len() - MAX_MESSAGES;
+        self.messages.retain(|m| {
+            if to_remove > 0 && m.severity != MessageSeverity::Fatal {
+                to_remove -= 1;
+                false
+            } else {
+                true
+            }
+        });
     }
 
     /// Compare current active state against the cached previous state.
     /// Returns `true` when the overlay should appear or disappear.
     pub fn tick_expirations(&mut self) -> bool {
-        if self.messages.len() > MAX_MESSAGES {
-            let drain = self.messages.len() - MAX_MESSAGES;
-            self.messages.drain(..drain);
-        }
+        self.retain_non_fatals_over_capacity();
         let now_active = self.is_active();
         let changed = now_active != self.prev_active;
         self.prev_active = now_active;
@@ -76,7 +90,7 @@ impl MessageOverlay {
 
     /// Active when force_open is true, or when there are fresh/fatal messages.
     pub fn is_active(&self) -> bool {
-        self.force_open || self.messages.iter().any(|m| Self::is_message_visible(m))
+        self.force_open || self.messages.iter().any(Self::is_message_visible)
     }
 
     /// A message is visible if it's fatal or still fresh (< 5s).
@@ -86,5 +100,60 @@ impl MessageOverlay {
 
     pub fn is_fresh(m: &OverlayMessage) -> bool {
         m.timestamp.elapsed().as_secs() < 5
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn push_dedupes_consecutive_identical() {
+        let mut overlay = MessageOverlay::default();
+        overlay.push("error A".to_string(), MessageSeverity::Warning);
+        overlay.push("error A".to_string(), MessageSeverity::Warning);
+        assert_eq!(overlay.messages.len(), 1);
+        assert_eq!(overlay.messages[0].text, "error A");
+    }
+
+    #[test]
+    fn push_allows_different_text() {
+        let mut overlay = MessageOverlay::default();
+        overlay.push("error A".to_string(), MessageSeverity::Warning);
+        overlay.push("error B".to_string(), MessageSeverity::Warning);
+        assert_eq!(overlay.messages.len(), 2);
+    }
+
+    #[test]
+    fn push_allows_same_text_different_severity() {
+        let mut overlay = MessageOverlay::default();
+        overlay.push("error A".to_string(), MessageSeverity::Warning);
+        overlay.push("error A".to_string(), MessageSeverity::Fatal);
+        assert_eq!(overlay.messages.len(), 2);
+        assert_eq!(overlay.messages[0].severity, MessageSeverity::Warning);
+        assert_eq!(overlay.messages[1].severity, MessageSeverity::Fatal);
+    }
+
+    #[test]
+    fn non_consecutive_duplicate_not_deduped() {
+        let mut overlay = MessageOverlay::default();
+        overlay.push("error A".to_string(), MessageSeverity::Warning);
+        overlay.push("error B".to_string(), MessageSeverity::Warning);
+        overlay.push("error A".to_string(), MessageSeverity::Warning);
+        assert_eq!(overlay.messages.len(), 3);
+    }
+
+    #[test]
+    fn drain_keeps_fatal_messages() {
+        let mut overlay = MessageOverlay::default();
+        overlay.push("fatal error".to_string(), MessageSeverity::Fatal);
+        for i in 0..60 {
+            overlay.push(format!("warning {i}"), MessageSeverity::Warning);
+        }
+        // Fatal must be retained even when capacity exceeded
+        assert!(overlay.has_fatal());
+        assert!(overlay.messages.len() <= 50);
+        // The fatal should be the first message
+        assert_eq!(overlay.messages[0].severity, MessageSeverity::Fatal);
     }
 }

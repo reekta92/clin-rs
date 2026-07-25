@@ -952,7 +952,12 @@ impl App {
                 "Hint bar style \u{2018}Accent\u{2019} was removed; using Classic.",
             );
             app.config.accent_hint_migrated = false;
-            let _ = app.config.save();
+            if let Err(e) = app.config.save() {
+                app.messages.push(
+                    format!("Failed to save config: {e}"),
+                    crate::app::messages::MessageSeverity::Warning,
+                );
+            }
         }
         app.sort_notes();
         app.refresh_visual_list();
@@ -1510,6 +1515,10 @@ impl App {
         let temp_file_path = clin_temp.join(format!("clin_preview_{}.md", uuid::Uuid::new_v4()));
         if let Err(e) = crate::fsutil::atomic_write_str(&temp_file_path, &content) {
             self.set_temporary_status(&format!("Failed to write temp file: {e}"));
+            self.messages.push(
+                format!("Failed to write temp file: {e}"),
+                crate::app::messages::MessageSeverity::Warning,
+            );
             return;
         }
 
@@ -1560,6 +1569,10 @@ impl App {
                 if new_path != *path && !new_path.exists() {
                     if let Err(e) = std::fs::rename(path, &new_path) {
                         self.set_temporary_status(&format!("Failed to rename template: {e}"));
+                        self.messages.push(
+                            format!("Failed to rename template: {e}"),
+                            crate::app::messages::MessageSeverity::Warning,
+                        );
                     } else {
                         path_to_write = new_path;
                         self.editor.template_edit_path = Some(path_to_write.clone());
@@ -1569,6 +1582,10 @@ impl App {
 
             if let Err(e) = crate::fsutil::atomic_write_str(&path_to_write, &content) {
                 self.set_temporary_status(&format!("Template save failed: {e}"));
+                self.messages.push(
+                    format!("Template save failed: {e}"),
+                    crate::app::messages::MessageSeverity::Warning,
+                );
             }
             return;
         }
@@ -1598,31 +1615,40 @@ impl App {
             updated_at,
             tags,
         };
-        if let Ok(saved_id) = self.storage.save_note(&id, &note) {
-            self.editor.editing_id = Some(saved_id.clone());
-            self.enqueue_backup(format!("auto: {}", note.title));
+        match self.storage.save_note(&id, &note) {
+            Ok(saved_id) => {
+                self.editor.editing_id = Some(saved_id.clone());
+                self.enqueue_backup(format!("auto: {}", note.title));
 
-            let current_words = crate::goals::count_words(&note.content);
-            let mut diff = 0;
-            if current_words > self.editor.initial_word_count {
-                diff = current_words - self.editor.initial_word_count;
+                let current_words = crate::goals::count_words(&note.content);
+                let mut diff = 0;
+                if current_words > self.editor.initial_word_count {
+                    diff = current_words - self.editor.initial_word_count;
+                }
+                self.editor.initial_word_count = current_words;
+
+                let vault_identity =
+                    crate::local_state::vault_identity_path(&self.storage.data_dir)
+                        .map(|p| p.to_string_lossy().into_owned())
+                        .unwrap_or_else(|_| self.storage.data_dir.to_string_lossy().into_owned());
+                let progress = {
+                    let progress = self.get_current_goals_progress();
+                    progress.words_written += diff;
+                    progress.notes_modified.insert(crate::goals::TrackedNote {
+                        vault: vault_identity,
+                        note_id: saved_id,
+                    });
+                    progress.clone()
+                };
+                if let Err(error) = self.save_goals_progress(&progress) {
+                    self.set_temporary_status(&format!("Failed to save local state: {error}"));
+                }
             }
-            self.editor.initial_word_count = current_words;
-
-            let vault_identity = crate::local_state::vault_identity_path(&self.storage.data_dir)
-                .map(|p| p.to_string_lossy().into_owned())
-                .unwrap_or_else(|_| self.storage.data_dir.to_string_lossy().into_owned());
-            let progress = {
-                let progress = self.get_current_goals_progress();
-                progress.words_written += diff;
-                progress.notes_modified.insert(crate::goals::TrackedNote {
-                    vault: vault_identity,
-                    note_id: saved_id,
-                });
-                progress.clone()
-            };
-            if let Err(error) = self.save_goals_progress(&progress) {
-                self.set_temporary_status(&format!("Failed to save local state: {error}"));
+            Err(e) => {
+                let text = format!("Autosave failed for '{id}': {e}");
+                self.set_temporary_status(&text);
+                self.messages
+                    .push(text, crate::app::messages::MessageSeverity::Warning);
             }
         }
     }

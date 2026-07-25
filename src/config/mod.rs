@@ -367,7 +367,7 @@ impl ClinConfig {
                 };
                 if let Ok(paths) = crate::paths::AppPaths::discover(Self::config_path()?) {
                     let state_path = paths.state_path();
-                    let _ = crate::local_state::LocalState::update(&state_path, |s| {
+                    if let Err(e) = crate::local_state::LocalState::update(&state_path, |s| {
                         if s.storage_migration.is_none() {
                             s.storage_migration = Some(crate::local_state::StorageMigrationState {
                                 previous_path: prev_path,
@@ -376,7 +376,9 @@ impl ClinConfig {
                         }
                         // Conflicting record: leave untouched
                         Ok(())
-                    });
+                    }) {
+                        warnings.push(format!("Failed to persist local state: {e}"));
+                    }
                 }
                 state_changed = true;
             }
@@ -407,14 +409,16 @@ impl ClinConfig {
                         let vault_key = vault_id.to_string_lossy().into_owned();
                         if let Ok(paths) = crate::paths::AppPaths::discover(Self::config_path()?) {
                             let state_path = paths.state_path();
-                            let _ = crate::local_state::LocalState::update(&state_path, |s| {
+                            if let Err(e) = crate::local_state::LocalState::update(&state_path, |s| {
                                 let vault = s.vaults.entry(vault_key).or_default();
                                 if vault.expanded_folders.is_empty() {
                                     vault.expanded_folders = folder_set.clone();
                                 }
                                 // Non-empty existing set: keep it (already have state)
                                 Ok(())
-                            });
+                            }) {
+                                warnings.push(format!("Failed to persist local state: {e}"));
+                            }
                         }
                     }
                 }

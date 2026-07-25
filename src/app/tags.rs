@@ -81,6 +81,10 @@ impl App {
                 note.tags = tags;
                 if let Err(e) = self.storage.save_note(&popup.note_id, &note) {
                     self.set_temporary_status(&format!("Failed to save tags: {e}"));
+                    self.messages.push(
+                        format!("Failed to save tags: {e}"),
+                        crate::app::messages::MessageSeverity::Warning,
+                    );
                 } else {
                     self.enqueue_backup(format!("auto: {}", note.title));
                     self.refresh_note_single(None, &popup.note_id);
@@ -88,6 +92,10 @@ impl App {
                 }
             } else {
                 self.set_temporary_status_static("Failed to load note to update tags");
+                self.messages.push(
+                    "Failed to load note to update tags".to_string(),
+                    crate::app::messages::MessageSeverity::Warning,
+                );
             }
         }
     }
@@ -200,6 +208,7 @@ impl App {
 
     pub fn confirm_delete_tag(&mut self, tag: String) {
         let mut count = 0;
+        let mut failed = 0;
         if let Ok(note_ids) = self
             .storage
             .list_note_ids(self.list.show_hidden_files, false)
@@ -220,6 +229,8 @@ impl App {
                     note.tags.retain(|t| t != &tag);
                     if self.storage.save_note(&note_id, &note).is_ok() {
                         self.enqueue_backup(format!("auto: {}", note.title));
+                    } else {
+                        failed += 1;
                     }
                     count += 1;
                 }
@@ -227,6 +238,12 @@ impl App {
         }
 
         self.set_temporary_status(&format!("Deleted '{tag}' from {count} note(s)"));
+        if failed > 0 {
+            let text = format!("Failed to update tags on {failed} note(s)");
+            self.set_temporary_status(&text);
+            self.messages
+                .push(text, crate::app::messages::MessageSeverity::Warning);
+        }
         self.request_notes_reconcile();
         let live_tags = self.collect_live_tags();
 
@@ -255,6 +272,7 @@ impl App {
 
     pub fn apply_tag_to_selected(&mut self, tag: String) {
         let mut count = 0;
+        let mut failed = 0;
         let indices: Vec<usize> = self.list.selected_indices.iter().copied().collect();
 
         for &idx in &indices {
@@ -280,6 +298,8 @@ impl App {
                     if self.storage.save_note(&note_id, &loaded).is_ok() {
                         self.enqueue_backup(format!("auto: {}", note_title));
                         count += 1;
+                    } else {
+                        failed += 1;
                     }
                 }
             }
@@ -291,5 +311,11 @@ impl App {
         self.request_notes_reconcile();
 
         self.set_temporary_status(&format!("Tag '{tag}' applied to {count} note(s)"));
+        if failed > 0 {
+            let text = format!("Failed to update tags on {failed} note(s)");
+            self.set_temporary_status(&text);
+            self.messages
+                .push(text, crate::app::messages::MessageSeverity::Warning);
+        }
     }
 }

@@ -262,11 +262,16 @@ impl App {
             crate::config::ClinConfig::config_path().unwrap_or_default(),
         ) {
             let state_path = paths.state_path();
-            let _ = crate::local_state::LocalState::update(&state_path, |s| {
+            if let Err(e) = crate::local_state::LocalState::update(&state_path, |s| {
                 let vault = s.vaults.entry(vault_id.clone()).or_default();
                 vault.expanded_folders = expanded.clone();
                 Ok(())
-            });
+            }) {
+                self.messages.push(
+                    format!("Failed to persist folder state: {e}"),
+                    crate::app::messages::MessageSeverity::Warning,
+                );
+            }
         }
     }
 

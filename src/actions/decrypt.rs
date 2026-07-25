@@ -53,6 +53,10 @@ impl Action for DecryptNoteAction {
             }
             Err(e) => {
                 app.set_temporary_status(&format!("Failed to decrypt: {e:#}"));
+                app.messages.push(
+                    format!("Failed to decrypt: {e:#}"),
+                    crate::app::messages::MessageSeverity::Warning,
+                );
             }
         }
 

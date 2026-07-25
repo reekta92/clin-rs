@@ -198,6 +198,10 @@ fn handle_command_palette_mouse(app: &mut App, mouse: &MouseEvent, terminal_area
                         crate::actions::execute_action(&action_id, app, note_id.as_deref())
                     {
                         app.set_temporary_status(&format!("Action failed: {e}"));
+                        app.messages.push(
+                            format!("Action failed: {e}"),
+                            crate::app::messages::MessageSeverity::Warning,
+                        );
                     }
                     return true;
                 } else {

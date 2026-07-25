@@ -19,8 +19,12 @@ impl App {
                     last_scroll: None,
                 }));
             }
-            Err(_) => {
+            Err(e) => {
                 self.set_temporary_status_static("Failed to load templates");
+                self.messages.push(
+                    format!("Failed to load templates: {e}"),
+                    crate::app::messages::MessageSeverity::Warning,
+                );
             }
         }
     }
@@ -43,10 +47,17 @@ impl App {
             && let Some(summary) = popup.filtered_templates.get(popup.selected)
         {
             let template_manager = self.storage.template_manager();
-            if let Ok(template) = template_manager.load(&summary.filename) {
-                self.start_note_from_template(&template, folder);
-            } else {
-                self.set_temporary_status_static("Failed to load selected template");
+            match template_manager.load(&summary.filename) {
+                Ok(template) => {
+                    self.start_note_from_template(&template, folder);
+                }
+                Err(e) => {
+                    self.set_temporary_status_static("Failed to load selected template");
+                    self.messages.push(
+                        format!("Failed to load selected template: {e}"),
+                        crate::app::messages::MessageSeverity::Warning,
+                    );
+                }
             }
         }
     }
@@ -748,7 +759,12 @@ template = """
                             self.set_temporary_status(&format!("Daily note goal set to {val}"));
                         }
                     }
-                    let _ = config.save();
+                    if let Err(e) = config.save() {
+                        self.messages.push(
+                            format!("Failed to save config: {e}"),
+                            crate::app::messages::MessageSeverity::Warning,
+                        );
+                    }
                 }
                 Err(_) => {
                     self.set_temporary_status_static("Please enter a valid positive number.");

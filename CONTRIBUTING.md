@@ -5,7 +5,7 @@ Thank you for considering contributing to clin! Here's how to get started.
 ## Getting Started
 
 1. Fork and clone the repository
-2. Install Rust 1.88.0+ via [rustup](https://rustup.rs)
+2. Install Rust 1.90.0+ via [rustup](https://rustup.rs)
 3. Build: `cargo build`
 4. Run: `cargo run`
 

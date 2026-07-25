@@ -61,6 +61,10 @@ impl App {
                 }
                 Err(_) => {
                     self.set_temporary_status_static("Failed to build graph view");
+                    self.messages.push(
+                        "Failed to build graph view".to_string(),
+                        crate::app::messages::MessageSeverity::Warning,
+                    );
                     return;
                 }
             }
@@ -166,7 +170,10 @@ impl App {
                 self.mode = ViewMode::Canvas;
             } else {
                 self.set_temporary_status_static("Failed to load .canvas file!");
-                return;
+                self.messages.push(
+                    "Failed to load .canvas file!".to_string(),
+                    crate::app::messages::MessageSeverity::Warning,
+                );
             }
 
             if let Ok(mut state) = crate::pinstar::state::PinstarState::load(
@@ -182,6 +189,10 @@ impl App {
                 self.set_default_status();
             } else {
                 self.set_temporary_status_static("Failed to load .canvas file!");
+                self.messages.push(
+                    "Failed to load .canvas file!".to_string(),
+                    crate::app::messages::MessageSeverity::Warning,
+                );
             }
         }
     }

@@ -1112,7 +1112,7 @@ fn run_tui_session(app: &mut App) -> Result<()> {
 
         let notes_path = app.storage.notes_dir.clone();
         let overflow_cb = overflow.clone();
-        let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+        let mut watcher = match notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
             let observed_at = Instant::now();
             let event = match res {
                 Ok(e) => e,
@@ -1148,11 +1148,24 @@ fn run_tui_session(app: &mut App) -> Result<()> {
             {
                 overflow_cb.store(true, Ordering::SeqCst);
             }
-        })
-        .ok();
+        }) {
+            Ok(w) => Some(w),
+            Err(e) => {
+                app.messages.push(
+                    format!("File watcher failed to start; auto-refresh disabled: {e}"),
+                    crate::app::messages::MessageSeverity::Warning,
+                );
+                None
+            }
+        };
 
-        if let Some(ref mut w) = watcher {
-            let _ = w.watch(&notes_path, RecursiveMode::Recursive);
+        if let Some(w) = &mut watcher
+            && let Err(e) = w.watch(&notes_path, RecursiveMode::Recursive)
+        {
+            app.messages.push(
+                format!("File watcher cannot watch vault; auto-refresh disabled: {e}"),
+                crate::app::messages::MessageSeverity::Warning,
+            );
         }
         watcher
     } else {
@@ -1291,7 +1304,7 @@ fn run_app(
         }
         let msgs_before = app.messages.messages.len();
         while let Ok(msg) = app.message_rx.try_recv() {
-            app.messages.messages.push(msg);
+            app.messages.push(msg.text, msg.severity);
         }
         if app.messages.messages.len() != msgs_before {
             list_dirty = true;
@@ -1455,7 +1468,10 @@ fn run_app(
                     app.install_image(img);
                 }
                 Err(e) => {
-                    app.set_temporary_status(&format!("Image decode failed: {e}"));
+                    let text = format!("Image decode failed: {e}");
+                    app.set_temporary_status(&text);
+                    app.messages
+                        .push(text, crate::app::messages::MessageSeverity::Warning);
                 }
             }
             need_redraw = true;

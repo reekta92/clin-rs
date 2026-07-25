@@ -543,6 +543,10 @@ pub fn handle_global_popups_and_palette(
                 if let Err(e) = crate::actions::execute_action(&action_id, app, note_id.as_deref())
                 {
                     app.set_temporary_status(&format!("Action failed: {e}"));
+                    app.messages.push(
+                        format!("Action failed: {e}"),
+                        crate::app::messages::MessageSeverity::Warning,
+                    );
                 }
             }
             return true;

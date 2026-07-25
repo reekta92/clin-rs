@@ -98,7 +98,7 @@ impl Action for OcrPasteAction {
         let dynamic_image = if is_wayland() {
             get_clipboard_image_wayland().or_else(|e| {
                 app.messages.push(
-                    format!("OCR Warning: Wayland clipboard failed: {e}. Falling back to arboard."),
+                    format!("Wayland clipboard failed: {e}. Falling back to arboard."),
                     crate::app::messages::MessageSeverity::Warning,
                 );
                 get_clipboard_image_arboard()
@@ -178,7 +178,7 @@ impl Action for PasteImageAction {
         let dynamic_image = if is_wayland() {
             get_clipboard_image_wayland().or_else(|e| {
                 app.messages.push(
-                    format!("OCR Warning: Wayland clipboard failed: {e}. Falling back to arboard."),
+                    format!("Wayland clipboard failed: {e}. Falling back to arboard."),
                     crate::app::messages::MessageSeverity::Warning,
                 );
                 get_clipboard_image_arboard()

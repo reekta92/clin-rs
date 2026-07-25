@@ -53,6 +53,10 @@ impl Action for EncryptNoteAction {
             }
             Err(e) => {
                 app.set_temporary_status(&format!("Failed to encrypt: {e:#}"));
+                app.messages.push(
+                    format!("Failed to encrypt: {e:#}"),
+                    crate::app::messages::MessageSeverity::Warning,
+                );
             }
         }
 

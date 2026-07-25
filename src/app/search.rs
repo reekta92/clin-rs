@@ -282,7 +282,14 @@ impl App {
             if let Some(req) = self.unsent_search_request.take()
                 && req.generation == cur_gen
             {
-                let _ = self.search_worker.req_tx.try_send(req);
+                if let Err(e) = self.search_worker.req_tx.try_send(req)
+                    && matches!(e, std::sync::mpsc::TrySendError::Disconnected(_))
+                {
+                    self.messages.push(
+                        "Search worker disconnected; search unavailable".to_string(),
+                        crate::app::messages::MessageSeverity::Warning,
+                    );
+                }
             }
         }
 

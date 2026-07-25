@@ -110,6 +110,10 @@ impl App {
     pub(crate) fn open_folder_picker(&mut self, mode: FolderPickerMode, hide_paths: &[String]) {
         let Ok(mut folders) = self.storage.list_folders(self.list.show_hidden_files) else {
             self.set_temporary_status_static("Failed to list folders");
+            self.messages.push(
+                "Failed to list folders".to_string(),
+                crate::app::messages::MessageSeverity::Warning,
+            );
             return;
         };
         // Protection layer: a selected source folder and ALL its descendants are
@@ -177,6 +181,10 @@ impl App {
                     }
                     if let Err(e) = self.storage.rename_folder(old_path, text) {
                         self.set_temporary_status(&format!("Failed to rename folder: {e}"));
+                        self.messages.push(
+                            format!("Failed to rename folder: {e}"),
+                            crate::app::messages::MessageSeverity::Warning,
+                        );
                     } else {
                         self.request_notes_reconcile();
                         self.set_temporary_status_static("Folder renamed");

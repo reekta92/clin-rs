@@ -134,6 +134,10 @@ impl Action for ImportAction {
                         }
                         Err(e) => {
                             app.set_temporary_status(&format!("Import failed: {e:#}"));
+                            app.messages.push(
+                                format!("Import failed: {e:#}"),
+                                crate::app::messages::MessageSeverity::Warning,
+                            );
                         }
                     }
                 }

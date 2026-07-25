@@ -361,6 +361,10 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
             ListAction::ShowInfo => {
                 if let Err(e) = crate::actions::execute_action("info.show", app, None) {
                     app.set_temporary_status(&format!("Info action failed: {}", e));
+                    app.messages.push(
+                        format!("Info action failed: {e}"),
+                        crate::app::messages::MessageSeverity::Warning,
+                    );
                 }
                 return false;
             }

@@ -17,7 +17,21 @@ impl App {
             show_hidden: self.list.show_hidden_files,
             show_all: self.list.show_all_files,
         };
-        let _ = self.catalog_cmd_tx.try_send(cmd);
+        self.send_catalog_cmd(cmd);
+    }
+
+    pub(crate) fn send_catalog_cmd(
+        &mut self,
+        cmd: crate::app::catalog::CatalogCommand,
+    ) {
+        let _ = self.catalog_cmd_tx.try_send(cmd).inspect_err(|e| {
+            if matches!(e, std::sync::mpsc::TrySendError::Disconnected(_)) {
+                self.messages.push(
+                    "Catalog worker disconnected; note list will not refresh".to_string(),
+                    crate::app::messages::MessageSeverity::Warning,
+                );
+            }
+        });
     }
 
     pub fn send_catalog_paths(&mut self, changes: Vec<crate::app::catalog::PathChange>) {
@@ -26,7 +40,7 @@ impl App {
             generation: generation_num,
             changes,
         };
-        let _ = self.catalog_cmd_tx.try_send(cmd);
+        self.send_catalog_cmd(cmd);
     }
 
     pub fn handle_catalog_event(&mut self, event: crate::app::catalog::CatalogEvent) {
@@ -114,6 +128,22 @@ impl App {
                                 "Notes loaded with {} warning(s)",
                                 warnings.len()
                             ));
+                            let push_count = warnings.len().min(10);
+                            for w in warnings.iter().take(push_count) {
+                                self.messages.push(
+                                    w.clone(),
+                                    crate::app::messages::MessageSeverity::Warning,
+                                );
+                            }
+                            if warnings.len() > 10 {
+                                self.messages.push(
+                                    format!(
+                                        "…and {} more scan warning(s)",
+                                        warnings.len() - 10
+                                    ),
+                                    crate::app::messages::MessageSeverity::Warning,
+                                );
+                            }
                         } else {
                             self.set_default_status();
                         }
@@ -135,6 +165,10 @@ impl App {
             } => {
                 if generation == cur_gen {
                     self.catalog_status = Some(format!("Notes validation failed: {message}"));
+                    self.messages.push(
+                        format!("Notes validation failed: {message}"),
+                        crate::app::messages::MessageSeverity::Warning,
+                    );
                     self.set_default_status();
                 }
             }
@@ -174,35 +208,42 @@ impl App {
                 id: id.to_string(),
                 stamp,
             };
-            if let Ok(summary) = self.storage.load_note_summary_from_entry(&entry) {
-                self.notes.retain(|n| n.id != id);
-                self.notes.push(summary.clone());
-                self.note_stamps.insert(id.to_string(), stamp);
-                self.sort_notes();
-                self.notes_revision += 1;
+            match self.storage.load_note_summary_from_entry(&entry) {
+                Ok(summary) => {
+                    self.notes.retain(|n| n.id != id);
+                    self.notes.push(summary.clone());
+                    self.note_stamps.insert(id.to_string(), stamp);
+                    self.sort_notes();
+                    self.notes_revision += 1;
 
-                let generation_num = self.catalog_generation.load(Ordering::SeqCst);
-                let _ =
-                    self.catalog_cmd_tx
-                        .try_send(crate::app::catalog::CatalogCommand::PutKnown {
+                    let generation_num = self.catalog_generation.load(Ordering::SeqCst);
+                    self.send_catalog_cmd(
+                        crate::app::catalog::CatalogCommand::PutKnown {
                             generation: generation_num,
                             summary,
                             stamp,
                             old_id: prev_id.map(|s| s.to_string()),
-                        });
-            } else {
-                self.notes.retain(|n| n.id != id);
-                self.note_stamps.remove(id);
-                self.sort_notes();
-                self.notes_revision += 1;
+                        },
+                    );
+                }
+                Err(e) => {
+                    self.messages.push(
+                        format!("Failed to read note '{id}': {e}. Removed from list."),
+                        crate::app::messages::MessageSeverity::Warning,
+                    );
+                    self.notes.retain(|n| n.id != id);
+                    self.note_stamps.remove(id);
+                    self.sort_notes();
+                    self.notes_revision += 1;
 
-                let generation_num = self.catalog_generation.load(Ordering::SeqCst);
-                let _ = self.catalog_cmd_tx.try_send(
-                    crate::app::catalog::CatalogCommand::RemoveKnown {
-                        generation: generation_num,
-                        id: id.to_string(),
-                    },
-                );
+                    let generation_num = self.catalog_generation.load(Ordering::SeqCst);
+                    self.send_catalog_cmd(
+                        crate::app::catalog::CatalogCommand::RemoveKnown {
+                            generation: generation_num,
+                            id: id.to_string(),
+                        },
+                    );
+                }
             }
         } else {
             self.notes.retain(|n| n.id != id);
@@ -211,12 +252,10 @@ impl App {
             self.notes_revision += 1;
 
             let generation_num = self.catalog_generation.load(Ordering::SeqCst);
-            let _ =
-                self.catalog_cmd_tx
-                    .try_send(crate::app::catalog::CatalogCommand::RemoveKnown {
-                        generation: generation_num,
-                        id: id.to_string(),
-                    });
+            self.send_catalog_cmd(crate::app::catalog::CatalogCommand::RemoveKnown {
+                generation: generation_num,
+                id: id.to_string(),
+            });
         }
 
         self.refresh_visual_list();
@@ -487,6 +526,10 @@ impl App {
                             };
                             if let Err(e) = self.storage.save_note(note_id, &updated_note) {
                                 self.set_temporary_status(&format!("Failed to save note: {e}"));
+                                self.messages.push(
+                                    format!("Failed to save note: {e}"),
+                                    crate::app::messages::MessageSeverity::Warning,
+                                );
                             } else {
                                 self.enqueue_backup(format!("auto: {}", updated_note.title));
                                 self.set_temporary_status_static("Note saved");
@@ -518,6 +561,10 @@ impl App {
                         }
                     } else {
                         self.set_temporary_status_static("Failed to read from temp file.");
+                        self.messages.push(
+                            "Failed to read from temp file.".to_string(),
+                            crate::app::messages::MessageSeverity::Warning,
+                        );
                     }
                 }
                 Ok(status) => {
@@ -533,6 +580,10 @@ impl App {
             }
         } else {
             self.set_temporary_status_static("Failed to load note for external editor!");
+            self.messages.push(
+                "Failed to load note for external editor!".to_string(),
+                crate::app::messages::MessageSeverity::Warning,
+            );
         }
     }
 
@@ -585,10 +636,18 @@ impl App {
                 updated_at: now_unix_secs(),
                 tags: Vec::new(),
             };
-            if let Ok(saved_id) = self.storage.save_note(&id, &new_note) {
-                self.enqueue_backup(format!("auto: {}", new_note.title));
-                self.refresh_note_single(None, &saved_id);
-                self.open_note_in_external_editor(&saved_id, None);
+            match self.storage.save_note(&id, &new_note) {
+                Ok(saved_id) => {
+                    self.enqueue_backup(format!("auto: {}", new_note.title));
+                    self.refresh_note_single(None, &saved_id);
+                    self.open_note_in_external_editor(&saved_id, None);
+                }
+                Err(e) => {
+                    let text = format!("Failed to save new note '{}': {e}", new_note.title);
+                    self.set_temporary_status(&text);
+                    self.messages
+                        .push(text, crate::app::messages::MessageSeverity::Warning);
+                }
             }
             return;
         }
@@ -625,10 +684,18 @@ impl App {
                 updated_at: now_unix_secs(),
                 tags: Vec::new(),
             };
-            if let Ok(saved_id) = self.storage.save_note(&new_id, &new_note) {
-                self.enqueue_backup(format!("auto: {}", new_note.title));
-                self.refresh_note_single(None, &saved_id);
-                self.open_note_in_external_editor(&saved_id, None);
+            match self.storage.save_note(&new_id, &new_note) {
+                Ok(saved_id) => {
+                    self.enqueue_backup(format!("auto: {}", new_note.title));
+                    self.refresh_note_single(None, &saved_id);
+                    self.open_note_in_external_editor(&saved_id, None);
+                }
+                Err(e) => {
+                    let text = format!("Failed to save new note '{}': {e}", new_note.title);
+                    self.set_temporary_status(&text);
+                    self.messages
+                        .push(text, crate::app::messages::MessageSeverity::Warning);
+                }
             }
             return;
         }
@@ -668,10 +735,18 @@ impl App {
                 updated_at: now_unix_secs(),
                 tags: Vec::new(),
             };
-            if let Ok(saved_id) = self.storage.save_note(&new_id, &new_note) {
-                self.enqueue_backup(format!("auto: {}", new_note.title));
-                self.refresh_note_single(None, &saved_id);
-                self.open_note_in_external_editor(&saved_id, None);
+            match self.storage.save_note(&new_id, &new_note) {
+                Ok(saved_id) => {
+                    self.enqueue_backup(format!("auto: {}", new_note.title));
+                    self.refresh_note_single(None, &saved_id);
+                    self.open_note_in_external_editor(&saved_id, None);
+                }
+                Err(e) => {
+                    let text = format!("Failed to save new note '{}': {e}", new_note.title);
+                    self.set_temporary_status(&text);
+                    self.messages
+                        .push(text, crate::app::messages::MessageSeverity::Warning);
+                }
             }
             return;
         }
@@ -718,6 +793,10 @@ impl App {
                     }
                     Err(e) => {
                         self.set_temporary_status(&format!("Failed to rebuild graph: {e}"));
+                        self.messages.push(
+                            format!("Failed to rebuild graph: {e}"),
+                            crate::app::messages::MessageSeverity::Warning,
+                        );
                         self.mode = ViewMode::List;
                         return;
                     }
@@ -868,6 +947,10 @@ impl App {
                     }
                     Err(_) => {
                         self.set_temporary_status_static("Failed to rebuild graph view");
+                        self.messages.push(
+                            "Failed to rebuild graph view".to_string(),
+                            crate::app::messages::MessageSeverity::Warning,
+                        );
                     }
                 }
             }
@@ -1087,10 +1170,18 @@ impl App {
                 updated_at: now_unix_secs(),
                 tags: vec![],
             };
-            if let Ok(saved_id) = self.storage.save_note(&new_id, &note) {
-                self.enqueue_backup(format!("auto: {}", note.title));
-                self.refresh_note_single(None, &saved_id);
-                self.open_note_in_external_editor(&saved_id, None);
+            match self.storage.save_note(&new_id, &note) {
+                Ok(saved_id) => {
+                    self.enqueue_backup(format!("auto: {}", note.title));
+                    self.refresh_note_single(None, &saved_id);
+                    self.open_note_in_external_editor(&saved_id, None);
+                }
+                Err(e) => {
+                    let text = format!("Failed to save new note '{}': {e}", note.title);
+                    self.set_temporary_status(&text);
+                    self.messages
+                        .push(text, crate::app::messages::MessageSeverity::Warning);
+                }
             }
             return;
         }
@@ -1145,6 +1236,10 @@ impl App {
                 }
                 Err(e) => {
                     self.set_temporary_status(&format!("Failed to rename: {e}"));
+                    self.messages.push(
+                        format!("Failed to rename: {e}"),
+                        crate::app::messages::MessageSeverity::Warning,
+                    );
                 }
             }
         }
@@ -1314,6 +1409,10 @@ impl App {
                     }
                 } else {
                     self.set_temporary_status_static("Failed to read from temp file.");
+                    self.messages.push(
+                        "Failed to read from temp file.".to_string(),
+                        crate::app::messages::MessageSeverity::Warning,
+                    );
                 }
             }
             Ok(status) => {

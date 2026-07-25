@@ -69,7 +69,7 @@ impl App {
                 self.notes.retain(|n| n.id != id);
                 self.note_stamps.remove(&id);
                 let generation_num = self.catalog_generation.load(Ordering::SeqCst);
-                let _ = self.catalog_cmd_tx.try_send(
+                self.send_catalog_cmd(
                     crate::app::catalog::CatalogCommand::RemoveKnown {
                         generation: generation_num,
                         id: id.clone(),
@@ -130,6 +130,10 @@ impl App {
             }
             Err(e) => {
                 self.set_temporary_status(&format!("Failed to restore: {e}"));
+                self.messages.push(
+                    format!("Failed to restore: {e}"),
+                    crate::app::messages::MessageSeverity::Warning,
+                );
             }
         }
     }
@@ -160,6 +164,10 @@ impl App {
             }
             Err(e) => {
                 self.set_temporary_status(&format!("Failed to delete: {e}"));
+                self.messages.push(
+                    format!("Failed to delete: {e}"),
+                    crate::app::messages::MessageSeverity::Warning,
+                );
             }
         }
     }
@@ -185,6 +193,10 @@ impl App {
             }
             Err(e) => {
                 self.set_temporary_status(&format!("Failed to empty trash: {e}"));
+                self.messages.push(
+                    format!("Failed to empty trash: {e}"),
+                    crate::app::messages::MessageSeverity::Warning,
+                );
             }
         }
     }
