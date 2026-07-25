@@ -227,6 +227,26 @@ pub enum ViewMode {
     Setup,
 }
 
+impl ViewMode {
+    /// Help tab related to this view, or `None` when F1 should not open help
+    /// from this view (Help: F1 toggles close via `HelpAction::Close`;
+    /// Setup: intentionally no help path).
+    #[must_use]
+    pub fn help_tab(self) -> Option<HelpTab> {
+        match self {
+            ViewMode::List => Some(HelpTab::Notes),
+            ViewMode::Edit => Some(HelpTab::Editor),
+            ViewMode::Graph => Some(HelpTab::Graph),
+            ViewMode::Draw => Some(HelpTab::Draw),
+            ViewMode::Canvas => Some(HelpTab::Canvas),
+            ViewMode::Backup => Some(HelpTab::Backup),
+            ViewMode::Outline => Some(HelpTab::Notes), // no Outline tab; matches existing OutlineAction::Help target
+            ViewMode::Help => None,
+            ViewMode::Setup => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum HelpTab {
     Notes,

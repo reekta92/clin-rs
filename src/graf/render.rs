@@ -851,7 +851,10 @@ pub fn draw_graph_view(
             (keybinds.display_graph(GraphAction::ToggleLegend), "labels"),
             (keybinds.display_graph(GraphAction::AutoFit), "fit"),
             (keybinds.graph_keys_display(GraphAction::Quit), "quit"),
-            (keybinds.graph_keys_display(GraphAction::Help), "help"),
+            (
+                format!("F1/{}", keybinds.graph_keys_display(GraphAction::Help)),
+                "help",
+            ),
             ("F2".to_string(), "keybinds"),
         ];
         let hint_line = crate::ui::format_keybind_hints(app_theme, &hints_items);

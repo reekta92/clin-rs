@@ -527,6 +527,35 @@ pub fn handle_global_popups_and_palette(
         app.messages.force_open = !app.messages.force_open;
         return true;
     }
+    // F1 — global help toggle. Opens help at the tab related to the current
+    // view. Skipped in Help view (let HelpAction::Close handle F1 so it toggles
+    // closed — bound at src/keybinds/defaults.rs:351) and Setup view (no help
+    // path, per design). Raw check mirrors F2/F3 precedent.
+    if app.popups.active.is_none()
+        && app.command_palette.is_none()
+        && key.code == crossterm::event::KeyCode::F(1)
+        && !matches!(
+            app.mode,
+            crate::app::ViewMode::Help | crate::app::ViewMode::Setup
+        )
+        && let Some(tab) = app.mode.help_tab()
+    {
+        app.open_help_page_with_tab(tab);
+        return true;
+    }
+
+    // F5 — global full view redraw. Sets the existing `needs_full_redraw`
+    // flag; the main loop then calls terminal.clear() and forces
+    // list_dirty/graph_dirty=true so the next frame repaints every view from
+    // scratch. Active from every view.
+    if app.popups.active.is_none()
+        && app.command_palette.is_none()
+        && key.code == crossterm::event::KeyCode::F(5)
+    {
+        app.needs_full_redraw = true;
+        app.set_temporary_status_static("View redrawn");
+        return true;
+    }
 
     // Command palette
     if let Some(mut palette) = app.command_palette.take() {

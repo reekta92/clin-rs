@@ -733,7 +733,10 @@ pub fn draw_pinstar_view(
                 "back",
             ),
             (
-                state.keybinds.canvas_keys_display(CanvasAction::Help),
+                format!(
+                    "F1/{}",
+                    state.keybinds.canvas_keys_display(CanvasAction::Help)
+                ),
                 "help",
             ),
             ("F2".to_string(), "keybinds"),

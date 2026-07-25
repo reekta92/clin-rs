@@ -59,7 +59,10 @@ pub fn draw_dashboard(
         (kb.display_backup(BackupAction::Refresh), "refresh"),
         (kb.display_backup(BackupAction::OpenSettings), "settings"),
         (kb.backup_keys_display(BackupAction::Back), "back"),
-        (kb.backup_keys_display(BackupAction::Help), "help"),
+        (
+            format!("F1/{}", kb.backup_keys_display(BackupAction::Help)),
+            "help",
+        ),
         ("F2".to_string(), "keybinds"),
     ];
     let hint_line = crate::ui::format_keybind_hints(theme, &hints_items);

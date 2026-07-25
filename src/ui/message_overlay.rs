@@ -167,7 +167,10 @@ pub fn draw_message_overlay(
 
         let styled_line = if let Some(colon_pos) = wl.text.find(':') {
             let prefix_end = colon_pos + 1; // include the colon
-            let bold_style = Style::default().fg(wl.fg).bg(bg).add_modifier(Modifier::BOLD);
+            let bold_style = Style::default()
+                .fg(wl.fg)
+                .bg(bg)
+                .add_modifier(Modifier::BOLD);
             let normal_style = Style::default().fg(wl.fg).bg(bg);
             Line::from(vec![
                 Span::styled(&wl.text[..prefix_end], bold_style),

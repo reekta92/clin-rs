@@ -327,7 +327,10 @@ pub fn draw_help_view(frame: &mut Frame, app: &mut App) {
         ),
         (kb.display_help(HelpAction::Search), "search"),
         (kb.display_help(HelpAction::Reroll), "reroll tips"),
-        (kb.help_keys_display(HelpAction::Close), "close"),
+        (
+            format!("F1/{}", kb.help_keys_display(HelpAction::Close)),
+            "close",
+        ),
         ("F2".to_string(), "keybinds"),
     ];
     if !crate::ui::help_content::tab_popup_descriptions(app.help_tab).is_empty() {

@@ -413,6 +413,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         (kb.display_edit(EditAction::Find), "find"),
         (kb.display_edit(EditAction::ToggleWrap), "wrap"),
         (kb.edit_keys_display(EditAction::Back), "back"),
+        ("F1".to_string(), "help"),
         ("F2".to_string(), "keybinds"),
     ];
     let default_hints = format_keybind_hints(&app.app_theme, &hints_items);

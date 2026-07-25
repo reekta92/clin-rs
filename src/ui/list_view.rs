@@ -1749,7 +1749,10 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             ),
             (kb.display_list(ListAction::Open), "open"),
             (kb.list_keys_display(ListAction::Quit), "quit"),
-            (kb.list_keys_display(ListAction::Help), "help"),
+            (
+                format!("F1/{}", kb.list_keys_display(ListAction::Help)),
+                "help",
+            ),
             ("F2".to_string(), "keybinds"),
         ]
     } else {
@@ -1766,7 +1769,10 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             (kb.display_list(ListAction::CollapseAll), "collapse"),
             (kb.display_list(ListAction::ExpandAll), "expand"),
             (kb.list_keys_display(ListAction::Quit), "quit"),
-            (kb.list_keys_display(ListAction::Help), "help"),
+            (
+                format!("F1/{}", kb.list_keys_display(ListAction::Help)),
+                "help",
+            ),
             ("F2".to_string(), "keybinds"),
         ]
     };

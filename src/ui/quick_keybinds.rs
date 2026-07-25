@@ -171,7 +171,10 @@ pub fn draw_quick_keybinds(frame: &mut Frame, app: &App) {
         let row = Line::from(vec![
             Span::styled(
                 format!("{:<width$}", keys, width = max_key_width),
-                Style::default().fg(theme.highlight_fg).bg(bg).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(theme.highlight_fg)
+                    .bg(bg)
+                    .add_modifier(Modifier::BOLD),
             ),
             Span::styled(SEP, Style::default().fg(theme.muted).bg(bg)),
             Span::styled(desc.clone(), Style::default().fg(theme.highlight_fg).bg(bg)),

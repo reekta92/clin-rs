@@ -52,13 +52,7 @@ impl Default for Keybinds {
             ],
         );
         list.insert(ListAction::Quit, vec![KeyCombo::simple(KeyCode::Char('q'))]);
-        list.insert(
-            ListAction::Help,
-            vec![
-                KeyCombo::simple(KeyCode::Char('?')),
-                KeyCombo::simple(KeyCode::F(1)),
-            ],
-        );
+        list.insert(ListAction::Help, vec![KeyCombo::simple(KeyCode::Char('?'))]);
         list.insert(
             ListAction::OpenLocation,
             vec![KeyCombo::ctrl(KeyCode::Char('l'))],
@@ -457,10 +451,7 @@ impl Default for Keybinds {
         );
         graph.insert(
             GraphAction::Help,
-            vec![
-                KeyCombo::simple(KeyCode::Char('?')),
-                KeyCombo::simple(KeyCode::F(1)),
-            ],
+            vec![KeyCombo::simple(KeyCode::Char('?'))],
         );
         graph.insert(
             GraphAction::ToggleSearch,
@@ -882,10 +873,7 @@ impl Default for Keybinds {
         );
         outline.insert(
             OutlineAction::Help,
-            vec![
-                KeyCombo::simple(KeyCode::Char('?')),
-                KeyCombo::simple(KeyCode::F(1)),
-            ],
+            vec![KeyCombo::simple(KeyCode::Char('?'))],
         );
 
         let mut setup = HashMap::new();
@@ -1007,13 +995,8 @@ impl KeybindPreset {
                     ListAction::Search,
                     vec![KeyCombo::simple(KeyCode::Char('/'))],
                 );
-                kb.list.insert(
-                    ListAction::Help,
-                    vec![
-                        KeyCombo::simple(KeyCode::Char('?')),
-                        KeyCombo::simple(KeyCode::F(1)),
-                    ],
-                );
+                kb.list
+                    .insert(ListAction::Help, vec![KeyCombo::simple(KeyCode::Char('?'))]);
                 kb.list.insert(
                     ListAction::JumpToTop,
                     vec![
@@ -1156,10 +1139,7 @@ impl KeybindPreset {
                 );
                 kb.graph.insert(
                     GraphAction::Help,
-                    vec![
-                        KeyCombo::simple(KeyCode::Char('?')),
-                        KeyCombo::simple(KeyCode::F(1)),
-                    ],
+                    vec![KeyCombo::simple(KeyCode::Char('?'))],
                 );
                 // ── Draw view ──
                 kb.draw.insert(
@@ -1410,10 +1390,7 @@ impl KeybindPreset {
                 );
                 kb.outline.insert(
                     OutlineAction::Help,
-                    vec![
-                        KeyCombo::simple(KeyCode::Char('?')),
-                        KeyCombo::simple(KeyCode::F(1)),
-                    ],
+                    vec![KeyCombo::simple(KeyCode::Char('?'))],
                 );
                 kb.edit = Keybinds::default().edit;
                 kb
@@ -1464,13 +1441,8 @@ impl KeybindPreset {
                     ListAction::Quit,
                     vec![KeyCombo::parse(": q").expect("valid key combo")],
                 );
-                kb.list.insert(
-                    ListAction::Help,
-                    vec![
-                        KeyCombo::simple(KeyCode::Char('?')),
-                        KeyCombo::simple(KeyCode::F(1)),
-                    ],
-                );
+                kb.list
+                    .insert(ListAction::Help, vec![KeyCombo::simple(KeyCode::Char('?'))]);
                 kb.list.insert(
                     ListAction::Search,
                     vec![KeyCombo::simple(KeyCode::Char('/'))],
@@ -1628,10 +1600,7 @@ impl KeybindPreset {
                 );
                 kb.graph.insert(
                     GraphAction::Help,
-                    vec![
-                        KeyCombo::simple(KeyCode::Char('?')),
-                        KeyCombo::simple(KeyCode::F(1)),
-                    ],
+                    vec![KeyCombo::simple(KeyCode::Char('?'))],
                 );
                 // ── Draw view ──
                 kb.draw.insert(
@@ -1882,10 +1851,7 @@ impl KeybindPreset {
                 );
                 kb.outline.insert(
                     OutlineAction::Help,
-                    vec![
-                        KeyCombo::simple(KeyCode::Char('?')),
-                        KeyCombo::simple(KeyCode::F(1)),
-                    ],
+                    vec![KeyCombo::simple(KeyCode::Char('?'))],
                 );
                 kb.edit = Keybinds::default().edit;
                 kb
@@ -1928,13 +1894,8 @@ impl KeybindPreset {
                         KeyCombo::simple(KeyCode::Char('q')),
                     ],
                 );
-                kb.list.insert(
-                    ListAction::Help,
-                    vec![
-                        KeyCombo::ctrl(KeyCode::Char('h')),
-                        KeyCombo::simple(KeyCode::F(1)),
-                    ],
-                );
+                kb.list
+                    .insert(ListAction::Help, vec![KeyCombo::ctrl(KeyCode::Char('h'))]);
                 kb.list
                     .insert(ListAction::Search, vec![KeyCombo::ctrl(KeyCode::Char('s'))]);
                 kb.list.insert(
@@ -2017,13 +1978,8 @@ impl KeybindPreset {
                     GraphAction::Refresh,
                     vec![KeyCombo::simple(KeyCode::Char('r'))],
                 );
-                kb.graph.insert(
-                    GraphAction::Help,
-                    vec![
-                        KeyCombo::ctrl(KeyCode::Char('h')),
-                        KeyCombo::simple(KeyCode::F(1)),
-                    ],
-                );
+                kb.graph
+                    .insert(GraphAction::Help, vec![KeyCombo::ctrl(KeyCode::Char('h'))]);
                 kb.graph.insert(
                     GraphAction::ToggleSearch,
                     vec![KeyCombo::ctrl(KeyCode::Char('s'))],
@@ -2173,10 +2129,7 @@ impl KeybindPreset {
                 );
                 kb.outline.insert(
                     OutlineAction::Help,
-                    vec![
-                        KeyCombo::ctrl(KeyCode::Char('h')),
-                        KeyCombo::simple(KeyCode::F(1)),
-                    ],
+                    vec![KeyCombo::ctrl(KeyCode::Char('h'))],
                 );
                 kb.edit = Keybinds::default().edit;
                 kb
