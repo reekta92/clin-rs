@@ -107,13 +107,24 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     } else {
         let left_width = left_line.width() as u16;
         let right_width = right_line.as_ref().map(|r| r.width() as u16).unwrap_or(0);
+        let title_str = get_title_text(&app.editor.title_editor).into_owned();
+        use unicode_width::UnicodeWidthStr;
+        let center_width = if title_str.is_empty() {
+            13u16
+        } else {
+            title_str.width() as u16
+        };
+        let remaining = outer_chunks[0]
+            .width
+            .saturating_sub(left_width + center_width);
+        let actual_right = right_width.min(remaining);
 
         let header_chunks = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
                 Constraint::Length(left_width),
                 Constraint::Min(0),
-                Constraint::Length(right_width),
+                Constraint::Length(actual_right),
             ])
             .split(outer_chunks[0]);
 
@@ -122,7 +133,6 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         let right_area = header_chunks[2];
 
         let theme = &app.app_theme;
-        let title_str = get_title_text(&app.editor.title_editor).into_owned();
 
         if focus == EditFocus::Title {
             // Render background/blank bar first
@@ -402,6 +412,8 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         (kb.display_edit(EditAction::ToggleLinks), "links"),
         (kb.display_edit(EditAction::Find), "find"),
         (kb.display_edit(EditAction::ToggleWrap), "wrap"),
+        (kb.edit_keys_display(EditAction::Back), "back"),
+        ("F2".to_string(), "keybinds"),
     ];
     let default_hints = format_keybind_hints(&app.app_theme, &hints_items);
     let hint = default_hints;

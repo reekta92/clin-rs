@@ -1748,8 +1748,9 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 "move",
             ),
             (kb.display_list(ListAction::Open), "open"),
-            (kb.display_list(ListAction::Help), "help"),
-            (kb.display_list(ListAction::Quit), "quit"),
+            (kb.list_keys_display(ListAction::Help), "help"),
+            (kb.list_keys_display(ListAction::Quit), "quit"),
+            ("F2".to_string(), "keybinds"),
         ]
     } else {
         vec![
@@ -1764,8 +1765,9 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             (kb.display_list(ListAction::Open), "open"),
             (kb.display_list(ListAction::CollapseAll), "collapse"),
             (kb.display_list(ListAction::ExpandAll), "expand"),
-            (kb.display_list(ListAction::Help), "help"),
-            (kb.display_list(ListAction::Quit), "quit"),
+            (kb.list_keys_display(ListAction::Help), "help"),
+            (kb.list_keys_display(ListAction::Quit), "quit"),
+            ("F2".to_string(), "keybinds"),
         ]
     };
     let default_hints = format_keybind_hints(&app.app_theme, &hints_items);

@@ -1122,8 +1122,8 @@ pub fn draw_status_bar<'a>(
         let chunks = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
+                Constraint::Length(left.width() as u16),
                 Constraint::Min(0),
-                Constraint::Length(right_line.width() as u16),
             ])
             .split(area);
 

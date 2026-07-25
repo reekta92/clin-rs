@@ -63,7 +63,7 @@ pub fn tab_description(tab: HelpTab) -> &'static str {
             "Browse, organize, and manage your notes and folders. This is the landing view — navigate the list, open notes for editing, create folders, pin important items, tag notes, and switch between list, grid, and tree layouts. Use the command palette or search to jump anywhere."
         }
         HelpTab::Editor => {
-            "Write and edit the selected note's title and body. Switch focus between the title field and the markdown body, toggle a live markdown preview, undo/redo edits, and hand off to an external editor like vim or nano. Changes auto-save when you return to the notes list."
+            "Write and edit the selected note's title and body. Switch focus between the title field and the markdown body, toggle a live markdown preview, dock outline and links sidebars, undo/redo edits, and hand off to an external editor like vim or nano. Changes auto-save when you return to the notes list."
         }
         HelpTab::Graph => {
             "Visualize your notes as a force-directed graph of wikilinks and shared tags. Pan and zoom the canvas, search for nodes, open notes directly from the graph, and toggle a minimap, legend, grid, and preview to navigate large vaults visually."
@@ -206,10 +206,6 @@ const EDITOR_SUGGESTIONS: &[HelpSuggestion] = &[
     tip(
         "Linked-note preview",
         "Place the cursor on a [[wikilink]] and press {edit:PreviewLink} to pop up a rendered preview of the target note. Press Esc to close without navigating.",
-    ),
-    tip(
-        "READ and EDIT modes",
-        "On opening a note the editor is in **READ** mode showing rendered markdown. Press `e`/`i` to enter **EDIT** and type. `Esc` steps back: EDIT→READ, READ→list. Scroll READ with j/k/PageUp/PageDown/G/gg.",
     ),
 ];
 const GRAPH_SUGGESTIONS: &[HelpSuggestion] = &[

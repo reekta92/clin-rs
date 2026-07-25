@@ -58,8 +58,9 @@ pub fn draw_dashboard(
         (kb.display_backup(BackupAction::Pull), "pull"),
         (kb.display_backup(BackupAction::Refresh), "refresh"),
         (kb.display_backup(BackupAction::OpenSettings), "settings"),
-        (kb.display_backup(BackupAction::Help), "help"),
-        (kb.display_backup(BackupAction::Back), "back"),
+        (kb.backup_keys_display(BackupAction::Help), "help"),
+        (kb.backup_keys_display(BackupAction::Back), "back"),
+        ("F2".to_string(), "keybinds"),
     ];
     let hint_line = crate::ui::format_keybind_hints(theme, &hints_items);
     let mut ctx = crate::statusline::StatuslineContext::for_overlay(config, ViewMode::Backup);

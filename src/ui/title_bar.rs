@@ -135,7 +135,12 @@ pub fn draw_view_title_bar_with_tabs(
     frame.render_widget(Paragraph::new(left), title_area);
 
     if let Some(r_text) = right {
-        frame.render_widget(Paragraph::new(r_text).alignment(Alignment::Right), area);
+        let right_start = title_area.right().max(tabs_area.right());
+        let right_width = area.right().saturating_sub(right_start);
+        if right_width > 0 {
+            let right_rect = Rect::new(right_start, area.y, right_width, area.height);
+            frame.render_widget(Paragraph::new(r_text).alignment(Alignment::Right), right_rect);
+        }
     }
 }
 

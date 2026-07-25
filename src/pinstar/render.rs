@@ -684,7 +684,9 @@ pub fn draw_pinstar_view(
                 ),
                 "zoom",
             ),
-            (state.keybinds.display_canvas(CanvasAction::Quit), "back"),
+            (state.keybinds.canvas_keys_display(CanvasAction::Help), "help"),
+            (state.keybinds.canvas_keys_display(CanvasAction::Quit), "back"),
+            ("F2".to_string(), "keybinds"),
         ];
         crate::ui::format_keybind_hints(theme, &hints_items)
     } else {
