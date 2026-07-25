@@ -135,7 +135,7 @@ fn launch_tui(open_title: Option<String>, force_setup: bool) -> Result<()> {
         app.messages.push(w, crate::app::messages::MessageSeverity::Warning);
     }
     if let Some(err) = startup_err {
-        let msg = format!("Config error: {err}. Please fix the configuration file to continue.");
+        let msg = format!("Storage initialization failed: {err}. The app may not function correctly.");
         app.messages
             .push(msg, crate::app::messages::MessageSeverity::Fatal);
     }
