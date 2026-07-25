@@ -595,6 +595,18 @@ const EDITOR_POPUPS: &[PopupHelp] = &[
         name: "Context Menu",
         body: "``Right-click`` the title or body to open the **Context Menu** with clipboard actions — Copy, Cut, Paste, Select All — applied to whichever field is focused. Move with ``k`` / ``j`` or arrows, run an item with ``Enter``, and ``Esc`` closes. The markdown preview is an inline toggle pane, not a popup.",
     },
+    PopupHelp {
+        name: "Find in File",
+        body: "Press {edit:Find} to open the **Find in File** overlay — a header-bar search that matches text across the current note. Type to filter live; ``Up`` / ``Down`` or ``Tab`` / ``Shift+Tab`` cycle through matches, and ``Enter`` jumps the cursor to the selected result. ``Esc`` closes the overlay.",
+    },
+    PopupHelp {
+        name: "Outline",
+        body: "Press {edit:ToggleOutline} to dock an **Outline** sidebar listing the note's markdown headers as a collapsible tree. Use {edit:CycleFocus} to move focus into the pane, ``k`` / ``j`` or arrows to select a header, and ``Enter`` to jump the cursor to that line. {outline:ExpandAll} / {outline:CollapseAll} fold or unfold every heading at once.",
+    },
+    PopupHelp {
+        name: "Links",
+        body: "Press {edit:ToggleLinks} to dock a **Links** sidebar listing outgoing and incoming links for the current note. ``k`` / ``j`` or arrows move between links and ``Enter`` opens the selected note in the editor.",
+    },
 ];
 
 const GRAPH_POPUPS: &[PopupHelp] = &[PopupHelp {
@@ -624,7 +636,7 @@ const CANVAS_POPUPS: &[PopupHelp] = &[
     },
     PopupHelp {
         name: "Editor Pane & Rename",
-        body: "Press {canvas:ToggleEditorPane} to toggle a side **editor pane** showing the selected node's full raw text; ``CycleFocus`` moves the cursor into it. A **rename popup** (type a new node ID, ``Enter`` confirms, ``Esc`` cancels) is reached from the context menu.",
+        body: "Press {canvas:ToggleEditorPane} to toggle a side **editor pane** showing the selected node's full raw text; {canvas:CycleFocus} moves the cursor into it. A **rename popup** (type a new node ID, ``Enter`` confirms, ``Esc`` cancels) is reached from the context menu.",
     },
 ];
 
@@ -812,7 +824,7 @@ mod tests {
         fn expected_count(tab: HelpTab) -> usize {
             match tab {
                 HelpTab::Notes => 6,
-                HelpTab::Editor => 2,
+                HelpTab::Editor => 5,
                 HelpTab::Graph => 1,
                 HelpTab::Draw => 2,
                 HelpTab::Canvas => 3,

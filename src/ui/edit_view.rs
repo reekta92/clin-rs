@@ -394,16 +394,13 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
     let kb = &app.keybinds;
     let hints_items = vec![
         (kb.display_edit(EditAction::CycleFocus), "focus"),
-        (kb.display_edit(EditAction::Back), "back"),
         (
             kb.display_edit(EditAction::ToggleMarkdownPreview),
             "preview",
         ),
         (kb.display_edit(EditAction::ToggleOutline), "outline"),
         (kb.display_edit(EditAction::ToggleLinks), "links"),
-        (kb.display_edit(EditAction::PreviewLink), "peek link"),
         (kb.display_edit(EditAction::Find), "find"),
-        (kb.display_edit(EditAction::InsertDate), "date"),
         (kb.display_edit(EditAction::ToggleWrap), "wrap"),
     ];
     let default_hints = format_keybind_hints(&app.app_theme, &hints_items);

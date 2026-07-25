@@ -1197,6 +1197,20 @@ fn draw_help_tips_pane(
             }
         }
     }
+    // Fixed tip: F2 keybinds overlay (always shown)
+    lines.push(Line::default());
+    lines.push(Line::from(Span::styled(
+        "Quick keybinds",
+        Style::default()
+            .fg(theme.success)
+            .add_modifier(Modifier::BOLD),
+    )));
+    lines.push(Line::from(render_tip_body(
+        "Press `` F2 `` in any view to toggle a **keybinds overlay** showing all available shortcuts for the current context.",
+        keybinds,
+        theme,
+    )));
+
     let p = Paragraph::new(lines)
         .wrap(Wrap::default())
         .style(theme.preview_bg_style())
