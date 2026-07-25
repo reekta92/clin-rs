@@ -464,6 +464,52 @@ pub fn handle_global_popups_and_palette(
     if key.kind != crossterm::event::KeyEventKind::Press {
         return false;
     }
+    // Message overlay blockade — when a fatal message is active or the
+    // overlay is force-opened, intercept most keys for scrolling / dismissal.
+    if app.messages.has_fatal() || app.messages.force_open {
+        return match key.code {
+            crossterm::event::KeyCode::Esc => {
+                if app.messages.has_fatal() {
+                    app.should_quit = true;
+                } else {
+                    app.messages.force_open = false;
+                    app.messages.scroll = 0;
+                }
+                true
+            }
+            crossterm::event::KeyCode::Char('q') => {
+                app.should_quit = true;
+                true
+            }
+            crossterm::event::KeyCode::Down => {
+                app.messages.scroll = app.messages.scroll.saturating_add(1);
+                true
+            }
+            crossterm::event::KeyCode::Up => {
+                app.messages.scroll = app.messages.scroll.saturating_sub(1);
+                true
+            }
+            crossterm::event::KeyCode::PageDown => {
+                app.messages.scroll = app.messages.scroll.saturating_add(10);
+                true
+            }
+            crossterm::event::KeyCode::PageUp => {
+                app.messages.scroll = app.messages.scroll.saturating_sub(10);
+                true
+            }
+            crossterm::event::KeyCode::F(3) => {
+                app.messages.force_open = !app.messages.force_open;
+                app.messages.scroll = 0;
+                true
+            }
+            crossterm::event::KeyCode::F(2) => {
+                app.quick_keybinds_open = !app.quick_keybinds_open;
+                true
+            }
+            _ => true, // swallow everything else
+        };
+    }
+
 
     // QuickKeybinds toggle — identical combo in every view. F2 is unbound in
     // all 9 keybind scopes (verified in src/keybinds/defaults.rs); raw check
@@ -477,6 +523,12 @@ pub fn handle_global_popups_and_palette(
         app.quick_keybinds_open = !app.quick_keybinds_open;
         return true;
     }
+    // Message overlay toggle — F3 force-opens/closes the message overlay.
+    if key.code == crossterm::event::KeyCode::F(3) {
+        app.messages.force_open = !app.messages.force_open;
+        return true;
+    }
+
 
     // Command palette
     if let Some(mut palette) = app.command_palette.take() {
@@ -2060,5 +2112,74 @@ mod tests {
                 .bg,
             Some(app.app_theme.highlight_bg),
         );
+    }
+    #[test]
+    fn test_message_overlay_scrolling_and_dismissal() {
+        let _lock = crate::config::ConfigTestGuard::lock();
+        use crate::app::App;
+        use crate::storage::Storage;
+        use tempfile::tempdir;
+        use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+
+        let temp_dir = tempdir().expect("value is present");
+        let storage = Storage {
+            data_dir: temp_dir.path().join("data"),
+            config_dir: temp_dir.path().join("config"),
+            notes_dir: temp_dir.path().join("notes"),
+            templates_dir: temp_dir.path().join("templates"),
+            key: [0u8; 32],
+            skip_dir_patterns: Vec::new(),
+        };
+        std::fs::create_dir_all(&storage.data_dir).unwrap();
+        std::fs::create_dir_all(&storage.config_dir).unwrap();
+        std::fs::create_dir_all(&storage.notes_dir).unwrap();
+        std::fs::create_dir_all(&storage.templates_dir).unwrap();
+
+        let mut app = App::new(storage).expect("value is present");
+
+        // 1. Initially scroll is 0, force_open is false
+        assert_eq!(app.messages.scroll, 0);
+        assert!(!app.messages.force_open);
+
+        // 2. Press F3 to toggle force_open
+        let f3_event = Event::Key(KeyEvent::new(KeyCode::F(3), KeyModifiers::NONE));
+        let consumed = handle_global_popups_and_palette(&mut app, f3_event, Rect::default());
+        assert!(consumed);
+        assert!(app.messages.force_open);
+
+        // 3. Pushing messages to scroll
+        app.messages.push("Warning 1".to_string(), crate::app::messages::MessageSeverity::Warning);
+        app.messages.push("Warning 2".to_string(), crate::app::messages::MessageSeverity::Warning);
+
+        // 4. Press Down key — scroll increases to 1
+        let down_event = Event::Key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+        let consumed = handle_global_popups_and_palette(&mut app, down_event, Rect::default());
+        assert!(consumed);
+        assert_eq!(app.messages.scroll, 1);
+
+        // 5. Press Up key — scroll decreases to 0
+        let up_event = Event::Key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE));
+        let consumed = handle_global_popups_and_palette(&mut app, up_event, Rect::default());
+        assert!(consumed);
+        assert_eq!(app.messages.scroll, 0);
+
+        // 6. Press PageDown — scroll increases to 10
+        let pagedown_event = Event::Key(KeyEvent::new(KeyCode::PageDown, KeyModifiers::NONE));
+        let consumed = handle_global_popups_and_palette(&mut app, pagedown_event, Rect::default());
+        assert!(consumed);
+        assert_eq!(app.messages.scroll, 10);
+
+        // 7. Press PageUp — scroll decreases to 0
+        let pageup_event = Event::Key(KeyEvent::new(KeyCode::PageUp, KeyModifiers::NONE));
+        let consumed = handle_global_popups_and_palette(&mut app, pageup_event, Rect::default());
+        assert!(consumed);
+        assert_eq!(app.messages.scroll, 0);
+
+        // 8. Press Esc key — force_open becomes false
+        let esc_event = Event::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        let consumed = handle_global_popups_and_palette(&mut app, esc_event, Rect::default());
+        assert!(consumed);
+        assert!(!app.messages.force_open);
+        assert_eq!(app.messages.scroll, 0);
     }
 }

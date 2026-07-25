@@ -125,8 +125,20 @@ fn launch_tui(open_title: Option<String>, force_setup: bool) -> Result<()> {
     let first_run = crate::config::ClinConfig::config_path()
         .map(|p| !p.exists())
         .unwrap_or(false);
-    let storage = Storage::init()?;
+    let (storage_res, init_warnings) = Storage::init();
+    let (storage, startup_err) = match storage_res {
+        Ok(s) => (s, None),
+        Err(e) => (Storage::new_fallback(), Some(e.to_string())),
+    };
     let mut app = App::new_deferred(storage)?;
+    for w in init_warnings {
+        app.messages.push(w, crate::app::messages::MessageSeverity::Warning);
+    }
+    if let Some(err) = startup_err {
+        let msg = format!("Config error: {err}. Please fix the configuration file to continue.");
+        app.messages
+            .push(msg, crate::app::messages::MessageSeverity::Fatal);
+    }
     if first_run || force_setup {
         app.open_setup_view();
     }
@@ -145,7 +157,8 @@ fn launch_tui(open_title: Option<String>, force_setup: bool) -> Result<()> {
 fn run_notes(action: NotesCmd) -> Result<()> {
     match action {
         NotesCmd::List => {
-            let storage = Storage::init()?;
+            let (storage, _) = Storage::init();
+            let storage = storage?;
             let app = App::new(storage)?;
             for (index, note) in app.notes.iter().enumerate() {
                 println!(
@@ -162,7 +175,8 @@ fn run_notes(action: NotesCmd) -> Result<()> {
             no_tui,
             title,
         } => {
-            let storage = Storage::init()?;
+            let (storage, _) = Storage::init();
+            let storage = storage?;
             let mut app = App::new(storage)?;
 
             let final_title = title.unwrap_or_else(|| "New Note".to_string());
@@ -228,7 +242,8 @@ fn run_notes(action: NotesCmd) -> Result<()> {
         }
         NotesCmd::Open { title } => launch_tui(Some(title), false),
         NotesCmd::Cat { title } => {
-            let storage = Storage::init()?;
+            let (storage, _) = Storage::init();
+            let storage = storage?;
             let app = App::new(storage)?;
             let id = app
                 .notes
@@ -256,7 +271,8 @@ fn run_notes(action: NotesCmd) -> Result<()> {
             }
         }
         NotesCmd::Quick { content, title } => {
-            let mut storage = Storage::init()?;
+            let (storage, _) = Storage::init();
+            let mut storage = storage?;
 
             let id = Uuid::new_v4().simple().to_string();
             let final_title = title.unwrap_or_else(|| "Quick Note".to_string());
@@ -280,7 +296,8 @@ fn run_notes(action: NotesCmd) -> Result<()> {
             use fuzzy_matcher::FuzzyMatcher;
             use fuzzy_matcher::skim::SkimMatcherV2;
 
-            let storage = Storage::init()?;
+            let (storage, _) = Storage::init();
+            let storage = storage?;
             let app = App::new(storage)?;
             let matcher = SkimMatcherV2::default();
             let mut hits: Vec<(i64, String, String)> = Vec::new(); // (score, title, folder)
@@ -324,7 +341,7 @@ fn run_notes(action: NotesCmd) -> Result<()> {
 fn run_storage(action: StorageCmd) -> Result<()> {
     match action {
         StorageCmd::Show => {
-            let bootstrap = ClinConfig::load()?;
+            let bootstrap = ClinConfig::load().0?;
             let effective = bootstrap.effective_storage_path()?;
             println!(
                 "{} {}",
@@ -339,7 +356,7 @@ fn run_storage(action: StorageCmd) -> Result<()> {
             Ok(())
         }
         StorageCmd::Set { path } => {
-            let mut bootstrap = ClinConfig::load()?;
+            let mut bootstrap = ClinConfig::load().0?;
             let path = crate::config::expand_path(&path.to_string_lossy());
             let old_path = bootstrap.effective_storage_path()?;
 
@@ -390,7 +407,7 @@ fn run_storage(action: StorageCmd) -> Result<()> {
             Ok(())
         }
         StorageCmd::Reset => {
-            let mut bootstrap = ClinConfig::load()?;
+            let mut bootstrap = ClinConfig::load().0?;
             let old_path = bootstrap.effective_storage_path()?;
             let default = ClinConfig::default_storage_path()?;
 
@@ -422,7 +439,7 @@ fn run_storage(action: StorageCmd) -> Result<()> {
             Ok(())
         }
         StorageCmd::Migrate => {
-            let bootstrap = ClinConfig::load()?;
+            let bootstrap = ClinConfig::load().0?;
             let to = bootstrap.effective_storage_path()?;
 
             // Read storage migration from state.json
@@ -645,8 +662,9 @@ fn run_storage(action: StorageCmd) -> Result<()> {
 fn run_keybinds(action: KeybindsCmd) -> Result<()> {
     match action {
         KeybindsCmd::Show => {
-            let storage = Storage::init()?;
-            let config = crate::config::ClinConfig::load().unwrap_or_default();
+            let (storage, _) = Storage::init();
+            let storage = storage?;
+            let config = crate::config::ClinConfig::load().0.unwrap_or_default();
             println!(
                 "{}",
                 storage
@@ -656,18 +674,20 @@ fn run_keybinds(action: KeybindsCmd) -> Result<()> {
             Ok(())
         }
         KeybindsCmd::Export => {
-            let storage = Storage::init()?;
-            let config = crate::config::ClinConfig::load().unwrap_or_default();
+            let (storage, _) = Storage::init();
+            let storage = storage?;
+            let config = crate::config::ClinConfig::load().0.unwrap_or_default();
             let preset = config.core.keybind_preset;
-            let keybinds = storage.load_keybinds_with_preset(preset);
+            let (keybinds, _warnings) = storage.load_keybinds_with_preset(preset);
             let toml = keybinds.to_toml();
             let content = toml::to_string_pretty(&toml)?;
             println!("{content}");
             Ok(())
         }
         KeybindsCmd::Reset => {
-            let storage = Storage::init()?;
-            let config = crate::config::ClinConfig::load().unwrap_or_default();
+            let (storage, _) = Storage::init();
+            let storage = storage?;
+            let config = crate::config::ClinConfig::load().0.unwrap_or_default();
             let preset = config.core.keybind_preset;
             let keybinds = preset.base_keybinds();
             storage.save_keybinds_for_preset(&keybinds, preset)?;
@@ -685,7 +705,8 @@ fn run_keybinds(action: KeybindsCmd) -> Result<()> {
 fn run_templates(action: TemplatesCmd) -> Result<()> {
     match action {
         TemplatesCmd::List => {
-            let storage = Storage::init()?;
+            let (storage, _) = Storage::init();
+            let storage = storage?;
             let template_manager = storage.template_manager();
             let templates = template_manager.list()?;
 
@@ -718,7 +739,8 @@ fn run_templates(action: TemplatesCmd) -> Result<()> {
             Ok(())
         }
         TemplatesCmd::Init => {
-            let storage = Storage::init()?;
+            let (storage, _) = Storage::init();
+            let storage = storage?;
             let template_manager = storage.template_manager();
             template_manager.create_examples()?;
             println!(
@@ -779,7 +801,8 @@ fn run_config(action: ConfigCmd) -> Result<()> {
 fn run_cache(action: CacheCmd) -> Result<()> {
     match action {
         CacheCmd::Reset => {
-            let storage = Storage::init()?;
+            let (storage, _) = Storage::init();
+            let storage = storage?;
             let app_paths = crate::paths::AppPaths::discover(ClinConfig::config_path()?)?;
             let vault_id = crate::local_state::vault_identity_path(&storage.data_dir)?;
             let digest = crate::paths::vault_cache_digest(&vault_id);
@@ -1066,7 +1089,7 @@ fn run_tui_session(app: &mut App) -> Result<()> {
 
     // Spawn the background backup worker before entering the terminal.
     let (tx, done_rx) =
-        crate::backup::worker::spawn(app.git_lock.clone(), app.backup_status.clone());
+        crate::backup::worker::spawn(app.git_lock.clone(), app.backup_status.clone(), app.message_tx.clone());
 
     app.backup_tx = Some(tx);
 
@@ -1265,6 +1288,18 @@ fn run_app(
         if SHOULD_EXIT.load(Ordering::Acquire) {
             app.should_quit = true;
             break;
+        }
+        let msgs_before = app.messages.messages.len();
+        while let Ok(msg) = app.message_rx.try_recv() {
+            app.messages.messages.push(msg);
+        }
+        if app.messages.messages.len() != msgs_before {
+            list_dirty = true;
+            graph_dirty = true;
+        }
+        if app.messages.tick_expirations() {
+            list_dirty = true;
+            graph_dirty = true;
         }
 
         if app.mode != prev_mode {

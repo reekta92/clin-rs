@@ -14,19 +14,17 @@ use std::path::Path;
 fn merge_section<A: std::hash::Hash + std::cmp::Eq + Clone + std::fmt::Debug>(
     into: &mut HashMap<A, Vec<KeyCombo>>,
     from: &BTreeMap<A, Vec<String>>,
+    warnings: &mut Vec<String>,
 ) {
     for (action, strs) in from {
         let mut combos = Vec::with_capacity(strs.len());
         for s in strs {
             match KeyCombo::parse(s) {
                 Some(c) => combos.push(c),
-                None => eprintln!(
-                    "{}",
-                    crate::console::warning(&format!(
-                        "keybinds: skipping unparseable combo {:?} for action {:?}",
-                        s, action
-                    ))
-                ),
+                None => warnings.push(format!(
+                    "Keybind parse error: skipping invalid combo {:?} for action {:?}",
+                    s, action
+                )),
             }
         }
         if !combos.is_empty() {
@@ -109,10 +107,10 @@ keybind_resolve!(setup, SetupAction, resolve_setup, false);
 
 impl Keybinds {
     pub fn load(path: &Path) -> Result<Self> {
-        Self::load_layered(path, Self::default())
+        Self::load_layered(path, Self::default(), &mut Vec::new())
     }
 
-    pub fn load_layered(path: &Path, base: Keybinds) -> Result<Keybinds> {
+    pub fn load_layered(path: &Path, base: Keybinds, warnings: &mut Vec<String>) -> Result<Keybinds> {
         let mut keybinds = base;
 
         if !path.exists() {
@@ -124,15 +122,15 @@ impl Keybinds {
         let toml: KeybindsToml =
             toml::from_str(&content).context("failed to parse keybinds file")?;
 
-        merge_section(&mut keybinds.list, &toml.list);
-        merge_section(&mut keybinds.edit, &toml.edit);
-        merge_section(&mut keybinds.help, &toml.help);
-        merge_section(&mut keybinds.graph, &toml.graph);
-        merge_section(&mut keybinds.draw, &toml.draw);
-        merge_section(&mut keybinds.canvas, &toml.canvas);
-        merge_section(&mut keybinds.backup, &toml.backup);
-        merge_section(&mut keybinds.outline, &toml.outline);
-        merge_section(&mut keybinds.setup, &toml.setup);
+        merge_section(&mut keybinds.list, &toml.list, warnings);
+        merge_section(&mut keybinds.edit, &toml.edit, warnings);
+        merge_section(&mut keybinds.help, &toml.help, warnings);
+        merge_section(&mut keybinds.graph, &toml.graph, warnings);
+        merge_section(&mut keybinds.draw, &toml.draw, warnings);
+        merge_section(&mut keybinds.canvas, &toml.canvas, warnings);
+        merge_section(&mut keybinds.backup, &toml.backup, warnings);
+        merge_section(&mut keybinds.outline, &toml.outline, warnings);
+        merge_section(&mut keybinds.setup, &toml.setup, warnings);
         Ok(keybinds)
     }
 
@@ -915,6 +913,7 @@ mod tests {
         let kb = crate::keybinds::Keybinds::load_layered(
             &path,
             crate::config::KeybindPreset::Vim.base_keybinds(),
+            &mut Vec::new(),
         )
         .unwrap_or_default();
         assert!(

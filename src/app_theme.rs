@@ -29,13 +29,13 @@ pub struct AppThemeColors {
 
 impl Default for AppThemeColors {
     fn default() -> Self {
-        Self::from_config(&UiConfig::default())
+        Self::from_config(&UiConfig::default(), &mut Vec::new())
     }
 }
 
 impl AppThemeColors {
-    pub fn from_config(config: &UiConfig) -> Self {
-        let resolved = crate::config::custom_themes::resolve_theme(&config.theme);
+    pub fn from_config(config: &UiConfig, warnings: &mut Vec<String>) -> Self {
+        let resolved = crate::config::custom_themes::resolve_theme(&config.theme, warnings);
         let bg_enum = config.background.clone();
         let mut colors = match &resolved {
             crate::config::custom_themes::ResolvedTheme::Custom(file) => {

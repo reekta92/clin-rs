@@ -113,7 +113,13 @@ impl ClinConfig {
         Ok(proj_dirs.data_local_dir().to_path_buf())
     }
 
-    pub fn load() -> Result<Self> {
+    pub fn load() -> (Result<Self>, Vec<String>) {
+        let mut warnings = Vec::new();
+        let res = Self::load_inner(&mut warnings);
+        (res, warnings)
+    }
+
+    fn load_inner(warnings: &mut Vec<String>) -> Result<Self> {
         let config_path = Self::config_path()?;
 
         if !config_path.exists() {
@@ -138,10 +144,7 @@ impl ClinConfig {
                     config.graf.search = graf_config.search;
                 }
                 if let Err(e) = fs::rename(&graf_path, graf_path.with_extension("toml.migrated")) {
-                    eprintln!(
-                        "{}",
-                        crate::console::warning(&format!("graf path migration rename failed: {e}"))
-                    );
+                    warnings.push(format!("graf path migration rename failed: {e}"));
                 }
             }
 
@@ -507,7 +510,7 @@ impl ClinConfig {
     }
 
     pub fn theme_colors(&self) -> ThemeColors {
-        let resolved = custom_themes::resolve_theme(&self.ui.theme);
+        let resolved = custom_themes::resolve_theme(&self.ui.theme, &mut Vec::new());
         let mut colors = match resolved {
             custom_themes::ResolvedTheme::Custom(file) => {
                 themes::custom_theme_colors(&file.graph, self.graf.visual.graph_background.clone())
@@ -982,7 +985,7 @@ show_status_bar = false
 
         set_config_path_override(config_file_path.clone());
 
-        let mut config = ClinConfig::load().unwrap();
+        let mut config = ClinConfig::load().0.unwrap();
         assert!(config_file_path.exists());
 
         let initial_content = fs::read_to_string(&config_file_path).unwrap();
@@ -1005,7 +1008,7 @@ show_status_bar = false
 
         set_config_path_override(config_file_path.clone());
 
-        let mut config = ClinConfig::load().unwrap();
+        let mut config = ClinConfig::load().0.unwrap();
         assert!(config_file_path.exists());
 
         config.list.custom_smart_folders = vec![super::structs::CustomSmartFolder {
@@ -1026,7 +1029,7 @@ show_status_bar = false
         assert!(saved_content.contains("updated_within_days = 5"));
 
         // Reload and verify parsed struct values
-        let reloaded = ClinConfig::load().unwrap();
+        let reloaded = ClinConfig::load().0.unwrap();
         assert_eq!(reloaded.list.custom_smart_folders.len(), 1);
         assert_eq!(reloaded.list.custom_smart_folders[0].name, "Work Projects");
         assert_eq!(reloaded.list.custom_smart_folders[0].tags, vec!["work"]);
@@ -1052,7 +1055,7 @@ show_status_bar = false
 
         set_config_path_override(config_file_path.clone());
 
-        let mut config = ClinConfig::load().unwrap();
+        let mut config = ClinConfig::load().0.unwrap();
         assert!(config_file_path.exists());
 
         // Ensure custom_smart_folders is empty

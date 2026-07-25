@@ -14,6 +14,7 @@ use parking_lot::Mutex;
 
 use crate::backup::git_ops::GitOps;
 use crate::config::{BackupConfig, ClinConfig};
+use crate::app::messages::{MessageSeverity, OverlayMessage};
 
 /// A backup job for the worker.
 pub enum BackupJob {
@@ -39,13 +40,14 @@ pub const FLUSH_BOUND: Duration = Duration::from_secs(15);
 pub fn spawn(
     git_lock: Arc<Mutex<()>>,
     status: Arc<Mutex<Option<String>>>,
+    tx_msg: Sender<OverlayMessage>,
 ) -> (Sender<BackupJob>, Receiver<()>) {
     let (tx, rx) = mpsc::channel();
     let (done_tx, done_rx) = mpsc::channel();
     std::thread::Builder::new()
         .name("clin-backup-worker".into())
         .spawn(move || {
-            worker_loop(&rx, &git_lock, &status, &done_tx);
+            worker_loop(&rx, &git_lock, &status, &tx_msg, &done_tx);
         })
         .expect("failed to spawn backup worker");
     (tx, done_rx)
@@ -55,6 +57,7 @@ fn worker_loop(
     rx: &Receiver<BackupJob>,
     git_lock: &Arc<Mutex<()>>,
     status: &Arc<Mutex<Option<String>>>,
+    tx_msg: &Sender<OverlayMessage>,
     done: &Sender<()>,
 ) {
     loop {
@@ -72,7 +75,7 @@ fn worker_loop(
             // 2. Flush: drain any other immediately-available jobs
             BackupJob::Flush(msg) => {
                 while rx.try_recv().is_ok() {}
-                run_backup(git_lock, status, &msg);
+                run_backup(git_lock, status, tx_msg, &msg);
             }
             // 3. Auto: record the message and debounce.
             BackupJob::Auto(msg) => {
@@ -94,13 +97,13 @@ fn worker_loop(
                         }
                         Err(mpsc::RecvTimeoutError::Timeout) => break,
                         Err(mpsc::RecvTimeoutError::Disconnected) => {
-                            run_backup(git_lock, status, &current);
+                            run_backup(git_lock, status, tx_msg, &current);
                             let _ = done.send(());
                             return;
                         }
                     }
                 }
-                run_backup(git_lock, status, &current);
+                run_backup(git_lock, status, tx_msg, &current);
             }
         }
     }
@@ -109,28 +112,37 @@ fn worker_loop(
 /// Worker's per-job helper: resolve the live config, then delegate to
 /// `perform`. Config is read per job (not cached) so runtime changes made in
 /// the Backup view's settings are picked up.
-fn run_backup(git_lock: &Arc<Mutex<()>>, status: &Arc<Mutex<Option<String>>>, message: &str) {
-    let config = match ClinConfig::load() {
+fn run_backup(
+    git_lock: &Arc<Mutex<()>>,
+    status: &Arc<Mutex<Option<String>>>,
+    tx_msg: &Sender<OverlayMessage>,
+    message: &str,
+) {
+    let config = match ClinConfig::load().0 {
         Ok(c) => c,
         Err(e) => {
-            eprintln!(
-                "{}",
-                crate::console::error(&format!("backup skipped: config load failed: {e}"))
-            );
-            *status.lock() = Some("backup skipped: config unreadable".to_string());
+            let err_msg = format!("Backup worker failed: config load failed: {e}");
+            *status.lock() = Some(err_msg.clone());
+            tx_msg.send(OverlayMessage {
+                id: 0,
+                text: err_msg,
+                severity: MessageSeverity::Warning,
+                timestamp: Instant::now(),
+            }).ok();
             return;
         }
     };
     let vault_path = match config.effective_storage_path() {
         Ok(p) => p,
         Err(e) => {
-            eprintln!(
-                "{}",
-                crate::console::error(&format!(
-                    "backup skipped: vault path resolution failed: {e}"
-                ))
-            );
-            *status.lock() = Some("backup skipped: vault path invalid".to_string());
+            let err_msg = format!("Backup worker failed: vault path resolution failed: {e}");
+            *status.lock() = Some(err_msg.clone());
+            tx_msg.send(OverlayMessage {
+                id: 0,
+                text: err_msg,
+                severity: MessageSeverity::Warning,
+                timestamp: Instant::now(),
+            }).ok();
             return;
         }
     };
@@ -279,7 +291,8 @@ mod tests {
     #[test]
     fn worker_shuts_down_on_drop() {
         let (git_lock, status) = locks();
-        let (tx, done_rx) = spawn(git_lock, status);
+        let (tx_msg, _) = mpsc::channel();
+        let (tx, done_rx) = spawn(git_lock, status, tx_msg);
 
         tx.send(BackupJob::Auto("a".into())).expect("send 1");
         tx.send(BackupJob::Auto("b".into())).expect("send 2");
@@ -304,10 +317,11 @@ mod tests {
         crate::config::set_config_path_override(corrupt_config);
 
         let (git_lock, status) = locks();
-        run_backup(&git_lock, &status, "Test auto commit");
+        let (tx_msg, _) = mpsc::channel();
+        run_backup(&git_lock, &status, &tx_msg, "Test auto commit");
 
         let status_val = status.lock().clone();
         assert!(status_val.is_some());
-        assert_eq!(status_val.unwrap(), "backup skipped: config unreadable");
+        assert!(status_val.unwrap().starts_with("Backup worker failed: config load failed:"));
     }
 }

@@ -449,7 +449,7 @@ template = """
         self.sort_notes();
         self.refresh_visual_list();
 
-        if let Ok(mut config) = crate::config::ClinConfig::load() {
+        if let Ok(mut config) = crate::config::ClinConfig::load().0 {
             config.list.default_sort_field = Some(self.list.sort_field);
             config.list.default_sort_order = Some(self.list.sort_order);
             if let Err(e) = config.save() {
@@ -467,7 +467,7 @@ template = """
         themes.extend(crate::config::custom_themes::list_custom_themes());
         let is_custom: Vec<bool> = (0..themes.len()).map(|i| i >= builtin_count).collect();
 
-        let config = crate::config::ClinConfig::load().unwrap_or_default();
+        let config = crate::config::ClinConfig::load().0.unwrap_or_default();
         let current = config.ui.theme.clone();
 
         let selected = themes.iter().position(|t| t == &current).unwrap_or(0);
@@ -560,7 +560,7 @@ template = """
                 crate::config::IconMode::None => "Icon mode: None",
             };
             self.set_temporary_status_static(status);
-            if let Ok(mut config) = crate::config::ClinConfig::load() {
+            if let Ok(mut config) = crate::config::ClinConfig::load().0 {
                 config.ui.icon_mode = mode;
                 if let Err(e) = config.save() {
                     self.set_temporary_status(&format!("Failed to save config: {e}"));
@@ -604,7 +604,7 @@ template = """
                 crate::config::HintBarStyle::Slanted => "Hint bar style: Slanted",
             };
             self.set_temporary_status_static(status);
-            if let Ok(mut config) = crate::config::ClinConfig::load() {
+            if let Ok(mut config) = crate::config::ClinConfig::load().0 {
                 config.ui.hint_bar_style = style;
                 if let Err(e) = config.save() {
                     self.set_temporary_status(&format!("Failed to save config: {e}"));
@@ -641,7 +641,7 @@ template = """
             self.config.core.keybind_preset = new;
             self.apply_keybind_preset(new);
             self.set_temporary_status(&format!("Keybind preset: {new}"));
-            if let Ok(mut c) = crate::config::ClinConfig::load() {
+            if let Ok(mut c) = crate::config::ClinConfig::load().0 {
                 c.core.keybind_preset = new;
                 let _ = c.save();
             }
@@ -654,7 +654,11 @@ template = """
     }
 
     pub fn apply_keybind_preset(&mut self, preset: crate::config::KeybindPreset) {
-        self.keybinds = self.storage.load_keybinds_with_preset(preset);
+        let (keybinds, warnings) = self.storage.load_keybinds_with_preset(preset);
+        self.keybinds = keybinds;
+        for w in warnings {
+            self.messages.push(w, crate::app::messages::MessageSeverity::Warning);
+        }
         self.seq_matcher.clear();
     }
 
@@ -731,7 +735,7 @@ template = """
             let val_str = popup.input.lines().join("");
             match val_str.trim().parse::<usize>() {
                 Ok(val) => {
-                    let mut config = crate::config::ClinConfig::load().unwrap_or_default();
+                    let mut config = crate::config::ClinConfig::load().0.unwrap_or_default();
                     match popup.mode {
                         crate::popups::GoalsPopupMode::WordGoal => {
                             config.goals.word_goal = val;
@@ -788,7 +792,11 @@ template = """
             };
             if self.config.core.keybind_preset != preset {
                 self.config.core.keybind_preset = preset;
-                self.keybinds = self.storage.load_keybinds_with_preset(preset);
+                let (kb, warnings) = self.storage.load_keybinds_with_preset(preset);
+                self.keybinds = kb;
+                for w in warnings {
+                    self.messages.push(w, crate::app::messages::MessageSeverity::Warning);
+                }
                 self.seq_matcher.clear();
                 visuals_changed = true;
             }
@@ -841,14 +849,18 @@ template = """
 
     /// Discard wizard mutations: reload config + keybinds from disk, close wizard.
     pub fn abort_setup(&mut self) {
-        if let Ok(fresh) = crate::config::ClinConfig::load() {
+        if let Ok(fresh) = crate::config::ClinConfig::load().0 {
             self.config = fresh;
         }
         // Rebuild keybinds for the (now disk-truth) preset; clear any stale
         // in-flight sequence buffered against the old binding set.
-        self.keybinds = self
+        let (kb, warnings) = self
             .storage
             .load_keybinds_with_preset(self.config.core.keybind_preset);
+        self.keybinds = kb;
+        for w in warnings {
+            self.messages.push(w, crate::app::messages::MessageSeverity::Warning);
+        }
         self.seq_matcher.clear();
         self.refresh_theme_from_config();
         self.set_temporary_status_static("Setup cancelled");

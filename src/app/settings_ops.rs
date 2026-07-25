@@ -3,9 +3,9 @@ use crate::list_view::*;
 
 impl App {
     /// Load, patch, and save an editor config field.  Replaces the
-    /// `ClinConfig::load() → set → save()` boilerplate used by toggle methods.
+    /// `ClinConfig::load().0 → set → save()` boilerplate used by toggle methods.
     fn persist_editor_config(&mut self, field_update: impl FnOnce(&mut crate::config::ClinConfig)) {
-        if let Ok(mut config) = crate::config::ClinConfig::load() {
+        if let Ok(mut config) = crate::config::ClinConfig::load().0 {
             field_update(&mut config);
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
@@ -21,7 +21,7 @@ impl App {
             "External editor mode disabled"
         };
         self.set_temporary_status(msg);
-        if let Ok(mut config) = crate::config::ClinConfig::load() {
+        if let Ok(mut config) = crate::config::ClinConfig::load().0 {
             config.editor.external_enabled = self.editor.external_editor_enabled;
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
@@ -70,7 +70,7 @@ impl App {
             self.list.preview_content = None;
             self.set_temporary_status_static("Preview disabled");
         }
-        if let Ok(mut config) = crate::config::ClinConfig::load() {
+        if let Ok(mut config) = crate::config::ClinConfig::load().0 {
             config.list.preview_enabled = self.list.preview_enabled;
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
@@ -85,7 +85,7 @@ impl App {
         } else {
             self.set_temporary_status_static("Calendar disabled");
         }
-        if let Ok(mut config) = crate::config::ClinConfig::load() {
+        if let Ok(mut config) = crate::config::ClinConfig::load().0 {
             config.list.calendar_enabled = self.list.calendar_enabled;
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
@@ -101,7 +101,7 @@ impl App {
             "Inline info hidden"
         };
         self.set_temporary_status_static(msg);
-        if let Ok(mut config) = crate::config::ClinConfig::load() {
+        if let Ok(mut config) = crate::config::ClinConfig::load().0 {
             config.list.inline_info = self.list.inline_info;
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
@@ -231,7 +231,7 @@ impl App {
     }
 
     pub(crate) fn persist_list_layout(&mut self) {
-        if let Ok(mut config) = crate::config::ClinConfig::load() {
+        if let Ok(mut config) = crate::config::ClinConfig::load().0 {
             config.list.preview_width_ratio = self.list.preview_width_ratio;
             config.list.calendar_height = self.list.calendar_height;
             config.list.preview_position = self.preview_position;
@@ -245,7 +245,7 @@ impl App {
 
     pub(crate) fn persist_folder_state(&mut self) {
         // Save pinned_folders to config.toml (preference)
-        if let Ok(mut config) = crate::config::ClinConfig::load() {
+        if let Ok(mut config) = crate::config::ClinConfig::load().0 {
             config.list.pinned_folders = self.list.pinned_folders.iter().cloned().collect();
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save folder state: {e}"));
@@ -363,7 +363,7 @@ impl App {
             "Delete confirmation disabled"
         };
         self.set_temporary_status_static(msg);
-        if let Ok(mut config) = crate::config::ClinConfig::load() {
+        if let Ok(mut config) = crate::config::ClinConfig::load().0 {
             config.core.confirm_on_delete = self.confirm_on_delete;
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
@@ -379,7 +379,7 @@ impl App {
             "Quit confirmation disabled"
         };
         self.set_temporary_status_static(msg);
-        if let Ok(mut config) = crate::config::ClinConfig::load() {
+        if let Ok(mut config) = crate::config::ClinConfig::load().0 {
             config.core.confirm_on_quit = self.confirm_on_quit;
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
@@ -398,7 +398,7 @@ impl App {
         if self.list.preview_enabled {
             self.update_preview();
         }
-        if let Ok(mut config) = crate::config::ClinConfig::load() {
+        if let Ok(mut config) = crate::config::ClinConfig::load().0 {
             config.list.preview_encryption = self.preview_encryption;
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
@@ -416,7 +416,7 @@ impl App {
             "Pinned notes in natural order"
         };
         self.set_temporary_status_static(msg);
-        if let Ok(mut config) = crate::config::ClinConfig::load() {
+        if let Ok(mut config) = crate::config::ClinConfig::load().0 {
             config.list.pinned_on_top = self.pinned_on_top;
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
@@ -433,7 +433,7 @@ impl App {
             "Hidden files hidden"
         };
         self.set_temporary_status_static(msg);
-        if let Ok(mut config) = crate::config::ClinConfig::load() {
+        if let Ok(mut config) = crate::config::ClinConfig::load().0 {
             config.list.show_hidden_files = self.list.show_hidden_files;
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
@@ -450,7 +450,7 @@ impl App {
             "Showing notes only"
         };
         self.set_temporary_status_static(msg);
-        if let Ok(mut config) = crate::config::ClinConfig::load() {
+        if let Ok(mut config) = crate::config::ClinConfig::load().0 {
             config.list.show_all_files = self.list.show_all_files;
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
@@ -467,7 +467,7 @@ impl App {
             "Files first in list"
         };
         self.set_temporary_status_static(msg);
-        if let Ok(mut config) = crate::config::ClinConfig::load() {
+        if let Ok(mut config) = crate::config::ClinConfig::load().0 {
             config.list.folders_first = self.list.folders_first;
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
@@ -483,7 +483,7 @@ impl App {
         } else {
             "Smart folders disabled"
         });
-        if let Ok(mut config) = crate::config::ClinConfig::load() {
+        if let Ok(mut config) = crate::config::ClinConfig::load().0 {
             config.list.smart_folders_enabled = self.config.list.smart_folders_enabled;
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
@@ -499,7 +499,7 @@ impl App {
             "Tab icons + labels"
         };
         self.set_temporary_status_static(msg);
-        if let Ok(mut config) = crate::config::ClinConfig::load() {
+        if let Ok(mut config) = crate::config::ClinConfig::load().0 {
             config.ui.tab_icons_only = self.config.ui.tab_icons_only;
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
@@ -517,7 +517,7 @@ impl App {
         self.list.grid_folder = String::new();
         self.refresh_visual_list();
         // #2: persist
-        if let Ok(mut config) = crate::config::ClinConfig::load() {
+        if let Ok(mut config) = crate::config::ClinConfig::load().0 {
             config.list.default_view = self.list.notes_layout.clone();
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
@@ -701,7 +701,7 @@ impl App {
         } else {
             "Scrollbars off"
         });
-        if let Ok(mut config) = crate::config::ClinConfig::load() {
+        if let Ok(mut config) = crate::config::ClinConfig::load().0 {
             config.ui.scrollbars = self.config.ui.scrollbars;
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
@@ -716,7 +716,7 @@ impl App {
         } else {
             "Syntax highlighting disabled"
         });
-        if let Ok(mut config) = crate::config::ClinConfig::load() {
+        if let Ok(mut config) = crate::config::ClinConfig::load().0 {
             config.core.syntax_highlighting = self.config.core.syntax_highlighting;
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
@@ -731,7 +731,7 @@ impl App {
         } else {
             "Code line numbers disabled"
         });
-        if let Ok(mut config) = crate::config::ClinConfig::load() {
+        if let Ok(mut config) = crate::config::ClinConfig::load().0 {
             config.core.code_line_numbers = self.config.core.code_line_numbers;
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
@@ -747,7 +747,7 @@ impl App {
         } else {
             "File sizes hidden"
         });
-        if let Ok(mut config) = crate::config::ClinConfig::load() {
+        if let Ok(mut config) = crate::config::ClinConfig::load().0 {
             config.list.show_file_size = self.list.show_file_size;
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
@@ -766,7 +766,7 @@ impl App {
         } else {
             "List density: comfortable"
         });
-        if let Ok(mut config) = crate::config::ClinConfig::load() {
+        if let Ok(mut config) = crate::config::ClinConfig::load().0 {
             config.list.density = self.list.list_density.clone();
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
@@ -784,7 +784,7 @@ impl App {
         } else {
             "Week starts: Monday"
         });
-        if let Ok(mut config) = crate::config::ClinConfig::load() {
+        if let Ok(mut config) = crate::config::ClinConfig::load().0 {
             config.list.week_start = self.list.week_start;
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
@@ -800,7 +800,7 @@ impl App {
         } else {
             "Goals disabled"
         });
-        if let Ok(mut config) = crate::config::ClinConfig::load() {
+        if let Ok(mut config) = crate::config::ClinConfig::load().0 {
             config.goals.enabled = self.config.goals.enabled;
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
@@ -817,7 +817,7 @@ impl App {
         } else {
             "Folder graph preview disabled"
         });
-        if let Ok(mut config) = crate::config::ClinConfig::load() {
+        if let Ok(mut config) = crate::config::ClinConfig::load().0 {
             config.list.folder_graph_preview = self.config.list.folder_graph_preview;
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
@@ -832,7 +832,7 @@ impl App {
         } else {
             "Graph legend hidden"
         });
-        if let Ok(mut config) = crate::config::ClinConfig::load() {
+        if let Ok(mut config) = crate::config::ClinConfig::load().0 {
             config.graf.visual.show_legend = self.config.graf.visual.show_legend;
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
@@ -847,7 +847,7 @@ impl App {
         } else {
             "Graph grid hidden"
         });
-        if let Ok(mut config) = crate::config::ClinConfig::load() {
+        if let Ok(mut config) = crate::config::ClinConfig::load().0 {
             config.graf.visual.show_grid = self.config.graf.visual.show_grid;
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
@@ -862,7 +862,7 @@ impl App {
         } else {
             "Graph minimap hidden"
         });
-        if let Ok(mut config) = crate::config::ClinConfig::load() {
+        if let Ok(mut config) = crate::config::ClinConfig::load().0 {
             config.graf.visual.show_minimap = self.config.graf.visual.show_minimap;
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save config: {e}"));
@@ -877,7 +877,7 @@ impl App {
         } else {
             "Orphan nodes hidden"
         });
-        if let Ok(mut config) = crate::config::ClinConfig::load() {
+        if let Ok(mut config) = crate::config::ClinConfig::load().0 {
             config.graf.filter.show_orphan = self.config.graf.filter.show_orphan;
             if let Err(e) = config.save() {
                 self.set_temporary_status(&format!("Failed to save config: {e}"));

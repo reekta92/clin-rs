@@ -158,15 +158,12 @@ pub fn list_custom_themes() -> Vec<String> {
 
 /// Load a custom theme file by name (stem only, no `.toml` extension).
 ///
-/// Returns `None` if the file doesn't exist, can't be read, or fails to parse.
-/// Errors are logged to stderr (never panic).
-pub fn load_custom_theme(name: &str) -> Option<CustomThemeFile> {
+/// Returns `None` if the file doesn't exist. Pushes parse/read errors to
+/// `warnings` instead of logging to stderr (never panic).
+pub fn load_custom_theme(name: &str, warnings: &mut Vec<String>) -> Option<CustomThemeFile> {
     let dir = match custom_themes_dir() {
         Ok(d) => d,
-        Err(e) => {
-            eprintln!("[clin] custom themes: cannot determine themes dir: {e}");
-            return None;
-        }
+        Err(_) => return None,
     };
 
     let path = dir.join(format!("{name}.toml"));
@@ -174,7 +171,10 @@ pub fn load_custom_theme(name: &str) -> Option<CustomThemeFile> {
         Ok(c) => c,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
         Err(e) => {
-            eprintln!("[clin] custom theme '{name}': cannot read: {e}");
+            warnings.push(format!(
+                "Theme parse error: Failed to load '{name}' from {}: {e}. Falling back to default.",
+                path.display()
+            ));
             return None;
         }
     };
@@ -182,7 +182,10 @@ pub fn load_custom_theme(name: &str) -> Option<CustomThemeFile> {
     match toml::from_str::<CustomThemeFile>(&content) {
         Ok(theme) => Some(theme),
         Err(e) => {
-            eprintln!("[clin] custom theme '{name}': parse error: {e}");
+            warnings.push(format!(
+                "Theme parse error: Failed to load '{name}' from {}: {e}. Falling back to default.",
+                path.display()
+            ));
             None
         }
     }
@@ -198,9 +201,9 @@ pub fn load_custom_theme(name: &str) -> Option<CustomThemeFile> {
 /// 1. Custom theme dir (<name>.toml) — if found and valid, wins (overrides built-in).
 /// 2. Built-in `Theme::from_str(name)` — if matches a known name.
 /// 3. Fallback → `Theme::Default` (silent, never panics).
-pub fn resolve_theme(name: &str) -> ResolvedTheme {
+pub fn resolve_theme(name: &str, warnings: &mut Vec<String>) -> ResolvedTheme {
     // Custom first
-    if let Some(custom) = load_custom_theme(name) {
+    if let Some(custom) = load_custom_theme(name, warnings) {
         return ResolvedTheme::Custom(Box::new(custom));
     }
     // Built-in
@@ -270,19 +273,19 @@ background = "#000000"
         std::fs::write(themes_dir.join("ignore.txt"), b"not a theme").unwrap();
 
         // === resolve_custom_first ===
-        match resolve_theme("foo") {
+        match resolve_theme("foo", &mut Vec::new()) {
             ResolvedTheme::Custom(_) => {} // expected
             other => panic!("expected Custom, got {other:?}"),
         }
 
         // === resolve_builtin_fallback ===
-        match resolve_theme("gruvbox") {
+        match resolve_theme("gruvbox", &mut Vec::new()) {
             ResolvedTheme::Builtin(Theme::Gruvbox) => {} // expected
             other => panic!("expected Builtin(Gruvbox), got {other:?}"),
         }
 
         // === resolve_unknown_to_default ===
-        match resolve_theme("nope") {
+        match resolve_theme("nope", &mut Vec::new()) {
             ResolvedTheme::Builtin(Theme::Default) => {} // expected
             other => panic!("expected Builtin(Default), got {other:?}"),
         }
@@ -369,7 +372,7 @@ theme = "redtest"
             background: crate::config::Background::Solid,
             ..Default::default()
         };
-        let app_colors = crate::app_theme::AppThemeColors::from_config(&ui_config);
+        let app_colors = crate::app_theme::AppThemeColors::from_config(&ui_config, &mut Vec::new());
         assert_eq!(
             app_colors.accent,
             ratatui::style::Color::Rgb(255, 0, 0),

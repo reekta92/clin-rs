@@ -129,7 +129,7 @@ impl GrafAppState {
             preview_offset_y: 0.0,
             preview_request_key: None,
             pending_markdown_resize: None,
-            app_theme: crate::app_theme::AppThemeColors::from_config(&config.ui),
+            app_theme: crate::app_theme::AppThemeColors::from_config(&config.ui, &mut Vec::new()),
             keybinds,
             seq_matcher,
             preview_drag_last_pos: None,

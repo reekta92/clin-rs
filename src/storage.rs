@@ -168,8 +168,22 @@ pub(crate) fn is_existing_vault(dir: &Path) -> bool {
 use crate::fsutil::remove_file_if_exists;
 
 impl Storage {
-    pub fn init() -> Result<Self> {
-        let bootstrap = ClinConfig::load().context("failed to load config")?;
+    pub fn init() -> (Result<Self>, Vec<String>) {
+        let mut warnings = Vec::new();
+        let res = Self::init_inner(&mut warnings);
+        (res, warnings)
+    }
+
+    fn init_inner(warnings: &mut Vec<String>) -> Result<Self> {
+        let (config_res, config_warnings) = ClinConfig::load();
+        warnings.extend(config_warnings);
+        let bootstrap = match config_res {
+            Ok(c) => c,
+            Err(e) => {
+                warnings.push(format!("Config error: {e}. Falling back to default configuration."));
+                ClinConfig::default()
+            }
+        };
         let data_dir = bootstrap
             .effective_storage_path()
             .context("failed to determine storage path")?;
@@ -197,7 +211,6 @@ impl Storage {
             fs::create_dir_all(&notes_dir).context("failed to create notes directory")?;
             fs::create_dir_all(&templates_dir).context("failed to create templates directory")?;
         }
-
         // --- Key migration to AppPaths canonical location ---
         let app_paths = crate::paths::AppPaths::discover(ClinConfig::config_path()?)?;
         let target_key_path = app_paths.key_path(); // <data_local_dir>/key.bin
@@ -237,13 +250,10 @@ impl Storage {
                     if perms.mode() & 0o777 != 0o400 {
                         perms.set_mode(0o400);
                         if let Err(e) = fs::set_permissions(&target_key_path, perms) {
-                            eprintln!(
-                                "{}",
-                                crate::console::warning(&format!(
-                                    "set_permissions failed for {}: {e}",
-                                    target_key_path.display()
-                                ))
-                            );
+                            warnings.push(format!(
+                                "set_permissions failed for {}: {e}",
+                                target_key_path.display()
+                            ));
                         }
                     }
                 }
@@ -367,7 +377,7 @@ impl Storage {
             skip_dir_patterns,
         };
         storage.migrate_native_subnotes_metadata()?;
-        storage.migrate_legacy_attachments(&bootstrap.image.attachments_subdir)?;
+        storage.migrate_legacy_attachments(&bootstrap.image.attachments_subdir, warnings)?;
         if !vault_mode {
             storage.migrate_extensions();
         }
@@ -598,8 +608,9 @@ impl Storage {
     pub fn load_keybinds_with_preset(
         &self,
         preset: crate::config::KeybindPreset,
-    ) -> crate::keybinds::Keybinds {
+    ) -> (crate::keybinds::Keybinds, Vec<String>) {
         let per_preset = self.keybinds_path_for_preset(preset);
+        let mut warnings = Vec::new();
 
         // Migration from legacy flat paths
         let legacy_per_preset = self.config_dir.join(format!("keybinds_{preset}.toml"));
@@ -618,29 +629,21 @@ impl Storage {
         }
 
         if !per_preset.exists() {
-            eprintln!(
-                "{}",
-                crate::console::warning(&format!(
-                    "keybinds file not found at {} — using {} preset defaults",
-                    per_preset.display(),
-                    preset
-                ))
-            );
-            return preset.base_keybinds();
+            warnings.push(format!(
+                "Keybinds missing: {}. Falling back to '{preset}' preset.",
+                per_preset.display()
+            ));
+            return (preset.base_keybinds(), warnings);
         }
-        crate::keybinds::Keybinds::load_layered(&per_preset, preset.base_keybinds()).unwrap_or_else(
-            |e| {
-                eprintln!(
-                    "{}",
-                    crate::console::error(&format!(
-                        "keybinds: failed to load {}: {e} — using {} preset defaults",
-                        per_preset.display(),
-                        preset
-                    ))
-                );
+        let keybinds = crate::keybinds::Keybinds::load_layered(&per_preset, preset.base_keybinds(), &mut warnings)
+            .unwrap_or_else(|e| {
+                warnings.push(format!(
+                    "Keybinds parse error: {}: {e}. Falling back to '{preset}' preset.",
+                    per_preset.display()
+                ));
                 preset.base_keybinds()
-            },
-        )
+            });
+        (keybinds, warnings)
     }
 
     pub fn template_manager(&self) -> TemplateManager {
@@ -1697,7 +1700,7 @@ impl Storage {
         );
     }
 
-    fn migrate_legacy_attachments(&self, attachments_subdir: &str) -> Result<()> {
+    fn migrate_legacy_attachments(&self, attachments_subdir: &str, warnings: &mut Vec<String>) -> Result<()> {
         let configured = Self::validated_attachment_subdir(attachments_subdir)?;
         let legacy = self.data_dir.join(".clin").join("attachments");
         if !legacy.exists() {
@@ -1709,21 +1712,21 @@ impl Storage {
             return Ok(());
         }
         let copy_only = configured == Path::new(".clin").join("attachments");
-        Self::merge_attachment_tree(&legacy, &target, copy_only)?;
+        Self::merge_attachment_tree(&legacy, &target, copy_only, warnings)?;
         if !copy_only {
             Self::remove_empty_tree(&legacy)?;
         }
         Ok(())
     }
 
-    fn merge_attachment_tree(source: &Path, target: &Path, copy_only: bool) -> Result<()> {
+    fn merge_attachment_tree(source: &Path, target: &Path, copy_only: bool, warnings: &mut Vec<String>) -> Result<()> {
         fs::create_dir_all(target).context("failed to create attachment migration target")?;
         for entry in fs::read_dir(source).context("failed to read legacy attachments")? {
             let entry = entry?;
             let source_path = entry.path();
             let target_path = target.join(entry.file_name());
             if entry.file_type()?.is_dir() {
-                Self::merge_attachment_tree(&source_path, &target_path, copy_only)?;
+                Self::merge_attachment_tree(&source_path, &target_path, copy_only, warnings)?;
                 if !copy_only {
                     Self::remove_empty_tree(&source_path)?;
                 }
@@ -1741,14 +1744,11 @@ impl Storage {
                         .context("failed to remove duplicate legacy attachment")?;
                 }
             } else {
-                eprintln!(
-                    "{}",
-                    crate::console::warning(&format!(
-                        "attachment migration conflict: preserving {} and {}",
-                        source_path.display(),
-                        target_path.display()
-                    ))
-                );
+                warnings.push(format!(
+                    "attachment migration conflict: preserving {} and {}",
+                    source_path.display(),
+                    target_path.display()
+                ));
             }
         }
         Ok(())
@@ -1932,8 +1932,29 @@ impl Storage {
         }
         Ok(result)
     }
-}
 
+    /// Create a minimal dummy Storage so the app can start even when `init()` fails.
+    /// The returned Storage uses a temp dir and a zeroed key; it cannot read
+    /// real notes but prevents a crash on startup.
+    pub fn new_fallback() -> Self {
+        let data_dir = std::env::temp_dir().join("clin_fallback");
+        let _ = std::fs::create_dir_all(&data_dir);
+        let config_dir = std::env::temp_dir().join("clin_fallback_config");
+        let _ = std::fs::create_dir_all(&config_dir);
+        let notes_dir = data_dir.join("notes");
+        let _ = std::fs::create_dir_all(&notes_dir);
+        let templates_dir = data_dir.join("templates");
+        let _ = std::fs::create_dir_all(&templates_dir);
+        Self {
+            data_dir,
+            config_dir,
+            notes_dir,
+            templates_dir,
+            key: [0u8; 32],
+            skip_dir_patterns: Vec::new(),
+        }
+    }
+}
 fn obfuscate(data: &mut [u8]) {
     let pattern = b"clin_subnotes_obfuscation_key_pattern";
     for (i, byte) in data.iter_mut().enumerate() {

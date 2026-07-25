@@ -1,3 +1,5 @@
+pub mod messages;
+
 pub(crate) mod catalog;
 mod edit_panes;
 pub(crate) mod folder_preview;
@@ -395,6 +397,9 @@ pub struct App {
     pub notes_worker_pool: Arc<rayon::ThreadPool>,
     pub fps: f64,
     pub last_frame_time: std::time::Instant,
+    pub messages: crate::app::messages::MessageOverlay,
+    pub message_tx: std::sync::mpsc::Sender<crate::app::messages::OverlayMessage>,
+    pub message_rx: std::sync::mpsc::Receiver<crate::app::messages::OverlayMessage>,
 }
 
 const PREVIEW_INNER_PAD: u16 = 4;
@@ -456,11 +461,12 @@ impl App {
     }
 
     pub fn new(storage: Storage) -> Result<Self> {
-        let bootstrap_config = crate::config::ClinConfig::load().unwrap_or_default();
+        let bootstrap_config = crate::config::ClinConfig::load().0.unwrap_or_default();
         let notes_worker_pool = Self::build_notes_worker_pool()?;
         let config_errors = bootstrap_config.validate();
-        let keybinds = storage.load_keybinds_with_preset(bootstrap_config.core.keybind_preset);
-        let app_theme = crate::app_theme::AppThemeColors::from_config(&bootstrap_config.ui);
+        let (keybinds, keybind_warnings) = storage.load_keybinds_with_preset(bootstrap_config.core.keybind_preset);
+        let mut theme_warnings = Vec::new();
+        let app_theme = crate::app_theme::AppThemeColors::from_config(&bootstrap_config.ui, &mut theme_warnings);
 
         let mut editor = NoteEditor::new();
         editor.external_editor_enabled = bootstrap_config.editor.external_enabled;
@@ -552,6 +558,8 @@ impl App {
                 show_all: bootstrap_config.list.show_all_files,
             });
         }
+
+        let (message_tx, message_rx) = std::sync::mpsc::channel();
 
         let mut app = Self {
             storage: storage.clone(),
@@ -645,7 +653,16 @@ impl App {
             image_decode_rx: None,
             fps: 0.0,
             last_frame_time: std::time::Instant::now(),
+            messages: crate::app::messages::MessageOverlay::default(),
+            message_tx,
+            message_rx,
         };
+        for w in keybind_warnings {
+            app.messages.push(w, crate::app::messages::MessageSeverity::Warning);
+        }
+        for w in theme_warnings {
+            app.messages.push(w, crate::app::messages::MessageSeverity::Warning);
+        }
         app.goals_progress = app.load_goals_progress();
         app.list.folder_expanded.insert(String::new());
 
@@ -690,11 +707,14 @@ impl App {
     }
 
     pub fn new_deferred(storage: Storage) -> Result<Self> {
-        let bootstrap_config = crate::config::ClinConfig::load().unwrap_or_default();
+        let bootstrap_config = crate::config::ClinConfig::load().0.unwrap_or_default();
         let config_errors = bootstrap_config.validate();
-        let notes_worker_pool = Self::build_notes_worker_pool()?;
-        let keybinds = storage.load_keybinds_with_preset(bootstrap_config.core.keybind_preset);
-        let app_theme = crate::app_theme::AppThemeColors::from_config(&bootstrap_config.ui);
+        let notes_worker_pool = Self::build_notes_worker_pool().unwrap_or_else(|_| {
+            Arc::new(rayon::ThreadPoolBuilder::new().num_threads(1).build().expect("single thread pool"))
+        });
+        let (keybinds, keybind_warnings) = storage.load_keybinds_with_preset(bootstrap_config.core.keybind_preset);
+        let mut theme_warnings = Vec::new();
+        let app_theme = crate::app_theme::AppThemeColors::from_config(&bootstrap_config.ui, &mut theme_warnings);
 
         let mut editor = NoteEditor::new();
         editor.external_editor_enabled = bootstrap_config.editor.external_enabled;
@@ -741,13 +761,20 @@ impl App {
         let (evt_tx, evt_rx) = std::sync::mpsc::sync_channel(4);
         let catalog_generation = Arc::new(AtomicU64::new(1));
 
-        let vault_id = crate::local_state::vault_identity_path(&storage.data_dir)?;
+        let vault_id = crate::local_state::vault_identity_path(&storage.data_dir)
+            .unwrap_or_else(|_| storage.data_dir.join("vault_id"));
         let digest = crate::paths::vault_cache_digest(&vault_id);
         let app_paths = crate::paths::AppPaths::discover(
             crate::config::ClinConfig::config_path().unwrap_or_default(),
-        )?;
-        let scoped_cache_path = app_paths.scoped_summary_cache_path(&digest);
-        let legacy_cache_path = app_paths.summary_cache_path();
+        );
+        let scoped_cache_path = app_paths
+            .as_ref()
+            .map(|p| p.scoped_summary_cache_path(&digest))
+            .unwrap_or_default();
+        let legacy_cache_path = app_paths
+            .as_ref()
+            .map(|p| p.summary_cache_path())
+            .unwrap_or_default();
 
         let (cached_summaries, cached_map, cached_folders) =
             crate::app::catalog::load_persisted_note_cache(
@@ -788,6 +815,7 @@ impl App {
             show_all: bootstrap_config.list.show_all_files,
         });
 
+        let (message_tx, message_rx) = std::sync::mpsc::channel();
         let mut app = Self {
             storage: storage.clone(),
             keybinds,
@@ -880,7 +908,16 @@ impl App {
             image_decode_rx: None,
             fps: 0.0,
             last_frame_time: std::time::Instant::now(),
+            messages: crate::app::messages::MessageOverlay::default(),
+            message_tx,
+            message_rx,
         };
+        for w in keybind_warnings {
+            app.messages.push(w, crate::app::messages::MessageSeverity::Warning);
+        }
+        for w in theme_warnings {
+            app.messages.push(w, crate::app::messages::MessageSeverity::Warning);
+        }
         app.goals_progress = app.load_goals_progress();
         app.list.folder_expanded.insert(String::new());
 
@@ -922,15 +959,26 @@ impl App {
         Ok(app)
     }
     pub fn reload_config(&mut self) {
-        self.config = match crate::config::ClinConfig::load() {
+        let (config_res, load_warnings) = crate::config::ClinConfig::load();
+        self.config = match config_res {
             Ok(c) => c,
             Err(e) => {
-                eprintln!("RELOAD ERROR: {:?}", e);
+                self.messages.push(
+                    format!("Config reload error: {e}"),
+                    crate::app::messages::MessageSeverity::Warning,
+                );
                 self.config.clone()
             }
         };
+        for w in load_warnings {
+            self.messages.push(w, crate::app::messages::MessageSeverity::Warning);
+        }
         self.preview_wrap = self.config.core.preview_wrap;
-        self.app_theme = crate::app_theme::AppThemeColors::from_config(&self.config.ui);
+        let mut theme_warnings = Vec::new();
+        self.app_theme = crate::app_theme::AppThemeColors::from_config(&self.config.ui, &mut theme_warnings);
+        for w in theme_warnings {
+            self.messages.push(w, crate::app::messages::MessageSeverity::Warning);
+        }
         self.list.pinned_folders = self.config.list.pinned_folders.iter().cloned().collect();
     }
 
@@ -1663,8 +1711,16 @@ impl App {
     }
 
     pub fn reload_theme(&mut self) {
-        let config = crate::config::ClinConfig::load().unwrap_or_default();
-        self.app_theme = crate::app_theme::AppThemeColors::from_config(&config.ui);
+        let (config_res, load_warnings) = crate::config::ClinConfig::load();
+        let config = config_res.unwrap_or_default();
+        for w in load_warnings {
+            self.messages.push(w, crate::app::messages::MessageSeverity::Warning);
+        }
+        let mut theme_warnings = Vec::new();
+        self.app_theme = crate::app_theme::AppThemeColors::from_config(&config.ui, &mut theme_warnings);
+        for w in theme_warnings {
+            self.messages.push(w, crate::app::messages::MessageSeverity::Warning);
+        }
         if self.mode == ViewMode::Help {
             self.list.help_text_cache = None;
         }
@@ -1673,7 +1729,11 @@ impl App {
     /// Re-derive `app_theme` from the in-memory `self.config` (no disk read).
     /// Used for live preview where config was mutated but not yet saved.
     pub fn refresh_theme_from_config(&mut self) {
-        self.app_theme = crate::app_theme::AppThemeColors::from_config(&self.config.ui);
+        let mut theme_warnings = Vec::new();
+        self.app_theme = crate::app_theme::AppThemeColors::from_config(&self.config.ui, &mut theme_warnings);
+        for w in theme_warnings {
+            self.messages.push(w, crate::app::messages::MessageSeverity::Warning);
+        }
         if self.mode == ViewMode::Help {
             self.list.help_text_cache = None;
         }
