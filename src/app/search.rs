@@ -44,8 +44,7 @@ impl App {
             return;
         }
         self.list.grid_folder = if self.config.list.smart_folders_enabled {
-            if self.list.grid_folder == VIRTUAL_SMART_PATH
-                || self.list.grid_folder.starts_with('@')
+            if self.list.grid_folder == VIRTUAL_SMART_PATH || self.list.grid_folder.starts_with('@')
             {
                 VIRTUAL_PINNED_PATH.to_string()
             } else if self.list.grid_folder == VIRTUAL_PINNED_PATH {
@@ -281,15 +280,13 @@ impl App {
             self.search_debounce_deadline = None;
             if let Some(req) = self.unsent_search_request.take()
                 && req.generation == cur_gen
+                && let Err(e) = self.search_worker.req_tx.try_send(req)
+                && matches!(e, std::sync::mpsc::TrySendError::Disconnected(_))
             {
-                if let Err(e) = self.search_worker.req_tx.try_send(req)
-                    && matches!(e, std::sync::mpsc::TrySendError::Disconnected(_))
-                {
-                    self.messages.push(
-                        "Search worker disconnected; search unavailable".to_string(),
-                        crate::app::messages::MessageSeverity::Warning,
-                    );
-                }
+                self.messages.push(
+                    "Search worker disconnected; search unavailable".to_string(),
+                    crate::app::messages::MessageSeverity::Warning,
+                );
             }
         }
 

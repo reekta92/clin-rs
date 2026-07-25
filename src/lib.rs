@@ -132,10 +132,12 @@ fn launch_tui(open_title: Option<String>, force_setup: bool) -> Result<()> {
     };
     let mut app = App::new_deferred(storage)?;
     for w in init_warnings {
-        app.messages.push(w, crate::app::messages::MessageSeverity::Warning);
+        app.messages
+            .push(w, crate::app::messages::MessageSeverity::Warning);
     }
     if let Some(err) = startup_err {
-        let msg = format!("Storage initialization failed: {err}. The app may not function correctly.");
+        let msg =
+            format!("Storage initialization failed: {err}. The app may not function correctly.");
         app.messages
             .push(msg, crate::app::messages::MessageSeverity::Fatal);
     }
@@ -1088,8 +1090,11 @@ fn run_tui_session(app: &mut App) -> Result<()> {
     }
 
     // Spawn the background backup worker before entering the terminal.
-    let (tx, done_rx) =
-        crate::backup::worker::spawn(app.git_lock.clone(), app.backup_status.clone(), app.message_tx.clone());
+    let (tx, done_rx) = crate::backup::worker::spawn(
+        app.git_lock.clone(),
+        app.backup_status.clone(),
+        app.message_tx.clone(),
+    );
 
     app.backup_tx = Some(tx);
 
@@ -1112,52 +1117,53 @@ fn run_tui_session(app: &mut App) -> Result<()> {
 
         let notes_path = app.storage.notes_dir.clone();
         let overflow_cb = overflow.clone();
-        let mut watcher = match notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
-            let observed_at = Instant::now();
-            let event = match res {
-                Ok(e) => e,
-                Err(_) => {
+        let mut watcher =
+            match notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+                let observed_at = Instant::now();
+                let event = match res {
+                    Ok(e) => e,
+                    Err(_) => {
+                        overflow_cb.store(true, Ordering::SeqCst);
+                        return;
+                    }
+                };
+                if event.need_rescan() {
                     overflow_cb.store(true, Ordering::SeqCst);
                     return;
                 }
-            };
-            if event.need_rescan() {
-                overflow_cb.store(true, Ordering::SeqCst);
-                return;
-            }
-            if matches!(event.kind, EventKind::Access(_)) {
-                return;
-            }
-            if !event.paths.is_empty() {
-                let all_ignored = event.paths.iter().all(|p| {
-                    let path_str = p.to_string_lossy();
-                    path_str.contains("/.git/")
-                        || path_str.contains("\\.git\\")
-                        || path_str.ends_with(".tmp")
-                        || path_str.ends_with(".lock")
-                        || path_str.ends_with('~')
-                });
-                if all_ignored {
+                if matches!(event.kind, EventKind::Access(_)) {
                     return;
                 }
-            }
+                if !event.paths.is_empty() {
+                    let all_ignored = event.paths.iter().all(|p| {
+                        let path_str = p.to_string_lossy();
+                        path_str.contains("/.git/")
+                            || path_str.contains("\\.git\\")
+                            || path_str.ends_with(".tmp")
+                            || path_str.ends_with(".lock")
+                            || path_str.ends_with('~')
+                    });
+                    if all_ignored {
+                        return;
+                    }
+                }
 
-            if tx
-                .try_send(crate::app::WatchedFsEvent { observed_at, event })
-                .is_err()
-            {
-                overflow_cb.store(true, Ordering::SeqCst);
-            }
-        }) {
-            Ok(w) => Some(w),
-            Err(e) => {
-                app.messages.push(
-                    format!("File watcher failed to start; auto-refresh disabled: {e}"),
-                    crate::app::messages::MessageSeverity::Warning,
-                );
-                None
-            }
-        };
+                if tx
+                    .try_send(crate::app::WatchedFsEvent { observed_at, event })
+                    .is_err()
+                {
+                    overflow_cb.store(true, Ordering::SeqCst);
+                }
+            }) {
+                Ok(w) => Some(w),
+                Err(e) => {
+                    app.messages.push(
+                        format!("File watcher failed to start; auto-refresh disabled: {e}"),
+                        crate::app::messages::MessageSeverity::Warning,
+                    );
+                    None
+                }
+            };
 
         if let Some(w) = &mut watcher
             && let Err(e) = w.watch(&notes_path, RecursiveMode::Recursive)

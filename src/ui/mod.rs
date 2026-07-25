@@ -13,13 +13,13 @@ mod edit_view;
 mod help;
 pub(crate) mod help_content;
 mod list_view;
+pub(crate) mod message_overlay;
 mod popups;
 pub(crate) mod quick_keybinds;
 pub(crate) mod quick_search;
 pub(crate) mod scrollbar;
 pub(crate) mod setup;
 mod title_bar;
-pub(crate) mod message_overlay;
 
 pub use edit_view::draw_edit_view;
 pub(crate) use edit_view::render_editor_widget;
@@ -291,12 +291,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
 
     crate::ui::quick_keybinds::draw_quick_keybinds(frame, app);
     if app.messages.is_active() {
-        crate::ui::message_overlay::draw_message_overlay(
-            frame,
-            app,
-            &app.app_theme,
-            frame.area(),
-        );
+        crate::ui::message_overlay::draw_message_overlay(frame, app, &app.app_theme, frame.area());
     }
 
     // Global popups — rendered on top of the active view

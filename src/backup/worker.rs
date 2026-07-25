@@ -12,9 +12,9 @@ use std::time::{Duration, Instant};
 
 use parking_lot::Mutex;
 
+use crate::app::messages::{MessageSeverity, OverlayMessage};
 use crate::backup::git_ops::GitOps;
 use crate::config::{BackupConfig, ClinConfig};
-use crate::app::messages::{MessageSeverity, OverlayMessage};
 
 /// A backup job for the worker.
 pub enum BackupJob {
@@ -123,12 +123,14 @@ fn run_backup(
         Err(e) => {
             let err_msg = format!("Backup worker failed: config load failed: {e}");
             *status.lock() = Some(err_msg.clone());
-            tx_msg.send(OverlayMessage {
-                id: 0,
-                text: err_msg,
-                severity: MessageSeverity::Warning,
-                timestamp: Instant::now(),
-            }).ok();
+            tx_msg
+                .send(OverlayMessage {
+                    id: 0,
+                    text: err_msg,
+                    severity: MessageSeverity::Warning,
+                    timestamp: Instant::now(),
+                })
+                .ok();
             return;
         }
     };
@@ -137,12 +139,14 @@ fn run_backup(
         Err(e) => {
             let err_msg = format!("Backup worker failed: vault path resolution failed: {e}");
             *status.lock() = Some(err_msg.clone());
-            tx_msg.send(OverlayMessage {
-                id: 0,
-                text: err_msg,
-                severity: MessageSeverity::Warning,
-                timestamp: Instant::now(),
-            }).ok();
+            tx_msg
+                .send(OverlayMessage {
+                    id: 0,
+                    text: err_msg,
+                    severity: MessageSeverity::Warning,
+                    timestamp: Instant::now(),
+                })
+                .ok();
             return;
         }
     };
@@ -322,6 +326,10 @@ mod tests {
 
         let status_val = status.lock().clone();
         assert!(status_val.is_some());
-        assert!(status_val.unwrap().starts_with("Backup worker failed: config load failed:"));
+        assert!(
+            status_val
+                .unwrap()
+                .starts_with("Backup worker failed: config load failed:")
+        );
     }
 }

@@ -69,12 +69,10 @@ impl App {
                 self.notes.retain(|n| n.id != id);
                 self.note_stamps.remove(&id);
                 let generation_num = self.catalog_generation.load(Ordering::SeqCst);
-                self.send_catalog_cmd(
-                    crate::app::catalog::CatalogCommand::RemoveKnown {
-                        generation: generation_num,
-                        id: id.clone(),
-                    },
-                );
+                self.send_catalog_cmd(crate::app::catalog::CatalogCommand::RemoveKnown {
+                    generation: generation_num,
+                    id: id.clone(),
+                });
                 self.sort_notes();
                 self.refresh_visual_list();
                 self.notes_revision += 1;

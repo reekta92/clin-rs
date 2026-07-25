@@ -668,7 +668,8 @@ template = """
         let (keybinds, warnings) = self.storage.load_keybinds_with_preset(preset);
         self.keybinds = keybinds;
         for w in warnings {
-            self.messages.push(w, crate::app::messages::MessageSeverity::Warning);
+            self.messages
+                .push(w, crate::app::messages::MessageSeverity::Warning);
         }
         self.seq_matcher.clear();
     }
@@ -811,7 +812,8 @@ template = """
                 let (kb, warnings) = self.storage.load_keybinds_with_preset(preset);
                 self.keybinds = kb;
                 for w in warnings {
-                    self.messages.push(w, crate::app::messages::MessageSeverity::Warning);
+                    self.messages
+                        .push(w, crate::app::messages::MessageSeverity::Warning);
                 }
                 self.seq_matcher.clear();
                 visuals_changed = true;
@@ -875,7 +877,8 @@ template = """
             .load_keybinds_with_preset(self.config.core.keybind_preset);
         self.keybinds = kb;
         for w in warnings {
-            self.messages.push(w, crate::app::messages::MessageSeverity::Warning);
+            self.messages
+                .push(w, crate::app::messages::MessageSeverity::Warning);
         }
         self.seq_matcher.clear();
         self.refresh_theme_from_config();

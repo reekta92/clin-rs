@@ -588,14 +588,11 @@ impl App {
                     .insert(format!("@custom:{}", rule.name));
             }
             // Tag-level smart folders — each tag gets its own virtual path
-            let mut seen_tags: std::collections::HashSet<String> =
-                std::collections::HashSet::new();
+            let mut seen_tags: std::collections::HashSet<String> = std::collections::HashSet::new();
             for note in &self.notes {
                 for tag in &note.tags {
                     if seen_tags.insert(tag.clone()) {
-                        self.list
-                            .folder_expanded
-                            .insert(format!("@tag:{tag}"));
+                        self.list.folder_expanded.insert(format!("@tag:{tag}"));
                     }
                 }
             }
@@ -644,14 +641,11 @@ impl App {
                     .folder_expanded
                     .insert(format!("@custom:{}", rule.name));
             }
-            let mut seen_tags: std::collections::HashSet<String> =
-                std::collections::HashSet::new();
+            let mut seen_tags: std::collections::HashSet<String> = std::collections::HashSet::new();
             for note in &self.notes {
                 for tag in &note.tags {
                     if seen_tags.insert(tag.clone()) {
-                        self.list
-                            .folder_expanded
-                            .insert(format!("@tag:{tag}"));
+                        self.list.folder_expanded.insert(format!("@tag:{tag}"));
                     }
                 }
             }

@@ -180,7 +180,9 @@ impl Storage {
         let bootstrap = match config_res {
             Ok(c) => c,
             Err(e) => {
-                warnings.push(format!("Config error: {e}. Falling back to default configuration."));
+                warnings.push(format!(
+                    "Config error: {e}. Falling back to default configuration."
+                ));
                 ClinConfig::default()
             }
         };
@@ -635,14 +637,18 @@ impl Storage {
             ));
             return (preset.base_keybinds(), warnings);
         }
-        let keybinds = crate::keybinds::Keybinds::load_layered(&per_preset, preset.base_keybinds(), &mut warnings)
-            .unwrap_or_else(|e| {
-                warnings.push(format!(
-                    "Keybinds parse error: {}: {e}. Falling back to '{preset}' preset.",
-                    per_preset.display()
-                ));
-                preset.base_keybinds()
-            });
+        let keybinds = crate::keybinds::Keybinds::load_layered(
+            &per_preset,
+            preset.base_keybinds(),
+            &mut warnings,
+        )
+        .unwrap_or_else(|e| {
+            warnings.push(format!(
+                "Keybinds parse error: {}: {e}. Falling back to '{preset}' preset.",
+                per_preset.display()
+            ));
+            preset.base_keybinds()
+        });
         (keybinds, warnings)
     }
 
@@ -1700,7 +1706,11 @@ impl Storage {
         );
     }
 
-    fn migrate_legacy_attachments(&self, attachments_subdir: &str, warnings: &mut Vec<String>) -> Result<()> {
+    fn migrate_legacy_attachments(
+        &self,
+        attachments_subdir: &str,
+        warnings: &mut Vec<String>,
+    ) -> Result<()> {
         let configured = Self::validated_attachment_subdir(attachments_subdir)?;
         let legacy = self.data_dir.join(".clin").join("attachments");
         if !legacy.exists() {
@@ -1719,7 +1729,12 @@ impl Storage {
         Ok(())
     }
 
-    fn merge_attachment_tree(source: &Path, target: &Path, copy_only: bool, warnings: &mut Vec<String>) -> Result<()> {
+    fn merge_attachment_tree(
+        source: &Path,
+        target: &Path,
+        copy_only: bool,
+        warnings: &mut Vec<String>,
+    ) -> Result<()> {
         fs::create_dir_all(target).context("failed to create attachment migration target")?;
         for entry in fs::read_dir(source).context("failed to read legacy attachments")? {
             let entry = entry?;

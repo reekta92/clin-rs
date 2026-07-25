@@ -197,14 +197,12 @@ pub fn draw_preview_pane(
                     format!("  {note_count} {suffix} match this folder"),
                     Style::default().fg(theme.muted),
                 )]));
-                let para = Paragraph::new(lines)
-                    .style(theme.preview_bg_style())
-                    .block(
-                        Block::default()
-                            .style(theme.preview_bg_style())
-                            .borders(Borders::NONE)
-                            .padding(Padding::new(2, 2, 1, 1)),
-                    );
+                let para = Paragraph::new(lines).style(theme.preview_bg_style()).block(
+                    Block::default()
+                        .style(theme.preview_bg_style())
+                        .borders(Borders::NONE)
+                        .padding(Padding::new(2, 2, 1, 1)),
+                );
                 frame.render_widget(para, rect);
             }
             None => {

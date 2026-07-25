@@ -14,7 +14,7 @@ pub struct OverlayMessage {
     pub timestamp: Instant,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct MessageOverlay {
     pub messages: Vec<OverlayMessage>,
     pub scroll: usize,
@@ -25,25 +25,20 @@ pub struct MessageOverlay {
     prev_active: bool,
 }
 
-impl Default for MessageOverlay {
-    fn default() -> Self {
-        Self {
-            messages: Vec::new(),
-            scroll: 0,
-            force_open: false,
-            next_id: 0,
-            prev_active: false,
-        }
-    }
-}
-
 const MAX_MESSAGES: usize = 50;
+
+const FRESH_SECS: u64 = 3;
 
 impl MessageOverlay {
     pub fn push(&mut self, text: String, severity: MessageSeverity) {
-        // Consecutive-dedupe: skip if identical to the immediately previous message.
-        if self.messages.last().is_some_and(|last| last.text == text && last.severity == severity)
+        // Consecutive-dedupe: identical to the previous message re-freshens that
+        // entry's timestamp so the occurrence re-appears in the dropdown, instead
+        // of growing a duplicate line.
+        if let Some(last) = self.messages.last_mut()
+            && last.text == text
+            && last.severity == severity
         {
+            last.timestamp = Instant::now();
             return;
         }
         let msg = OverlayMessage {
@@ -93,13 +88,13 @@ impl MessageOverlay {
         self.force_open || self.messages.iter().any(Self::is_message_visible)
     }
 
-    /// A message is visible if it's fatal or still fresh (< 5s).
+    /// A message is visible if it's fatal or still fresh (< 3s).
     fn is_message_visible(m: &OverlayMessage) -> bool {
-        m.severity == MessageSeverity::Fatal || m.timestamp.elapsed().as_secs() < 5
+        m.severity == MessageSeverity::Fatal || m.timestamp.elapsed().as_secs() < FRESH_SECS
     }
 
     pub fn is_fresh(m: &OverlayMessage) -> bool {
-        m.timestamp.elapsed().as_secs() < 5
+        m.timestamp.elapsed().as_secs() < FRESH_SECS
     }
 }
 
@@ -114,6 +109,19 @@ mod tests {
         overlay.push("error A".to_string(), MessageSeverity::Warning);
         assert_eq!(overlay.messages.len(), 1);
         assert_eq!(overlay.messages[0].text, "error A");
+
+        // Age the entry: after the freshness window expires, the overlay
+        // should be inactive.
+        overlay.messages[0].timestamp = Instant::now()
+            .checked_sub(std::time::Duration::from_secs(10))
+            .unwrap();
+        assert!(!overlay.is_active());
+
+        // Re-push the same message: it must re-freshen the existing entry
+        // instead of appending a duplicate.
+        overlay.push("error A".to_string(), MessageSeverity::Warning);
+        assert_eq!(overlay.messages.len(), 1);
+        assert!(overlay.is_active());
     }
 
     #[test]

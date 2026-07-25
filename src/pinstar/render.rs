@@ -8,11 +8,14 @@ use ratatui::{prelude::*, widgets::*};
 #[allow(dead_code)]
 struct Proj {
     is_group: bool,
-    pos: (f64, f64),   // canvas-space top-left
-    size: (f64, f64),  // canvas-space size
-    sx: f64, sy: f64,
-    sw: f64, sh: f64,
-    scx: f64, scy: f64,
+    pos: (f64, f64),  // canvas-space top-left
+    size: (f64, f64), // canvas-space size
+    sx: f64,
+    sy: f64,
+    sw: f64,
+    sh: f64,
+    scx: f64,
+    scy: f64,
     on_screen: bool,
 }
 
@@ -118,12 +121,12 @@ pub fn draw_pinstar_view(
     // results are bit-identical.
     let origin_x = canvas_area.x as f64 + canvas_area.width as f64 / 2.0;
     let origin_y = canvas_area.y as f64 + canvas_area.height as f64 / 2.0;
-    let z  = state.zoom;
+    let z = state.zoom;
     let vx = state.viewport_x;
     let vy = state.viewport_y;
-    let view_left   = canvas_area.left()   as f64;
-    let view_right  = canvas_area.right()  as f64;
-    let view_top    = canvas_area.top()    as f64;
+    let view_left = canvas_area.left() as f64;
+    let view_right = canvas_area.right() as f64;
+    let view_top = canvas_area.top() as f64;
     let view_bottom = canvas_area.bottom() as f64;
 
     let proj: Vec<Proj> = state
@@ -141,7 +144,10 @@ pub fn draw_pinstar_view(
                 is_group: matches!(n, crate::pinstar::data::CanvasNode::Group(_)),
                 pos: (nx, ny),
                 size: (nw, nh),
-                sx, sy, sw, sh,
+                sx,
+                sy,
+                sw,
+                sh,
                 scx: sx + sw / 2.0,
                 scy: sy + sh / 2.0,
                 on_screen: !(sx + sw < view_left
@@ -151,7 +157,6 @@ pub fn draw_pinstar_view(
             }
         })
         .collect();
-
 
     let config = &app.config;
 
@@ -193,10 +198,8 @@ pub fn draw_pinstar_view(
         while cur_x <= end_x {
             let mut cur_y = start_y;
             while cur_y <= end_y {
-                let sx = (((cur_x - vx) * z) + origin_x)
-                    .round() as i32;
-                let sy = (((cur_y - vy) * z) + origin_y)
-                    .round() as i32;
+                let sx = (((cur_x - vx) * z) + origin_x).round() as i32;
+                let sy = (((cur_y - vy) * z) + origin_y).round() as i32;
 
                 if sx >= canvas_area.left() as i32
                     && sx < canvas_area.right() as i32
@@ -217,19 +220,35 @@ pub fn draw_pinstar_view(
     }
 
     for (idx, p) in proj.iter().enumerate() {
-        if !p.is_group { continue; }
-        if !p.on_screen { continue; }
+        if !p.is_group {
+            continue;
+        }
+        if !p.on_screen {
+            continue;
+        }
         let node = &state.data.nodes[idx];
-        let crate::pinstar::data::CanvasNode::Group(g) = node else { continue; };
+        let crate::pinstar::data::CanvasNode::Group(g) = node else {
+            continue;
+        };
 
-        let sx = p.sx; let sy = p.sy; let sw = p.sw; let sh = p.sh;
+        let sx = p.sx;
+        let sy = p.sy;
+        let sw = p.sw;
+        let sh = p.sh;
 
-        let left   = sx.max(view_left);
-        let top    = sy.max(view_top);
-        let right  = (sx + sw).min(view_right);
+        let left = sx.max(view_left);
+        let top = sy.max(view_top);
+        let right = (sx + sw).min(view_right);
         let bottom = (sy + sh).min(view_bottom);
-        if right <= left || bottom <= top { continue; }
-        let node_rect = Rect::new(left as u16, top as u16, (right - left) as u16, (bottom - top) as u16);
+        if right <= left || bottom <= top {
+            continue;
+        }
+        let node_rect = Rect::new(
+            left as u16,
+            top as u16,
+            (right - left) as u16,
+            (bottom - top) as u16,
+        );
 
         let is_selected = state.selected_node_id.as_deref() == Some(g.id.as_str());
         let is_editing = is_selected && state.floating_editor.is_some();
@@ -341,8 +360,12 @@ pub fn draw_pinstar_view(
             .collect();
 
         for edge in &state.data.edges {
-            let Some(&ia) = id_index.get(edge.from_node.as_str()) else { continue; };
-            let Some(&ib) = id_index.get(edge.to_node.as_str())   else { continue; };
+            let Some(&ia) = id_index.get(edge.from_node.as_str()) else {
+                continue;
+            };
+            let Some(&ib) = id_index.get(edge.to_node.as_str()) else {
+                continue;
+            };
             let pf = &proj[ia];
             let pt = &proj[ib];
 
@@ -382,9 +405,9 @@ pub fn draw_pinstar_view(
             let max_x = sfx.max(stx);
             let min_y = sfy.min(sty);
             let max_y = sfy.max(sty);
-            if max_x < view_left || min_x > view_right
-                || max_y < view_top || min_y > view_bottom
-            { continue; }
+            if max_x < view_left || min_x > view_right || max_y < view_top || min_y > view_bottom {
+                continue;
+            }
 
             let mut current_x = sfx;
             let mut current_y = sfy;
@@ -394,15 +417,22 @@ pub fn draw_pinstar_view(
                 let ddx = (stx - sfx) / steps as f64;
                 let ddy = (sty - sfy) / steps as f64;
                 for _ in 0..=steps {
-                    if current_x >= view_left && current_x < view_right
-                        && current_y >= view_top && current_y < view_bottom
+                    if current_x >= view_left
+                        && current_x < view_right
+                        && current_y >= view_top
+                        && current_y < view_bottom
                     {
                         let cell_x = current_x as u16;
                         let cell_y = current_y as u16;
                         let dot_x = ((current_x - cell_x as f64) * 2.0) as u16;
                         let dot_y = ((current_y - cell_y as f64) * 4.0) as u16;
                         crate::ui::braille::set_braille_dot(
-                            frame.buffer_mut(), cell_x, cell_y, dot_x, dot_y, theme.muted,
+                            frame.buffer_mut(),
+                            cell_x,
+                            cell_y,
+                            dot_x,
+                            dot_y,
+                            theme.muted,
                         );
                     }
                     current_x += ddx;
@@ -413,17 +443,31 @@ pub fn draw_pinstar_view(
     } // end edge-pass block
 
     for (idx, p) in proj.iter().enumerate() {
-        if p.is_group { continue; }
-        if !p.on_screen { continue; }
+        if p.is_group {
+            continue;
+        }
+        if !p.on_screen {
+            continue;
+        }
         let node = &state.data.nodes[idx];
-        let sx = p.sx; let sy = p.sy; let sw = p.sw; let sh = p.sh;
+        let sx = p.sx;
+        let sy = p.sy;
+        let sw = p.sw;
+        let sh = p.sh;
 
-        let left   = sx.max(view_left);
-        let top    = sy.max(view_top);
-        let right  = (sx + sw).min(view_right);
+        let left = sx.max(view_left);
+        let top = sy.max(view_top);
+        let right = (sx + sw).min(view_right);
         let bottom = (sy + sh).min(view_bottom);
-        if right <= left || bottom <= top { continue; }
-        let node_rect = Rect::new(left as u16, top as u16, (right - left) as u16, (bottom - top) as u16);
+        if right <= left || bottom <= top {
+            continue;
+        }
+        let node_rect = Rect::new(
+            left as u16,
+            top as u16,
+            (right - left) as u16,
+            (bottom - top) as u16,
+        );
 
         frame.render_widget(Clear, node_rect);
 
@@ -684,8 +728,14 @@ pub fn draw_pinstar_view(
                 ),
                 "zoom",
             ),
-            (state.keybinds.canvas_keys_display(CanvasAction::Help), "help"),
-            (state.keybinds.canvas_keys_display(CanvasAction::Quit), "back"),
+            (
+                state.keybinds.canvas_keys_display(CanvasAction::Help),
+                "help",
+            ),
+            (
+                state.keybinds.canvas_keys_display(CanvasAction::Quit),
+                "back",
+            ),
             ("F2".to_string(), "keybinds"),
         ];
         crate::ui::format_keybind_hints(theme, &hints_items)
@@ -870,7 +920,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("large.canvas");
 
-        use crate::pinstar::data::{CanvasData, CanvasNode, TextNode, CanvasEdge};
+        use crate::pinstar::data::{CanvasData, CanvasEdge, CanvasNode, TextNode};
         let cols = 30usize;
         let rows = 20usize;
         let n = cols * rows; // 600
@@ -894,7 +944,9 @@ mod tests {
             .flat_map(|i| {
                 [1usize, 2, 3].into_iter().filter_map(move |o| {
                     let to = (i + o) % n;
-                    if to == i { return None; }
+                    if to == i {
+                        return None;
+                    }
                     Some(CanvasEdge {
                         id: format!("e{i}_{to}"),
                         from_node: format!("n{i}"),
@@ -916,7 +968,8 @@ mod tests {
 
         let keybinds = crate::keybinds::Keybinds::default();
         let seq_matcher = crate::keybinds::KeyMatcher::default();
-        let mut state = crate::pinstar::state::PinstarState::load(&path, keybinds, seq_matcher).unwrap();
+        let mut state =
+            crate::pinstar::state::PinstarState::load(&path, keybinds, seq_matcher).unwrap();
         state.zoom = 0.05;
         state.viewport_x = 2000.0;
         state.viewport_y = 1700.0;

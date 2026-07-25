@@ -63,10 +63,7 @@ impl Default for Keybinds {
             ListAction::OpenLocation,
             vec![KeyCombo::ctrl(KeyCode::Char('l'))],
         );
-        list.insert(
-            ListAction::CycleFocus,
-            vec![KeyCombo::simple(KeyCode::Tab)],
-        );
+        list.insert(ListAction::CycleFocus, vec![KeyCombo::simple(KeyCode::Tab)]);
         list.insert(
             ListAction::ReverseCycleFocus,
             vec![KeyCombo::simple(KeyCode::BackTab)],

@@ -464,9 +464,13 @@ impl App {
         let bootstrap_config = crate::config::ClinConfig::load().0.unwrap_or_default();
         let notes_worker_pool = Self::build_notes_worker_pool()?;
         let config_errors = bootstrap_config.validate();
-        let (keybinds, keybind_warnings) = storage.load_keybinds_with_preset(bootstrap_config.core.keybind_preset);
+        let (keybinds, keybind_warnings) =
+            storage.load_keybinds_with_preset(bootstrap_config.core.keybind_preset);
         let mut theme_warnings = Vec::new();
-        let app_theme = crate::app_theme::AppThemeColors::from_config(&bootstrap_config.ui, &mut theme_warnings);
+        let app_theme = crate::app_theme::AppThemeColors::from_config(
+            &bootstrap_config.ui,
+            &mut theme_warnings,
+        );
 
         let mut editor = NoteEditor::new();
         editor.external_editor_enabled = bootstrap_config.editor.external_enabled;
@@ -658,10 +662,12 @@ impl App {
             message_rx,
         };
         for w in keybind_warnings {
-            app.messages.push(w, crate::app::messages::MessageSeverity::Warning);
+            app.messages
+                .push(w, crate::app::messages::MessageSeverity::Warning);
         }
         for w in theme_warnings {
-            app.messages.push(w, crate::app::messages::MessageSeverity::Warning);
+            app.messages
+                .push(w, crate::app::messages::MessageSeverity::Warning);
         }
         app.goals_progress = app.load_goals_progress();
         app.list.folder_expanded.insert(String::new());
@@ -710,11 +716,20 @@ impl App {
         let bootstrap_config = crate::config::ClinConfig::load().0.unwrap_or_default();
         let config_errors = bootstrap_config.validate();
         let notes_worker_pool = Self::build_notes_worker_pool().unwrap_or_else(|_| {
-            Arc::new(rayon::ThreadPoolBuilder::new().num_threads(1).build().expect("single thread pool"))
+            Arc::new(
+                rayon::ThreadPoolBuilder::new()
+                    .num_threads(1)
+                    .build()
+                    .expect("single thread pool"),
+            )
         });
-        let (keybinds, keybind_warnings) = storage.load_keybinds_with_preset(bootstrap_config.core.keybind_preset);
+        let (keybinds, keybind_warnings) =
+            storage.load_keybinds_with_preset(bootstrap_config.core.keybind_preset);
         let mut theme_warnings = Vec::new();
-        let app_theme = crate::app_theme::AppThemeColors::from_config(&bootstrap_config.ui, &mut theme_warnings);
+        let app_theme = crate::app_theme::AppThemeColors::from_config(
+            &bootstrap_config.ui,
+            &mut theme_warnings,
+        );
 
         let mut editor = NoteEditor::new();
         editor.external_editor_enabled = bootstrap_config.editor.external_enabled;
@@ -913,10 +928,12 @@ impl App {
             message_rx,
         };
         for w in keybind_warnings {
-            app.messages.push(w, crate::app::messages::MessageSeverity::Warning);
+            app.messages
+                .push(w, crate::app::messages::MessageSeverity::Warning);
         }
         for w in theme_warnings {
-            app.messages.push(w, crate::app::messages::MessageSeverity::Warning);
+            app.messages
+                .push(w, crate::app::messages::MessageSeverity::Warning);
         }
         app.goals_progress = app.load_goals_progress();
         app.list.folder_expanded.insert(String::new());
@@ -976,13 +993,16 @@ impl App {
             }
         };
         for w in load_warnings {
-            self.messages.push(w, crate::app::messages::MessageSeverity::Warning);
+            self.messages
+                .push(w, crate::app::messages::MessageSeverity::Warning);
         }
         self.preview_wrap = self.config.core.preview_wrap;
         let mut theme_warnings = Vec::new();
-        self.app_theme = crate::app_theme::AppThemeColors::from_config(&self.config.ui, &mut theme_warnings);
+        self.app_theme =
+            crate::app_theme::AppThemeColors::from_config(&self.config.ui, &mut theme_warnings);
         for w in theme_warnings {
-            self.messages.push(w, crate::app::messages::MessageSeverity::Warning);
+            self.messages
+                .push(w, crate::app::messages::MessageSeverity::Warning);
         }
         self.list.pinned_folders = self.config.list.pinned_folders.iter().cloned().collect();
     }
@@ -1076,9 +1096,7 @@ impl App {
                         )
                     }
                 };
-                let color = if *is_pinned {
-                    self.app_theme.pinned
-                } else if *path == crate::app::VIRTUAL_PINNED_PATH {
+                let color = if *is_pinned || *path == crate::app::VIRTUAL_PINNED_PATH {
                     self.app_theme.pinned
                 } else if *path == crate::app::VIRTUAL_SMART_PATH {
                     self.app_theme.smart
@@ -1740,12 +1758,15 @@ impl App {
         let (config_res, load_warnings) = crate::config::ClinConfig::load();
         let config = config_res.unwrap_or_default();
         for w in load_warnings {
-            self.messages.push(w, crate::app::messages::MessageSeverity::Warning);
+            self.messages
+                .push(w, crate::app::messages::MessageSeverity::Warning);
         }
         let mut theme_warnings = Vec::new();
-        self.app_theme = crate::app_theme::AppThemeColors::from_config(&config.ui, &mut theme_warnings);
+        self.app_theme =
+            crate::app_theme::AppThemeColors::from_config(&config.ui, &mut theme_warnings);
         for w in theme_warnings {
-            self.messages.push(w, crate::app::messages::MessageSeverity::Warning);
+            self.messages
+                .push(w, crate::app::messages::MessageSeverity::Warning);
         }
         if self.mode == ViewMode::Help {
             self.list.help_text_cache = None;
@@ -1756,9 +1777,11 @@ impl App {
     /// Used for live preview where config was mutated but not yet saved.
     pub fn refresh_theme_from_config(&mut self) {
         let mut theme_warnings = Vec::new();
-        self.app_theme = crate::app_theme::AppThemeColors::from_config(&self.config.ui, &mut theme_warnings);
+        self.app_theme =
+            crate::app_theme::AppThemeColors::from_config(&self.config.ui, &mut theme_warnings);
         for w in theme_warnings {
-            self.messages.push(w, crate::app::messages::MessageSeverity::Warning);
+            self.messages
+                .push(w, crate::app::messages::MessageSeverity::Warning);
         }
         if self.mode == ViewMode::Help {
             self.list.help_text_cache = None;

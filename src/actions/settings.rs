@@ -31,7 +31,11 @@ toggle_action!(
     if match app.mode {
         crate::app::ViewMode::Edit => app.config.editor.soft_wrap,
         _ => app.preview_wrap,
-    } { "On" } else { "Off" }
+    } {
+        "On"
+    } else {
+        "Off"
+    }
 );
 
 toggle_action!(
@@ -417,11 +421,7 @@ toggle_action!(
     "\u{1f4c4}",
     toggle_show_file_size,
     app,
-    if app.list.show_file_size {
-        "On"
-    } else {
-        "Off"
-    }
+    if app.list.show_file_size { "On" } else { "Off" }
 );
 
 toggle_action!(

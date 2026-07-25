@@ -510,7 +510,6 @@ pub fn handle_global_popups_and_palette(
         };
     }
 
-
     // QuickKeybinds toggle — identical combo in every view. F2 is unbound in
     // all 9 keybind scopes (verified in src/keybinds/defaults.rs); raw check
     // follows the is_universal_quit_key precedent (global keys live outside
@@ -528,7 +527,6 @@ pub fn handle_global_popups_and_palette(
         app.messages.force_open = !app.messages.force_open;
         return true;
     }
-
 
     // Command palette
     if let Some(mut palette) = app.command_palette.take() {
@@ -2122,8 +2120,8 @@ mod tests {
         let _lock = crate::config::ConfigTestGuard::lock();
         use crate::app::App;
         use crate::storage::Storage;
-        use tempfile::tempdir;
         use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+        use tempfile::tempdir;
 
         let temp_dir = tempdir().expect("value is present");
         let storage = Storage {
@@ -2152,8 +2150,14 @@ mod tests {
         assert!(app.messages.force_open);
 
         // 3. Pushing messages to scroll
-        app.messages.push("Warning 1".to_string(), crate::app::messages::MessageSeverity::Warning);
-        app.messages.push("Warning 2".to_string(), crate::app::messages::MessageSeverity::Warning);
+        app.messages.push(
+            "Warning 1".to_string(),
+            crate::app::messages::MessageSeverity::Warning,
+        );
+        app.messages.push(
+            "Warning 2".to_string(),
+            crate::app::messages::MessageSeverity::Warning,
+        );
 
         // 4. Press Down key — scroll increases to 1
         let down_event = Event::Key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));

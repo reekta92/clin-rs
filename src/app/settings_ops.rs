@@ -689,7 +689,8 @@ impl App {
     }
 
     pub fn toggle_extended_markdown(&mut self) {
-        self.config.editor.extended_markdown_features = !self.config.editor.extended_markdown_features;
+        self.config.editor.extended_markdown_features =
+            !self.config.editor.extended_markdown_features;
         let val = self.config.editor.extended_markdown_features;
         self.set_temporary_status_static(if val {
             "Extended markdown features enabled"
@@ -766,11 +767,13 @@ impl App {
             crate::config::ListDensity::Comfortable => crate::config::ListDensity::Compact,
         };
         self.refresh_visual_list();
-        self.set_temporary_status_static(if self.list.list_density == crate::config::ListDensity::Compact {
-            "List density: compact"
-        } else {
-            "List density: comfortable"
-        });
+        self.set_temporary_status_static(
+            if self.list.list_density == crate::config::ListDensity::Compact {
+                "List density: compact"
+            } else {
+                "List density: comfortable"
+            },
+        );
         if let Ok(mut config) = crate::config::ClinConfig::load().0 {
             config.list.density = self.list.list_density.clone();
             if let Err(e) = config.save() {
@@ -784,11 +787,13 @@ impl App {
             crate::config::WeekStart::Sunday => crate::config::WeekStart::Monday,
             crate::config::WeekStart::Monday => crate::config::WeekStart::Sunday,
         };
-        self.set_temporary_status_static(if self.list.week_start == crate::config::WeekStart::Sunday {
-            "Week starts: Sunday"
-        } else {
-            "Week starts: Monday"
-        });
+        self.set_temporary_status_static(
+            if self.list.week_start == crate::config::WeekStart::Sunday {
+                "Week starts: Sunday"
+            } else {
+                "Week starts: Monday"
+            },
+        );
         if let Ok(mut config) = crate::config::ClinConfig::load().0 {
             config.list.week_start = self.list.week_start;
             if let Err(e) = config.save() {

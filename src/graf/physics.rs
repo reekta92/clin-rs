@@ -45,7 +45,12 @@ pub fn simulation_step(state: &mut GraphState, timestep: f32) {
     let world_clamp_radius =
         state.physics_ideal_distance * (node_count as f64).max(4.0).sqrt() * SPREAD_FACTOR;
     let mut need_reheat = false;
-    for idx in state.simulation.get_graph().node_indices().collect::<Vec<_>>() {
+    for idx in state
+        .simulation
+        .get_graph()
+        .node_indices()
+        .collect::<Vec<_>>()
+    {
         let node = &mut state.simulation.get_graph_mut()[idx];
         node.velocity *= cooloff;
 
@@ -837,8 +842,14 @@ mod tests {
         let g = gs.simulation.get_graph();
         let loc_a = g[node_indices[0]].location;
         let loc_b = g[node_indices[1]].location;
-        assert!(loc_a.x.is_finite() && loc_a.y.is_finite(), "node A NaN after reset");
-        assert!(loc_b.x.is_finite() && loc_b.y.is_finite(), "node B NaN after reset");
+        assert!(
+            loc_a.x.is_finite() && loc_a.y.is_finite(),
+            "node A NaN after reset"
+        );
+        assert!(
+            loc_b.x.is_finite() && loc_b.y.is_finite(),
+            "node B NaN after reset"
+        );
         assert!(
             loc_a.distance(loc_b) > 0.0,
             "coincident after reset: {:?} vs {:?}",
@@ -897,7 +908,8 @@ mod tests {
         let a_idx = node_indices[0];
 
         // Set dragged node to NaN
-        gs.simulation.get_graph_mut()[a_idx].location = fdg_sim::glam::Vec3::new(f32::NAN, f32::NAN, 0.0);
+        gs.simulation.get_graph_mut()[a_idx].location =
+            fdg_sim::glam::Vec3::new(f32::NAN, f32::NAN, 0.0);
         gs.dragging_node = Some(a_idx);
         gs.drag_target = None; // no drag position override
 
@@ -905,7 +917,11 @@ mod tests {
 
         // Node A must be finite — NaN reset ran despite drag exemption
         let loc = gs.simulation.get_graph()[a_idx].location;
-        assert!(loc.x.is_finite() && loc.y.is_finite(), "dragged NaN node not reset: {:?}", loc);
+        assert!(
+            loc.x.is_finite() && loc.y.is_finite(),
+            "dragged NaN node not reset: {:?}",
+            loc
+        );
     }
 
     #[test]
@@ -943,7 +959,8 @@ mod tests {
         let a_idx = node_indices[0];
 
         // Set dragged node to NaN — regression: this used to cascade NaN to all nodes
-        gs.simulation.get_graph_mut()[a_idx].location = fdg_sim::glam::Vec3::new(f32::NAN, f32::NAN, 0.0);
+        gs.simulation.get_graph_mut()[a_idx].location =
+            fdg_sim::glam::Vec3::new(f32::NAN, f32::NAN, 0.0);
         gs.dragging_node = Some(a_idx);
         gs.drag_target = None;
 

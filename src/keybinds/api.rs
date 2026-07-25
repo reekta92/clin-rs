@@ -110,7 +110,11 @@ impl Keybinds {
         Self::load_layered(path, Self::default(), &mut Vec::new())
     }
 
-    pub fn load_layered(path: &Path, base: Keybinds, warnings: &mut Vec<String>) -> Result<Keybinds> {
+    pub fn load_layered(
+        path: &Path,
+        base: Keybinds,
+        warnings: &mut Vec<String>,
+    ) -> Result<Keybinds> {
         let mut keybinds = base;
 
         if !path.exists() {

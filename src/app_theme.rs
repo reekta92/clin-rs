@@ -84,7 +84,11 @@ impl AppThemeColors {
                         .unwrap_or(Color::LightMagenta),
                     folder: tc.node_colors.get(2).copied().unwrap_or(Color::Blue),
                     pinned: tc.node_colors.get(4).copied().unwrap_or(Color::Yellow),
-                    smart: tc.node_colors.get(6).copied().unwrap_or(Color::LightMagenta),
+                    smart: tc
+                        .node_colors
+                        .get(6)
+                        .copied()
+                        .unwrap_or(Color::LightMagenta),
                     subnote: tc.node_colors.get(7).copied().unwrap_or(Color::LightCyan),
                     highlight_fg: tc.background_color.unwrap_or(Color::Black),
                     highlight_bg: tc.node_colors.first().copied().unwrap_or(Color::Cyan),

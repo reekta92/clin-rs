@@ -1121,10 +1121,7 @@ pub fn draw_status_bar<'a>(
     if let Some(right_line) = right {
         let chunks = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([
-                Constraint::Length(left.width() as u16),
-                Constraint::Min(0),
-            ])
+            .constraints([Constraint::Length(left.width() as u16), Constraint::Min(0)])
             .split(area);
 
         let left_para = Paragraph::new(left).style(theme.hint_line_bg_style());

@@ -797,8 +797,8 @@ fn draw_shape_on_canvas(ctx: &mut Context, shape: &Shape) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ratatui::backend::TestBackend;
     use crate::pinstar::data::{GroupNode, TextNode};
+    use ratatui::backend::TestBackend;
 
     /// Regression guard: a grid cell containing a control char must not
     /// reach `Cell::set_char` as-is (ratatui debug-assert!-panics on
@@ -887,14 +887,20 @@ mod tests {
         );
         let left_has_content = (0..=19).any(|col| {
             grid.iter()
-                .any(|row| row.get(col).map_or(false, |(ch, _)| *ch != ' '))
+                .any(|row| row.get(col).is_some_and(|(ch, _)| *ch != ' '))
         });
-        assert!(left_has_content, "left half should have content from node near x=0");
+        assert!(
+            left_has_content,
+            "left half should have content from node near x=0"
+        );
         let right_has_content = (20..=39).any(|col| {
             grid.iter()
-                .any(|row| row.get(col).map_or(false, |(ch, _)| *ch != ' '))
+                .any(|row| row.get(col).is_some_and(|(ch, _)| *ch != ' '))
         });
-        assert!(right_has_content, "right half should have content from node near x=7000");
+        assert!(
+            right_has_content,
+            "right half should have content from node near x=7000"
+        );
     }
 
     #[test]
@@ -949,9 +955,11 @@ mod tests {
         assert_eq!(grid.len(), 38, "height matches");
         assert_eq!(grid[0].len(), 78, "width matches");
         let has_content = grid.iter().any(|row| row.iter().any(|(ch, _)| *ch != ' '));
-        assert!(has_content, "fixture renders visible content at preview size");
+        assert!(
+            has_content,
+            "fixture renders visible content at preview size"
+        );
     }
-
 
     /// Verify file nodes inside groups are visible (not cleared by later group render).
     #[test]
@@ -960,16 +968,20 @@ mod tests {
             nodes: vec![
                 CanvasNode::Text(TextNode {
                     id: "f1".to_string(),
-                    x: 100.0, y: 100.0,
-                    width: 200.0, height: 100.0,
+                    x: 100.0,
+                    y: 100.0,
+                    width: 200.0,
+                    height: 100.0,
                     text: "hello".to_string(),
                     title: Some("file1".to_string()),
                     color: Some("#ff0000".to_string()),
                 }),
                 CanvasNode::Group(GroupNode {
                     id: "g1".to_string(),
-                    x: 50.0, y: 50.0,
-                    width: 300.0, height: 200.0,
+                    x: 50.0,
+                    y: 50.0,
+                    width: 300.0,
+                    height: 200.0,
                     label: Some("group".to_string()),
                     color: Some("#0000ff".to_string()),
                 }),
@@ -978,13 +990,22 @@ mod tests {
         };
         let theme = AppThemeColors::default();
         let grid = render_canvas_snapshot(
-            &data, &theme, crate::config::IconMode::default(),
-            60, 30, 1.0, 0.0, 0.0,
+            &data,
+            &theme,
+            crate::config::IconMode::default(),
+            60,
+            30,
+            1.0,
+            0.0,
+            0.0,
         );
         let has_file_content = grid.iter().any(|row| {
             let s: String = row.iter().map(|(ch, _)| *ch).collect();
             s.contains("hello") || s.contains("file1")
         });
-        assert!(has_file_content, "file node must render on top of group, not be cleared");
+        assert!(
+            has_file_content,
+            "file node must render on top of group, not be cleared"
+        );
     }
 }

@@ -186,7 +186,8 @@ toggle_action!(
     "\u{1f3a8}",
     begin_theme_selection,
     app,
-    crate::config::ClinConfig::load().0
+    crate::config::ClinConfig::load()
+        .0
         .map(|c| c.ui.theme.clone())
         .unwrap_or_else(|_| "default".to_string())
 );

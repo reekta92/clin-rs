@@ -20,10 +20,7 @@ impl App {
         self.send_catalog_cmd(cmd);
     }
 
-    pub(crate) fn send_catalog_cmd(
-        &mut self,
-        cmd: crate::app::catalog::CatalogCommand,
-    ) {
+    pub(crate) fn send_catalog_cmd(&mut self, cmd: crate::app::catalog::CatalogCommand) {
         let _ = self.catalog_cmd_tx.try_send(cmd).inspect_err(|e| {
             if matches!(e, std::sync::mpsc::TrySendError::Disconnected(_)) {
                 self.messages.push(
@@ -137,10 +134,7 @@ impl App {
                             }
                             if warnings.len() > 10 {
                                 self.messages.push(
-                                    format!(
-                                        "…and {} more scan warning(s)",
-                                        warnings.len() - 10
-                                    ),
+                                    format!("…and {} more scan warning(s)", warnings.len() - 10),
                                     crate::app::messages::MessageSeverity::Warning,
                                 );
                             }
@@ -217,14 +211,12 @@ impl App {
                     self.notes_revision += 1;
 
                     let generation_num = self.catalog_generation.load(Ordering::SeqCst);
-                    self.send_catalog_cmd(
-                        crate::app::catalog::CatalogCommand::PutKnown {
-                            generation: generation_num,
-                            summary,
-                            stamp,
-                            old_id: prev_id.map(|s| s.to_string()),
-                        },
-                    );
+                    self.send_catalog_cmd(crate::app::catalog::CatalogCommand::PutKnown {
+                        generation: generation_num,
+                        summary,
+                        stamp,
+                        old_id: prev_id.map(|s| s.to_string()),
+                    });
                 }
                 Err(e) => {
                     self.messages.push(
@@ -237,12 +229,10 @@ impl App {
                     self.notes_revision += 1;
 
                     let generation_num = self.catalog_generation.load(Ordering::SeqCst);
-                    self.send_catalog_cmd(
-                        crate::app::catalog::CatalogCommand::RemoveKnown {
-                            generation: generation_num,
-                            id: id.to_string(),
-                        },
-                    );
+                    self.send_catalog_cmd(crate::app::catalog::CatalogCommand::RemoveKnown {
+                        generation: generation_num,
+                        id: id.to_string(),
+                    });
                 }
             }
         } else {

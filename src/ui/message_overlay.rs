@@ -147,7 +147,12 @@ pub fn draw_message_overlay(
     // --- Render lines: alternating bg per MESSAGE, not per line ---
     let alt_bg = darken(base_color, 36);
 
-    for (i, wl) in wrapped_lines.iter().skip(scroll).take(height as usize).enumerate() {
+    for (i, wl) in wrapped_lines
+        .iter()
+        .skip(scroll)
+        .take(height as usize)
+        .enumerate()
+    {
         // Alternate based on message index: even msg_idx → base_color, odd → darkened
         let bg = if wl.msg_idx % 2 == 0 {
             base_color
@@ -160,12 +165,8 @@ pub fn draw_message_overlay(
         frame.render_widget(Clear, full_row);
         frame.render_widget(Block::default().style(Style::default().bg(bg)), full_row);
 
-        let styled_line = Line::from(Span::styled(
-            &wl.text,
-            Style::default().fg(wl.fg).bg(bg),
-        ));
-        let content_area =
-            Rect::new(dropdown_area.x + 1, row_y, popup_width.saturating_sub(2), 1);
+        let styled_line = Line::from(Span::styled(&wl.text, Style::default().fg(wl.fg).bg(bg)));
+        let content_area = Rect::new(dropdown_area.x + 1, row_y, popup_width.saturating_sub(2), 1);
         frame.render_widget(Paragraph::new(styled_line), content_area);
     }
 }

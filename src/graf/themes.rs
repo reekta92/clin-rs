@@ -79,9 +79,9 @@ const PALETTES: [GraphThemePalette; 18] = [
     },
     GraphThemePalette {
         nodes: [
-            [97, 175, 239], // [0] accent — primary UI accent
+            [97, 175, 239],  // [0] accent — primary UI accent
             [198, 120, 221], // [1] tag — tag badges
-            [86, 182, 194], // [2] folder — Vault category
+            [86, 182, 194],  // [2] folder — Vault category
             [229, 192, 123], // [3] heading — section titles (shared: success, warning)
             [152, 195, 121], // [4] pinned — Pinned category
             [224, 108, 117], // [5] destructive — encrypted notes, delete actions
@@ -97,14 +97,14 @@ const PALETTES: [GraphThemePalette; 18] = [
     },
     GraphThemePalette {
         nodes: [
-            [184, 187, 38], // [0] accent — primary UI accent
-            [215, 153, 33], // [1] tag — tag badges
-            [204, 94, 74], // [2] folder — Vault category
-            [214, 93, 14], // [3] heading — section titles (shared: success, warning)
+            [184, 187, 38],  // [0] accent — primary UI accent
+            [215, 153, 33],  // [1] tag — tag badges
+            [204, 94, 74],   // [2] folder — Vault category
+            [214, 93, 14],   // [3] heading — section titles (shared: success, warning)
             [104, 157, 106], // [4] pinned — Pinned category
             [131, 165, 152], // [5] destructive — encrypted notes, delete actions
             [146, 131, 116], // [6] smart — Smart folders category
-            [254, 128, 25], // [7] subnote — Subnotes category
+            [254, 128, 25],  // [7] subnote — Subnotes category
         ],
         chrome: [102, 92, 84],
         title: [235, 219, 178],
@@ -119,7 +119,7 @@ const PALETTES: [GraphThemePalette; 18] = [
             [189, 147, 249], // [1] tag — tag badges
             [139, 233, 253], // [2] folder — Vault category
             [255, 184, 108], // [3] heading — section titles (shared: success, warning)
-            [80, 250, 123], // [4] pinned — Pinned category
+            [80, 250, 123],  // [4] pinned — Pinned category
             [255, 121, 198], // [5] destructive — encrypted notes, delete actions
             [255, 139, 127], // [6] smart — Smart folders category
             [255, 255, 150], // [7] subnote — Subnotes category
@@ -169,7 +169,7 @@ const PALETTES: [GraphThemePalette; 18] = [
     },
     GraphThemePalette {
         nodes: [
-            [255, 215, 89], // [0] accent — primary UI accent
+            [255, 215, 89],  // [0] accent — primary UI accent
             [255, 143, 105], // [1] tag — tag badges
             [129, 204, 165], // [2] folder — Vault category
             [100, 200, 218], // [3] heading — section titles (shared: success, warning)
@@ -205,14 +205,14 @@ const PALETTES: [GraphThemePalette; 18] = [
     },
     GraphThemePalette {
         nodes: [
-            [181, 137, 0], // [0] accent — primary UI accent
-            [203, 75, 22], // [1] tag — tag badges
-            [220, 50, 47], // [2] folder — Vault category
-            [211, 54, 130], // [3] heading — section titles (shared: success, warning)
+            [181, 137, 0],   // [0] accent — primary UI accent
+            [203, 75, 22],   // [1] tag — tag badges
+            [220, 50, 47],   // [2] folder — Vault category
+            [211, 54, 130],  // [3] heading — section titles (shared: success, warning)
             [108, 113, 196], // [4] pinned — Pinned category
-            [38, 139, 210], // [5] destructive — encrypted notes, delete actions
-            [42, 161, 152], // [6] smart — Smart folders category
-            [133, 153, 0], // [7] subnote — Subnotes category
+            [38, 139, 210],  // [5] destructive — encrypted notes, delete actions
+            [42, 161, 152],  // [6] smart — Smart folders category
+            [133, 153, 0],   // [7] subnote — Subnotes category
         ],
         chrome: [147, 161, 161],
         title: [131, 148, 150],
@@ -264,7 +264,7 @@ const PALETTES: [GraphThemePalette; 18] = [
         nodes: [
             [196, 167, 231], // [0] accent — primary UI accent
             [235, 188, 186], // [1] tag — tag badges
-            [62, 143, 176], // [2] folder — Vault category
+            [62, 143, 176],  // [2] folder — Vault category
             [246, 193, 119], // [3] heading — section titles (shared: success, warning)
             [156, 207, 216], // [4] pinned — Pinned category
             [235, 111, 146], // [5] destructive — encrypted notes, delete actions
@@ -281,12 +281,12 @@ const PALETTES: [GraphThemePalette; 18] = [
     // Gruvbox Material (dark) — PALETTES[13]
     GraphThemePalette {
         nodes: [
-            [215, 153, 33], // [0] accent — primary UI accent
+            [215, 153, 33],  // [0] accent — primary UI accent
             [211, 134, 155], // [1] tag — tag badges
             [125, 174, 163], // [2] folder — Vault category
-            [234, 157, 52], // [3] heading — section titles (shared: success, warning)
+            [234, 157, 52],  // [3] heading — section titles (shared: success, warning)
             [169, 182, 101], // [4] pinned — Pinned category
-            [234, 105, 98], // [5] destructive — encrypted notes, delete actions
+            [234, 105, 98],  // [5] destructive — encrypted notes, delete actions
             [137, 180, 130], // [6] smart — Smart folders category
             [240, 235, 215], // [7] subnote — Subnotes category
         ],
@@ -300,13 +300,13 @@ const PALETTES: [GraphThemePalette; 18] = [
     // GitHub Dark — PALETTES[14]
     GraphThemePalette {
         nodes: [
-            [88, 166, 255], // [0] accent — primary UI accent
+            [88, 166, 255],  // [0] accent — primary UI accent
             [188, 140, 255], // [1] tag — tag badges
-            [63, 185, 80], // [2] folder — Vault category
-            [210, 153, 34], // [3] heading — section titles (shared: success, warning)
+            [63, 185, 80],   // [2] folder — Vault category
+            [210, 153, 34],  // [3] heading — section titles (shared: success, warning)
             [255, 123, 114], // [4] pinned — Pinned category
-            [248, 81, 73], // [5] destructive — encrypted notes, delete actions
-            [57, 210, 190], // [6] smart — Smart folders category
+            [248, 81, 73],   // [5] destructive — encrypted notes, delete actions
+            [57, 210, 190],  // [6] smart — Smart folders category
             [139, 148, 158], // [7] subnote — Subnotes category
         ],
         chrome: [100, 108, 120],
@@ -320,12 +320,12 @@ const PALETTES: [GraphThemePalette; 18] = [
     GraphThemePalette {
         nodes: [
             [255, 204, 102], // [0] accent — primary UI accent
-            [255, 167, 89], // [1] tag — tag badges
+            [255, 167, 89],  // [1] tag — tag badges
             [115, 184, 255], // [2] folder — Vault category
             [247, 135, 121], // [3] heading — section titles (shared: success, warning)
             [135, 201, 105], // [4] pinned — Pinned category
-            [255, 167, 89], // [5] destructive — encrypted notes, delete actions
-            [57, 191, 204], // [6] smart — Smart folders category
+            [255, 167, 89],  // [5] destructive — encrypted notes, delete actions
+            [57, 191, 204],  // [6] smart — Smart folders category
             [193, 202, 214], // [7] subnote — Subnotes category
         ],
         chrome: [100, 110, 125],
@@ -339,11 +339,11 @@ const PALETTES: [GraphThemePalette; 18] = [
     GraphThemePalette {
         nodes: [
             [255, 126, 219], // [0] accent — primary UI accent
-            [54, 249, 242], // [1] tag — tag badges
+            [54, 249, 242],  // [1] tag — tag badges
             [123, 130, 149], // [2] folder — Vault category
             [255, 123, 114], // [3] heading — section titles (shared: success, warning)
             [114, 241, 184], // [4] pinned — Pinned category
-            [254, 68, 68], // [5] destructive — encrypted notes, delete actions
+            [254, 68, 68],   // [5] destructive — encrypted notes, delete actions
             [253, 226, 143], // [6] smart — Smart folders category
             [152, 154, 206], // [7] subnote — Subnotes category
         ],
