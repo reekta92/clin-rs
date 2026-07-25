@@ -189,7 +189,9 @@ impl CommandPalette {
                 return true;
             }
             _ => {
-                self.input.input(key);
+                if !crate::text_edit::apply_text_shortcuts(&app.keybinds, &mut self.input, key) {
+                    self.input.input(key);
+                }
                 self.refresh_items(app);
             }
         }

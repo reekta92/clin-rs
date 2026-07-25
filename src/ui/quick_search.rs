@@ -115,8 +115,14 @@ pub fn handle_quick_search_keys<T>(
             popup.scroll_to_selected(max_visible);
             QuickSearchAction::Navigated
         }
-        KeyCode::Char('a') if ctrl => QuickSearchAction::Edited,
-        KeyCode::Char('e') if ctrl => QuickSearchAction::Edited,
+        KeyCode::Char('a') if ctrl => {
+            popup.input.move_cursor(ratatui_textarea::CursorMove::Head);
+            QuickSearchAction::Edited
+        }
+        KeyCode::Char('e') if ctrl => {
+            popup.input.move_cursor(ratatui_textarea::CursorMove::End);
+            QuickSearchAction::Edited
+        }
         _ => {
             handle_popup_text_input(key, &mut popup.input, keybinds);
             QuickSearchAction::Edited

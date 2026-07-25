@@ -60,65 +60,32 @@ pub fn apply_text_shortcuts(
         return true;
     }
     if keybinds.matches_edit(EditAction::Copy, &key) {
-        textarea.copy();
-        CLIPBOARD.with(|cb_cell| {
-            let mut cb = cb_cell.borrow_mut();
-            if cb.is_none() {
-                *cb = arboard::Clipboard::new().ok();
-            }
-            if let Some(clipboard) = cb.as_mut() {
-                let _ = clipboard.set_text(textarea.yank_text());
-            }
-        });
+        // ratatui-textarea 0.9 `copy()` is a no-op without a selection (verified
+        // in registry source: guarded by `take_selection_positions`), so without
+        // this guard `yank_text()` would return the *previous* yank and clobber
+        // the system clipboard with stale text.
+        if textarea.selection_range().is_some() {
+            textarea.copy();
+            write_system_clipboard(&textarea.yank_text());
+        }
         return true;
     }
     if keybinds.matches_edit(EditAction::Cut, &key) {
         if textarea.cut() {
-            let mut wrote = false;
-            CLIPBOARD.with(|cb_cell| {
-                let mut cb = cb_cell.borrow_mut();
-                if cb.is_none() {
-                    *cb = arboard::Clipboard::new().ok();
-                }
-                if let Some(clipboard) = cb.as_mut() {
-                    let _ = clipboard.set_text(textarea.yank_text());
-                    wrote = true;
-                }
-            });
-            if !wrote {
-                // fallback: try ephemeral clipboard
-                if let Ok(mut cb) = arboard::Clipboard::new() {
-                    let _ = cb.set_text(textarea.yank_text());
-                }
-            }
+            write_system_clipboard(&textarea.yank_text());
         }
         return true;
     }
     if keybinds.matches_edit(EditAction::Paste, &key) {
-        let mut pasted = false;
-        CLIPBOARD.with(|cb_cell| {
-            let mut cb = cb_cell.borrow_mut();
-            if cb.is_none() {
-                *cb = arboard::Clipboard::new().ok();
-            }
-            if let Some(clipboard) = cb.as_mut()
-                && let Ok(text) = clipboard.get_text()
-            {
+        match read_system_clipboard() {
+            Some(text) if !text.is_empty() => {
                 textarea.insert_str(text);
-                pasted = true;
             }
-        });
-        if !pasted {
-            // fallback: try ephemeral clipboard
-            if let Ok(mut cb) = arboard::Clipboard::new()
-                && let Ok(text) = cb.get_text()
-            {
-                textarea.insert_str(text);
-                pasted = true;
+            // Empty or unavailable system clipboard: fall back to the
+            // textarea's internal yank buffer (previous in-app kill).
+            _ => {
+                let _ = textarea.paste();
             }
-        }
-        if !pasted {
-            let _ = textarea.paste();
         }
         return true;
     }
