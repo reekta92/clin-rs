@@ -729,12 +729,12 @@ pub fn draw_pinstar_view(
                 "zoom",
             ),
             (
-                state.keybinds.canvas_keys_display(CanvasAction::Help),
-                "help",
-            ),
-            (
                 state.keybinds.canvas_keys_display(CanvasAction::Quit),
                 "back",
+            ),
+            (
+                state.keybinds.canvas_keys_display(CanvasAction::Help),
+                "help",
             ),
             ("F2".to_string(), "keybinds"),
         ];

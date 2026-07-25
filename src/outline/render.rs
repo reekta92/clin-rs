@@ -258,8 +258,8 @@ pub fn draw_outline(
             "fold",
         ),
         (keybinds.display_outline(OutlineAction::Open), "jump"),
-        (keybinds.outline_keys_display(OutlineAction::Help), "help"),
         (keybinds.outline_keys_display(OutlineAction::Back), "back"),
+        (keybinds.outline_keys_display(OutlineAction::Help), "help"),
         ("F2".to_string(), "keybinds"),
     ];
     let hint = crate::ui::format_keybind_hints(theme, &hints_items);

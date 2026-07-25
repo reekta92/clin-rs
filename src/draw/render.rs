@@ -159,8 +159,8 @@ pub fn draw_canvas(
             "erase",
         ),
         (app.keybinds.display_draw(DrawAction::ToggleGrid), "grid"),
-        (app.keybinds.draw_keys_display(DrawAction::Help), "help"),
         (app.keybinds.draw_keys_display(DrawAction::Quit), "back"),
+        (app.keybinds.draw_keys_display(DrawAction::Help), "help"),
         ("F2".to_string(), "keybinds"),
     ];
     let hint_line = crate::ui::format_keybind_hints(&app.theme, &hints_items);
