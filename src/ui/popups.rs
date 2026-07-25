@@ -1180,13 +1180,26 @@ pub fn format_keybind_hints<'a>(
                 _ => unreachable!(),
             };
 
-            let bg_colors = [
+            let base_colors = [
                 theme.accent,
                 theme.folder,
                 theme.tag,
                 theme.warning,
                 theme.success,
             ];
+            let mut bg_colors = Vec::new();
+            for &color in &base_colors {
+                if bg_colors.last() != Some(&color) {
+                    bg_colors.push(color);
+                }
+            }
+            // Prevent wrap-around duplicate (last == first after cycling)
+            if bg_colors.len() > 1 && bg_colors.first() == bg_colors.last() {
+                bg_colors.pop();
+            }
+            if bg_colors.is_empty() {
+                bg_colors.push(theme.accent);
+            }
             let fg = theme.highlight_fg;
             let mut spans = Vec::new();
 
