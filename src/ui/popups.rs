@@ -674,7 +674,10 @@ pub fn draw_hint_bar_style_popup(
         theme,
     );
 
-    let options: Vec<&str> = crate::config::HintBarStyle::ALL.iter().map(|s| s.name()).collect();
+    let options: Vec<&str> = crate::config::HintBarStyle::ALL
+        .iter()
+        .map(|s| s.name())
+        .collect();
     let items: Vec<ListItem> = options
         .iter()
         .map(|opt| ListItem::new(Line::from(Span::raw(*opt))))
@@ -1293,7 +1296,9 @@ pub fn format_keybind_hints<'a>(
                 spans.push(Span::styled("[", Style::default().fg(theme.fg)));
                 spans.push(Span::styled(
                     key.clone(),
-                    Style::default().fg(theme.accent).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(theme.accent)
+                        .add_modifier(Modifier::BOLD),
                 ));
                 spans.push(Span::styled("]", Style::default().fg(theme.fg)));
                 spans.push(Span::styled(

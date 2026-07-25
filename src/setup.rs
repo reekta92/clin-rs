@@ -34,7 +34,9 @@ pub const SETUP_THEMES: &[&str] = &[
 ];
 pub const SETUP_PRESETS: &[&str] = &["default", "helix", "vim", "emacs"];
 pub const SETUP_ICON_MODES: &[&str] = &["nerd_font", "unicode", "none"];
-pub const SETUP_HINT_STYLES: &[&str] = &["Classic", "Sharp", "Rounded", "Slanted", "Bubbles", "Blurred", "Chips", "Brackets"];
+pub const SETUP_HINT_STYLES: &[&str] = &[
+    "Classic", "Sharp", "Rounded", "Slanted", "Bubbles", "Blurred", "Chips", "Brackets",
+];
 
 pub const CLIN_ASCII: &str = "\
  ██████╗██╗     ██╗███╗   ██╗

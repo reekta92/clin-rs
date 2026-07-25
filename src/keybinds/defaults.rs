@@ -247,6 +247,7 @@ impl Default for Keybinds {
             vec![
                 KeyCombo::ctrl_shift(KeyCode::Char('c')),
                 KeyCombo::ctrl(KeyCode::Insert),
+                KeyCombo::ctrl(KeyCode::Char('c')),
             ],
         );
         edit.insert(
@@ -254,6 +255,7 @@ impl Default for Keybinds {
             vec![
                 KeyCombo::ctrl_shift(KeyCode::Char('x')),
                 KeyCombo::shift(KeyCode::Delete),
+                KeyCombo::ctrl(KeyCode::Char('x')),
             ],
         );
         edit.insert(
@@ -261,6 +263,7 @@ impl Default for Keybinds {
             vec![
                 KeyCombo::ctrl_shift(KeyCode::Char('v')),
                 KeyCombo::shift(KeyCode::Insert),
+                KeyCombo::ctrl(KeyCode::Char('v')),
             ],
         );
         edit.insert(EditAction::Undo, vec![KeyCombo::ctrl(KeyCode::Char('z'))]);

@@ -46,7 +46,6 @@ use std::time::{Duration, Instant};
 use crate::overlay::OverlayView;
 use clap::{CommandFactory, FromArgMatches};
 
-use std::borrow::Cow;
 use std::fs;
 use std::io::{self, Stdout, Write};
 use std::process;
@@ -66,7 +65,7 @@ static FORCE_QUIT: AtomicBool = AtomicBool::new(false);
 use anyhow::{Context, Result};
 use crossterm::event::{
     self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
-    Event, KeyboardEnhancementFlags, KeyCode, KeyEventKind, KeyModifiers,
+    Event, KeyCode, KeyEventKind, KeyModifiers, KeyboardEnhancementFlags,
     PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
 };
 use crossterm::execute;
@@ -1948,22 +1947,16 @@ fn run_app(
                         _ => {}
                     }
                 }
-                Event::Paste(data) if app.mode == ViewMode::Edit => match focus {
-                    EditFocus::Title => {
-                        let normalized = data.replace(['\r', '\n'], " ");
-                        app.editor.title_editor.insert_str(normalized);
-                        app.status = Cow::Borrowed("Pasted title text");
-                        app.request_editor_preview_update();
+                Event::Paste(data) => {
+                    if crate::events::handle_bracketed_paste(app, data, &mut focus) {
+                        app.set_temporary_status("Pasted from clipboard");
                     }
-                    EditFocus::Body => {
-                        app.editor.editor.insert_str(data);
-                        app.status = Cow::Borrowed("Pasted body text");
-                        app.request_editor_preview_update();
-                    }
-                    EditFocus::Sidebar => {}
-                },
+                }
                 Event::Resize(_, _) => {}
                 _ => {}
+            }
+            if let Some(msg) = crate::text_edit::take_clipboard_notice() {
+                app.set_temporary_status(msg);
             }
         }
     }

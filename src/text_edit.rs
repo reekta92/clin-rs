@@ -9,6 +9,20 @@ thread_local! {
     static CLIPBOARD: RefCell<Option<arboard::Clipboard>> = const { RefCell::new(None) };
 }
 
+thread_local! {
+    static CLIPBOARD_NOTICE: RefCell<Option<&'static str>> = const { RefCell::new(None) };
+}
+
+/// Drain the pending clipboard notice set by `apply_text_shortcuts`.
+/// The event loop calls this once per iteration and shows it via `set_temporary_status`.
+pub fn take_clipboard_notice() -> Option<&'static str> {
+    CLIPBOARD_NOTICE.with(|n| n.borrow_mut().take())
+}
+
+fn set_clipboard_notice(msg: &'static str) {
+    CLIPBOARD_NOTICE.with(|n| *n.borrow_mut() = Some(msg));
+}
+
 fn is_wayland() -> bool {
     std::env::var("WAYLAND_DISPLAY").is_ok() || std::env::var("WAYLAND_DISPLAY_NAME").is_ok()
 }
@@ -67,12 +81,14 @@ pub fn apply_text_shortcuts(
         if textarea.selection_range().is_some() {
             textarea.copy();
             write_system_clipboard(&textarea.yank_text());
+            set_clipboard_notice("Copied to clipboard");
         }
         return true;
     }
     if keybinds.matches_edit(EditAction::Cut, &key) {
         if textarea.cut() {
             write_system_clipboard(&textarea.yank_text());
+            set_clipboard_notice("Cut to clipboard");
         }
         return true;
     }
@@ -80,11 +96,14 @@ pub fn apply_text_shortcuts(
         match read_system_clipboard() {
             Some(text) if !text.is_empty() => {
                 textarea.insert_str(text);
+                set_clipboard_notice("Pasted from clipboard");
             }
             // Empty or unavailable system clipboard: fall back to the
             // textarea's internal yank buffer (previous in-app kill).
             _ => {
-                let _ = textarea.paste();
+                if textarea.paste() {
+                    set_clipboard_notice("Pasted from clipboard");
+                }
             }
         }
         return true;

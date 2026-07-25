@@ -106,6 +106,189 @@ pub(crate) fn route_text_input_popup(
     }
 }
 
+/// Route a terminal bracketed-paste (`Event::Paste`) into the currently focused
+/// text field. This is the ONLY paste delivery on terminals (kitty, most VTE
+/// emulators) that intercept Ctrl+Shift+V themselves. Returns true if a field
+/// accepted the text.
+pub fn handle_bracketed_paste(
+    app: &mut crate::app::App,
+    data: String,
+    focus: &mut crate::editor::EditFocus,
+) -> bool {
+    use crate::app::ViewMode;
+    use crate::editor::EditFocus;
+    use crate::popups::ActivePopup;
+    use crate::popups::SubnotesFocus;
+
+    // 1. Active popup
+    if let Some(ref mut popup) = app.popups.active {
+        match popup {
+            ActivePopup::CreateNote(p, _) => {
+                p.input.insert_str(&data);
+                return true;
+            }
+            ActivePopup::Import(p) => {
+                p.input.insert_str(&data);
+                return true;
+            }
+            ActivePopup::Folder(p) => {
+                p.input.insert_str(&data);
+                return true;
+            }
+            ActivePopup::FolderPicker(p) => {
+                p.input.insert_str(&data);
+                return true;
+            }
+            ActivePopup::NoteRename(p) => {
+                p.input.insert_str(&data);
+                return true;
+            }
+            ActivePopup::Search(p) => {
+                p.input.insert_str(&data);
+                return true;
+            }
+            ActivePopup::Goals(p) => {
+                p.input.insert_str(&data);
+                return true;
+            }
+            ActivePopup::Template(p) => {
+                p.input.insert_str(&data);
+                return true;
+            }
+            ActivePopup::Tag(p) => {
+                p.input.insert_str(&data);
+                return true;
+            }
+            ActivePopup::Subnotes(p) => match p.focus {
+                SubnotesFocus::EditTitle => {
+                    p.title_input.insert_str(&data);
+                    return true;
+                }
+                SubnotesFocus::EditContent => {
+                    p.content_input.insert_str(&data);
+                    return true;
+                }
+                SubnotesFocus::List => return false,
+            },
+            // Non-text popups — ignore paste
+            ActivePopup::Theme(_)
+            | ActivePopup::Info(_)
+            | ActivePopup::IconMode(_)
+            | ActivePopup::HintBarStyle(_)
+            | ActivePopup::KeybindPreset(_)
+            | ActivePopup::Sort(_)
+            | ActivePopup::CreateFormat(_)
+            | ActivePopup::ContextMenu(_)
+            | ActivePopup::TrashView(_) => return false,
+        }
+    }
+
+    // 2. Command palette
+    if let Some(ref mut palette) = app.command_palette {
+        palette.input.insert_str(&data);
+        return true;
+    }
+    // 3. Help search popup
+    if let Some(ref mut popup) = app.help_search.popup {
+        popup.input.insert_str(&data);
+        return true;
+    }
+    // 4. Editor find popup
+    if let Some(ref mut popup) = app.editor.find_popup {
+        popup.input.insert_str(&data);
+        return true;
+    }
+
+    // 5. Per view mode
+    match app.mode {
+        ViewMode::Edit => match focus {
+            EditFocus::Title => {
+                let normalized = data.replace(['\r', '\n'], " ");
+                app.editor.title_editor.insert_str(normalized);
+                app.request_editor_preview_update();
+                true
+            }
+            EditFocus::Body => {
+                app.editor.editor.insert_str(&data);
+                app.request_editor_preview_update();
+                true
+            }
+            EditFocus::Sidebar => false,
+        },
+        ViewMode::Canvas => {
+            if let Some(canvas) = &mut app.canvas_state {
+                if let Some(ta) = &mut canvas.rename_popup {
+                    ta.insert_str(&data);
+                    return true;
+                }
+                if let Some(ta) = &mut canvas.floating_editor {
+                    ta.insert_str(&data);
+                    // Mirror the node-sync: write editor text into selected node
+                    if let Some(node_id) = &canvas.selected_node_id {
+                        let text = ta.lines().join("\n");
+                        for node in &mut canvas.data.nodes {
+                            if node.id() == node_id {
+                                node.set_text(text);
+                                break;
+                            }
+                        }
+                        let _ = canvas.save();
+                    }
+                    return true;
+                }
+                if canvas.editor_focus {
+                    app.editor.editor.insert_str(&data);
+                    // Sync canvas from editor inline (avoid &mut App borrow conflict)
+                    let content = app.editor.editor.lines().join("\n");
+                    if let Ok(parsed) =
+                        serde_json::from_str::<crate::pinstar::data::CanvasData>(&content)
+                    {
+                        canvas.data = parsed;
+                        let _ = canvas.save();
+                    }
+                    return true;
+                }
+            }
+            false
+        }
+        ViewMode::Draw => {
+            if let Some(draw) = &mut app.draw_state
+                && let Some((_, ta)) = &mut draw.text_editor
+            {
+                ta.insert_str(&data);
+                true
+            } else {
+                false
+            }
+        }
+        ViewMode::Backup => {
+            if let Some(backup) = &mut app.backup_state {
+                match backup.input_mode {
+                    crate::backup::state::BackupInputMode::EditCommitMessage => {
+                        backup.commit_textarea.insert_str(&data);
+                        return true;
+                    }
+                    crate::backup::state::BackupInputMode::EditSettingsField => {
+                        match backup.settings.focused_field {
+                            crate::backup::state::SettingsField::RemoteUrl => {
+                                backup.settings.remote_url.insert_str(&data);
+                            }
+                            crate::backup::state::SettingsField::RemoteName => {
+                                backup.settings.remote_name.insert_str(&data);
+                            }
+                            _ => return false,
+                        }
+                        return true;
+                    }
+                    _ => return false,
+                }
+            }
+            false
+        }
+        _ => false,
+    }
+}
+
 pub fn move_textarea_cursor_to_mouse(
     textarea: &mut TextArea,
     body_inner: Rect,
@@ -1619,7 +1802,12 @@ impl crate::popups::ActivePopup {
             }
             ActivePopup::HintBarStyle(mut popup) => {
                 app.seq_matcher.clear();
-                match route_selection_list(&key, &app.keybinds, &mut popup.selected, crate::config::HintBarStyle::ALL.len() - 1) {
+                match route_selection_list(
+                    &key,
+                    &app.keybinds,
+                    &mut popup.selected,
+                    crate::config::HintBarStyle::ALL.len() - 1,
+                ) {
                     SelListAction::Up | SelListAction::Down => {
                         app.popups.active = Some(ActivePopup::HintBarStyle(popup));
                         app.select_hint_bar_style();

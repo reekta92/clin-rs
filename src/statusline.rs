@@ -1246,10 +1246,7 @@ pub fn line_from_segments<'a>(
     }
 
     // Every non-Classic style splits composite segments into per-term cells.
-    let split_cells = !matches!(
-        theme.hint_bar_style,
-        crate::config::HintBarStyle::Classic
-    );
+    let split_cells = !matches!(theme.hint_bar_style, crate::config::HintBarStyle::Classic);
 
     let flat: Vec<FlatSegment> = if split_cells {
         let mut out = Vec::new();
@@ -1343,13 +1340,25 @@ pub fn line_from_segments<'a>(
             // Chained powerline family: Sharp, Rounded, Slanted.
             let sep_char = match style {
                 crate::config::HintBarStyle::Sharp => {
-                    if is_right { "\u{e0b2}" } else { "\u{e0b0}" }
+                    if is_right {
+                        "\u{e0b2}"
+                    } else {
+                        "\u{e0b0}"
+                    }
                 }
                 crate::config::HintBarStyle::Rounded => {
-                    if is_right { "\u{e0b6}" } else { "\u{e0b4}" }
+                    if is_right {
+                        "\u{e0b6}"
+                    } else {
+                        "\u{e0b4}"
+                    }
                 }
                 crate::config::HintBarStyle::Slanted => {
-                    if is_right { "\u{e0be}" } else { "\u{e0bc}" }
+                    if is_right {
+                        "\u{e0be}"
+                    } else {
+                        "\u{e0bc}"
+                    }
                 }
                 _ => unreachable!(),
             };

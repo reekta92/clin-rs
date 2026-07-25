@@ -1708,17 +1708,20 @@ impl App {
                     if textarea.selection_range().is_some() {
                         textarea.copy();
                         crate::text_edit::write_system_clipboard(&textarea.yank_text());
+                        self.set_temporary_status("Copied to clipboard");
                     }
                 }
                 " Cut " => {
                     if textarea.cut() {
                         crate::text_edit::write_system_clipboard(&textarea.yank_text());
+                        self.set_temporary_status("Cut to clipboard");
                     }
                 }
                 " Paste " => {
                     if let Some(t) = crate::text_edit::read_system_clipboard() {
                         textarea.set_yank_text(&t);
                         textarea.paste();
+                        self.set_temporary_status("Pasted from clipboard");
                     }
                 }
                 " Select All " => {

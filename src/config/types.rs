@@ -596,17 +596,33 @@ mod tests {
     #[test]
     fn hint_bar_style_round_trip() {
         for s in HintBarStyle::ALL {
-            assert_eq!(HintBarStyle::from_index(s.index()), s, "from_index roundtrip for {:?}", s);
+            assert_eq!(
+                HintBarStyle::from_index(s.index()),
+                s,
+                "from_index roundtrip for {:?}",
+                s
+            );
         }
         // Names must be unique.
         let mut names: Vec<&str> = HintBarStyle::ALL.iter().map(|s| s.name()).collect();
         names.sort();
         names.dedup();
-        assert_eq!(names.len(), HintBarStyle::ALL.len(), "name() values not unique");
+        assert_eq!(
+            names.len(),
+            HintBarStyle::ALL.len(),
+            "name() values not unique"
+        );
         // Config strings must be unique.
-        let mut cfg: Vec<&str> = HintBarStyle::ALL.iter().map(|s| s.as_config_str()).collect();
+        let mut cfg: Vec<&str> = HintBarStyle::ALL
+            .iter()
+            .map(|s| s.as_config_str())
+            .collect();
         cfg.sort();
         cfg.dedup();
-        assert_eq!(cfg.len(), HintBarStyle::ALL.len(), "as_config_str() values not unique");
+        assert_eq!(
+            cfg.len(),
+            HintBarStyle::ALL.len(),
+            "as_config_str() values not unique"
+        );
     }
 }

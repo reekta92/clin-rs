@@ -351,11 +351,13 @@ fn execute_menu_action(
                 if app.editor.editor.selection_range().is_some() {
                     app.editor.editor.copy();
                     crate::text_edit::write_system_clipboard(&app.editor.editor.yank_text());
+                    app.set_temporary_status("Copied to clipboard");
                 }
             }
             1 => {
                 if app.editor.editor.cut() {
                     crate::text_edit::write_system_clipboard(&app.editor.editor.yank_text());
+                    app.set_temporary_status("Cut to clipboard");
                 }
                 let _ = state.sync_from_raw_editor(app);
             }
@@ -363,9 +365,12 @@ fn execute_menu_action(
                 match crate::text_edit::read_system_clipboard() {
                     Some(t) if !t.is_empty() => {
                         app.editor.editor.insert_str(t);
+                        app.set_temporary_status("Pasted from clipboard");
                     }
                     _ => {
-                        let _ = app.editor.editor.paste();
+                        if app.editor.editor.paste() {
+                            app.set_temporary_status("Pasted from clipboard");
+                        }
                     }
                 }
                 let _ = state.sync_from_raw_editor(app);
