@@ -9,10 +9,12 @@ pub mod console;
 pub mod constants;
 pub mod draw;
 pub mod editor;
+pub mod event_source;
 pub mod frontmatter;
 pub mod fsutil;
 pub mod goals;
 pub mod graf;
+pub mod host;
 pub mod image_render;
 pub mod keybinds;
 pub mod list_view;
@@ -30,6 +32,7 @@ pub mod pinstar;
 pub mod popups;
 pub mod preview;
 pub mod sanitize;
+pub mod session;
 pub mod setup;
 pub mod snapshot;
 pub mod statusline;
@@ -47,7 +50,7 @@ use crate::overlay::OverlayView;
 use clap::{CommandFactory, FromArgMatches};
 
 use std::fs;
-use std::io::{self, Stdout, Write};
+use std::io::{self, Write};
 use std::process;
 use std::sync::Arc;
 use std::sync::LazyLock;
@@ -58,15 +61,16 @@ use mimalloc::MiMalloc;
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
-static SHOULD_EXIT: LazyLock<Arc<AtomicBool>> = LazyLock::new(|| Arc::new(AtomicBool::new(false)));
-static SIGNAL_COUNT: AtomicU32 = AtomicU32::new(0);
-static FORCE_QUIT: AtomicBool = AtomicBool::new(false);
+pub(crate) static SHOULD_EXIT: LazyLock<Arc<AtomicBool>> =
+    LazyLock::new(|| Arc::new(AtomicBool::new(false)));
+pub(crate) static SIGNAL_COUNT: AtomicU32 = AtomicU32::new(0);
+pub(crate) static FORCE_QUIT: AtomicBool = AtomicBool::new(false);
 
 use anyhow::{Context, Result};
 use crossterm::event::{
-    self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
-    Event, KeyCode, KeyEventKind, KeyModifiers, KeyboardEnhancementFlags,
-    PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
+    DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture, Event,
+    KeyCode, KeyEventKind, KeyModifiers, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags,
+    PushKeyboardEnhancementFlags,
 };
 use crossterm::execute;
 use crossterm::terminal::{
@@ -122,38 +126,7 @@ pub fn run() -> Result<()> {
     }
 }
 fn launch_tui(open_title: Option<String>, force_setup: bool) -> Result<()> {
-    // MUST check before Storage::init — Storage::init -> ClinConfig::load creates config.toml.
-    let first_run = crate::config::ClinConfig::config_path()
-        .map(|p| !p.exists())
-        .unwrap_or(false);
-    let (storage_res, init_warnings) = Storage::init();
-    let (storage, startup_err) = match storage_res {
-        Ok(s) => (s, None),
-        Err(e) => (Storage::new_fallback(), Some(e.to_string())),
-    };
-    let mut app = App::new_deferred(storage)?;
-    for w in init_warnings {
-        app.messages
-            .push(w, crate::app::messages::MessageSeverity::Warning);
-    }
-    if let Some(err) = startup_err {
-        let msg =
-            format!("Storage initialization failed: {err}. The app may not function correctly.");
-        app.messages
-            .push(msg, crate::app::messages::MessageSeverity::Fatal);
-    }
-    if first_run || force_setup {
-        app.open_setup_view();
-    }
-    if let Some(title) = open_title
-        && !app.open_note_by_title(&title)
-    {
-        eprintln!(
-            "{}",
-            console::error(&format!("No note found with title: {title}"))
-        );
-        process::exit(1);
-    }
+    let mut app = crate::session::bootstrap_app(open_title, force_setup)?;
     run_tui_session(&mut app)
 }
 
@@ -1074,121 +1047,10 @@ pub fn force_quit() -> ! {
 }
 
 fn run_tui_session(app: &mut App) -> Result<()> {
-    // Clean up any orphaned plaintext temp files from a prior crashed session.
-    crate::fsutil::cleanup_orphaned_temp_files();
-
-    let register_signal = |sig: std::os::raw::c_int| {
-        // SAFETY: signal_hook::low_level::register is async-signal-safe.
-        // The closure only performs atomic stores and fetch-adds, which are
-        // safe operations within a signal handler.
-        let _ = unsafe {
-            signal_hook::low_level::register(sig, || {
-                SHOULD_EXIT.store(true, Ordering::Release);
-                if SIGNAL_COUNT.fetch_add(1, Ordering::SeqCst) >= 1 {
-                    FORCE_QUIT.store(true, Ordering::Release);
-                }
-            })
-        };
-    };
-    register_signal(signal_hook::consts::SIGINT);
-    register_signal(signal_hook::consts::SIGTERM);
-    #[cfg(unix)]
-    {
-        register_signal(signal_hook::consts::SIGHUP);
-        register_signal(signal_hook::consts::SIGQUIT);
-    }
-
-    // Spawn the background backup worker before entering the terminal.
-    let (tx, done_rx) = crate::backup::worker::spawn(
-        app.git_lock.clone(),
-        app.backup_status.clone(),
-        app.message_tx.clone(),
-    );
-
-    app.backup_tx = Some(tx);
-
-    // Spawn the background image decode worker.
-    let (decode_tx, decode_rx) = crate::image_render::worker::spawn();
-    app.image_decode_tx = Some(decode_tx);
-    app.image_decode_rx = Some(decode_rx);
-
-    // Initialize the optional file system watcher for auto-refreshing the
-    // notes list when external editors or sync tools modify files.
-    // Uses raw `notify` (not `notify-debouncer-mini`) so we can manually
-    // filter out `Access` events, preventing an infinite refresh loop caused
-    // by the app reading its own files during `refresh_notes()`.
-    let _watcher = if app.config.core.auto_refresh {
-        use notify::{EventKind, RecursiveMode, Watcher};
-        let (tx, rx) = std::sync::mpsc::sync_channel::<crate::app::WatchedFsEvent>(1024);
-        let overflow = Arc::new(AtomicBool::new(false));
-        app.fs_event_rx = Some(rx);
-        app.fs_overflow = overflow.clone();
-
-        let notes_path = app.storage.notes_dir.clone();
-        let overflow_cb = overflow.clone();
-        let mut watcher =
-            match notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
-                let observed_at = Instant::now();
-                let event = match res {
-                    Ok(e) => e,
-                    Err(_) => {
-                        overflow_cb.store(true, Ordering::SeqCst);
-                        return;
-                    }
-                };
-                if event.need_rescan() {
-                    overflow_cb.store(true, Ordering::SeqCst);
-                    return;
-                }
-                if matches!(event.kind, EventKind::Access(_)) {
-                    return;
-                }
-                if !event.paths.is_empty() {
-                    let all_ignored = event.paths.iter().all(|p| {
-                        let path_str = p.to_string_lossy();
-                        path_str.contains("/.git/")
-                            || path_str.contains("\\.git\\")
-                            || path_str.ends_with(".tmp")
-                            || path_str.ends_with(".lock")
-                            || path_str.ends_with('~')
-                    });
-                    if all_ignored {
-                        return;
-                    }
-                }
-
-                if tx
-                    .try_send(crate::app::WatchedFsEvent { observed_at, event })
-                    .is_err()
-                {
-                    overflow_cb.store(true, Ordering::SeqCst);
-                }
-            }) {
-                Ok(w) => Some(w),
-                Err(e) => {
-                    app.messages.push(
-                        format!("File watcher failed to start; auto-refresh disabled: {e}"),
-                        crate::app::messages::MessageSeverity::Warning,
-                    );
-                    None
-                }
-            };
-
-        if let Some(w) = &mut watcher
-            && let Err(e) = w.watch(&notes_path, RecursiveMode::Recursive)
-        {
-            app.messages.push(
-                format!("File watcher cannot watch vault; auto-refresh disabled: {e}"),
-                crate::app::messages::MessageSeverity::Warning,
-            );
-        }
-        watcher
-    } else {
-        None
-    };
+    let guard = crate::session::start_session(app);
 
     let result = {
-        let _guard = TerminalGuard::enter(app.mouse_enabled)?;
+        let _tg = TerminalGuard::enter(app.mouse_enabled)?;
         let backend = ratatui::backend::CrosstermBackend::new(io::stdout());
         let mut terminal = Terminal::new(backend).context("failed to create terminal")?;
         // Detect terminal graphics protocol while inside alt-screen+raw mode.
@@ -1204,67 +1066,20 @@ fn run_tui_session(app: &mut App) -> Result<()> {
 
         let mut terminal_safe = std::panic::AssertUnwindSafe(&mut terminal);
         let mut app_safe = std::panic::AssertUnwindSafe(&mut *app);
-        let res = std::panic::catch_unwind(move || run_app(*terminal_safe, *app_safe));
+        let res = std::panic::catch_unwind(move || {
+            run_app(
+                *terminal_safe,
+                *app_safe,
+                &mut crate::event_source::CrosstermEventSource,
+            )
+        });
         if app.mode == ViewMode::Edit {
             app.autosave();
         }
         res
     }; // _guard dropped here: raw mode off, alt screen left
 
-    let signal_exit = SHOULD_EXIT.load(Ordering::Acquire);
-
-    if signal_exit {
-        // Don't join: the worker may be mid-commit. libgit2 commits are atomic
-        // (HEAD updated last), so killing the thread cannot corrupt the repo.
-        drop(app.backup_tx.take());
-    } else if app.config.backup.enabled && app.config.backup.backup_on_quit {
-        println!("Backing up…");
-        let _ = app.backup_tx.as_ref().map(|tx| {
-            tx.send(crate::backup::worker::BackupJob::Flush(
-                "auto: backup on quit".into(),
-            ))
-        });
-        drop(app.backup_tx.take());
-        let deadline = std::time::Instant::now() + crate::backup::worker::FLUSH_BOUND;
-        let timed_out = loop {
-            if FORCE_QUIT.load(Ordering::Acquire) {
-                break true;
-            }
-            match done_rx.recv_timeout(std::time::Duration::from_millis(200)) {
-                Ok(()) => break false,
-                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break true,
-                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                    if std::time::Instant::now() >= deadline {
-                        break true;
-                    }
-                }
-            }
-        };
-        if timed_out {
-            eprintln!("Backup still running in background; exiting.");
-        } else {
-            println!("Done.");
-        }
-        if let Some(msg) = app.backup_status.lock().take() {
-            eprintln!("Backup warning: {msg}");
-        }
-    } else {
-        drop(app.backup_tx.take());
-        let deadline = std::time::Instant::now() + crate::backup::worker::FLUSH_BOUND;
-        loop {
-            if FORCE_QUIT.load(Ordering::Acquire) {
-                break;
-            }
-            match done_rx.recv_timeout(std::time::Duration::from_millis(200)) {
-                Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
-                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                    if std::time::Instant::now() >= deadline {
-                        break;
-                    }
-                }
-            }
-        }
-    }
+    crate::session::finish_session(app, guard)?;
 
     match result {
         Ok(r) => r,
@@ -1279,16 +1094,16 @@ fn run_tui_session(app: &mut App) -> Result<()> {
 /// Non-mouse events break the loop (vanishingly rare during an active drag; the
 /// single read event is dropped rather than re-queued because crossterm cannot
 /// push back). Results from drained events are discarded — a mouse Drag/Up never
-/// returns Exit/NoteOpened/OpenHelp.
-fn drain_queued_mouse_events<V: OverlayView>(
+fn drain_queued_mouse_events<V: OverlayView, S: crate::event_source::EventSource>(
     view: &mut V,
     app: &mut App,
-    terminal: &Terminal<ratatui::backend::CrosstermBackend<Stdout>>,
+    term_area: Rect,
+    events: &mut S,
 ) -> Result<()> {
-    while event::poll(Duration::ZERO)? {
-        match event::read()? {
+    while events.poll(Duration::ZERO)? {
+        match events.read()? {
             ev @ Event::Mouse(_) => {
-                let _ = view.overlay_handle_event(ev, app, terminal)?;
+                let _ = view.overlay_handle_event(ev, app, term_area)?;
             }
             _ => break,
         }
@@ -1296,10 +1111,28 @@ fn drain_queued_mouse_events<V: OverlayView>(
     Ok(())
 }
 
-fn run_app(
-    terminal: &mut Terminal<ratatui::backend::CrosstermBackend<Stdout>>,
-    app: &mut App,
-) -> Result<()> {
+pub fn run_app<B: ratatui::backend::Backend, S: crate::event_source::EventSource>(
+    terminal: &mut ratatui::Terminal<B>,
+    app: &mut crate::app::App,
+    events: &mut S,
+) -> Result<()>
+where
+    <B as ratatui::backend::Backend>::Error: std::error::Error + Send + Sync + 'static,
+{
+    run_app_with_hook(terminal, app, events, &mut |_| false)
+}
+
+/// `pre_draw_hook` runs every loop iteration before the draw phase.
+/// record_frame/fps/dirty-flag bookkeeping still runs.
+pub fn run_app_with_hook<B: ratatui::backend::Backend, S: crate::event_source::EventSource>(
+    terminal: &mut ratatui::Terminal<B>,
+    app: &mut crate::app::App,
+    events: &mut S,
+    pre_draw_hook: &mut dyn FnMut(&mut crate::app::App) -> bool,
+) -> Result<()>
+where
+    <B as ratatui::backend::Backend>::Error: std::error::Error + Send + Sync + 'static,
+{
     if app.config.core.syntax_highlighting {
         let code_theme = std::sync::Arc::from(app.config.core.code_theme.as_str());
         crate::markdown::prewarm_syntax_assets(code_theme);
@@ -1415,8 +1248,12 @@ fn run_app(
             true
         };
 
+        let skip_draw = pre_draw_hook(app);
+
         if should_draw {
-            if let Err(e) = terminal.draw(|frame| crate::ui::draw_ui(frame, app, focus)) {
+            if !skip_draw
+                && let Err(e) = terminal.draw(|frame| crate::ui::draw_ui(frame, app, focus))
+            {
                 return Err(e.into());
             }
             let now = std::time::Instant::now();
@@ -1506,7 +1343,9 @@ fn run_app(
         }
 
         if app.mode != ViewMode::List && need_redraw {
-            if let Err(e) = terminal.draw(|frame| crate::ui::draw_ui(frame, app, focus)) {
+            if !skip_draw
+                && let Err(e) = terminal.draw(|frame| crate::ui::draw_ui(frame, app, focus))
+            {
                 return Err(e.into());
             }
             let now = std::time::Instant::now();
@@ -1520,13 +1359,14 @@ fn run_app(
             list_dirty = true;
         }
 
-        if event::poll(poll_timeout).context("event poll failed")? {
+        if events.poll(poll_timeout).context("event poll failed")? {
             list_dirty = true;
             graph_dirty = true;
-            match event::read().context("failed to read event")? {
+            match events.read().context("failed to read event")? {
                 // Global Ctrl+C — immediately kill process
                 Event::Key(key)
-                    if key.kind == KeyEventKind::Press
+                    if app.host.ctrl_c_quits()
+                        && key.kind == KeyEventKind::Press
                         && key.code == KeyCode::Char('c')
                         && key.modifiers == KeyModifiers::CONTROL =>
                 {
@@ -1538,8 +1378,8 @@ fn run_app(
                     let _coalesced = if let Event::Mouse(mouse_event) = &ev {
                         if mouse_event.kind == ratatui::crossterm::event::MouseEventKind::Moved {
                             let mut last = *mouse_event;
-                            while event::poll(Duration::ZERO)? {
-                                match event::read()? {
+                            while events.poll(Duration::ZERO)? {
+                                match events.read()? {
                                     Event::Mouse(next)
                                         if next.kind
                                             == ratatui::crossterm::event::MouseEventKind::Moved =>
@@ -1590,11 +1430,8 @@ fn run_app(
                                 }
                                 ViewMode::Graph => {
                                     if let Some(mut graf) = app.graph_state.take() {
-                                        let res = graf.overlay_handle_event(
-                                            Event::Key(key),
-                                            app,
-                                            terminal,
-                                        );
+                                        let res =
+                                            graf.overlay_handle_event(Event::Key(key), app, area);
                                         app.graph_state = Some(graf);
                                         match res? {
                                             crate::overlay::OverlayResult::NoteOpened(note_id) => {
@@ -1637,11 +1474,8 @@ fn run_app(
                                 }
                                 ViewMode::Draw => {
                                     if let Some(mut draw) = app.draw_state.take() {
-                                        let res = draw.overlay_handle_event(
-                                            Event::Key(key),
-                                            app,
-                                            terminal,
-                                        );
+                                        let res =
+                                            draw.overlay_handle_event(Event::Key(key), app, area);
                                         app.draw_state = Some(draw);
                                         match res? {
                                             crate::overlay::OverlayResult::Exit => {
@@ -1661,11 +1495,8 @@ fn run_app(
                                 }
                                 ViewMode::Canvas => {
                                     if let Some(mut canvas) = app.canvas_state.take() {
-                                        let res = canvas.overlay_handle_event(
-                                            Event::Key(key),
-                                            app,
-                                            terminal,
-                                        );
+                                        let res =
+                                            canvas.overlay_handle_event(Event::Key(key), app, area);
                                         app.canvas_state = Some(canvas);
                                         match res? {
                                             crate::overlay::OverlayResult::OpenHelp(tab) => {
@@ -1684,11 +1515,8 @@ fn run_app(
                                 }
                                 ViewMode::Backup => {
                                     if let Some(mut backup) = app.backup_state.take() {
-                                        let res = backup.overlay_handle_event(
-                                            Event::Key(key),
-                                            app,
-                                            terminal,
-                                        );
+                                        let res =
+                                            backup.overlay_handle_event(Event::Key(key), app, area);
                                         app.backup_state = Some(backup);
                                         match res? {
                                             crate::overlay::OverlayResult::Exit => {
@@ -1714,11 +1542,8 @@ fn run_app(
                                 }
                                 ViewMode::Outline => {
                                     if let Some(mut tree) = app.outline_state.take() {
-                                        let res = tree.overlay_handle_event(
-                                            Event::Key(key),
-                                            app,
-                                            terminal,
-                                        );
+                                        let res =
+                                            tree.overlay_handle_event(Event::Key(key), app, area);
                                         app.outline_state = Some(tree);
                                         match res? {
                                             crate::overlay::OverlayResult::Exit => {
@@ -1767,8 +1592,8 @@ fn run_app(
                                         ratatui::crossterm::event::MouseEventKind::Drag(_)
                                     );
                                     if is_drag {
-                                        while event::poll(Duration::ZERO)? {
-                                            match event::read()? {
+                                        while events.poll(Duration::ZERO)? {
+                                            match events.read()? {
                                                 Event::Mouse(next_mouse) => {
                                                     app.mouse_pos =
                                                         Some((next_mouse.column, next_mouse.row));
@@ -1792,8 +1617,8 @@ fn run_app(
                                         mouse_event.kind,
                                         ratatui::crossterm::event::MouseEventKind::Drag(_)
                                     ) {
-                                        while event::poll(Duration::ZERO)? {
-                                            match event::read()? {
+                                        while events.poll(Duration::ZERO)? {
+                                            match events.read()? {
                                                 Event::Mouse(next) => {
                                                     app.mouse_pos = Some((next.column, next.row));
                                                     handle_edit_mouse(
@@ -1823,7 +1648,7 @@ fn run_app(
                                         let result = graf.overlay_handle_event(
                                             Event::Mouse(mouse_event),
                                             app,
-                                            terminal,
+                                            area,
                                         );
                                         app.graph_state = Some(graf);
                                         match result? {
@@ -1862,7 +1687,7 @@ fn run_app(
                                         }
                                     }
                                     if is_drag && let Some(mut graf) = app.graph_state.take() {
-                                        drain_queued_mouse_events(&mut graf, app, terminal)?;
+                                        drain_queued_mouse_events(&mut graf, app, area, events)?;
                                         app.graph_state = Some(graf);
                                     }
                                 }
@@ -1878,7 +1703,7 @@ fn run_app(
                                         let result = draw.overlay_handle_event(
                                             Event::Mouse(mouse_event),
                                             app,
-                                            terminal,
+                                            area,
                                         );
                                         app.draw_state = Some(draw);
                                         match result? {
@@ -1894,7 +1719,7 @@ fn run_app(
                                         }
                                     }
                                     if coalesce && let Some(mut draw) = app.draw_state.take() {
-                                        drain_queued_mouse_events(&mut draw, app, terminal)?;
+                                        drain_queued_mouse_events(&mut draw, app, area, events)?;
                                         app.draw_state = Some(draw);
                                     }
                                 }
@@ -1910,12 +1735,12 @@ fn run_app(
                                         let _ = canvas.overlay_handle_event(
                                             Event::Mouse(mouse_event),
                                             app,
-                                            terminal,
+                                            area,
                                         )?;
                                         app.canvas_state = Some(canvas);
                                     }
                                     if coalesce && let Some(mut canvas) = app.canvas_state.take() {
-                                        drain_queued_mouse_events(&mut canvas, app, terminal)?;
+                                        drain_queued_mouse_events(&mut canvas, app, area, events)?;
                                         app.canvas_state = Some(canvas);
                                     }
                                 }
@@ -1924,7 +1749,7 @@ fn run_app(
                                         let _ = backup.overlay_handle_event(
                                             Event::Mouse(mouse_event),
                                             app,
-                                            terminal,
+                                            area,
                                         )?;
                                         app.backup_state = Some(backup);
                                     }
@@ -1934,7 +1759,7 @@ fn run_app(
                                         let _ = tree.overlay_handle_event(
                                             Event::Mouse(mouse_event),
                                             app,
-                                            terminal,
+                                            area,
                                         )?;
                                         app.outline_state = Some(tree);
                                     }
@@ -1965,6 +1790,9 @@ fn run_app(
 }
 
 pub use constants::*;
+pub use session::{bootstrap_app, finish_session, start_session, SessionGuard};
+pub use event_source::{ChannelEventSource, CrosstermEventSource, EventSource};
+pub use host::{GuiHost, HostHooks, TuiHost};
 #[cfg(test)]
 mod tests {
     use super::*;

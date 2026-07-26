@@ -34,9 +34,6 @@ use crate::keybinds::Keybinds;
 use crate::storage::{Note, NoteSummary, Storage};
 use crate::templates::Template;
 use anyhow::Result;
-use crossterm::terminal::{
-    EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
-};
 use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -361,6 +358,7 @@ pub struct App {
     pub date_format: String,
     pub last_auto_backup: Option<std::time::Instant>,
     pub return_mode: Option<ViewMode>,
+    pub host: Box<dyn crate::host::HostHooks>,
     pub app_theme: crate::app_theme::AppThemeColors,
     pub graph_state: Option<crate::graf::app::GrafAppState>,
     pub draw_state: Option<crate::draw::app::DrawAppState>,
@@ -626,6 +624,7 @@ impl App {
             pinned_on_top: bootstrap_config.list.pinned_on_top,
             default_folder: bootstrap_config.core.default_folder.clone(),
             return_mode: None,
+            host: Box::new(crate::host::TuiHost),
             app_theme,
             canvas_state: None,
             config: bootstrap_config,
@@ -892,6 +891,7 @@ impl App {
             pinned_on_top: bootstrap_config.list.pinned_on_top,
             default_folder: bootstrap_config.core.default_folder.clone(),
             return_mode: None,
+            host: Box::new(crate::host::TuiHost),
             app_theme,
             canvas_state: None,
             config: bootstrap_config,
@@ -1428,17 +1428,7 @@ impl App {
         command: &str,
         extra_args: &[String],
     ) -> (std::io::Result<std::process::ExitStatus>, String) {
-        if let Err(e) = disable_raw_mode() {
-            eprintln!("Failed to disable raw mode: {e}");
-        }
-        if let Err(e) = crossterm::execute!(
-            std::io::stdout(),
-            LeaveAlternateScreen,
-            crossterm::event::DisableMouseCapture,
-            crossterm::event::DisableBracketedPaste
-        ) {
-            eprintln!("Failed to reset terminal: {e}");
-        }
+        self.host.suspend_for_external();
 
         let parts: Vec<&str> = command.split_whitespace().collect();
         let (program, cmd_args) = parts
@@ -1454,18 +1444,7 @@ impl App {
         }
         let result = command.status();
 
-        if let Err(e) = enable_raw_mode() {
-            eprintln!("Failed to enable raw mode: {e}");
-        }
-        if let Err(e) = crossterm::execute!(
-            std::io::stdout(),
-            EnterAlternateScreen,
-            crossterm::event::EnableMouseCapture,
-            crossterm::event::EnableBracketedPaste,
-            crossterm::terminal::Clear(crossterm::terminal::ClearType::All)
-        ) {
-            eprintln!("Failed to restore terminal: {e}");
-        }
+        self.host.resume_from_external();
         self.needs_full_redraw = true;
         (result, program.to_string())
     }

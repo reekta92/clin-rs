@@ -103,7 +103,7 @@ impl crate::overlay::OverlayView for DrawAppState {
         &mut self,
         event: crossterm::event::Event,
         app: &mut crate::app::App,
-        _terminal: &ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
+        _term_area: ratatui::layout::Rect,
     ) -> anyhow::Result<crate::overlay::OverlayResult> {
         let keybinds = self.keybinds.clone();
         if let Some(action) = handle_event(event, self, &keybinds, &app.config)? {

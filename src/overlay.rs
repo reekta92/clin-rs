@@ -45,6 +45,6 @@ pub trait OverlayView {
         &mut self,
         event: crossterm::event::Event,
         app: &mut crate::app::App,
-        terminal: &ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
+        term_area: ratatui::layout::Rect,
     ) -> anyhow::Result<OverlayResult>;
 }

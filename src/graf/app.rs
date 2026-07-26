@@ -28,7 +28,6 @@ impl CanvasFpsSampler {
     }
 }
 
-use anyhow::Context;
 #[derive(Clone, Debug, PartialEq)]
 struct PreviewRequestKey {
     note_id: String,
@@ -400,10 +399,10 @@ impl crate::overlay::OverlayView for GrafAppState {
         &mut self,
         event: crossterm::event::Event,
         app: &mut crate::app::App,
-        terminal: &ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
+        term_area: ratatui::layout::Rect,
     ) -> anyhow::Result<crate::overlay::OverlayResult> {
         let keybinds = self.keybinds.clone();
-        if let Some(action) = handle_event(event, self, &app.config, &keybinds, terminal)? {
+        if let Some(action) = handle_event(event, self, &app.config, &keybinds, term_area)? {
             match action {
                 EventAction::Quit => {
                     self.shutdown();
@@ -429,7 +428,7 @@ fn handle_event(
     app_state: &mut GrafAppState,
     config: &crate::config::ClinConfig,
     keybinds: &Keybinds,
-    terminal: &ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
+    term_area: ratatui::layout::Rect,
 ) -> anyhow::Result<Option<EventAction>> {
     match ev {
         crossterm::event::Event::Key(key) => {
@@ -532,8 +531,7 @@ fn handle_event(
             }
             if let Some(popup) = &mut app_state.search_popup {
                 let max_visible = config.graf.search.max_visible;
-                let size = terminal.size().context("failed to get terminal size")?;
-                let full_area = ratatui::layout::Rect::new(0, 0, size.width, size.height);
+                let full_area = term_area;
                 let outer = ratatui::layout::Layout::default()
                     .direction(ratatui::layout::Direction::Vertical)
                     .constraints([
@@ -583,8 +581,7 @@ fn handle_event(
                 return Ok(None);
             }
             if let Some(graph_state) = &app_state.graph_state {
-                let size = terminal.size().context("failed to get terminal size")?;
-                let full_area = ratatui::layout::Rect::new(0, 0, size.width, size.height);
+                let full_area = term_area;
                 let outer = ratatui::layout::Layout::default()
                     .direction(ratatui::layout::Direction::Vertical)
                     .constraints([

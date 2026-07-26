@@ -20,7 +20,7 @@ impl crate::overlay::OverlayView for BackupState {
         &mut self,
         event: crossterm::event::Event,
         app: &mut crate::app::App,
-        _terminal: &ratatui::Terminal<ratatui::backend::CrosstermBackend<std::io::Stdout>>,
+        _term_area: ratatui::layout::Rect,
     ) -> anyhow::Result<crate::overlay::OverlayResult> {
         match event {
             Event::Key(key) => {
