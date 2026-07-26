@@ -1346,14 +1346,16 @@ pub fn line_from_segments<'a>(
                         "\u{e0b0}"
                     }
                 }
-                crate::config::HintBarStyle::Rounded | crate::config::HintBarStyle::RoundedGradient => {
+                crate::config::HintBarStyle::Rounded
+                | crate::config::HintBarStyle::RoundedGradient => {
                     if is_right {
                         "\u{e0b6}"
                     } else {
                         "\u{e0b4}"
                     }
                 }
-                crate::config::HintBarStyle::Slanted | crate::config::HintBarStyle::SlantedGradient => {
+                crate::config::HintBarStyle::Slanted
+                | crate::config::HintBarStyle::SlantedGradient => {
                     if is_right {
                         "\u{e0be}"
                     } else {
@@ -1395,8 +1397,14 @@ pub fn line_from_segments<'a>(
                                     style1 = style1.bg(start_bg);
                                 }
                                 spans.push(Span::styled(sep_char, style1));
-                                spans.push(Span::styled(sep_char, Style::default().fg(step2).bg(step1)));
-                                spans.push(Span::styled(sep_char, Style::default().fg(bg).bg(step2)));
+                                spans.push(Span::styled(
+                                    sep_char,
+                                    Style::default().fg(step2).bg(step1),
+                                ));
+                                spans.push(Span::styled(
+                                    sep_char,
+                                    Style::default().fg(bg).bg(step2),
+                                ));
                             } else {
                                 let mut sep_style = Style::default().fg(bg);
                                 if prev_bg.or(bar_bg).is_some() {
@@ -1459,8 +1467,14 @@ pub fn line_from_segments<'a>(
                                 let step1 = crate::app_theme::mix_colors(bg, end_bg, 0.33);
                                 let step2 = crate::app_theme::mix_colors(bg, end_bg, 0.67);
 
-                                spans.push(Span::styled(sep_char, Style::default().fg(bg).bg(step1)));
-                                spans.push(Span::styled(sep_char, Style::default().fg(step1).bg(step2)));
+                                spans.push(Span::styled(
+                                    sep_char,
+                                    Style::default().fg(bg).bg(step1),
+                                ));
+                                spans.push(Span::styled(
+                                    sep_char,
+                                    Style::default().fg(step1).bg(step2),
+                                ));
                                 let mut style3 = Style::default().fg(step2);
                                 if next_bg.or(bar_bg).is_some() {
                                     style3 = style3.bg(end_bg);
@@ -1838,7 +1852,7 @@ mod tests {
     fn test_statusline_gradient_rendering() {
         let config = ClinConfig::default();
         let ctx = StatuslineContext::for_overlay(&config, ViewMode::List);
-        
+
         for style in [
             crate::config::HintBarStyle::SharpGradient,
             crate::config::HintBarStyle::RoundedGradient,
@@ -1846,10 +1860,34 @@ mod tests {
         ] {
             let mut theme = AppThemeColors::default();
             theme.hint_bar_style = style;
-            
+
             let (left, right) = render_header(&ctx, &config.statusline, ViewMode::List, &theme);
             assert!(left.width() > 0);
             assert!(right.is_none());
+        }
+    }
+
+    #[test]
+    fn test_statusline_new_styles_rendering() {
+        let config = ClinConfig::default();
+        let ctx = StatuslineContext::for_overlay(&config, ViewMode::List);
+
+        for style in [crate::config::HintBarStyle::Hexagon] {
+            let mut theme = AppThemeColors::default();
+            theme.hint_bar_style = style;
+
+            let (left, right) = render_header(&ctx, &config.statusline, ViewMode::List, &theme);
+            assert!(left.width() > 0);
+            assert!(right.is_none());
+
+            // format_keybind_hints
+            let items = vec![("g".to_string(), "Go"), ("q".to_string(), "Quit")];
+            let hints_line = crate::ui::format_keybind_hints(&theme, &items);
+            assert!(hints_line.width() > 0);
+
+            // ext_badge_spans
+            let badge_spans = crate::ui::ext_badge_spans(true, &theme, None);
+            assert!(!badge_spans.is_empty());
         }
     }
 }

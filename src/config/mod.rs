@@ -1249,4 +1249,21 @@ max_nodes = 42
         let parsed: ClinConfig = value.try_into().unwrap();
         assert_eq!(parsed.graf.max_node, 42);
     }
+
+    #[test]
+    fn test_hint_bar_style_roundtrip() {
+        for style in [HintBarStyle::Hexagon] {
+            let mut config = ClinConfig::default();
+            config.ui.hint_bar_style = style;
+
+            let toml_str = toml::to_string_pretty(&config).unwrap();
+            let parsed: ClinConfig = toml::from_str(&toml_str).unwrap();
+
+            assert_eq!(config.ui.hint_bar_style, parsed.ui.hint_bar_style);
+            assert_eq!(
+                parsed.ui.hint_bar_style.as_config_str(),
+                style.as_config_str()
+            );
+        }
+    }
 }

@@ -1092,9 +1092,13 @@ pub fn ext_badge_spans<'a>(
         | crate::config::HintBarStyle::RoundedGradient
         | crate::config::HintBarStyle::SlantedGradient => {
             let sep_char = match theme.hint_bar_style {
-                crate::config::HintBarStyle::Sharp | crate::config::HintBarStyle::SharpGradient => "\u{e0b0}",
-                crate::config::HintBarStyle::Rounded | crate::config::HintBarStyle::RoundedGradient => "\u{e0b4}",
-                crate::config::HintBarStyle::Slanted | crate::config::HintBarStyle::SlantedGradient => "\u{e0bc}",
+                crate::config::HintBarStyle::Sharp | crate::config::HintBarStyle::SharpGradient => {
+                    "\u{e0b0}"
+                }
+                crate::config::HintBarStyle::Rounded
+                | crate::config::HintBarStyle::RoundedGradient => "\u{e0b4}",
+                crate::config::HintBarStyle::Slanted
+                | crate::config::HintBarStyle::SlantedGradient => "\u{e0bc}",
                 _ => unreachable!(),
             };
             let pwr_style = Style::default()
@@ -1108,7 +1112,10 @@ pub fn ext_badge_spans<'a>(
                 let step1 = crate::app_theme::mix_colors(pwr_bg, resolved_next_bg, 0.33);
                 let step2 = crate::app_theme::mix_colors(pwr_bg, resolved_next_bg, 0.67);
 
-                spans.push(Span::styled(sep_char, Style::default().fg(pwr_bg).bg(step1)));
+                spans.push(Span::styled(
+                    sep_char,
+                    Style::default().fg(pwr_bg).bg(step1),
+                ));
                 spans.push(Span::styled(sep_char, Style::default().fg(step1).bg(step2)));
                 let mut sep_style3 = Style::default().fg(step2);
                 if let Some(bg) = next_bg {
@@ -1125,7 +1132,8 @@ pub fn ext_badge_spans<'a>(
         }
         crate::config::HintBarStyle::Bubbles
         | crate::config::HintBarStyle::Blurred
-        | crate::config::HintBarStyle::Chips => {
+        | crate::config::HintBarStyle::Chips
+        | crate::config::HintBarStyle::Hexagon => {
             let (cap_l, cap_r) = theme.hint_bar_style.cell_caps().unwrap_or(("", ""));
             let pwr_style = Style::default()
                 .bg(pwr_bg)
@@ -1241,9 +1249,13 @@ pub fn format_keybind_hints<'a>(
         | crate::config::HintBarStyle::RoundedGradient
         | crate::config::HintBarStyle::SlantedGradient) => {
             let sep_char = match style {
-                crate::config::HintBarStyle::Sharp | crate::config::HintBarStyle::SharpGradient => "\u{e0b0}",
-                crate::config::HintBarStyle::Rounded | crate::config::HintBarStyle::RoundedGradient => "\u{e0b4}",
-                crate::config::HintBarStyle::Slanted | crate::config::HintBarStyle::SlantedGradient => "\u{e0bc}",
+                crate::config::HintBarStyle::Sharp | crate::config::HintBarStyle::SharpGradient => {
+                    "\u{e0b0}"
+                }
+                crate::config::HintBarStyle::Rounded
+                | crate::config::HintBarStyle::RoundedGradient => "\u{e0b4}",
+                crate::config::HintBarStyle::Slanted
+                | crate::config::HintBarStyle::SlantedGradient => "\u{e0bc}",
                 _ => unreachable!(),
             };
             let bg_colors = build_bg_colors();
@@ -1287,7 +1299,8 @@ pub fn format_keybind_hints<'a>(
         }
         style @ (crate::config::HintBarStyle::Bubbles
         | crate::config::HintBarStyle::Blurred
-        | crate::config::HintBarStyle::Chips) => {
+        | crate::config::HintBarStyle::Chips
+        | crate::config::HintBarStyle::Hexagon) => {
             let (cap_l, cap_r) = style.cell_caps().unwrap_or(("", ""));
             let bg_colors = build_bg_colors();
             let fg = theme.highlight_fg;

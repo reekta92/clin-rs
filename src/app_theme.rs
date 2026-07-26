@@ -417,7 +417,13 @@ mod tests {
 
     #[test]
     fn test_mix_colors() {
-        assert_eq!(mix_colors(Color::Black, Color::White, 0.5), Color::Rgb(128, 128, 128));
-        assert_eq!(mix_colors(Color::Rgb(10, 20, 30), Color::Rgb(110, 120, 130), 0.1), Color::Rgb(20, 30, 40));
+        assert_eq!(
+            mix_colors(Color::Black, Color::White, 0.5),
+            Color::Rgb(128, 128, 128)
+        );
+        assert_eq!(
+            mix_colors(Color::Rgb(10, 20, 30), Color::Rgb(110, 120, 130), 0.1),
+            Color::Rgb(20, 30, 40)
+        );
     }
 }

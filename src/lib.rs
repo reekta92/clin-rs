@@ -1790,9 +1790,9 @@ where
 }
 
 pub use constants::*;
-pub use session::{bootstrap_app, finish_session, start_session, SessionGuard};
 pub use event_source::{ChannelEventSource, CrosstermEventSource, EventSource};
 pub use host::{GuiHost, HostHooks, TuiHost};
+pub use session::{SessionGuard, bootstrap_app, finish_session, start_session};
 #[cfg(test)]
 mod tests {
     use super::*;

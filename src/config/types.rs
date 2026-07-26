@@ -382,11 +382,12 @@ pub enum HintBarStyle {
     SharpGradient,
     RoundedGradient,
     SlantedGradient,
+    Hexagon,
 }
 
 impl HintBarStyle {
     /// Every style in picker/display order.
-    pub const ALL: [HintBarStyle; 11] = [
+    pub const ALL: [HintBarStyle; 12] = [
         HintBarStyle::Classic,
         HintBarStyle::Sharp,
         HintBarStyle::Rounded,
@@ -398,6 +399,7 @@ impl HintBarStyle {
         HintBarStyle::SharpGradient,
         HintBarStyle::RoundedGradient,
         HintBarStyle::SlantedGradient,
+        HintBarStyle::Hexagon,
     ];
 
     /// Display name ("Classic", "Bubbles", …).
@@ -414,6 +416,7 @@ impl HintBarStyle {
             HintBarStyle::SharpGradient => "SharpGradient",
             HintBarStyle::RoundedGradient => "RoundedGradient",
             HintBarStyle::SlantedGradient => "SlantedGradient",
+            HintBarStyle::Hexagon => "Hexagon",
         }
     }
 
@@ -431,6 +434,7 @@ impl HintBarStyle {
             HintBarStyle::SharpGradient => "sharp_gradient",
             HintBarStyle::RoundedGradient => "rounded_gradient",
             HintBarStyle::SlantedGradient => "slanted_gradient",
+            HintBarStyle::Hexagon => "hexagon",
         }
     }
 
@@ -460,7 +464,8 @@ impl HintBarStyle {
             | HintBarStyle::Chips
             | HintBarStyle::SharpGradient
             | HintBarStyle::RoundedGradient
-            | HintBarStyle::SlantedGradient => true,
+            | HintBarStyle::SlantedGradient
+            | HintBarStyle::Hexagon => true,
         }
     }
 
@@ -494,6 +499,7 @@ impl HintBarStyle {
             HintBarStyle::Bubbles => Some(("\u{e0b6}", "\u{e0b4}")),
             HintBarStyle::Blurred => Some(("░▒▓", "▓▒░")),
             HintBarStyle::Chips => Some(("", "")),
+            HintBarStyle::Hexagon => Some(("\u{e0b2}", "\u{e0b0}")),
             _ => None,
         }
     }
