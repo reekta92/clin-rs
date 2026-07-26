@@ -2,6 +2,49 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.10.0-rc.6] - 2026-07-26
+
+### Added
+
+- Add Ctrl+C/X/V, bracket-paste routing, notifier
+- Add 4 hint bar styles (Bubbles, Blurred, Chips, Brackets)
+- Add global F1 (help) and F5 (redraw) keybinds
+- Bold key column and message labels in overlays
+- Route all silent failures into message overlay
+- Added error catching and notification system for warnings/fatals
+- Standardize footer hints across all views
+- Add Shift+Tab reverse cycle for grid layout tabs
+- Add 15 palette actions for runtime-safe config toggles
+
+### Changed
+
+- Host-agnostic core for clin-gui
+
+### Documentation
+
+- Add Find in File, Outline, Links to editor popup help
+- Sync all docs to current codebase state
+
+### Fixed
+
+- Route keyboard shortcuts through system clipboard path
+- Reorder footer hints to put quit before help
+- Duplicate push re-freshens existing entry instead of vanishing
+- Fixed fatal error message for storage init
+- Prevent header/footer overlap at small terminal widths
+- Fixed colors with powerline themes repeating
+- Revert draw preview to per-axis fill
+- Match subnotes color and glyphs across layouts
+- Render groups behind children, parse hex node colors
+- Fit .canvas and .draw previews with uniform aspect
+- Confine tag-popup textarea border to input area
+- Check virtual paths in tree layout color logic
+- Expand subnotes, fix graph bg, add sort indicator
+- Run NaN reset before drag skip, scatter coincident nodes
+
+### Performance
+
+- Eliminate O(E·N) edge scan and per-frame allocations
 ## [0.10.0-rc.5] - 2026-07-24
 
 ### Added
@@ -40,6 +83,10 @@ All notable changes to clin are documented in this file.
 ### Performance
 
 - Reduced the poll rate with frozen layout
+
+### Release
+
+- V0.10.0-rc.5
 ## [0.10.0-rc.4] - 2026-07-22
 
 ### Added
