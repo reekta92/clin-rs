@@ -1087,11 +1087,14 @@ pub fn ext_badge_spans<'a>(
     match theme.hint_bar_style {
         crate::config::HintBarStyle::Sharp
         | crate::config::HintBarStyle::Rounded
-        | crate::config::HintBarStyle::Slanted => {
+        | crate::config::HintBarStyle::Slanted
+        | crate::config::HintBarStyle::SharpGradient
+        | crate::config::HintBarStyle::RoundedGradient
+        | crate::config::HintBarStyle::SlantedGradient => {
             let sep_char = match theme.hint_bar_style {
-                crate::config::HintBarStyle::Sharp => "\u{e0b0}",
-                crate::config::HintBarStyle::Rounded => "\u{e0b4}",
-                crate::config::HintBarStyle::Slanted => "\u{e0bc}",
+                crate::config::HintBarStyle::Sharp | crate::config::HintBarStyle::SharpGradient => "\u{e0b0}",
+                crate::config::HintBarStyle::Rounded | crate::config::HintBarStyle::RoundedGradient => "\u{e0b4}",
+                crate::config::HintBarStyle::Slanted | crate::config::HintBarStyle::SlantedGradient => "\u{e0bc}",
                 _ => unreachable!(),
             };
             let pwr_style = Style::default()
@@ -1100,11 +1103,25 @@ pub fn ext_badge_spans<'a>(
                 .add_modifier(b.style.add_modifier);
             spans.push(Span::styled(b.label, pwr_style));
 
-            let mut sep_style = Style::default().fg(pwr_bg);
-            if let Some(bg) = next_bg {
-                sep_style = sep_style.bg(bg);
+            if theme.hint_bar_style.is_gradient() {
+                let resolved_next_bg = next_bg.unwrap_or(theme.bg.unwrap_or(Color::Black));
+                let step1 = crate::app_theme::mix_colors(pwr_bg, resolved_next_bg, 0.33);
+                let step2 = crate::app_theme::mix_colors(pwr_bg, resolved_next_bg, 0.67);
+
+                spans.push(Span::styled(sep_char, Style::default().fg(pwr_bg).bg(step1)));
+                spans.push(Span::styled(sep_char, Style::default().fg(step1).bg(step2)));
+                let mut sep_style3 = Style::default().fg(step2);
+                if let Some(bg) = next_bg {
+                    sep_style3 = sep_style3.bg(bg);
+                }
+                spans.push(Span::styled(sep_char, sep_style3));
+            } else {
+                let mut sep_style = Style::default().fg(pwr_bg);
+                if let Some(bg) = next_bg {
+                    sep_style = sep_style.bg(bg);
+                }
+                spans.push(Span::styled(sep_char, sep_style));
             }
-            spans.push(Span::styled(sep_char, sep_style));
         }
         crate::config::HintBarStyle::Bubbles
         | crate::config::HintBarStyle::Blurred
@@ -1219,11 +1236,14 @@ pub fn format_keybind_hints<'a>(
         crate::config::HintBarStyle::Classic => format_keybind_hints_classic(theme, items),
         style @ (crate::config::HintBarStyle::Sharp
         | crate::config::HintBarStyle::Rounded
-        | crate::config::HintBarStyle::Slanted) => {
+        | crate::config::HintBarStyle::Slanted
+        | crate::config::HintBarStyle::SharpGradient
+        | crate::config::HintBarStyle::RoundedGradient
+        | crate::config::HintBarStyle::SlantedGradient) => {
             let sep_char = match style {
-                crate::config::HintBarStyle::Sharp => "\u{e0b0}",
-                crate::config::HintBarStyle::Rounded => "\u{e0b4}",
-                crate::config::HintBarStyle::Slanted => "\u{e0bc}",
+                crate::config::HintBarStyle::Sharp | crate::config::HintBarStyle::SharpGradient => "\u{e0b0}",
+                crate::config::HintBarStyle::Rounded | crate::config::HintBarStyle::RoundedGradient => "\u{e0b4}",
+                crate::config::HintBarStyle::Slanted | crate::config::HintBarStyle::SlantedGradient => "\u{e0bc}",
                 _ => unreachable!(),
             };
             let bg_colors = build_bg_colors();
@@ -1243,11 +1263,25 @@ pub fn format_keybind_hints<'a>(
                     Style::default().bg(bg).fg(fg).add_modifier(Modifier::BOLD),
                 ));
 
-                let mut sep_style = Style::default().fg(bg);
-                if let Some(n_bg) = next_bg {
-                    sep_style = sep_style.bg(n_bg);
+                if style.is_gradient() {
+                    let resolved_next_bg = next_bg.unwrap_or(theme.bg.unwrap_or(Color::Black));
+                    let step1 = crate::app_theme::mix_colors(bg, resolved_next_bg, 0.33);
+                    let step2 = crate::app_theme::mix_colors(bg, resolved_next_bg, 0.67);
+
+                    spans.push(Span::styled(sep_char, Style::default().fg(bg).bg(step1)));
+                    spans.push(Span::styled(sep_char, Style::default().fg(step1).bg(step2)));
+                    let mut sep_style3 = Style::default().fg(step2);
+                    if let Some(n_bg) = next_bg {
+                        sep_style3 = sep_style3.bg(n_bg);
+                    }
+                    spans.push(Span::styled(sep_char, sep_style3));
+                } else {
+                    let mut sep_style = Style::default().fg(bg);
+                    if let Some(n_bg) = next_bg {
+                        sep_style = sep_style.bg(n_bg);
+                    }
+                    spans.push(Span::styled(sep_char, sep_style));
                 }
-                spans.push(Span::styled(sep_char, sep_style));
             }
             Line::from(spans)
         }

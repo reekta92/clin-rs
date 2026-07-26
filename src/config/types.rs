@@ -379,11 +379,14 @@ pub enum HintBarStyle {
     Blurred,
     Chips,
     Brackets,
+    SharpGradient,
+    RoundedGradient,
+    SlantedGradient,
 }
 
 impl HintBarStyle {
     /// Every style in picker/display order.
-    pub const ALL: [HintBarStyle; 8] = [
+    pub const ALL: [HintBarStyle; 11] = [
         HintBarStyle::Classic,
         HintBarStyle::Sharp,
         HintBarStyle::Rounded,
@@ -392,6 +395,9 @@ impl HintBarStyle {
         HintBarStyle::Blurred,
         HintBarStyle::Chips,
         HintBarStyle::Brackets,
+        HintBarStyle::SharpGradient,
+        HintBarStyle::RoundedGradient,
+        HintBarStyle::SlantedGradient,
     ];
 
     /// Display name ("Classic", "Bubbles", …).
@@ -405,6 +411,9 @@ impl HintBarStyle {
             HintBarStyle::Blurred => "Blurred",
             HintBarStyle::Chips => "Chips",
             HintBarStyle::Brackets => "Brackets",
+            HintBarStyle::SharpGradient => "SharpGradient",
+            HintBarStyle::RoundedGradient => "RoundedGradient",
+            HintBarStyle::SlantedGradient => "SlantedGradient",
         }
     }
 
@@ -419,6 +428,9 @@ impl HintBarStyle {
             HintBarStyle::Blurred => "blurred",
             HintBarStyle::Chips => "chips",
             HintBarStyle::Brackets => "brackets",
+            HintBarStyle::SharpGradient => "sharp_gradient",
+            HintBarStyle::RoundedGradient => "rounded_gradient",
+            HintBarStyle::SlantedGradient => "slanted_gradient",
         }
     }
 
@@ -445,15 +457,33 @@ impl HintBarStyle {
             | HintBarStyle::Slanted
             | HintBarStyle::Bubbles
             | HintBarStyle::Blurred
-            | HintBarStyle::Chips => true,
+            | HintBarStyle::Chips
+            | HintBarStyle::SharpGradient
+            | HintBarStyle::RoundedGradient
+            | HintBarStyle::SlantedGradient => true,
         }
     }
 
-    /// Chained powerline family: Sharp|Rounded|Slanted.
+    /// Chained powerline family: Sharp|Rounded|Slanted|SharpGradient|RoundedGradient|SlantedGradient.
     pub fn is_chained(self) -> bool {
         matches!(
             self,
-            HintBarStyle::Sharp | HintBarStyle::Rounded | HintBarStyle::Slanted
+            HintBarStyle::Sharp
+                | HintBarStyle::Rounded
+                | HintBarStyle::Slanted
+                | HintBarStyle::SharpGradient
+                | HintBarStyle::RoundedGradient
+                | HintBarStyle::SlantedGradient
+        )
+    }
+
+    /// Whether this is a gradient transition style.
+    pub fn is_gradient(self) -> bool {
+        matches!(
+            self,
+            HintBarStyle::SharpGradient
+                | HintBarStyle::RoundedGradient
+                | HintBarStyle::SlantedGradient
         )
     }
 

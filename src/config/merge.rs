@@ -239,7 +239,7 @@ icon_mode = "nerd"
 # Show only Nerd Font icons (no text) on tab bars (Help, Notes, Backup, Palette).
 tab_icons_only = false
 
-# Hint bar style ("classic", "sharp", "rounded", "slanted", "bubbles", "blurred", "chips", "brackets")
+# Hint bar style ("classic", "sharp", "rounded", "slanted", "bubbles", "blurred", "chips", "brackets", "sharp_gradient", "rounded_gradient", "slanted_gradient")
 # hint_bar_style = "classic"
 
 # Color overrides (hex strings like "#ffffff").

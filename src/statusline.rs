@@ -1339,21 +1339,21 @@ pub fn line_from_segments<'a>(
         style if style.is_chained() => {
             // Chained powerline family: Sharp, Rounded, Slanted.
             let sep_char = match style {
-                crate::config::HintBarStyle::Sharp => {
+                crate::config::HintBarStyle::Sharp | crate::config::HintBarStyle::SharpGradient => {
                     if is_right {
                         "\u{e0b2}"
                     } else {
                         "\u{e0b0}"
                     }
                 }
-                crate::config::HintBarStyle::Rounded => {
+                crate::config::HintBarStyle::Rounded | crate::config::HintBarStyle::RoundedGradient => {
                     if is_right {
                         "\u{e0b6}"
                     } else {
                         "\u{e0b4}"
                     }
                 }
-                crate::config::HintBarStyle::Slanted => {
+                crate::config::HintBarStyle::Slanted | crate::config::HintBarStyle::SlantedGradient => {
                     if is_right {
                         "\u{e0be}"
                     } else {
@@ -1385,11 +1385,25 @@ pub fn line_from_segments<'a>(
                             };
                             let prev_bg_val = prev_bg.or(bar_bg).unwrap_or(Color::Reset);
 
-                            let mut sep_style = Style::default().fg(bg);
-                            if prev_bg.or(bar_bg).is_some() {
-                                sep_style = sep_style.bg(prev_bg_val);
+                            if style.is_gradient() {
+                                let start_bg = prev_bg.or(bar_bg).unwrap_or(Color::Black);
+                                let step1 = crate::app_theme::mix_colors(start_bg, bg, 0.33);
+                                let step2 = crate::app_theme::mix_colors(start_bg, bg, 0.67);
+
+                                let mut style1 = Style::default().fg(step1);
+                                if prev_bg.or(bar_bg).is_some() {
+                                    style1 = style1.bg(start_bg);
+                                }
+                                spans.push(Span::styled(sep_char, style1));
+                                spans.push(Span::styled(sep_char, Style::default().fg(step2).bg(step1)));
+                                spans.push(Span::styled(sep_char, Style::default().fg(bg).bg(step2)));
+                            } else {
+                                let mut sep_style = Style::default().fg(bg);
+                                if prev_bg.or(bar_bg).is_some() {
+                                    sep_style = sep_style.bg(prev_bg_val);
+                                }
+                                spans.push(Span::styled(sep_char, sep_style));
                             }
-                            spans.push(Span::styled(sep_char, sep_style));
 
                             spans.push(Span::styled(
                                 format!(" {} ", text),
@@ -1440,11 +1454,25 @@ pub fn line_from_segments<'a>(
                             };
                             let next_bg_val = next_bg.or(bar_bg).unwrap_or(Color::Reset);
 
-                            let mut sep_style = Style::default().fg(bg);
-                            if next_bg.or(bar_bg).is_some() {
-                                sep_style = sep_style.bg(next_bg_val);
+                            if style.is_gradient() {
+                                let end_bg = next_bg.or(bar_bg).unwrap_or(Color::Black);
+                                let step1 = crate::app_theme::mix_colors(bg, end_bg, 0.33);
+                                let step2 = crate::app_theme::mix_colors(bg, end_bg, 0.67);
+
+                                spans.push(Span::styled(sep_char, Style::default().fg(bg).bg(step1)));
+                                spans.push(Span::styled(sep_char, Style::default().fg(step1).bg(step2)));
+                                let mut style3 = Style::default().fg(step2);
+                                if next_bg.or(bar_bg).is_some() {
+                                    style3 = style3.bg(end_bg);
+                                }
+                                spans.push(Span::styled(sep_char, style3));
+                            } else {
+                                let mut sep_style = Style::default().fg(bg);
+                                if next_bg.or(bar_bg).is_some() {
+                                    sep_style = sep_style.bg(next_bg_val);
+                                }
+                                spans.push(Span::styled(sep_char, sep_style));
                             }
-                            spans.push(Span::styled(sep_char, sep_style));
 
                             cell_idx += 1;
                         }
@@ -1804,5 +1832,24 @@ mod tests {
         ctx2.graph_fps = Some(12.34);
         let segs_fps_val = render_segments("{fps}", &ctx2, &theme);
         assert_eq!(text_cells(segs_fps_val), vec!["12.3".to_string()]);
+    }
+
+    #[test]
+    fn test_statusline_gradient_rendering() {
+        let config = ClinConfig::default();
+        let ctx = StatuslineContext::for_overlay(&config, ViewMode::List);
+        
+        for style in [
+            crate::config::HintBarStyle::SharpGradient,
+            crate::config::HintBarStyle::RoundedGradient,
+            crate::config::HintBarStyle::SlantedGradient,
+        ] {
+            let mut theme = AppThemeColors::default();
+            theme.hint_bar_style = style;
+            
+            let (left, right) = render_header(&ctx, &config.statusline, ViewMode::List, &theme);
+            assert!(left.width() > 0);
+            assert!(right.is_none());
+        }
     }
 }

@@ -268,6 +268,74 @@ fn derive_color(base: Option<Color>, delta: i16) -> Option<Color> {
     })
 }
 
+#[allow(clippy::many_single_char_names)]
+fn color_to_rgb(color: Color) -> (u8, u8, u8) {
+    match color {
+        Color::Reset => (20, 20, 20),
+        Color::Black => (0, 0, 0),
+        Color::Red => (128, 0, 0),
+        Color::Green => (0, 128, 0),
+        Color::Yellow => (128, 128, 0),
+        Color::Blue => (0, 0, 128),
+        Color::Magenta => (128, 0, 128),
+        Color::Cyan => (0, 128, 128),
+        Color::Gray => (192, 192, 192),
+        Color::DarkGray => (128, 128, 128),
+        Color::LightRed => (255, 0, 0),
+        Color::LightGreen => (0, 255, 0),
+        Color::LightYellow => (255, 255, 0),
+        Color::LightBlue => (0, 0, 255),
+        Color::LightMagenta => (255, 0, 255),
+        Color::LightCyan => (0, 255, 255),
+        Color::White => (255, 255, 255),
+        Color::Rgb(r, g, b) => (r, g, b),
+        Color::Indexed(i) => {
+            if i < 8 {
+                match i {
+                    0 => (0, 0, 0),
+                    1 => (128, 0, 0),
+                    2 => (0, 128, 0),
+                    3 => (128, 128, 0),
+                    4 => (0, 0, 128),
+                    5 => (128, 0, 128),
+                    6 => (0, 128, 128),
+                    _ => (192, 192, 192),
+                }
+            } else if i < 16 {
+                match i {
+                    8 => (128, 128, 128),
+                    9 => (255, 0, 0),
+                    10 => (0, 255, 0),
+                    11 => (255, 255, 0),
+                    12 => (0, 0, 255),
+                    13 => (255, 0, 255),
+                    14 => (0, 255, 255),
+                    _ => (255, 255, 255),
+                }
+            } else if i < 232 {
+                let j = i - 16;
+                let r = (j / 36) * 51;
+                let g = ((j % 36) / 6) * 51;
+                let b = (j % 6) * 51;
+                (r, g, b)
+            } else {
+                let val = 8 + (i - 232) * 10;
+                (val, val, val)
+            }
+        }
+    }
+}
+
+pub fn mix_colors(a: Color, b: Color, alpha: f32) -> Color {
+    let (r1, g1, b1) = color_to_rgb(a);
+    let (r2, g2, b2) = color_to_rgb(b);
+    let alpha = alpha.clamp(0.0, 1.0);
+    let r = ((1.0 - alpha) * r1 as f32 + alpha * r2 as f32).round() as u8;
+    let g = ((1.0 - alpha) * g1 as f32 + alpha * g2 as f32).round() as u8;
+    let b = ((1.0 - alpha) * b1 as f32 + alpha * b2 as f32).round() as u8;
+    Color::Rgb(r, g, b)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -345,5 +413,11 @@ mod tests {
         assert_eq!(transparent.bg, None);
         let solid = AppThemeColors::from_custom_chrome(&chrome, &Background::Solid);
         assert_eq!(solid.bg, Some(Color::Rgb(0x1a, 0x1b, 0x26)));
+    }
+
+    #[test]
+    fn test_mix_colors() {
+        assert_eq!(mix_colors(Color::Black, Color::White, 0.5), Color::Rgb(128, 128, 128));
+        assert_eq!(mix_colors(Color::Rgb(10, 20, 30), Color::Rgb(110, 120, 130), 0.1), Color::Rgb(20, 30, 40));
     }
 }
