@@ -513,7 +513,12 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     let label = format!("  {} {}", tag, count_label);
                     let is_selected = popup.selected.contains(&i);
                     let is_cursor = i == popup.cursor;
-                    let style = if is_cursor {
+                    let style = if is_cursor && is_selected {
+                        Style::default()
+                            .fg(app.app_theme.highlight_fg)
+                            .bg(app.app_theme.accent)
+                            .add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
+                    } else if is_cursor {
                         Style::default()
                             .fg(app.app_theme.highlight_fg)
                             .bg(app.app_theme.heading)
@@ -525,7 +530,7 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                     } else {
                         Style::default()
                     };
-                    ListItem::new(Line::from(Span::styled(label, style)))
+                    ListItem::new(Line::from(label)).style(style)
                 })
                 .collect()
         };

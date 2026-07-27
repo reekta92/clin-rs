@@ -1261,15 +1261,16 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
 
                 // --- tile border (plain border = "button") ---
                 let mut block = Block::default().borders(Borders::ALL);
-                // Selected (in multi-select set) tiles get an accent-filled interior; the
-                // cursor tile keeps its highlight_bg border on top of any fill so a tile
-                // that is both selected and cursor stays distinguishable.
+                // Selected tiles get accent bg. Cursor-on-selected gets a brighter border
+                // so the cursor position remains visible on already-selected tiles.
                 if in_selection {
                     block = block.style(Style::default().bg(app.app_theme.accent));
                 } else if is_hovered && !is_selected {
                     block = block.style(app.app_theme.hover_style());
                 }
-                let border_fg = if is_selected {
+                let border_fg = if is_selected && in_selection {
+                    app.app_theme.highlight_fg
+                } else if is_selected {
                     app.app_theme.highlight_bg
                 } else if in_selection {
                     app.app_theme.accent
@@ -1474,7 +1475,17 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             for idx in offset..end {
                 let item = app.format_visual_item(idx);
                 let in_selection = app.list.selected_indices.contains(&idx);
-                if in_selection {
+                let is_cursor = idx == app.list.visual_index;
+                if is_cursor && in_selection {
+                    items.push(
+                        item.style(
+                            Style::default()
+                                .bg(app.app_theme.accent)
+                                .fg(app.app_theme.highlight_fg)
+                                .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
+                        ),
+                    );
+                } else if in_selection {
                     items.push(
                         item.style(
                             Style::default()
@@ -1483,13 +1494,21 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                                 .add_modifier(Modifier::BOLD),
                         ),
                     );
-                } else if Some(idx) == hovered_visual_index && idx != app.list.visual_index {
+                } else if is_cursor {
+                    items.push(
+                        item.style(
+                            Style::default()
+                                .fg(app.app_theme.highlight_fg)
+                                .bg(app.app_theme.highlight_bg)
+                                .add_modifier(Modifier::BOLD),
+                        ),
+                    );
+                } else if Some(idx) == hovered_visual_index {
                     items.push(item.style(app.app_theme.hover_style()));
                 } else {
                     items.push(item);
                 }
             }
-
             let relative_selected = app.list.visual_index.saturating_sub(offset);
             let mut rel_state = ListState::default();
             rel_state.select(Some(relative_selected));
@@ -1504,7 +1523,6 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 .highlight_style(
                     Style::default()
                         .fg(app.app_theme.highlight_fg)
-                        .bg(app.app_theme.highlight_bg)
                         .add_modifier(Modifier::BOLD),
                 );
 
@@ -2110,7 +2128,12 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     let label = format!("  {} {}", tag, count_label);
                     let is_selected = popup.selected.contains(&i);
                     let is_cursor = i == popup.cursor;
-                    let style = if is_cursor {
+                    let style = if is_cursor && is_selected {
+                        Style::default()
+                            .fg(app.app_theme.highlight_fg)
+                            .bg(app.app_theme.accent)
+                            .add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
+                    } else if is_cursor {
                         Style::default()
                             .fg(app.app_theme.highlight_fg)
                             .bg(app.app_theme.heading)
@@ -2122,7 +2145,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     } else {
                         Style::default()
                     };
-                    ListItem::new(Line::from(Span::styled(label, style)))
+                    ListItem::new(Line::from(label)).style(style)
                 })
                 .collect()
         };
