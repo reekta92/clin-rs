@@ -120,7 +120,7 @@ pub fn draw_quick_keybinds(frame: &mut Frame, app: &App) {
     let title = format!(" Keybinds — {} ", view_name(app.mode));
     let title_width = title.chars().count() as u16;
     let popup_width = content_width.max(title_width) + inner_pad * 2;
-    let popup_width = popup_width.clamp(10, 60);
+    let mut popup_width = popup_width.clamp(10, 60);
     let margin: u16 = 2;
 
     // --- Full-width header bar at row 0, centered title (mirrors draw_quick_search) ---
@@ -139,47 +139,66 @@ pub fn draw_quick_keybinds(frame: &mut Frame, app: &App) {
         Rect::new(label_x, frame_area.y, title_width, 1),
     );
 
+    // --- Multi-column layout ---
+    let avail_height = frame_area.height.saturating_sub(2);
+    let rows_per_col = avail_height.max(1) as usize;
+    let num_cols = lines.len().div_ceil(rows_per_col).max(1);
+    const COL_GAP: u16 = 1;
+    let total_width = num_cols as u16 * popup_width + (num_cols as u16 - 1) * COL_GAP;
+    let max_total = frame_area.width.saturating_sub(4);
+    if total_width > max_total {
+        let per_col = (max_total - (num_cols as u16 - 1) * COL_GAP) / num_cols as u16;
+        popup_width = per_col.max(10);
+    }
+
     if lines.is_empty() {
         return;
     }
 
-    // --- Dropdown at top-right, fits content, inner padding, alternating rows ---
-    let x = frame_area.right().saturating_sub(popup_width + margin);
-    let avail_height = frame_area.height.saturating_sub(2);
-    let height = (lines.len() as u16).min(avail_height.max(1));
-    let dropdown_area = Rect::new(x, frame_area.y + 1, popup_width, height);
-    frame.render_widget(Clear, dropdown_area);
-    // Base background fills gaps (right padding after shorter rows, empty space)
-    frame.render_widget(
-        Block::default().style(Style::default().bg(theme.accent)),
-        dropdown_area,
+    // --- Multi-column dropdown, right-anchored ---
+    let columns: Vec<&[(String, String)]> = lines.chunks(rows_per_col).collect();
+    let num_cols_actual = columns.len();
+    let avail_content_width = popup_width.saturating_sub(inner_pad * 2);
+
+    let dropdown_x = frame_area.right().saturating_sub(
+        margin + (num_cols_actual as u16 * popup_width) + ((num_cols_actual as u16 - 1) * COL_GAP),
     );
 
     let alt_bg = darken(theme.accent, 18);
 
-    for (i, (keys, desc)) in lines.iter().take(height as usize).enumerate() {
-        let bg = if i % 2 == 0 { theme.accent } else { alt_bg };
-        let row_y = dropdown_area.y + i as u16;
+    for (ci, col_lines) in columns.iter().enumerate() {
+        let col_x = dropdown_x + ci as u16 * (popup_width + COL_GAP);
+        let col_height = col_lines.len() as u16;
+        let col_area = Rect::new(col_x, frame_area.y + 1, popup_width, col_height);
 
-        // Clear and fill the full row width with alternating background
-        let full_row = Rect::new(dropdown_area.x, row_y, popup_width, 1);
-        frame.render_widget(Clear, full_row);
-        frame.render_widget(Block::default().style(Style::default().bg(bg)), full_row);
+        frame.render_widget(Clear, col_area);
+        frame.render_widget(
+            Block::default().style(Style::default().bg(theme.accent)),
+            col_area,
+        );
 
-        // Render content at padded offset
-        let content_area = Rect::new(dropdown_area.x + inner_pad, row_y, content_width, 1);
-        let row = Line::from(vec![
-            Span::styled(
-                format!("{:<width$}", keys, width = max_key_width),
-                Style::default()
-                    .fg(theme.highlight_fg)
-                    .bg(bg)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(SEP, Style::default().fg(theme.muted).bg(bg)),
-            Span::styled(desc.clone(), Style::default().fg(theme.highlight_fg).bg(bg)),
-        ]);
-        frame.render_widget(Paragraph::new(row), content_area);
+        for (i, (keys, desc)) in col_lines.iter().enumerate() {
+            let bg = if i % 2 == 0 { theme.accent } else { alt_bg };
+            let row_y = col_area.y + i as u16;
+
+            let full_row = Rect::new(col_area.x, row_y, popup_width, 1);
+            frame.render_widget(Clear, full_row);
+            frame.render_widget(Block::default().style(Style::default().bg(bg)), full_row);
+
+            let content_area = Rect::new(col_area.x + inner_pad, row_y, avail_content_width, 1);
+            let row = Line::from(vec![
+                Span::styled(
+                    format!("{:<width$}", keys, width = max_key_width),
+                    Style::default()
+                        .fg(theme.highlight_fg)
+                        .bg(bg)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(SEP, Style::default().fg(theme.muted).bg(bg)),
+                Span::styled(desc.clone(), Style::default().fg(theme.highlight_fg).bg(bg)),
+            ]);
+            frame.render_widget(Paragraph::new(row), content_area);
+        }
     }
 }
 
