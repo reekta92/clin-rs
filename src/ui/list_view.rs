@@ -4,10 +4,7 @@ use super::{
     draw_view_title_bar, draw_view_title_bar_with_tabs, format_keybind_hints, format_relative_time,
     popup_block, popup_hint_line, preview_spans,
 };
-use crate::app::{
-    App, VIRTUAL_PINNED_LABEL, VIRTUAL_PINNED_PATH, VIRTUAL_SMART_PATH, VIRTUAL_SUBNOTES_PATH,
-    ViewMode,
-};
+use crate::app::{App, VIRTUAL_PINNED_PATH, VIRTUAL_SMART_PATH, VIRTUAL_SUBNOTES_PATH, ViewMode};
 use crate::app_theme::AppThemeColors;
 use crate::keybinds::ListAction;
 use ratatui::{prelude::*, widgets::*};
@@ -690,15 +687,24 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             mode_label,
             app.list.selected_indices.len()
         );
-        let bar = Paragraph::new(Span::styled(
-            badge_text,
-            Style::default()
-                .fg(app.app_theme.highlight_fg)
-                .bg(app.app_theme.accent)
-                .add_modifier(Modifier::BOLD),
-        ))
-        .alignment(Alignment::Center);
-        frame.render_widget(bar, chunks[0]);
+        let header_rect = chunks[0];
+        frame.render_widget(Clear, header_rect);
+        frame.render_widget(
+            Block::default().style(Style::default().bg(app.app_theme.accent)),
+            header_rect,
+        );
+        let text_width = badge_text.chars().count() as u16;
+        let label_x = header_rect.x + (header_rect.width.saturating_sub(text_width)) / 2;
+        frame.render_widget(
+            Paragraph::new(Line::from(Span::styled(
+                badge_text,
+                Style::default()
+                    .fg(app.app_theme.highlight_fg)
+                    .bg(app.app_theme.accent)
+                    .add_modifier(Modifier::BOLD),
+            ))),
+            Rect::new(label_x, header_rect.y, text_width, 1),
+        );
     } else {
         let preview_info = get_preview_info(app);
         let note = crate::statusline::active_note(app, ViewMode::List);
@@ -1079,22 +1085,18 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 // --- resolve (icon char, glyph color, display name): SAME mapping the old code used ---
                 let item = &app.list.visual_list[vi];
                 let (icon_char, text_label, glyph_color, raw_name) = match item {
-                    crate::app::VisualItem::Folder { path, name, .. } => {
-                        let is_pinned = name == VIRTUAL_PINNED_LABEL;
+                    crate::app::VisualItem::Folder {
+                        path,
+                        name,
+                        is_pinned,
+                        ..
+                    } => {
+                        let is_pinned = *is_pinned;
                         let is_parent = name == "..";
                         let is_subnotes = !is_parent
                             && (path.as_str() == crate::app::VIRTUAL_SUBNOTES_PATH
                                 || crate::app::App::is_subnotes_parent_grid_path(path));
-                        let (ic, label) = if is_pinned {
-                            (
-                                crate::ui::get_char(
-                                    '\u{f4cc}',
-                                    '\u{1f4cc}',
-                                    app.config.ui.icon_mode,
-                                ),
-                                "F",
-                            )
-                        } else if is_subnotes {
+                        let (ic, label) = if is_subnotes {
                             (
                                 crate::ui::get_char(
                                     '\u{f15b}',
@@ -1113,6 +1115,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                                 "^",
                             )
                         } else {
+                            // Always folder icon — if pinned, pin glyph goes top-right
                             (
                                 crate::ui::get_char(
                                     '\u{f07b}',
@@ -1197,7 +1200,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                             .and_then(|e| e.to_str())
                             .is_some_and(crate::storage::is_image_ext);
                         let col = if s.pinned {
-                            app.app_theme.heading
+                            app.app_theme.pinned
                         } else if *is_clin {
                             app.app_theme.destructive
                         } else if *is_draw {
@@ -1348,6 +1351,35 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                     let tw = UnicodeWidthChar::width(tg).unwrap_or(1) as u16;
                     let tg_x = tag_x.saturating_sub(tw.saturating_sub(1));
                     buf.set_string(tg_x, inner.y, tg.to_string(), tag_style);
+                }
+
+                // --- pin icon: top right corner for pinned folders ---
+                let is_pinned_folder = matches!(
+                    item,
+                    crate::app::VisualItem::Folder {
+                        is_pinned: true,
+                        ..
+                    }
+                );
+                if is_pinned_folder {
+                    let pin_x = inner.x + inner.width.saturating_sub(1);
+                    let pin_fg = if in_selection {
+                        app.app_theme.highlight_fg
+                    } else {
+                        app.app_theme.pinned
+                    };
+                    let pin_style =
+                        base_style
+                            .fg(pin_fg)
+                            .add_modifier(if is_selected || in_selection {
+                                Modifier::BOLD
+                            } else {
+                                Modifier::empty()
+                            });
+                    let pg = crate::ui::get_char('\u{f4cc}', '\u{1f4cc}', app.config.ui.icon_mode);
+                    let pw = unicode_width::UnicodeWidthChar::width(pg).unwrap_or(1) as u16;
+                    let pg_x = pin_x.saturating_sub(pw.saturating_sub(1));
+                    buf.set_string(pg_x, inner.y, pg.to_string(), pin_style);
                 }
 
                 // --- name: sanitize, truncate to inner width, center, write on the bottom row (row 2) ---

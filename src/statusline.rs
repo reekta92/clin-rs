@@ -1296,7 +1296,10 @@ pub fn line_from_segments<'a>(
     }
 
     // Every non-Classic style splits composite segments into per-term cells.
-    let split_cells = !matches!(theme.hint_bar_style, crate::config::HintBarStyle::Classic | crate::config::HintBarStyle::Compact);
+    let split_cells = !matches!(
+        theme.hint_bar_style,
+        crate::config::HintBarStyle::Classic | crate::config::HintBarStyle::Compact
+    );
 
     let flat: Vec<FlatSegment> = if split_cells {
         let mut out = Vec::new();

@@ -71,6 +71,8 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
             app.list.tag_to_assign = None;
             app.list.list_mode = ListMode::Normal;
             app.list.selected_indices.clear();
+            app.refresh_visual_list();
+            app.clamp_visual_index();
             return false;
         }
         if key.code == KeyCode::Enter {
@@ -119,19 +121,29 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 if app.list.tag_to_assign.is_some() {
                     return false;
                 }
-                app.list.list_mode = match app.list.list_mode {
+                match app.list.list_mode {
                     ListMode::Normal => {
+                        app.list.list_mode = ListMode::Select;
                         app.list.selected_indices.clear();
+                        app.refresh_visual_list();
+                        app.clamp_visual_index();
+                        // walk forward to a selectable item if the clamped index isn't
+                        while !app.is_selectable_index(app.list.visual_index)
+                            && app.list.visual_index + 1 < app.list.visual_list.len()
+                        {
+                            app.list.visual_index += 1;
+                        }
                         if app.is_selectable_index(app.list.visual_index) {
                             app.list.selected_indices.insert(app.list.visual_index);
                         }
-                        ListMode::Select
                     }
                     ListMode::Select => {
+                        app.list.list_mode = ListMode::Normal;
                         app.list.selected_indices.clear();
-                        ListMode::Normal
+                        app.refresh_visual_list();
+                        app.clamp_visual_index();
                     }
-                };
+                }
                 return false;
             }
             ListAction::ToggleSelectItem => {

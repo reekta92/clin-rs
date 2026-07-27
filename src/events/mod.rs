@@ -903,7 +903,16 @@ impl crate::popups::ActivePopup {
                         app.list.tag_to_assign = Some(tag);
                         app.list.list_mode = crate::list_view::ListMode::Select;
                         app.list.selected_indices.clear();
-                        app.list.selected_indices.insert(app.list.visual_index);
+                        app.refresh_visual_list();
+                        app.clamp_visual_index();
+                        while !app.is_selectable_index(app.list.visual_index)
+                            && app.list.visual_index + 1 < app.list.visual_list.len()
+                        {
+                            app.list.visual_index += 1;
+                        }
+                        if app.is_selectable_index(app.list.visual_index) {
+                            app.list.selected_indices.insert(app.list.visual_index);
+                        }
                         app.set_temporary_status_static(
                             "TAG MODE: Select notes to apply tag, Enter to confirm, Esc to cancel",
                         );

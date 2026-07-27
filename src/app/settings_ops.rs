@@ -980,8 +980,11 @@ mod tests {
         let config_file_path = app.storage.config_dir.join("config.toml");
         crate::config::set_config_path_override(config_file_path);
 
+        let (themes, is_custom) = crate::setup::build_theme_list();
         app.setup_state = Some(crate::setup::SetupState {
             theme: 4, // gruvbox
+            themes,
+            is_custom,
             background_solid: true,
             hint_bar_style: 1, // Sharp
             icon_mode: 1,      // Unicode
@@ -1016,8 +1019,11 @@ mod tests {
         let _lock = crate::config::ConfigTestGuard::lock();
         let mut app = make_app();
 
+        let (themes, is_custom) = crate::setup::build_theme_list();
         app.setup_state = Some(crate::setup::SetupState {
             theme: 0,
+            themes,
+            is_custom,
             background_solid: false,
             hint_bar_style: 0,
             icon_mode: 0,
@@ -1050,8 +1056,11 @@ mod tests {
         let config_file_path = app.storage.config_dir.join("config.toml");
         crate::config::set_config_path_override(config_file_path);
 
+        let (themes, is_custom) = crate::setup::build_theme_list();
         app.setup_state = Some(crate::setup::SetupState {
             theme: 4, // gruvbox — non-default so we can confirm it propagates
+            themes,
+            is_custom,
             background_solid: true,
             hint_bar_style: 0,
             icon_mode: 0,

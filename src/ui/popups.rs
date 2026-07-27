@@ -1255,10 +1255,7 @@ pub fn format_keybind_hints<'a>(
                 ));
                 spans.push(Span::raw(" "));
                 let short: String = action.chars().take(3).collect();
-                spans.push(Span::styled(
-                    short,
-                    Style::default().fg(theme.muted),
-                ));
+                spans.push(Span::styled(short, Style::default().fg(theme.muted)));
             }
             Line::from(spans)
         }

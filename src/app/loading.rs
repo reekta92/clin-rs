@@ -137,6 +137,7 @@ impl App {
             folders_first: bool,
             recursive_count: &std::collections::HashMap<&'a str, usize>,
             pinned_folders: &'a std::collections::HashSet<String>,
+            select_mode: bool,
         ) {
             let notes = by_folder.get(current_folder);
             let subfolders = subfolders_map.get(current_folder);
@@ -174,6 +175,7 @@ impl App {
                                 folders_first,
                                 recursive_count,
                                 pinned_folders,
+                                select_mode,
                             );
                         }
                     }
@@ -190,10 +192,12 @@ impl App {
                         });
                     }
                 }
-                visual.push(VisualItem::CreateNew {
-                    path: current_folder.to_string(),
-                    depth,
-                });
+                if !select_mode {
+                    visual.push(VisualItem::CreateNew {
+                        path: current_folder.to_string(),
+                        depth,
+                    });
+                }
             } else {
                 if let Some(notes) = notes {
                     for (idx, note) in notes {
@@ -207,10 +211,12 @@ impl App {
                         });
                     }
                 }
-                visual.push(VisualItem::CreateNew {
-                    path: current_folder.to_string(),
-                    depth,
-                });
+                if !select_mode {
+                    visual.push(VisualItem::CreateNew {
+                        path: current_folder.to_string(),
+                        depth,
+                    });
+                }
                 if let Some(folders) = subfolders {
                     for folder in folders {
                         let parts: Vec<&str> = folder.split('/').collect();
@@ -243,6 +249,7 @@ impl App {
                                 folders_first,
                                 recursive_count,
                                 pinned_folders,
+                                select_mode,
                             );
                         }
                     }
@@ -259,14 +266,14 @@ impl App {
             .collect();
         sorted_pinned.sort();
 
-        for pinned_path in sorted_pinned {
+        for pinned_path in &sorted_pinned {
             let name = if let Some(slash) = pinned_path.rfind('/') {
                 pinned_path[slash + 1..].to_string()
             } else {
                 pinned_path.clone()
             };
 
-            let is_expanded = self.list.folder_expanded.contains(&pinned_path);
+            let is_expanded = self.list.folder_expanded.contains(pinned_path);
             let direct = by_folder.get(pinned_path.as_str()).map_or(0, |v| v.len());
             let rec_count = recursive_count
                 .get(pinned_path.as_str())
@@ -287,7 +294,7 @@ impl App {
 
             if is_expanded {
                 push_tree(
-                    &pinned_path,
+                    pinned_path.as_str(),
                     1,
                     &mut visual,
                     &self.list.folder_expanded,
@@ -296,6 +303,7 @@ impl App {
                     self.list.folders_first,
                     &recursive_count,
                     &self.list.pinned_folders,
+                    self.list.list_mode == crate::list_view::ListMode::Select,
                 );
             }
         }
@@ -500,6 +508,7 @@ impl App {
                 self.list.folders_first,
                 &recursive_count,
                 &self.list.pinned_folders,
+                self.list.list_mode == crate::list_view::ListMode::Select,
             );
         }
 
@@ -508,7 +517,29 @@ impl App {
             visual.clear();
             let gf = &self.list.grid_folder;
             if gf == VIRTUAL_PINNED_PATH {
-                // Pinned tab: show only pinned notes, no folders, no CreateNew, no ".."
+                // Pinned tab: show pinned folders first, then pinned notes
+                for pinned_path in &sorted_pinned {
+                    let name = if let Some(slash) = pinned_path.rfind('/') {
+                        pinned_path[slash + 1..].to_string()
+                    } else {
+                        pinned_path.clone()
+                    };
+                    let direct = by_folder.get(pinned_path.as_str()).map_or(0, |v| v.len());
+                    let rec_count = recursive_count
+                        .get(pinned_path.as_str())
+                        .copied()
+                        .unwrap_or(direct);
+                    visual.push(VisualItem::Folder {
+                        path: pinned_path.clone(),
+                        name,
+                        depth: 0,
+                        is_expanded: false,
+                        note_count: direct,
+                        recursive_count: rec_count,
+                        stale: rec_count == 0,
+                        is_pinned: true,
+                    });
+                }
                 for (idx, note) in &pinned_notes {
                     visual.push(VisualItem::Note {
                         summary_idx: *idx,
@@ -664,6 +695,32 @@ impl App {
                     });
                 }
 
+                // Pinned folders as top-level shortcuts in root tab when pinned_on_top
+                if gf.is_empty() && self.pinned_on_top {
+                    for pinned_path in &sorted_pinned {
+                        let name = if let Some(slash) = pinned_path.rfind('/') {
+                            pinned_path[slash + 1..].to_string()
+                        } else {
+                            pinned_path.clone()
+                        };
+                        let direct = by_folder.get(pinned_path.as_str()).map_or(0, |v| v.len());
+                        let rec_count = recursive_count
+                            .get(pinned_path.as_str())
+                            .copied()
+                            .unwrap_or(direct);
+                        visual.push(VisualItem::Folder {
+                            path: pinned_path.clone(),
+                            name,
+                            depth: 0,
+                            is_expanded: false,
+                            note_count: direct,
+                            recursive_count: rec_count,
+                            stale: rec_count == 0,
+                            is_pinned: true,
+                        });
+                    }
+                }
+
                 // Direct subfolders / notes of the current folder, respecting folders_first
                 if self.list.folders_first {
                     for folder in all_folders {
@@ -688,7 +745,7 @@ impl App {
                                 note_count: direct,
                                 recursive_count: rec_count,
                                 stale: false,
-                                is_pinned: false,
+                                is_pinned: self.list.pinned_folders.contains(folder.as_str()),
                             });
                         }
                     }
@@ -739,15 +796,17 @@ impl App {
                                 note_count: direct,
                                 recursive_count: rec_count,
                                 stale: false,
-                                is_pinned: false,
+                                is_pinned: self.list.pinned_folders.contains(folder.as_str()),
                             });
                         }
                     }
                 }
-                visual.push(VisualItem::CreateNew {
-                    path: gf.clone(),
-                    depth: 0,
-                });
+                if self.list.list_mode != crate::list_view::ListMode::Select {
+                    visual.push(VisualItem::CreateNew {
+                        path: gf.clone(),
+                        depth: 0,
+                    });
+                }
             }
 
             self.list.visual_list = visual;

@@ -68,6 +68,17 @@ pub fn hint_style_index(s: crate::config::HintBarStyle) -> usize {
     s.index()
 }
 
+/// Build the full theme list for the setup wizard: built-in baseline ordered by
+/// `SETUP_THEMES`, then custom themes from `~/.config/clin/themes/`. Returns
+/// `(themes, is_custom)` where `is_custom[i]` is true for user-installed themes.
+pub fn build_theme_list() -> (Vec<String>, Vec<bool>) {
+    let builtin_count = SETUP_THEMES.len();
+    let mut themes: Vec<String> = SETUP_THEMES.iter().map(|s| s.to_string()).collect();
+    themes.extend(crate::config::custom_themes::list_custom_themes());
+    let is_custom: Vec<bool> = (0..themes.len()).map(|i| i >= builtin_count).collect();
+    (themes, is_custom)
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct SetupPreviewKey {
     pub cols: u16,
@@ -78,6 +89,8 @@ pub(crate) struct SetupPreviewKey {
 #[derive(Debug)]
 pub struct SetupState {
     pub theme: usize,
+    pub themes: Vec<String>,
+    pub is_custom: Vec<bool>,
     pub background_solid: bool,
     pub hint_bar_style: usize,
     pub icon_mode: usize,
@@ -96,11 +109,15 @@ impl SetupState {
         config: &crate::config::ClinConfig,
         _theme: &crate::app_theme::AppThemeColors,
     ) -> Self {
+        let (themes, is_custom) = build_theme_list();
+        let theme = themes
+            .iter()
+            .position(|t| config.ui.theme.as_str() == t.as_str())
+            .unwrap_or(0);
         Self {
-            theme: SETUP_THEMES
-                .iter()
-                .position(|t| config.ui.theme.as_str() == *t)
-                .unwrap_or(0),
+            theme,
+            themes,
+            is_custom,
             background_solid: matches!(config.ui.background, crate::config::Background::Solid),
             hint_bar_style: hint_style_index(config.ui.hint_bar_style),
             icon_mode: icon_mode_index(config.ui.icon_mode),
@@ -135,7 +152,7 @@ impl SetupState {
     pub fn cycle(&mut self, forward: bool) {
         match self.selected {
             0 => {
-                let len = SETUP_THEMES.len();
+                let len = self.themes.len();
                 self.theme = if forward {
                     (self.theme + 1) % len
                 } else {
@@ -186,7 +203,14 @@ impl SetupState {
     /// Current value string for a given option row.
     pub fn row_value(&self, row: usize) -> String {
         match row {
-            0 => SETUP_THEMES[self.theme].to_string(),
+            0 => {
+                let name = self.themes[self.theme].clone();
+                if *self.is_custom.get(self.theme).unwrap_or(&false) {
+                    format!("{name} [custom]")
+                } else {
+                    name
+                }
+            }
             1 => {
                 if self.background_solid {
                     "Solid".to_string()
@@ -208,8 +232,11 @@ mod tests {
 
     #[test]
     fn cycle_wraps_each_row() {
+        let (themes, is_custom) = build_theme_list();
         let mut s = SetupState {
             theme: 0,
+            themes,
+            is_custom,
             background_solid: false,
             hint_bar_style: 0,
             icon_mode: 0,
@@ -224,13 +251,13 @@ mod tests {
         // Theme wraps forward
         s.cycle(true);
         assert_eq!(s.theme, 1);
-        s.theme = SETUP_THEMES.len() - 1;
+        s.theme = s.themes.len() - 1;
         s.cycle(true);
         assert_eq!(s.theme, 0);
 
         // Theme wraps backward
         s.cycle(false);
-        assert_eq!(s.theme, SETUP_THEMES.len() - 1);
+        assert_eq!(s.theme, s.themes.len() - 1);
 
         // Background flips
         s.selected = 1;
@@ -265,8 +292,11 @@ mod tests {
 
     #[test]
     fn move_sel_clamps() {
+        let (themes, is_custom) = build_theme_list();
         let mut s = SetupState {
             theme: 0,
+            themes,
+            is_custom,
             background_solid: false,
             hint_bar_style: 0,
             icon_mode: 0,

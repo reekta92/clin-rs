@@ -767,7 +767,7 @@ template = """
             };
 
             // 1. Theme
-            let name = crate::setup::SETUP_THEMES[state.theme];
+            let name = state.themes[state.theme].clone();
             if self.config.ui.theme != name {
                 self.config.ui.theme = name.to_string();
                 visuals_changed = true;
