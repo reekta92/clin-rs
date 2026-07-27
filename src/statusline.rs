@@ -20,6 +20,26 @@ enum FlatSegment<'a> {
     Splittable(Vec<Span<'a>>),
 }
 
+#[derive(Default)]
+pub(crate) struct EditMemo {
+    pub(crate) counts: Option<(usize, usize)>,
+    pub(crate) content: Option<String>,
+}
+impl EditMemo {
+    pub(crate) fn counts(&mut self, app: &crate::app::App) -> (usize, usize) {
+        *self.counts.get_or_insert_with(|| {
+            let lines = app.editor.editor.lines();
+            let words: usize = lines.iter().map(|l| crate::goals::count_words(l)).sum();
+            let chars: usize = lines.iter().map(|l| l.chars().count()).sum::<usize>()
+                + lines.len().saturating_sub(1);
+            (words, chars)
+        })
+    }
+    pub(crate) fn content(&mut self, app: &crate::app::App) -> &str {
+        self.content
+            .get_or_insert_with(|| app.editor.editor.lines().join("\n"))
+    }
+}
 pub struct StatuslineContext<'a> {
     pub config: &'a crate::config::ClinConfig,
     pub view: ViewMode,
@@ -28,6 +48,8 @@ pub struct StatuslineContext<'a> {
     pub vault_path: Option<&'a Path>,
     pub date_format: Option<&'a str>,
     pub app: Option<&'a App>,
+
+    edit_memo: std::cell::RefCell<EditMemo>,
 
     // active overlay states:
     pub graph: Option<&'a crate::graf::graph::GraphState>,
@@ -75,6 +97,7 @@ impl<'a> StatuslineContext<'a> {
             preview: None,
             detail: None,
             graph_fps: None,
+            edit_memo: std::cell::RefCell::new(EditMemo::default()),
         }
     }
 
@@ -101,6 +124,7 @@ impl<'a> StatuslineContext<'a> {
             preview: None,
             detail: None,
             graph_fps: None,
+            edit_memo: std::cell::RefCell::new(EditMemo::default()),
         }
     }
 }
@@ -638,41 +662,62 @@ impl StatuslineContext<'_> {
                     .note
                     .map(|n| n.title.as_str())
                     .unwrap_or("Untitled note");
-                let content = app.editor.editor.lines().join("\n");
-                let word_count = crate::goals::count_words(&content);
 
                 let val = match name {
-                    "word_count" => word_count.to_string(),
+                    "word_count" => self.edit_memo.borrow_mut().counts(app).0.to_string(),
                     "line_count" => app.editor.editor.lines().len().to_string(),
-                    "char_count" => content.chars().count().to_string(),
+                    "char_count" => self.edit_memo.borrow_mut().counts(app).1.to_string(),
                     "cursor_line" => (app.editor.editor.cursor().0 + 1).to_string(),
                     "cursor_col" => (app.editor.editor.cursor().1 + 1).to_string(),
                     "modified" => {
-                        let is_mod = if let Some(id) = &app.editor.editing_id {
-                            if let Ok(note) = app.storage.load_note(id) {
-                                let current_title =
-                                    crate::events::get_title_text(&app.editor.title_editor);
-                                current_title != note.title || content != note.content
+                        let now = std::time::Instant::now();
+                        let mut cache = app.editor.modified_status_cache.borrow_mut();
+                        if cache
+                            .map(|(t, _)| {
+                                now.duration_since(t) >= std::time::Duration::from_millis(500)
+                            })
+                            .unwrap_or(true)
+                        {
+                            let is_mod = if let Some(id) = &app.editor.editing_id {
+                                if let Ok(note) = app.storage.load_note(id) {
+                                    let current_title =
+                                        crate::events::get_title_text(&app.editor.title_editor);
+                                    let mut memo = self.edit_memo.borrow_mut();
+                                    let content = memo.content(app);
+                                    current_title != note.title || content != note.content
+                                } else {
+                                    false
+                                }
+                            } else if let Some(path) = &app.editor.template_edit_path {
+                                if let Ok(orig_content) = std::fs::read_to_string(path) {
+                                    let mut memo = self.edit_memo.borrow_mut();
+                                    let content = memo.content(app);
+                                    content != orig_content
+                                } else {
+                                    false
+                                }
                             } else {
                                 false
-                            }
-                        } else if let Some(path) = &app.editor.template_edit_path {
-                            if let Ok(orig_content) = std::fs::read_to_string(path) {
-                                content != orig_content
-                            } else {
-                                false
-                            }
-                        } else {
-                            false
-                        };
-                        (if is_mod { "on" } else { "off" }).to_string()
+                            };
+                            *cache = Some((now, is_mod));
+                        }
+                        (if cache.unwrap().1 { "on" } else { "off" }).to_string()
                     }
-                    "reading_time" => ((word_count as f64 / 200.0).ceil() as usize).to_string(),
-                    "header_count" => crate::outline::parse::parse_outline(title, &content)
-                        .len()
-                        .saturating_sub(1)
-                        .to_string(),
+                    "reading_time" => {
+                        let wc = self.edit_memo.borrow_mut().counts(app).0;
+                        ((wc as f64 / 200.0).ceil() as usize).to_string()
+                    }
+                    "header_count" => {
+                        let mut memo = self.edit_memo.borrow_mut();
+                        let content = memo.content(app);
+                        crate::outline::parse::parse_outline(title, content)
+                            .len()
+                            .saturating_sub(1)
+                            .to_string()
+                    }
                     "task_count" => {
+                        let mut memo = self.edit_memo.borrow_mut();
+                        let content = memo.content(app);
                         let count = content
                             .lines()
                             .filter(|l| {
@@ -686,6 +731,8 @@ impl StatuslineContext<'_> {
                         count.to_string()
                     }
                     "has_tasks" => {
+                        let mut memo = self.edit_memo.borrow_mut();
+                        let content = memo.content(app);
                         let count = content
                             .lines()
                             .filter(|l| {
@@ -699,11 +746,14 @@ impl StatuslineContext<'_> {
                         (if count > 0 { "on" } else { "off" }).to_string()
                     }
                     "has_frontmatter" => {
+                        let mut memo = self.edit_memo.borrow_mut();
+                        let content = memo.content(app);
                         let has = content.starts_with("---\n");
                         (if has { "on" } else { "off" }).to_string()
                     }
                     "words_added" => {
-                        let added = word_count as isize - app.editor.initial_word_count as isize;
+                        let wc = self.edit_memo.borrow_mut().counts(app).0;
+                        let added = wc as isize - app.editor.initial_word_count as isize;
                         added.to_string()
                     }
                     "editing_id" => app.editor.editing_id.clone().unwrap_or_default(),

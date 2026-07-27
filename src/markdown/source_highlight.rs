@@ -49,8 +49,9 @@ impl SourceHighlighter {
         }
     }
 
-    /// Re-rescan fence boundaries when `full_doc` hash has changed.
-    fn rescan_if_needed(&mut self, full_doc: &[String]) {
+    /// Rescan fence boundaries from `full_doc`. Hashes the doc once; early-returns
+    /// when unchanged. Call this once before a batch of [`highlight_line`] calls.
+    pub fn rescan(&mut self, full_doc: &[String]) {
         let mut hasher = DefaultHasher::new();
         for line in full_doc {
             line.hash(&mut hasher);
@@ -87,11 +88,9 @@ impl SourceHighlighter {
     /// Return one [`Style`] per character of `line`, considering its role
     /// in the document (code block vs inline markdown).
     ///
-    /// `row` is the zero-based line index.  `full_doc` is the entire document
-    /// lines — needed to re-scan fence boundaries when the document changes.
-    pub fn highlight_line(&mut self, line: &str, row: usize, full_doc: &[String]) -> Vec<Style> {
-        self.rescan_if_needed(full_doc);
-
+    /// `row` is the zero-based line index.  Caller MUST call [`rescan`](Self::rescan)
+    /// once before a batch of `highlight_line` calls so fence state is current.
+    pub fn highlight_line(&mut self, line: &str, row: usize) -> Vec<Style> {
         if row < self.line_tags.len() && self.line_tags[row] == LineTag::CodeBlock {
             let mut st = self.theme.code_block;
             if let Some(bg) = self.theme.code_block_bg {
@@ -106,6 +105,11 @@ impl SourceHighlighter {
         }
 
         self.highlight_inline(line)
+    }
+
+    /// Whether the line at `row` is inside a fenced code block.
+    pub fn is_code_line(&self, row: usize) -> bool {
+        matches!(self.line_tags.get(row), Some(LineTag::CodeBlock))
     }
 
     /// Inline-highlight a non-code-block line.
@@ -1030,11 +1034,12 @@ mod tests {
         let colors = AppThemeColors::default();
         let mut hl = SourceHighlighter::new(&colors, false, false);
         let doc = vec!["# H1".to_string(), "## H2".to_string()];
-        let styles_h1 = hl.highlight_line("# H1", 0, &doc);
+        hl.rescan(&doc);
+        let styles_h1 = hl.highlight_line("# H1", 0);
         assert_eq!(styles_h1.len(), 304);
         // With ghost_syntax=false, entire line gets heading style
         assert_eq!(styles_h1[0], hl.theme.h1_banner);
-        let styles_h2 = hl.highlight_line("## H2", 1, &doc);
+        let styles_h2 = hl.highlight_line("## H2", 1);
         assert_eq!(styles_h2.len(), 305);
         let mut expected_h2 = hl.theme.h2;
         if let Some(fg) = expected_h2.fg {
@@ -1049,7 +1054,8 @@ mod tests {
         let colors = AppThemeColors::default();
         let mut hl = SourceHighlighter::new(&colors, false, false);
         let doc = vec!["text `code` more".to_string()];
-        let styles = hl.highlight_line("text `code` more", 0, &doc);
+        hl.rescan(&doc);
+        let styles = hl.highlight_line("text `code` more", 0);
         let code_start = "text ".len();
         let code_end = code_start + "`code`".len();
         #[allow(clippy::needless_range_loop)]
@@ -1066,7 +1072,8 @@ mod tests {
         let colors = AppThemeColors::default();
         let mut hl = SourceHighlighter::new(&colors, false, false);
         let doc = vec!["a [text](url) b".to_string()];
-        let styles = hl.highlight_line("a [text](url) b", 0, &doc);
+        hl.rescan(&doc);
+        let styles = hl.highlight_line("a [text](url) b", 0);
         let link_text_start = "a ".len();
         assert_eq!(styles[link_text_start], hl.theme.link_text);
         let url_start = link_text_start + "[text]".len();
@@ -1078,9 +1085,10 @@ mod tests {
         let colors = AppThemeColors::default();
         let mut hl = SourceHighlighter::new(&colors, false, false);
         let doc = vec!["line".to_string()];
-        let _ = hl.highlight_line("line", 0, &doc);
+        hl.rescan(&doc);
+        let _ = hl.highlight_line("line", 0);
         let hash_before = hl.scanned_hash;
-        let _ = hl.highlight_line("line", 0, &doc);
+        hl.rescan(&doc);
         assert_eq!(hl.scanned_hash, hash_before);
     }
 
@@ -1089,7 +1097,8 @@ mod tests {
         let colors = AppThemeColors::default();
         let mut hl = SourceHighlighter::new(&colors, false, false);
         let doc = vec!["- [ ] task".to_string(), "- [x] done".to_string()];
-        let styles = hl.highlight_line("- [ ] task", 0, &doc);
+        hl.rescan(&doc);
+        let styles = hl.highlight_line("- [ ] task", 0);
         // With ghost_syntax=false: brackets get paragraph style, checkmark gets task style
         let bracket_start = "- ".len(); // index 2 = '['
         let checkmark_idx = bracket_start + 1; // index 3 = ' ' (or 'x')
@@ -1103,7 +1112,7 @@ mod tests {
             styles[checkmark_idx], hl.theme.task_unchecked,
             "unchecked checkmark"
         );
-        let styles2 = hl.highlight_line("- [x] done", 1, &doc);
+        let styles2 = hl.highlight_line("- [x] done", 1);
         assert_eq!(
             styles2[bracket_start], hl.theme.paragraph,
             "bracket should be paragraph"
@@ -1122,20 +1131,21 @@ mod tests {
             "fn main() {}".to_string(),
             "```".to_string(),
         ];
-        let styles_fence_open = hl.highlight_line("```rust", 0, &doc);
+        hl.rescan(&doc);
+        let styles_fence_open = hl.highlight_line("```rust", 0);
         let mut expected_fence_style = hl.theme.code_block;
         if let Some(bg) = hl.theme.code_block_bg {
             expected_fence_style = expected_fence_style.bg(bg);
         }
         assert_eq!(styles_fence_open[0], expected_fence_style);
 
-        let styles_interior = hl.highlight_line("fn main() {}", 1, &doc);
+        let styles_interior = hl.highlight_line("fn main() {}", 1);
         assert_eq!(styles_interior.len(), "fn main() {}".len() + 300);
         for style in styles_interior {
             assert_eq!(style, expected_fence_style);
         }
 
-        let styles_fence_close = hl.highlight_line("```", 2, &doc);
+        let styles_fence_close = hl.highlight_line("```", 2);
         assert_eq!(styles_fence_close[0], expected_fence_style);
     }
 
@@ -1146,14 +1156,16 @@ mod tests {
 
         // 1. Heading 1 padding & banner style
         let doc1 = vec!["# H1".to_string()];
-        let styles_h1 = hl.highlight_line("# H1", 0, &doc1);
+        hl.rescan(&doc1);
+        let styles_h1 = hl.highlight_line("# H1", 0);
         assert_eq!(styles_h1.len(), 4 + 300);
         assert_eq!(styles_h1[0], hl.theme.h1_banner);
         assert_eq!(styles_h1[4], hl.theme.h1_banner); // padded part
 
         // 2. Bold nested in Heading 1
         let doc2 = vec!["# H1 **bold**".to_string()];
-        let styles_nested = hl.highlight_line("# H1 **bold**", 0, &doc2);
+        hl.rescan(&doc2);
+        let styles_nested = hl.highlight_line("# H1 **bold**", 0);
         // `# H1 ` has length 5. `**` bold delimiter style is heading style (h1_banner)
         assert_eq!(styles_nested[5], hl.theme.h1_banner);
         // `bold` is indices 7..11. It should have h1_banner style + BOLD modifier
@@ -1162,13 +1174,15 @@ mod tests {
 
         // 3. Pipe character (table delimiter)
         let doc3 = vec!["| col |".to_string()];
-        let styles_table = hl.highlight_line("| col |", 0, &doc3);
+        hl.rescan(&doc3);
+        let styles_table = hl.highlight_line("| col |", 0);
         assert_eq!(styles_table[0], hl.theme.table_border);
         assert_eq!(styles_table[6], hl.theme.table_border);
 
         // 4. Blockquote nested formatting
         let doc4 = vec!["> **quote**".to_string()];
-        let styles_bq = hl.highlight_line("> **quote**", 0, &doc4);
+        hl.rescan(&doc4);
+        let styles_bq = hl.highlight_line("> **quote**", 0);
         assert_eq!(styles_bq[0], hl.theme.blockquote_bar); // marker
         // `quote` is nested. It should have blockquote style + BOLD modifier
         let expected_bq_bold = hl.theme.blockquote.add_modifier(Modifier::BOLD);
@@ -1176,13 +1190,15 @@ mod tests {
 
         // 5. List marker styling
         let doc5 = vec!["- item".to_string()];
-        let styles_list = hl.highlight_line("- item", 0, &doc5);
+        hl.rescan(&doc5);
+        let styles_list = hl.highlight_line("- item", 0);
         assert_eq!(styles_list[0], hl.theme.h3); // list marker
         assert_eq!(styles_list[2], hl.theme.paragraph); // text
 
         // 6. Heading 2 nested formatting retaining background
         let doc6 = vec!["## H2 *italic*".to_string()];
-        let styles_h2_nested = hl.highlight_line("## H2 *italic*", 0, &doc6);
+        hl.rescan(&doc6);
+        let styles_h2_nested = hl.highlight_line("## H2 *italic*", 0);
         let expected_h2 = hl.theme.h2;
         let mut expected_h2_bg = expected_h2;
         if let Some(fg) = expected_h2.fg {
@@ -1205,7 +1221,8 @@ mod tests {
             "fn main() {}".to_string(),
             "```".to_string(),
         ];
-        let styles_fence_open = hl.highlight_line("```rust", 0, &doc);
+        hl.rescan(&doc);
+        let styles_fence_open = hl.highlight_line("```rust", 0);
         let mut expected_fence_style = hl.theme.code_block;
         if let Some(bg) = hl.theme.code_block_bg {
             expected_fence_style = expected_fence_style.bg(bg);
@@ -1222,7 +1239,8 @@ mod tests {
 
         // 1. Multi-backtick and background fix
         let doc = vec!["``code``".to_string()];
-        let styles = hl.highlight_line("``code``", 0, &doc);
+        hl.rescan(&doc);
+        let styles = hl.highlight_line("``code``", 0);
         let mut expected_code = hl.theme.code_inline;
         if let Some(bg) = hl.theme.code_inline.bg {
             expected_code = expected_code.bg(bg);
@@ -1233,7 +1251,8 @@ mod tests {
 
         // Multi-backticks with ghost = true
         let mut hl_ghost = SourceHighlighter::new(&colors, true, true);
-        let styles_ghost = hl_ghost.highlight_line("``code``", 0, &doc);
+        hl_ghost.rescan(&doc);
+        let styles_ghost = hl_ghost.highlight_line("``code``", 0);
         let mut expected_ghost_code = hl_ghost.theme.ghost_syntax;
         if let Some(bg) = hl_ghost.theme.code_inline.bg {
             expected_ghost_code = expected_ghost_code.bg(bg);
@@ -1247,7 +1266,8 @@ mod tests {
 
         // 2. Bare URL
         let doc_url = vec!["Visit https://google.com now".to_string()];
-        let styles_url = hl.highlight_line("Visit https://google.com now", 0, &doc_url);
+        hl.rescan(&doc_url);
+        let styles_url = hl.highlight_line("Visit https://google.com now", 0);
         let url_start = "Visit ".len();
         assert_eq!(styles_url[url_start], hl.theme.link_url);
         assert_eq!(
@@ -1261,7 +1281,8 @@ mod tests {
 
         // 3. Bold italic nested style
         let doc_bi = vec!["***bold italic***".to_string()];
-        let styles_bi = hl.highlight_line("***bold italic***", 0, &doc_bi);
+        hl.rescan(&doc_bi);
+        let styles_bi = hl.highlight_line("***bold italic***", 0);
         let expected_bi = hl
             .theme
             .paragraph
@@ -1270,21 +1291,24 @@ mod tests {
 
         // 4. Dimmed escapes
         let doc_esc = vec!["\\*".to_string()];
-        let styles_esc = hl.highlight_line("\\*", 0, &doc_esc);
+        hl.rescan(&doc_esc);
+        let styles_esc = hl.highlight_line("\\*", 0);
         // With ghost=false but extended=true: escape backslash is themed.ghost_syntax
         assert_eq!(styles_esc[0], hl.theme.ghost_syntax);
         assert_eq!(styles_esc[1], hl.theme.paragraph);
 
         // 5. Description list markers
         let doc_desc = vec![": definition".to_string()];
-        let styles_desc = hl.highlight_line(": definition", 0, &doc_desc);
+        hl.rescan(&doc_desc);
+        let styles_desc = hl.highlight_line(": definition", 0);
         assert_eq!(styles_desc[0], hl.theme.h5);
         assert_eq!(styles_desc[1], hl.theme.h5);
         assert_eq!(styles_desc[2], hl.theme.paragraph);
 
         // 6. Wikilink syntax separation
         let doc_wiki = vec!["[[link|title]]".to_string()];
-        let styles_wiki = hl_ghost.highlight_line("[[link|title]]", 0, &doc_wiki);
+        hl_ghost.rescan(&doc_wiki);
+        let styles_wiki = hl_ghost.highlight_line("[[link|title]]", 0);
         // [[ and link| get ghost syntax
         assert_eq!(styles_wiki[0], hl_ghost.theme.ghost_syntax);
         assert_eq!(styles_wiki[6], hl_ghost.theme.ghost_syntax); // '|'
@@ -1293,7 +1317,8 @@ mod tests {
 
         // 7. Footnote definitions
         let doc_fn = vec!["[^1]: footnote text".to_string()];
-        let styles_fn = hl.highlight_line("[^1]: footnote text", 0, &doc_fn);
+        hl.rescan(&doc_fn);
+        let styles_fn = hl.highlight_line("[^1]: footnote text", 0);
         assert_eq!(styles_fn[0], hl.theme.footnote_ref);
         assert_eq!(styles_fn[5], hl.theme.footnote_ref);
         assert_eq!(styles_fn[6], hl.theme.paragraph);

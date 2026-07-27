@@ -1793,6 +1793,7 @@ impl App {
         // Force SourceHighlighter to reinitialize with new theme.
         // md_highlight_lines = 0 so stale → true, triggering cache rebuild.
         self.editor.source_highlighter = None;
+        self.editor.md_highlight_memo.clear();
         self.editor.md_highlight_lines = 0;
     }
 }

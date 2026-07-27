@@ -122,7 +122,7 @@
 - [ ] **Database view** — database feature similar to Obsidian's databases
 
 #### Configuration
-- [ ] **Plugin support** — Lua scripting
+- [ ] **Plugin support** — a plugin system to allow users create new views, command palette actions, preview pane types for specific filetypes and possibly custom popups
 
 #### Other
 - [ ] **Calendar/time tools** — date calculator, timezone converter

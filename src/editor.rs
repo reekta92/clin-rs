@@ -77,12 +77,17 @@ pub struct NoteEditor {
     pub last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
     pub scroll_drag: Option<crate::ui::scrollbar::ScrollDrag>,
     pub(crate) source_highlighter: Option<crate::markdown::SourceHighlighter>,
-    /// Cache of per-line highlight styles, rebuilt only when the document changes.
-    pub md_highlight_cache: Vec<Vec<ratatui::style::Style>>,
+    /// Cache of per-line highlight styles, one entry per source line, rebuilt when the doc changes.
+    pub md_highlight_cache: Vec<std::rc::Rc<[ratatui::style::Style]>>,
     /// `Instant` of the last editor change when cache was built.
     pub md_highlight_change: Option<std::time::Instant>,
     /// Number of lines in the document when cache was built.
     pub md_highlight_lines: usize,
+    /// Content-keyed memo: (line hash, is_code) -> styles. Survives line shifts.
+    pub md_highlight_memo:
+        std::collections::HashMap<(u64, bool), std::rc::Rc<[ratatui::style::Style]>>,
+    /// TTL cache for {modified} statusline token (500ms bounded).
+    pub modified_status_cache: std::cell::RefCell<Option<(std::time::Instant, bool)>>,
 }
 
 impl Default for NoteEditor {
@@ -140,6 +145,8 @@ impl Default for NoteEditor {
             md_highlight_cache: Vec::new(),
             md_highlight_change: None,
             md_highlight_lines: 0,
+            md_highlight_memo: std::collections::HashMap::new(),
+            modified_status_cache: std::cell::RefCell::new(None),
             source_highlighter: None,
             header_title_rect: ratatui::layout::Rect::default(),
         }

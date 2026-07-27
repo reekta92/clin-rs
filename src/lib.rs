@@ -1362,430 +1362,449 @@ where
         if events.poll(poll_timeout).context("event poll failed")? {
             list_dirty = true;
             graph_dirty = true;
-            match events.read().context("failed to read event")? {
-                // Global Ctrl+C — immediately kill process
-                Event::Key(key)
-                    if app.host.ctrl_c_quits()
-                        && key.kind == KeyEventKind::Press
-                        && key.code == KeyCode::Char('c')
-                        && key.modifiers == KeyModifiers::CONTROL =>
-                {
-                    crate::force_quit();
-                }
-                mut ev @ (Event::Key(_) | Event::Mouse(_)) => {
-                    // Phase 1: coalesce Moved events — drain all queued Moved
-                    // events, keeping only the last position
-                    let _coalesced = if let Event::Mouse(mouse_event) = &ev {
-                        if mouse_event.kind == ratatui::crossterm::event::MouseEventKind::Moved {
-                            let mut last = *mouse_event;
-                            while events.poll(Duration::ZERO)? {
-                                match events.read()? {
-                                    Event::Mouse(next)
-                                        if next.kind
-                                            == ratatui::crossterm::event::MouseEventKind::Moved =>
-                                    {
-                                        last = next;
-                                    }
-                                    _ => break,
-                                }
-                            }
-                            app.mouse_pos = Some((last.column, last.row));
-                            Some(Event::Mouse(last))
-                        } else {
-                            app.mouse_pos = Some((mouse_event.column, mouse_event.row));
-                            None
-                        }
-                    } else {
-                        None
-                    };
-                    if let Some(ev2) = _coalesced {
-                        ev = ev2;
-                    }
-                    // Global popups & palette get first chance to consume
-                    let size = terminal.size().context("failed to get terminal size")?;
-                    let area = Rect::new(0, 0, size.width, size.height);
-                    if crate::events::handle_global_popups_and_palette(app, ev.clone(), area) {
-                        continue;
-                    }
-
-                    // Popup mouse handling (runs for all views)
-                    if let Event::Mouse(ref mouse_event) = ev
-                        && crate::events::handle_global_popup_mouse(app, mouse_event, area)
-                    {
-                        continue;
-                    }
-
-                    match ev {
-                        Event::Key(key) if key.kind == KeyEventKind::Press => {
-                            let handled = match app.mode {
-                                ViewMode::List => handle_list_keys(app, key),
-                                ViewMode::Help => {
-                                    handle_help_keys(app, key);
-                                    false
-                                }
-                                ViewMode::Edit => handle_edit_keys(app, key, &mut focus),
-                                ViewMode::Setup => {
-                                    crate::events::handle_setup_keys(app, key);
-                                    false
-                                }
-                                ViewMode::Graph => {
-                                    if let Some(mut graf) = app.graph_state.take() {
-                                        let res =
-                                            graf.overlay_handle_event(Event::Key(key), app, area);
-                                        app.graph_state = Some(graf);
-                                        match res? {
-                                            crate::overlay::OverlayResult::NoteOpened(note_id) => {
-                                                if let Err(e) = app.config.save() {
-                                                    app.set_temporary_status(&format!(
-                                                        "Failed to save config: {e}"
-                                                    ));
-                                                }
-                                                app.graph_state = None;
-                                                app.mode = ViewMode::List;
-
-                                                app.reload_theme();
-                                                app.open_note_from_graph(&note_id);
-                                            }
-                                            crate::overlay::OverlayResult::OpenHelp(tab) => {
-                                                app.reload_theme();
-                                                app.open_help_page_with_tab(tab);
-                                            }
-                                            crate::overlay::OverlayResult::Exit => {
-                                                if let Err(e) = app.config.save() {
-                                                    app.set_temporary_status(&format!(
-                                                        "Failed to save config: {e}"
-                                                    ));
-                                                }
-
-                                                app.graph_state = None;
-                                                app.mode = app
-                                                    .return_mode
-                                                    .take()
-                                                    .unwrap_or(ViewMode::List);
-
-                                                app.reload_theme();
-                                            }
-                                            _ => {}
-                                        }
-                                        true
-                                    } else {
-                                        false
-                                    }
-                                }
-                                ViewMode::Draw => {
-                                    if let Some(mut draw) = app.draw_state.take() {
-                                        let res =
-                                            draw.overlay_handle_event(Event::Key(key), app, area);
-                                        app.draw_state = Some(draw);
-                                        match res? {
-                                            crate::overlay::OverlayResult::Exit => {
-                                                app.draw_state = None;
-                                                app.close_draw_view();
-                                            }
-                                            crate::overlay::OverlayResult::OpenHelp(tab) => {
-                                                app.reload_theme();
-                                                app.open_help_page_with_tab(tab);
-                                            }
-                                            _ => {}
-                                        }
-                                        true
-                                    } else {
-                                        false
-                                    }
-                                }
-                                ViewMode::Canvas => {
-                                    if let Some(mut canvas) = app.canvas_state.take() {
-                                        let res =
-                                            canvas.overlay_handle_event(Event::Key(key), app, area);
-                                        app.canvas_state = Some(canvas);
-                                        match res? {
-                                            crate::overlay::OverlayResult::OpenHelp(tab) => {
-                                                app.reload_theme();
-                                                app.open_help_page_with_tab(tab);
-                                            }
-                                            crate::overlay::OverlayResult::Exit => {
-                                                app.close_canvas_view();
-                                            }
-                                            _ => {}
-                                        }
-                                        true
-                                    } else {
-                                        false
-                                    }
-                                }
-                                ViewMode::Backup => {
-                                    if let Some(mut backup) = app.backup_state.take() {
-                                        let res =
-                                            backup.overlay_handle_event(Event::Key(key), app, area);
-                                        app.backup_state = Some(backup);
-                                        match res? {
-                                            crate::overlay::OverlayResult::Exit => {
-                                                app.reload_config();
-                                                app.backup_state = None;
-                                                app.mode = app
-                                                    .return_mode
-                                                    .take()
-                                                    .unwrap_or(ViewMode::List);
-
-                                                app.reload_theme();
-                                            }
-                                            crate::overlay::OverlayResult::OpenHelp(tab) => {
-                                                app.reload_theme();
-                                                app.open_help_page_with_tab(tab);
-                                            }
-                                            _ => {}
-                                        }
-                                        true
-                                    } else {
-                                        false
-                                    }
-                                }
-                                ViewMode::Outline => {
-                                    if let Some(mut tree) = app.outline_state.take() {
-                                        let res =
-                                            tree.overlay_handle_event(Event::Key(key), app, area);
-                                        app.outline_state = Some(tree);
-                                        match res? {
-                                            crate::overlay::OverlayResult::Exit => {
-                                                app.outline_state = None;
-                                                app.mode = app
-                                                    .return_mode
-                                                    .take()
-                                                    .unwrap_or(ViewMode::List);
-
-                                                app.reload_theme();
-                                            }
-                                            crate::overlay::OverlayResult::JumpToLine {
-                                                note_id: _,
-                                                line: _,
-                                            } => {
-                                                app.outline_state = None;
-                                                app.mode = app
-                                                    .return_mode
-                                                    .take()
-                                                    .unwrap_or(ViewMode::List);
-
-                                                app.reload_theme();
-                                            }
-                                            crate::overlay::OverlayResult::OpenHelp(tab) => {
-                                                app.reload_theme();
-                                                app.open_help_page_with_tab(tab);
-                                            }
-                                            _ => {}
-                                        }
-                                        true
-                                    } else {
-                                        false
-                                    }
-                                }
-                            };
-                            let _ = handled;
-                        }
-                        Event::Mouse(mouse_event) => {
-                            let size = terminal.size().context("failed to get terminal size")?;
-                            let area = Rect::new(0, 0, size.width, size.height);
-                            match app.mode {
-                                ViewMode::List => {
-                                    handle_list_mouse(app, mouse_event, area);
-                                    let is_drag = matches!(
-                                        mouse_event.kind,
-                                        ratatui::crossterm::event::MouseEventKind::Drag(_)
-                                    );
-                                    if is_drag {
-                                        while events.poll(Duration::ZERO)? {
-                                            match events.read()? {
-                                                Event::Mouse(next_mouse) => {
-                                                    app.mouse_pos =
-                                                        Some((next_mouse.column, next_mouse.row));
-                                                    handle_list_mouse(app, next_mouse, area);
-                                                }
-                                                _ => break,
-                                            }
-                                        }
-                                    }
-                                }
-                                ViewMode::Edit => {
-                                    handle_edit_mouse(
-                                        app,
-                                        mouse_event,
-                                        area,
-                                        &mut focus,
-                                        &mut mouse_selecting,
-                                        &mut mouse_dragged,
-                                    );
-                                    if matches!(
-                                        mouse_event.kind,
-                                        ratatui::crossterm::event::MouseEventKind::Drag(_)
-                                    ) {
-                                        while events.poll(Duration::ZERO)? {
-                                            match events.read()? {
-                                                Event::Mouse(next) => {
-                                                    app.mouse_pos = Some((next.column, next.row));
-                                                    handle_edit_mouse(
-                                                        app,
-                                                        next,
-                                                        area,
-                                                        &mut focus,
-                                                        &mut mouse_selecting,
-                                                        &mut mouse_dragged,
-                                                    );
-                                                }
-                                                _ => break,
-                                            }
-                                        }
-                                    }
-                                }
-                                ViewMode::Help => {
-                                    handle_help_mouse(app, mouse_event, area);
-                                }
-                                ViewMode::Graph => {
-                                    let mut is_drag = false;
-                                    if let Some(mut graf) = app.graph_state.take() {
-                                        is_drag = matches!(
-                                            mouse_event.kind,
-                                            ratatui::crossterm::event::MouseEventKind::Drag(_)
-                                        );
-                                        let result = graf.overlay_handle_event(
-                                            Event::Mouse(mouse_event),
-                                            app,
-                                            area,
-                                        );
-                                        app.graph_state = Some(graf);
-                                        match result? {
-                                            crate::overlay::OverlayResult::NoteOpened(note_id) => {
-                                                if let Err(e) = app.config.save() {
-                                                    app.set_temporary_status(&format!(
-                                                        "Failed to save config: {e}"
-                                                    ));
-                                                }
-                                                app.graph_state = None;
-                                                app.mode = ViewMode::List;
-
-                                                app.reload_theme();
-                                                app.open_note_from_graph(&note_id);
-                                            }
-                                            crate::overlay::OverlayResult::OpenHelp(tab) => {
-                                                app.reload_theme();
-                                                app.open_help_page_with_tab(tab);
-                                            }
-                                            crate::overlay::OverlayResult::Exit => {
-                                                if let Err(e) = app.config.save() {
-                                                    app.set_temporary_status(&format!(
-                                                        "Failed to save config: {e}"
-                                                    ));
-                                                }
-
-                                                app.graph_state = None;
-                                                app.mode = app
-                                                    .return_mode
-                                                    .take()
-                                                    .unwrap_or(ViewMode::List);
-
-                                                app.reload_theme();
-                                            }
-                                            _ => {}
-                                        }
-                                    }
-                                    if is_drag && let Some(mut graf) = app.graph_state.take() {
-                                        drain_queued_mouse_events(&mut graf, app, area, events)?;
-                                        app.graph_state = Some(graf);
-                                    }
-                                }
-                                ViewMode::Draw => {
-                                    let mut coalesce = false;
-                                    if let Some(mut draw) = app.draw_state.take() {
-                                        coalesce = matches!(
-                                            mouse_event.kind,
-                                            ratatui::crossterm::event::MouseEventKind::Drag(_)
-                                                | ratatui::crossterm::event::MouseEventKind::ScrollUp
-                                                | ratatui::crossterm::event::MouseEventKind::ScrollDown
-                                        );
-                                        let result = draw.overlay_handle_event(
-                                            Event::Mouse(mouse_event),
-                                            app,
-                                            area,
-                                        );
-                                        app.draw_state = Some(draw);
-                                        match result? {
-                                            crate::overlay::OverlayResult::Exit => {
-                                                app.draw_state = None;
-                                                app.close_draw_view();
-                                            }
-                                            crate::overlay::OverlayResult::OpenHelp(tab) => {
-                                                app.reload_theme();
-                                                app.open_help_page_with_tab(tab);
-                                            }
-                                            _ => {}
-                                        }
-                                    }
-                                    if coalesce && let Some(mut draw) = app.draw_state.take() {
-                                        drain_queued_mouse_events(&mut draw, app, area, events)?;
-                                        app.draw_state = Some(draw);
-                                    }
-                                }
-                                ViewMode::Canvas => {
-                                    let mut coalesce = false;
-                                    if let Some(mut canvas) = app.canvas_state.take() {
-                                        coalesce = matches!(
-                                            mouse_event.kind,
-                                            ratatui::crossterm::event::MouseEventKind::Drag(_)
-                                                | ratatui::crossterm::event::MouseEventKind::ScrollUp
-                                                | ratatui::crossterm::event::MouseEventKind::ScrollDown
-                                        );
-                                        let _ = canvas.overlay_handle_event(
-                                            Event::Mouse(mouse_event),
-                                            app,
-                                            area,
-                                        )?;
-                                        app.canvas_state = Some(canvas);
-                                    }
-                                    if coalesce && let Some(mut canvas) = app.canvas_state.take() {
-                                        drain_queued_mouse_events(&mut canvas, app, area, events)?;
-                                        app.canvas_state = Some(canvas);
-                                    }
-                                }
-                                ViewMode::Backup => {
-                                    if let Some(mut backup) = app.backup_state.take() {
-                                        let _ = backup.overlay_handle_event(
-                                            Event::Mouse(mouse_event),
-                                            app,
-                                            area,
-                                        )?;
-                                        app.backup_state = Some(backup);
-                                    }
-                                }
-                                ViewMode::Outline => {
-                                    if let Some(mut tree) = app.outline_state.take() {
-                                        let _ = tree.overlay_handle_event(
-                                            Event::Mouse(mouse_event),
-                                            app,
-                                            area,
-                                        )?;
-                                        app.outline_state = Some(tree);
-                                    }
-                                }
-                                ViewMode::Setup => {
-                                    crate::events::handle_setup_mouse(app, mouse_event, area);
-                                }
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-                Event::Paste(data) => {
-                    if crate::events::handle_bracketed_paste(app, data, &mut focus) {
-                        app.set_temporary_status("Pasted from clipboard");
-                    }
-                }
-                Event::Resize(_, _) => {}
-                _ => {}
+            let size = terminal.size().context("failed to get terminal size")?;
+            let _area = Rect::new(0, 0, size.width, size.height);
+            let mut pending: Vec<crossterm::event::Event> = Vec::with_capacity(8);
+            pending.push(events.read().context("failed to read event")?);
+            while pending.len() < 64 && events.poll(Duration::ZERO)? {
+                pending.push(events.read()?);
             }
-            if let Some(msg) = crate::text_edit::take_clipboard_notice() {
-                app.set_temporary_status(msg);
+            let mut batch: Vec<crossterm::event::Event> = Vec::with_capacity(pending.len());
+            for ev in pending {
+                let is_moved = matches!(&ev, Event::Mouse(m)
+                    if m.kind == ratatui::crossterm::event::MouseEventKind::Moved);
+                if is_moved
+                    && batch.last().is_some_and(|e| {
+                        matches!(e, Event::Mouse(m)
+                            if m.kind == ratatui::crossterm::event::MouseEventKind::Moved)
+                    })
+                {
+                    if let Some(last) = batch.last_mut() {
+                        *last = ev;
+                    }
+                } else {
+                    batch.push(ev);
+                }
+            }
+            for ev in batch {
+                dispatch_event(
+                    events,
+                    app,
+                    ev,
+                    &mut focus,
+                    &mut mouse_selecting,
+                    &mut mouse_dragged,
+                    terminal,
+                )?;
             }
         }
     }
     perform_orderly_catalog_shutdown(app);
+    Ok(())
+}
+
+fn dispatch_event<B: ratatui::backend::Backend, S: crate::event_source::EventSource>(
+    events: &mut S,
+    app: &mut crate::app::App,
+    ev: crossterm::event::Event,
+    focus: &mut EditFocus,
+    mouse_selecting: &mut bool,
+    mouse_dragged: &mut bool,
+    terminal: &mut ratatui::Terminal<B>,
+) -> anyhow::Result<()>
+where
+    <B as ratatui::backend::Backend>::Error: std::error::Error + Send + Sync + 'static,
+{
+    match ev {
+        // Global Ctrl+C — immediately signal exit
+        Event::Key(key)
+            if app.host.ctrl_c_quits()
+                && key.kind == KeyEventKind::Press
+                && key.code == KeyCode::Char('c')
+                && key.modifiers == KeyModifiers::CONTROL =>
+        {
+            crate::force_quit();
+        }
+        mut ev @ (Event::Key(_) | Event::Mouse(_)) => {
+            // Phase 1: coalesce Moved events — drain all queued Moved
+            let _coalesced = if let Event::Mouse(mouse_event) = &ev {
+                if mouse_event.kind == ratatui::crossterm::event::MouseEventKind::Moved {
+                    let mut last = *mouse_event;
+                    while events.poll(Duration::ZERO)? {
+                        match events.read()? {
+                            Event::Mouse(next)
+                                if next.kind
+                                    == ratatui::crossterm::event::MouseEventKind::Moved =>
+                            {
+                                last = next;
+                            }
+                            _ => break,
+                        }
+                    }
+                    app.mouse_pos = Some((last.column, last.row));
+                    Some(Event::Mouse(last))
+                } else {
+                    app.mouse_pos = Some((mouse_event.column, mouse_event.row));
+                    None
+                }
+            } else {
+                None
+            };
+            if let Some(ev2) = _coalesced {
+                ev = ev2;
+            }
+            let size = terminal.size().context("failed to get terminal size")?;
+            let area = Rect::new(0, 0, size.width, size.height);
+            if crate::events::handle_global_popups_and_palette(app, ev.clone(), area) {
+                return Ok(());
+            }
+            if let Event::Mouse(ref mouse_event) = ev
+                && crate::events::handle_global_popup_mouse(app, mouse_event, area)
+            {
+                return Ok(());
+            }
+            match ev {
+                Event::Key(key) if key.kind == KeyEventKind::Press => {
+                    let handled = match app.mode {
+                        ViewMode::List => handle_list_keys(app, key),
+                        ViewMode::Help => {
+                            handle_help_keys(app, key);
+                            false
+                        }
+                        ViewMode::Edit => handle_edit_keys(app, key, focus),
+                        ViewMode::Setup => {
+                            crate::events::handle_setup_keys(app, key);
+                            false
+                        }
+                        ViewMode::Graph => {
+                            if let Some(mut graf) = app.graph_state.take() {
+                                let res = graf.overlay_handle_event(Event::Key(key), app, area);
+                                app.graph_state = Some(graf);
+                                match res? {
+                                    crate::overlay::OverlayResult::NoteOpened(note_id) => {
+                                        if let Err(e) = app.config.save() {
+                                            app.set_temporary_status(&format!(
+                                                "Failed to save config: {e}"
+                                            ));
+                                        }
+                                        app.graph_state = None;
+                                        app.mode = ViewMode::List;
+
+                                        app.reload_theme();
+                                        app.open_note_from_graph(&note_id);
+                                    }
+                                    crate::overlay::OverlayResult::OpenHelp(tab) => {
+                                        app.reload_theme();
+                                        app.open_help_page_with_tab(tab);
+                                    }
+                                    crate::overlay::OverlayResult::Exit => {
+                                        if let Err(e) = app.config.save() {
+                                            app.set_temporary_status(&format!(
+                                                "Failed to save config: {e}"
+                                            ));
+                                        }
+
+                                        app.graph_state = None;
+                                        app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
+
+                                        app.reload_theme();
+                                    }
+                                    _ => {}
+                                }
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                        ViewMode::Draw => {
+                            if let Some(mut draw) = app.draw_state.take() {
+                                let res = draw.overlay_handle_event(Event::Key(key), app, area);
+                                app.draw_state = Some(draw);
+                                match res? {
+                                    crate::overlay::OverlayResult::Exit => {
+                                        app.draw_state = None;
+                                        app.close_draw_view();
+                                    }
+                                    crate::overlay::OverlayResult::OpenHelp(tab) => {
+                                        app.reload_theme();
+                                        app.open_help_page_with_tab(tab);
+                                    }
+                                    _ => {}
+                                }
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                        ViewMode::Canvas => {
+                            if let Some(mut canvas) = app.canvas_state.take() {
+                                let res = canvas.overlay_handle_event(Event::Key(key), app, area);
+                                app.canvas_state = Some(canvas);
+                                match res? {
+                                    crate::overlay::OverlayResult::OpenHelp(tab) => {
+                                        app.reload_theme();
+                                        app.open_help_page_with_tab(tab);
+                                    }
+                                    crate::overlay::OverlayResult::Exit => {
+                                        app.close_canvas_view();
+                                    }
+                                    _ => {}
+                                }
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                        ViewMode::Backup => {
+                            if let Some(mut backup) = app.backup_state.take() {
+                                let res = backup.overlay_handle_event(Event::Key(key), app, area);
+                                app.backup_state = Some(backup);
+                                match res? {
+                                    crate::overlay::OverlayResult::Exit => {
+                                        app.reload_config();
+                                        app.backup_state = None;
+                                        app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
+
+                                        app.reload_theme();
+                                    }
+                                    crate::overlay::OverlayResult::OpenHelp(tab) => {
+                                        app.reload_theme();
+                                        app.open_help_page_with_tab(tab);
+                                    }
+                                    _ => {}
+                                }
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                        ViewMode::Outline => {
+                            if let Some(mut tree) = app.outline_state.take() {
+                                let res = tree.overlay_handle_event(Event::Key(key), app, area);
+                                app.outline_state = Some(tree);
+                                match res? {
+                                    crate::overlay::OverlayResult::Exit => {
+                                        app.outline_state = None;
+                                        app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
+
+                                        app.reload_theme();
+                                    }
+                                    crate::overlay::OverlayResult::JumpToLine {
+                                        note_id: _,
+                                        line: _,
+                                    } => {
+                                        app.outline_state = None;
+                                        app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
+
+                                        app.reload_theme();
+                                    }
+                                    crate::overlay::OverlayResult::OpenHelp(tab) => {
+                                        app.reload_theme();
+                                        app.open_help_page_with_tab(tab);
+                                    }
+                                    _ => {}
+                                }
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                    };
+                    let _ = handled;
+                }
+                Event::Mouse(mouse_event) => {
+                    let size = terminal.size().context("failed to get terminal size")?;
+                    let area = Rect::new(0, 0, size.width, size.height);
+                    match app.mode {
+                        ViewMode::List => {
+                            handle_list_mouse(app, mouse_event, area);
+                            let is_drag = matches!(
+                                mouse_event.kind,
+                                ratatui::crossterm::event::MouseEventKind::Drag(_)
+                            );
+                            if is_drag {
+                                while events.poll(Duration::ZERO)? {
+                                    match events.read()? {
+                                        Event::Mouse(next_mouse) => {
+                                            app.mouse_pos =
+                                                Some((next_mouse.column, next_mouse.row));
+                                            handle_list_mouse(app, next_mouse, area);
+                                        }
+                                        _ => break,
+                                    }
+                                }
+                            }
+                        }
+                        ViewMode::Edit => {
+                            handle_edit_mouse(
+                                app,
+                                mouse_event,
+                                area,
+                                focus,
+                                mouse_selecting,
+                                mouse_dragged,
+                            );
+                            if matches!(
+                                mouse_event.kind,
+                                ratatui::crossterm::event::MouseEventKind::Drag(_)
+                            ) {
+                                while events.poll(Duration::ZERO)? {
+                                    match events.read()? {
+                                        Event::Mouse(next) => {
+                                            app.mouse_pos = Some((next.column, next.row));
+                                            handle_edit_mouse(
+                                                app,
+                                                next,
+                                                area,
+                                                focus,
+                                                mouse_selecting,
+                                                mouse_dragged,
+                                            );
+                                        }
+                                        _ => break,
+                                    }
+                                }
+                            }
+                        }
+                        ViewMode::Help => {
+                            handle_help_mouse(app, mouse_event, area);
+                        }
+                        ViewMode::Graph => {
+                            let mut is_drag = false;
+                            if let Some(mut graf) = app.graph_state.take() {
+                                is_drag = matches!(
+                                    mouse_event.kind,
+                                    ratatui::crossterm::event::MouseEventKind::Drag(_)
+                                );
+                                let result =
+                                    graf.overlay_handle_event(Event::Mouse(mouse_event), app, area);
+                                app.graph_state = Some(graf);
+                                match result? {
+                                    crate::overlay::OverlayResult::NoteOpened(note_id) => {
+                                        if let Err(e) = app.config.save() {
+                                            app.set_temporary_status(&format!(
+                                                "Failed to save config: {e}"
+                                            ));
+                                        }
+                                        app.graph_state = None;
+                                        app.mode = ViewMode::List;
+
+                                        app.reload_theme();
+                                        app.open_note_from_graph(&note_id);
+                                    }
+                                    crate::overlay::OverlayResult::OpenHelp(tab) => {
+                                        app.reload_theme();
+                                        app.open_help_page_with_tab(tab);
+                                    }
+                                    crate::overlay::OverlayResult::Exit => {
+                                        if let Err(e) = app.config.save() {
+                                            app.set_temporary_status(&format!(
+                                                "Failed to save config: {e}"
+                                            ));
+                                        }
+
+                                        app.graph_state = None;
+                                        app.mode = app.return_mode.take().unwrap_or(ViewMode::List);
+
+                                        app.reload_theme();
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            if is_drag && let Some(mut graf) = app.graph_state.take() {
+                                drain_queued_mouse_events(&mut graf, app, area, events)?;
+                                app.graph_state = Some(graf);
+                            }
+                        }
+                        ViewMode::Draw => {
+                            let mut coalesce = false;
+                            if let Some(mut draw) = app.draw_state.take() {
+                                coalesce = matches!(
+                                    mouse_event.kind,
+                                    ratatui::crossterm::event::MouseEventKind::Drag(_)
+                                        | ratatui::crossterm::event::MouseEventKind::ScrollUp
+                                        | ratatui::crossterm::event::MouseEventKind::ScrollDown
+                                );
+                                let result =
+                                    draw.overlay_handle_event(Event::Mouse(mouse_event), app, area);
+                                app.draw_state = Some(draw);
+                                match result? {
+                                    crate::overlay::OverlayResult::Exit => {
+                                        app.draw_state = None;
+                                        app.close_draw_view();
+                                    }
+                                    crate::overlay::OverlayResult::OpenHelp(tab) => {
+                                        app.reload_theme();
+                                        app.open_help_page_with_tab(tab);
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            if coalesce && let Some(mut draw) = app.draw_state.take() {
+                                drain_queued_mouse_events(&mut draw, app, area, events)?;
+                                app.draw_state = Some(draw);
+                            }
+                        }
+                        ViewMode::Canvas => {
+                            let mut coalesce = false;
+                            if let Some(mut canvas) = app.canvas_state.take() {
+                                coalesce = matches!(
+                                    mouse_event.kind,
+                                    ratatui::crossterm::event::MouseEventKind::Drag(_)
+                                        | ratatui::crossterm::event::MouseEventKind::ScrollUp
+                                        | ratatui::crossterm::event::MouseEventKind::ScrollDown
+                                );
+                                let _ = canvas.overlay_handle_event(
+                                    Event::Mouse(mouse_event),
+                                    app,
+                                    area,
+                                )?;
+                                app.canvas_state = Some(canvas);
+                            }
+                            if coalesce && let Some(mut canvas) = app.canvas_state.take() {
+                                drain_queued_mouse_events(&mut canvas, app, area, events)?;
+                                app.canvas_state = Some(canvas);
+                            }
+                        }
+                        ViewMode::Backup => {
+                            if let Some(mut backup) = app.backup_state.take() {
+                                let _ = backup.overlay_handle_event(
+                                    Event::Mouse(mouse_event),
+                                    app,
+                                    area,
+                                )?;
+                                app.backup_state = Some(backup);
+                            }
+                        }
+                        ViewMode::Outline => {
+                            if let Some(mut tree) = app.outline_state.take() {
+                                let _ = tree.overlay_handle_event(
+                                    Event::Mouse(mouse_event),
+                                    app,
+                                    area,
+                                )?;
+                                app.outline_state = Some(tree);
+                            }
+                        }
+                        ViewMode::Setup => {
+                            crate::events::handle_setup_mouse(app, mouse_event, area);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        Event::Paste(data) => {
+            if crate::events::handle_bracketed_paste(app, data, focus) {
+                app.set_temporary_status("Pasted from clipboard");
+            }
+        }
+        Event::Resize(_, _) => {}
+        _ => {}
+    }
+    if let Some(msg) = crate::text_edit::take_clipboard_notice() {
+        app.set_temporary_status(msg);
+    }
     Ok(())
 }
 

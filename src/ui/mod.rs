@@ -1726,15 +1726,15 @@ pub fn overlay_markdown_highlight(frame: &mut Frame, app: &mut App, area: Rect) 
         .unwrap_or(area);
 
     // --- Phase 1: rebuild per-source-line style cache only when the doc changed.
-    // Disjoint borrows of app.editor subfields: &editor.lines() + &mut source_highlighter
-    // + &mut cache fields are distinct fields through one &mut binding — allowed by the
-    // borrow checker. Zero clones: highlight_line reads full_doc by &[String].
     {
         let e = &mut app.editor;
         let full_doc: &[String] = e.editor.lines();
         let stale =
             e.md_highlight_lines != full_doc.len() || e.md_highlight_change != e.last_editor_change;
         if stale && show_ln {
+            if e.md_highlight_memo.len() > full_doc.len() * 4 {
+                e.md_highlight_memo.clear();
+            }
             let hl = e.source_highlighter.get_or_insert_with(|| {
                 crate::markdown::SourceHighlighter::new(
                     &app.app_theme,
@@ -1742,9 +1742,24 @@ pub fn overlay_markdown_highlight(frame: &mut Frame, app: &mut App, area: Rect) 
                     app.config.editor.extended_markdown_features,
                 )
             });
-            let mut cache = Vec::with_capacity(full_doc.len());
+            hl.rescan(full_doc);
+            let mut cache: Vec<std::rc::Rc<[ratatui::style::Style]>> =
+                Vec::with_capacity(full_doc.len());
             for (i, line) in full_doc.iter().enumerate() {
-                cache.push(hl.highlight_line(line, i, full_doc));
+                use std::hash::{Hash, Hasher};
+                let mut hasher = std::collections::hash_map::DefaultHasher::new();
+                line.hash(&mut hasher);
+                let key = (hasher.finish(), hl.is_code_line(i));
+                let styles = match e.md_highlight_memo.get(&key) {
+                    Some(rc) => rc.clone(),
+                    None => {
+                        let rc: std::rc::Rc<[ratatui::style::Style]> =
+                            hl.highlight_line(line, i).into();
+                        e.md_highlight_memo.insert(key, rc.clone());
+                        rc
+                    }
+                };
+                cache.push(styles);
             }
             e.md_highlight_cache = cache;
             e.md_highlight_lines = full_doc.len();
@@ -1776,7 +1791,7 @@ pub fn overlay_markdown_highlight(frame: &mut Frame, app: &mut App, area: Rect) 
                 }
             } else if let Ok(n) = trimmed_gutter.parse::<usize>() {
                 if let Some(si) = source_idx {
-                    let styles = cache.get(si).map(Vec::as_slice).unwrap_or(&[]);
+                    let styles = cache.get(si).map(|r| r.as_ref()).unwrap_or(&[]);
                     apply_highlight_styles(buf, &rows_for_line, styles, base_bg);
                 }
                 source_idx = Some(n.saturating_sub(1));
@@ -1784,14 +1799,14 @@ pub fn overlay_markdown_highlight(frame: &mut Frame, app: &mut App, area: Rect) 
             }
         }
         if let Some(si) = source_idx {
-            let styles = cache.get(si).map(Vec::as_slice).unwrap_or(&[]);
+            let styles = cache.get(si).map(|r| r.as_ref()).unwrap_or(&[]);
             apply_highlight_styles(buf, &rows_for_line, styles, base_bg);
         }
     } else {
         // No line numbers: source_idx is unknown, so highlight the displayed text
-        // standalone per frame. Rare path (line numbers default on); left as-is.
+        // standalone per frame.
         let e = &mut app.editor;
-        let full_doc: Vec<String> = e.editor.lines().to_vec();
+        let full_doc: &[String] = e.editor.lines();
         let hl = e.source_highlighter.get_or_insert_with(|| {
             crate::markdown::SourceHighlighter::new(
                 &app.app_theme,
@@ -1799,6 +1814,7 @@ pub fn overlay_markdown_highlight(frame: &mut Frame, app: &mut App, area: Rect) 
                 app.config.editor.extended_markdown_features,
             )
         });
+        hl.rescan(full_doc);
         for y in inner.top()..inner.bottom() {
             let displayed: String = (content_left..inner.right())
                 .filter_map(|x| buf.cell((x, y)).map(|c| c.symbol()))
@@ -1806,7 +1822,7 @@ pub fn overlay_markdown_highlight(frame: &mut Frame, app: &mut App, area: Rect) 
             if displayed.is_empty() {
                 continue;
             }
-            let styles = hl.highlight_line(&displayed, 0, &full_doc);
+            let styles = hl.highlight_line(&displayed, 0);
             let mut ci = 0usize;
             for x in content_left..inner.right() {
                 if ci >= styles.len() {
