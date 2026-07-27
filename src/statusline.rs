@@ -436,13 +436,7 @@ impl StatuslineContext<'_> {
                     .unwrap_or(false);
                 Some((if on { "on" } else { "off" }).into())
             }
-            "tag_to_assign" => Some(
-                self.app
-                    .and_then(|a| a.list.tag_to_assign.as_deref())
-                    .unwrap_or("")
-                    .to_string()
-                    .into(),
-            ),
+            "tag_to_assign" => Some("".into()),
             "search" => {
                 let q = self
                     .app

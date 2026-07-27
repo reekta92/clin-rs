@@ -95,8 +95,8 @@ Drop an existing Obsidian vault into `clin` and it works out of the box. Native 
 
 ## Dependencies
 These are highly recommended for the best experience:
-- **A nerd font** — required for rendering **glyphs** which are highly used around the UI.
-- **A modern terminal** — such as `kitty`, `ghostty` etc.
+- **A nerd font** — required for rendering **glyphs** which are highly used around the UI. `Jetbrains Mono Nerd Font` is highly recommended, see [nerd fonts.](https://www.nerdfonts.com/font-downloads)
+- **A modern terminal** — such as `kitty`, `ghostty`, `alacritty`, `foot` etc. preferably a terminal with **image protocol support**. **Note that some shortcuts might conflict with a specific terminals shortcuts** in that case you can either customize the shortcuts of the `clin` or your terminal to avoid conflicts.
 
 ---
 

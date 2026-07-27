@@ -674,17 +674,10 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     } else {
         "Notes"
     };
-    let in_select_mode = app.list.list_mode == crate::list_view::ListMode::Select
-        || app.list.tag_to_assign.is_some();
+    let in_select_mode = app.list.list_mode == crate::list_view::ListMode::Select;
     if in_select_mode {
-        let mode_label = if app.list.tag_to_assign.is_some() {
-            "TAG MODE"
-        } else {
-            "SELECT MODE"
-        };
         let badge_text = format!(
-            " {} \u{2014} {} selected ",
-            mode_label,
+            " SELECT MODE \u{2014} {} selected ",
             app.list.selected_indices.len()
         );
         let header_rect = chunks[0];
@@ -1811,23 +1804,14 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
     let default_hints = format_keybind_hints(&app.app_theme, &hints_items);
 
     let hint = if in_select_mode {
-        if app.list.tag_to_assign.is_some() {
-            let tag_items = vec![
-                (kb.display_list(ListAction::ToggleSelectItem), "toggle"),
-                (kb.display_list(ListAction::Confirm), "apply tag"),
-                (kb.display_list(ListAction::Cancel), "cancel"),
-            ];
-            format_keybind_hints(&app.app_theme, &tag_items)
-        } else {
-            let select_items = vec![
-                (kb.display_list(ListAction::ToggleSelectItem), "toggle"),
-                (kb.display_list(ListAction::MoveNote), "move"),
-                (kb.display_list(ListAction::ManageTags), "tag"),
-                (kb.display_list(ListAction::Delete), "delete"),
-                (kb.display_list(ListAction::ToggleSelectMode), "exit"),
-            ];
-            format_keybind_hints(&app.app_theme, &select_items)
-        }
+        let select_items = vec![
+            (kb.display_list(ListAction::ToggleSelectItem), "toggle"),
+            (kb.display_list(ListAction::MoveNote), "move"),
+            (kb.display_list(ListAction::ManageTags), "tag"),
+            (kb.display_list(ListAction::Delete), "delete"),
+            (kb.display_list(ListAction::ToggleSelectMode), "exit"),
+        ];
+        format_keybind_hints(&app.app_theme, &select_items)
     } else if app.layout_edit {
         let layout_items = vec![
             ("drag".to_string(), "borders/panes"),

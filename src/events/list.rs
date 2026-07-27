@@ -66,21 +66,14 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
         return false;
     }
 
-    if app.list.list_mode == ListMode::Select {
-        if crate::events::is_cancel_popup(&app.keybinds, &key, false) {
-            app.list.tag_to_assign = None;
-            app.list.list_mode = ListMode::Normal;
-            app.list.selected_indices.clear();
-            app.refresh_visual_list();
-            app.clamp_visual_index();
-            return false;
-        }
-        if key.code == KeyCode::Enter {
-            if let Some(tag) = app.list.tag_to_assign.take() {
-                app.apply_tag_to_selected(tag);
-            }
-            return false;
-        }
+    if app.list.list_mode == ListMode::Select
+        && crate::events::is_cancel_popup(&app.keybinds, &key, false)
+    {
+        app.list.list_mode = ListMode::Normal;
+        app.list.selected_indices.clear();
+        app.refresh_visual_list();
+        app.clamp_visual_index();
+        return false;
     }
     // Universal back/quit (override-proof): bare q/Esc quits from the list root.
     if crate::events::is_universal_quit_key(&key) {
@@ -118,9 +111,6 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 return false;
             }
             ListAction::ToggleSelectMode => {
-                if app.list.tag_to_assign.is_some() {
-                    return false;
-                }
                 match app.list.list_mode {
                     ListMode::Normal => {
                         app.list.list_mode = ListMode::Select;
@@ -931,8 +921,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
             for tile in &app.list.grid_tiles {
                 if contains_cell(tile.rect, mouse_event.column, mouse_event.row) {
                     let clicked = tile.visual_index;
-                    let is_select_mode = app.list.list_mode == crate::list_view::ListMode::Select
-                        || app.list.tag_to_assign.is_some();
+                    let is_select_mode = app.list.list_mode == crate::list_view::ListMode::Select;
                     if is_select_mode {
                         if !app.is_selectable_index(clicked) {
                             return;
@@ -1022,8 +1011,7 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         {
             app.list.note_drag = Some(clicked_visual_index);
         }
-        let is_select_mode = app.list.list_mode == crate::list_view::ListMode::Select
-            || app.list.tag_to_assign.is_some();
+        let is_select_mode = app.list.list_mode == crate::list_view::ListMode::Select;
 
         if is_select_mode {
             if !app.is_selectable_index(clicked_visual_index) {

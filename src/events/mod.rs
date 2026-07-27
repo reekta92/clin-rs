@@ -892,35 +892,6 @@ impl crate::popups::ActivePopup {
                     return true;
                 }
 
-                if key.code == KeyCode::Char('s') && key.modifiers.contains(KeyModifiers::CONTROL) {
-                    let tag_text = popup.input.lines().join("");
-                    let tag = tag_text
-                        .split(',')
-                        .next()
-                        .map(|s| s.trim().to_string())
-                        .filter(|s| !s.is_empty());
-                    if let Some(tag) = tag {
-                        app.list.tag_to_assign = Some(tag);
-                        app.list.list_mode = crate::list_view::ListMode::Select;
-                        app.list.selected_indices.clear();
-                        app.refresh_visual_list();
-                        app.clamp_visual_index();
-                        while !app.is_selectable_index(app.list.visual_index)
-                            && app.list.visual_index + 1 < app.list.visual_list.len()
-                        {
-                            app.list.visual_index += 1;
-                        }
-                        if app.is_selectable_index(app.list.visual_index) {
-                            app.list.selected_indices.insert(app.list.visual_index);
-                        }
-                        app.set_temporary_status_static(
-                            "TAG MODE: Select notes to apply tag, Enter to confirm, Esc to cancel",
-                        );
-                    } else {
-                        app.set_temporary_status_static("Enter a tag name first");
-                    }
-                    return true;
-                }
 
                 if crate::events::is_cancel_popup(&app.keybinds, &key, true) {
                     return true;

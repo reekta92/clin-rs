@@ -89,6 +89,7 @@ pub enum TagPopupFocus {
 
 pub struct TagPopup {
     pub note_id: String,
+    pub batch_note_ids: Option<Vec<String>>,
     pub input: TextArea<'static>,
     pub all_tags: Vec<String>,
     pub suggestions: Vec<String>,

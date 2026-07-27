@@ -16,6 +16,60 @@ impl App {
     }
 
     pub fn begin_manage_tags(&mut self) {
+        let in_select_mode = self.list.list_mode == crate::list_view::ListMode::Select;
+
+        if in_select_mode && !self.list.selected_indices.is_empty() {
+            // Batch mode: apply tags to all selected notes
+            let batch_ids: Vec<String> = self
+                .list
+                .selected_indices
+                .iter()
+                .filter_map(|&idx| {
+                    if let Some(VisualItem::Note { summary_idx, .. }) =
+                        self.list.visual_list.get(idx)
+                    {
+                        Some(self.notes[*summary_idx].id.clone())
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            if batch_ids.is_empty() {
+                self.set_temporary_status_static("No taggable notes selected");
+                return;
+            }
+
+            // Seed input with tags from the focused note
+            let current_tags = if let Some(VisualItem::Note { summary_idx, .. }) =
+                self.list.visual_list.get(self.list.visual_index)
+            {
+                self.notes[*summary_idx].tags.clone()
+            } else {
+                Vec::new()
+            };
+
+            let all_tags = self.collect_live_tags();
+            let mut input = crate::ui::make_popup_textarea(&self.app_theme, "Add tags...");
+            input.insert_str(current_tags.join(", "));
+
+            self.popups.active = Some(crate::popups::ActivePopup::Tag(TagPopup {
+                note_id: batch_ids.first().cloned().unwrap_or_default(),
+                batch_note_ids: Some(batch_ids),
+                input,
+                all_tags,
+                suggestions: Vec::new(),
+                suggestion_index: 0,
+                focus: crate::popups::TagPopupFocus::Input,
+                all_tags_selected: 0,
+                scroll_offset: 0,
+                last_scroll: None,
+            }));
+            self.update_tag_suggestions();
+            return;
+        }
+
+        // Single-note mode (existing behavior)
         if let Some(VisualItem::Note { summary_idx, .. }) =
             self.list.visual_list.get(self.list.visual_index)
         {
@@ -40,6 +94,7 @@ impl App {
 
             self.popups.active = Some(crate::popups::ActivePopup::Tag(TagPopup {
                 note_id: note.id.clone(),
+                batch_note_ids: None,
                 input,
                 all_tags,
                 suggestions: Vec::new(),
@@ -65,6 +120,37 @@ impl App {
                 .filter(|s| !s.is_empty() && seen.insert(s.clone()))
                 .collect();
 
+            if let Some(batch_ids) = popup.batch_note_ids {
+                // Batch mode: apply tags to all selected notes
+                let mut count = 0;
+                let mut failed = 0;
+                for note_id in &batch_ids {
+                    if let Ok(mut note) = self.storage.load_note(note_id) {
+                        note.tags = tags.clone();
+                        if self.storage.save_note(note_id, &note).is_ok() {
+                            self.enqueue_backup(format!("auto: {}", note.title));
+                            count += 1;
+                        } else {
+                            failed += 1;
+                        }
+                    }
+                }
+                self.list.selected_indices.clear();
+                self.list.list_mode = crate::list_view::ListMode::Normal;
+                self.refresh_visual_list();
+                self.clamp_visual_index();
+                self.request_notes_reconcile();
+                self.set_temporary_status(&format!("Tags applied to {count} note(s)"));
+                if failed > 0 {
+                    let text = format!("Failed to update tags on {failed} note(s)");
+                    self.set_temporary_status(&text);
+                    self.messages
+                        .push(text, crate::app::messages::MessageSeverity::Warning);
+                }
+                return;
+            }
+
+            // Single-note mode
             let ext = std::path::Path::new(&popup.note_id)
                 .extension()
                 .and_then(|e| e.to_str())
@@ -268,54 +354,5 @@ impl App {
             popup.input.insert_str(&new_text);
         }
         self.update_tag_suggestions();
-    }
-
-    pub fn apply_tag_to_selected(&mut self, tag: String) {
-        let mut count = 0;
-        let mut failed = 0;
-        let indices: Vec<usize> = self.list.selected_indices.iter().copied().collect();
-
-        for &idx in &indices {
-            if let Some(crate::list_view::VisualItem::Note { summary_idx, .. }) =
-                self.list.visual_list.get(idx)
-            {
-                let note = &self.notes[*summary_idx];
-                let note_id = note.id.clone();
-                let note_title = note.title.clone();
-                let ext = std::path::Path::new(&note_id)
-                    .extension()
-                    .and_then(|e| e.to_str())
-                    .unwrap_or("");
-
-                if ext != "md" && ext != "txt" && ext != "clin" {
-                    continue;
-                }
-
-                if let Ok(mut loaded) = self.storage.load_note(&note_id) {
-                    if !loaded.tags.contains(&tag) {
-                        loaded.tags.push(tag.clone());
-                    }
-                    if self.storage.save_note(&note_id, &loaded).is_ok() {
-                        self.enqueue_backup(format!("auto: {}", note_title));
-                        count += 1;
-                    } else {
-                        failed += 1;
-                    }
-                }
-            }
-        }
-
-        self.list.selected_indices.clear();
-        self.list.list_mode = crate::list_view::ListMode::Normal;
-
-        self.request_notes_reconcile();
-
-        self.set_temporary_status(&format!("Tag '{tag}' applied to {count} note(s)"));
-        if failed > 0 {
-            let text = format!("Failed to update tags on {failed} note(s)");
-            self.set_temporary_status(&text);
-            self.messages
-                .push(text, crate::app::messages::MessageSeverity::Warning);
-        }
     }
 }
