@@ -1296,7 +1296,7 @@ pub fn line_from_segments<'a>(
     }
 
     // Every non-Classic style splits composite segments into per-term cells.
-    let split_cells = !matches!(theme.hint_bar_style, crate::config::HintBarStyle::Classic);
+    let split_cells = !matches!(theme.hint_bar_style, crate::config::HintBarStyle::Classic | crate::config::HintBarStyle::Compact);
 
     let flat: Vec<FlatSegment> = if split_cells {
         let mut out = Vec::new();
@@ -1378,6 +1378,49 @@ pub fn line_from_segments<'a>(
                     FlatSegment::Composite(comp_spans) => {
                         if !is_header_left && prev_was_cell {
                             spans.push(Span::styled(" · ", Style::default().fg(theme.muted)));
+                        }
+                        spans.extend(comp_spans);
+                        prev_was_cell = false;
+                    }
+                    FlatSegment::Splittable(_) => unreachable!(),
+                }
+            }
+        }
+        crate::config::HintBarStyle::Compact => {
+            // Flat text like Classic but no · dots, single space separation.
+            let palette = bg_colors;
+            let mut cell_idx = 0;
+            let mut prev_was_cell = false;
+            for seg in flat {
+                match seg {
+                    FlatSegment::Cell(text) => {
+                        let style = if is_header_left && cell_idx == 0 {
+                            Style::default()
+                                .fg(theme.highlight_fg)
+                                .bg(theme.heading)
+                                .add_modifier(Modifier::BOLD)
+                        } else if is_header_left {
+                            Style::default().fg(theme.fg)
+                        } else {
+                            Style::default()
+                                .fg(palette[cell_idx % palette.len()])
+                                .add_modifier(Modifier::BOLD)
+                        };
+                        if prev_was_cell {
+                            spans.push(Span::raw(" "));
+                        }
+                        let text_to_render = if is_header_left && cell_idx == 0 {
+                            format!(" {} ", text.trim())
+                        } else {
+                            text
+                        };
+                        spans.push(Span::styled(text_to_render, style));
+                        cell_idx += 1;
+                        prev_was_cell = true;
+                    }
+                    FlatSegment::Composite(comp_spans) => {
+                        if prev_was_cell {
+                            spans.push(Span::raw(" "));
                         }
                         spans.extend(comp_spans);
                         prev_was_cell = false;

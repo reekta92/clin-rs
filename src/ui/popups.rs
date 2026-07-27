@@ -1155,7 +1155,7 @@ pub fn ext_badge_spans<'a>(
             spans.push(Span::styled("]", Style::default().fg(theme.fg)));
             spans.push(Span::raw(" "));
         }
-        crate::config::HintBarStyle::Classic => {
+        crate::config::HintBarStyle::Classic | crate::config::HintBarStyle::Compact => {
             spans.push(Span::styled(b.label, b.style));
             spans.push(Span::raw(" "));
         }
@@ -1241,6 +1241,27 @@ pub fn format_keybind_hints<'a>(
     };
 
     match theme.hint_bar_style {
+        crate::config::HintBarStyle::Compact => {
+            let mut spans = Vec::new();
+            for (i, (key, action)) in items.iter().enumerate() {
+                if i > 0 {
+                    spans.push(Span::raw(" "));
+                }
+                spans.push(Span::styled(
+                    key.clone(),
+                    Style::default()
+                        .fg(theme.accent)
+                        .add_modifier(Modifier::BOLD),
+                ));
+                spans.push(Span::raw(" "));
+                let short: String = action.chars().take(3).collect();
+                spans.push(Span::styled(
+                    short,
+                    Style::default().fg(theme.muted),
+                ));
+            }
+            Line::from(spans)
+        }
         crate::config::HintBarStyle::Classic => format_keybind_hints_classic(theme, items),
         style @ (crate::config::HintBarStyle::Sharp
         | crate::config::HintBarStyle::Rounded

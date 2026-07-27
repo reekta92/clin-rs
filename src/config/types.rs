@@ -379,6 +379,7 @@ pub enum HintBarStyle {
     Blurred,
     Chips,
     Brackets,
+    Compact,
     SharpGradient,
     RoundedGradient,
     SlantedGradient,
@@ -387,7 +388,7 @@ pub enum HintBarStyle {
 
 impl HintBarStyle {
     /// Every style in picker/display order.
-    pub const ALL: [HintBarStyle; 12] = [
+    pub const ALL: [HintBarStyle; 13] = [
         HintBarStyle::Classic,
         HintBarStyle::Sharp,
         HintBarStyle::Rounded,
@@ -396,6 +397,7 @@ impl HintBarStyle {
         HintBarStyle::Blurred,
         HintBarStyle::Chips,
         HintBarStyle::Brackets,
+        HintBarStyle::Compact,
         HintBarStyle::SharpGradient,
         HintBarStyle::RoundedGradient,
         HintBarStyle::SlantedGradient,
@@ -413,6 +415,7 @@ impl HintBarStyle {
             HintBarStyle::Blurred => "Blurred",
             HintBarStyle::Chips => "Chips",
             HintBarStyle::Brackets => "Brackets",
+            HintBarStyle::Compact => "Compact",
             HintBarStyle::SharpGradient => "SharpGradient",
             HintBarStyle::RoundedGradient => "RoundedGradient",
             HintBarStyle::SlantedGradient => "SlantedGradient",
@@ -431,6 +434,7 @@ impl HintBarStyle {
             HintBarStyle::Blurred => "blurred",
             HintBarStyle::Chips => "chips",
             HintBarStyle::Brackets => "brackets",
+            HintBarStyle::Compact => "compact",
             HintBarStyle::SharpGradient => "sharp_gradient",
             HintBarStyle::RoundedGradient => "rounded_gradient",
             HintBarStyle::SlantedGradient => "slanted_gradient",
@@ -455,7 +459,7 @@ impl HintBarStyle {
     /// true: Sharp|Rounded|Slanted|Bubbles|Blurred|Chips. false: Classic|Brackets.
     pub fn has_filled_cells(self) -> bool {
         match self {
-            HintBarStyle::Classic | HintBarStyle::Brackets => false,
+            HintBarStyle::Classic | HintBarStyle::Brackets | HintBarStyle::Compact => false,
             HintBarStyle::Sharp
             | HintBarStyle::Rounded
             | HintBarStyle::Slanted
