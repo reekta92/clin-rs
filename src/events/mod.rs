@@ -1933,8 +1933,12 @@ impl crate::popups::ActivePopup {
                             Some(ActivePopup::RemoveTags(popup));
                     }
                     KeyCode::Char('a') => {
-                        for i in 0..popup.tags.len() {
-                            popup.selected.insert(i);
+                        if popup.selected.len() == popup.tags.len() {
+                            popup.selected.clear();
+                        } else {
+                            for i in 0..popup.tags.len() {
+                                popup.selected.insert(i);
+                            }
                         }
                         app.popups.active =
                             Some(ActivePopup::RemoveTags(popup));

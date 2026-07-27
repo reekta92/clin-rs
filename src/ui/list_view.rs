@@ -1808,6 +1808,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             (kb.display_list(ListAction::ToggleSelectItem), "toggle"),
             (kb.display_list(ListAction::MoveNote), "move"),
             (kb.display_list(ListAction::ManageTags), "tag"),
+            (kb.display_list(ListAction::RemoveTagsFromSelected), "remove tags"),
             (kb.display_list(ListAction::Delete), "delete"),
             (kb.display_list(ListAction::ToggleSelectMode), "exit"),
         ];
@@ -2094,7 +2095,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             ]),
             &app.app_theme,
         );
-
+        let total = popup.total_selected;
         let tag_count = popup.tags.len();
         let items: Vec<ListItem> = if tag_count == 0 {
             crate::ui::empty_list_item(&app.app_theme, "No tags to remove")
@@ -2104,22 +2105,24 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 .iter()
                 .enumerate()
                 .map(|(i, tag)| {
-                    let checked = if popup.selected.contains(&i) {
-                        "[✓]"
-                    } else {
-                        "[ ]"
-                    };
-                    let style = if i == popup.cursor {
+                    let count = popup.tag_counts.get(i).copied().unwrap_or(0);
+                    let count_label = if count >= total { "(all)" } else { &format!("({count})") };
+                    let label = format!("  {} {}", tag, count_label);
+                    let is_selected = popup.selected.contains(&i);
+                    let is_cursor = i == popup.cursor;
+                    let style = if is_cursor {
                         Style::default()
                             .fg(app.app_theme.highlight_fg)
                             .bg(app.app_theme.heading)
+                    } else if is_selected {
+                        Style::default()
+                            .fg(app.app_theme.highlight_fg)
+                            .bg(app.app_theme.accent)
+                            .add_modifier(Modifier::BOLD)
                     } else {
                         Style::default()
                     };
-                    ListItem::new(Line::from(Span::styled(
-                        format!(" {} {}", checked, tag),
-                        style,
-                    )))
+                    ListItem::new(Line::from(Span::styled(label, style)))
                 })
                 .collect()
         };

@@ -113,6 +113,8 @@ pub struct RemoveTagsPopup {
     pub scroll_offset: usize,
     pub last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
     pub confirm: Option<ConfirmPopup>,
+    pub tag_counts: Vec<usize>,
+    pub total_selected: usize,
 }
 pub struct FolderPopup {
     pub mode: FolderPopupMode,

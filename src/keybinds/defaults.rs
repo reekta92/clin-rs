@@ -110,7 +110,7 @@ impl Default for Keybinds {
         );
         list.insert(
             ListAction::RemoveTagsFromSelected,
-            vec![KeyCombo::ctrl(KeyCode::Char('d'))],
+            vec![KeyCombo::ctrl(KeyCode::Char('r'))],
         );
         list.insert(
             ListAction::OpenCommandPalette,
@@ -1074,7 +1074,7 @@ impl KeybindPreset {
                 );
                 kb.list.insert(
                     ListAction::RemoveTagsFromSelected,
-                    vec![KeyCombo::ctrl(KeyCode::Char('d'))],
+                    vec![KeyCombo::ctrl(KeyCode::Char('r'))],
                 );
                 kb.list.insert(
                     ListAction::CollapseAll,
@@ -1509,7 +1509,7 @@ impl KeybindPreset {
                 );
                 kb.list.insert(
                     ListAction::RemoveTagsFromSelected,
-                    vec![KeyCombo::ctrl(KeyCode::Char('d'))],
+                    vec![KeyCombo::ctrl(KeyCode::Char('r'))],
                 );
                 kb.list.insert(
                     ListAction::ManageTags,

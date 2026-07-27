@@ -363,19 +363,22 @@ impl App {
             return;
         }
 
-        let mut tags_set: HashSet<String> = HashSet::new();
+        let total = self.list.selected_indices.len();
+        let mut tag_count_map: std::collections::HashMap<String, usize> =
+            std::collections::HashMap::new();
         for &idx in &self.list.selected_indices {
             if let Some(VisualItem::Note { summary_idx, .. }) =
                 self.list.visual_list.get(idx)
             {
                 for tag in &self.notes[*summary_idx].tags {
-                    tags_set.insert(tag.clone());
+                    *tag_count_map.entry(tag.clone()).or_insert(0) += 1;
                 }
             }
         }
 
-        let mut tags: Vec<String> = tags_set.into_iter().collect();
+        let mut tags: Vec<String> = tag_count_map.keys().cloned().collect();
         tags.sort();
+        let tag_counts: Vec<usize> = tags.iter().map(|t| tag_count_map[t]).collect();
 
         if tags.is_empty() {
             self.set_temporary_status_static("Selected notes have no tags to remove");
@@ -389,6 +392,8 @@ impl App {
             scroll_offset: 0,
             last_scroll: None,
             confirm: None,
+            tag_counts,
+            total_selected: total,
         }));
     }
 

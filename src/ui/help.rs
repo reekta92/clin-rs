@@ -1362,6 +1362,7 @@ pub(crate) fn resolve_tip_key(token: &str, kb: &Keybinds) -> String {
             "OpenGraph" => kb.list_keys_display(ListAction::OpenGraph),
             "OpenCanvas" => kb.list_keys_display(ListAction::OpenCanvas),
             "ManageTags" => kb.list_keys_display(ListAction::ManageTags),
+            "RemoveTagsFromSelected" => kb.list_keys_display(ListAction::RemoveTagsFromSelected),
             "OpenTrash" => kb.list_keys_display(ListAction::OpenTrash),
             _ => format!("[ERR:{}]", token),
         },
