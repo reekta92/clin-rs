@@ -1957,7 +1957,6 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             "TAGS",
             PopupSize::Large,
             PopupHints::Keybinds(&[
-                ("Ctrl+S".to_string(), "batch assign"),
                 ("Tab".to_string(), "accept"),
                 ("Enter".to_string(), "save"),
                 ("d".to_string(), "delete from all"),
@@ -2076,6 +2075,110 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             app.mouse_pos,
             app.app_theme.hover_style(),
         );
+    }
+
+    // RemoveTags popup
+    if let Some(crate::popups::ActivePopup::RemoveTags(popup)) = &mut app.popups.active {
+        let content = draw_popup_frame(
+            frame,
+            frame.area(),
+            "REMOVE TAGS",
+            PopupSize::Large,
+            PopupHints::Keybinds(&[
+                ("j/k".to_string(), "move"),
+                ("Space".to_string(), "toggle"),
+                ("a".to_string(), "all"),
+                ("Enter".to_string(), "remove"),
+                ("d".to_string(), "remove all"),
+                ("Esc".to_string(), "cancel"),
+            ]),
+            &app.app_theme,
+        );
+
+        let tag_count = popup.tags.len();
+        let items: Vec<ListItem> = if tag_count == 0 {
+            crate::ui::empty_list_item(&app.app_theme, "No tags to remove")
+        } else {
+            popup
+                .tags
+                .iter()
+                .enumerate()
+                .map(|(i, tag)| {
+                    let checked = if popup.selected.contains(&i) {
+                        "[✓]"
+                    } else {
+                        "[ ]"
+                    };
+                    let style = if i == popup.cursor {
+                        Style::default()
+                            .fg(app.app_theme.highlight_fg)
+                            .bg(app.app_theme.heading)
+                    } else {
+                        Style::default()
+                    };
+                    ListItem::new(Line::from(Span::styled(
+                        format!(" {} {}", checked, tag),
+                        style,
+                    )))
+                })
+                .collect()
+        };
+
+        let tags_list = build_list_widget(items, &app.app_theme)
+            .block(
+                Block::default()
+                    .style(app.app_theme.bg_style())
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(app.app_theme.heading)),
+            )
+            .highlight_style(
+                Style::default()
+                    .fg(app.app_theme.highlight_fg)
+                    .bg(app.app_theme.highlight_bg)
+                    .add_modifier(Modifier::BOLD),
+            )
+            .highlight_symbol("  ");
+
+        let state = crate::ui::render_list_with_selection(
+            frame,
+            tags_list,
+            content,
+            (!popup.tags.is_empty()).then_some(popup.cursor),
+            popup.scroll_offset,
+        );
+        popup.scroll_offset = state.offset();
+        let inner_tags = Rect {
+            x: content.x + 1,
+            y: content.y + 1,
+            width: content.width.saturating_sub(2),
+            height: content.height.saturating_sub(2),
+        };
+        crate::ui::paint_list_hover(
+            frame,
+            inner_tags,
+            &state,
+            popup.tags.len(),
+            app.mouse_pos,
+            app.app_theme.hover_style(),
+        );
+        popup.last_scroll = Some(crate::ui::scrollbar::ScrollbarMeta {
+            track: crate::ui::scrollbar::track_rect(inner_tags),
+            content_len: popup.tags.len(),
+            viewport_len: inner_tags.height as usize,
+        });
+        crate::ui::scrollbar::draw_scrollbar(
+            frame,
+            inner_tags,
+            popup.tags.len(),
+            inner_tags.height as usize,
+            popup.cursor,
+            popup.tags.len().saturating_sub(1),
+            &app.app_theme,
+        );
+
+        if let Some(confirm) = &popup.confirm {
+            draw_confirm_popup(frame, confirm, frame.area(), &app.app_theme);
+        }
     }
 
     if let Some(crate::popups::ActivePopup::FolderPicker(picker)) = &mut app.popups.active {

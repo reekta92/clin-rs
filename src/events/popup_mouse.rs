@@ -992,6 +992,9 @@ impl crate::popups::ActivePopup {
                 true
             }
 
+
+            // RemoveTags popup: simple list, mouse handled naturally
+            crate::popups::ActivePopup::RemoveTags(_) => true,
             // ContextMenu is handled in handle_global_popup_mouse, not here
             ContextMenu(_) => {
                 unreachable!(

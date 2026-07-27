@@ -29,6 +29,7 @@ pub enum ConfirmAction {
         folder_paths: Vec<String>,
     },
     QuitApp,
+    RemoveAllTagsFromSelected,
 }
 
 pub struct ConfirmPopup {
@@ -103,6 +104,15 @@ pub struct TagPopup {
 pub enum FolderPopupMode {
     Create { parent_path: String },
     Rename { old_path: String },
+}
+
+pub struct RemoveTagsPopup {
+    pub tags: Vec<String>,
+    pub selected: std::collections::HashSet<usize>,
+    pub cursor: usize,
+    pub scroll_offset: usize,
+    pub last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
+    pub confirm: Option<ConfirmPopup>,
 }
 pub struct FolderPopup {
     pub mode: FolderPopupMode,
@@ -443,6 +453,7 @@ pub enum ActivePopup {
     Tag(TagPopup),
     IconMode(IconModePopup),
     HintBarStyle(HintBarStylePopup),
+    RemoveTags(RemoveTagsPopup),
     KeybindPreset(KeybindPresetPopup),
     Sort(SortPopup),
     Folder(FolderPopup),

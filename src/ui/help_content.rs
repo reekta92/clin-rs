@@ -562,7 +562,7 @@ const NOTES_POPUPS: &[PopupHelp] = &[
     },
     PopupHelp {
         name: "Tags",
-        body: "Press {list:ManageTags} to open the **Tag Manager** for the selected note. Add tags as a comma-separated list in the input; ``Tab`` accepts the current suggestion or, once the list is empty, moves focus to the all-tags list (``Shift+Tab`` reverses). In the all-tags list, ``k`` / ``j`` or arrows move and ``d`` / ``Delete`` removes a tag. ``Ctrl+s`` enters **tag mode**: pick multiple notes, then ``Enter`` to apply the tag to all of them. Removing a tag asks for confirmation first.",
+        body: "Press {list:ManageTags} to open the **Tag Manager** for the selected note. Add tags as a comma-separated list in the input; ``Tab`` accepts the current suggestion or, once the list is empty, moves focus to the all-tags list (``Shift+Tab`` reverses). In the all-tags list, ``k`` / ``j`` or arrows move and ``d`` / ``Delete`` removes a tag. Use **Select Mode** (``{list:ToggleSelectMode}``) then ``{list:ManageTags}`` to batch-tag multiple notes. Removing a tag asks for confirmation first.",
     },
     PopupHelp {
         name: "Subnotes",

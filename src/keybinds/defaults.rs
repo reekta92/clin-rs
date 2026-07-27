@@ -109,6 +109,10 @@ impl Default for Keybinds {
             vec![KeyCombo::simple(KeyCode::Char('.'))],
         );
         list.insert(
+            ListAction::RemoveTagsFromSelected,
+            vec![KeyCombo::ctrl(KeyCode::Char('d'))],
+        );
+        list.insert(
             ListAction::OpenCommandPalette,
             vec![
                 KeyCombo::simple(KeyCode::Char(':')),
@@ -1069,6 +1073,10 @@ impl KeybindPreset {
                     vec![KeyCombo::parse("Space .").expect("valid key combo")],
                 );
                 kb.list.insert(
+                    ListAction::RemoveTagsFromSelected,
+                    vec![KeyCombo::ctrl(KeyCode::Char('d'))],
+                );
+                kb.list.insert(
                     ListAction::CollapseAll,
                     vec![KeyCombo::simple(KeyCode::Char('c'))],
                 );
@@ -1498,6 +1506,10 @@ impl KeybindPreset {
                 kb.list.insert(
                     ListAction::CycleSort,
                     vec![KeyCombo::simple(KeyCode::Char('s'))],
+                );
+                kb.list.insert(
+                    ListAction::RemoveTagsFromSelected,
+                    vec![KeyCombo::ctrl(KeyCode::Char('d'))],
                 );
                 kb.list.insert(
                     ListAction::ManageTags,

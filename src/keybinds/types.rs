@@ -36,6 +36,7 @@ pub enum ListAction {
     MoveNote,
     MoveToParent,
     ManageTags,
+    RemoveTagsFromSelected,
     CollapseFolder,
     ExpandFolder,
     OpenCommandPalette,

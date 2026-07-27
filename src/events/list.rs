@@ -258,6 +258,10 @@ pub fn handle_list_keys(app: &mut App, key: KeyEvent) -> bool {
                 app.begin_manage_tags();
                 return false;
             }
+            ListAction::RemoveTagsFromSelected => {
+                app.begin_remove_tags_from_selected();
+                return false;
+            }
             ListAction::ManageSubnotes => {
                 app.open_subnotes_popup();
                 return false;

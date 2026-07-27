@@ -320,6 +320,12 @@ template = """
                 "Quit".into(),
                 false,
             ),
+            ConfirmAction::RemoveAllTagsFromSelected => (
+                "Remove ALL tags from selected notes?".into(),
+                Some("This cannot be undone.".into()),
+                "Remove All".into(),
+                true,
+            ),
         };
 
         self.popups.confirm = Some(ConfirmPopup {
@@ -361,6 +367,9 @@ template = """
                 }
                 ConfirmAction::QuitApp => {
                     self.should_quit = true;
+                }
+                ConfirmAction::RemoveAllTagsFromSelected => {
+                    self.confirm_remove_all_tags();
                 }
             }
         }

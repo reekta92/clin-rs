@@ -115,6 +115,10 @@ pub fn list_action_meta(a: ListAction) -> HelpMeta {
             group: "Actions",
             description: "Manage tags",
         },
+        ListAction::RemoveTagsFromSelected => HelpMeta {
+            group: "Actions",
+            description: "Remove tags from selected notes",
+        },
         ListAction::TogglePin => HelpMeta {
             group: "Actions",
             description: "Toggle pin",

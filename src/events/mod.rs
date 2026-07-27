@@ -179,6 +179,7 @@ pub fn handle_bracketed_paste(
             | ActivePopup::Sort(_)
             | ActivePopup::CreateFormat(_)
             | ActivePopup::ContextMenu(_)
+            | ActivePopup::RemoveTags(_)
             | ActivePopup::TrashView(_) => return false,
         }
     }
@@ -1855,6 +1856,108 @@ impl crate::popups::ActivePopup {
                     }
                     _ => {
                         app.popups.active = Some(ActivePopup::CreateFormat(popup));
+                    }
+                }
+                true
+            }
+
+            ActivePopup::RemoveTags(mut popup) => {
+                // Handle confirm overlay for "remove all tags"
+                if popup.confirm.is_some() {
+                    let action = {
+                        let confirm = popup.confirm.as_mut().expect("confirm popup should be Some");
+                        match key.code {
+                            KeyCode::Left | KeyCode::Char('h') => {
+                                confirm.selected_button = 0;
+                                None
+                            }
+                            KeyCode::Right | KeyCode::Char('l') => {
+                                confirm.selected_button = 1;
+                                None
+                            }
+                            KeyCode::Tab => {
+                                confirm.selected_button =
+                                    (confirm.selected_button + 1) % 2;
+                                None
+                            }
+                            KeyCode::Enter
+                            | KeyCode::Char('y')
+                            | KeyCode::Char('Y') => Some(confirm.selected_button == 0),
+                            KeyCode::Char('n')
+                            | KeyCode::Char('N')
+                            | KeyCode::Esc => Some(false),
+                            _ => None,
+                        }
+                    };
+                    match action {
+                        Some(true) => {
+                            popup.confirm = None;
+                            app.popups.active =
+                                Some(ActivePopup::RemoveTags(popup));
+                            app.confirm_remove_all_tags();
+                        }
+                        Some(false) => {
+                            popup.confirm = None;
+                            app.popups.active =
+                                Some(ActivePopup::RemoveTags(popup));
+                        }
+                        None => {
+                            app.popups.active =
+                                Some(ActivePopup::RemoveTags(popup));
+                        }
+                    }
+                    return true;
+                }
+
+                app.seq_matcher.clear();
+                match key.code {
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        popup.cursor = popup.cursor.saturating_sub(1);
+                        app.popups.active =
+                            Some(ActivePopup::RemoveTags(popup));
+                    }
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        if popup.cursor + 1 < popup.tags.len() {
+                            popup.cursor += 1;
+                        }
+                        app.popups.active =
+                            Some(ActivePopup::RemoveTags(popup));
+                    }
+                    KeyCode::Char(' ') => {
+                        if popup.selected.contains(&popup.cursor) {
+                            popup.selected.remove(&popup.cursor);
+                        } else {
+                            popup.selected.insert(popup.cursor);
+                        }
+                        app.popups.active =
+                            Some(ActivePopup::RemoveTags(popup));
+                    }
+                    KeyCode::Char('a') => {
+                        for i in 0..popup.tags.len() {
+                            popup.selected.insert(i);
+                        }
+                        app.popups.active =
+                            Some(ActivePopup::RemoveTags(popup));
+                    }
+                    KeyCode::Char('d') | KeyCode::Delete => {
+                        app.popups.active =
+                            Some(ActivePopup::RemoveTags(popup));
+                        app.begin_remove_all_tags_from_selected();
+                    }
+                    KeyCode::Enter => {
+                        app.popups.active =
+                            Some(ActivePopup::RemoveTags(popup));
+                        app.confirm_remove_tags_from_selected();
+                        return true;
+                    }
+                    KeyCode::Esc => {
+                        // Close popup
+                        return true;
+                    }
+                    _ => {
+                        app.popups.active =
+                            Some(ActivePopup::RemoveTags(popup));
+                        return true;
                     }
                 }
                 true
