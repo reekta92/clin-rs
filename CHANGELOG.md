@@ -2,11 +2,6 @@
 
 All notable changes to clin are documented in this file.
 
-## [0.10.0-beta.2] - 2026-07-15
-
-### Release
-
-- V0.10.0-beta.0
 ## [0.9.9] - 2026-07-14
 
 ### Fixed
