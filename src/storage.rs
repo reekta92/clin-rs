@@ -1104,7 +1104,7 @@ impl Storage {
 
         let mut out = String::new();
         for ch in source.chars() {
-            let valid = ch.is_ascii_alphanumeric() || matches!(ch, ' ' | '-' | '_' | '.');
+            let valid = ch.is_alphanumeric() || matches!(ch, ' ' | '-' | '_' | '.');
             out.push(if valid { ch } else { '_' });
         }
 

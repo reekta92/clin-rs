@@ -1,7 +1,7 @@
 pub fn sanitize_filename(name: &str) -> String {
     let mut result = String::new();
     for c in name.chars() {
-        if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+        if c.is_alphanumeric() || c == '-' || c == '_' {
             result.push(c.to_ascii_lowercase());
         } else if c == ' ' {
             result.push('_');
