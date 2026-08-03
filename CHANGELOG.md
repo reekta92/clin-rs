@@ -2,6 +2,30 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.9.10] - 2026-08-03
+
+### Fixed
+
+- Use XDG config dir on macOS instead of Library/Application Support
+
+### Miscellaneous
+
+- Revert version to 0.9.9 to allow 0.9.10 release
+- Bump toml from 1.1.3+spec-1.1.0 to 1.1.4+spec-1.1.0
+- Bump clap from 4.6.2 to 4.6.4
+- Bump serde_json from 1.0.150 to 1.0.151
+- Bump anyhow from 1.0.103 to 1.0.104
+- Bump uuid from 1.23.5 to 1.24.0
+- Bump clap from 4.6.1 to 4.6.2
+
+### Styling
+
+- Fix line break in config_dir assignment
+
+### Release
+
+- V0.10.0-beta.2
+- V0.10.0-beta.0
 ## [0.9.9] - 2026-07-14
 
 ### Fixed
