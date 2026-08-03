@@ -1,9 +1,5 @@
 /target/
 /pkg/
-/dev_docs/
-/dev_scripts/
-/info/
-/graphify-out/
-
-# nix build result
+/development/
+*-out/
 /result
