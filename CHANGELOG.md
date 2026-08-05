@@ -2,6 +2,34 @@
 
 All notable changes to clin are documented in this file.
 
+## [0.10.0-rc.7] - 2026-08-05
+
+### Added
+
+- Add Ctrl+d batch tag removal from select mode
+- Split quick-keybinds into columns when terminal too short
+- Add Compact style
+- Add Hexagon hint bar style
+- Add gradient powerline hint bar styles
+
+### Changed
+
+- Merge batch tagging mode into select mode
+
+### Fixed
+
+- Show_all_files = true now shows all files with '?'
+- Use Ctrl+. for remove tags (Ctrl+r collides with RefreshNotes)
+- Use Ctrl+r for batch remove tags (Ctrl+d collides)
+- Show pinned folders in grid with correct colors
+
+### Miscellaneous
+
+- .gitignore and project structure changes
+
+### Performance
+
+- Batch input and cache highlight to kill O(N²) per-keystroke work
 ## [0.10.0-rc.6] - 2026-07-26
 
 ### Added
@@ -45,6 +73,10 @@ All notable changes to clin are documented in this file.
 ### Performance
 
 - Eliminate O(E·N) edge scan and per-frame allocations
+
+### Release
+
+- V0.10.0-rc.6
 ## [0.10.0-rc.5] - 2026-07-24
 
 ### Added
