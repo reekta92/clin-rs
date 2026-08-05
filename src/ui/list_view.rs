@@ -1192,6 +1192,15 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                             .extension()
                             .and_then(|e| e.to_str())
                             .is_some_and(crate::storage::is_image_ext);
+                        let is_unknown = {
+                            let ext = std::path::Path::new(&s.id)
+                                .extension()
+                                .and_then(|e| e.to_str())
+                                .unwrap_or("");
+                            !*is_clin && !*is_draw && !*is_canvas && !is_image
+                                && ext != "md"
+                                && ext != "txt"
+                        };
                         let col = if s.pinned {
                             app.app_theme.pinned
                         } else if *is_clin {
@@ -1215,6 +1224,8 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                             crate::ui::get_char('\u{f005}', '\u{2b50}', app.config.ui.icon_mode)
                         } else if is_image {
                             crate::ui::get_char('\u{f1c5}', '\u{1f5bc}', app.config.ui.icon_mode)
+                        } else if is_unknown {
+                            '?'
                         } else {
                             crate::ui::get_char('\u{f15c}', '\u{1f4c4}', app.config.ui.icon_mode)
                         };
@@ -1224,8 +1235,8 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                             "D"
                         } else if *is_canvas {
                             "C"
-                        } else if is_image {
-                            "IMG"
+                        } else if is_unknown {
+                            "?"
                         } else {
                             "MD"
                         };

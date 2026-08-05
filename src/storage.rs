@@ -1058,6 +1058,26 @@ impl Storage {
                 links: Vec::new(),
                 size_bytes: path.metadata().map(|m| m.len()).unwrap_or(0),
             })
+        } else if ext != "md" && ext != "txt" {
+            let updated_at = fs::metadata(&path)
+                .and_then(|m| m.modified())
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map_or(0, |d| d.as_secs());
+            Ok(NoteSummary {
+                id: id.to_string(),
+                title: path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("Untitled note")
+                    .to_string(),
+                updated_at,
+                folder,
+                tags: Vec::new(),
+                pinned: false,
+                links: Vec::new(),
+                size_bytes: path.metadata().map(|m| m.len()).unwrap_or(0),
+            })
         } else {
             let content = fs::read_to_string(&path)
                 .with_context(|| format!("load_note_summary read failed for {}", path.display()))?;
@@ -2357,6 +2377,44 @@ mod tests {
             result.is_err(),
             "load_note_summary should fail for unreadable file"
         );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_load_note_summary_non_text_file() -> Result<()> {
+        let temp_dir = tempfile::tempdir()?;
+        let data_dir = temp_dir.path().join("data");
+        let config_dir = temp_dir.path().join("config");
+        let notes_dir = temp_dir.path().join("notes");
+        let templates_dir = temp_dir.path().join("templates");
+        fs::create_dir_all(&data_dir)?;
+        fs::create_dir_all(&config_dir)?;
+        fs::create_dir_all(&notes_dir)?;
+        fs::create_dir_all(&templates_dir)?;
+
+        let storage = Storage {
+            data_dir,
+            config_dir,
+            notes_dir: notes_dir.clone(),
+            templates_dir,
+            key: [0u8; 32],
+            skip_dir_patterns: Vec::new(),
+        };
+
+        // Write a binary PDF file with non-UTF-8 bytes
+        let note_path = notes_dir.join("doc.pdf");
+        fs::write(&note_path, b"%PDF-1.4\n\x80\x81\x82")?;
+
+        let result = storage.load_note_summary("doc.pdf");
+        assert!(result.is_ok(), "non-text files should load as metadata-only summaries");
+        let summary = result.unwrap();
+        assert_eq!(summary.title, "doc");
+        assert_eq!(summary.id, "doc.pdf");
+        assert!(summary.tags.is_empty());
+        assert!(!summary.pinned);
+        assert!(summary.links.is_empty());
+        assert!(summary.size_bytes > 0);
 
         Ok(())
     }

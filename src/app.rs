@@ -1238,8 +1238,19 @@ impl App {
                     }
                 }
                 if !summary.pinned && !*is_clin && !*is_draw && !*is_canvas {
-                    let icon =
-                        crate::ui::get_icon("\u{f15c}", "\u{1f4c4}", self.config.ui.icon_mode);
+                    let ext = std::path::Path::new(&summary.id)
+                        .extension()
+                        .and_then(|e| e.to_str())
+                        .unwrap_or("");
+                    let is_unknown = ext != "md"
+                        && ext != "txt"
+                        && !crate::storage::is_image_ext(ext);
+                    let (nerd, unicode) = if is_unknown {
+                        ("\u{3f}", "\u{3f}")
+                    } else {
+                        ("\u{f15c}", "\u{1f4c4}")
+                    };
+                    let icon = crate::ui::get_icon(nerd, unicode, self.config.ui.icon_mode);
                     if !icon.is_empty() {
                         spans.push(Span::styled(
                             format!("{icon} "),

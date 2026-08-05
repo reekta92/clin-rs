@@ -788,4 +788,42 @@ mod tests {
         assert!(!sent);
         assert!(rx.try_recv().is_err());
     }
+
+    #[test]
+    fn load_notes_blocking_includes_pdf_when_show_all() {
+        let tmp = TempDir::new().unwrap();
+        let storage = make_test_storage(tmp.path());
+
+        // Write a markdown note and a binary PDF file
+        std::fs::write(tmp.path().join("a.md"), "# A").unwrap();
+        std::fs::write(tmp.path().join("doc.pdf"), b"%PDF-1.4\n\x80\x81\x82").unwrap();
+
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(1)
+            .build()
+            .unwrap();
+
+        // With show_all=true, both files should appear
+        let load = load_notes_blocking(&storage, &pool, false, true).unwrap();
+        assert!(
+            load.summaries.iter().any(|s| s.id == "a.md"),
+            "md file should appear with show_all=true"
+        );
+        assert!(
+            load.summaries.iter().any(|s| s.id == "doc.pdf"),
+            "PDF should appear with show_all=true"
+        );
+        assert_eq!(load.summaries.len(), 2);
+
+        // With show_all=false, only the md file should appear
+        let load_filtered = load_notes_blocking(&storage, &pool, false, false).unwrap();
+        assert!(
+            load_filtered.summaries.iter().any(|s| s.id == "a.md"),
+            "md file should appear with show_all=false"
+        );
+        assert!(
+            !load_filtered.summaries.iter().any(|s| s.id == "doc.pdf"),
+            "PDF should NOT appear with show_all=false"
+        );
+    }
 }
