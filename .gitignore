@@ -1,5 +1,5 @@
-/target/
-/pkg/
-/development/
+target/
+pkg/
+development/
 *-out/
-/result
+result/
