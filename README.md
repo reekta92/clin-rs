@@ -8,7 +8,7 @@
 <div align="center">
 
 [![Patreon](https://img.shields.io/badge/Patreon-Support%20clin-f96854.svg?logo=patreon&logoColor=white)](https://www.patreon.com/MehmetDag/posts/clin-rs-project-163784358)
-
+[![Crates.io Downloads](https://img.shields.io/crates/d/clin-rs)](https://crates.io/crates/clin-rs)
 </div>
 
 [![CI](https://github.com/reekta92/clin-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/reekta92/clin-rs/actions/workflows/ci.yml)
