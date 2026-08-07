@@ -1,0 +1,127 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Version bump type (ignored for prerelease continuation/graduation, override, overwrite)"
+        required: true
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+      prerelease:
+        description: "Mark this release as a pre-release"
+        required: false
+        type: boolean
+        default: false
+      prerelease_identifier:
+        description: "Pre-release identifier (e.g., rc, beta, alpha)"
+        required: false
+        type: string
+        default: rc
+      override_version:
+        description: "Manually set the version (strict semver, e.g. 1.2.3-rc.0). Ignores 'bump'."
+        required: false
+        type: string
+        default: ""
+      overwrite_release:
+        description: "Rebuild/replace the release at the current version (force-move tag, re-upload assets). Ignores 'bump'."
+        required: false
+        type: boolean
+        default: false
+      target_branch:
+        description: "Branch to base the release on"
+        required: false
+        type: string
+        default: main
+      dry_run:
+        description: "Run gates + version calc + builds WITHOUT push/tag/release/publish"
+        required: false
+        type: boolean
+        default: false
+      skip_gates:
+        description: "Skip quality gates (emergency escape hatch)"
+        required: false
+        type: boolean
+        default: false
+      build_packages:
+        description: "Build .deb and .rpm (x86_64 + aarch64)"
+        required: false
+        type: boolean
+        default: true
+      build_appimage:
+        description: "Build x86_64 AppImage"
+        required: false
+        type: boolean
+        default: true
+      build_dmg:
+        description: "Build DMG for macOS targets"
+        required: false
+        type: boolean
+        default: true
+      build_macos_intel:
+        description: "Also build x86_64-apple-darwin (Intel)"
+        required: false
+        type: boolean
+        default: true
+      build_targets:
+        description: "Which target set to build ('linux-only' = fast iteration)"
+        required: true
+        type: choice
+        options: [all, linux-only]
+        default: all
+      publish_crates:
+        description: "Publish to crates.io"
+        required: false
+        type: boolean
+        default: true
+      publish_aur:
+        description: "Publish to AUR"
+        required: false
+        type: boolean
+        default: true
+      update_docs:
+        description: "Post-release commit updating README/PKGBUILD"
+        required: false
+        type: boolean
+        default: true
+      check_nix:
+        description: "Run nix build check"
+        required: false
+        type: boolean
+        default: true
+      create_discussion:
+        description: "Create a release discussion"
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  release:
+    permissions:
+      contents: write
+    uses: reekta92/shared-workflows/.github/workflows/rust-release.yml@main
+    with:
+      BIN_NAME: "clin"
+      PKG_PREFIX: "clin-rs"
+      AUR_PKGNAME: "clin-rs-bin"
+      SMOKE_ARGS: "-h"
+      bump: ${{ inputs.bump }}
+      prerelease: ${{ inputs.prerelease }}
+      prerelease_identifier: ${{ inputs.prerelease_identifier }}
+      override_version: ${{ inputs.override_version }}
+      overwrite_release: ${{ inputs.overwrite_release }}
+      target_branch: ${{ inputs.target_branch }}
+      dry_run: ${{ inputs.dry_run }}
+      skip_gates: ${{ inputs.skip_gates }}
+      build_packages: ${{ inputs.build_packages }}
+      build_appimage: ${{ inputs.build_appimage }}
+      build_dmg: ${{ inputs.build_dmg }}
+      build_macos_intel: ${{ inputs.build_macos_intel }}
+      build_targets: ${{ inputs.build_targets }}
+      publish_crates: ${{ inputs.publish_crates }}
+      publish_aur: ${{ inputs.publish_aur }}
+      update_docs: ${{ inputs.update_docs }}
+      check_nix: ${{ inputs.check_nix }}
+      create_discussion: ${{ inputs.create_discussion }}
+    secrets: inherit
