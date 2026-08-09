@@ -206,11 +206,10 @@ pub fn handle_bracketed_paste(
             EditFocus::Title => {
                 let normalized = data.replace(['\r', '\n'], " ");
                 app.editor.title_editor.insert_str(normalized);
-                app.request_editor_preview_update();
                 true
             }
             EditFocus::Body => {
-                app.editor.editor.insert_str(&data);
+                app.editor.body.insert_str(&data);
                 app.request_editor_preview_update();
                 true
             }
@@ -238,9 +237,9 @@ pub fn handle_bracketed_paste(
                     return true;
                 }
                 if canvas.editor_focus {
-                    app.editor.editor.insert_str(&data);
-                    // Sync canvas from editor inline (avoid &mut App borrow conflict)
-                    let content = app.editor.editor.lines().join("\n");
+                    canvas.raw_editor.insert_str(&data);
+                    // Sync canvas from raw JSON pane without touching note editor state.
+                    let content = canvas.raw_editor.lines().join("\n");
                     if let Ok(parsed) =
                         serde_json::from_str::<crate::pinstar::data::CanvasData>(&content)
                     {
@@ -892,7 +891,6 @@ impl crate::popups::ActivePopup {
                     }
                     return true;
                 }
-
 
                 if crate::events::is_cancel_popup(&app.keybinds, &key, true) {
                     return true;
@@ -1865,7 +1863,10 @@ impl crate::popups::ActivePopup {
                 // Handle confirm overlay for "remove all tags"
                 if popup.confirm.is_some() {
                     let action = {
-                        let confirm = popup.confirm.as_mut().expect("confirm popup should be Some");
+                        let confirm = popup
+                            .confirm
+                            .as_mut()
+                            .expect("confirm popup should be Some");
                         match key.code {
                             KeyCode::Left | KeyCode::Char('h') => {
                                 confirm.selected_button = 0;
@@ -1876,34 +1877,28 @@ impl crate::popups::ActivePopup {
                                 None
                             }
                             KeyCode::Tab => {
-                                confirm.selected_button =
-                                    (confirm.selected_button + 1) % 2;
+                                confirm.selected_button = (confirm.selected_button + 1) % 2;
                                 None
                             }
-                            KeyCode::Enter
-                            | KeyCode::Char('y')
-                            | KeyCode::Char('Y') => Some(confirm.selected_button == 0),
-                            KeyCode::Char('n')
-                            | KeyCode::Char('N')
-                            | KeyCode::Esc => Some(false),
+                            KeyCode::Enter | KeyCode::Char('y') | KeyCode::Char('Y') => {
+                                Some(confirm.selected_button == 0)
+                            }
+                            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => Some(false),
                             _ => None,
                         }
                     };
                     match action {
                         Some(true) => {
                             popup.confirm = None;
-                            app.popups.active =
-                                Some(ActivePopup::RemoveTags(popup));
+                            app.popups.active = Some(ActivePopup::RemoveTags(popup));
                             app.confirm_remove_all_tags();
                         }
                         Some(false) => {
                             popup.confirm = None;
-                            app.popups.active =
-                                Some(ActivePopup::RemoveTags(popup));
+                            app.popups.active = Some(ActivePopup::RemoveTags(popup));
                         }
                         None => {
-                            app.popups.active =
-                                Some(ActivePopup::RemoveTags(popup));
+                            app.popups.active = Some(ActivePopup::RemoveTags(popup));
                         }
                     }
                     return true;
@@ -1913,15 +1908,13 @@ impl crate::popups::ActivePopup {
                 match key.code {
                     KeyCode::Up | KeyCode::Char('k') => {
                         popup.cursor = popup.cursor.saturating_sub(1);
-                        app.popups.active =
-                            Some(ActivePopup::RemoveTags(popup));
+                        app.popups.active = Some(ActivePopup::RemoveTags(popup));
                     }
                     KeyCode::Down | KeyCode::Char('j') => {
                         if popup.cursor + 1 < popup.tags.len() {
                             popup.cursor += 1;
                         }
-                        app.popups.active =
-                            Some(ActivePopup::RemoveTags(popup));
+                        app.popups.active = Some(ActivePopup::RemoveTags(popup));
                     }
                     KeyCode::Char(' ') => {
                         if popup.selected.contains(&popup.cursor) {
@@ -1929,8 +1922,7 @@ impl crate::popups::ActivePopup {
                         } else {
                             popup.selected.insert(popup.cursor);
                         }
-                        app.popups.active =
-                            Some(ActivePopup::RemoveTags(popup));
+                        app.popups.active = Some(ActivePopup::RemoveTags(popup));
                     }
                     KeyCode::Char('a') => {
                         if popup.selected.len() == popup.tags.len() {
@@ -1940,17 +1932,14 @@ impl crate::popups::ActivePopup {
                                 popup.selected.insert(i);
                             }
                         }
-                        app.popups.active =
-                            Some(ActivePopup::RemoveTags(popup));
+                        app.popups.active = Some(ActivePopup::RemoveTags(popup));
                     }
                     KeyCode::Char('d') | KeyCode::Delete => {
-                        app.popups.active =
-                            Some(ActivePopup::RemoveTags(popup));
+                        app.popups.active = Some(ActivePopup::RemoveTags(popup));
                         app.begin_remove_all_tags_from_selected();
                     }
                     KeyCode::Enter => {
-                        app.popups.active =
-                            Some(ActivePopup::RemoveTags(popup));
+                        app.popups.active = Some(ActivePopup::RemoveTags(popup));
                         app.confirm_remove_tags_from_selected();
                         return true;
                     }
@@ -1959,8 +1948,7 @@ impl crate::popups::ActivePopup {
                         return true;
                     }
                     _ => {
-                        app.popups.active =
-                            Some(ActivePopup::RemoveTags(popup));
+                        app.popups.active = Some(ActivePopup::RemoveTags(popup));
                         return true;
                     }
                 }
@@ -2173,7 +2161,7 @@ mod tests {
         for i in 1..=50 {
             content.push_str(&format!("Line {i}\n"));
         }
-        app.editor.editor.insert_str(&content);
+        app.editor.body.insert_str(&content);
 
         let terminal_area = Rect::new(0, 0, 100, 40);
         let mut focus = EditFocus::Body;
@@ -2222,7 +2210,10 @@ mod tests {
         );
 
         assert_eq!(focus, EditFocus::Body);
-        assert_eq!(app.editor.editor.cursor(), (41, 0));
+        assert_eq!(
+            app.editor.body.cursor(),
+            crate::editor_document::TextPosition { row: 41, col: 0 }
+        );
     }
     #[test]
     fn test_right_click_selection_behavior() {
@@ -2253,7 +2244,7 @@ mod tests {
         };
         let mut app = App::new(storage).expect("value is present");
         app.editor
-            .editor
+            .body
             .insert_str("Hello world\nThis is a test\nSome more text\n");
 
         let terminal_area = Rect::new(0, 0, 80, 24);
@@ -2265,7 +2256,7 @@ mod tests {
             terminal_area,
             false,
             app.editor.editor_preview_enabled,
-            app.editor.editor.lines().len(),
+            app.editor.body.lines().len(),
             app.editor.show_line_numbers,
             app.editor.sidebar,
             app.preview_position,
@@ -2274,7 +2265,7 @@ mod tests {
 
         // Put cursor at the start
         app.editor
-            .editor
+            .body
             .move_cursor(ratatui_textarea::CursorMove::Top);
 
         let backend = ratatui::backend::TestBackend::new(80, 24);
@@ -2293,7 +2284,16 @@ mod tests {
 
         terminal
             .draw(|frame| {
-                frame.render_widget(&app.editor.editor, body_inner);
+                crate::ui::render_editor_document_with_theme(
+                    frame,
+                    &mut app.editor.body,
+                    body_inner,
+                    &app.app_theme,
+                    true,
+                    false,
+                    ratatui::widgets::Block::default(),
+                    app.app_theme.bg_style(),
+                );
             })
             .unwrap();
 
@@ -2305,7 +2305,10 @@ mod tests {
             &mut selecting,
             &mut dragged,
         );
-        assert_eq!(app.editor.editor.cursor(), (1, 5));
+        assert_eq!(
+            app.editor.body.cursor(),
+            crate::editor_document::TextPosition { row: 1, col: 5 }
+        );
         assert!(app.popups.active.is_some());
 
         // Clear popup for the next scenario
@@ -2313,17 +2316,17 @@ mod tests {
 
         // Reset cursor to (0, 0)
         app.editor
-            .editor
+            .body
             .move_cursor(ratatui_textarea::CursorMove::Top);
 
         // Scenario 2: Right-click with selection.
         // Start selection, move cursor to create a selection.
-        app.editor.editor.start_selection();
+        app.editor.body.start_selection();
         app.editor
-            .editor
+            .body
             .move_cursor(ratatui_textarea::CursorMove::WordForward);
-        assert!(app.editor.editor.selection_range().is_some());
-        let orig_cursor = app.editor.editor.cursor();
+        assert!(app.editor.body.selection_range().is_some());
+        let orig_cursor = app.editor.body.cursor();
 
         // Right-click inside the body_inner area
         let mouse_event_with_sel = MouseEvent {
@@ -2335,7 +2338,16 @@ mod tests {
 
         terminal
             .draw(|frame| {
-                frame.render_widget(&app.editor.editor, body_inner);
+                crate::ui::render_editor_document_with_theme(
+                    frame,
+                    &mut app.editor.body,
+                    body_inner,
+                    &app.app_theme,
+                    true,
+                    false,
+                    ratatui::widgets::Block::default(),
+                    app.app_theme.bg_style(),
+                );
             })
             .unwrap();
 
@@ -2349,8 +2361,8 @@ mod tests {
         );
 
         // Cursor should NOT have moved, and selection should still be active.
-        assert_eq!(app.editor.editor.cursor(), orig_cursor);
-        assert!(app.editor.editor.selection_range().is_some());
+        assert_eq!(app.editor.body.cursor(), orig_cursor);
+        assert!(app.editor.body.selection_range().is_some());
         assert!(app.popups.active.is_some());
     }
 
@@ -2380,10 +2392,10 @@ mod tests {
             skip_dir_patterns: Vec::new(),
         };
         let mut app = App::new(storage).expect("value is present");
-        app.editor.editor =
-            ratatui_textarea::TextArea::from(vec!["the quick brown fox jumps over".to_string()]);
+        app.editor.body =
+            crate::editor_document::EditorDocument::from_text("the quick brown fox jumps over");
         app.editor
-            .editor
+            .body
             .set_wrap_mode(ratatui_textarea::WrapMode::WordOrGlyph);
         app.editor.show_line_numbers = true;
 
@@ -2393,12 +2405,18 @@ mod tests {
 
         let backend = ratatui::backend::TestBackend::new(12, 6);
         let mut terminal = ratatui::Terminal::new(backend).expect("terminal");
-        app.editor
-            .editor
-            .set_line_number_style(ratatui::style::Style::default());
         terminal
             .draw(|frame| {
-                frame.render_widget(&app.editor.editor, ratatui::layout::Rect::new(0, 0, 12, 6));
+                crate::ui::render_editor_document_with_theme(
+                    frame,
+                    &mut app.editor.body,
+                    ratatui::layout::Rect::new(0, 0, 12, 6),
+                    &app.app_theme,
+                    true,
+                    true,
+                    ratatui::widgets::Block::default(),
+                    app.app_theme.bg_style(),
+                );
                 crate::ui::overlay_search_highlights(
                     frame,
                     &app,

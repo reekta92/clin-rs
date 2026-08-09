@@ -38,7 +38,7 @@ pub fn handle_pinstar_mouse(
                 state.resizing_node_id = None;
                 state.is_dragging_resize_handle = false;
                 let _ = state.save();
-                state.sync_to_raw_editor(app);
+                state.sync_to_raw_editor();
                 return true;
             }
 
@@ -46,7 +46,7 @@ pub fn handle_pinstar_mouse(
                 && crate::events::contains_cell(editor_area, mouse.column, mouse.row)
             {
                 state.editor_focus = true;
-                let digits = app.editor.editor.lines().len().max(1).to_string().len() as u16;
+                let digits = state.raw_editor.lines().len().max(1).to_string().len() as u16;
                 let gutter_width = digits + 2;
                 let body_inner = ratatui::layout::Rect::new(
                     editor_area.x + gutter_width,
@@ -54,10 +54,10 @@ pub fn handle_pinstar_mouse(
                     editor_area.width.saturating_sub(gutter_width + 1),
                     editor_area.height.saturating_sub(1),
                 );
-                if app.editor.editor.selection_range().is_none() {
-                    let (sr, sc) = crate::ui::get_textarea_scroll(&app.editor.editor);
+                if state.raw_editor.selection_range().is_none() {
+                    let (sr, sc) = crate::ui::get_textarea_scroll(&state.raw_editor);
                     crate::events::move_textarea_cursor_to_mouse(
-                        &mut app.editor.editor,
+                        &mut state.raw_editor,
                         body_inner,
                         mouse.column,
                         mouse.row,
@@ -135,7 +135,7 @@ pub fn handle_pinstar_mouse(
             if let Some(editor_area) = editor_area {
                 if crate::events::contains_cell(editor_area, mouse.column, mouse.row) {
                     state.editor_focus = true;
-                    let digits = app.editor.editor.lines().len().max(1).to_string().len() as u16;
+                    let digits = state.raw_editor.lines().len().max(1).to_string().len() as u16;
                     let gutter_width = digits + 2;
                     let body_inner = ratatui::layout::Rect::new(
                         editor_area.x + gutter_width,
@@ -143,16 +143,16 @@ pub fn handle_pinstar_mouse(
                         editor_area.width.saturating_sub(gutter_width + 1),
                         editor_area.height.saturating_sub(1),
                     );
-                    let (sr, sc) = crate::ui::get_textarea_scroll(&app.editor.editor);
+                    let (sr, sc) = crate::ui::get_textarea_scroll(&state.raw_editor);
                     crate::events::move_textarea_cursor_to_mouse(
-                        &mut app.editor.editor,
+                        &mut state.raw_editor,
                         body_inner,
                         mouse.column,
                         mouse.row,
                         sr,
                         sc,
                     );
-                    app.editor.editor.start_selection();
+                    state.raw_editor.start_selection();
                     state.mouse_selecting = true;
                     state.mouse_dragged = false;
                     return true;
@@ -208,7 +208,7 @@ pub fn handle_pinstar_mouse(
                 if hit_node != prev_selected {
                     state.selected_node_id = prev_selected;
                     state.toggle_editor();
-                    state.sync_to_raw_editor(app);
+                    state.sync_to_raw_editor();
                     state.selected_node_id = hit_node.clone();
 
                     if hit_node.is_none() {
@@ -229,7 +229,7 @@ pub fn handle_pinstar_mouse(
 
             if is_double_click && hit_node.is_some() {
                 state.toggle_editor();
-                state.sync_to_raw_editor(app);
+                state.sync_to_raw_editor();
                 state.last_click = None;
             } else if hit_node.is_some() {
                 state.drag_start_pos = Some((cx, cy));
@@ -246,7 +246,7 @@ pub fn handle_pinstar_mouse(
             state.is_panning = false;
             state.is_dragging_resize_handle = false;
             if state.mouse_selecting && !state.mouse_dragged {
-                app.editor.editor.cancel_selection();
+                state.raw_editor.cancel_selection();
             }
             state.mouse_selecting = false;
             state.mouse_dragged = false;
@@ -255,7 +255,7 @@ pub fn handle_pinstar_mouse(
                 state.drag_start_pos = None;
                 state.drag_captured_nodes.clear();
                 let _ = state.save();
-                state.sync_to_raw_editor(app);
+                state.sync_to_raw_editor();
             }
             state.last_mouse_pos = None;
             true
@@ -264,7 +264,7 @@ pub fn handle_pinstar_mouse(
             if state.mouse_selecting {
                 state.mouse_dragged = true;
                 if let Some(editor_area) = editor_area {
-                    let digits = app.editor.editor.lines().len().max(1).to_string().len() as u16;
+                    let digits = state.raw_editor.lines().len().max(1).to_string().len() as u16;
                     let gutter_width = digits + 2;
                     let body_inner = ratatui::layout::Rect::new(
                         editor_area.x + gutter_width,
@@ -272,9 +272,9 @@ pub fn handle_pinstar_mouse(
                         editor_area.width.saturating_sub(gutter_width + 1),
                         editor_area.height.saturating_sub(1),
                     );
-                    let (sr, sc) = crate::ui::get_textarea_scroll(&app.editor.editor);
+                    let (sr, sc) = crate::ui::get_textarea_scroll(&state.raw_editor);
                     crate::events::move_textarea_cursor_to_mouse(
-                        &mut app.editor.editor,
+                        &mut state.raw_editor,
                         body_inner,
                         mouse.column,
                         mouse.row,
@@ -292,7 +292,7 @@ pub fn handle_pinstar_mouse(
                 let dh = mouse.row as f64 - ly as f64;
                 state.resize_selected_node(dw / state.zoom, dh / state.zoom);
                 state.last_mouse_pos = Some((mouse.column, mouse.row));
-                state.sync_to_raw_editor(app);
+                state.sync_to_raw_editor();
                 return true;
             }
 
@@ -303,7 +303,7 @@ pub fn handle_pinstar_mouse(
                 state.move_selected_node(dx, dy);
                 state.drag_start_pos = Some((cx, cy));
                 if state.show_editor_pane {
-                    state.sync_to_raw_editor(app);
+                    state.sync_to_raw_editor();
                 }
                 true
             } else if let Some((lx, ly)) = state.last_mouse_pos {
@@ -319,7 +319,7 @@ pub fn handle_pinstar_mouse(
         }
         MouseEventKind::ScrollUp => {
             if state.show_editor_pane && mouse.column < canvas_area.x {
-                app.scroll_editor(-3, 0);
+                state.raw_editor.scroll((-3, 0));
             } else {
                 state.zoom_in();
             }
@@ -327,7 +327,7 @@ pub fn handle_pinstar_mouse(
         }
         MouseEventKind::ScrollDown => {
             if state.show_editor_pane && mouse.column < canvas_area.x {
-                app.scroll_editor(3, 0);
+                state.raw_editor.scroll((3, 0));
             } else {
                 state.zoom_out();
             }
@@ -348,35 +348,35 @@ fn execute_menu_action(
     if menu_type == PinstarMenuType::Editor {
         match selected_index {
             0 => {
-                if app.editor.editor.selection_range().is_some() {
-                    app.editor.editor.copy();
-                    crate::text_edit::write_system_clipboard(&app.editor.editor.yank_text());
+                if state.raw_editor.selection_range().is_some() {
+                    state.raw_editor.copy();
+                    crate::text_edit::write_system_clipboard(&state.raw_editor.yank_text());
                     app.set_temporary_status("Copied to clipboard");
                 }
             }
             1 => {
-                if app.editor.editor.cut() {
-                    crate::text_edit::write_system_clipboard(&app.editor.editor.yank_text());
+                if state.raw_editor.cut() {
+                    crate::text_edit::write_system_clipboard(&state.raw_editor.yank_text());
                     app.set_temporary_status("Cut to clipboard");
                 }
-                let _ = state.sync_from_raw_editor(app);
+                let _ = state.sync_from_raw_editor();
             }
             2 => {
                 match crate::text_edit::read_system_clipboard() {
                     Some(t) if !t.is_empty() => {
-                        app.editor.editor.insert_str(t);
+                        state.raw_editor.insert_str(t);
                         app.set_temporary_status("Pasted from clipboard");
                     }
                     _ => {
-                        if app.editor.editor.paste() {
+                        if state.raw_editor.paste() {
                             app.set_temporary_status("Pasted from clipboard");
                         }
                     }
                 }
-                let _ = state.sync_from_raw_editor(app);
+                let _ = state.sync_from_raw_editor();
             }
             3 => {
-                app.editor.editor.select_all();
+                state.raw_editor.select_all();
             }
             _ => {}
         }
@@ -389,7 +389,7 @@ fn execute_menu_action(
         } else if let Some(entry) = crate::pinstar::COLOR_PICKER_PALETTE.get(selected_index - 1) {
             state.set_node_color(Some(entry.1.to_string()));
         }
-        state.sync_to_raw_editor(app);
+        state.sync_to_raw_editor();
         return;
     }
 
@@ -459,7 +459,7 @@ fn execute_menu_action(
             _ => {}
         }
     }
-    state.sync_to_raw_editor(app);
+    state.sync_to_raw_editor();
 }
 
 pub fn handle_pinstar_event(
@@ -536,11 +536,11 @@ pub fn handle_pinstar_event(
         match key.code {
             _ if keybinds.matches_canvas(CanvasAction::CloseEditor, &key) => {
                 state.toggle_editor();
-                state.sync_to_raw_editor(app);
+                state.sync_to_raw_editor();
             }
             _ if keybinds.matches_canvas(CanvasAction::CloseEditorAlt, &key) => {
                 state.toggle_editor();
-                state.sync_to_raw_editor(app);
+                state.sync_to_raw_editor();
             }
             _ => {
                 if !apply_text_shortcuts(keybinds, editor, key) {
@@ -581,9 +581,10 @@ pub fn handle_pinstar_event(
         if keybinds.matches_canvas(CanvasAction::EditorUnfocus, &key) {
             state.editor_focus = false;
         } else {
-            let mut edit_focus = crate::app::EditFocus::Body;
-            crate::handle_edit_keys(app, key, &mut edit_focus);
-            let _ = state.sync_from_raw_editor(app);
+            if !apply_text_shortcuts(keybinds, &mut state.raw_editor, key) {
+                state.raw_editor.input(Input::from(key));
+            }
+            let _ = state.sync_from_raw_editor();
         }
         return true;
     }

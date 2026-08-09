@@ -18,21 +18,22 @@ enum LineTag {
     CodeBlock,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LineRecord {
+    hash: u64,
+    starts_in_fence: bool,
+    tag: LineTag,
+}
+
 /// Source-preserving markdown highlighter.
 ///
-/// Call [`highlight_line`](SourceHighlighter::highlight_line) per line per
-/// frame.  Internal state tracks fence boundaries and a syntect-based code
-/// cache; cache hits are a HashMap lookup + clone of a `Vec<Style>`.
-///
-/// Thread-safe: no, but called only from the single UI thread.
+/// Fence metadata is incrementally propagated from an exact document change.
+/// Styles remain a visible-line concern of the renderer.
 pub(crate) struct SourceHighlighter {
     theme: MarkdownTheme,
     ghost_syntax_enabled: bool,
     extended_features: bool,
-    /// Per-line tag computed from the last full scan.
-    line_tags: Vec<LineTag>,
-    /// Hash of the document at last scan.
-    scanned_hash: u64,
+    lines: Vec<LineRecord>,
 }
 impl SourceHighlighter {
     pub fn new(
@@ -44,75 +45,85 @@ impl SourceHighlighter {
             theme: MarkdownTheme::from_app_theme(theme),
             ghost_syntax_enabled,
             extended_features,
-            line_tags: Vec::new(),
-            scanned_hash: 0,
+            lines: Vec::new(),
         }
     }
 
-    /// Rescan fence boundaries from `full_doc`. Hashes the doc once; early-returns
-    /// when unchanged. Call this once before a batch of [`highlight_line`] calls.
+    /// Rebuild metadata. Used only for initial/full synchronization.
     pub fn rescan(&mut self, full_doc: &[String]) {
-        let mut hasher = DefaultHasher::new();
+        self.lines.clear();
+        self.lines.reserve(full_doc.len());
+        let mut in_fence = false;
         for line in full_doc {
-            line.hash(&mut hasher);
-            b"\n".hash(&mut hasher);
+            let record = line_record(line, in_fence);
+            in_fence = ends_in_fence(line, &record);
+            self.lines.push(record);
         }
-        let hash = hasher.finish();
+    }
 
-        if hash == self.scanned_hash && !self.line_tags.is_empty() {
+    /// Update fence metadata from one exact editor change. Propagation stops
+    /// as soon as both line content and incoming fence state converge.
+    pub fn apply_change(
+        &mut self,
+        document: &crate::editor_document::EditorDocument,
+        change: crate::editor_document::DocumentChange,
+    ) {
+        let source = document.lines();
+        let crate::editor_document::DocumentChange::Lines { old, new } = change else {
+            self.rescan(source);
+            return;
+        };
+        if old.end > self.lines.len() || new.end > source.len() {
+            self.rescan(source);
             return;
         }
-        self.scanned_hash = hash;
-        self.line_tags = Vec::with_capacity(full_doc.len());
-
-        let mut in_fence = false;
-
-        for line in full_doc {
-            let trimmed = line.trim_start();
-            let spaces = line.len() - trimmed.len();
-            let is_fence = spaces <= 3
-                && (trimmed.starts_with("```") || trimmed.starts_with("~~~"))
-                && trimmed.len() >= 3;
-
-            if is_fence {
-                self.line_tags.push(LineTag::Inline);
-                in_fence = !in_fence;
-            } else if in_fence {
-                self.line_tags.push(LineTag::CodeBlock);
-            } else {
-                self.line_tags.push(LineTag::Inline);
+        self.lines.splice(
+            old,
+            source[new.clone()]
+                .iter()
+                .map(|line| line_record(line, false)),
+        );
+        let start = new.start.saturating_sub(1);
+        let mut in_fence = if start == 0 {
+            false
+        } else {
+            ends_in_fence(&source[start - 1], &self.lines[start - 1])
+        };
+        for row in start..source.len() {
+            let record = line_record(&source[row], in_fence);
+            in_fence = ends_in_fence(&source[row], &record);
+            let converged = row >= new.end && self.lines[row] == record;
+            self.lines[row] = record;
+            if converged {
+                break;
             }
         }
     }
 
     /// Return one [`Style`] per character of `line`, considering its role
     /// in the document (code block vs inline markdown).
-    ///
-    /// `row` is the zero-based line index.  Caller MUST call [`rescan`](Self::rescan)
-    /// once before a batch of `highlight_line` calls so fence state is current.
     pub fn highlight_line(&mut self, line: &str, row: usize) -> Vec<Style> {
-        if row < self.line_tags.len() && self.line_tags[row] == LineTag::CodeBlock {
-            let mut st = self.theme.code_block;
+        if row < self.lines.len() && self.lines[row].tag == LineTag::CodeBlock {
+            let mut style = self.theme.code_block;
             if let Some(bg) = self.theme.code_block_bg {
-                st = st.bg(bg);
+                style = style.bg(bg);
             }
-            let count = line.chars().count();
-            let mut styles = vec![st; count];
-            for _ in 0..300 {
-                styles.push(st);
-            }
-            return styles;
+            return vec![style; line.chars().count()];
         }
-
         self.highlight_inline(line)
     }
 
-    /// Whether the line at `row` is inside a fenced code block.
+    /// Return whether `row` is inside a fenced code block.
     pub fn is_code_line(&self, row: usize) -> bool {
-        matches!(self.line_tags.get(row), Some(LineTag::CodeBlock))
+        matches!(
+            self.lines.get(row),
+            Some(LineRecord {
+                tag: LineTag::CodeBlock,
+                ..
+            })
+        )
     }
 
-    /// Inline-highlight a non-code-block line.
     fn highlight_inline(&self, line: &str) -> Vec<Style> {
         let chars: Vec<char> = line.chars().collect();
         if chars.is_empty() {
@@ -141,7 +152,7 @@ impl SourceHighlighter {
             let rest: String = chars.iter().skip(marker_end).collect();
             let rest_styles = self.inline_highlight_chars(&rest, heading_style);
 
-            let mut styles = Vec::with_capacity(chars.len() + 300);
+            let mut styles = Vec::with_capacity(chars.len());
             for _ in 0..marker_end {
                 let mut marker_style = if ghost {
                     self.theme.ghost_syntax
@@ -160,9 +171,6 @@ impl SourceHighlighter {
                 } else {
                     heading_style
                 });
-            }
-            for _ in 0..300 {
-                styles.push(heading_style);
             }
             if let Some(bg) = heading_style.bg {
                 for style in &mut styles {
@@ -206,11 +214,7 @@ impl SourceHighlighter {
             if let Some(bg) = self.theme.code_block_bg {
                 style = style.bg(bg);
             }
-            let mut styles = vec![style; chars.len()];
-            for _ in 0..300 {
-                styles.push(style);
-            }
-            return styles;
+            return vec![style; chars.len()];
         }
 
         // Task list line
@@ -783,6 +787,25 @@ impl SourceHighlighter {
     }
 }
 
+fn line_record(line: &str, starts_in_fence: bool) -> LineRecord {
+    let mut hasher = DefaultHasher::new();
+    line.hash(&mut hasher);
+    let tag = if starts_in_fence && !is_fence_marker(&line.chars().collect::<Vec<_>>()) {
+        LineTag::CodeBlock
+    } else {
+        LineTag::Inline
+    };
+    LineRecord {
+        hash: hasher.finish(),
+        starts_in_fence,
+        tag,
+    }
+}
+
+fn ends_in_fence(line: &str, record: &LineRecord) -> bool {
+    record.starts_in_fence ^ is_fence_marker(&line.chars().collect::<Vec<_>>())
+}
+
 // ---------------------------------------------------------------------------
 // Helper functions
 // ---------------------------------------------------------------------------
@@ -1036,11 +1059,11 @@ mod tests {
         let doc = vec!["# H1".to_string(), "## H2".to_string()];
         hl.rescan(&doc);
         let styles_h1 = hl.highlight_line("# H1", 0);
-        assert_eq!(styles_h1.len(), 304);
+        assert_eq!(styles_h1.len(), "# H1".chars().count());
         // With ghost_syntax=false, entire line gets heading style
         assert_eq!(styles_h1[0], hl.theme.h1_banner);
         let styles_h2 = hl.highlight_line("## H2", 1);
-        assert_eq!(styles_h2.len(), 305);
+        assert_eq!(styles_h2.len(), "## H2".chars().count());
         let mut expected_h2 = hl.theme.h2;
         if let Some(fg) = expected_h2.fg {
             expected_h2 = expected_h2.bg(faint_background(fg));
@@ -1081,15 +1104,14 @@ mod tests {
     }
 
     #[test]
-    fn cache_hit_skips_rescan() {
+    fn rescan_is_idempotent() {
         let colors = AppThemeColors::default();
         let mut hl = SourceHighlighter::new(&colors, false, false);
         let doc = vec!["line".to_string()];
         hl.rescan(&doc);
-        let _ = hl.highlight_line("line", 0);
-        let hash_before = hl.scanned_hash;
+        let records = hl.lines.clone();
         hl.rescan(&doc);
-        assert_eq!(hl.scanned_hash, hash_before);
+        assert_eq!(hl.lines, records);
     }
 
     #[test]
@@ -1140,7 +1162,7 @@ mod tests {
         assert_eq!(styles_fence_open[0], expected_fence_style);
 
         let styles_interior = hl.highlight_line("fn main() {}", 1);
-        assert_eq!(styles_interior.len(), "fn main() {}".len() + 300);
+        assert_eq!(styles_interior.len(), "fn main() {}".chars().count());
         for style in styles_interior {
             assert_eq!(style, expected_fence_style);
         }
@@ -1154,13 +1176,12 @@ mod tests {
         let colors = AppThemeColors::default();
         let mut hl = SourceHighlighter::new(&colors, false, false);
 
-        // 1. Heading 1 padding & banner style
+        // 1. Heading 1 styles exactly its source characters.
         let doc1 = vec!["# H1".to_string()];
         hl.rescan(&doc1);
         let styles_h1 = hl.highlight_line("# H1", 0);
-        assert_eq!(styles_h1.len(), 4 + 300);
+        assert_eq!(styles_h1.len(), "# H1".chars().count());
         assert_eq!(styles_h1[0], hl.theme.h1_banner);
-        assert_eq!(styles_h1[4], hl.theme.h1_banner); // padded part
 
         // 2. Bold nested in Heading 1
         let doc2 = vec!["# H1 **bold**".to_string()];

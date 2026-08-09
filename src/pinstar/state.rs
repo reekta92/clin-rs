@@ -11,6 +11,7 @@ pub struct PinstarState {
     pub zoom: f64,
     pub selected_node_id: Option<String>,
     pub floating_editor: Option<TextArea<'static>>,
+    pub raw_editor: TextArea<'static>,
     pub editor_focus: bool,
     pub last_mouse_pos: Option<(u16, u16)>,
     pub mouse_pos: Option<(u16, u16)>,
@@ -72,6 +73,7 @@ impl PinstarState {
             zoom: 0.1,
             selected_node_id: None,
             floating_editor: None,
+            raw_editor: TextArea::from(content.lines().map(String::from).collect::<Vec<_>>()),
             editor_focus: false,
             mouse_pos: None,
             last_mouse_pos: None,
@@ -126,8 +128,8 @@ impl PinstarState {
                 .is_some_and(|t| t.elapsed() < TRANSFORM_SETTLE)
     }
 
-    pub fn sync_from_raw_editor(&mut self, app: &mut crate::app::App) -> Result<()> {
-        let content = app.editor.editor.lines().join("\n");
+    pub fn sync_from_raw_editor(&mut self) -> Result<()> {
+        let content = self.raw_editor.lines().join("\n");
         if let Ok(data) = serde_json::from_str::<CanvasData>(&content) {
             self.data = data;
             let _ = self.save();
@@ -137,12 +139,10 @@ impl PinstarState {
         }
     }
 
-    pub fn sync_to_raw_editor(&mut self, app: &mut crate::app::App) {
+    pub fn sync_to_raw_editor(&mut self) {
         if let Ok(content) = serde_json::to_string_pretty(&self.data) {
-            app.editor.editor =
-                TextArea::from(content.lines().map(String::from).collect::<Vec<_>>());
-            app.editor
-                .editor
+            self.raw_editor = TextArea::from(content.lines().map(String::from).collect::<Vec<_>>());
+            self.raw_editor
                 .set_cursor_line_style(ratatui::style::Style::default());
         }
     }

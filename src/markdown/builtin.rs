@@ -815,11 +815,7 @@ fn render_heading<'a>(ctx: &mut Ctx<'_, '_>, node: &'a AstNode<'a>, h: &NodeHead
     let start_line = node.data.borrow().sourcepos.start.line;
     ctx.ensure_source_line(start_line, 0);
 
-    let h_margin = if h.level == 1 {
-        depth + 1
-    } else {
-        heading_margin(depth, h.level) + 1
-    };
+    let h_margin = heading_margin(depth, h.level);
 
     for _ in 0..h_margin {
         ctx.push(' ', bg_style, 0);

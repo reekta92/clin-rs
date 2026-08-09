@@ -52,7 +52,7 @@ impl App {
     /// Reparse the current note into header-only outline_nodes.
     pub fn rebuild_outline(&mut self) {
         let title = crate::events::get_title_text(&self.editor.title_editor);
-        let content = self.editor.editor.lines().join("\n");
+        let content = self.editor.body.lines().join("\n");
         let all = crate::outline::parse::parse_outline(&title, &content);
         self.editor.outline_nodes = all
             .into_iter()
@@ -70,7 +70,7 @@ impl App {
         let mut items = Vec::new();
 
         // 1. Outgoing/Forward links
-        let content = self.editor.editor.lines().join("\n");
+        let content = self.editor.body.lines().join("\n");
         let forward_targets = crate::storage::extract_wikilinks(&content);
 
         let mut forward_notes = Vec::new();
@@ -141,7 +141,7 @@ impl App {
                 if let Some(node) = self.editor.outline_nodes.get(self.editor.sidebar_selected) {
                     let line = node.line.saturating_sub(1) as u16;
                     self.editor
-                        .editor
+                        .body
                         .move_cursor(ratatui_textarea::CursorMove::Jump(line, 0));
                     self.request_editor_preview_update();
                 }
@@ -209,10 +209,10 @@ impl App {
             self.editor.link_preview = false;
             return;
         }
-        let cursor = self.editor.editor.cursor();
-        let row = cursor.0;
-        let col = cursor.1;
-        let line = match self.editor.editor.lines().get(row) {
+        let cursor = self.editor.body.cursor();
+        let row = cursor.row;
+        let col = cursor.col;
+        let line = match self.editor.body.lines().get(row) {
             Some(l) => l.clone(),
             None => return,
         };

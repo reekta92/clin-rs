@@ -818,6 +818,70 @@ impl App {
         self.request_preview_update_immediate();
     }
 
+    /// Poll only state owned by Edit mode. Generic list/setup work stays out of
+    /// the editor's input-to-draw path.
+    pub(crate) fn poll_editor_renderers(&mut self) -> bool {
+        let mut updated = false;
+        if let Some((_, instant)) = self.editor.pending_markdown_resize
+            && instant.elapsed() >= Duration::from_millis(50)
+        {
+            self.editor.pending_markdown_resize = None;
+            self.update_editor_markdown_preview();
+            updated = true;
+        }
+        if self.editor.pending_editor_preview_update
+            && self.editor.preview_scheduler.due(Instant::now())
+        {
+            self.update_editor_markdown_preview();
+            self.editor.pending_editor_preview_update = false;
+            self.editor.last_editor_change = None;
+            self.editor.preview_scheduler.clear();
+            updated = true;
+        }
+        let edit_active = self.editor.editor_preview_enabled || self.preview_fullscreen;
+        if edit_active
+            && self.editor.pending_markdown_resize.is_none()
+            && (self.editor.preview_content_width != Some(self.desired_editor_preview_width())
+                || self.editor.preview_content_height != Some(self.desired_editor_preview_height()))
+        {
+            self.update_editor_markdown_preview();
+            updated = true;
+        }
+        if let Some(renderer) = &mut self.editor.md_preview_renderer
+            && renderer.poll()
+        {
+            updated = true;
+        }
+        if let Some(renderer) = &mut self.editor.link_preview_renderer
+            && renderer.poll()
+        {
+            updated = true;
+        }
+        updated
+    }
+
+    pub(crate) fn poll_editor_image_results(&mut self) -> bool {
+        let results: Vec<anyhow::Result<crate::image_render::worker::DecodedImage>> =
+            match &self.image_decode_rx {
+                Some(receiver) => std::iter::from_fn(|| receiver.try_recv().ok()).collect(),
+                None => Vec::new(),
+            };
+        let mut updated = false;
+        for result in results {
+            match result {
+                Ok(image) => self.install_image(image),
+                Err(error) => {
+                    let text = format!("Image decode failed: {error}");
+                    self.set_temporary_status(&text);
+                    self.messages
+                        .push(text, crate::app::messages::MessageSeverity::Warning);
+                }
+            }
+            updated = true;
+        }
+        updated
+    }
+
     pub fn poll_renderers(&mut self) -> bool {
         let mut updated = false;
 
@@ -944,11 +1008,14 @@ impl App {
     }
 
     pub fn request_editor_preview_update(&mut self) {
-        self.editor.last_editor_change = Some(Instant::now());
-        if !(self.editor.editor_preview_enabled || self.preview_fullscreen) {
-            return;
+        let now = Instant::now();
+        self.editor.last_editor_change = Some(now);
+        self.editor
+            .preview_scheduler
+            .schedule(self.editor.body.revision(), now);
+        if self.editor.editor_preview_enabled || self.preview_fullscreen {
+            self.editor.pending_editor_preview_update = true;
         }
-        self.editor.pending_editor_preview_update = true;
     }
 
     /// Returns indices into `self.notes` that match the given smart folder kind.
@@ -1715,7 +1782,7 @@ impl App {
             return;
         }
 
-        let content = self.editor.editor.lines().join("\n");
+        let content = self.editor.body.snapshot();
         let width = self.desired_editor_preview_width();
         let mut renderer = self.editor.md_preview_renderer.take().unwrap_or_default();
         let mut opts = crate::markdown::MdRenderOpts::from_config(&self.config);

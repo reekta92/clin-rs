@@ -367,9 +367,7 @@ impl App {
         let mut tag_count_map: std::collections::HashMap<String, usize> =
             std::collections::HashMap::new();
         for &idx in &self.list.selected_indices {
-            if let Some(VisualItem::Note { summary_idx, .. }) =
-                self.list.visual_list.get(idx)
-            {
+            if let Some(VisualItem::Note { summary_idx, .. }) = self.list.visual_list.get(idx) {
                 for tag in &self.notes[*summary_idx].tags {
                     *tag_count_map.entry(tag.clone()).or_insert(0) += 1;
                 }
@@ -488,9 +486,7 @@ impl App {
             .selected_indices
             .iter()
             .filter_map(|&idx| {
-                if let Some(VisualItem::Note { summary_idx, .. }) =
-                    self.list.visual_list.get(idx)
-                {
+                if let Some(VisualItem::Note { summary_idx, .. }) = self.list.visual_list.get(idx) {
                     Some(self.notes[*summary_idx].id.clone())
                 } else {
                     None

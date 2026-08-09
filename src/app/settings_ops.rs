@@ -322,7 +322,7 @@ impl App {
         } else {
             ratatui_textarea::WrapMode::None
         };
-        self.editor.editor.set_wrap_mode(mode);
+        self.editor.body.set_wrap_mode(mode);
         self.editor.title_editor.set_wrap_mode(mode);
 
         let val = new_wrap;
@@ -344,7 +344,7 @@ impl App {
         } else {
             ratatui_textarea::WrapMode::None
         };
-        self.editor.editor.set_wrap_mode(mode);
+        self.editor.body.set_wrap_mode(mode);
         self.editor.title_editor.set_wrap_mode(mode);
     }
 
@@ -654,7 +654,7 @@ impl App {
     /// mouse-to-cursor cache (`body_viewport_row/col`) matches the real viewport
     /// after explicit scrolls (mouse wheel, pinstar).
     pub fn scroll_editor(&mut self, rows: i16, cols: i16) {
-        self.editor.editor.scroll((rows, cols));
+        self.editor.body.scroll((rows, cols));
         fn apply(pos: u16, d: i16) -> u16 {
             if d >= 0 {
                 pos.saturating_add(d as u16)

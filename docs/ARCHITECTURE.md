@@ -74,35 +74,27 @@ run_tui_session(app)
 
 ### Main Event Loop (`run_app()`)
 
+`run_app_with_hook()` owns generic application work: catalog/search/watcher
+drains, backup scheduling, list and graph state, then generic rendering.
+
+When `app.mode == ViewMode::Edit`, it enters `editor_session::run_editor_session`
+and continues the generic loop only after Edit exits. Edit remains in same
+process and uses same terminal, `App`, storage, workers, and event source.
+
 ```
-while !should_quit:
-  // 1. Status tick
-  app.tick_status()
-
-  // 2. Render
-  terminal.draw(|frame| draw_ui(frame, app, focus))
-        │
-        └─ draw_ui():
-             ├─ match app.mode:
-             │    ├─ List / Edit / Help / Setup → dedicated render
-             │    └─ Graph/Draw/Canvas/Backup/Outline
-             │       → state.overlay_render(frame, area, theme, config, status)
-             └─ popups, palette
-
-  // 3. Poll async renderers (markdown preview)
-  poll_renderers() → may trigger another draw
-
-  // 4. Handle events
-  poll event with timeout → match mode → per-view handler
-    ├─ List  → handle_list_keys() / handle_list_mouse()
-    ├─ Edit  → handle_edit_keys() / handle_edit_mouse()
-    ├─ Help  → handle_help_keys() + tab switching
-    ├─ Setup → handle_setup_keys() / handle_setup_mouse()
-    └─ Graph/Draw/Canvas/Backup/Outline
-       → state.overlay_handle_event(event, terminal, config)
-          returns OverlayResult::{Continue, Exit, OpenHelp, NoteOpened, JumpToLine}
-          └─ Exit → state = None; mode = return_mode (restored to previous view)
+generic loop
+  └─ ViewMode::Edit
+       └─ editor session
+            ├─ initial dirty draw
+            ├─ editor-only status, preview, and image polling
+            ├─ poll and dispatch up to 64 ordered events
+            ├─ coalesce only consecutive mouse-move or resize events
+            └─ draw again only when dirty
 ```
+
+The editor session does not drain catalog, watcher, search, or message
+channels. Existing bounded channels retain their backpressure until the generic
+loop resumes.
 
 ### Sub-view Overlays (OverlayView trait)
 
@@ -125,8 +117,7 @@ App
   ├── storage: Storage                    // file I/O, encryption, templates
   ├── keybinds: Keybinds                  // loaded from keybinds.toml
   ├── notes: Vec<NoteSummary>             // filtered/sorted note list
-  ├── editor: NoteEditor                  // TextArea for title + body
-  ├── list: ListView                      // selection, sort, filter, preview
+  ├── editor: NoteEditor                  // title TextArea + EditorDocument body
   ├── mode: ViewMode                      // current active view
   ├── command_palette: Option<CommandPalette>  // Ctrl+P popup
   ├── popups: PopupManager                // confirm, folder, tag, template, theme popups

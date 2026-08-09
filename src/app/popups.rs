@@ -1,4 +1,5 @@
 use super::*;
+use crate::editor_document::EditorDocument;
 use crate::list_view::*;
 use crate::popups::*;
 use crate::templates::Template;
@@ -108,7 +109,7 @@ impl App {
             self.app_theme.highlight_fg,
             self.app_theme.highlight_bg,
         );
-        self.editor.editor = text_area_from_content(&content);
+        self.editor.body = EditorDocument::from_text(&content);
         self.apply_editor_prefs();
         self.set_temporary_status_static("Editing template (Esc to save and return)");
     }

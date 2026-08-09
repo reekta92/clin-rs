@@ -245,9 +245,8 @@ fn insert_image_reference(app: &mut App, rel_path: &str) {
         crate::app::ViewMode::Edit => {
             // Insert `![](path)` at cursor in the editor body
             let ref_text = format!("![]({rel_path})");
-            app.editor.editor.insert_str(&ref_text);
-            app.editor.pending_editor_preview_update = true;
-            app.editor.last_editor_change = Some(std::time::Instant::now());
+            app.editor.body.insert_str(&ref_text);
+            app.request_editor_preview_update();
         }
         crate::app::ViewMode::Canvas => {
             if let Some(state) = &mut app.canvas_state {

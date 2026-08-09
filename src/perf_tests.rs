@@ -2,6 +2,7 @@
 #[allow(dead_code)]
 mod tests {
     use crate::app::App;
+    use crate::editor_document::EditorDocument;
     use crate::storage::Storage;
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
@@ -166,16 +167,16 @@ mod tests {
 
         // App A: full rebuild (fresh editor, stale cache)
         let mut app_a = App::new(storage).expect("app a");
-        app_a.editor.editor = ratatui_textarea::TextArea::from(lines.clone());
+        app_a.editor.body = EditorDocument::from_lines(lines.clone());
         app_a.editor.show_line_numbers = true;
         app_a.request_editor_preview_update();
         let backend = ratatui::backend::TestBackend::new(120, 20);
         let mut terminal = ratatui::Terminal::new(backend).expect("terminal");
         terminal
             .draw(|f| {
-                crate::ui::render_textarea_with_theme(
+                crate::ui::render_editor_document_with_theme(
                     f,
-                    &mut app_a.editor.editor,
+                    &mut app_a.editor.body,
                     f.area(),
                     &app_a.app_theme,
                     true,
@@ -207,16 +208,16 @@ mod tests {
         std::fs::create_dir_all(storage_b.notes_dir.clone()).unwrap();
         std::fs::create_dir_all(storage_b.templates_dir.clone()).unwrap();
         let mut app_b = App::new(storage_b).expect("app b");
-        app_b.editor.editor = ratatui_textarea::TextArea::from(lines.clone());
+        app_b.editor.body = EditorDocument::from_lines(lines.clone());
         app_b.editor.show_line_numbers = true;
         app_b.request_editor_preview_update();
         let backend = ratatui::backend::TestBackend::new(120, 20);
         let mut terminal = ratatui::Terminal::new(backend).expect("terminal");
         terminal
             .draw(|f| {
-                crate::ui::render_textarea_with_theme(
+                crate::ui::render_editor_document_with_theme(
                     f,
-                    &mut app_b.editor.editor,
+                    &mut app_b.editor.body,
                     f.area(),
                     &app_b.app_theme,
                     true,
@@ -242,17 +243,17 @@ mod tests {
         // Edit one line, redraw A — memo should still match a full rebuild of the edited doc
         app_a
             .editor
-            .editor
+            .body
             .move_cursor(ratatui_textarea::CursorMove::Jump(1, 10));
-        app_a.editor.editor.insert_str("x");
+        app_a.editor.body.insert_str("x");
         app_a.request_editor_preview_update();
         let backend = ratatui::backend::TestBackend::new(120, 20);
         let mut terminal = ratatui::Terminal::new(backend).expect("terminal");
         terminal
             .draw(|f| {
-                crate::ui::render_textarea_with_theme(
+                crate::ui::render_editor_document_with_theme(
                     f,
-                    &mut app_a.editor.editor,
+                    &mut app_a.editor.body,
                     f.area(),
                     &app_a.app_theme,
                     true,
@@ -279,16 +280,16 @@ mod tests {
         std::fs::create_dir_all(storage_c.notes_dir.clone()).unwrap();
         std::fs::create_dir_all(storage_c.templates_dir.clone()).unwrap();
         let mut app_c = App::new(storage_c).expect("app c");
-        app_c.editor.editor = ratatui_textarea::TextArea::from(edited_lines);
+        app_c.editor.body = EditorDocument::from_lines(edited_lines);
         app_c.editor.show_line_numbers = true;
         app_c.request_editor_preview_update();
         let backend = ratatui::backend::TestBackend::new(120, 20);
         let mut terminal = ratatui::Terminal::new(backend).expect("terminal");
         terminal
             .draw(|f| {
-                crate::ui::render_textarea_with_theme(
+                crate::ui::render_editor_document_with_theme(
                     f,
-                    &mut app_c.editor.editor,
+                    &mut app_c.editor.body,
                     f.area(),
                     &app_c.app_theme,
                     true,
@@ -371,7 +372,7 @@ mod tests {
         }
 
         let mut app = App::new(storage).expect("app");
-        app.editor.editor = ratatui_textarea::TextArea::from(lines);
+        app.editor.body = EditorDocument::from_lines(lines);
         app.editor.show_line_numbers = true;
         app.request_editor_preview_update();
 
@@ -379,15 +380,15 @@ mod tests {
 
         let t0 = std::time::Instant::now();
         for _ in 0..60 {
-            app.editor.editor.insert_str("x");
+            app.editor.body.insert_str("x");
             app.request_editor_preview_update();
             let backend = ratatui::backend::TestBackend::new(120, 40);
             let mut terminal = ratatui::Terminal::new(backend).expect("terminal");
             terminal
                 .draw(|f| {
-                    crate::ui::render_textarea_with_theme(
+                    crate::ui::render_editor_document_with_theme(
                         f,
-                        &mut app.editor.editor,
+                        &mut app.editor.body,
                         f.area(),
                         &app.app_theme,
                         true,
@@ -407,6 +408,162 @@ mod tests {
             assert!(
                 elapsed_ms <= 480,
                 "60 keystrokes <= 480ms (8ms/key), got {elapsed_ms}ms"
+            );
+        }
+    }
+
+    fn editor_fixture(lines: usize) -> Vec<String> {
+        let patterns = [
+            "# Heading αβγ e\u{301} 🚀",
+            "Prose with **bold**, [[links]], CJK 漢字, emoji 🚀, and combining e\u{301}.",
+            "- [ ] Task item with markdown and Unicode αβγ.",
+            "```rust",
+            "fn main() { println!(\"code with emoji 🚀\"); }",
+            "```",
+            "> Quoted prose with links and punctuation.",
+        ];
+        (0..lines)
+            .map(|index| {
+                let mut line = format!(
+                    "{} fixture-line-{index:06}",
+                    patterns[index % patterns.len()]
+                );
+                while line.len() < 96 {
+                    line.push_str(" padding");
+                }
+                assert!((80..=120).contains(&line.len()), "fixture line length");
+                line
+            })
+            .collect()
+    }
+
+    fn percentile(samples: &mut [std::time::Duration], pct: f64) -> std::time::Duration {
+        samples.sort_unstable();
+        let index = ((samples.len() - 1) as f64 * pct).ceil() as usize;
+        samples[index]
+    }
+
+    fn run_edit_pairs(
+        line_count: usize,
+        mut edit_pair: impl FnMut(usize, usize),
+    ) -> Vec<std::time::Duration> {
+        let positions = [0, line_count / 2, line_count.saturating_sub(1)];
+        let mut samples = Vec::with_capacity(positions.len() * 200);
+        for row in positions {
+            for _ in 0..20 {
+                edit_pair(row, 0);
+            }
+            for _ in 0..200 {
+                let started = Instant::now();
+                edit_pair(row, 0);
+                samples.push(started.elapsed());
+            }
+        }
+        samples
+    }
+
+    fn move_raw_to(
+        textarea: &mut ratatui_textarea::TextArea<'static>,
+        row: usize,
+        line_count: usize,
+    ) {
+        if row == line_count.saturating_sub(1) {
+            textarea.move_cursor(ratatui_textarea::CursorMove::Bottom);
+            textarea.move_cursor(ratatui_textarea::CursorMove::Head);
+        } else {
+            textarea.move_cursor(ratatui_textarea::CursorMove::Jump(row as u16, 0));
+        }
+    }
+
+    fn move_document_to(document: &mut EditorDocument, row: usize, line_count: usize) {
+        if row == line_count.saturating_sub(1) {
+            document.move_cursor(ratatui_textarea::CursorMove::Bottom);
+            document.move_cursor(ratatui_textarea::CursorMove::Head);
+        } else {
+            document.move_cursor(ratatui_textarea::CursorMove::Jump(row as u16, 0));
+        }
+    }
+
+    fn find_once(lines: &[String], query: &str) -> usize {
+        let query = query.to_lowercase();
+        lines
+            .iter()
+            .filter(|line| line.to_lowercase().contains(&query))
+            .count()
+    }
+
+    /// Measured decision input for `EditorDocument` backend selection.
+    #[ignore = "performance test, run manually"]
+    #[test]
+    fn editor_buffer_comparison_perf() {
+        let enforce = std::env::var("CLIN_PERF_ENFORCE").as_deref() == Ok("1");
+        let mut replacement_required = false;
+
+        for line_count in [5_000_usize, 100_000] {
+            let lines = editor_fixture(line_count);
+            for wrap in [
+                ratatui_textarea::WrapMode::None,
+                ratatui_textarea::WrapMode::WordOrGlyph,
+            ] {
+                let mut raw = ratatui_textarea::TextArea::from(lines.clone());
+                raw.set_wrap_mode(wrap);
+                let mut raw_samples = run_edit_pairs(line_count, |row, _| {
+                    move_raw_to(&mut raw, row, line_count);
+                    assert!(raw.insert_str("x"));
+                    move_raw_to(&mut raw, row, line_count);
+                    assert!(raw.delete_str(1));
+                });
+
+                let mut document = EditorDocument::from_lines(lines.clone());
+                document.set_wrap_mode(wrap);
+                let mut document_samples = run_edit_pairs(line_count, |row, _| {
+                    move_document_to(&mut document, row, line_count);
+                    assert!(document.insert_str("x").content_changed);
+                    move_document_to(&mut document, row, line_count);
+                    assert!(document.delete_str(1).content_changed);
+                });
+
+                let raw_median = percentile(&mut raw_samples, 0.50);
+                let raw_p95 = percentile(&mut raw_samples, 0.95);
+                let document_median = percentile(&mut document_samples, 0.50);
+                let document_p95 = percentile(&mut document_samples, 0.95);
+                replacement_required |= document_p95 > std::time::Duration::from_millis(1);
+                println!(
+                    "editor_buffer_comparison_perf lines={line_count} wrap={wrap:?} raw median={raw_median:?} p95={raw_p95:?} document median={document_median:?} p95={document_p95:?}"
+                );
+
+                for query in ["fixture-line-000001", "漢字", "absent-token"] {
+                    let mut raw_find = Vec::with_capacity(100);
+                    let mut document_find = Vec::with_capacity(100);
+                    for _ in 0..100 {
+                        let started = Instant::now();
+                        let _ = find_once(raw.lines(), query);
+                        raw_find.push(started.elapsed());
+                        let started = Instant::now();
+                        let _ = find_once(document.lines(), query);
+                        document_find.push(started.elapsed());
+                    }
+                    println!(
+                        "editor_find_perf lines={line_count} wrap={wrap:?} query={query:?} raw_p95={:?} document_p95={:?}",
+                        percentile(&mut raw_find, 0.95),
+                        percentile(&mut document_find, 0.95),
+                    );
+                }
+            }
+        }
+        println!(
+            "editor_buffer_comparison_perf replacement_required={replacement_required} profile={} cpu={}",
+            if cfg!(debug_assertions) {
+                "debug"
+            } else {
+                "release"
+            },
+            std::env::var("HOSTNAME").unwrap_or_else(|_| "unknown".to_string()),
+        );
+        if enforce {
+            assert!(
+                !replacement_required,
+                "current wrapped TextArea exceeds 1ms body-mutation p95; Rope cutover required"
             );
         }
     }

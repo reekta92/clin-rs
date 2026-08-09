@@ -934,13 +934,34 @@ mod tests {
         assert!(has_content, "drawing must be visible in the preview");
     }
 
-    /// Smoke: real clin_arch.canvas (~7180 units wide, previously cropped)
-    /// must render without panic at preview size and produce non-empty output.
+    /// Regression: wide canvas bounds remain visible at preview size.
     #[test]
     fn canvas_snapshot_fits_wide_fixture() {
-        let raw = include_str!("../dev_scripts/clin_arch.canvas");
-        let data: CanvasData = serde_json::from_str(raw).expect("parse fixture");
-        assert!(!data.nodes.is_empty(), "fixture has nodes");
+        let data = CanvasData {
+            nodes: vec![
+                CanvasNode::Text(TextNode {
+                    id: "left".to_string(),
+                    x: 0.0,
+                    y: 0.0,
+                    width: 500.0,
+                    height: 700.0,
+                    text: "Left".to_string(),
+                    title: None,
+                    color: None,
+                }),
+                CanvasNode::Text(TextNode {
+                    id: "right".to_string(),
+                    x: 7180.0,
+                    y: 0.0,
+                    width: 500.0,
+                    height: 700.0,
+                    text: "Right".to_string(),
+                    title: None,
+                    color: None,
+                }),
+            ],
+            edges: vec![],
+        };
         let theme = AppThemeColors::default();
         let grid = render_canvas_snapshot(
             &data,
@@ -954,10 +975,9 @@ mod tests {
         );
         assert_eq!(grid.len(), 38, "height matches");
         assert_eq!(grid[0].len(), 78, "width matches");
-        let has_content = grid.iter().any(|row| row.iter().any(|(ch, _)| *ch != ' '));
         assert!(
-            has_content,
-            "fixture renders visible content at preview size"
+            grid.iter().any(|row| row.iter().any(|(ch, _)| *ch != ' ')),
+            "wide fixture must produce visible content"
         );
     }
 

@@ -22,7 +22,6 @@ pub(crate) mod setup;
 mod title_bar;
 
 pub use edit_view::draw_edit_view;
-pub(crate) use edit_view::render_editor_widget;
 pub use help::*;
 pub use help_content::{HelpSuggestion, roll_suggestions};
 pub(crate) use list_view::{
@@ -509,7 +508,11 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
                 .enumerate()
                 .map(|(i, tag)| {
                     let count = popup.tag_counts.get(i).copied().unwrap_or(0);
-                    let count_label = if count >= total { "(all)" } else { &format!("({count})") };
+                    let count_label = if count >= total {
+                        "(all)"
+                    } else {
+                        &format!("({count})")
+                    };
                     let label = format!("  {} {}", tag, count_label);
                     let is_selected = popup.selected.contains(&i);
                     let is_cursor = i == popup.cursor;
@@ -1653,6 +1656,16 @@ pub fn refresh_textarea_viewport(
     (row, col)
 }
 
+pub(crate) fn refresh_editor_document_viewport(
+    document: &crate::editor_document::EditorDocument,
+    prev_row: u16,
+    prev_col: u16,
+    area: Rect,
+    line_numbers: bool,
+) -> (u16, u16) {
+    refresh_textarea_viewport(document.textarea(), prev_row, prev_col, area, line_numbers)
+}
+
 /// Fallback: parse viewport from Debug output. Used by popup/pinstar textareas that
 /// don't have cached viewport offsets. Do not use in the hot mouse-drag path.
 pub fn get_textarea_scroll(textarea: &TextArea) -> (usize, usize) {
@@ -1757,6 +1770,28 @@ pub fn render_textarea_with_theme(
     frame.render_widget(&*textarea, area);
 }
 
+pub(crate) fn render_editor_document_with_theme(
+    frame: &mut Frame,
+    document: &mut crate::editor_document::EditorDocument,
+    area: Rect,
+    theme: &AppThemeColors,
+    has_focus: bool,
+    show_line_numbers: bool,
+    block: Block<'static>,
+    base_style: Style,
+) {
+    render_textarea_with_theme(
+        frame,
+        document.textarea_mut(),
+        area,
+        theme,
+        has_focus,
+        show_line_numbers,
+        block,
+        base_style,
+    );
+}
+
 /// Highlight search-match cells in the rendered frame buffer.
 /// Walks each visible row, reconstructs the grapheme string, and paints
 /// the background of every cell that falls within a case-insensitive match.
@@ -1769,8 +1804,8 @@ pub fn overlay_search_highlights(frame: &mut Frame, app: &App, area: Rect) {
         return;
     }
     let ql = query.to_lowercase();
-    let editor = &app.editor.editor;
-    let inner = editor.block().map(|b| b.inner(area)).unwrap_or(area);
+    let editor = &app.editor.body;
+    let inner = editor.inner_rect(area);
     let gutter = if app.editor.show_line_numbers {
         editor.lines().len().to_string().len() as u16 + 2
     } else {
@@ -1824,27 +1859,26 @@ pub fn overlay_search_highlights(frame: &mut Frame, app: &App, area: Rect) {
 pub fn overlay_markdown_highlight(frame: &mut Frame, app: &mut App, area: Rect) {
     let show_ln = app.editor.show_line_numbers;
     let gutter = if show_ln {
-        app.editor.editor.lines().len().to_string().len() as u16 + 2
+        app.editor.body.lines().len().to_string().len() as u16 + 2
     } else {
         0
     };
-    let inner = app
-        .editor
-        .editor
-        .block()
-        .map(|b| b.inner(area))
-        .unwrap_or(area);
+    let inner = app.editor.body.inner_rect(area);
 
     // --- Phase 1: rebuild per-source-line style cache only when the doc changed.
     {
         let e = &mut app.editor;
-        let full_doc: &[String] = e.editor.lines();
+        let full_doc: &[String] = e.body.lines();
+        let capacity = usize::from(inner.height).saturating_mul(8).clamp(256, 2048);
+        if e.md_highlight_memo.cap().get() != capacity {
+            e.md_highlight_memo
+                .resize(std::num::NonZeroUsize::new(capacity).expect("clamped capacity"));
+        }
         let stale =
             e.md_highlight_lines != full_doc.len() || e.md_highlight_change != e.last_editor_change;
         if stale && show_ln {
-            if e.md_highlight_memo.len() > full_doc.len() * 4 {
-                e.md_highlight_memo.clear();
-            }
+            e.md_highlight_memo.clear();
+            let highlighter_missing = e.source_highlighter.is_none();
             let hl = e.source_highlighter.get_or_insert_with(|| {
                 crate::markdown::SourceHighlighter::new(
                     &app.app_theme,
@@ -1852,7 +1886,9 @@ pub fn overlay_markdown_highlight(frame: &mut Frame, app: &mut App, area: Rect) 
                     app.config.editor.extended_markdown_features,
                 )
             });
-            hl.rescan(full_doc);
+            if highlighter_missing {
+                hl.rescan(full_doc);
+            }
             let mut cache: Vec<std::rc::Rc<[ratatui::style::Style]>> =
                 Vec::with_capacity(full_doc.len());
             for (i, line) in full_doc.iter().enumerate() {
@@ -1865,7 +1901,7 @@ pub fn overlay_markdown_highlight(frame: &mut Frame, app: &mut App, area: Rect) 
                     None => {
                         let rc: std::rc::Rc<[ratatui::style::Style]> =
                             hl.highlight_line(line, i).into();
-                        e.md_highlight_memo.insert(key, rc.clone());
+                        e.md_highlight_memo.put(key, rc.clone());
                         rc
                     }
                 };
@@ -1916,7 +1952,7 @@ pub fn overlay_markdown_highlight(frame: &mut Frame, app: &mut App, area: Rect) 
         // No line numbers: source_idx is unknown, so highlight the displayed text
         // standalone per frame.
         let e = &mut app.editor;
-        let full_doc: &[String] = e.editor.lines();
+        let full_doc: &[String] = e.body.lines();
         let hl = e.source_highlighter.get_or_insert_with(|| {
             crate::markdown::SourceHighlighter::new(
                 &app.app_theme,

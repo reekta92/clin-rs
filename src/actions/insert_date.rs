@@ -30,7 +30,7 @@ impl Action for InsertDateAction {
         let s = chrono::Local::now()
             .format(&app.config.editor.date_format)
             .to_string();
-        app.editor.editor.insert_str(&s);
+        app.editor.body.insert_str(&s);
         app.request_editor_preview_update();
         Ok(())
     }

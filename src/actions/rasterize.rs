@@ -1,5 +1,6 @@
 use super::Action;
 use crate::app::App;
+use crate::editor_document::EditorDocument;
 use anyhow::{Result, anyhow};
 use std::borrow::Cow;
 
@@ -40,7 +41,7 @@ impl Action for RasterizeNoteAction {
         let mut note = app.storage.load_note(&note_id)?;
         let editing_selected_note = app.editor.editing_id.as_deref() == Some(note_id.as_str());
         let source_content = if editing_selected_note {
-            app.editor.editor.lines().join("\n")
+            app.editor.body.lines().join("\n")
         } else {
             note.content.clone()
         };
@@ -55,7 +56,7 @@ impl Action for RasterizeNoteAction {
         app.storage.save_note(&note_id, &note)?;
 
         if editing_selected_note {
-            app.editor.editor = ratatui_textarea::TextArea::from(content.lines());
+            app.editor.body = EditorDocument::from_text(&content);
             app.rebuild_outline();
             app.editor.links = app.compute_links();
         }

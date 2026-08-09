@@ -9,6 +9,8 @@ pub mod console;
 pub mod constants;
 pub mod draw;
 pub mod editor;
+pub(crate) mod editor_document;
+pub(crate) mod editor_session;
 pub mod event_source;
 pub mod frontmatter;
 pub mod fsutil;
@@ -1139,8 +1141,6 @@ where
     }
 
     let mut focus = EditFocus::Body;
-    let mut mouse_selecting = false;
-    let mut mouse_dragged = false;
     let mut list_dirty = true;
     let mut graph_dirty = true;
     let mut prev_mode = app.mode;
@@ -1149,6 +1149,11 @@ where
         if SHOULD_EXIT.load(Ordering::Acquire) {
             app.should_quit = true;
             break;
+        }
+        if app.mode == ViewMode::Edit {
+            crate::editor_session::run_editor_session(terminal, app, events, pre_draw_hook)?;
+            prev_mode = app.mode;
+            continue;
         }
         let msgs_before = app.messages.messages.len();
         while let Ok(msg) = app.message_rx.try_recv() {
@@ -1387,15 +1392,7 @@ where
                 }
             }
             for ev in batch {
-                dispatch_event(
-                    events,
-                    app,
-                    ev,
-                    &mut focus,
-                    &mut mouse_selecting,
-                    &mut mouse_dragged,
-                    terminal,
-                )?;
+                dispatch_event(events, app, ev, &mut focus, terminal)?;
             }
         }
     }
@@ -1408,8 +1405,6 @@ fn dispatch_event<B: ratatui::backend::Backend, S: crate::event_source::EventSou
     app: &mut crate::app::App,
     ev: crossterm::event::Event,
     focus: &mut EditFocus,
-    mouse_selecting: &mut bool,
-    mouse_dragged: &mut bool,
     terminal: &mut ratatui::Terminal<B>,
 ) -> anyhow::Result<()>
 where
@@ -1471,7 +1466,9 @@ where
                             handle_help_keys(app, key);
                             false
                         }
-                        ViewMode::Edit => handle_edit_keys(app, key, focus),
+                        // Edit events are consumed by `editor_session` before
+                        // generic dispatch resumes.
+                        ViewMode::Edit => false,
                         ViewMode::Setup => {
                             crate::events::handle_setup_keys(app, key);
                             false
@@ -1635,37 +1632,9 @@ where
                                 }
                             }
                         }
-                        ViewMode::Edit => {
-                            handle_edit_mouse(
-                                app,
-                                mouse_event,
-                                area,
-                                focus,
-                                mouse_selecting,
-                                mouse_dragged,
-                            );
-                            if matches!(
-                                mouse_event.kind,
-                                ratatui::crossterm::event::MouseEventKind::Drag(_)
-                            ) {
-                                while events.poll(Duration::ZERO)? {
-                                    match events.read()? {
-                                        Event::Mouse(next) => {
-                                            app.mouse_pos = Some((next.column, next.row));
-                                            handle_edit_mouse(
-                                                app,
-                                                next,
-                                                area,
-                                                focus,
-                                                mouse_selecting,
-                                                mouse_dragged,
-                                            );
-                                        }
-                                        _ => break,
-                                    }
-                                }
-                            }
-                        }
+                        // Edit events are consumed by `editor_session` before
+                        // generic dispatch resumes.
+                        ViewMode::Edit => {}
                         ViewMode::Help => {
                             handle_help_mouse(app, mouse_event, area);
                         }

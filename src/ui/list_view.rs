@@ -1197,7 +1197,10 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                                 .extension()
                                 .and_then(|e| e.to_str())
                                 .unwrap_or("");
-                            !*is_clin && !*is_draw && !*is_canvas && !is_image
+                            !*is_clin
+                                && !*is_draw
+                                && !*is_canvas
+                                && !is_image
                                 && ext != "md"
                                 && ext != "txt"
                         };
@@ -1837,7 +1840,10 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             (kb.display_list(ListAction::ToggleSelectItem), "toggle"),
             (kb.display_list(ListAction::MoveNote), "move"),
             (kb.display_list(ListAction::ManageTags), "tag"),
-            (kb.display_list(ListAction::RemoveTagsFromSelected), "remove tags"),
+            (
+                kb.display_list(ListAction::RemoveTagsFromSelected),
+                "remove tags",
+            ),
             (kb.display_list(ListAction::Delete), "delete"),
             (kb.display_list(ListAction::ToggleSelectMode), "exit"),
         ];
@@ -2135,7 +2141,11 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 .enumerate()
                 .map(|(i, tag)| {
                     let count = popup.tag_counts.get(i).copied().unwrap_or(0);
-                    let count_label = if count >= total { "(all)" } else { &format!("({count})") };
+                    let count_label = if count >= total {
+                        "(all)"
+                    } else {
+                        &format!("({count})")
+                    };
                     let label = format!("  {} {}", tag, count_label);
                     let is_selected = popup.selected.contains(&i);
                     let is_cursor = i == popup.cursor;

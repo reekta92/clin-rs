@@ -26,9 +26,9 @@ pub(crate) fn render_editor_widget(
             .padding(Padding::new(0, 2, 1, 0))
     });
     let base_style = custom_style.unwrap_or_else(|| app.app_theme.bg_style());
-    super::render_textarea_with_theme(
+    super::render_editor_document_with_theme(
         frame,
-        &mut app.editor.editor,
+        &mut app.editor.body,
         area,
         &app.app_theme,
         focus == EditFocus::Body,
@@ -37,8 +37,8 @@ pub(crate) fn render_editor_widget(
         base_style,
     );
     {
-        let (r, c) = super::refresh_textarea_viewport(
-            &app.editor.editor,
+        let (r, c) = super::refresh_editor_document_viewport(
+            &app.editor.body,
             app.editor.body_viewport_row,
             app.editor.body_viewport_col,
             area,
@@ -268,7 +268,7 @@ pub fn draw_edit_view(frame: &mut Frame, app: &mut App, focus: EditFocus) {
         }
         // Scrollbar for editor body
         if app.config.ui.scrollbars {
-            let content_len = app.editor.editor.lines().len();
+            let content_len = app.editor.body.lines().len();
             // The editor block uses Padding::new(0, 2, 1, 0), so the textarea
             // renders height-1 rows. Match refresh_textarea_viewport
             // (src/ui/mod.rs:1516), which derives visible rows from

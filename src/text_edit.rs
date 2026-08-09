@@ -1,3 +1,4 @@
+use crate::editor_document::EditorDocument;
 use crate::keybinds::{EditAction, Keybinds};
 use crossterm::event::KeyEvent;
 use ratatui_textarea::{CursorMove, TextArea};
@@ -64,30 +65,119 @@ pub fn read_system_clipboard() -> Option<String> {
     })
 }
 
-pub fn apply_text_shortcuts(
+pub(crate) trait TextEditTarget {
+    fn select_all(&mut self);
+    fn has_selection(&self) -> bool;
+    fn copy(&mut self);
+    fn yank_text(&self) -> String;
+    fn cut(&mut self) -> bool;
+    fn insert_str(&mut self, text: String) -> bool;
+    fn paste(&mut self) -> bool;
+    fn undo(&mut self) -> bool;
+    fn redo(&mut self) -> bool;
+    fn delete_word(&mut self) -> bool;
+    fn delete_next_word(&mut self) -> bool;
+    fn move_cursor(&mut self, movement: CursorMove);
+}
+
+impl TextEditTarget for TextArea<'static> {
+    fn select_all(&mut self) {
+        self.select_all();
+    }
+    fn has_selection(&self) -> bool {
+        self.selection_range().is_some()
+    }
+    fn copy(&mut self) {
+        self.copy();
+    }
+    fn yank_text(&self) -> String {
+        self.yank_text()
+    }
+    fn cut(&mut self) -> bool {
+        self.cut()
+    }
+    fn insert_str(&mut self, text: String) -> bool {
+        self.insert_str(text)
+    }
+    fn paste(&mut self) -> bool {
+        self.paste()
+    }
+    fn undo(&mut self) -> bool {
+        self.undo()
+    }
+    fn redo(&mut self) -> bool {
+        self.redo()
+    }
+    fn delete_word(&mut self) -> bool {
+        self.delete_word()
+    }
+    fn delete_next_word(&mut self) -> bool {
+        self.delete_next_word()
+    }
+    fn move_cursor(&mut self, movement: CursorMove) {
+        self.move_cursor(movement);
+    }
+}
+
+impl TextEditTarget for EditorDocument {
+    fn select_all(&mut self) {
+        self.select_all();
+    }
+    fn has_selection(&self) -> bool {
+        self.selection_range().is_some()
+    }
+    fn copy(&mut self) {
+        self.copy();
+    }
+    fn yank_text(&self) -> String {
+        self.yank_text()
+    }
+    fn cut(&mut self) -> bool {
+        self.cut().content_changed
+    }
+    fn insert_str(&mut self, text: String) -> bool {
+        self.insert_str(text).content_changed
+    }
+    fn paste(&mut self) -> bool {
+        self.paste().content_changed
+    }
+    fn undo(&mut self) -> bool {
+        self.undo().content_changed
+    }
+    fn redo(&mut self) -> bool {
+        self.redo().content_changed
+    }
+    fn delete_word(&mut self) -> bool {
+        self.delete_word().content_changed
+    }
+    fn delete_next_word(&mut self) -> bool {
+        self.delete_next_word().content_changed
+    }
+    fn move_cursor(&mut self, movement: CursorMove) {
+        self.move_cursor(movement);
+    }
+}
+
+pub(crate) fn apply_text_shortcuts<T: TextEditTarget>(
     keybinds: &Keybinds,
-    textarea: &mut TextArea<'static>,
+    target: &mut T,
     key: KeyEvent,
 ) -> bool {
     if keybinds.matches_edit(EditAction::SelectAll, &key) {
-        textarea.select_all();
+        target.select_all();
         return true;
     }
     if keybinds.matches_edit(EditAction::Copy, &key) {
-        // ratatui-textarea 0.9 `copy()` is a no-op without a selection (verified
-        // in registry source: guarded by `take_selection_positions`), so without
-        // this guard `yank_text()` would return the *previous* yank and clobber
-        // the system clipboard with stale text.
-        if textarea.selection_range().is_some() {
-            textarea.copy();
-            write_system_clipboard(&textarea.yank_text());
+        if target.has_selection() {
+            target.copy();
+            write_system_clipboard(&target.yank_text());
             set_clipboard_notice("Copied to clipboard");
         }
         return true;
     }
     if keybinds.matches_edit(EditAction::Cut, &key) {
-        if textarea.cut() {
-            write_system_clipboard(&textarea.yank_text());
+        if target.cut() {
+            write_system_clipboard(&target.yank_text());
             set_clipboard_notice("Cut to clipboard");
         }
         return true;
@@ -95,43 +185,65 @@ pub fn apply_text_shortcuts(
     if keybinds.matches_edit(EditAction::Paste, &key) {
         match read_system_clipboard() {
             Some(text) if !text.is_empty() => {
-                textarea.insert_str(text);
+                target.insert_str(text);
                 set_clipboard_notice("Pasted from clipboard");
             }
-            // Empty or unavailable system clipboard: fall back to the
-            // textarea's internal yank buffer (previous in-app kill).
-            _ => {
-                if textarea.paste() {
-                    set_clipboard_notice("Pasted from clipboard");
-                }
-            }
+            _ if target.paste() => set_clipboard_notice("Pasted from clipboard"),
+            _ => {}
         }
         return true;
     }
     if keybinds.matches_edit(EditAction::Undo, &key) {
-        let _ = textarea.undo();
+        let _ = target.undo();
         return true;
     }
     if keybinds.matches_edit(EditAction::Redo, &key) {
-        let _ = textarea.redo();
+        let _ = target.redo();
         return true;
     }
     if keybinds.matches_edit(EditAction::DeleteWord, &key) {
-        let _ = textarea.delete_word();
+        let _ = target.delete_word();
         return true;
     }
     if keybinds.matches_edit(EditAction::DeleteNextWord, &key) {
-        let _ = textarea.delete_next_word();
+        let _ = target.delete_next_word();
         return true;
     }
     if keybinds.matches_edit(EditAction::MoveToTop, &key) {
-        textarea.move_cursor(CursorMove::Top);
+        target.move_cursor(CursorMove::Top);
         return true;
     }
     if keybinds.matches_edit(EditAction::MoveToBottom, &key) {
-        textarea.move_cursor(CursorMove::Bottom);
+        target.move_cursor(CursorMove::Bottom);
         return true;
     }
-
     false
+}
+
+pub(crate) fn apply_context_menu_action<T: TextEditTarget>(
+    target: &mut T,
+    label: &str,
+) -> Option<&'static str> {
+    match label {
+        " Copy " if target.has_selection() => {
+            target.copy();
+            write_system_clipboard(&target.yank_text());
+            Some("Copied to clipboard")
+        }
+        " Cut " if target.cut() => {
+            write_system_clipboard(&target.yank_text());
+            Some("Cut to clipboard")
+        }
+        " Paste " => read_system_clipboard()
+            .filter(|text| !text.is_empty())
+            .map(|text| {
+                target.insert_str(text);
+                "Pasted from clipboard"
+            }),
+        " Select All " => {
+            target.select_all();
+            None
+        }
+        _ => None,
+    }
 }

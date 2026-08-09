@@ -1,7 +1,8 @@
+use crate::editor_document::EditorDocument;
 use crate::markdown::MarkdownRenderer;
 use ratatui_textarea::TextArea;
 use std::path::PathBuf;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EditFocus {
@@ -25,12 +26,48 @@ pub struct LinkItem {
     pub is_backlink: bool,
 }
 
+pub(crate) struct EditorPreviewScheduler {
+    pending_revision: Option<u64>,
+    deadline: Option<Instant>,
+    layout_ewma: Duration,
+}
+
+impl Default for EditorPreviewScheduler {
+    fn default() -> Self {
+        Self {
+            pending_revision: None,
+            deadline: None,
+            layout_ewma: Duration::from_millis(75),
+        }
+    }
+}
+
+impl EditorPreviewScheduler {
+    pub(crate) fn schedule(&mut self, revision: u64, now: Instant) {
+        let delay = self
+            .layout_ewma
+            .saturating_mul(2)
+            .clamp(Duration::from_millis(150), Duration::from_millis(750));
+        self.pending_revision = Some(revision);
+        self.deadline = Some(now + delay);
+    }
+
+    pub(crate) fn due(&self, now: Instant) -> bool {
+        self.deadline.is_some_and(|deadline| now >= deadline)
+    }
+
+    pub(crate) fn clear(&mut self) {
+        self.pending_revision = None;
+        self.deadline = None;
+    }
+}
+
 pub struct NoteEditor {
     pub editing_id: Option<String>,
     pub initial_word_count: usize,
     pub template_edit_path: Option<PathBuf>,
     pub title_editor: TextArea<'static>,
-    pub editor: TextArea<'static>,
+    pub(crate) body: EditorDocument,
     pub external_editor_enabled: bool,
     pub external_editor: Option<String>,
     pub editor_preview_enabled: bool,
@@ -40,6 +77,7 @@ pub struct NoteEditor {
     pub go_to_line_input: Option<String>,
     pub pending_editor_preview_update: bool,
     pub last_editor_change: Option<Instant>,
+    pub(crate) preview_scheduler: EditorPreviewScheduler,
     pub last_preview_pane_width: u16,
     pub last_preview_pane_height: u16,
     pub preview_content_width: Option<u16>,
@@ -83,9 +121,8 @@ pub struct NoteEditor {
     pub md_highlight_change: Option<std::time::Instant>,
     /// Number of lines in the document when cache was built.
     pub md_highlight_lines: usize,
-    /// Content-keyed memo: (line hash, is_code) -> styles. Survives line shifts.
-    pub md_highlight_memo:
-        std::collections::HashMap<(u64, bool), std::rc::Rc<[ratatui::style::Style]>>,
+    /// Bounded visible-line style memo, keyed by content and fence role.
+    pub md_highlight_memo: lru::LruCache<(u64, bool), std::rc::Rc<[ratatui::style::Style]>>,
     /// TTL cache for {modified} statusline token (500ms bounded).
     pub modified_status_cache: std::cell::RefCell<Option<(std::time::Instant, bool)>>,
 }
@@ -97,7 +134,7 @@ impl Default for NoteEditor {
             initial_word_count: 0,
             template_edit_path: None,
             title_editor: TextArea::default(),
-            editor: TextArea::default(),
+            body: EditorDocument::default(),
             external_editor_enabled: false,
             external_editor: None,
             editor_preview_enabled: false,
@@ -106,6 +143,7 @@ impl Default for NoteEditor {
             find_popup: None,
             go_to_line_input: None,
             pending_editor_preview_update: false,
+            preview_scheduler: EditorPreviewScheduler::default(),
             preview_scale: 1.0,
             preview_content_scale: None,
             preview_offset_x: 0.0,
@@ -145,7 +183,7 @@ impl Default for NoteEditor {
             md_highlight_cache: Vec::new(),
             md_highlight_change: None,
             md_highlight_lines: 0,
-            md_highlight_memo: std::collections::HashMap::new(),
+            md_highlight_memo: lru::LruCache::new(std::num::NonZeroUsize::MIN),
             modified_status_cache: std::cell::RefCell::new(None),
             source_highlighter: None,
             header_title_rect: ratatui::layout::Rect::default(),

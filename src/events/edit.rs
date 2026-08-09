@@ -22,41 +22,41 @@ fn leave_editor(app: &mut App, focus: &mut EditFocus) {
 
 /// Collect all lines containing the query (case-insensitive), returning (line_index, line_text) pairs.
 fn collect_find_results(
-    editor: &ratatui_textarea::TextArea<'_>,
+    document: &crate::editor_document::EditorDocument,
     query_lower: &str,
 ) -> Vec<(usize, String)> {
-    editor
+    document
         .lines()
         .iter()
         .enumerate()
-        .filter(|(_, l)| l.to_lowercase().contains(query_lower))
-        .map(|(i, l)| (i, l.to_string()))
+        .filter(|(_, line)| line.to_lowercase().contains(query_lower))
+        .map(|(index, line)| (index, line.to_string()))
         .collect()
 }
 
 /// Jump the cursor to the next search match starting at or after the current cursor position.
 /// Wraps around to the beginning of the document. Returns true if a match was found.
-fn jump_to_next_search_match(editor: &mut ratatui_textarea::TextArea<'_>, query: &str) -> bool {
+fn jump_to_next_search_match(
+    document: &mut crate::editor_document::EditorDocument,
+    query: &str,
+) -> bool {
     if query.is_empty() {
         return false;
     }
-    let ql = query.to_lowercase();
-    let cursor = editor.cursor();
-    let cur_row = cursor.0;
-    let cur_col = cursor.1;
-    let lines = editor.lines();
-    let len = lines.len();
-    if len == 0 {
+    let query_lower = query.to_lowercase();
+    let cursor = document.cursor();
+    let lines = document.lines();
+    if lines.is_empty() {
         return false;
     }
-    for offset in 0..len {
-        let row = (cur_row + offset) % len;
-        let from_col = if offset == 0 { cur_col } else { 0 };
+    for offset in 0..lines.len() {
+        let row = (cursor.row + offset) % lines.len();
+        let from_col = if offset == 0 { cursor.col } else { 0 };
         let line_lower = lines[row].to_lowercase();
-        for (byte_off, _) in line_lower.match_indices(&ql) {
-            let col = line_lower[..byte_off].chars().count();
+        for (byte_offset, _) in line_lower.match_indices(&query_lower) {
+            let col = line_lower[..byte_offset].chars().count();
             if col >= from_col {
-                editor.move_cursor(ratatui_textarea::CursorMove::Jump(row as u16, col as u16));
+                document.move_cursor(ratatui_textarea::CursorMove::Jump(row as u16, col as u16));
                 return true;
             }
         }
@@ -143,10 +143,10 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                     && let Ok(line) = line_str.parse::<usize>()
                 {
                     let target = line.saturating_sub(1); // 1-based → 0-based
-                    let max = app.editor.editor.lines().len().saturating_sub(1);
+                    let max = app.editor.body.lines().len().saturating_sub(1);
                     let row = target.min(max);
                     app.editor
-                        .editor
+                        .body
                         .move_cursor(ratatui_textarea::CursorMove::Jump(row as u16, 0));
                     app.request_editor_preview_update();
                 }
@@ -185,7 +185,7 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                         .map(|b| line_text[..b].chars().count())
                         .unwrap_or(0);
                     app.editor
-                        .editor
+                        .body
                         .move_cursor(ratatui_textarea::CursorMove::Jump(
                             line_idx as u16,
                             col as u16,
@@ -201,17 +201,17 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 if query_lower.is_empty() {
                     popup.results.clear();
                 } else {
-                    popup.results = collect_find_results(&app.editor.editor, &query_lower);
+                    popup.results = collect_find_results(&app.editor.body, &query_lower);
                 }
                 if popup.selected >= popup.results.len() {
                     popup.selected = popup.results.len().saturating_sub(1);
                 }
                 popup.scroll_to_selected(10);
                 let query = popup.query();
-                let _ = jump_to_next_search_match(&mut app.editor.editor, &query);
-                let cursor = app.editor.editor.cursor();
+                let _ = jump_to_next_search_match(&mut app.editor.body, &query);
+                let cursor = app.editor.body.cursor();
                 popup.info =
-                    search_match_stats(app.editor.editor.lines(), (cursor.0, cursor.1), &query)
+                    search_match_stats(app.editor.body.lines(), (cursor.row, cursor.col), &query)
                         .map(|(n, total)| format!("{n}/{total}"));
             }
             _ => {}
@@ -326,7 +326,7 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                         let _ = app.editor.title_editor.insert_str(&s);
                     }
                     EditFocus::Body => {
-                        let _ = app.editor.editor.insert_str(&s);
+                        let _ = app.editor.body.insert_str(&s);
                     }
                     EditFocus::Sidebar => {
                         // no-op
@@ -345,7 +345,7 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                         let _ = app.editor.title_editor.insert_str("\t");
                     }
                     EditFocus::Body => {
-                        let _ = app.editor.editor.insert_str("\t");
+                        let _ = app.editor.body.insert_str("\t");
                     }
                     EditFocus::Sidebar => {
                         // no-op
@@ -359,7 +359,7 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 let mut popup = crate::ui::quick_search::QuickSearch::new("Find", theme);
                 let query_lower = popup.query().to_lowercase();
                 if !query_lower.is_empty() {
-                    popup.results = collect_find_results(&app.editor.editor, &query_lower);
+                    popup.results = collect_find_results(&app.editor.body, &query_lower);
                 }
                 app.editor.find_popup = Some(popup);
                 return false;
@@ -416,10 +416,8 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                 return false;
             }
             if apply_text_shortcuts(&app.keybinds, &mut app.editor.title_editor, key) {
-                app.request_editor_preview_update();
                 return false;
             }
-
             if app.editor.title_editor.input(Input::from(key))
                 && app.editor.title_editor.lines().len() > 1
             {
@@ -431,23 +429,17 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
                     app.app_theme.highlight_bg,
                 );
             }
-            app.request_editor_preview_update();
-            if apply_text_shortcuts(&app.keybinds, &mut app.editor.editor, key) {
-                app.request_editor_preview_update();
-                return false;
-            }
-            if app.editor.editor.input(Input::from(key)) {
-                app.request_editor_preview_update();
-            }
-            app.request_editor_preview_update();
         }
         EditFocus::Body => {
             app.seq_matcher.clear();
-            if apply_text_shortcuts(&app.keybinds, &mut app.editor.editor, key) {
-                app.request_editor_preview_update();
+            let revision = app.editor.body.revision();
+            if apply_text_shortcuts(&app.keybinds, &mut app.editor.body, key) {
+                if app.editor.body.revision() != revision {
+                    app.request_editor_preview_update();
+                }
                 return false;
             }
-            if app.editor.editor.input(Input::from(key)) {
+            if app.editor.body.input(Input::from(key)).content_changed {
                 app.request_editor_preview_update();
             }
         }
@@ -482,7 +474,7 @@ pub fn handle_edit_mouse(
                             .map(|b| line_text[..b].chars().count())
                             .unwrap_or(0);
                         app.editor
-                            .editor
+                            .body
                             .move_cursor(ratatui_textarea::CursorMove::Jump(
                                 line_idx as u16,
                                 col as u16,
@@ -498,18 +490,21 @@ pub fn handle_edit_mouse(
                     if query_lower.is_empty() {
                         popup.results.clear();
                     } else {
-                        popup.results = collect_find_results(&app.editor.editor, &query_lower);
+                        popup.results = collect_find_results(&app.editor.body, &query_lower);
                     }
                     if popup.selected >= popup.results.len() {
                         popup.selected = popup.results.len().saturating_sub(1);
                     }
                     popup.scroll_to_selected(10);
                     let query = popup.query();
-                    let _ = jump_to_next_search_match(&mut app.editor.editor, &query);
-                    let cursor = app.editor.editor.cursor();
-                    popup.info =
-                        search_match_stats(app.editor.editor.lines(), (cursor.0, cursor.1), &query)
-                            .map(|(n, total)| format!("{n}/{total}"));
+                    let _ = jump_to_next_search_match(&mut app.editor.body, &query);
+                    let cursor = app.editor.body.cursor();
+                    popup.info = search_match_stats(
+                        app.editor.body.lines(),
+                        (cursor.row, cursor.col),
+                        &query,
+                    )
+                    .map(|(n, total)| format!("{n}/{total}"));
                 }
                 crate::ui::quick_search::QuickSearchAction::Navigated => {}
             }
@@ -540,7 +535,7 @@ pub fn handle_edit_mouse(
             terminal_area,
             app.preview_fullscreen,
             app.editor.editor_preview_enabled,
-            app.editor.editor.lines().len(),
+            app.editor.body.lines().len(),
             app.editor.show_line_numbers,
             app.editor.sidebar,
             app.preview_position,
@@ -561,25 +556,24 @@ pub fn handle_edit_mouse(
             }
         } else if contains_cell(body_inner, mouse_event.column, mouse_event.row) {
             *focus = EditFocus::Body;
-            if app.editor.editor.selection_range().is_none() {
-                move_textarea_cursor_to_mouse(
-                    &mut app.editor.editor,
+            if app.editor.body.selection_range().is_none() {
+                let _ = app.editor.body.hit_test_cursor(
                     body_inner,
                     mouse_event.column,
                     mouse_event.row,
-                    app.editor.body_viewport_row as usize,
-                    app.editor.body_viewport_col as usize,
+                    app.editor.body_viewport_row,
+                    app.editor.body_viewport_col,
                 );
             }
         }
         let items: Vec<&'static str> = {
             // EDIT mode — existing textarea-selection-based items
             let has_selection = match focus {
-                EditFocus::Title => app.editor.title_editor.selection_range(),
-                EditFocus::Body => app.editor.editor.selection_range(),
-                EditFocus::Sidebar => None,
+                EditFocus::Title => app.editor.title_editor.selection_range().is_some(),
+                EditFocus::Body => app.editor.body.selection_range().is_some(),
+                EditFocus::Sidebar => false,
             };
-            if has_selection.is_some() {
+            if has_selection {
                 vec![" Copy ", " Cut ", " Paste ", " Select All "]
             } else {
                 vec![" Paste ", " Select All "]
@@ -601,7 +595,7 @@ pub fn handle_edit_mouse(
         terminal_area,
         app.preview_fullscreen,
         app.editor.editor_preview_enabled,
-        app.editor.editor.lines().len(),
+        app.editor.body.lines().len(),
         app.editor.show_line_numbers,
         app.editor.sidebar,
         app.preview_position,
@@ -746,15 +740,14 @@ pub fn handle_edit_mouse(
             app.editor.last_sidebar_click = None;
             if contains_cell(body_inner, mouse_event.column, mouse_event.row) {
                 *focus = EditFocus::Body;
-                move_textarea_cursor_to_mouse(
-                    &mut app.editor.editor,
+                let _ = app.editor.body.hit_test_cursor(
                     body_inner,
                     mouse_event.column,
                     mouse_event.row,
-                    app.editor.body_viewport_row as usize,
-                    app.editor.body_viewport_col as usize,
+                    app.editor.body_viewport_row,
+                    app.editor.body_viewport_col,
                 );
-                app.editor.editor.start_selection();
+                app.editor.body.start_selection();
                 *mouse_selecting = true;
             } else if contains_cell(title_inner, mouse_event.column, mouse_event.row) {
                 *focus = EditFocus::Title;
@@ -774,13 +767,12 @@ pub fn handle_edit_mouse(
             if *mouse_selecting {
                 *mouse_dragged = true;
                 if *focus == EditFocus::Body {
-                    move_textarea_cursor_to_mouse(
-                        &mut app.editor.editor,
+                    let _ = app.editor.body.hit_test_cursor(
                         body_inner,
                         mouse_event.column,
                         mouse_event.row,
-                        app.editor.body_viewport_row as usize,
-                        app.editor.body_viewport_col as usize,
+                        app.editor.body_viewport_row,
+                        app.editor.body_viewport_col,
                     );
                 } else {
                     move_textarea_cursor_to_mouse(
@@ -797,7 +789,7 @@ pub fn handle_edit_mouse(
         MouseEventKind::Up(MouseButton::Left) => {
             if *mouse_selecting && !*mouse_dragged {
                 if *focus == EditFocus::Body {
-                    app.editor.editor.cancel_selection();
+                    app.editor.body.cancel_selection();
                 } else {
                     app.editor.title_editor.cancel_selection();
                 }

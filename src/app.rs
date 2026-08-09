@@ -22,7 +22,6 @@ use crate::events::make_title_editor;
 pub use crate::list_view::*;
 use crate::markdown::MarkdownRenderer;
 pub use crate::popups::*;
-use crate::ui::text_area_from_content;
 use crate::ui::{now_unix_secs, open_in_file_manager};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -1242,9 +1241,8 @@ impl App {
                         .extension()
                         .and_then(|e| e.to_str())
                         .unwrap_or("");
-                    let is_unknown = ext != "md"
-                        && ext != "txt"
-                        && !crate::storage::is_image_ext(ext);
+                    let is_unknown =
+                        ext != "md" && ext != "txt" && !crate::storage::is_image_ext(ext);
                     let (nerd, unicode) = if is_unknown {
                         ("\u{3f}", "\u{3f}")
                     } else {
@@ -1503,7 +1501,7 @@ impl App {
                 self.set_temporary_status_static("No note open to preview");
                 return;
             }
-            self.editor.editor.lines().join("\n")
+            self.editor.body.lines().join("\n")
         } else {
             // In list/graph mode, preview the selected note.
             let item = match self.list.visual_list.get(self.list.visual_index) {
@@ -1583,7 +1581,7 @@ impl App {
         }
     }
     pub fn autosave(&mut self) {
-        let content = self.editor.editor.lines().join("\n");
+        let content = self.editor.body.lines().join("\n");
 
         if let Some(path) = &self.editor.template_edit_path
             && self.editor.editing_id.is_none()
@@ -1687,38 +1685,20 @@ impl App {
         focus: &mut EditFocus,
         items: &[&'static str],
     ) {
-        let textarea = match focus {
-            EditFocus::Title => &mut self.editor.title_editor,
-            EditFocus::Body => &mut self.editor.editor,
-            EditFocus::Sidebar => return,
+        let Some(label) = items.get(action) else {
+            return;
         };
-        if let Some(label) = items.get(action) {
-            match *label {
-                " Copy " => {
-                    if textarea.selection_range().is_some() {
-                        textarea.copy();
-                        crate::text_edit::write_system_clipboard(&textarea.yank_text());
-                        self.set_temporary_status("Copied to clipboard");
-                    }
-                }
-                " Cut " => {
-                    if textarea.cut() {
-                        crate::text_edit::write_system_clipboard(&textarea.yank_text());
-                        self.set_temporary_status("Cut to clipboard");
-                    }
-                }
-                " Paste " => {
-                    if let Some(t) = crate::text_edit::read_system_clipboard() {
-                        textarea.set_yank_text(&t);
-                        textarea.paste();
-                        self.set_temporary_status("Pasted from clipboard");
-                    }
-                }
-                " Select All " => {
-                    textarea.select_all();
-                }
-                _ => {}
+        let notice = match focus {
+            EditFocus::Title => {
+                crate::text_edit::apply_context_menu_action(&mut self.editor.title_editor, label)
             }
+            EditFocus::Body => {
+                crate::text_edit::apply_context_menu_action(&mut self.editor.body, label)
+            }
+            EditFocus::Sidebar => None,
+        };
+        if let Some(notice) = notice {
+            self.set_temporary_status(notice);
         }
     }
     pub fn get_help_rows(&mut self) -> Vec<crate::ui::HelpRow> {
@@ -1997,7 +1977,7 @@ mod tests {
 
         // Edit body: type 10 words
         let body_content = "one two three four five six seven eight nine ten";
-        app.editor.editor = TextArea::from(body_content.lines());
+        app.editor.body = crate::editor_document::EditorDocument::from_text(body_content);
 
         // Call autosave
         app.autosave();
@@ -2008,7 +1988,7 @@ mod tests {
 
         // Edit note again: delete 3 words, and add 5 words (net new +2 words)
         let body_content_2 = "one two three four five six seven eight nine ten eleven twelve";
-        app.editor.editor = TextArea::from(body_content_2.lines());
+        app.editor.body = crate::editor_document::EditorDocument::from_text(body_content_2);
         app.autosave();
 
         // 10 + 2 = 12 words total
@@ -2016,7 +1996,7 @@ mod tests {
 
         // Edit note again: remove words (e.g. to 3 words)
         let body_content_3 = "one two three";
-        app.editor.editor = TextArea::from(body_content_3.lines());
+        app.editor.body = crate::editor_document::EditorDocument::from_text(body_content_3);
         app.autosave();
 
         // Should not decrease words_written (should remain 12)
@@ -2025,7 +2005,7 @@ mod tests {
         // Now create a second note
         app.start_blank_note_with_title(String::new(), "Second Note".to_string());
         assert_eq!(app.editor.initial_word_count, 0);
-        app.editor.editor = TextArea::from(vec!["hello world"].into_iter().map(String::from));
+        app.editor.body = crate::editor_document::EditorDocument::from_text("hello world");
         app.autosave();
 
         // words_written: 12 + 2 = 14
@@ -2079,7 +2059,7 @@ mod tests {
         // Open note B, edit body, simulate back-to-list flow with incremental refresh
         app.load_and_open_note(&b_id, None);
         let body_content = "edited body content for note b";
-        app.editor.editor = TextArea::from(body_content.lines());
+        app.editor.body = crate::editor_document::EditorDocument::from_text(body_content);
 
         let prev_id = app.editor.editing_id.clone();
         app.autosave();

@@ -2,9 +2,29 @@
 
 ## Overview
 
-A modal editor with READ and EDIT modes, a built-in find popup, soft-wrap support, sidebars with wikilink previews, and external editor handoff. Changes auto-save when navigating back to the notes list.
+A modal built-in editor with find popup, soft-wrap, sidebars with wikilink
+previews, and external-editor handoff. `Esc` saves once when returning to
+notes list.
 
-**Source:** `src/editor.rs` (runtime state), `src/ui/edit_view.rs` (rendering), `src/events/edit.rs` (input)
+**Source:** `src/editor.rs` (state), `src/editor_document.rs` (body buffer,
+revision, snapshot, and change contract), `src/editor_session.rs` (in-process
+event loop), `src/ui/edit_view.rs` (rendering), `src/events/edit.rs` (input).
+
+Edit runs in dedicated same-process session. It draws initial frame, batches up
+to 64 queued input events without reordering keys, coalesces only consecutive
+mouse-move or resize events, and redraws only after dirty editor-local work.
+Catalog, watcher, search, and other generic app queues wait until Edit exits.
+
+`EditorDocument` currently wraps `ratatui-textarea` behind body APIs; title,
+canvas JSON, popups, Draw, and Backup retain their own `TextArea` instances.
+
+## Preview Lifecycle
+
+Body mutations schedule Markdown preview from `EditorDocument::revision()`.
+`EditorPreviewScheduler` starts with a 75 ms layout EWMA and submits after
+`clamp(2 × EWMA, 150 ms, 750 ms)`. Title edits only redraw title chrome; they
+never schedule body preview work. Initial open and explicit preview toggles
+remain immediate.
 
 ## Modes
 

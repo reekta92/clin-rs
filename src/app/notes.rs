@@ -1,11 +1,11 @@
 use super::*;
+use crate::editor_document::EditorDocument;
 use crate::fsutil::SecretTempFile;
 use crate::list_view::*;
 use crate::popups::*;
 use crate::storage::Note;
 use crate::templates::Template;
 use anyhow::{Context, Result};
-use ratatui_textarea::TextArea;
 use std::borrow::Cow;
 use std::collections::HashSet;
 
@@ -408,14 +408,14 @@ impl App {
                 self.app_theme.highlight_fg,
                 self.app_theme.highlight_bg,
             );
-            let mut editor = text_area_from_content(&note.content);
+            let mut body = EditorDocument::from_text(&note.content);
             if let Some(l) = line_number {
-                editor.move_cursor(ratatui_textarea::CursorMove::Jump(
+                body.move_cursor(ratatui_textarea::CursorMove::Jump(
                     l.saturating_sub(1) as u16,
                     0,
                 ));
             }
-            self.editor.editor = editor;
+            self.editor.body = body;
             self.apply_editor_prefs();
             self.rebuild_outline();
             self.editor.links = self.compute_links();
@@ -651,7 +651,7 @@ impl App {
             self.app_theme.highlight_fg,
             self.app_theme.highlight_bg,
         );
-        self.editor.editor = TextArea::from(content.lines());
+        self.editor.body = EditorDocument::from_text(&content);
         self.apply_editor_prefs();
         self.set_default_status();
     }
@@ -699,7 +699,7 @@ impl App {
             self.app_theme.highlight_fg,
             self.app_theme.highlight_bg,
         );
-        self.editor.editor = text_area_from_content(&rendered.content);
+        self.editor.body = EditorDocument::from_text(&rendered.content);
         self.apply_editor_prefs();
 
         self.set_default_status();
@@ -750,7 +750,7 @@ impl App {
             self.app_theme.highlight_fg,
             self.app_theme.highlight_bg,
         );
-        self.editor.editor = text_area_from_content(&rendered.content);
+        self.editor.body = EditorDocument::from_text(&rendered.content);
         self.apply_editor_prefs();
 
         self.set_default_status();
@@ -765,7 +765,7 @@ impl App {
             self.editor.template_edit_path = None;
             self.editor.title_editor =
                 make_title_editor("", self.app_theme.highlight_fg, self.app_theme.highlight_bg);
-            self.editor.editor = TextArea::default();
+            self.editor.body = EditorDocument::default();
             self.apply_editor_prefs();
             self.popups.confirm = None;
             self.editor.md_preview_renderer = None;
@@ -805,7 +805,7 @@ impl App {
         self.editor.template_edit_path = None;
         self.editor.title_editor =
             make_title_editor("", self.app_theme.highlight_fg, self.app_theme.highlight_bg);
-        self.editor.editor = TextArea::default();
+        self.editor.body = EditorDocument::default();
         self.apply_editor_prefs();
         self.popups.confirm = None;
         self.editor.md_preview_renderer = None;
@@ -1184,7 +1184,7 @@ impl App {
             self.app_theme.highlight_fg,
             self.app_theme.highlight_bg,
         );
-        self.editor.editor = text_area_from_content(&content);
+        self.editor.body = EditorDocument::from_text(&content);
         self.apply_editor_prefs();
         self.set_default_status();
     }

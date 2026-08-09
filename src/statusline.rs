@@ -28,7 +28,7 @@ pub(crate) struct EditMemo {
 impl EditMemo {
     pub(crate) fn counts(&mut self, app: &crate::app::App) -> (usize, usize) {
         *self.counts.get_or_insert_with(|| {
-            let lines = app.editor.editor.lines();
+            let lines = app.editor.body.lines();
             let words: usize = lines.iter().map(|l| crate::goals::count_words(l)).sum();
             let chars: usize = lines.iter().map(|l| l.chars().count()).sum::<usize>()
                 + lines.len().saturating_sub(1);
@@ -37,7 +37,7 @@ impl EditMemo {
     }
     pub(crate) fn content(&mut self, app: &crate::app::App) -> &str {
         self.content
-            .get_or_insert_with(|| app.editor.editor.lines().join("\n"))
+            .get_or_insert_with(|| app.editor.body.lines().join("\n"))
     }
 }
 pub struct StatuslineContext<'a> {
@@ -659,10 +659,10 @@ impl StatuslineContext<'_> {
 
                 let val = match name {
                     "word_count" => self.edit_memo.borrow_mut().counts(app).0.to_string(),
-                    "line_count" => app.editor.editor.lines().len().to_string(),
+                    "line_count" => app.editor.body.lines().len().to_string(),
                     "char_count" => self.edit_memo.borrow_mut().counts(app).1.to_string(),
-                    "cursor_line" => (app.editor.editor.cursor().0 + 1).to_string(),
-                    "cursor_col" => (app.editor.editor.cursor().1 + 1).to_string(),
+                    "cursor_line" => (app.editor.body.cursor().row + 1).to_string(),
+                    "cursor_col" => (app.editor.body.cursor().col + 1).to_string(),
                     "modified" => {
                         let now = std::time::Instant::now();
                         let mut cache = app.editor.modified_status_cache.borrow_mut();

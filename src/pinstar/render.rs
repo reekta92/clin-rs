@@ -102,17 +102,15 @@ pub fn draw_pinstar_view(
             .title(" Source (JSON) ")
             .style(theme.bg_style());
 
-        crate::ui::render_editor_widget(
+        crate::ui::render_textarea_with_theme(
             frame,
-            app,
-            if state.editor_focus {
-                crate::app::EditFocus::Body
-            } else {
-                crate::app::EditFocus::Sidebar
-            },
+            &mut state.raw_editor,
             editor_area,
-            Some(editor_block),
-            Some(theme.bg_style()),
+            theme,
+            state.editor_focus,
+            true,
+            editor_block,
+            theme.bg_style(),
         );
     }
 

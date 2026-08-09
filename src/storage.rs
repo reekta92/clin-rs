@@ -2407,7 +2407,10 @@ mod tests {
         fs::write(&note_path, b"%PDF-1.4\n\x80\x81\x82")?;
 
         let result = storage.load_note_summary("doc.pdf");
-        assert!(result.is_ok(), "non-text files should load as metadata-only summaries");
+        assert!(
+            result.is_ok(),
+            "non-text files should load as metadata-only summaries"
+        );
         let summary = result.unwrap();
         assert_eq!(summary.title, "doc");
         assert_eq!(summary.id, "doc.pdf");
