@@ -91,7 +91,7 @@ Drop an existing Obsidian vault into `clin` and it works out of the box. Image r
 
 ## Dependencies
 These are highly recommended for the best experience:
-- **A nerd font** — required for rendering **glyphs** which are highly used around the UI.
+- **A nerd font** — required for rendering **glyphs** which are highly used around the UI. **Jetbrains Mono Nerd Font** with **font size 14** is recommended.
 - **A modern terminal** — such as `kitty`, `ghostty` etc.
 
 ---
