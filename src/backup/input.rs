@@ -1,4 +1,6 @@
-use crate::backup::state::{BackupInputMode, BackupSection, BackupState, SettingsField};
+use crate::backup::state::{
+    BackupInputMode, BackupSection, BackupState, BackupTextField, SettingsField,
+};
 use crate::config::ClinConfig;
 use crate::keybinds::{BackupAction, Keybinds};
 use crate::text_edit::apply_text_shortcuts;
@@ -320,6 +322,64 @@ fn handle_settings_field_input(
     InputResult::None
 }
 
+fn handle_text_selection_mouse(
+    input: &mut TextArea<'static>,
+    input_area: Rect,
+    field: BackupTextField,
+    selection: &mut Option<(BackupTextField, crate::text_edit::MouseTextSelection)>,
+    event: MouseEvent,
+) -> (bool, Option<&'static str>) {
+    match event.kind {
+        MouseEventKind::Down(MouseButton::Left)
+            if crate::events::contains_cell(input_area, event.column, event.row) =>
+        {
+            let (scroll_row, scroll_col) = crate::ui::get_textarea_scroll(input);
+            crate::events::move_textarea_cursor_to_mouse(
+                input,
+                input_area,
+                event.column,
+                event.row,
+                scroll_row,
+                scroll_col,
+            );
+            let mut lifecycle = crate::text_edit::MouseTextSelection::default();
+            lifecycle.begin(input);
+            *selection = Some((field, lifecycle));
+            (true, None)
+        }
+        MouseEventKind::Drag(MouseButton::Left) => {
+            let Some((active_field, lifecycle)) = selection.as_mut() else {
+                return (false, None);
+            };
+            if *active_field != field || !lifecycle.active {
+                return (false, None);
+            }
+            lifecycle.mark_drag();
+            let (scroll_row, scroll_col) = crate::ui::get_textarea_scroll(input);
+            crate::events::move_textarea_cursor_to_mouse(
+                input,
+                input_area,
+                event.column,
+                event.row,
+                scroll_row,
+                scroll_col,
+            );
+            (true, None)
+        }
+        MouseEventKind::Up(MouseButton::Left) => {
+            let Some((active_field, mut lifecycle)) = selection.take() else {
+                return (false, None);
+            };
+            if active_field != field {
+                *selection = Some((active_field, lifecycle));
+                return (false, None);
+            }
+            (true, lifecycle.finish(input))
+        }
+        _ => (false, None),
+    }
+}
+
 pub fn handle_mouse(
     state: &mut BackupState,
     event: MouseEvent,
@@ -330,12 +390,39 @@ pub fn handle_mouse(
     }
 
     if state.input_mode == BackupInputMode::EditCommitMessage
-        && let MouseEventKind::Down(MouseButton::Left) = event.kind
         && let Some(area) = state.last_area
     {
         let popup_area = crate::ui::centered_rect(crate::ui::PopupSize::Prompt, area);
-        if !crate::events::contains_cell(popup_area, event.column, event.row) {
+        if event.kind == MouseEventKind::Down(MouseButton::Left)
+            && !crate::events::contains_cell(popup_area, event.column, event.row)
+        {
             state.input_mode = BackupInputMode::Normal;
+            state.mouse_selection = None;
+            return InputResult::None;
+        }
+
+        let content = Layout::default()
+            .direction(ratatui::layout::Direction::Vertical)
+            .constraints([Constraint::Min(1), Constraint::Length(1)])
+            .split(popup_area)[0];
+        let textarea_area = ratatui::widgets::Block::default()
+            .borders(ratatui::widgets::Borders::ALL)
+            .inner(content)
+            .inner(ratatui::layout::Margin {
+                vertical: 0,
+                horizontal: 1,
+            });
+        let (handled, notice) = handle_text_selection_mouse(
+            &mut state.commit_textarea,
+            textarea_area,
+            BackupTextField::CommitMessage,
+            &mut state.mouse_selection,
+            event,
+        );
+        if handled {
+            if let Some(notice) = notice {
+                state.status_message = Some(notice.into());
+            }
             return InputResult::None;
         }
     }
@@ -528,10 +615,7 @@ fn handle_settings_mouse(state: &mut BackupState, event: MouseEvent) -> InputRes
     {
         state.settings_open = false;
         state.input_mode = BackupInputMode::Normal;
-        return InputResult::None;
-    }
-
-    if event.kind != MouseEventKind::Down(MouseButton::Left) {
+        state.mouse_selection = None;
         return InputResult::None;
     }
 
@@ -561,6 +645,48 @@ fn handle_settings_mouse(state: &mut BackupState, event: MouseEvent) -> InputRes
             Constraint::Min(0),
         ])
         .split(inner_content);
+
+    let remote_url_area = ratatui::widgets::Block::default()
+        .borders(ratatui::widgets::Borders::ALL)
+        .inner(chunks[4]);
+    let (handled, notice) = handle_text_selection_mouse(
+        &mut state.settings.remote_url,
+        remote_url_area,
+        BackupTextField::RemoteUrl,
+        &mut state.mouse_selection,
+        event,
+    );
+    if handled {
+        if let Some(notice) = notice {
+            state.status_message = Some(notice.into());
+        }
+        state.settings.focused_field = SettingsField::RemoteUrl;
+        state.input_mode = BackupInputMode::EditSettingsField;
+        return InputResult::None;
+    }
+
+    let remote_name_area = ratatui::widgets::Block::default()
+        .borders(ratatui::widgets::Borders::ALL)
+        .inner(chunks[5]);
+    let (handled, notice) = handle_text_selection_mouse(
+        &mut state.settings.remote_name,
+        remote_name_area,
+        BackupTextField::RemoteName,
+        &mut state.mouse_selection,
+        event,
+    );
+    if handled {
+        if let Some(notice) = notice {
+            state.status_message = Some(notice.into());
+        }
+        state.settings.focused_field = SettingsField::RemoteName;
+        state.input_mode = BackupInputMode::EditSettingsField;
+        return InputResult::None;
+    }
+
+    if event.kind != MouseEventKind::Down(MouseButton::Left) {
+        return InputResult::None;
+    }
 
     let fields: &[(usize, SettingsField)] = &[
         (0, SettingsField::Enabled),

@@ -12,6 +12,12 @@ pub fn handle_event(
     keybinds: &Keybinds,
     config: &crate::config::ClinConfig,
 ) -> anyhow::Result<Option<DrawEventAction>> {
+    if app.text_editor.is_some()
+        && let Event::Mouse(mouse) = ev
+    {
+        return handle_text_editor_mouse(mouse, app);
+    }
+
     if let Some((idx, textarea)) = &mut app.text_editor {
         app.seq_matcher.clear();
         match ev {
@@ -128,6 +134,53 @@ fn cycle_shape_type(app: &mut DrawAppState, delta: i32) {
         .unwrap_or(0) as i32;
     let next_idx = (current_idx + delta).rem_euclid(shapes.len() as i32) as usize;
     app.active_shape_type = shapes[next_idx];
+}
+
+fn handle_text_editor_mouse(
+    mouse: MouseEvent,
+    app: &mut DrawAppState,
+) -> anyhow::Result<Option<DrawEventAction>> {
+    let Some((_, textarea)) = &mut app.text_editor else {
+        return Ok(None);
+    };
+    let Some(textarea_area) = app.text_editor_rect else {
+        return Ok(None);
+    };
+
+    match mouse.kind {
+        MouseEventKind::Down(MouseButton::Left)
+            if crate::events::contains_cell(textarea_area, mouse.column, mouse.row) =>
+        {
+            let (scroll_row, scroll_col) = crate::ui::get_textarea_scroll(textarea);
+            crate::events::move_textarea_cursor_to_mouse(
+                textarea,
+                textarea_area,
+                mouse.column,
+                mouse.row,
+                scroll_row,
+                scroll_col,
+            );
+            app.mouse_selection.begin(textarea);
+        }
+        MouseEventKind::Drag(MouseButton::Left) if app.mouse_selection.active => {
+            app.mouse_selection.mark_drag();
+            let (scroll_row, scroll_col) = crate::ui::get_textarea_scroll(textarea);
+            crate::events::move_textarea_cursor_to_mouse(
+                textarea,
+                textarea_area,
+                mouse.column,
+                mouse.row,
+                scroll_row,
+                scroll_col,
+            );
+        }
+        MouseEventKind::Up(MouseButton::Left) if app.mouse_selection.active => {
+            app.mouse_selection.finish(textarea);
+        }
+        _ => {}
+    }
+
+    Ok(None)
 }
 
 fn handle_mouse(

@@ -78,6 +78,8 @@ pub(crate) trait TextEditTarget {
     fn delete_word(&mut self) -> bool;
     fn delete_next_word(&mut self) -> bool;
     fn move_cursor(&mut self, movement: CursorMove);
+    fn start_selection(&mut self);
+    fn cancel_selection(&mut self);
 }
 
 impl TextEditTarget for TextArea<'static> {
@@ -116,6 +118,12 @@ impl TextEditTarget for TextArea<'static> {
     }
     fn move_cursor(&mut self, movement: CursorMove) {
         self.move_cursor(movement);
+    }
+    fn start_selection(&mut self) {
+        self.start_selection();
+    }
+    fn cancel_selection(&mut self) {
+        self.cancel_selection();
     }
 }
 
@@ -156,6 +164,55 @@ impl TextEditTarget for EditorDocument {
     fn move_cursor(&mut self, movement: CursorMove) {
         self.move_cursor(movement);
     }
+    fn start_selection(&mut self) {
+        self.start_selection();
+    }
+    fn cancel_selection(&mut self) {
+        self.cancel_selection();
+    }
+}
+
+pub(crate) fn copy_mouse_selection<T: TextEditTarget>(target: &mut T) -> Option<&'static str> {
+    if !target.has_selection() {
+        return None;
+    }
+    target.copy();
+    write_system_clipboard(&target.yank_text());
+    Some("Copied to clipboard")
+}
+
+#[derive(Debug, Default, Clone)]
+pub(crate) struct MouseTextSelection {
+    pub active: bool,
+    pub dragged: bool,
+}
+
+impl MouseTextSelection {
+    pub fn begin<T: TextEditTarget>(&mut self, target: &mut T) {
+        target.start_selection();
+        self.active = true;
+        self.dragged = false;
+    }
+
+    pub fn mark_drag(&mut self) {
+        if self.active {
+            self.dragged = true;
+        }
+    }
+
+    pub fn finish<T: TextEditTarget>(&mut self, target: &mut T) -> Option<&'static str> {
+        if !self.active {
+            return None;
+        }
+        let dragged = self.dragged;
+        self.active = false;
+        self.dragged = false;
+        if !dragged {
+            target.cancel_selection();
+            return None;
+        }
+        copy_mouse_selection(target)
+    }
 }
 
 pub(crate) fn apply_text_shortcuts<T: TextEditTarget>(
@@ -168,10 +225,8 @@ pub(crate) fn apply_text_shortcuts<T: TextEditTarget>(
         return true;
     }
     if keybinds.matches_edit(EditAction::Copy, &key) {
-        if target.has_selection() {
-            target.copy();
-            write_system_clipboard(&target.yank_text());
-            set_clipboard_notice("Copied to clipboard");
+        if let Some(notice) = copy_mouse_selection(target) {
+            set_clipboard_notice(notice);
         }
         return true;
     }
@@ -220,30 +275,44 @@ pub(crate) fn apply_text_shortcuts<T: TextEditTarget>(
     false
 }
 
-pub(crate) fn apply_context_menu_action<T: TextEditTarget>(
-    target: &mut T,
-    label: &str,
-) -> Option<&'static str> {
-    match label {
-        " Copy " if target.has_selection() => {
-            target.copy();
-            write_system_clipboard(&target.yank_text());
-            Some("Copied to clipboard")
-        }
-        " Cut " if target.cut() => {
-            write_system_clipboard(&target.yank_text());
-            Some("Cut to clipboard")
-        }
-        " Paste " => read_system_clipboard()
-            .filter(|text| !text.is_empty())
-            .map(|text| {
-                target.insert_str(text);
-                "Pasted from clipboard"
-            }),
-        " Select All " => {
-            target.select_all();
-            None
-        }
-        _ => None,
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::{KeyCode, KeyModifiers};
+
+    fn text_area(text: &str) -> TextArea<'static> {
+        TextArea::new(vec![text.to_owned()])
+    }
+    #[test]
+    fn mouse_selection_lifecycle_copies_drag_and_cancels_click() {
+        let mut area = text_area("hello world");
+        area.move_cursor(CursorMove::End);
+        let mut selection = MouseTextSelection::default();
+        selection.begin(&mut area);
+        area.move_cursor(CursorMove::WordBack);
+        selection.mark_drag();
+        assert_eq!(selection.finish(&mut area), Some("Copied to clipboard"));
+
+        selection.begin(&mut area);
+        assert_eq!(selection.finish(&mut area), None);
+        assert!(!area.has_selection());
+    }
+
+    #[test]
+    fn copy_mouse_selection_ignores_empty_selection() {
+        let mut area = text_area("hello");
+        assert_eq!(copy_mouse_selection(&mut area), None);
+    }
+
+    #[test]
+    fn shortcut_copy_sets_notice() {
+        let mut area = text_area("hello");
+        area.select_all();
+        assert!(apply_text_shortcuts(
+            &Keybinds::default(),
+            &mut area,
+            KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL),
+        ));
+        assert_eq!(take_clipboard_notice(), Some("Copied to clipboard"));
     }
 }

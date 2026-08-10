@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use crate::app::{App, EditFocus, ViewMode};
 use crate::event_source::EventSource;
+use crate::text_edit::MouseTextSelection;
 
 /// Run Edit mode without generic application queue draining or unconditional
 /// redraws. The session remains in-process and mutates the same `App`.
@@ -19,8 +20,7 @@ where
     B::Error: std::error::Error + Send + Sync + 'static,
 {
     let mut focus = EditFocus::Body;
-    let mut mouse_selecting = false;
-    let mut mouse_dragged = false;
+    let mut mouse_selection = MouseTextSelection::default();
     let mut dirty = true;
     if let Some(change) = app.editor.body.take_change() {
         synchronize_source_highlight(app, change);
@@ -68,14 +68,7 @@ where
         }
         for event in coalesce_editor_events(pending) {
             let body_revision = app.editor.body.revision();
-            dirty |= dispatch_editor_event(
-                terminal,
-                app,
-                event,
-                &mut focus,
-                &mut mouse_selecting,
-                &mut mouse_dragged,
-            )?;
+            dirty |= dispatch_editor_event(terminal, app, event, &mut focus, &mut mouse_selection)?;
             if app.editor.body.revision() != body_revision {
                 if let Some(change) = app.editor.body.take_change() {
                     synchronize_source_highlight(app, change);
@@ -124,8 +117,7 @@ fn dispatch_editor_event<B: ratatui::backend::Backend>(
     app: &mut App,
     event: Event,
     focus: &mut EditFocus,
-    mouse_selecting: &mut bool,
-    mouse_dragged: &mut bool,
+    mouse_selection: &mut MouseTextSelection,
 ) -> Result<bool>
 where
     B::Error: std::error::Error + Send + Sync + 'static,
@@ -158,7 +150,7 @@ where
             {
                 return Ok(true);
             }
-            crate::handle_edit_mouse(app, mouse, area, focus, mouse_selecting, mouse_dragged);
+            crate::handle_edit_mouse(app, mouse, area, focus, mouse_selection);
             Ok(true)
         }
         Event::Paste(data) => {

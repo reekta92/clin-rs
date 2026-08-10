@@ -24,6 +24,7 @@ pub struct QuickSearch<T> {
     /// Optional match-count info rendered right-aligned in the header bar,
     /// e.g. "3/7". Populated by the find-popup Edited handler.
     pub info: Option<String>,
+    pub(crate) mouse_selection: crate::text_edit::MouseTextSelection,
 }
 
 /// Actions returned by `handle_quick_search_keys`.
@@ -48,6 +49,7 @@ impl<T> QuickSearch<T> {
             selected: 0,
             scroll_offset: 0,
             info: None,
+            mouse_selection: crate::text_edit::MouseTextSelection::default(),
         }
     }
 
@@ -268,6 +270,8 @@ pub fn handle_quick_search_mouse<T>(
     let combo_width = label_width + input_width;
     let start_x = frame_area.x + (frame_area.width.saturating_sub(combo_width)) / 2;
 
+    let input_area = Rect::new(start_x + label_width, frame_area.y, input_width, 1);
+
     let visible_count = result_count.min(max_visible);
     let dropdown_height = if visible_count > 0 {
         visible_count
@@ -325,6 +329,19 @@ pub fn handle_quick_search_mouse<T>(
             }
         }
         crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left) => {
+            if crate::events::contains_cell(input_area, event.column, event.row) {
+                let (scroll_row, scroll_col) = crate::ui::get_textarea_scroll(&popup.input);
+                crate::events::move_textarea_cursor_to_mouse(
+                    &mut popup.input,
+                    input_area,
+                    event.column,
+                    event.row,
+                    scroll_row,
+                    scroll_col,
+                );
+                popup.mouse_selection.begin(&mut popup.input);
+                return Some(QuickSearchAction::Edited);
+            }
             if let Some(dropdown_rect) = dropdown_area
                 && over_dropdown
                 && result_count > 0
@@ -342,6 +359,27 @@ pub fn handle_quick_search_mouse<T>(
             } else if !over_header && !over_dropdown {
                 return Some(QuickSearchAction::Cancel);
             }
+        }
+        crossterm::event::MouseEventKind::Drag(crossterm::event::MouseButton::Left)
+            if popup.mouse_selection.active =>
+        {
+            popup.mouse_selection.mark_drag();
+            let (scroll_row, scroll_col) = crate::ui::get_textarea_scroll(&popup.input);
+            crate::events::move_textarea_cursor_to_mouse(
+                &mut popup.input,
+                input_area,
+                event.column,
+                event.row,
+                scroll_row,
+                scroll_col,
+            );
+            return Some(QuickSearchAction::Edited);
+        }
+        crossterm::event::MouseEventKind::Up(crossterm::event::MouseButton::Left)
+            if popup.mouse_selection.active =>
+        {
+            popup.mouse_selection.finish(&mut popup.input);
+            return Some(QuickSearchAction::Edited);
         }
         _ => {}
     }

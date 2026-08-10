@@ -62,6 +62,7 @@ pub struct CommandPalette {
     pub last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
     pub scroll_drag: Option<crate::ui::scrollbar::ScrollDrag>,
     pub last_results_area: Option<ratatui::layout::Rect>,
+    pub(crate) mouse_selection: crate::text_edit::MouseTextSelection,
 }
 
 impl CommandPalette {
@@ -83,6 +84,7 @@ impl CommandPalette {
             last_scroll: None,
             scroll_drag: None,
             last_results_area: None,
+            mouse_selection: crate::text_edit::MouseTextSelection::default(),
         };
         p.refresh_items(app);
         p

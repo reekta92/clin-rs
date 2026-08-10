@@ -251,6 +251,7 @@ pub fn draw_canvas(
 
         frame.render_widget(list, content);
     }
+    app.text_editor_rect = None;
 
     if let Some((_, textarea)) = &app.text_editor {
         let content = crate::ui::draw_popup_frame(
@@ -279,6 +280,7 @@ pub fn draw_canvas(
                 .style(app.theme.bg_style())
                 .border_style(Style::default().fg(app.theme.accent)),
         );
+        app.text_editor_rect = Some(Block::bordered().inner(content));
         themed_textarea.set_style(app.theme.bg_style());
 
         frame.render_widget(&themed_textarea, content);

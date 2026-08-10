@@ -1,5 +1,5 @@
 use crate::keybinds::{CanvasAction, Keybinds};
-use crate::pinstar::state::{PinstarMenuType, PinstarState};
+use crate::pinstar::state::{PinstarMenuType, PinstarState, PinstarTextField};
 use crate::text_edit::apply_text_shortcuts;
 use crossterm::event::{KeyEvent, MouseButton, MouseEvent, MouseEventKind};
 use ratatui_textarea::{Input, TextArea};
@@ -42,30 +42,12 @@ pub fn handle_pinstar_mouse(
                 return true;
             }
 
-            if let Some(editor_area) = editor_area
-                && crate::events::contains_cell(editor_area, mouse.column, mouse.row)
+            if editor_area
+                .is_some_and(|rect| crate::events::contains_cell(rect, mouse.column, mouse.row))
+                || state
+                    .floating_editor_rect
+                    .is_some_and(|rect| crate::events::contains_cell(rect, mouse.column, mouse.row))
             {
-                state.editor_focus = true;
-                let digits = state.raw_editor.lines().len().max(1).to_string().len() as u16;
-                let gutter_width = digits + 2;
-                let body_inner = ratatui::layout::Rect::new(
-                    editor_area.x + gutter_width,
-                    editor_area.y + 1,
-                    editor_area.width.saturating_sub(gutter_width + 1),
-                    editor_area.height.saturating_sub(1),
-                );
-                if state.raw_editor.selection_range().is_none() {
-                    let (sr, sc) = crate::ui::get_textarea_scroll(&state.raw_editor);
-                    crate::events::move_textarea_cursor_to_mouse(
-                        &mut state.raw_editor,
-                        body_inner,
-                        mouse.column,
-                        mouse.row,
-                        sr,
-                        sc,
-                    );
-                }
-                state.open_editor_context_menu(mouse.column, mouse.row);
                 return true;
             }
 
@@ -128,7 +110,25 @@ pub fn handle_pinstar_mouse(
             }
 
             if let Some((selected, menu_type, mx, my)) = menu_action {
-                execute_menu_action(state, selected, menu_type, mx, my, app);
+                execute_menu_action(state, selected, menu_type, mx, my);
+                return true;
+            }
+
+            if let Some(floating_area) = state.floating_editor_rect
+                && let Some(editor) = &mut state.floating_editor
+                && crate::events::contains_cell(floating_area, mouse.column, mouse.row)
+            {
+                let (scroll_row, scroll_col) = crate::ui::get_textarea_scroll(editor);
+                crate::events::move_textarea_cursor_to_mouse(
+                    editor,
+                    floating_area,
+                    mouse.column,
+                    mouse.row,
+                    scroll_row,
+                    scroll_col,
+                );
+                state.mouse_selection.begin(editor);
+                state.text_selection_target = Some(PinstarTextField::Floating);
                 return true;
             }
 
@@ -152,9 +152,8 @@ pub fn handle_pinstar_mouse(
                         sr,
                         sc,
                     );
-                    state.raw_editor.start_selection();
-                    state.mouse_selecting = true;
-                    state.mouse_dragged = false;
+                    state.mouse_selection.begin(&mut state.raw_editor);
+                    state.text_selection_target = Some(PinstarTextField::Raw);
                     return true;
                 } else {
                     state.editor_focus = false;
@@ -245,11 +244,17 @@ pub fn handle_pinstar_mouse(
         MouseEventKind::Up(MouseButton::Left) => {
             state.is_panning = false;
             state.is_dragging_resize_handle = false;
-            if state.mouse_selecting && !state.mouse_dragged {
-                state.raw_editor.cancel_selection();
+            let notice = match state.text_selection_target.take() {
+                Some(PinstarTextField::Raw) => state.mouse_selection.finish(&mut state.raw_editor),
+                Some(PinstarTextField::Floating) => state
+                    .floating_editor
+                    .as_mut()
+                    .and_then(|editor| state.mouse_selection.finish(editor)),
+                None => None,
+            };
+            if let Some(notice) = notice {
+                app.set_temporary_status(notice);
             }
-            state.mouse_selecting = false;
-            state.mouse_dragged = false;
 
             if state.drag_start_pos.is_some() {
                 state.drag_start_pos = None;
@@ -261,28 +266,50 @@ pub fn handle_pinstar_mouse(
             true
         }
         MouseEventKind::Drag(MouseButton::Left) => {
-            if state.mouse_selecting {
-                state.mouse_dragged = true;
-                if let Some(editor_area) = editor_area {
-                    let digits = state.raw_editor.lines().len().max(1).to_string().len() as u16;
-                    let gutter_width = digits + 2;
-                    let body_inner = ratatui::layout::Rect::new(
-                        editor_area.x + gutter_width,
-                        editor_area.y + 1,
-                        editor_area.width.saturating_sub(gutter_width + 1),
-                        editor_area.height.saturating_sub(1),
-                    );
-                    let (sr, sc) = crate::ui::get_textarea_scroll(&state.raw_editor);
-                    crate::events::move_textarea_cursor_to_mouse(
-                        &mut state.raw_editor,
-                        body_inner,
-                        mouse.column,
-                        mouse.row,
-                        sr,
-                        sc,
-                    );
-                    return true;
+            if state.mouse_selection.active {
+                state.mouse_selection.mark_drag();
+                match state.text_selection_target {
+                    Some(PinstarTextField::Raw) => {
+                        if let Some(editor_area) = editor_area {
+                            let digits =
+                                state.raw_editor.lines().len().max(1).to_string().len() as u16;
+                            let gutter_width = digits + 2;
+                            let body_inner = ratatui::layout::Rect::new(
+                                editor_area.x + gutter_width,
+                                editor_area.y + 1,
+                                editor_area.width.saturating_sub(gutter_width + 1),
+                                editor_area.height.saturating_sub(1),
+                            );
+                            let (scroll_row, scroll_col) =
+                                crate::ui::get_textarea_scroll(&state.raw_editor);
+                            crate::events::move_textarea_cursor_to_mouse(
+                                &mut state.raw_editor,
+                                body_inner,
+                                mouse.column,
+                                mouse.row,
+                                scroll_row,
+                                scroll_col,
+                            );
+                        }
+                    }
+                    Some(PinstarTextField::Floating) => {
+                        if let (Some(editor_area), Some(editor)) =
+                            (state.floating_editor_rect, state.floating_editor.as_mut())
+                        {
+                            let (scroll_row, scroll_col) = crate::ui::get_textarea_scroll(editor);
+                            crate::events::move_textarea_cursor_to_mouse(
+                                editor,
+                                editor_area,
+                                mouse.column,
+                                mouse.row,
+                                scroll_row,
+                                scroll_col,
+                            );
+                        }
+                    }
+                    None => {}
                 }
+                return true;
             }
 
             if state.resizing_node_id.is_some()
@@ -343,46 +370,7 @@ fn execute_menu_action(
     menu_type: PinstarMenuType,
     menu_x: u16,
     menu_y: u16,
-    app: &mut crate::app::App,
 ) {
-    if menu_type == PinstarMenuType::Editor {
-        match selected_index {
-            0 => {
-                if state.raw_editor.selection_range().is_some() {
-                    state.raw_editor.copy();
-                    crate::text_edit::write_system_clipboard(&state.raw_editor.yank_text());
-                    app.set_temporary_status("Copied to clipboard");
-                }
-            }
-            1 => {
-                if state.raw_editor.cut() {
-                    crate::text_edit::write_system_clipboard(&state.raw_editor.yank_text());
-                    app.set_temporary_status("Cut to clipboard");
-                }
-                let _ = state.sync_from_raw_editor();
-            }
-            2 => {
-                match crate::text_edit::read_system_clipboard() {
-                    Some(t) if !t.is_empty() => {
-                        state.raw_editor.insert_str(t);
-                        app.set_temporary_status("Pasted from clipboard");
-                    }
-                    _ => {
-                        if state.raw_editor.paste() {
-                            app.set_temporary_status("Pasted from clipboard");
-                        }
-                    }
-                }
-                let _ = state.sync_from_raw_editor();
-            }
-            3 => {
-                state.raw_editor.select_all();
-            }
-            _ => {}
-        }
-        return;
-    }
-
     if menu_type == PinstarMenuType::ColorPicker {
         if selected_index == 0 {
             state.set_node_color(None);
@@ -521,7 +509,7 @@ pub fn handle_pinstar_event(
     }
 
     if let Some((selected, menu_type, mx, my)) = menu_action {
-        execute_menu_action(state, selected, menu_type, mx, my, app);
+        execute_menu_action(state, selected, menu_type, mx, my);
         return true;
     } else if close_menu {
         return true;

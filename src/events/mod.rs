@@ -13,7 +13,8 @@ mod setup;
 
 pub use popup_mouse::handle_global_popup_mouse;
 
-pub use edit::{handle_edit_keys, handle_edit_mouse};
+pub use edit::handle_edit_keys;
+pub(crate) use edit::handle_edit_mouse;
 pub use help::{handle_help_keys, handle_help_mouse};
 pub use list::{handle_list_keys, handle_list_mouse};
 pub use setup::{handle_setup_keys, handle_setup_mouse};
@@ -178,7 +179,6 @@ pub fn handle_bracketed_paste(
             | ActivePopup::KeybindPreset(_)
             | ActivePopup::Sort(_)
             | ActivePopup::CreateFormat(_)
-            | ActivePopup::ContextMenu(_)
             | ActivePopup::RemoveTags(_)
             | ActivePopup::TrashView(_) => return false,
         }
@@ -816,7 +816,7 @@ pub fn handle_global_popups_and_palette(
         return true;
     }
 
-    // Group B: the remaining popups (and ContextMenu, which falls through).
+    // Group B: remaining popups.
     if let Some(popup) = app.popups.active.take() {
         return popup.handle_key(key, app);
     }
@@ -1955,13 +1955,6 @@ impl crate::popups::ActivePopup {
                 true
             }
 
-            ActivePopup::ContextMenu(menu) => {
-                // Context menu keys are handled in the list/edit view handlers;
-                // re-insert and report unconsumed so they receive the key.
-                app.popups.active = Some(ActivePopup::ContextMenu(menu));
-                false
-            }
-
             ActivePopup::Info(popup) => {
                 // Info popup is handled in handle_global_popups_and_palette before
                 // reaching this match; this arm is for exhaustiveness only.
@@ -2069,8 +2062,7 @@ mod tests {
 
         let terminal_area = Rect::new(0, 0, 100, 40);
         let mut focus = EditFocus::Body;
-        let mut selecting = false;
-        let mut dragged = false;
+        let mut selection = crate::text_edit::MouseTextSelection::default();
 
         let (_, _, sidebar_inner) = crate::events::edit_view_input_areas(
             terminal_area,
@@ -2097,8 +2089,7 @@ mod tests {
             mouse_event,
             terminal_area,
             &mut focus,
-            &mut selecting,
-            &mut dragged,
+            &mut selection,
         );
 
         assert_eq!(focus, EditFocus::Sidebar);
@@ -2110,8 +2101,7 @@ mod tests {
             mouse_event,
             terminal_area,
             &mut focus,
-            &mut selecting,
-            &mut dragged,
+            &mut selection,
         );
 
         assert_eq!(app.editor.editing_id.as_deref(), Some("test_note.md"));
@@ -2165,8 +2155,7 @@ mod tests {
 
         let terminal_area = Rect::new(0, 0, 100, 40);
         let mut focus = EditFocus::Body;
-        let mut selecting = false;
-        let mut dragged = false;
+        let mut selection = crate::text_edit::MouseTextSelection::default();
 
         let (_, _, sidebar_inner) = crate::events::edit_view_input_areas(
             terminal_area,
@@ -2193,8 +2182,7 @@ mod tests {
             mouse_event,
             terminal_area,
             &mut focus,
-            &mut selecting,
-            &mut dragged,
+            &mut selection,
         );
 
         assert_eq!(focus, EditFocus::Sidebar);
@@ -2205,8 +2193,7 @@ mod tests {
             mouse_event,
             terminal_area,
             &mut focus,
-            &mut selecting,
-            &mut dragged,
+            &mut selection,
         );
 
         assert_eq!(focus, EditFocus::Body);
@@ -2216,7 +2203,7 @@ mod tests {
         );
     }
     #[test]
-    fn test_right_click_selection_behavior() {
+    fn right_click_text_does_not_open_context_menu() {
         let _lock = crate::config::ConfigTestGuard::lock();
         use crate::app::{App, EditFocus};
         use crate::storage::Storage;
@@ -2249,8 +2236,7 @@ mod tests {
 
         let terminal_area = Rect::new(0, 0, 80, 24);
         let mut focus = EditFocus::Body;
-        let mut selecting = false;
-        let mut dragged = false;
+        let mut selection = crate::text_edit::MouseTextSelection::default();
 
         let (_, body_inner, _) = crate::events::edit_view_input_areas(
             terminal_area,
@@ -2271,10 +2257,9 @@ mod tests {
         let backend = ratatui::backend::TestBackend::new(80, 24);
         let mut terminal = ratatui::Terminal::new(backend).unwrap();
 
-        // Scenario 1: Right-click without selection.
-        // It should move the cursor and open the context menu.
+        // Scenario 1: right-click without selection has no text-edit effect.
         let click_col = body_inner.x + 5;
-        let click_row = body_inner.y + 1; // "This is a test" line
+        let click_row = body_inner.y + 1;
         let mouse_event = MouseEvent {
             kind: MouseEventKind::Down(MouseButton::Right),
             column: click_col,
@@ -2302,17 +2287,13 @@ mod tests {
             mouse_event,
             terminal_area,
             &mut focus,
-            &mut selecting,
-            &mut dragged,
+            &mut selection,
         );
         assert_eq!(
             app.editor.body.cursor(),
-            crate::editor_document::TextPosition { row: 1, col: 5 }
+            crate::editor_document::TextPosition { row: 0, col: 0 }
         );
-        assert!(app.popups.active.is_some());
-
-        // Clear popup for the next scenario
-        app.popups.active = None;
+        assert!(app.popups.active.is_none());
 
         // Reset cursor to (0, 0)
         app.editor
@@ -2356,14 +2337,13 @@ mod tests {
             mouse_event_with_sel,
             terminal_area,
             &mut focus,
-            &mut selecting,
-            &mut dragged,
+            &mut selection,
         );
 
-        // Cursor should NOT have moved, and selection should still be active.
+        // Existing selection remains untouched and no popup appears.
         assert_eq!(app.editor.body.cursor(), orig_cursor);
         assert!(app.editor.body.selection_range().is_some());
-        assert!(app.popups.active.is_some());
+        assert!(app.popups.active.is_none());
     }
 
     #[test]

@@ -3262,6 +3262,13 @@ pub fn list_detail_line(app: &App) -> Option<Line<'static>> {
                 Style::default().fg(app.app_theme.fg),
             ));
         }
+        if app.list.show_file_size {
+            spans.push(Span::raw(" | "));
+            spans.push(Span::styled(
+                crate::ui::format_size(s.size_bytes),
+                Style::default().fg(app.app_theme.muted),
+            ));
+        }
         spans.push(Span::raw(" ")); // padding right
         Some(Line::from(spans))
     } else if let Some(crate::app::VisualItem::Folder {
@@ -3523,6 +3530,60 @@ mod tests {
                 next_name: Some("other".to_string()),
             })
         );
+    }
+
+    #[test]
+    fn list_detail_line_includes_file_size_when_enabled() {
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let temp_dir = tempfile::tempdir().unwrap();
+        let storage = crate::storage::Storage {
+            data_dir: temp_dir.path().join("data"),
+            config_dir: temp_dir.path().join("config"),
+            notes_dir: temp_dir.path().join("notes"),
+            templates_dir: temp_dir.path().join("templates"),
+            key: [0u8; 32],
+            skip_dir_patterns: Vec::new(),
+        };
+        for path in [
+            &storage.data_dir,
+            &storage.config_dir,
+            &storage.notes_dir,
+            &storage.templates_dir,
+        ] {
+            std::fs::create_dir_all(path).unwrap();
+        }
+        let mut app = App::new(storage).unwrap();
+        let size_bytes = 1_536;
+        app.notes = vec![crate::storage::NoteSummary {
+            id: "note.md".into(),
+            title: "Note".into(),
+            updated_at: 0,
+            folder: String::new(),
+            tags: vec![],
+            pinned: false,
+            links: vec![],
+            size_bytes,
+        }];
+        app.list.visual_list = vec![crate::list_view::VisualItem::Note {
+            summary_idx: 0,
+            depth: 0,
+            is_clin: false,
+            is_draw: false,
+            is_canvas: false,
+            in_virtual_pinned_folder: false,
+        }];
+        app.list.visual_index = 0;
+        app.list.notes_layout = crate::config::NotesLayout::Grid;
+        app.list.show_file_size = true;
+
+        let detail = list_detail_line(&app).unwrap().to_string();
+        assert!(detail.contains(&crate::ui::format_size(size_bytes)));
+        assert!(detail.contains(&*format_relative_time(0)));
+
+        app.list.show_file_size = false;
+        let detail = list_detail_line(&app).unwrap().to_string();
+        assert!(!detail.contains(&crate::ui::format_size(size_bytes)));
+        assert!(detail.contains(&*format_relative_time(0)));
     }
 
     #[test]

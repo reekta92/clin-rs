@@ -55,29 +55,91 @@ fn handle_list_popup_mouse(
     }
 }
 
+/// Handle mouse selection inside a popup text input. Returns `true` when the
+/// event belongs to the selected input, including a drag or release outside it.
+fn handle_popup_text_selection(
+    app: &mut App,
+    mouse: &MouseEvent,
+    input_area: Rect,
+    input: &mut ratatui_textarea::TextArea<'static>,
+    field: crate::popups::PopupTextField,
+) -> bool {
+    match mouse.kind {
+        MouseEventKind::Down(MouseButton::Left)
+            if contains_cell(input_area, mouse.column, mouse.row) =>
+        {
+            let (scroll_row, scroll_col) = crate::ui::get_textarea_scroll(input);
+            move_textarea_cursor_to_mouse(
+                input,
+                input_area,
+                mouse.column,
+                mouse.row,
+                scroll_row,
+                scroll_col,
+            );
+            let mut selection = crate::text_edit::MouseTextSelection::default();
+            selection.begin(input);
+            app.popups.text_selection = Some((field, selection));
+            true
+        }
+        MouseEventKind::Drag(MouseButton::Left) => {
+            let Some((active_field, selection)) = app.popups.text_selection.as_mut() else {
+                return false;
+            };
+            if *active_field != field || !selection.active {
+                return false;
+            }
+            selection.mark_drag();
+            let (scroll_row, scroll_col) = crate::ui::get_textarea_scroll(input);
+            move_textarea_cursor_to_mouse(
+                input,
+                input_area,
+                mouse.column,
+                mouse.row,
+                scroll_row,
+                scroll_col,
+            );
+            true
+        }
+        MouseEventKind::Up(MouseButton::Left) => {
+            let Some((active_field, mut selection)) = app.popups.text_selection.take() else {
+                return false;
+            };
+            if active_field != field {
+                app.popups.text_selection = Some((active_field, selection));
+                return false;
+            }
+            if let Some(notice) = selection.finish(input) {
+                app.set_temporary_status(notice);
+            }
+            true
+        }
+        _ => false,
+    }
+}
+
 /// Handle mouse events for popups that only contain a `TextArea` input
 /// (CreateNote, Goals, NoteRename, Import, Folder).
 /// Returns `true` if the popup should be dismissed (outside left-click).
 fn handle_text_input_popup_mouse(
+    app: &mut App,
     mouse: &MouseEvent,
     popup_area: Rect,
     input: &mut ratatui_textarea::TextArea<'static>,
+    field: crate::popups::PopupTextField,
 ) -> bool {
-    match mouse.kind {
-        MouseEventKind::Down(MouseButton::Left) => {
-            if !contains_cell(popup_area, mouse.column, mouse.row) {
-                return true;
-            }
-            let inner = popup_area.inner(Margin {
-                vertical: 1,
-                horizontal: 1,
-            });
-            let (sr, sc) = crate::ui::get_textarea_scroll(input);
-            move_textarea_cursor_to_mouse(input, inner, mouse.column, mouse.row, sr, sc);
-            false
-        }
-        _ => false,
+    if mouse.kind == MouseEventKind::Down(MouseButton::Left)
+        && !contains_cell(popup_area, mouse.column, mouse.row)
+    {
+        app.popups.text_selection = None;
+        return true;
     }
+    let input_area = popup_area.inner(Margin {
+        vertical: 1,
+        horizontal: 1,
+    });
+    handle_popup_text_selection(app, mouse, input_area, input, field);
+    false
 }
 
 // ---------------------------------------------------------------------------
@@ -161,6 +223,7 @@ fn handle_command_palette_mouse(app: &mut App, mouse: &MouseEvent, terminal_area
                     sr,
                     sc,
                 );
+                palette.mouse_selection.begin(&mut palette.input);
             } else if mouse.row == chunks[1].y {
                 let tabs: Vec<(&str, Option<&str>)> =
                     crate::palette::palette_tabs(app.config.ui.icon_mode)
@@ -207,6 +270,27 @@ fn handle_command_palette_mouse(app: &mut App, mouse: &MouseEvent, terminal_area
                 } else {
                     palette.state.select(Some(clicked));
                 }
+            }
+        }
+        MouseEventKind::Drag(MouseButton::Left) if palette.mouse_selection.active => {
+            palette.mouse_selection.mark_drag();
+            let inner = chunks[0].inner(Margin {
+                vertical: 1,
+                horizontal: 1,
+            });
+            let (sr, sc) = crate::ui::get_textarea_scroll(&palette.input);
+            move_textarea_cursor_to_mouse(
+                &mut palette.input,
+                inner,
+                mouse.column,
+                mouse.row,
+                sr,
+                sc,
+            );
+        }
+        MouseEventKind::Up(MouseButton::Left) => {
+            if let Some(notice) = palette.mouse_selection.finish(&mut palette.input) {
+                app.set_temporary_status(notice);
             }
         }
         MouseEventKind::ScrollUp
@@ -300,9 +384,9 @@ fn handle_search_popup_scrollbar(
 impl crate::popups::ActivePopup {
     fn handle_mouse(self, app: &mut App, mouse: &MouseEvent, terminal_area: Rect) -> bool {
         use crate::popups::ActivePopup::{
-            ContextMenu, CreateFormat, CreateNote, Folder, FolderPicker, Goals, HintBarStyle,
-            IconMode, Import, Info, KeybindPreset, NoteRename, Search, Sort, Subnotes, Tag,
-            Template, Theme, TrashView,
+            CreateFormat, CreateNote, Folder, FolderPicker, Goals, HintBarStyle, IconMode, Import,
+            Info, KeybindPreset, NoteRename, Search, Sort, Subnotes, Tag, Template, Theme,
+            TrashView,
         };
         match self {
             // === Group A: Simple list-style popups ===
@@ -395,35 +479,65 @@ impl crate::popups::ActivePopup {
             // === Group B: Text-input popups ===
             CreateNote(mut p, format) => {
                 let area = crate::ui::centered_rect(crate::ui::PopupSize::Prompt, terminal_area);
-                if !handle_text_input_popup_mouse(mouse, area, &mut p.input) {
+                if !handle_text_input_popup_mouse(
+                    app,
+                    mouse,
+                    area,
+                    &mut p.input,
+                    crate::popups::PopupTextField::CreateNote,
+                ) {
                     app.popups.active = Some(CreateNote(p, format));
                 }
                 true
             }
             Goals(mut p) => {
                 let area = crate::ui::centered_rect(crate::ui::PopupSize::Prompt, terminal_area);
-                if !handle_text_input_popup_mouse(mouse, area, &mut p.input) {
+                if !handle_text_input_popup_mouse(
+                    app,
+                    mouse,
+                    area,
+                    &mut p.input,
+                    crate::popups::PopupTextField::Goals,
+                ) {
                     app.popups.active = Some(Goals(p));
                 }
                 true
             }
             NoteRename(mut p) => {
                 let area = crate::ui::centered_rect(crate::ui::PopupSize::Prompt, terminal_area);
-                if !handle_text_input_popup_mouse(mouse, area, &mut p.input) {
+                if !handle_text_input_popup_mouse(
+                    app,
+                    mouse,
+                    area,
+                    &mut p.input,
+                    crate::popups::PopupTextField::NoteRename,
+                ) {
                     app.popups.active = Some(NoteRename(p));
                 }
                 true
             }
             Import(mut p) => {
                 let area = crate::ui::centered_rect(crate::ui::PopupSize::Large, terminal_area);
-                if !handle_text_input_popup_mouse(mouse, area, &mut p.input) {
+                if !handle_text_input_popup_mouse(
+                    app,
+                    mouse,
+                    area,
+                    &mut p.input,
+                    crate::popups::PopupTextField::Import,
+                ) {
                     app.popups.active = Some(Import(p));
                 }
                 true
             }
             Folder(mut p) => {
                 let area = crate::ui::centered_rect(crate::ui::PopupSize::Prompt, terminal_area);
-                if !handle_text_input_popup_mouse(mouse, area, &mut p.input) {
+                if !handle_text_input_popup_mouse(
+                    app,
+                    mouse,
+                    area,
+                    &mut p.input,
+                    crate::popups::PopupTextField::Folder,
+                ) {
                     app.popups.active = Some(Folder(p));
                 }
                 true
@@ -434,6 +548,7 @@ impl crate::popups::ActivePopup {
                 let popup_area =
                     crate::ui::centered_rect(crate::ui::PopupSize::Large, terminal_area);
                 if super::dismiss_popup_on_outside_click(app, mouse, popup_area) {
+                    app.popups.text_selection = None;
                     return true;
                 }
                 let suggestion_height = if p.suggestions.is_empty() {
@@ -456,6 +571,20 @@ impl crate::popups::ActivePopup {
                     .direction(Direction::Vertical)
                     .constraints([Constraint::Length(3), Constraint::Min(0)])
                     .split(chunks[0]);
+                if handle_popup_text_selection(
+                    app,
+                    mouse,
+                    input_chunks[0],
+                    &mut p.input,
+                    crate::popups::PopupTextField::Tag,
+                ) {
+                    if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
+                        p.focus = TagPopupFocus::Input;
+                    }
+                    app.popups.active = Some(Tag(p));
+                    return true;
+                }
+
                 if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
                     if contains_cell(chunks[1], mouse.column, mouse.row) {
                         if !p.all_tags.is_empty() {
@@ -493,19 +622,9 @@ impl crate::popups::ActivePopup {
                         app.popups.active = Some(Tag(p));
                         app.accept_tag_suggestion();
                         return true;
-                    } else if contains_cell(input_chunks[0], mouse.column, mouse.row) {
-                        p.focus = TagPopupFocus::Input;
-                        let (sr, sc) = crate::ui::get_textarea_scroll(&p.input);
-                        move_textarea_cursor_to_mouse(
-                            &mut p.input,
-                            input_chunks[0],
-                            mouse.column,
-                            mouse.row,
-                            sr,
-                            sc,
-                        );
                     }
                 }
+
                 app.popups.active = Some(Tag(p));
                 true
             }
@@ -573,6 +692,7 @@ impl crate::popups::ActivePopup {
                 let popup_area =
                     crate::ui::centered_rect(crate::ui::PopupSize::Large, terminal_area);
                 if super::dismiss_popup_on_outside_click(app, mouse, popup_area) {
+                    app.popups.text_selection = None;
                     return true;
                 }
                 let chunks = Layout::default()
@@ -583,6 +703,23 @@ impl crate::popups::ActivePopup {
                         Constraint::Length(1),
                     ])
                     .split(popup_area);
+                if handle_popup_text_selection(
+                    app,
+                    mouse,
+                    chunks[0].inner(Margin {
+                        vertical: 1,
+                        horizontal: 1,
+                    }),
+                    &mut p.input,
+                    crate::popups::PopupTextField::Template,
+                ) {
+                    if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
+                        p.focus = crate::popups::TemplatePopupFocus::Search;
+                    }
+                    app.popups.active = Some(Template(p));
+                    return true;
+                }
+
                 let mut open_selected = false;
                 let mut edit_selected = false;
                 if mouse.kind == MouseEventKind::Down(MouseButton::Left)
@@ -634,12 +771,29 @@ impl crate::popups::ActivePopup {
                 let popup_area =
                     crate::ui::centered_rect(crate::ui::PopupSize::Large, terminal_area);
                 if super::dismiss_popup_on_outside_click(app, mouse, popup_area) {
+                    app.popups.text_selection = None;
                     return true;
                 }
                 let chunks = Layout::default()
                     .direction(Direction::Vertical)
                     .constraints([Constraint::Length(3), Constraint::Min(1)])
                     .split(popup_area);
+                if handle_popup_text_selection(
+                    app,
+                    mouse,
+                    chunks[0].inner(Margin {
+                        vertical: 1,
+                        horizontal: 1,
+                    }),
+                    &mut p.input,
+                    crate::popups::PopupTextField::FolderPicker,
+                ) {
+                    if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
+                        p.focus = crate::app::FolderPickerFocus::Search;
+                    }
+                    app.popups.active = Some(FolderPicker(p));
+                    return true;
+                }
 
                 // Scroll wheel
                 match mouse.kind {
@@ -664,23 +818,6 @@ impl crate::popups::ActivePopup {
 
                 let mut confirm_selected = false;
                 if mouse.kind == MouseEventKind::Down(MouseButton::Left)
-                    && contains_cell(chunks[0], mouse.column, mouse.row)
-                {
-                    p.focus = crate::app::FolderPickerFocus::Search;
-                    let inner = chunks[0].inner(Margin {
-                        vertical: 1,
-                        horizontal: 1,
-                    });
-                    let (sr, sc) = crate::ui::get_textarea_scroll(&p.input);
-                    move_textarea_cursor_to_mouse(
-                        &mut p.input,
-                        inner,
-                        mouse.column,
-                        mouse.row,
-                        sr,
-                        sc,
-                    );
-                } else if mouse.kind == MouseEventKind::Down(MouseButton::Left)
                     && contains_cell(chunks[1], mouse.column, mouse.row)
                 {
                     p.focus = crate::app::FolderPickerFocus::Results;
@@ -713,6 +850,7 @@ impl crate::popups::ActivePopup {
                 let popup_area =
                     crate::ui::centered_rect(crate::ui::PopupSize::Large, terminal_area);
                 if super::dismiss_popup_on_outside_click(app, mouse, popup_area) {
+                    app.popups.text_selection = None;
                     return true;
                 }
                 let query_text = p.input.lines().join("");
@@ -739,6 +877,23 @@ impl crate::popups::ActivePopup {
                     .direction(Direction::Vertical)
                     .constraints(constraints)
                     .split(popup_area);
+                if handle_popup_text_selection(
+                    app,
+                    mouse,
+                    chunks[0].inner(Margin {
+                        vertical: 1,
+                        horizontal: 1,
+                    }),
+                    &mut p.input,
+                    crate::popups::PopupTextField::Search,
+                ) {
+                    if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
+                        p.focus = SearchFocus::Input;
+                    }
+                    app.popups.active = Some(Search(p));
+                    return true;
+                }
+
                 let results_chunk_idx = if has_filter { 2 } else { 1 };
                 let has_title = !p.title_result_ids.is_empty();
                 let has_grep = !p.grep_results.is_empty();
@@ -916,6 +1071,7 @@ impl crate::popups::ActivePopup {
                     {
                         app.set_temporary_status(&format!("Failed to save subnotes: {e}"));
                     }
+                    app.popups.text_selection = None;
                     return true;
                 }
                 let content = Layout::default()
@@ -930,6 +1086,38 @@ impl crate::popups::ActivePopup {
                     .direction(Direction::Vertical)
                     .constraints([Constraint::Length(3), Constraint::Min(0)])
                     .split(main_chunks[1]);
+                if handle_popup_text_selection(
+                    app,
+                    mouse,
+                    edit_chunks[0].inner(Margin {
+                        vertical: 1,
+                        horizontal: 1,
+                    }),
+                    &mut p.title_input,
+                    crate::popups::PopupTextField::SubnotesTitle,
+                ) {
+                    if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
+                        p.focus = SubnotesFocus::EditTitle;
+                    }
+                    app.popups.active = Some(Subnotes(p));
+                    return true;
+                }
+                if handle_popup_text_selection(
+                    app,
+                    mouse,
+                    edit_chunks[1].inner(Margin {
+                        vertical: 1,
+                        horizontal: 1,
+                    }),
+                    &mut p.content_input,
+                    crate::popups::PopupTextField::SubnotesContent,
+                ) {
+                    if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
+                        p.focus = SubnotesFocus::EditContent;
+                    }
+                    app.popups.active = Some(Subnotes(p));
+                    return true;
+                }
 
                 if mouse.kind == MouseEventKind::Down(MouseButton::Left) {
                     // Click in the list area (left pane)
@@ -962,6 +1150,7 @@ impl crate::popups::ActivePopup {
                             vertical: 1,
                             horizontal: 1,
                         });
+
                         let (sr, sc) = crate::ui::get_textarea_scroll(&p.title_input);
                         move_textarea_cursor_to_mouse(
                             &mut p.title_input,
@@ -994,15 +1183,31 @@ impl crate::popups::ActivePopup {
 
             // RemoveTags popup: simple list, mouse handled naturally
             crate::popups::ActivePopup::RemoveTags(_) => true,
-            // ContextMenu is handled in handle_global_popup_mouse, not here
-            ContextMenu(_) => {
-                unreachable!(
-                    "ContextMenu should be handled by handle_global_popup_mouse \
-                     before reaching handle_mouse"
-                )
-            }
         }
     }
+}
+
+fn popup_selection_matches_active(
+    active: &crate::popups::ActivePopup,
+    field: crate::popups::PopupTextField,
+) -> bool {
+    use crate::popups::ActivePopup;
+    use crate::popups::PopupTextField;
+
+    matches!(
+        (active, field),
+        (ActivePopup::CreateNote(..), PopupTextField::CreateNote)
+            | (ActivePopup::Goals(_), PopupTextField::Goals)
+            | (ActivePopup::NoteRename(_), PopupTextField::NoteRename)
+            | (ActivePopup::Import(_), PopupTextField::Import)
+            | (ActivePopup::Folder(_), PopupTextField::Folder)
+            | (ActivePopup::Tag(_), PopupTextField::Tag)
+            | (ActivePopup::FolderPicker(_), PopupTextField::FolderPicker)
+            | (ActivePopup::Search(_), PopupTextField::Search)
+            | (ActivePopup::Template(_), PopupTextField::Template)
+            | (ActivePopup::Subnotes(_), PopupTextField::SubnotesTitle)
+            | (ActivePopup::Subnotes(_), PopupTextField::SubnotesContent)
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -1016,6 +1221,7 @@ impl crate::popups::ActivePopup {
 pub fn handle_global_popup_mouse(app: &mut App, mouse: &MouseEvent, terminal_area: Rect) -> bool {
     // 1. Confirm overlay (highest priority)
     if app.popups.confirm.is_some() {
+        app.popups.text_selection = None;
         handle_confirm_popup_mouse(app, mouse, terminal_area);
         return true;
     }
@@ -1025,48 +1231,16 @@ pub fn handle_global_popup_mouse(app: &mut App, mouse: &MouseEvent, terminal_are
         return handle_command_palette_mouse(app, mouse, terminal_area);
     }
 
-    // 3. ContextMenu — special case: left-click inside menu needs EditFocus,
-    //    so the centralized handler only handles scroll and outside dismiss.
-    if matches!(app.popups.active, Some(ActivePopup::ContextMenu(_))) {
-        let menu_rect = {
-            let Some(ActivePopup::ContextMenu(menu)) = &app.popups.active else {
-                unreachable!()
-            };
-            let w = menu.items.iter().map(|l| l.len() as u16).max().unwrap_or(0);
-            let h = menu.items.len() as u16;
-            Rect::new(menu.x, menu.y, w, h)
-        };
-        return match mouse.kind {
-            MouseEventKind::ScrollUp if contains_cell(menu_rect, mouse.column, mouse.row) => {
-                let mut m = app.popups.active.take().expect("ContextMenu must be Some");
-                if let ActivePopup::ContextMenu(m) = &mut m {
-                    m.selected = m.selected.saturating_sub(1);
-                }
-                app.popups.active = Some(m);
-                true
-            }
-            MouseEventKind::ScrollDown if contains_cell(menu_rect, mouse.column, mouse.row) => {
-                let mut m = app.popups.active.take().expect("ContextMenu must be Some");
-                if let ActivePopup::ContextMenu(m) = &mut m
-                    && m.selected + 1 < m.items.len()
-                {
-                    m.selected += 1;
-                }
-                app.popups.active = Some(m);
-                true
-            }
-            MouseEventKind::Down(btn) if !contains_cell(menu_rect, mouse.column, mouse.row) => {
-                app.popups.active = None;
-                btn != MouseButton::Right // true for left, false for right
-            }
-            MouseEventKind::Down(MouseButton::Left) => {
-                // Left-click inside menu → let edit handler process
-                // (it has EditFocus for handle_menu_action)
-                false
-            }
-            _ => true, // consume other events while menu is open
-        };
+    let selection_matches = app
+        .popups
+        .active
+        .as_ref()
+        .zip(app.popups.text_selection.as_ref())
+        .is_none_or(|(active, (field, _))| popup_selection_matches_active(active, *field));
+    if !selection_matches {
+        app.popups.text_selection = None;
     }
+
     // 4. Active popup — scrollbar pre-pass (list-style popups only)
     if app.config.ui.scrollbars {
         let consumed = match app.popups.active.as_mut() {

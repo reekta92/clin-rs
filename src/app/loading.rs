@@ -826,6 +826,7 @@ impl App {
             && instant.elapsed() >= Duration::from_millis(50)
         {
             self.editor.pending_markdown_resize = None;
+            self.editor.preview_content_width = None;
             self.update_editor_markdown_preview();
             updated = true;
         }
@@ -890,6 +891,7 @@ impl App {
             && inst.elapsed() >= Duration::from_millis(50)
         {
             self.list.pending_markdown_resize = None;
+            self.list.preview_content_width = None;
             self.update_preview();
             updated = true;
         }
@@ -897,6 +899,7 @@ impl App {
             && inst.elapsed() >= Duration::from_millis(50)
         {
             self.editor.pending_markdown_resize = None;
+            self.editor.preview_content_width = None;
             self.update_editor_markdown_preview();
             updated = true;
         }
@@ -1913,5 +1916,56 @@ mod tests {
         app.request_editor_preview_update();
 
         assert!(app.editor.last_editor_change.is_some());
+    }
+
+    #[test]
+    fn preview_resize_debounce_rerenders_list_and_editor() {
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let mut app = make_app();
+        std::fs::create_dir_all(&app.storage.notes_dir).unwrap();
+        std::fs::write(
+            app.storage.notes_dir.join("preview.md"),
+            "# Preview\n\nBody",
+        )
+        .unwrap();
+        let load = crate::app::catalog::load_notes_blocking(
+            &app.storage,
+            &app.notes_worker_pool,
+            false,
+            false,
+        )
+        .unwrap();
+        app.notes = load.summaries;
+        app.catalog_folders = load.folders;
+        app.sort_notes();
+        app.refresh_visual_list();
+        app.list.preview_enabled = true;
+        app.list.last_preview_pane_width = 80;
+        app.list.last_preview_pane_height = 24;
+        app.update_preview();
+        app.list.last_preview_pane_width = 100;
+        app.list.pending_markdown_resize = Some((100, Instant::now() - Duration::from_millis(51)));
+        app.poll_renderers();
+        assert_eq!(
+            app.list.preview_content_width,
+            Some(app.desired_list_preview_width())
+        );
+        assert!(app.list.pending_markdown_resize.is_none());
+
+        let mut app = make_app();
+        app.editor.editor_preview_enabled = true;
+        app.editor.body = crate::editor_document::EditorDocument::from_text("# Preview\n\nBody");
+        app.editor.last_preview_pane_width = 80;
+        app.editor.last_preview_pane_height = 24;
+        app.update_editor_markdown_preview();
+        app.editor.last_preview_pane_width = 100;
+        app.editor.pending_markdown_resize =
+            Some((100, Instant::now() - Duration::from_millis(51)));
+        app.poll_editor_renderers();
+        assert_eq!(
+            app.editor.preview_content_width,
+            Some(app.desired_editor_preview_width())
+        );
+        assert!(app.editor.pending_markdown_resize.is_none());
     }
 }

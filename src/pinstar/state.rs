@@ -27,9 +27,10 @@ pub struct PinstarState {
     pub rename_popup: Option<TextArea<'static>>,
     pub last_mouse_canvas_pos: Option<(f64, f64)>,
     pub drag_captured_nodes: std::collections::HashSet<String>,
+    pub(crate) mouse_selection: crate::text_edit::MouseTextSelection,
+    pub(crate) text_selection_target: Option<PinstarTextField>,
+    pub(crate) floating_editor_rect: Option<ratatui::layout::Rect>,
     pub show_grid: bool,
-    pub mouse_selecting: bool,
-    pub mouse_dragged: bool,
     pub help_requested: bool,
     pub footer_hint: String,
     pub keybinds: crate::keybinds::Keybinds,
@@ -42,10 +43,15 @@ pub struct PinstarState {
     pub last_zoom_at: Option<std::time::Instant>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PinstarTextField {
+    Raw,
+    Floating,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PinstarMenuType {
     Canvas,
-    Editor,
     ColorPicker,
 }
 
@@ -90,8 +96,9 @@ impl PinstarState {
             last_mouse_canvas_pos: None,
             drag_captured_nodes: std::collections::HashSet::new(),
             show_grid: true,
-            mouse_selecting: false,
-            mouse_dragged: false,
+            mouse_selection: crate::text_edit::MouseTextSelection::default(),
+            text_selection_target: None,
+            floating_editor_rect: None,
             help_requested: false,
             footer_hint: String::new(),
             keybinds,
@@ -317,23 +324,6 @@ impl PinstarState {
             selected: 0,
             items,
             menu_type: PinstarMenuType::Canvas,
-        });
-    }
-
-    pub fn open_editor_context_menu(&mut self, x: u16, y: u16) {
-        let items = vec![
-            "Copy".to_string(),
-            "Cut".to_string(),
-            "Paste".to_string(),
-            "Select All".to_string(),
-        ];
-
-        self.context_menu = Some(PinstarContextMenu {
-            x,
-            y,
-            selected: 0,
-            items,
-            menu_type: PinstarMenuType::Editor,
         });
     }
 
@@ -584,5 +574,31 @@ impl PinstarState {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn canvas_context_menu_remains_available() {
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("canvas.json");
+        std::fs::write(&path, r#"{"nodes":[],"edges":[]}"#).unwrap();
+        let mut state = PinstarState::load(
+            &path,
+            crate::keybinds::Keybinds::default(),
+            crate::keybinds::KeyMatcher::new(),
+        )
+        .unwrap();
+
+        state.open_context_menu(4, 5, 0.0, 0.0);
+
+        assert!(matches!(
+            state.context_menu.as_ref().map(|menu| menu.menu_type),
+            Some(PinstarMenuType::Canvas)
+        ));
     }
 }

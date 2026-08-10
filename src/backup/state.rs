@@ -39,6 +39,14 @@ pub struct BackupState {
     pub diff_scroll_drag: Option<crate::ui::scrollbar::ScrollDrag>,
     pub last_diff_area: Option<ratatui::layout::Rect>,
     pub scrollbars_enabled: bool,
+    pub(crate) mouse_selection: Option<(BackupTextField, crate::text_edit::MouseTextSelection)>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BackupTextField {
+    CommitMessage,
+    RemoteUrl,
+    RemoteName,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BackupSection {
@@ -166,6 +174,7 @@ impl BackupState {
             diff_scroll_drag: None,
             last_diff_area: None,
             scrollbars_enabled: false,
+            mouse_selection: None,
         };
 
         state.refresh_git_info();

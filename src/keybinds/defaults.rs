@@ -244,7 +244,10 @@ impl Default for Keybinds {
         edit.insert(EditAction::InsertTab, vec![KeyCombo::simple(KeyCode::Tab)]);
         edit.insert(
             EditAction::SelectAll,
-            vec![KeyCombo::ctrl(KeyCode::Char('a'))],
+            vec![
+                KeyCombo::ctrl(KeyCode::Char('a')),
+                KeyCombo::ctrl_shift(KeyCode::Char('a')),
+            ],
         );
         edit.insert(
             EditAction::Copy,
@@ -930,6 +933,22 @@ impl Default for Keybinds {
             outline,
             setup,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::{KeyEvent, KeyModifiers};
+
+    #[test]
+    fn ctrl_shift_a_matches_select_all() {
+        let keybinds = Keybinds::default();
+        let event = KeyEvent::new(
+            KeyCode::Char('A'),
+            KeyModifiers::CONTROL | KeyModifiers::SHIFT,
+        );
+        assert!(keybinds.matches_edit(EditAction::SelectAll, &event));
     }
 }
 

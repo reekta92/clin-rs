@@ -644,6 +644,7 @@ pub fn draw_pinstar_view(
             frame.render_widget(Paragraph::new(handle_text).style(handle_style), handle_rect);
         }
     }
+    state.floating_editor_rect = None;
 
     if let Some(editor) = &mut state.floating_editor
         && let Some(node_id) = &state.selected_node_id
@@ -677,6 +678,8 @@ pub fn draw_pinstar_view(
                     .style(theme.bg_style()),
             );
             editor.set_style(theme.bg_style());
+            state.floating_editor_rect =
+                Some(Block::default().borders(Borders::ALL).inner(editor_rect));
 
             frame.render_widget(Clear, editor_rect);
             frame.render_widget(&*editor, editor_rect);

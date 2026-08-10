@@ -17,10 +17,9 @@ pub struct KeyCombo {
 impl KeyStroke {
     /// Returns true if this single keystroke matches the given event.
     ///
-    /// Per crossterm conventions, uppercase `Char` keys are sent with
-    /// `KeyModifiers::NONE` — the capitalization itself signals that
-    /// shift was held.  We strip `SHIFT` from both sides when the
-    /// bound code is an uppercase letter, matching real terminal input.
+    /// Per crossterm conventions, uppercase `Char` keys can encode Shift in
+    /// the character itself. Match ASCII letters case-insensitively when
+    /// Shift is present, while preserving Shift for Ctrl+Shift shortcuts.
     pub fn matches_event(&self, event: &KeyEvent) -> bool {
         // Canonicalize terminal-variant Ctrl+Backspace encodings.
         let event_code = if event.modifiers.contains(KeyModifiers::CONTROL) {
@@ -31,17 +30,34 @@ impl KeyStroke {
         } else {
             event.code
         };
-        if self.code != event_code {
+        let codes_match = self.code == event_code
+            || matches!(
+                (self.code, event_code),
+                (KeyCode::Char(a), KeyCode::Char(b))
+                    if a.is_ascii_alphabetic()
+                        && b.is_ascii_alphabetic()
+                        && a.eq_ignore_ascii_case(&b)
+                        && (event.modifiers.contains(KeyModifiers::SHIFT) || b.is_uppercase())
+            );
+        if !codes_match {
             return false;
         }
         let self_mods = match self.code {
             KeyCode::BackTab => self.modifiers & !KeyModifiers::SHIFT,
-            KeyCode::Char(c) if c.is_uppercase() => self.modifiers & !KeyModifiers::SHIFT,
+            KeyCode::Char(c)
+                if c.is_uppercase() && !self.modifiers.contains(KeyModifiers::CONTROL) =>
+            {
+                self.modifiers & !KeyModifiers::SHIFT
+            }
             _ => self.modifiers,
         };
         let event_mods = match event.code {
             KeyCode::BackTab => event.modifiers & !KeyModifiers::SHIFT,
-            KeyCode::Char(c) if c.is_uppercase() => event.modifiers & !KeyModifiers::SHIFT,
+            KeyCode::Char(c)
+                if c.is_uppercase() && !event.modifiers.contains(KeyModifiers::CONTROL) =>
+            {
+                event.modifiers & !KeyModifiers::SHIFT
+            }
             _ => event.modifiers,
         };
         self_mods == event_mods

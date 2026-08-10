@@ -1444,34 +1444,6 @@ pub fn draw_ui(frame: &mut Frame, app: &mut App, focus: EditFocus) {
             app.mouse_pos,
         );
     }
-
-    // Context menu (from edit view)
-    if let Some(crate::popups::ActivePopup::ContextMenu(menu)) = &app.popups.active {
-        let menu_width = menu.items.iter().map(|l| l.len() as u16).max().unwrap_or(0);
-        let menu_height = menu.items.len() as u16;
-        let x = menu.x.min(frame.area().width.saturating_sub(menu_width));
-        let y = menu.y.min(frame.area().height.saturating_sub(menu_height));
-        let menu_area = Rect::new(x, y, menu_width, menu_height);
-        let items: Vec<ListItem> = menu.items.iter().map(|l| ListItem::new(*l)).collect();
-        let list = List::new(items)
-            .block(
-                Block::default()
-                    .style(app.app_theme.preview_bg_style())
-                    .borders(Borders::NONE),
-            )
-            .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
-        frame.render_widget(Clear, menu_area);
-        let state =
-            crate::ui::render_list_with_selection(frame, list, menu_area, Some(menu.selected), 0);
-        crate::ui::paint_list_hover(
-            frame,
-            menu_area,
-            &state,
-            menu.items.len(),
-            app.mouse_pos,
-            app.app_theme.hover_style(),
-        );
-    }
 }
 
 pub fn open_in_file_manager(path: &Path) -> Result<()> {

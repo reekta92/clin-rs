@@ -1,7 +1,7 @@
 use crate::actions::Action;
-use crate::app::{App, ContextMenu, EditFocus, EditSidebar};
+use crate::app::{App, EditFocus, EditSidebar};
 use crate::keybinds::EditAction;
-use crate::text_edit::apply_text_shortcuts;
+use crate::text_edit::{MouseTextSelection, apply_text_shortcuts};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui_textarea::Input;
@@ -97,41 +97,6 @@ fn search_match_stats(
 }
 
 pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> bool {
-    if let Some(crate::popups::ActivePopup::ContextMenu(mut menu)) = app.popups.active.take() {
-        if crate::events::is_cancel_popup(&app.keybinds, &key, false) {
-            app.popups.active = None;
-            return false;
-        }
-        match key.code {
-            _ if app
-                .keybinds
-                .matches_list(crate::keybinds::ListAction::MoveUp, &key) =>
-            {
-                menu.selected = menu.selected.saturating_sub(1);
-                app.popups.active = Some(crate::popups::ActivePopup::ContextMenu(menu));
-            }
-            _ if app
-                .keybinds
-                .matches_list(crate::keybinds::ListAction::MoveDown, &key) =>
-            {
-                if menu.selected + 1 < menu.items.len() {
-                    menu.selected += 1;
-                }
-                app.popups.active = Some(crate::popups::ActivePopup::ContextMenu(menu));
-            }
-            _ if app
-                .keybinds
-                .matches_list(crate::keybinds::ListAction::Confirm, &key) =>
-            {
-                app.handle_menu_action(menu.selected, focus, &menu.items);
-                app.popups.active = None;
-            }
-            _ => {
-                app.popups.active = Some(crate::popups::ActivePopup::ContextMenu(menu));
-            }
-        }
-        return false;
-    }
     // --- Go-to-line input popup ---
     if app.editor.go_to_line_input.is_some() {
         app.seq_matcher.clear();
@@ -448,13 +413,12 @@ pub fn handle_edit_keys(app: &mut App, key: KeyEvent, focus: &mut EditFocus) -> 
     false
 }
 
-pub fn handle_edit_mouse(
+pub(crate) fn handle_edit_mouse(
     app: &mut App,
     mouse_event: MouseEvent,
     terminal_area: Rect,
     focus: &mut EditFocus,
-    mouse_selecting: &mut bool,
-    mouse_dragged: &mut bool,
+    mouse_selection: &mut MouseTextSelection,
 ) {
     if let Some(popup) = &mut app.editor.find_popup {
         if let Some(action) = crate::ui::quick_search::handle_quick_search_mouse(
@@ -510,85 +474,6 @@ pub fn handle_edit_mouse(
             }
         }
         return;
-    }
-    if let Some(crate::popups::ActivePopup::ContextMenu(menu)) = &app.popups.active {
-        // Only handle left-clicks inside the menu (needs EditFocus).
-        // Scroll and outside-dismiss are handled centrally in handle_global_popup_mouse.
-        let w = menu.items.iter().map(|l| l.len() as u16).max().unwrap_or(0);
-        let h = menu.items.len() as u16;
-        let menu_rect = Rect::new(menu.x, menu.y, w, h);
-        if contains_cell(menu_rect, mouse_event.column, mouse_event.row)
-            && mouse_event.kind == MouseEventKind::Down(MouseButton::Left)
-        {
-            let clicked_idx = mouse_event.row.saturating_sub(menu.y) as usize;
-            if clicked_idx < menu.items.len() {
-                let items = menu.items.clone();
-                app.handle_menu_action(clicked_idx, focus, &items);
-            }
-            app.popups.active = None;
-            return;
-        }
-    }
-
-    if mouse_event.kind == MouseEventKind::Down(MouseButton::Right) {
-        let (title_inner, body_inner, _sidebar_inner) = edit_view_input_areas(
-            terminal_area,
-            app.preview_fullscreen,
-            app.editor.editor_preview_enabled,
-            app.editor.body.lines().len(),
-            app.editor.show_line_numbers,
-            app.editor.sidebar,
-            app.preview_position,
-            app.editor.header_title_rect,
-        );
-
-        if contains_cell(title_inner, mouse_event.column, mouse_event.row) {
-            *focus = EditFocus::Title;
-            if app.editor.title_editor.selection_range().is_none() {
-                move_textarea_cursor_to_mouse(
-                    &mut app.editor.title_editor,
-                    title_inner,
-                    mouse_event.column,
-                    mouse_event.row,
-                    app.editor.title_viewport_row as usize,
-                    app.editor.title_viewport_col as usize,
-                );
-            }
-        } else if contains_cell(body_inner, mouse_event.column, mouse_event.row) {
-            *focus = EditFocus::Body;
-            if app.editor.body.selection_range().is_none() {
-                let _ = app.editor.body.hit_test_cursor(
-                    body_inner,
-                    mouse_event.column,
-                    mouse_event.row,
-                    app.editor.body_viewport_row,
-                    app.editor.body_viewport_col,
-                );
-            }
-        }
-        let items: Vec<&'static str> = {
-            // EDIT mode — existing textarea-selection-based items
-            let has_selection = match focus {
-                EditFocus::Title => app.editor.title_editor.selection_range().is_some(),
-                EditFocus::Body => app.editor.body.selection_range().is_some(),
-                EditFocus::Sidebar => false,
-            };
-            if has_selection {
-                vec![" Copy ", " Cut ", " Paste ", " Select All "]
-            } else {
-                vec![" Paste ", " Select All "]
-            }
-        };
-        let max_x = terminal_area
-            .width
-            .saturating_sub(items.iter().map(|i| i.len() as u16).max().unwrap_or(14));
-        let max_y = terminal_area.height.saturating_sub(items.len() as u16 + 2);
-        app.popups.active = Some(crate::popups::ActivePopup::ContextMenu(ContextMenu {
-            x: mouse_event.column.min(max_x),
-            y: mouse_event.row.min(max_y),
-            selected: 0,
-            items,
-        }));
     }
 
     let (title_inner, body_inner, sidebar_inner) = edit_view_input_areas(
@@ -700,9 +585,8 @@ pub fn handle_edit_mouse(
 
     match mouse_event.kind {
         MouseEventKind::Down(MouseButton::Left) => {
-            // READ-mode: start selection
-            *mouse_selecting = false;
-            *mouse_dragged = false;
+            mouse_selection.active = false;
+            mouse_selection.dragged = false;
             if let Some(sb) = sidebar_inner
                 && contains_cell(sb, mouse_event.column, mouse_event.row)
             {
@@ -747,8 +631,7 @@ pub fn handle_edit_mouse(
                     app.editor.body_viewport_row,
                     app.editor.body_viewport_col,
                 );
-                app.editor.body.start_selection();
-                *mouse_selecting = true;
+                mouse_selection.begin(&mut app.editor.body);
             } else if contains_cell(title_inner, mouse_event.column, mouse_event.row) {
                 *focus = EditFocus::Title;
                 move_textarea_cursor_to_mouse(
@@ -759,13 +642,12 @@ pub fn handle_edit_mouse(
                     app.editor.title_viewport_row as usize,
                     app.editor.title_viewport_col as usize,
                 );
-                app.editor.title_editor.start_selection();
-                *mouse_selecting = true;
+                mouse_selection.begin(&mut app.editor.title_editor);
             }
         }
         MouseEventKind::Drag(MouseButton::Left) => {
-            if *mouse_selecting {
-                *mouse_dragged = true;
+            if mouse_selection.active {
+                mouse_selection.mark_drag();
                 if *focus == EditFocus::Body {
                     let _ = app.editor.body.hit_test_cursor(
                         body_inner,
@@ -787,15 +669,14 @@ pub fn handle_edit_mouse(
             }
         }
         MouseEventKind::Up(MouseButton::Left) => {
-            if *mouse_selecting && !*mouse_dragged {
-                if *focus == EditFocus::Body {
-                    app.editor.body.cancel_selection();
-                } else {
-                    app.editor.title_editor.cancel_selection();
-                }
+            let notice = if *focus == EditFocus::Body {
+                mouse_selection.finish(&mut app.editor.body)
+            } else {
+                mouse_selection.finish(&mut app.editor.title_editor)
+            };
+            if let Some(notice) = notice {
+                app.set_temporary_status(notice);
             }
-            *mouse_selecting = false;
-            *mouse_dragged = false;
         }
         MouseEventKind::ScrollDown => {
             if *focus == EditFocus::Body {

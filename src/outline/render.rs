@@ -172,8 +172,7 @@ pub fn draw_outline(
                     .fg(theme.highlight_fg)
                     .bg(theme.highlight_bg)
                     .add_modifier(Modifier::BOLD),
-            )
-            .highlight_symbol("> ");
+            );
         frame.render_stateful_widget(list, left_area, &mut list_state);
         state.tree_scroll_offset = list_state.offset();
         state.tree_list_rect = left_area;
@@ -281,4 +280,52 @@ pub fn draw_outline(
     let (left_line, right_line) =
         crate::statusline::render_footer(&ctx, &config.statusline, ViewMode::Outline, theme);
     crate::ui::draw_status_bar(frame, hint_area, theme, left_line, right_line);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::keybinds::KeyMatcher;
+    use ratatui::backend::TestBackend;
+
+    #[test]
+    fn outline_selected_row_has_no_ascii_marker() {
+        let mut state = OutlineState::new(
+            "note.md".into(),
+            "Note",
+            "# Heading",
+            Keybinds::default(),
+            KeyMatcher::new(),
+        );
+        let mut terminal = ratatui::Terminal::new(TestBackend::new(80, 20)).unwrap();
+        let theme = AppThemeColors::default();
+        let config = crate::config::ClinConfig::default();
+
+        terminal
+            .draw(|frame| {
+                draw_outline(
+                    frame,
+                    frame.area(),
+                    &mut state,
+                    &theme,
+                    &Keybinds::default(),
+                    &config,
+                    None,
+                );
+            })
+            .unwrap();
+
+        let buffer = terminal.backend().buffer();
+        let selected_row = (0..state.tree_list_rect.height)
+            .map(|y| {
+                (0..state.tree_list_rect.width)
+                    .map(|x| {
+                        buffer[(state.tree_list_rect.x + x, state.tree_list_rect.y + y)].symbol()
+                    })
+                    .collect::<String>()
+            })
+            .find(|row| row.contains("Heading"))
+            .expect("selected row contains heading");
+        assert!(!selected_row.contains('>'));
+    }
 }

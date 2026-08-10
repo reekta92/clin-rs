@@ -41,13 +41,6 @@ pub struct ConfirmPopup {
     pub selected_button: usize,
 }
 
-pub struct ContextMenu {
-    pub x: u16,
-    pub y: u16,
-    pub selected: usize,
-    pub items: Vec<&'static str>,
-}
-
 pub struct TemplatePopup {
     pub all_templates: Vec<TemplateSummary>,
     pub filtered_templates: Vec<TemplateSummary>,
@@ -465,7 +458,6 @@ pub enum ActivePopup {
     Import(ImportPopup),
     CreateFormat(CreateFormatPopup),
     Search(SearchPopup),
-    ContextMenu(ContextMenu),
     TrashView(TrashView),
     Goals(GoalsPopup),
     Subnotes(Box<SubnotesPopup>),
@@ -506,12 +498,28 @@ impl ActivePopup {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PopupTextField {
+    CreateNote,
+    Goals,
+    NoteRename,
+    Import,
+    Folder,
+    Tag,
+    FolderPicker,
+    Search,
+    Template,
+    SubnotesTitle,
+    SubnotesContent,
+}
+
 #[derive(Default)]
 pub struct PopupManager {
     /// Layered confirm dialog drawn on top of `active` when present.
     pub confirm: Option<ConfirmPopup>,
     /// The single active popup, if any.
     pub active: Option<ActivePopup>,
+    pub(crate) text_selection: Option<(PopupTextField, crate::text_edit::MouseTextSelection)>,
     pub last_scroll: Option<crate::ui::scrollbar::ScrollbarMeta>,
     pub scroll_drag: Option<crate::ui::scrollbar::ScrollDrag>,
 }
@@ -545,5 +553,6 @@ impl PopupManager {
     pub fn clear_all(&mut self) {
         self.active = None;
         self.confirm = None;
+        self.text_selection = None;
     }
 }
