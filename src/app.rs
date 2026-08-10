@@ -1679,28 +1679,6 @@ impl App {
         }
     }
 
-    pub fn handle_menu_action(
-        &mut self,
-        action: usize,
-        focus: &mut EditFocus,
-        items: &[&'static str],
-    ) {
-        let Some(label) = items.get(action) else {
-            return;
-        };
-        let notice = match focus {
-            EditFocus::Title => {
-                crate::text_edit::apply_context_menu_action(&mut self.editor.title_editor, label)
-            }
-            EditFocus::Body => {
-                crate::text_edit::apply_context_menu_action(&mut self.editor.body, label)
-            }
-            EditFocus::Sidebar => None,
-        };
-        if let Some(notice) = notice {
-            self.set_temporary_status(notice);
-        }
-    }
     pub fn get_help_rows(&mut self) -> Vec<crate::ui::HelpRow> {
         if self.list.help_text_cache.is_none() {
             let rows = crate::ui::help_text_for_tab(
