@@ -865,6 +865,7 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
 
         if is_grid {
             app.list.grid_tiles.clear();
+            app.list.last_scroll = None;
 
             // --- render directory breadcrumbs at the top of the list area ---
             let is_pinned = app.list.grid_folder == VIRTUAL_PINNED_PATH;
@@ -1033,26 +1034,26 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             app.list.grid_columns = cols; // events.rs grid nav reads this (Up/Down move by cols)
 
             let len = app.list.visual_list.len();
+            let total_rows = len.div_ceil(cols);
+            let max_scroll = total_rows.saturating_sub(rows);
 
-            // --- clamp grid_scroll so the selected tile stays visible, without over-scrolling ---
-            if cols > 0 && rows > 0 && len > 0 {
-                let sel_row = app.list.visual_index / cols;
-                if sel_row < app.list.grid_scroll {
-                    app.list.grid_scroll = sel_row;
+            // grid_scroll is viewport-row offset. Keep selected tile visible without blank
+            // overscroll below a final partial row.
+            if len > 0 && rows > 0 {
+                let sel_row = app.list.visual_index.min(len.saturating_sub(1)) / cols;
+                let mut scroll = app.list.grid_scroll.min(max_scroll);
+                if sel_row < scroll {
+                    scroll = sel_row;
+                } else if sel_row >= scroll.saturating_add(rows) {
+                    scroll = sel_row.saturating_add(1).saturating_sub(rows);
                 }
-                let last_visible = app.list.grid_scroll + rows.saturating_sub(1);
-                if sel_row > last_visible {
-                    app.list.grid_scroll = sel_row.saturating_sub(rows.saturating_sub(1));
-                }
-                let max_scroll = len.saturating_sub(1) / cols;
-                if app.list.grid_scroll > max_scroll {
-                    app.list.grid_scroll = max_scroll;
-                }
+                app.list.grid_scroll = scroll.min(max_scroll);
             } else {
                 app.list.grid_scroll = 0;
+                app.list.scroll_drag = None;
             }
 
-            let start = app.list.grid_scroll * cols;
+            let start = app.list.grid_scroll.saturating_mul(cols);
             let count = (rows * cols).min(len.saturating_sub(start));
             let buf = frame.buffer_mut();
 
@@ -1428,22 +1429,23 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 });
             }
             // do NOT render a List widget here; do NOT touch list_state (tree view still uses it).
-            if cols > 0 && rows > 0 && len > 0 {
-                let total_rows = len.div_ceil(cols);
+            if len > 0 && rows > 0 {
                 let meta = crate::ui::scrollbar::ScrollbarMeta {
                     track: crate::ui::scrollbar::track_rect(list_area),
                     content_len: total_rows,
                     viewport_len: rows,
                 };
                 app.list.last_scroll = Some(meta);
-                if app.config.ui.scrollbars {
+                if !crate::ui::scrollbar::overflows(total_rows, rows) {
+                    app.list.scroll_drag = None;
+                } else if app.config.ui.scrollbars {
                     crate::ui::scrollbar::draw_scrollbar(
                         frame,
                         list_area,
                         meta.content_len,
                         meta.viewport_len,
                         app.list.grid_scroll,
-                        total_rows.saturating_sub(1),
+                        max_scroll,
                         &app.app_theme,
                     );
                 }
@@ -3334,6 +3336,163 @@ mod tests {
     use crate::app::ViewMode;
     use crate::config::CalendarPosition;
     use crate::config::PreviewPosition;
+    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+    use ratatui::{Terminal, backend::TestBackend};
+
+    fn grid_test_app(items: usize) -> (tempfile::TempDir, App) {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let storage = crate::storage::Storage {
+            data_dir: temp_dir.path().join("data"),
+            config_dir: temp_dir.path().join("config"),
+            notes_dir: temp_dir.path().join("notes"),
+            templates_dir: temp_dir.path().join("templates"),
+            key: [0u8; 32],
+            skip_dir_patterns: Vec::new(),
+        };
+        for path in [
+            &storage.data_dir,
+            &storage.config_dir,
+            &storage.notes_dir,
+            &storage.templates_dir,
+        ] {
+            std::fs::create_dir_all(path).unwrap();
+        }
+
+        let mut app = App::new(storage).unwrap();
+        app.list.visual_list = (0..items)
+            .map(|i| crate::list_view::VisualItem::CreateNew {
+                path: format!("item-{i}"),
+                depth: 0,
+            })
+            .collect();
+        app.list.notes_layout = crate::config::NotesLayout::Grid;
+        app.list.preview_enabled = false;
+        app.list.calendar_enabled = false;
+        app.config.ui.scrollbars = true;
+        (temp_dir, app)
+    }
+
+    fn draw_grid(terminal: &mut Terminal<TestBackend>, app: &mut App) {
+        terminal.draw(|frame| draw_list_view(frame, app)).unwrap();
+    }
+
+    fn mouse(kind: MouseEventKind, column: u16, row: u16) -> MouseEvent {
+        MouseEvent {
+            kind,
+            column,
+            row,
+            modifiers: KeyModifiers::NONE,
+        }
+    }
+
+    #[test]
+    fn grid_scrollbar_drag_selects_first_tile_of_bottom_view() {
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let (_temp_dir, mut app) = grid_test_app(10);
+        let mut terminal = Terminal::new(TestBackend::new(36, 18)).unwrap();
+        draw_grid(&mut terminal, &mut app);
+
+        let meta = app.list.last_scroll.expect("grid scrollbar metadata");
+        assert_eq!((meta.content_len, meta.viewport_len), (4, 2));
+        let bottom = meta.track.bottom().saturating_sub(1);
+        crate::events::handle_list_mouse(
+            &mut app,
+            mouse(
+                MouseEventKind::Down(MouseButton::Left),
+                meta.track.x,
+                meta.track.y,
+            ),
+            Rect::new(0, 0, 36, 18),
+        );
+        crate::events::handle_list_mouse(
+            &mut app,
+            mouse(
+                MouseEventKind::Drag(MouseButton::Left),
+                meta.track.x,
+                bottom,
+            ),
+            Rect::new(0, 0, 36, 18),
+        );
+        crate::events::handle_list_mouse(
+            &mut app,
+            mouse(MouseEventKind::Up(MouseButton::Left), meta.track.x, bottom),
+            Rect::new(0, 0, 36, 18),
+        );
+
+        assert_eq!(app.list.grid_scroll, 2);
+        assert_eq!(app.list.visual_index, 6);
+        assert!(app.list.scroll_drag.is_none());
+        assert_eq!(
+            app.list.last_scroll.expect("metadata remains").content_len,
+            4
+        );
+        assert_eq!(
+            app.list.last_scroll.expect("metadata remains").viewport_len,
+            2
+        );
+
+        draw_grid(&mut terminal, &mut app);
+        assert_eq!(
+            terminal
+                .backend()
+                .buffer()
+                .get(meta.track.x, bottom)
+                .symbol(),
+            "█"
+        );
+    }
+
+    #[test]
+    fn grid_scrollbar_track_click_reaches_bottom() {
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let (_temp_dir, mut app) = grid_test_app(10);
+        let mut terminal = Terminal::new(TestBackend::new(36, 18)).unwrap();
+        draw_grid(&mut terminal, &mut app);
+
+        let meta = app.list.last_scroll.expect("grid scrollbar metadata");
+        crate::events::handle_list_mouse(
+            &mut app,
+            mouse(
+                MouseEventKind::Down(MouseButton::Left),
+                meta.track.x,
+                meta.track.bottom().saturating_sub(1),
+            ),
+            Rect::new(0, 0, 36, 18),
+        );
+
+        assert_eq!(app.list.grid_scroll, 2);
+        assert_eq!(app.list.visual_index, 6);
+    }
+
+    #[test]
+    fn grid_scrollbar_fit_and_empty_states_do_not_scroll() {
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let (_temp_dir, mut app) = grid_test_app(6);
+        let mut terminal = Terminal::new(TestBackend::new(36, 18)).unwrap();
+        draw_grid(&mut terminal, &mut app);
+
+        let meta = app.list.last_scroll.expect("fit grid metadata");
+        assert_eq!((meta.content_len, meta.viewport_len), (2, 2));
+        assert_eq!(app.list.grid_scroll, 0);
+        assert!(app.list.scroll_drag.is_none());
+        crate::events::handle_list_mouse(
+            &mut app,
+            mouse(
+                MouseEventKind::Down(MouseButton::Left),
+                meta.track.x,
+                meta.track.bottom().saturating_sub(1),
+            ),
+            Rect::new(0, 0, 36, 18),
+        );
+        assert_eq!(app.list.grid_scroll, 0);
+        assert_eq!(app.list.visual_index, 0);
+
+        app.list.visual_list.clear();
+        draw_grid(&mut terminal, &mut app);
+        assert!(app.list.last_scroll.is_none());
+        assert_eq!(app.list.grid_scroll, 0);
+        assert!(app.list.grid_tiles.is_empty());
+    }
 
     #[test]
     fn calendar_never_overlaps_preview_and_stays_in_list_column() {

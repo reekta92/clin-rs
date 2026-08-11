@@ -908,15 +908,25 @@ pub fn handle_list_mouse(app: &mut App, mouse_event: MouseEvent, terminal_area: 
         if app.config.ui.scrollbars
             && let Some(meta) = app.list.last_scroll
         {
-            let max_pos = meta.content_len.saturating_sub(1);
-            let frac = app.list.grid_scroll as f32 / max_pos.max(1) as f32;
-            if let Some(new_frac) = crate::ui::scrollbar::handle_scrollbar_mouse(
+            let max_scroll = meta.content_len.saturating_sub(meta.viewport_len);
+            let fraction = app.list.grid_scroll as f32 / max_scroll.max(1) as f32;
+            if let Some(new_fraction) = crate::ui::scrollbar::handle_scrollbar_mouse(
                 &mouse_event,
                 meta,
-                frac,
+                fraction,
                 &mut app.list.scroll_drag,
             ) {
-                app.list.grid_scroll = (new_frac * max_pos as f32).round() as usize;
+                app.list.grid_scroll =
+                    ((new_fraction * max_scroll as f32).round() as usize).min(max_scroll);
+                if !app.list.visual_list.is_empty() {
+                    let columns = app.list.grid_columns.max(1);
+                    app.list.visual_index = app
+                        .list
+                        .grid_scroll
+                        .saturating_mul(columns)
+                        .min(app.list.visual_list.len().saturating_sub(1));
+                    app.request_preview_update_immediate();
+                }
                 return;
             }
         }
