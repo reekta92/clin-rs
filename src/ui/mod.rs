@@ -1,8 +1,10 @@
 use anyhow::{Context, Result};
 use ratatui::{prelude::*, widgets::*};
-use ratatui_textarea::TextArea;
+use ratatui_textarea::{TextArea, WrapMode};
 use std::path::Path;
 use std::process::Command;
+use unicode_segmentation::UnicodeSegmentation;
+use unicode_width::UnicodeWidthChar;
 
 use crate::app::{App, EditFocus, ViewMode};
 use crate::app_theme::AppThemeColors;
@@ -24,6 +26,7 @@ mod title_bar;
 pub use edit_view::draw_edit_view;
 pub use help::*;
 pub use help_content::{HelpSuggestion, roll_suggestions};
+#[allow(unused_imports)]
 pub(crate) use list_view::{
     draw_list_view, get_preview_info, list_detail_line, list_view_layout, section_rects,
 };
@@ -1854,8 +1857,171 @@ pub fn overlay_search_highlights(frame: &mut Frame, app: &App, area: Rect) {
 
 /// Overlay EDIT-mode markdown highlighting on top of the rendered textarea.
 /// Uses a per-source-line cache rebuilt only when the document changes.
-/// Skips the cursor cell (it carries `REVERSED` modifier) and any cell inside
-/// an active text selection (non-default background).
+/// Mirror ratatui-textarea 0.9.2's wrapped-row map using source character offsets.
+pub(crate) fn editor_visual_rows(
+    lines: &[String],
+    mode: WrapMode,
+    total_width: u16,
+    line_numbers: bool,
+    tab_len: u8,
+) -> Vec<crate::editor::EditorVisualRow> {
+    let reserved = line_numbers
+        .then(|| lines.len().max(1).to_string().len() + 2)
+        .unwrap_or(0);
+    let width = if usize::from(total_width) > reserved {
+        usize::from(total_width) - reserved
+    } else {
+        1
+    };
+    let mut rows = Vec::new();
+    for (source_line, line) in lines.iter().enumerate() {
+        for (start_byte, end_byte) in editor_line_ranges(line, mode, width, tab_len) {
+            rows.push(crate::editor::EditorVisualRow {
+                source_line,
+                start_char: line[..start_byte].chars().count(),
+                end_char: line[..end_byte].chars().count(),
+            });
+        }
+    }
+    rows
+}
+
+fn editor_line_ranges(
+    line: &str,
+    mode: WrapMode,
+    width: usize,
+    tab_len: u8,
+) -> Vec<(usize, usize)> {
+    if mode == WrapMode::None {
+        return vec![(0, line.len())];
+    }
+    let width = width.max(1);
+    let mut out = match mode {
+        WrapMode::None => vec![(0, line.len())],
+        WrapMode::Glyph => {
+            let mut chunks = Vec::new();
+            split_editor_range_by_grapheme_width(line, 0, line.len(), width, tab_len, &mut chunks);
+            chunks
+        }
+        WrapMode::Word => editor_word_chunks(line, width, tab_len, false),
+        WrapMode::WordOrGlyph => editor_word_chunks(line, width, tab_len, true),
+    };
+    if out.is_empty() {
+        out.push((0, 0));
+    }
+    out
+}
+
+fn editor_word_chunks(
+    line: &str,
+    width: usize,
+    tab_len: u8,
+    fallback_to_glyph: bool,
+) -> Vec<(usize, usize)> {
+    let chunks: Vec<_> = UnicodeSegmentation::split_word_bound_indices(line)
+        .map(|(start, text)| (start, start + text.len()))
+        .collect();
+    if chunks.is_empty() {
+        return vec![(0, 0)];
+    }
+    let mut out = Vec::new();
+    let mut index = 0;
+    let mut segment_start = chunks[0].0;
+    let mut segment_end = segment_start;
+    let mut segment_width = 0;
+    while index < chunks.len() {
+        let (start, end) = chunks[index];
+        if segment_end == segment_start {
+            segment_start = start;
+        }
+        let chunk_width = editor_display_width_from(&line[start..end], segment_width, tab_len);
+        if segment_width + chunk_width <= width {
+            segment_end = end;
+            segment_width += chunk_width;
+            index += 1;
+            continue;
+        }
+        if segment_end > segment_start {
+            out.push((segment_start, segment_end));
+            segment_start = segment_end;
+            segment_width = 0;
+            continue;
+        }
+        if fallback_to_glyph {
+            split_editor_range_by_grapheme_width(line, start, end, width, tab_len, &mut out);
+        } else {
+            out.push((start, end));
+        }
+        index += 1;
+        segment_start = end;
+        segment_end = end;
+        segment_width = 0;
+    }
+    if segment_end > segment_start {
+        out.push((segment_start, segment_end));
+    }
+    out
+}
+
+fn split_editor_range_by_grapheme_width(
+    line: &str,
+    start: usize,
+    end: usize,
+    width: usize,
+    tab_len: u8,
+    out: &mut Vec<(usize, usize)>,
+) {
+    let mut segment_start = start;
+    while segment_start < end {
+        let mut segment_end = segment_start;
+        let mut segment_width = 0;
+        for (offset, grapheme) in
+            UnicodeSegmentation::grapheme_indices(&line[segment_start..end], true)
+        {
+            let grapheme_start = segment_start + offset;
+            let grapheme_end = grapheme_start + grapheme.len();
+            let next_width = editor_display_width_to(grapheme, segment_width, tab_len);
+            let grapheme_width = next_width.saturating_sub(segment_width);
+            if segment_end != segment_start && segment_width + grapheme_width > width {
+                break;
+            }
+            segment_end = grapheme_end;
+            segment_width = next_width;
+            if segment_width > width {
+                break;
+            }
+        }
+        if segment_end == segment_start {
+            if let Some(ch) = line[segment_start..end].chars().next() {
+                segment_end = segment_start + ch.len_utf8();
+            } else {
+                break;
+            }
+        }
+        out.push((segment_start, segment_end));
+        segment_start = segment_end;
+    }
+}
+
+fn editor_display_width_from(text: &str, start_width: usize, tab_len: u8) -> usize {
+    editor_display_width_to(text, start_width, tab_len).saturating_sub(start_width)
+}
+
+fn editor_display_width_to(text: &str, mut width: usize, tab_len: u8) -> usize {
+    for ch in text.chars() {
+        if ch == '\t' {
+            if tab_len > 0 {
+                let tab = usize::from(tab_len);
+                width += tab - (width % tab);
+            }
+        } else {
+            width += ch.width().unwrap_or(0);
+        }
+    }
+    width
+}
+
+/// Overlay EDIT-mode markdown highlighting on top of rendered textarea.
 pub fn overlay_markdown_highlight(frame: &mut Frame, app: &mut App, area: Rect) {
     let show_ln = app.editor.show_line_numbers;
     let gutter = if show_ln {
@@ -1864,8 +2030,9 @@ pub fn overlay_markdown_highlight(frame: &mut Frame, app: &mut App, area: Rect) 
         0
     };
     let inner = app.editor.body.inner_rect(area);
+    let wrap_mode = app.editor.body.textarea().wrap_mode();
+    let tab_len = app.editor.body.textarea().tab_length();
 
-    // --- Phase 1: rebuild per-source-line style cache only when the doc changed.
     {
         let e = &mut app.editor;
         let full_doc: &[String] = e.body.lines();
@@ -1876,7 +2043,7 @@ pub fn overlay_markdown_highlight(frame: &mut Frame, app: &mut App, area: Rect) 
         }
         let stale =
             e.md_highlight_lines != full_doc.len() || e.md_highlight_change != e.last_editor_change;
-        if stale && show_ln {
+        if stale {
             e.md_highlight_memo.clear();
             let highlighter_missing = e.source_highlighter.is_none();
             let hl = e.source_highlighter.get_or_insert_with(|| {
@@ -1889,18 +2056,17 @@ pub fn overlay_markdown_highlight(frame: &mut Frame, app: &mut App, area: Rect) 
             if highlighter_missing {
                 hl.rescan(full_doc);
             }
-            let mut cache: Vec<std::rc::Rc<[ratatui::style::Style]>> =
-                Vec::with_capacity(full_doc.len());
-            for (i, line) in full_doc.iter().enumerate() {
+            let mut cache = Vec::with_capacity(full_doc.len());
+            for (index, line) in full_doc.iter().enumerate() {
                 use std::hash::{Hash, Hasher};
                 let mut hasher = std::collections::hash_map::DefaultHasher::new();
                 line.hash(&mut hasher);
-                let key = (hasher.finish(), hl.is_code_line(i));
+                let key = (hasher.finish(), hl.is_code_line(index));
                 let styles = match e.md_highlight_memo.get(&key) {
                     Some(rc) => rc.clone(),
                     None => {
                         let rc: std::rc::Rc<[ratatui::style::Style]> =
-                            hl.highlight_line(line, i).into();
+                            hl.highlight_line(line, index).into();
                         e.md_highlight_memo.put(key, rc.clone());
                         rc
                     }
@@ -1911,20 +2077,70 @@ pub fn overlay_markdown_highlight(frame: &mut Frame, app: &mut App, area: Rect) 
             e.md_highlight_lines = full_doc.len();
             e.md_highlight_change = e.last_editor_change;
         }
+
+        if wrap_mode != WrapMode::None {
+            let key = (e.body.revision(), inner.width, show_ln, wrap_mode, tab_len);
+            if e.visual_row_cache.key != Some(key) {
+                e.visual_row_cache.rows =
+                    editor_visual_rows(full_doc, wrap_mode, inner.width, show_ln, tab_len);
+                e.visual_row_cache.key = Some(key);
+            }
+        }
+    }
+
+    if inner.width == 0 || inner.height == 0 {
+        return;
+    }
+    let content_left = inner.left().saturating_add(gutter);
+    if content_left >= inner.right() {
+        return;
+    }
+    let base_bg = app.app_theme.bg.unwrap_or(ratatui::style::Color::Reset);
+
+    if wrap_mode != WrapMode::None {
+        let visible_start = usize::from(app.editor.body_viewport_row);
+        let rows = &app.editor.visual_row_cache.rows;
+        if visible_start >= rows.len() {
+            return;
+        }
+        let lines = app.editor.body.lines();
+        let cache = &app.editor.md_highlight_cache;
+        let buf = frame.buffer_mut();
+        for (offset, row) in rows[visible_start..]
+            .iter()
+            .take(usize::from(inner.height))
+            .enumerate()
+        {
+            let Some(line) = lines.get(row.source_line) else {
+                continue;
+            };
+            let styles = cache
+                .get(row.source_line)
+                .map_or(&[][..], std::rc::Rc::as_ref);
+            apply_visual_row_highlight(
+                buf,
+                inner.top().saturating_add(offset as u16),
+                content_left,
+                inner.right(),
+                line,
+                row.start_char,
+                row.end_char,
+                styles,
+                tab_len,
+                base_bg,
+            );
+        }
+        return;
     }
 
     let buf = frame.buffer_mut();
-    let content_left = inner.left() + gutter;
-
-    let base_bg = app.app_theme.bg.unwrap_or(ratatui::style::Color::Reset);
     if show_ln {
         let cache = &app.editor.md_highlight_cache;
         let mut source_idx: Option<usize> = None;
         let mut rows_for_line: Vec<(u16, u16, u16)> = Vec::new();
-
         for y in inner.top()..inner.bottom() {
             let gutter_text: String = (inner.x..content_left)
-                .filter_map(|x| buf.cell((x, y)).map(|c| c.symbol()))
+                .filter_map(|x| buf.cell((x, y)).map(|cell| cell.symbol()))
                 .collect();
             let trimmed_gutter = gutter_text.trim();
             if trimmed_gutter.is_empty() {
@@ -1935,22 +2151,20 @@ pub fn overlay_markdown_highlight(frame: &mut Frame, app: &mut App, area: Rect) 
                         rows_for_line.push((y, content_left, inner.right()));
                     }
                 }
-            } else if let Ok(n) = trimmed_gutter.parse::<usize>() {
-                if let Some(si) = source_idx {
-                    let styles = cache.get(si).map(|r| r.as_ref()).unwrap_or(&[]);
+            } else if let Ok(number) = trimmed_gutter.parse::<usize>() {
+                if let Some(source_line) = source_idx {
+                    let styles = cache.get(source_line).map_or(&[][..], std::rc::Rc::as_ref);
                     apply_highlight_styles(buf, &rows_for_line, styles, base_bg);
                 }
-                source_idx = Some(n.saturating_sub(1));
+                source_idx = Some(number.saturating_sub(1));
                 rows_for_line = vec![(y, content_left, inner.right())];
             }
         }
-        if let Some(si) = source_idx {
-            let styles = cache.get(si).map(|r| r.as_ref()).unwrap_or(&[]);
+        if let Some(source_line) = source_idx {
+            let styles = cache.get(source_line).map_or(&[][..], std::rc::Rc::as_ref);
             apply_highlight_styles(buf, &rows_for_line, styles, base_bg);
         }
     } else {
-        // No line numbers: source_idx is unknown, so highlight the displayed text
-        // standalone per frame.
         let e = &mut app.editor;
         let full_doc: &[String] = e.body.lines();
         let hl = e.source_highlighter.get_or_insert_with(|| {
@@ -1963,34 +2177,85 @@ pub fn overlay_markdown_highlight(frame: &mut Frame, app: &mut App, area: Rect) 
         hl.rescan(full_doc);
         for y in inner.top()..inner.bottom() {
             let displayed: String = (content_left..inner.right())
-                .filter_map(|x| buf.cell((x, y)).map(|c| c.symbol()))
+                .filter_map(|x| buf.cell((x, y)).map(|cell| cell.symbol()))
                 .collect();
             if displayed.is_empty() {
                 continue;
             }
             let styles = hl.highlight_line(&displayed, 0);
-            let mut ci = 0usize;
+            let mut char_index = 0;
             for x in content_left..inner.right() {
-                if ci >= styles.len() {
+                if char_index >= styles.len() {
                     break;
                 }
                 if let Some(cell) = buf.cell_mut((x, y)) {
                     if cell.symbol().is_empty() {
                         continue;
                     }
-                    if cell.modifier.contains(ratatui::style::Modifier::REVERSED) {
-                        ci += 1;
+                    if cell.modifier.contains(ratatui::style::Modifier::REVERSED)
+                        || cell.bg != base_bg
+                    {
+                        char_index += 1;
                         continue;
                     }
-                    if cell.bg != base_bg {
-                        ci += 1;
-                        continue;
-                    }
-                    cell.set_style(styles[ci]);
-                    ci += 1;
+                    cell.set_style(styles[char_index]);
+                    char_index += 1;
                 }
             }
         }
+    }
+}
+
+fn apply_visual_row_highlight(
+    buf: &mut ratatui::prelude::Buffer,
+    y: u16,
+    x_start: u16,
+    x_end: u16,
+    source: &str,
+    start_char: usize,
+    end_char: usize,
+    styles: &[ratatui::style::Style],
+    tab_len: u8,
+    base_bg: ratatui::style::Color,
+) {
+    if start_char >= end_char || styles.is_empty() {
+        return;
+    }
+    let mut x = x_start;
+    let mut display_width = 0usize;
+    for (offset, ch) in source
+        .chars()
+        .skip(start_char)
+        .take(end_char.saturating_sub(start_char))
+        .enumerate()
+    {
+        let style_index = start_char + offset;
+        let Some(style) = styles.get(style_index) else {
+            break;
+        };
+        let width = if ch == '\t' {
+            if tab_len == 0 {
+                0
+            } else {
+                let tab = usize::from(tab_len);
+                tab - (display_width % tab)
+            }
+        } else {
+            ch.width().unwrap_or(0)
+        };
+        for _ in 0..width {
+            if x >= x_end {
+                return;
+            }
+            if let Some(cell) = buf.cell_mut((x, y))
+                && !cell.modifier.contains(ratatui::style::Modifier::REVERSED)
+                && cell.bg == base_bg
+            {
+                cell.set_style(*style);
+            }
+            x = x.saturating_add(1);
+        }
+        display_width += width;
     }
 }
 
@@ -2010,15 +2275,10 @@ fn apply_highlight_styles(
             let Some(cell) = buf.cell_mut((x, y)) else {
                 continue;
             };
-            let sym = cell.symbol();
-            if sym.is_empty() {
+            if cell.symbol().is_empty() {
                 continue;
             }
-            if cell.modifier.contains(ratatui::style::Modifier::REVERSED) {
-                src_cursor += 1;
-                continue;
-            }
-            if cell.bg != base_bg {
+            if cell.modifier.contains(ratatui::style::Modifier::REVERSED) || cell.bg != base_bg {
                 src_cursor += 1;
                 continue;
             }
@@ -2027,6 +2287,187 @@ fn apply_highlight_styles(
             }
             cell.set_style(styles[src_cursor]);
             src_cursor += 1;
+        }
+    }
+}
+
+#[cfg(test)]
+mod markdown_highlight_tests {
+    use super::*;
+    use crate::editor_document::EditorDocument;
+    use crate::storage::Storage;
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+    use ratatui::style::Style;
+    use ratatui::widgets::Block;
+
+    fn storage(root: &std::path::Path) -> Storage {
+        let data_dir = root.join("data");
+        let config_dir = root.join("config");
+        let notes_dir = root.join("notes");
+        let templates_dir = root.join("templates");
+        for path in [&data_dir, &config_dir, &notes_dir, &templates_dir] {
+            std::fs::create_dir_all(path).expect("create test directory");
+        }
+        Storage {
+            data_dir,
+            config_dir,
+            notes_dir,
+            templates_dir,
+            key: [0; 32],
+            skip_dir_patterns: Vec::new(),
+        }
+    }
+
+    fn display_fragment(fragment: &str, tab_len: u8) -> String {
+        let mut out = String::new();
+        let mut width = 0;
+        for ch in fragment.chars() {
+            if ch == '\t' {
+                let pad = if tab_len == 0 {
+                    0
+                } else {
+                    let tab = usize::from(tab_len);
+                    tab - (width % tab)
+                };
+                out.push_str(&" ".repeat(pad));
+                width += pad;
+            } else {
+                out.push(ch);
+                width += ch.width().unwrap_or(0);
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn editor_visual_rows_match_textarea_rendering() {
+        let lines = vec![
+            String::new(),
+            "word boundaries stay whole".into(),
+            "supercalifragilistic".into(),
+            "\tTabbed e\u{301}界".into(),
+        ];
+        for line_numbers in [false, true] {
+            let width: u16 = 12;
+            let rows = editor_visual_rows(&lines, WrapMode::WordOrGlyph, width, line_numbers, 4);
+            let backend = TestBackend::new(width, rows.len() as u16);
+            let mut terminal = Terminal::new(backend).expect("terminal");
+            let mut textarea = TextArea::from(lines.clone());
+            textarea.set_wrap_mode(WrapMode::WordOrGlyph);
+            textarea.set_tab_length(4);
+            if line_numbers {
+                textarea.set_line_number_style(Style::default());
+            }
+            terminal
+                .draw(|frame| frame.render_widget(&textarea, frame.area()))
+                .expect("render");
+
+            let gutter: u16 = if line_numbers { 3 } else { 0 };
+            for (y, row) in rows.iter().enumerate() {
+                let source = &lines[row.source_line];
+                let fragment: String = source
+                    .chars()
+                    .skip(row.start_char)
+                    .take(row.end_char - row.start_char)
+                    .collect();
+                let actual: String = (gutter..width)
+                    .filter_map(|x| {
+                        terminal
+                            .backend()
+                            .buffer()
+                            .cell((x, y as u16))
+                            .map(|cell| cell.symbol())
+                    })
+                    .collect();
+                assert_eq!(
+                    actual.trim_end(),
+                    display_fragment(&fragment, 4).trim_end(),
+                    "line_numbers={line_numbers}, visual row={y}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn edit_markdown_highlight_tracks_soft_wrapped_source_offsets() {
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let temp = tempfile::tempdir().expect("tempdir");
+        let lines = vec![
+            "**bold phrase wraps over narrow visual rows**".into(),
+            "[link label wraps over visual rows](https://example.com)".into(),
+            "```rust".into(),
+            "\tfn wide_界() { println!(\"wrapped\"); }".into(),
+            "```".into(),
+        ];
+        for line_numbers in [false, true] {
+            let mut app = crate::app::App::new(storage(temp.path())).expect("app");
+            app.editor.body = EditorDocument::from_lines(lines.clone());
+            app.editor.body.set_wrap_mode(WrapMode::WordOrGlyph);
+            app.editor.show_line_numbers = line_numbers;
+            let backend = TestBackend::new(16, 16);
+            let mut terminal = Terminal::new(backend).expect("terminal");
+            terminal
+                .draw(|frame| {
+                    render_editor_document_with_theme(
+                        frame,
+                        &mut app.editor.body,
+                        frame.area(),
+                        &app.app_theme,
+                        true,
+                        line_numbers,
+                        Block::default(),
+                        app.app_theme.bg_style(),
+                    );
+                    overlay_markdown_highlight(frame, &mut app, frame.area());
+                })
+                .expect("render");
+
+            let gutter: u16 = if line_numbers { 3 } else { 0 };
+            for (visual_index, row) in app.editor.visual_row_cache.rows.iter().enumerate() {
+                if visual_index >= 16 {
+                    break;
+                }
+                let source = &lines[row.source_line];
+                let styles = &app.editor.md_highlight_cache[row.source_line];
+                let mut x = gutter;
+                let mut display_width = 0;
+                for (offset, ch) in source
+                    .chars()
+                    .skip(row.start_char)
+                    .take(row.end_char - row.start_char)
+                    .enumerate()
+                {
+                    let style = styles[row.start_char + offset];
+                    let width = if ch == '\t' {
+                        4 - (display_width % 4)
+                    } else {
+                        ch.width().unwrap_or(0)
+                    };
+                    if let Some(expected) = style.fg {
+                        let painted_cells = if ch == '\t' { width } else { width.min(1) };
+                        for cell_x in x..x.saturating_add(painted_cells as u16).min(16) {
+                            let cell = terminal
+                                .backend()
+                                .buffer()
+                                .cell((cell_x, visual_index as u16))
+                                .expect("cell");
+                            if !cell.symbol().is_empty()
+                                && !cell.modifier.contains(Modifier::REVERSED)
+                                && cell.bg == app.app_theme.bg.unwrap_or(Color::Reset)
+                            {
+                                assert_eq!(
+                                    cell.fg, expected,
+                                    "line_numbers={line_numbers}, source_line={}, chars={}..{}, ch={ch:?}, visual row={visual_index}, x={cell_x}",
+                                    row.source_line, row.start_char, row.end_char,
+                                );
+                            }
+                        }
+                    }
+                    x = x.saturating_add(width as u16);
+                    display_width += width;
+                }
+            }
         }
     }
 }

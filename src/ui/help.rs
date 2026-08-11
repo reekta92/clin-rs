@@ -29,7 +29,7 @@ pub fn help_tab_names() -> [&'static str; 8] {
 pub fn help_tabs(icon_mode: crate::config::IconMode) -> Vec<(&'static str, Option<&'static str>)> {
     let pairs: [(&'static str, &'static str, &'static str); 8] = [
         ("Notes", "\u{f02d}", "\u{1f4d8}"),     // book
-        ("Editor", "\u{f303}", "\u{270f}"),     // pencil
+        ("Editor", "\u{f03eb}", "\u{270f}"),    // pencil
         ("Graph", "\u{f1e0}", "\u{1f5c2}"),     // share-alt / stacked
         ("Draw", "\u{f1fc}", "\u{1f3a8}"),      // paint-brush / palette
         ("Canvas", "\u{f0b2}", "\u{1f4cc}"),    // thumbtack / pushpin
@@ -1470,6 +1470,12 @@ pub(crate) fn resolve_tip_key(token: &str, kb: &Keybinds) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn editor_help_tab_uses_pencil_glyph() {
+        let tabs = help_tabs(crate::config::IconMode::Nerd);
+        assert_eq!(tabs[1], ("Editor", Some("\u{f03eb}")));
+    }
 
     #[test]
     fn test_render_tip_body_parsing() {

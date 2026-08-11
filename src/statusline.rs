@@ -1,11 +1,12 @@
 use crate::app::{App, ViewMode};
 use crate::app_theme::AppThemeColors;
-use crate::config::StatuslineConfig;
+use crate::config::{IconMode, StatuslineConfig};
 use crate::storage::NoteSummary;
 use crate::ui::{PreviewHeaderInfo, format_date, format_relative_time, format_size};
 use ratatui::prelude::*;
 use std::borrow::Cow;
 use std::path::Path;
+use unicode_width::UnicodeWidthChar;
 
 #[derive(Debug, Clone)]
 pub enum Segment<'a> {
@@ -18,6 +19,93 @@ enum FlatSegment<'a> {
     Cell(String),
     Composite(Vec<Span<'a>>),
     Splittable(Vec<Span<'a>>),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ListHeaderField {
+    Tags,
+    Sort,
+    Age,
+    Size,
+    Count,
+}
+
+#[derive(Clone, Default)]
+pub(crate) struct ListHeaderDetail {
+    pub(crate) groups: Vec<(ListHeaderField, Vec<Span<'static>>)>,
+}
+
+impl ListHeaderDetail {
+    pub(crate) fn new(groups: Vec<(ListHeaderField, Vec<Span<'static>>)>) -> Self {
+        Self { groups }
+    }
+
+    pub(crate) fn spans_without(&self, hidden: &[ListHeaderField]) -> Vec<Span<'static>> {
+        let mut spans = Vec::new();
+        for (_, group) in self
+            .groups
+            .iter()
+            .filter(|(field, _)| !hidden.contains(field))
+        {
+            if !spans.is_empty() {
+                spans.push(Span::raw(" | "));
+            }
+            spans.extend(group.iter().cloned());
+        }
+        spans
+    }
+}
+
+pub(crate) fn list_relative_age_at(updated_at: u64, now: u64) -> String {
+    let elapsed = now.saturating_sub(updated_at);
+    if elapsed < 60 {
+        "just now".into()
+    } else if elapsed < 60 * 60 {
+        format!("{}m ago", elapsed / 60)
+    } else if elapsed < 24 * 60 * 60 {
+        format!("{}h ago", elapsed / (60 * 60))
+    } else if elapsed < 7 * 24 * 60 * 60 {
+        format!("{}d ago", elapsed / (24 * 60 * 60))
+    } else if elapsed < 52 * 7 * 24 * 60 * 60 {
+        format!("{}w ago", elapsed / (7 * 24 * 60 * 60))
+    } else {
+        format!("{}y ago", elapsed / (52 * 7 * 24 * 60 * 60))
+    }
+}
+
+pub(crate) fn list_relative_age(updated_at: u64) -> String {
+    list_relative_age_at(updated_at, crate::ui::now_unix_secs())
+}
+
+pub(crate) fn compact_list_tags(tags: &[String]) -> String {
+    fn truncate(tag: &str) -> String {
+        if tag.chars().map(|ch| ch.width().unwrap_or(0)).sum::<usize>() <= 12 {
+            return tag.into();
+        }
+        let mut out = String::new();
+        let mut width = 0;
+        for ch in tag.chars() {
+            let char_width = ch.width().unwrap_or(0);
+            if width + char_width > 11 {
+                break;
+            }
+            out.push(ch);
+            width += char_width;
+        }
+        out.push('…');
+        out
+    }
+
+    let mut out = tags
+        .iter()
+        .take(2)
+        .map(|tag| truncate(tag))
+        .collect::<Vec<_>>()
+        .join(", ");
+    if tags.len() > 2 {
+        out.push_str(&format!(" +{}", tags.len() - 2));
+    }
+    out
 }
 
 #[derive(Default)]
@@ -69,6 +157,7 @@ pub struct StatuslineContext<'a> {
     pub pending: Option<Vec<Span<'a>>>,
     pub preview: Option<Vec<Span<'a>>>,
     pub detail: Option<Vec<Span<'a>>>,
+    pub(crate) list_detail: Option<ListHeaderDetail>,
 
     pub graph_fps: Option<f64>,
 }
@@ -96,6 +185,7 @@ impl<'a> StatuslineContext<'a> {
             pending: None,
             preview: None,
             detail: None,
+            list_detail: None,
             graph_fps: None,
             edit_memo: std::cell::RefCell::new(EditMemo::default()),
         }
@@ -123,6 +213,7 @@ impl<'a> StatuslineContext<'a> {
             pending: None,
             preview: None,
             detail: None,
+            list_detail: None,
             graph_fps: None,
             edit_memo: std::cell::RefCell::new(EditMemo::default()),
         }
@@ -307,50 +398,70 @@ impl StatuslineContext<'_> {
             // List View
             "title" => {
                 let title = match self.view {
-                    ViewMode::List => {
-                        if let Some(app) = self.app {
+                    ViewMode::List => self.app.map_or_else(
+                        || "Notes".to_string(),
+                        |app| {
                             if app.layout_edit {
                                 "Notes - Editing Layout".to_string()
                             } else {
                                 "Notes".to_string()
                             }
-                        } else {
-                            "Notes".to_string()
-                        }
-                    }
+                        },
+                    ),
                     ViewMode::Edit => "EDITOR".to_string(),
                     ViewMode::Help => "Help".to_string(),
                     ViewMode::Graph => "Graph".to_string(),
                     ViewMode::Draw => "Draw".to_string(),
                     ViewMode::Canvas => "Canvas".to_string(),
                     ViewMode::Backup => "Backup".to_string(),
-                    ViewMode::Outline => {
-                        if let Some(tree) = &self.outline {
-                            format!("OUTLINE — {}", tree.note_title)
-                        } else {
-                            "Outline".to_string()
-                        }
-                    }
+                    ViewMode::Outline => self.outline.map_or_else(
+                        || "Outline".to_string(),
+                        |tree| format!("OUTLINE — {}", tree.note_title),
+                    ),
                     ViewMode::Setup => "Setup".to_string(),
                 };
                 Some(title.into())
             }
             "sort" => {
-                let s = self
+                let sort = self
                     .app
-                    .map(|a| {
-                        let field = match a.list.sort_field {
-                            crate::list_view::SortField::Title => "Title",
-                            crate::list_view::SortField::Modified => "Modified",
-                        };
-                        let arrow = match a.list.sort_order {
-                            crate::list_view::SortOrder::Ascending => "\u{25b2}",
-                            crate::list_view::SortOrder::Descending => "\u{25bc}",
-                        };
-                        format!("{field} {arrow}")
+                    .map(|app| {
+                        let ascending =
+                            matches!(app.list.sort_order, crate::list_view::SortOrder::Ascending);
+                        if self.view == ViewMode::List {
+                            match app.list.sort_field {
+                                crate::list_view::SortField::Title => {
+                                    if ascending {
+                                        "A-z".into()
+                                    } else {
+                                        "Z-a".into()
+                                    }
+                                }
+                                crate::list_view::SortField::Modified => {
+                                    let prefix = if app.config.ui.icon_mode == IconMode::None {
+                                        "M"
+                                    } else {
+                                        crate::ui::get_icon(
+                                            "\u{f03eb}",
+                                            "\u{270e}",
+                                            app.config.ui.icon_mode,
+                                        )
+                                    };
+                                    let arrow = if ascending { "\u{25b2}" } else { "\u{25bc}" };
+                                    format!("{prefix}{arrow}")
+                                }
+                            }
+                        } else {
+                            let field = match app.list.sort_field {
+                                crate::list_view::SortField::Title => "Title",
+                                crate::list_view::SortField::Modified => "Modified",
+                            };
+                            let arrow = if ascending { "\u{25b2}" } else { "\u{25bc}" };
+                            format!("{field} {arrow}")
+                        }
                     })
                     .unwrap_or_default();
-                Some(s.into())
+                Some(sort.into())
             }
             "layout" => {
                 let layout = if let Some(app) = self.app {
@@ -589,12 +700,18 @@ impl StatuslineContext<'_> {
                 Some(sz.into())
             }
             "note_links" => {
-                let count = self.note.map(|n| n.links.len()).unwrap_or(0);
+                let count = self.note.map(|note| note.links.len()).unwrap_or(0);
                 Some(count.to_string().into())
             }
             "tags" => Some(
                 self.note
-                    .map(|n| n.tags.join(", "))
+                    .map(|note| {
+                        if self.view == ViewMode::List {
+                            compact_list_tags(&note.tags)
+                        } else {
+                            note.tags.join(", ")
+                        }
+                    })
                     .unwrap_or_default()
                     .into(),
             ),
@@ -609,22 +726,28 @@ impl StatuslineContext<'_> {
             "note_updated" => {
                 let formatted = self
                     .note
-                    .map(|n| {
-                        let fmt = self
+                    .map(|note| {
+                        let format = self
                             .date_format
-                            .or_else(|| self.app.map(|a| a.date_format.as_str()))
+                            .or_else(|| self.app.map(|app| app.date_format.as_str()))
                             .unwrap_or("%Y-%m-%d");
-                        format_date(n.updated_at, fmt)
+                        format_date(note.updated_at, format)
                     })
                     .unwrap_or_default();
                 Some(formatted.into())
             }
             "note_updated_rel" => {
-                let rel = self
+                let relative = self
                     .note
-                    .map(|n| format_relative_time(n.updated_at).into_owned())
+                    .map(|note| {
+                        if self.view == ViewMode::List {
+                            list_relative_age(note.updated_at)
+                        } else {
+                            crate::ui::format_relative_time(note.updated_at).into_owned()
+                        }
+                    })
                     .unwrap_or_default();
-                Some(rel.into())
+                Some(relative.into())
             }
             "prev_note" => Some(
                 self.preview_info
@@ -1136,11 +1259,20 @@ impl StatuslineContext<'_> {
     }
 }
 
-#[allow(unused_assignments)]
 pub fn render_segments<'a>(
     template: &str,
     ctx: &StatuslineContext<'a>,
+    theme: &AppThemeColors,
+) -> Vec<Segment<'a>> {
+    render_segments_with_detail(template, ctx, theme, None)
+}
+
+#[allow(unused_assignments)]
+fn render_segments_with_detail<'a>(
+    template: &str,
+    ctx: &StatuslineContext<'a>,
     _theme: &AppThemeColors,
+    detail_override: Option<Vec<Span<'a>>>,
 ) -> Vec<Segment<'a>> {
     let mut segments = Vec::new();
 
@@ -1189,7 +1321,7 @@ pub fn render_segments<'a>(
                             flush_cell!();
                             let spans = match name.as_str() {
                                 "preview" => ctx.preview.clone(),
-                                "detail" => ctx.detail.clone(),
+                                "detail" => detail_override.clone().or_else(|| ctx.detail.clone()),
                                 "hints" => ctx.hints.clone(),
                                 "badge" => ctx.badge.clone(),
                                 "pending" => ctx.pending.clone(),
@@ -1772,26 +1904,134 @@ fn default_template(view: ViewMode, field: &str) -> Cow<'static, str> {
     }
 }
 
+pub(crate) fn render_header_left<'a>(
+    ctx: &StatuslineContext<'a>,
+    cfg: &StatuslineConfig,
+    view: ViewMode,
+    theme: &AppThemeColors,
+) -> Line<'a> {
+    let template = effective_templates(cfg, view).header_left;
+    line_from_segments(&render_segments(&template, ctx, theme), theme, true, false)
+}
+
+fn field_for_list_variable(name: &str) -> Option<ListHeaderField> {
+    match name {
+        "tags" => Some(ListHeaderField::Tags),
+        "sort" => Some(ListHeaderField::Sort),
+        "note_updated_rel" => Some(ListHeaderField::Age),
+        "note_size" => Some(ListHeaderField::Size),
+        _ => None,
+    }
+}
+
+fn suppress_list_fields(template: &str, hidden: &[ListHeaderField]) -> String {
+    let mut out = String::with_capacity(template.len());
+    let mut chars = template.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch != '{' {
+            out.push(ch);
+            continue;
+        }
+        if chars.peek() == Some(&'{') {
+            out.push('{');
+            out.push(chars.next().expect("peeked opening brace"));
+            continue;
+        }
+        let mut name = String::new();
+        let mut closed = false;
+        while let Some(next) = chars.next() {
+            if next == '}' {
+                closed = true;
+                break;
+            }
+            if next == '{' {
+                out.push('{');
+                out.push_str(&name);
+                out.push('{');
+                break;
+            }
+            name.push(next);
+        }
+        if closed {
+            if field_for_list_variable(&name).is_none_or(|field| !hidden.contains(&field)) {
+                out.push('{');
+                out.push_str(&name);
+                out.push('}');
+            }
+        } else if !name.is_empty() {
+            out.push('{');
+            out.push_str(&name);
+        }
+    }
+    out
+}
+
+pub(crate) fn render_header_right<'a>(
+    ctx: &StatuslineContext<'a>,
+    cfg: &StatuslineConfig,
+    view: ViewMode,
+    theme: &AppThemeColors,
+    max_width: Option<u16>,
+) -> Option<Line<'a>> {
+    let template = effective_templates(cfg, view).header_right;
+    let mut hidden = Vec::new();
+    loop {
+        let rendered_template = if view == ViewMode::List {
+            suppress_list_fields(&template, &hidden)
+        } else {
+            template.to_string()
+        };
+        let detail = ctx
+            .list_detail
+            .as_ref()
+            .map(|value| value.spans_without(&hidden));
+        let segments = render_segments_with_detail(&rendered_template, ctx, theme, detail);
+        let line = line_from_segments(&segments, theme, true, true);
+        if line.width() == 0 || template.trim().is_empty() {
+            return None;
+        }
+        if max_width.is_none_or(|width| line.width() <= usize::from(width)) {
+            return Some(line);
+        }
+
+        let candidates: &[ListHeaderField] = if ctx.note.is_some() {
+            &[
+                ListHeaderField::Size,
+                ListHeaderField::Age,
+                ListHeaderField::Sort,
+                ListHeaderField::Tags,
+            ]
+        } else if ctx.list_detail.as_ref().is_some_and(|detail| {
+            detail
+                .groups
+                .iter()
+                .any(|(field, _)| *field == ListHeaderField::Count)
+        }) {
+            &[ListHeaderField::Count, ListHeaderField::Sort]
+        } else {
+            &[]
+        };
+        let Some(next) = candidates
+            .iter()
+            .copied()
+            .find(|field| !hidden.contains(field))
+        else {
+            return Some(line);
+        };
+        hidden.push(next);
+    }
+}
+
 pub fn render_header<'a>(
     ctx: &StatuslineContext<'a>,
     cfg: &StatuslineConfig,
     view: ViewMode,
     theme: &AppThemeColors,
 ) -> (Line<'a>, Option<Line<'a>>) {
-    let tmpl = effective_templates(cfg, view);
-    let left_segs = render_segments(&tmpl.header_left, ctx, theme);
-    let right_segs = render_segments(&tmpl.header_right, ctx, theme);
-
-    let left_line = line_from_segments(&left_segs, theme, true, false);
-    let right_line = line_from_segments(&right_segs, theme, true, true);
-
-    let right_opt = if right_line.width() > 0 && tmpl.header_right.trim() != "" {
-        Some(right_line)
-    } else {
-        None
-    };
-
-    (left_line, right_opt)
+    (
+        render_header_left(ctx, cfg, view, theme),
+        render_header_right(ctx, cfg, view, theme, None),
+    )
 }
 
 pub fn render_footer<'a>(
@@ -1979,5 +2219,24 @@ mod tests {
             let badge_spans = crate::ui::ext_badge_spans(true, &theme, None);
             assert!(!badge_spans.is_empty());
         }
+    }
+    #[test]
+    fn list_header_relative_time_boundaries() {
+        let now = 100_000_000;
+        for (elapsed, expected) in [
+            (59, "just now"),
+            (60, "1m ago"),
+            (3_599, "59m ago"),
+            (3_600, "1h ago"),
+            (86_399, "23h ago"),
+            (86_400, "1d ago"),
+            (604_799, "6d ago"),
+            (604_800, "1w ago"),
+            (52 * 604_800 - 1, "51w ago"),
+            (52 * 604_800, "1y ago"),
+        ] {
+            assert_eq!(list_relative_age_at(now - elapsed, now), expected);
+        }
+        assert_eq!(list_relative_age_at(now + 1, now), "just now");
     }
 }

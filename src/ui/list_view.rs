@@ -8,6 +8,7 @@ use crate::app::{App, VIRTUAL_PINNED_PATH, VIRTUAL_SMART_PATH, VIRTUAL_SUBNOTES_
 use crate::app_theme::AppThemeColors;
 use crate::keybinds::ListAction;
 use ratatui::{prelude::*, widgets::*};
+use unicode_width::UnicodeWidthStr;
 
 const GRID_TILE_W: u16 = 10; // outer width incl. border
 const GRID_TILE_H: u16 = 5; // outer height incl. border
@@ -709,16 +710,27 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
             ctx.preview = Some(preview_spans(pi, &app.app_theme));
         }
 
-        let detail_line = crate::ui::list_detail_line(app);
-        if let Some(dl) = &detail_line {
-            ctx.detail = Some(dl.spans.clone());
+        let detail = list_detail_value(app);
+        if let Some(detail) = &detail {
+            ctx.detail = Some(detail.spans_without(&[]));
+            ctx.list_detail = Some(detail.clone());
         }
         if app.preview_fullscreen {
-            let (left_line, right_line) = crate::statusline::render_header(
+            let left_line = crate::statusline::render_header_left(
                 &ctx,
                 &app.config.statusline,
                 ViewMode::List,
                 &app.app_theme,
+            );
+            let capacity = chunks[0]
+                .width
+                .saturating_sub(left_line.width().min(usize::from(chunks[0].width)) as u16);
+            let right_line = crate::statusline::render_header_right(
+                &ctx,
+                &app.config.statusline,
+                ViewMode::List,
+                &app.app_theme,
+                Some(capacity),
             );
             draw_view_title_bar(
                 frame,
@@ -809,11 +821,27 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 app.config.ui.icon_mode,
             );
 
-            let (left_line, right_line) = crate::statusline::render_header(
+            let left_line = crate::statusline::render_header_left(
                 &ctx,
                 &app.config.statusline,
                 ViewMode::List,
                 &app.app_theme,
+            );
+            let tab_width = tab_spans
+                .iter()
+                .map(|span| span.content.width() as u16)
+                .fold(0u16, u16::saturating_add);
+            let tabs_rect = crate::ui::title_bar_tabs_rect(chunks[0], title, tab_width);
+            let occupied = chunks[0]
+                .x
+                .saturating_add(left_line.width().min(usize::from(chunks[0].width)) as u16)
+                .max(tabs_rect.right());
+            let right_line = crate::statusline::render_header_right(
+                &ctx,
+                &app.config.statusline,
+                ViewMode::List,
+                &app.app_theme,
+                Some(chunks[0].right().saturating_sub(occupied)),
             );
             draw_view_title_bar_with_tabs(
                 frame,
@@ -827,11 +855,21 @@ pub fn draw_list_view(frame: &mut Frame, app: &mut App) {
                 app.load_spinner_tick,
             );
         } else {
-            let (left_line, right_line) = crate::statusline::render_header(
+            let left_line = crate::statusline::render_header_left(
                 &ctx,
                 &app.config.statusline,
                 ViewMode::List,
                 &app.app_theme,
+            );
+            let capacity = chunks[0]
+                .width
+                .saturating_sub(left_line.width().min(usize::from(chunks[0].width)) as u16);
+            let right_line = crate::statusline::render_header_right(
+                &ctx,
+                &app.config.statusline,
+                ViewMode::List,
+                &app.app_theme,
+                Some(capacity),
             );
             draw_view_title_bar(
                 frame,
@@ -3218,106 +3256,100 @@ pub fn get_preview_info(app: &App) -> Option<PreviewHeaderInfo> {
     }
 }
 
-pub fn list_detail_line(app: &App) -> Option<Line<'static>> {
-    if let Some(crate::app::VisualItem::Note { summary_idx, .. }) =
-        app.list.visual_list.get(app.list.visual_index)
-    {
-        let s = &app.notes[*summary_idx];
-        let mut spans = Vec::new();
+pub(crate) fn list_detail_value(app: &App) -> Option<crate::statusline::ListHeaderDetail> {
+    use crate::statusline::{ListHeaderDetail, ListHeaderField};
 
-        let when = format_relative_time(s.updated_at);
-        spans.push(Span::styled(
-            format!(
-                " {} ",
-                crate::ui::get_icon("\u{f017}", "\u{23f0}", app.config.ui.icon_mode)
-            ),
-            Style::default().fg(app.app_theme.muted),
-        ));
-        spans.push(Span::styled(
-            when.into_owned(),
-            Style::default().fg(app.app_theme.muted),
-        ));
+    let item = app.list.visual_list.get(app.list.visual_index)?;
+    match item {
+        crate::app::VisualItem::Note { summary_idx, .. } => {
+            let note = app.notes.get(*summary_idx)?;
+            let muted = Style::default().fg(app.app_theme.muted);
+            let tag_icon_style = Style::default()
+                .fg(app.app_theme.tag)
+                .add_modifier(Modifier::BOLD);
+            let mut groups = Vec::new();
 
-        if !s.tags.is_empty() {
-            spans.push(Span::raw(" | "));
-            spans.push(Span::styled(
-                format!(
-                    "{} ",
-                    crate::ui::get_icon("\u{f02b}", "\u{1f3f7}", app.config.ui.icon_mode)
-                ),
-                Style::default()
-                    .fg(app.app_theme.tag)
-                    .add_modifier(Modifier::BOLD),
+            let clock = crate::ui::get_icon("\u{f017}", "\u{23f0}", app.config.ui.icon_mode);
+            let mut age = Vec::new();
+            if !clock.is_empty() {
+                age.push(Span::styled(clock, muted));
+                age.push(Span::styled(" ", muted));
+            }
+            age.push(Span::styled(
+                crate::statusline::list_relative_age(note.updated_at),
+                muted,
             ));
+            groups.push((ListHeaderField::Age, age));
+
+            if !note.tags.is_empty() {
+                let tag_icon =
+                    crate::ui::get_icon("\u{f02b}", "\u{1f3f7}", app.config.ui.icon_mode);
+                let mut tags = Vec::new();
+                if !tag_icon.is_empty() {
+                    tags.push(Span::styled(tag_icon, tag_icon_style));
+                    tags.push(Span::styled(" ", tag_icon_style));
+                }
+                tags.push(Span::styled(
+                    crate::statusline::compact_list_tags(&note.tags),
+                    Style::default().fg(app.app_theme.fg),
+                ));
+                groups.push((ListHeaderField::Tags, tags));
+            }
+
+            if app.list.show_file_size {
+                groups.push((
+                    ListHeaderField::Size,
+                    vec![Span::styled(
+                        crate::ui::format_size(note.size_bytes),
+                        Style::default().fg(app.app_theme.muted),
+                    )],
+                ));
+            }
+            Some(ListHeaderDetail::new(groups))
+        }
+        crate::app::VisualItem::Folder {
+            name,
+            note_count,
+            recursive_count,
+            ..
+        } if name != ".." => {
+            let icon = crate::ui::get_icon("\u{f0ca}", "\u{1f4cb}", app.config.ui.icon_mode);
+            let count = if *recursive_count > *note_count {
+                format!("{note_count}+{}", recursive_count - note_count)
+            } else {
+                note_count.to_string()
+            };
+            let mut spans = Vec::new();
+            if !icon.is_empty() {
+                spans.push(Span::styled(
+                    icon,
+                    Style::default().fg(app.app_theme.folder),
+                ));
+                spans.push(Span::styled(" ", Style::default().fg(app.app_theme.folder)));
+            }
+            spans.push(Span::styled(count, Style::default().fg(app.app_theme.fg)));
+            Some(ListHeaderDetail::new(vec![(ListHeaderField::Count, spans)]))
+        }
+        crate::app::VisualItem::SmartFolder { note_count, .. } => {
+            let icon = crate::ui::get_icon("\u{f0ca}", "\u{1f4cb}", app.config.ui.icon_mode);
+            let mut spans = Vec::new();
+            if !icon.is_empty() {
+                spans.push(Span::styled(icon, Style::default().fg(app.app_theme.tag)));
+                spans.push(Span::styled(" ", Style::default().fg(app.app_theme.tag)));
+            }
             spans.push(Span::styled(
-                s.tags.join(", "),
+                note_count.to_string(),
                 Style::default().fg(app.app_theme.fg),
             ));
+            Some(ListHeaderDetail::new(vec![(ListHeaderField::Count, spans)]))
         }
-        if app.list.show_file_size {
-            spans.push(Span::raw(" | "));
-            spans.push(Span::styled(
-                crate::ui::format_size(s.size_bytes),
-                Style::default().fg(app.app_theme.muted),
-            ));
-        }
-        spans.push(Span::raw(" ")); // padding right
-        Some(Line::from(spans))
-    } else if let Some(crate::app::VisualItem::Folder {
-        name,
-        note_count,
-        recursive_count,
-        ..
-    }) = app.list.visual_list.get(app.list.visual_index)
-        && name != ".."
-    {
-        let mut spans = Vec::new();
-        let count_suffix = if *recursive_count > *note_count {
-            let sub = recursive_count - note_count;
-            let suffix = if *recursive_count == 1 {
-                "note"
-            } else {
-                "notes"
-            };
-            format!("{} + {} {}", note_count, sub, suffix)
-        } else {
-            let suffix = if *note_count == 1 { "note" } else { "notes" };
-            format!("{} {}", note_count, suffix)
-        };
-        spans.push(Span::styled(
-            format!(
-                " {} ",
-                crate::ui::get_icon("\u{f0ca}", "\u{1f4cb}", app.config.ui.icon_mode)
-            ),
-            Style::default().fg(app.app_theme.folder),
-        ));
-        spans.push(Span::styled(
-            count_suffix,
-            Style::default().fg(app.app_theme.fg),
-        ));
-        spans.push(Span::raw(" ")); // padding right
-        Some(Line::from(spans))
-    } else if let Some(crate::app::VisualItem::SmartFolder { note_count, .. }) =
-        app.list.visual_list.get(app.list.visual_index)
-    {
-        let mut spans = Vec::new();
-        let suffix = if *note_count == 1 { "note" } else { "notes" };
-        spans.push(Span::styled(
-            format!(
-                " {} ",
-                crate::ui::get_icon("\u{f0ca}", "\u{1f4cb}", app.config.ui.icon_mode)
-            ),
-            Style::default().fg(app.app_theme.tag),
-        ));
-        spans.push(Span::styled(
-            format!("{note_count} {suffix}"),
-            Style::default().fg(app.app_theme.fg),
-        ));
-        spans.push(Span::raw(" ")); // padding right
-        Some(Line::from(spans))
-    } else {
-        None
+        _ => None,
     }
+}
+
+#[allow(dead_code)]
+pub fn list_detail_line(app: &App) -> Option<Line<'static>> {
+    list_detail_value(app).map(|detail| Line::from(detail.spans_without(&[])))
 }
 
 #[cfg(test)]
@@ -3727,12 +3759,12 @@ mod tests {
 
         let detail = list_detail_line(&app).unwrap().to_string();
         assert!(detail.contains(&crate::ui::format_size(size_bytes)));
-        assert!(detail.contains(&*format_relative_time(0)));
+        assert!(detail.contains("ago"));
 
         app.list.show_file_size = false;
         let detail = list_detail_line(&app).unwrap().to_string();
         assert!(!detail.contains(&crate::ui::format_size(size_bytes)));
-        assert!(detail.contains(&*format_relative_time(0)));
+        assert!(detail.contains("ago"));
     }
 
     #[test]
@@ -3868,5 +3900,236 @@ mod tests {
                 assert!((y - (-r)).abs() < 1e-12, "first y not -r: {y}");
             }
         }
+    }
+    #[test]
+    fn list_header_compact_fields() {
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let (_temp_dir, mut app) = grid_test_app(0);
+        app.notes = vec![crate::storage::NoteSummary {
+            id: "note.md".into(),
+            title: "Note".into(),
+            updated_at: crate::ui::now_unix_secs(),
+            folder: String::new(),
+            tags: vec![
+                "123456789012".into(),
+                "界界界界界界界".into(),
+                "third".into(),
+                "fourth".into(),
+                "fifth".into(),
+            ],
+            pinned: false,
+            links: vec![],
+            size_bytes: 1_536,
+        }];
+        app.list.visual_list = vec![crate::list_view::VisualItem::Note {
+            summary_idx: 0,
+            depth: 0,
+            is_clin: false,
+            is_draw: false,
+            is_canvas: false,
+            in_virtual_pinned_folder: false,
+        }];
+        app.list.show_file_size = true;
+
+        for (field, order, expected) in [
+            (
+                crate::list_view::SortField::Title,
+                crate::list_view::SortOrder::Ascending,
+                "A-z",
+            ),
+            (
+                crate::list_view::SortField::Title,
+                crate::list_view::SortOrder::Descending,
+                "Z-a",
+            ),
+            (
+                crate::list_view::SortField::Modified,
+                crate::list_view::SortOrder::Ascending,
+                "✎▲",
+            ),
+            (
+                crate::list_view::SortField::Modified,
+                crate::list_view::SortOrder::Descending,
+                "✎▼",
+            ),
+        ] {
+            app.list.sort_field = field;
+            app.list.sort_order = order;
+            app.config.ui.icon_mode = crate::config::IconMode::Unicode;
+            let mut ctx = crate::statusline::StatuslineContext::for_view(&app, ViewMode::List);
+            ctx.note = app.notes.first();
+            assert_eq!(ctx.resolve("sort").as_deref(), Some(expected));
+        }
+        app.config.ui.icon_mode = crate::config::IconMode::Nerd;
+        let ctx = crate::statusline::StatuslineContext::for_view(&app, ViewMode::List);
+        assert_eq!(ctx.resolve("sort").as_deref(), Some("\u{f03eb}▼"));
+        app.list.sort_field = crate::list_view::SortField::Modified;
+        app.config.ui.icon_mode = crate::config::IconMode::None;
+        let ctx = crate::statusline::StatuslineContext::for_view(&app, ViewMode::List);
+        assert_eq!(ctx.resolve("sort").as_deref(), Some("M▼"));
+
+        assert_eq!(crate::statusline::compact_list_tags(&[]), "");
+        assert_eq!(
+            crate::statusline::compact_list_tags(&["123456789012".into()]),
+            "123456789012"
+        );
+        assert_eq!(
+            crate::statusline::compact_list_tags(&["界界界界界界界".into()]),
+            "界界界界界…"
+        );
+        assert_eq!(
+            crate::statusline::compact_list_tags(&app.notes[0].tags),
+            "123456789012, 界界界界界… +3"
+        );
+        let note_detail = list_detail_line(&app).expect("note detail").to_string();
+        assert!(note_detail.contains("123456789012, 界界界界界… +3"));
+        assert!(note_detail.contains(&crate::ui::format_size(1_536)));
+
+        app.list.visual_list = vec![crate::list_view::VisualItem::Folder {
+            path: "folder".into(),
+            name: "folder".into(),
+            depth: 0,
+            is_expanded: false,
+            note_count: 2,
+            recursive_count: 5,
+            stale: false,
+            is_pinned: false,
+        }];
+        assert!(
+            list_detail_line(&app)
+                .expect("folder detail")
+                .to_string()
+                .contains("2+3")
+        );
+        app.list.visual_list = vec![crate::list_view::VisualItem::SmartFolder {
+            kind: crate::list_view::SmartFolderKind::Today,
+            label: "Today".into(),
+            depth: 0,
+            is_expanded: false,
+            note_count: 5,
+        }];
+        assert_eq!(
+            list_detail_line(&app)
+                .expect("smart detail")
+                .to_string()
+                .trim(),
+            "5"
+        );
+    }
+    fn render_list_header_right<'a>(
+        app: &'a App,
+        theme: &AppThemeColors,
+        max_width: Option<u16>,
+    ) -> Option<Line<'a>> {
+        let mut ctx = crate::statusline::StatuslineContext::for_view(app, ViewMode::List);
+        ctx.note = crate::statusline::active_note(app, ViewMode::List);
+        if let Some(detail) = list_detail_value(app) {
+            ctx.detail = Some(detail.spans_without(&[]));
+            ctx.list_detail = Some(detail);
+        }
+        crate::statusline::render_header_right(
+            &ctx,
+            &app.config.statusline,
+            ViewMode::List,
+            theme,
+            max_width,
+        )
+    }
+
+    #[test]
+    fn list_header_drops_fields_by_priority() {
+        let _lock = crate::config::ConfigTestGuard::lock();
+        let (_temp_dir, mut app) = grid_test_app(0);
+        app.notes = vec![crate::storage::NoteSummary {
+            id: "note.md".into(),
+            title: "Note".into(),
+            updated_at: crate::ui::now_unix_secs(),
+            folder: String::new(),
+            tags: vec!["alpha".into(), "beta".into()],
+            pinned: false,
+            links: vec![],
+            size_bytes: 1_536,
+        }];
+        app.list.visual_list = vec![crate::list_view::VisualItem::Note {
+            summary_idx: 0,
+            depth: 0,
+            is_clin: false,
+            is_draw: false,
+            is_canvas: false,
+            in_virtual_pinned_folder: false,
+        }];
+        app.list.show_file_size = true;
+        app.list.sort_field = crate::list_view::SortField::Modified;
+        app.list.sort_order = crate::list_view::SortOrder::Descending;
+        app.config.ui.icon_mode = crate::config::IconMode::None;
+        app.config.statusline.list = Some(crate::config::StatuslineOverride {
+            header_left: None,
+            header_right: Some("L {sort} {detail} {tags} {note_updated_rel} {note_size} R".into()),
+            footer_left: None,
+            footer_right: None,
+        });
+
+        for style in [
+            crate::config::HintBarStyle::Classic,
+            crate::config::HintBarStyle::Sharp,
+            crate::config::HintBarStyle::Bubbles,
+            crate::config::HintBarStyle::Brackets,
+            crate::config::HintBarStyle::Hexagon,
+        ] {
+            let mut theme = AppThemeColors::default();
+            theme.hint_bar_style = style;
+            let full = render_list_header_right(&app, &theme, None).expect("full header");
+            assert!(full.to_string().contains("1.5 KB"));
+            let without_size =
+                render_list_header_right(&app, &theme, Some(full.width().saturating_sub(1) as u16))
+                    .expect("header without size");
+            assert!(!without_size.to_string().contains("1.5 KB"), "{style:?}");
+            let without_age = render_list_header_right(
+                &app,
+                &theme,
+                Some(without_size.width().saturating_sub(1) as u16),
+            )
+            .expect("header without age");
+            assert!(!without_age.to_string().contains("just now"), "{style:?}");
+            let without_sort = render_list_header_right(
+                &app,
+                &theme,
+                Some(without_age.width().saturating_sub(1) as u16),
+            )
+            .expect("header without sort");
+            assert!(!without_sort.to_string().contains("M▼"), "{style:?}");
+            let literals_only = render_list_header_right(
+                &app,
+                &theme,
+                Some(without_sort.width().saturating_sub(1) as u16),
+            )
+            .expect("literal header");
+            assert!(literals_only.to_string().contains("L"), "{style:?}");
+            assert!(literals_only.to_string().contains("R"), "{style:?}");
+        }
+
+        app.config
+            .statusline
+            .list
+            .as_mut()
+            .expect("list override")
+            .header_right = Some("{sort} {detail}".into());
+        app.list.visual_list = vec![crate::list_view::VisualItem::Folder {
+            path: "folder".into(),
+            name: "folder".into(),
+            depth: 0,
+            is_expanded: false,
+            note_count: 2,
+            recursive_count: 5,
+            stale: false,
+            is_pinned: false,
+        }];
+        let theme = AppThemeColors::default();
+        let full = render_list_header_right(&app, &theme, None).expect("folder header");
+        let without_count =
+            render_list_header_right(&app, &theme, Some(full.width().saturating_sub(1) as u16))
+                .expect("folder header without count");
+        assert!(!without_count.to_string().contains("2+3"));
+        assert!(without_count.to_string().contains("M▼"));
     }
 }

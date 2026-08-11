@@ -61,6 +61,18 @@ impl EditorPreviewScheduler {
         self.deadline = None;
     }
 }
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct EditorVisualRow {
+    pub(crate) source_line: usize,
+    pub(crate) start_char: usize,
+    pub(crate) end_char: usize,
+}
+
+#[derive(Default)]
+pub(crate) struct EditorVisualRowCache {
+    pub(crate) key: Option<(u64, u16, bool, ratatui_textarea::WrapMode, u8)>,
+    pub(crate) rows: Vec<EditorVisualRow>,
+}
 
 pub struct NoteEditor {
     pub editing_id: Option<String>,
@@ -123,6 +135,7 @@ pub struct NoteEditor {
     pub md_highlight_lines: usize,
     /// Bounded visible-line style memo, keyed by content and fence role.
     pub md_highlight_memo: lru::LruCache<(u64, bool), std::rc::Rc<[ratatui::style::Style]>>,
+    pub(crate) visual_row_cache: EditorVisualRowCache,
     /// TTL cache for {modified} statusline token (500ms bounded).
     pub modified_status_cache: std::cell::RefCell<Option<(std::time::Instant, bool)>>,
 }
@@ -184,6 +197,7 @@ impl Default for NoteEditor {
             md_highlight_change: None,
             md_highlight_lines: 0,
             md_highlight_memo: lru::LruCache::new(std::num::NonZeroUsize::MIN),
+            visual_row_cache: EditorVisualRowCache::default(),
             modified_status_cache: std::cell::RefCell::new(None),
             source_highlighter: None,
             header_title_rect: ratatui::layout::Rect::default(),

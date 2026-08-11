@@ -816,6 +816,7 @@ fn render_heading<'a>(ctx: &mut Ctx<'_, '_>, node: &'a AstNode<'a>, h: &NodeHead
     ctx.ensure_source_line(start_line, 0);
 
     let h_margin = heading_margin(depth, h.level);
+    ctx.push(' ', bg_style, 0);
 
     for _ in 0..h_margin {
         ctx.push(' ', bg_style, 0);
@@ -1759,7 +1760,7 @@ mod tests {
     }
 
     #[test]
-    fn headings_have_no_padding_and_reduced_indentation() {
+    fn headings_have_one_leading_cell_and_reduced_indentation() {
         let lines = render_test(
             "# H1\n\n## H2\n\n### H3\n\n#### H4\n\n##### H5\n\n###### H6\n",
             80,
@@ -1768,12 +1769,12 @@ mod tests {
         );
 
         for (title, indent) in [
-            ("H1", 0),
-            ("H2", 1),
-            ("H3", 2),
-            ("H4", 3),
-            ("H5", 4),
-            ("H6", 5),
+            ("H1", 1),
+            ("H2", 2),
+            ("H3", 3),
+            ("H4", 4),
+            ("H5", 5),
+            ("H6", 6),
         ] {
             let line = lines
                 .iter()
@@ -1786,6 +1787,39 @@ mod tests {
                 "{title} indentation"
             );
         }
+
+        let atx = render_test("# Narrow heading wraps safely\n", 8, true, false);
+        assert!(
+            line_text(&atx[0]).starts_with(' '),
+            "narrow ATX heading keeps leading cell"
+        );
+
+        let setext = render_test("Setext heading\n==============\n", 80, true, false);
+        let title = setext
+            .iter()
+            .find(|line| line_text(line).contains("Setext heading"))
+            .expect("setext title");
+        let underline = setext
+            .iter()
+            .find(|line| line_text(line).contains('─'))
+            .expect("setext underline");
+        assert!(
+            line_text(title).starts_with(' '),
+            "setext title keeps leading cell"
+        );
+        assert_eq!(
+            line_text(underline).chars().filter(|ch| *ch == '─').count(),
+            "Setext heading".chars().count(),
+            "setext underline preserves title width"
+        );
+        let narrow_setext =
+            render_test("Setext wraps safely\n===================\n", 8, true, false);
+        assert!(
+            narrow_setext
+                .iter()
+                .any(|line| line_text(line).contains('─')),
+            "narrow setext heading retains underline"
+        );
     }
 
     #[test]
@@ -2618,18 +2652,18 @@ mod tests {
 
         assert!(!h2_line.contains('▌'));
 
-        assert!(h2_line.starts_with(" ②"));
-        assert!(h3_line.starts_with("  ③"));
-        assert!(h4_line.starts_with("   ④"));
-        assert!(h5_line.starts_with("    ⑤"));
-        assert!(h6_line.starts_with("     ⑥"));
+        assert!(h2_line.starts_with("  ②"));
+        assert!(h3_line.starts_with("   ③"));
+        assert!(h4_line.starts_with("    ④"));
+        assert!(h5_line.starts_with("     ⑤"));
+        assert!(h6_line.starts_with("      ⑥"));
 
         let setext_idx = texts
             .iter()
             .position(|t| t.contains("Setext"))
             .expect("Setext heading");
         let underline_line = &texts[setext_idx + 1];
-        assert!(underline_line.starts_with("   ──"));
+        assert!(underline_line.starts_with("    ──"));
         assert_eq!(str_visual_width("Setext"), 6);
 
         let q1_idx = texts

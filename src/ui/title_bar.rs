@@ -1,6 +1,7 @@
 use super::PreviewHeaderInfo;
 use crate::app_theme::AppThemeColors;
 use ratatui::{prelude::*, widgets::*};
+use unicode_width::UnicodeWidthStr;
 
 fn spinner_char(tick: usize) -> char {
     const FRAMES: [char; 10] = [
@@ -110,16 +111,11 @@ pub fn draw_view_title_bar_with_tabs(
     }
     frame.render_widget(Paragraph::new("").style(theme.title_bar_bg_style()), area);
 
-    let tabs_region = title_bar_tabs_region(area, default_title);
-    use unicode_width::UnicodeWidthStr;
     let total: u16 = tab_spans
         .iter()
-        .map(|s| s.content.width() as u16)
+        .map(|span| span.content.width() as u16)
         .fold(0u16, u16::saturating_add);
-    let center_x = area.x + area.width.saturating_sub(total) / 2;
-    let start_x = center_x.max(tabs_region.x);
-    let render_w = total.min(tabs_region.width);
-    let tabs_area = Rect::new(start_x, area.y, render_w, area.height);
+    let tabs_area = title_bar_tabs_rect(area, default_title, total);
     frame.render_widget(
         Paragraph::new(Line::from(tab_spans)).style(theme.title_bar_bg_style()),
         tabs_area,
@@ -143,7 +139,6 @@ pub fn draw_view_title_bar_with_tabs(
 }
 
 pub fn title_bar_tabs_region(area: Rect, title: &str) -> Rect {
-    use unicode_width::UnicodeWidthStr;
     let title_w = format!(" {} ", title.to_uppercase())
         .width()
         .min(area.width as usize) as u16;
@@ -153,6 +148,18 @@ pub fn title_bar_tabs_region(area: Rect, title: &str) -> Rect {
         width: area.width.saturating_sub(title_w),
         height: area.height,
     }
+}
+
+pub fn title_bar_tabs_rect(area: Rect, default_title: &str, spans_width: u16) -> Rect {
+    let tabs_region = title_bar_tabs_region(area, default_title);
+    let center_x = area.x + area.width.saturating_sub(spans_width) / 2;
+    let start_x = center_x.max(tabs_region.x);
+    Rect::new(
+        start_x,
+        area.y,
+        spans_width.min(tabs_region.width),
+        area.height,
+    )
 }
 
 fn tab_display_text(

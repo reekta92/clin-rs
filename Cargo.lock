@@ -583,6 +583,7 @@ dependencies = [
  "toml",
  "toml_edit",
  "trash",
+ "unicode-segmentation",
  "unicode-width",
  "uuid",
  "which",
